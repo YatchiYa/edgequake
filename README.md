@@ -458,7 +458,7 @@ We are committed to providing a welcoming and inclusive environment. Please read
 
 ### Founder
 
-**Raphaël MANSUY** 🇫🇷 - 🇭🇰🇨🇳 — Proud Citizen of France and PR of Hong Kong, building the future of intelligent document retrieval systems and context graph systems.
+**Raphaël MANSUY** 🇫🇷 - 🇭🇰🇨🇳 — Permanent Resident of Hong Kong, building the future of intelligent document retrieval systems and context graph systems.
 
 ---
 
