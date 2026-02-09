@@ -21,6 +21,7 @@ Cargo.lock
 # Log files
 *.log
 lightrag.log*
+logs/
 /.playwright-mcp
 archive/
 specs/
