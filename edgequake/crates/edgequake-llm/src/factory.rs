@@ -1,7 +1,7 @@
 //! LLM provider factory for environment-based selection.
 //!
 //! @implements SPEC-032: Ollama/LM Studio provider support
-//! @implements FEAT0017: Multi-provider LLM support
+//! @implements FEAT0024: Multi-provider LLM factory implementation
 //! @implements SPEC-033: Hybrid provider mode (separate LLM and embedding providers)
 //!
 //! # WHY This Factory Exists (Two Separate Provider Paths)
@@ -606,9 +606,11 @@ impl ProviderFactory {
     /// Create a safety-limited LLM provider from workspace configuration.
     ///
     /// This wraps the provider with safety limits (max_tokens, timeout) to prevent
-    /// runaway generation and hung requests. Use this for production deployments.
+    /// excessive LLM usage and runaway generation. Used for background document
+    /// ingestion when workspace providers could not be created (API key missing, etc.).
     ///
-    /// @implements FEAT0777: Safety limits for LLM calls
+    /// @implements SPEC-032: Safe fallback provider for ingestion
+    /// @implements FEAT0781: Safety limits for LLM calls
     /// @implements BR0777: Hard max_tokens limit enforcement
     /// @implements BR0778: Request timeout enforcement
     ///
