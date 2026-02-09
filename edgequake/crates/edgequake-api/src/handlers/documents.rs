@@ -1,6 +1,6 @@
 //! Document ingestion handlers.
 //!
-//! @implements FEAT0401
+//! @implements FEAT0407 (Document REST API Handlers)
 //! @implements FEAT0402
 //!
 //! # Implements
@@ -2535,12 +2535,20 @@ pub async fn delete_all_documents(
         }
 
         // Delete metadata key
-        if let Err(e) = state.kv_storage.delete(std::slice::from_ref(metadata_key)).await {
+        if let Err(e) = state
+            .kv_storage
+            .delete(std::slice::from_ref(metadata_key))
+            .await
+        {
             tracing::warn!(key = %metadata_key, error = %e, "Failed to delete metadata");
         }
 
         // Delete content key
-        if let Err(e) = state.kv_storage.delete(std::slice::from_ref(&content_key)).await {
+        if let Err(e) = state
+            .kv_storage
+            .delete(std::slice::from_ref(&content_key))
+            .await
+        {
             tracing::warn!(key = %content_key, error = %e, "Failed to delete content");
         }
 
@@ -2628,6 +2636,7 @@ pub async fn delete_all_documents(
     // Clean up PDF documents table
     // WHY: PDF documents have their own table separate from KV storage
     // The duplicate detection uses checksum from pdf_documents table, so we must clear it
+    #[allow(unused_mut)] // mut only used when postgres feature is enabled
     let mut total_pdfs_deleted = 0usize;
     #[cfg(feature = "postgres")]
     if let Some(ref pdf_storage) = state.pdf_storage {
@@ -4312,7 +4321,7 @@ pub async fn recover_stuck(
 
 /// Retry failed chunks for a specific document.
 ///
-/// @implements FEAT0401
+/// @implements FEAT0408 (Chunk retry handler)
 ///
 /// # OODA-03: Chunk-Level Retry Queue
 ///
@@ -4394,7 +4403,7 @@ pub async fn retry_failed_chunks(
 
 /// List failed chunks for a document.
 ///
-/// @implements FEAT0401
+/// @implements FEAT0409
 ///
 /// Returns information about chunks that failed during extraction,
 /// allowing the user to decide which to retry.
