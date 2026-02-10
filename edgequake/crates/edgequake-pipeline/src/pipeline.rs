@@ -1037,6 +1037,17 @@ impl Pipeline {
                         .await
                         .map_err(|e| crate::error::PipelineError::EmbeddingError(e.to_string()))?;
 
+                    // Validate embedding count matches input count
+                    // WHY: If provider returns fewer embeddings than inputs, zip() silently drops
+                    // entities without embeddings, causing graph nodes with missing vectors.
+                    if all_embeddings.len() != all_entity_texts.len() {
+                        tracing::warn!(
+                            expected = all_entity_texts.len(),
+                            actual = all_embeddings.len(),
+                            "Entity embedding count mismatch - some entities may lack embeddings"
+                        );
+                    }
+
                     // Reassign embeddings to their respective entities
                     for (embedding, (ext_idx, ent_idx)) in
                         all_embeddings.into_iter().zip(entity_indices)
@@ -1073,6 +1084,15 @@ impl Pipeline {
                         .embed(&all_relationship_texts)
                         .await
                         .map_err(|e| crate::error::PipelineError::EmbeddingError(e.to_string()))?;
+
+                    // Validate embedding count matches input count
+                    if all_embeddings.len() != all_relationship_texts.len() {
+                        tracing::warn!(
+                            expected = all_relationship_texts.len(),
+                            actual = all_embeddings.len(),
+                            "Relationship embedding count mismatch - some relationships may lack embeddings"
+                        );
+                    }
 
                     // Reassign embeddings to their respective relationships
                     for (embedding, (ext_idx, rel_idx)) in
@@ -1380,6 +1400,15 @@ impl Pipeline {
                         .embed(&all_entity_texts)
                         .await
                         .map_err(|e| crate::error::PipelineError::EmbeddingError(e.to_string()))?;
+
+                    if all_embeddings.len() != all_entity_texts.len() {
+                        tracing::warn!(
+                            expected = all_entity_texts.len(),
+                            actual = all_embeddings.len(),
+                            "Entity embedding count mismatch (process_with_progress)"
+                        );
+                    }
+
                     for (embedding, (ext_idx, ent_idx)) in
                         all_embeddings.into_iter().zip(entity_indices)
                     {
@@ -1411,6 +1440,15 @@ impl Pipeline {
                         .embed(&all_relationship_texts)
                         .await
                         .map_err(|e| crate::error::PipelineError::EmbeddingError(e.to_string()))?;
+
+                    if all_embeddings.len() != all_relationship_texts.len() {
+                        tracing::warn!(
+                            expected = all_relationship_texts.len(),
+                            actual = all_embeddings.len(),
+                            "Relationship embedding count mismatch (process_with_progress)"
+                        );
+                    }
+
                     for (embedding, (ext_idx, rel_idx)) in
                         all_embeddings.into_iter().zip(relationship_indices)
                     {
@@ -1808,6 +1846,15 @@ impl Pipeline {
                         .embed(&all_entity_texts)
                         .await
                         .map_err(|e| crate::error::PipelineError::EmbeddingError(e.to_string()))?;
+
+                    if all_embeddings.len() != all_entity_texts.len() {
+                        tracing::warn!(
+                            expected = all_entity_texts.len(),
+                            actual = all_embeddings.len(),
+                            "Entity embedding count mismatch (process_with_resilience)"
+                        );
+                    }
+
                     for (embedding, (ext_idx, ent_idx)) in
                         all_embeddings.into_iter().zip(entity_indices)
                     {
@@ -1839,6 +1886,15 @@ impl Pipeline {
                         .embed(&all_relationship_texts)
                         .await
                         .map_err(|e| crate::error::PipelineError::EmbeddingError(e.to_string()))?;
+
+                    if all_embeddings.len() != all_relationship_texts.len() {
+                        tracing::warn!(
+                            expected = all_relationship_texts.len(),
+                            actual = all_embeddings.len(),
+                            "Relationship embedding count mismatch (process_with_resilience)"
+                        );
+                    }
+
                     for (embedding, (ext_idx, rel_idx)) in
                         all_embeddings.into_iter().zip(relationship_indices)
                     {
