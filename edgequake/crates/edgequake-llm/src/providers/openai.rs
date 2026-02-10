@@ -14,7 +14,7 @@ use async_openai::{
 };
 use async_trait::async_trait;
 use std::collections::HashMap;
-use tracing::debug;
+use tracing::{debug, info};
 
 use crate::error::{LlmError, Result};
 use crate::traits::{
@@ -349,6 +349,12 @@ impl EmbeddingProvider for OpenAIProvider {
     }
 
     async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        // WHY: OpenAI embedding API enforces a hard limit of 2048 inputs per request.
+        // Large documents can produce thousands of entities (e.g. 8932 for a 268KB doc),
+        // which causes "$.input is invalid" when sent as a single batch.
+        // We split into sub-batches of MAX_EMBEDDING_BATCH_SIZE to stay within limits.
+        const MAX_EMBEDDING_BATCH_SIZE: usize = 2048;
+
         if texts.is_empty() {
             return Ok(Vec::new());
         }
@@ -376,20 +382,50 @@ impl EmbeddingProvider for OpenAIProvider {
             .map(|(_, text)| (*text).clone())
             .collect();
 
-        let input = EmbeddingInput::StringArray(api_texts);
+        let total_texts = api_texts.len();
+        let num_batches = (total_texts + MAX_EMBEDDING_BATCH_SIZE - 1) / MAX_EMBEDDING_BATCH_SIZE;
 
-        let request = CreateEmbeddingRequestArgs::default()
-            .model(&self.embedding_model)
-            .input(input)
-            .build()
-            .map_err(|e| LlmError::InvalidRequest(e.to_string()))?;
+        if num_batches > 1 {
+            info!(
+                "Splitting {} texts into {} batches of max {} for OpenAI embedding API",
+                total_texts, num_batches, MAX_EMBEDDING_BATCH_SIZE
+            );
+        }
 
-        let response = self.client.embeddings().create(request).await?;
+        // Process in batches to respect API limits
+        let mut all_embeddings: Vec<Vec<f32>> = Vec::with_capacity(total_texts);
+
+        for (batch_idx, batch) in api_texts.chunks(MAX_EMBEDDING_BATCH_SIZE).enumerate() {
+            if num_batches > 1 {
+                debug!(
+                    "Embedding batch {}/{}: {} texts",
+                    batch_idx + 1,
+                    num_batches,
+                    batch.len()
+                );
+            }
+
+            let input = EmbeddingInput::StringArray(batch.to_vec());
+
+            let request = CreateEmbeddingRequestArgs::default()
+                .model(&self.embedding_model)
+                .input(input)
+                .build()
+                .map_err(|e| LlmError::InvalidRequest(e.to_string()))?;
+
+            let response = self.client.embeddings().create(request).await?;
+
+            // Sort by index to ensure correct ordering within batch
+            let mut batch_data = response.data;
+            batch_data.sort_by_key(|e| e.index);
+
+            all_embeddings.extend(batch_data.into_iter().map(|e| e.embedding));
+        }
 
         // Map embeddings back to original indices
         let mut result = vec![vec![0.0; self.embedding_dimension]; texts.len()];
-        for ((orig_idx, _), embedding_data) in valid_texts.iter().zip(response.data) {
-            result[*orig_idx] = embedding_data.embedding;
+        for ((orig_idx, _), embedding) in valid_texts.iter().zip(all_embeddings) {
+            result[*orig_idx] = embedding;
         }
 
         Ok(result)

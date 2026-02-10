@@ -437,6 +437,17 @@ impl HybridExtractionParser {
 fn sanitize_json(json: &str) -> String {
     let mut sanitized = json.to_string();
 
+    // WHY: LLMs sometimes emit control characters (\u0000-\u001F) inside JSON strings.
+    // serde_json rejects these per RFC 7159. Strip them first (except \n, \r, \t which
+    // are valid when properly escaped but rare in entity names/descriptions).
+    sanitized = sanitized
+        .chars()
+        .filter(|c| {
+            // Keep printable chars and whitespace that serde handles
+            !c.is_control() || *c == '\n' || *c == '\r' || *c == '\t'
+        })
+        .collect();
+
     // Remove JavaScript-style comments
     // Single-line: // comment
     let re_single_comment = regex::Regex::new(r"//.*$").unwrap();

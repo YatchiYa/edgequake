@@ -14,7 +14,7 @@ use futures::stream::BoxStream;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tracing::{debug, instrument};
+use tracing::{debug, info, instrument};
 
 use crate::error::{LlmError, Result};
 use crate::traits::{
@@ -467,6 +467,9 @@ impl EmbeddingProvider for AzureOpenAIProvider {
 
     #[instrument(skip(self, texts), fields(deployment = %self.embedding_deployment_name, count = texts.len()))]
     async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        // WHY: Azure OpenAI (same as OpenAI) enforces a 2048 inputs per request limit.
+        const MAX_EMBEDDING_BATCH_SIZE: usize = 2048;
+
         if texts.is_empty() {
             return Ok(Vec::new());
         }
@@ -493,21 +496,48 @@ impl EmbeddingProvider for AzureOpenAIProvider {
             .map(|(_, text)| (*text).clone())
             .collect();
 
-        let request = EmbeddingRequest { input: api_texts };
+        let total_texts = api_texts.len();
+        let num_batches = (total_texts + MAX_EMBEDDING_BATCH_SIZE - 1) / MAX_EMBEDDING_BATCH_SIZE;
+
+        if num_batches > 1 {
+            info!(
+                "Splitting {} texts into {} batches of max {} for Azure OpenAI embedding API",
+                total_texts, num_batches, MAX_EMBEDDING_BATCH_SIZE
+            );
+        }
 
         let url = self.build_url(&self.embedding_deployment_name, "embeddings");
-        debug!("Sending embedding request to Azure OpenAI: {}", url);
 
-        let response: EmbeddingResponse = self.send_request(&url, &request).await?;
+        // Process in batches to respect API limits
+        let mut all_embeddings: Vec<Vec<f32>> = Vec::with_capacity(total_texts);
 
-        // Sort by index to ensure correct ordering
-        let mut embeddings: Vec<_> = response.data.into_iter().collect();
-        embeddings.sort_by_key(|e| e.index);
-        let api_embeddings: Vec<Vec<f32>> = embeddings.into_iter().map(|e| e.embedding).collect();
+        for (batch_idx, batch) in api_texts.chunks(MAX_EMBEDDING_BATCH_SIZE).enumerate() {
+            if num_batches > 1 {
+                debug!(
+                    "Embedding batch {}/{}: {} texts",
+                    batch_idx + 1,
+                    num_batches,
+                    batch.len()
+                );
+            }
+
+            let request = EmbeddingRequest {
+                input: batch.to_vec(),
+            };
+
+            debug!("Sending embedding request to Azure OpenAI: {}", url);
+
+            let response: EmbeddingResponse = self.send_request(&url, &request).await?;
+
+            // Sort by index to ensure correct ordering within batch
+            let mut embeddings: Vec<_> = response.data.into_iter().collect();
+            embeddings.sort_by_key(|e| e.index);
+            all_embeddings.extend(embeddings.into_iter().map(|e| e.embedding));
+        }
 
         // Map embeddings back to original indices
         let mut result = vec![vec![0.0; self.embedding_dimension]; texts.len()];
-        for ((orig_idx, _), embedding) in valid_texts.iter().zip(api_embeddings) {
+        for ((orig_idx, _), embedding) in valid_texts.iter().zip(all_embeddings) {
             result[*orig_idx] = embedding;
         }
 

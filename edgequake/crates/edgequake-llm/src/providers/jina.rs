@@ -18,7 +18,7 @@
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use tracing::debug;
+use tracing::{debug, info};
 
 use crate::error::LlmError;
 use crate::traits::EmbeddingProvider;
@@ -261,6 +261,9 @@ impl EmbeddingProvider for JinaProvider {
     }
 
     async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, LlmError> {
+        // WHY: Jina API has a batch limit. Use 2048 to match OpenAI conventions.
+        const MAX_EMBEDDING_BATCH_SIZE: usize = 2048;
+
         if texts.is_empty() {
             return Ok(vec![]);
         }
@@ -287,72 +290,97 @@ impl EmbeddingProvider for JinaProvider {
             .map(|(_, text)| (*text).clone())
             .collect();
 
-        debug!(
-            "Jina embedding request: {} texts with model {}",
-            api_texts.len(),
-            self.embedding_model
-        );
+        let total_texts = api_texts.len();
+        let num_batches = (total_texts + MAX_EMBEDDING_BATCH_SIZE - 1) / MAX_EMBEDDING_BATCH_SIZE;
+
+        if num_batches > 1 {
+            info!(
+                "Splitting {} texts into {} batches of max {} for Jina embedding API",
+                total_texts, num_batches, MAX_EMBEDDING_BATCH_SIZE
+            );
+        }
 
         let url = format!("{}/v1/embeddings", self.base_url);
 
-        let request = EmbeddingRequest {
-            model: self.embedding_model.clone(),
-            input: api_texts,
-            task: self.task.clone(),
-            normalized: self.normalized,
-            dimensions: None,
-            embedding_type: Some("float".to_string()),
-        };
+        // Process in batches to respect API limits
+        let mut all_embeddings: Vec<Vec<f32>> = Vec::with_capacity(total_texts);
 
-        let response = self
-            .client
-            .post(&url)
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("Content-Type", "application/json")
-            .json(&request)
-            .send()
-            .await
-            .map_err(|e| LlmError::NetworkError(e.to_string()))?;
+        for (batch_idx, batch) in api_texts.chunks(MAX_EMBEDDING_BATCH_SIZE).enumerate() {
+            if num_batches > 1 {
+                debug!(
+                    "Jina embedding batch {}/{}: {} texts with model {}",
+                    batch_idx + 1,
+                    num_batches,
+                    batch.len(),
+                    self.embedding_model
+                );
+            } else {
+                debug!(
+                    "Jina embedding request: {} texts with model {}",
+                    batch.len(),
+                    self.embedding_model
+                );
+            }
 
-        let status = response.status();
-        if !status.is_success() {
-            let error_text = response.text().await.unwrap_or_default();
-            if let Ok(error) = serde_json::from_str::<JinaError>(&error_text) {
+            let request = EmbeddingRequest {
+                model: self.embedding_model.clone(),
+                input: batch.to_vec(),
+                task: self.task.clone(),
+                normalized: self.normalized,
+                dimensions: None,
+                embedding_type: Some("float".to_string()),
+            };
+
+            let response = self
+                .client
+                .post(&url)
+                .header("Authorization", format!("Bearer {}", self.api_key))
+                .header("Content-Type", "application/json")
+                .json(&request)
+                .send()
+                .await
+                .map_err(|e| LlmError::NetworkError(e.to_string()))?;
+
+            let status = response.status();
+            if !status.is_success() {
+                let error_text = response.text().await.unwrap_or_default();
+                if let Ok(error) = serde_json::from_str::<JinaError>(&error_text) {
+                    return Err(LlmError::ApiError(format!(
+                        "Jina API error ({}): {}",
+                        status, error.detail
+                    )));
+                }
                 return Err(LlmError::ApiError(format!(
                     "Jina API error ({}): {}",
-                    status, error.detail
+                    status, error_text
                 )));
             }
-            return Err(LlmError::ApiError(format!(
-                "Jina API error ({}): {}",
-                status, error_text
-            )));
+
+            let response: EmbeddingResponse = response
+                .json()
+                .await
+                .map_err(|e| LlmError::ApiError(format!("Failed to parse response: {}", e)))?;
+
+            // Sort by index and extract embeddings
+            let mut embeddings: Vec<_> = response
+                .data
+                .into_iter()
+                .map(|d| (d.index, d.embedding))
+                .collect();
+            embeddings.sort_by_key(|(i, _)| *i);
+
+            all_embeddings.extend(embeddings.into_iter().map(|(_, e)| e));
         }
 
-        let response: EmbeddingResponse = response
-            .json()
-            .await
-            .map_err(|e| LlmError::ApiError(format!("Failed to parse response: {}", e)))?;
-
-        // Sort by index and extract embeddings
-        let mut embeddings: Vec<_> = response
-            .data
-            .into_iter()
-            .map(|d| (d.index, d.embedding))
-            .collect();
-        embeddings.sort_by_key(|(i, _)| *i);
-
-        let api_embeddings: Vec<Vec<f32>> = embeddings.into_iter().map(|(_, e)| e).collect();
-
         debug!(
-            "Jina embedding response: {} embeddings of dimension {}",
-            api_embeddings.len(),
-            api_embeddings.first().map(|e| e.len()).unwrap_or(0)
+            "Jina embedding total: {} embeddings of dimension {}",
+            all_embeddings.len(),
+            all_embeddings.first().map(|e| e.len()).unwrap_or(0)
         );
 
         // Map embeddings back to original indices
         let mut result = vec![vec![0.0; self.embedding_dimension]; texts.len()];
-        for ((orig_idx, _), embedding) in valid_texts.iter().zip(api_embeddings) {
+        for ((orig_idx, _), embedding) in valid_texts.iter().zip(all_embeddings) {
             result[*orig_idx] = embedding;
         }
 

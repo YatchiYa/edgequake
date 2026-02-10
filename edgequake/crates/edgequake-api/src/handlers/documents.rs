@@ -2995,7 +2995,20 @@ pub async fn upload_file(
         .await?;
 
     // Process through pipeline
-    let result = state.pipeline.process(&document_id, &text_content).await?;
+    let result = state
+        .pipeline
+        .process_with_resilience(&document_id, &text_content, None)
+        .await?;
+
+    // Log partial failures but continue (resilient processing)
+    if result.stats.failed_chunks > 0 {
+        tracing::warn!(
+            document_id = %document_id,
+            failed_chunks = result.stats.failed_chunks,
+            chunk_count = result.stats.chunk_count,
+            "File upload pipeline completed with partial failures"
+        );
+    }
 
     // Store chunks in KV storage
     let chunks: Vec<(String, serde_json::Value)> = result
@@ -3386,8 +3399,21 @@ async fn process_single_file(
         .upsert(&[(hash_key, serde_json::json!(document_id))])
         .await?;
 
-    // Process through pipeline
-    let result = state.pipeline.process(&document_id, &text_content).await?;
+    // Process through pipeline (resilient - tolerates partial chunk failures)
+    let result = state
+        .pipeline
+        .process_with_resilience(&document_id, &text_content, None)
+        .await?;
+
+    if result.stats.failed_chunks > 0 {
+        tracing::warn!(
+            document_id = %document_id,
+            filename = %filename,
+            failed_chunks = result.stats.failed_chunks,
+            chunk_count = result.stats.chunk_count,
+            "Batch file pipeline completed with partial failures"
+        );
+    }
 
     // Store chunks
     let chunks: Vec<(String, serde_json::Value)> = result
