@@ -42,7 +42,7 @@ use futures::stream::BoxStream;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tracing::debug;
+use tracing::{debug, info};
 
 use crate::error::{LlmError, Result};
 use crate::traits::{
@@ -631,6 +631,9 @@ impl EmbeddingProvider for LMStudioProvider {
     }
 
     async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        // WHY: LM Studio (OpenAI-compatible) has batch limits. Use 2048 as safe default.
+        const MAX_EMBEDDING_BATCH_SIZE: usize = 2048;
+
         if texts.is_empty() {
             return Ok(vec![]);
         }
@@ -644,79 +647,111 @@ impl EmbeddingProvider for LMStudioProvider {
 
         // If all texts are empty/whitespace, return zero vectors
         if valid_texts.is_empty() {
-            debug!("All {} input texts are empty or whitespace-only, returning zero vectors", texts.len());
+            debug!(
+                "All {} input texts are empty or whitespace-only, returning zero vectors",
+                texts.len()
+            );
             return Ok(vec![vec![0.0; self.embedding_dimension]; texts.len()]);
         }
 
         // Extract just the valid texts
-        let api_texts: Vec<String> = valid_texts.iter().map(|(_, text)| (*text).clone()).collect();
+        let api_texts: Vec<String> = valid_texts
+            .iter()
+            .map(|(_, text)| (*text).clone())
+            .collect();
 
-        let request = EmbeddingRequest {
-            model: self.embedding_model.clone(),
-            input: api_texts.clone(),
-        };
+        let total_texts = api_texts.len();
+        let num_batches = (total_texts + MAX_EMBEDDING_BATCH_SIZE - 1) / MAX_EMBEDDING_BATCH_SIZE;
+
+        if num_batches > 1 {
+            info!(
+                "Splitting {} texts into {} batches of max {} for LM Studio embedding API",
+                total_texts, num_batches, MAX_EMBEDDING_BATCH_SIZE
+            );
+        }
 
         let url = format!("{}/embeddings", self.api_base());
 
-        debug!(
-            provider = "lmstudio",
-            model = %self.embedding_model,
-            url = %url,
-            text_count = api_texts.len(),
-            "Sending embedding request"
-        );
+        // Process in batches to respect API limits
+        let mut all_embeddings: Vec<Vec<f32>> = Vec::with_capacity(total_texts);
 
-        let response = self
-            .client
-            .post(&url)
-            .json(&request)
-            .send()
-            .await
-            .map_err(|e| {
-                LlmError::NetworkError(format!("LM Studio embedding request failed: {}", e))
-            })?;
+        for (batch_idx, batch) in api_texts.chunks(MAX_EMBEDDING_BATCH_SIZE).enumerate() {
+            if num_batches > 1 {
+                debug!(
+                    provider = "lmstudio",
+                    model = %self.embedding_model,
+                    batch = batch_idx + 1,
+                    total_batches = num_batches,
+                    text_count = batch.len(),
+                    "Sending embedding batch"
+                );
+            } else {
+                debug!(
+                    provider = "lmstudio",
+                    model = %self.embedding_model,
+                    url = %url,
+                    text_count = batch.len(),
+                    "Sending embedding request"
+                );
+            }
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_text = response
-                .text()
+            let request = EmbeddingRequest {
+                model: self.embedding_model.clone(),
+                input: batch.to_vec(),
+            };
+
+            let response = self
+                .client
+                .post(&url)
+                .json(&request)
+                .send()
                 .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
+                .map_err(|e| {
+                    LlmError::NetworkError(format!("LM Studio embedding request failed: {}", e))
+                })?;
 
-            // Try to parse as API error
-            if let Ok(api_error) = serde_json::from_str::<ApiError>(&error_text) {
+            if !response.status().is_success() {
+                let status = response.status();
+                let error_text = response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Unknown error".to_string());
+
+                // Try to parse as API error
+                if let Ok(api_error) = serde_json::from_str::<ApiError>(&error_text) {
+                    return Err(LlmError::ApiError(format!(
+                        "LM Studio embedding API error ({}): {}",
+                        status, api_error.error.message
+                    )));
+                }
+
                 return Err(LlmError::ApiError(format!(
                     "LM Studio embedding API error ({}): {}",
-                    status, api_error.error.message
+                    status, error_text
                 )));
             }
 
-            return Err(LlmError::ApiError(format!(
-                "LM Studio embedding API error ({}): {}",
-                status, error_text
-            )));
+            let embedding_response: EmbeddingResponse =
+                response.json().await.map_err(|e| {
+                    LlmError::NetworkError(format!("Failed to parse embedding response: {}", e))
+                })?;
+
+            all_embeddings.extend(embedding_response.data.into_iter().map(|d| d.embedding));
         }
-
-        let embedding_response: EmbeddingResponse = response.json().await.map_err(|e| {
-            LlmError::NetworkError(format!("Failed to parse embedding response: {}", e))
-        })?;
-
-        let api_embeddings: Vec<Vec<f32>> = embedding_response
-            .data
-            .into_iter()
-            .map(|d| d.embedding)
-            .collect();
 
         debug!(
             provider = "lmstudio",
-            embedding_count = api_embeddings.len(),
-            dimension = api_embeddings.first().map(|e: &Vec<f32>| e.len()).unwrap_or(0),
+            embedding_count = all_embeddings.len(),
+            dimension = all_embeddings
+                .first()
+                .map(|e: &Vec<f32>| e.len())
+                .unwrap_or(0),
             "Received embeddings"
         );
 
         // Map embeddings back to original indices
         let mut result = vec![vec![0.0; self.embedding_dimension]; texts.len()];
-        for ((orig_idx, _), embedding) in valid_texts.iter().zip(api_embeddings) {
+        for ((orig_idx, _), embedding) in valid_texts.iter().zip(all_embeddings) {
             result[*orig_idx] = embedding;
         }
 

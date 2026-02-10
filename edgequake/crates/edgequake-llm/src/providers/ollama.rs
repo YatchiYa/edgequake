@@ -35,7 +35,7 @@ use async_trait::async_trait;
 use futures::stream::BoxStream;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use tracing::debug;
+use tracing::{debug, info};
 
 use crate::error::{LlmError, Result};
 use crate::traits::{
@@ -516,6 +516,10 @@ impl EmbeddingProvider for OllamaProvider {
     }
 
     async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        // WHY: Ollama may have input limits depending on model. Use conservative batch
+        // size (512) to avoid OOM or timeout with very large entity sets.
+        const MAX_EMBEDDING_BATCH_SIZE: usize = 512;
+
         if texts.is_empty() {
             return Ok(vec![]);
         }
@@ -545,50 +549,78 @@ impl EmbeddingProvider for OllamaProvider {
             .map(|(_, t)| self.truncate_for_embedding(t))
             .collect();
 
-        debug!(
-            "Ollama embedding request: {} texts with model {} (max_tokens={})",
-            truncated_texts.len(),
-            self.embedding_model,
-            self.embedding_max_tokens
-        );
+        let total_texts = truncated_texts.len();
+        let num_batches = (total_texts + MAX_EMBEDDING_BATCH_SIZE - 1) / MAX_EMBEDDING_BATCH_SIZE;
+
+        if num_batches > 1 {
+            info!(
+                "Splitting {} texts into {} batches of max {} for Ollama embedding API",
+                total_texts, num_batches, MAX_EMBEDDING_BATCH_SIZE
+            );
+        }
 
         let url = format!("{}/api/embed", self.host);
 
-        let request = EmbeddingRequest {
-            model: self.embedding_model.clone(),
-            input: truncated_texts,
-        };
+        // Process in batches to avoid overloading Ollama
+        let mut all_embeddings: Vec<Vec<f32>> = Vec::with_capacity(total_texts);
 
-        let response = self
-            .client
-            .post(&url)
-            .json(&request)
-            .send()
-            .await
-            .map_err(|e| LlmError::NetworkError(e.to_string()))?;
+        for (batch_idx, batch) in truncated_texts.chunks(MAX_EMBEDDING_BATCH_SIZE).enumerate() {
+            if num_batches > 1 {
+                debug!(
+                    "Ollama embedding batch {}/{}: {} texts with model {} (max_tokens={})",
+                    batch_idx + 1,
+                    num_batches,
+                    batch.len(),
+                    self.embedding_model,
+                    self.embedding_max_tokens
+                );
+            } else {
+                debug!(
+                    "Ollama embedding request: {} texts with model {} (max_tokens={})",
+                    batch.len(),
+                    self.embedding_model,
+                    self.embedding_max_tokens
+                );
+            }
 
-        let status = response.status();
-        if !status.is_success() {
-            let error_text = response.text().await.unwrap_or_default();
-            return Err(LlmError::ApiError(format!(
-                "Ollama API error ({}): {}",
-                status, error_text
-            )));
+            let request = EmbeddingRequest {
+                model: self.embedding_model.clone(),
+                input: batch.to_vec(),
+            };
+
+            let response = self
+                .client
+                .post(&url)
+                .json(&request)
+                .send()
+                .await
+                .map_err(|e| LlmError::NetworkError(e.to_string()))?;
+
+            let status = response.status();
+            if !status.is_success() {
+                let error_text = response.text().await.unwrap_or_default();
+                return Err(LlmError::ApiError(format!(
+                    "Ollama API error ({}): {}",
+                    status, error_text
+                )));
+            }
+
+            let response: EmbeddingResponse = response
+                .json()
+                .await
+                .map_err(|e| LlmError::ApiError(format!("Failed to parse response: {}", e)))?;
+
+            debug!(
+                "Ollama embedding batch response: {} embeddings",
+                response.embeddings.len()
+            );
+
+            all_embeddings.extend(response.embeddings);
         }
-
-        let response: EmbeddingResponse = response
-            .json()
-            .await
-            .map_err(|e| LlmError::ApiError(format!("Failed to parse response: {}", e)))?;
-
-        debug!(
-            "Ollama embedding response: {} embeddings",
-            response.embeddings.len()
-        );
 
         // Map embeddings back to original indices
         let mut result = vec![vec![0.0; self.embedding_dimension]; texts.len()];
-        for ((orig_idx, _), embedding) in valid_texts.iter().zip(response.embeddings) {
+        for ((orig_idx, _), embedding) in valid_texts.iter().zip(all_embeddings) {
             result[*orig_idx] = embedding;
         }
 

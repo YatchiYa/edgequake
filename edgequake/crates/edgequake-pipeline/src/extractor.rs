@@ -476,7 +476,14 @@ Respond with valid JSON in this exact format:
         // Try to extract JSON from the response
         let json_str = extract_json_from_response(response);
 
-        let parsed: serde_json::Value = serde_json::from_str(&json_str)
+        // WHY: LLMs sometimes emit control characters (\u0000-\u001F) in JSON strings.
+        // Strip them to prevent serde_json parse failures.
+        let sanitized: String = json_str
+            .chars()
+            .filter(|c| !c.is_control() || *c == '\n' || *c == '\r' || *c == '\t')
+            .collect();
+
+        let parsed: serde_json::Value = serde_json::from_str(&sanitized)
             .map_err(|e| PipelineError::ExtractionError(format!("Invalid JSON: {}", e)))?;
 
         // Extract entities

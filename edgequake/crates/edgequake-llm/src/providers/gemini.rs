@@ -13,7 +13,7 @@ use futures::stream::BoxStream;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tracing::{debug, instrument};
+use tracing::{debug, info, instrument};
 
 use crate::error::{LlmError, Result};
 use crate::traits::{
@@ -671,6 +671,10 @@ impl EmbeddingProvider for GeminiProvider {
 
     #[instrument(skip(self, texts), fields(model = %self.embedding_model, count = texts.len()))]
     async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        // WHY: Gemini batch API has a limit of 100 requests per batchEmbedContents call.
+        // Large documents can produce thousands of entities, so we must sub-batch.
+        const MAX_EMBEDDING_BATCH_SIZE: usize = 100;
+
         if texts.is_empty() {
             return Ok(Vec::new());
         }
@@ -697,10 +701,19 @@ impl EmbeddingProvider for GeminiProvider {
             .map(|(_, text)| (*text).clone())
             .collect();
 
-        // Use batch endpoint for multiple texts
-        let api_result = if api_texts.len() > 1 {
-            self.embed_batch(&api_texts).await?
-        } else {
+        let total_texts = api_texts.len();
+        let num_batches = (total_texts + MAX_EMBEDDING_BATCH_SIZE - 1) / MAX_EMBEDDING_BATCH_SIZE;
+
+        if num_batches > 1 {
+            info!(
+                "Splitting {} texts into {} batches of max {} for Gemini embedding API",
+                total_texts, num_batches, MAX_EMBEDDING_BATCH_SIZE
+            );
+        }
+
+        let mut api_result: Vec<Vec<f32>> = Vec::with_capacity(total_texts);
+
+        if api_texts.len() == 1 {
             // Single text - use embedContent
             let request = EmbedContentRequest {
                 content: Content {
@@ -718,9 +731,22 @@ impl EmbeddingProvider for GeminiProvider {
             debug!("Sending embedding request to Gemini: {}", url);
 
             let response: EmbedContentResponse = self.send_request(&url, &request).await?;
-
-            vec![response.embedding.values]
-        };
+            api_result.push(response.embedding.values);
+        } else {
+            // Multiple texts - use batch endpoint, split into sub-batches
+            for (batch_idx, batch) in api_texts.chunks(MAX_EMBEDDING_BATCH_SIZE).enumerate() {
+                if num_batches > 1 {
+                    debug!(
+                        "Gemini embedding batch {}/{}: {} texts",
+                        batch_idx + 1,
+                        num_batches,
+                        batch.len()
+                    );
+                }
+                let batch_result = self.embed_batch(batch).await?;
+                api_result.extend(batch_result);
+            }
+        }
 
         // Map embeddings back to original indices
         let mut result = vec![vec![0.0; self.embedding_dimension]; texts.len()];
