@@ -1,8 +1,8 @@
 'use client';
 
-import type React from 'react';
 import { cn } from '@/lib/utils';
 import { Upload } from 'lucide-react';
+import type React from 'react';
 import type { DropzoneInputProps, DropzoneRootProps } from 'react-dropzone';
 
 /**

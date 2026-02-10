@@ -324,12 +324,9 @@ impl JsonExtractionParser {
                         })
                         .unwrap_or_default();
 
-                    let mut rel = ExtractedRelationship::new(
-                        normalized_source,
-                        normalized_target,
-                        rel_type,
-                    )
-                    .with_description(description);
+                    let mut rel =
+                        ExtractedRelationship::new(normalized_source, normalized_target, rel_type)
+                            .with_description(description);
 
                     if !keywords.is_empty() {
                         rel = rel.with_keywords(keywords);
