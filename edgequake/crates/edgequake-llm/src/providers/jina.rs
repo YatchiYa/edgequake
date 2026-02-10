@@ -265,9 +265,31 @@ impl EmbeddingProvider for JinaProvider {
             return Ok(vec![]);
         }
 
+        // Filter out empty/whitespace-only strings - APIs reject these
+        let valid_texts: Vec<(usize, &String)> = texts
+            .iter()
+            .enumerate()
+            .filter(|(_, text)| !text.trim().is_empty())
+            .collect();
+
+        // If all texts are empty/whitespace, return zero vectors
+        if valid_texts.is_empty() {
+            debug!(
+                "All {} input texts are empty or whitespace-only, returning zero vectors",
+                texts.len()
+            );
+            return Ok(vec![vec![0.0; self.embedding_dimension]; texts.len()]);
+        }
+
+        // Extract just the valid texts
+        let api_texts: Vec<String> = valid_texts
+            .iter()
+            .map(|(_, text)| (*text).clone())
+            .collect();
+
         debug!(
             "Jina embedding request: {} texts with model {}",
-            texts.len(),
+            api_texts.len(),
             self.embedding_model
         );
 
@@ -275,7 +297,7 @@ impl EmbeddingProvider for JinaProvider {
 
         let request = EmbeddingRequest {
             model: self.embedding_model.clone(),
-            input: texts.to_vec(),
+            input: api_texts,
             task: self.task.clone(),
             normalized: self.normalized,
             dimensions: None,
@@ -320,15 +342,21 @@ impl EmbeddingProvider for JinaProvider {
             .collect();
         embeddings.sort_by_key(|(i, _)| *i);
 
-        let embeddings: Vec<Vec<f32>> = embeddings.into_iter().map(|(_, e)| e).collect();
+        let api_embeddings: Vec<Vec<f32>> = embeddings.into_iter().map(|(_, e)| e).collect();
 
         debug!(
             "Jina embedding response: {} embeddings of dimension {}",
-            embeddings.len(),
-            embeddings.first().map(|e| e.len()).unwrap_or(0)
+            api_embeddings.len(),
+            api_embeddings.first().map(|e| e.len()).unwrap_or(0)
         );
 
-        Ok(embeddings)
+        // Map embeddings back to original indices
+        let mut result = vec![vec![0.0; self.embedding_dimension]; texts.len()];
+        for ((orig_idx, _), embedding) in valid_texts.iter().zip(api_embeddings) {
+            result[*orig_idx] = embedding;
+        }
+
+        Ok(result)
     }
 }
 

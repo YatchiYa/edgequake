@@ -635,9 +635,25 @@ impl EmbeddingProvider for LMStudioProvider {
             return Ok(vec![]);
         }
 
+        // Filter out empty/whitespace-only strings - APIs reject these
+        let valid_texts: Vec<(usize, &String)> = texts
+            .iter()
+            .enumerate()
+            .filter(|(_, text)| !text.trim().is_empty())
+            .collect();
+
+        // If all texts are empty/whitespace, return zero vectors
+        if valid_texts.is_empty() {
+            debug!("All {} input texts are empty or whitespace-only, returning zero vectors", texts.len());
+            return Ok(vec![vec![0.0; self.embedding_dimension]; texts.len()]);
+        }
+
+        // Extract just the valid texts
+        let api_texts: Vec<String> = valid_texts.iter().map(|(_, text)| (*text).clone()).collect();
+
         let request = EmbeddingRequest {
             model: self.embedding_model.clone(),
-            input: texts.to_vec(),
+            input: api_texts.clone(),
         };
 
         let url = format!("{}/embeddings", self.api_base());
@@ -646,7 +662,7 @@ impl EmbeddingProvider for LMStudioProvider {
             provider = "lmstudio",
             model = %self.embedding_model,
             url = %url,
-            text_count = texts.len(),
+            text_count = api_texts.len(),
             "Sending embedding request"
         );
 
@@ -685,7 +701,7 @@ impl EmbeddingProvider for LMStudioProvider {
             LlmError::NetworkError(format!("Failed to parse embedding response: {}", e))
         })?;
 
-        let embeddings: Vec<Vec<f32>> = embedding_response
+        let api_embeddings: Vec<Vec<f32>> = embedding_response
             .data
             .into_iter()
             .map(|d| d.embedding)
@@ -693,12 +709,18 @@ impl EmbeddingProvider for LMStudioProvider {
 
         debug!(
             provider = "lmstudio",
-            embedding_count = embeddings.len(),
-            dimension = embeddings.first().map(|e: &Vec<f32>| e.len()).unwrap_or(0),
+            embedding_count = api_embeddings.len(),
+            dimension = api_embeddings.first().map(|e: &Vec<f32>| e.len()).unwrap_or(0),
             "Received embeddings"
         );
 
-        Ok(embeddings)
+        // Map embeddings back to original indices
+        let mut result = vec![vec![0.0; self.embedding_dimension]; texts.len()];
+        for ((orig_idx, _), embedding) in valid_texts.iter().zip(api_embeddings) {
+            result[*orig_idx] = embedding;
+        }
+
+        Ok(result)
     }
 }
 

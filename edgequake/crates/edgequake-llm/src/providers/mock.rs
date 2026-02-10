@@ -125,13 +125,19 @@ impl EmbeddingProvider for MockProvider {
     }
 
     async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        // Filter out empty/whitespace strings for consistency with real providers
         let mut results = Vec::with_capacity(texts.len());
-        for _ in texts {
-            let mut embeddings = self.embeddings.lock().await;
-            let emb = if embeddings.is_empty() {
-                vec![0.1; 1536]
+        for text in texts {
+            let emb = if text.trim().is_empty() {
+                // Empty text gets zero vector
+                vec![0.0; 1536]
             } else {
-                embeddings.remove(0)
+                let mut embeddings = self.embeddings.lock().await;
+                if embeddings.is_empty() {
+                    vec![0.1; 1536]
+                } else {
+                    embeddings.remove(0)
+                }
             };
             results.push(emb);
         }

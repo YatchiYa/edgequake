@@ -471,9 +471,29 @@ impl EmbeddingProvider for AzureOpenAIProvider {
             return Ok(Vec::new());
         }
 
-        let request = EmbeddingRequest {
-            input: texts.to_vec(),
-        };
+        // Filter out empty/whitespace-only strings - APIs reject these
+        let valid_texts: Vec<(usize, &String)> = texts
+            .iter()
+            .enumerate()
+            .filter(|(_, text)| !text.trim().is_empty())
+            .collect();
+
+        // If all texts are empty/whitespace, return zero vectors
+        if valid_texts.is_empty() {
+            debug!(
+                "All {} input texts are empty or whitespace-only, returning zero vectors",
+                texts.len()
+            );
+            return Ok(vec![vec![0.0; self.embedding_dimension]; texts.len()]);
+        }
+
+        // Extract just the valid texts
+        let api_texts: Vec<String> = valid_texts
+            .iter()
+            .map(|(_, text)| (*text).clone())
+            .collect();
+
+        let request = EmbeddingRequest { input: api_texts };
 
         let url = self.build_url(&self.embedding_deployment_name, "embeddings");
         debug!("Sending embedding request to Azure OpenAI: {}", url);
@@ -483,8 +503,15 @@ impl EmbeddingProvider for AzureOpenAIProvider {
         // Sort by index to ensure correct ordering
         let mut embeddings: Vec<_> = response.data.into_iter().collect();
         embeddings.sort_by_key(|e| e.index);
+        let api_embeddings: Vec<Vec<f32>> = embeddings.into_iter().map(|e| e.embedding).collect();
 
-        Ok(embeddings.into_iter().map(|e| e.embedding).collect())
+        // Map embeddings back to original indices
+        let mut result = vec![vec![0.0; self.embedding_dimension]; texts.len()];
+        for ((orig_idx, _), embedding) in valid_texts.iter().zip(api_embeddings) {
+            result[*orig_idx] = embedding;
+        }
+
+        Ok(result)
     }
 }
 
