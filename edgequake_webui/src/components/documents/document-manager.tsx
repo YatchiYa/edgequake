@@ -230,6 +230,7 @@ export function DocumentManager() {
             getRootProps={getRootProps}
             getInputProps={getInputProps}
             isDragActive={isDragActive}
+            openFileDialog={openFileDialog}
             selectedCount={selectedCount}
             onBulkReprocess={handleBulkReprocess}
             onBulkDelete={handleBulkDelete}

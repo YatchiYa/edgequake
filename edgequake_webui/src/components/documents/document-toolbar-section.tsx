@@ -41,6 +41,7 @@ export interface DocumentToolbarSectionProps {
   getRootProps: DocumentDropzoneProps['getRootProps'];
   getInputProps: DocumentDropzoneProps['getInputProps'];
   isDragActive: boolean;
+  openFileDialog: () => void;
   
   // Bulk actions
   selectedCount: number;
@@ -72,6 +73,7 @@ export function DocumentToolbarSection({
   getRootProps,
   getInputProps,
   isDragActive,
+  openFileDialog,
   selectedCount,
   onBulkReprocess,
   onBulkDelete,
@@ -115,6 +117,7 @@ export function DocumentToolbarSection({
         getRootProps={getRootProps}
         getInputProps={getInputProps}
         isDragActive={isDragActive}
+        openFileDialog={openFileDialog}
       />
 
       {/* Bulk Actions Bar */}

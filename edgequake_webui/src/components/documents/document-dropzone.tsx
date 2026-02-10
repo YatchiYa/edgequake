@@ -1,5 +1,6 @@
 'use client';
 
+import type React from 'react';
 import { cn } from '@/lib/utils';
 import { Upload } from 'lucide-react';
 import type { DropzoneInputProps, DropzoneRootProps } from 'react-dropzone';
@@ -14,6 +15,8 @@ export interface DocumentDropzoneProps {
   getInputProps: <T extends DropzoneInputProps>(props?: T) => T;
   /** Whether a drag operation is currently active over the zone */
   isDragActive: boolean;
+  /** Function to programmatically open file dialog (explicit click handler) */
+  openFileDialog: () => void;
 }
 
 /**
@@ -22,16 +25,32 @@ export interface DocumentDropzoneProps {
  * WHY: Extracted from DocumentManager for SRP compliance (OODA-08).
  * This component handles only the visual presentation of the dropzone.
  * 
+ * WHY explicit onClick: react-dropzone's internal click handler (noClick: false)
+ * can silently fail with the File System Access API in certain browsers/contexts.
+ * We disable noClick and use an explicit onClick → openFileDialog() for reliable
+ * cross-browser file dialog opening. See:
+ * - https://github.com/react-dropzone/react-dropzone/issues/1127
+ * - https://github.com/react-dropzone/react-dropzone/issues/1349
+ * 
  * @implements FEAT0001 - Document ingestion with entity extraction
  */
 export function DocumentDropzone({
   getRootProps,
   getInputProps,
   isDragActive,
+  openFileDialog,
 }: DocumentDropzoneProps) {
   return (
     <div
-      {...getRootProps()}
+      {...getRootProps({
+        onClick: (e: React.MouseEvent) => {
+          e.stopPropagation();
+          openFileDialog();
+        },
+        role: 'button' as const,
+        'aria-label': 'Upload files by clicking or dragging',
+        tabIndex: 0,
+      })}
       className={cn(
         "border-2 border-dashed rounded-lg cursor-pointer transition-all duration-200",
         "flex items-center gap-4 px-4 py-3",
