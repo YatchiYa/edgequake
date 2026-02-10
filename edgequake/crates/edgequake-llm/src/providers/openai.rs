@@ -353,7 +353,30 @@ impl EmbeddingProvider for OpenAIProvider {
             return Ok(Vec::new());
         }
 
-        let input = EmbeddingInput::StringArray(texts.to_vec());
+        // Filter out empty/whitespace-only strings - OpenAI API rejects these
+        // Track which indices have valid text for mapping results back
+        let valid_texts: Vec<(usize, &String)> = texts
+            .iter()
+            .enumerate()
+            .filter(|(_, text)| !text.trim().is_empty())
+            .collect();
+
+        // If all texts are empty/whitespace, return zero vectors
+        if valid_texts.is_empty() {
+            debug!(
+                "All {} input texts are empty or whitespace-only, returning zero vectors",
+                texts.len()
+            );
+            return Ok(vec![vec![0.0; self.embedding_dimension]; texts.len()]);
+        }
+
+        // Extract just the valid text strings for the API call
+        let api_texts: Vec<String> = valid_texts
+            .iter()
+            .map(|(_, text)| (*text).clone())
+            .collect();
+
+        let input = EmbeddingInput::StringArray(api_texts);
 
         let request = CreateEmbeddingRequestArgs::default()
             .model(&self.embedding_model)
@@ -363,9 +386,13 @@ impl EmbeddingProvider for OpenAIProvider {
 
         let response = self.client.embeddings().create(request).await?;
 
-        let embeddings: Vec<Vec<f32>> = response.data.into_iter().map(|e| e.embedding).collect();
+        // Map embeddings back to original indices
+        let mut result = vec![vec![0.0; self.embedding_dimension]; texts.len()];
+        for ((orig_idx, _), embedding_data) in valid_texts.iter().zip(response.data) {
+            result[*orig_idx] = embedding_data.embedding;
+        }
 
-        Ok(embeddings)
+        Ok(result)
     }
 }
 

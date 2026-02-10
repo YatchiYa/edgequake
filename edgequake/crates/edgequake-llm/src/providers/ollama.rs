@@ -520,12 +520,29 @@ impl EmbeddingProvider for OllamaProvider {
             return Ok(vec![]);
         }
 
+        // Filter out empty/whitespace-only strings - APIs reject these
+        // Track which indices have valid text for mapping results back
+        let valid_texts: Vec<(usize, &String)> = texts
+            .iter()
+            .enumerate()
+            .filter(|(_, text)| !text.trim().is_empty())
+            .collect();
+
+        // If all texts are empty/whitespace, return zero vectors
+        if valid_texts.is_empty() {
+            debug!(
+                "All {} input texts are empty or whitespace-only, returning zero vectors",
+                texts.len()
+            );
+            return Ok(vec![vec![0.0; self.embedding_dimension]; texts.len()]);
+        }
+
         // OODA-09: Truncate texts to fit embedding model's context window.
         // WHY: Ollama returns 400 "input length exceeds context length" if
         // any single input exceeds the model's limit (typically 2048 tokens).
-        let truncated_texts: Vec<String> = texts
+        let truncated_texts: Vec<String> = valid_texts
             .iter()
-            .map(|t| self.truncate_for_embedding(t))
+            .map(|(_, t)| self.truncate_for_embedding(t))
             .collect();
 
         debug!(
@@ -569,7 +586,13 @@ impl EmbeddingProvider for OllamaProvider {
             response.embeddings.len()
         );
 
-        Ok(response.embeddings)
+        // Map embeddings back to original indices
+        let mut result = vec![vec![0.0; self.embedding_dimension]; texts.len()];
+        for ((orig_idx, _), embedding) in valid_texts.iter().zip(response.embeddings) {
+            result[*orig_idx] = embedding;
+        }
+
+        Ok(result)
     }
 }
 

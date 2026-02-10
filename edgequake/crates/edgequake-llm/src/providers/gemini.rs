@@ -675,30 +675,60 @@ impl EmbeddingProvider for GeminiProvider {
             return Ok(Vec::new());
         }
 
-        // Use batch endpoint for multiple texts
-        if texts.len() > 1 {
-            return self.embed_batch(texts).await;
+        // Filter out empty/whitespace-only strings - APIs reject these
+        let valid_texts: Vec<(usize, &String)> = texts
+            .iter()
+            .enumerate()
+            .filter(|(_, text)| !text.trim().is_empty())
+            .collect();
+
+        // If all texts are empty/whitespace, return zero vectors
+        if valid_texts.is_empty() {
+            debug!(
+                "All {} input texts are empty or whitespace-only, returning zero vectors",
+                texts.len()
+            );
+            return Ok(vec![vec![0.0; self.embedding_dimension]; texts.len()]);
         }
 
-        // Single text - use embedContent
-        let request = EmbedContentRequest {
-            content: Content {
-                parts: vec![Part {
-                    text: texts[0].clone(),
-                }],
-                role: None,
-            },
-            task_type: Some("RETRIEVAL_DOCUMENT".to_string()),
-            title: None,
-            output_dimensionality: None,
+        // Extract just the valid texts
+        let api_texts: Vec<String> = valid_texts
+            .iter()
+            .map(|(_, text)| (*text).clone())
+            .collect();
+
+        // Use batch endpoint for multiple texts
+        let api_result = if api_texts.len() > 1 {
+            self.embed_batch(&api_texts).await?
+        } else {
+            // Single text - use embedContent
+            let request = EmbedContentRequest {
+                content: Content {
+                    parts: vec![Part {
+                        text: api_texts[0].clone(),
+                    }],
+                    role: None,
+                },
+                task_type: Some("RETRIEVAL_DOCUMENT".to_string()),
+                title: None,
+                output_dimensionality: None,
+            };
+
+            let url = self.build_url(&self.embedding_model, "embedContent");
+            debug!("Sending embedding request to Gemini: {}", url);
+
+            let response: EmbedContentResponse = self.send_request(&url, &request).await?;
+
+            vec![response.embedding.values]
         };
 
-        let url = self.build_url(&self.embedding_model, "embedContent");
-        debug!("Sending embedding request to Gemini: {}", url);
+        // Map embeddings back to original indices
+        let mut result = vec![vec![0.0; self.embedding_dimension]; texts.len()];
+        for ((orig_idx, _), embedding) in valid_texts.iter().zip(api_result) {
+            result[*orig_idx] = embedding;
+        }
 
-        let response: EmbedContentResponse = self.send_request(&url, &request).await?;
-
-        Ok(vec![response.embedding.values])
+        Ok(result)
     }
 
     async fn embed_one(&self, text: &str) -> Result<Vec<f32>> {
