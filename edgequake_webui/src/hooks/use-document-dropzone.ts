@@ -137,7 +137,25 @@ export function useDocumentDropzone(
     onDrop,
     accept: ACCEPTED_FILE_TYPES,
     maxSize: MAX_FILE_SIZE,
-    noClick: false,
+    // WHY: We take explicit control of click behavior for cross-browser reliability.
+    // react-dropzone's internal click handler can silently fail with the File System
+    // Access API (showOpenFilePicker) in non-secure contexts, certain Chrome versions,
+    // and cross-origin iframes. See: https://github.com/react-dropzone/react-dropzone/issues/1127
+    noClick: true,
+    // WHY: Force traditional <input> click instead of showOpenFilePicker() API.
+    // The FS Access API fails silently in HTTP contexts, specific Chrome versions,
+    // and when MIME types don't match showOpenFilePicker's strict format requirements.
+    // See: https://github.com/react-dropzone/react-dropzone/issues/1349
+    useFsAccessApi: false,
+    onError: (err) => {
+      console.error("[Dropzone] Error:", err);
+      toast.error(
+        t(
+          "documents.upload.dropzoneError",
+          "File upload error. Please try again or use the upload button.",
+        ),
+      );
+    },
   });
 
   return {
