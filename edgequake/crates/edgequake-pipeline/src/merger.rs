@@ -211,6 +211,27 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
         let source_key = normalize_entity_name(&rel.source);
         let target_key = normalize_entity_name(&rel.target);
 
+        // BR0006: Same-entity relationships forbidden (secondary defense)
+        // WHY: The parser should filter these, but defense-in-depth prevents
+        // self-loops from reaching the graph storage layer.
+        if source_key == target_key {
+            tracing::debug!(
+                source = %source_key,
+                "Merger: skipping self-referencing relationship (BR0006)"
+            );
+            return Ok(false);
+        }
+
+        // Skip relationships with empty normalized endpoints
+        if source_key.is_empty() || target_key.is_empty() {
+            tracing::debug!(
+                raw_source = %rel.source,
+                raw_target = %rel.target,
+                "Merger: skipping relationship with empty normalized endpoint"
+            );
+            return Ok(false);
+        }
+
         // Store relationship embedding with type metadata (for Global query mode)
         if let Some(embedding) = &rel.embedding {
             let rel_id = format!("{}->{}:{}", source_key, target_key, rel.relation_type);
@@ -543,6 +564,11 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
                 keywords.push(keyword.clone());
             }
         }
+
+        // BR0004: Relationship keywords max 5 per edge
+        // WHY: Excessive keywords dilute semantic relevance and inflate storage.
+        // Keep the first 5 (oldest = most established context).
+        keywords.truncate(5);
 
         edge.properties
             .insert("keywords".to_string(), serde_json::json!(keywords));

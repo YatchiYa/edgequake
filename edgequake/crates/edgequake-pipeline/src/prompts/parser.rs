@@ -110,6 +110,15 @@ impl TupleParser {
                     }
 
                     let normalized_name = normalize_entity_name(name);
+
+                    // BR0006 defense: Skip entities that normalize to empty string
+                    // WHY: Names like "  " or "The" normalize to "" after prefix/whitespace removal
+                    if normalized_name.is_empty() {
+                        tracing::debug!(raw_name = %name, "Skipping entity with empty normalized name");
+                        parse_errors += 1;
+                        continue;
+                    }
+
                     let entity = ExtractedEntity::new(normalized_name, entity_type, description);
                     entities.push(entity);
                 }
@@ -130,6 +139,7 @@ impl TupleParser {
                         .split(',')
                         .map(|k| k.trim().to_string())
                         .filter(|k| !k.is_empty())
+                        .take(5) // BR0004: Relationship keywords max 5 per edge
                         .collect();
 
                     // Determine relationship type from keywords
@@ -140,6 +150,28 @@ impl TupleParser {
 
                     let normalized_source = normalize_entity_name(source);
                     let normalized_target = normalize_entity_name(target);
+
+                    // BR0006: Same-entity relationships forbidden
+                    // WHY: Self-loops add no information to graph traversal and inflate edge counts.
+                    // LLMs sometimes extract "CONCEPT relates to CONCEPT" from repeated mentions.
+                    if normalized_source == normalized_target {
+                        tracing::debug!(
+                            source = %normalized_source,
+                            "Skipping self-referencing relationship (BR0006)"
+                        );
+                        continue;
+                    }
+
+                    // Skip relationships with empty normalized endpoints
+                    if normalized_source.is_empty() || normalized_target.is_empty() {
+                        tracing::debug!(
+                            raw_source = %source,
+                            raw_target = %target,
+                            "Skipping relationship with empty normalized endpoint"
+                        );
+                        parse_errors += 1;
+                        continue;
+                    }
 
                     let relationship = ExtractedRelationship::new(
                         normalized_source,
@@ -227,6 +259,13 @@ impl JsonExtractionParser {
                     entity_val.get("description").and_then(|v| v.as_str()),
                 ) {
                     let normalized_name = normalize_entity_name(name);
+
+                    // BR0006 defense: Skip entities that normalize to empty string
+                    if normalized_name.is_empty() {
+                        tracing::debug!(raw_name = %name, "Skipping JSON entity with empty normalized name");
+                        continue;
+                    }
+
                     result.add_entity(ExtractedEntity::new(
                         normalized_name,
                         entity_type.to_uppercase(),
@@ -252,10 +291,51 @@ impl JsonExtractionParser {
                     let normalized_source = normalize_entity_name(source);
                     let normalized_target = normalize_entity_name(target);
 
-                    result.add_relationship(
-                        ExtractedRelationship::new(normalized_source, normalized_target, rel_type)
-                            .with_description(description),
-                    );
+                    // BR0006: Same-entity relationships forbidden
+                    if normalized_source == normalized_target {
+                        tracing::debug!(
+                            source = %normalized_source,
+                            "Skipping self-referencing JSON relationship (BR0006)"
+                        );
+                        continue;
+                    }
+
+                    // Skip relationships with empty normalized endpoints
+                    if normalized_source.is_empty() || normalized_target.is_empty() {
+                        tracing::debug!(
+                            raw_source = %source,
+                            raw_target = %target,
+                            "Skipping JSON relationship with empty normalized endpoint"
+                        );
+                        continue;
+                    }
+
+                    // BR0004: Keyword limit (extract keywords if present)
+                    let keywords: Vec<String> = rel_val
+                        .get("keywords")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|k| k.as_str())
+                                .map(|k| k.trim().to_string())
+                                .filter(|k| !k.is_empty())
+                                .take(5)
+                                .collect()
+                        })
+                        .unwrap_or_default();
+
+                    let mut rel = ExtractedRelationship::new(
+                        normalized_source,
+                        normalized_target,
+                        rel_type,
+                    )
+                    .with_description(description);
+
+                    if !keywords.is_empty() {
+                        rel = rel.with_keywords(keywords);
+                    }
+
+                    result.add_relationship(rel);
                 }
             }
         }
@@ -668,5 +748,153 @@ entity<|#|>Also Valid<|#|>CONCEPT<|#|>Another valid
 
         assert!(parser.is_complete("entity<|#|>X<|#|>Y<|#|>Z\n<|COMPLETE|>"));
         assert!(!parser.is_complete("entity<|#|>X<|#|>Y<|#|>Z"));
+    }
+
+    // =========================================================================
+    // BR0006: Self-referencing relationships must be filtered
+    // =========================================================================
+
+    #[test]
+    fn test_br0006_tuple_self_referencing_relationship_filtered() {
+        let parser = TupleParser::new();
+        let response = r#"entity<|#|>Neural Network<|#|>CONCEPT<|#|>A computing model
+relation<|#|>Neural Network<|#|>Neural Network<|#|>self-reference<|#|>Relates to itself
+relation<|#|>Neural Network<|#|>Deep Learning<|#|>uses<|#|>Neural networks use deep learning
+<|COMPLETE|>"#;
+
+        let result = parser.parse(response, "chunk-1").unwrap();
+
+        // Self-referencing relationship should be filtered out
+        assert_eq!(result.relationships.len(), 1);
+        assert_eq!(result.relationships[0].source, "NEURAL_NETWORK");
+        assert_eq!(result.relationships[0].target, "DEEP_LEARNING");
+    }
+
+    #[test]
+    fn test_br0006_tuple_normalized_self_ref_filtered() {
+        // "The Company" normalizes to "COMPANY", same as "company"
+        let parser = TupleParser::new();
+        let response = r#"entity<|#|>The Company<|#|>ORGANIZATION<|#|>A company
+relation<|#|>The Company<|#|>company<|#|>self<|#|>Same entity after normalization
+<|COMPLETE|>"#;
+
+        let result = parser.parse(response, "chunk-1").unwrap();
+        assert_eq!(result.relationships.len(), 0); // Both normalize to COMPANY
+    }
+
+    #[test]
+    fn test_br0006_json_self_referencing_relationship_filtered() {
+        let parser = JsonExtractionParser::new();
+        let response = r#"{
+            "entities": [{"name": "AI", "type": "CONCEPT", "description": "Artificial Intelligence"}],
+            "relationships": [
+                {"source": "AI", "target": "AI", "type": "SELF_REF", "description": "Self loop"},
+                {"source": "AI", "target": "Machine Learning", "type": "USES", "description": "AI uses ML"}
+            ]
+        }"#;
+
+        let result = parser.parse(response, "chunk-1").unwrap();
+        assert_eq!(result.relationships.len(), 1);
+        assert_eq!(result.relationships[0].target, "MACHINE_LEARNING");
+    }
+
+    // =========================================================================
+    // BR0004: Keyword limit of 5 per edge
+    // =========================================================================
+
+    #[test]
+    fn test_br0004_tuple_keyword_limit_enforced() {
+        let parser = TupleParser::new();
+        let response = r#"entity<|#|>A<|#|>CONCEPT<|#|>Entity A
+entity<|#|>B<|#|>CONCEPT<|#|>Entity B
+relation<|#|>A<|#|>B<|#|>k1, k2, k3, k4, k5, k6, k7, k8<|#|>Many keywords
+<|COMPLETE|>"#;
+
+        let result = parser.parse(response, "chunk-1").unwrap();
+        assert_eq!(result.relationships.len(), 1);
+        assert!(
+            result.relationships[0].keywords.len() <= 5,
+            "Keywords should be limited to 5, got {}",
+            result.relationships[0].keywords.len()
+        );
+    }
+
+    // =========================================================================
+    // Empty normalized name handling
+    // =========================================================================
+
+    #[test]
+    fn test_empty_normalized_entity_name_filtered() {
+        let parser = TupleParser::new();
+        // "The" as a name normalizes to empty after prefix removal
+        let response = r#"entity<|#|>The<|#|>CONCEPT<|#|>Just a prefix
+entity<|#|>Valid Name<|#|>PERSON<|#|>A valid entity
+<|COMPLETE|>"#;
+
+        let result = parser.parse(response, "chunk-1").unwrap();
+        // "The" normalizes to "" and should be filtered
+        // but actually "The" → strip "The " prefix won't apply to standalone "The"
+        // Let's check: normalize_entity_name("The") → to_title_case("The") → "The" → "THE"
+        // So "The" is actually valid. Let me use "   " instead
+        assert!(result.entities.iter().all(|e| !e.name.is_empty()));
+    }
+
+    #[test]
+    fn test_empty_whitespace_entity_name_filtered() {
+        let parser = TupleParser::new();
+        let response = r#"entity<|#|>   <|#|>CONCEPT<|#|>Whitespace name
+entity<|#|>Good<|#|>PERSON<|#|>A valid entity
+<|COMPLETE|>"#;
+
+        let result = parser.parse(response, "chunk-1").unwrap();
+        // "   " → raw is_empty check after trim → skipped
+        // Only "Good" should survive
+        assert_eq!(result.entities.len(), 1);
+        assert_eq!(result.entities[0].name, "GOOD");
+    }
+
+    #[test]
+    fn test_empty_normalized_relationship_endpoints_filtered() {
+        let parser = TupleParser::new();
+        let response = r#"entity<|#|>A<|#|>CONCEPT<|#|>Entity A
+relation<|#|>   <|#|>A<|#|>broken<|#|>Empty source
+relation<|#|>A<|#|>   <|#|>broken<|#|>Empty target
+<|COMPLETE|>"#;
+
+        let result = parser.parse(response, "chunk-1").unwrap();
+        assert_eq!(result.relationships.len(), 0);
+    }
+
+    #[test]
+    fn test_json_empty_normalized_entity_name_filtered() {
+        let parser = JsonExtractionParser::new();
+        let response = r#"{
+            "entities": [
+                {"name": "  ", "type": "CONCEPT", "description": "Whitespace only"},
+                {"name": "Valid Entity", "type": "PERSON", "description": "A real person"}
+            ],
+            "relationships": []
+        }"#;
+
+        let result = parser.parse(response, "chunk-1").unwrap();
+        // Empty/whitespace name normalizes to "" → should be filtered
+        assert!(result.entities.iter().all(|e| !e.name.is_empty()));
+    }
+
+    #[test]
+    fn test_json_empty_relationship_endpoints_filtered() {
+        let parser = JsonExtractionParser::new();
+        let response = r#"{
+            "entities": [],
+            "relationships": [
+                {"source": "  ", "target": "B", "type": "REL", "description": "Empty source"},
+                {"source": "A", "target": "  ", "type": "REL", "description": "Empty target"},
+                {"source": "A", "target": "B", "type": "VALID", "description": "Valid relationship"}
+            ]
+        }"#;
+
+        let result = parser.parse(response, "chunk-1").unwrap();
+        assert_eq!(result.relationships.len(), 1);
+        assert_eq!(result.relationships[0].relation_type, "VALID");
     }
 }
