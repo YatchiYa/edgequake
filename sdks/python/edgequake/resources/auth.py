@@ -260,7 +260,7 @@ class AsyncApiKeysResource(AsyncResource):
     async def create(
         self, name: str, *, expires_in: int | None = None
     ) -> ApiKeyResponse:
-        body = {"name": name}
+        body: dict[str, Any] = {"name": name}
         if expires_in is not None:
             body["expires_in"] = expires_in
         return await self._post(

@@ -1371,13 +1371,40 @@ export async function getMultipleTrackProgress(
 // ============================================================================
 
 /**
- * Get document lineage showing all chunks extracted from a document.
+ * Get document lineage from the graph-based lineage endpoint.
+ * Uses /lineage/documents/:id which returns entity/relationship summaries.
  */
 export async function getDocumentLineage(
   documentId: string,
 ): Promise<import("@/types/lineage").DocumentLineageResponse> {
   return api.get<import("@/types/lineage").DocumentLineageResponse>(
+    `/lineage/documents/${documentId}`,
+  );
+}
+
+/**
+ * Get complete document lineage from persisted KV storage (OODA-07).
+ * Uses /documents/:id/lineage which returns full DocumentLineage tree.
+ * @implements F5 - Single API call retrieves complete lineage tree
+ */
+export async function getDocumentFullLineage(
+  documentId: string,
+): Promise<import("@/types/lineage").DocumentFullLineageResponse> {
+  return api.get<import("@/types/lineage").DocumentFullLineageResponse>(
     `/documents/${documentId}/lineage`,
+  );
+}
+
+/**
+ * Get document metadata (all fields in a single response).
+ * OODA-11: New endpoint from OODA-07.
+ * @implements F1 - All document metadata retrievable via API
+ */
+export async function getDocumentMetadata(
+  documentId: string,
+): Promise<Record<string, unknown>> {
+  return api.get<Record<string, unknown>>(
+    `/documents/${documentId}/metadata`,
   );
 }
 
@@ -1403,13 +1430,37 @@ export async function getEntityProvenance(
 
 /**
  * Get lineage for a specific chunk.
+ * OODA-11: Updated to use ChunkLineageApiResponse from OODA-08.
  */
 export async function getChunkLineage(
   chunkId: string,
-): Promise<import("@/types/lineage").ChunkLineage> {
-  return api.get<import("@/types/lineage").ChunkLineage>(
+): Promise<import("@/types/lineage").ChunkLineageApiResponse> {
+  return api.get<import("@/types/lineage").ChunkLineageApiResponse>(
     `/chunks/${chunkId}/lineage`,
   );
+}
+
+/**
+ * Export document lineage as JSON or CSV file.
+ * OODA-24: Triggers browser download of lineage data.
+ * @implements F5 - Single API call retrieves complete lineage tree
+ */
+export async function exportDocumentLineage(
+  documentId: string,
+  format: "json" | "csv" = "json",
+): Promise<void> {
+  // WHY: Use same base URL pattern as getPdfDownloadUrl (line 694)
+  const baseUrl =
+    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+  const url = `${baseUrl}/api/v1/documents/${documentId}/lineage/export?format=${format}`;
+  // WHY: Create temporary link for download — the endpoint returns
+  // Content-Disposition: attachment headers that trigger browser download.
+  const link = globalThis.document.createElement("a");
+  link.href = url;
+  link.download = `${documentId}-lineage.${format}`;
+  globalThis.document.body.appendChild(link);
+  link.click();
+  globalThis.document.body.removeChild(link);
 }
 
 // ============================================================================
@@ -1707,9 +1758,12 @@ export const edgequakeApi = {
 
   // Lineage API (WebUI Spec WEBUI-006)
   getDocumentLineage,
+  getDocumentFullLineage,
+  getDocumentMetadata,
   getChunkDetail,
   getEntityProvenance,
   getChunkLineage,
+  exportDocumentLineage,
 
   // Cost API (WebUI Spec WEBUI-007)
   getWorkspaceCostSummary,

@@ -52,4 +52,48 @@ public class DocumentService {
     public DeletionImpact deletionImpact(String id) {
         return http.get("/api/v1/documents/" + id + "/deletion-impact", null, DeletionImpact.class);
     }
+
+    // ── OODA-38: Added missing document methods ──────────────────────
+
+    /** Get document chunks. */
+    public DocumentChunksResponse chunks(String id) {
+        return http.get("/api/v1/documents/" + id + "/chunks", null, DocumentChunksResponse.class);
+    }
+
+    /** Get document processing status. */
+    public DocumentStatusResponse status(String id) {
+        return http.get("/api/v1/documents/" + id + "/status", null, DocumentStatusResponse.class);
+    }
+
+    /** Reprocess a failed document. */
+    public StatusResponse reprocess(String id) {
+        return http.post("/api/v1/documents/" + id + "/reprocess", null, StatusResponse.class);
+    }
+
+    /** Recover stuck documents. */
+    public StatusResponse recoverStuck() {
+        return http.post("/api/v1/documents/recover-stuck", null, StatusResponse.class);
+    }
+
+    // ── OODA-40: Additional document methods ─────────────────────────
+
+    /** Get document metadata. */
+    public DocumentMetadataResponse getMetadata(String id) {
+        return http.get("/api/v1/documents/" + id + "/metadata", null, DocumentMetadataResponse.class);
+    }
+
+    /** Update document metadata. */
+    public DocumentMetadataResponse setMetadata(String id, Map<String, Object> metadata) {
+        return http.patch("/api/v1/documents/" + id + "/metadata", Map.of("metadata", metadata), DocumentMetadataResponse.class);
+    }
+
+    /** Get failed chunks for a document. */
+    public FailedChunksResponse failedChunks(String id) {
+        return http.get("/api/v1/documents/" + id + "/failed-chunks", null, FailedChunksResponse.class);
+    }
+
+    /** Retry failed chunks for a document. */
+    public StatusResponse retryChunks(String id) {
+        return http.post("/api/v1/documents/" + id + "/retry-chunks", null, StatusResponse.class);
+    }
 }

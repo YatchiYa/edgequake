@@ -10,7 +10,7 @@ This is NOT OpenAI-compatible — it is EdgeQuake's native RAG-aware chat format
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -85,6 +85,29 @@ class ChatStreamDelta(BaseModel):
 
     role: str | None = None
     content: str | None = None
+
+
+class ChatChoice(BaseModel):
+    """OpenAI-compatible chat choice (for SDK test compatibility).
+
+    WHY: Some tests validate OpenAI-style response shapes. This type
+    enables testing both EdgeQuake-native and OpenAI-compatible formats.
+    """
+
+    index: int = 0
+    message: ChatMessage | None = None
+    finish_reason: str | None = None
+
+
+class ChatUsage(BaseModel):
+    """Token usage statistics (OpenAI-compatible).
+
+    WHY: Provides token accounting for cost tracking and quota management.
+    """
+
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
 
 
 # WHY: Rebuild forward references

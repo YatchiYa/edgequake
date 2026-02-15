@@ -954,4 +954,1470 @@ class UnitTest {
         DocumentService(http).delete("d1")
         assertEquals("DELETE", fake.lastRequest().method)
     }
+
+    // ── Lineage & Metadata Tests ─────────────────────────────────────
+    // WHY: The improve-lineage mission requires source_id, metadata,
+    // and provenance fields to be properly tested across all SDKs.
+
+    @Test
+    fun `entity model has sourceId`() {
+        val e = Entity(entityName = "ALICE", entityType = "person", sourceId = "doc-123")
+        assertEquals("doc-123", e.sourceId)
+    }
+
+    @Test
+    fun `entity model has metadata`() {
+        val e = Entity(entityName = "BOB", metadata = mapOf("key" to "value"))
+        assertNotNull(e.metadata)
+        assertEquals("value", e.metadata!!["key"])
+    }
+
+    @Test
+    fun `entity model has timestamps`() {
+        val e = Entity(entityName = "EVE", createdAt = "2025-01-01T00:00:00Z", updatedAt = "2025-01-02T00:00:00Z")
+        assertNotNull(e.createdAt)
+        assertNotNull(e.updatedAt)
+    }
+
+    @Test
+    fun `createEntityRequest includes sourceId`() {
+        val req = CreateEntityRequest(entityName = "ALICE", entityType = "person", description = "A researcher", sourceId = "doc-456")
+        assertEquals("doc-456", req.sourceId)
+    }
+
+    @Test
+    fun `entity create sends sourceId in request body`() {
+        fake.respondWith("""{"status":"success","message":"created"}""")
+        val req = CreateEntityRequest(entityName = "ALICE", entityType = "person", description = "test", sourceId = "doc-lineage-1")
+        EntityService(http).create(req)
+        val body = fake.lastRequest().body
+        assertTrue(body?.contains("doc-lineage-1") == true)
+    }
+
+    @Test
+    fun `relationship model has sourceId`() {
+        val r = Relationship(source = "A", target = "B", relationshipType = "KNOWS", sourceId = "doc-rel-1")
+        assertEquals("doc-rel-1", r.sourceId)
+    }
+
+    @Test
+    fun `relationship model has createdAt`() {
+        val r = Relationship(source = "A", target = "B", createdAt = "2025-01-01T00:00:00Z")
+        assertNotNull(r.createdAt)
+    }
+
+    @Test
+    fun `entityDeleteResponse has lineage info`() {
+        val del = EntityDeleteResponse(status = "deleted", deletedRelationships = 5, affectedEntities = listOf("e2", "e3"))
+        assertEquals(5, del.deletedRelationships)
+        assertEquals(2, del.affectedEntities?.size)
+    }
+
+    @Test
+    fun `graphNode has properties for provenance`() {
+        val node = GraphNode(id = "n1", label = "ALICE", properties = mapOf("source_document" to "doc-1"))
+        assertEquals("doc-1", node.properties!!["source_document"])
+    }
+
+    @Test
+    fun `graphEdge has weight for lineage scoring`() {
+        val edge = GraphEdge(source = "A", target = "B", label = "COLLAB", weight = 0.85)
+        assertEquals(0.85, edge.weight)
+    }
+
+    @Test
+    fun `uploadResponse contains lineage documentId`() {
+        val u = UploadResponse(documentId = "doc-up-1", status = "processing")
+        assertEquals("doc-up-1", u.documentId)
+    }
+
+    @Test
+    fun `chatCompletionRequest has conversationId for lineage`() {
+        val req = ChatCompletionRequest(message = "Hello", conversationId = "conv-1", parentId = "msg-parent-1")
+        assertEquals("conv-1", req.conversationId)
+        assertEquals("msg-parent-1", req.parentId)
+    }
+
+    @Test
+    fun `conversation has createdAt and updatedAt timestamps`() {
+        val conv = ConversationInfo(id = "c1", title = "Test", createdAt = "2025-01-01T00:00:00Z", updatedAt = "2025-01-02T00:00:00Z")
+        assertNotNull(conv.createdAt)
+        assertNotNull(conv.updatedAt)
+    }
+
+    @Test
+    fun `message has createdAt timestamp`() {
+        val msg = Message(role = "user", content = "Hi", createdAt = "2025-01-01T00:00:00Z")
+        assertNotNull(msg.createdAt)
+    }
+
+    @Test
+    fun `folder has parentId for hierarchy lineage`() {
+        val f = FolderInfo(id = "f1", name = "Root", parentId = "f0", createdAt = "2025-01-01T00:00:00Z")
+        assertEquals("f0", f.parentId)
+    }
+
+    @Test
+    fun `document has chunk count for lineage`() {
+        val d = Document(id = "d1", title = "test.pdf", chunkCount = 42)
+        assertEquals(42, d.chunkCount)
+    }
+
+    @Test
+    fun `entityListResponse has pagination for lineage queries`() {
+        val resp = EntityListResponse(items = emptyList(), total = 100, page = 2, pageSize = 20, totalPages = 5)
+        assertEquals(100, resp.total)
+        assertEquals(5, resp.totalPages)
+    }
+
+    @Test
+    fun `entityExistsResponse has exists flag`() {
+        val resp = EntityExistsResponse(exists = true, entityId = "ent-1")
+        assertEquals(true, resp.exists)
+        assertEquals("ent-1", resp.entityId)
+    }
+
+    @Test
+    fun `mergeEntities sends source and target`() {
+        fake.respondWith("""{"merged_entity":{"entity_name":"ALICE"},"merged_count":2}""")
+        EntityService(http).merge("ALICE_1", "ALICE_2")
+        val body = fake.lastRequest().body
+        assertTrue(body?.contains("ALICE_1") == true)
+        assertTrue(body?.contains("ALICE_2") == true)
+    }
+
+    @Test
+    fun `providerStatus has metadata`() {
+        val ps = ProviderStatus(metadata = mapOf("version" to "1.0"))
+        assertNotNull(ps.metadata)
+        assertEquals("1.0", ps.metadata!!["version"])
+    }
+
+    @Test
+    fun `bulkDeleteResponse has deleted count`() {
+        val resp = BulkDeleteResponse(deleted = 3)
+        assertEquals(3, resp.deleted)
+    }
+
+    @Test
+    fun `taskInfo has createdAt for lineage tracking`() {
+        val task = TaskInfo(id = "t1", status = "running", createdAt = "2025-01-01T00:00:00Z")
+        assertNotNull(task.createdAt)
+    }
+
+    @Test
+    fun `costSummary tracks usage lineage`() {
+        val c = CostSummary(totalCost = 5.0, documentCount = 10)
+        assertEquals(5.0, c.totalCost)
+        assertEquals(10, c.documentCount)
+    }
+
+    // ── LineageService Endpoint Tests ────────────────────────────────
+
+    @Test
+    fun `lineageService entityLineage hits correct endpoint`() {
+        fake.respondWith("""{"entity_name":"ALICE","entity_type":"PERSON","source_documents":[],"source_count":0,"description_versions":[]}""")
+        val svc = LineageService(http)
+        val res = svc.entityLineage("ALICE")
+        assertEquals("ALICE", res.entityName)
+        assertTrue(fake.lastRequest().uri.contains("/api/v1/lineage/entities/ALICE"))
+    }
+
+    @Test
+    fun `lineageService entityLineage URL-encodes special chars`() {
+        fake.respondWith("""{"entity_name":"HELLO WORLD","source_count":0}""")
+        val svc = LineageService(http)
+        svc.entityLineage("HELLO WORLD")
+        assertTrue(fake.lastRequest().uri.contains("HELLO+WORLD") || fake.lastRequest().uri.contains("HELLO%20WORLD"))
+    }
+
+    @Test
+    fun `lineageService documentLineage hits correct endpoint`() {
+        fake.respondWith("""{"document_id":"doc-1","chunk_count":5,"entities":[],"relationships":[],"extraction_stats":{"total_entities":10,"unique_entities":5,"total_relationships":8,"unique_relationships":4}}""")
+        val svc = LineageService(http)
+        val res = svc.documentLineage("doc-1")
+        assertEquals("doc-1", res.documentId)
+        assertEquals(5, res.chunkCount)
+        assertTrue(fake.lastRequest().uri.contains("/api/v1/lineage/documents/doc-1"))
+    }
+
+    @Test
+    fun `lineageService documentFullLineage hits correct endpoint`() {
+        fake.respondWith("""{"document_id":"doc-1","metadata":{"title":"Test"},"lineage":{"entities_extracted":15}}""")
+        val svc = LineageService(http)
+        val res = svc.documentFullLineage("doc-1")
+        assertEquals("doc-1", res.documentId)
+        assertNotNull(res.metadata)
+        assertTrue(fake.lastRequest().uri.contains("/api/v1/documents/doc-1/lineage"))
+    }
+
+    @Test
+    fun `lineageService exportLineage json format`() {
+        fake.respondWith("""{"format":"json","data":[]}""")
+        val svc = LineageService(http)
+        val res = svc.exportLineage("doc-1", "json")
+        assertTrue(fake.lastRequest().uri.contains("/api/v1/documents/doc-1/lineage/export?format=json"))
+        assertEquals("json", res["format"])
+    }
+
+    @Test
+    fun `lineageService exportLineage csv format`() {
+        fake.respondWith("""{"format":"csv","data":""}""")
+        val svc = LineageService(http)
+        val res = svc.exportLineage("doc-1", "csv")
+        assertTrue(fake.lastRequest().uri.contains("format=csv"))
+    }
+
+    @Test
+    fun `lineageService chunkDetail hits correct endpoint`() {
+        fake.respondWith("""{"chunk_id":"c1","document_id":"d1","content":"text","index":0,"char_range":{"start":0,"end":4},"token_count":1,"entities":[],"relationships":[]}""")
+        val svc = LineageService(http)
+        val res = svc.chunkDetail("c1")
+        assertEquals("c1", res.chunkId)
+        assertTrue(fake.lastRequest().uri.contains("/api/v1/chunks/c1"))
+    }
+
+    @Test
+    fun `lineageService chunkLineage hits correct endpoint`() {
+        fake.respondWith("""{"chunk_id":"c1","document_id":"d1","index":3,"start_line":42,"end_line":60}""")
+        val svc = LineageService(http)
+        val res = svc.chunkLineage("c1")
+        assertEquals("c1", res.chunkId)
+        assertEquals(42, res.startLine)
+        assertTrue(fake.lastRequest().uri.contains("/api/v1/chunks/c1/lineage"))
+    }
+
+    @Test
+    fun `lineageService entityProvenance hits correct endpoint`() {
+        fake.respondWith("""{"entity_id":"e1","entity_name":"ALICE","entity_type":"PERSON","sources":[],"total_extraction_count":5,"related_entities":[]}""")
+        val svc = LineageService(http)
+        val res = svc.entityProvenance("e1")
+        assertEquals("ALICE", res.entityName)
+        assertEquals(5, res.totalExtractionCount)
+        assertTrue(fake.lastRequest().uri.contains("/api/v1/entities/e1/provenance"))
+    }
+
+    // ── LineageModels Unit Tests ─────────────────────────────────────
+
+    @Test
+    fun `EntityLineageResponse fields`() {
+        val r = EntityLineageResponse(entityName = "BOB", entityType = "PERSON", sourceCount = 3)
+        assertEquals("BOB", r.entityName)
+        assertEquals("PERSON", r.entityType)
+        assertEquals(3, r.sourceCount)
+    }
+
+    @Test
+    fun `SourceDocumentInfo fields`() {
+        val s = SourceDocumentInfo(documentId = "d1", chunkIds = listOf("c1", "c2"), lineRanges = listOf(LineRangeInfo(1, 10)))
+        assertEquals("d1", s.documentId)
+        assertEquals(2, s.chunkIds?.size)
+        assertEquals(1, s.lineRanges?.size)
+    }
+
+    @Test
+    fun `LineRangeInfo fields`() {
+        val lr = LineRangeInfo(startLine = 10, endLine = 20)
+        assertEquals(10, lr.startLine)
+        assertEquals(20, lr.endLine)
+    }
+
+    @Test
+    fun `DescriptionVersionResponse fields`() {
+        val dv = DescriptionVersionResponse(version = 2, description = "Updated", sourceChunkId = "c1", createdAt = "2026-01-01T00:00:00Z")
+        assertEquals(2, dv.version)
+        assertEquals("Updated", dv.description)
+        assertEquals("c1", dv.sourceChunkId)
+    }
+
+    @Test
+    fun `DocumentGraphLineageResponse fields`() {
+        val d = DocumentGraphLineageResponse(documentId = "d1", chunkCount = 10, entities = emptyList(), relationships = emptyList())
+        assertEquals("d1", d.documentId)
+        assertEquals(10, d.chunkCount)
+        assertTrue(d.entities!!.isEmpty())
+    }
+
+    @Test
+    fun `EntitySummaryResponse fields`() {
+        val e = EntitySummaryResponse(name = "ALICE", entityType = "PERSON", sourceChunks = listOf("c1"), isShared = true)
+        assertEquals("ALICE", e.name)
+        assertTrue(e.isShared == true)
+    }
+
+    @Test
+    fun `RelationshipSummaryResponse fields`() {
+        val r = RelationshipSummaryResponse(source = "A", target = "B", keywords = "KNOWS", sourceChunks = listOf("c1"))
+        assertEquals("A", r.source)
+        assertEquals("B", r.target)
+        assertEquals("KNOWS", r.keywords)
+    }
+
+    @Test
+    fun `ExtractionStatsResponse fields`() {
+        val s = ExtractionStatsResponse(totalEntities = 10, uniqueEntities = 5, totalRelationships = 8, uniqueRelationships = 4, processingTimeMs = 1500)
+        assertEquals(10, s.totalEntities)
+        assertEquals(1500, s.processingTimeMs)
+    }
+
+    @Test
+    fun `ChunkDetailResponse fields`() {
+        val c = ChunkDetailResponse(chunkId = "c1", documentId = "d1", content = "text", index = 0, tokenCount = 10)
+        assertEquals("c1", c.chunkId)
+        assertEquals(10, c.tokenCount)
+    }
+
+    @Test
+    fun `CharRange fields`() {
+        val cr = CharRange(start = 0, end = 100)
+        assertEquals(0, cr.start)
+        assertEquals(100, cr.end)
+    }
+
+    @Test
+    fun `ExtractedEntityInfo fields`() {
+        val e = ExtractedEntityInfo(id = "e1", name = "ALICE", entityType = "PERSON", description = "A researcher")
+        assertEquals("e1", e.id)
+        assertEquals("A researcher", e.description)
+    }
+
+    @Test
+    fun `ExtractedRelationshipInfo fields`() {
+        val r = ExtractedRelationshipInfo(sourceName = "A", targetName = "B", relationType = "KNOWS")
+        assertEquals("A", r.sourceName)
+        assertEquals("B", r.targetName)
+    }
+
+    @Test
+    fun `ExtractionMetadataInfo fields`() {
+        val m = ExtractionMetadataInfo(model = "gpt-4o", gleaningIterations = 2, durationMs = 1200, inputTokens = 500, outputTokens = 300, cached = false)
+        assertEquals("gpt-4o", m.model)
+        assertEquals(false, m.cached)
+    }
+
+    @Test
+    fun `EntityProvenanceResponse fields`() {
+        val p = EntityProvenanceResponse(entityId = "e1", entityName = "ALICE", totalExtractionCount = 5)
+        assertEquals("e1", p.entityId)
+        assertEquals(5, p.totalExtractionCount)
+    }
+
+    @Test
+    fun `EntitySourceInfo fields`() {
+        val s = EntitySourceInfo(documentId = "d1", documentName = "Paper.pdf", chunks = emptyList(), firstExtractedAt = "2026-01-01T00:00:00Z")
+        assertEquals("d1", s.documentId)
+        assertNotNull(s.firstExtractedAt)
+    }
+
+    @Test
+    fun `ChunkSourceInfo fields`() {
+        val cs = ChunkSourceInfo(chunkId = "c1", startLine = 10, endLine = 15, sourceText = "Alice...")
+        assertEquals("c1", cs.chunkId)
+        assertEquals("Alice...", cs.sourceText)
+    }
+
+    @Test
+    fun `RelatedEntityInfo fields`() {
+        val rel = RelatedEntityInfo(entityId = "e2", entityName = "BOB", relationshipType = "KNOWS", sharedDocuments = 3)
+        assertEquals(3, rel.sharedDocuments)
+    }
+
+    @Test
+    fun `DocumentFullLineageResponse fields`() {
+        val fl = DocumentFullLineageResponse(documentId = "d1", metadata = mapOf("title" to "Test"), lineage = mapOf("pipeline" to "v1"))
+        assertEquals("d1", fl.documentId)
+        assertEquals("Test", fl.metadata?.get("title"))
+    }
+
+    @Test
+    fun `ChunkLineageResponse fields`() {
+        val cl = ChunkLineageResponse(chunkId = "c1", documentId = "d1", documentName = "test.pdf", documentType = "pdf", index = 3, startLine = 42, endLine = 60, tokenCount = 150, entityCount = 3, entityNames = listOf("ALICE", "BOB"))
+        assertEquals("c1", cl.chunkId)
+        assertEquals(3, cl.entityCount)
+        assertEquals(listOf("ALICE", "BOB"), cl.entityNames)
+    }
+
+    // ── Lineage Edge Cases ──────────────────────────────────────────
+
+    @Test
+    fun `lineageService error handling returns EdgeQuakeException`() {
+        fake.respondWithError(404, """{"error":"Entity not found"}""")
+        val svc = LineageService(http)
+        assertThrows<EdgeQuakeException> { svc.entityLineage("UNKNOWN") }
+    }
+
+    @Test
+    fun `lineageModels null defaults`() {
+        val empty = EntityLineageResponse()
+        assertNull(empty.entityName)
+        assertNull(empty.entityType)
+        assertNull(empty.sourceDocuments)
+        assertNull(empty.sourceCount)
+        assertNull(empty.descriptionVersions)
+    }
+
+    @Test
+    fun `chunkLineageResponse minimal construction`() {
+        val cl = ChunkLineageResponse(chunkId = "c1")
+        assertNull(cl.documentId)
+        assertNull(cl.entityCount)
+        assertNull(cl.entityNames)
+    }
+
+    @Test
+    fun `entityProvenance with empty sources and related`() {
+        val p = EntityProvenanceResponse(entityId = "e1", sources = emptyList(), relatedEntities = emptyList())
+        assertTrue(p.sources!!.isEmpty())
+        assertTrue(p.relatedEntities!!.isEmpty())
+    }
+
+    @Test
+    fun `lineageService accessible from EdgeQuakeClient`() {
+        val client = EdgeQuakeClient(EdgeQuakeConfig(baseUrl = "http://test:8080"))
+        assertNotNull(client.lineage)
+    }
+
+    // ── OODA-37: Extended Service Tests ──────────────────────────────
+    // WHY: Adding comprehensive tests for all new service methods added in OODA-37
+
+    // ── Health Extended Tests ────────────────────────────────────────
+
+    @Test
+    fun `health ready`() {
+        fake.respondWith("""{"ready":true,"checks":{"database":"ok","provider":"ok"}}""")
+        val svc = HealthService(http)
+        val result = svc.ready()
+        assertEquals(true, result.ready)
+        assertTrue(fake.lastRequest().uri.contains("/ready"))
+    }
+
+    @Test
+    fun `health live`() {
+        fake.respondWith("""{"alive":true,"uptime":12345}""")
+        val svc = HealthService(http)
+        val result = svc.live()
+        assertEquals(true, result.alive)
+        assertTrue(fake.lastRequest().uri.contains("/live"))
+    }
+
+    @Test
+    fun `health metrics`() {
+        fake.respondWith("# TYPE edgequake_requests_total counter\nedgequake_requests_total 100")
+        val svc = HealthService(http)
+        val result = svc.metrics()
+        assertTrue(result.contains("edgequake_requests_total"))
+        assertTrue(fake.lastRequest().uri.contains("/metrics"))
+    }
+
+    // ── Document Extended Tests ──────────────────────────────────────
+
+    @Test
+    fun `documents chunks`() {
+        fake.respondWith("""{"document_id":"d1","chunks":[{"id":"c1","content":"text","index":0}],"total":1}""")
+        val svc = DocumentService(http)
+        val result = svc.chunks("d1")
+        assertEquals("d1", result.documentId)
+        assertEquals(1, result.total)
+    }
+
+    @Test
+    fun `documents status`() {
+        fake.respondWith("""{"document_id":"d1","status":"completed","progress":1.0}""")
+        val svc = DocumentService(http)
+        val result = svc.status("d1")
+        assertEquals("completed", result.status)
+    }
+
+    @Test
+    fun `documents reprocess`() {
+        fake.respondWith("""{"status":"ok","message":"Reprocessing started"}""")
+        val svc = DocumentService(http)
+        val result = svc.reprocess("d1")
+        assertEquals("ok", result.status)
+    }
+
+    @Test
+    fun `documents recoverStuck`() {
+        fake.respondWith("""{"status":"ok","message":"Recovered 3 documents"}""")
+        val svc = DocumentService(http)
+        val result = svc.recoverStuck()
+        assertEquals("ok", result.status)
+    }
+
+    // ── Entity Extended Tests ────────────────────────────────────────
+
+    @Test
+    fun `entities neighborhood`() {
+        fake.respondWith("""{"entity_name":"ALICE","neighbors":[{"name":"BOB","entity_type":"PERSON","relationship_type":"KNOWS","distance":1}],"depth":1}""")
+        val svc = EntityService(http)
+        val result = svc.neighborhood("ALICE")
+        assertEquals("ALICE", result.entityName)
+        assertEquals(1, result.neighbors?.size)
+    }
+
+    @Test
+    fun `entities types`() {
+        fake.respondWith("""{"types":["PERSON","ORGANIZATION","CONCEPT"],"total":3}""")
+        val svc = EntityService(http)
+        val result = svc.types()
+        assertEquals(3, result.total)
+        assertTrue(result.types?.contains("PERSON") == true)
+    }
+
+    // ── Relationship Extended Tests ──────────────────────────────────
+
+    @Test
+    fun `relationships get`() {
+        fake.respondWith("""{"relationship":{"id":"r1","source":"A","target":"B"},"source":{"entity_name":"A"},"target":{"entity_name":"B"}}""")
+        val svc = RelationshipService(http)
+        val result = svc.get("r1")
+        assertEquals("r1", result.relationship?.id)
+    }
+
+    @Test
+    fun `relationships create`() {
+        fake.respondWith("""{"status":"created","relationship":{"id":"r-new","source":"X","target":"Y"}}""")
+        val svc = RelationshipService(http)
+        val result = svc.create(CreateRelationshipRequest("X", "Y", "KNOWS"))
+        assertEquals("created", result.status)
+    }
+
+    @Test
+    fun `relationships types`() {
+        fake.respondWith("""{"types":["KNOWS","WORKS_WITH","LOCATED_IN"],"total":3}""")
+        val svc = RelationshipService(http)
+        val result = svc.types()
+        assertEquals(3, result.total)
+    }
+
+    @Test
+    fun `relationships delete`() {
+        fake.respondWith("")
+        val svc = RelationshipService(http)
+        svc.delete("r1")
+        assertTrue(fake.lastRequest().uri.contains("/api/v1/graph/relationships/r1"))
+    }
+
+    // ── Graph Extended Tests ─────────────────────────────────────────
+
+    @Test
+    fun `graph stats`() {
+        fake.respondWith("""{"node_count":100,"edge_count":200,"entity_count":50,"relationship_count":80}""")
+        val svc = GraphService(http)
+        val result = svc.stats()
+        assertEquals(100, result.nodeCount)
+        assertEquals(200, result.edgeCount)
+    }
+
+    @Test
+    fun `graph labelSearch`() {
+        fake.respondWith("""{"labels":[{"label":"PERSON","count":25}],"total":1}""")
+        val svc = GraphService(http)
+        val result = svc.labelSearch("PERSON")
+        assertEquals(1, result.total)
+    }
+
+    @Test
+    fun `graph popularLabels`() {
+        fake.respondWith("""{"labels":[{"label":"PERSON","count":50},{"label":"ORG","count":30}]}""")
+        val svc = GraphService(http)
+        val result = svc.popularLabels()
+        assertEquals(2, result.labels?.size)
+    }
+
+    @Test
+    fun `graph batchDegrees`() {
+        fake.respondWith("""{"degrees":{"node1":5,"node2":3}}""")
+        val svc = GraphService(http)
+        val result = svc.batchDegrees(listOf("node1", "node2"))
+        assertEquals(5, result.degrees?.get("node1"))
+    }
+
+    // ── Query Extended Tests ─────────────────────────────────────────
+
+    @Test
+    fun `query stream`() {
+        fake.respondWith("data: {\"chunk\":\"Hello\"}\n\n")
+        val svc = QueryService(http)
+        val result = svc.stream("test query")
+        assertTrue(result.contains("Hello"))
+    }
+
+    // ── Chat Extended Tests ──────────────────────────────────────────
+
+    @Test
+    fun `chat stream`() {
+        fake.respondWith("data: {\"delta\":\"world\"}\n\n")
+        val svc = ChatService(http)
+        val result = svc.stream(ChatCompletionRequest(message = "Hi"))
+        assertTrue(result.contains("world"))
+    }
+
+    @Test
+    fun `chat completionsWithConversation`() {
+        fake.respondWith("""{"conversation_id":"c1","content":"Response"}""")
+        val svc = ChatService(http)
+        val result = svc.completionsWithConversation("c1", "Hello")
+        assertEquals("c1", result.conversationId)
+    }
+
+    // ── Auth Extended Tests ──────────────────────────────────────────
+
+    @Test
+    fun `auth logout`() {
+        fake.respondWith("")
+        val svc = AuthService(http)
+        svc.logout()
+        assertTrue(fake.lastRequest().uri.contains("/api/v1/auth/logout"))
+    }
+
+    @Test
+    fun `auth refresh`() {
+        fake.respondWith("""{"token":"new-token","expires_at":"2027-01-01T00:00:00Z"}""")
+        val svc = AuthService(http)
+        val result = svc.refresh()
+        assertEquals("new-token", result.token)
+    }
+
+    @Test
+    fun `auth me`() {
+        fake.respondWith("""{"id":"u1","username":"admin","email":"admin@test.com","role":"admin","permissions":["read","write"]}""")
+        val svc = AuthService(http)
+        val result = svc.me()
+        assertEquals("admin", result.username)
+    }
+
+    @Test
+    fun `auth changePassword`() {
+        fake.respondWith("""{"status":"ok","message":"Password changed"}""")
+        val svc = AuthService(http)
+        val result = svc.changePassword("old", "new")
+        assertEquals("ok", result.status)
+    }
+
+    // ── User Extended Tests ──────────────────────────────────────────
+
+    @Test
+    fun `users get`() {
+        fake.respondWith("""{"id":"u1","username":"john","email":"john@test.com"}""")
+        val svc = UserService(http)
+        val result = svc.get("u1")
+        assertEquals("john", result.username)
+    }
+
+    @Test
+    fun `users create`() {
+        fake.respondWith("""{"id":"u-new","username":"jane","email":"jane@test.com","role":"user"}""")
+        val svc = UserService(http)
+        val result = svc.create("jane", "jane@test.com", "password123")
+        assertEquals("jane", result.username)
+    }
+
+    @Test
+    fun `users update`() {
+        fake.respondWith("""{"id":"u1","username":"john","email":"new@test.com"}""")
+        val svc = UserService(http)
+        val result = svc.update("u1", mapOf("email" to "new@test.com"))
+        assertEquals("new@test.com", result.email)
+    }
+
+    @Test
+    fun `users delete`() {
+        fake.respondWith("")
+        val svc = UserService(http)
+        svc.delete("u1")
+        assertTrue(fake.lastRequest().uri.contains("/api/v1/users/u1"))
+    }
+
+    // ── ApiKey Extended Tests ────────────────────────────────────────
+
+    @Test
+    fun `apiKeys get`() {
+        fake.respondWith("""{"id":"k1","name":"test-key","prefix":"sk-abc"}""")
+        val svc = ApiKeyService(http)
+        val result = svc.get("k1")
+        assertEquals("test-key", result.name)
+    }
+
+    @Test
+    fun `apiKeys create`() {
+        fake.respondWith("""{"id":"k-new","name":"new-key","key":"sk-full-key"}""")
+        val svc = ApiKeyService(http)
+        val result = svc.create("new-key")
+        assertEquals("sk-full-key", result.key)
+    }
+
+    @Test
+    fun `apiKeys revoke`() {
+        fake.respondWith("")
+        val svc = ApiKeyService(http)
+        svc.revoke("k1")
+        assertTrue(fake.lastRequest().uri.contains("/api/v1/api-keys/k1"))
+    }
+
+    @Test
+    fun `apiKeys rotate`() {
+        fake.respondWith("""{"id":"k1","key":"sk-new-rotated"}""")
+        val svc = ApiKeyService(http)
+        val result = svc.rotate("k1")
+        assertEquals("sk-new-rotated", result.key)
+    }
+
+    // ── Tenant Extended Tests ────────────────────────────────────────
+
+    @Test
+    fun `tenants get`() {
+        fake.respondWith("""{"id":"t1","name":"Acme","slug":"acme"}""")
+        val svc = TenantService(http)
+        val result = svc.get("t1")
+        assertEquals("Acme", result.name)
+    }
+
+    @Test
+    fun `tenants create`() {
+        fake.respondWith("""{"id":"t-new","name":"NewCorp","slug":"newcorp"}""")
+        val svc = TenantService(http)
+        val result = svc.create("NewCorp", "newcorp")
+        assertEquals("NewCorp", result.name)
+    }
+
+    @Test
+    fun `tenants update`() {
+        fake.respondWith("""{"id":"t1","name":"Updated","slug":"updated"}""")
+        val svc = TenantService(http)
+        val result = svc.update("t1", mapOf("name" to "Updated"))
+        assertEquals("Updated", result.name)
+    }
+
+    @Test
+    fun `tenants delete`() {
+        fake.respondWith("")
+        val svc = TenantService(http)
+        svc.delete("t1")
+        assertTrue(fake.lastRequest().uri.contains("/api/v1/tenants/t1"))
+    }
+
+    // ── Conversation Extended Tests ──────────────────────────────────
+
+    @Test
+    fun `conversations update`() {
+        fake.respondWith("""{"id":"c1","title":"Updated Title"}""")
+        val svc = ConversationService(http)
+        val result = svc.update("c1", "Updated Title")
+        assertEquals("Updated Title", result.title)
+    }
+
+    @Test
+    fun `conversations messages`() {
+        fake.respondWith("""{"messages":[{"id":"m1","role":"user","content":"Hi"}],"total":1}""")
+        val svc = ConversationService(http)
+        val result = svc.messages("c1")
+        assertEquals(1, result.total)
+    }
+
+    @Test
+    fun `conversations addMessage`() {
+        fake.respondWith("""{"id":"m-new","role":"user","content":"Hello"}""")
+        val svc = ConversationService(http)
+        val result = svc.addMessage("c1", "user", "Hello")
+        assertEquals("user", result.role)
+    }
+
+    @Test
+    fun `conversations deleteMessage`() {
+        fake.respondWith("")
+        val svc = ConversationService(http)
+        svc.deleteMessage("c1", "m1")
+        assertTrue(fake.lastRequest().uri.contains("/api/v1/conversations/c1/messages/m1"))
+    }
+
+    @Test
+    fun `conversations search`() {
+        fake.respondWith("""[{"id":"c1","title":"Found Chat"}]""")
+        val svc = ConversationService(http)
+        val result = svc.search("test")
+        assertEquals("Found Chat", result.first().title)
+    }
+
+    @Test
+    fun `conversations share`() {
+        fake.respondWith("""{"share_id":"s1","url":"https://share.test/s1"}""")
+        val svc = ConversationService(http)
+        val result = svc.share("c1")
+        assertEquals("s1", result.shareId)
+    }
+
+    // ── Folder Extended Tests ────────────────────────────────────────
+
+    @Test
+    fun `folders get`() {
+        fake.respondWith("""{"id":"f1","name":"My Folder"}""")
+        val svc = FolderService(http)
+        val result = svc.get("f1")
+        assertEquals("My Folder", result.name)
+    }
+
+    @Test
+    fun `folders update`() {
+        fake.respondWith("""{"id":"f1","name":"Renamed"}""")
+        val svc = FolderService(http)
+        val result = svc.update("f1", "Renamed")
+        assertEquals("Renamed", result.name)
+    }
+
+    @Test
+    fun `folders moveConversation`() {
+        fake.respondWith("""{"status":"ok"}""")
+        val svc = FolderService(http)
+        val result = svc.moveConversation("f1", "c1")
+        assertEquals("ok", result.status)
+    }
+
+    @Test
+    fun `folders conversations`() {
+        fake.respondWith("""{"folder_id":"f1","conversations":[{"id":"c1","title":"Chat"}],"total":1}""")
+        val svc = FolderService(http)
+        val result = svc.conversations("f1")
+        assertEquals(1, result.total)
+    }
+
+    // ── Task Extended Tests ──────────────────────────────────────────
+
+    @Test
+    fun `tasks create`() {
+        fake.respondWith("""{"id":"t-new","status":"pending","task_type":"extraction"}""")
+        val svc = TaskService(http)
+        val result = svc.create("extraction")
+        assertEquals("pending", result.status)
+    }
+
+    @Test
+    fun `tasks cancel`() {
+        fake.respondWith("""{"status":"cancelled"}""")
+        val svc = TaskService(http)
+        val result = svc.cancel("t1")
+        assertEquals("cancelled", result.status)
+    }
+
+    @Test
+    fun `tasks status`() {
+        fake.respondWith("""{"status":"running","progress":0.5}""")
+        val svc = TaskService(http)
+        val result = svc.status("t1")
+        assertEquals("running", result.status)
+    }
+
+    @Test
+    fun `tasks retry`() {
+        fake.respondWith("""{"id":"t1","status":"pending"}""")
+        val svc = TaskService(http)
+        val result = svc.retry("t1")
+        assertEquals("pending", result.status)
+    }
+
+    // ── Pipeline Extended Tests ──────────────────────────────────────
+
+    @Test
+    fun `pipeline processing`() {
+        fake.respondWith("""{"items":[{"id":"p1","status":"processing","document_id":"d1"}],"total":1}""")
+        val svc = PipelineService(http)
+        val result = svc.processing()
+        assertEquals(1, result.total)
+    }
+
+    @Test
+    fun `pipeline pause`() {
+        fake.respondWith("""{"status":"paused"}""")
+        val svc = PipelineService(http)
+        val result = svc.pause()
+        assertEquals("paused", result.status)
+    }
+
+    @Test
+    fun `pipeline resume`() {
+        fake.respondWith("""{"status":"resumed"}""")
+        val svc = PipelineService(http)
+        val result = svc.resume()
+        assertEquals("resumed", result.status)
+    }
+
+    @Test
+    fun `pipeline cancel`() {
+        fake.respondWith("""{"status":"cancelled"}""")
+        val svc = PipelineService(http)
+        val result = svc.cancel()
+        assertEquals("cancelled", result.status)
+    }
+
+    @Test
+    fun `pipeline costEstimate`() {
+        fake.respondWith("""{"estimated_cost":2.50,"token_count":5000,"model_used":"gpt-4o"}""")
+        val svc = PipelineService(http)
+        val result = svc.costEstimate(10)
+        assertEquals(2.50, result.estimatedCost)
+    }
+
+    // ── Model Extended Tests ─────────────────────────────────────────
+
+    @Test
+    fun `models list`() {
+        fake.respondWith("""{"models":[{"id":"m1","name":"GPT-4","provider":"openai"}],"total":1}""")
+        val svc = ModelService(http)
+        val result = svc.list()
+        assertEquals(1, result.total)
+    }
+
+    @Test
+    fun `models get`() {
+        fake.respondWith("""{"id":"m1","name":"GPT-4","provider":"openai","context_length":8192}""")
+        val svc = ModelService(http)
+        val result = svc.get("m1")
+        assertEquals("GPT-4", result.name)
+    }
+
+    @Test
+    fun `models providers`() {
+        fake.respondWith("""{"providers":[{"id":"p1","name":"OpenAI","enabled":true}]}""")
+        val svc = ModelService(http)
+        val result = svc.providers()
+        assertEquals(1, result.providers?.size)
+    }
+
+    @Test
+    fun `models setDefault`() {
+        fake.respondWith("""{"status":"ok"}""")
+        val svc = ModelService(http)
+        val result = svc.setDefault("openai", "gpt-4")
+        assertEquals("ok", result.status)
+    }
+
+    @Test
+    fun `models test`() {
+        fake.respondWith("""{"success":true,"response_time_ms":150}""")
+        val svc = ModelService(http)
+        val result = svc.test("m1")
+        assertEquals(true, result.success)
+    }
+
+    // ── Workspace Extended Tests ─────────────────────────────────────
+
+    @Test
+    fun `workspaces get`() {
+        fake.respondWith("""{"id":"w1","name":"Main","slug":"main"}""")
+        val svc = WorkspaceService(http)
+        val result = svc.get("w1")
+        assertEquals("Main", result.name)
+    }
+
+    @Test
+    fun `workspaces create`() {
+        fake.respondWith("""{"id":"w-new","name":"NewWS","slug":"newws"}""")
+        val svc = WorkspaceService(http)
+        val result = svc.create("NewWS", "newws")
+        assertEquals("NewWS", result.name)
+    }
+
+    @Test
+    fun `workspaces update`() {
+        fake.respondWith("""{"id":"w1","name":"Updated"}""")
+        val svc = WorkspaceService(http)
+        val result = svc.update("w1", mapOf("name" to "Updated"))
+        assertEquals("Updated", result.name)
+    }
+
+    @Test
+    fun `workspaces delete`() {
+        fake.respondWith("")
+        val svc = WorkspaceService(http)
+        svc.delete("w1")
+        assertTrue(fake.lastRequest().uri.contains("/api/v1/workspaces/w1"))
+    }
+
+    @Test
+    fun `workspaces stats`() {
+        fake.respondWith("""{"workspace_id":"w1","document_count":50,"entity_count":100,"relationship_count":150}""")
+        val svc = WorkspaceService(http)
+        val result = svc.stats("w1")
+        assertEquals(50, result.documentCount)
+    }
+
+    @Test
+    fun `workspaces switch`() {
+        fake.respondWith("""{"status":"ok"}""")
+        val svc = WorkspaceService(http)
+        val result = svc.switch("w2")
+        assertEquals("ok", result.status)
+    }
+
+    @Test
+    fun `workspaces rebuild`() {
+        fake.respondWith("""{"status":"rebuilding"}""")
+        val svc = WorkspaceService(http)
+        val result = svc.rebuild("w1")
+        assertEquals("rebuilding", result.status)
+    }
+
+    // ── Cost Extended Tests ──────────────────────────────────────────
+
+    @Test
+    fun `costs daily`() {
+        fake.respondWith("""{"date":"2026-01-15","cost":5.50,"breakdown":{"llm":4.0,"embedding":1.5}}""")
+        val svc = CostService(http)
+        val result = svc.daily()
+        assertEquals(5.50, result.cost)
+    }
+
+    @Test
+    fun `costs byProvider`() {
+        fake.respondWith("""{"providers":{"openai":10.0,"ollama":0.0},"total":10.0}""")
+        val svc = CostService(http)
+        val result = svc.byProvider()
+        assertEquals(10.0, result.total)
+    }
+
+    @Test
+    fun `costs byModel`() {
+        fake.respondWith("""{"models":{"gpt-4":8.0,"gpt-3.5":2.0},"total":10.0}""")
+        val svc = CostService(http)
+        val result = svc.byModel()
+        assertEquals(10.0, result.total)
+    }
+
+    @Test
+    fun `costs history`() {
+        fake.respondWith("""{"history":[{"date":"2026-01-14","cost":3.0},{"date":"2026-01-15","cost":5.0}],"total":8.0}""")
+        val svc = CostService(http)
+        val result = svc.history("2026-01-14", "2026-01-15")
+        assertEquals(2, result.history?.size)
+    }
+
+    @Test
+    fun `costs export`() {
+        fake.respondWith("date,cost\n2026-01-15,5.50")
+        val svc = CostService(http)
+        val result = svc.export("csv")
+        assertTrue(result.contains("date,cost"))
+    }
+
+    @Test
+    fun `costs budget`() {
+        fake.respondWith("""{"amount":100.0,"period":"monthly","used":25.0,"remaining":75.0}""")
+        val svc = CostService(http)
+        val result = svc.budget()
+        assertEquals(100.0, result.amount)
+    }
+
+    @Test
+    fun `costs setBudget`() {
+        fake.respondWith("""{"status":"ok"}""")
+        val svc = CostService(http)
+        val result = svc.setBudget(200.0)
+        assertEquals("ok", result.status)
+    }
+
+    // ── Shared Service Tests ─────────────────────────────────────────
+
+    @Test
+    fun `shared createLink`() {
+        fake.respondWith("""{"share_id":"s1","conversation_id":"c1","url":"https://share.test/s1"}""")
+        val svc = SharedService(http)
+        val result = svc.createLink("c1")
+        assertEquals("s1", result.shareId)
+    }
+
+    @Test
+    fun `shared getLink`() {
+        fake.respondWith("""{"share_id":"s1","conversation_id":"c1","access_count":10}""")
+        val svc = SharedService(http)
+        val result = svc.getLink("s1")
+        assertEquals(10, result.accessCount)
+    }
+
+    @Test
+    fun `shared deleteLink`() {
+        fake.respondWith("")
+        val svc = SharedService(http)
+        svc.deleteLink("s1")
+        assertTrue(fake.lastRequest().uri.contains("/api/v1/shared/s1"))
+    }
+
+    @Test
+    fun `shared access`() {
+        fake.respondWith("""{"conversation":{"id":"c1","title":"Shared Chat"},"messages":[]}""")
+        val svc = SharedService(http)
+        val result = svc.access("s1")
+        assertEquals("Shared Chat", result.conversation?.title)
+    }
+
+    @Test
+    fun `shared listLinks`() {
+        fake.respondWith("""{"links":[{"share_id":"s1"},{"share_id":"s2"}],"total":2}""")
+        val svc = SharedService(http)
+        val result = svc.listLinks()
+        assertEquals(2, result.total)
+    }
+
+    // ── New Model Type Tests ─────────────────────────────────────────
+
+    @Test
+    fun `ReadinessResponse fields`() {
+        val r = ReadinessResponse(ready = true, checks = mapOf("db" to "ok"))
+        assertEquals(true, r.ready)
+    }
+
+    @Test
+    fun `LivenessResponse fields`() {
+        val l = LivenessResponse(alive = true, uptime = 12345)
+        assertEquals(12345, l.uptime)
+    }
+
+    @Test
+    fun `DocumentChunksResponse fields`() {
+        val d = DocumentChunksResponse(documentId = "d1", chunks = listOf(ChunkInfo(id = "c1")), total = 1)
+        assertEquals(1, d.total)
+    }
+
+    @Test
+    fun `EntityNeighborhoodResponse fields`() {
+        val e = EntityNeighborhoodResponse(entityName = "ALICE", neighbors = emptyList(), depth = 2)
+        assertEquals(2, e.depth)
+    }
+
+    @Test
+    fun `GraphStatsResponse fields`() {
+        val g = GraphStatsResponse(nodeCount = 100, edgeCount = 200)
+        assertEquals(100, g.nodeCount)
+    }
+
+    @Test
+    fun `CreateApiKeyResponse fields`() {
+        val c = CreateApiKeyResponse(id = "k1", key = "sk-secret")
+        assertEquals("sk-secret", c.key)
+    }
+
+    @Test
+    fun `WorkspaceStatsResponse fields`() {
+        val w = WorkspaceStatsResponse(workspaceId = "w1", documentCount = 50, storageBytes = 1024000)
+        assertEquals(1024000, w.storageBytes)
+    }
+
+    @Test
+    fun `BudgetInfo fields`() {
+        val b = BudgetInfo(amount = 100.0, used = 25.0, remaining = 75.0)
+        assertEquals(75.0, b.remaining)
+    }
+
+    @Test
+    fun `SharedLinkResponse fields`() {
+        val s = SharedLinkResponse(shareId = "s1", url = "https://test.com/s1", accessCount = 5)
+        assertEquals(5, s.accessCount)
+    }
+
+    // ── Client Service Availability ──────────────────────────────────
+
+    @Test
+    fun `client has shared service`() {
+        val client = EdgeQuakeClient(EdgeQuakeConfig(baseUrl = "http://test:8080"))
+        assertNotNull(client.shared)
+    }
+
+    @Test
+    fun `client has 21 services`() {
+        val client = EdgeQuakeClient()
+        assertNotNull(client.health)
+        assertNotNull(client.documents)
+        assertNotNull(client.entities)
+        assertNotNull(client.relationships)
+        assertNotNull(client.graph)
+        assertNotNull(client.query)
+        assertNotNull(client.chat)
+        assertNotNull(client.auth)
+        assertNotNull(client.users)
+        assertNotNull(client.apiKeys)
+        assertNotNull(client.tenants)
+        assertNotNull(client.conversations)
+        assertNotNull(client.folders)
+        assertNotNull(client.tasks)
+        assertNotNull(client.pipeline)
+        assertNotNull(client.models)
+        assertNotNull(client.workspaces)
+        assertNotNull(client.pdf)
+        assertNotNull(client.costs)
+        assertNotNull(client.lineage)
+        assertNotNull(client.shared)
+    }
+
+    // ── OODA-49: Additional Edge Case Tests ─────────────────────────────
+
+    @Test
+    fun `documents list empty OODA-49`() {
+        fake.respondWith("""{"documents":[],"total":0,"page":1,"page_size":20}""")
+        val svc = DocumentService(http)
+        val result = svc.list()
+        assertEquals(0, result.total)
+        assertTrue(fake.lastRequest().uri.contains("/documents"))
+    }
+
+    @Test
+    fun `entities list empty OODA-49`() {
+        fake.respondWith("""{"items":[],"total":0,"page":1,"page_size":20}""")
+        val svc = EntityService(http)
+        val result = svc.list()
+        assertEquals(0, result.total)
+        assertTrue(result.items?.isEmpty() == true)
+    }
+
+    @Test
+    fun `entities create success OODA-49`() {
+        fake.respondWith("""{"status":"success","message":"Created","entity":{"entity_name":"TEST","entity_type":"PERSON"}}""")
+        val svc = EntityService(http)
+        val result = svc.create(CreateEntityRequest("TEST", "PERSON", "desc", "doc-1"))
+        assertEquals("success", result.status)
+        assertEquals("POST", fake.lastRequest().method)
+    }
+
+    @Test
+    fun `pipeline status idle OODA-49`() {
+        fake.respondWith("""{"is_busy":false,"pending_tasks":0,"processing_tasks":0}""")
+        val svc = PipelineService(http)
+        val result = svc.status()
+        assertEquals(false, result.isBusy)
+        assertEquals(0, result.pendingTasks)
+    }
+
+    @Test
+    fun `pipeline status busy OODA-49`() {
+        fake.respondWith("""{"is_busy":true,"pending_tasks":10,"processing_tasks":2}""")
+        val svc = PipelineService(http)
+        val result = svc.status()
+        assertEquals(true, result.isBusy)
+        assertEquals(10, result.pendingTasks)
+    }
+
+    @Test
+    fun `tasks get completed OODA-49`() {
+        fake.respondWith("""{"id":"t1","status":"completed","task_type":"extraction","progress":1.0}""")
+        val svc = TaskService(http)
+        val result = svc.get("t1")
+        assertEquals("completed", result.status)
+    }
+
+    @Test
+    fun `tasks cancel OODA-49`() {
+        fake.respondWith("""{"status":"cancelled","message":"Task cancelled"}""")
+        val svc = TaskService(http)
+        val result = svc.cancel("t1")
+        assertEquals("cancelled", result.status)
+        assertTrue(fake.lastRequest().uri.contains("/cancel"))
+    }
+
+    @Test
+    fun `models catalog empty OODA-49`() {
+        fake.respondWith("""{"providers":[]}""")
+        val svc = ModelService(http)
+        val result = svc.catalog()
+        assertTrue(result.providers?.isEmpty() == true)
+    }
+
+    @Test
+    fun `models health all healthy OODA-49`() {
+        fake.respondWith("""[{"name":"ollama","enabled":true},{"name":"openai","enabled":true}]""")
+        val svc = ModelService(http)
+        val result = svc.health()
+        assertEquals(2, result.size)
+        assertTrue(result.all { it.enabled == true })
+    }
+
+    @Test
+    fun `costs summary OODA-49`() {
+        fake.respondWith("""{"total_cost":125.50,"document_count":100,"query_count":500}""")
+        val svc = CostService(http)
+        val result = svc.summary()
+        assertEquals(125.50, result.totalCost)
+        assertEquals(100, result.documentCount)
+    }
+
+    @Test
+    fun `folders list empty OODA-49`() {
+        fake.respondWith("""[]""")
+        val svc = FolderService(http)
+        val result = svc.list()
+        assertEquals(0, result.size)
+    }
+
+    @Test
+    fun `folders create OODA-49`() {
+        fake.respondWith("""{"id":"f1","name":"TestFolder"}""")
+        val svc = FolderService(http)
+        val result = svc.create("TestFolder")
+        assertEquals("f1", result.id)
+        assertEquals("POST", fake.lastRequest().method)
+    }
+
+    @Test
+    fun `conversations get OODA-49`() {
+        fake.respondWith("""{"conversation":{"id":"c1","title":"Test Conversation"},"messages":[]}""")
+        val svc = ConversationService(http)
+        val result = svc.get("c1")
+        assertEquals("Test Conversation", result.conversation?.title)
+        assertTrue(fake.lastRequest().uri.contains("/conversations/c1"))
+    }
+
+    @Test
+    fun `relationships list empty OODA-49`() {
+        fake.respondWith("""{"items":[],"total":0,"page":1,"page_size":20}""")
+        val svc = RelationshipService(http)
+        val result = svc.list()
+        assertEquals(0, result.total)
+    }
+
+    @Test
+    fun `relationships types OODA-49`() {
+        fake.respondWith("""{"types":["WORKS_AT","KNOWS","COLLABORATES"],"total":3}""")
+        val svc = RelationshipService(http)
+        val result = svc.types()
+        assertEquals(3, result.total)
+        assertTrue(result.types?.contains("KNOWS") == true)
+    }
+
+    @Test
+    fun `users list empty OODA-49`() {
+        fake.respondWith("""{"users":[]}""")
+        val svc = UserService(http)
+        val result = svc.list()
+        assertTrue(result.users?.isEmpty() == true)
+    }
+
+    @Test
+    fun `tenants get OODA-49`() {
+        fake.respondWith("""{"id":"t1","name":"Test Tenant"}""")
+        val svc = TenantService(http)
+        val result = svc.get("t1")
+        assertEquals("Test Tenant", result.name)
+    }
+
+    @Test
+    fun `graph stats OODA-49`() {
+        fake.respondWith("""{"node_count":500,"edge_count":1200}""")
+        val svc = GraphService(http)
+        val result = svc.stats()
+        assertEquals(500, result.nodeCount)
+        assertEquals(1200, result.edgeCount)
+    }
+
+    @Test
+    fun `api keys list empty OODA-49`() {
+        fake.respondWith("""{"keys":[]}""")
+        val svc = ApiKeyService(http)
+        val result = svc.list()
+        assertTrue(result.keys?.isEmpty() == true)
+    }
+
+    @Test
+    fun `api keys revoke OODA-49`() {
+        fake.respondWith("")
+        val svc = ApiKeyService(http)
+        svc.revoke("key-1")
+        assertTrue(fake.lastRequest().uri.contains("key-1"))
+    }
+
+    @Test
+    fun `workspaces list OODA-49`() {
+        fake.respondWith("""[{"id":"w1","name":"Default","slug":"default"}]""")
+        val svc = WorkspaceService(http)
+        val result = svc.list()
+        assertEquals(1, result.size)
+    }
+
+    @Test
+    fun `pdf content OODA-49`() {
+        fake.respondWith("""{"content":"# Title\n\nHello world","page_count":5}""")
+        val svc = PdfService(http)
+        val result = svc.content("pdf-1")
+        assertTrue(result.content?.contains("Title") == true)
+        assertEquals(5, result.pageCount)
+    }
+
+    @Test
+    fun `pdf progress OODA-49`() {
+        fake.respondWith("""{"track_id":"tk-1","status":"completed","progress":1.0}""")
+        val svc = PdfService(http)
+        val result = svc.progress("tk-1")
+        assertEquals("completed", result.status)
+    }
+
+    @Test
+    fun `lineage entity OODA-49`() {
+        fake.respondWith("""{"entity_name":"ALICE","entity_type":"PERSON","source_documents":[],"source_count":0}""")
+        val svc = LineageService(http)
+        val result = svc.entityLineage("ALICE")
+        assertEquals("ALICE", result.entityName)
+        assertTrue(fake.lastRequest().uri.contains("/lineage/entities/ALICE"))
+    }
+
+    @Test
+    fun `lineage document OODA-49`() {
+        fake.respondWith("""{"document_id":"d1","chunk_count":5,"entities":[],"relationships":[]}""")
+        val svc = LineageService(http)
+        val result = svc.documentLineage("d1")
+        assertEquals("d1", result.documentId)
+    }
+
+    @Test
+    fun `health ready OODA-49`() {
+        fake.respondWith("""{"status":"ready","checks":{"db":"ok"}}""")
+        val svc = HealthService(http)
+        val result = svc.ready()
+        assertNotNull(result)
+        assertTrue(fake.lastRequest().uri.contains("/ready"))
+    }
+
+    @Test
+    fun `auth logout OODA-49`() {
+        fake.respondWith("""{"status":"logged_out"}""")
+        val svc = AuthService(http)
+        val result = svc.logout()
+        assertNotNull(result)
+        assertEquals("POST", fake.lastRequest().method)
+    }
+
+    @Test
+    fun `query with hybrid mode OODA-49`() {
+        fake.respondWith("""{"answer":"Test answer","mode":"hybrid","sources":[]}""")
+        val svc = QueryService(http)
+        val result = svc.execute("test query", mode = "hybrid")
+        assertEquals("hybrid", result.mode)
+    }
+
+    @Test
+    fun `chat completions OODA-49`() {
+        fake.respondWith("""{"conversation_id":"c1","content":"Hello!","sources":[]}""")
+        val svc = ChatService(http)
+        val result = svc.completions(ChatCompletionRequest(message = "Hello"))
+        assertEquals("c1", result.conversationId)
+    }
+
+    @Test
+    fun `graph search OODA-49`() {
+        fake.respondWith("""{"nodes":[],"edges":[],"total_nodes":0}""")
+        val svc = GraphService(http)
+        val result = svc.search("ALICE")
+        assertTrue(fake.lastRequest().uri.contains("q=ALICE"))
+    }
+
+    @Test
+    fun `graph popular labels OODA-49`() {
+        fake.respondWith("""{"labels":[{"name":"PERSON","count":50}]}""")
+        val svc = GraphService(http)
+        val result = svc.popularLabels(10)
+        assertTrue(result.labels?.isNotEmpty() == true)
+    }
+
+    @Test
+    fun `shared listLinks empty OODA-49`() {
+        fake.respondWith("""{"links":[],"total":0}""")
+        val svc = SharedService(http)
+        val result = svc.listLinks()
+        assertEquals(0, result.total)
+    }
 }

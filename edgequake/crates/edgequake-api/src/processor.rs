@@ -833,6 +833,64 @@ impl DocumentTaskProcessor {
         )
         .await?;
 
+        // OODA-04: Enrich document metadata with lineage fields from task metadata
+        // WHY: file_size_bytes, sha256_checksum, document_type must be stored early
+        // so lineage queries always return complete data regardless of processing stage.
+        {
+            let file_size_bytes = data
+                .metadata
+                .as_ref()
+                .and_then(|m| m.get("file_size_bytes"))
+                .cloned();
+            let sha256_checksum = data
+                .metadata
+                .as_ref()
+                .and_then(|m| m.get("sha256_checksum"))
+                .cloned();
+            let document_type = data
+                .metadata
+                .as_ref()
+                .and_then(|m| m.get("document_type"))
+                .cloned()
+                .or_else(|| Some(json!(source_type)));
+
+            let metadata_key = format!("{}-metadata", document_id);
+            if let Ok(Some(existing)) = self.kv_storage.get_by_id(&metadata_key).await {
+                if let Some(obj) = existing.as_object() {
+                    let mut updated = obj.clone();
+                    let mut changed = false;
+                    if obj.get("file_size_bytes").is_none() {
+                        if let Some(v) = file_size_bytes {
+                            updated.insert("file_size_bytes".to_string(), v);
+                            changed = true;
+                        }
+                    }
+                    if obj.get("sha256_checksum").is_none() {
+                        if let Some(v) = sha256_checksum {
+                            updated.insert("sha256_checksum".to_string(), v);
+                            changed = true;
+                        }
+                    }
+                    if obj.get("document_type").is_none() {
+                        if let Some(v) = document_type {
+                            updated.insert("document_type".to_string(), v);
+                            changed = true;
+                        }
+                    }
+                    if changed {
+                        updated.insert(
+                            "updated_at".to_string(),
+                            json!(chrono::Utc::now().to_rfc3339()),
+                        );
+                        let _ = self
+                            .kv_storage
+                            .upsert(&[(metadata_key, json!(updated))])
+                            .await;
+                    }
+                }
+            }
+        }
+
         // SPEC-032: Extract workspace_id to use workspace-specific pipeline
         // Prefer the direct field (data.workspace_id), fallback to metadata if needed
         let workspace_id = if !data.workspace_id.is_empty() && data.workspace_id != "default" {
@@ -1073,6 +1131,9 @@ impl DocumentTaskProcessor {
         }
 
         // Store chunks in KV storage
+        // OODA-05: Include position metadata and token count for lineage traceability
+        // WHY: Each chunk must carry its exact position in the source document so that
+        // lineage queries can map entity → chunk → source location without extra lookups.
         let chunks: Vec<(String, serde_json::Value)> = result
             .chunks
             .iter()
@@ -1083,6 +1144,11 @@ impl DocumentTaskProcessor {
                         "content": c.content,
                         "document_id": document_id,
                         "index": c.index,
+                        "start_line": c.start_line,
+                        "end_line": c.end_line,
+                        "start_offset": c.start_offset,
+                        "end_offset": c.end_offset,
+                        "token_count": c.token_count,
                     }),
                 )
             })
@@ -1147,6 +1213,9 @@ impl DocumentTaskProcessor {
         }
 
         // Store chunk embeddings in vector storage for semantic search
+        // OODA-05: Include position metadata for lineage-aware retrieval
+        // WHY: Semantic search results should carry source position so callers
+        // can display "found in lines 42-58" without extra KV lookups.
         let mut chunk_embeddings_stored = 0;
         for chunk in &result.chunks {
             if let Some(embedding) = &chunk.embedding {
@@ -1155,6 +1224,11 @@ impl DocumentTaskProcessor {
                     "document_id": document_id,
                     "index": chunk.index,
                     "content": chunk.content,
+                    "start_line": chunk.start_line,
+                    "end_line": chunk.end_line,
+                    "start_offset": chunk.start_offset,
+                    "end_offset": chunk.end_offset,
+                    "token_count": chunk.token_count,
                 });
 
                 // Add tenant and workspace IDs if present
@@ -1474,6 +1548,43 @@ impl DocumentTaskProcessor {
         self.update_document_status_with_stats(&document_id, final_status, &stats_with_lineage)
             .await?;
 
+        // OODA-06: Persist DocumentLineage to KV storage for lineage API queries
+        // WHY: Without persistence, lineage data only exists in memory during processing
+        // and is lost. Lineage endpoints need to read it back from storage.
+        if let Some(ref lineage) = result.lineage {
+            let lineage_key = format!("{}-lineage", document_id);
+            match serde_json::to_value(lineage) {
+                Ok(lineage_json) => {
+                    if let Err(e) = self
+                        .kv_storage
+                        .upsert(&[(lineage_key.clone(), lineage_json)])
+                        .await
+                    {
+                        warn!(
+                            document_id = %document_id,
+                            error = %e,
+                            "Failed to persist document lineage to KV storage"
+                        );
+                    } else {
+                        info!(
+                            document_id = %document_id,
+                            chunks = lineage.total_chunks,
+                            entities = lineage.entities.len(),
+                            relationships = lineage.relationships.len(),
+                            "Persisted document lineage to KV storage"
+                        );
+                    }
+                }
+                Err(e) => {
+                    warn!(
+                        document_id = %document_id,
+                        error = %e,
+                        "Failed to serialize document lineage"
+                    );
+                }
+            }
+        }
+
         // OODA-17: Update PDF phase progress - graph storage complete, all phases done
         if is_pdf_source {
             self.pipeline_state
@@ -1726,6 +1837,9 @@ impl DocumentTaskProcessor {
             let mut new_metadata = serde_json::Map::new();
             new_metadata.insert("id".to_string(), json!(document_id));
             new_metadata.insert("source_type".to_string(), json!(source_type));
+            // OODA-04: Store document_type = source_type for lineage consistency
+            // WHY: Lineage queries expect document_type to distinguish pdf vs markdown
+            new_metadata.insert("document_type".to_string(), json!(source_type));
             new_metadata.insert("current_stage".to_string(), json!("preprocessing"));
             new_metadata.insert("stage_message".to_string(), json!("Processing document..."));
             new_metadata.insert("status".to_string(), json!("processing"));
@@ -1949,16 +2063,23 @@ impl DocumentTaskProcessor {
         // WHY: Frontend cancel button requires doc.track_id to call POST /tasks/{track_id}/cancel
         let early_doc_id = uuid::Uuid::new_v4().to_string();
         let metadata_key = format!("{}-metadata", early_doc_id);
+        // OODA-04: Include file_size_bytes and sha256_checksum in early metadata
+        // WHY: Enables complete lineage from the moment the document appears in UI.
+        // Without these, users see metadata gaps until processing completes.
         let metadata_json = json!({
             "id": early_doc_id,
             "title": pdf.filename.clone(),
             "file_name": pdf.filename.clone(),
             "source_type": "pdf",
+            "document_type": "pdf",
             "status": "processing",
             "current_stage": "converting",
             "stage_message": format!("Converting PDF to Markdown (0/{} pages)", pdf.page_count.unwrap_or(0)),
             "stage_progress": 0.0,
             "pdf_id": data.pdf_id.to_string(),
+            "file_size_bytes": pdf.file_size_bytes,
+            "sha256_checksum": pdf.sha256_checksum,
+            "page_count": pdf.page_count,
             "tenant_id": data.tenant_id.to_string(),
             "workspace_id": data.workspace_id.to_string(),
             "track_id": task.track_id.clone(),
@@ -2130,6 +2251,8 @@ impl DocumentTaskProcessor {
         // SPEC-002: Include source_type: "pdf" for unified pipeline tracking
         // OODA-05: Include tenant_id/workspace_id for multi-tenant document visibility
         // Pass the early_doc_id so we reuse the same document that's already showing in UI
+        // OODA-04: Include sha256_checksum for end-to-end lineage traceability
+        // WHY: Downstream ensure_document_source_type needs checksum for integrity verification
         let text_data = edgequake_tasks::TextInsertData {
             text: markdown,
             file_source: pdf.filename.clone(),
@@ -2138,10 +2261,12 @@ impl DocumentTaskProcessor {
                 "document_id": early_doc_id.clone(),  // Reuse early document ID
                 "source": "pdf_upload",
                 "source_type": "pdf",
+                "document_type": "pdf",
                 "pdf_id": data.pdf_id.to_string(),
                 "filename": pdf.filename,
                 "page_count": pdf.page_count,
                 "file_size_bytes": pdf.file_size_bytes,
+                "sha256_checksum": pdf.sha256_checksum,
                 "tenant_id": data.tenant_id.to_string(),
                 "workspace_id": data.workspace_id.to_string(),
             })),
