@@ -15,10 +15,13 @@
 
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { Document } from '@/types';
-import { Brain, FileText, Network, Settings } from 'lucide-react';
+import { Brain, Database, Download, FileText, GitBranch, Network, Settings } from 'lucide-react';
 import { CollapsibleSection } from './collapsible-section';
+import { DocumentHierarchyTree } from './document-hierarchy-tree';
+import { EnhancedMetadata } from './enhanced-metadata';
 import { EntityRelationStats } from './entity-relation-stats';
 import { KeyStats } from './key-stats';
+import { LineageExport } from './lineage-export';
 import { LineageTree } from './lineage-tree';
 import { ProcessingDetails } from './processing-details';
 import { SourceInfoGrid } from './source-info-grid';
@@ -29,14 +32,14 @@ interface MetadataSidebarProps {
 
 export function MetadataSidebar({ document }: MetadataSidebarProps) {
   return (
-    <div className="h-full flex flex-col border-l bg-background">
-      {/* Sticky Stats - Always visible */}
-      <div className="sticky top-0 z-10 bg-background border-b p-4 shadow-sm">
+    <div className="h-full flex flex-col border-l bg-background overflow-hidden">
+      {/* Fixed Stats Header - Always visible, never compressed */}
+      <div className="shrink-0 z-10 bg-background border-b p-4 shadow-sm">
         <KeyStats document={document} />
       </div>
 
-      {/* Scrollable sections */}
-      <ScrollArea className="flex-1">
+      {/* Scrollable sections - min-h-0 allows flex item to shrink below content height */}
+      <ScrollArea className="flex-1 min-h-0" showShadows>
         <div className="p-4 space-y-4">
           {/* Extraction Lineage */}
           {document.lineage && (
@@ -64,6 +67,17 @@ export function MetadataSidebar({ document }: MetadataSidebarProps) {
             </CollapsibleSection>
           )}
 
+          {/* Document Hierarchy Tree (OODA-13): Doc → Chunks → Entities */}
+          <CollapsibleSection
+            title="Data Hierarchy"
+            icon={<GitBranch className="h-4 w-4" />}
+          >
+            <DocumentHierarchyTree
+              documentId={document.id}
+              documentName={document.file_name ?? document.title ?? undefined}
+            />
+          </CollapsibleSection>
+
           {/* Source Information */}
           <CollapsibleSection
             title="Source Details"
@@ -81,6 +95,22 @@ export function MetadataSidebar({ document }: MetadataSidebarProps) {
               <ProcessingDetails lineage={document.lineage} />
             </CollapsibleSection>
           )}
+
+          {/* Enhanced Metadata from KV Storage (OODA-12) */}
+          <CollapsibleSection
+            title="Extended Metadata"
+            icon={<Database className="h-4 w-4" />}
+          >
+            <EnhancedMetadata documentId={document.id} />
+          </CollapsibleSection>
+
+          {/* Lineage Export (OODA-24): Download lineage as JSON/CSV */}
+          <CollapsibleSection
+            title="Export Lineage"
+            icon={<Download className="h-4 w-4" />}
+          >
+            <LineageExport documentId={document.id} />
+          </CollapsibleSection>
         </div>
       </ScrollArea>
     </div>

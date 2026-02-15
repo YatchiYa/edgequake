@@ -263,6 +263,20 @@ fn api_v1_routes() -> Router<AppState> {
             "/documents/{document_id}/failed-chunks",
             get(handlers::list_failed_chunks),
         )
+        // OODA-07: Full lineage and metadata endpoints
+        .route(
+            "/documents/{document_id}/lineage",
+            get(handlers::get_document_full_lineage),
+        )
+        .route(
+            "/documents/{document_id}/metadata",
+            get(handlers::get_document_metadata),
+        )
+        // OODA-22: Lineage export endpoint (JSON/CSV download)
+        .route(
+            "/documents/{document_id}/lineage/export",
+            get(handlers::export_document_lineage),
+        )
         // Document by ID - comes last because {document_id} matches any path segment
         .route("/documents/{document_id}", get(handlers::get_document))
         .route(
@@ -397,6 +411,11 @@ fn api_v1_routes() -> Router<AppState> {
         )
         // Chunk Detail (WebUI Spec WEBUI-006)
         .route("/chunks/{chunk_id}", get(handlers::get_chunk_detail))
+        // OODA-08: Chunk lineage with parent refs
+        .route(
+            "/chunks/{chunk_id}/lineage",
+            get(handlers::get_chunk_lineage),
+        )
         // Entity Provenance (WebUI Spec WEBUI-006)
         .route(
             "/entities/{entity_id}/provenance",

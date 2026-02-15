@@ -3,6 +3,7 @@
 use crate::client::EdgeQuakeClient;
 use crate::error::Result;
 use crate::types::documents::*;
+use crate::types::operations::DocumentFullLineage;
 
 pub struct DocumentsResource<'a> {
     pub(crate) client: &'a EdgeQuakeClient,
@@ -54,6 +55,70 @@ impl<'a> DocumentsResource<'a> {
     pub async fn track(&self, track_id: &str) -> Result<TrackStatusResponse> {
         self.client
             .get(&format!("/api/v1/documents/track/{track_id}"))
+            .await
+    }
+
+    // ========================================================================
+    // Lineage Methods (OODA-14)
+    // ========================================================================
+
+    /// `GET /api/v1/documents/{id}/lineage`
+    ///
+    /// Returns complete document lineage (persisted pipeline lineage + metadata).
+    /// @implements F5 — Single API call retrieves complete lineage tree.
+    pub async fn get_lineage(&self, id: &str) -> Result<DocumentFullLineage> {
+        self.client
+            .get(&format!("/api/v1/documents/{id}/lineage"))
+            .await
+    }
+
+    /// `GET /api/v1/documents/{id}/metadata`
+    ///
+    /// Returns all document metadata stored in KV storage.
+    /// @implements F1 — All document metadata retrievable.
+    pub async fn get_metadata(&self, id: &str) -> Result<serde_json::Value> {
+        self.client
+            .get(&format!("/api/v1/documents/{id}/metadata"))
+            .await
+    }
+
+    // ========================================================================
+    // Bulk / Recovery Operations (OODA-32)
+    // ========================================================================
+
+    /// `DELETE /api/v1/documents` — Delete all documents in workspace.
+    pub async fn delete_all(&self) -> Result<serde_json::Value> {
+        self.client.delete("/api/v1/documents").await
+    }
+
+    /// `POST /api/v1/documents/reprocess` — Retry all failed documents.
+    pub async fn reprocess(&self) -> Result<serde_json::Value> {
+        self.client
+            .post::<(), serde_json::Value>("/api/v1/documents/reprocess", None)
+            .await
+    }
+
+    /// `POST /api/v1/documents/recover-stuck` — Recover stuck processing docs.
+    pub async fn recover_stuck(&self) -> Result<serde_json::Value> {
+        self.client
+            .post::<(), serde_json::Value>("/api/v1/documents/recover-stuck", None)
+            .await
+    }
+
+    /// `POST /api/v1/documents/{id}/retry-chunks` — Retry failed chunks for a document.
+    pub async fn retry_chunks(&self, id: &str) -> Result<serde_json::Value> {
+        self.client
+            .post::<(), serde_json::Value>(
+                &format!("/api/v1/documents/{id}/retry-chunks"),
+                None,
+            )
+            .await
+    }
+
+    /// `GET /api/v1/documents/{id}/failed-chunks` — List failed chunks for a document.
+    pub async fn failed_chunks(&self, id: &str) -> Result<Vec<serde_json::Value>> {
+        self.client
+            .get(&format!("/api/v1/documents/{id}/failed-chunks"))
             .await
     }
 }

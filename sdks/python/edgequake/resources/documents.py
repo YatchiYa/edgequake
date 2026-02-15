@@ -2,12 +2,15 @@
 
 WHY: Maps to /api/v1/documents/* endpoints. Supports text upload, file upload,
 batch upload, PDF operations, and document lifecycle management.
+
+WHY OODA-06: Aliased built-in `list` to `_list` to avoid shadowing by method name.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, BinaryIO
+from typing import List as _list
 
 from edgequake.resources._base import AsyncResource, SyncResource
 from edgequake.types.documents import (
@@ -25,6 +28,7 @@ from edgequake.types.documents import (
     TrackStatusResponse,
     UploadDocumentResponse,
 )
+from edgequake.types.operations import DocumentFullLineage
 
 
 class DocumentsResource(SyncResource):
@@ -139,7 +143,7 @@ class DocumentsResource(SyncResource):
 
     def upload_batch(
         self,
-        files: list[Path | BinaryIO],
+        files: _list[Path | BinaryIO],
         *,
         metadata: dict[str, str] | None = None,
     ) -> BatchUploadResponse:
@@ -169,7 +173,7 @@ class DocumentsResource(SyncResource):
         path: str,
         *,
         recursive: bool = True,
-        extensions: list[str] | None = None,
+        extensions: _list[str] | None = None,
     ) -> ScanResponse:
         """Scan a directory for documents to ingest.
 
@@ -213,7 +217,7 @@ class DocumentsResource(SyncResource):
         """
         return self._post(f"/api/v1/documents/{document_id}/retry-chunks")
 
-    def failed_chunks(self, document_id: str) -> list[FailedChunkInfo]:
+    def failed_chunks(self, document_id: str) -> _list[FailedChunkInfo]:
         """List failed chunks for a document.
 
         GET /api/v1/documents/{document_id}/failed-chunks
@@ -224,6 +228,57 @@ class DocumentsResource(SyncResource):
         # WHY: Some responses wrap in {"chunks": [...]}
         chunks = data.get("chunks", []) if isinstance(data, dict) else []
         return [FailedChunkInfo.model_validate(c) for c in chunks]
+
+    # ========================================================================
+    # Lineage Methods (OODA-16)
+    # ========================================================================
+
+    def get_lineage(self, document_id: str) -> DocumentFullLineage:
+        """Get complete document lineage.
+
+        GET /api/v1/documents/{document_id}/lineage
+
+        Returns persisted pipeline lineage + document metadata in a single call.
+        @implements F5 — Single API call retrieves complete lineage tree.
+        """
+        return self._get(
+            f"/api/v1/documents/{document_id}/lineage",
+            response_type=DocumentFullLineage,
+        )
+
+    def get_metadata(self, document_id: str) -> dict[str, Any]:
+        """Get all document metadata from KV storage.
+
+        GET /api/v1/documents/{document_id}/metadata
+
+        @implements F1 — All document metadata retrievable.
+        """
+        return self._get(f"/api/v1/documents/{document_id}/metadata")
+
+    def export_lineage(self, document_id: str, *, format: str = "json") -> bytes:
+        """Export document lineage as a downloadable file.
+
+        GET /api/v1/documents/{document_id}/lineage/export?format={format}
+
+        WHY: Enables compliance audit trails and data pipeline ingestion.
+        Supports 'json' (default) and 'csv' formats.
+
+        Args:
+            document_id: Document ID to export lineage for.
+            format: Export format — 'json' or 'csv'.
+
+        Returns:
+            Raw bytes of the exported file content.
+        """
+        response = self._transport.request(
+            "GET",
+            f"/api/v1/documents/{document_id}/lineage/export",
+            params={"format": format},
+        )
+        # WHY: Export returns raw file content, not JSON
+        if hasattr(response, "content"):
+            return response.content
+        return response.read()
 
     def _delete_with_response(
         self, path: str, *, response_type: type | None = None
@@ -257,7 +312,7 @@ class PdfResource(SyncResource):
         )
         return PdfUploadResponse.model_validate(response.json())
 
-    def list(self) -> list[PdfInfo]:
+    def list(self) -> _list[PdfInfo]:
         """List all PDF documents.
 
         GET /api/v1/documents/pdf
@@ -414,7 +469,7 @@ class AsyncDocumentsResource(AsyncResource):
         path: str,
         *,
         recursive: bool = True,
-        extensions: list[str] | None = None,
+        extensions: _list[str] | None = None,
     ) -> ScanResponse:
         body: dict[str, Any] = {"path": path, "recursive": recursive}
         if extensions:
@@ -428,6 +483,43 @@ class AsyncDocumentsResource(AsyncResource):
 
     async def recover_stuck(self) -> dict[str, Any]:
         return await self._post("/api/v1/documents/recover-stuck")
+
+    # ========================================================================
+    # Lineage Methods (OODA-16)
+    # ========================================================================
+
+    async def get_lineage(self, document_id: str) -> DocumentFullLineage:
+        """Get complete document lineage.
+
+        GET /api/v1/documents/{document_id}/lineage
+        """
+        return await self._get(
+            f"/api/v1/documents/{document_id}/lineage",
+            response_type=DocumentFullLineage,
+        )
+
+    async def get_metadata(self, document_id: str) -> dict[str, Any]:
+        """Get all document metadata from KV storage.
+
+        GET /api/v1/documents/{document_id}/metadata
+        """
+        return await self._get(f"/api/v1/documents/{document_id}/metadata")
+
+    async def export_lineage(self, document_id: str, *, format: str = "json") -> bytes:
+        """Export document lineage as a downloadable file.
+
+        GET /api/v1/documents/{document_id}/lineage/export?format={format}
+
+        WHY: Enables compliance audit trails and data pipeline ingestion.
+        """
+        response = await self._transport.request(
+            "GET",
+            f"/api/v1/documents/{document_id}/lineage/export",
+            params={"format": format},
+        )
+        if hasattr(response, "content"):
+            return response.content
+        return response.read()
 
 
 class AsyncPdfResource(AsyncResource):
@@ -448,7 +540,7 @@ class AsyncPdfResource(AsyncResource):
         )
         return PdfUploadResponse.model_validate(response.json())
 
-    async def list(self) -> list[PdfInfo]:
+    async def list(self) -> _list[PdfInfo]:
         data = await self._get("/api/v1/documents/pdf")
         if isinstance(data, list):
             return [PdfInfo.model_validate(p) for p in data]

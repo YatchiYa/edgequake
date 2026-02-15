@@ -2,11 +2,14 @@
 
 WHY: Maps to /api/v1/conversations/*, /api/v1/messages/*,
 /api/v1/folders/*, and /api/v1/shared/* endpoints.
+
+WHY OODA-06: Aliased built-in `list` to `_list` to avoid shadowing by method name.
 """
 
 from __future__ import annotations
 
 from typing import Any
+from typing import List as _list
 
 from edgequake.resources._base import AsyncResource, SyncResource
 from edgequake.types.conversations import (
@@ -21,7 +24,6 @@ from edgequake.types.conversations import (
     FolderCreate,
     FolderInfo,
     FolderUpdate,
-    ImportConversationsRequest,
     ImportConversationsResponse,
     Message,
     MessageCreate,
@@ -40,7 +42,7 @@ class ConversationsResource(SyncResource):
         folder_id: str | None = None,
         page: int = 1,
         page_size: int = 50,
-    ) -> list[ConversationInfo]:
+    ) -> _list[ConversationInfo]:
         """List conversations.
 
         GET /api/v1/conversations
@@ -107,7 +109,7 @@ class ConversationsResource(SyncResource):
         self._delete(f"/api/v1/conversations/{conversation_id}")
 
     def import_conversations(
-        self, conversations: list[dict[str, Any]]
+        self, conversations: _list[dict[str, Any]]
     ) -> ImportConversationsResponse:
         """Import conversations.
 
@@ -119,7 +121,7 @@ class ConversationsResource(SyncResource):
             response_type=ImportConversationsResponse,
         )
 
-    def bulk_delete(self, ids: list[str]) -> BulkDeleteResponse:
+    def bulk_delete(self, ids: _list[str]) -> BulkDeleteResponse:
         """Bulk delete conversations.
 
         POST /api/v1/conversations/bulk/delete
@@ -130,7 +132,7 @@ class ConversationsResource(SyncResource):
             response_type=BulkDeleteResponse,
         )
 
-    def bulk_archive(self, ids: list[str], *, archive: bool = True) -> dict[str, Any]:
+    def bulk_archive(self, ids: _list[str], *, archive: bool = True) -> dict[str, Any]:
         """Bulk archive/unarchive conversations.
 
         POST /api/v1/conversations/bulk/archive
@@ -141,7 +143,7 @@ class ConversationsResource(SyncResource):
         )
 
     def bulk_move(
-        self, ids: list[str], *, folder_id: str | None = None
+        self, ids: _list[str], *, folder_id: str | None = None
     ) -> dict[str, Any]:
         """Bulk move conversations to a folder.
 
@@ -154,7 +156,7 @@ class ConversationsResource(SyncResource):
 
     # --- Messages sub-operations ---
 
-    def list_messages(self, conversation_id: str) -> list[Message]:
+    def list_messages(self, conversation_id: str) -> _list[Message]:
         """List messages in a conversation.
 
         GET /api/v1/conversations/{id}/messages
@@ -229,7 +231,7 @@ class ConversationsResource(SyncResource):
 class FoldersResource(SyncResource):
     """Folder management for conversations."""
 
-    def list(self) -> list[FolderInfo]:
+    def list(self) -> _list[FolderInfo]:
         """List folders.
 
         GET /api/v1/folders
@@ -282,7 +284,7 @@ class AsyncConversationsResource(AsyncResource):
 
     async def list(
         self, *, folder_id: str | None = None, page: int = 1, page_size: int = 50
-    ) -> list[ConversationInfo]:
+    ) -> _list[ConversationInfo]:
         params: dict[str, Any] = {"page": page, "page_size": page_size}
         if folder_id:
             params["folder_id"] = folder_id
@@ -315,7 +317,7 @@ class AsyncConversationsResource(AsyncResource):
     async def delete(self, conversation_id: str) -> None:
         await self._delete(f"/api/v1/conversations/{conversation_id}")
 
-    async def list_messages(self, conversation_id: str) -> list[Message]:
+    async def list_messages(self, conversation_id: str) -> _list[Message]:
         data = await self._get(f"/api/v1/conversations/{conversation_id}/messages")
         if isinstance(data, list):
             return [Message.model_validate(m) for m in data]
@@ -348,7 +350,7 @@ class AsyncConversationsResource(AsyncResource):
 class AsyncFoldersResource(AsyncResource):
     """Async folder management."""
 
-    async def list(self) -> list[FolderInfo]:
+    async def list(self) -> _list[FolderInfo]:
         data = await self._get("/api/v1/folders")
         if isinstance(data, list):
             return [FolderInfo.model_validate(f) for f in data]

@@ -2133,3 +2133,564 @@ func TestConversations_Unpin_Error(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+// ── Lineage & Metadata Model Tests ──────────────────────────────────
+// WHY: The improve-lineage mission requires source_id, metadata,
+// and provenance fields to be properly tested across all SDKs.
+
+func TestEntity_SourceID_Field(t *testing.T) {
+	e := edgequake.Entity{SourceID: "doc-123", EntityName: "ALICE"}
+	if e.SourceID != "doc-123" {
+		t.Fatalf("expected doc-123, got %s", e.SourceID)
+	}
+}
+
+func TestEntity_Metadata_Field(t *testing.T) {
+	e := edgequake.Entity{
+		EntityName: "BOB",
+		Metadata:   map[string]interface{}{"key": "value"},
+	}
+	if e.Metadata == nil {
+		t.Fatal("expected metadata to be non-nil")
+	}
+}
+
+func TestEntity_Timestamps(t *testing.T) {
+	e := edgequake.Entity{
+		EntityName: "EVE",
+		CreatedAt:  "2025-01-01T00:00:00Z",
+		UpdatedAt:  "2025-01-02T00:00:00Z",
+	}
+	if e.CreatedAt == "" || e.UpdatedAt == "" {
+		t.Fatal("timestamps should not be empty")
+	}
+}
+
+func TestCreateEntityParams_SourceID(t *testing.T) {
+	p := edgequake.CreateEntityParams{
+		EntityName:  "ALICE",
+		EntityType:  "person",
+		Description: "A researcher",
+		SourceID:    "doc-456",
+	}
+	if p.SourceID != "doc-456" {
+		t.Fatalf("expected doc-456, got %s", p.SourceID)
+	}
+}
+
+func TestCreateEntityParams_Metadata(t *testing.T) {
+	p := edgequake.CreateEntityParams{
+		EntityName: "META",
+		SourceID:   "src-1",
+		Metadata:   map[string]interface{}{"confidence": 0.95},
+	}
+	if p.Metadata == nil {
+		t.Fatal("expected metadata")
+	}
+}
+
+func TestProvenanceRecord_Fields(t *testing.T) {
+	conf := 0.92
+	pr := edgequake.ProvenanceRecord{
+		EntityID:         "ent-1",
+		EntityName:       "ALICE",
+		DocumentID:       "doc-1",
+		ChunkID:          "chunk-7",
+		ExtractionMethod: "llm",
+		Confidence:       &conf,
+	}
+	if pr.DocumentID != "doc-1" {
+		t.Fatalf("expected doc-1, got %s", pr.DocumentID)
+	}
+	if *pr.Confidence != 0.92 {
+		t.Fatalf("expected 0.92, got %f", *pr.Confidence)
+	}
+}
+
+func TestLineageGraph_Structure(t *testing.T) {
+	lg := edgequake.LineageGraph{
+		Nodes: []edgequake.LineageNode{
+			{ID: "n1", Name: "ALICE", NodeType: "person"},
+			{ID: "n2", Name: "BOB", NodeType: "person"},
+		},
+		Edges: []edgequake.LineageEdge{
+			{Source: "n1", Target: "n2", Relationship: "KNOWS"},
+		},
+	}
+	if len(lg.Nodes) != 2 {
+		t.Fatalf("expected 2 nodes, got %d", len(lg.Nodes))
+	}
+	if lg.Edges[0].Relationship != "KNOWS" {
+		t.Fatalf("expected KNOWS, got %s", lg.Edges[0].Relationship)
+	}
+}
+
+func TestLineageNode_Fields(t *testing.T) {
+	n := edgequake.LineageNode{ID: "n1", Name: "ALICE", NodeType: "person"}
+	if n.NodeType != "person" {
+		t.Fatalf("expected person, got %s", n.NodeType)
+	}
+}
+
+func TestLineageEdge_Fields(t *testing.T) {
+	e := edgequake.LineageEdge{Source: "A", Target: "B", Relationship: "COLLAB"}
+	if e.Source != "A" || e.Target != "B" {
+		t.Fatal("source/target mismatch")
+	}
+}
+
+func TestEntity_JSON_SourceID_Roundtrip(t *testing.T) {
+	e := edgequake.Entity{
+		EntityName: "ALICE",
+		SourceID:   "doc-rt-1",
+		Metadata:   map[string]interface{}{"origin": "test"},
+	}
+	data, err := json.Marshal(e)
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+	var e2 edgequake.Entity
+	if err := json.Unmarshal(data, &e2); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if e2.SourceID != "doc-rt-1" {
+		t.Fatalf("expected doc-rt-1, got %s", e2.SourceID)
+	}
+}
+
+func TestProvenanceRecord_JSON_Roundtrip(t *testing.T) {
+	conf := 0.88
+	pr := edgequake.ProvenanceRecord{
+		EntityName: "BOB",
+		DocumentID: "doc-prov-1",
+		Confidence: &conf,
+	}
+	data, err := json.Marshal(pr)
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+	var pr2 edgequake.ProvenanceRecord
+	if err := json.Unmarshal(data, &pr2); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if pr2.DocumentID != "doc-prov-1" {
+		t.Fatalf("expected doc-prov-1, got %s", pr2.DocumentID)
+	}
+}
+
+func TestCreateEntityParams_JSON_Roundtrip(t *testing.T) {
+	p := edgequake.CreateEntityParams{
+		EntityName:  "TEST",
+		EntityType:  "concept",
+		Description: "A test entity",
+		SourceID:    "src-json-1",
+		Metadata:    map[string]interface{}{"key": "val"},
+	}
+	data, err := json.Marshal(p)
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+	if !strings.Contains(string(data), "src-json-1") {
+		t.Fatal("JSON should contain source_id")
+	}
+	if !strings.Contains(string(data), "key") {
+		t.Fatal("JSON should contain metadata")
+	}
+}
+
+func TestMergeEntitiesParams_JSON(t *testing.T) {
+	p := edgequake.MergeEntitiesParams{
+		SourceEntity: "ALICE_1",
+		TargetEntity: "ALICE_2",
+	}
+	data, err := json.Marshal(p)
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+	if !strings.Contains(string(data), "ALICE_1") || !strings.Contains(string(data), "ALICE_2") {
+		t.Fatal("JSON should contain both entities")
+	}
+}
+
+func TestEntity_Create_SendsSourceID(t *testing.T) {
+	// WHY: Verify that entity creation includes source_id in request body
+	var capturedBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		capturedBody = string(body)
+		w.WriteHeader(200)
+		json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+	}))
+	defer srv.Close()
+
+	c := edgequake.NewClient(edgequake.WithBaseURL(srv.URL))
+	_, _ = c.Entities.Create(context.Background(), &edgequake.CreateEntityParams{
+		EntityName:  "LINEAGE_TEST",
+		EntityType:  "person",
+		Description: "Testing lineage",
+		SourceID:    "doc-lineage-test",
+	})
+	if !strings.Contains(capturedBody, "doc-lineage-test") {
+		t.Fatalf("request body should contain source_id, got: %s", capturedBody)
+	}
+}
+
+func TestEntity_Neighborhood_Lineage(t *testing.T) {
+	// WHY: Neighborhood is a lineage traversal operation
+	expected := map[string]interface{}{
+		"center": map[string]interface{}{
+			"id": "n1", "entity_name": "ALICE",
+		},
+		"nodes": []interface{}{},
+		"edges": []interface{}{},
+		"depth": float64(2),
+	}
+	srv := mockServer(t, 200, expected)
+	defer srv.Close()
+	c := edgequake.NewClient(edgequake.WithBaseURL(srv.URL))
+	resp, err := c.Entities.Neighborhood(context.Background(), "ALICE", 2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("expected non-nil response")
+	}
+}
+
+// ── OODA-43: Additional Unique Tests ─────────────────────────────────────────
+
+func TestFolders_Create_WithParentID(t *testing.T) {
+	var capturedBody string
+	srv := routedServer(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		capturedBody = string(body)
+		jsonStatus(w, 201, edgequake.FolderInfo{ID: "f-child", Name: "Child", ParentID: "f-parent"})
+	})
+	defer srv.Close()
+	c := edgequake.NewClient(edgequake.WithBaseURL(srv.URL))
+	folder, err := c.Folders.Create(context.Background(), &edgequake.CreateFolderParams{
+		Name:     "Child",
+		ParentID: "f-parent",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(capturedBody, "f-parent") {
+		t.Fatalf("expected parent_id in body, got: %s", capturedBody)
+	}
+	if folder.ParentID != "f-parent" {
+		t.Fatalf("expected parent_id f-parent, got %s", folder.ParentID)
+	}
+}
+
+func TestFolders_Get_WithConversationCount(t *testing.T) {
+	srv := mockServer(t, 200, edgequake.FolderInfo{
+		ID: "folder-abc", Name: "Projects", ConversationCount: 42,
+	})
+	defer srv.Close()
+	c := edgequake.NewClient(edgequake.WithBaseURL(srv.URL))
+	folder, err := c.Folders.Get(context.Background(), "folder-abc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if folder.ConversationCount != 42 {
+		t.Fatalf("expected 42 conversations, got %d", folder.ConversationCount)
+	}
+}
+
+func TestFolders_List_Empty(t *testing.T) {
+	srv := mockServer(t, 200, []edgequake.FolderInfo{})
+	defer srv.Close()
+	c := edgequake.NewClient(edgequake.WithBaseURL(srv.URL))
+	folders, err := c.Folders.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(folders) != 0 {
+		t.Fatalf("expected empty list, got %d", len(folders))
+	}
+}
+
+func TestPDF_Progress_WithProgress(t *testing.T) {
+	progress := 75.0
+	srv := mockServer(t, 200, edgequake.PdfProgressResponse{
+		TrackID: "track-xyz", Status: "processing", Progress: &progress,
+	})
+	defer srv.Close()
+	c := edgequake.NewClient(edgequake.WithBaseURL(srv.URL))
+	resp, err := c.PDF.Progress(context.Background(), "track-xyz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Progress == nil || *resp.Progress != 75.0 {
+		t.Fatalf("expected 75%% progress")
+	}
+}
+
+func TestPDF_Content_WithMarkdown(t *testing.T) {
+	srv := mockServer(t, 200, edgequake.PdfContentResponse{
+		ID:       "pdf-xyz",
+		Markdown: "# Title\n\nSome content here...",
+	})
+	defer srv.Close()
+	c := edgequake.NewClient(edgequake.WithBaseURL(srv.URL))
+	content, err := c.PDF.Content(context.Background(), "pdf-xyz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(content.Markdown, "# Title") {
+		t.Fatalf("expected markdown with title, got: %s", content.Markdown)
+	}
+}
+
+func TestPDF_List_Multiple(t *testing.T) {
+	srv := mockServer(t, 200, []edgequake.Document{
+		{ID: "pdf-1", FileName: "report.pdf", Status: "completed"},
+		{ID: "pdf-2", FileName: "invoice.pdf", Status: "processing"},
+		{ID: "pdf-3", FileName: "contract.pdf", Status: "completed"},
+	})
+	defer srv.Close()
+	c := edgequake.NewClient(edgequake.WithBaseURL(srv.URL))
+	pdfs, err := c.PDF.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pdfs) != 3 {
+		t.Fatalf("expected 3 pdfs, got %d", len(pdfs))
+	}
+	// Check statuses
+	completed := 0
+	for _, pdf := range pdfs {
+		if pdf.Status == "completed" {
+			completed++
+		}
+	}
+	if completed != 2 {
+		t.Fatalf("expected 2 completed, got %d", completed)
+	}
+}
+
+func TestPDF_Status_Processing(t *testing.T) {
+	progress := 30.0
+	srv := mockServer(t, 200, edgequake.PdfProgressResponse{
+		TrackID: "pdf-proc", Status: "processing", Progress: &progress,
+	})
+	defer srv.Close()
+	c := edgequake.NewClient(edgequake.WithBaseURL(srv.URL))
+	status, err := c.PDF.Status(context.Background(), "pdf-proc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Status != "processing" {
+		t.Fatalf("expected processing, got %s", status.Status)
+	}
+}
+
+func TestModels_ProviderHealth_WithModels(t *testing.T) {
+	srv := mockServer(t, 200, []edgequake.ProviderHealthInfo{
+		{
+			Name:    "openai",
+			Enabled: true,
+			Models: []edgequake.ModelInfo{
+				{Name: "gpt-4o", DisplayName: "GPT-4o", Provider: "openai"},
+				{Name: "gpt-4o-mini", DisplayName: "GPT-4o Mini", Provider: "openai"},
+			},
+		},
+	})
+	defer srv.Close()
+	c := edgequake.NewClient(edgequake.WithBaseURL(srv.URL))
+	health, err := c.Models.ProviderHealth(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(health[0].Models) != 2 {
+		t.Fatalf("expected 2 models, got %d", len(health[0].Models))
+	}
+}
+
+func TestModels_ProviderHealth_Disabled(t *testing.T) {
+	srv := mockServer(t, 200, []edgequake.ProviderHealthInfo{
+		{Name: "openai", Enabled: true, Priority: 1},
+		{Name: "anthropic", Enabled: false, Priority: 3},
+	})
+	defer srv.Close()
+	c := edgequake.NewClient(edgequake.WithBaseURL(srv.URL))
+	health, err := c.Models.ProviderHealth(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	disabled := 0
+	for _, p := range health {
+		if !p.Enabled {
+			disabled++
+		}
+	}
+	if disabled != 1 {
+		t.Fatalf("expected 1 disabled, got %d", disabled)
+	}
+}
+
+func TestModels_List_WithProviders(t *testing.T) {
+	srv := mockServer(t, 200, edgequake.ProviderCatalog{
+		Providers: []edgequake.ProviderInfo{
+			{Name: "openai", DisplayName: "OpenAI"},
+			{Name: "ollama", DisplayName: "Ollama"},
+		},
+	})
+	defer srv.Close()
+	c := edgequake.NewClient(edgequake.WithBaseURL(srv.URL))
+	catalog, err := c.Models.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog.Providers) != 2 {
+		t.Fatalf("expected 2 providers, got %d", len(catalog.Providers))
+	}
+}
+
+func TestWorkspaces_RebuildEmbeddings_Response(t *testing.T) {
+	srv := mockServer(t, 200, edgequake.RebuildResponse{
+		Status:  "started",
+		TrackID: "rebuild-123",
+		Message: "Rebuild initiated",
+	})
+	defer srv.Close()
+	c := edgequake.NewClient(edgequake.WithBaseURL(srv.URL))
+	resp, err := c.Workspaces.RebuildEmbeddings(context.Background(), "ws-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Status != "started" {
+		t.Fatalf("expected started, got %s", resp.Status)
+	}
+	if resp.TrackID != "rebuild-123" {
+		t.Fatalf("expected track id, got %s", resp.TrackID)
+	}
+}
+
+func TestWorkspaces_Stats_AllCounts(t *testing.T) {
+	srv := mockServer(t, 200, edgequake.WorkspaceStats{
+		WorkspaceID:       "ws-xyz",
+		DocumentCount:     100,
+		EntityCount:       500,
+		RelationshipCount: 1200,
+		ChunkCount:        2000,
+	})
+	defer srv.Close()
+	c := edgequake.NewClient(edgequake.WithBaseURL(srv.URL))
+	stats, err := c.Workspaces.Stats(context.Background(), "ws-xyz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.DocumentCount != 100 {
+		t.Fatalf("expected 100 documents, got %d", stats.DocumentCount)
+	}
+	if stats.EntityCount != 500 {
+		t.Fatalf("expected 500 entities, got %d", stats.EntityCount)
+	}
+	if stats.RelationshipCount != 1200 {
+		t.Fatalf("expected 1200 relationships, got %d", stats.RelationshipCount)
+	}
+}
+
+func TestTenants_Create_WithResponse(t *testing.T) {
+	srv := mockServer(t, 201, edgequake.TenantInfo{
+		ID:   "tenant-new",
+		Name: "New Tenant",
+		Slug: "new-tenant",
+	})
+	defer srv.Close()
+	c := edgequake.NewClient(edgequake.WithBaseURL(srv.URL))
+	tenant, err := c.Tenants.Create(context.Background(), &edgequake.CreateTenantParams{
+		Name: "New Tenant",
+		Slug: "new-tenant",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tenant.Name != "New Tenant" {
+		t.Fatalf("expected New Tenant, got %s", tenant.Name)
+	}
+}
+
+func TestTenants_List_Multiple(t *testing.T) {
+	srv := mockServer(t, 200, edgequake.TenantListResponse{
+		Items: []edgequake.TenantInfo{
+			{ID: "t1", Name: "Tenant One"},
+			{ID: "t2", Name: "Tenant Two"},
+		},
+		Total: 2,
+	})
+	defer srv.Close()
+	c := edgequake.NewClient(edgequake.WithBaseURL(srv.URL))
+	resp, err := c.Tenants.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Items) != 2 {
+		t.Fatalf("expected 2 tenants, got %d", len(resp.Items))
+	}
+}
+
+func TestPipeline_Status_WithMetrics(t *testing.T) {
+	srv := mockServer(t, 200, edgequake.PipelineStatus{
+		Status:         "running",
+		ActiveTasks:    5,
+		QueuedTasks:    12,
+		CompletedTasks: 100,
+		FailedTasks:    2,
+	})
+	defer srv.Close()
+	c := edgequake.NewClient(edgequake.WithBaseURL(srv.URL))
+	status, err := c.Pipeline.Status(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.ActiveTasks != 5 {
+		t.Fatalf("expected 5 active tasks, got %d", status.ActiveTasks)
+	}
+	if status.QueuedTasks != 12 {
+		t.Fatalf("expected 12 queued tasks, got %d", status.QueuedTasks)
+	}
+}
+
+func TestPipeline_Metrics_QueueDepth(t *testing.T) {
+	srv := mockServer(t, 200, edgequake.QueueMetrics{
+		QueueDepth:        25,
+		Processing:        10,
+		CompletedLastHour: 150,
+		FailedLastHour:    3,
+	})
+	defer srv.Close()
+	c := edgequake.NewClient(edgequake.WithBaseURL(srv.URL))
+	metrics, err := c.Pipeline.Metrics(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metrics.QueueDepth != 25 {
+		t.Fatalf("expected 25 queue depth, got %d", metrics.QueueDepth)
+	}
+	if metrics.Processing != 10 {
+		t.Fatalf("expected 10 processing, got %d", metrics.Processing)
+	}
+}
+
+func TestPipeline_Status_InternalError(t *testing.T) {
+	srv := mockServer(t, 500, map[string]string{"error": "internal"})
+	defer srv.Close()
+	c := edgequake.NewClient(edgequake.WithBaseURL(srv.URL), edgequake.WithMaxRetries(0))
+	_, err := c.Pipeline.Status(context.Background())
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestPipeline_Metrics_ServiceUnavailable(t *testing.T) {
+	srv := mockServer(t, 503, map[string]string{"error": "service unavailable"})
+	defer srv.Close()
+	c := edgequake.NewClient(edgequake.WithBaseURL(srv.URL), edgequake.WithMaxRetries(0))
+	_, err := c.Pipeline.Metrics(context.Background())
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}

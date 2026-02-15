@@ -242,3 +242,68 @@ async fn e2e_lineage_for_entity() {
         Err(e) => println!("Lineage: expected error for nonexistent entity: {e}"),
     }
 }
+
+// ── Document Lineage (OODA-21) ───────────────────────────────────
+
+#[tokio::test]
+async fn e2e_document_lineage() {
+    let c = e2e_client();
+    let docs = c.documents().list().await.unwrap();
+    if let Some(doc) = docs.documents.first() {
+        match c.documents().get_lineage(&doc.id).await {
+            Ok(lineage) => {
+                println!(
+                    "Document lineage: doc={} metadata={:?} lineage={:?}",
+                    lineage.document_id,
+                    lineage.metadata.is_some(),
+                    lineage.lineage.is_some()
+                );
+                assert_eq!(lineage.document_id, doc.id);
+            }
+            Err(e) => println!("Document lineage: error (may not have lineage data): {e}"),
+        }
+    } else {
+        println!("Document lineage: skipped (no documents)");
+    }
+}
+
+#[tokio::test]
+async fn e2e_document_metadata() {
+    let c = e2e_client();
+    let docs = c.documents().list().await.unwrap();
+    if let Some(doc) = docs.documents.first() {
+        match c.documents().get_metadata(&doc.id).await {
+            Ok(metadata) => {
+                println!("Document metadata: {} keys", metadata.as_object().map(|o| o.len()).unwrap_or(0));
+                // Metadata should be an object with at least an id
+                assert!(metadata.is_object(), "metadata should be a JSON object");
+            }
+            Err(e) => println!("Document metadata: error: {e}"),
+        }
+    } else {
+        println!("Document metadata: skipped (no documents)");
+    }
+}
+
+#[tokio::test]
+async fn e2e_chunk_lineage() {
+    let c = e2e_client();
+    let docs = c.documents().list().await.unwrap();
+    if let Some(doc) = docs.documents.first() {
+        // Try chunk-0 for this document
+        let chunk_id = format!("{}-chunk-0", doc.id);
+        match c.chunks().get_lineage(&chunk_id).await {
+            Ok(lineage) => {
+                println!(
+                    "Chunk lineage: chunk={} doc={:?} entities={}",
+                    lineage.chunk_id, lineage.document_id,
+                    lineage.entity_names.len()
+                );
+                assert_eq!(lineage.document_id, Some(doc.id.clone()));
+            }
+            Err(e) => println!("Chunk lineage: error (chunk may not exist): {e}"),
+        }
+    } else {
+        println!("Chunk lineage: skipped (no documents)");
+    }
+}
