@@ -82,5 +82,19 @@
       "approve": true,
       "matchCommandLine": true
     }
+  },
+  "github.copilot.chat.mcpServers": {
+    "edgequake": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@edgequake/mcp-server"
+      ],
+      "env": {
+        "EDGEQUAKE_BASE_URL": "http://localhost:3000/",
+        "EDGEQUAKE_DEFAULT_TENANT": "default",
+        "EDGEQUAKE_DEFAULT_WORKSPACE": "default"
+      }
+    }
   }
 }
