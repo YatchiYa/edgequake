@@ -4,6 +4,12 @@
  * Folder Sidebar Component
  *
  * Displays and manages conversation folders with CRUD operations.
+ * Supports drag-and-drop for moving conversations to folders.
+ *
+ * @implements FEAT0709 - Folder CRUD operations
+ * @implements FEAT0710 - Move conversations to folders (drag-and-drop)
+ * @enforces BR0707 - Folder names unique per user
+ * @enforces BR0708 - Deleting folder moves conversations to root
  */
 
 import { Button } from "@/components/ui/button";
@@ -29,6 +35,10 @@ import {
     useFolders,
     useUpdateFolder,
 } from "@/hooks/use-folders";
+import {
+    useMoveConversation,
+    useMoveConversations,
+} from "@/hooks/use-move-conversation";
 import { cn } from "@/lib/utils";
 import { useQueryUIStore } from "@/stores/use-query-ui-store";
 import type { ConversationFolder } from "@/types";
@@ -45,6 +55,9 @@ import {
 import { memo, useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+/** Drag-and-drop data type for conversation IDs */
+export const DND_CONVERSATION_TYPE = "application/x-conversation-ids";
+
 // ============================================================================
 // Folder Item Component
 // ============================================================================
@@ -55,6 +68,8 @@ interface FolderItemProps {
   onSelect: () => void;
   onRename: (name: string) => void;
   onDelete: () => void;
+  /** Called when conversations are dropped onto this folder */
+  onDrop?: (conversationIds: string[], folderId: string) => void;
 }
 
 const FolderItem = memo(function FolderItem({
@@ -63,10 +78,12 @@ const FolderItem = memo(function FolderItem({
   onSelect,
   onRename,
   onDelete,
+  onDrop,
 }: FolderItemProps) {
   const { t } = useTranslation();
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(folder.name);
+  const [isDragOver, setIsDragOver] = useState(false);
 
   const handleSaveName = useCallback(() => {
     if (editName.trim() && editName !== folder.name) {
@@ -88,13 +105,49 @@ const FolderItem = memo(function FolderItem({
     [handleSaveName, folder.name]
   );
 
+  // Drag-and-drop handlers for drop target
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes(DND_CONVERSATION_TYPE)) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      setIsDragOver(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setIsDragOver(false);
+    }
+  }, []);
+
+  const handleDropEvent = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsDragOver(false);
+      const data = e.dataTransfer.getData(DND_CONVERSATION_TYPE);
+      if (data && onDrop) {
+        try {
+          const ids: string[] = JSON.parse(data);
+          if (ids.length > 0) {
+            onDrop(ids, folder.id);
+          }
+        } catch {
+          // Invalid data, ignore
+        }
+      }
+    },
+    [onDrop, folder.id],
+  );
+
   return (
     <div
       className={cn(
         "group relative flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-all duration-150",
-        isActive
-          ? "bg-primary/10 text-primary"
-          : "hover:bg-muted/60 text-muted-foreground hover:text-foreground"
+        isDragOver
+          ? "bg-primary/20 border-2 border-dashed border-primary ring-1 ring-primary/30"
+          : isActive
+            ? "bg-primary/10 text-primary"
+            : "hover:bg-muted/60 text-muted-foreground hover:text-foreground",
       )}
       onClick={onSelect}
       role="button"
@@ -105,9 +158,12 @@ const FolderItem = memo(function FolderItem({
           onSelect();
         }
       }}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDropEvent}
     >
-      {/* Icon */}
-      {isActive ? (
+      {/* Icon - open when active or when dragging over */}
+      {isDragOver || isActive ? (
         <FolderOpen className="h-3.5 w-3.5 shrink-0" />
       ) : (
         <Folder className="h-3.5 w-3.5 shrink-0" />
@@ -195,12 +251,67 @@ export function FolderSidebar({ className }: FolderSidebarProps) {
   const [folderToDelete, setFolderToDelete] = useState<string | null>(null);
   const [newFolderName, setNewFolderName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+  const [isRootDragOver, setIsRootDragOver] = useState(false);
 
   const store = useQueryUIStore();
   const { data: folders, isLoading } = useFolders();
   const createFolder = useCreateFolder();
   const updateFolder = useUpdateFolder();
   const deleteFolder = useDeleteFolder();
+  const moveConversation = useMoveConversation();
+  const moveConversations = useMoveConversations();
+
+  /** Handle dropping conversations onto a folder (or root when folderId is null) */
+  const handleDropOnFolder = useCallback(
+    (conversationIds: string[], folderId: string | null) => {
+      if (conversationIds.length === 1) {
+        moveConversation.mutate({
+          conversationId: conversationIds[0],
+          folderId,
+        });
+      } else if (conversationIds.length > 1) {
+        moveConversations.mutate({
+          conversationIds,
+          folderId,
+        });
+      }
+    },
+    [moveConversation, moveConversations],
+  );
+
+  // Root "All Conversations" drop target handlers
+  const handleRootDragOver = useCallback((e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes(DND_CONVERSATION_TYPE)) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      setIsRootDragOver(true);
+    }
+  }, []);
+
+  const handleRootDragLeave = useCallback((e: React.DragEvent) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setIsRootDragOver(false);
+    }
+  }, []);
+
+  const handleRootDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsRootDragOver(false);
+      const data = e.dataTransfer.getData(DND_CONVERSATION_TYPE);
+      if (data) {
+        try {
+          const ids: string[] = JSON.parse(data);
+          if (ids.length > 0) {
+            handleDropOnFolder(ids, null);
+          }
+        } catch {
+          // Invalid data, ignore
+        }
+      }
+    },
+    [handleDropOnFolder],
+  );
 
   // Sort folders by position
   const sortedFolders = useMemo(() => {
@@ -241,20 +352,25 @@ export function FolderSidebar({ className }: FolderSidebarProps) {
 
   return (
     <div className={cn("space-y-1", className)}>
-      {/* All Conversations */}
+      {/* Unfiled - shows conversations without any folder, also a drop target */}
       <div
         className={cn(
           "flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-all duration-150",
-          !store.filters.folderId
-            ? "bg-primary/10 text-primary"
-            : "hover:bg-muted/60 text-muted-foreground hover:text-foreground"
+          isRootDragOver
+            ? "bg-primary/20 border-2 border-dashed border-primary ring-1 ring-primary/30"
+            : store.filters.unfiled && !store.filters.folderId
+              ? "bg-primary/10 text-primary"
+              : "hover:bg-muted/60 text-muted-foreground hover:text-foreground",
         )}
-        onClick={() => store.setFilters({ folderId: null })}
+        onClick={() => store.setFilters({ folderId: null, unfiled: true })}
         role="button"
         tabIndex={0}
+        onDragOver={handleRootDragOver}
+        onDragLeave={handleRootDragLeave}
+        onDrop={handleRootDrop}
       >
         <Inbox className="h-3.5 w-3.5 shrink-0" />
-        <span className="text-xs font-medium">{t("query.folders.all", "All Conversations")}</span>
+        <span className="text-xs font-medium">{t("query.folders.unfiled", "Unfiled")}</span>
       </div>
 
       {/* Folders List */}
@@ -271,7 +387,7 @@ export function FolderSidebar({ className }: FolderSidebarProps) {
               key={folder.id}
               folder={folder}
               isActive={store.filters.folderId === folder.id}
-              onSelect={() => store.setFilters({ folderId: folder.id })}
+              onSelect={() => store.setFilters({ folderId: folder.id, unfiled: false })}
               onRename={(name) =>
                 updateFolder.mutate({ id: folder.id, data: { name } })
               }
@@ -279,6 +395,7 @@ export function FolderSidebar({ className }: FolderSidebarProps) {
                 setFolderToDelete(folder.id);
                 setDeleteDialogOpen(true);
               }}
+              onDrop={handleDropOnFolder}
             />
           ))}
 
