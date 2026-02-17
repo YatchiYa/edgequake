@@ -46,8 +46,10 @@ use std::sync::Arc;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
+use crate::safety_limits::{
+    create_safe_embedding_provider, create_safe_llm_provider, default_model_for_provider,
+};
 use edgequake_core::{Workspace, WorkspaceService};
-use edgequake_llm::ProviderFactory;
 use edgequake_query::{EmbeddingProvider, LLMProvider};
 
 use crate::providers::error::ProviderResolutionError;
@@ -322,7 +324,7 @@ impl WorkspaceProviderResolver {
             "Creating workspace embedding provider"
         );
 
-        let provider = ProviderFactory::create_safe_embedding_provider(
+        let provider = create_safe_embedding_provider(
             &workspace.embedding_provider,
             &workspace.embedding_model,
             workspace.embedding_dimension,
@@ -389,7 +391,7 @@ impl WorkspaceProviderResolver {
             "Creating workspace embedding provider"
         );
 
-        match ProviderFactory::create_safe_embedding_provider(
+        match create_safe_embedding_provider(
             &workspace.embedding_provider,
             &workspace.embedding_model,
             workspace.embedding_dimension,
@@ -456,7 +458,7 @@ impl WorkspaceProviderResolver {
             }
 
             // Just provider name - use default model
-            let default_model = ProviderFactory::default_model_for_provider(provider_id);
+            let default_model = default_model_for_provider(provider_id);
             (Some(provider_id.clone()), Some(default_model.to_string()))
         } else {
             (None, None)
@@ -477,10 +479,9 @@ impl WorkspaceProviderResolver {
             "Creating LLM provider"
         );
 
-        let provider_arc =
-            ProviderFactory::create_safe_llm_provider(provider, model).map_err(|e| {
-                ProviderResolutionError::from_creation_error(provider, model, &e.to_string())
-            })?;
+        let provider_arc = create_safe_llm_provider(provider, model).map_err(|e| {
+            ProviderResolutionError::from_creation_error(provider, model, &e.to_string())
+        })?;
 
         info!(
             provider = provider,
