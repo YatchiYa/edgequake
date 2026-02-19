@@ -81,37 +81,6 @@ sdk-kotlin-version: ## Update the version of the Kotlin SDK (sdks/kotlin). Usage
 	fi
 	sed -i '' -E 's/<version>.*<\/version>/<version>$(VERSION)<\/version>/' sdks/kotlin/pom.xml
 	@echo "$(GREEN)✓ Updated Kotlin SDK version to $(VERSION) in sdks/kotlin/pom.xml$(RESET)"
-
-sdk-java-publish: ## Publish the Java SDK (sdks/java) to Maven Central (requires Maven credentials in ~/.m2/settings.xml)
-	@echo "$(BOLD)$(BLUE)🚀 Publishing Java SDK (sdks/java) to Maven Central$(RESET)"
-	@echo "$(YELLOW)Note: Requires Maven Central credentials and GPG key setup$(RESET)"
-	cd sdks/java && mvn deploy -DskipTests
-
-sdk-java-version: ## Update the version of the Java SDK (sdks/java). Usage: make sdk-java-version VERSION=0.2.0
-	@if [ -z "$(VERSION)" ]; then \
-		echo "Usage: make sdk-java-version VERSION=<new_version>"; \
-		exit 1; \
-	fi
-	sed -i '' -E 's/<version>.*<\/version>/<version>$(VERSION)<\/version>/' sdks/java/pom.xml
-	@echo "$(GREEN)✓ Updated Java SDK version to $(VERSION) in sdks/java/pom.xml$(RESET)"
-
-# Kotlin SDK targets
-sdk-kotlin-build: ## Build the Kotlin SDK (sdks/kotlin)
-	@echo "$(BOLD)$(BLUE)🔨 Building Kotlin SDK (sdks/kotlin)$(RESET)"
-	cd sdks/kotlin && mvn clean package -DskipTests
-
-sdk-kotlin-publish: ## Publish the Kotlin SDK (sdks/kotlin) to Maven Central (requires Maven credentials in ~/.m2/settings.xml)
-	@echo "$(BOLD)$(BLUE)🚀 Publishing Kotlin SDK (sdks/kotlin) to Maven Central$(RESET)"
-	@echo "$(YELLOW)Note: Requires Maven Central credentials and GPG key setup$(RESET)"
-	cd sdks/kotlin && mvn deploy -DskipTests
-
-sdk-kotlin-version: ## Update the version of the Kotlin SDK (sdks/kotlin). Usage: make sdk-kotlin-version VERSION=0.2.0
-	@if [ -z "$(VERSION)" ]; then \
-		echo "Usage: make sdk-kotlin-version VERSION=<new_version>"; \
-		exit 1; \
-	fi
-	sed -i '' -E 's/<version>.*<\/version>/<version>$(VERSION)<\/version>/' sdks/kotlin/pom.xml
-	@echo "$(GREEN)✓ Updated Kotlin SDK version to $(VERSION) in sdks/kotlin/pom.xml$(RESET)"
 # ============================================================================
 # EdgeQuake - Full Stack Development Makefile
 # ============================================================================
@@ -231,6 +200,11 @@ else
   EDGEQUAKE_DEFAULT_EMBEDDING_MODEL ?= embeddinggemma
   EDGEQUAKE_DEFAULT_EMBEDDING_DIMENSION ?= 768
 endif
+
+# SPEC-040: Vision/VLM provider defaults for PDF-to-Markdown conversion
+# Vision always uses OpenAI by default (requires vision-capable model)
+EDGEQUAKE_VISION_PROVIDER ?= openai
+EDGEQUAKE_VISION_MODEL ?= gpt-4.1-nano
 
 # Default target
 .DEFAULT_GOAL := help
@@ -418,14 +392,12 @@ dev: check-deps check-ports ## Start full development stack (DB + Backend + Fron
 	if [ -n "$(OPENAI_API_KEY)" ]; then \
 		(cd $(BACKEND_DIR) && \
 			DATABASE_URL="postgresql://edgequake:edgequake_secret@localhost:5432/edgequake" \
-			PDFIUM_DYNAMIC_LIB_PATH="$(PDFIUM_LIB_PATH)" \
 			OPENAI_API_KEY="$(OPENAI_API_KEY)" \
 			cargo run 2>&1 | sed 's/^/[backend] /') & \
 		BACKEND_PID=$$!; \
 	else \
 		(cd $(BACKEND_DIR) && \
 			DATABASE_URL="postgresql://edgequake:edgequake_secret@localhost:5432/edgequake" \
-			PDFIUM_DYNAMIC_LIB_PATH="$(PDFIUM_LIB_PATH)" \
 			OLLAMA_HOST="http://localhost:11434" \
 			OLLAMA_MODEL="gemma3:latest" \
 			OLLAMA_EMBEDDING_MODEL="nomic-embed-text" \
@@ -482,14 +454,12 @@ dev-bg: check-deps check-ports ## Start full development stack in BACKGROUND (ag
 	@if [ -n "$(OPENAI_API_KEY)" ]; then \
 		cd $(BACKEND_DIR) && \
 			DATABASE_URL="$(DATABASE_URL)" \
-			PDFIUM_DYNAMIC_LIB_PATH="$(PDFIUM_LIB_PATH)" \
 			OPENAI_API_KEY="$(OPENAI_API_KEY)" \
 			EDGEQUAKE_LLM_PROVIDER="openai" \
 			nohup cargo run > /tmp/edgequake-backend.log 2>&1 & \
 	else \
 		cd $(BACKEND_DIR) && \
 			DATABASE_URL="$(DATABASE_URL)" \
-			PDFIUM_DYNAMIC_LIB_PATH="$(PDFIUM_LIB_PATH)" \
 			EDGEQUAKE_LLM_PROVIDER="ollama" \
 			OLLAMA_HOST="http://localhost:11434" \
 			OLLAMA_MODEL="gemma3:latest" \
@@ -551,10 +521,8 @@ stop: ## Stop all development services
 # Database URL for PostgreSQL mode
 DATABASE_URL := postgresql://edgequake:edgequake_secret@localhost:5432/edgequake
 
-# OODA-E2E-01: Path to bundled libpdfium for PDF extraction
-# WHY: Without this, PdfiumBackend fails to initialize and falls back to MockBackend,
-# which produces empty markdown from PDF uploads (critical production bug).
-PDFIUM_LIB_PATH := $(BACKEND_DIR)/crates/edgequake-pdf/lib/lib/libpdfium.dylib
+# SPEC-040 v0.4.1: pdfium is now EMBEDDED in the edgequake-pdf2md 0.4.1 binary
+# via pdfium-auto at compile time. No external libpdfium.dylib, no env vars needed.
 
 backend-dev: db-wait ## Run backend in development mode with PostgreSQL (uses .env configuration)
 	@echo "$(BLUE)Starting backend with PostgreSQL storage...$(RESET)"
@@ -563,13 +531,14 @@ backend-dev: db-wait ## Run backend in development mode with PostgreSQL (uses .e
 	fi
 	@cd $(BACKEND_DIR) && \
 		DATABASE_URL="$(DATABASE_URL)" \
-		PDFIUM_DYNAMIC_LIB_PATH="$(PDFIUM_LIB_PATH)" \
 		OPENAI_API_KEY="$(OPENAI_API_KEY)" \
 		EDGEQUAKE_DEFAULT_LLM_PROVIDER="$(EDGEQUAKE_DEFAULT_LLM_PROVIDER)" \
 		EDGEQUAKE_DEFAULT_LLM_MODEL="$(EDGEQUAKE_DEFAULT_LLM_MODEL)" \
 		EDGEQUAKE_DEFAULT_EMBEDDING_PROVIDER="$(EDGEQUAKE_DEFAULT_EMBEDDING_PROVIDER)" \
 		EDGEQUAKE_DEFAULT_EMBEDDING_MODEL="$(EDGEQUAKE_DEFAULT_EMBEDDING_MODEL)" \
 		EDGEQUAKE_DEFAULT_EMBEDDING_DIMENSION="$(EDGEQUAKE_DEFAULT_EMBEDDING_DIMENSION)" \
+		EDGEQUAKE_VISION_PROVIDER="$(EDGEQUAKE_VISION_PROVIDER)" \
+		EDGEQUAKE_VISION_MODEL="$(EDGEQUAKE_VISION_MODEL)" \
 		OLLAMA_HOST="http://localhost:11434" \
 		OLLAMA_MODEL="gemma3:latest" \
 		OLLAMA_EMBEDDING_MODEL="nomic-embed-text" \
@@ -582,13 +551,14 @@ backend-db: db-wait ## Run backend with PostgreSQL storage (uses .env configurat
 	fi
 	@cd $(BACKEND_DIR) && \
 		DATABASE_URL="$(DATABASE_URL)" \
-		PDFIUM_DYNAMIC_LIB_PATH="$(PDFIUM_LIB_PATH)" \
 		OPENAI_API_KEY="$(OPENAI_API_KEY)" \
 		EDGEQUAKE_DEFAULT_LLM_PROVIDER="$(EDGEQUAKE_DEFAULT_LLM_PROVIDER)" \
 		EDGEQUAKE_DEFAULT_LLM_MODEL="$(EDGEQUAKE_DEFAULT_LLM_MODEL)" \
 		EDGEQUAKE_DEFAULT_EMBEDDING_PROVIDER="$(EDGEQUAKE_DEFAULT_EMBEDDING_PROVIDER)" \
 		EDGEQUAKE_DEFAULT_EMBEDDING_MODEL="$(EDGEQUAKE_DEFAULT_EMBEDDING_MODEL)" \
 		EDGEQUAKE_DEFAULT_EMBEDDING_DIMENSION="$(EDGEQUAKE_DEFAULT_EMBEDDING_DIMENSION)" \
+		EDGEQUAKE_VISION_PROVIDER="$(EDGEQUAKE_VISION_PROVIDER)" \
+		EDGEQUAKE_VISION_MODEL="$(EDGEQUAKE_VISION_MODEL)" \
 		OLLAMA_HOST="http://localhost:11434" \
 		OLLAMA_MODEL="gemma3:latest" \
 		OLLAMA_EMBEDDING_MODEL="nomic-embed-text" \
@@ -615,7 +585,6 @@ backend-bg: db-wait ## Run backend in background with PostgreSQL (respects OPENA
 		echo "$(YELLOW)→ OPENAI_API_KEY detected - using OpenAI as default provider$(RESET)"; \
 		printf '%s\n' "#!/bin/bash" > /tmp/edgequake-start.sh; \
 		printf '%s\n' "export DATABASE_URL=\"$(DATABASE_URL)\"" >> /tmp/edgequake-start.sh; \
-		printf '%s\n' "export PDFIUM_DYNAMIC_LIB_PATH=\"$(PDFIUM_LIB_PATH)\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export OPENAI_API_KEY=\"$(OPENAI_API_KEY)\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_LLM_PROVIDER=\"openai\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "cd $(BACKEND_DIR) && exec cargo run" >> /tmp/edgequake-start.sh; \
@@ -625,7 +594,6 @@ backend-bg: db-wait ## Run backend in background with PostgreSQL (respects OPENA
 		echo "$(YELLOW)→ No OPENAI_API_KEY, using Ollama provider$(RESET)"; \
 		printf '%s\n' "#!/bin/bash" > /tmp/edgequake-start.sh; \
 		printf '%s\n' "export DATABASE_URL=\"$(DATABASE_URL)\"" >> /tmp/edgequake-start.sh; \
-		printf '%s\n' "export PDFIUM_DYNAMIC_LIB_PATH=\"$(PDFIUM_LIB_PATH)\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_LLM_PROVIDER=\"ollama\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export OLLAMA_HOST=\"http://localhost:11434\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export OLLAMA_MODEL=\"gemma3:latest\"" >> /tmp/edgequake-start.sh; \
