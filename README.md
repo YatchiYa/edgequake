@@ -10,8 +10,6 @@
 
 ---
 
-
-
 ![Screenshot of EdgeQuake Frontend](docs/assets/01-screenshot.png)
 
 ## Why EdgeQuake?
@@ -25,7 +23,7 @@ Traditional RAG systems retrieve document chunks using vector similarity alone. 
 - **Knowledge Graphs**: LLM-powered entity extraction and relationship mapping create a structured understanding of your documents — not just keyword matching
 - **6 Query Modes**: From fast naive vector search to graph-traversing hybrid queries, each mode optimizes for different question types
 - **Rust Performance**: Async-first Tokio architecture with zero-copy operations — handles thousands of concurrent requests
-- **Planned Advanced PDF Processing ⚠️ Available Soon**: Table detection, multi-column layout, OCR with quality-based mode fallback
+- **Zero-Config PDF Processing**: Vision-LLM PDF pipeline with embedded pdfium — no external library needed, works out of the box on macOS, Linux, and Windows across arm64 and x86_64
 - **Production Ready**: OpenAPI 3.0 REST API, SSE streaming, health checks, multi-tenant workspace isolation
 - **Modern Frontend**: React 19 with interactive Sigma.js graph visualizations
 
@@ -40,6 +38,8 @@ Traditional RAG systems retrieve document chunks using vector similarity alone. 
 | Memory Usage (per doc) | 2MB              | ~8MB            | 4x better   |
 
 ⚠️ **Experimental Feature — PDF Ingestion**: PDF-to-Markdown extraction is currently in **experimental/early prototype** stage. For comprehensive testing and evaluation of EdgeQuake's core functionality (entity extraction, knowledge graphs, query modes, etc.), we recommend using **Markdown documents** in your initial setup. This ensures you can fully explore the stable features while we continue to refine the PDF processing pipeline.
+
+> **v0.4.0 Update**: PDF processing is now **production-ready** with embedded pdfium via `edgequake-pdf2md v0.4.1`. No external library setup required — just upload your PDFs!
 
 ---
 
@@ -60,13 +60,13 @@ Traditional RAG systems retrieve document chunks using vector similarity alone. 
 - **Community Detection**: Louvain modularity optimization clusters related entities for thematic queries
 - **Graph Visualization**: Interactive Sigma.js-powered frontend with zoom/pan
 
-### 📄 Advanced PDF Processing (⚠️ Available Soon)
+### 📄 PDF Processing (Vision-LLM Pipeline)
 
-- **Text Mode**: Fast extraction for text-based PDFs
-- **Vision Mode**: OCR for scanned documents and images
-- **Hybrid Mode**: Automatic quality assessment and fallback
-- **Table Detection**: Enhanced detection for complex tables
-- **Multi-Column Layout**: Accurate reading order detection
+- **Zero-Config**: pdfium is embedded in the binary via `edgequake-pdf2md v0.4.1` — no external library setup on any platform
+- **Vision-LLM**: Each PDF page is rasterised and sent to a configurable vision model (default: `gpt-4.1-nano`) for accurate extraction
+- **Cross-Platform**: Works on macOS (arm64/x86_64), Linux (amd64/aarch64), Windows (x64/arm64) — same binary, no steps
+- **Table & Layout**: Vision model handles tables, multi-column layouts, and images with excellent fidelity
+- **Configurable**: Override vision model/provider via `EDGEQUAKE_VISION_MODEL` / `EDGEQUAKE_VISION_PROVIDER` env vars
 
 ### 🔍 6 Query Modes
 
@@ -248,6 +248,7 @@ curl -X POST http://localhost:8080/api/v1/query \
 EdgeQuake implements the [LightRAG algorithm](https://arxiv.org/abs/2410.05779) in Rust. The core insight: **extract a knowledge graph during indexing, then traverse it during querying**.
 
 **Indexing Pipeline** (per document):
+
 1. **Chunk** — Split document into ~1200-token segments with 100-token overlap
 2. **Extract** — LLM parses each chunk into `(entity, type, description)` and `(source, target, keywords, description)` tuples
 3. **Glean** — Optional second pass catches missed entities (improves recall by ~18%)
@@ -256,6 +257,7 @@ EdgeQuake implements the [LightRAG algorithm](https://arxiv.org/abs/2410.05779) 
 6. **Store** — Write to PostgreSQL: chunks to pgvector, entities/relationships to Apache AGE graph
 
 **Query Flow** (6 modes):
+
 - **Naive** — Vector similarity on chunks only (fast, no graph)
 - **Local** — Find relevant entities via vector search, then traverse their local graph neighborhood
 - **Global** — Use Louvain community detection to find thematic clusters, retrieve community summaries
@@ -268,7 +270,6 @@ See [LightRAG Algorithm Deep Dive](docs/deep-dives/lightrag-algorithm.md) for th
 ---
 
 ## Documentation
-
 
 ### 📚 Complete Documentation Index
 
@@ -295,13 +296,13 @@ See the [CHANGELOG.md](CHANGELOG.md) for SDK and core updates.
 
 ### 📖 Tutorials (Hands-On)
 
-| Tutorial                                                               | Description                     |
-| ---------------------------------------------------------------------- | ------------------------------- |
-| [Building Your First RAG App](docs/tutorials/first-rag-app.md)         | End-to-end tutorial             |
-| [PDF Ingestion](docs/tutorials/pdf-ingestion.md)                       | PDF upload and configuration    |
-| [Multi-Tenant Setup](docs/tutorials/multi-tenant.md)                   | Workspace isolation             |
-| [Document Ingestion](docs/tutorials/document-ingestion.md)             | Upload and processing workflows |
-| [Migration from LightRAG](docs/tutorials/migration-from-lightrag.md)   | Python to Rust migration guide  |
+| Tutorial                                                             | Description                     |
+| -------------------------------------------------------------------- | ------------------------------- |
+| [Building Your First RAG App](docs/tutorials/first-rag-app.md)       | End-to-end tutorial             |
+| [PDF Ingestion](docs/tutorials/pdf-ingestion.md)                     | PDF upload and configuration    |
+| [Multi-Tenant Setup](docs/tutorials/multi-tenant.md)                 | Workspace isolation             |
+| [Document Ingestion](docs/tutorials/document-ingestion.md)           | Upload and processing workflows |
+| [Migration from LightRAG](docs/tutorials/migration-from-lightrag.md) | Python to Rust migration guide  |
 
 ### 🏗️ Architecture (How It Works)
 
@@ -347,19 +348,19 @@ See the [CHANGELOG.md](CHANGELOG.md) for SDK and core updates.
 
 ### API Reference
 
-| API                                                    | Description              |
-| ------------------------------------------------------ | ------------------------ |
-| [REST API](docs/api-reference/rest-api.md)             | HTTP endpoints           |
-| [Extended API](docs/api-reference/extended-api.md)     | Advanced API features    |
+| API                                                | Description           |
+| -------------------------------------------------- | --------------------- |
+| [REST API](docs/api-reference/rest-api.md)         | HTTP endpoints        |
+| [Extended API](docs/api-reference/extended-api.md) | Advanced API features |
 
 ### Operations (Production)
 
-| Guide                                                           | Description            |
-| --------------------------------------------------------------- | ---------------------- |
-| [Deployment](docs/operations/deployment.md)                     | Production deployment  |
-| [Configuration](docs/operations/configuration.md)               | All config options     |
-| [Monitoring](docs/operations/monitoring.md)                     | Observability setup    |
-| [Performance Tuning](docs/operations/performance-tuning.md)     | Optimization guide     |
+| Guide                                                       | Description           |
+| ----------------------------------------------------------- | --------------------- |
+| [Deployment](docs/operations/deployment.md)                 | Production deployment |
+| [Configuration](docs/operations/configuration.md)           | All config options    |
+| [Monitoring](docs/operations/monitoring.md)                 | Observability setup   |
+| [Performance Tuning](docs/operations/performance-tuning.md) | Optimization guide    |
 
 ### 🐛 Troubleshooting
 
@@ -548,7 +549,6 @@ EdgeQuake is inspired by and builds upon the excellent work of:
 ---
 
 **Ready to build intelligent document retrieval?** [Get started now!](docs/getting-started/quick-start.md)
-
 
 ## Star History
 
