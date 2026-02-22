@@ -362,7 +362,7 @@ impl ConversionProgressCallback for PipelineProgressCallback {
         });
     }
 
-    fn on_page_error(&self, page_num: usize, total_pages: usize, error: &str) {
+    fn on_page_error(&self, page_num: usize, total_pages: usize, error: String) {
         // Store total_pages for consistency
         self.total_pages.store(total_pages, Ordering::SeqCst);
         let total = total_pages;
@@ -376,7 +376,7 @@ impl ConversionProgressCallback for PipelineProgressCallback {
             "extraction_error".to_string(),
             0,
             false,
-            Some(error.to_string()),
+            Some(error.clone()),
         );
 
         // OODA-10: Also broadcast to WebSocket clients
@@ -533,7 +533,7 @@ mod tests {
         );
 
         callback.on_conversion_start(5);
-        callback.on_page_error(3, 5, "Corrupt image data");
+        callback.on_page_error(3, 5, "Corrupt image data".to_string());
 
         // Skip start event
         let _ = rx.try_recv();

@@ -139,14 +139,32 @@ impl WorkspaceServiceImpl {
         }
     }
 
-    /// Build metadata JSON with tenant plan info
+    /// Build metadata JSON with tenant configuration.
+    ///
+    /// Stores all tenant configuration fields in the metadata JSONB column,
+    /// including plan info, default LLM, embedding, and vision LLM configs.
     fn build_tenant_metadata(tenant: &Tenant) -> serde_json::Value {
-        serde_json::json!({
+        let mut map = serde_json::json!({
             "plan": tenant.plan.to_string(),
             "max_workspaces": tenant.max_workspaces,
             "max_users": tenant.max_users,
             "description": tenant.description,
-        })
+            // SPEC-032: Persist default LLM configuration
+            "default_llm_model": tenant.default_llm_model,
+            "default_llm_provider": tenant.default_llm_provider,
+            // SPEC-032: Persist default embedding configuration
+            "default_embedding_model": tenant.default_embedding_model,
+            "default_embedding_provider": tenant.default_embedding_provider,
+            "default_embedding_dimension": tenant.default_embedding_dimension,
+        });
+        // SPEC-041: Persist default vision LLM configuration (optional, only if set)
+        if let Some(ref vision_provider) = tenant.default_vision_llm_provider {
+            map["default_vision_llm_provider"] = serde_json::json!(vision_provider);
+        }
+        if let Some(ref vision_model) = tenant.default_vision_llm_model {
+            map["default_vision_llm_model"] = serde_json::json!(vision_model);
+        }
+        map
     }
 }
 
@@ -379,12 +397,35 @@ impl WorkspaceService for WorkspaceServiceImpl {
             }
         }
 
-        // SPEC-040: Apply vision configuration from request
-        if let Some(provider) = request.vision_provider {
-            workspace = workspace.with_vision_provider(provider);
-        }
-        if let Some(model) = request.vision_model {
-            workspace = workspace.with_vision_model(model);
+        // SPEC-041: Apply vision LLM configuration from request
+        if let Some(vision_model) = request.vision_llm_model {
+            if !vision_model.is_empty() {
+                if let Some(provider) = request.vision_llm_provider {
+                    workspace.vision_llm_provider = Some(provider.clone());
+                    workspace.metadata.insert(
+                        "vision_llm_provider".to_string(),
+                        serde_json::json!(provider),
+                    );
+                } else {
+                    let detected = Workspace::detect_provider_from_model(&vision_model);
+                    workspace.vision_llm_provider = Some(detected.clone().to_string());
+                    workspace.metadata.insert(
+                        "vision_llm_provider".to_string(),
+                        serde_json::json!(detected),
+                    );
+                }
+                workspace.vision_llm_model = Some(vision_model.clone());
+                workspace.metadata.insert(
+                    "vision_llm_model".to_string(),
+                    serde_json::json!(vision_model),
+                );
+            }
+        } else if let Some(provider) = request.vision_llm_provider {
+            workspace.vision_llm_provider = Some(provider.clone());
+            workspace.metadata.insert(
+                "vision_llm_provider".to_string(),
+                serde_json::json!(provider),
+            );
         }
 
         sqlx::query(
@@ -409,13 +450,7 @@ impl WorkspaceService for WorkspaceServiceImpl {
             metadata.insert("embedding_model".to_string(), serde_json::Value::String(workspace.embedding_model.clone()));
             metadata.insert("embedding_provider".to_string(), serde_json::Value::String(workspace.embedding_provider.clone()));
             metadata.insert("embedding_dimension".to_string(), serde_json::Value::Number(workspace.embedding_dimension.into()));
-            // Vision configuration (SPEC-040)
-            if let Some(ref vp) = workspace.vision_provider {
-                metadata.insert("vision_provider".to_string(), serde_json::Value::String(vp.clone()));
-            }
-            if let Some(ref vm) = workspace.vision_model {
-                metadata.insert("vision_model".to_string(), serde_json::Value::String(vm.clone()));
-            }
+            // SPEC-041: Vision LLM configuration (already set in workspace.metadata above)
             serde_json::json!(metadata)
         })
         .bind(workspace.created_at)
@@ -579,19 +614,30 @@ impl WorkspaceService for WorkspaceServiceImpl {
                 serde_json::json!(embedding_dimension),
             );
         }
-        // SPEC-040: Vision configuration updates
-        if let Some(vision_provider) = request.vision_provider {
-            workspace.vision_provider = Some(vision_provider.clone());
-            workspace.metadata.insert(
-                "vision_provider".to_string(),
-                serde_json::json!(vision_provider),
-            );
+        // SPEC-040: Vision LLM configuration updates
+        if let Some(vision_provider) = request.vision_llm_provider {
+            if vision_provider.is_empty() || vision_provider == "none" {
+                workspace.vision_llm_provider = None;
+                workspace.metadata.remove("vision_llm_provider");
+            } else {
+                workspace.metadata.insert(
+                    "vision_llm_provider".to_string(),
+                    serde_json::json!(vision_provider.clone()),
+                );
+                workspace.vision_llm_provider = Some(vision_provider);
+            }
         }
-        if let Some(vision_model) = request.vision_model {
-            workspace.vision_model = Some(vision_model.clone());
-            workspace
-                .metadata
-                .insert("vision_model".to_string(), serde_json::json!(vision_model));
+        if let Some(vision_model) = request.vision_llm_model {
+            if vision_model.is_empty() || vision_model == "none" {
+                workspace.vision_llm_model = None;
+                workspace.metadata.remove("vision_llm_model");
+            } else {
+                workspace.metadata.insert(
+                    "vision_llm_model".to_string(),
+                    serde_json::json!(vision_model.clone()),
+                );
+                workspace.vision_llm_model = Some(vision_model);
+            }
         }
         workspace.updated_at = chrono::Utc::now();
 
@@ -1070,6 +1116,20 @@ impl TenantRow {
                 .and_then(|v| v.as_u64())
                 .unwrap_or(crate::types::DEFAULT_EMBEDDING_DIMENSION as u64) as usize;
 
+        // SPEC-041: Extract default vision LLM config from metadata
+        let default_vision_llm_provider = self
+            .metadata
+            .get("default_vision_llm_provider")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+        let default_vision_llm_model = self
+            .metadata
+            .get("default_vision_llm_model")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+
         Tenant {
             tenant_id: self.tenant_id,
             name: self.name,
@@ -1087,6 +1147,8 @@ impl TenantRow {
             default_embedding_model,
             default_embedding_provider,
             default_embedding_dimension,
+            default_vision_llm_provider,
+            default_vision_llm_model,
         }
     }
 }
@@ -1146,15 +1208,17 @@ impl WorkspaceRow {
             .unwrap_or(crate::types::DEFAULT_EMBEDDING_DIMENSION as u64)
             as usize;
 
-        // SPEC-040: Extract vision config from metadata
-        let vision_provider = metadata
-            .get("vision_provider")
+        // SPEC-040: Extract vision LLM config from metadata
+        let vision_llm_provider = metadata
+            .get("vision_llm_provider")
             .and_then(|v| v.as_str())
-            .map(String::from);
-        let vision_model = metadata
-            .get("vision_model")
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+        let vision_llm_model = metadata
+            .get("vision_llm_model")
             .and_then(|v| v.as_str())
-            .map(String::from);
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
 
         Workspace {
             workspace_id: self.workspace_id,
@@ -1171,8 +1235,8 @@ impl WorkspaceRow {
             embedding_model,
             embedding_provider,
             embedding_dimension,
-            vision_provider,
-            vision_model,
+            vision_llm_provider,
+            vision_llm_model,
         }
     }
 }

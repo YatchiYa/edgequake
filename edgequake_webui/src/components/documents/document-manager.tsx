@@ -45,6 +45,7 @@ import { DocumentHeader } from './document-header';
 import { DocumentPreviewRightPanel } from './document-preview-right-panel';
 import { DocumentTableSection } from './document-table-section';
 import { DocumentToolbarSection } from './document-toolbar-section';
+import { DuplicateUploadDialog } from './duplicate-upload-dialog';
 
 export function DocumentManager() {
   const { t } = useTranslation();
@@ -86,6 +87,8 @@ export function DocumentManager() {
     removeUploadingFile,
     handleUploadComplete,
     handleUploadFailed,
+    pendingDuplicates,
+    resolvePendingDuplicates,
   } = useFileUpload({
     tenantId: selectedTenantId,
     workspaceId: selectedWorkspaceId,
@@ -205,7 +208,7 @@ export function DocumentManager() {
         <div className="shrink-0 px-4 pt-4 space-y-3 bg-background">
           <DocumentHeader
             totalCount={totalCount}
-            failedCount={statusCounts.failed}
+            failedCount={statusCounts.failed + statusCounts.cancelled}
             pipelineIsBusy={!!pipelineStatus?.is_busy}
             pipelineDialogOpen={pipelineDialogOpen}
             onPipelineDialogChange={setPipelineDialogOpen}
@@ -245,44 +248,39 @@ export function DocumentManager() {
 
         </div>
 
-        {/* OODA-26: Table section extracted to DocumentTableSection */}
-        <DocumentTableSection
-          documents={documents}
-          totalCount={totalCount}
-          isLoading={isLoading}
-          selectedIds={selectedIds}
-          selectedDocument={selectedDocument}
-          searchQuery={searchQuery}
-          statusFilter={statusFilter}
-          isAllSelected={isAllSelected}
-          onSelectAll={handleSelectAll}
-          onSelectOne={handleSelectOne}
-          onRowClick={handleDocumentClick}
-          onRowDoubleClick={handleDocumentDoubleClick}
-          onViewDetails={handleViewDetails}
-          onViewInGraph={handleViewInGraph}
-          onViewPdf={handleViewPdf}
-          onRetry={(id) => {
-            // WHY: PDF docs stuck in conversion have no KV content, so reprocessDocument
-            // is a no-op. They must use /tasks/{track_id}/retry to re-enqueue the task.
-            const doc = documents.find((d) => d.id === id);
-            if (doc?.track_id) {
-              retryTaskMutation.mutate(doc.track_id);
-            } else {
-              reprocessMutation.mutate(id);
-            }
-          }}
-          onCancel={(trackId) => cancelMutation.mutate(trackId)}
-          onDelete={(id) => deleteMutation.mutate(id)}
-          isRetrying={reprocessMutation.isPending || retryTaskMutation.isPending}
-          isCancelling={cancelMutation.isPending}
-          onUploadClick={openFileDialog}
-          currentPage={currentPage}
-          totalPages={totalPages}
-          pageSize={pageSize}
-          onPageChange={setCurrentPage}
-          onPageSizeChange={setPageSize}
-        />
+      {/* OODA-26: Table section extracted to DocumentTableSection */}
+      <DocumentTableSection
+        documents={documents}
+        totalCount={totalCount}
+        isLoading={isLoading}
+        selectedIds={selectedIds}
+        selectedDocument={selectedDocument}
+        searchQuery={searchQuery}
+        statusFilter={statusFilter}
+        isAllSelected={isAllSelected}
+        onSelectAll={handleSelectAll}
+        onSelectOne={handleSelectOne}
+        onRowClick={handleDocumentClick}
+        onRowDoubleClick={handleDocumentDoubleClick}
+        onViewDetails={handleViewDetails}
+        onViewInGraph={handleViewInGraph}
+        onViewPdf={handleViewPdf}
+        onRetry={(id) => reprocessMutation.mutate(id)}
+        onCancel={(trackId) => cancelMutation.mutate(trackId)}
+        onDelete={(id) => deleteMutation.mutate(id)}
+        isRetrying={reprocessMutation.isPending}
+        isCancelling={cancelMutation.isPending}
+        onUploadClick={openFileDialog}
+        currentPage={currentPage}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        onPageChange={setCurrentPage}
+        onPageSizeChange={setPageSize}
+        onClearFilter={() => {
+          setStatusFilter('all');
+          setSearchQuery('');
+        }}
+      />
       </div>
 
       {/* OODA-27: Right panel extracted to DocumentPreviewRightPanel */}
@@ -300,6 +298,13 @@ export function DocumentManager() {
         viewerDialogOpen={viewerDialogOpen}
         onViewerDialogChange={setViewerDialogOpen}
         viewerPdfId={viewerPdfId}
+      />
+
+      {/* Duplicate upload dialog — shown when backend returns duplicate_of */}
+      <DuplicateUploadDialog
+        open={pendingDuplicates.length > 0}
+        duplicates={pendingDuplicates}
+        onResolve={resolvePendingDuplicates}
       />
     </div>
   );

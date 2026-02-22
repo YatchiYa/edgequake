@@ -8,8 +8,13 @@
  */
 "use client";
 
+import type {
+  DuplicateResolutions,
+  PendingDuplicate,
+} from "@/components/documents/duplicate-upload-dialog";
 import type { UploadingFile } from "@/components/documents/types";
 import {
+  deleteDocument,
   uploadDocument,
   uploadPdfDocument,
   type DocumentsListResult,
@@ -43,6 +48,15 @@ export interface UseFileUploadReturn {
   handleUploadComplete: (index: number) => void;
   /** Mark upload as failed (for PdfUploadProgress) */
   handleUploadFailed: (index: number, error: string) => void;
+  /** Duplicates that need user resolution (drives DuplicateUploadDialog). */
+  pendingDuplicates: PendingDuplicate[];
+  /**
+   * Called when the user confirms decisions in DuplicateUploadDialog.
+   * Iterates resolutions: "replace" deletes the old document then re-uploads
+   * the new file as a fresh document; "skip" is a no-op.
+   * Clears pendingDuplicates afterwards.
+   */
+  resolvePendingDuplicates: (resolutions: DuplicateResolutions) => void;
 }
 
 /**
@@ -62,6 +76,11 @@ export function useFileUpload(
 
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  // WHY: Duplicates are collected during the upload loop and shown to the
+  // user in a single DuplicateUploadDialog after all files are processed.
+  const [pendingDuplicates, setPendingDuplicates] = useState<
+    PendingDuplicate[]
+  >([]);
 
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -88,7 +107,7 @@ export function useFileUpload(
         file,
         progress: 0,
         status: "pending" as const,
-        phase: "Waiting...",
+        phase: t("common.waiting", "Waiting..."),
       }));
       setUploadingFiles(initialFiles);
 
@@ -160,7 +179,14 @@ export function useFileUpload(
             response = {
               document_id: pdfResponse.document_id,
               pdf_id: pdfResponse.pdf_id,
-              duplicate_of: pdfResponse.duplicate_of,
+              // WHY: Backend returns duplicate_of when status is "duplicate".
+              // Fallback to pdf_id when status==="duplicate" but duplicate_of is
+              // missing (backward-compat with older backend versions).
+              duplicate_of:
+                pdfResponse.duplicate_of ??
+                (pdfResponse.status === "duplicate"
+                  ? pdfResponse.pdf_id
+                  : undefined),
               task_id: pdfResponse.task_id,
               track_id: pdfResponse.track_id,
             };
@@ -168,7 +194,9 @@ export function useFileUpload(
             // Optimistic update for PDF upload
             // WHY: PDFs must appear immediately in documents panel
             // FIX: Use predicate-based filter for reliable query matching
-            if (pdfResponse.pdf_id && !pdfResponse.duplicate_of) {
+            const isPdfDuplicate =
+              !!pdfResponse.duplicate_of || pdfResponse.status === "duplicate";
+            if (pdfResponse.pdf_id && !isPdfDuplicate) {
               const optimisticDoc: Document = {
                 id: pdfResponse.pdf_id,
                 title: file.name,
@@ -269,21 +297,20 @@ export function useFileUpload(
             }
           }
 
-          // Check for duplicate
+          // Check for duplicate — collect for dialog instead of showing a toast.
+          // WHY: A dialog gives the user clear choices (replace / skip) and
+          // handles bulk uploads in one interaction rather than N toasts.
           if (response.duplicate_of) {
-            toast.warning(
-              t(
-                "documents.upload.duplicate",
-                "{{name}} is a duplicate (existing: {{id}})",
-                {
-                  name: file.name,
-                  id: response.duplicate_of.slice(0, 8),
-                },
-              ),
-              { duration: 4000 },
-            );
+            setPendingDuplicates((prev) => [
+              ...prev,
+              {
+                fileName: file.name,
+                existingDocId: response.duplicate_of!,
+                file,
+              },
+            ]);
 
-            // Mark as duplicate (treat as success with warning)
+            // Mark the file entry as "duplicate/pending decision"
             setUploadingFiles((prev) =>
               prev.map((f, idx) =>
                 idx === i
@@ -345,7 +372,9 @@ export function useFileUpload(
           successCount++;
         } catch (error) {
           const errorMessage =
-            error instanceof Error ? error.message : "Upload failed";
+            error instanceof Error
+              ? error.message
+              : t("documents.upload.uploadFailed", "Upload failed");
           setUploadingFiles((prev) =>
             prev.map((f, idx) =>
               idx === i
@@ -415,11 +444,11 @@ export function useFileUpload(
       // even if WebSocket updates are delayed or miss the initial document
       await queryClient.invalidateQueries({ queryKey: ["documents"] });
       // Force immediate refetch of all documents queries
-      queryClient.refetchQueries({ 
+      queryClient.refetchQueries({
         queryKey: ["documents"],
         type: "active",
       });
-      
+
       setIsUploading(false);
 
       // Clear upload list after delay
@@ -436,6 +465,78 @@ export function useFileUpload(
   const removeUploadingFile = useCallback((index: number) => {
     setUploadingFiles((prev) => prev.filter((_, i) => i !== index));
   }, []);
+
+  /**
+   * Resolve pending duplicate decisions.
+   * WHY: Called by DuplicateUploadDialog after user clicks Confirm.
+   *
+   * For PDF files: re-upload with force_reindex=true so the backend clears
+   * old graph/vector data and re-processes the PDF, without a separate DELETE.
+   * WHY (OODA-08): The backend's force_reindex flag atomically clears old data
+   * and triggers fresh extraction — safer than a frontend DELETE + re-upload
+   * which would race with the duplicate-hash check and 404 on pdf_id.
+   *
+   * For non-PDF files: the backend's text upload handler already auto-deletes
+   * on duplicate (FIX-4), so we just re-upload. A delete is attempted first
+   * for completeness but failures are non-fatal.
+   *
+   * "skip" decisions are no-ops.
+   * @implements BR-dup-replace - Replace = force_reindex for PDFs
+   */
+  const resolvePendingDuplicates = useCallback(
+    (resolutions: DuplicateResolutions) => {
+      const replaceEntries = pendingDuplicates.filter(
+        (d) => resolutions[d.existingDocId] === "replace",
+      );
+      setPendingDuplicates([]);
+
+      if (replaceEntries.length === 0) return;
+
+      // Close dialog immediately; async replace runs in the background.
+      const doReplaceAll = async () => {
+        for (const entry of replaceEntries) {
+          const isPdf = entry.file.type === "application/pdf";
+
+          if (isPdf) {
+            // PDF: re-upload with force_reindex=true so backend atomically
+            // clears old graph data and re-processes. No separate DELETE needed.
+            try {
+              const trackId = `upload_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+              await uploadPdfDocument(entry.file, {
+                title: entry.file.name,
+                enable_vision: true,
+                track_id: trackId,
+                force_reindex: true,
+              });
+              // Invalidate documents cache so list refreshes
+              queryClient.invalidateQueries({ queryKey: ["documents"] });
+            } catch (err) {
+              console.warn(
+                `[useFileUpload] force_reindex re-upload failed for ${entry.fileName}:`,
+                err,
+              );
+            }
+          } else {
+            // Non-PDF: the backend auto-deletes duplicates on re-upload (FIX-4).
+            // Attempt a manual delete first for completeness but ignore failures.
+            try {
+              await deleteDocument(entry.existingDocId);
+            } catch (err) {
+              console.warn(
+                `[useFileUpload] Failed to delete ${entry.existingDocId}:`,
+                err,
+              );
+            }
+            // Re-upload the original file as a brand-new document.
+            await handleFilesUpload([entry.file]);
+          }
+        }
+      };
+
+      doReplaceAll();
+    },
+    [pendingDuplicates, handleFilesUpload, queryClient],
+  );
 
   /**
    * Mark PDF upload as successful (called by PdfUploadProgress)
@@ -466,6 +567,8 @@ export function useFileUpload(
     removeUploadingFile,
     handleUploadComplete,
     handleUploadFailed,
+    pendingDuplicates,
+    resolvePendingDuplicates,
   };
 }
 

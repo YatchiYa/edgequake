@@ -42,7 +42,7 @@ import {
     StopCircle,
     XCircle,
 } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { ErrorBanner } from "./error-banner";
 
 // ============================================================================
@@ -170,10 +170,13 @@ function PhaseIndicator({
             <p className="font-medium">{phase.label}</p>
             <p className="text-muted-foreground">{phase.description}</p>
             {phase.status.type === "active" && (
-              <p className="mt-1 text-blue-600">
-                Processing: {phase.status.current} of {phase.status.total} (
-                {Math.round(phase.status.percent)}%)
-              </p>
+              <>
+                <p className="mt-1 text-blue-600">
+                  Processing: {phase.status.current} of {phase.status.total} (
+                  {Math.round(phase.status.percent)}%)
+                </p>
+                <p className="mt-1 text-blue-500 text-xs italic">{phase.message}</p>
+              </>
             )}
             {phase.status.type === "failed" && (
               <p className="mt-1 text-red-600">Error: {phase.status.error}</p>
@@ -292,12 +295,20 @@ export function PdfUploadProgress({
     error,
   } = usePdfProgress(trackId);
 
-  // Handle completion/failure callbacks
-  useMemo(() => {
-    if (progress?.status === "completed" && onComplete) {
+  // WHY: useEffect (not useMemo) because calling parent setState during render
+  // causes "Cannot update a component while rendering a different component"
+  // and eventually "Maximum update depth exceeded".
+  // The ref prevents double-firing on re-renders with unstable callback refs.
+  const completionFiredRef = useRef(false);
+  const failureFiredRef = useRef(false);
+
+  useEffect(() => {
+    if (progress?.status === "completed" && onComplete && !completionFiredRef.current) {
+      completionFiredRef.current = true;
       onComplete();
     }
-    if (progress?.status === "failed" && onFailed && progress.error) {
+    if (progress?.status === "failed" && onFailed && progress.error && !failureFiredRef.current) {
+      failureFiredRef.current = true;
       onFailed(progress.error);
     }
   }, [progress?.status, progress?.error, onComplete, onFailed]);
@@ -439,6 +450,13 @@ export function PdfUploadProgress({
             </div>
           ))}
         </div>
+
+        {/* Live progress message for active phase */}
+        {isProcessing && (
+          <p className="text-xs text-center text-muted-foreground min-h-[1rem]">
+            {phases.find((p) => p.status.type === "active")?.message ?? "Processing..."}
+          </p>
+        )}
 
         {/* OODA-29: Enhanced error display using ErrorBanner */}
         {isFailed && progress?.error && (

@@ -1806,6 +1806,53 @@ pub async fn get_document(
             .map(|s| s.to_string())
     });
 
+    // SPEC-040: Async fallback PDF vision model lookup for backward compatibility.
+    // WHY: Documents processed before pdf_vision_model was written to KV metadata JSON
+    // don't have that field. We query the pdf_documents table as fallback using the
+    // pdf_id that IS stored in all document metadata records.
+    let (fallback_pdf_vision_model, fallback_pdf_extraction_method): (
+        Option<String>,
+        Option<String>,
+    ) = {
+        let needs_fallback = meta_obj
+            .and_then(|obj| obj.get("pdf_vision_model"))
+            .is_none();
+        let pdf_uuid_opt = if needs_fallback {
+            meta_obj
+                .and_then(|obj| obj.get("pdf_id"))
+                .and_then(|v| v.as_str())
+                .and_then(|s| Uuid::parse_str(s).ok())
+        } else {
+            None
+        };
+        if let Some(pdf_uuid) = pdf_uuid_opt {
+            #[cfg(feature = "postgres")]
+            {
+                if let Some(ref pool) = state.pg_pool {
+                    match sqlx::query_as::<_, (Option<String>, Option<String>)>(
+                        "SELECT vision_model, extraction_method FROM pdf_documents WHERE pdf_id = $1",
+                    )
+                    .bind(pdf_uuid)
+                    .fetch_optional(pool)
+                    .await
+                    {
+                        Ok(Some((vision_model, extraction_method))) => (vision_model, extraction_method),
+                        _ => (None, None),
+                    }
+                } else {
+                    (None, None)
+                }
+            }
+            #[cfg(not(feature = "postgres"))]
+            {
+                let _ = pdf_uuid;
+                (None, None)
+            }
+        } else {
+            (None, None)
+        }
+    };
+
     // Build response from metadata
     let (
         title,
@@ -1890,6 +1937,22 @@ pub async fn get_document(
                 .map(|n| n as usize);
             let cost_usd = obj.get("cost_usd").and_then(|v| v.as_f64());
 
+            // SPEC-040: PDF extraction lineage fields
+            // WHY: vision_model and extraction_method are stored in metadata JSON by the PDF
+            // processor so the document detail view can show what model was used for extraction.
+            // For documents processed before this field was added, fall back to the values
+            // looked up from the pdf_documents table (fallback_pdf_vision_model).
+            let pdf_vision_model = obj
+                .get("pdf_vision_model")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .or_else(|| fallback_pdf_vision_model.clone());
+            let pdf_extraction_method = obj
+                .get("pdf_extraction_method")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .or_else(|| fallback_pdf_extraction_method.clone());
+
             // Only include lineage if we have at least one field
             if llm_model.is_some()
                 || embedding_model.is_some()
@@ -1900,6 +1963,7 @@ pub async fn get_document(
                 || processing_duration_ms.is_some()
                 || input_tokens.is_some()
                 || cost_usd.is_some()
+                || pdf_vision_model.is_some()
             {
                 Some(DocumentLineage {
                     llm_model,
@@ -1915,6 +1979,8 @@ pub async fn get_document(
                     output_tokens,
                     total_tokens,
                     cost_usd,
+                    pdf_vision_model,
+                    pdf_extraction_method,
                 })
             } else {
                 None
@@ -3957,8 +4023,12 @@ fn collect_files(
 pub async fn reprocess_failed(
     State(state): State<AppState>,
     tenant_ctx: TenantContext,
-    Json(request): Json<ReprocessFailedRequest>,
+    // WHY: Body is optional - frontend may omit body entirely, which would cause
+    // "EOF while parsing a value" 400 error. Using Option<Json<>> with .unwrap_or_default()
+    // makes this endpoint resilient to missing or empty request body.
+    body: Option<Json<ReprocessFailedRequest>>,
 ) -> ApiResult<Json<ReprocessFailedResponse>> {
+    let request = body.map(|b| b.0).unwrap_or_default();
     debug!(
         "reprocess_failed called with tenant context: tenant_id={:?}, workspace_id={:?}, document_id={:?}, force={}",
         tenant_ctx.tenant_id, tenant_ctx.workspace_id, request.document_id, request.force
@@ -4012,8 +4082,10 @@ pub async fn reprocess_failed(
                     }
                 }
 
-                // Default behavior: only reprocess failed documents
-                if status == Some("failed") {
+                // Default behavior: reprocess failed and cancelled documents
+                // WHY: Cancelled documents should be retryable just like failed ones.
+                // Users may cancel a document during processing and want to retry later.
+                if status == Some("failed") || status == Some("cancelled") {
                     if let Some(id) = doc_id {
                         docs_to_reprocess.push((id.to_string(), key.replace("-metadata", "")));
                     }
@@ -4061,75 +4133,198 @@ pub async fn reprocess_failed(
         }
         // Get document content
         let content_key = format!("{}-content", doc_id);
-        if let Some(content_value) = state.kv_storage.get_by_id(&content_key).await? {
-            if let Some(content) = content_value.get("content").and_then(|v| v.as_str()) {
-                // Update status to pending
-                let metadata_key = format!("{}-metadata", doc_id);
-                if let Some(mut metadata) = state.kv_storage.get_by_id(&metadata_key).await? {
-                    if let Some(obj) = metadata.as_object_mut() {
-                        obj.insert("status".to_string(), serde_json::json!("pending"));
-                        obj.insert("track_id".to_string(), serde_json::json!(new_track_id));
-                        obj.insert(
-                            "retry_at".to_string(),
-                            serde_json::json!(Utc::now().to_rfc3339()),
+
+        // FIX-REBUILD: Read metadata to check if this is a PDF document
+        // WHY: PDF documents must be routed through PdfProcessing tasks so the full
+        // pipeline runs from original PDF bytes (vision extraction → chunking →
+        // embedding → entity extraction). Using TaskType::Insert for PDFs would
+        // only re-ingest the previously extracted markdown, missing re-extraction
+        // with any new vision LLM model.
+        let metadata_key = format!("{}-metadata", doc_id);
+        let metadata_opt = state.kv_storage.get_by_id(&metadata_key).await?;
+
+        let source_type = metadata_opt
+            .as_ref()
+            .and_then(|m| m.as_object())
+            .and_then(|obj| obj.get("source_type"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        let pdf_id_str = metadata_opt
+            .as_ref()
+            .and_then(|m| m.as_object())
+            .and_then(|obj| obj.get("pdf_id"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        // Use tenant context for workspace_id, fallback to "default"
+        let workspace_id = tenant_ctx
+            .workspace_id
+            .clone()
+            .unwrap_or_else(|| "default".to_string());
+        let tenant_id = tenant_ctx
+            .tenant_id
+            .clone()
+            .unwrap_or_else(|| "default".to_string());
+
+        // FIX-REBUILD: Route PDF documents through PdfProcessing for full re-extraction
+        let task_created =
+            if source_type.as_deref() == Some("pdf") {
+                if let Some(ref pid_str) = pdf_id_str {
+                    if let Ok(pdf_id_uuid) = uuid::Uuid::parse_str(pid_str) {
+                        // Update status to pending
+                        if let Some(mut metadata) = metadata_opt.clone() {
+                            if let Some(obj) = metadata.as_object_mut() {
+                                obj.insert("status".to_string(), serde_json::json!("pending"));
+                                obj.insert("track_id".to_string(), serde_json::json!(new_track_id));
+                                obj.insert(
+                                    "retry_at".to_string(),
+                                    serde_json::json!(Utc::now().to_rfc3339()),
+                                );
+                                state
+                                    .kv_storage
+                                    .upsert(&[(metadata_key.clone(), metadata)])
+                                    .await?;
+                            }
+                        }
+
+                        // Look up workspace to get vision provider/model settings
+                        let (vision_provider, vision_model) =
+                            if let Ok(ws_uuid) = uuid::Uuid::parse_str(&workspace_id) {
+                                if let Ok(Some(ws)) =
+                                    state.workspace_service.get_workspace(ws_uuid).await
+                                {
+                                    let vp = ws
+                                        .vision_llm_provider
+                                        .as_deref()
+                                        .filter(|p| !p.is_empty())
+                                        .unwrap_or("ollama")
+                                        .to_string();
+                                    let vm = ws.vision_llm_model.filter(|m| !m.is_empty());
+                                    (vp, vm)
+                                } else {
+                                    ("ollama".to_string(), None)
+                                }
+                            } else {
+                                ("ollama".to_string(), None)
+                            };
+
+                        use edgequake_tasks::{PdfProcessingData, Task, TaskType};
+
+                        let pdf_task = PdfProcessingData {
+                            pdf_id: pdf_id_uuid,
+                            tenant_id: uuid::Uuid::parse_str(&tenant_id).map_err(|_| {
+                                ApiError::ValidationError("Invalid tenant ID".to_string())
+                            })?,
+                            workspace_id: uuid::Uuid::parse_str(&workspace_id).map_err(|_| {
+                                ApiError::ValidationError("Invalid workspace ID".to_string())
+                            })?,
+                            enable_vision: true,
+                            vision_provider,
+                            vision_model,
+                            // FIX-REBUILD: Reuse existing document ID
+                            existing_document_id: Some(doc_id.clone()),
+                        };
+
+                        let task = Task::new(
+                            uuid::Uuid::parse_str(&tenant_id).map_err(|_| {
+                                ApiError::ValidationError("Invalid tenant ID".to_string())
+                            })?,
+                            uuid::Uuid::parse_str(&workspace_id).map_err(|_| {
+                                ApiError::ValidationError("Invalid workspace ID".to_string())
+                            })?,
+                            TaskType::PdfProcessing,
+                            serde_json::to_value(&pdf_task).unwrap(),
                         );
 
-                        state.kv_storage.upsert(&[(metadata_key, metadata)]).await?;
+                        state.task_storage.create_task(&task).await.map_err(|e| {
+                            ApiError::Internal(format!("Failed to create task: {}", e))
+                        })?;
+
+                        state.task_queue.send(task).await.map_err(|e| {
+                            ApiError::Internal(format!("Failed to queue task: {}", e))
+                        })?;
+
+                        tracing::info!(
+                            document_id = %doc_id,
+                            pdf_id = %pid_str,
+                            "Queued PDF reprocessing task (PdfProcessing) with existing document ID"
+                        );
+                        true
+                    } else {
+                        false // Invalid pdf_id, fall through to text reprocess
                     }
+                } else {
+                    false // No pdf_id, fall through to text reprocess
                 }
+            } else {
+                false // Not a PDF document
+            };
 
-                // Create new task
-                use edgequake_tasks::{Task, TaskType, TextInsertData};
+        // Fallback: text/markdown documents or PDF without valid pdf_id
+        if !task_created {
+            if let Some(content_value) = state.kv_storage.get_by_id(&content_key).await? {
+                if let Some(content) = content_value.get("content").and_then(|v| v.as_str()) {
+                    // Update status to pending
+                    if let Some(mut metadata) = state.kv_storage.get_by_id(&metadata_key).await? {
+                        if let Some(obj) = metadata.as_object_mut() {
+                            obj.insert("status".to_string(), serde_json::json!("pending"));
+                            obj.insert("track_id".to_string(), serde_json::json!(new_track_id));
+                            obj.insert(
+                                "retry_at".to_string(),
+                                serde_json::json!(Utc::now().to_rfc3339()),
+                            );
 
-                // Use tenant context for workspace_id, fallback to "default"
-                let workspace_id = tenant_ctx
-                    .workspace_id
-                    .clone()
-                    .unwrap_or_else(|| "default".to_string());
-                let tenant_id = tenant_ctx
-                    .tenant_id
-                    .clone()
-                    .unwrap_or_else(|| "default".to_string());
+                            state.kv_storage.upsert(&[(metadata_key, metadata)]).await?;
+                        }
+                    }
 
-                let title = doc_id.clone();
-                let task_data = TextInsertData {
-                    text: content.to_string(),
-                    file_source: title.clone(),
-                    workspace_id: workspace_id.clone(),
-                    metadata: Some(serde_json::json!({
-                        "document_id": doc_id,
-                        "title": title,
-                        "track_id": new_track_id,
-                        "is_retry": true,
-                        "tenant_id": tenant_id,
-                        "workspace_id": workspace_id,
-                    })),
-                };
+                    // Create new task
+                    use edgequake_tasks::{Task, TaskType, TextInsertData};
 
-                let task = Task::new(
-                    uuid::Uuid::parse_str(&tenant_id)
-                        .map_err(|_| ApiError::ValidationError("Invalid tenant ID".to_string()))?,
-                    uuid::Uuid::parse_str(&workspace_id).map_err(|_| {
-                        ApiError::ValidationError("Invalid workspace ID".to_string())
-                    })?,
-                    TaskType::Insert,
-                    serde_json::to_value(task_data).unwrap(),
-                );
+                    let title = doc_id.clone();
+                    let task_data = TextInsertData {
+                        text: content.to_string(),
+                        file_source: title.clone(),
+                        workspace_id: workspace_id.clone(),
+                        metadata: Some(serde_json::json!({
+                            "document_id": doc_id,
+                            "title": title,
+                            "track_id": new_track_id,
+                            "is_retry": true,
+                            "tenant_id": tenant_id,
+                            "workspace_id": workspace_id,
+                        })),
+                    };
 
-                state
-                    .task_storage
-                    .create_task(&task)
-                    .await
-                    .map_err(|e| ApiError::Internal(format!("Failed to create task: {}", e)))?;
+                    let task = Task::new(
+                        uuid::Uuid::parse_str(&tenant_id).map_err(|_| {
+                            ApiError::ValidationError("Invalid tenant ID".to_string())
+                        })?,
+                        uuid::Uuid::parse_str(&workspace_id).map_err(|_| {
+                            ApiError::ValidationError("Invalid workspace ID".to_string())
+                        })?,
+                        TaskType::Insert,
+                        serde_json::to_value(task_data).unwrap(),
+                    );
 
-                state
-                    .task_queue
-                    .send(task)
-                    .await
-                    .map_err(|e| ApiError::Internal(format!("Failed to queue task: {}", e)))?;
+                    state
+                        .task_storage
+                        .create_task(&task)
+                        .await
+                        .map_err(|e| ApiError::Internal(format!("Failed to create task: {}", e)))?;
 
-                requeued_ids.push(doc_id.clone());
+                    state
+                        .task_queue
+                        .send(task)
+                        .await
+                        .map_err(|e| ApiError::Internal(format!("Failed to queue task: {}", e)))?;
+
+                    requeued_ids.push(doc_id.clone());
+                }
             }
+        } else {
+            requeued_ids.push(doc_id.clone());
         }
     }
 
@@ -4188,6 +4383,7 @@ pub async fn reprocess_failed(
                     enable_vision: true,
                     vision_provider: vision_provider.clone(),
                     vision_model: vision_model.clone(),
+                    existing_document_id: pdf.document_id.map(|id| id.to_string()),
                 };
 
                 let track_id = format!("pdf-{}", Uuid::new_v4());

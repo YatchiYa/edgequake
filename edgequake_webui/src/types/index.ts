@@ -201,6 +201,25 @@ export interface DocumentLineage {
   graph_indexing_ms?: number;
   /** Vector embedding duration in milliseconds. */
   vector_embedding_ms?: number;
+  /**
+   * Vision LLM model used for PDF→Markdown extraction (PDF documents only).
+   * Populated from pdf_vision_model metadata field set by the PDF processor.
+   * @implements SPEC-040 - Workspace-level Vision LLM config
+   */
+  pdf_vision_model?: string;
+  /**
+   * PDF extraction method used: "vision" | "text" | "hybrid" (PDF documents only).
+   * @implements SPEC-040
+   */
+  pdf_extraction_method?: string;
+  /** Total tokens consumed. */
+  total_tokens?: number;
+  /** Input tokens consumed. */
+  input_tokens?: number;
+  /** Output tokens generated. */
+  output_tokens?: number;
+  /** Estimated cost in USD. */
+  cost_usd?: number;
 }
 
 /** Status counts for document filtering. */
@@ -360,6 +379,14 @@ export interface PdfUploadOptions {
   metadata?: Record<string, unknown>;
   /** Batch tracking ID (optional) - OODA-19 */
   track_id?: string;
+  /**
+   * Force re-indexing of duplicate PDF (default: false).
+   * WHY (OODA-08): When true, existing graph/vector data is cleared
+   * and the document is re-processed with current LLM/config.
+   * Used by duplicate Replace flow instead of DELETE + re-upload.
+   * @implements BR-dup-replace - Replace = force_reindex on existing PDF
+   */
+  force_reindex?: boolean;
 }
 
 export interface PdfMetadata {
@@ -533,6 +560,20 @@ export interface Tenant {
    */
   default_embedding_full_id?: string;
 
+  // === Default Vision LLM Configuration (SPEC-041) ===
+
+  /**
+   * Default vision LLM model for new workspaces (e.g., "gpt-4o", "gemma3:12b").
+   * Used for PDF vision extraction. Workspaces inherit this if not overridden.
+   * @implements SPEC-041: Tenant-level vision LLM configuration defaults
+   */
+  default_vision_llm_model?: string;
+  /**
+   * Default vision LLM provider for new workspaces (e.g., "openai", "ollama").
+   * @implements SPEC-041: Tenant-level vision LLM configuration defaults
+   */
+  default_vision_llm_provider?: string;
+
   /** Creation timestamp. */
   created_at: string;
   /** Last update timestamp. */
@@ -593,6 +634,16 @@ export interface Workspace {
    * @implements SPEC-032: Combined model ID format
    */
   embedding_full_id?: string;
+  /**
+   * Vision LLM provider for PDF-to-Markdown extraction (e.g., "openai", "ollama").
+   * @implements SPEC-040: Workspace-scoped Vision LLM for PDF processing
+   */
+  vision_llm_provider?: string;
+  /**
+   * Vision LLM model for PDF-to-Markdown extraction (e.g., "gpt-4o", "gemma3:12b").
+   * @implements SPEC-040: Workspace-scoped Vision LLM for PDF processing
+   */
+  vision_llm_model?: string;
   /** Creation timestamp. */
   created_at: string;
   /** Last update timestamp. */

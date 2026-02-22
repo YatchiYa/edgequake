@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, edgequake-main, feat/pdf-llm-vision]
+    branches: [main, edgequake-main, "feat/**"]
   pull_request:
     branches: [main, edgequake-main]
 

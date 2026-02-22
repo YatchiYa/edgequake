@@ -81,6 +81,8 @@ sdk-kotlin-version: ## Update the version of the Kotlin SDK (sdks/kotlin). Usage
 	fi
 	sed -i '' -E 's/<version>.*<\/version>/<version>$(VERSION)<\/version>/' sdks/kotlin/pom.xml
 	@echo "$(GREEN)✓ Updated Kotlin SDK version to $(VERSION) in sdks/kotlin/pom.xml$(RESET)"
+
+ 
 # ============================================================================
 # EdgeQuake - Full Stack Development Makefile
 # ============================================================================
