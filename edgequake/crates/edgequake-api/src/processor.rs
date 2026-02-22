@@ -2057,7 +2057,15 @@ impl DocumentTaskProcessor {
         // showing that PDF → Markdown conversion is happening.
         // OODA-ITERATION-03: Include track_id for cancel button support
         // WHY: Frontend cancel button requires doc.track_id to call POST /tasks/{track_id}/cancel
-        let early_doc_id = uuid::Uuid::new_v4().to_string();
+        // FIX-REBUILD: When rebuilding/reprocessing, reuse the existing document ID
+        // to avoid creating orphaned duplicates. Without this, the old document still
+        // references the same pdf_id whose markdown_content gets overwritten, causing
+        // it to display wrong/hallucinated content from the new extraction.
+        let early_doc_id = data
+            .existing_document_id
+            .clone()
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let is_reprocess = data.existing_document_id.is_some();
         let metadata_key = format!("{}-metadata", early_doc_id);
         // OODA-04: Include file_size_bytes and sha256_checksum in early metadata
         // WHY: Enables complete lineage from the moment the document appears in UI.
@@ -2088,10 +2096,42 @@ impl DocumentTaskProcessor {
             .await
             .map_err(|e| edgequake_tasks::TaskError::Storage(e.to_string()))?;
 
+        // FIX-REBUILD: When reprocessing, clean up old content and chunk KV entries
+        // WHY: Old chunks with stale content must be removed before the pipeline
+        // creates new ones, otherwise the document ends up with a mix of old and new chunks.
+        if is_reprocess {
+            info!(
+                document_id = %early_doc_id,
+                pdf_id = %data.pdf_id,
+                "Reprocessing: cleaning up old content and chunks before re-extraction"
+            );
+            // Remove old content entry
+            let content_key = format!("{}-content", early_doc_id);
+            let _ = self.kv_storage.delete(&[content_key]).await;
+
+            // Remove old chunk entries
+            let all_keys = self.kv_storage.keys().await.unwrap_or_default();
+            let chunk_prefix = format!("{}-chunk-", early_doc_id);
+            let chunk_keys: Vec<String> = all_keys
+                .into_iter()
+                .filter(|k| k.starts_with(&chunk_prefix))
+                .collect();
+            if !chunk_keys.is_empty() {
+                info!(
+                    document_id = %early_doc_id,
+                    chunk_count = chunk_keys.len(),
+                    "Removing old chunk entries"
+                );
+                let _ = self.kv_storage.delete(&chunk_keys).await;
+            }
+        }
+
         info!(
             document_id = %early_doc_id,
             pdf_id = %data.pdf_id,
-            "Created early document metadata with 'converting' stage"
+            is_reprocess = is_reprocess,
+            "{}document metadata with 'converting' stage",
+            if is_reprocess { "Updated existing " } else { "Created early " }
         );
 
         // OODA-09: Create progress callback for real-time page-by-page feedback
@@ -2111,68 +2151,99 @@ impl DocumentTaskProcessor {
         }
         let progress_callback = Arc::new(callback);
         // SPEC-040: Coerce to ConversionProgressCallback (edgequake-pdf2md)
-        let progress_callback: Arc<dyn edgequake_pdf2md::ConversionProgressCallback> =
+        // WHY: The PipelineProgressCallback implements ConversionProgressCallback.
+        // The spawn_blocking vision path doesn't capture this directly due to Send
+        // constraints; progress is emitted via broadcaster. Keep for future re-use.
+        let _progress_callback: Arc<dyn edgequake_pdf2md::ConversionProgressCallback> =
             progress_callback;
 
-        // 4. Extract content via edgequake-pdf2md (always VLM vision pipeline)
-        // SPEC-040: Replaced edgequake-pdf with edgequake-pdf2md for all extraction modes.
-        // The library always uses VLMs to rasterise pages and convert via a vision model.
-        // Provider/model resolved from: data fields → env vars → "gpt-4.1-nano" default.
-        let vision_model = data
-            .vision_model
-            .clone()
-            .or_else(|| std::env::var("EDGEQUAKE_VISION_MODEL").ok())
-            .unwrap_or_else(|| "gpt-4.1-nano".to_string());
+        // 4. Extract content (vision or text mode)
+        // SPEC-007: Vision → edgequake-pdf2md v0.4.2 (bundled pdfium, multi-provider,
+        //           10-rule post-processing). Text → edgequake-pdf PdfExtractor.
+        //
+        // WHY spawn_blocking + Handle::block_on (still needed in v0.4.2):
+        // v0.4.2 fixed on_page_error(&str → String) HRTB (issue #9), but a second HRTB
+        // remains: process_page(... prior_page: Option<&str> ...) holds &str across
+        // .await points inside the process_concurrent state machine, preventing the future
+        // from being Send in async_trait contexts. Tracked upstream for v0.4.3.
+        // Handle::block_on requires no Send bound on the future, bypassing both.
+        let (markdown, extraction_method, used_vision_model) = if data.enable_vision {
+            #[cfg(feature = "vision")]
+            {
+                use edgequake_pdf2md::{convert_from_bytes, ConversionConfig};
 
-        let vision_provider_name = if !data.vision_provider.is_empty() {
-            data.vision_provider.clone()
+                let model = data
+                    .vision_model
+                    .clone()
+                    .unwrap_or_else(|| "gpt-4.1-nano".to_string());
+                let pdf_bytes = pdf.pdf_data.clone();
+
+                // WHY: Vision extraction uses a provider selected per-workspace
+                // (e.g. OpenAI gpt-4o-mini), which may differ from the system
+                // entity-extraction LLM (e.g. Ollama). Cloning self.llm_provider
+                // would silently send vision requests to the wrong provider and
+                // produce hallucinated content. We create a dedicated provider
+                // using data.vision_provider so the correct API key and endpoint
+                // are used (SPEC-040 fix).
+                let provider = {
+                    use crate::safety_limits::create_safe_llm_provider;
+                    create_safe_llm_provider(&data.vision_provider, &model).map_err(|e| {
+                        edgequake_tasks::TaskError::Processing(format!(
+                            "Failed to create vision provider '{}': {e}",
+                            data.vision_provider
+                        ))
+                    })?
+                };
+                let model_owned = model.clone();
+
+                info!(
+                    pdf_id = %data.pdf_id,
+                    vision_provider = %data.vision_provider,
+                    vision_model = %model,
+                    "Starting vision extraction via edgequake-pdf2md v0.4.4 (SPEC-040: dedicated vision provider)"
+                );
+
+                // WHY Handle::current before spawn_blocking: must capture the runtime
+                // handle on the async thread before entering the blocking thread.
+                let handle = tokio::runtime::Handle::current();
+                let output = tokio::task::spawn_blocking(move || {
+                    let config = ConversionConfig::builder()
+                        .provider(provider)
+                        .model(model_owned)
+                        .build()
+                        .map_err(|e| format!("Vision config: {e}"))?;
+                    // Handle::block_on has no Send bound on the future
+                    handle
+                        .block_on(convert_from_bytes(&pdf_bytes, &config))
+                        .map_err(|e| format!("Vision extraction: {e}"))
+                })
+                .await
+                .map_err(|e| edgequake_tasks::TaskError::Processing(format!("Spawn error: {e}")))?
+                .map_err(edgequake_tasks::TaskError::Processing)?;
+
+                info!(
+                    pdf_id = %data.pdf_id,
+                    pages = output.stats.total_pages,
+                    processed = output.stats.processed_pages,
+                    markdown_len = output.markdown.len(),
+                    "Vision extraction completed"
+                );
+                (output.markdown, ExtractionMethod::Vision, Some(model))
+            }
+            #[cfg(not(feature = "vision"))]
+            {
+                return Err(edgequake_tasks::TaskError::UnsupportedOperation(
+                    "Vision extraction requires the 'vision' feature flag".to_string(),
+                ));
+            }
         } else {
-            std::env::var("EDGEQUAKE_VISION_PROVIDER").unwrap_or_else(|_| "openai".to_string())
+            // Text-only extraction removed: edgequake-pdf crate moved to legacy/ (SPEC-040).
+            // All callers set enable_vision=true; this branch is unreachable in practice.
+            return Err(edgequake_tasks::TaskError::UnsupportedOperation(
+                "Text-only PDF extraction is no longer supported. Use vision mode (enable_vision=true)."
+                    .to_string(),
+            ));
         };
-
-        info!(
-            pdf_id = %data.pdf_id,
-            vision_provider = %vision_provider_name,
-            vision_model = %vision_model,
-            "Starting VLM-based PDF extraction via edgequake-pdf2md"
-        );
-
-        let pdf2md_config = edgequake_pdf2md::ConversionConfig::builder()
-            .dpi(150)
-            .temperature(0.1)
-            .model(vision_model.clone())
-            .provider_name(vision_provider_name)
-            .progress_callback(Arc::clone(&progress_callback))
-            .build()
-            .map_err(|e| {
-                edgequake_tasks::TaskError::Processing(format!(
-                    "PDF conversion config error: {}",
-                    e
-                ))
-            })?;
-
-        // 4. Extract content via edgequake-pdf2md (always VLM vision pipeline)
-        // SPEC-040 v0.4.1: edgequake-pdf2md v0.4.1 embeds pdfium via pdfium-auto — no
-        // external dylib or PDFIUM_DYNAMIC_LIB_PATH needed. However the async future
-        // returned by convert_from_bytes is still not Send-general (internal Rc/RefCell
-        // used by pdfium-render). We use block_in_place + block_on to drive the non-Send
-        // future off the Tokio executor thread while still correctly running all
-        // async HTTP calls inside the library.
-        let pdf_bytes_owned = pdf.pdf_data.clone();
-        let pdf2md_output = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                edgequake_pdf2md::convert_from_bytes(&pdf_bytes_owned, &pdf2md_config).await
-            })
-        })
-        .map_err(|e| {
-            edgequake_tasks::TaskError::Processing(format!("Pipeline processing failed: {}", e))
-        })?;
-
-        let (markdown, extraction_method, used_vision_model) = (
-            pdf2md_output.markdown,
-            ExtractionMethod::Vision,
-            Some(vision_model),
-        );
 
         info!(
             pdf_id = %data.pdf_id,
@@ -2189,7 +2260,7 @@ impl DocumentTaskProcessor {
             extraction_method: Some(extraction_method),
             extraction_errors: None,
             document_id: None, // Will be set after document creation
-            vision_model: used_vision_model,
+            vision_model: used_vision_model.clone(),
         };
 
         pdf_storage
@@ -2219,6 +2290,12 @@ impl DocumentTaskProcessor {
                 "sha256_checksum": pdf.sha256_checksum,
                 "tenant_id": data.tenant_id.to_string(),
                 "workspace_id": data.workspace_id.to_string(),
+                // SPEC-040: Store PDF extraction lineage for document detail view
+                // WHY: The lineage builder in documents.rs reads from this metadata JSON.
+                // vision_model and extraction_method are stored in pdf_documents table but
+                // not in the KV document metadata, making them invisible in the lineage view.
+                "pdf_vision_model": used_vision_model,
+                "pdf_extraction_method": extraction_method.as_str(),
             })),
         };
 

@@ -83,6 +83,7 @@ export default function WorkspacePage() {
   const [isEditing, setIsEditing] = useState(false);
   const [selectedLLM, setSelectedLLM] = useState<LLMSelection | undefined>(undefined);
   const [selectedEmbedding, setSelectedEmbedding] = useState<EmbeddingSelection | undefined>(undefined);
+  const [selectedVisionLLM, setSelectedVisionLLM] = useState<LLMSelection | undefined>(undefined);
 
   // Fetch workspace data
   const {
@@ -157,6 +158,13 @@ export default function WorkspacePage() {
           dimension: workspace.embedding_dimension ?? 768,
         });
       }
+      if (workspace.vision_llm_provider && workspace.vision_llm_model) {
+        setSelectedVisionLLM({
+          model: workspace.vision_llm_model,
+          provider: workspace.vision_llm_provider,
+          fullId: `${workspace.vision_llm_provider}/${workspace.vision_llm_model}`,
+        });
+      }
     }
   }, [workspace, isEditing]);
 
@@ -168,8 +176,11 @@ export default function WorkspacePage() {
       embedding_model?: string;
       embedding_provider?: string;
       embedding_dimension?: number;
+      vision_llm_provider?: string;
+      vision_llm_model?: string;
       _embeddingChanged?: boolean;
       _llmChanged?: boolean;
+      _visionChanged?: boolean;
     }) =>
       updateWorkspace(selectedTenantId!, selectedWorkspaceId!, {
         llm_model: data.llm_model,
@@ -177,6 +188,8 @@ export default function WorkspacePage() {
         embedding_model: data.embedding_model,
         embedding_provider: data.embedding_provider,
         embedding_dimension: data.embedding_dimension,
+        vision_llm_provider: data.vision_llm_provider,
+        vision_llm_model: data.vision_llm_model,
       }),
     onSuccess: (_result, variables) => {
       toast.success(t('workspace.updateSuccess', 'Workspace updated successfully'));
@@ -186,11 +199,13 @@ export default function WorkspacePage() {
       // Check if model changes require rebuild
       const needsEmbeddingRebuild = variables._embeddingChanged;
       const needsExtractionRebuild = variables._llmChanged;
+      const needsVisionRebuild = variables._visionChanged;
       
-      if (needsEmbeddingRebuild || needsExtractionRebuild) {
+      if (needsEmbeddingRebuild || needsExtractionRebuild || needsVisionRebuild) {
         setPendingRebuild({
           embeddings: needsEmbeddingRebuild ?? false,
           extraction: needsExtractionRebuild ?? false,
+          vision: needsVisionRebuild ?? false,
         });
         
         if (needsEmbeddingRebuild && needsExtractionRebuild) {
@@ -221,7 +236,18 @@ export default function WorkspacePage() {
             {
               description: t(
                 'workspace.llmRebuildHint',
-                'Use "Rebuild Embeddings" to re-extract entities with the new LLM model.'
+                'Use "Rebuild Knowledge Graph" to re-extract entities with the new LLM model.'
+              ),
+              duration: 6000,
+            }
+          );
+        } else if (needsVisionRebuild) {
+          toast.info(
+            t('workspace.visionRebuildRequired', 'Vision LLM model changed'),
+            {
+              description: t(
+                'workspace.visionRebuildHint',
+                'Use "Rebuild Knowledge Graph" to re-extract PDF documents with the new vision model from original files.'
               ),
               duration: 6000,
             }
@@ -250,9 +276,14 @@ export default function WorkspacePage() {
       data.embedding_dimension = selectedEmbedding.dimension;
     }
 
+    // Vision LLM config (SPEC-040: empty string clears workspace override)
+    data.vision_llm_provider = selectedVisionLLM?.provider ?? '';
+    data.vision_llm_model = selectedVisionLLM?.model ?? '';
+
     // Track which models changed for post-save rebuild notification
     data._embeddingChanged = embeddingModelChanged ?? false;
     data._llmChanged = llmModelChanged ?? false;
+    data._visionChanged = visionLLMChanged ?? false;
 
     updateMutation.mutate(data as Parameters<typeof updateMutation.mutate>[0]);
   };
@@ -279,6 +310,15 @@ export default function WorkspacePage() {
       } else {
         setSelectedEmbedding(undefined);
       }
+      if (workspace.vision_llm_provider && workspace.vision_llm_model) {
+        setSelectedVisionLLM({
+          model: workspace.vision_llm_model,
+          provider: workspace.vision_llm_provider,
+          fullId: `${workspace.vision_llm_provider}/${workspace.vision_llm_model}`,
+        });
+      } else {
+        setSelectedVisionLLM(undefined);
+      }
     }
   };
 
@@ -294,10 +334,17 @@ export default function WorkspacePage() {
     workspace.llm_provider !== selectedLLM.provider
   );
 
+  // Check if Vision LLM changed (triggers full re-extraction of existing PDF documents from originals)
+  const visionLLMChanged = workspace && selectedVisionLLM && (
+    workspace.vision_llm_model !== selectedVisionLLM.model ||
+    workspace.vision_llm_provider !== selectedVisionLLM.provider
+  );
+
   // Track if rebuild is needed after save
   const [pendingRebuild, setPendingRebuild] = useState<{
     embeddings: boolean;
     extraction: boolean;
+    vision: boolean;
   } | null>(null);
 
   if (!selectedTenantId || !selectedWorkspaceId) {
@@ -627,6 +674,55 @@ export default function WorkspacePage() {
         </Card>
       </div>
 
+      {/* Vision LLM Configuration - SPEC-040: PDF-to-Markdown vision model */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-orange-600" />
+            {t('workspace.visionLlmConfig', 'Vision LLM (PDF Extraction)')}
+          </CardTitle>
+          <CardDescription>
+            {t('workspace.visionLlmConfigDesc', 'Multimodal model used for PDF page rendering and text extraction. Overrides server default for this workspace.')}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {isEditing ? (
+            <>
+              <LLMModelSelector
+                value={selectedVisionLLM}
+                onChange={setSelectedVisionLLM}
+                showUsageHint
+              />
+              {visionLLMChanged && (
+                <div className="flex items-center gap-2 p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
+                  <AlertTriangle className="h-4 w-4 text-orange-600" />
+                  <span className="text-sm text-orange-700 dark:text-orange-300">
+                    {t('workspace.visionLlmChangeWarning', 'New Vision LLM will be used for all subsequent PDF uploads.')}
+                  </span>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+              {getProviderIcon(workspace.vision_llm_provider)}
+              <div>
+                <div className="font-medium">
+                  {workspace.vision_llm_model || t('workspace.serverDefault', 'Server Default')}
+                </div>
+                <div className="text-sm text-muted-foreground capitalize">
+                  {workspace.vision_llm_provider || t('workspace.autoDetect', 'Auto-detected')}
+                </div>
+              </div>
+              {workspace.vision_llm_provider && workspace.vision_llm_model && (
+                <Badge variant="outline" className="ml-auto">
+                  {`${workspace.vision_llm_provider}/${workspace.vision_llm_model}`}
+                </Badge>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Provider Health Status - SPEC-032: OODA 201-210 */}
       <Card>
         <CardHeader>
@@ -693,7 +789,7 @@ export default function WorkspacePage() {
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Pending rebuild alert */}
-          {pendingRebuild && (pendingRebuild.embeddings || pendingRebuild.extraction) && (
+          {pendingRebuild && (pendingRebuild.embeddings || pendingRebuild.extraction || pendingRebuild.vision) && (
             <div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
               <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
               <div className="flex-1">
@@ -702,11 +798,13 @@ export default function WorkspacePage() {
                 </p>
                 <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
                   {pendingRebuild.embeddings && pendingRebuild.extraction ? (
-                    t('workspace.rebuildBothPending', 'You changed both LLM and embedding models. Click "Rebuild Embeddings" to reprocess all documents with the new configuration.')
+                    t('workspace.rebuildBothPending', 'You changed both LLM and embedding models. Click "Rebuild Knowledge Graph" to reprocess all documents from original files with the new configuration.')
                   ) : pendingRebuild.embeddings ? (
                     t('workspace.rebuildEmbeddingsPending', 'You changed the embedding model. Click "Rebuild Embeddings" to regenerate vector embeddings.')
+                  ) : pendingRebuild.vision ? (
+                    t('workspace.rebuildVisionPending', 'You changed the Vision LLM model. Click "Rebuild Knowledge Graph" to re-extract all PDF documents from their original files using the new vision model.')
                   ) : (
-                    t('workspace.rebuildExtractionPending', 'You changed the LLM model. Click "Rebuild Embeddings" to re-extract entities from all documents.')
+                    t('workspace.rebuildExtractionPending', 'You changed the LLM model. Click "Rebuild Knowledge Graph" to re-extract entities from all documents.')
                   )}
                 </p>
               </div>

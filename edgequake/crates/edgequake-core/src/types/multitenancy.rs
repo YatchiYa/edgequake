@@ -75,6 +75,17 @@ pub struct Tenant {
     /// Default embedding dimension for new workspaces (e.g., 1536 for OpenAI, 768 for Ollama).
     /// Workspaces inherit this if not explicitly configured.
     pub default_embedding_dimension: usize,
+
+    // === Default Vision LLM Configuration (SPEC-041) ===
+    /// Default Vision LLM provider for PDF-to-Markdown extraction.
+    /// Workspaces inherit this if not explicitly configured.
+    /// Falls back automatically when workspace has no vision LLM set.
+    pub default_vision_llm_provider: Option<String>,
+
+    /// Default Vision LLM model for PDF-to-Markdown extraction.
+    /// Workspaces inherit this if not explicitly configured.
+    /// Falls back automatically when workspace has no vision LLM set.
+    pub default_vision_llm_model: Option<String>,
 }
 
 impl Tenant {
@@ -109,6 +120,8 @@ impl Tenant {
             default_embedding_model,
             default_embedding_provider,
             default_embedding_dimension,
+            default_vision_llm_provider: None,
+            default_vision_llm_model: None,
         }
     }
 
@@ -170,6 +183,31 @@ impl Tenant {
         self.default_embedding_model = model.into();
         self.default_embedding_provider = provider.into();
         self.default_embedding_dimension = dimension;
+        self
+    }
+
+    /// Set the default Vision LLM configuration for new workspaces.
+    ///
+    /// Used as fallback when a workspace has no vision LLM configured.
+    /// Applied automatically during PDF-to-Markdown extraction (SPEC-041).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use edgequake_core::Tenant;
+    ///
+    /// let tenant = Tenant::new("Acme Corp", "acme")
+    ///     .with_vision_config("gpt-4o", "openai");
+    /// assert_eq!(tenant.default_vision_llm_model, Some("gpt-4o".to_string()));
+    /// assert_eq!(tenant.default_vision_llm_provider, Some("openai".to_string()));
+    /// ```
+    pub fn with_vision_config(
+        mut self,
+        model: impl Into<String>,
+        provider: impl Into<String>,
+    ) -> Self {
+        self.default_vision_llm_model = Some(model.into());
+        self.default_vision_llm_provider = Some(provider.into());
         self
     }
 }
@@ -312,14 +350,16 @@ pub struct Workspace {
     /// Must match the stored vector dimensions in this workspace.
     pub embedding_dimension: usize,
 
-    // === Vision Configuration (SPEC-040) ===
-    /// Vision LLM provider for PDF-to-Markdown conversion (e.g., "openai", "anthropic").
-    /// If None, falls back to EDGEQUAKE_VISION_PROVIDER env var, then "openai".
-    pub vision_provider: Option<String>,
+    // === Vision LLM Configuration (SPEC-040) ===
+    /// Vision LLM provider for PDF → Markdown extraction (e.g., "openai", "ollama").
+    /// When set, overrides the per-request vision_provider in PDF uploads.
+    /// If None, falls back to per-request value or server default ("openai").
+    pub vision_llm_provider: Option<String>,
 
-    /// Vision LLM model for PDF-to-Markdown conversion (e.g., "gpt-4.1-nano").
-    /// If None, falls back to EDGEQUAKE_VISION_MODEL env var, then "gpt-4.1-nano".
-    pub vision_model: Option<String>,
+    /// Vision LLM model for PDF page image extraction (e.g., "gpt-4o", "gemma3:latest").
+    /// When set, overrides the per-request vision_model in PDF uploads.
+    /// If None, uses the default for the configured vision provider.
+    pub vision_llm_model: Option<String>,
 }
 
 // ============================================================================
@@ -384,8 +424,8 @@ impl Workspace {
             embedding_model,
             embedding_provider,
             embedding_dimension,
-            vision_provider: None,
-            vision_model: None,
+            vision_llm_provider: None,
+            vision_llm_model: None,
         }
     }
 
@@ -660,13 +700,13 @@ impl Workspace {
 
     /// Set the vision LLM provider for PDF-to-Markdown conversion.
     pub fn with_vision_provider(mut self, provider: impl Into<String>) -> Self {
-        self.vision_provider = Some(provider.into());
+        self.vision_llm_provider = Some(provider.into());
         self
     }
 
     /// Set the vision LLM model for PDF-to-Markdown conversion.
     pub fn with_vision_model(mut self, model: impl Into<String>) -> Self {
-        self.vision_model = Some(model.into());
+        self.vision_llm_model = Some(model.into());
         self
     }
 }
@@ -900,14 +940,14 @@ pub struct CreateWorkspaceRequest {
     /// If None, auto-detected from embedding_model.
     pub embedding_dimension: Option<usize>,
 
-    // === Vision Configuration (SPEC-040) ===
-    /// Vision LLM provider for PDF-to-Markdown conversion (e.g., "openai", "anthropic").
-    /// If None, falls back to EDGEQUAKE_VISION_PROVIDER env var, then "openai".
-    pub vision_provider: Option<String>,
+    // === Vision LLM Configuration (SPEC-041) ===
+    /// Vision LLM model for PDF-to-Markdown extraction (e.g., "gpt-4o", "gemma3:12b").
+    /// If None, falls back to tenant default then server default.
+    pub vision_llm_model: Option<String>,
 
-    /// Vision LLM model for PDF-to-Markdown conversion (e.g., "gpt-4.1-nano").
-    /// If None, falls back to EDGEQUAKE_VISION_MODEL env var, then "gpt-4.1-nano".
-    pub vision_model: Option<String>,
+    /// Vision LLM provider for PDF-to-Markdown extraction (e.g., "openai", "ollama").
+    /// If None, auto-detected from vision_llm_model.
+    pub vision_llm_provider: Option<String>,
 }
 
 impl CreateWorkspaceRequest {
@@ -1080,10 +1120,12 @@ pub struct UpdateWorkspaceRequest {
     pub embedding_provider: Option<String>,
     /// New embedding dimension (optional).
     pub embedding_dimension: Option<usize>,
-    /// New vision provider for PDF-to-Markdown conversion (SPEC-040).
-    pub vision_provider: Option<String>,
-    /// New vision model for PDF-to-Markdown conversion (SPEC-040).
-    pub vision_model: Option<String>,
+    /// New Vision LLM provider for PDF extraction (optional).
+    /// Set to Some("") or Some("none") to clear it.
+    pub vision_llm_provider: Option<String>,
+    /// New Vision LLM model for PDF extraction (optional).
+    /// Set to Some("") or Some("none") to clear it.
+    pub vision_llm_model: Option<String>,
 }
 
 /// Statistics for a workspace.

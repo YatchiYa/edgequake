@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/table';
 import type { Document } from '@/types';
 import { FileText } from 'lucide-react';
+import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DocumentTableRow } from './document-table-row';
 import { DocumentTableStates } from './document-table-states';
@@ -86,12 +87,16 @@ export interface DocumentTableSectionProps {
   onPageChange: (page: number) => void;
   /** Handler for page size change */
   onPageSizeChange: (size: number) => void;
+  /** Optional callback to clear active filters/search (shows clear button in empty state) */
+  onClearFilter?: () => void;
 }
 
 /**
  * Document table section with loading states and pagination.
+ * WHY: Wrapped in memo to prevent re-renders when DocumentManager state
+ * unrelated to the table (e.g., preview panel, dialog state) changes.
  */
-export function DocumentTableSection({
+export const DocumentTableSection = memo(function DocumentTableSection({
   documents,
   totalCount,
   isLoading,
@@ -118,6 +123,7 @@ export function DocumentTableSection({
   pageSize,
   onPageChange,
   onPageSizeChange,
+  onClearFilter,
 }: DocumentTableSectionProps) {
   const { t } = useTranslation();
 
@@ -129,7 +135,9 @@ export function DocumentTableSection({
           {/* Table Header */}
           <div className="flex items-center gap-2 mb-3">
             <FileText className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">Documents ({documents.length})</span>
+            <span className="text-sm font-medium">
+              {t('documents.documentCount', 'Documents ({{count}})', { count: documents.length })}
+            </span>
           </div>
           
           {/* OODA-12: Loading skeleton and empty state */}
@@ -137,6 +145,9 @@ export function DocumentTableSection({
             isLoading={isLoading}
             isEmpty={documents.length === 0}
             onUploadClick={onUploadClick}
+            statusFilter={statusFilter}
+            searchQuery={searchQuery}
+            onClearFilter={onClearFilter}
           />
           
           {!isLoading && documents.length > 0 && (
@@ -151,12 +162,13 @@ export function DocumentTableSection({
                         aria-label={t('documents.bulk.selectAll', 'Select all')}
                       />
                     </TableHead>
-                    <TableHead scope="col">Title</TableHead>
-                    <TableHead scope="col">Status</TableHead>
-                    <TableHead scope="col" className="text-center">Entities</TableHead>
-                    <TableHead scope="col" className="text-center">Cost</TableHead>
-                    <TableHead scope="col">Created</TableHead>
-                    <TableHead scope="col" className="w-25"><span className="sr-only">Actions</span></TableHead>
+                    <TableHead scope="col">{t('documents.table.title', 'Title')}</TableHead>
+                    <TableHead scope="col">{t('documents.table.status', 'Status')}</TableHead>
+                    <TableHead scope="col" className="text-center">{t('documents.table.entities', 'Entities')}</TableHead>
+                    <TableHead scope="col" className="text-center">{t('documents.table.cost', 'Cost')}</TableHead>
+                    <TableHead scope="col">{t('documents.table.created', 'Created')}</TableHead>
+                    <TableHead scope="col">{t('documents.table.updated', 'Last Updated')}</TableHead>
+                    <TableHead scope="col" className="w-25"><span className="sr-only">{t('documents.table.actions', 'Actions')}</span></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -194,9 +206,11 @@ export function DocumentTableSection({
           {/* Show filtered vs total count when filtering */}
           {(searchQuery || statusFilter !== 'all') && (
             <p className="text-xs text-muted-foreground mb-2 text-center">
-              Showing {documents.length} of {totalCount} documents
-              {statusFilter !== 'all' && ` (${statusFilter})`}
-              {searchQuery && ` matching "${searchQuery}"`}
+              {t('documents.filter.showing', 'Showing {{count}} of {{total}} documents', {
+                count: documents.length,
+                total: totalCount,
+              })}
+              {searchQuery && ` ${t('documents.filter.matching', 'matching "{{query}}"', { query: searchQuery })}`}
             </p>
           )}
           <PaginationControls
@@ -213,6 +227,6 @@ export function DocumentTableSection({
       )}
     </>
   );
-}
+});
 
 export default DocumentTableSection;

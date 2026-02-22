@@ -119,7 +119,10 @@ export interface WorkspaceStats {
   document_count: number;
   entity_count: number;
   relationship_count: number;
+  /** Number of distinct entity types (e.g., PERSON, ORGANIZATION). */
+  entity_type_count: number;
   chunk_count: number;
+  embedding_count: number;
   storage_bytes: number;
 }
 
@@ -164,6 +167,13 @@ export interface CreateTenantRequest {
   default_embedding_provider?: string;
   /** Default embedding dimension for new workspaces (e.g., 1536, 768). */
   default_embedding_dimension?: number;
+
+  // === Default Vision LLM Configuration (SPEC-041) ===
+
+  /** Default vision LLM model for new workspaces (e.g., "gpt-4o", "gemma3:12b"). */
+  default_vision_llm_model?: string;
+  /** Default vision LLM provider for new workspaces ("openai", "ollama"). */
+  default_vision_llm_provider?: string;
 }
 
 /**
@@ -258,6 +268,16 @@ export interface UpdateWorkspaceRequest {
   embedding_dimension?: number;
   /** Whether workspace is active (optional) */
   is_active?: boolean;
+  /**
+   * Vision LLM provider for PDF-to-Markdown extraction (e.g., "openai", "ollama").
+   * @implements SPEC-040: Workspace-scoped Vision LLM for PDF processing
+   */
+  vision_llm_provider?: string;
+  /**
+   * Vision LLM model for PDF-to-Markdown extraction (e.g., "gpt-4o", "gemma3:12b").
+   * @implements SPEC-040: Workspace-scoped Vision LLM for PDF processing
+   */
+  vision_llm_model?: string;
 }
 
 /**
@@ -557,6 +577,9 @@ export async function uploadPdfDocument(
   if (options?.track_id) {
     formData.append("track_id", options.track_id);
   }
+  if (options?.force_reindex !== undefined) {
+    formData.append("force_reindex", String(options.force_reindex));
+  }
 
   return api.post<PdfUploadResponse>("/documents/pdf", formData, {
     headers: {
@@ -571,24 +594,73 @@ export async function uploadPdfDocument(
 
 /**
  * Response type for PDF progress endpoint.
- * Matches backend PdfUploadProgress struct.
+ * Matches backend PdfUploadProgress struct (edgequake-tasks/src/progress.rs).
+ *
+ * WHY: The backend serializes is_complete/is_failed booleans (not a status
+ * string), and phases as PhaseProgress objects (not a tagged union).
+ * The hook computes a normalized `status` string from these fields.
  *
  * @implements OODA-19: PDF progress API integration
  */
 export interface PdfProgressResponse {
   track_id: string;
   pdf_id: string;
+  document_id?: string | null;
   filename: string;
-  status: "pending" | "processing" | "completed" | "failed";
-  phases: PhaseStatus[];
+  /** Computed by usePdfProgress hook from is_complete / is_failed */
+  status?: "pending" | "processing" | "completed" | "failed";
+  phases: PhaseProgressData[];
+  overall_percentage: number;
+  is_complete: boolean;
+  is_failed: boolean;
   started_at: string;
-  completed_at?: string;
+  updated_at: string;
+  completed_at?: string | null;
+  eta_seconds?: number | null;
+  /** Top-level error (set from the first failed phase message) */
   error?: string;
-  eta_seconds?: number;
 }
 
 /**
- * Phase status within PdfProgressResponse.
+ * Phase progress data from the backend PhaseProgress struct.
+ *
+ * WHY: Backend serializes phase status as `status: "active" | "complete" | ...`
+ * (not a tagged union `type`), and uses `percentage` (not `percent`).
+ * A `message` field carries real-time human-readable progress text.
+ */
+export interface PhaseProgressData {
+  /** Phase identifier: "upload" | "pdf_conversion" | "chunking" | "embedding" | "extraction" | "graph_storage" */
+  phase: string;
+  /** Phase status: "pending" | "active" | "complete" | "failed" | "skipped" */
+  status: "pending" | "active" | "complete" | "failed" | "skipped";
+  current: number;
+  total: number;
+  /** Completion percentage 0–100 */
+  percentage: number;
+  /** Human-readable progress message, e.g. "Converting PDF: page 5/23 (22%)" */
+  message: string;
+  eta_seconds?: number | null;
+  error?: PhaseErrorData | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+}
+
+/**
+ * Error details for a failed phase.
+ */
+export interface PhaseErrorData {
+  message: string;
+  code: string;
+  retryable: boolean;
+  suggestion: string;
+  affected_item?: string | null;
+}
+
+/**
+ * Legacy PhaseStatus discriminated union kept for backward compatibility
+ * with components that haven't been updated yet.
+ *
+ * @deprecated Use PhaseProgressData instead.
  */
 export type PhaseStatus =
   | { type: "pending" }
@@ -760,6 +832,8 @@ export interface ReprocessFailedResponse {
  * @returns ReprocessFailedResponse with track_id, counts, and document_ids
  */
 export async function reprocessFailedDocuments(): Promise<ReprocessFailedResponse> {
+  // WHY: Backend requires a JSON body (even empty {}); sending no body causes HTTP 400
+  // "EOF while parsing a value at line 1 column 0"
   return api.post<ReprocessFailedResponse>("/documents/reprocess", {});
 }
 
@@ -1248,28 +1322,12 @@ export async function getPipelineStatus(
   workspace_id?: string,
 ): Promise<PipelineStatus> {
   try {
-    // CRITICAL: Log tenant/workspace context for debugging isolation
-    console.log("[getPipelineStatus] DEBUG:", {
-      tenant_id,
-      workspace_id,
-      timestamp: new Date().toISOString(),
-    });
-
     // Use the tasks list endpoint to derive pipeline status
     // CRITICAL: Pass tenant_id and workspace_id for proper isolation
     const result = await getTasksList({
       tenant_id,
       workspace_id,
       page_size: 50,
-    });
-
-    console.log("[getPipelineStatus] Result:", {
-      is_busy: result.statistics.processing > 0,
-      running_tasks: result.statistics.processing,
-      queued_tasks: result.statistics.pending,
-      tasks_count: result.tasks.length,
-      first_task_tenant: result.tasks[0]?.tenant_id,
-      first_task_workspace: result.tasks[0]?.workspace_id,
     });
 
     return {

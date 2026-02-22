@@ -21,11 +21,12 @@ import {
     Loader2,
     Network,
     RefreshCw,
+    StopCircle,
     XCircle
 } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -36,7 +37,7 @@ const statusConfig = {
   indexed: { icon: CheckCircle, color: 'text-green-500', bg: 'bg-green-500/10', label: 'Indexed' },
   partial_failure: { icon: AlertCircle, color: 'text-orange-500', bg: 'bg-orange-500/10', label: 'Partial Failure' },
   failed: { icon: XCircle, color: 'text-red-500', bg: 'bg-red-500/10', label: 'Failed' },
-  cancelled: { icon: XCircle, color: 'text-gray-500', bg: 'bg-gray-500/10', label: 'Cancelled' },
+  cancelled: { icon: StopCircle, color: 'text-gray-500', bg: 'bg-gray-500/10', label: 'Cancelled' },
 } as const;
 
 type DocumentStatus = keyof typeof statusConfig;
@@ -64,6 +65,36 @@ export default function DocumentViewPage() {
   const endLine = searchParams.get('end_line') 
     ? parseInt(searchParams.get('end_line')!) 
     : undefined;
+
+  // OODA-chunk-select: Local chunk selection state for sidebar → content highlighting.
+  // WHY: Using local state (not URL) avoids router updates on each click
+  // while still supporting URL-based deep-linking for external citations.
+  const [selectedChunkId, setSelectedChunkId] = useState<string | undefined>();
+  const [chunkStartLine, setChunkStartLine] = useState<number | undefined>();
+  const [chunkEndLine, setChunkEndLine] = useState<number | undefined>();
+
+  /**
+   * Called when user clicks a chunk in the Data Hierarchy tree.
+   * Updates local state so ContentRenderer highlights the correct line range.
+   * Clicking the same chunk again deselects it (toggle behaviour).
+   */
+  const handleChunkSelect = useCallback(
+    (chunkId: string, start?: number, end?: number) => {
+      setSelectedChunkId((prev) => {
+        const isDeselecting = prev === chunkId;
+        // Update line ranges inside the functional updater for correct synchronisation
+        setChunkStartLine(isDeselecting ? undefined : start);
+        setChunkEndLine(isDeselecting ? undefined : end);
+        return isDeselecting ? undefined : chunkId;
+      });
+    },
+    [],
+  );
+
+  // Active line range: chunk selection overrides URL params.
+  // WHY: Sidebar interaction should take precedence over deep-link defaults.
+  const activeStartLine = chunkStartLine ?? startLine;
+  const activeEndLine = chunkEndLine ?? endLine;
 
   // Fetch document details
   const { data: document, isLoading, isError, error, refetch } = useQuery({
@@ -127,11 +158,13 @@ export default function DocumentViewPage() {
   const statusInfo = statusConfig[status] || statusConfig.completed;
   const StatusIcon = statusInfo.icon;
   const isFailed = status === 'failed' || status === 'partial_failure';
+  const isCancelled = status === 'cancelled';
+  const isRetryable = isFailed || isCancelled;
 
   // Loading state
   if (isLoading) {
     return (
-      <div className="flex flex-col h-screen">
+      <div className="flex flex-col h-full">
         <HeaderSkeleton />
         <div className="flex-1 flex">
           <div className="flex-1 p-8">
@@ -150,7 +183,7 @@ export default function DocumentViewPage() {
   // Error state
   if (isError || !document || !documentWithContent) {
     return (
-      <div className="flex flex-col h-screen">
+      <div className="flex flex-col h-full">
         <ErrorHeader />
         <div className="flex-1 flex items-center justify-center p-8">
           <ErrorContent error={error as Error} onRetry={refetch} />
@@ -160,7 +193,7 @@ export default function DocumentViewPage() {
   }
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden">
       {/* Minimal Header */}
       <header className="shrink-0 border-b bg-background">
         <div className="flex items-center justify-between px-3 py-2">
@@ -197,6 +230,12 @@ export default function DocumentViewPage() {
                 Failed
               </Badge>
             )}
+            {isCancelled && (
+              <Badge variant="outline" className="text-xs border-gray-500 text-gray-500">
+                <StopCircle className="h-3 w-3 mr-1" />
+                Cancelled
+              </Badge>
+            )}
             {isPdfDocument && pdfIdForViewer && (
               <Button variant="ghost" size="sm" className="h-8" asChild>
                 <a href={getPdfDownloadUrl(pdfIdForViewer)} target="_blank" rel="noopener noreferrer">
@@ -213,6 +252,13 @@ export default function DocumentViewPage() {
         {isFailed && document.error_message && (
           <div className="px-3 py-2 bg-destructive/10 border-t">
             <p className="text-xs text-destructive">{document.error_message}</p>
+          </div>
+        )}
+        {isCancelled && (
+          <div className="px-3 py-2 bg-muted/50 border-t">
+            <p className="text-xs text-muted-foreground">
+              {t('documents.cancelled.message', 'Processing was cancelled. You can reprocess this document from the documents list.')}
+            </p>
           </div>
         )}
       </header>
@@ -246,8 +292,8 @@ export default function DocumentViewPage() {
                     <ContentRenderer 
                       document={documentWithContent} 
                       highlightText={highlightText}
-                      startLine={startLine}
-                      endLine={endLine}
+                      startLine={activeStartLine}
+                      endLine={activeEndLine}
                     />
                   )
                 }
@@ -257,25 +303,31 @@ export default function DocumentViewPage() {
               <ContentRenderer 
                 document={documentWithContent} 
                 highlightText={highlightText}
-                startLine={startLine}
-                endLine={endLine}
+                startLine={activeStartLine}
+                endLine={activeEndLine}
               />
             )}
           </div>
 
-          {/* Metadata Sidebar - Resizable (hidden for PDF side-by-side to maximize content) */}
-          {!isPdfDocument && (
-            <ResizablePanel
-              side="right"
-              defaultWidth={520}
-              minWidth={400}
-              maxWidth={900}
-              storageKey="document-detail-sidebar-width"
-              ariaLabel="Resize metadata sidebar"
-            >
-              <MetadataSidebar document={document} />
-            </ResizablePanel>
-          )}
+          {/* Metadata Sidebar - Resizable (shown for all document types including PDF).
+              WHY: The sidebar contains the LineageTree which shows the Vision LLM
+              used for PDF → Markdown transcription. Hiding it for PDF documents
+              would make lineage information inaccessible to the user.
+              SPEC-040: Vision LLM lineage must be visible in document detail view. */}
+          <ResizablePanel
+            side="right"
+            defaultWidth={400}
+            minWidth={280}
+            maxWidth={700}
+            storageKey="document-detail-sidebar-width"
+            ariaLabel="Resize metadata sidebar"
+          >
+            <MetadataSidebar
+              document={document}
+              onChunkSelect={handleChunkSelect}
+              selectedChunkId={selectedChunkId}
+            />
+          </ResizablePanel>
         </div>
 
         {/* Mobile/Tablet: Tabbed layout */}
@@ -304,13 +356,17 @@ export default function DocumentViewPage() {
                 <ContentRenderer 
                   document={documentWithContent} 
                   highlightText={highlightText}
-                  startLine={startLine}
-                  endLine={endLine}
+                  startLine={activeStartLine}
+                  endLine={activeEndLine}
                 />
               )}
             </TabsContent>
             <TabsContent value="metadata" className="flex-1 overflow-hidden m-0 mt-0">
-              <MetadataSidebar document={document} />
+              <MetadataSidebar
+                document={document}
+                onChunkSelect={handleChunkSelect}
+                selectedChunkId={selectedChunkId}
+              />
             </TabsContent>
           </Tabs>
         </div>

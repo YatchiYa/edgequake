@@ -23,7 +23,7 @@ use crate::schema::{Block, BlockType, BoundingBox, Document, ExtractionMethod, P
 use crate::Result;
 use async_trait::async_trait;
 use base64::Engine;
-use edgequake_llm::traits::{ChatMessage, CompletionOptions, LLMProvider};
+use edgequake_llm::traits::{ChatMessage, CompletionOptions, ImageData, LLMProvider};
 use std::sync::Arc;
 use tracing::{debug, info};
 
@@ -172,6 +172,36 @@ impl VisionConfig {
         self.temperature = temperature;
         self
     }
+
+    /// Returns the temperature to pass to the LLM, or None if the model
+    /// requires only the default temperature (e.g., gpt-4.1-nano, gpt-4.1-mini).
+    ///
+    /// WHY: Some OpenAI models (gpt-4.1-nano, gpt-4.1-mini) reject any temperature
+    /// value other than the default (1.0), returning API error
+    /// "'temperature' does not support X with this model. Only the default (1) value is supported."
+    pub fn effective_temperature(&self) -> Option<f32> {
+        if model_requires_default_temperature(&self.model) {
+            None
+        } else {
+            Some(self.temperature)
+        }
+    }
+}
+
+/// Returns true if the model only accepts the default temperature (1.0).
+///
+/// WHY: OpenAI's gpt-4.1-nano and gpt-4.1-mini series reject custom temperature
+/// values. Sending temperature=0.1 causes an API error. We detect these models
+/// by name and skip the temperature parameter entirely.
+pub fn model_requires_default_temperature(model: &str) -> bool {
+    let lower = model.to_lowercase();
+    // gpt-4.1-nano and gpt-4.1-mini only accept default temperature
+    lower.contains("gpt-4.1-nano")
+        || lower.contains("gpt-4.1-mini")
+        || lower.contains("o1-")
+        || lower.starts_with("o1")
+        || lower.contains("o4-")
+        || lower.starts_with("o4")
 }
 
 /// Vision-based document extractor.
@@ -264,7 +294,7 @@ impl VisionExtractor {
         progress: Arc<P>,
     ) -> Result<Document>
     where
-        P: ProgressCallback,
+        P: ProgressCallback + ?Sized,
     {
         info!("Extracting document from PDF using vision mode with progress");
 
@@ -292,7 +322,7 @@ impl VisionExtractor {
         _progress: Arc<P>,
     ) -> Result<Document>
     where
-        P: ProgressCallback,
+        P: ProgressCallback + ?Sized,
     {
         Err(PdfError::Unsupported(
             "Vision mode requires the 'vision' feature flag. \
@@ -334,7 +364,7 @@ impl VisionExtractor {
         progress: Arc<P>,
     ) -> Result<Document>
     where
-        P: ProgressCallback,
+        P: ProgressCallback + ?Sized,
     {
         info!(
             "Extracting document from {} page images with progress",
@@ -392,16 +422,24 @@ impl VisionExtractor {
             .as_deref()
             .unwrap_or(DEFAULT_VISION_PROMPT);
 
-        // Build the message with the image
-        let image_url = image.to_data_url();
+        // Build the multimodal message with proper ImageData (OODA-51).
+        // WHY: edgequake-llm 0.2.3 supports ChatMessage::user_with_images() which
+        // sends images as structured multipart content blocks via the OpenAI image_url
+        // API — required for vision-capable models (gpt-4o, gpt-4.1, etc.).
+        // Embedding the data-URL as plain text was silently ignored by non-vision models.
+        let image_data = ImageData::new(image.to_base64(), image.format.mime_type());
 
         let messages = vec![
             ChatMessage::system(VISION_SYSTEM_PROMPT.to_string()),
-            ChatMessage::user(format!("[Image: {}]\n\n{}", image_url, prompt)),
+            ChatMessage::user_with_images(prompt, vec![image_data]),
         ];
 
         let options = CompletionOptions {
-            temperature: Some(self.config.temperature),
+            // WHY: Some models (gpt-4.1-nano, gpt-4.1-mini) only accept the default
+            // temperature (1.0) and will return an API error if a different value is sent.
+            // effective_temperature() returns None for those models so no temperature
+            // parameter is sent in the request.
+            temperature: self.config.effective_temperature(),
             max_tokens: Some(self.config.max_tokens),
             ..Default::default()
         };
