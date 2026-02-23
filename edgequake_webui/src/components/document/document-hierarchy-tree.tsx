@@ -297,7 +297,8 @@ function TreeNode({
         className={cn(
           'flex items-center gap-1.5 w-full text-left py-1.5 px-2 rounded text-sm',
           'hover:bg-muted/50 transition-colors',
-          isSelected && 'bg-primary/10 border-l-2 border-primary font-semibold text-primary',
+          // Yellow highlight for selected chunk — mirrors the content-area yellow mark
+          isSelected && 'bg-yellow-100 dark:bg-yellow-900/30 border-l-2 border-yellow-500 dark:border-yellow-400 font-semibold text-yellow-900 dark:text-yellow-100',
         )}
         style={{ paddingLeft: `${depth * 16}px` }}
       >
