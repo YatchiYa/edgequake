@@ -58,9 +58,7 @@ We rebuilt our query engine with five modes:
 
 The classic approach. Fast and effective for lookup questions.
 
-```
-Query → Embed → Vector Search → Top-K Chunks → LLM
-```
+![5 RAG Query Mode Pipeline Flows](assets/pipeline_flows.jpg)
 
 Use for: "What is X?", "Define Y", "Show me Z"
 
@@ -68,9 +66,7 @@ Use for: "What is X?", "Define Y", "Show me Z"
 
 For questions about specific entities and their relationships.
 
-```
 Query → Find Entity → Traverse Graph → Gather Context → LLM
-```
 
 Use for: "What does Alice work on?", "Who reports to Bob?"
 
@@ -80,9 +76,7 @@ This mode starts by identifying entities in the query, finding their nodes in th
 
 For big-picture questions about patterns and themes.
 
-```
 Query → Extract Themes → Community Search → Summarize → LLM
-```
 
 Use for: "What are the main challenges?", "What themes emerge?"
 
@@ -92,9 +86,7 @@ This mode uses community detection in the graph to find clusters of related conc
 
 Our default, combining both approaches.
 
-```
 Query → Run Local + Run Global → Merge → LLM
-```
 
 Use for: Complex questions, unknown intent
 
@@ -104,9 +96,7 @@ This is the safe choice when you're not sure what type of question is being aske
 
 For advanced tuning per domain.
 
-```
 Query → (α × Vector) + (β × Graph) → LLM
-```
 
 Full control over the balance between vector similarity and graph traversal.
 
@@ -144,12 +134,7 @@ Vector search returns 20 chunks. Graph traversal returns 15 entities and 30 rela
 
 Most systems just truncate randomly. We do something smarter: **priority-based token budgeting**.
 
-```
-Budget Allocation:
-- Entity context: 40%
-- Relationship context: 30%
-- Raw chunks: 30%
-```
+![Smart Token Budgeting & Keyword Caching in RAG](assets/token_budget_cache.jpg)
 
 Why prioritize graph context? Because it's pre-summarized. During ingestion, we extracted entity descriptions and relationship summaries. That content is already distilled to its essence.
 
@@ -163,13 +148,7 @@ The result: more signal per token, better answers.
 
 We evaluated all five modes on 1,000 real queries from our users:
 
-| Mode   | Latency | Quality Score |
-| ------ | ------- | ------------- |
-| Naive  | 48ms    | 6.2/10        |
-| Local  | 142ms   | 7.8/10        |
-| Global | 195ms   | 7.5/10        |
-| Hybrid | 245ms   | 8.5/10        |
-| Mix    | varies  | 8.1/10        |
+![RAG Query Mode Performance Benchmarks](assets/benchmarks_mode_performance.jpg)
 
 Hybrid is 5x slower than Naive. But it's 35% better quality.
 
@@ -215,15 +194,7 @@ In production, we see 70-90% cache hit rates. The cost increase is negligible co
 
 We open-sourced the entire query engine as EdgeQuake:
 
-```bash
-git clone https://github.com/your-org/edgequake
-cd edgequake
-make dev
-
-# Try different modes
-curl -X POST http://localhost:3000/api/query \
-  -d '{"query": "How do sales and engineering collaborate?", "mode": "hybrid"}'
-```
+![EdgeQuake Quick Start — Try It In 2 Commands](assets/quickstart_cli.jpg)
 
 It implements the LightRAG algorithm (arXiv:2410.05779) with production-ready multi-mode querying.
 
