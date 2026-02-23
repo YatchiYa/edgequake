@@ -38,7 +38,7 @@ export const MarkdownInlineTokens = memo(function MarkdownInlineTokens({
             return (
               <span
                 key={tokenId}
-                className={cn(isLastToken && 'animate-pulse')}
+                className={cn(isLastToken && 'motion-safe:animate-pulse')}
               >
                 {/* Handle nested tokens in text (like bold inside text) */}
                 {textToken.tokens ? (
@@ -118,7 +118,7 @@ export const MarkdownInlineTokens = memo(function MarkdownInlineTokens({
                 title={linkToken.title ?? undefined}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-primary underline underline-offset-2 hover:text-primary/80 transition-colors"
+                className="text-primary underline underline-offset-2 hover:text-primary/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 rounded-sm"
               >
                 <MarkdownInlineTokens
                   id={tokenId}

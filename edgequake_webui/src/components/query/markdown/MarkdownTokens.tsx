@@ -180,7 +180,10 @@ const TokenRenderer = memo(function TokenRenderer({
     case 'blockquote': {
       const blockquote = token as Tokens.Blockquote;
       return (
-        <blockquote className="my-4 border-l-4 border-primary/50 pl-4 italic text-muted-foreground">
+        <blockquote
+          className="my-4 border-l-4 border-primary/50 pl-4 italic text-muted-foreground"
+          role="blockquote"
+        >
           <MarkdownTokens
             tokens={blockquote.tokens}
             isStreaming={isStreaming}
@@ -291,7 +294,10 @@ const TokenRenderer = memo(function TokenRenderer({
     case 'hr':
       // Subtle divider that doesn't look like an artifact
       return (
-        <hr className="my-6 border-0 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
+        <hr
+          className="my-6 border-0 h-px bg-gradient-to-r from-transparent via-border to-transparent"
+          role="separator"
+        />
       );
 
     case 'space':
