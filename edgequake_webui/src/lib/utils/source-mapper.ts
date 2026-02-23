@@ -128,7 +128,7 @@ function extractDocumentId(chunkId: string): string {
  * @returns true if context has any chunks, entities, or relationships
  */
 export function hasContextContent(
-  context: QueryContext | undefined | null
+  context: QueryContext | undefined | null,
 ): boolean {
   if (!context) return false;
 

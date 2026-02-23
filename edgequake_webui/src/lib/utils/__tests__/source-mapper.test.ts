@@ -129,9 +129,13 @@ describe("mapSourcesToContext", () => {
 
     const result = mapSourcesToContext(sources);
 
-    expect(result.chunks[0].chunk_id).toBe("abcd1234-0000-0000-0000-000000000000-chunk-0");
+    expect(result.chunks[0].chunk_id).toBe(
+      "abcd1234-0000-0000-0000-000000000000-chunk-0",
+    );
     // document_id is extracted (strips -chunk-N suffix)
-    expect(result.chunks[0].document_id).toBe("abcd1234-0000-0000-0000-000000000000");
+    expect(result.chunks[0].document_id).toBe(
+      "abcd1234-0000-0000-0000-000000000000",
+    );
   });
 
   it("should separate sources by type correctly", () => {
@@ -178,7 +182,7 @@ describe("hasContextContent", () => {
 
   it("should return false for empty context", () => {
     expect(
-      hasContextContent({ chunks: [], entities: [], relationships: [] })
+      hasContextContent({ chunks: [], entities: [], relationships: [] }),
     ).toBe(false);
   });
 
@@ -188,7 +192,7 @@ describe("hasContextContent", () => {
         chunks: [{ content: "test", document_id: "d1", score: 0.5 }],
         entities: [],
         relationships: [],
-      })
+      }),
     ).toBe(true);
   });
 
@@ -198,7 +202,7 @@ describe("hasContextContent", () => {
         chunks: [],
         entities: [{ id: "e1", label: "E1", relevance: 0.5 }],
         relationships: [],
-      })
+      }),
     ).toBe(true);
   });
 
@@ -210,7 +214,7 @@ describe("hasContextContent", () => {
         relationships: [
           { source: "a", target: "b", type: "r", relevance: 0.5 },
         ],
-      })
+      }),
     ).toBe(true);
   });
 });
