@@ -90,6 +90,11 @@ interface ModelSelectorProps {
   placeholder?: string;
   /** Additional CSS classes */
   className?: string;
+  /**
+   * When true (and type === 'llm'), only shows models with supports_vision === true.
+   * Use this for selecting the Vision LLM used in PDF-to-Markdown extraction.
+   */
+  filterVision?: boolean;
 }
 
 /**
@@ -269,6 +274,7 @@ export function ModelSelector({
   disabled,
   placeholder,
   className,
+  filterVision = false,
 }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
 
@@ -281,7 +287,10 @@ export function ModelSelector({
   const groups = useMemo<ModelGroup[]>(() => {
     if (type === 'llm' && llmData) {
       const groupMap = new Map<string, ModelGroup>();
-      for (const model of llmData.models) {
+      const llmModels = filterVision
+        ? llmData.models.filter((m) => m.capabilities.supports_vision)
+        : llmData.models;
+      for (const model of llmModels) {
         const existing = groupMap.get(model.provider);
         const displayItem = llmToDisplayItem(model);
         if (existing) {
@@ -314,7 +323,7 @@ export function ModelSelector({
       return Array.from(groupMap.values());
     }
     return [];
-  }, [type, llmData, embeddingData]);
+  }, [type, llmData, embeddingData, filterVision]);
 
   // Find selected model
   const selectedModel = useMemo(() => {

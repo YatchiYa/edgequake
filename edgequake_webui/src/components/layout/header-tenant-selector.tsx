@@ -95,10 +95,14 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
   const [workspaceLLMSelection, setWorkspaceLLMSelection] = useState<LLMSelection | undefined>(undefined);
   // SPEC-032: Workspace embedding configuration
   const [embeddingSelection, setEmbeddingSelection] = useState<EmbeddingSelection | undefined>(undefined);
+  // SPEC-041: Workspace Vision LLM for PDF-to-Markdown extraction
+  const [workspaceVisionLLMSelection, setWorkspaceVisionLLMSelection] = useState<LLMSelection | undefined>(undefined);
   // SPEC-032: Tenant default LLM configuration
   const [tenantDefaultLLM, setTenantDefaultLLM] = useState<LLMSelection | undefined>(undefined);
   // SPEC-032: Tenant default embedding configuration
   const [tenantDefaultEmbedding, setTenantDefaultEmbedding] = useState<EmbeddingSelection | undefined>(undefined);
+  // SPEC-041: Tenant default Vision LLM configuration
+  const [tenantDefaultVisionLLM, setTenantDefaultVisionLLM] = useState<LLMSelection | undefined>(undefined);
 
 
   // Generate URL-safe slug from name
@@ -170,7 +174,7 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
   }, [workspacesData, setWorkspaces, selectedWorkspaceId, selectWorkspace, isInitialized, t]);
 
   // Create tenant mutation
-  // SPEC-032: Updated to include LLM and embedding configuration
+  // SPEC-032/SPEC-041: Updated to include LLM, embedding, and vision configuration
   const createTenantMutation = useMutation({
     mutationFn: (data: { 
       name: string; 
@@ -179,6 +183,8 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
       default_llm_provider?: string;
       default_embedding_model?: string;
       default_embedding_provider?: string;
+      default_vision_llm_model?: string;
+      default_vision_llm_provider?: string;
     }) => createTenant(data),
     onSuccess: (newTenant) => {
       toast.success(t('tenant.createSuccess', 'Tenant created successfully'));
@@ -189,6 +195,7 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
       setNewTenantDescription('');
       setTenantDefaultLLM(undefined);
       setTenantDefaultEmbedding(undefined);
+      setTenantDefaultVisionLLM(undefined);
     },
     onError: (error) => {
       toast.error(t('tenant.createFailed', 'Failed to create tenant'), {
@@ -198,7 +205,7 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
   });
 
   // Create workspace mutation
-  // SPEC-032: Updated to include LLM and embedding configuration
+  // SPEC-032/SPEC-041: Updated to include LLM, embedding, and vision configuration
   const createWorkspaceMutation = useMutation({
     mutationFn: (data: {
       name: string;
@@ -209,6 +216,8 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
       embedding_model?: string;
       embedding_provider?: string;
       embedding_dimension?: number;
+      vision_llm_model?: string;
+      vision_llm_provider?: string;
     }) =>
       selectedTenantId
         ? createWorkspace(selectedTenantId, data)
@@ -223,6 +232,7 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
       setNewWorkspaceSlug('');
       setWorkspaceLLMSelection(undefined); // Reset LLM selection
       setEmbeddingSelection(undefined); // Reset embedding selection
+      setWorkspaceVisionLLMSelection(undefined); // Reset vision LLM selection
     },
     onError: (error) => {
       toast.error(t('workspace.createFailed', 'Failed to create workspace'), {
@@ -450,7 +460,10 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
             </div>
             {/* SPEC-032: Default LLM model selection for tenant */}
             <div className="grid gap-2">
-              <Label>{t('tenant.defaultLLM', 'Default LLM Model')}</Label>
+              <Label>
+                {t('tenant.defaultLLM', 'Default LLM Model')}
+                <span className="text-destructive ml-0.5">*</span>
+              </Label>
               <LLMModelSelector
                 value={tenantDefaultLLM}
                 onChange={setTenantDefaultLLM}
@@ -461,13 +474,32 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
             </div>
             {/* SPEC-032: Default embedding model selection for tenant */}
             <div className="grid gap-2">
-              <Label>{t('tenant.defaultEmbedding', 'Default Embedding Model')}</Label>
+              <Label>
+                {t('tenant.defaultEmbedding', 'Default Embedding Model')}
+                <span className="text-destructive ml-0.5">*</span>
+              </Label>
               <EmbeddingModelSelector
                 value={tenantDefaultEmbedding}
                 onChange={setTenantDefaultEmbedding}
               />
               <p className="text-xs text-muted-foreground">
                 {t('tenant.defaultEmbeddingHint', 'Default embedding for new workspaces. Can be overridden per workspace.')}
+              </p>
+            </div>
+            {/* SPEC-041: Default Vision LLM selection for tenant */}
+            <div className="grid gap-2">
+              <Label>
+                {t('tenant.defaultVisionLLM', 'Default Vision LLM')}
+                <span className="text-destructive ml-0.5">*</span>
+              </Label>
+              <LLMModelSelector
+                value={tenantDefaultVisionLLM}
+                onChange={setTenantDefaultVisionLLM}
+                filterVision
+                showUsageHint={false}
+              />
+              <p className="text-xs text-muted-foreground">
+                {t('tenant.defaultVisionLLMHint', 'Default vision model for PDF extraction. Can be overridden per workspace.')}
               </p>
             </div>
           </div>
@@ -485,8 +517,11 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
                 // SPEC-032: Include default embedding configuration
                 default_embedding_model: tenantDefaultEmbedding?.model,
                 default_embedding_provider: tenantDefaultEmbedding?.provider,
+                // SPEC-041: Include default vision LLM configuration
+                default_vision_llm_model: tenantDefaultVisionLLM?.model,
+                default_vision_llm_provider: tenantDefaultVisionLLM?.provider,
               })}
-              disabled={!newTenantName.trim() || createTenantMutation.isPending}
+              disabled={!newTenantName.trim() || !tenantDefaultLLM || !tenantDefaultEmbedding || !tenantDefaultVisionLLM || createTenantMutation.isPending}
             >
               {createTenantMutation.isPending ? (
                 <>
@@ -560,9 +595,7 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
             <div className="grid gap-2">
               <Label>
                 {t('workspace.llmModel', 'LLM Model')}
-                <span className="text-muted-foreground text-xs ml-2">
-                  {t('workspace.llmHint', '(optional)')}
-                </span>
+                <span className="text-destructive ml-0.5">*</span>
               </Label>
               <LLMModelSelector
                 value={workspaceLLMSelection}
@@ -576,9 +609,7 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
             <div className="grid gap-2">
               <Label htmlFor="workspace-embedding">
                 {t('workspace.embeddingModel', 'Embedding Model')}
-                <span className="text-muted-foreground text-xs ml-2">
-                  {t('workspace.embeddingHint', '(optional)')}
-                </span>
+                <span className="text-destructive ml-0.5">*</span>
               </Label>
               <EmbeddingModelSelector
                 value={embeddingSelection}
@@ -586,6 +617,22 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
               />
               <p className="text-xs text-muted-foreground">
                 {t('workspace.embeddingDescription', 'Embedding model determines how documents are indexed. Cannot be changed after creation.')}
+              </p>
+            </div>
+            {/* SPEC-041: Vision LLM selection for workspace */}
+            <div className="grid gap-2">
+              <Label>
+                {t('workspace.visionLLM', 'Vision LLM')}
+                <span className="text-destructive ml-0.5">*</span>
+              </Label>
+              <LLMModelSelector
+                value={workspaceVisionLLMSelection}
+                onChange={setWorkspaceVisionLLMSelection}
+                filterVision
+                showUsageHint={false}
+              />
+              <p className="text-xs text-muted-foreground">
+                {t('workspace.visionDescription', 'Vision model for PDF-to-Markdown image extraction. Overrides tenant default.')}
               </p>
             </div>
           </div>
@@ -605,8 +652,11 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
                 embedding_model: embeddingSelection?.model,
                 embedding_provider: embeddingSelection?.provider,
                 embedding_dimension: embeddingSelection?.dimension,
+                // SPEC-041: Include vision LLM configuration if selected
+                vision_llm_model: workspaceVisionLLMSelection?.model,
+                vision_llm_provider: workspaceVisionLLMSelection?.provider,
               })}
-              disabled={!newWorkspaceName.trim() || createWorkspaceMutation.isPending}
+              disabled={!newWorkspaceName.trim() || !workspaceLLMSelection || !embeddingSelection || !workspaceVisionLLMSelection || createWorkspaceMutation.isPending}
             >
               {createWorkspaceMutation.isPending ? (
                 <>
