@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-02-23
+
+### Added
+
+#### Tenant & Workspace Model Configuration (SPEC-041 / SPEC-032)
+
+- **Vision LLM selector in Create Tenant form**: Users can now set a default Vision LLM (filtered to vision-capable models) when creating a tenant — inherited by all new workspaces
+- **Vision LLM selector in Create Workspace form**: Per-workspace override for the Vision LLM used in PDF-to-Markdown extraction
+- **`filterVision` prop on `LLMModelSelector` and `ModelSelector`**: Restricts the dropdown to models with `supports_vision === true`
+- **`vision_llm_model` / `vision_llm_provider` in `CreateWorkspaceRequest`** type: Workspace creation API now accepts Vision LLM fields (SPEC-041)
+
+### Changed
+
+- **LLM Model, Embedding Model, and Vision LLM are now required** in both Create Tenant and Create Workspace forms; the Create button is disabled until all three are selected and labels show a red `*`
+
 ## [0.4.0] - 2026-02-19
 
 ### Added
