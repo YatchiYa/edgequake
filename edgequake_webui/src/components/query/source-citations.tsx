@@ -185,26 +185,47 @@ const DocumentsTab = ({
     chunkId?: string
   ) => void;
 }) => {
-  const [showAll, setShowAll] = useState(false);
+  // Track which documents have their chunk list expanded beyond the default 3
+  const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set());
   const entries = Object.entries(chunksByDocument);
-  const visibleEntries = showAll ? entries : entries.slice(0, 3);
+
+  const toggleDocExpand = (docId: string) => {
+    setExpandedDocs(prev => {
+      const next = new Set(prev);
+      if (next.has(docId)) next.delete(docId); else next.add(docId);
+      return next;
+    });
+  };
   
   if (entries.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+      <div className="flex flex-col items-center justify-center h-[360px] text-muted-foreground">
         <FileText className="h-8 w-8 mb-2 opacity-50" />
         <p className="text-sm">No source documents</p>
       </div>
     );
   }
 
+  const totalChunks = entries.reduce((acc, [, chunks]) => acc + chunks.length, 0);
+
   return (
-    <div className="space-y-2">
-      <ScrollArea className="max-h-[300px]">
+    <div className="space-y-1.5">
+      {/* Summary row */}
+      <p className="text-[10px] text-muted-foreground px-0.5">
+        {entries.length} document{entries.length !== 1 ? 's' : ''}
+        {' · '}
+        {totalChunks} passage{totalChunks !== 1 ? 's' : ''}
+      </p>
+
+      {/* Scrollable document list — fixed height ensures consistent layout across tab switches */}
+      <ScrollArea className="h-[332px]">
         <div className="space-y-2 pr-2">
-          {visibleEntries.map(([docId, chunks], index) => {
+          {entries.map(([docId, chunks], index) => {
             const avgScore = chunks.reduce((acc, c) => acc + c.score, 0) / chunks.length;
             const { color: scoreColor } = getConfidenceLabel(avgScore);
+            const isExpanded = expandedDocs.has(docId);
+            const visibleChunks = isExpanded ? chunks : chunks.slice(0, 3);
+            const hiddenCount = chunks.length - 3;
             
             return (
               <Card 
@@ -213,45 +234,47 @@ const DocumentsTab = ({
               >
                 <CardContent className="p-3">
                   <div className="flex items-start gap-3">
-                    {/* Citation number - sleek circular badge */}
+                    {/* Citation index bubble */}
                     <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs flex items-center justify-center font-semibold group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
                       {index + 1}
                     </span>
                     
                     <div className="flex-1 min-w-0 space-y-1.5">
-                      {/* Header row with clickable title */}
+                      {/* Header row: clickable title + score + chunk count */}
                       <div className="flex items-center justify-between gap-2">
                         <button
                           className="text-sm font-medium flex items-center gap-1.5 hover:text-primary transition-colors text-left max-w-full overflow-hidden"
-                          onClick={() => onDocumentClick?.(docId, chunks[0]?.content, 0)}
+                          onClick={() => onDocumentClick?.(docId, chunks[0]?.content, 0, undefined, undefined, chunks[0]?.chunk_id)}
                           title={`Open: ${getDocumentTitle(chunks)}`}
                         >
                           <FileText className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                          {/* Use extracted document title */}
-                          <span className="truncate">
-                            {getDocumentTitle(chunks)}
-                          </span>
+                          <span className="truncate">{getDocumentTitle(chunks)}</span>
                         </button>
-                        <div className="flex items-center gap-2 flex-shrink-0">
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
                           <span className={`text-xs font-semibold ${scoreColor}`}>
                             {Math.round(avgScore * 100)}%
                           </span>
+                          {/* Passage count pill: shows total chunks for this document */}
+                          {chunks.length > 1 && (
+                            <Badge variant="outline" className="text-[9px] h-4 px-1">
+                              {chunks.length}×
+                            </Badge>
+                          )}
                           <Button
                             variant="ghost"
                             size="sm"
                             className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                            onClick={() => onDocumentClick?.(docId, chunks[0]?.content, 0)}
-                            aria-label="Open document in new window"
+                            onClick={() => onDocumentClick?.(docId, chunks[0]?.content, 0, undefined, undefined, chunks[0]?.chunk_id)}
+                            aria-label="Open document"
                           >
                             <ExternalLink className="h-3.5 w-3.5" />
                           </Button>
                         </div>
                       </div>
                       
-                      {/* Chunk/passage list - each excerpt is selectable and links to the document
-                          with the chunk pre-selected (?chunk=<id>) so the sidebar highlights it. */}
+                      {/* Passages — each is clickable and deep-links via ?chunk=<id> */}
                       <div className="space-y-1.5 mt-2">
-                        {chunks.slice(0, 3).map((chunk, chunkIdx) => (
+                        {visibleChunks.map((chunk, chunkIdx) => (
                           <button
                             key={chunk.chunk_id ?? chunkIdx}
                             onClick={() => onDocumentClick?.(
@@ -263,28 +286,26 @@ const DocumentsTab = ({
                               chunk.chunk_id
                             )}
                             className="w-full text-left p-2 rounded bg-muted/40 hover:bg-muted/70 transition-colors group/chunk"
-                            title="Open in document and highlight this chunk"
+                            title="Click to open and highlight this passage in the document viewer"
                           >
                             <div className="flex items-start gap-2">
-                              {/* Badge: show real chunk index when available */}
                               <Badge
                                 variant="outline"
                                 className="text-[9px] h-4 px-1 flex-shrink-0 mt-0.5"
                               >
                                 §{(chunk.chunk_index ?? chunkIdx) + 1}
                               </Badge>
-                              <p className="text-[11px] text-muted-foreground line-clamp-2 flex-1 leading-relaxed break-words overflow-hidden">
-                                {chunk.content.slice(0, 150)}{chunk.content.length > 150 ? '...' : ''}
+                              <p className="text-xs text-muted-foreground line-clamp-2 flex-1 leading-relaxed break-words overflow-hidden">
+                                {chunk.content.slice(0, 200)}{chunk.content.length > 200 ? '…' : ''}
                               </p>
                               <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                                <span className={`text-[9px] ${getConfidenceLabel(chunk.score).color}`}>
+                                <span className={`text-[10px] ${getConfidenceLabel(chunk.score).color}`}>
                                   {Math.round(chunk.score * 100)}%
                                 </span>
-                                {/* Link-to-document indicator shown on row hover */}
                                 <ExternalLink className="h-2.5 w-2.5 text-muted-foreground opacity-0 group-hover/chunk:opacity-70 transition-opacity" />
                               </div>
                             </div>
-                            {/* Line range or chunk id as locator */}
+                            {/* Locator: line range preferred, chunk ID as fallback */}
                             {chunk.start_line !== undefined && chunk.end_line !== undefined ? (
                               <div className="text-[9px] text-muted-foreground mt-1 pl-6">
                                 L{chunk.start_line}–{chunk.end_line}
@@ -296,10 +317,19 @@ const DocumentsTab = ({
                             ) : null}
                           </button>
                         ))}
-                        {chunks.length > 3 && (
-                          <p className="text-[10px] text-muted-foreground text-center pt-1">
-                            +{chunks.length - 3} more passages
-                          </p>
+
+                        {/* Per-document expand / collapse for docs with many passages */}
+                        {hiddenCount > 0 && (
+                          <button
+                            className="w-full text-[10px] text-muted-foreground hover:text-foreground flex items-center justify-center gap-1 py-1 rounded hover:bg-muted/40 transition-colors"
+                            onClick={() => toggleDocExpand(docId)}
+                          >
+                            {isExpanded ? (
+                              <><ChevronUp className="h-3 w-3" />Show less</>
+                            ) : (
+                              <><ChevronDown className="h-3 w-3" />+{hiddenCount} more passage{hiddenCount !== 1 ? 's' : ''}</>
+                            )}
+                          </button>
                         )}
                       </div>
                     </div>
@@ -310,18 +340,6 @@ const DocumentsTab = ({
           })}
         </div>
       </ScrollArea>
-      
-      {entries.length > 3 && !showAll && (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full text-xs text-muted-foreground hover:text-foreground gap-1"
-          onClick={() => setShowAll(true)}
-        >
-          Show {entries.length - 3} more sources
-          <ChevronDown className="h-3 w-3" />
-        </Button>
-      )}
     </div>
   );
 };
@@ -339,13 +357,14 @@ const KnowledgeTab = ({
   onDocumentClick?: (documentId: string, chunkContent?: string, chunkIndex?: number, startLine?: number, endLine?: number, chunkId?: string) => void;
 }) => {
   const [showAllEntities, setShowAllEntities] = useState(false);
+  const [showAllRelationships, setShowAllRelationships] = useState(false);
   const visibleEntities = showAllEntities ? entities : entities?.slice(0, 12);
   
   const hasContent = (entities && entities.length > 0) || (relationships && relationships.length > 0);
   
   if (!hasContent) {
     return (
-      <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+      <div className="flex flex-col items-center justify-center h-[360px] text-muted-foreground">
         <Brain className="h-8 w-8 mb-2 opacity-50" />
         <p className="text-sm">No knowledge extracted</p>
       </div>
@@ -353,7 +372,7 @@ const KnowledgeTab = ({
   }
 
   return (
-    <ScrollArea className="h-[400px]">
+    <ScrollArea className="h-[360px]">
       <div className="space-y-5 pr-4">
         {/* Entities */}
         {entities && entities.length > 0 && (
@@ -432,7 +451,7 @@ const KnowledgeTab = ({
               </Badge>
             </div>
             <div className="space-y-1">
-              {relationships.slice(0, 6).map((rel, idx) => (
+              {(showAllRelationships ? relationships : relationships?.slice(0, 6))?.map((rel, idx) => (
                 <HoverCard key={idx} openDelay={300}>
                   <HoverCardTrigger asChild>
                     <div
@@ -487,10 +506,18 @@ const KnowledgeTab = ({
                   </HoverCardContent>
                 </HoverCard>
               ))}
-              {relationships.length > 6 && (
-                <p className="text-xs text-muted-foreground pl-2 pt-1">
-                  +{relationships.length - 6} more connections
-                </p>
+              {/* Expand / collapse relationship list */}
+              {relationships && relationships.length > 6 && (
+                <button
+                  className="w-full text-[10px] text-muted-foreground hover:text-foreground flex items-center justify-center gap-1 py-1 rounded hover:bg-muted/40 transition-colors mt-1"
+                  onClick={() => setShowAllRelationships(v => !v)}
+                >
+                  {showAllRelationships ? (
+                    <><ChevronUp className="h-3 w-3" />Show less</>
+                  ) : (
+                    <><ChevronDown className="h-3 w-3" />+{relationships.length - 6} more connections</>
+                  )}
+                </button>
               )}
             </div>
           </div>
@@ -518,7 +545,7 @@ const ExploreTab = ({
   };
   
   return (
-    <div className="flex flex-col items-center justify-center py-8 space-y-4">
+    <div className="flex flex-col items-center justify-center h-[360px] space-y-4">
       <div className="relative">
         <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
           <Network className="h-8 w-8 text-primary" />
@@ -621,20 +648,27 @@ export function SourceCitations({
           <CardContent className="p-3">
             <Tabs defaultValue="documents" className="w-full">
               <TabsList className="grid w-full grid-cols-3 h-9 mb-3">
-                <TabsTrigger value="documents" className="text-xs gap-1.5 data-[state=active]:bg-background">
+                <TabsTrigger value="documents" className="text-xs gap-1 data-[state=active]:bg-background">
                   <FileText className="h-3 w-3" />
-                  <span className="hidden sm:inline">Documents</span>
-                  <span className="sm:hidden">Docs</span>
+                  <span>Docs</span>
+                  {Object.keys(chunksByDocument).length > 0 && (
+                    <Badge variant="secondary" className="text-[9px] h-3.5 px-1 ml-0.5 hidden sm:flex">
+                      {Object.keys(chunksByDocument).length}
+                    </Badge>
+                  )}
                 </TabsTrigger>
-                <TabsTrigger value="knowledge" className="text-xs gap-1.5 data-[state=active]:bg-background">
+                <TabsTrigger value="knowledge" className="text-xs gap-1 data-[state=active]:bg-background">
                   <Brain className="h-3 w-3" />
-                  <span className="hidden sm:inline">Knowledge</span>
-                  <span className="sm:hidden">Info</span>
+                  <span>Topics</span>
+                  {(topicCount + (context.relationships?.length ?? 0)) > 0 && (
+                    <Badge variant="secondary" className="text-[9px] h-3.5 px-1 ml-0.5 hidden sm:flex">
+                      {topicCount + (context.relationships?.length ?? 0)}
+                    </Badge>
+                  )}
                 </TabsTrigger>
-                <TabsTrigger value="explore" className="text-xs gap-1.5 data-[state=active]:bg-background">
+                <TabsTrigger value="explore" className="text-xs gap-1 data-[state=active]:bg-background">
                   <Network className="h-3 w-3" />
-                  <span className="hidden sm:inline">Explore</span>
-                  <span className="sm:hidden">Graph</span>
+                  <span>Graph</span>
                 </TabsTrigger>
               </TabsList>
               
