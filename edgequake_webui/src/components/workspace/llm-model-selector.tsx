@@ -51,6 +51,11 @@ interface LLMModelSelectorProps {
   className?: string;
   /** Show additional context (used for) */
   showUsageHint?: boolean;
+  /**
+   * When true, only shows models that support vision (supports_vision === true).
+   * Use this for selecting the Vision LLM used in PDF-to-Markdown extraction.
+   */
+  filterVision?: boolean;
 }
 
 /**
@@ -106,6 +111,7 @@ export function LLMModelSelector({
   disabled,
   className,
   showUsageHint = true,
+  filterVision = false,
 }: LLMModelSelectorProps) {
   const { data: llmData, isLoading, error } = useLlmModels();
 
@@ -136,8 +142,12 @@ export function LLMModelSelector({
     );
   }
 
-  // Group models by provider
-  const modelsByProvider = llmData.models.reduce((acc, model) => {
+  // Group models by provider, optionally filtering to vision-capable only
+  const filteredModels = filterVision
+    ? llmData.models.filter((m) => m.capabilities.supports_vision)
+    : llmData.models;
+
+  const modelsByProvider = filteredModels.reduce((acc, model) => {
     if (!acc[model.provider]) {
       acc[model.provider] = {
         displayName: model.provider_display_name,
@@ -248,7 +258,11 @@ export function LLMModelSelector({
       {showUsageHint && (
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Sparkles className="h-3 w-3" />
-          <span>Used for document ingestion, entity extraction, and summarization</span>
+          <span>
+            {filterVision
+              ? 'Used for PDF-to-Markdown image extraction (requires vision capability)'
+              : 'Used for document ingestion, entity extraction, and summarization'}
+          </span>
         </div>
       )}
     </div>
