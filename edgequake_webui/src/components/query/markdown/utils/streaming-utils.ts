@@ -165,9 +165,21 @@ export function hasIncompleteTable(content: string): boolean {
 
   if (!foundTableStart || tableLines.length === 0) return false;
 
-  // Reconstruct table content and check completeness
-  const tableContent = tableLines.join("\n");
-  return !isTableComplete(tableContent);
+  // Only buffer if the table hasn't formed yet (no complete separator row).
+  // Once a separator exists, marked.lexer() parses the table correctly:
+  // complete rows become table rows, incomplete trailing rows become text.
+  //
+  // WHY: Previously, buffering the entire table on every incomplete row
+  // caused severe flicker — the table vanished (skeleton) and reappeared
+  // each time a new row character arrived during streaming.
+  const hasSeparator = tableLines.some((line) => /^\s*\|[\s\-:]+\|/.test(line.trim()));
+  if (hasSeparator) {
+    return false; // Table is formed — let marked handle naturally
+  }
+
+  // Pre-separator: the table structure hasn't been recognized by marked yet.
+  // Buffer to prevent raw pipe-text from flashing before table renders.
+  return true;
 }
 
 /**

@@ -45,6 +45,7 @@ use edgequake_storage::GraphNode;
 use std::collections::HashMap;
 
 use crate::error::{ApiError, ApiResult};
+use crate::handlers::isolation::filter_nodes_by_tenant_context;
 use crate::middleware::TenantContext;
 use crate::state::AppState;
 
@@ -54,93 +55,6 @@ pub use crate::handlers::entities_types::*;
 // ============================================================================
 // Helper Functions
 // ============================================================================
-
-/// Filter nodes by tenant context.
-///
-/// # Implements
-///
-/// - **BR0201**: Tenant isolation
-///
-/// # WHY: Strict Multi-tenant Data Isolation
-///
-/// For proper multi-tenancy, nodes are filtered as follows:
-/// 1. If tenant context is set, ONLY return nodes that have matching tenant_id
-/// 2. Nodes without tenant_id property are EXCLUDED when tenant context is set
-/// 3. This prevents data leakage between tenants
-fn filter_nodes_by_tenant_context(nodes: Vec<GraphNode>, ctx: &TenantContext) -> Vec<GraphNode> {
-    tracing::debug!(
-        "filter_nodes_by_tenant_context called: input_count={}, tenant_id={:?}, workspace_id={:?}",
-        nodes.len(),
-        ctx.tenant_id,
-        ctx.workspace_id
-    );
-
-    // SECURITY: STRICT TENANT CONTEXT REQUIRED - NO EXCEPTIONS
-    // WHY: Multi-tenant isolation must be enforced at every layer
-    // Even admin/system requests MUST provide tenant_id and workspace_id
-    if ctx.tenant_id.is_none() || ctx.workspace_id.is_none() {
-        tracing::warn!(
-            "Tenant context missing (tenant_id={:?}, workspace_id={:?}) - returning empty results for security",
-            ctx.tenant_id,
-            ctx.workspace_id
-        );
-        return Vec::new();
-    }
-
-    nodes
-        .into_iter()
-        .filter(|node| {
-            // Check tenant_id - strict matching required
-            if let Some(ref ctx_tenant_id) = ctx.tenant_id {
-                match node.properties.get("tenant_id").and_then(|v| v.as_str()) {
-                    Some(node_tenant_id) => {
-                        // Node has tenant_id - must match exactly
-                        if node_tenant_id != ctx_tenant_id {
-                            tracing::trace!(
-                                "Filtering out node {}: tenant_id mismatch ({} != {})",
-                                node.id,
-                                node_tenant_id,
-                                ctx_tenant_id
-                            );
-                            return false;
-                        }
-                    }
-                    None => {
-                        // Node has no tenant_id - EXCLUDE (strict multi-tenancy)
-                        tracing::trace!("Filtering out node {}: no tenant_id property", node.id);
-                        return false;
-                    }
-                }
-            }
-
-            // Check workspace_id - strict matching required
-            if let Some(ref ctx_workspace_id) = ctx.workspace_id {
-                match node.properties.get("workspace_id").and_then(|v| v.as_str()) {
-                    Some(node_workspace_id) => {
-                        // Node has workspace_id - must match exactly
-                        if node_workspace_id != ctx_workspace_id {
-                            tracing::trace!(
-                                "Filtering out node {}: workspace_id mismatch ({} != {})",
-                                node.id,
-                                node_workspace_id,
-                                ctx_workspace_id
-                            );
-                            return false;
-                        }
-                    }
-                    None => {
-                        // Node has no workspace_id - EXCLUDE (strict multi-tenancy)
-                        tracing::trace!("Filtering out node {}: no workspace_id property", node.id);
-                        return false;
-                    }
-                }
-            }
-
-            tracing::trace!("Node {} passed tenant filter", node.id);
-            true
-        })
-        .collect()
-}
 
 /// Normalize entity name to UPPERCASE with underscores.
 ///

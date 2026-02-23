@@ -51,6 +51,7 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::error::ApiError;
+use crate::handlers::isolation::doc_belongs_to_workspace;
 use crate::state::AppState;
 
 // ============ Stats Cache ============
@@ -1598,13 +1599,22 @@ pub async fn rebuild_embeddings(
         for key in all_keys.iter().filter(|k| k.ends_with("-metadata")) {
             if let Some(value) = state.kv_storage.get_by_id(key).await.ok().flatten() {
                 if let Some(obj) = value.as_object() {
-                    // Check if document belongs to this workspace
+                    // Check if document belongs to this workspace.
+                    // WHY: rebuild must be strictly workspace-scoped so that triggering
+                    // a rebuild on workspace X never reprocesses documents from workspace Y.
+                    // Legacy documents may store workspace_id = "default" (string literal)
+                    // instead of a real UUID; treat those as belonging to the workspace
+                    // whose slug is also "default".
                     let doc_workspace = obj
                         .get("workspace_id")
                         .and_then(|v| v.as_str())
                         .unwrap_or("default");
 
-                    if doc_workspace != workspace_id.to_string() && doc_workspace != "default" {
+                    if !doc_belongs_to_workspace(
+                        doc_workspace,
+                        &workspace_id.to_string(),
+                        &workspace.slug,
+                    ) {
                         continue;
                     }
 
@@ -1986,13 +1996,22 @@ pub async fn rebuild_knowledge_graph(
         for key in all_keys.iter().filter(|k| k.ends_with("-metadata")) {
             if let Some(value) = state.kv_storage.get_by_id(key).await.ok().flatten() {
                 if let Some(obj) = value.as_object() {
-                    // Check if document belongs to this workspace
+                    // Check if document belongs to this workspace.
+                    // WHY: rebuild must be strictly workspace-scoped so that triggering
+                    // a rebuild on workspace X never reprocesses documents from workspace Y.
+                    // Legacy documents may store workspace_id = "default" (string literal)
+                    // instead of a real UUID; treat those as belonging to the workspace
+                    // whose slug is also "default".
                     let doc_workspace = obj
                         .get("workspace_id")
                         .and_then(|v| v.as_str())
                         .unwrap_or("default");
 
-                    if doc_workspace != workspace_id.to_string() && doc_workspace != "default" {
+                    if !doc_belongs_to_workspace(
+                        doc_workspace,
+                        &workspace_id.to_string(),
+                        &workspace.slug,
+                    ) {
                         continue;
                     }
 
@@ -2321,13 +2340,22 @@ pub async fn reprocess_all_documents(
             })?
         {
             if let Some(obj) = value.as_object() {
-                // Check if document belongs to this workspace
+                // Check if document belongs to this workspace.
+                // WHY: reprocess must be strictly workspace-scoped so that triggering
+                // a reprocess on workspace X never reprocesses documents from workspace Y.
+                // Legacy documents may store workspace_id = "default" (string literal)
+                // instead of a real UUID; treat those as belonging to the workspace
+                // whose slug is also "default".
                 let doc_workspace = obj
                     .get("workspace_id")
                     .and_then(|v| v.as_str())
                     .unwrap_or("default");
 
-                if doc_workspace != workspace_id.to_string() && doc_workspace != "default" {
+                if !doc_belongs_to_workspace(
+                    doc_workspace,
+                    &workspace_id.to_string(),
+                    &workspace.slug,
+                ) {
                     *skip_reasons.entry("wrong_workspace").or_insert(0) += 1;
                     continue;
                 }

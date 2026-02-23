@@ -69,8 +69,8 @@ export default function DocumentViewPage() {
   const chunkIdFromUrl = searchParams.get('chunk') || undefined;
 
   // OODA-chunk-select: Local chunk selection state for sidebar → content highlighting.
-  // WHY: Using local state (not URL) avoids router updates on each click
-  // while still supporting URL-based deep-linking for external citations.
+  // State is always kept in sync with the URL (`?chunk=<id>`) so any selection
+  // is addressable, shareable, and survives page refresh.
   const [selectedChunkId, setSelectedChunkId] = useState<string | undefined>(chunkIdFromUrl);
   const [chunkStartLine, setChunkStartLine] = useState<number | undefined>();
   const [chunkEndLine, setChunkEndLine] = useState<number | undefined>();
@@ -83,20 +83,52 @@ export default function DocumentViewPage() {
 
   /**
    * Called when user clicks a chunk in the Data Hierarchy tree.
-   * Updates local state so ContentRenderer highlights the correct line range.
-   * Clicking the same chunk again deselects it (toggle behaviour).
+   * - Toggles chunk selection (same chunk again = deselect).
+   * - Updates the URL via router.replace so the selection is deep-linkable and
+   *   survives refresh / copy-paste sharing.
+   * - Updates local line-range state so ContentRenderer highlights the range.
    */
   const handleChunkSelect = useCallback(
     (chunkId: string, start?: number, end?: number) => {
-      setSelectedChunkId((prev) => {
-        const isDeselecting = prev === chunkId;
-        // Update line ranges inside the functional updater for correct synchronisation
-        setChunkStartLine(isDeselecting ? undefined : start);
-        setChunkEndLine(isDeselecting ? undefined : end);
-        return isDeselecting ? undefined : chunkId;
-      });
+      const isDeselecting = selectedChunkId === chunkId;
+      const nextChunkId = isDeselecting ? undefined : chunkId;
+
+      setSelectedChunkId(nextChunkId);
+      setChunkStartLine(isDeselecting ? undefined : start);
+      setChunkEndLine(isDeselecting ? undefined : end);
+
+      // Persist selection in URL so the view is shareable / bookmarkable.
+      // Use router.replace (not push) to avoid polluting the browser history
+      // on every chunk click.
+      const params = new URLSearchParams(searchParams.toString());
+      if (nextChunkId) {
+        params.set('chunk', nextChunkId);
+      } else {
+        params.delete('chunk');
+      }
+      const newSearch = params.toString();
+      router.replace(
+        `/documents/${documentId}${newSearch ? `?${newSearch}` : ''}`,
+        { scroll: false },
+      );
     },
-    [],
+    [selectedChunkId, searchParams, router, documentId],
+  );
+
+  /**
+   * Called by DocumentHierarchyTree when chunk data loads and the pre-selected
+   * chunk's line range is resolved from KV lineage. Sets the active line range
+   * so ContentRenderer scrolls to and highlights the chunk.
+   * SRP: This does NOT toggle selection — it is a pure data resolution callback.
+   */
+  const handleChunkResolved = useCallback(
+    (chunkId: string, start?: number, end?: number) => {
+      // Only apply if this chunk is still the active selection
+      if (chunkId !== selectedChunkId) return;
+      setChunkStartLine(start);
+      setChunkEndLine(end);
+    },
+    [selectedChunkId],
   );
 
   // Active line range: chunk selection overrides URL params.
@@ -333,6 +365,7 @@ export default function DocumentViewPage() {
             <MetadataSidebar
               document={document}
               onChunkSelect={handleChunkSelect}
+              onChunkResolved={handleChunkResolved}
               selectedChunkId={selectedChunkId}
             />
           </ResizablePanel>
@@ -373,6 +406,7 @@ export default function DocumentViewPage() {
               <MetadataSidebar
                 document={document}
                 onChunkSelect={handleChunkSelect}
+                onChunkResolved={handleChunkResolved}
                 selectedChunkId={selectedChunkId}
               />
             </TabsContent>

@@ -48,6 +48,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tracing::{debug, warn};
 
 use crate::error::{ApiError, ApiResult};
+use crate::handlers::isolation::properties_match_tenant_context;
 use crate::middleware::TenantContext;
 use crate::state::AppState;
 
@@ -117,17 +118,6 @@ pub async fn get_graph(
         }));
     }
 
-    // Helper closure to check if a node matches the tenant context
-    let matches_tenant_context =
-        |properties: &std::collections::HashMap<String, serde_json::Value>| {
-            // SECURITY: STRICT tenant filtering - both tenant_id AND workspace_id must match
-            let node_tenant_id = properties.get("tenant_id").and_then(|v| v.as_str());
-            let node_workspace_id = properties.get("workspace_id").and_then(|v| v.as_str());
-
-            tenant_ctx.tenant_id.as_deref() == node_tenant_id
-                && tenant_ctx.workspace_id.as_deref() == node_workspace_id
-        };
-
     let (nodes, edges, is_truncated) = if let Some(start) = &params.start_node {
         let kg = state
             .graph_storage
@@ -137,7 +127,7 @@ pub async fn get_graph(
         let nodes: Vec<GraphNodeResponse> = kg
             .nodes
             .into_iter()
-            .filter(|n| matches_tenant_context(&n.properties))
+            .filter(|n| properties_match_tenant_context(&n.properties, &tenant_ctx))
             .map(|n| GraphNodeResponse {
                 id: n.id.clone(),
                 label: n.id.clone(),
@@ -164,7 +154,7 @@ pub async fn get_graph(
             .edges
             .into_iter()
             .filter(|e| {
-                matches_tenant_context(&e.properties)
+                properties_match_tenant_context(&e.properties, &tenant_ctx)
                     && node_ids.contains(&e.source)
                     && node_ids.contains(&e.target)
             })
@@ -223,24 +213,7 @@ pub async fn get_graph(
                             .get_all_nodes()
                             .await?
                             .into_iter()
-                            .filter(|n| {
-                                let mut matches = true;
-                                if let Some(ref tid) = tenant_ctx.tenant_id {
-                                    if let Some(node_tid) =
-                                        n.properties.get("tenant_id").and_then(|v| v.as_str())
-                                    {
-                                        matches = matches && (node_tid == tid);
-                                    }
-                                }
-                                if let Some(ref wid) = tenant_ctx.workspace_id {
-                                    if let Some(node_wid) =
-                                        n.properties.get("workspace_id").and_then(|v| v.as_str())
-                                    {
-                                        matches = matches && (node_wid == wid);
-                                    }
-                                }
-                                matches
-                            })
+                            .filter(|n| properties_match_tenant_context(&n.properties, &tenant_ctx))
                             .take(params.max_nodes)
                             .map(|n| (n, 0usize)) // Degree unknown in fallback
                             .collect()
@@ -260,28 +233,7 @@ pub async fn get_graph(
                     let all_nodes = state.graph_storage.get_all_nodes().await?;
                     let filtered_nodes: Vec<_> = all_nodes
                         .into_iter()
-                        .filter(|n| {
-                            // Apply tenant/workspace filtering
-                            if let Some(ref tid) = tenant_ctx.tenant_id {
-                                if let Some(node_tid) =
-                                    n.properties.get("tenant_id").and_then(|v| v.as_str())
-                                {
-                                    if node_tid != tid {
-                                        return false;
-                                    }
-                                }
-                            }
-                            if let Some(ref wid) = tenant_ctx.workspace_id {
-                                if let Some(node_wid) =
-                                    n.properties.get("workspace_id").and_then(|v| v.as_str())
-                                {
-                                    if node_wid != wid {
-                                        return false;
-                                    }
-                                }
-                            }
-                            true
-                        })
+                        .filter(|n| properties_match_tenant_context(&n.properties, &tenant_ctx))
                         .take(params.max_nodes)
                         .map(|n| (n, 0usize)) // Degree unknown, use 0
                         .collect();
@@ -808,30 +760,7 @@ pub async fn stream_graph(
                         match state_clone.graph_storage.get_all_nodes().await {
                             Ok(all_nodes) => all_nodes
                                 .into_iter()
-                                .filter(|n| {
-                                    // Apply tenant/workspace filtering
-                                    if let Some(ref tid) = tenant_ctx_clone.tenant_id {
-                                        if let Some(node_tid) =
-                                            n.properties.get("tenant_id").and_then(|v| v.as_str())
-                                        {
-                                            if node_tid != tid {
-                                                return false;
-                                            }
-                                        }
-                                    }
-                                    if let Some(ref wid) = tenant_ctx_clone.workspace_id {
-                                        if let Some(node_wid) = n
-                                            .properties
-                                            .get("workspace_id")
-                                            .and_then(|v| v.as_str())
-                                        {
-                                            if node_wid != wid {
-                                                return false;
-                                            }
-                                        }
-                                    }
-                                    true
-                                })
+                                .filter(|n| properties_match_tenant_context(&n.properties, &tenant_ctx_clone))
                                 .take(params_clone.max_nodes)
                                 .map(|n| (n, 0usize)) // Degree unknown, use 0
                                 .collect(),
@@ -868,28 +797,7 @@ pub async fn stream_graph(
                     match state_clone.graph_storage.get_all_nodes().await {
                         Ok(all_nodes) => all_nodes
                             .into_iter()
-                            .filter(|n| {
-                                // Apply tenant/workspace filtering
-                                if let Some(ref tid) = tenant_ctx_clone.tenant_id {
-                                    if let Some(node_tid) =
-                                        n.properties.get("tenant_id").and_then(|v| v.as_str())
-                                    {
-                                        if node_tid != tid {
-                                            return false;
-                                        }
-                                    }
-                                }
-                                if let Some(ref wid) = tenant_ctx_clone.workspace_id {
-                                    if let Some(node_wid) =
-                                        n.properties.get("workspace_id").and_then(|v| v.as_str())
-                                    {
-                                        if node_wid != wid {
-                                            return false;
-                                        }
-                                    }
-                                }
-                                true
-                            })
+                            .filter(|n| properties_match_tenant_context(&n.properties, &tenant_ctx_clone))
                             .take(params_clone.max_nodes)
                             .map(|n| (n, 0usize)) // Degree unknown, use 0
                             .collect(),

@@ -31,6 +31,8 @@ use axum::{
 };
 
 use crate::error::{ApiError, ApiResult};
+use crate::handlers::isolation::{properties_match_tenant_context, verify_document_access};
+use crate::middleware::TenantContext;
 use crate::state::AppState;
 
 // Re-export DTOs for backward compatibility
@@ -158,6 +160,7 @@ pub async fn invalidate_lineage_cache(document_id: &str) {
 )]
 pub async fn get_chunk_detail(
     State(state): State<AppState>,
+    tenant_ctx: TenantContext,
     Path(chunk_id): Path<String>,
 ) -> ApiResult<Json<ChunkDetailResponse>> {
     // Look up chunk in KV storage
@@ -220,16 +223,16 @@ pub async fn get_chunk_detail(
         chunk_id.clone()
     };
 
-    // Get document name from metadata
-    let metadata_key = format!("{}-metadata", document_id);
-    let doc_name = if let Ok(Some(metadata)) = state.kv_storage.get_by_id(&metadata_key).await {
-        metadata
-            .get("title")
-            .and_then(|v: &serde_json::Value| v.as_str())
-            .map(|s| s.to_string())
-    } else {
-        None
-    };
+    // SECURITY: Verify the parent document belongs to the requesting tenant/workspace.
+    // Returns 404 (not 403) to avoid leaking cross-tenant document IDs.
+    let doc_metadata =
+        verify_document_access(state.kv_storage.as_ref(), &document_id, &tenant_ctx).await?;
+
+    // Get document name from already-fetched metadata
+    let doc_name = doc_metadata
+        .get("title")
+        .and_then(|v: &serde_json::Value| v.as_str())
+        .map(|s| s.to_string());
 
     // Find entities extracted from this chunk
     let all_nodes = state.graph_storage.get_all_nodes().await?;
@@ -323,6 +326,7 @@ pub async fn get_chunk_detail(
 )]
 pub async fn get_entity_provenance(
     State(state): State<AppState>,
+    tenant_ctx: TenantContext,
     Path(entity_id): Path<String>,
 ) -> ApiResult<Json<EntityProvenanceResponse>> {
     // WHY: Entity names are normalized to UPPERCASE_WITH_UNDERSCORES during
@@ -342,6 +346,15 @@ pub async fn get_entity_provenance(
                 entity_id, normalized_id
             ))
         })?;
+
+    // SECURITY: Verify the entity belongs to the requesting tenant/workspace.
+    // Returns 404 (not 403) to avoid leaking cross-tenant entity names.
+    if !properties_match_tenant_context(&node.properties, &tenant_ctx) {
+        return Err(ApiError::NotFound(format!(
+            "Entity '{}' not found",
+            entity_id
+        )));
+    }
 
     let entity_type = node
         .properties
@@ -484,6 +497,7 @@ pub async fn get_entity_provenance(
 )]
 pub async fn get_entity_lineage(
     State(state): State<AppState>,
+    tenant_ctx: TenantContext,
     Path(entity_name): Path<String>,
 ) -> ApiResult<Json<EntityLineageResponse>> {
     // WHY: Same normalization rule as get_entity_provenance — see comment there.
@@ -501,6 +515,14 @@ pub async fn get_entity_lineage(
                 entity_name, normalized_name
             ))
         })?;
+
+    // SECURITY: Verify the entity belongs to the requesting tenant/workspace.
+    if !properties_match_tenant_context(&node.properties, &tenant_ctx) {
+        return Err(ApiError::NotFound(format!(
+            "Entity '{}' not found",
+            entity_name
+        )));
+    }
 
     // Parse source_id to extract document and chunk information
     let source_id = node
@@ -568,8 +590,12 @@ pub async fn get_entity_lineage(
 )]
 pub async fn get_document_lineage(
     State(state): State<AppState>,
+    tenant_ctx: TenantContext,
     Path(document_id): Path<String>,
 ) -> ApiResult<Json<DocumentGraphLineageResponse>> {
+    // SECURITY: Verify the document belongs to the requesting tenant/workspace first.
+    verify_document_access(state.kv_storage.as_ref(), &document_id, &tenant_ctx).await?;
+
     // WHY: We scan KV keys by prefix rather than querying a separate index.
     // This is correct for in-memory and moderate-scale PostgreSQL KV stores.
     // For very large datasets (>100K documents), consider adding a dedicated
@@ -694,6 +720,7 @@ pub async fn get_document_lineage(
 )]
 pub async fn get_chunk_lineage(
     State(state): State<AppState>,
+    tenant_ctx: TenantContext,
     Path(chunk_id): Path<String>,
 ) -> ApiResult<Json<ChunkLineageResponse>> {
     // Look up chunk in KV storage
@@ -764,11 +791,9 @@ pub async fn get_chunk_lineage(
             .to_string()
     };
 
-    // OODA-23: Use cached KV lookup for metadata
-    let metadata_key = format!("{}-metadata", document_id);
-    let doc_metadata = cached_kv_get(state.kv_storage.as_ref(), &metadata_key)
-        .await?
-        .unwrap_or(serde_json::json!({"id": document_id}));
+    // SECURITY: Verify the parent document belongs to the requesting tenant/workspace.
+    let doc_metadata =
+        verify_document_access(state.kv_storage.as_ref(), &document_id, &tenant_ctx).await?;
 
     let document_name = doc_metadata
         .get("title")
@@ -848,9 +873,13 @@ pub async fn get_chunk_lineage(
 )]
 pub async fn get_document_full_lineage(
     State(state): State<AppState>,
+    tenant_ctx: TenantContext,
     Path(document_id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    // OODA-23: Use cached KV lookup for sub-millisecond cache hits
+    // SECURITY: Verify the document belongs to the requesting tenant/workspace.
+    verify_document_access(state.kv_storage.as_ref(), &document_id, &tenant_ctx).await?;
+
+    // OADA-23: Use cached KV lookup for sub-millisecond cache hits
     let lineage_key = format!("{}-lineage", document_id);
     let lineage_data = cached_kv_get(state.kv_storage.as_ref(), &lineage_key)
         .await?
@@ -894,13 +923,13 @@ pub async fn get_document_full_lineage(
 )]
 pub async fn get_document_metadata(
     State(state): State<AppState>,
+    tenant_ctx: TenantContext,
     Path(document_id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    // OODA-23: Use cached KV lookup for metadata
-    let metadata_key = format!("{}-metadata", document_id);
-    let metadata = cached_kv_get(state.kv_storage.as_ref(), &metadata_key)
-        .await?
-        .ok_or_else(|| ApiError::NotFound(format!("Document '{}' not found", document_id)))?;
+    // SECURITY: verify_document_access already fetches and checks metadata,
+    // so we reuse its return value directly.
+    let metadata =
+        verify_document_access(state.kv_storage.as_ref(), &document_id, &tenant_ctx).await?;
 
     Ok(Json(metadata))
 }
@@ -943,9 +972,13 @@ fn default_format() -> String {
 )]
 pub async fn export_document_lineage(
     State(state): State<AppState>,
+    tenant_ctx: TenantContext,
     Path(document_id): Path<String>,
     Query(params): Query<ExportParams>,
 ) -> Result<impl IntoResponse, ApiError> {
+    // SECURITY: Verify the document belongs to the requesting tenant/workspace.
+    verify_document_access(state.kv_storage.as_ref(), &document_id, &tenant_ctx).await?;
+
     // OODA-23: Use cached KV lookup for export
     let lineage_key = format!("{}-lineage", document_id);
     let lineage_data = cached_kv_get(state.kv_storage.as_ref(), &lineage_key)
