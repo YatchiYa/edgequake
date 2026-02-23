@@ -40,6 +40,7 @@ import {
     Zap
 } from 'lucide-react';
 import { memo, useCallback, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { StreamingMarkdownRenderer } from './markdown';
 import { SourceCitations } from './source-citations';
@@ -389,6 +390,7 @@ const AssistantMessage = memo(function AssistantMessage({
   showMetadata = true,
 }: ChatMessageProps) {
   const { t } = useTranslation();
+  const router = useRouter();
   const [copied, setCopied] = useState(false);
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
 
@@ -513,39 +515,43 @@ const AssistantMessage = memo(function AssistantMessage({
               <SourceCitations
                 context={message.context}
                 onEntityClick={(entityId) => {
-                  window.location.href = `/graph?entity=${encodeURIComponent(entityId)}`;
+                  // Use router.push so browser history is preserved (back-button works)
+                  router.push(`/graph?entity=${encodeURIComponent(entityId)}`);
                 }}
                 onDocumentClick={(documentId, chunkContent, chunkIndex, startLine, endLine, chunkId) => {
-                  // Navigate to document detail page with line numbers and/or highlight
-                  const url = new URL(`/documents/${encodeURIComponent(documentId)}`, window.location.origin);
-                  
-                  // Priority 1: Use line numbers if available
+                  // Build document deep-link URL
+                  const params = new URLSearchParams();
+
+                  // Line range (highest priority for content highlighting)
                   if (startLine !== undefined && endLine !== undefined) {
-                    url.searchParams.set('start_line', startLine.toString());
-                    url.searchParams.set('end_line', endLine.toString());
+                    params.set('start_line', startLine.toString());
+                    params.set('end_line', endLine.toString());
                   }
-                  
-                  // Deep-link to specific chunk UUID for sidebar selection (preferred)
+
+                  // ?chunk=<id> selects the chunk in the sidebar tree
                   if (chunkId) {
-                    url.searchParams.set('chunk', chunkId);
-                  } else if (chunkContent && startLine === undefined) {
-                    // Fallback: Use text highlight only when no chunk ID and no line numbers
-                    const searchTerm = chunkContent.slice(0, 100);
-                    url.searchParams.set('highlight', searchTerm);
+                    params.set('chunk', chunkId);
                   }
-                  
-                  window.location.href = url.toString();
+
+                  // ?highlight=<text> scrolls to + highlights yellow in the content area.
+                  // Set for BOTH chunk-id path AND plain content path (no line range).
+                  // When chunk is present, this gives dual feedback: sidebar row selected
+                  // AND content area scrolls to the passage in yellow.
+                  if (chunkContent && startLine === undefined) {
+                    params.set('highlight', chunkContent.slice(0, 100));
+                  }
+
+                  const search = params.toString();
+                  // router.push preserves browser history so the back-button returns here
+                  router.push(`/documents/${encodeURIComponent(documentId)}${search ? `?${search}` : ''}`);
                 }}
                 onExploreGraph={(entityLabels) => {
-                  // Navigate to graph page with entity filter
-                  const url = new URL('/graph', window.location.origin);
+                  const params = new URLSearchParams();
                   if (entityLabels.length > 0) {
-                    // Pass entities as comma-separated list for filtering
-                    url.searchParams.set('entities', entityLabels.join(','));
-                    // Use first entity as focus node
-                    url.searchParams.set('focus', entityLabels[0]);
+                    params.set('entities', entityLabels.join(','));
+                    params.set('focus', entityLabels[0]);
                   }
-                  window.location.href = url.toString();
+                  router.push(`/graph${params.toString() ? `?${params}` : ''}`);
                 }}
               />
             </div>

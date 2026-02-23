@@ -230,7 +230,7 @@ const DocumentsTab = ({
             return (
               <Card 
                 key={docId} 
-                className="group bg-muted/30 hover:bg-muted/50 border-transparent hover:border-border/50 transition-all duration-200"
+                className="group bg-card border border-border/50 hover:border-border hover:shadow-sm transition-all duration-200"
               >
                 <CardContent className="p-3">
                   <div className="flex items-start gap-3">
@@ -243,7 +243,7 @@ const DocumentsTab = ({
                       {/* Header row: clickable title + score + chunk count */}
                       <div className="flex items-center justify-between gap-2">
                         <button
-                          className="text-sm font-medium flex items-center gap-1.5 hover:text-primary transition-colors text-left max-w-full overflow-hidden"
+                          className="text-sm font-semibold flex items-center gap-1.5 hover:text-primary transition-colors text-left max-w-full overflow-hidden text-foreground/90"
                           onClick={() => onDocumentClick?.(docId, chunks[0]?.content, 0, undefined, undefined, chunks[0]?.chunk_id)}
                           title={`Open: ${getDocumentTitle(chunks)}`}
                         >
@@ -285,7 +285,7 @@ const DocumentsTab = ({
                               chunk.end_line,
                               chunk.chunk_id
                             )}
-                            className="w-full text-left p-2 rounded bg-muted/40 hover:bg-muted/70 transition-colors group/chunk"
+                          className="w-full text-left p-2 rounded-md bg-muted/30 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 border border-transparent hover:border-yellow-200 dark:hover:border-yellow-800 transition-colors group/chunk"
                             title="Click to open and highlight this passage in the document viewer"
                           >
                             <div className="flex items-start gap-2">
@@ -295,11 +295,11 @@ const DocumentsTab = ({
                               >
                                 §{(chunk.chunk_index ?? chunkIdx) + 1}
                               </Badge>
-                              <p className="text-xs text-muted-foreground line-clamp-2 flex-1 leading-relaxed break-words overflow-hidden">
+                              <p className="text-xs text-foreground/80 line-clamp-2 flex-1 leading-relaxed break-words overflow-hidden">
                                 {chunk.content.slice(0, 200)}{chunk.content.length > 200 ? '…' : ''}
                               </p>
                               <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                                <span className={`text-[10px] ${getConfidenceLabel(chunk.score).color}`}>
+                                <span className={`text-xs font-semibold ${getConfidenceLabel(chunk.score).color}`}>
                                   {Math.round(chunk.score * 100)}%
                                 </span>
                                 <ExternalLink className="h-2.5 w-2.5 text-muted-foreground opacity-0 group-hover/chunk:opacity-70 transition-opacity" />
