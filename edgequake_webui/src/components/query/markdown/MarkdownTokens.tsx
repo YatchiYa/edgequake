@@ -104,12 +104,12 @@ const TokenRenderer = memo(function TokenRenderer({
       const heading = token as Tokens.Heading;
       const Tag = `h${heading.depth}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
       const headingStyles: Record<number, string> = {
-        1: 'text-2xl font-bold mt-6 mb-4',
-        2: 'text-xl font-semibold mt-5 mb-3',
-        3: 'text-lg font-medium mt-4 mb-2',
-        4: 'text-base font-medium mt-3 mb-2',
-        5: 'text-sm font-medium mt-2 mb-1',
-        6: 'text-sm font-medium mt-2 mb-1 text-muted-foreground',
+        1: 'text-3xl font-bold mt-8 mb-4 tracking-tight',
+        2: 'text-2xl font-semibold mt-6 mb-3 tracking-tight',
+        3: 'text-xl font-semibold mt-5 mb-2',
+        4: 'text-lg font-medium mt-4 mb-2',
+        5: 'text-base font-medium mt-3 mb-1',
+        6: 'text-base font-medium mt-3 mb-1 text-muted-foreground',
       };
       return (
         <Tag className={headingStyles[heading.depth]}>
@@ -126,7 +126,7 @@ const TokenRenderer = memo(function TokenRenderer({
     case 'paragraph': {
       const paragraph = token as Tokens.Paragraph;
       return (
-        <p className="my-3 leading-7">
+        <p className="my-3 text-[15px] leading-7">
           <MarkdownInlineTokens
             id={`${tokenId}-para`}
             tokens={paragraph.tokens}

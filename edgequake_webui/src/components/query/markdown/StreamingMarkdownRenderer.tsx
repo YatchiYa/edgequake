@@ -447,15 +447,17 @@ export const StreamingMarkdownRenderer = memo(function StreamingMarkdownRenderer
     <div
       ref={containerRef}
       className={cn(
-        'prose prose-invert prose-zinc max-w-none',
-        // Override prose styles for better dark mode
-        'prose-headings:text-zinc-100',
-        'prose-p:text-zinc-300',
-        'prose-strong:text-zinc-100',
-        'prose-code:text-zinc-200',
-        'prose-a:text-blue-400 prose-a:no-underline hover:prose-a:underline',
-        'prose-blockquote:border-zinc-600 prose-blockquote:text-zinc-400',
+        'prose max-w-none',
+        // Light mode (default): use foreground/muted semantic tokens
+        'prose-headings:text-foreground',
+        'prose-p:text-foreground/90',
+        'prose-strong:text-foreground',
+        'prose-code:text-foreground/90',
+        'prose-a:text-primary prose-a:no-underline hover:prose-a:underline',
+        'prose-blockquote:border-border prose-blockquote:text-muted-foreground',
         'prose-pre:bg-transparent prose-pre:p-0',
+        // Dark mode overrides via Tailwind dark: prefix
+        'dark:prose-invert',
         // Streaming indicator
         isStreaming && 'streaming-content',
         className
@@ -471,7 +473,7 @@ export const StreamingMarkdownRenderer = memo(function StreamingMarkdownRenderer
       
       {/* Show table skeleton when table is being streamed */}
       {hasPendingTable && (
-        <Suspense fallback={<div className="animate-pulse h-32 bg-zinc-800/50 rounded-lg" />}>
+        <Suspense fallback={<div className="animate-pulse h-32 bg-muted/50 rounded-lg" />}>
           <TableSkeleton rows={3} columns={4} />
         </Suspense>
       )}

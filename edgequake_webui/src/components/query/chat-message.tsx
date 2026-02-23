@@ -479,7 +479,7 @@ const AssistantMessage = memo(function AssistantMessage({
                   <StreamingMarkdownRenderer
                     content={displayContent}
                     isStreaming={message.isStreaming}
-                    className="prose-sm"
+                    className=""
                   />
                 </div>
               ) : null}
