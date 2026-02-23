@@ -34,35 +34,7 @@ But many real-world questions aren't lookups. They're **relationship questions**
 
 For these, vector similarity fails. Why?
 
-```
-╔═══════════════════════════════════════════════════════════════╗
-║              THE VECTOR SIMILARITY PROBLEM                   ║
-╠═══════════════════════════════════════════════════════════════╣
-║                                                               ║
-║   Query: "How do sales and engineering collaborate?"          ║
-║                                                               ║
-║   Vector search finds:                                        ║
-║   ┌───────────────────┐    ┌───────────────────┐             ║
-║   │ Chunk 1:          │    │ Chunk 2:          │             ║
-║   │ "Sales team uses  │    │ "Engineering uses │             ║
-║   │  Salesforce CRM..." │   │  Jira for sprints..."│          ║
-║   └───────────────────┘    └───────────────────┘             ║
-║                                                               ║
-║   Missing: THE RELATIONSHIP between them!                    ║
-║                                                               ║
-║   What we need:                                               ║
-║   ┌────────────────────────────────────────────────────────┐ ║
-║   │ SALES_TEAM ─[reports_to]→ VP_SALES                     │ ║
-║   │      │                                                  │ ║
-║   │      └─[escalates_issues_to]→ ENGINEERING_TEAM          │ ║
-║   │                                 │                       │ ║
-║   │                    [uses]→ JIRA_WORKFLOW                │ ║
-║   └────────────────────────────────────────────────────────┘ ║
-║                                                               ║
-║   The GRAPH captures relationships vectors miss.             ║
-║                                                               ║
-╚═══════════════════════════════════════════════════════════════╝
-```
+![The Vector Similarity Problem in RAG Systems](assets/vector_similarity_problem.jpg)
 
 ---
 
@@ -134,27 +106,7 @@ Maximum flexibility—tune the balance between vector similarity and graph trave
 
 ## Mode Selection Decision Tree
 
-```
-╔═══════════════════════════════════════════════════════════════╗
-║                   WHICH MODE DO I USE?                        ║
-╠═══════════════════════════════════════════════════════════════╣
-║                                                               ║
-║   Is the query about a specific fact/definition?             ║
-║      │                                                        ║
-║      ├─ YES → NAIVE (fast vector lookup)                      ║
-║      │                                                        ║
-║      └─ NO → Is it about specific entities?                  ║
-║               │                                               ║
-║               ├─ YES → LOCAL (entity neighborhood)            ║
-║               │                                               ║
-║               └─ NO → Is it about themes/patterns?           ║
-║                        │                                      ║
-║                        ├─ YES → GLOBAL (community summaries)  ║
-║                        │                                      ║
-║                        └─ UNSURE → HYBRID (default, both)     ║
-║                                                               ║
-╚═══════════════════════════════════════════════════════════════╝
-```
+![Query Mode Selection Decision Tree for Graph-Enhanced RAG](assets/query_mode_decision_tree.jpg)
 
 In practice, **Hybrid is the safe default**. It combines entity-specific precision with thematic coverage, handling the widest range of queries well.
 
@@ -260,15 +212,9 @@ In production, this reduces keyword extraction calls by 70-90%.
 
 On a knowledge base with 100,000 entities and 500,000 relationships:
 
-| Mode   | Latency (p50) | Latency (p99) | Answer Quality\* |
-| ------ | ------------- | ------------- | ---------------- |
-| Naive  | 48ms          | 95ms          | 6.2/10           |
-| Local  | 142ms         | 280ms         | 7.8/10           |
-| Global | 195ms         | 420ms         | 7.5/10           |
-| Hybrid | 245ms         | 480ms         | 8.5/10           |
-| Mix    | 180ms         | 350ms         | 8.1/10           |
+![RAG Query Mode Performance Benchmarks](assets/benchmarks_mode_performance.jpg)
 
-\*Quality measured by human evaluation on 1,000 queries
+_\*Quality measured by human evaluation on 1,000 queries_
 
 Key insights:
 
