@@ -36,10 +36,7 @@ The answer requires traversing connections, not just finding similar text.
 
 The fundamental problem:
 
-```
-Vector search: Content similarity
-Real questions: Relationship discovery
-```
+![Vector Search vs Relationship Discovery in RAG](assets/vector_vs_relationship.jpg)
 
 "What's our refund policy?" → Vector works ✅
 "How does A collaborate with B?" → Vector fails ❌
@@ -52,17 +49,7 @@ Most real-world queries are relationship questions.
 
 EdgeQuake solution: 5 query modes.
 
-```
-┌────────────────────────────────┐
-│         Query Modes            │
-├────────────────────────────────┤
-│ Naive   │ Vector similarity    │
-│ Local   │ Entity neighborhood  │
-│ Global  │ Community themes     │
-│ Hybrid  │ Local + Global       │
-│ Mix     │ Weighted blend       │
-└────────────────────────────────┘
-```
+![EdgeQuake 5 Query Modes Overview Table](assets/query_modes_table.jpg)
 
 Different questions need different strategies.
 
@@ -72,9 +59,7 @@ Different questions need different strategies.
 
 Mode 1: NAIVE (~50ms)
 
-```
-Query → Embed → Vector Search → Chunks → LLM
-```
+![5 RAG Query Mode Pipeline Flows](assets/pipeline_flows.jpg)
 
 Best for: Factual lookups
 Example: "What is our password policy?"
@@ -87,9 +72,7 @@ Fast. Simple. Works for 40% of queries.
 
 Mode 2: LOCAL (~150ms)
 
-```
 Query → Find Entity → Traverse Graph → Context → LLM
-```
 
 Best for: Entity relationships
 Example: "What projects has Sarah Chen led?"
@@ -104,9 +87,7 @@ Rich relationship context.
 
 Mode 3: GLOBAL (~200ms)
 
-```
 Query → Extract Themes → Community Search → LLM
-```
 
 Best for: Broad patterns
 Example: "What are our main organizational challenges?"
@@ -121,9 +102,7 @@ Thematic overview.
 
 Mode 4: HYBRID (~250ms) - DEFAULT
 
-```
 Query → [Local] + [Global] → Merge → LLM
-```
 
 Best for: Complex queries
 Example: "How do sales and engineering collaborate?"
@@ -141,9 +120,7 @@ Safe default for unknown query types.
 
 Mode 5: MIX (configurable)
 
-```
 Query → (α × Naive) + (β × Graph) → LLM
-```
 
 Best for: Domain tuning
 Example: Custom research applications
@@ -175,14 +152,7 @@ Different keywords, different retrieval paths.
 
 Token budgeting prevents overflow.
 
-```
-TruncationConfig {
-    max_context_tokens: 4000,
-    entity_priority: 0.4,
-    relationship_priority: 0.3,
-    chunk_priority: 0.3,
-}
-```
+![Smart Token Budgeting & Keyword Caching in RAG](assets/token_budget_cache.jpg)
 
 Graph context (entities + relationships) gets priority.
 
@@ -193,13 +163,6 @@ WHY? It's pre-summarized. Higher signal per token.
 ## Tweet 12
 
 Keyword caching: 10x cost reduction.
-
-```
-Cache {
-    ttl: 24 hours,
-    max_entries: 1000,
-}
-```
 
 Same query? Skip keyword extraction.
 Similar queries? Often hit cache.
@@ -212,14 +175,7 @@ Similar queries? Often hit cache.
 
 Benchmarks on 1,000 queries:
 
-```
-Mode    | Latency | Quality
---------|---------|--------
-Naive   |   48ms  | 6.2/10
-Local   |  142ms  | 7.8/10
-Global  |  195ms  | 7.5/10
-Hybrid  |  245ms  | 8.5/10
-```
+![RAG Query Mode Performance Benchmarks](assets/benchmarks_mode_performance.jpg)
 
 Hybrid: 5x slower than Naive.
 Hybrid: 35% better answers.
@@ -249,10 +205,7 @@ EdgeQuake is open source.
 - PostgreSQL + Apache AGE + pgvector
 - LightRAG algorithm (arXiv:2410.05779)
 
-```
-make dev
-curl localhost:3000/api/query -d '{"query":"...", "mode":"hybrid"}'
-```
+![EdgeQuake Quick Start — Try It In 2 Commands](assets/quickstart_cli.jpg)
 
 🔗 github.com/your-org/edgequake
 
