@@ -46,6 +46,8 @@ export function mapSourcesToContext(sources: SourceReference[]): QueryContext {
         document_id: extractDocumentId(s.id),
         score: s.score,
         file_path: s.file_path,
+        // Chunk UUID for deep-linking to document detail sidebar selection
+        chunk_id: s.id,
       })),
 
     entities: sources
