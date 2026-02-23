@@ -29,14 +29,14 @@ export const TableSkeleton = memo(function TableSkeleton({
   return (
     <div 
       className={cn(
-        'my-4 overflow-hidden rounded-lg border border-zinc-700',
+        'my-4 overflow-hidden rounded-lg border border-border',
         className
       )}
       role="status"
       aria-label="Loading table"
     >
       {/* Header row */}
-      <div className="flex bg-zinc-800/50 border-b border-zinc-700">
+      <div className="flex bg-muted/50 border-b border-border">
         {Array.from({ length: columns }).map((_, i) => (
           <div 
             key={`header-${i}`}
@@ -44,7 +44,7 @@ export const TableSkeleton = memo(function TableSkeleton({
           >
             <div 
               className={cn(
-                'h-4 rounded bg-zinc-700',
+                'h-4 rounded bg-muted-foreground/20',
                 // Varying widths for natural look
                 i === 0 && 'w-24',
                 i === 1 && 'w-32',
@@ -61,8 +61,8 @@ export const TableSkeleton = memo(function TableSkeleton({
         <div 
           key={`row-${rowIndex}`}
           className={cn(
-            'flex border-b border-zinc-800 last:border-b-0',
-            rowIndex % 2 === 0 ? 'bg-transparent' : 'bg-zinc-800/20'
+            'flex border-b border-border last:border-b-0',
+            rowIndex % 2 === 0 ? 'bg-transparent' : 'bg-muted/20'
           )}
         >
           {Array.from({ length: columns }).map((_, colIndex) => (
@@ -72,7 +72,7 @@ export const TableSkeleton = memo(function TableSkeleton({
             >
               <div 
                 className={cn(
-                  'h-3.5 rounded bg-zinc-800',
+                  'h-3.5 rounded bg-muted-foreground/15',
                   'relative overflow-hidden',
                   // Random widths for natural appearance
                   (rowIndex + colIndex) % 3 === 0 && 'w-3/4',
@@ -87,18 +87,18 @@ export const TableSkeleton = memo(function TableSkeleton({
       ))}
       
       {/* Loading indicator */}
-      <div className="flex items-center justify-center gap-2 py-2 text-xs text-zinc-500">
+      <div className="flex items-center justify-center gap-2 py-2 text-xs text-muted-foreground">
         <div className="flex gap-1">
           <span 
-            className="w-1.5 h-1.5 rounded-full bg-zinc-600 animate-bounce"
+            className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 animate-bounce"
             style={{ animationDelay: '0ms' }}
           />
           <span 
-            className="w-1.5 h-1.5 rounded-full bg-zinc-600 animate-bounce"
+            className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 animate-bounce"
             style={{ animationDelay: '150ms' }}
           />
           <span 
-            className="w-1.5 h-1.5 rounded-full bg-zinc-600 animate-bounce"
+            className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 animate-bounce"
             style={{ animationDelay: '300ms' }}
           />
         </div>

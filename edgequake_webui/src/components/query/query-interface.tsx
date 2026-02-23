@@ -370,10 +370,16 @@ export function QueryInterface() {
       }
     }
 
-    // Add pending assistant message when it has actual content
-    // (LoadingMessage handles the empty "thinking" state)
+    // Add pending assistant message when it has actual content.
+    // Skip if server already has this assistant message (avoid double display
+    // during the streaming → server-data handoff window).
     if (pendingMessage && pendingMessage.content) {
-      result.push(pendingMessage);
+      const lastServerMsg = serverMessages[serverMessages.length - 1];
+      const alreadyFromServer = lastServerMsg?.role === 'assistant'
+        && lastServerMsg.content === pendingMessage.content;
+      if (!alreadyFromServer) {
+        result.push(pendingMessage);
+      }
     }
 
     return result;
@@ -553,14 +559,14 @@ export function QueryInterface() {
         }
       }
 
-      // Clear pending message and optimistic user message
-      setPendingMessage(null);
-      setOptimisticUserMessage(null);
-      
-      // Server already saved both user and assistant messages!
-      // Just refresh the conversation data from server
+      // ── Smooth streaming → server handoff ──────────────────────────
+      // 1. Mark streaming as done so animations stop, but keep the content
+      //    visible via pendingMessage to avoid a flash.
+      setPendingMessage(prev => prev ? { ...prev, isStreaming: false } : null);
+
+      // 2. Fetch the server-persisted conversation (user + assistant messages)
+      //    while the pending message is still displayed.
       if (newConversationId) {
-        // Force refetch the conversation to get updated messages
         await queryClient.invalidateQueries({ 
           queryKey: conversationKeys.detail(newConversationId) 
         });
@@ -569,8 +575,14 @@ export function QueryInterface() {
         });
         
         // Give React Query a moment to refetch
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 150));
       }
+
+      // 3. Server data is now in cache — safe to remove pending.
+      //    The messages useMemo deduplicates, so even if timing overlaps
+      //    there's no double display.
+      setPendingMessage(null);
+      setOptimisticUserMessage(null);
 
       setStreamingState('complete');
     } catch (error) {
