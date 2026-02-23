@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -65,13 +65,21 @@ export default function DocumentViewPage() {
   const endLine = searchParams.get('end_line') 
     ? parseInt(searchParams.get('end_line')!) 
     : undefined;
+  // Deep-link: chunk UUID passed from query citation click
+  const chunkIdFromUrl = searchParams.get('chunk') || undefined;
 
   // OODA-chunk-select: Local chunk selection state for sidebar → content highlighting.
   // WHY: Using local state (not URL) avoids router updates on each click
   // while still supporting URL-based deep-linking for external citations.
-  const [selectedChunkId, setSelectedChunkId] = useState<string | undefined>();
+  const [selectedChunkId, setSelectedChunkId] = useState<string | undefined>(chunkIdFromUrl);
   const [chunkStartLine, setChunkStartLine] = useState<number | undefined>();
   const [chunkEndLine, setChunkEndLine] = useState<number | undefined>();
+
+  // Sync selectedChunkId when the URL param changes (e.g. user navigates to a
+  // different citation deep-link without a full page reload).
+  useEffect(() => {
+    setSelectedChunkId(chunkIdFromUrl);
+  }, [chunkIdFromUrl]);
 
   /**
    * Called when user clicks a chunk in the Data Hierarchy tree.
