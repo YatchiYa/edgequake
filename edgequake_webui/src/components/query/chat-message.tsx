@@ -525,14 +525,11 @@ const AssistantMessage = memo(function AssistantMessage({
                     url.searchParams.set('end_line', endLine.toString());
                   }
                   
-                  // Deep-link to specific chunk UUID for sidebar selection
+                  // Deep-link to specific chunk UUID for sidebar selection (preferred)
                   if (chunkId) {
                     url.searchParams.set('chunk', chunkId);
-                  }
-                  
-                  // Fallback: Use text highlight if no line numbers
-                  if (chunkContent && startLine === undefined) {
-                    // Use first 100 chars of chunk content as highlight search term
+                  } else if (chunkContent && startLine === undefined) {
+                    // Fallback: Use text highlight only when no chunk ID and no line numbers
                     const searchTerm = chunkContent.slice(0, 100);
                     url.searchParams.set('highlight', searchTerm);
                   }

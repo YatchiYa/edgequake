@@ -40,12 +40,14 @@ describe("mapSourcesToContext", () => {
       document_id: "f0291a69-8b63-46d5-b44b-24095b3a8283",
       score: 0.95,
       file_path: "/uploads/test.md",
+      chunk_id: "f0291a69-8b63-46d5-b44b-24095b3a8283-chunk-0",
     });
     expect(result.chunks[1]).toEqual({
       content: "Another chunk of content.",
       document_id: "bc6a87d5-6b38-4a3d-9948-b74477e2247c",
       score: 0.85,
       file_path: undefined,
+      chunk_id: "bc6a87d5-6b38-4a3d-9948-b74477e2247c-chunk-1",
     });
   });
 
@@ -112,6 +114,24 @@ describe("mapSourcesToContext", () => {
     expect(result.relationships).toHaveLength(1);
     // Should use the full ID as source and empty target when no -> found
     expect(result.relationships[0].source).toBe("NO_ARROW_HERE");
+  });
+
+  it("should populate chunk_id for deep-linking from query citations", () => {
+    const sources: SourceReference[] = [
+      {
+        source_type: "chunk",
+        id: "abcd1234-0000-0000-0000-000000000000-chunk-0",
+        score: 0.9,
+        snippet: "Chunk content.",
+        document_id: "abcd1234-0000-0000-0000-000000000000",
+      },
+    ];
+
+    const result = mapSourcesToContext(sources);
+
+    expect(result.chunks[0].chunk_id).toBe("abcd1234-0000-0000-0000-000000000000-chunk-0");
+    // document_id is extracted (strips -chunk-N suffix)
+    expect(result.chunks[0].document_id).toBe("abcd1234-0000-0000-0000-000000000000");
   });
 
   it("should separate sources by type correctly", () => {
