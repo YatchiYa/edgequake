@@ -132,6 +132,51 @@ fn parse_query_mode(mode: &Option<String>) -> QueryMode {
         .unwrap_or(QueryMode::Hybrid)
 }
 
+/// Convert an ISO 639-1 language code to its full English name.
+/// Used to build a clear language directive for the LLM prompt.
+fn language_code_to_name(code: &str) -> &'static str {
+    match code.to_lowercase().as_str() {
+        "en" => "English",
+        "zh" | "zh-cn" | "zh-tw" | "zh-hans" | "zh-hant" => "Chinese",
+        "fr" => "French",
+        "de" => "German",
+        "es" => "Spanish",
+        "pt" | "pt-br" => "Portuguese",
+        "it" => "Italian",
+        "ja" => "Japanese",
+        "ko" => "Korean",
+        "ru" => "Russian",
+        "ar" => "Arabic",
+        "hi" => "Hindi",
+        "nl" => "Dutch",
+        "sv" => "Swedish",
+        "pl" => "Polish",
+        "tr" => "Turkish",
+        "vi" => "Vietnamese",
+        "th" => "Thai",
+        "uk" => "Ukrainian",
+        "cs" => "Czech",
+        "ro" => "Romanian",
+        _ => "English", // fallback
+    }
+}
+
+/// Enrich the user query with a response language directive.
+///
+/// WHY: The system prompt says "respond in the same language as the user query"
+/// but that fails when the user's UI is in Chinese yet they type in English.
+/// By appending an explicit language directive to the query text (not stored in
+/// the message), we ensure the LLM responds in the user's preferred language.
+fn enrich_query_with_language(query: &str, language: &Option<String>) -> String {
+    match language {
+        Some(lang) if !lang.is_empty() => {
+            let lang_name = language_code_to_name(lang);
+            format!("{query}\n\n[IMPORTANT: You MUST respond in {lang_name}]")
+        }
+        _ => query.to_string(),
+    }
+}
+
 fn build_sources(context: &edgequake_query::QueryContext) -> Vec<SourceReference> {
     let mut sources = Vec::new();
     let mut ref_counter = 1usize;
@@ -416,7 +461,8 @@ pub async fn chat_completion(
     // WHY: Header tenant_id is for authentication (random UUID from frontend).
     // But the graph data was ingested with the workspace's actual tenant_id.
     // Using header tenant_id causes 0 results because of tenant_id mismatch.
-    let mut engine_request = EngineQueryRequest::new(&request.message).with_mode(query_mode);
+    let enriched_query = enrich_query_with_language(&request.message, &request.language);
+    let mut engine_request = EngineQueryRequest::new(&enriched_query).with_mode(query_mode);
 
     let data_tenant_id = workspace
         .as_ref()
@@ -869,6 +915,8 @@ pub async fn chat_completion_stream(
     let request_provider = request.provider.clone();
     let request_model = request.model.clone();
     let workspace_clone = workspace.clone();
+    // Clone language for async task - used to enrich query with language directive
+    let request_language = request.language.clone();
     // FEAT0505: Clone for auto-title generation
     let first_message_for_title = request.message.clone();
 
@@ -897,7 +945,8 @@ pub async fn chat_completion_stream(
         // WHY: Header tenant_id is for authentication (random UUID from frontend).
         // But the graph data was ingested with the workspace's actual tenant_id.
         // Using header tenant_id causes 0 results because of tenant_id mismatch.
-        let mut engine_request = EngineQueryRequest::new(&message_content).with_mode(query_mode);
+        let enriched_query = enrich_query_with_language(&message_content, &request_language);
+        let mut engine_request = EngineQueryRequest::new(&enriched_query).with_mode(query_mode);
         let data_tenant_id = workspace_clone
             .as_ref()
             .map(|ws| ws.tenant_id.to_string())

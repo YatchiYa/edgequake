@@ -23,11 +23,16 @@ export const LoadingMessage = memo(function LoadingMessage() {
   const { t } = useTranslation();
   
   return (
-    <div className="flex justify-start mb-4 animate-fade-in">
-      <div className="flex items-start gap-3 max-w-[85%]">
+    <div
+      className="flex justify-start mb-4 motion-safe:animate-fade-in"
+      role="status"
+      aria-live="polite"
+      aria-label={t('query.processing', 'Processing your query...')}
+    >
+      <div className="flex items-start gap-3 max-w-[95%] sm:max-w-[85%]">
         <Avatar className="h-8 w-8 shrink-0 mt-1">
           <AvatarFallback className="bg-gradient-to-br from-primary/80 to-primary">
-            <Sparkles className="h-4 w-4 text-primary-foreground" />
+            <Sparkles className="h-4 w-4 text-primary-foreground" aria-hidden="true" />
           </AvatarFallback>
         </Avatar>
 
@@ -36,7 +41,7 @@ export const LoadingMessage = memo(function LoadingMessage() {
             <div className="flex items-center gap-3">
               {/* Simple status indicator - subtle dot that pulses */}
               <div className="relative flex items-center gap-2">
-                <span className="inline-flex h-2 w-2 rounded-full bg-primary animate-pulse" />
+                <span className="inline-flex h-2 w-2 rounded-full bg-primary motion-safe:animate-pulse" aria-hidden="true" />
                 <span className="text-sm text-muted-foreground">
                   {t('query.processing', 'Processing your query...')}
                 </span>
@@ -74,11 +79,16 @@ export const NonStreamingLoadingIndicator = memo(function NonStreamingLoadingInd
   const currentText = phases[phase].text;
 
   return (
-    <div className="flex justify-start mb-4 animate-fade-in">
-      <div className="flex items-start gap-3 max-w-[85%]">
+    <div
+      className="flex justify-start mb-4 motion-safe:animate-fade-in"
+      role="status"
+      aria-live="polite"
+      aria-label={currentText}
+    >
+      <div className="flex items-start gap-3 max-w-[95%] sm:max-w-[85%]">
         <Avatar className="h-9 w-9 shrink-0 mt-1 ring-2 ring-primary/20 shadow-sm">
           <AvatarFallback className="bg-gradient-to-br from-primary/80 to-primary">
-            <Sparkles className="h-4 w-4 text-primary-foreground" />
+            <Sparkles className="h-4 w-4 text-primary-foreground" aria-hidden="true" />
           </AvatarFallback>
         </Avatar>
 
@@ -94,9 +104,9 @@ export const NonStreamingLoadingIndicator = memo(function NonStreamingLoadingInd
             <div className="flex items-center gap-3">
               <div className="relative">
                 {/* Animated ring around icon */}
-                <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-primary/30 to-primary/10 animate-pulse" />
+                <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-primary/30 to-primary/10 motion-safe:animate-pulse" />
                 <div className="relative flex items-center justify-center h-8 w-8 rounded-full bg-primary/10">
-                  <CurrentIcon className="h-4 w-4 text-primary animate-pulse" />
+                  <CurrentIcon className="h-4 w-4 text-primary motion-safe:animate-pulse" aria-hidden="true" />
                 </div>
               </div>
               

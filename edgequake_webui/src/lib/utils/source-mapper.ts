@@ -46,6 +46,8 @@ export function mapSourcesToContext(sources: SourceReference[]): QueryContext {
         document_id: extractDocumentId(s.id),
         score: s.score,
         file_path: s.file_path,
+        // Chunk UUID for deep-linking to document detail sidebar selection
+        chunk_id: s.id,
       })),
 
     entities: sources
@@ -126,7 +128,7 @@ function extractDocumentId(chunkId: string): string {
  * @returns true if context has any chunks, entities, or relationships
  */
 export function hasContextContent(
-  context: QueryContext | undefined | null
+  context: QueryContext | undefined | null,
 ): boolean {
   if (!context) return false;
 

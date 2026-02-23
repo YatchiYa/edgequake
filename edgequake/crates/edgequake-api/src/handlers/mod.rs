@@ -67,6 +67,7 @@ pub mod graph;
 pub mod graph_types;
 pub mod health;
 pub mod health_types;
+pub mod isolation;
 pub mod lineage;
 pub mod lineage_types;
 pub mod metrics;

@@ -25,11 +25,12 @@ use axum::{
     Json,
 };
 use chrono::Utc;
-use edgequake_storage::{GraphEdge, GraphNode};
+use edgequake_storage::GraphEdge;
 use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::error::{ApiError, ApiResult};
+use crate::handlers::isolation::filter_edges_by_tenant_context;
 use crate::middleware::TenantContext;
 use crate::state::AppState;
 
@@ -52,103 +53,6 @@ pub use crate::handlers::relationships_types::{
 /// Normalize entity name to UPPERCASE with underscores.
 fn normalize_entity_name(name: &str) -> String {
     name.to_uppercase().replace(' ', "_")
-}
-
-/// Filter nodes by tenant context.
-///
-/// # Implements
-///
-/// - **BR0201**: Tenant isolation (strict mode - excludes nodes without tenant_id)
-///
-/// # SECURITY: STRICT TENANT CONTEXT REQUIRED
-///
-/// Both tenant_id and workspace_id MUST be present. No exceptions for admin.
-#[allow(dead_code)]
-fn filter_nodes_by_tenant_context(nodes: Vec<GraphNode>, ctx: &TenantContext) -> Vec<GraphNode> {
-    // SECURITY: Require both tenant_id AND workspace_id - no admin bypass
-    if ctx.tenant_id.is_none() || ctx.workspace_id.is_none() {
-        tracing::warn!(
-            "Tenant context missing (tenant_id={:?}, workspace_id={:?}) - returning empty for security",
-            ctx.tenant_id,
-            ctx.workspace_id
-        );
-        return Vec::new();
-    }
-
-    nodes
-        .into_iter()
-        .filter(|node| {
-            if let Some(ref ctx_tenant_id) = ctx.tenant_id {
-                match node.properties.get("tenant_id").and_then(|v| v.as_str()) {
-                    Some(node_tenant_id) => {
-                        if node_tenant_id != ctx_tenant_id {
-                            return false;
-                        }
-                    }
-                    None => return false, // Strict: exclude nodes without tenant_id
-                }
-            }
-            if let Some(ref ctx_workspace_id) = ctx.workspace_id {
-                match node.properties.get("workspace_id").and_then(|v| v.as_str()) {
-                    Some(node_workspace_id) => {
-                        if node_workspace_id != ctx_workspace_id {
-                            return false;
-                        }
-                    }
-                    None => return false, // Strict: exclude nodes without workspace_id
-                }
-            }
-            true
-        })
-        .collect()
-}
-
-/// Filter edges by tenant context.
-///
-/// # Implements
-///
-/// - **BR0201**: Tenant isolation (strict mode - excludes edges without tenant_id)
-///
-/// # SECURITY: STRICT TENANT CONTEXT REQUIRED
-///
-/// Both tenant_id and workspace_id MUST be present. No exceptions for admin.
-fn filter_edges_by_tenant_context(edges: Vec<GraphEdge>, ctx: &TenantContext) -> Vec<GraphEdge> {
-    // SECURITY: Require both tenant_id AND workspace_id - no admin bypass
-    if ctx.tenant_id.is_none() || ctx.workspace_id.is_none() {
-        tracing::warn!(
-            "Tenant context missing for edge filtering (tenant_id={:?}, workspace_id={:?}) - returning empty",
-            ctx.tenant_id,
-            ctx.workspace_id
-        );
-        return Vec::new();
-    }
-
-    edges
-        .into_iter()
-        .filter(|edge| {
-            if let Some(ref ctx_tenant_id) = ctx.tenant_id {
-                match edge.properties.get("tenant_id").and_then(|v| v.as_str()) {
-                    Some(edge_tenant_id) => {
-                        if edge_tenant_id != ctx_tenant_id {
-                            return false;
-                        }
-                    }
-                    None => return false, // Strict: exclude edges without tenant_id
-                }
-            }
-            if let Some(ref ctx_workspace_id) = ctx.workspace_id {
-                match edge.properties.get("workspace_id").and_then(|v| v.as_str()) {
-                    Some(edge_workspace_id) => {
-                        if edge_workspace_id != ctx_workspace_id {
-                            return false;
-                        }
-                    }
-                    None => return false, // Strict: exclude edges without workspace_id
-                }
-            }
-            true
-        })
-        .collect()
 }
 
 /// Extract relation type from keywords.
