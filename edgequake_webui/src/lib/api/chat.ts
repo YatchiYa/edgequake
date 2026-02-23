@@ -56,6 +56,13 @@ export interface ChatCompletionRequest {
    * @implements SPEC-032: Full model selection in query interface
    */
   model?: string;
+  /**
+   * Preferred response language (ISO 639-1 code, e.g., "en", "zh", "fr").
+   * When provided, the backend instructs the LLM to respond in this language
+   * regardless of the query language. Falls back to query language detection
+   * when not set.
+   */
+  language?: string;
 }
 
 /**

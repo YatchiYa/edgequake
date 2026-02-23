@@ -69,6 +69,13 @@ pub struct ChatCompletionRequest {
     /// @implements SPEC-032: Full model selection in query interface
     #[serde(default)]
     pub model: Option<String>,
+
+    /// Preferred response language (ISO 639-1 code, e.g., "en", "zh", "fr").
+    /// When provided, the LLM is instructed to respond in this language
+    /// regardless of the query language. Falls back to "same language as query"
+    /// when not set.
+    #[serde(default)]
+    pub language: Option<String>,
 }
 
 // ============================================================================

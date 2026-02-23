@@ -81,6 +81,15 @@ async function getMermaid(isDark: boolean) {
 /**
  * Pre-validate and sanitize Mermaid code to fix common LLM output issues.
  * Returns sanitized code and any detected issues.
+ *
+ * WHY: LLMs frequently generate Mermaid syntax that is semantically correct
+ * but syntactically invalid. The most common issues are:
+ * 1. Parentheses inside brackets: `A[text (note)]` — Mermaid interprets `(` as shape delimiter
+ * 2. Unicode characters in node IDs: `动作模型[label]` — must be ASCII IDs
+ * 3. Unquoted labels with special chars: pipes, braces, etc.
+ *
+ * The fix: wrap label text in double quotes when it contains problematic characters.
+ * Mermaid supports `A["text with (parens) and 中文"]` syntax.
  */
 function sanitizeMermaidCode(code: string): { sanitized: string; issues: string[] } {
   const issues: string[] = [];
@@ -92,21 +101,59 @@ function sanitizeMermaidCode(code: string): { sanitized: string; issues: string[
     issues.push('Removed code block markers');
   }
 
-  // Fix common LLM issues with node IDs containing special characters
-  // Mermaid node IDs should be alphanumeric with underscores
   const lines = sanitized.split('\n');
-  const fixedLines = lines.map((line, index) => {
-    // Skip the graph type declaration line
-    if (index === 0 && /^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|gitGraph)/i.test(line.trim())) {
+  const fixedLines = lines.map((line) => {
+    const trimmed = line.trim();
+
+    // Skip empty lines, comments, diagram type declarations, and subgraph/end/style keywords
+    if (
+      !trimmed ||
+      trimmed.startsWith('%%') ||
+      /^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|gitGraph|journey|mindmap|timeline|sankey|block)\b/i.test(trimmed) ||
+      /^(subgraph|end|style|classDef|click|linkStyle|direction)\b/i.test(trimmed)
+    ) {
       return line;
     }
-    
-    // Fix node IDs with spaces in arrow definitions
-    // e.g., "Node Name --> Other Node" should become "NodeName --> OtherNode"
-    // But preserve text in brackets/quotes
-    return line;
+
+    // Fix node definitions with bracket-style labels that contain special characters.
+    // Matches patterns like: NodeId[label text] or NodeId[label (with parens)]
+    // Captures: (nodeId)(openBracket)(labelText)(closeBracket)
+    // We handle [], (), {}, (()) and >] shapes.
+    return line.replace(
+      /([A-Za-z0-9_\u4e00-\u9fff\u3400-\u4dbf]+)\[([^\]"]*[(){}|><\u4e00-\u9fff\u3400-\u4dbf\u3000-\u303f\uff00-\uffef][^\]"]*)\]/g,
+      (_match, nodeId: string, labelText: string) => {
+        // If the label already has quotes, leave it alone
+        if (labelText.startsWith('"') && labelText.endsWith('"')) return _match;
+
+        // Escape any internal double quotes in the label
+        const escaped = labelText.replace(/"/g, '#quot;');
+        issues.push(`Quoted label: ${nodeId}["${escaped}"]`);
+        return `${nodeId}["${escaped}"]`;
+      }
+    );
   });
   sanitized = fixedLines.join('\n');
+
+  // Fix node IDs that contain non-ASCII characters (e.g., Chinese)
+  // Convert them to ASCII IDs while preserving the label.
+  // e.g., `动作模型 --> 其他` becomes `node_1["动作模型"] --> node_2["其他"]`
+  // Only fix standalone non-ASCII IDs in arrow definitions (not already in brackets).
+  let nodeCounter = 0;
+  const nodeIdMap = new Map<string, string>();
+
+  sanitized = sanitized.replace(
+    // Match non-ASCII word appearing in arrow context (not inside brackets)
+    /(?<=^|\s|-->|---|-\.->|==>|-.->|~~>|--?>)[\s]*([\u4e00-\u9fff\u3400-\u4dbf\u3000-\u303f\uff00-\uffef][\w\u4e00-\u9fff\u3400-\u4dbf\u3000-\u303f\uff00-\uffef]*)[\s]*(?=$|\s|-->|---|-\.->|==>|-.->|~~>|--?>)/gm,
+    (_match, unicodeId: string) => {
+      if (!nodeIdMap.has(unicodeId)) {
+        nodeCounter++;
+        nodeIdMap.set(unicodeId, `node_${nodeCounter}`);
+      }
+      const asciiId = nodeIdMap.get(unicodeId)!;
+      issues.push(`Mapped non-ASCII node ID: ${unicodeId} → ${asciiId}`);
+      return `${asciiId}["${unicodeId}"]`;
+    }
+  );
 
   // Check for completely empty diagram
   const contentLines = sanitized.split('\n').filter(l => l.trim() && !l.trim().startsWith('%%'));
@@ -150,6 +197,7 @@ export const MermaidBlock = memo(function MermaidBlock({
   const uniqueId = useId().replace(/:/g, '-');
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sanitizedCode, setSanitizedCode] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isFullView, setIsFullView] = useState(false);
   const { resolvedTheme } = useTheme();
@@ -179,6 +227,7 @@ export const MermaidBlock = memo(function MermaidBlock({
 
         // Pre-validate and sanitize the code
         const { sanitized, issues } = sanitizeMermaidCode(code);
+        setSanitizedCode(sanitized);
         
         if (issues.length > 0) {
           console.log('Mermaid code sanitization:', issues);
@@ -306,6 +355,14 @@ export const MermaidBlock = memo(function MermaidBlock({
               <pre className="mt-2 overflow-x-auto rounded bg-muted p-3 text-xs text-muted-foreground">
                 <code>{code}</code>
               </pre>
+              {sanitizedCode && sanitizedCode !== code && (
+                <>
+                  <p className="mt-2 text-xs text-muted-foreground font-medium">Sanitized version:</p>
+                  <pre className="mt-1 overflow-x-auto rounded bg-muted p-3 text-xs text-muted-foreground">
+                    <code>{sanitizedCode}</code>
+                  </pre>
+                </>
+              )}
             </details>
           </div>
           <Button

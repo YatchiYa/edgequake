@@ -433,7 +433,7 @@ const AssistantMessage = memo(function AssistantMessage({
       role="article"
       aria-label={t('query.assistantMessage', 'Assistant response')}
     >
-      <div className="flex items-start gap-3 max-w-[95%] sm:max-w-[85%] min-w-0">
+      <div className="flex items-start gap-3 max-w-full min-w-0">
         {/* Avatar */}
         <Avatar 
           className={cn(
