@@ -199,7 +199,7 @@ const EmptyState = memo(function EmptyState({ onSuggestionClick, graphStats }: E
 // ============================================================================
 
 export function QueryInterface() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [input, setInput] = useState('');
   const [streamingState, setStreamingState] = useState<StreamingState>('idle');
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
@@ -492,6 +492,7 @@ export function QueryInterface() {
         stream: true,
         provider: querySettings.provider,
         model: querySettings.model,
+        language: i18n.language,
       })) {
         if (abortControllerRef.current?.signal.aborted) {
           break;
@@ -693,6 +694,7 @@ export function QueryInterface() {
           stream: false,
           provider: querySettings.provider,
           model: querySettings.model,
+          language: i18n.language,
         });
 
         // Update active conversation if a new one was created
@@ -868,7 +870,7 @@ export function QueryInterface() {
         {/* Messages - improved padding */}
         <div className="flex-1 min-h-0 overflow-hidden">
           <ScrollArea ref={scrollRef} className="h-full">
-            <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6" role="log" aria-live="polite" aria-label={t('query.messageList', 'Conversation messages')}>
+            <div className="max-w-4xl lg:max-w-5xl mx-auto px-4 sm:px-6 py-6" role="log" aria-live="polite" aria-label={t('query.messageList', 'Conversation messages')}>
               {messages.length === 0 && !isLoading ? (
                 <EmptyState onSuggestionClick={handleSuggestionClick} />
               ) : (
@@ -900,7 +902,7 @@ export function QueryInterface() {
 
         {/* Input - Fixed at bottom with improved spacing */}
         <div className="border-t px-4 sm:px-6 py-4 bg-background shrink-0" role="form" aria-label={t('query.form', 'Query form')}>
-          <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
+          <form onSubmit={handleSubmit} className="max-w-4xl lg:max-w-5xl mx-auto">
             <div className="relative">
               <Textarea
                 ref={inputRef}
