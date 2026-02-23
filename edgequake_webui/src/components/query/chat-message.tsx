@@ -515,7 +515,7 @@ const AssistantMessage = memo(function AssistantMessage({
                 onEntityClick={(entityId) => {
                   window.location.href = `/graph?entity=${encodeURIComponent(entityId)}`;
                 }}
-                onDocumentClick={(documentId, chunkContent, chunkIndex, startLine, endLine) => {
+                onDocumentClick={(documentId, chunkContent, chunkIndex, startLine, endLine, chunkId) => {
                   // Navigate to document detail page with line numbers and/or highlight
                   const url = new URL(`/documents/${encodeURIComponent(documentId)}`, window.location.origin);
                   
@@ -523,6 +523,11 @@ const AssistantMessage = memo(function AssistantMessage({
                   if (startLine !== undefined && endLine !== undefined) {
                     url.searchParams.set('start_line', startLine.toString());
                     url.searchParams.set('end_line', endLine.toString());
+                  }
+                  
+                  // Deep-link to specific chunk UUID for sidebar selection
+                  if (chunkId) {
+                    url.searchParams.set('chunk', chunkId);
                   }
                   
                   // Fallback: Use text highlight if no line numbers

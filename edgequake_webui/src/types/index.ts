@@ -430,6 +430,8 @@ export interface QueryContext {
     start_line?: number;
     end_line?: number;
     chunk_index?: number;
+    /** Chunk UUID from storage. Used for deep-linking to document detail with selected chunk. */
+    chunk_id?: string;
   }>;
   entities: Array<{
     id: string;
