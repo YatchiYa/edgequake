@@ -692,6 +692,19 @@ export interface CreateWorkspaceRequest {
    * If not provided, auto-detected from embedding_model.
    */
   embedding_dimension?: number;
+  /**
+   * Vision LLM model for PDF-to-Markdown image extraction (e.g., "gpt-4o", "gemma3:12b").
+   * If not provided, inherits from tenant default_vision_llm_model or server default.
+   * Must support vision (supports_vision === true).
+   * @implements SPEC-041: Workspace-scoped Vision LLM for PDF processing
+   */
+  vision_llm_model?: string;
+  /**
+   * Vision LLM provider for PDF-to-Markdown extraction ("openai", "ollama", "lmstudio").
+   * If not provided, auto-detected from vision_llm_model.
+   * @implements SPEC-041: Workspace-scoped Vision LLM for PDF processing
+   */
+  vision_llm_provider?: string;
 }
 
 /**
