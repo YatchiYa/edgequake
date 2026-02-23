@@ -51,6 +51,7 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::error::ApiError;
+use crate::handlers::isolation::doc_belongs_to_workspace;
 use crate::state::AppState;
 
 // ============ Stats Cache ============
@@ -1609,11 +1610,11 @@ pub async fn rebuild_embeddings(
                         .and_then(|v| v.as_str())
                         .unwrap_or("default");
 
-                    let is_legacy_default = doc_workspace == "default";
-                    let is_default_workspace = workspace.slug == "default";
-                    if doc_workspace != workspace_id.to_string()
-                        && !(is_legacy_default && is_default_workspace)
-                    {
+                    if !doc_belongs_to_workspace(
+                        doc_workspace,
+                        &workspace_id.to_string(),
+                        &workspace.slug,
+                    ) {
                         continue;
                     }
 
@@ -2006,11 +2007,11 @@ pub async fn rebuild_knowledge_graph(
                         .and_then(|v| v.as_str())
                         .unwrap_or("default");
 
-                    let is_legacy_default = doc_workspace == "default";
-                    let is_default_workspace = workspace.slug == "default";
-                    if doc_workspace != workspace_id.to_string()
-                        && !(is_legacy_default && is_default_workspace)
-                    {
+                    if !doc_belongs_to_workspace(
+                        doc_workspace,
+                        &workspace_id.to_string(),
+                        &workspace.slug,
+                    ) {
                         continue;
                     }
 
@@ -2350,11 +2351,11 @@ pub async fn reprocess_all_documents(
                     .and_then(|v| v.as_str())
                     .unwrap_or("default");
 
-                let is_legacy_default = doc_workspace == "default";
-                let is_default_workspace = workspace.slug == "default";
-                if doc_workspace != workspace_id.to_string()
-                    && !(is_legacy_default && is_default_workspace)
-                {
+                if !doc_belongs_to_workspace(
+                    doc_workspace,
+                    &workspace_id.to_string(),
+                    &workspace.slug,
+                ) {
                     *skip_reasons.entry("wrong_workspace").or_insert(0) += 1;
                     continue;
                 }
