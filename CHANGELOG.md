@@ -4,6 +4,41 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-02-25
+
+### Added
+
+#### Query UX Enhancements
+
+- **Wider query/answer layout** (`query-interface.tsx`): Message area widened from `max-w-3xl` to `max-w-4xl lg:max-w-5xl`; assistant message container set to `max-w-full` for long tables and code blocks
+- **Response language support** (full-stack): Backend detects the `language` field sent by the frontend (`ChatCompletionRequest`) and appends `[IMPORTANT: You MUST respond in {Language}]` to the query before the LLM call via `enrich_query_with_language()` — frontend passes `i18n.language` automatically
+- **Mermaid syntax sanitization** (`MermaidBlock.tsx`): `sanitizeMermaidCode()` fully rewritten — auto-quotes labels that contain `(){}|><` or non-ASCII characters (e.g., `A[label (note)]` → `A["label (note)"]`), maps non-ASCII node IDs, and shows the sanitized source in the error view
+
+#### Source Citations & Deep-Links
+
+- **Chunk deep-link on sidebar selection**: Clicking a source chunk in the sidebar navigates to the exact file location via deep-link
+- **Auto-resolve chunk line range on deep-link**: Content highlights auto-open and the Data Hierarchy panel reveals the referenced section
+- **Improved source-citations UX**: Uniform scroll height, per-document chunk expand/collapse, count badges, and better contrast for citations
+
+#### Developer / Architecture
+
+- **Centralised tenant isolation** (`handlers/isolation.rs`): DRY/SRP refactor — all workspace/tenant security checks route through a single `isolation.rs` module, reducing duplication across handlers
+- **Workspace-scoped rebuild**: Exclude cross-workspace documents from incremental rebuild scope
+
+### Changed
+
+- **Streaming markdown UX**: Larger text rendering, light/dark theme consistency, full-view dialogs for long code and Mermaid blocks
+- **Router history on deep-link**: `router.push()` used for chunk navigation to preserve browser back-button history
+- **Yellow chunk highlight + source-citations contrast**: Selected chunks highlighted in amber; citation rows have improved foreground/background contrast ratio
+
+### Fixed
+
+- **Chunk deep-link propagation**: `chunk_id` correctly propagated from query citations to URL parameters
+- **`chunk_id` in `convertServerMessage`**: Historical messages now carry `chunk_id` so citations reopen correctly after page reload
+- **Source-mapper `chunk_id` propagation**: Fixed `isolation.rs`, `lineage.rs`, and source-mapper to consistently pass `chunk_id` through pipeline
+- **Table streaming flicker**: Eliminated double-render and flicker when a streamed response block transitions from partial to complete table
+- **Accessibility, responsive design, smooth display**: ARIA labels, keyboard navigation, reduced-motion preference, and mobile breakpoints across the query UI
+
 ## [0.4.1] - 2026-02-23
 
 ### Added
