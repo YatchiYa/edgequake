@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { createTenant, createWorkspace, getTenants, getWorkspaces } from '@/lib/api/edgequake';
 import { useTenantStore } from '@/stores/use-tenant-store';
+import type { Tenant } from '@/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Building2, FolderKanban, Loader2, Plus } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
@@ -157,6 +158,35 @@ export function TenantGuard({ children }: TenantGuardProps) {
       .replace(/^-|-$/g, '');
   }, []);
 
+  /**
+   * Pre-fill workspace model fields from a tenant's defaults, then open the dialog.
+   * ModelSelector expects "provider:model" format (e.g., "ollama:gemma3:12b").
+   */
+  const handleOpenCreateWorkspace = useCallback((tenantOverride?: Tenant) => {
+    const tenant = tenantOverride ?? tenantsData?.find((te) => te.id === selectedTenantId);
+    if (tenant) {
+      if (tenant.default_llm_model) {
+        const llmVal = tenant.default_llm_provider
+          ? `${tenant.default_llm_provider}:${tenant.default_llm_model}`
+          : tenant.default_llm_model;
+        setWorkspaceLlmModel(llmVal);
+      }
+      if (tenant.default_embedding_model) {
+        const embVal = tenant.default_embedding_provider
+          ? `${tenant.default_embedding_provider}:${tenant.default_embedding_model}`
+          : tenant.default_embedding_model;
+        setWorkspaceEmbeddingModel(embVal);
+      }
+      if (tenant.default_vision_llm_model) {
+        const visionVal = tenant.default_vision_llm_provider
+          ? `${tenant.default_vision_llm_provider}:${tenant.default_vision_llm_model}`
+          : tenant.default_vision_llm_model;
+        setWorkspaceVisionLlmModel(visionVal);
+      }
+    }
+    setShowCreateWorkspace(true);
+  }, [selectedTenantId, tenantsData]);
+
   // Create tenant mutation - SPEC-032: Now accepts model configuration
   const createTenantMutation = useMutation({
     mutationFn: (data: {
@@ -228,13 +258,15 @@ export function TenantGuard({ children }: TenantGuardProps) {
       setTenantLlmModel(undefined);
       setTenantEmbeddingModel(undefined);
       setTenantVisionLlmModel(undefined);
+      // Pre-fill workspace form and open dialog for the new tenant
+      handleOpenCreateWorkspace(newTenant);
     } catch (error) {
       setIsSettingUpContext(false);
       toast.error(t('tenant.createFailed', 'Failed to create tenant'), {
         description: error instanceof Error ? error.message : 'Unknown error',
       });
     }
-  }, [newTenantName, tenantLlmModel, tenantEmbeddingModel, tenantVisionLlmModel, parseModelValue, createTenantMutation, selectTenant, queryClient, t]);
+  }, [newTenantName, tenantLlmModel, tenantEmbeddingModel, tenantVisionLlmModel, parseModelValue, createTenantMutation, selectTenant, queryClient, t, handleOpenCreateWorkspace]);
 
   // Handle workspace creation with proper async flow - SPEC-032/SPEC-041: Now includes model config
   const handleCreateWorkspace = useCallback(async () => {
@@ -458,7 +490,7 @@ export function TenantGuard({ children }: TenantGuardProps) {
               </CardDescription>
             </CardHeader>
             <CardContent className="text-center">
-              <Button onClick={() => setShowCreateWorkspace(true)}>
+              <Button onClick={() => handleOpenCreateWorkspace()}>
                 <Plus className="h-4 w-4 mr-2" />
                 {t('workspace.createWorkspace', 'Create Workspace')}
               </Button>

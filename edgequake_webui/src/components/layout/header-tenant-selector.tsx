@@ -196,6 +196,33 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
       setTenantDefaultLLM(undefined);
       setTenantDefaultEmbedding(undefined);
       setTenantDefaultVisionLLM(undefined);
+      // Pre-fill workspace form with new tenant defaults, then open the dialog
+      if (newTenant.default_llm_model) {
+        setWorkspaceLLMSelection({
+          model: newTenant.default_llm_model,
+          provider: newTenant.default_llm_provider || '',
+          fullId: newTenant.default_llm_provider
+            ? `${newTenant.default_llm_provider}/${newTenant.default_llm_model}`
+            : newTenant.default_llm_model,
+        });
+      }
+      if (newTenant.default_embedding_model) {
+        setEmbeddingSelection({
+          model: newTenant.default_embedding_model,
+          provider: newTenant.default_embedding_provider || '',
+          dimension: newTenant.default_embedding_dimension ?? 1536,
+        });
+      }
+      if (newTenant.default_vision_llm_model) {
+        setWorkspaceVisionLLMSelection({
+          model: newTenant.default_vision_llm_model,
+          provider: newTenant.default_vision_llm_provider || '',
+          fullId: newTenant.default_vision_llm_provider
+            ? `${newTenant.default_vision_llm_provider}/${newTenant.default_vision_llm_model}`
+            : newTenant.default_vision_llm_model,
+        });
+      }
+      setShowCreateWorkspace(true);
     },
     onError: (error) => {
       toast.error(t('tenant.createFailed', 'Failed to create tenant'), {
@@ -264,6 +291,43 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
       });
     }
   }, [selectWorkspace, selectedWorkspaceId, workspaces, t]);
+
+  /**
+   * Pre-fill workspace creation form from a tenant's default model settings,
+   * then open the dialog. Accepts an optional tenant override for the case
+   * where the store hasn't been updated yet (e.g. immediately after tenant creation).
+   */
+  const handleOpenCreateWorkspace = useCallback((tenantOverride?: typeof tenants[0]) => {
+    const tenant = tenantOverride ?? tenants.find((te) => te.id === selectedTenantId);
+    if (tenant) {
+      if (tenant.default_llm_model) {
+        setWorkspaceLLMSelection({
+          model: tenant.default_llm_model,
+          provider: tenant.default_llm_provider || '',
+          fullId: tenant.default_llm_provider
+            ? `${tenant.default_llm_provider}/${tenant.default_llm_model}`
+            : tenant.default_llm_model,
+        });
+      }
+      if (tenant.default_embedding_model) {
+        setEmbeddingSelection({
+          model: tenant.default_embedding_model,
+          provider: tenant.default_embedding_provider || '',
+          dimension: tenant.default_embedding_dimension ?? 1536,
+        });
+      }
+      if (tenant.default_vision_llm_model) {
+        setWorkspaceVisionLLMSelection({
+          model: tenant.default_vision_llm_model,
+          provider: tenant.default_vision_llm_provider || '',
+          fullId: tenant.default_vision_llm_provider
+            ? `${tenant.default_vision_llm_provider}/${tenant.default_vision_llm_model}`
+            : tenant.default_vision_llm_model,
+        });
+      }
+    }
+    setShowCreateWorkspace(true);
+  }, [selectedTenantId, tenants]);
 
   const selectedTenant = tenants.find((t) => t.id === selectedTenantId);
   const selectedWorkspace = workspaces.find((w) => w.id === selectedWorkspaceId);
@@ -404,7 +468,7 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
                           </DropdownMenuItem>
                         ))
                       )}
-                      <DropdownMenuItem onClick={() => setShowCreateWorkspace(true)} className="py-2">
+                      <DropdownMenuItem onClick={() => handleOpenCreateWorkspace()} className="py-2">
                         <Plus className="mr-2 h-4 w-4 text-muted-foreground" />
                         <span>{t('workspace.createNew', 'Create New Workspace')}</span>
                       </DropdownMenuItem>

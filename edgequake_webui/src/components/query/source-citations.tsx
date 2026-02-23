@@ -51,7 +51,8 @@ interface SourceCitationsProps {
     chunkContent?: string, 
     chunkIndex?: number,
     startLine?: number,
-    endLine?: number
+    endLine?: number,
+    chunkId?: string
   ) => void;
   onExploreGraph?: (entityLabels: string[]) => void;
 }
@@ -180,7 +181,8 @@ const DocumentsTab = ({
     chunkContent?: string, 
     chunkIndex?: number,
     startLine?: number,
-    endLine?: number
+    endLine?: number,
+    chunkId?: string
   ) => void;
 }) => {
   const [showAll, setShowAll] = useState(false);
@@ -256,7 +258,8 @@ const DocumentsTab = ({
                               chunk.content, 
                               chunkIdx,
                               chunk.start_line,
-                              chunk.end_line
+                              chunk.end_line,
+                              chunk.chunk_id
                             )}
                             className="w-full text-left p-2 rounded bg-muted/40 hover:bg-muted/70 transition-colors group/chunk"
                           >
@@ -322,7 +325,7 @@ const KnowledgeTab = ({
   entities: QueryContext['entities'];
   relationships: QueryContext['relationships'];
   onEntityClick?: (entityId: string) => void;
-  onDocumentClick?: (documentId: string, chunkContent?: string, chunkIndex?: number) => void;
+  onDocumentClick?: (documentId: string, chunkContent?: string, chunkIndex?: number, startLine?: number, endLine?: number, chunkId?: string) => void;
 }) => {
   const [showAllEntities, setShowAllEntities] = useState(false);
   const visibleEntities = showAllEntities ? entities : entities?.slice(0, 12);
