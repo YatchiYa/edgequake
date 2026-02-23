@@ -2,13 +2,21 @@
  * Code Block Component
  * 
  * Renders code blocks with syntax highlighting using Shiki.
- * Includes copy-to-clipboard functionality and language badge.
+ * Supports light/dark themes via next-themes.
+ * Includes copy-to-clipboard, download, and full-view (expand) dialog.
  */
 'use client';
 
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { Check, Copy, Download } from 'lucide-react';
+import { Check, Copy, Download, Maximize2 } from 'lucide-react';
+import { useTheme } from 'next-themes';
 import { memo, useCallback, useEffect, useState } from 'react';
 import { bundledLanguages, codeToHtml, type BundledLanguage } from 'shiki';
 
@@ -78,10 +86,14 @@ export const CodeBlock = memo(function CodeBlock({
   const [copied, setCopied] = useState(false);
   const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isFullView, setIsFullView] = useState(false);
+  const { resolvedTheme } = useTheme();
 
   const normalizedLang = normalizeLanguage(language);
+  const isDark = resolvedTheme === 'dark';
+  const shikiTheme = isDark ? 'github-dark-dimmed' : 'github-light';
 
-  // Highlight code with Shiki
+  // Highlight code with Shiki — re-runs when theme changes
   useEffect(() => {
     let cancelled = false;
 
@@ -90,14 +102,13 @@ export const CodeBlock = memo(function CodeBlock({
         setIsLoading(true);
         const html = await codeToHtml(code, {
           lang: normalizedLang,
-          theme: 'github-dark-dimmed',
+          theme: shikiTheme,
         });
         if (!cancelled) {
           setHighlightedHtml(html);
         }
       } catch (error) {
         console.error('Shiki highlight error:', error);
-        // Fallback to plain text on error
         if (!cancelled) {
           setHighlightedHtml(null);
         }
@@ -113,7 +124,7 @@ export const CodeBlock = memo(function CodeBlock({
     return () => {
       cancelled = true;
     };
-  }, [code, normalizedLang]);
+  }, [code, normalizedLang, shikiTheme]);
 
   const handleCopy = useCallback(async () => {
     try {
@@ -137,65 +148,104 @@ export const CodeBlock = memo(function CodeBlock({
     URL.revokeObjectURL(url);
   }, [code, language]);
 
-  return (
-    <div
-      className={cn(
-        'group relative my-4 overflow-hidden rounded-lg border bg-zinc-900',
-        className
+  /** Shared code content renderer (used in-place and in full-view dialog) */
+  const renderCodeContent = (fullHeight = false) => (
+    <div className={cn('overflow-x-auto p-4', fullHeight && 'max-h-[80vh] overflow-y-auto')}>
+      {isLoading ? (
+        <pre className="text-sm font-mono whitespace-pre text-foreground/70">
+          <code>{code}</code>
+        </pre>
+      ) : highlightedHtml ? (
+        <div
+          className="text-sm [&_pre]:bg-transparent! [&_pre]:p-0! [&_code]:text-sm"
+          dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+        />
+      ) : (
+        <pre className="text-sm font-mono whitespace-pre text-foreground/70">
+          <code>{code}</code>
+        </pre>
       )}
-    >
-      {/* Header with language badge and actions */}
-      <div className="flex items-center justify-between border-b border-zinc-700 bg-zinc-800 px-4 py-2">
-        <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
-          {language || 'text'}
-        </span>
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700"
-            onClick={handleDownload}
-            title="Download"
-          >
-            <Download className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700"
-            onClick={handleCopy}
-            title={copied ? 'Copied!' : 'Copy'}
-          >
-            {copied ? (
-              <Check className="h-3.5 w-3.5 text-green-400" />
-            ) : (
-              <Copy className="h-3.5 w-3.5" />
-            )}
-          </Button>
+    </div>
+  );
+
+  /** Shared action buttons */
+  const renderActions = (alwaysVisible = false) => (
+    <div className={cn(
+      'flex items-center gap-1 transition-opacity',
+      alwaysVisible ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+    )}>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-accent"
+        onClick={() => setIsFullView(true)}
+        title="Full view"
+      >
+        <Maximize2 className="h-3.5 w-3.5" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-accent"
+        onClick={handleDownload}
+        title="Download"
+      >
+        <Download className="h-3.5 w-3.5" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-accent"
+        onClick={handleCopy}
+        title={copied ? 'Copied!' : 'Copy'}
+      >
+        {copied ? (
+          <Check className="h-3.5 w-3.5 text-green-500" />
+        ) : (
+          <Copy className="h-3.5 w-3.5" />
+        )}
+      </Button>
+    </div>
+  );
+
+  return (
+    <>
+      <div
+        className={cn(
+          'group relative my-4 overflow-hidden rounded-lg border',
+          'bg-muted/40 dark:bg-zinc-900',
+          className
+        )}
+      >
+        {/* Header with language badge and actions */}
+        <div className="flex items-center justify-between border-b border-border px-4 py-2 bg-muted/60 dark:bg-zinc-800">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            {language || 'text'}
+          </span>
+          {renderActions()}
         </div>
+
+        {/* Code content */}
+        {renderCodeContent()}
       </div>
 
-      {/* Code content */}
-      <div className="overflow-x-auto p-4">
-        {isLoading ? (
-          // Loading state - show plain code
-          <pre className="text-sm text-zinc-300 font-mono whitespace-pre">
-            <code>{code}</code>
-          </pre>
-        ) : highlightedHtml ? (
-          // Shiki highlighted HTML
-          <div
-            className="text-sm [&_pre]:!bg-transparent [&_pre]:!p-0 [&_code]:text-sm"
-            dangerouslySetInnerHTML={{ __html: highlightedHtml }}
-          />
-        ) : (
-          // Fallback to plain text
-          <pre className="text-sm text-zinc-300 font-mono whitespace-pre">
-            <code>{code}</code>
-          </pre>
-        )}
-      </div>
-    </div>
+      {/* Full-view dialog */}
+      <Dialog open={isFullView} onOpenChange={setIsFullView}>
+        <DialogContent className="max-w-[90vw] w-full max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between">
+              <span className="text-sm font-mono uppercase tracking-wider">
+                {language || 'text'}
+              </span>
+              {renderActions(true)}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-hidden rounded-lg border bg-muted/40 dark:bg-zinc-900">
+            {renderCodeContent(true)}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 });
 
