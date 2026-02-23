@@ -77,6 +77,7 @@ pub mod ollama;
 pub mod ollama_types;
 pub mod pdf_upload;
 pub mod pipeline;
+pub mod isolation;
 pub mod pipeline_types;
 pub mod query;
 pub mod query_types;
