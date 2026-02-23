@@ -30,11 +30,16 @@ interface MetadataSidebarProps {
   document: Document;
   /** Called when a chunk is selected in the hierarchy tree. */
   onChunkSelect?: (chunkId: string, startLine?: number, endLine?: number) => void;
+  /**
+   * Called once when chunk data loads and the pre-selected chunk's line range
+   * is resolved. Used to drive content-area highlighting on deep-link arrival.
+   */
+  onChunkResolved?: (chunkId: string, startLine?: number, endLine?: number) => void;
   /** ID of the currently selected chunk (controls visual highlight). */
   selectedChunkId?: string;
 }
 
-export function MetadataSidebar({ document, onChunkSelect, selectedChunkId }: MetadataSidebarProps) {
+export function MetadataSidebar({ document, onChunkSelect, onChunkResolved, selectedChunkId }: MetadataSidebarProps) {
   return (
     <div className="h-full flex flex-col border-l bg-background overflow-hidden">
       {/* Fixed Stats Header - Always visible, never compressed */}
@@ -72,14 +77,18 @@ export function MetadataSidebar({ document, onChunkSelect, selectedChunkId }: Me
           )}
 
           {/* Document Hierarchy Tree (OODA-13): Doc → Chunks → Entities */}
+          {/* Auto-open the section when arriving from a citation deep-link so the
+              selected chunk is immediately visible without manual expansion. */}
           <CollapsibleSection
             title="Data Hierarchy"
             icon={<GitBranch className="h-4 w-4" />}
+            defaultOpen={!!selectedChunkId}
           >
             <DocumentHierarchyTree
               documentId={document.id}
               documentName={document.file_name ?? document.title ?? undefined}
               onChunkSelect={onChunkSelect}
+              onChunkResolved={onChunkResolved}
               selectedChunkId={selectedChunkId}
             />
           </CollapsibleSection>

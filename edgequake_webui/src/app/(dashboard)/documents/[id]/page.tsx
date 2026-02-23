@@ -115,6 +115,22 @@ export default function DocumentViewPage() {
     [selectedChunkId, searchParams, router, documentId],
   );
 
+  /**
+   * Called by DocumentHierarchyTree when chunk data loads and the pre-selected
+   * chunk's line range is resolved from KV lineage. Sets the active line range
+   * so ContentRenderer scrolls to and highlights the chunk.
+   * SRP: This does NOT toggle selection — it is a pure data resolution callback.
+   */
+  const handleChunkResolved = useCallback(
+    (chunkId: string, start?: number, end?: number) => {
+      // Only apply if this chunk is still the active selection
+      if (chunkId !== selectedChunkId) return;
+      setChunkStartLine(start);
+      setChunkEndLine(end);
+    },
+    [selectedChunkId],
+  );
+
   // Active line range: chunk selection overrides URL params.
   // WHY: Sidebar interaction should take precedence over deep-link defaults.
   const activeStartLine = chunkStartLine ?? startLine;
@@ -349,6 +365,7 @@ export default function DocumentViewPage() {
             <MetadataSidebar
               document={document}
               onChunkSelect={handleChunkSelect}
+              onChunkResolved={handleChunkResolved}
               selectedChunkId={selectedChunkId}
             />
           </ResizablePanel>
@@ -389,6 +406,7 @@ export default function DocumentViewPage() {
               <MetadataSidebar
                 document={document}
                 onChunkSelect={handleChunkSelect}
+                onChunkResolved={handleChunkResolved}
                 selectedChunkId={selectedChunkId}
               />
             </TabsContent>

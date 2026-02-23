@@ -26,7 +26,7 @@ import {
   Loader2,
   Tag,
 } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 /**
  * Chunk shape from the /documents/:id/lineage endpoint.
@@ -62,6 +62,13 @@ interface DocumentHierarchyTreeProps {
   documentName?: string;
   /** Called when a chunk is clicked; provides line range for content highlighting. */
   onChunkSelect?: (chunkId: string, startLine?: number, endLine?: number) => void;
+  /**
+   * Called once after chunk data loads when selectedChunkId is already set
+   * (e.g. arriving from a deep-link URL). Fires with the resolved line range
+   * so ContentRenderer can scroll to and highlight the chunk.
+   * Unlike onChunkSelect this does NOT toggle selection.
+   */
+  onChunkResolved?: (chunkId: string, startLine?: number, endLine?: number) => void;
   /** ID of the currently selected chunk (controls visual highlight in tree). */
   selectedChunkId?: string;
 }
@@ -70,6 +77,7 @@ export function DocumentHierarchyTree({
   documentId,
   documentName,
   onChunkSelect,
+  onChunkResolved,
   selectedChunkId,
 }: DocumentHierarchyTreeProps) {
   // WHY: useDocumentFullLineage calls /documents/:id/lineage which returns
@@ -125,6 +133,20 @@ export function DocumentHierarchyTree({
       docName: (lineage.document_name as string) ?? '',
     };
   }, [fullLineage?.lineage]);
+
+  // When chunk data finishes loading and a chunk is already selected (via URL
+  // deep-link), resolve its line range and report it back so the content area
+  // can scroll to and highlight the correct passage.
+  // WHY: onChunkSelect (click handler) sets the line range for user interactions,
+  // but when arriving from a citation URL only the chunk ID is in the URL — the
+  // line range must be looked up from the loaded lineage data.
+  useEffect(() => {
+    if (!selectedChunkId || chunks.length === 0 || !onChunkResolved) return;
+    const found = chunks.find((c) => c.chunk_id === selectedChunkId);
+    if (found) {
+      onChunkResolved(found.chunk_id, found.start_line, found.end_line);
+    }
+  }, [chunks, selectedChunkId, onChunkResolved]);
 
   if (isLoading) {
     return (
