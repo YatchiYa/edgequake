@@ -67,7 +67,10 @@ pub fn properties_match_tenant_context(
 /// # Implements
 ///
 /// - **BR0201**: Tenant isolation
-pub fn filter_nodes_by_tenant_context(nodes: Vec<GraphNode>, ctx: &TenantContext) -> Vec<GraphNode> {
+pub fn filter_nodes_by_tenant_context(
+    nodes: Vec<GraphNode>,
+    ctx: &TenantContext,
+) -> Vec<GraphNode> {
     if ctx.tenant_id.is_none() || ctx.workspace_id.is_none() {
         warn!(
             tenant_id = ?ctx.tenant_id,
@@ -91,7 +94,10 @@ pub fn filter_nodes_by_tenant_context(nodes: Vec<GraphNode>, ctx: &TenantContext
 /// # Implements
 ///
 /// - **BR0201**: Tenant isolation
-pub fn filter_edges_by_tenant_context(edges: Vec<GraphEdge>, ctx: &TenantContext) -> Vec<GraphEdge> {
+pub fn filter_edges_by_tenant_context(
+    edges: Vec<GraphEdge>,
+    ctx: &TenantContext,
+) -> Vec<GraphEdge> {
     if ctx.tenant_id.is_none() || ctx.workspace_id.is_none() {
         warn!(
             tenant_id = ?ctx.tenant_id,

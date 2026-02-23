@@ -225,12 +225,8 @@ pub async fn get_chunk_detail(
 
     // SECURITY: Verify the parent document belongs to the requesting tenant/workspace.
     // Returns 404 (not 403) to avoid leaking cross-tenant document IDs.
-    let doc_metadata = verify_document_access(
-        state.kv_storage.as_ref(),
-        &document_id,
-        &tenant_ctx,
-    )
-    .await?;
+    let doc_metadata =
+        verify_document_access(state.kv_storage.as_ref(), &document_id, &tenant_ctx).await?;
 
     // Get document name from already-fetched metadata
     let doc_name = doc_metadata
@@ -796,12 +792,8 @@ pub async fn get_chunk_lineage(
     };
 
     // SECURITY: Verify the parent document belongs to the requesting tenant/workspace.
-    let doc_metadata = verify_document_access(
-        state.kv_storage.as_ref(),
-        &document_id,
-        &tenant_ctx,
-    )
-    .await?;
+    let doc_metadata =
+        verify_document_access(state.kv_storage.as_ref(), &document_id, &tenant_ctx).await?;
 
     let document_name = doc_metadata
         .get("title")
@@ -936,8 +928,8 @@ pub async fn get_document_metadata(
 ) -> ApiResult<Json<serde_json::Value>> {
     // SECURITY: verify_document_access already fetches and checks metadata,
     // so we reuse its return value directly.
-    let metadata = verify_document_access(state.kv_storage.as_ref(), &document_id, &tenant_ctx)
-        .await?;
+    let metadata =
+        verify_document_access(state.kv_storage.as_ref(), &document_id, &tenant_ctx).await?;
 
     Ok(Json(metadata))
 }
