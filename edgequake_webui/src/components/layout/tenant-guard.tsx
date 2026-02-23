@@ -190,6 +190,7 @@ export function TenantGuard({ children }: TenantGuardProps) {
   // Handle tenant creation with proper async flow
   const handleCreateTenant = useCallback(async () => {
     if (!newTenantName.trim()) return;
+    if (!tenantLlmModel || !tenantEmbeddingModel || !tenantVisionLlmModel) return;
     
     setIsSettingUpContext(true);
     try {
@@ -235,9 +236,10 @@ export function TenantGuard({ children }: TenantGuardProps) {
     }
   }, [newTenantName, tenantLlmModel, tenantEmbeddingModel, tenantVisionLlmModel, parseModelValue, createTenantMutation, selectTenant, queryClient, t]);
 
-  // Handle workspace creation with proper async flow - SPEC-032: Now includes model config
+  // Handle workspace creation with proper async flow - SPEC-032/SPEC-041: Now includes model config
   const handleCreateWorkspace = useCallback(async () => {
     if (!newWorkspaceName.trim() || !selectedTenantId) return;
+    if (!workspaceLlmModel || !workspaceEmbeddingModel || !workspaceVisionLlmModel) return;
     
     setIsSettingUpContext(true);
     try {
@@ -374,9 +376,7 @@ export function TenantGuard({ children }: TenantGuardProps) {
               <div className="grid gap-2">
                 <Label>
                   {t('tenant.defaultLlmModel', 'Default LLM Model')}
-                  <span className="text-xs text-muted-foreground ml-2">
-                    {t('common.optional', '(optional)')}
-                  </span>
+                  <span className="text-destructive ml-0.5">*</span>
                 </Label>
                 <ModelSelector
                   type="llm"
@@ -393,9 +393,7 @@ export function TenantGuard({ children }: TenantGuardProps) {
               <div className="grid gap-2">
                 <Label>
                   {t('tenant.defaultEmbeddingModel', 'Default Embedding Model')}
-                  <span className="text-xs text-muted-foreground ml-2">
-                    {t('common.optional', '(optional)')}
-                  </span>
+                  <span className="text-destructive ml-0.5">*</span>
                 </Label>
                 <ModelSelector
                   type="embedding"
@@ -412,9 +410,7 @@ export function TenantGuard({ children }: TenantGuardProps) {
               <div className="grid gap-2">
                 <Label>
                   {t('tenant.defaultVisionLlmModel', 'Default Vision LLM')}
-                  <span className="text-xs text-muted-foreground ml-2">
-                    {t('common.optional', '(optional)')}
-                  </span>
+                  <span className="text-destructive ml-0.5">*</span>
                 </Label>
                 <ModelSelector
                   type="llm"
@@ -434,7 +430,7 @@ export function TenantGuard({ children }: TenantGuardProps) {
               </Button>
               <Button
                 onClick={handleCreateTenant}
-                disabled={!newTenantName.trim() || createTenantMutation.isPending}
+                disabled={!newTenantName.trim() || !tenantLlmModel || !tenantEmbeddingModel || !tenantVisionLlmModel || createTenantMutation.isPending}
               >
                 {createTenantMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {t('common.create', 'Create')}
@@ -517,9 +513,7 @@ export function TenantGuard({ children }: TenantGuardProps) {
               <div className="grid gap-2">
                 <Label>
                   {t('workspace.llmModel', 'LLM Model')}
-                  <span className="text-xs text-muted-foreground ml-2">
-                    {t('common.optional', '(optional, uses tenant default)')}
-                  </span>
+                  <span className="text-destructive ml-0.5">*</span>
                 </Label>
                 <ModelSelector
                   type="llm"
@@ -536,9 +530,7 @@ export function TenantGuard({ children }: TenantGuardProps) {
               <div className="grid gap-2">
                 <Label>
                   {t('workspace.embeddingModel', 'Embedding Model')}
-                  <span className="text-xs text-muted-foreground ml-2">
-                    {t('common.optional', '(optional, uses tenant default)')}
-                  </span>
+                  <span className="text-destructive ml-0.5">*</span>
                 </Label>
                 <ModelSelector
                   type="embedding"
@@ -555,9 +547,7 @@ export function TenantGuard({ children }: TenantGuardProps) {
               <div className="grid gap-2">
                 <Label>
                   {t('workspace.visionLlmModel', 'Vision LLM')}
-                  <span className="text-xs text-muted-foreground ml-2">
-                    {t('common.optional', '(optional, uses tenant default)')}
-                  </span>
+                  <span className="text-destructive ml-0.5">*</span>
                 </Label>
                 <ModelSelector
                   type="llm"
@@ -577,7 +567,7 @@ export function TenantGuard({ children }: TenantGuardProps) {
               </Button>
               <Button
                 onClick={handleCreateWorkspace}
-                disabled={!newWorkspaceName.trim() || createWorkspaceMutation.isPending}
+                disabled={!newWorkspaceName.trim() || !workspaceLlmModel || !workspaceEmbeddingModel || !workspaceVisionLlmModel || createWorkspaceMutation.isPending}
               >
                 {createWorkspaceMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {t('common.create', 'Create')}

@@ -460,7 +460,10 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
             </div>
             {/* SPEC-032: Default LLM model selection for tenant */}
             <div className="grid gap-2">
-              <Label>{t('tenant.defaultLLM', 'Default LLM Model')}</Label>
+              <Label>
+                {t('tenant.defaultLLM', 'Default LLM Model')}
+                <span className="text-destructive ml-0.5">*</span>
+              </Label>
               <LLMModelSelector
                 value={tenantDefaultLLM}
                 onChange={setTenantDefaultLLM}
@@ -471,7 +474,10 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
             </div>
             {/* SPEC-032: Default embedding model selection for tenant */}
             <div className="grid gap-2">
-              <Label>{t('tenant.defaultEmbedding', 'Default Embedding Model')}</Label>
+              <Label>
+                {t('tenant.defaultEmbedding', 'Default Embedding Model')}
+                <span className="text-destructive ml-0.5">*</span>
+              </Label>
               <EmbeddingModelSelector
                 value={tenantDefaultEmbedding}
                 onChange={setTenantDefaultEmbedding}
@@ -482,7 +488,10 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
             </div>
             {/* SPEC-041: Default Vision LLM selection for tenant */}
             <div className="grid gap-2">
-              <Label>{t('tenant.defaultVisionLLM', 'Default Vision LLM')}</Label>
+              <Label>
+                {t('tenant.defaultVisionLLM', 'Default Vision LLM')}
+                <span className="text-destructive ml-0.5">*</span>
+              </Label>
               <LLMModelSelector
                 value={tenantDefaultVisionLLM}
                 onChange={setTenantDefaultVisionLLM}
@@ -512,7 +521,7 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
                 default_vision_llm_model: tenantDefaultVisionLLM?.model,
                 default_vision_llm_provider: tenantDefaultVisionLLM?.provider,
               })}
-              disabled={!newTenantName.trim() || createTenantMutation.isPending}
+              disabled={!newTenantName.trim() || !tenantDefaultLLM || !tenantDefaultEmbedding || !tenantDefaultVisionLLM || createTenantMutation.isPending}
             >
               {createTenantMutation.isPending ? (
                 <>
@@ -586,9 +595,7 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
             <div className="grid gap-2">
               <Label>
                 {t('workspace.llmModel', 'LLM Model')}
-                <span className="text-muted-foreground text-xs ml-2">
-                  {t('workspace.llmHint', '(optional)')}
-                </span>
+                <span className="text-destructive ml-0.5">*</span>
               </Label>
               <LLMModelSelector
                 value={workspaceLLMSelection}
@@ -602,9 +609,7 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
             <div className="grid gap-2">
               <Label htmlFor="workspace-embedding">
                 {t('workspace.embeddingModel', 'Embedding Model')}
-                <span className="text-muted-foreground text-xs ml-2">
-                  {t('workspace.embeddingHint', '(optional)')}
-                </span>
+                <span className="text-destructive ml-0.5">*</span>
               </Label>
               <EmbeddingModelSelector
                 value={embeddingSelection}
@@ -618,9 +623,7 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
             <div className="grid gap-2">
               <Label>
                 {t('workspace.visionLLM', 'Vision LLM')}
-                <span className="text-muted-foreground text-xs ml-2">
-                  {t('workspace.visionHint', '(optional)')}
-                </span>
+                <span className="text-destructive ml-0.5">*</span>
               </Label>
               <LLMModelSelector
                 value={workspaceVisionLLMSelection}
@@ -653,7 +656,7 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
                 vision_llm_model: workspaceVisionLLMSelection?.model,
                 vision_llm_provider: workspaceVisionLLMSelection?.provider,
               })}
-              disabled={!newWorkspaceName.trim() || createWorkspaceMutation.isPending}
+              disabled={!newWorkspaceName.trim() || !workspaceLLMSelection || !embeddingSelection || !workspaceVisionLLMSelection || createWorkspaceMutation.isPending}
             >
               {createWorkspaceMutation.isPending ? (
                 <>
