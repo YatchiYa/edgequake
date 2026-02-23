@@ -293,6 +293,8 @@ export function QueryInterface() {
           score: s.score,
           // Use file_path if available, fall back to title (contains document name for stored messages)
           file_path: s.file_path ?? s.title,
+          // Chunk UUID for deep-linking to document detail sidebar selection
+          chunk_id: s.id,
         })),
         entities: msg.context.entities?.map(e => {
           // Handle both string[] and ServerContextEntity[] formats
