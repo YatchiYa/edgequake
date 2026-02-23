@@ -248,41 +248,52 @@ const DocumentsTab = ({
                         </div>
                       </div>
                       
-                      {/* Chunk/passage list - show each excerpt */}
+                      {/* Chunk/passage list - each excerpt is selectable and links to the document
+                          with the chunk pre-selected (?chunk=<id>) so the sidebar highlights it. */}
                       <div className="space-y-1.5 mt-2">
                         {chunks.slice(0, 3).map((chunk, chunkIdx) => (
                           <button
-                            key={chunkIdx}
+                            key={chunk.chunk_id ?? chunkIdx}
                             onClick={() => onDocumentClick?.(
-                              docId, 
-                              chunk.content, 
-                              chunkIdx,
+                              docId,
+                              chunk.content,
+                              chunk.chunk_index ?? chunkIdx,
                               chunk.start_line,
                               chunk.end_line,
                               chunk.chunk_id
                             )}
                             className="w-full text-left p-2 rounded bg-muted/40 hover:bg-muted/70 transition-colors group/chunk"
+                            title="Open in document and highlight this chunk"
                           >
                             <div className="flex items-start gap-2">
-                              <Badge 
-                                variant="outline" 
+                              {/* Badge: show real chunk index when available */}
+                              <Badge
+                                variant="outline"
                                 className="text-[9px] h-4 px-1 flex-shrink-0 mt-0.5"
                               >
-                                {chunkIdx + 1}
+                                §{(chunk.chunk_index ?? chunkIdx) + 1}
                               </Badge>
                               <p className="text-[11px] text-muted-foreground line-clamp-2 flex-1 leading-relaxed break-words overflow-hidden">
                                 {chunk.content.slice(0, 150)}{chunk.content.length > 150 ? '...' : ''}
                               </p>
-                              <span className={`text-[9px] flex-shrink-0 ${getConfidenceLabel(chunk.score).color}`}>
-                                {Math.round(chunk.score * 100)}%
-                              </span>
-                            </div>
-                            {/* Line range display */}
-                            {chunk.start_line !== undefined && chunk.end_line !== undefined && (
-                              <div className="text-[9px] text-muted-foreground mt-1 pl-6">
-                                Lines {chunk.start_line}-{chunk.end_line}
+                              <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                                <span className={`text-[9px] ${getConfidenceLabel(chunk.score).color}`}>
+                                  {Math.round(chunk.score * 100)}%
+                                </span>
+                                {/* Link-to-document indicator shown on row hover */}
+                                <ExternalLink className="h-2.5 w-2.5 text-muted-foreground opacity-0 group-hover/chunk:opacity-70 transition-opacity" />
                               </div>
-                            )}
+                            </div>
+                            {/* Line range or chunk id as locator */}
+                            {chunk.start_line !== undefined && chunk.end_line !== undefined ? (
+                              <div className="text-[9px] text-muted-foreground mt-1 pl-6">
+                                L{chunk.start_line}–{chunk.end_line}
+                              </div>
+                            ) : chunk.chunk_id ? (
+                              <div className="text-[9px] text-muted-foreground/50 mt-1 pl-6 font-mono truncate">
+                                {chunk.chunk_id.slice(0, 12)}…
+                              </div>
+                            ) : null}
                           </button>
                         ))}
                         {chunks.length > 3 && (
