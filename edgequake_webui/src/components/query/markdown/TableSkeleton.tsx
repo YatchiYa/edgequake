@@ -90,15 +90,15 @@ export const TableSkeleton = memo(function TableSkeleton({
       <div className="flex items-center justify-center gap-2 py-2 text-xs text-muted-foreground">
         <div className="flex gap-1">
           <span 
-            className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 animate-bounce"
+            className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 motion-safe:animate-bounce"
             style={{ animationDelay: '0ms' }}
           />
           <span 
-            className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 animate-bounce"
+            className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 motion-safe:animate-bounce"
             style={{ animationDelay: '150ms' }}
           />
           <span 
-            className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 animate-bounce"
+            className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 motion-safe:animate-bounce"
             style={{ animationDelay: '300ms' }}
           />
         </div>

@@ -81,8 +81,12 @@ const UserMessage = memo(function UserMessage({
   message: ChatMessageData;
 }) {
   return (
-    <div className="flex justify-end mb-6 animate-slide-in-right">
-      <div className="flex items-start gap-3 max-w-[85%]">
+    <div
+      className="flex justify-end mb-6 motion-safe:animate-slide-in-right"
+      role="article"
+      aria-label="Your message"
+    >
+      <div className="flex items-start gap-3 max-w-[95%] sm:max-w-[85%]">
         <div 
           className={cn(
             'rounded-2xl rounded-tr-sm px-4 py-3',
@@ -98,7 +102,7 @@ const UserMessage = memo(function UserMessage({
         </div>
         <Avatar className="h-8 w-8 shrink-0 ring-2 ring-background shadow-sm">
           <AvatarFallback className="bg-primary/10">
-            <User className="h-4 w-4" />
+            <User className="h-4 w-4" aria-hidden="true" />
           </AvatarFallback>
         </Avatar>
       </div>
@@ -136,19 +140,21 @@ const ThinkingSection = memo(function ThinkingSection({
         onClick={onToggle}
         className={cn(
           'flex items-center gap-2 w-full px-4 py-3 text-left',
-          'hover:bg-muted/30 transition-colors'
+          'hover:bg-muted/30 transition-colors',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-1'
         )}
         aria-expanded={isExpanded}
+        aria-label={t('query.toggleReasoning', 'Toggle reasoning details')}
       >
         {isExpanded ? (
           <ChevronDown className="h-4 w-4 text-muted-foreground" />
         ) : (
           <ChevronRight className="h-4 w-4 text-muted-foreground" />
         )}
-        <div className="relative">
+        <div className="relative" aria-hidden="true">
           <Brain className="h-4 w-4 text-primary/70" />
           <span className="absolute -top-0.5 -right-0.5 flex h-1.5 w-1.5">
-            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-primary animate-pulse" />
+            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-primary motion-safe:animate-pulse" />
           </span>
         </div>
         <span className="text-sm font-medium text-foreground/80">
@@ -261,13 +267,15 @@ const MetadataBar = memo(function MetadataBar({
         )}
         {tokensUsed && (
           <span className="flex items-center gap-1" title={t('query.tokensUsed', 'Tokens used')}>
-            <Zap className="h-3 w-3" />
+            <Zap className="h-3 w-3" aria-hidden="true" />
+            <span className="sr-only">{t('query.tokensUsed', 'Tokens used')}:</span>
             {tokensUsed.toLocaleString()}
           </span>
         )}
         {durationMs && (
           <span className="flex items-center gap-1" title={t('query.duration', 'Generation time')}>
-            <Clock className="h-3 w-3" />
+            <Clock className="h-3 w-3" aria-hidden="true" />
+            <span className="sr-only">{t('query.duration', 'Generation time')}:</span>
             {(durationMs / 1000).toFixed(1)}s
           </span>
         )}
@@ -277,7 +285,7 @@ const MetadataBar = memo(function MetadataBar({
             <Tooltip>
               <TooltipTrigger asChild>
                 <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400" title={t('query.tokensPerSecond', 'Tokens per second')}>
-                  <Gauge className="h-3 w-3" />
+                  <Gauge className="h-3 w-3" aria-hidden="true" />
                   {((tokensUsed / durationMs) * 1000).toFixed(1)}/s
                   {/* REQ-22: Display model after tokens/second */}
                   {(llmProvider || llmModel) && (
@@ -367,10 +375,13 @@ const StreamingIndicator = memo(function StreamingIndicator() {
         'bg-card border border-border',
         'shadow-sm'
       )}
+      role="status"
+      aria-live="polite"
+      aria-label={t('query.generating', 'Generating response...')}
     >
       <div className="flex items-center gap-2 text-muted-foreground">
         {/* Simple pulsing dot - no expanding ring */}
-        <span className="inline-flex h-2 w-2 rounded-full bg-primary animate-pulse" />
+        <span className="inline-flex h-2 w-2 rounded-full bg-primary motion-safe:animate-pulse" aria-hidden="true" />
         <span className="text-sm">
           {t('query.generating', 'Generating response...')}
         </span>
@@ -417,8 +428,12 @@ const AssistantMessage = memo(function AssistantMessage({
   const displayContent = parsed.response;
 
   return (
-    <div className="flex justify-start mb-6 group animate-slide-in-left">
-      <div className="flex items-start gap-3 max-w-[85%] min-w-0">
+    <div
+      className="flex justify-start mb-6 group motion-safe:animate-slide-in-left"
+      role="article"
+      aria-label={t('query.assistantMessage', 'Assistant response')}
+    >
+      <div className="flex items-start gap-3 max-w-[95%] sm:max-w-[85%] min-w-0">
         {/* Avatar */}
         <Avatar 
           className={cn(
@@ -432,7 +447,7 @@ const AssistantMessage = memo(function AssistantMessage({
               'text-primary-foreground'
             )}
           >
-            <Sparkles className="h-4 w-4" />
+            <Sparkles className="h-4 w-4" aria-hidden="true" />
           </AvatarFallback>
         </Avatar>
 

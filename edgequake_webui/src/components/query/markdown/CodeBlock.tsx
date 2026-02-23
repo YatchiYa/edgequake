@@ -180,8 +180,9 @@ export const CodeBlock = memo(function CodeBlock({
         className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-accent"
         onClick={() => setIsFullView(true)}
         title="Full view"
+        aria-label="Expand code to full view"
       >
-        <Maximize2 className="h-3.5 w-3.5" />
+        <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
       </Button>
       <Button
         variant="ghost"
@@ -189,8 +190,9 @@ export const CodeBlock = memo(function CodeBlock({
         className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-accent"
         onClick={handleDownload}
         title="Download"
+        aria-label="Download code as file"
       >
-        <Download className="h-3.5 w-3.5" />
+        <Download className="h-3.5 w-3.5" aria-hidden="true" />
       </Button>
       <Button
         variant="ghost"
@@ -198,11 +200,12 @@ export const CodeBlock = memo(function CodeBlock({
         className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-accent"
         onClick={handleCopy}
         title={copied ? 'Copied!' : 'Copy'}
+        aria-label={copied ? 'Code copied to clipboard' : 'Copy code to clipboard'}
       >
         {copied ? (
-          <Check className="h-3.5 w-3.5 text-green-500" />
+          <Check className="h-3.5 w-3.5 text-green-500" aria-hidden="true" />
         ) : (
-          <Copy className="h-3.5 w-3.5" />
+          <Copy className="h-3.5 w-3.5" aria-hidden="true" />
         )}
       </Button>
     </div>
@@ -226,7 +229,9 @@ export const CodeBlock = memo(function CodeBlock({
         </div>
 
         {/* Code content */}
-        {renderCodeContent()}
+        <div role="code" aria-label={`Code block in ${language || 'text'}`}>
+          {renderCodeContent()}
+        </div>
       </div>
 
       {/* Full-view dialog */}

@@ -463,6 +463,9 @@ export const StreamingMarkdownRenderer = memo(function StreamingMarkdownRenderer
         className
       )}
       data-streaming={isStreaming}
+      aria-busy={isStreaming}
+      role="region"
+      aria-label="Response content"
     >
       <MarkdownTokens
         tokens={tokens}
@@ -473,7 +476,7 @@ export const StreamingMarkdownRenderer = memo(function StreamingMarkdownRenderer
       
       {/* Show table skeleton when table is being streamed */}
       {hasPendingTable && (
-        <Suspense fallback={<div className="animate-pulse h-32 bg-muted/50 rounded-lg" />}>
+        <Suspense fallback={<div className="motion-safe:animate-pulse h-32 bg-muted/50 rounded-lg" role="status" aria-label="Loading table" />}>
           <TableSkeleton rows={3} columns={4} />
         </Suspense>
       )}

@@ -199,8 +199,8 @@ const DocumentsTab = ({
   
   if (entries.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-[360px] text-muted-foreground">
-        <FileText className="h-8 w-8 mb-2 opacity-50" />
+      <div className="flex flex-col items-center justify-center h-70 sm:h-90 text-muted-foreground">
+        <FileText className="h-8 w-8 mb-2 opacity-50" aria-hidden="true" />
         <p className="text-sm">No source documents</p>
       </div>
     );
@@ -218,8 +218,8 @@ const DocumentsTab = ({
       </p>
 
       {/* Scrollable document list — fixed height ensures consistent layout across tab switches */}
-      <ScrollArea className="h-[332px]">
-        <div className="space-y-2 pr-2">
+      <ScrollArea className="h-70 sm:h-83">
+        <div className="space-y-2 pr-2" role="list" aria-label="Source documents">
           {entries.map(([docId, chunks], index) => {
             const avgScore = chunks.reduce((acc, c) => acc + c.score, 0) / chunks.length;
             const { color: scoreColor } = getConfidenceLabel(avgScore);
@@ -231,11 +231,15 @@ const DocumentsTab = ({
               <Card 
                 key={docId} 
                 className="group bg-card border border-border/50 hover:border-border hover:shadow-sm transition-all duration-200"
+                role="listitem"
               >
                 <CardContent className="p-3">
                   <div className="flex items-start gap-3">
                     {/* Citation index bubble */}
-                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs flex items-center justify-center font-semibold group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                    <span
+                      className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs flex items-center justify-center font-semibold group-hover:bg-primary group-hover:text-primary-foreground transition-colors"
+                      aria-hidden="true"
+                    >
                       {index + 1}
                     </span>
                     
@@ -243,11 +247,12 @@ const DocumentsTab = ({
                       {/* Header row: clickable title + score + chunk count */}
                       <div className="flex items-center justify-between gap-2">
                         <button
-                          className="text-sm font-semibold flex items-center gap-1.5 hover:text-primary transition-colors text-left max-w-full overflow-hidden text-foreground/90"
+                          className="text-sm font-semibold flex items-center gap-1.5 hover:text-primary transition-colors text-left max-w-full overflow-hidden text-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 rounded-sm"
                           onClick={() => onDocumentClick?.(docId, chunks[0]?.content, 0, undefined, undefined, chunks[0]?.chunk_id)}
                           title={`Open: ${getDocumentTitle(chunks)}`}
+                          aria-label={`Open document: ${getDocumentTitle(chunks)}`}
                         >
-                          <FileText className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                          <FileText className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" aria-hidden="true" />
                           <span className="truncate">{getDocumentTitle(chunks)}</span>
                         </button>
                         <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -265,9 +270,9 @@ const DocumentsTab = ({
                             size="sm"
                             className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
                             onClick={() => onDocumentClick?.(docId, chunks[0]?.content, 0, undefined, undefined, chunks[0]?.chunk_id)}
-                            aria-label="Open document"
+                            aria-label={`Open document: ${getDocumentTitle(chunks)}`}
                           >
-                            <ExternalLink className="h-3.5 w-3.5" />
+                            <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
                           </Button>
                         </div>
                       </div>
@@ -285,8 +290,9 @@ const DocumentsTab = ({
                               chunk.end_line,
                               chunk.chunk_id
                             )}
-                          className="w-full text-left p-2 rounded-md bg-muted/30 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 border border-transparent hover:border-yellow-200 dark:hover:border-yellow-800 transition-colors group/chunk"
+                          className="w-full text-left p-2 rounded-md bg-muted/30 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 border border-transparent hover:border-yellow-200 dark:hover:border-yellow-800 transition-colors group/chunk focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                             title="Click to open and highlight this passage in the document viewer"
+                            aria-label={`Open passage ${(chunk.chunk_index ?? chunkIdx) + 1}: ${chunk.content.slice(0, 80)}${chunk.content.length > 80 ? '...' : ''}`}
                           >
                             <div className="flex items-start gap-2">
                               <Badge
@@ -302,7 +308,7 @@ const DocumentsTab = ({
                                 <span className={`text-xs font-semibold ${getConfidenceLabel(chunk.score).color}`}>
                                   {Math.round(chunk.score * 100)}%
                                 </span>
-                                <ExternalLink className="h-2.5 w-2.5 text-muted-foreground opacity-0 group-hover/chunk:opacity-70 transition-opacity" />
+                                <ExternalLink className="h-2.5 w-2.5 text-muted-foreground opacity-0 group-hover/chunk:opacity-70 transition-opacity" aria-hidden="true" />
                               </div>
                             </div>
                             {/* Locator: line range preferred, chunk ID as fallback */}
@@ -364,21 +370,21 @@ const KnowledgeTab = ({
   
   if (!hasContent) {
     return (
-      <div className="flex flex-col items-center justify-center h-[360px] text-muted-foreground">
-        <Brain className="h-8 w-8 mb-2 opacity-50" />
+      <div className="flex flex-col items-center justify-center h-70 sm:h-90 text-muted-foreground">
+        <Brain className="h-8 w-8 mb-2 opacity-50" aria-hidden="true" />
         <p className="text-sm">No knowledge extracted</p>
       </div>
     );
   }
 
   return (
-    <ScrollArea className="h-[360px]">
+    <ScrollArea className="h-70 sm:h-90">
       <div className="space-y-5 pr-4">
         {/* Entities */}
         {entities && entities.length > 0 && (
           <div className="space-y-2.5">
             <div className="flex items-center gap-2">
-              <Sparkles className="h-3.5 w-3.5 text-primary" />
+              <Sparkles className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
               <h4 className="text-xs font-semibold text-foreground">Key Topics</h4>
               <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
                 {entities.length}
@@ -545,7 +551,7 @@ const ExploreTab = ({
   };
   
   return (
-    <div className="flex flex-col items-center justify-center h-[360px] space-y-4">
+    <div className="flex flex-col items-center justify-center h-70 sm:h-90 space-y-4">
       <div className="relative">
         <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
           <Network className="h-8 w-8 text-primary" />
@@ -564,8 +570,9 @@ const ExploreTab = ({
         onClick={handleExploreClick} 
         className="gap-2"
         size="sm"
+        aria-label={`Explore graph with ${entityCount} topics and ${relationshipCount} connections`}
       >
-        <Network className="h-4 w-4" />
+        <Network className="h-4 w-4" aria-hidden="true" />
         Open Graph Explorer
       </Button>
     </div>
@@ -621,7 +628,7 @@ export function SourceCitations({
           aria-label={`Source citations: ${sourceCount} sources, ${topicCount} topics, ${confidenceLabel} confidence`}
         >
           <span className="flex items-center gap-2">
-            <BookOpen className="h-4 w-4" />
+            <BookOpen className="h-4 w-4" aria-hidden="true" />
             <span className="text-xs font-medium">
               {sourceCount} Source{sourceCount !== 1 ? 's' : ''} · {topicCount} Topic{topicCount !== 1 ? 's' : ''}
             </span>
@@ -649,7 +656,7 @@ export function SourceCitations({
             <Tabs defaultValue="documents" className="w-full">
               <TabsList className="grid w-full grid-cols-3 h-9 mb-3">
                 <TabsTrigger value="documents" className="text-xs gap-1 data-[state=active]:bg-background">
-                  <FileText className="h-3 w-3" />
+                  <FileText className="h-3 w-3" aria-hidden="true" />
                   <span>Docs</span>
                   {Object.keys(chunksByDocument).length > 0 && (
                     <Badge variant="secondary" className="text-[9px] h-3.5 px-1 ml-0.5 hidden sm:flex">
@@ -658,7 +665,7 @@ export function SourceCitations({
                   )}
                 </TabsTrigger>
                 <TabsTrigger value="knowledge" className="text-xs gap-1 data-[state=active]:bg-background">
-                  <Brain className="h-3 w-3" />
+                  <Brain className="h-3 w-3" aria-hidden="true" />
                   <span>Topics</span>
                   {(topicCount + (context.relationships?.length ?? 0)) > 0 && (
                     <Badge variant="secondary" className="text-[9px] h-3.5 px-1 ml-0.5 hidden sm:flex">
@@ -667,7 +674,7 @@ export function SourceCitations({
                   )}
                 </TabsTrigger>
                 <TabsTrigger value="explore" className="text-xs gap-1 data-[state=active]:bg-background">
-                  <Network className="h-3 w-3" />
+                  <Network className="h-3 w-3" aria-hidden="true" />
                   <span>Graph</span>
                 </TabsTrigger>
               </TabsList>

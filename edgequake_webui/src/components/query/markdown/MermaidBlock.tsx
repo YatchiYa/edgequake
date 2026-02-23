@@ -251,9 +251,11 @@ export const MermaidBlock = memo(function MermaidBlock({
           'border-border/60 bg-muted/30',
           className
         )}
+        role="status"
+        aria-label="Diagram loading"
       >
         <div className="flex flex-col items-center gap-3 text-muted-foreground">
-          <GitBranch className="h-8 w-8 animate-pulse" />
+          <GitBranch className="h-8 w-8 motion-safe:animate-pulse" aria-hidden="true" />
           <span className="text-sm">Diagram loading...</span>
         </div>
       </div>
@@ -268,9 +270,11 @@ export const MermaidBlock = memo(function MermaidBlock({
           'my-4 flex items-center justify-center rounded-lg border border-border bg-muted/40 dark:bg-zinc-900 p-8',
           className
         )}
+        role="status"
+        aria-label="Rendering diagram"
       >
         <div className="flex flex-col items-center gap-3 text-muted-foreground">
-          <RefreshCw className="h-6 w-6 animate-spin" />
+          <RefreshCw className="h-6 w-6 motion-safe:animate-spin" aria-hidden="true" />
           <span className="text-sm">Rendering diagram...</span>
         </div>
       </div>
@@ -285,9 +289,11 @@ export const MermaidBlock = memo(function MermaidBlock({
           'my-4 rounded-lg border border-destructive/50 bg-destructive/5 p-4',
           className
         )}
+        role="alert"
+        aria-label="Diagram rendering failed"
       >
         <div className="flex items-start gap-3">
-          <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+          <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" aria-hidden="true" />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-destructive">
               Failed to render Mermaid diagram
@@ -307,8 +313,9 @@ export const MermaidBlock = memo(function MermaidBlock({
             size="sm"
             className="text-destructive hover:text-destructive hover:bg-destructive/10"
             onClick={handleRetry}
+            aria-label="Retry rendering diagram"
           >
-            <RefreshCw className="h-4 w-4" />
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
           </Button>
         </div>
       </div>
@@ -336,11 +343,16 @@ export const MermaidBlock = memo(function MermaidBlock({
               className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-accent"
               onClick={() => setIsFullView(true)}
               title="Full view"
+              aria-label="Expand diagram to full view"
             >
-              <Maximize2 className="h-3.5 w-3.5" />
+              <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
             </Button>
           </div>
-          <div dangerouslySetInnerHTML={{ __html: svg }} />
+          <div
+            dangerouslySetInnerHTML={{ __html: svg }}
+            role="img"
+            aria-label="Mermaid diagram"
+          />
         </div>
 
         {/* Full-view dialog */}
@@ -358,6 +370,8 @@ export const MermaidBlock = memo(function MermaidBlock({
                 '[&_svg]:mx-auto [&_svg]:max-w-full'
               )}
               dangerouslySetInnerHTML={{ __html: svg }}
+              role="img"
+              aria-label="Mermaid diagram (expanded)"
             />
           </DialogContent>
         </Dialog>

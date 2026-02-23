@@ -122,10 +122,10 @@ const EmptyState = memo(function EmptyState({ onSuggestionClick, graphStats }: E
   const hasData = graphStats && (graphStats.entities > 0 || graphStats.relationships > 0);
 
   return (
-    <div className="flex flex-col items-center justify-center h-full py-12 px-4 animate-fade-in-up">
+    <div className="flex flex-col items-center justify-center h-full py-12 px-4 motion-safe:animate-fade-in-up">
       {/* Animated icon */}
-      <div className="relative mb-8">
-        <div className="absolute inset-0 bg-gradient-to-r from-primary/40 to-primary/60 rounded-2xl blur-2xl opacity-20 animate-pulse-soft" />
+      <div className="relative mb-8" aria-hidden="true">
+        <div className="absolute inset-0 bg-gradient-to-r from-primary/40 to-primary/60 rounded-2xl blur-2xl opacity-20 motion-safe:animate-pulse-soft" />
         <div className="relative bg-gradient-to-br from-primary/80 to-primary rounded-2xl p-5 shadow-lg">
           <Sparkles className="h-10 w-10 text-primary-foreground" />
         </div>
@@ -141,21 +141,25 @@ const EmptyState = memo(function EmptyState({ onSuggestionClick, graphStats }: E
 
       {/* Graph stats (if available) */}
       {hasData && (
-        <div className="flex items-center gap-4 mb-8 px-6 py-3 bg-muted/30 rounded-full border border-border/50">
+        <div
+          className="flex items-center gap-4 mb-8 px-6 py-3 bg-muted/30 rounded-full border border-border/50"
+          role="status"
+          aria-label={`${graphStats.entities} entities, ${graphStats.relationships} relationships, ${graphStats.types} types`}
+        >
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-green-500" />
+            <div className="w-2 h-2 rounded-full bg-green-500" aria-hidden="true" />
             <span className="text-sm font-medium">{graphStats.entities}</span>
             <span className="text-xs text-muted-foreground">entities</span>
           </div>
-          <div className="w-px h-4 bg-border" />
+          <div className="w-px h-4 bg-border" aria-hidden="true" />
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-amber-500" />
+            <div className="w-2 h-2 rounded-full bg-amber-500" aria-hidden="true" />
             <span className="text-sm font-medium">{graphStats.relationships}</span>
             <span className="text-xs text-muted-foreground">relationships</span>
           </div>
-          <div className="w-px h-4 bg-border" />
+          <div className="w-px h-4 bg-border" aria-hidden="true" />
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-blue-500" />
+            <div className="w-2 h-2 rounded-full bg-blue-500" aria-hidden="true" />
             <span className="text-sm font-medium">{graphStats.types}</span>
             <span className="text-xs text-muted-foreground">types</span>
           </div>
@@ -168,14 +172,16 @@ const EmptyState = memo(function EmptyState({ onSuggestionClick, graphStats }: E
           <p className="text-sm font-medium text-muted-foreground text-center mb-3">
             {t('query.tryAsking', 'Try asking:')}
           </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2" role="list" aria-label={t('query.suggestedQueries', 'Suggested queries')}>
             {suggestions.map((suggestion, i) => (
               <button
                 key={i}
                 onClick={() => onSuggestionClick(suggestion.text)}
-                className="group flex items-start gap-3 text-left px-4 py-3.5 rounded-xl border bg-card hover:bg-muted/50 hover:border-primary/30 transition-all duration-200 hover:shadow-sm hover:-translate-y-0.5"
+                className="group flex items-start gap-3 text-left px-4 py-3.5 rounded-xl border bg-card hover:bg-muted/50 hover:border-primary/30 transition-all duration-200 hover:shadow-sm hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                role="listitem"
+                aria-label={suggestion.text}
               >
-                <div className="p-1.5 rounded-lg bg-muted group-hover:bg-primary/10 transition-colors shrink-0">
+                <div className="p-1.5 rounded-lg bg-muted group-hover:bg-primary/10 transition-colors shrink-0" aria-hidden="true">
                   {suggestion.icon}
                 </div>
                 <span className="text-sm leading-relaxed">{suggestion.text}</span>
@@ -793,16 +799,19 @@ export function QueryInterface() {
       {/* Main Query Area */}
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {/* Header */}
-        <header className="flex items-center justify-between border-b px-5 py-3 shrink-0 bg-background/80 backdrop-blur-sm">
-          <div className="flex items-center gap-3">
+        <header
+          className="flex items-center justify-between border-b px-3 sm:px-5 py-3 shrink-0 bg-background/80 backdrop-blur-sm gap-2"
+          role="banner"
+        >
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             {/* Mobile History Panel Toggle */}
             <MobileHistoryPanel />
-            <h1 className="text-lg font-semibold tracking-tight">{t('query.title', 'Query')}</h1>
-            <span className="text-xs text-muted-foreground hidden sm:inline">
+            <h1 className="text-base sm:text-lg font-semibold tracking-tight truncate">{t('query.title', 'Query')}</h1>
+            <span className="text-xs text-muted-foreground hidden md:inline">
               {t('query.subtitle', 'Ask questions about your knowledge graph')}
             </span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             {/* New Conversation Button */}
             <Button
               variant="outline"
@@ -859,7 +868,7 @@ export function QueryInterface() {
         {/* Messages - improved padding */}
         <div className="flex-1 min-h-0 overflow-hidden">
           <ScrollArea ref={scrollRef} className="h-full">
-            <div className="max-w-3xl mx-auto px-6 py-6">
+            <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6" role="log" aria-live="polite" aria-label={t('query.messageList', 'Conversation messages')}>
               {messages.length === 0 && !isLoading ? (
                 <EmptyState onSuggestionClick={handleSuggestionClick} />
               ) : (
@@ -890,7 +899,7 @@ export function QueryInterface() {
         </div>
 
         {/* Input - Fixed at bottom with improved spacing */}
-        <div className="border-t px-6 py-4 bg-background flex-shrink-0" role="form" aria-label={t('query.form', 'Query form')}>
+        <div className="border-t px-4 sm:px-6 py-4 bg-background shrink-0" role="form" aria-label={t('query.form', 'Query form')}>
           <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
             <div className="relative">
               <Textarea
@@ -898,7 +907,7 @@ export function QueryInterface() {
                 value={input}
                 onChange={handleInputChange}
                 placeholder={t('query.placeholder', 'Ask a question...')}
-                className="min-h-[56px] max-h-[200px] resize-none pr-24 py-4 text-base query-input focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all duration-200"
+                className="min-h-[56px] max-h-[200px] resize-none pr-24 py-4 text-base query-input focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:border-primary transition-all duration-200"
                 rows={1}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
