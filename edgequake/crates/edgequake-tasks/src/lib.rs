@@ -79,6 +79,7 @@ pub mod postgres;
 pub mod progress;
 pub mod queue;
 pub mod storage;
+pub mod tenant_limiter;
 pub mod types;
 pub mod worker;
 
@@ -91,6 +92,7 @@ pub use storage::{
     Pagination, SharedTaskStorage, SortField, SortOrder, TaskFilter, TaskList, TaskStatistics,
     TaskStorage,
 };
+pub use tenant_limiter::TenantConcurrencyLimiter;
 pub use types::{
     ChunkProgress, DirectoryScanData, DocumentUploadData, PdfProcessingData, ReindexData, Task,
     TaskFailureInfo, TaskProgress, TaskStatus, TaskType, TextInsertData,

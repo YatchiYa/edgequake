@@ -75,7 +75,22 @@ impl PdfDocumentStorage for PostgresPdfStorage {
         )
         .execute(&self.pool)
         .await
-        .map_err(|e| StorageError::Database(format!("Failed to create PDF document: {}", e)))?;
+        .map_err(|e| {
+            // FIX-DUPLICATE-BUG: Convert unique constraint violation to Conflict error.
+            // WHY: The idx_pdf_documents_workspace_checksum_unique constraint catches
+            // TOCTOU race conditions where two concurrent uploads of the same PDF
+            // both pass the application-level find_pdf_by_checksum check.
+            if let sqlx::Error::Database(ref db_err) = e {
+                // PostgreSQL error code 23505 = unique_violation
+                if db_err.code().as_deref() == Some("23505") {
+                    return StorageError::Conflict(format!(
+                        "PDF with checksum {} already exists in this workspace (concurrent upload detected)",
+                        request.sha256_checksum
+                    ));
+                }
+            }
+            StorageError::Database(format!("Failed to create PDF document: {}", e))
+        })?;
 
         debug!(
             "Created PDF document: id={}, workspace={}, size={}",

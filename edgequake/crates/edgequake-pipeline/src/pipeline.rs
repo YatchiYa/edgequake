@@ -266,6 +266,13 @@ pub struct ProcessingStats {
     /// Cost breakdown by operation (extraction, embedding, etc.).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cost_breakdown: Option<CostBreakdownStats>,
+
+    /// Storage-level error details (graph/vector DB failures).
+    /// WHY: Captures errors from upsert_nodes_batch, upsert_edges_batch,
+    /// and entity embedding storage that previously were warn-and-continue.
+    /// Populated only when storage_errors occur during indexing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_details: Option<String>,
 }
 
 /// Information about a failed chunk for error reporting.
@@ -2020,22 +2027,28 @@ impl Pipeline {
 
         // Note: complete chunk failure already caught at line 1650
         // This check handles: "some chunks succeeded but extracted 0 entities"
+        // FIX-RELIABILITY: Changed from hard error to warning.
+        // WHY: 0 entities is NOT always a failure:
+        //   1. Pipeline may have no extractor (test/mock mode)
+        //   2. Document content may have no named entities (code, numbers, etc.)
+        //   3. Chunks are still valuable for semantic search via embeddings
+        //   4. Hard error leaves document in limbo (stored but unusable)
+        // The caller (processor/handler) decides status based on entity_count.
         if stats.entity_count == 0 && stats.chunk_count > 0 {
             tracing::warn!(
                 document_id = document_id,
                 chunk_count = stats.chunk_count,
                 successful_chunks = stats.successful_chunks,
                 failed_chunks = stats.failed_chunks,
-                "Pipeline processed {} chunks but extracted 0 entities - possible LLM failure or content without extractable entities",
+                has_extractor = self.extractor.is_some(),
+                "Pipeline processed {} chunks but extracted 0 entities - document accepted with zero entities",
                 stats.chunk_count
             );
-
-            // Return error to trigger "failed" status instead of "completed"
-            return Err(crate::error::PipelineError::ExtractionError(
-                format!(
-                    "Extracted 0 entities from {} chunks ({} succeeded, {} failed) - document cannot be indexed",
-                    stats.chunk_count, stats.successful_chunks, stats.failed_chunks
-                )
+            // Record the warning in stats for callers to inspect
+            stats.error_details = Some(format!(
+                "Extracted 0 entities from {} chunks ({} succeeded, {} failed). \
+                 Document chunks are stored for semantic search.",
+                stats.chunk_count, stats.successful_chunks, stats.failed_chunks
             ));
         }
 

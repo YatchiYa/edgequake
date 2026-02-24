@@ -94,6 +94,17 @@ export function useFileUpload(
     async (files: File[]) => {
       if (files.length === 0) return;
 
+      // FIX-DUPLICATE-BUG: Prevent double-submit when upload is already in progress.
+      // WHY: Without this guard, rapid clicks or drag-and-drop events can trigger
+      // multiple concurrent uploads of the same file, resulting in duplicate documents
+      // with different IDs, both stuck in "processing" state.
+      if (isUploading) {
+        console.warn(
+          "[useFileUpload] Upload already in progress, ignoring duplicate submission",
+        );
+        return;
+      }
+
       // Notify parent (e.g., to switch status filter)
       onUploadStart?.();
 
@@ -456,7 +467,7 @@ export function useFileUpload(
         setUploadingFiles([]);
       }, 3000);
     },
-    [queryClient, t, router, tenantId, workspaceId, onUploadStart],
+    [queryClient, t, router, tenantId, workspaceId, onUploadStart, isUploading],
   );
 
   /**

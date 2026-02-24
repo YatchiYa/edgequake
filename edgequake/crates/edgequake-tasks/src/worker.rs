@@ -6,18 +6,21 @@
 //! - **FEAT0911**: Task processor trait abstraction
 //! - **FEAT0912**: Graceful shutdown with task completion
 //! - **SPEC-001/Issue-8**: Exponential backoff for retries
+//! - **FEAT-TENANT-FAIRNESS**: Per-tenant concurrency limits
 //!
 //! ## Use Cases
 //!
 //! - **UC2601**: System spawns workers to process queued tasks
 //! - **UC2602**: System retries failed tasks with exponential backoff
 //! - **UC2603**: System shuts down gracefully completing in-flight work
+//! - **UC2604**: System prevents one tenant from monopolizing workers
 //!
 //! ## Enforces
 //!
 //! - **BR0910**: Worker count bounded to prevent resource exhaustion
 //! - **BR0911**: In-flight tasks must complete before shutdown
 //! - **BR0912**: Retry delays use exponential backoff (2^n * base_delay)
+//! - **BR0913**: Per-tenant concurrency capped at max_tasks_per_tenant
 //!
 //! ## WHY Worker Pool Architecture?
 //!
@@ -25,23 +28,44 @@
 //! The worker pool provides:
 //! - **Bounded concurrency**: Prevents resource exhaustion during burst uploads
 //! - **Task isolation**: One failing task doesn't affect others
+//! - **Tenant fairness**: Per-tenant limits prevent monopolization
 //! - **Graceful shutdown**: In-flight tasks complete before termination
 //! - **Retry logic**: Transient failures (network, rate limits) auto-recover
 //! - **Exponential backoff**: Prevents hammering failing services
+//! - **Permanent failure cleanup**: Updates document status on retry exhaustion
 //!
 //! Default worker count is `num_cpus` because embedding generation is CPU-bound.
 //! For IO-bound workloads (e.g., LLM API calls), consider increasing.
 
-use crate::{error::TaskResult, queue::TaskQueue, storage::TaskStorage, types::Task};
+use crate::{
+    error::TaskResult, queue::TaskQueue, storage::TaskStorage,
+    tenant_limiter::TenantConcurrencyLimiter, types::Task,
+};
 use std::sync::Arc;
 use tokio::task::JoinHandle;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
-/// Task processor trait - implement this to process different task types
+/// Task processor trait - implement this to process different task types.
+///
+/// Implementors handle both normal processing and cleanup on permanent failure.
 #[async_trait::async_trait]
 pub trait TaskProcessor: Send + Sync {
-    /// Process a task
+    /// Process a task.
     async fn process(&self, task: &mut Task) -> TaskResult<serde_json::Value>;
+
+    /// Called when a task has permanently failed (retries exhausted or circuit
+    /// breaker tripped). Override to update document status, clean up resources,
+    /// or send notifications.
+    ///
+    /// WHY: Without this callback, documents get stuck in "processing" status
+    /// forever when the task fails permanently. The worker knows when retries
+    /// are exhausted, but only the processor knows how to update document
+    /// metadata and clean up resources.
+    ///
+    /// Default implementation is a no-op for backward compatibility.
+    async fn on_permanent_failure(&self, task: &Task, error_msg: &str) {
+        let _ = (task, error_msg); // suppress unused warnings
+    }
 }
 
 /// Shared task processor
@@ -68,26 +92,32 @@ pub struct WorkerPoolConfig {
 
     /// Backoff multiplier (default: 2.0 for exponential backoff)
     pub backoff_multiplier: f64,
+
+    /// Maximum concurrent tasks per tenant.
+    ///
+    /// WHY: Prevents one tenant from monopolizing all workers. When a tenant
+    /// has `max_tasks_per_tenant` tasks in flight, new tasks from that tenant
+    /// are requeued with a short delay so workers can serve other tenants.
+    ///
+    /// Default: `max(1, num_workers / 2)` — guarantees at least half the
+    /// workers remain available for other tenants.
+    ///
+    /// Set to 0 to disable per-tenant limiting (all workers available to any tenant).
+    pub max_tasks_per_tenant: usize,
 }
 
 impl Default for WorkerPoolConfig {
     fn default() -> Self {
+        let num_workers = num_cpus::get().max(2);
         Self {
-            // WHY num_cpus: Embedding generation is CPU-bound (SIMD operations).
-            // Using all cores maximizes throughput without context-switching overhead.
-            // min(2) ensures we can still process tasks on single-core VMs.
-            num_workers: num_cpus::get().max(2),
+            num_workers,
             auto_retry: true,
-            // WHY 1000ms: Starting delay for exponential backoff.
-            // With multiplier of 2.0: 1s -> 2s -> 4s -> 8s -> 16s (capped at max)
             initial_retry_delay_ms: 1000,
-            // WHY 60s max: Prevents retries from taking forever.
-            // 60s is long enough to recover from transient issues but
-            // short enough to fail fast on permanent failures.
             max_retry_delay_ms: 60_000,
-            // WHY 2.0: Standard exponential backoff multiplier.
-            // Each retry waits 2x longer than the previous.
             backoff_multiplier: 2.0,
+            // WHY num_workers/2: Ensures no tenant can consume more than
+            // half the worker pool, leaving slots for other tenants.
+            max_tasks_per_tenant: (num_workers / 2).max(1),
         }
     }
 }
@@ -97,15 +127,6 @@ impl Default for WorkerPoolConfig {
 /// @implements SPEC-001/Issue-8: Exponential backoff calculation
 ///
 /// Formula: min(initial_delay * multiplier^attempt, max_delay)
-///
-/// # Arguments
-/// * `attempt` - Zero-based retry attempt number (0 = first retry)
-/// * `initial_delay_ms` - Base delay in milliseconds
-/// * `max_delay_ms` - Maximum delay cap in milliseconds
-/// * `multiplier` - Backoff multiplier (typically 2.0)
-///
-/// # Returns
-/// Delay in milliseconds for this retry attempt
 fn calculate_backoff_delay(
     attempt: u32,
     initial_delay_ms: u64,
@@ -124,6 +145,7 @@ pub struct WorkerPool {
     processor: SharedTaskProcessor,
     handles: Vec<JoinHandle<()>>,
     shutdown_tx: Option<tokio::sync::broadcast::Sender<()>>,
+    tenant_limiter: Option<TenantConcurrencyLimiter>,
 }
 
 impl WorkerPool {
@@ -134,6 +156,13 @@ impl WorkerPool {
         storage: Arc<dyn TaskStorage>,
         processor: SharedTaskProcessor,
     ) -> Self {
+        // Create tenant limiter if max_tasks_per_tenant > 0
+        let tenant_limiter = if config.max_tasks_per_tenant > 0 {
+            Some(TenantConcurrencyLimiter::new(config.max_tasks_per_tenant))
+        } else {
+            None
+        };
+
         Self {
             config,
             queue,
@@ -141,6 +170,7 @@ impl WorkerPool {
             processor,
             handles: Vec::new(),
             shutdown_tx: None,
+            tenant_limiter,
         }
     }
 
@@ -149,10 +179,18 @@ impl WorkerPool {
         let (shutdown_tx, _) = tokio::sync::broadcast::channel(1);
         self.shutdown_tx = Some(shutdown_tx.clone());
 
-        info!(
-            "Starting worker pool with {} workers",
-            self.config.num_workers
-        );
+        if let Some(ref limiter) = self.tenant_limiter {
+            info!(
+                "Starting worker pool: {} workers, max {} tasks/tenant",
+                self.config.num_workers,
+                limiter.max_per_tenant()
+            );
+        } else {
+            info!(
+                "Starting worker pool: {} workers, no tenant limit",
+                self.config.num_workers
+            );
+        }
 
         for worker_id in 0..self.config.num_workers {
             let queue = Arc::clone(&self.queue);
@@ -160,6 +198,7 @@ impl WorkerPool {
             let processor = Arc::clone(&self.processor);
             let config = self.config.clone();
             let mut shutdown_rx = shutdown_tx.subscribe();
+            let tenant_limiter = self.tenant_limiter.clone();
 
             let handle = tokio::spawn(async move {
                 info!("Worker {} started", worker_id);
@@ -173,7 +212,39 @@ impl WorkerPool {
                         result = queue.receive() => {
                             match result {
                                 Ok(mut task) => {
-                                    info!("Worker {} processing task: {}", worker_id, task.track_id);
+                                    // FEAT-TENANT-FAIRNESS: Check per-tenant concurrency limit
+                                    // before processing. If tenant is at capacity, requeue the
+                                    // task with a short delay so this worker can serve other tenants.
+                                    let _tenant_permit = if let Some(ref limiter) = tenant_limiter {
+                                        match limiter.try_acquire(task.tenant_id).await {
+                                            Some(permit) => Some(permit),
+                                            None => {
+                                                debug!(
+                                                    worker_id = worker_id,
+                                                    task_id = %task.track_id,
+                                                    tenant_id = %task.tenant_id,
+                                                    "Tenant at concurrency limit, requeueing task"
+                                                );
+                                                // Requeue with small delay so other tenants' tasks
+                                                // get a chance to be picked up first.
+                                                let requeue_task = task;
+                                                let requeue_queue = Arc::clone(&queue);
+                                                tokio::spawn(async move {
+                                                    tokio::time::sleep(
+                                                        tokio::time::Duration::from_millis(200)
+                                                    ).await;
+                                                    if let Err(e) = requeue_queue.send(requeue_task).await {
+                                                        error!("Failed to requeue tenant-limited task: {}", e);
+                                                    }
+                                                });
+                                                continue; // Pick next task from queue
+                                            }
+                                        }
+                                    } else {
+                                        None
+                                    };
+
+                                    info!("Worker {} processing task: {} (tenant: {})", worker_id, task.track_id, task.tenant_id);
 
                                     // Mark as processing
                                     task.mark_processing();
@@ -185,7 +256,7 @@ impl WorkerPool {
                                     match processor.process(&mut task).await {
                                         Ok(result) => {
                                             task.mark_success(result);
-                                            info!("Worker {} completed task: {}", worker_id, task.track_id);
+                                            info!("Worker {} completed task: {} (tenant: {})", worker_id, task.track_id, task.tenant_id);
                                         }
                                         Err(e) => {
                                             let error_msg = format!("{}", e);
@@ -194,20 +265,31 @@ impl WorkerPool {
                                             // Log circuit breaker status
                                             if task.circuit_breaker_tripped {
                                                 error!(
-                                                    "Worker {} task {} permanently failed: Circuit breaker tripped after {} consecutive timeouts",
-                                                    worker_id,
-                                                    task.track_id,
-                                                    task.consecutive_timeout_failures
+                                                    worker_id = worker_id,
+                                                    task_id = %task.track_id,
+                                                    tenant_id = %task.tenant_id,
+                                                    consecutive_timeouts = task.consecutive_timeout_failures,
+                                                    "Task permanently failed: Circuit breaker tripped"
                                                 );
                                             } else {
                                                 error!(
-                                                    "Worker {} failed to process task {}: {} (consecutive timeouts: {})",
-                                                    worker_id, task.track_id, error_msg, task.consecutive_timeout_failures
+                                                    worker_id = worker_id,
+                                                    task_id = %task.track_id,
+                                                    tenant_id = %task.tenant_id,
+                                                    retry_count = task.retry_count,
+                                                    max_retries = task.max_retries,
+                                                    consecutive_timeouts = task.consecutive_timeout_failures,
+                                                    error = %error_msg,
+                                                    "Task processing failed"
                                                 );
                                             }
 
-                                            // Auto-retry if enabled, retries remaining, and circuit breaker not tripped
-                                            if config.auto_retry && task.can_retry() && !task.circuit_breaker_tripped {
+                                            // Check if task is permanently failed (no more retries)
+                                            let will_retry = config.auto_retry
+                                                && task.can_retry()
+                                                && !task.circuit_breaker_tripped;
+
+                                            if will_retry {
                                                 // Calculate exponential backoff delay
                                                 let retry_delay_ms = calculate_backoff_delay(
                                                     task.retry_count as u32,
@@ -217,11 +299,11 @@ impl WorkerPool {
                                                 );
 
                                                 warn!(
-                                                    "Task {} will be retried (attempt {}/{}) after {}ms",
-                                                    task.track_id,
-                                                    task.retry_count + 1,
-                                                    task.max_retries,
-                                                    retry_delay_ms
+                                                    task_id = %task.track_id,
+                                                    attempt = task.retry_count,
+                                                    max_retries = task.max_retries,
+                                                    delay_ms = retry_delay_ms,
+                                                    "Scheduling retry with exponential backoff"
                                                 );
 
                                                 // Schedule retry after exponential backoff delay
@@ -237,6 +319,29 @@ impl WorkerPool {
                                                         error!("Failed to requeue task for retry: {}", e);
                                                     }
                                                 });
+                                            } else {
+                                                // PERMANENT FAILURE: No more retries or circuit breaker tripped.
+                                                // Notify processor to update document status, clean up resources.
+                                                // WHY: Without this, documents remain stuck in "processing"
+                                                // status forever after retry exhaustion.
+                                                let reason = if task.circuit_breaker_tripped {
+                                                    format!(
+                                                        "Circuit breaker tripped after {} consecutive timeouts. \
+                                                        Last error: {}",
+                                                        task.consecutive_timeout_failures, error_msg
+                                                    )
+                                                } else {
+                                                    format!(
+                                                        "Retries exhausted ({}/{} attempts). Last error: {}",
+                                                        task.retry_count, task.max_retries, error_msg
+                                                    )
+                                                };
+                                                error!(
+                                                    task_id = %task.track_id,
+                                                    tenant_id = %task.tenant_id,
+                                                    "Task permanently failed: {}", reason
+                                                );
+                                                processor.on_permanent_failure(&task, &reason).await;
                                             }
                                         }
                                     }
@@ -245,6 +350,8 @@ impl WorkerPool {
                                     if let Err(e) = storage.update_task(&task).await {
                                         error!("Failed to update task: {}", e);
                                     }
+
+                                    // _tenant_permit is dropped here, releasing the slot
                                 }
                                 Err(e) => {
                                     if queue.is_closed() {
@@ -263,6 +370,16 @@ impl WorkerPool {
             });
 
             self.handles.push(handle);
+        }
+
+        // Spawn periodic cleanup task for tenant semaphores
+        if let Some(limiter) = self.tenant_limiter.clone() {
+            tokio::spawn(async move {
+                loop {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(300)).await;
+                    limiter.cleanup_idle().await;
+                }
+            });
         }
     }
 
@@ -337,6 +454,7 @@ mod tests {
             initial_retry_delay_ms: 100,
             max_retry_delay_ms: 5000,
             backoff_multiplier: 2.0,
+            max_tasks_per_tenant: 0, // disabled for basic test
         };
 
         let mut pool = WorkerPool::new(config, queue.clone(), storage.clone(), processor);
@@ -380,6 +498,7 @@ mod tests {
             initial_retry_delay_ms: 100,
             max_retry_delay_ms: 5000,
             backoff_multiplier: 2.0,
+            max_tasks_per_tenant: 0,
         };
 
         let mut pool = WorkerPool::new(config, queue, storage, processor);
@@ -387,5 +506,28 @@ mod tests {
 
         // Shutdown immediately
         pool.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn test_tenant_fairness_limiting() {
+        // With max_tasks_per_tenant=1, only 1 task per tenant runs at a time
+        let limiter = crate::tenant_limiter::TenantConcurrencyLimiter::new(1);
+        let tenant = test_tenant_id();
+
+        let p1 = limiter.try_acquire(tenant).await;
+        assert!(p1.is_some(), "First acquire should succeed");
+
+        let p2 = limiter.try_acquire(tenant).await;
+        assert!(p2.is_none(), "Second acquire should be denied (at limit)");
+
+        // Different tenant should still get through
+        let other_tenant = uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000099").unwrap();
+        let p3 = limiter.try_acquire(other_tenant).await;
+        assert!(p3.is_some(), "Other tenant should not be affected");
+
+        // Release first permit, then acquire should succeed
+        drop(p1);
+        let p4 = limiter.try_acquire(tenant).await;
+        assert!(p4.is_some(), "Should succeed after releasing permit");
     }
 }
