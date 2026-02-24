@@ -2,320 +2,25 @@
 //!
 //! This module contains all data transfer objects used in lineage tracking,
 //! including entity provenance, document lineage, and chunk detail responses.
+//!
+//! ## Sub-modules
+//!
+//! | Module       | Purpose                                          |
+//! |--------------|--------------------------------------------------|
+//! | `entity`     | Entity lineage, source documents, line ranges    |
+//! | `document`   | Document graph lineage, extraction stats         |
+//! | `chunk`      | Chunk detail, extracted entities/relations        |
+//! | `provenance` | Entity provenance, source info, related entities |
 
-use serde::Serialize;
-use utoipa::ToSchema;
+mod chunk;
+mod document;
+mod entity;
+mod provenance;
 
-// ============================================================================
-// Entity Lineage DTOs
-// ============================================================================
-
-/// Entity lineage response showing all source documents.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct EntityLineageResponse {
-    /// Entity name.
-    pub entity_name: String,
-    /// Entity type.
-    pub entity_type: Option<String>,
-    /// All source documents this entity was extracted from.
-    pub source_documents: Vec<SourceDocumentInfo>,
-    /// Number of unique source documents.
-    pub source_count: usize,
-    /// Description history.
-    pub description_versions: Vec<DescriptionVersionResponse>,
-}
-
-/// Information about a source document.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct SourceDocumentInfo {
-    /// Document ID.
-    pub document_id: String,
-    /// Chunk IDs within this document.
-    pub chunk_ids: Vec<String>,
-    /// Line ranges where entity was found.
-    pub line_ranges: Vec<LineRangeInfo>,
-}
-
-/// Line range information.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct LineRangeInfo {
-    /// Start line (1-indexed).
-    pub start_line: usize,
-    /// End line (1-indexed).
-    pub end_line: usize,
-}
-
-/// Description version for tracking evolution.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct DescriptionVersionResponse {
-    /// Version number.
-    pub version: usize,
-    /// Description text.
-    pub description: String,
-    /// Source chunk that provided this description.
-    pub source_chunk_id: Option<String>,
-    /// When this version was created.
-    pub created_at: String,
-}
-
-// ============================================================================
-// Document Graph Lineage DTOs
-// ============================================================================
-
-/// Graph lineage summary for a document.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct DocumentGraphLineageResponse {
-    /// Document ID.
-    pub document_id: String,
-    /// Total chunks in document.
-    pub chunk_count: usize,
-    /// Entities extracted from this document.
-    pub entities: Vec<EntitySummaryResponse>,
-    /// Relationships extracted from this document.
-    pub relationships: Vec<RelationshipSummaryResponse>,
-    /// Extraction statistics.
-    pub extraction_stats: ExtractionStatsResponse,
-}
-
-/// Entity summary in lineage response.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct EntitySummaryResponse {
-    /// Entity name.
-    pub name: String,
-    /// Entity type.
-    pub entity_type: String,
-    /// Source chunk IDs.
-    pub source_chunks: Vec<String>,
-    /// Whether entity is shared with other documents.
-    pub is_shared: bool,
-}
-
-/// Relationship summary in lineage response.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct RelationshipSummaryResponse {
-    /// Source entity.
-    pub source: String,
-    /// Target entity.
-    pub target: String,
-    /// Relationship keywords.
-    pub keywords: String,
-    /// Source chunk IDs.
-    pub source_chunks: Vec<String>,
-}
-
-/// Extraction statistics.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct ExtractionStatsResponse {
-    /// Total entities extracted.
-    pub total_entities: usize,
-    /// Unique entities (after deduplication).
-    pub unique_entities: usize,
-    /// Total relationships extracted.
-    pub total_relationships: usize,
-    /// Unique relationships.
-    pub unique_relationships: usize,
-    /// Processing time in milliseconds.
-    pub processing_time_ms: Option<u64>,
-}
-
-// ============================================================================
-// Chunk Detail DTOs (WEBUI-006)
-// ============================================================================
-
-/// Chunk detail response.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct ChunkDetailResponse {
-    /// Chunk ID.
-    pub chunk_id: String,
-    /// Document ID this chunk belongs to.
-    pub document_id: String,
-    /// Document name.
-    pub document_name: Option<String>,
-    /// Full chunk content.
-    pub content: String,
-    /// Chunk index in document.
-    pub index: usize,
-    /// Character offset range.
-    pub char_range: CharRange,
-    /// Starting line number (1-based) in the source document.
-    /// OODA-07: Added for lineage traceability — maps chunk to source location.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub start_line: Option<usize>,
-    /// Ending line number (1-based, inclusive) in the source document.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub end_line: Option<usize>,
-    /// Token count.
-    pub token_count: usize,
-    /// Entities extracted from this chunk.
-    pub entities: Vec<ExtractedEntityInfo>,
-    /// Relationships extracted from this chunk.
-    pub relationships: Vec<ExtractedRelationshipInfo>,
-    /// Extraction metadata.
-    pub extraction_metadata: Option<ExtractionMetadataInfo>,
-}
-
-/// Character range for chunk position.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct CharRange {
-    /// Start offset.
-    pub start: usize,
-    /// End offset.
-    pub end: usize,
-}
-
-/// Entity extracted from chunk.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct ExtractedEntityInfo {
-    /// Entity ID/name.
-    pub id: String,
-    /// Entity name.
-    pub name: String,
-    /// Entity type.
-    pub entity_type: String,
-    /// Description.
-    pub description: Option<String>,
-}
-
-/// Relationship extracted from chunk.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct ExtractedRelationshipInfo {
-    /// Source entity.
-    pub source_name: String,
-    /// Target entity.
-    pub target_name: String,
-    /// Relationship type/keywords.
-    pub relation_type: String,
-    /// Description.
-    pub description: Option<String>,
-}
-
-/// Extraction metadata.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct ExtractionMetadataInfo {
-    /// LLM model used.
-    pub model: String,
-    /// Gleaning iterations.
-    pub gleaning_iterations: usize,
-    /// Extraction duration in ms.
-    pub duration_ms: u64,
-    /// Input tokens.
-    pub input_tokens: usize,
-    /// Output tokens.
-    pub output_tokens: usize,
-    /// Whether cached.
-    pub cached: bool,
-}
-
-// ============================================================================
-// Chunk Lineage DTO (OODA-08)
-// ============================================================================
-
-/// Complete chunk lineage response — parent document context + position + entities.
-///
-/// OODA-08: Provides single-call retrieval of a chunk's full lineage chain:
-/// `Chunk → Document → PDF (optional) → Entities & Relationships`.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct ChunkLineageResponse {
-    /// Chunk ID.
-    pub chunk_id: String,
-    /// Parent document ID.
-    pub document_id: String,
-    /// Document name/title.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub document_name: Option<String>,
-    /// Document type (pdf, markdown, text).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub document_type: Option<String>,
-    /// Chunk index in parent document.
-    pub index: usize,
-    /// Starting line number (1-based).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub start_line: Option<usize>,
-    /// Ending line number (1-based, inclusive).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub end_line: Option<usize>,
-    /// Start byte offset.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub start_offset: Option<usize>,
-    /// End byte offset.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub end_offset: Option<usize>,
-    /// Token count.
-    pub token_count: usize,
-    /// Content preview (first 200 chars).
-    pub content_preview: String,
-    /// Entity count extracted from this chunk.
-    pub entity_count: usize,
-    /// Relationship count extracted from this chunk.
-    pub relationship_count: usize,
-    /// Entity names extracted from this chunk.
-    pub entity_names: Vec<String>,
-    /// Document metadata snapshot.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub document_metadata: Option<serde_json::Value>,
-}
-
-// ============================================================================
-// Entity Provenance DTOs
-// ============================================================================
-
-/// Entity provenance response.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct EntityProvenanceResponse {
-    /// Entity ID.
-    pub entity_id: String,
-    /// Entity name.
-    pub entity_name: String,
-    /// Entity type.
-    pub entity_type: String,
-    /// Description.
-    pub description: Option<String>,
-    /// Source documents and chunks.
-    pub sources: Vec<EntitySourceInfo>,
-    /// Total extraction count.
-    pub total_extraction_count: usize,
-    /// Related entities.
-    pub related_entities: Vec<RelatedEntityInfo>,
-}
-
-/// Entity source information.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct EntitySourceInfo {
-    /// Document ID.
-    pub document_id: String,
-    /// Document name.
-    pub document_name: Option<String>,
-    /// Chunks containing this entity.
-    pub chunks: Vec<ChunkSourceInfo>,
-    /// When first extracted.
-    pub first_extracted_at: Option<String>,
-}
-
-/// Chunk source info.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct ChunkSourceInfo {
-    /// Chunk ID.
-    pub chunk_id: String,
-    /// Start line.
-    pub start_line: Option<usize>,
-    /// End line.
-    pub end_line: Option<usize>,
-    /// Source text excerpt.
-    pub source_text: Option<String>,
-}
-
-/// Related entity info.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct RelatedEntityInfo {
-    /// Entity ID.
-    pub entity_id: String,
-    /// Entity name.
-    pub entity_name: String,
-    /// Relationship type.
-    pub relationship_type: String,
-    /// Shared document count.
-    pub shared_documents: usize,
-}
+pub use chunk::*;
+pub use document::*;
+pub use entity::*;
+pub use provenance::*;
 
 // ============================================================================
 // Unit Tests
@@ -587,7 +292,6 @@ mod tests {
 
     #[test]
     fn test_chunk_detail_start_end_line_serialization() {
-        // Verify start_line/end_line are included when present
         let response = ChunkDetailResponse {
             chunk_id: "doc1-chunk-0".to_string(),
             document_id: "doc1".to_string(),
@@ -610,7 +314,6 @@ mod tests {
 
     #[test]
     fn test_chunk_detail_omits_none_lines() {
-        // Verify start_line/end_line are OMITTED when None (backward compat)
         let response = ChunkDetailResponse {
             chunk_id: "doc1-chunk-0".to_string(),
             document_id: "doc1".to_string(),
@@ -682,7 +385,6 @@ mod tests {
         };
 
         let json = serde_json::to_string(&response).unwrap();
-        // These should be omitted when None
         assert!(!json.contains("document_name"));
         assert!(!json.contains("document_type"));
         assert!(!json.contains("start_line"));
@@ -690,7 +392,6 @@ mod tests {
         assert!(!json.contains("start_offset"));
         assert!(!json.contains("end_offset"));
         assert!(!json.contains("document_metadata"));
-        // These should always be present
         assert!(json.contains("\"chunk_id\":\"doc1-chunk-0\""));
         assert!(json.contains("\"entity_count\":0"));
     }
