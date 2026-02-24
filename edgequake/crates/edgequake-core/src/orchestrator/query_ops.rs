@@ -5,8 +5,7 @@
 
 use crate::error::{Error, Result};
 use crate::types::{
-    ContextEntity, DocumentInfo, GraphStats, QueryContext,
-    QueryParams, QueryResult,
+    ContextEntity, DocumentInfo, GraphStats, QueryContext, QueryParams, QueryResult,
 };
 
 use super::EdgeQuake;
@@ -172,7 +171,6 @@ impl EdgeQuake {
 
         Ok(Vec::new())
     }
-
 
     /// Search entities by name using vector similarity.
     ///

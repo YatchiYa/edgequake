@@ -350,7 +350,6 @@ pub struct EdgeQuake {
     query_engine: Option<Arc<crate::query::QueryEngine>>,
 }
 
-
 impl EdgeQuake {
     /// Create a new EdgeQuake instance.
     pub fn new(config: EdgeQuakeConfig) -> Self {
@@ -533,7 +532,6 @@ impl std::fmt::Debug for EdgeQuake {
             .finish()
     }
 }
-
 
 #[cfg(test)]
 mod tests {
