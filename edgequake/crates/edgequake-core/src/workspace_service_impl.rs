@@ -795,12 +795,12 @@ impl WorkspaceService for WorkspaceServiceImpl {
             recorded_at: row.recorded_at,
             trigger_type: MetricsTriggerType::parse(&row.trigger_type)
                 .unwrap_or(MetricsTriggerType::Event),
-            document_count: row.document_count,
-            chunk_count: row.chunk_count,
-            entity_count: row.entity_count,
-            relationship_count: row.relationship_count,
-            embedding_count: row.embedding_count,
-            storage_bytes: row.storage_bytes,
+            document_count: row.document_count as usize,
+            chunk_count: row.chunk_count as usize,
+            entity_count: row.entity_count as usize,
+            relationship_count: row.relationship_count as usize,
+            embedding_count: row.embedding_count as usize,
+            storage_bytes: row.storage_bytes as usize,
         })
     }
 
@@ -853,12 +853,12 @@ impl WorkspaceService for WorkspaceServiceImpl {
                 recorded_at: row.recorded_at,
                 trigger_type: MetricsTriggerType::parse(&row.trigger_type)
                     .unwrap_or(MetricsTriggerType::Event),
-                document_count: row.document_count,
-                chunk_count: row.chunk_count,
-                entity_count: row.entity_count,
-                relationship_count: row.relationship_count,
-                embedding_count: row.embedding_count,
-                storage_bytes: row.storage_bytes,
+                document_count: row.document_count as usize,
+                chunk_count: row.chunk_count as usize,
+                entity_count: row.entity_count as usize,
+                relationship_count: row.relationship_count as usize,
+                embedding_count: row.embedding_count as usize,
+                storage_bytes: row.storage_bytes as usize,
             })
             .collect())
     }

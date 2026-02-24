@@ -96,8 +96,7 @@ use std::sync::Arc;
 
 use edgequake_llm::traits::{EmbeddingProvider, LLMProvider};
 use edgequake_pipeline::{
-    GleaningConfig, GleaningExtractor, KnowledgeGraphMerger, LLMExtractor, LLMSummarizer,
-    MergerConfig, Pipeline, PipelineConfig, SummarizerConfig,
+    GleaningConfig, GleaningExtractor, LLMExtractor, Pipeline, PipelineConfig,
 };
 use edgequake_storage::traits::{GraphStorage, KVStorage, VectorStorage};
 use serde::{Deserialize, Serialize};
@@ -105,10 +104,6 @@ use serde::{Deserialize, Serialize};
 // edgequake-query is intentionally not linked here to avoid workspace cycles.
 
 use crate::error::{Error, Result};
-use crate::types::{
-    ContextEntity, DocumentDeletionResult, DocumentInfo, EntityDeletionResult, GraphStats,
-    InsertResult, QueryContext, QueryParams, QueryResult,
-};
 
 mod deletion;
 mod ingestion;
@@ -544,6 +539,7 @@ impl std::fmt::Debug for EdgeQuake {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::QueryParams;
     use crate::QueryMode;
 
     #[test]
