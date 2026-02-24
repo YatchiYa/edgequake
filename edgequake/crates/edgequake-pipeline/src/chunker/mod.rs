@@ -27,377 +27,32 @@
 //!
 //! This module provides flexible text chunking with support for custom chunking functions.
 //! Users can implement the `ChunkingStrategy` trait to provide their own chunking logic.
+//!
+//! # Architecture
+//!
+//! - [`types`]: Core data types (ChunkResult, ChunkerConfig, TextChunk, ChunkingStrategy trait)
+//! - [`text_utils`]: String splitting, UTF-8 boundary, sentence detection utilities
+//! - [`strategies`]: Chunking strategy implementations (token, character, sentence, paragraph)
 
-use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
+mod types;
+pub mod text_utils;
+mod strategies;
+
 use std::sync::Arc;
 
 use crate::error::Result;
 
-/// Result of a custom chunking operation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChunkResult {
-    /// The chunk text content.
-    pub content: String,
-    /// Approximate token count.
-    pub tokens: usize,
-    /// Zero-based index indicating the chunk's order in the document.
-    pub chunk_order_index: usize,
-}
+// Re-export types
+pub use types::{ChunkResult, ChunkingStrategy, ChunkerConfig, TextChunk};
 
-/// Trait for custom chunking strategies.
-///
-/// Implement this trait to provide your own chunking logic for document processing.
-/// This allows for flexible chunking strategies such as:
-/// - Semantic chunking (based on meaning/topics)
-/// - Fixed-size chunking with custom separators
-/// - Language-specific chunking (code, markdown, etc.)
-#[async_trait]
-pub trait ChunkingStrategy: Send + Sync {
-    /// Chunk the given text content into smaller pieces.
-    ///
-    /// # Arguments
-    /// * `content` - The full text content to chunk
-    /// * `config` - The chunking configuration
-    ///
-    /// # Returns
-    /// A vector of chunk results with content, token count, and order index
-    async fn chunk(&self, content: &str, config: &ChunkerConfig) -> Result<Vec<ChunkResult>>;
+// Re-export text utilities needed by external consumers
+pub use text_utils::calculate_line_numbers;
 
-    /// Get the name of this chunking strategy.
-    fn name(&self) -> &str;
-}
-
-/// Configuration for the chunker.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChunkerConfig {
-    /// Target chunk size in tokens.
-    pub chunk_size: usize,
-
-    /// Overlap between chunks in tokens.
-    pub chunk_overlap: usize,
-
-    /// Minimum chunk size (won't create chunks smaller than this).
-    pub min_chunk_size: usize,
-
-    /// Separator characters for splitting.
-    pub separators: Vec<String>,
-
-    /// Whether to preserve sentence boundaries.
-    pub preserve_sentences: bool,
-
-    /// Optional character to split on first (e.g., "\n" for line-by-line).
-    pub split_by_character: Option<String>,
-
-    /// If true, split only on the specified character, don't apply token limits.
-    pub split_by_character_only: bool,
-}
-
-impl Default for ChunkerConfig {
-    fn default() -> Self {
-        Self {
-            chunk_size: 1200,
-            chunk_overlap: 100,
-            min_chunk_size: 100,
-            separators: vec![
-                "\n\n".to_string(),
-                "\n".to_string(),
-                ". ".to_string(),
-                "! ".to_string(),
-                "? ".to_string(),
-                "; ".to_string(),
-                ", ".to_string(),
-                " ".to_string(),
-            ],
-            preserve_sentences: true,
-            split_by_character: None,
-            split_by_character_only: false,
-        }
-    }
-}
-
-/// A chunk of text with metadata.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TextChunk {
-    /// Unique identifier for the chunk.
-    pub id: String,
-
-    /// The chunk text content.
-    pub content: String,
-
-    /// Index of this chunk in the document.
-    pub index: usize,
-
-    /// Character offset from the start of the document.
-    pub start_offset: usize,
-
-    /// Character offset to the end of the chunk.
-    pub end_offset: usize,
-
-    /// Starting line number (1-based) in the original document.
-    pub start_line: usize,
-
-    /// Ending line number (1-based, inclusive) in the original document.
-    pub end_line: usize,
-
-    /// Approximate token count.
-    pub token_count: usize,
-
-    /// Chunk embedding.
-    pub embedding: Option<Vec<f32>>,
-}
-
-impl TextChunk {
-    /// Create a new text chunk.
-    pub fn new(
-        id: impl Into<String>,
-        content: impl Into<String>,
-        index: usize,
-        start_offset: usize,
-        end_offset: usize,
-    ) -> Self {
-        let content = content.into();
-        let token_count = estimate_tokens(&content);
-        Self {
-            id: id.into(),
-            content,
-            index,
-            start_offset,
-            end_offset,
-            start_line: 1, // Default, should be set via with_line_numbers()
-            end_line: 1,   // Default, should be set via with_line_numbers()
-            token_count,
-            embedding: None,
-        }
-    }
-
-    /// Create a new text chunk with line numbers.
-    pub fn with_line_numbers(
-        id: impl Into<String>,
-        content: impl Into<String>,
-        index: usize,
-        start_offset: usize,
-        end_offset: usize,
-        start_line: usize,
-        end_line: usize,
-    ) -> Self {
-        let content = content.into();
-        let token_count = estimate_tokens(&content);
-        Self {
-            id: id.into(),
-            content,
-            index,
-            start_offset,
-            end_offset,
-            start_line,
-            end_line,
-            token_count,
-            embedding: None,
-        }
-    }
-
-    /// Set line numbers after creation.
-    pub fn set_line_numbers(&mut self, start_line: usize, end_line: usize) {
-        self.start_line = start_line;
-        self.end_line = end_line;
-    }
-}
-
-/// Calculate line numbers for a chunk based on character offsets.
-///
-/// # Arguments
-/// * `full_text` - The complete document text
-/// * `start_offset` - Starting character offset of the chunk
-/// * `end_offset` - Ending character offset of the chunk
-///
-/// # Returns
-/// A tuple of (start_line, end_line), both 1-based
-pub fn calculate_line_numbers(
-    full_text: &str,
-    start_offset: usize,
-    end_offset: usize,
-) -> (usize, usize) {
-    // Ensure offsets are on valid char boundaries
-    let safe_start = floor_char_boundary(full_text, start_offset.min(full_text.len()));
-    let safe_end = floor_char_boundary(full_text, end_offset.min(full_text.len()));
-
-    // Count newlines before the start offset to get start line
-    let before_chunk = &full_text[..safe_start];
-    let start_line = before_chunk.chars().filter(|&c| c == '\n').count() + 1;
-
-    // Count newlines within the chunk to get end line
-    let chunk_text = &full_text[safe_start..safe_end];
-    let lines_in_chunk = chunk_text.chars().filter(|&c| c == '\n').count();
-    let end_line = start_line + lines_in_chunk;
-
-    (start_line, end_line)
-}
-
-/// Estimate token count (rough approximation: 1 token ≈ 4 chars).
-pub(super) fn estimate_tokens(text: &str) -> usize {
-    (text.len() as f32 / 4.0).ceil() as usize
-}
-
-
-mod strategies;
-
+// Re-export strategies
 pub use strategies::{
-    TokenBasedChunking, CharacterBasedChunking,
-    SentenceBoundaryChunking, ParagraphBoundaryChunking,
+    CharacterBasedChunking, ParagraphBoundaryChunking, SentenceBoundaryChunking,
+    TokenBasedChunking,
 };
-
-pub(super) fn split_into_sentences(text: &str) -> Vec<String> {
-    let mut sentences = Vec::new();
-    let mut current = String::new();
-
-    for c in text.chars() {
-        current.push(c);
-
-        // Check for sentence endings (simple heuristic)
-        if c == '.' || c == '!' || c == '?' {
-            // Avoid splitting on abbreviations like "Dr." "Mr." "Inc."
-            let trimmed = current.trim();
-            if trimmed.len() >= 3 {
-                // Check if previous word is an abbreviation
-                let words: Vec<&str> = trimmed.split_whitespace().collect();
-                if let Some(last_word) = words.last() {
-                    // Common abbreviations to NOT split on
-                    let abbrevs = [
-                        "Dr.", "Mr.", "Mrs.", "Ms.", "Jr.", "Sr.", "Inc.", "Ltd.", "etc.", "vs.",
-                        "e.g.", "i.e.", "No.", "St.",
-                    ];
-                    if !abbrevs.contains(last_word) {
-                        sentences.push(current.trim().to_string());
-                        current = String::new();
-                    }
-                }
-            }
-        }
-    }
-
-    // Don't forget trailing text without sentence ending
-    if !current.trim().is_empty() {
-        sentences.push(current.trim().to_string());
-    }
-
-    sentences
-}
-
-/// Take sentences from buffer to achieve approximately target overlap tokens.
-pub(super) fn take_overlap_sentences(buffer: &[String], target_tokens: usize) -> Vec<String> {
-    let mut overlap = Vec::new();
-    let mut tokens = 0;
-
-    // Take from end of buffer
-    for sentence in buffer.iter().rev() {
-        let sentence_tokens = estimate_tokens(sentence);
-        if tokens + sentence_tokens > target_tokens && !overlap.is_empty() {
-            break;
-        }
-        overlap.insert(0, sentence.clone());
-        tokens += sentence_tokens;
-    }
-
-    overlap
-}
-
-/// Find the nearest valid UTF-8 char boundary at or before the given byte position.
-pub(super) fn floor_char_boundary(s: &str, index: usize) -> usize {
-    if index >= s.len() {
-        return s.len();
-    }
-    // Walk backwards to find a valid char boundary
-    let mut i = index;
-    while i > 0 && !s.is_char_boundary(i) {
-        i -= 1;
-    }
-    i
-}
-
-/// Find the nearest valid UTF-8 char boundary at or after the given byte position.
-pub(super) fn ceil_char_boundary(s: &str, index: usize) -> usize {
-    if index >= s.len() {
-        return s.len();
-    }
-    // Walk forward to find a valid char boundary
-    let mut i = index;
-    while i < s.len() && !s.is_char_boundary(i) {
-        i += 1;
-    }
-    i
-}
-
-/// Internal function to split text.
-pub(super) fn split_text_internal(
-    text: &str,
-    target_size: usize,
-    overlap: usize,
-    min_size: usize,
-    separators: &[String],
-) -> Vec<(String, usize, usize)> {
-    if text.len() <= target_size {
-        return vec![(text.to_string(), 0, text.len())];
-    }
-
-    let mut chunks = Vec::new();
-    let mut current_pos = 0;
-
-    while current_pos < text.len() {
-        // Ensure current_pos is on a char boundary
-        current_pos = ceil_char_boundary(text, current_pos);
-
-        let remaining = &text[current_pos..];
-
-        if remaining.len() <= target_size {
-            chunks.push((remaining.to_string(), current_pos, text.len()));
-            break;
-        }
-
-        // Calculate end position, ensuring it's on a char boundary
-        let end_pos = floor_char_boundary(text, current_pos + target_size);
-        let chunk_text = &text[current_pos..end_pos.min(text.len())];
-
-        let split_point = find_split_point_internal(chunk_text, target_size, separators);
-        // Ensure actual_end is on a char boundary
-        let actual_end = floor_char_boundary(text, current_pos + split_point);
-
-        let chunk_content = text[current_pos..actual_end].to_string();
-
-        if chunk_content.len() >= min_size {
-            chunks.push((chunk_content, current_pos, actual_end));
-        }
-
-        // Calculate overlap position, ensuring it's on a char boundary
-        let overlap_pos = actual_end.saturating_sub(overlap);
-        current_pos = ceil_char_boundary(text, overlap_pos);
-
-        if current_pos >= actual_end {
-            current_pos = actual_end;
-        }
-    }
-
-    chunks
-}
-
-/// Internal function to find split point.
-pub(super) fn find_split_point_internal(text: &str, target: usize, separators: &[String]) -> usize {
-    // Ensure search boundaries are on valid char boundaries
-    let search_start = floor_char_boundary(text, target.saturating_sub(target / 4));
-    let search_end = floor_char_boundary(text, target.min(text.len()));
-
-    // Only search if we have a valid range
-    if search_start >= search_end {
-        return floor_char_boundary(text, target.min(text.len()));
-    }
-
-    for separator in separators {
-        if let Some(pos) = text[search_start..search_end].rfind(separator.as_str()) {
-            return search_start + pos + separator.len();
-        }
-    }
-
-    floor_char_boundary(text, target.min(text.len()))
-}
 
 /// Text chunker for splitting documents.
 pub struct Chunker {
@@ -503,7 +158,7 @@ impl Chunker {
         overlap: usize,
         min_size: usize,
     ) -> Vec<(String, usize, usize)> {
-        split_text_internal(
+        text_utils::split_text_internal(
             text,
             target_size,
             overlap,
@@ -515,7 +170,7 @@ impl Chunker {
     /// Find the best split point near the target size.
     #[allow(dead_code)]
     fn find_split_point(&self, text: &str, target: usize) -> usize {
-        find_split_point_internal(text, target, &self.config.separators)
+        text_utils::find_split_point_internal(text, target, &self.config.separators)
     }
 
     /// Get the chunker configuration.
@@ -541,6 +196,9 @@ impl Default for Chunker {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::text_utils::{
+        ceil_char_boundary, estimate_tokens, floor_char_boundary, split_into_sentences,
+    };
 
     #[test]
     fn test_basic_chunking() {
