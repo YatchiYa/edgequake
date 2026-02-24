@@ -12,9 +12,7 @@
 
 mod cost;
 
-pub use cost::{
-    default_model_pricing, CostBreakdown, CostTracker, ModelPricing, OperationCost,
-};
+pub use cost::{default_model_pricing, CostBreakdown, CostTracker, ModelPricing, OperationCost};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

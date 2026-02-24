@@ -5,9 +5,9 @@
 use async_trait::async_trait;
 use edgequake_llm::traits::{ChatMessage, CompletionOptions};
 
+use super::{EntityExtractor, ExtractionResult};
 use crate::chunker::TextChunk;
 use crate::error::{PipelineError, Result};
-use super::{EntityExtractor, ExtractionResult};
 
 /// SOTA LLM-based entity extractor using tuple-format prompts.
 ///

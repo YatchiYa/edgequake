@@ -254,7 +254,6 @@ impl EdgeQuake {
     /// 2. Delete the node itself from graph storage
     /// 3. Delete the entity embedding from vector storage
     pub async fn delete_entity(&self, entity_name: &str) -> Result<EntityDeletionResult> {
-
         if !self.initialized {
             return Err(Error::not_initialized("EdgeQuake not initialized"));
         }

@@ -157,10 +157,10 @@ pub use workspace_resolve::{get_workspace_embedding_provider, get_workspace_vect
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::extract::State;
-    use axum::Json;
     use crate::middleware::TenantContext;
     use crate::state::AppState;
+    use axum::extract::State;
+    use axum::Json;
 
     #[tokio::test]
     async fn test_query_validation() {

@@ -5,9 +5,12 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+use super::{
+    extract_json_from_response, EntityExtractor, ExtractedEntity, ExtractedRelationship,
+    ExtractionResult,
+};
 use crate::chunker::TextChunk;
 use crate::error::{PipelineError, Result};
-use super::{EntityExtractor, ExtractedEntity, ExtractedRelationship, ExtractionResult, extract_json_from_response};
 
 /// Configuration for gleaning (re-extraction).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -296,4 +299,3 @@ impl EntityExtractor for GleaningExtractor {
         self.llm_provider.model()
     }
 }
-
