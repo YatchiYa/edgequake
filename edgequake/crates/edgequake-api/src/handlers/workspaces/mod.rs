@@ -40,11 +40,11 @@
 //!
 //! # Module Organization (SRP)
 //!
-//! - [`helpers`]: Stats cache, slug generation, workspace-to-response conversion
-//! - [`tenants`]: Tenant CRUD (create, list, get, update, delete)
-//! - [`workspace_crud`]: Workspace CRUD (create, list, get, update, delete)
-//! - [`stats`]: Workspace statistics, metrics history, metrics snapshots
-//! - [`bulk_ops`]: Rebuild embeddings, rebuild knowledge graph, reprocess all docs
+//! - `helpers`: Stats cache, slug generation, workspace-to-response conversion
+//! - `tenants`: Tenant CRUD (create, list, get, update, delete)
+//! - `workspace_crud`: Workspace CRUD (create, list, get, update, delete)
+//! - `stats`: Workspace statistics, metrics history, metrics snapshots
+//! - `bulk_ops`: Rebuild embeddings, rebuild knowledge graph, reprocess all docs
 
 // Sub-modules: each owns a single responsibility
 mod bulk_ops;
