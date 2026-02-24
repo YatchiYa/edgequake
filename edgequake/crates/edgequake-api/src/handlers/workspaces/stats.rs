@@ -7,11 +7,11 @@ use serde::Deserialize;
 use std::time::Instant;
 use uuid::Uuid;
 
+use super::helpers::{CachedStats, STATS_CACHE_TTL, WORKSPACE_STATS_CACHE};
 use crate::error::ApiError;
-use crate::state::AppState;
 use crate::handlers::workspaces_types::*;
+use crate::state::AppState;
 use edgequake_core::MetricsTriggerType;
-use super::helpers::{WORKSPACE_STATS_CACHE, STATS_CACHE_TTL, CachedStats};
 
 /// Get workspace statistics.
 ///

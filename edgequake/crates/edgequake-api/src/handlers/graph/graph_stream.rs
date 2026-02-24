@@ -160,10 +160,7 @@ pub async fn stream_graph(
                         Err(e) => {
                             let _ = tx
                                 .send(GraphStreamEvent::Error {
-                                    message: format!(
-                                        "Failed to fetch nodes after timeout: {}",
-                                        e
-                                    ),
+                                    message: format!("Failed to fetch nodes after timeout: {}", e),
                                 })
                                 .await;
                             return;
