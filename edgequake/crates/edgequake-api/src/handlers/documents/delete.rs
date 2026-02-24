@@ -9,10 +9,10 @@ use edgequake_core::MetricsTriggerType;
 #[cfg(feature = "postgres")]
 use edgequake_storage::ListPdfFilter;
 
-use crate::handlers::documents_types::*;
-use super::storage_helpers::{extract_source_docs, get_workspace_vector_storage_strict};
 #[allow(unused_imports)]
 use super::storage_helpers::get_workspace_vector_storage_with_fallback;
+use super::storage_helpers::{extract_source_docs, get_workspace_vector_storage_strict};
+use crate::handlers::documents_types::*;
 
 /// Delete a document by ID.
 #[utoipa::path(
