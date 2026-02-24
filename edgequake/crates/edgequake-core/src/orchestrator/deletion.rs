@@ -149,7 +149,6 @@ impl EdgeQuake {
     /// Analyze the impact of deleting a document before actually deleting it.
     ///
     /// # Implements
-
     ///
     /// - **UC0006**: Preview Document Deletion Impact
     /// - **FEAT0012**: Deletion Impact Analysis
