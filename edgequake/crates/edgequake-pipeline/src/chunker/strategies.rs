@@ -9,8 +9,8 @@
 use async_trait::async_trait;
 
 use crate::error::Result;
-use super::{
-    ChunkingStrategy, ChunkerConfig, ChunkResult,
+use super::types::{ChunkingStrategy, ChunkerConfig, ChunkResult};
+use super::text_utils::{
     estimate_tokens, split_into_sentences, take_overlap_sentences,
     split_text_internal,
 };
