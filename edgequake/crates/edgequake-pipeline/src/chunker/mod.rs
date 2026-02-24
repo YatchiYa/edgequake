@@ -30,9 +30,9 @@
 //!
 //! # Architecture
 //!
-//! - [`types`]: Core data types (ChunkResult, ChunkerConfig, TextChunk, ChunkingStrategy trait)
+//! - `types`: Core data types (ChunkResult, ChunkerConfig, TextChunk, ChunkingStrategy trait)
 //! - [`text_utils`]: String splitting, UTF-8 boundary, sentence detection utilities
-//! - [`strategies`]: Chunking strategy implementations (token, character, sentence, paragraph)
+//! - `strategies`: Chunking strategy implementations (token, character, sentence, paragraph)
 
 mod strategies;
 pub mod text_utils;

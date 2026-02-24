@@ -8,7 +8,7 @@
 //! # Architecture
 //!
 //! - Progress tracking: pipeline stage types, ProgressTracker
-//! - [`cost`]: LLM API cost estimation with per-model pricing
+//! - `cost`: LLM API cost estimation with per-model pricing
 
 mod cost;
 
