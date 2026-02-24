@@ -3,6 +3,16 @@
 //! Provides endpoints for querying document lineage, including
 //! entity provenance and extraction history.
 //!
+//! ## Sub-modules
+//!
+//! | Module              | Responsibility                              |
+//! |---------------------|---------------------------------------------|
+//! | `cache`             | KV response cache (OODA-23) with TTL + LRU  |
+//! | `chunk_detail`      | Chunk detail endpoint (WEBUI-006)            |
+//! | `entity_provenance` | Entity provenance tracing endpoint           |
+//! | `queries`           | Lineage query handlers                       |
+//! | `export`            | Lineage export (CSV/JSON)                    |
+//!
 //! ## Implements
 //!
 //! - **FEAT0540**: Chunk detail retrieval with source tracking
@@ -23,15 +33,18 @@
 //! - **BR0541**: Lineage queries must respect workspace isolation
 //! - **BR0542**: Extraction metadata must include version info
 
-use axum::{
-    extract::{Path, State},
-    Json,
-};
+mod cache;
+mod chunk_detail;
+mod entity_provenance;
+pub mod export;
+pub mod queries;
 
-use crate::error::{ApiError, ApiResult};
-use crate::handlers::isolation::{properties_match_tenant_context, verify_document_access};
-use crate::middleware::TenantContext;
-use crate::state::AppState;
+pub use cache::invalidate_lineage_cache;
+// WHY: Glob re-exports include utoipa-generated __path_* structs for OpenAPI
+pub use chunk_detail::*;
+pub use entity_provenance::*;
+pub use export::*;
+pub use queries::*;
 
 // Re-export DTOs for backward compatibility
 pub use crate::handlers::lineage_types::{
@@ -42,454 +55,14 @@ pub use crate::handlers::lineage_types::{
     RelatedEntityInfo, RelationshipSummaryResponse, SourceDocumentInfo,
 };
 
-// ============================================================================
-// Lineage Response Cache (OODA-23)
-// ============================================================================
-
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::time::{Duration, Instant};
-use tokio::sync::RwLock;
-
-/// WHY: Lineage data rarely changes after document processing completes.
-/// Caching avoids repeated KV lookups for the same document, providing
-/// sub-millisecond response times for dashboard and UI polling scenarios.
-/// TTL of 120s balances freshness vs. performance (T1: P95 < 200ms).
-const LINEAGE_CACHE_TTL: Duration = Duration::from_secs(120);
-
-/// Maximum entries before evicting oldest. Prevents unbounded memory growth.
-const LINEAGE_CACHE_MAX_ENTRIES: usize = 500;
-
-#[derive(Clone)]
-struct CachedLineage {
-    data: serde_json::Value,
-    cached_at: Instant,
-}
-
-type LineageCache = Arc<RwLock<HashMap<String, CachedLineage>>>;
-
-lazy_static::lazy_static! {
-    static ref LINEAGE_KV_CACHE: LineageCache = Arc::new(RwLock::new(HashMap::new()));
-}
-
-/// Read from lineage cache or fetch from KV storage.
-///
-/// WHY: Lineage queries hit KV storage on every request. After a document is
-/// processed, the lineage data is immutable until reprocessing. Caching the
-/// result avoids redundant I/O and meets the T1 latency target (<200ms P95).
-async fn cached_kv_get(
-    kv: &dyn edgequake_storage::traits::KVStorage,
-    key: &str,
-) -> Result<Option<serde_json::Value>, ApiError> {
-    // Check cache first
-    {
-        let cache = LINEAGE_KV_CACHE.read().await;
-        if let Some(entry) = cache.get(key) {
-            if entry.cached_at.elapsed() < LINEAGE_CACHE_TTL {
-                return Ok(Some(entry.data.clone()));
-            }
-        }
-    }
-
-    // Cache miss — fetch from storage
-    let value = kv.get_by_id(key).await?;
-
-    // Populate cache on hit
-    if let Some(ref v) = value {
-        let mut cache = LINEAGE_KV_CACHE.write().await;
-        // WHY: Evict oldest entries when cache is full to prevent unbounded growth
-        if cache.len() >= LINEAGE_CACHE_MAX_ENTRIES {
-            // Simple eviction: remove entries older than TTL first
-            cache.retain(|_, entry| entry.cached_at.elapsed() < LINEAGE_CACHE_TTL);
-            // If still too full, clear half the cache
-            if cache.len() >= LINEAGE_CACHE_MAX_ENTRIES {
-                let keys_to_remove: Vec<String> =
-                    cache.keys().take(cache.len() / 2).cloned().collect();
-                for k in keys_to_remove {
-                    cache.remove(&k);
-                }
-            }
-        }
-        cache.insert(
-            key.to_string(),
-            CachedLineage {
-                data: v.clone(),
-                cached_at: Instant::now(),
-            },
-        );
-    }
-
-    Ok(value)
-}
-
-/// Invalidate a lineage cache entry.
-///
-/// WHY: Called after document reprocessing to ensure fresh data is served.
-/// Without invalidation, stale lineage data would persist until TTL expires.
-#[allow(dead_code)]
-pub async fn invalidate_lineage_cache(document_id: &str) {
-    let mut cache = LINEAGE_KV_CACHE.write().await;
-    let lineage_key = format!("{}-lineage", document_id);
-    let metadata_key = format!("{}-metadata", document_id);
-    cache.remove(&lineage_key);
-    cache.remove(&metadata_key);
-    tracing::debug!(
-        document_id = %document_id,
-        "Invalidated lineage cache entries"
-    );
-}
-
-// ============================================================================
-// Chunk Detail Endpoint (WebUI Spec WEBUI-006)
-// ============================================================================
-
-/// Get chunk detail.
-#[utoipa::path(
-    get,
-    path = "/api/v1/chunks/{chunk_id}",
-    tag = "Lineage",
-    params(
-        ("chunk_id" = String, Path, description = "Chunk ID to query")
-    ),
-    responses(
-        (status = 200, description = "Chunk detail", body = ChunkDetailResponse),
-        (status = 404, description = "Chunk not found")
-    )
-)]
-pub async fn get_chunk_detail(
-    State(state): State<AppState>,
-    tenant_ctx: TenantContext,
-    Path(chunk_id): Path<String>,
-) -> ApiResult<Json<ChunkDetailResponse>> {
-    // Look up chunk in KV storage
-    let chunk_data = state
-        .kv_storage
-        .get_by_id(&chunk_id)
-        .await?
-        .ok_or_else(|| ApiError::NotFound(format!("Chunk '{}' not found", chunk_id)))?;
-
-    // Parse chunk data
-    let content = chunk_data
-        .get("content")
-        .and_then(|v: &serde_json::Value| v.as_str())
-        .unwrap_or("")
-        .to_string();
-
-    // OODA-07: Read index field (stored as "index" by OODA-05, fallback to "chunk_index" for legacy)
-    let chunk_index = chunk_data
-        .get("index")
-        .or_else(|| chunk_data.get("chunk_index"))
-        .and_then(|v: &serde_json::Value| v.as_u64())
-        .unwrap_or(0) as usize;
-
-    let token_count = chunk_data
-        .get("token_count")
-        .and_then(|v: &serde_json::Value| v.as_u64())
-        .unwrap_or(0) as usize;
-
-    let start_offset = chunk_data
-        .get("start_offset")
-        .and_then(|v: &serde_json::Value| v.as_u64())
-        .unwrap_or(0) as usize;
-
-    let end_offset = chunk_data
-        .get("end_offset")
-        .and_then(|v: &serde_json::Value| v.as_u64())
-        .unwrap_or(0) as usize;
-
-    // OODA-07: Read line numbers from chunk KV data (stored by OODA-05)
-    let start_line = chunk_data
-        .get("start_line")
-        .and_then(|v: &serde_json::Value| v.as_u64())
-        .map(|v| v as usize);
-
-    let end_line = chunk_data
-        .get("end_line")
-        .and_then(|v: &serde_json::Value| v.as_u64())
-        .map(|v| v as usize);
-
-    // WHY: Chunk IDs follow a deterministic format "{document_id}-chunk-{N}".
-    // Extracting the document ID from this format avoids an extra KV lookup
-    // and maintains the F8 bidirectional chain (Document ↔ Chunk).
-    let document_id = if chunk_id.contains("-chunk-") {
-        chunk_id
-            .split("-chunk-")
-            .next()
-            .unwrap_or(&chunk_id)
-            .to_string()
-    } else {
-        chunk_id.clone()
-    };
-
-    // SECURITY: Verify the parent document belongs to the requesting tenant/workspace.
-    // Returns 404 (not 403) to avoid leaking cross-tenant document IDs.
-    let doc_metadata =
-        verify_document_access(state.kv_storage.as_ref(), &document_id, &tenant_ctx).await?;
-
-    // Get document name from already-fetched metadata
-    let doc_name = doc_metadata
-        .get("title")
-        .and_then(|v: &serde_json::Value| v.as_str())
-        .map(|s| s.to_string());
-
-    // Find entities extracted from this chunk
-    let all_nodes = state.graph_storage.get_all_nodes().await?;
-    let mut entities: Vec<ExtractedEntityInfo> = Vec::new();
-
-    for node in &all_nodes {
-        if let Some(source_id) = node.properties.get("source_id").and_then(|v| v.as_str()) {
-            if source_id.contains(&chunk_id) {
-                let entity_type = node
-                    .properties
-                    .get("entity_type")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("unknown")
-                    .to_string();
-                let description = node
-                    .properties
-                    .get("description")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-
-                entities.push(ExtractedEntityInfo {
-                    id: node.id.clone(),
-                    name: node.id.clone(),
-                    entity_type,
-                    description,
-                });
-            }
-        }
-    }
-
-    // Find relationships from this chunk
-    let all_edges = state.graph_storage.get_all_edges().await?;
-    let mut relationships: Vec<ExtractedRelationshipInfo> = Vec::new();
-
-    for edge in all_edges {
-        if let Some(source_id) = edge.properties.get("source_id").and_then(|v| v.as_str()) {
-            if source_id.contains(&chunk_id) {
-                let relation_type = edge
-                    .properties
-                    .get("keywords")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("related_to")
-                    .to_string();
-                let description = edge
-                    .properties
-                    .get("description")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-
-                relationships.push(ExtractedRelationshipInfo {
-                    source_name: edge.source.clone(),
-                    target_name: edge.target.clone(),
-                    relation_type,
-                    description,
-                });
-            }
-        }
-    }
-
-    Ok(Json(ChunkDetailResponse {
-        chunk_id,
-        document_id,
-        document_name: doc_name,
-        content,
-        index: chunk_index,
-        char_range: CharRange {
-            start: start_offset,
-            end: end_offset,
-        },
-        start_line,
-        end_line,
-        token_count,
-        entities,
-        relationships,
-        extraction_metadata: None, // Would need to be stored during extraction
-    }))
-}
-
-/// Get entity provenance.
-#[utoipa::path(
-    get,
-    path = "/api/v1/entities/{entity_id}/provenance",
-    tag = "Lineage",
-    params(
-        ("entity_id" = String, Path, description = "Entity ID to query")
-    ),
-    responses(
-        (status = 200, description = "Entity provenance", body = EntityProvenanceResponse),
-        (status = 404, description = "Entity not found")
-    )
-)]
-pub async fn get_entity_provenance(
-    State(state): State<AppState>,
-    tenant_ctx: TenantContext,
-    Path(entity_id): Path<String>,
-) -> ApiResult<Json<EntityProvenanceResponse>> {
-    // WHY: Entity names are normalized to UPPERCASE_WITH_UNDERSCORES during
-    // extraction (see entity_extraction.rs). We must apply the same normalization
-    // here so lookups match stored graph nodes regardless of user input casing.
-    let normalized_id = entity_id.to_uppercase().replace(' ', "_");
-
-    // Look up entity
-    let node = state
-        .graph_storage
-        .get_node(&normalized_id)
-        .await?
-        .ok_or_else(|| {
-            ApiError::NotFound(format!(
-                "Entity '{}' not found (normalized: '{}'). \
-                 Entity names are stored as UPPERCASE_WITH_UNDERSCORES.",
-                entity_id, normalized_id
-            ))
-        })?;
-
-    // SECURITY: Verify the entity belongs to the requesting tenant/workspace.
-    // Returns 404 (not 403) to avoid leaking cross-tenant entity names.
-    if !properties_match_tenant_context(&node.properties, &tenant_ctx) {
-        return Err(ApiError::NotFound(format!(
-            "Entity '{}' not found",
-            entity_id
-        )));
-    }
-
-    let entity_type = node
-        .properties
-        .get("entity_type")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown")
-        .to_string();
-
-    let description = node
-        .properties
-        .get("description")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-
-    // Parse source_id to find all source documents
-    let source_id = node
-        .properties
-        .get("source_id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-
-    let sources: Vec<String> = source_id.split('|').map(|s| s.to_string()).collect();
-    let sources_count = sources.len();
-    let mut doc_map: std::collections::HashMap<String, Vec<ChunkSourceInfo>> =
-        std::collections::HashMap::new();
-
-    for source in &sources {
-        if source.contains("-chunk-") {
-            if let Some(pos) = source.find("-chunk-") {
-                let doc_id = &source[..pos];
-                doc_map
-                    .entry(doc_id.to_string())
-                    .or_default()
-                    .push(ChunkSourceInfo {
-                        chunk_id: source.clone(),
-                        start_line: None,
-                        end_line: None,
-                        source_text: None,
-                    });
-            }
-        }
-    }
-
-    // OODA-27: Resolve document names and chunk positions from cached KV storage
-    // WHY: Without document names, the UI shows UUIDs which are not user-friendly.
-    // Using cached_kv_get avoids repeated I/O for documents with many entities.
-    let mut entity_sources: Vec<EntitySourceInfo> = Vec::with_capacity(doc_map.len());
-    for (doc_id, mut chunks) in doc_map {
-        // Resolve document name from metadata
-        let metadata_key = format!("{}-metadata", doc_id);
-        let doc_name =
-            if let Ok(Some(meta)) = cached_kv_get(state.kv_storage.as_ref(), &metadata_key).await {
-                meta.get("title")
-                    .or_else(|| meta.get("file_name"))
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-            } else {
-                None
-            };
-
-        // Resolve chunk line positions from KV storage
-        for chunk in &mut chunks {
-            if let Ok(Some(chunk_data)) =
-                cached_kv_get(state.kv_storage.as_ref(), &chunk.chunk_id).await
-            {
-                chunk.start_line = chunk_data
-                    .get("start_line")
-                    .and_then(|v| v.as_u64())
-                    .map(|v| v as usize);
-                chunk.end_line = chunk_data
-                    .get("end_line")
-                    .and_then(|v| v.as_u64())
-                    .map(|v| v as usize);
-            }
-        }
-
-        entity_sources.push(EntitySourceInfo {
-            document_id: doc_id,
-            document_name: doc_name,
-            chunks,
-            first_extracted_at: None,
-        });
-    }
-
-    // Find related entities
-    let all_edges = state.graph_storage.get_all_edges().await?;
-    let mut related: Vec<RelatedEntityInfo> = Vec::new();
-
-    for edge in all_edges {
-        if edge.source == normalized_id {
-            related.push(RelatedEntityInfo {
-                entity_id: edge.target.clone(),
-                entity_name: edge.target.clone(),
-                relationship_type: edge
-                    .properties
-                    .get("keywords")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("related_to")
-                    .to_string(),
-                shared_documents: 1,
-            });
-        } else if edge.target == normalized_id {
-            related.push(RelatedEntityInfo {
-                entity_id: edge.source.clone(),
-                entity_name: edge.source.clone(),
-                relationship_type: edge
-                    .properties
-                    .get("keywords")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("related_to")
-                    .to_string(),
-                shared_documents: 1,
-            });
-        }
-    }
-
-    Ok(Json(EntityProvenanceResponse {
-        entity_id: normalized_id.clone(),
-        entity_name: normalized_id,
-        entity_type,
-        description,
-        sources: entity_sources,
-        total_extraction_count: sources_count,
-        related_entities: related,
-    }))
-}
-
-pub mod queries;
-pub mod export;
-
-pub use queries::*;
-pub use export::*;
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::cache::{
+        CachedLineage, LINEAGE_CACHE_MAX_ENTRIES, LINEAGE_CACHE_TTL, LINEAGE_KV_CACHE,
+    };
     use super::export::lineage_to_csv;
+    use std::time::Instant;
 
     #[test]
     fn test_entity_lineage_response_serialization() {

@@ -8,7 +8,7 @@ use crate::error::ApiError;
 use crate::handlers::isolation::verify_document_access;
 use crate::middleware::TenantContext;
 use crate::state::AppState;
-use super::cached_kv_get;
+use super::cache::cached_kv_get;
 
 /// Query parameters for lineage export.
 #[derive(Debug, serde::Deserialize, serde::Serialize, utoipa::IntoParams, utoipa::ToSchema)]
