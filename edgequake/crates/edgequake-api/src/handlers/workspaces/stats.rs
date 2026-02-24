@@ -340,12 +340,12 @@ pub async fn get_metrics_history(
                 id: s.id,
                 recorded_at: s.recorded_at.to_rfc3339(),
                 trigger_type: s.trigger_type.to_string(),
-                document_count: s.document_count,
-                chunk_count: s.chunk_count,
-                entity_count: s.entity_count,
-                relationship_count: s.relationship_count,
-                embedding_count: s.embedding_count,
-                storage_bytes: s.storage_bytes,
+                document_count: s.document_count as i64,
+                chunk_count: s.chunk_count as i64,
+                entity_count: s.entity_count as i64,
+                relationship_count: s.relationship_count as i64,
+                embedding_count: s.embedding_count as i64,
+                storage_bytes: s.storage_bytes as i64,
             })
             .collect(),
     };
@@ -406,12 +406,12 @@ pub async fn trigger_metrics_snapshot(
         id: snapshot.id,
         recorded_at: snapshot.recorded_at.to_rfc3339(),
         trigger_type: snapshot.trigger_type.to_string(),
-        document_count: snapshot.document_count,
-        chunk_count: snapshot.chunk_count,
-        entity_count: snapshot.entity_count,
-        relationship_count: snapshot.relationship_count,
-        embedding_count: snapshot.embedding_count,
-        storage_bytes: snapshot.storage_bytes,
+        document_count: snapshot.document_count as i64,
+        chunk_count: snapshot.chunk_count as i64,
+        entity_count: snapshot.entity_count as i64,
+        relationship_count: snapshot.relationship_count as i64,
+        embedding_count: snapshot.embedding_count as i64,
+        storage_bytes: snapshot.storage_bytes as i64,
     };
 
     Ok((StatusCode::CREATED, Json(dto)))
