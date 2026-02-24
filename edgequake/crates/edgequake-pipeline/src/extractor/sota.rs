@@ -11,8 +11,6 @@ use super::{EntityExtractor, ExtractionResult};
 
 /// SOTA LLM-based entity extractor using tuple-format prompts.
 ///
-/// @implements FEAT0303
-///
 /// This extractor uses the SOTA prompt system ported from LightRAG,
 /// featuring tuple-based output format for more robust parsing.
 pub struct SOTAExtractor<L>

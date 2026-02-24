@@ -4,7 +4,6 @@
 //! ingestion pipeline operations.
 //!
 //! @implements FEAT0012 (Progress Reporting)
-//! @implements FEAT0013 (Cost Tracking)
 //!
 //! # Architecture
 //!
