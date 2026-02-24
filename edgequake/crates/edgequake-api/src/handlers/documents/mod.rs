@@ -49,18 +49,18 @@
 pub use crate::handlers::documents_types::*;
 
 // Sub-modules: each owns a single responsibility
+mod delete;
+mod query;
+mod recovery;
 mod storage_helpers;
 mod upload;
-mod query;
-mod delete;
-mod recovery;
 
 // Re-export all public items (includes utoipa __path_* structs for OpenAPI)
+pub use delete::*;
+pub use query::*;
+pub use recovery::*;
 pub use storage_helpers::CleanupStats;
 pub use upload::*;
-pub use query::*;
-pub use delete::*;
-pub use recovery::*;
 
 #[cfg(test)]
 mod tests {

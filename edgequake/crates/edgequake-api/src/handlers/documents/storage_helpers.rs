@@ -472,7 +472,13 @@ pub(super) async fn delete_document_for_reingestion(
     // - "deleting" → (another delete already in progress)
 
     // Try each allowed terminal status in order
-    let allowed_from_statuses = ["failed", "completed", "partial_failure", "processed", "cancelled"];
+    let allowed_from_statuses = [
+        "failed",
+        "completed",
+        "partial_failure",
+        "processed",
+        "cancelled",
+    ];
     let mut transitioned = false;
     for from_status in &allowed_from_statuses {
         match state
@@ -491,7 +497,10 @@ pub(super) async fn delete_document_for_reingestion(
             }
             Ok(false) => continue,
             Err(e) => {
-                return Err(ApiError::Internal(format!("Failed to transition status: {}", e)));
+                return Err(ApiError::Internal(format!(
+                    "Failed to transition status: {}",
+                    e
+                )));
             }
         }
     }

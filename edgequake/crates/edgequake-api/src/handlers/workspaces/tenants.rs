@@ -5,10 +5,10 @@ use axum::{
 };
 use uuid::Uuid;
 
-use crate::error::ApiError;
-use crate::state::AppState;
-use crate::handlers::workspaces_types::*;
 use super::helpers::generate_slug;
+use crate::error::ApiError;
+use crate::handlers::workspaces_types::*;
+use crate::state::AppState;
 
 /// Create a new tenant.
 ///
