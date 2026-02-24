@@ -64,8 +64,8 @@ use crate::handlers;
         handlers::get_model,
         handlers::check_providers_health,
         // Chat (SDK-aligned)
-        handlers::chat_completion,
-        handlers::chat_completion_stream,
+        handlers::chat::completion::chat_completion,
+        handlers::chat::streaming::chat_completion_stream,
         // Conversations & Folders (SDK-aligned)
         handlers::list_conversations,
         handlers::create_conversation,
