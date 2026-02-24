@@ -3,7 +3,9 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use super::defaults::{default_enable_gleaning, default_max_gleaning, default_use_llm_summarization};
+use super::defaults::{
+    default_enable_gleaning, default_max_gleaning, default_use_llm_summarization,
+};
 
 /// Document upload request.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
