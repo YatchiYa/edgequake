@@ -3900,36 +3900,29 @@ async fn test_content_hash_consistency() {
         StatusCode::CREATED,
         "First upload should succeed with 201 CREATED"
     );
+    let doc_id1 = body1["document_id"].as_str().unwrap().to_string();
 
-    // Upload second document with same content should be detected as duplicate
-    // OODA-84: Duplicate detection returns 200 OK with status: "duplicate"
+    // Upload second document with same content:
+    // FIX-4: Duplicate detection now re-ingests (deletes old, creates new)
+    // instead of rejecting. So second upload returns 201 with a NEW document_id.
     let (status2, body2) = upload_document_http(&app, "Hash Test Doc 2", content).await;
     assert_eq!(
         status2,
-        StatusCode::OK,
-        "Duplicate upload should return 200 OK"
+        StatusCode::CREATED,
+        "Re-ingestion of duplicate should return 201 CREATED"
     );
 
-    // Verify duplicate status
-    let status_field = body2.get("status").and_then(|v| v.as_str()).unwrap_or("");
-    assert_eq!(
-        status_field, "duplicate",
-        "Response should indicate duplicate status"
+    // Verify new document was created (different document_id from original)
+    let doc_id2 = body2["document_id"].as_str().unwrap();
+    assert_ne!(
+        doc_id2, doc_id1,
+        "Re-ingestion should create a new document"
     );
 
-    // Verify duplicate_of field points to original document
-    let duplicate_of = body2.get("duplicate_of").and_then(|v| v.as_str());
-    let doc_id1 = body1["document_id"].as_str().unwrap();
-    assert_eq!(
-        duplicate_of,
-        Some(doc_id1),
-        "duplicate_of should reference original document ID"
-    );
+    // Cleanup the new document
+    delete_document_http(&app, doc_id2).await;
 
-    // Cleanup - only need to delete the original since duplicate wasn't stored
-    delete_document_http(&app, doc_id1).await;
-
-    println!("✅ OODA-40 TEST PASSED: Content hash consistency with duplicate detection");
+    println!("✅ OODA-40 TEST PASSED: Content hash consistency with re-ingestion");
 }
 
 /// OODA-40: Test that duplicate content is properly rejected.
@@ -3946,25 +3939,30 @@ async fn test_delete_one_of_duplicate_content_docs() {
     assert_eq!(status1, StatusCode::CREATED, "First upload should succeed");
     let doc_a_id = body1["document_id"].as_str().unwrap().to_string();
 
-    // Upload second document with same content - should be rejected as duplicate
+    // Upload second document with same content:
+    // FIX-4: Duplicate detection now re-ingests (deletes old, creates new)
+    // instead of rejecting. Second upload returns 201 with a NEW document_id.
     let (status2, body2) =
         upload_document_http(&app, "Duplicate Content B", duplicate_content).await;
-    assert_eq!(status2, StatusCode::OK, "Duplicate should return 200 OK");
-
-    // Verify the duplicate response references the original
-    let duplicate_of = body2.get("duplicate_of").and_then(|v| v.as_str());
     assert_eq!(
-        duplicate_of,
-        Some(doc_a_id.as_str()),
-        "Duplicate should reference original document"
+        status2,
+        StatusCode::CREATED,
+        "Re-ingestion of duplicate should return 201"
+    );
+    let doc_b_id = body2["document_id"].as_str().unwrap().to_string();
+
+    // Verify re-ingestion created a different document
+    assert_ne!(
+        doc_a_id, doc_b_id,
+        "Re-ingestion should create a new document ID"
     );
 
-    // Delete doc A - should succeed
-    let (delete_status, _) = delete_document_http(&app, &doc_a_id).await;
+    // Delete doc B - should succeed
+    let (delete_status, _) = delete_document_http(&app, &doc_b_id).await;
     assert_eq!(
         delete_status,
         StatusCode::OK,
-        "Original document should be deletable"
+        "Re-ingested document should be deletable"
     );
 
     // After deleting, uploading the same content should succeed again
@@ -3980,7 +3978,7 @@ async fn test_delete_one_of_duplicate_content_docs() {
     let doc_c_id = body3["document_id"].as_str().unwrap();
     delete_document_http(&app, doc_c_id).await;
 
-    println!("✅ OODA-40 TEST PASSED: Duplicate detection and re-upload after deletion");
+    println!("✅ OODA-40 TEST PASSED: Duplicate re-ingestion and re-upload after deletion");
 }
 
 // ============================================================================

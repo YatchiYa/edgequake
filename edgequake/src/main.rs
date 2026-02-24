@@ -452,15 +452,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let processor = Arc::new(processor);
 
     // Configure worker pool
+    let num_workers: usize = std::env::var("WORKER_THREADS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(|| num_cpus::get().max(2));
+
     let worker_config = WorkerPoolConfig {
-        num_workers: std::env::var("WORKER_THREADS")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or_else(|| num_cpus::get().max(2)),
+        num_workers,
         auto_retry: true,
         initial_retry_delay_ms: 5000,
         max_retry_delay_ms: 60000,
         backoff_multiplier: 2.0,
+        // FEAT-TENANT-FAIRNESS: Per-tenant concurrency limit.
+        // Ensures no single tenant can monopolize all workers.
+        // Default: max(1, num_workers/2) so at least half the workers
+        // remain available for other tenants.
+        // Set MAX_TASKS_PER_TENANT=0 to disable.
+        max_tasks_per_tenant: std::env::var("MAX_TASKS_PER_TENANT")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| (num_workers / 2).max(1)),
     };
 
     // Recover orphaned tasks from previous backend session (PRODUCTION_BUG_FIX)

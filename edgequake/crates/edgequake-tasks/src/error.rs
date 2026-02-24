@@ -67,6 +67,12 @@ pub enum TaskError {
     #[error("Processing error: {0}")]
     Processing(String),
 
+    /// Operation timed out.
+    /// WHY: Vision extraction and LLM calls can hang indefinitely when the
+    /// provider is unresponsive (e.g., Ollama not running in Docker).
+    #[error("Timeout: {0}")]
+    Timeout(String),
+
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }

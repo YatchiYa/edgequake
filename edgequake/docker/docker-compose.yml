@@ -19,7 +19,21 @@ services:
       - EDGEQUAKE_PORT=8080
       - DATABASE_URL=postgres://edgequake:${POSTGRES_PASSWORD:-edgequake_secret}@postgres:5432/edgequake
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      # FIX-DOCKER-OLLAMA: Use host.docker.internal to reach Ollama on the host
+      # machine. Without this, the container tries localhost:11434 which points
+      # to the container itself, causing "connection refused" and vision extraction
+      # timeouts that leave documents stuck in "processing" forever.
+      # On macOS/Windows Docker Desktop, host.docker.internal resolves to the host.
+      # On Linux, add `extra_hosts: ["host.docker.internal:host-gateway"]` below.
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://host.docker.internal:11434}
+      - EDGEQUAKE_LLM_PROVIDER=${EDGEQUAKE_LLM_PROVIDER:-ollama}
+      - EDGEQUAKE_EMBEDDING_PROVIDER=${EDGEQUAKE_EMBEDDING_PROVIDER:-}
+      # Vision extraction timeout (seconds). Default 600s (10 min).
+      - EDGEQUAKE_VISION_TIMEOUT_SECS=${EDGEQUAKE_VISION_TIMEOUT_SECS:-600}
       - RUST_LOG=info,edgequake=debug
+    # Linux only: enable host.docker.internal resolution
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
