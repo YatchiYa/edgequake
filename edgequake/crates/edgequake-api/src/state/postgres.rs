@@ -12,6 +12,7 @@ use edgequake_pipeline::Pipeline;
 use edgequake_query::{QueryEngine, QueryEngineConfig, SOTAQueryConfig, SOTAQueryEngine};
 use edgequake_rate_limiter::{RateLimitConfig as TokenBucketConfig, RateLimiter};
 use edgequake_storage::{
+    traits::{GraphStorage, KVStorage, VectorStorage},
     PgVectorStorage, PgWorkspaceVectorRegistry, PostgresAGEGraphStorage, PostgresKVStorage,
 };
 use edgequake_tasks::PipelineState;

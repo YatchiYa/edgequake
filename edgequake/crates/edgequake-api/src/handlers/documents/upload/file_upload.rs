@@ -17,8 +17,6 @@ use crate::handlers::documents::storage_helpers::{delete_document_for_reingestio
 use crate::handlers::documents::storage_helpers::get_workspace_vector_storage_with_fallback;
 use axum_extra::extract::Multipart;
 use crate::file_validation::validate_file;
-#[cfg(feature = "postgres")]
-use edgequake_storage::ListPdfFilter;
 
 
 
