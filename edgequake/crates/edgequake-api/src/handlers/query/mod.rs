@@ -1,7 +1,6 @@
 //! Query execution handlers.
 //!
 //! @implements FEAT0403
-//! @implements FEAT0404
 //! @implements SPEC-032: Workspace-specific embedding in query process
 //!
 //! # Implements

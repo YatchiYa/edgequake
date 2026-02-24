@@ -1,7 +1,6 @@
 //! EdgeQuake Orchestrator - Central RAG coordination module.
 //!
 //! @implements FEAT0023 (EdgeQuake Orchestrator)
-//! @implements FEAT0007
 //!
 //! # Overview
 //!
