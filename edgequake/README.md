@@ -15,6 +15,7 @@ EdgeQuake is a next-generation Retrieval-Augmented Generation (RAG) system built
 - 📊 **OpenAPI Documentation**: Full Swagger UI support
 - 🔧 **Modular Architecture**: Pluggable storage backends and LLM providers
 - 🌐 **REST API**: Clean, versioned HTTP API
+- ⛔ **Cooperative Cancellation**: Cancel long-running pipeline tasks mid-flight via API
 
 ## Quick Start
 
@@ -131,20 +132,17 @@ cargo clippy --all-targets
 EdgeQuake follows a modular architecture:
 
 1. **Document Ingestion**
-
    - Text chunking with overlap
    - Entity extraction via LLM
    - Relationship extraction
    - Embedding generation
 
 2. **Storage Layer**
-
    - Key-value store for documents
    - Vector store for embeddings
    - Graph store for knowledge graph
 
 3. **Query Engine**
-
    - Multi-mode retrieval
    - Context assembly
    - LLM answer generation

@@ -1,11 +1,37 @@
 use super::*;
+use tokio_util::sync::CancellationToken;
 
 impl DocumentTaskProcessor {
+    /// Check if the task has been cancelled and return early if so.
+    ///
+    /// WHY: This is called at every major stage boundary so that a cancel
+    /// request interrupts processing within seconds rather than minutes.
+    pub(crate) async fn check_cancelled(
+        &self,
+        cancel_token: &CancellationToken,
+        stage: &str,
+        document_id: &str,
+    ) -> TaskResult<()> {
+        if cancel_token.is_cancelled() {
+            let msg = format!(
+                "Task cancelled during '{}' stage for document {}",
+                stage, document_id
+            );
+            warn!("{}", msg);
+            self.update_document_status(document_id, "cancelled", Some(&msg))
+                .await
+                .ok(); // best-effort status update
+            return Err(TaskError::Cancelled(msg));
+        }
+        Ok(())
+    }
+
     /// Process a text insert task.
     pub(super) async fn process_text_insert(
         &self,
         task: &mut Task,
         data: TextInsertData,
+        cancel_token: CancellationToken,
     ) -> TaskResult<serde_json::Value> {
         let document_id = data
             .metadata
@@ -294,64 +320,133 @@ impl DocumentTaskProcessor {
             preprocess_result.content
         };
 
-        let result = match pipeline
-            .process_with_resilience(&document_id, &processed_text, Some(chunk_progress_callback))
-            .await
-        {
-            Ok(result) => {
-                // SPEC-003: Log partial success if some chunks failed
-                if result.stats.failed_chunks > 0 {
-                    warn!(
-                        document_id = %document_id,
-                        successful_chunks = result.stats.successful_chunks,
-                        failed_chunks = result.stats.failed_chunks,
-                        total_chunks = result.stats.chunk_count,
-                        "Document processed with partial success - some chunks failed extraction"
-                    );
+        // CHECKPOINT: Try to load a saved pipeline checkpoint before running
+        // expensive LLM extraction. This saves minutes of processing when
+        // a server crashed after extraction but before storage completed.
 
-                    // Emit WebSocket events for failed chunks
-                    if let Some(ref chunk_errors) = result.stats.chunk_errors {
-                        for error_info in chunk_errors {
-                            self.pipeline_state.emit_chunk_failure(
-                                document_id.clone(),
-                                task.track_id.clone(),
-                                error_info.chunk_index as u32,
-                                result.stats.chunk_count as u32,
-                                error_info.error_message.clone(),
-                                error_info.was_timeout,
-                                error_info.retry_attempts,
-                            );
+        // ── CANCELLATION GATE: before LLM extraction (most expensive stage) ──
+        self.check_cancelled(&cancel_token, "pre-extraction", &document_id)
+            .await?;
+
+        let checkpoint_result = super::pipeline_checkpoint::load_pipeline_checkpoint(
+            &self.kv_storage,
+            &document_id,
+            &data.workspace_id,
+            &provider_lineage.extraction_provider,
+            &provider_lineage.embedding_provider,
+            &processed_text,
+        )
+        .await;
+
+        let (result, resumed_from_checkpoint) = if let Some(checkpointed) = checkpoint_result {
+            info!(
+                document_id = %document_id,
+                chunks = checkpointed.chunks.len(),
+                entities = checkpointed.stats.entity_count,
+                "CHECKPOINT-RESUME: Skipping LLM extraction — loaded from checkpoint"
+            );
+            (checkpointed, true)
+        } else {
+            // No valid checkpoint — run the full pipeline
+            let fresh_result = match pipeline
+                .process_with_resilience_cancellable(
+                    &document_id,
+                    &processed_text,
+                    Some(chunk_progress_callback),
+                    Some(cancel_token.clone()),
+                )
+                .await
+            {
+                Ok(result) => {
+                    // SPEC-003: Log partial success if some chunks failed
+                    if result.stats.failed_chunks > 0 {
+                        warn!(
+                            document_id = %document_id,
+                            successful_chunks = result.stats.successful_chunks,
+                            failed_chunks = result.stats.failed_chunks,
+                            total_chunks = result.stats.chunk_count,
+                            "Document processed with partial success - some chunks failed extraction"
+                        );
+
+                        // Emit WebSocket events for failed chunks
+                        if let Some(ref chunk_errors) = result.stats.chunk_errors {
+                            for error_info in chunk_errors {
+                                self.pipeline_state.emit_chunk_failure(
+                                    document_id.clone(),
+                                    task.track_id.clone(),
+                                    error_info.chunk_index as u32,
+                                    result.stats.chunk_count as u32,
+                                    error_info.error_message.clone(),
+                                    error_info.was_timeout,
+                                    error_info.retry_attempts,
+                                );
+                            }
                         }
                     }
+                    result
                 }
-                result
-            }
-            Err(e) => {
-                // FIX-3: Comprehensive error logging with context
-                let error_msg = format!("Pipeline processing failed: {}", e);
-                error!(
+                Err(e) => {
+                    // FIX-3: Comprehensive error logging with context
+                    let error_msg = format!("Pipeline processing failed: {}", e);
+                    error!(
+                        document_id = %document_id,
+                        workspace_id = ?workspace_id,
+                        tenant_id = ?tenant_id,
+                        content_length = data.text.len(),
+                        error = %e,
+                        "CRITICAL: Pipeline processing failed - document marked as failed"
+                    );
+
+                    // Update document status to failed with detailed error
+                    self.update_document_status(&document_id, "failed", Some(&error_msg))
+                        .await?;
+
+                    self.pipeline_state
+                        .document_failed(&document_id, &error_msg)
+                        .await;
+
+                    return Err(edgequake_tasks::TaskError::Process(error_msg));
+                }
+            };
+
+            // CHECKPOINT-SAVE: Persist pipeline results so a crash during
+            // storage won't force re-running the expensive LLM extraction.
+            if let Err(e) = super::pipeline_checkpoint::save_pipeline_checkpoint(
+                &self.kv_storage,
+                &document_id,
+                &fresh_result,
+                &data.workspace_id,
+                &provider_lineage.extraction_provider,
+                &provider_lineage.embedding_provider,
+                &processed_text,
+            )
+            .await
+            {
+                warn!(
                     document_id = %document_id,
-                    workspace_id = ?workspace_id,
-                    tenant_id = ?tenant_id,
-                    content_length = data.text.len(),
                     error = %e,
-                    "CRITICAL: Pipeline processing failed - document marked as failed"
+                    "Failed to save pipeline checkpoint — processing continues without checkpoint"
                 );
-
-                // Update document status to failed with detailed error
-                self.update_document_status(&document_id, "failed", Some(&error_msg))
-                    .await?;
-
-                self.pipeline_state
-                    .document_failed(&document_id, &error_msg)
-                    .await;
-
-                return Err(edgequake_tasks::TaskError::Process(error_msg));
             }
+
+            (fresh_result, false)
         };
+
+        // Log checkpoint usage metrics
+        if resumed_from_checkpoint {
+            info!(
+                document_id = %document_id,
+                "CHECKPOINT-STATS: Resumed from checkpoint — saved LLM extraction time"
+            );
+        }
 
         // Update task progress - embedding
         task.update_progress("embedding".to_string(), 4, 30);
+
+        // ── CANCELLATION GATE: after extraction, before embedding storage ──
+        self.check_cancelled(&cancel_token, "post-extraction", &document_id)
+            .await?;
+
         self.pipeline_state
             .info(format!(
                 "Generated {} chunks for {}",
@@ -500,6 +595,11 @@ impl DocumentTaskProcessor {
 
         // Update task progress - extraction
         task.update_progress("extraction".to_string(), 4, 60);
+
+        // ── CANCELLATION GATE: before graph storage (heavy DB writes) ──
+        self.check_cancelled(&cancel_token, "pre-graph-storage", &document_id)
+            .await?;
+
         self.pipeline_state
             .info(format!("Extracting entities from {}...", document_id))
             .await;
@@ -709,6 +809,11 @@ impl DocumentTaskProcessor {
         }
 
         // CRITICAL: Store entity embeddings in vector storage for query_local retrieval
+
+        // ── CANCELLATION GATE: before entity embedding storage ──
+        self.check_cancelled(&cancel_token, "pre-entity-embeddings", &document_id)
+            .await?;
+
         // FIX: Use workspace_vector_storage instead of self.vector_storage to avoid
         // dimension mismatch (768 vs 1536) when workspace uses different embedding model
         let mut entity_embedding_failures = 0u32;
@@ -749,6 +854,11 @@ impl DocumentTaskProcessor {
         }
 
         // Batch upsert edges
+
+        // ── CANCELLATION GATE: before edge batch upsert ──
+        self.check_cancelled(&cancel_token, "pre-edge-storage", &document_id)
+            .await?;
+
         if !edges_batch.is_empty() {
             if let Err(e) = self.graph_storage.upsert_edges_batch(&edges_batch).await {
                 let err_msg = format!(
@@ -883,6 +993,11 @@ impl DocumentTaskProcessor {
         }
 
         // OODA-06: Persist DocumentLineage to KV storage for lineage API queries
+
+        // ── CANCELLATION GATE: before lineage persistence ──
+        self.check_cancelled(&cancel_token, "pre-lineage", &document_id)
+            .await?;
+
         // WHY: Without persistence, lineage data only exists in memory during processing
         // and is lost. Lineage endpoints need to read it back from storage.
         if let Some(ref lineage) = result.lineage {
@@ -941,6 +1056,12 @@ impl DocumentTaskProcessor {
                 crate::handlers::workspaces::invalidate_workspace_stats_cache(workspace_uuid).await;
             }
         }
+
+        // CHECKPOINT-CLEAR: All storage stages completed successfully.
+        // Remove the checkpoint so it won't be reloaded on next run.
+        // WHY: If we reach here, every piece of data is safely persisted.
+        // Keeping the checkpoint would waste storage and risk stale reloads.
+        super::pipeline_checkpoint::clear_pipeline_checkpoint(&self.kv_storage, &document_id).await;
 
         // Log success
         self.pipeline_state
