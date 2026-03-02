@@ -23,10 +23,10 @@ edgequake-tasks = { path = "../edgequake-tasks", features = ["postgres"] }
 edgequake-auth = { path = "../edgequake-auth" }
 edgequake-rate-limiter = { path = "../edgequake-rate-limiter" }
 edgequake-audit = { path = "../edgequake-audit" }
-# PDF vision extraction via VLM — bundled pdfium, multi-provider, 10-rule post-processing
+# PDF vision extraction via VLM — bundled pdfium, multi-provider, lazy streaming pipeline
 # WHY: edgequake-pdf2md provides higher quality vision extraction than internal implementation
-# v0.4.6: latest stable release with improvements
-edgequake-pdf2md = "=0.4.6"
+# v0.7.0: page-level checkpointing for resumable conversions (Issue #20, PR #21)
+edgequake-pdf2md = "=0.7.0"
 
 axum.workspace = true
 axum-extra = { version = "0.10", features = ["multipart"] }
@@ -59,6 +59,9 @@ sha2 = "0.10"
 hex = "0.4"
 rand = "0.9"
 bytes = "1.9"
+tokio-util = "0.7"
+# SSE streaming for real-time PDF progress events
+async-stream = "0.3"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "macros", "rt-multi-thread"] }

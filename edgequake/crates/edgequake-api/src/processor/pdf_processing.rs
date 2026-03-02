@@ -1,4 +1,5 @@
 use super::*;
+use tokio_util::sync::CancellationToken;
 
 impl DocumentTaskProcessor {
     /// Process PDF processing task (SPEC-007).
@@ -19,6 +20,7 @@ impl DocumentTaskProcessor {
         &self,
         task: &mut Task,
         data: edgequake_tasks::PdfProcessingData,
+        cancel_token: CancellationToken,
     ) -> TaskResult<serde_json::Value> {
         use edgequake_storage::{
             ExtractionMethod, PdfProcessingStatus, UpdatePdfProcessingRequest,
@@ -113,7 +115,10 @@ impl DocumentTaskProcessor {
             "document_type": "pdf",
             "status": "processing",
             "current_stage": "converting",
-            "stage_message": format!("Converting PDF to Markdown (0/{} pages)", pdf.page_count.unwrap_or(0)),
+            "stage_message": match pdf.page_count {
+                Some(n) if n > 0 => format!("Converting PDF to Markdown (0/{} pages)", n),
+                _ => "Converting PDF to Markdown (detecting pages...)".to_string(),
+            },
             "stage_progress": 0.0,
             "pdf_id": data.pdf_id.to_string(),
             "file_size_bytes": pdf.file_size_bytes,
@@ -184,27 +189,25 @@ impl DocumentTaskProcessor {
         if let Some(ref broadcaster) = self.progress_broadcaster {
             callback = callback.with_broadcaster(broadcaster.clone());
         }
-        let progress_callback = Arc::new(callback);
-        // SPEC-040: Coerce to ConversionProgressCallback (edgequake-pdf2md)
-        // WHY: The PipelineProgressCallback implements ConversionProgressCallback.
-        // The spawn_blocking vision path doesn't capture this directly due to Send
-        // constraints; progress is emitted via broadcaster. Keep for future re-use.
-        let _progress_callback: Arc<dyn edgequake_pdf2md::ConversionProgressCallback> =
-            progress_callback;
+        let progress_callback: Arc<dyn edgequake_pdf2md::ConversionProgressCallback> =
+            Arc::new(callback);
 
         // 4. Extract content (vision or text mode)
         // == Progress: starting conversion (this can take 5-10+ minutes) ==
         task.update_progress("pdf_converting".to_string(), 2, 10);
 
-        // SPEC-007: Vision → edgequake-pdf2md v0.4.2 (bundled pdfium, multi-provider,
-        //           10-rule post-processing). Text → edgequake-pdf PdfExtractor.
+        // ── CANCELLATION GATE: before vision extraction (most expensive PDF stage) ──
+        self.check_cancelled(&cancel_token, "pre-vision-extraction", &early_doc_id)
+            .await?;
+
+        // SPEC-007: Vision → edgequake-pdf2md v0.7.0 (bundled pdfium, multi-provider,
+        //           lazy streaming pipeline, progress callbacks, page-level checkpointing).
         //
-        // WHY spawn_blocking + Handle::block_on (still needed in v0.4.2):
-        // v0.4.2 fixed on_page_error(&str → String) HRTB (issue #9), but a second HRTB
-        // remains: process_page(... prior_page: Option<&str> ...) holds &str across
+        // WHY spawn_blocking + Handle::block_on:
+        // process_page(... prior_page: Option<&str> ...) holds &str across
         // .await points inside the process_concurrent state machine, preventing the future
-        // from being Send in async_trait contexts. Tracked upstream for v0.4.3.
-        // Handle::block_on requires no Send bound on the future, bypassing both.
+        // from being Send in async_trait contexts.
+        // Handle::block_on requires no Send bound on the future, bypassing this.
         let (markdown, extraction_method, used_vision_model) = if data.enable_vision {
             #[cfg(feature = "vision")]
             {
@@ -234,37 +237,123 @@ impl DocumentTaskProcessor {
                 };
                 let model_owned = model.clone();
 
+                // LARGE-DOC: Adaptive concurrency based on page count.
+                // WHY: For documents with 1000+ pages, we need to limit concurrency
+                // to avoid overwhelming the LLM provider and running out of memory.
+                // Small docs (< 50 pages): default 10 concurrent requests
+                // Medium docs (50-200 pages): 8 concurrent requests
+                // Large docs (200-500 pages): 5 concurrent requests
+                // Very large docs (500+ pages): 3 concurrent requests
+                let page_count = pdf.page_count.unwrap_or(0) as usize;
+                let concurrency = std::env::var("EDGEQUAKE_PDF_CONCURRENCY")
+                    .ok()
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .unwrap_or(match page_count {
+                        0..=49 => 10,
+                        50..=199 => 8,
+                        200..=499 => 5,
+                        _ => 3,
+                    });
+
+                // LARGE-DOC: Adaptive DPI based on page count.
+                // WHY: For very large documents, lower DPI reduces memory usage
+                // per page image while keeping acceptable quality.
+                // Small docs: 150 DPI (default quality)
+                // Large docs (500+ pages): 120 DPI (saves ~36% memory per image)
+                // Very large docs (1000+ pages): 100 DPI (saves ~55% memory per image)
+                let dpi = std::env::var("EDGEQUAKE_PDF_DPI")
+                    .ok()
+                    .and_then(|v| v.parse::<u32>().ok())
+                    .unwrap_or(match page_count {
+                        0..=499 => 150,
+                        500..=999 => 120,
+                        _ => 100,
+                    });
+
                 info!(
                     pdf_id = %data.pdf_id,
                     vision_provider = %data.vision_provider,
                     vision_model = %model,
-                    "Starting vision extraction via edgequake-pdf2md v0.4.4 (SPEC-040: dedicated vision provider)"
+                    page_count = page_count,
+                    concurrency = concurrency,
+                    dpi = dpi,
+                    "Starting vision extraction via edgequake-pdf2md v0.6.1 (progress callback connected, adaptive concurrency)"
                 );
 
                 // WHY Handle::current before spawn_blocking: must capture the runtime
                 // handle on the async thread before entering the blocking thread.
                 let handle = tokio::runtime::Handle::current();
 
-                // FIX-TIMEOUT: Wrap vision extraction in a timeout to prevent tasks
-                // from hanging forever when the LLM provider is unresponsive.
-                // WHY: In Docker environments, Ollama on localhost may be unreachable.
-                // Without a timeout, the task stays in "processing" state indefinitely.
-                // Default: 10 minutes per PDF (generous for large documents).
-                let vision_timeout = std::time::Duration::from_secs(
-                    std::env::var("EDGEQUAKE_VISION_TIMEOUT_SECS")
-                        .ok()
-                        .and_then(|v| v.parse().ok())
-                        .unwrap_or(600),
+                // FIX-TIMEOUT: Adaptive timeout based on page count.
+                // WHY: A fixed 10-minute timeout is insufficient for 1000+ page documents.
+                // Scale timeout linearly: base 60s + 5s per page, minimum 600s.
+                // A 1000-page doc gets ~5060 seconds (~84 minutes).
+                let base_timeout_secs: u64 = std::env::var("EDGEQUAKE_VISION_TIMEOUT_SECS")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(0);
+                let vision_timeout_secs = if base_timeout_secs > 0 {
+                    base_timeout_secs // Explicit override
+                } else {
+                    let adaptive = 60 + (page_count as u64 * 5);
+                    adaptive.max(600) // Minimum 10 minutes
+                };
+                let vision_timeout = std::time::Duration::from_secs(vision_timeout_secs);
+
+                info!(
+                    pdf_id = %data.pdf_id,
+                    timeout_secs = vision_timeout_secs,
+                    "Vision extraction timeout set (adaptive for {} pages)",
+                    page_count
                 );
 
                 let spawn_result = tokio::time::timeout(
                     vision_timeout,
                     tokio::task::spawn_blocking(move || {
-                        let config = ConversionConfig::builder()
+                        // CHECKPOINT: Create FileCheckpointStore for resumable PDF→MD conversion.
+                        // WHY: If the server crashes mid-conversion of a 1000-page PDF,
+                        // already-converted pages are saved to disk and skipped on retry,
+                        // saving hours of LLM calls and API costs.
+                        // The checkpoint ID is a SHA-256 of (PDF content prefix + settings),
+                        // so the same PDF with the same settings always resumes correctly.
+                        let checkpoint_dir = std::env::var("EDGEQUAKE_CHECKPOINT_DIR")
+                            .unwrap_or_else(|_| {
+                                let mut dir = std::env::temp_dir();
+                                dir.push("edgequake-checkpoints");
+                                dir.to_string_lossy().to_string()
+                            });
+                        let checkpoint_store: Option<
+                            std::sync::Arc<dyn edgequake_pdf2md::CheckpointStore>,
+                        > = {
+                            let store = edgequake_pdf2md::FileCheckpointStore::new(&checkpoint_dir);
+                            tracing::info!(
+                                checkpoint_dir = %checkpoint_dir,
+                                "PDF checkpoint store initialized for resumable conversion"
+                            );
+                            Some(std::sync::Arc::new(store))
+                        };
+
+                        // CHECKPOINT: Force fresh conversion on rebuild/reprocess.
+                        // WHY: When a user explicitly triggers rebuild, they want fresh
+                        // extraction with potentially different LLM settings. Reusing
+                        // old checkpoints would silently serve stale content.
+                        let force_no_resume = is_reprocess;
+
+                        let mut builder = ConversionConfig::builder()
                             .provider(provider)
                             .model(model_owned)
-                            .build()
-                            .map_err(|e| format!("Vision config: {e}"))?;
+                            .concurrency(concurrency)
+                            .dpi(dpi)
+                            .progress_callback(progress_callback);
+
+                        if let Some(store) = checkpoint_store {
+                            builder = builder.checkpoint_store(store);
+                        }
+                        if force_no_resume {
+                            builder = builder.no_resume(true);
+                        }
+
+                        let config = builder.build().map_err(|e| format!("Vision config: {e}"))?;
                         // Handle::block_on has no Send bound on the future
                         handle
                             .block_on(convert_from_bytes(&pdf_bytes, &config))
@@ -360,6 +449,10 @@ impl DocumentTaskProcessor {
         // == Progress: markdown stored, starting entity extraction + indexing ==
         task.update_progress("entity_extraction".to_string(), 4, 50);
 
+        // ── CANCELLATION GATE: before handing off to text_insert pipeline ──
+        self.check_cancelled(&cancel_token, "pre-text-insert", &early_doc_id)
+            .await?;
+
         // SPEC-002: Include source_type: "pdf" for unified pipeline tracking
         // OODA-05: Include tenant_id/workspace_id for multi-tenant document visibility
         // Pass the early_doc_id so we reuse the same document that's already showing in UI
@@ -390,7 +483,9 @@ impl DocumentTaskProcessor {
             })),
         };
 
-        let result = self.process_text_insert(task, text_data).await?;
+        let result = self
+            .process_text_insert(task, text_data, cancel_token)
+            .await?;
 
         // == Progress: extraction complete, linking PDF ==
         task.update_progress("linking".to_string(), 5, 95);
@@ -468,6 +563,7 @@ impl DocumentTaskProcessor {
         &self,
         _task: &mut Task,
         data: edgequake_tasks::PdfProcessingData,
+        _cancel_token: CancellationToken,
     ) -> TaskResult<serde_json::Value> {
         warn!(
             pdf_id = %data.pdf_id,
