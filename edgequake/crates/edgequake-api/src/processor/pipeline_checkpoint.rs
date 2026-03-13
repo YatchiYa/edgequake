@@ -91,7 +91,9 @@ impl PipelineCheckpoint {
         use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         // Hash prefix to avoid hashing multi-MB documents entirely.
-        let prefix = &text[..text.len().min(65_536)];
+        let target_len = text.len().min(65_536);
+        let safe_len = text.floor_char_boundary(target_len);
+        let prefix = &text[..safe_len];
         hasher.update(prefix.as_bytes());
         hex::encode(&hasher.finalize()[..8]) // 16-char hex = 64-bit fingerprint
     }
