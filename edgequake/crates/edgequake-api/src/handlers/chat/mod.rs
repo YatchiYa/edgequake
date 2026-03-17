@@ -162,7 +162,7 @@ fn enrich_query_with_language(query: &str, language: &Option<String>) -> String 
     }
 }
 
-fn build_sources(context: &edgequake_query::QueryContext) -> Vec<SourceReference> {
+pub(crate) fn build_sources(context: &edgequake_query::QueryContext) -> Vec<SourceReference> {
     let mut sources = Vec::new();
     let mut ref_counter = 1usize;
 
@@ -179,6 +179,10 @@ fn build_sources(context: &edgequake_query::QueryContext) -> Vec<SourceReference
             start_line: chunk.start_line,
             end_line: chunk.end_line,
             chunk_index: chunk.chunk_index,
+            // SPEC-006: Entity-only fields
+            entity_type: None,
+            degree: None,
+            source_chunk_ids: None,
         });
         ref_counter += 1;
     }
@@ -197,6 +201,14 @@ fn build_sources(context: &edgequake_query::QueryContext) -> Vec<SourceReference
             start_line: None,
             end_line: None,
             chunk_index: None,
+            // SPEC-006: Enrich with entity metadata (FR-002)
+            entity_type: Some(entity.entity_type.clone()),
+            degree: if entity.degree > 0 { Some(entity.degree) } else { None },
+            source_chunk_ids: if entity.source_chunk_ids.is_empty() {
+                None
+            } else {
+                Some(entity.source_chunk_ids.clone())
+            },
         });
         ref_counter += 1;
     }
@@ -218,6 +230,10 @@ fn build_sources(context: &edgequake_query::QueryContext) -> Vec<SourceReference
             start_line: None,
             end_line: None,
             chunk_index: None,
+            // SPEC-006: Entity-only fields
+            entity_type: None,
+            degree: None,
+            source_chunk_ids: None,
         });
         ref_counter += 1;
     }
@@ -243,12 +259,14 @@ fn sources_to_message_context(sources: &[SourceReference]) -> MessageContext {
             .filter(|s| s.source_type == "entity")
             .map(|s| MessageContextEntity {
                 name: s.id.clone(),
-                entity_type: "UNKNOWN".to_string(), // Not available in SourceReference
+                // SPEC-006: Use enriched entity_type from SourceReference
+                entity_type: s.entity_type.clone().unwrap_or_else(|| "UNKNOWN".to_string()),
                 description: s.snippet.clone(),
                 score: s.score,
                 source_document_id: s.document_id.clone(),
                 source_file_path: s.file_path.clone(),
-                source_chunk_ids: Vec::new(), // Not available in SourceReference
+                // SPEC-006: Use enriched source_chunk_ids from SourceReference
+                source_chunk_ids: s.source_chunk_ids.clone().unwrap_or_default(),
             })
             .collect(),
         relationships: sources
@@ -381,7 +399,11 @@ mod tests {
 
     #[test]
     fn test_chat_stream_event_context() {
-        let event = ChatStreamEvent::Context { sources: vec![] };
+        let event = ChatStreamEvent::Context {
+            sources: vec![],
+            query_mode: None,
+            retrieval_time_ms: None,
+        };
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("\"type\":\"context\""));
         assert!(json.contains("\"sources\":[]"));
@@ -413,6 +435,9 @@ mod tests {
             start_line: None,
             end_line: None,
             chunk_index: Some(0),
+            entity_type: None,
+            degree: None,
+            source_chunk_ids: None,
         }];
 
         let context = sources_to_message_context(&sources);
@@ -438,6 +463,9 @@ mod tests {
             start_line: None,
             end_line: None,
             chunk_index: Some(0),
+            entity_type: None,
+            degree: None,
+            source_chunk_ids: None,
         }];
 
         let context = sources_to_message_context(&sources);
@@ -461,6 +489,9 @@ mod tests {
             start_line: None,
             end_line: None,
             chunk_index: Some(0),
+            entity_type: None,
+            degree: None,
+            source_chunk_ids: None,
         }];
 
         let context = sources_to_message_context(&sources);

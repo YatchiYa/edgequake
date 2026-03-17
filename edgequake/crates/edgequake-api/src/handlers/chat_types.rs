@@ -150,7 +150,16 @@ pub enum ChatStreamEvent {
     },
 
     /// Context/sources retrieved.
-    Context { sources: Vec<SourceReference> },
+    /// @implements SPEC-006: Enriched context event with query mode and timing
+    Context {
+        sources: Vec<SourceReference>,
+        /// Query mode used for retrieval (e.g., "hybrid", "local", "global").
+        #[serde(skip_serializing_if = "Option::is_none")]
+        query_mode: Option<String>,
+        /// Time taken for retrieval in milliseconds.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        retrieval_time_ms: Option<u64>,
+    },
 
     /// Token generated during streaming.
     Token { content: String },

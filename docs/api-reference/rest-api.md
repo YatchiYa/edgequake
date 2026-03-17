@@ -386,26 +386,40 @@ curl -X POST http://localhost:8080/api/v1/query/stream \
   -d '{"query": "Explain the key findings", "mode": "hybrid"}'
 ```
 
-**SSE Events**:
+**Request Parameters**:
+
+| Field             | Type   | Required | Description                                                |
+|-------------------|--------|----------|------------------------------------------------------------|
+| `query`           | string | yes      | Natural language query                                     |
+| `mode`            | string | no       | Query mode: `hybrid`, `local`, `global`, `naive`, `mix`    |
+| `system_prompt`   | string | no       | System prompt extension                                    |
+| `document_filter` | object | no       | Document filter to scope RAG context (SPEC-005)            |
+| `llm_provider`    | string | no       | LLM provider override (e.g., `openai`, `ollama`)           |
+| `llm_model`       | string | no       | LLM model override (e.g., `gpt-5-nano`)                   |
+| `stream_format`   | string | no       | `v1` for raw text (backward compat), `v2` for structured   |
+
+**SSE Events (v2 format — default)**:
 
 ```
-event: start
-data: {"mode":"hybrid","sources_count":5}
+data: {"type":"context","sources":[{"source_type":"chunk","id":"...","score":0.89,"entity_type":"PERSON","degree":5}],"query_mode":"hybrid","retrieval_time_ms":120}
 
-event: token
-data: {"content":"The"}
+data: {"type":"token","content":"The"}
 
-event: token
-data: {"content":" key"}
+data: {"type":"token","content":" key"}
 
-event: token
-data: {"content":" findings"}
+data: {"type":"token","content":" findings"}
 
-event: sources
-data: [{"source_type":"chunk","id":"...","score":0.89}]
+data: {"type":"done","stats":{"retrieval_time_ms":120,"generation_time_ms":800,"total_time_ms":920,"sources_retrieved":8,"tokens_used":256,"tokens_per_second":320.0,"query_mode":"hybrid"},"llm_provider":"ollama","llm_model":"gemma3:latest"}
+```
 
-event: done
-data: {"total_tokens":256,"total_time_ms":1200}
+**SSE Events (v1 format — `stream_format: "v1"`)**:
+
+```
+data: The
+
+data:  key
+
+data:  findings
 ```
 
 ---
@@ -466,20 +480,15 @@ curl -X POST http://localhost:8080/api/v1/chat/completions \
 ```
 
 ```
-event: message_start
-data: {"conversation_id":"conv-uuid","message_id":"msg-uuid"}
+data: {"type":"conversation","conversation_id":"conv-uuid","user_message_id":"msg-uuid"}
 
-event: content_delta
-data: {"delta":"The"}
+data: {"type":"context","sources":[{"source_type":"entity","id":"X","score":0.95,"entity_type":"PERSON","degree":12}],"query_mode":"hybrid","retrieval_time_ms":85}
 
-event: content_delta
-data: {"delta":" relationship"}
+data: {"type":"token","content":"The"}
 
-event: sources
-data: [{"source_type":"entity","id":"X",...}]
+data: {"type":"token","content":" relationship"}
 
-event: message_end
-data: {"finish_reason":"stop","tokens_used":128}
+data: {"type":"done","assistant_message_id":"asst-uuid","tokens_used":128,"duration_ms":920,"llm_provider":"ollama","llm_model":"gemma3:latest"}
 ```
 
 ---

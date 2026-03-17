@@ -224,6 +224,10 @@ mod tests {
             query: "What is Rust?".to_string(),
             mode: Some("naive".to_string()),
             system_prompt: None,
+            document_filter: None,
+            llm_provider: None,
+            llm_model: None,
+            stream_format: None,
         };
 
         let result = stream_query(State(state), tenant_ctx, Json(request)).await;
@@ -320,6 +324,10 @@ mod tests {
             query: "".to_string(),
             mode: None,
             system_prompt: None,
+            document_filter: None,
+            llm_provider: None,
+            llm_model: None,
+            stream_format: None,
         };
 
         let result = stream_query(State(state), tenant_ctx, Json(request)).await;

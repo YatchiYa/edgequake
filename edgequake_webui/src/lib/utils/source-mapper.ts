@@ -58,7 +58,9 @@ export function mapSourcesToContext(sources: SourceReference[]): QueryContext {
         relevance: s.score,
         source_document_id: s.document_id,
         source_file_path: s.file_path,
-        // Note: source_chunk_ids are not available in SourceReference
+        entity_type: s.entity_type,
+        degree: s.degree,
+        source_chunk_ids: s.source_chunk_ids,
       })),
 
     relationships: sources

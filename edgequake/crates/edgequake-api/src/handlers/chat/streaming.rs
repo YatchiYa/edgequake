@@ -388,6 +388,9 @@ pub async fn chat_completion_stream(
             (None, None)
         };
 
+        // SPEC-006: Track retrieval time for context enrichment
+        let retrieval_start = std::time::Instant::now();
+
         // WHY: Five dispatch paths exist because the SOTA engine needs different
         // combinations of providers. The paths form a priority cascade:
         //
@@ -458,7 +461,7 @@ pub async fn chat_completion_stream(
         };
 
         match stream_result {
-            Ok((context, _mode, mut stream)) => {
+            Ok((context, used_mode, mut stream)) => {
                 // Send context event BEFORE streaming tokens (for source citations)
                 let mut sources = build_sources(&context);
 
@@ -468,9 +471,13 @@ pub async fn chat_completion_stream(
                 // Save message context for later persistence
                 saved_message_context = Some(sources_to_message_context(&sources));
 
+                let retrieval_elapsed_ms = retrieval_start.elapsed().as_millis() as u64;
+
                 if !sources.is_empty() {
                     let context_event = ChatStreamEvent::Context {
                         sources: sources.clone(),
+                        query_mode: Some(used_mode.to_string()),
+                        retrieval_time_ms: Some(retrieval_elapsed_ms),
                     };
                     if tx.send(context_event).await.is_err() {
                         warn!("Client disconnected before receiving context event");

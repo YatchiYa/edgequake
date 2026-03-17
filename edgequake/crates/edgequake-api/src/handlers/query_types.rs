@@ -124,6 +124,8 @@ pub struct QueryRequest {
 }
 
 /// Streaming query request.
+///
+/// @implements SPEC-006: Unified streaming protocol
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct StreamQueryRequest {
     /// The query text.
@@ -137,6 +139,93 @@ pub struct StreamQueryRequest {
     /// @implements SPEC-004: System prompt extension point
     #[serde(default)]
     pub system_prompt: Option<String>,
+
+    /// Optional document filter to narrow query scope by date range or name pattern.
+    /// @implements SPEC-005 + SPEC-006: Document filters for streaming queries
+    #[serde(default)]
+    pub document_filter: Option<DocumentFilter>,
+
+    /// LLM provider to use for this query (e.g., "openai", "ollama", "lmstudio").
+    /// @implements SPEC-006 + SPEC-032: Provider selection in streaming queries
+    #[serde(default)]
+    pub llm_provider: Option<String>,
+
+    /// Specific model name within the provider.
+    /// @implements SPEC-006 + SPEC-032: Model selection in streaming queries
+    #[serde(default)]
+    pub llm_model: Option<String>,
+
+    /// Stream format version: "v1" (raw text) or "v2" (structured JSON events, default).
+    /// @implements SPEC-006: Backward compatibility
+    #[serde(default)]
+    pub stream_format: Option<String>,
+}
+
+// ============================================================================
+// Streaming Event Types (SPEC-006)
+// ============================================================================
+
+/// Streaming SSE event types for the query endpoint.
+///
+/// @implements SPEC-006: Unified streaming protocol for /query/stream
+#[derive(Debug, Clone, Serialize, ToSchema)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum QueryStreamEvent {
+    /// Context/sources retrieved before generation starts.
+    Context {
+        sources: Vec<SourceReference>,
+        query_mode: String,
+        retrieval_time_ms: u64,
+    },
+
+    /// Token generated during LLM streaming.
+    Token { content: String },
+
+    /// Chain-of-thought reasoning content.
+    Thinking { content: String },
+
+    /// Stream complete — includes full statistics.
+    Done {
+        stats: QueryStreamStats,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        llm_provider: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        llm_model: Option<String>,
+    },
+
+    /// Error occurred during streaming.
+    Error { message: String, code: String },
+}
+
+/// Statistics emitted in the `done` event.
+///
+/// @implements SPEC-006 FR-003: Retrieval statistics in streaming events
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct QueryStreamStats {
+    /// Embedding time in ms.
+    pub embedding_time_ms: u64,
+
+    /// Retrieval time in ms.
+    pub retrieval_time_ms: u64,
+
+    /// Generation time in ms.
+    pub generation_time_ms: u64,
+
+    /// Total time in ms.
+    pub total_time_ms: u64,
+
+    /// Number of sources retrieved.
+    pub sources_retrieved: usize,
+
+    /// Tokens used for generation.
+    pub tokens_used: u32,
+
+    /// Tokens per second generation speed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tokens_per_second: Option<f32>,
+
+    /// Query mode used (after adaptive selection).
+    pub query_mode: String,
 }
 
 // ============================================================================
@@ -209,6 +298,25 @@ pub struct SourceReference {
     /// Chunk index in the document.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chunk_index: Option<usize>,
+
+    // ========================================================================
+    // SPEC-006: Entity metadata enrichment (FR-002)
+    // ========================================================================
+
+    /// Entity type (e.g., "PERSON", "ORGANIZATION"). Only set for source_type="entity".
+    /// @implements SPEC-006: Entity metadata enrichment
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entity_type: Option<String>,
+
+    /// Number of graph connections. Only set for source_type="entity".
+    /// @implements SPEC-006: Entity degree in source references
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub degree: Option<usize>,
+
+    /// Source chunk IDs where entity was mentioned (provenance). Only set for source_type="entity".
+    /// @implements SPEC-006: Entity provenance tracking
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_chunk_ids: Option<Vec<String>>,
 }
 
 /// Query statistics.
@@ -327,6 +435,9 @@ mod tests {
             start_line: Some(10),
             end_line: Some(20),
             chunk_index: Some(2),
+            entity_type: None,
+            degree: None,
+            source_chunk_ids: None,
         };
         let json = serde_json::to_value(&source).unwrap();
         assert_eq!(json["source_type"], "chunk");
@@ -349,10 +460,17 @@ mod tests {
             start_line: None,
             end_line: None,
             chunk_index: None,
+            entity_type: Some("ORGANIZATION".to_string()),
+            degree: Some(5),
+            source_chunk_ids: Some(vec!["chunk-1".to_string()]),
         };
         let json = serde_json::to_value(&source).unwrap();
         assert!(json.get("rerank_score").is_none());
         assert!(json.get("reference_id").is_none());
+        // SPEC-006: Verify entity metadata fields are serialized
+        assert_eq!(json["entity_type"], "ORGANIZATION");
+        assert_eq!(json["degree"], 5);
+        assert_eq!(json["source_chunk_ids"], serde_json::json!(["chunk-1"]));
     }
 
     #[test]

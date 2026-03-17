@@ -437,6 +437,12 @@ export interface QueryRequest {
   only_context?: boolean;
   /** Optional document filter to narrow query scope. @implements SPEC-005 */
   document_filter?: DocumentFilter;
+  /** Stream format version: "v1" (raw text) or "v2" (structured JSON). @implements SPEC-006 */
+  stream_format?: string;
+  /** LLM provider override. @implements SPEC-006 + SPEC-032 */
+  llm_provider?: string;
+  /** LLM model override. @implements SPEC-006 + SPEC-032 */
+  llm_model?: string;
 }
 
 export interface QueryContext {
@@ -461,6 +467,10 @@ export interface QueryContext {
     source_file_path?: string;
     /** Source chunk IDs for provenance */
     source_chunk_ids?: string[];
+    /** Entity type (e.g., "PERSON", "ORGANIZATION"). @implements SPEC-006 */
+    entity_type?: string;
+    /** Entity degree (number of relationships). @implements SPEC-006 */
+    degree?: number;
   }>;
   relationships: Array<{
     source: string;
@@ -483,7 +493,7 @@ export interface QueryResponse {
 }
 
 export interface QueryStreamChunk {
-  type: "token" | "context" | "done" | "error";
+  type: "token" | "context" | "thinking" | "done" | "error";
   content?: string;
   context?: QueryContext;
   error?: string;
@@ -493,6 +503,26 @@ export interface QueryStreamChunk {
   llm_provider?: string;
   /** LLM model used for this query (lineage tracking). @implements SPEC-032 */
   llm_model?: string;
+  /** SPEC-006: Structured sources in context event */
+  sources?: import("@/lib/api/chat").SourceReference[];
+  /** SPEC-006: Query mode from context event */
+  query_mode?: string;
+  /** SPEC-006: Retrieval time from context event */
+  retrieval_time_ms?: number;
+  /** SPEC-006: Full statistics from done event */
+  stats?: QueryStreamStats;
+}
+
+/** @implements SPEC-006: Query stream statistics */
+export interface QueryStreamStats {
+  embedding_time_ms: number;
+  retrieval_time_ms: number;
+  generation_time_ms: number;
+  total_time_ms: number;
+  sources_retrieved: number;
+  tokens_used: number;
+  tokens_per_second?: number;
+  query_mode: string;
 }
 
 // Auth types
