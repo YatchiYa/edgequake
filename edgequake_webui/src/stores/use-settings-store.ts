@@ -251,8 +251,8 @@ export const useSettingsStore = create<SettingsState>()(
           state?.setHasHydrated(true);
         };
       },
-    }
-  )
+    },
+  ),
 );
 
 /**
