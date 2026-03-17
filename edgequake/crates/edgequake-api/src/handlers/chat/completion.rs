@@ -178,6 +178,11 @@ pub async fn chat_completion(
     let enriched_query = enrich_query_with_language(&request.message, &request.language);
     let mut engine_request = EngineQueryRequest::new(&enriched_query).with_mode(query_mode);
 
+    // SPEC-004: Thread system prompt extension if provided
+    if let Some(ref system_prompt) = request.system_prompt {
+        engine_request = engine_request.with_system_prompt(system_prompt);
+    }
+
     let data_tenant_id = workspace
         .as_ref()
         .map(|ws| ws.tenant_id.to_string())

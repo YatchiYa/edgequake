@@ -49,6 +49,7 @@ const defaultQuerySettings: QuerySettings = {
   rerankTopK: 10,
   provider: undefined, // Use server default provider (SPEC-032)
   model: undefined, // Use server default model (SPEC-032)
+  systemPrompt: undefined, // No system prompt extension by default (SPEC-004)
 };
 
 const defaultIngestionSettings: IngestionSettings = {

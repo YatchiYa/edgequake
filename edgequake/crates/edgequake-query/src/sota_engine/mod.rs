@@ -365,4 +365,114 @@ mod tests {
         assert_eq!(embeddings.high_level, embedding);
         assert_eq!(embeddings.low_level, embedding);
     }
+
+    /// @implements SPEC-004: build_prompt with system_prompt_extension
+    mod system_prompt_tests {
+        use super::*;
+        use crate::context::{QueryContext, RetrievedChunk};
+        use edgequake_storage::{MemoryVectorStorage, MemoryGraphStorage};
+        use edgequake_llm::MockProvider;
+        use std::sync::Arc;
+
+        /// Helper to create a minimal SOTAQueryEngine for prompt tests.
+        fn create_prompt_test_engine() -> SOTAQueryEngine {
+            let vector_storage = Arc::new(MemoryVectorStorage::new("test", 384));
+            let graph_storage = Arc::new(MemoryGraphStorage::new("test"));
+            let embedding_provider: Arc<dyn crate::EmbeddingProvider> =
+                Arc::new(MockProvider::default());
+            let llm_provider: Arc<dyn crate::LLMProvider> =
+                Arc::new(MockProvider::default());
+
+            SOTAQueryEngine::new(
+                SOTAQueryConfig::default(),
+                vector_storage,
+                graph_storage,
+                embedding_provider,
+                llm_provider,
+            )
+        }
+
+        /// Helper to create a non-empty context for prompt testing.
+        fn test_context() -> QueryContext {
+            let mut ctx = QueryContext::default();
+            ctx.chunks.push(RetrievedChunk::new(
+                "chunk-1",
+                "Rust is a systems programming language.",
+                0.9,
+            ));
+            ctx
+        }
+
+        #[test]
+        fn test_build_prompt_without_system_prompt() {
+            let engine = create_prompt_test_engine();
+            let context = test_context();
+
+            let prompt = engine.build_prompt("What is Rust?", &context, None);
+
+            assert!(prompt.contains("---Role---"));
+            assert!(prompt.contains("---Instructions---"));
+            assert!(prompt.contains("---Context---"));
+            assert!(prompt.contains("What is Rust?"));
+            // Should NOT contain additional instructions section
+            assert!(!prompt.contains("---Additional Instructions---"));
+        }
+
+        #[test]
+        fn test_build_prompt_with_system_prompt() {
+            let engine = create_prompt_test_engine();
+            let context = test_context();
+
+            let prompt = engine.build_prompt(
+                "What is Rust?",
+                &context,
+                Some("Always respond in French. Be concise."),
+            );
+
+            assert!(prompt.contains("---Role---"));
+            assert!(prompt.contains("---Instructions---"));
+            assert!(prompt.contains("---Additional Instructions---"));
+            assert!(prompt.contains("Always respond in French. Be concise."));
+            assert!(prompt.contains("---Context---"));
+            assert!(prompt.contains("What is Rust?"));
+
+            // Additional instructions should appear between instructions and context
+            let instructions_pos = prompt.find("---Instructions---").unwrap();
+            let additional_pos = prompt.find("---Additional Instructions---").unwrap();
+            let context_pos = prompt.find("---Context---").unwrap();
+            assert!(
+                instructions_pos < additional_pos,
+                "Additional instructions should come after base instructions"
+            );
+            assert!(
+                additional_pos < context_pos,
+                "Additional instructions should come before context"
+            );
+        }
+
+        #[test]
+        fn test_build_prompt_with_empty_system_prompt() {
+            let engine = create_prompt_test_engine();
+            let context = test_context();
+
+            // Empty string should behave like None
+            let prompt = engine.build_prompt("What is Rust?", &context, Some(""));
+            assert!(!prompt.contains("---Additional Instructions---"));
+
+            // Whitespace-only should also behave like None
+            let prompt = engine.build_prompt("What is Rust?", &context, Some("   \n\t  "));
+            assert!(!prompt.contains("---Additional Instructions---"));
+        }
+
+        #[test]
+        fn test_build_prompt_empty_context() {
+            let engine = create_prompt_test_engine();
+            let empty_context = QueryContext::default();
+
+            // Empty context should return a "no information" message regardless of system_prompt
+            let prompt = engine.build_prompt("query", &empty_context, Some("Be concise"));
+            assert!(prompt.contains("couldn't find any relevant information"));
+            assert!(!prompt.contains("---Additional Instructions---"));
+        }
+    }
 }

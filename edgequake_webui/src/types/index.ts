@@ -962,6 +962,11 @@ export interface QuerySettings {
    * @implements SPEC-032: Full model selection in query interface
    */
   model?: string;
+  /**
+   * Optional system prompt extension injected into the RAG prompt.
+   * @implements SPEC-004: System prompt extension point
+   */
+  systemPrompt?: string;
 }
 
 export interface IngestionSettings {

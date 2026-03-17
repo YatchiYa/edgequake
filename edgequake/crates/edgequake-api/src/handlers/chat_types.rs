@@ -76,6 +76,12 @@ pub struct ChatCompletionRequest {
     /// when not set.
     #[serde(default)]
     pub language: Option<String>,
+
+    /// Optional system prompt extension injected into the LLM prompt.
+    /// Extends (not replaces) the base RAG prompt with additional instructions.
+    /// @implements SPEC-004: System prompt extension point
+    #[serde(default)]
+    pub system_prompt: Option<String>,
 }
 
 // ============================================================================

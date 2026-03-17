@@ -180,6 +180,7 @@ mod tests {
             rerank_top_k: None,
             llm_provider: None,
             llm_model: None,
+            system_prompt: None,
         };
 
         let result = execute_query(State(state), tenant_ctx, Json(request)).await;
@@ -204,6 +205,7 @@ mod tests {
             rerank_top_k: None,
             llm_provider: None,
             llm_model: None,
+            system_prompt: None,
         };
 
         let result = execute_query(State(state), tenant_ctx, Json(request)).await;
@@ -218,6 +220,7 @@ mod tests {
         let request = StreamQueryRequest {
             query: "What is Rust?".to_string(),
             mode: Some("naive".to_string()),
+            system_prompt: None,
         };
 
         let result = stream_query(State(state), tenant_ctx, Json(request)).await;
@@ -244,6 +247,7 @@ mod tests {
                 rerank_top_k: None,
                 llm_provider: None,
                 llm_model: None,
+                system_prompt: None,
             };
 
             let result = execute_query(State(state.clone()), tenant_ctx, Json(request)).await;
@@ -269,6 +273,7 @@ mod tests {
             rerank_top_k: None,
             llm_provider: None,
             llm_model: None,
+            system_prompt: None,
         };
 
         let result = execute_query(State(state), tenant_ctx, Json(request)).await;
@@ -293,6 +298,7 @@ mod tests {
             rerank_top_k: None,
             llm_provider: None,
             llm_model: None,
+            system_prompt: None,
         };
 
         let result = execute_query(State(state), tenant_ctx, Json(request)).await;
@@ -307,6 +313,7 @@ mod tests {
         let request = StreamQueryRequest {
             query: "".to_string(),
             mode: None,
+            system_prompt: None,
         };
 
         let result = stream_query(State(state), tenant_ctx, Json(request)).await;

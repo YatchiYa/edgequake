@@ -127,6 +127,12 @@ pub struct QueryRequest {
     /// @implements SPEC-032: Model selection at query time
     #[serde(default)]
     pub llm_model: Option<String>,
+
+    /// Optional system prompt extension injected between instructions and context.
+    /// Extends (not replaces) the base RAG prompt with additional instructions.
+    /// @implements SPEC-004: System prompt extension point
+    #[serde(default)]
+    pub system_prompt: Option<String>,
 }
 
 /// A single message in conversation history.
@@ -154,6 +160,7 @@ impl QueryRequest {
             rerank_top_k: None,
             llm_provider: None,
             llm_model: None,
+            system_prompt: None,
         }
     }
 
@@ -193,6 +200,13 @@ impl QueryRequest {
     /// @implements SPEC-032: Model selection at query time
     pub fn with_llm_model(mut self, model: impl Into<String>) -> Self {
         self.llm_model = Some(model.into());
+        self
+    }
+
+    /// Set the system prompt extension for this query.
+    /// @implements SPEC-004: System prompt extension point
+    pub fn with_system_prompt(mut self, system_prompt: impl Into<String>) -> Self {
+        self.system_prompt = Some(system_prompt.into());
         self
     }
 
@@ -671,12 +685,48 @@ mod tests {
         assert_eq!(request.mode, Some(QueryMode::Local));
         assert!(request.context_only);
         assert!(!request.prompt_only);
+        assert!(request.system_prompt.is_none());
 
         // Test prompt_only mode
         let prompt_request = QueryRequest::new("What is Python?").prompt_only();
 
         assert!(prompt_request.prompt_only);
         assert!(!prompt_request.context_only);
+    }
+
+    /// @implements SPEC-004: system prompt builder test
+    #[test]
+    fn test_query_request_with_system_prompt() {
+        let request = QueryRequest::new("Tell me about Rust")
+            .with_system_prompt("Always respond in French");
+
+        assert_eq!(
+            request.system_prompt.as_deref(),
+            Some("Always respond in French")
+        );
+
+        // Default should be None
+        let default_request = QueryRequest::new("Tell me about Rust");
+        assert!(default_request.system_prompt.is_none());
+    }
+
+    /// @implements SPEC-004: system prompt serialization round-trip
+    #[test]
+    fn test_query_request_system_prompt_serde() {
+        let request = QueryRequest::new("query")
+            .with_system_prompt("Be concise");
+
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains("\"system_prompt\":\"Be concise\""));
+
+        let deserialized: QueryRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.system_prompt.as_deref(), Some("Be concise"));
+
+        // system_prompt should round-trip through serde
+        let without_sp = QueryRequest::new("query");
+        let json_without = serde_json::to_string(&without_sp).unwrap();
+        let deserialized: QueryRequest = serde_json::from_str(&json_without).unwrap();
+        assert!(deserialized.system_prompt.is_none());
     }
 
     #[test]

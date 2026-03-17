@@ -80,6 +80,11 @@ pub async fn execute_query(
     // Build engine query request with conversation history and tenant context
     let mut engine_request = EngineQueryRequest::new(&request.query).with_mode(mode);
 
+    // SPEC-004: Thread system prompt extension if provided
+    if let Some(ref system_prompt) = request.system_prompt {
+        engine_request = engine_request.with_system_prompt(system_prompt);
+    }
+
     // OODA-231.1: Fetch workspace to get correct tenant_id for data queries
     // WHY: Header tenant_id is for authentication (random UUID from frontend).
     // But the graph data was ingested with the workspace's actual tenant_id.

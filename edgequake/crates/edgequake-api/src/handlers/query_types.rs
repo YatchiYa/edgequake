@@ -84,6 +84,12 @@ pub struct QueryRequest {
     /// @implements SPEC-032: Full model selection in query interface
     #[serde(default)]
     pub llm_model: Option<String>,
+
+    /// Optional system prompt extension injected into the LLM prompt.
+    /// Extends (not replaces) the base RAG prompt with additional instructions.
+    /// @implements SPEC-004: System prompt extension point
+    #[serde(default)]
+    pub system_prompt: Option<String>,
 }
 
 /// Streaming query request.
@@ -95,6 +101,11 @@ pub struct StreamQueryRequest {
     /// Query mode.
     #[serde(default)]
     pub mode: Option<String>,
+
+    /// Optional system prompt extension injected into the LLM prompt.
+    /// @implements SPEC-004: System prompt extension point
+    #[serde(default)]
+    pub system_prompt: Option<String>,
 }
 
 // ============================================================================

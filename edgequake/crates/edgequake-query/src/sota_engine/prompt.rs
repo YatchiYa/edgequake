@@ -72,12 +72,31 @@ impl SOTAQueryEngine {
     /// When comparing products where one term doesn't exist in the knowledge base, we still
     /// want to provide useful information about what IS available, rather than just saying
     /// "no information found."
-    pub(super) fn build_prompt(&self, query: &str, context: &QueryContext) -> String {
+    ///
+    /// `system_prompt_extension`: Optional additional instructions injected between
+    /// the base instructions and the context section (SPEC-004).
+    pub(super) fn build_prompt(
+        &self,
+        query: &str,
+        context: &QueryContext,
+        system_prompt_extension: Option<&str>,
+    ) -> String {
         if context.is_empty() {
             return "I'm sorry, but I couldn't find any relevant information in my knowledge base to answer your question.".to_string();
         }
 
         let context_text = context.to_context_string();
+
+        // SPEC-004: Build optional additional instructions section
+        let additional_instructions = match system_prompt_extension {
+            Some(ext) if !ext.trim().is_empty() => {
+                format!(
+                    "\n\n---Additional Instructions---\n\n{}\n",
+                    ext.trim()
+                )
+            }
+            _ => String::new(),
+        };
 
         format!(
             r#"---Role---
@@ -103,7 +122,7 @@ The answer must integrate relevant facts from the Knowledge Graph and Document C
 3. Formatting & Language:
   - The response MUST be in the same language as the user query.
   - Use Markdown formatting for clarity (headings, bold text, bullet points).
-
+{additional_instructions}
 ---Context---
 
 {context_text}
@@ -123,6 +142,7 @@ The answer must integrate relevant facts from the Knowledge Graph and Document C
         query: &str,
         context: &QueryContext,
         llm_override: Option<&Arc<dyn crate::LLMProvider>>,
+        system_prompt_extension: Option<&str>,
     ) -> Result<(String, usize)> {
         if context.is_empty() {
             return Ok((
@@ -131,7 +151,7 @@ The answer must integrate relevant facts from the Knowledge Graph and Document C
             ));
         }
 
-        let prompt = self.build_prompt(query, context);
+        let prompt = self.build_prompt(query, context, system_prompt_extension);
 
         // SPEC-032: Use override provider if provided, else default
         let response = if let Some(provider) = llm_override {
@@ -148,8 +168,9 @@ The answer must integrate relevant facts from the Knowledge Graph and Document C
         &self,
         query: &str,
         context: &QueryContext,
+        system_prompt_extension: Option<&str>,
     ) -> Result<(String, usize)> {
-        self.generate_answer_with_provider(query, context, None)
+        self.generate_answer_with_provider(query, context, None, system_prompt_extension)
             .await
     }
 }

@@ -493,6 +493,7 @@ export function QueryInterface() {
         provider: querySettings.provider,
         model: querySettings.model,
         language: i18n.language,
+        system_prompt: querySettings.systemPrompt || undefined,
       })) {
         if (abortControllerRef.current?.signal.aborted) {
           break;
@@ -695,6 +696,7 @@ export function QueryInterface() {
           provider: querySettings.provider,
           model: querySettings.model,
           language: i18n.language,
+          system_prompt: querySettings.systemPrompt || undefined,
         });
 
         // Update active conversation if a new one was created
@@ -860,6 +862,7 @@ export function QueryInterface() {
                 topK: querySettings.topK,
                 temperature: querySettings.temperature,
                 maxTokens: querySettings.maxTokens,
+                systemPrompt: querySettings.systemPrompt,
               }}
               onSettingsChange={(updates) => setQuerySettings(updates)}
               disabled={isLoading}
