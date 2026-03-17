@@ -92,6 +92,8 @@ async fn test_rebuild_embeddings_returns_updated_provider_config() {
         embedding_model: Some("mock-embed-v1".to_string()),
         embedding_provider: Some("mock".to_string()),
         embedding_dimension: Some(768),
+        vision_llm_provider: None,
+        vision_llm_model: None,
     };
 
     let workspace = state
@@ -189,6 +191,8 @@ async fn test_rebuild_embeddings_requires_force_if_unchanged() {
         embedding_model: Some("mock-embed".to_string()),
         embedding_provider: Some("mock".to_string()),
         embedding_dimension: Some(1536),
+        vision_llm_provider: None,
+        vision_llm_model: None,
     };
 
     let workspace = state
@@ -259,6 +263,8 @@ async fn test_rebuild_knowledge_graph_returns_updated_provider_config() {
         embedding_model: Some("mock-embed".to_string()),
         embedding_provider: Some("mock".to_string()),
         embedding_dimension: Some(1536),
+        vision_llm_provider: None,
+        vision_llm_model: None,
     };
 
     let workspace = state
@@ -350,6 +356,8 @@ async fn test_rebuild_knowledge_graph_requires_force_if_unchanged() {
         embedding_model: Some("mock-embed".to_string()),
         embedding_provider: Some("mock".to_string()),
         embedding_dimension: Some(1536),
+        vision_llm_provider: None,
+        vision_llm_model: None,
     };
 
     let workspace = state
@@ -419,6 +427,8 @@ async fn test_rebuild_workspace_isolation() {
         embedding_model: Some("mock-embed-a".to_string()),
         embedding_provider: Some("mock".to_string()),
         embedding_dimension: Some(768),
+        vision_llm_provider: None,
+        vision_llm_model: None,
     };
 
     let workspace_a = state
@@ -438,6 +448,8 @@ async fn test_rebuild_workspace_isolation() {
         embedding_model: Some("mock-embed-b".to_string()),
         embedding_provider: Some("mock".to_string()),
         embedding_dimension: Some(1024),
+        vision_llm_provider: None,
+        vision_llm_model: None,
     };
 
     let workspace_b = state
@@ -532,6 +544,8 @@ async fn test_pipeline_uses_updated_config_after_rebuild() {
         embedding_model: Some("mock-embed-v1".to_string()),
         embedding_provider: Some("mock".to_string()),
         embedding_dimension: Some(768),
+        vision_llm_provider: None,
+        vision_llm_model: None,
     };
 
     let workspace = state
@@ -654,6 +668,8 @@ async fn test_rebuild_embeddings_response_fields() {
         embedding_model: Some("mock-embed".to_string()),
         embedding_provider: Some("mock".to_string()),
         embedding_dimension: Some(1536),
+        vision_llm_provider: None,
+        vision_llm_model: None,
     };
 
     let workspace = state
@@ -756,6 +772,8 @@ async fn test_rebuild_knowledge_graph_response_fields() {
         embedding_model: Some("mock-embed".to_string()),
         embedding_provider: Some("mock".to_string()),
         embedding_dimension: Some(1536),
+        vision_llm_provider: None,
+        vision_llm_model: None,
     };
 
     let workspace = state

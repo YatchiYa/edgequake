@@ -222,6 +222,7 @@ async fn create_postgres_test_state(pool: &PgPool) -> AppState {
         pg_pool: Some(pool.clone()),
         // PDF storage not available in this test
         pdf_storage: None,
+        cancellation_registry: edgequake_tasks::CancellationRegistry::new(),
         start_time: std::time::Instant::now(),
         path_validation_config: edgequake_api::path_validation::PathValidationConfig {
             allow_any_path: true,
@@ -388,7 +389,8 @@ async fn test_single_document_deletion_pg() {
         .get("chunks_deleted")
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
-    assert!(chunks_deleted >= 0, "chunks_deleted should be non-negative");
+    // chunks_deleted is u64, always non-negative
+    let _ = chunks_deleted;
 
     println!("✅ Single document deletion with PostgreSQL: PASSED");
 }

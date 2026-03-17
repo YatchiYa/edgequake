@@ -233,7 +233,7 @@ mod memory_kv_tests {
         let complex = serde_json::json!({
             "string": "value",
             "number": 42,
-            "float": 3.14159,
+            "float": std::f64::consts::PI,
             "boolean": true,
             "null": null,
             "array": [1, 2, 3, "four", {"five": 5}],
