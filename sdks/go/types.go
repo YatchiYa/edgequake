@@ -202,6 +202,7 @@ type QueryRequest struct {
 	TopK            *int   `json:"top_k,omitempty"`
 	Stream          *bool  `json:"stream,omitempty"`
 	OnlyNeedContext *bool  `json:"only_need_context,omitempty"`
+	SystemPrompt    string `json:"system_prompt,omitempty"`
 }
 
 type QueryResponse struct {
@@ -237,6 +238,7 @@ type ChatCompletionRequest struct {
 	ParentID       string   `json:"parent_id,omitempty"`
 	Provider       string   `json:"provider,omitempty"`
 	Model          string   `json:"model,omitempty"`
+	SystemPrompt   string   `json:"system_prompt,omitempty"`
 }
 
 // ChatCompletionResponse is the response from POST /api/v1/chat/completions.

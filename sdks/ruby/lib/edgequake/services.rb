@@ -186,8 +186,10 @@ module EdgeQuake
   class QueryService
     def initialize(http) = @http = http
 
-    def execute(query:, mode: "hybrid")
-      @http.post("/api/v1/query", { query: query, mode: mode })
+    def execute(query:, mode: "hybrid", system_prompt: nil)
+      body = { query: query, mode: mode }
+      body[:system_prompt] = system_prompt if system_prompt
+      @http.post("/api/v1/query", body)
     end
 
     # OODA-42: Additional query methods
@@ -212,10 +214,10 @@ module EdgeQuake
   class ChatService
     def initialize(http) = @http = http
 
-    def completions(message:, mode: "hybrid", stream: false)
-      @http.post("/api/v1/chat/completions", {
-        message: message, mode: mode, stream: stream
-      })
+    def completions(message:, mode: "hybrid", stream: false, system_prompt: nil)
+      body = { message: message, mode: mode, stream: stream }
+      body[:system_prompt] = system_prompt if system_prompt
+      @http.post("/api/v1/chat/completions", body)
     end
 
     # OODA-42: Additional chat methods

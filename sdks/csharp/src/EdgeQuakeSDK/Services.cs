@@ -110,25 +110,25 @@ public class GraphService(HttpHelper http)
 
 public class QueryService(HttpHelper http)
 {
-    public Task<QueryResponse> ExecuteAsync(string query, string mode = "hybrid") =>
-        http.PostAsync<QueryResponse>("/api/v1/query", new { query, mode });
+    public Task<QueryResponse> ExecuteAsync(string query, string mode = "hybrid", string? systemPrompt = null) =>
+        http.PostAsync<QueryResponse>("/api/v1/query", new { query, mode, system_prompt = systemPrompt });
 
-    public Task<string> StreamAsync(string query, string mode = "hybrid") =>
-        http.PostRawAsync("/api/v1/query/stream", new { query, mode, stream = true });
+    public Task<string> StreamAsync(string query, string mode = "hybrid", string? systemPrompt = null) =>
+        http.PostRawAsync("/api/v1/query/stream", new { query, mode, stream = true, system_prompt = systemPrompt });
 }
 
 public class ChatService(HttpHelper http)
 {
-    public Task<ChatCompletionResponse> CompletionsAsync(string message, string mode = "hybrid", bool stream = false) =>
+    public Task<ChatCompletionResponse> CompletionsAsync(string message, string mode = "hybrid", bool stream = false, string? systemPrompt = null) =>
         http.PostAsync<ChatCompletionResponse>("/api/v1/chat/completions",
-            new { message, mode, stream });
+            new { message, mode, stream, system_prompt = systemPrompt });
 
-    public Task<ChatCompletionResponse> CompletionsWithConversationAsync(string conversationId, string message, string mode = "hybrid") =>
+    public Task<ChatCompletionResponse> CompletionsWithConversationAsync(string conversationId, string message, string mode = "hybrid", string? systemPrompt = null) =>
         http.PostAsync<ChatCompletionResponse>("/api/v1/chat/completions",
-            new { conversation_id = conversationId, message, mode });
+            new { conversation_id = conversationId, message, mode, system_prompt = systemPrompt });
 
-    public Task<string> StreamAsync(string message, string mode = "hybrid") =>
-        http.PostRawAsync("/api/v1/chat/completions/stream", new { message, mode, stream = true });
+    public Task<string> StreamAsync(string message, string mode = "hybrid", string? systemPrompt = null) =>
+        http.PostRawAsync("/api/v1/chat/completions/stream", new { message, mode, stream = true, system_prompt = systemPrompt });
 }
 
 public class TenantService(HttpHelper http)

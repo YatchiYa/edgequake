@@ -37,6 +37,8 @@ pub struct ChatCompletionRequest {
     pub provider: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_prompt: Option<String>,
 }
 
 /// A source reference in a chat/query response.

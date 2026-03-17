@@ -22,6 +22,7 @@ class QueryRequest(BaseModel):
     model: str | None = None
     conversation_id: str | None = None
     response_type: str | None = None
+    system_prompt: str | None = None
 
 
 class SourceReference(BaseModel):

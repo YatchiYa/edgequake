@@ -195,10 +195,17 @@ public struct SearchNodesResponse: Codable, Sendable {
 public struct QueryRequest: Codable, Sendable {
     public let query: String
     public let mode: String
+    public let systemPrompt: String?
 
-    public init(query: String, mode: String = "hybrid") {
+    enum CodingKeys: String, CodingKey {
+        case query, mode
+        case systemPrompt = "system_prompt"
+    }
+
+    public init(query: String, mode: String = "hybrid", systemPrompt: String? = nil) {
         self.query = query
         self.mode = mode
+        self.systemPrompt = systemPrompt
     }
 }
 
@@ -222,11 +229,18 @@ public struct ChatCompletionRequest: Codable, Sendable {
     public let message: String
     public let mode: String?
     public let stream: Bool
+    public let systemPrompt: String?
 
-    public init(message: String, mode: String? = "hybrid", stream: Bool = false) {
+    enum CodingKeys: String, CodingKey {
+        case message, mode, stream
+        case systemPrompt = "system_prompt"
+    }
+
+    public init(message: String, mode: String? = "hybrid", stream: Bool = false, systemPrompt: String? = nil) {
         self.message = message
         self.mode = mode
         self.stream = stream
+        self.systemPrompt = systemPrompt
     }
 }
 

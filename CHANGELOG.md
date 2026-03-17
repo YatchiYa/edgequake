@@ -2,9 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.5.5] - 2026-02-27
 
 ### Added
+
+#### System Prompt Extension Point (SPEC-004)
+
+- **`system_prompt` field** on `QueryRequest` and `ChatCompletionRequest`: Optional free-text prompt prepended to the LLM context as `---Additional Instructions---`. Allows callers to steer tone, persona, language, and output format per-query without modifying the global pipeline.
+- **Backend** (`engine.rs`, `prompt.rs`): `QueryRequest.system_prompt` is threaded through the SOTA engine and injected before the RAG context in `build_prompt()`.
+- **All API handlers**: `/api/v1/query`, `/api/v1/query/stream`, `/api/v1/chat/completions`, and `/api/v1/chat/completions/stream` accept and forward `system_prompt`.
+- **Frontend** (`query-settings-sheet.tsx`): New "System Prompt" textarea in the query settings panel with active indicator.
+- **10 SDK updates**: TypeScript, Python, Rust, Go, Java, Kotlin, C#, Swift, PHP, and Ruby SDKs now expose `system_prompt` on query and chat request types.
+- **6 unit tests** covering prompt injection, empty/None handling, and builder API.
 
 #### Cooperative Pipeline Cancellation
 

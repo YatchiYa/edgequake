@@ -34,6 +34,8 @@ export interface ChatCompletionRequest {
   provider?: string;
   /** Specific model name within the provider (e.g., "gpt-4o-mini", "gemma3:12b"). */
   model?: string;
+  /** Optional system prompt to prepend to the LLM context (SPEC-004). */
+  system_prompt?: string;
 }
 
 // ── Response ──────────────────────────────────────────────────

@@ -41,6 +41,7 @@ class ChatCompletionRequest(BaseModel):
     parent_id: str | None = None
     provider: str | None = None
     model: str | None = None
+    system_prompt: str | None = None
 
 
 class ChatCompletionResponse(BaseModel):

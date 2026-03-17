@@ -291,7 +291,8 @@ data class BatchDegreesResponse(
 
 data class QueryRequest(
     val query: String,
-    val mode: String = "hybrid"
+    val mode: String = "hybrid",
+    @JsonProperty("system_prompt") val systemPrompt: String? = null
 )
 
 data class QueryResponse(
@@ -318,7 +319,8 @@ data class ChatCompletionRequest(
     @JsonProperty("top_k") val topK: Int? = null,
     @JsonProperty("parent_id") val parentId: String? = null,
     val provider: String? = null,
-    val model: String? = null
+    val model: String? = null,
+    @JsonProperty("system_prompt") val systemPrompt: String? = null
 )
 
 data class ChatSourceReference(

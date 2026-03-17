@@ -259,17 +259,21 @@ class QueryService
 {
     public function __construct(private readonly HttpHelper $http) {}
 
-    public function execute(string $query, string $mode = 'hybrid'): array
+    public function execute(string $query, string $mode = 'hybrid', ?string $systemPrompt = null): array
     {
-        return $this->http->post('/api/v1/query', ['query' => $query, 'mode' => $mode]);
+        $body = ['query' => $query, 'mode' => $mode];
+        if ($systemPrompt !== null) { $body['system_prompt'] = $systemPrompt; }
+        return $this->http->post('/api/v1/query', $body);
     }
 
     // OODA-39: Streaming query.
 
     /** Execute streaming query. Returns generator of chunks. */
-    public function stream(string $query, string $mode = 'hybrid'): \Generator
+    public function stream(string $query, string $mode = 'hybrid', ?string $systemPrompt = null): \Generator
     {
-        return $this->http->streamPost('/api/v1/query/stream', ['query' => $query, 'mode' => $mode]);
+        $body = ['query' => $query, 'mode' => $mode];
+        if ($systemPrompt !== null) { $body['system_prompt'] = $systemPrompt; }
+        return $this->http->streamPost('/api/v1/query/stream', $body);
     }
 }
 
@@ -277,21 +281,21 @@ class ChatService
 {
     public function __construct(private readonly HttpHelper $http) {}
 
-    public function completions(string $message, string $mode = 'hybrid', bool $stream = false): array
+    public function completions(string $message, string $mode = 'hybrid', bool $stream = false, ?string $systemPrompt = null): array
     {
-        return $this->http->post('/api/v1/chat/completions', [
-            'message' => $message, 'mode' => $mode, 'stream' => $stream,
-        ]);
+        $body = ['message' => $message, 'mode' => $mode, 'stream' => $stream];
+        if ($systemPrompt !== null) { $body['system_prompt'] = $systemPrompt; }
+        return $this->http->post('/api/v1/chat/completions', $body);
     }
 
     // OODA-39: Streaming chat and conversation support.
 
     /** Streaming chat completions. Returns generator of chunks. */
-    public function stream(string $message, string $mode = 'hybrid'): \Generator
+    public function stream(string $message, string $mode = 'hybrid', ?string $systemPrompt = null): \Generator
     {
-        return $this->http->streamPost('/api/v1/chat/completions/stream', [
-            'message' => $message, 'mode' => $mode,
-        ]);
+        $body = ['message' => $message, 'mode' => $mode];
+        if ($systemPrompt !== null) { $body['system_prompt'] = $systemPrompt; }
+        return $this->http->streamPost('/api/v1/chat/completions/stream', $body);
     }
 
     /** Chat completions with conversation context. */
