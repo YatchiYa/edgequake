@@ -27,11 +27,15 @@ export interface QueryRequest {
   llm_provider?: string;
   /** Specific model name within the provider (e.g., "gpt-4o-mini", "gemma3:12b"). */
   llm_model?: string;
+  /** Optional system prompt to prepend to the LLM context (SPEC-004). */
+  system_prompt?: string;
 }
 
 export interface StreamQueryRequest {
   query: string;
   mode?: "naive" | "local" | "global" | "hybrid" | "mix";
+  /** Optional system prompt to prepend to the LLM context (SPEC-004). */
+  system_prompt?: string;
 }
 
 // ── Shared Response Types ─────────────────────────────────────

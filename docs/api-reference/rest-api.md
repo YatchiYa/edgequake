@@ -301,6 +301,7 @@ curl -X POST http://localhost:8080/api/v1/query \
 | `enable_rerank`        | boolean | true     | Apply reranking to improve relevance         |
 | `rerank_top_k`         | integer | 5        | Number of top chunks after reranking         |
 | `conversation_history` | array   | null     | Previous messages for multi-turn context     |
+| `system_prompt`        | string  | null     | Custom instructions prepended to LLM context |
 
 **Query Modes**:
 
@@ -425,6 +426,7 @@ curl -X POST http://localhost:8080/api/v1/chat/completions \
 | `conversation_id` | string  | null     | Existing conversation ID (creates new if null) |
 | `mode`            | string  | "hybrid" | Query mode                                     |
 | `stream`          | boolean | false    | Enable SSE streaming                           |
+| `system_prompt`   | string  | null     | Custom instructions prepended to LLM context   |
 
 **Response** (Non-streaming):
 

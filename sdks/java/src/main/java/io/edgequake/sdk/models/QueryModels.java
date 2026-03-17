@@ -13,6 +13,7 @@ public class QueryModels {
         @JsonProperty("top_k") public Integer topK;
         @JsonProperty("stream") public Boolean stream;
         @JsonProperty("only_need_context") public Boolean onlyNeedContext;
+        @JsonProperty("system_prompt") public String systemPrompt;
 
         public QueryRequest() {}
         public QueryRequest(String query, String mode) {
@@ -61,6 +62,7 @@ public class QueryModels {
         @JsonProperty("parent_id") public String parentId;
         @JsonProperty("provider") public String provider;
         @JsonProperty("model") public String model;
+        @JsonProperty("system_prompt") public String systemPrompt;
 
         public ChatCompletionRequest() {}
         public ChatCompletionRequest(String message) {
