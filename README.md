@@ -6,13 +6,13 @@
 > **High-Performance Graph-RAG Framework in Rust**  
 > Transform documents into intelligent knowledge graphs for superior retrieval and generation
 
-[![Version](https://img.shields.io/badge/version-0.4.0-blue.svg?style=flat)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.6.0-blue.svg?style=flat)](CHANGELOG.md)
 [![Rust](https://img.shields.io/badge/rust-1.78+-orange.svg?style=flat&logo=rust)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat)](LICENSE)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg?style=flat)](https://github.com/raphaelmansuy/edgequake)
 [![Documentation](https://img.shields.io/badge/docs-available-blue.svg?style=flat)](docs/README.md)
 
-> **v0.4.0** — PDF → LLM Vision Pipeline: multimodal LLMs now read PDF pages as images, enabling accurate extraction of scanned documents, complex layouts, and tables. Zero-config pdfium embedded.
+> **v0.6.0** — Unified Streaming Response Protocol (SPEC-006): Structured SSE events with `context`, `token`, `thinking`, `done`, and `error` event types. Rich streaming statistics, enriched source references with entity types & degree, and full workspace-aware query streaming.
 
 ---
 

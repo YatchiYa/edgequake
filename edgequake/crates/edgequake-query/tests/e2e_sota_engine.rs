@@ -534,7 +534,7 @@ mod adaptive_mode_tests {
                 | QueryMode::Naive
         ));
         // Just verify the query succeeded (time may be 0 for very fast execution)
-        assert!(response.stats.total_time_ms >= 0);
+        // Stats are populated (u64 is always >= 0)
     }
 
     #[tokio::test]
@@ -590,9 +590,9 @@ mod query_stats_tests {
         let response = engine.query(request).await.unwrap();
 
         // Stats should be populated (time may be 0 for very fast execution)
-        assert!(response.stats.total_time_ms >= 0);
-        assert!(response.stats.embedding_time_ms >= 0);
-        assert!(response.stats.retrieval_time_ms >= 0);
+        // Stats are populated (u64 is always >= 0)
+        let _ = response.stats.embedding_time_ms; // verify field accessible
+        let _ = response.stats.retrieval_time_ms; // verify field accessible
     }
 }
 
@@ -656,7 +656,7 @@ mod tenant_tests {
         let response = engine.query(request).await.unwrap();
 
         // Should complete without error - time may be 0 for very fast execution
-        assert!(response.stats.total_time_ms >= 0);
+        // Stats are populated (u64 is always >= 0)
     }
 
     #[tokio::test]
@@ -680,7 +680,7 @@ mod tenant_tests {
         let response = engine.query(request).await.unwrap();
 
         // Should complete without error - time may be 0 for very fast execution
-        assert!(response.stats.total_time_ms >= 0);
+        // Stats are populated (u64 is always >= 0)
     }
 }
 

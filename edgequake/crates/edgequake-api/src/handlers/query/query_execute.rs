@@ -350,7 +350,11 @@ pub async fn execute_query(
             chunk_index: None,
             // SPEC-006: Enrich entity metadata
             entity_type: Some(entity.entity_type.clone()),
-            degree: if entity.degree > 0 { Some(entity.degree) } else { None },
+            degree: if entity.degree > 0 {
+                Some(entity.degree)
+            } else {
+                None
+            },
             source_chunk_ids: if entity.source_chunk_ids.is_empty() {
                 None
             } else {

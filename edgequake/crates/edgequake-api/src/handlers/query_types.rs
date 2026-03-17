@@ -302,7 +302,6 @@ pub struct SourceReference {
     // ========================================================================
     // SPEC-006: Entity metadata enrichment (FR-002)
     // ========================================================================
-
     /// Entity type (e.g., "PERSON", "ORGANIZATION"). Only set for source_type="entity".
     /// @implements SPEC-006: Entity metadata enrichment
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -137,30 +137,29 @@ pub async fn stream_query(
         request.llm_model.clone(),
     );
 
-    let (llm_override, used_provider, used_model) = match resolver
-        .resolve_llm_provider_with_workspace(workspace.as_ref(), &llm_request)
-    {
-        Ok(Some(resolved)) => {
-            info!(
-                provider = %resolved.provider_name,
-                model = %resolved.model_name,
-                source = ?resolved.source,
-                "Resolved LLM provider for streaming query"
-            );
-            (
-                Some(resolved.provider),
-                Some(resolved.provider_name),
-                Some(resolved.model_name),
-            )
-        }
-        Ok(None) => (None, None, None),
-        Err(e) => {
-            return Err(ApiError::Internal(format!(
-                "LLM provider resolution failed: {}",
-                e
-            )));
-        }
-    };
+    let (llm_override, used_provider, used_model) =
+        match resolver.resolve_llm_provider_with_workspace(workspace.as_ref(), &llm_request) {
+            Ok(Some(resolved)) => {
+                info!(
+                    provider = %resolved.provider_name,
+                    model = %resolved.model_name,
+                    source = ?resolved.source,
+                    "Resolved LLM provider for streaming query"
+                );
+                (
+                    Some(resolved.provider),
+                    Some(resolved.provider_name),
+                    Some(resolved.model_name),
+                )
+            }
+            Ok(None) => (None, None, None),
+            Err(e) => {
+                return Err(ApiError::Internal(format!(
+                    "LLM provider resolution failed: {}",
+                    e
+                )));
+            }
+        };
 
     // SPEC-006: v1 backward-compatible mode - raw text streaming
     if use_v1 {
@@ -190,44 +189,44 @@ pub async fn stream_query(
         let retrieval_start = std::time::Instant::now();
 
         // Resolve workspace-specific providers
-        let (ws_embedding_provider, ws_vector_storage) =
-            if let Some(ref ws_id_str) = workspace_id_str {
-                let embed_provider =
-                    match get_workspace_embedding_provider(&state_clone, ws_id_str).await {
-                        Ok(Some(p)) => Some(p),
-                        Ok(None) => None,
-                        Err(e) => {
-                            error!(error = %e, "Cannot create workspace embedding provider");
-                            let _ = tx
-                                .send(QueryStreamEvent::Error {
-                                    message: format!("Embedding provider error: {}", e),
-                                    code: "EMBEDDING_PROVIDER_CONFIG_ERROR".to_string(),
-                                })
-                                .await;
-                            return;
-                        }
-                    };
+        let (ws_embedding_provider, ws_vector_storage) = if let Some(ref ws_id_str) =
+            workspace_id_str
+        {
+            let embed_provider =
+                match get_workspace_embedding_provider(&state_clone, ws_id_str).await {
+                    Ok(Some(p)) => Some(p),
+                    Ok(None) => None,
+                    Err(e) => {
+                        error!(error = %e, "Cannot create workspace embedding provider");
+                        let _ = tx
+                            .send(QueryStreamEvent::Error {
+                                message: format!("Embedding provider error: {}", e),
+                                code: "EMBEDDING_PROVIDER_CONFIG_ERROR".to_string(),
+                            })
+                            .await;
+                        return;
+                    }
+                };
 
-                let vector_storage =
-                    match get_workspace_vector_storage(&state_clone, ws_id_str).await {
-                        Ok(Some(s)) => Some(s),
-                        Ok(None) => None,
-                        Err(e) => {
-                            error!(error = %e, "Cannot get workspace vector storage");
-                            let _ = tx
-                                .send(QueryStreamEvent::Error {
-                                    message: format!("Vector storage error: {}", e),
-                                    code: "VECTOR_STORAGE_ERROR".to_string(),
-                                })
-                                .await;
-                            return;
-                        }
-                    };
-
-                (embed_provider, vector_storage)
-            } else {
-                (None, None)
+            let vector_storage = match get_workspace_vector_storage(&state_clone, ws_id_str).await {
+                Ok(Some(s)) => Some(s),
+                Ok(None) => None,
+                Err(e) => {
+                    error!(error = %e, "Cannot get workspace vector storage");
+                    let _ = tx
+                        .send(QueryStreamEvent::Error {
+                            message: format!("Vector storage error: {}", e),
+                            code: "VECTOR_STORAGE_ERROR".to_string(),
+                        })
+                        .await;
+                    return;
+                }
             };
+
+            (embed_provider, vector_storage)
+        } else {
+            (None, None)
+        };
 
         // Execute streaming query with context - dispatch based on available providers
         let stream_result = match (&ws_embedding_provider, &ws_vector_storage) {

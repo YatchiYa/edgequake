@@ -202,10 +202,8 @@ async fn test_local_mode_retrieval() {
     );
 
     // Local mode should include relationships (1-hop neighborhood)
-    assert!(
-        result.context.relationships.len() >= 0,
-        "Local mode should include relationships from entity neighborhoods"
-    );
+    // Note: relationships may be empty for mock data
+    let _ = result.context.relationships.len();
 
     println!("✅ Local mode test PASSED");
 }
@@ -379,10 +377,8 @@ async fn test_mix_mode_retrieval() {
     );
 
     // Mix mode combines naive (chunks) + hybrid (entities + relationships)
-    assert!(
-        result.context.chunks.len() >= 0,
-        "Mix mode should include chunks"
-    );
+    // Note: chunks may be empty for mock data
+    let _ = result.context.chunks.len();
 
     println!("✅ Mix mode test PASSED - Weighted combination works");
 }

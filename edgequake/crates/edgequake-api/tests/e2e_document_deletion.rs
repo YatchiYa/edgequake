@@ -351,10 +351,8 @@ async fn test_deletion_metrics_accuracy() {
 
     // Relationships affected should be a non-negative number
     // (may be 0 if no relationships were created)
-    assert!(
-        relationships_affected >= 0,
-        "Should track relationship changes"
-    );
+    // relationships_affected is u64, always non-negative
+    let _ = relationships_affected;
 
     // SUCCESS: Metrics are returned and are non-negative
 }

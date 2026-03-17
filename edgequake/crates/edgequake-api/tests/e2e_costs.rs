@@ -519,8 +519,8 @@ mod cost_summary_tests {
 
         // Values should be non-negative
         assert!(total_cost >= 0.0, "total_cost should be non-negative");
-        assert!(document_count >= 0, "document_count should be non-negative");
-        assert!(total_tokens >= 0, "total_tokens should be non-negative");
+        // document_count and total_tokens are u64, always non-negative
+        let _ = (document_count, total_tokens);
     }
 }
 

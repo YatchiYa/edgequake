@@ -219,7 +219,7 @@ mod keyword_tests {
         let keywords = extractor.extract("Test query about AI").await.unwrap();
 
         // Mock extractor returns default keywords
-        assert!(!keywords.high_level.is_empty() || !keywords.low_level.is_empty() || true);
+        assert!(!keywords.high_level.is_empty() || !keywords.low_level.is_empty());
     }
 
     #[tokio::test]

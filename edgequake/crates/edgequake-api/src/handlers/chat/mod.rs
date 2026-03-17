@@ -203,7 +203,11 @@ pub(crate) fn build_sources(context: &edgequake_query::QueryContext) -> Vec<Sour
             chunk_index: None,
             // SPEC-006: Enrich with entity metadata (FR-002)
             entity_type: Some(entity.entity_type.clone()),
-            degree: if entity.degree > 0 { Some(entity.degree) } else { None },
+            degree: if entity.degree > 0 {
+                Some(entity.degree)
+            } else {
+                None
+            },
             source_chunk_ids: if entity.source_chunk_ids.is_empty() {
                 None
             } else {
@@ -260,7 +264,10 @@ fn sources_to_message_context(sources: &[SourceReference]) -> MessageContext {
             .map(|s| MessageContextEntity {
                 name: s.id.clone(),
                 // SPEC-006: Use enriched entity_type from SourceReference
-                entity_type: s.entity_type.clone().unwrap_or_else(|| "UNKNOWN".to_string()),
+                entity_type: s
+                    .entity_type
+                    .clone()
+                    .unwrap_or_else(|| "UNKNOWN".to_string()),
                 description: s.snippet.clone(),
                 score: s.score,
                 source_document_id: s.document_id.clone(),

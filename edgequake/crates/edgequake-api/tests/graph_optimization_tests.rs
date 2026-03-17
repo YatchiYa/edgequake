@@ -409,8 +409,8 @@ async fn test_get_graph_empty_returns_valid_response() {
 
     assert!(nodes.is_empty() || !nodes.is_empty()); // Valid array
     assert!(edges.is_empty() || !edges.is_empty()); // Valid array
-    assert!(total_nodes <= u64::MAX); // Valid count
-    assert!(total_edges <= u64::MAX); // Valid count
+                                                    // total_nodes and total_edges are u64, always <= u64::MAX
+    let _ = (total_nodes, total_edges);
 }
 
 // ============================================================================

@@ -114,6 +114,8 @@ async fn test_workspace_pipeline_uses_workspace_config_for_lineage() {
         embedding_model: Some("custom-embed-model".to_string()),
         embedding_provider: Some("mock".to_string()),
         embedding_dimension: Some(768),
+        vision_llm_provider: None,
+        vision_llm_model: None,
     };
 
     let workspace = state
@@ -170,6 +172,8 @@ async fn test_workspace_update_changes_lineage_source() {
         embedding_model: Some("old-embed-model".to_string()),
         embedding_provider: Some("mock".to_string()),
         embedding_dimension: Some(768),
+        vision_llm_provider: None,
+        vision_llm_model: None,
     };
 
     let workspace = state
@@ -242,6 +246,8 @@ async fn test_workspaces_have_isolated_lineage_config() {
         embedding_model: Some("text-embedding-3-small".to_string()),
         embedding_provider: Some("mock".to_string()),
         embedding_dimension: Some(1536),
+        vision_llm_provider: None,
+        vision_llm_model: None,
     };
 
     let workspace_a = state
@@ -261,6 +267,8 @@ async fn test_workspaces_have_isolated_lineage_config() {
         embedding_model: Some("nomic-embed-text:latest".to_string()),
         embedding_provider: Some("mock".to_string()),
         embedding_dimension: Some(768),
+        vision_llm_provider: None,
+        vision_llm_model: None,
     };
 
     let workspace_b = state

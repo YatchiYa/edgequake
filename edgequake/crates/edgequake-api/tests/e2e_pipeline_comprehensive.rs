@@ -348,12 +348,8 @@ async fn test_pipeline_small_document_extraction() {
     let entity_count = upload_result["entity_count"].as_u64().unwrap_or(0);
     let relationship_count = upload_result["relationship_count"].as_u64().unwrap_or(0);
 
-    // Just verify they are non-negative (valid response)
-    assert!(entity_count >= 0, "Entity count should be non-negative");
-    assert!(
-        relationship_count >= 0,
-        "Relationship count should be non-negative"
-    );
+    // entity_count and relationship_count are u64, always non-negative
+    let _ = (entity_count, relationship_count);
 
     // Verify document details (GET returns 'completed' for processed docs)
     let doc_details = get_document(&app, document_id).await;
@@ -417,11 +413,8 @@ async fn test_pipeline_medium_document_extraction() {
     // Entity/relationship counts are optional (depend on extractor)
     let entity_count = upload_result["entity_count"].as_u64().unwrap_or(0);
     let relationship_count = upload_result["relationship_count"].as_u64().unwrap_or(0);
-    assert!(entity_count >= 0, "Entity count should be non-negative");
-    assert!(
-        relationship_count >= 0,
-        "Relationship count should be non-negative"
-    );
+    // entity_count and relationship_count are u64, always non-negative
+    let _ = (entity_count, relationship_count);
 
     // Verify document lineage
     let lineage = get_document_lineage(&app, document_id).await;
@@ -489,11 +482,8 @@ async fn test_pipeline_large_document_extraction() {
     // Entity/relationship counts are optional (depend on extractor)
     let entity_count = upload_result["entity_count"].as_u64().unwrap_or(0);
     let relationship_count = upload_result["relationship_count"].as_u64().unwrap_or(0);
-    assert!(entity_count >= 0, "Entity count should be non-negative");
-    assert!(
-        relationship_count >= 0,
-        "Relationship count should be non-negative"
-    );
+    // entity_count and relationship_count are u64, always non-negative
+    let _ = (entity_count, relationship_count);
 
     // Document should be fully processed (GET returns 'completed')
     let doc_details = get_document(&app, document_id).await;
