@@ -90,10 +90,7 @@ impl SOTAQueryEngine {
         // SPEC-004: Build optional additional instructions section
         let additional_instructions = match system_prompt_extension {
             Some(ext) if !ext.trim().is_empty() => {
-                format!(
-                    "\n\n---Additional Instructions---\n\n{}\n",
-                    ext.trim()
-                )
+                format!("\n\n---Additional Instructions---\n\n{}\n", ext.trim())
             }
             _ => String::new(),
         };
