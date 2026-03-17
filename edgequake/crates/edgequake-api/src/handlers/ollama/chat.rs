@@ -87,6 +87,8 @@ pub async fn ollama_chat(
 
         let engine = state.query_engine.clone();
         let model = model_name();
+        // SPEC-004: Clone system prompt for async task
+        let system_prompt = request.system.clone();
 
         tokio::spawn(async move {
             let start = Instant::now();
@@ -94,9 +96,12 @@ pub async fn ollama_chat(
             // Execute query based on mode
             let response_result = if mode == OllamaSearchMode::Bypass {
                 // For bypass mode, fall back to hybrid query
-                let engine_request = EngineQueryRequest::new(&cleaned_query)
+                let mut engine_request = EngineQueryRequest::new(&cleaned_query)
                     .with_mode(QueryMode::Hybrid)
                     .with_conversation_history(conversation_history);
+                if let Some(ref sp) = system_prompt {
+                    engine_request = engine_request.with_system_prompt(sp);
+                }
                 engine.query(engine_request).await
             } else if let Some(query_mode) = mode.to_query_mode() {
                 let mut engine_request = EngineQueryRequest::new(&cleaned_query)
@@ -105,11 +110,17 @@ pub async fn ollama_chat(
                 if context_only {
                     engine_request = engine_request.context_only();
                 }
+                if let Some(ref sp) = system_prompt {
+                    engine_request = engine_request.with_system_prompt(sp);
+                }
                 engine.query(engine_request).await
             } else {
-                let engine_request = EngineQueryRequest::new(&cleaned_query)
+                let mut engine_request = EngineQueryRequest::new(&cleaned_query)
                     .with_mode(QueryMode::Hybrid)
                     .with_conversation_history(conversation_history);
+                if let Some(ref sp) = system_prompt {
+                    engine_request = engine_request.with_system_prompt(sp);
+                }
                 engine.query(engine_request).await
             };
 
@@ -185,11 +196,18 @@ pub async fn ollama_chat(
             if context_only {
                 req = req.context_only();
             }
+            if let Some(ref sp) = request.system {
+                req = req.with_system_prompt(sp);
+            }
             req
         } else {
-            EngineQueryRequest::new(&cleaned_query)
+            let mut req = EngineQueryRequest::new(&cleaned_query)
                 .with_mode(QueryMode::Hybrid)
-                .with_conversation_history(conversation_history)
+                .with_conversation_history(conversation_history);
+            if let Some(ref sp) = request.system {
+                req = req.with_system_prompt(sp);
+            }
+            req
         };
 
         let response = state

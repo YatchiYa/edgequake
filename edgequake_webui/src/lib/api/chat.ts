@@ -63,6 +63,12 @@ export interface ChatCompletionRequest {
    * when not set.
    */
   language?: string;
+  /**
+   * Optional system prompt extension. Injected between the base RAG instructions
+   * and the retrieved context to steer LLM behaviour without replacing the core prompt.
+   * @implements SPEC-004: System prompt extension point
+   */
+  system_prompt?: string;
 }
 
 /**

@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
 import {
     Sheet,
     SheetContent,
@@ -37,6 +38,7 @@ import {
 import {
     BookOpen,
     Brain,
+    FileText,
     Gauge,
     Info,
     Settings2,
@@ -52,6 +54,7 @@ interface QuerySettings {
   topK: number;
   temperature: number;
   maxTokens: number;
+  systemPrompt?: string;
 }
 
 interface QuerySettingsSheetProps {
@@ -265,6 +268,51 @@ export function QuerySettingsSheet({
                     <span>4096</span>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* System Prompt Section */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <FileText className="h-3.5 w-3.5 text-emerald-500" />
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {t('query.settings.systemPrompt', 'System Prompt')}
+                </h3>
+              </div>
+
+              <div className="rounded-lg border p-3 space-y-2 bg-muted/20">
+                <div className="flex items-center gap-1.5">
+                  <Label htmlFor="system-prompt" className="text-sm font-medium">
+                    {t('query.settings.systemPromptLabel', 'Custom Instructions')}
+                  </Label>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger aria-label="System prompt help">
+                        <Info className="h-3 w-3 text-muted-foreground" />
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-[240px]">
+                        <p className="text-xs">
+                          {t('query.settings.systemPromptHint', 'Additional instructions injected into the RAG prompt. Use this to steer tone, format, or domain focus without replacing the core prompt.')}
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+                <Textarea
+                  id="system-prompt"
+                  placeholder={t('query.settings.systemPromptPlaceholder', 'e.g. "Always respond in bullet points" or "Focus on security implications"')}
+                  value={settings.systemPrompt ?? ''}
+                  onChange={(e) => onSettingsChange({ systemPrompt: e.target.value || undefined })}
+                  className="min-h-[80px] resize-y text-sm"
+                  rows={3}
+                />
+                {settings.systemPrompt && (
+                  <p className="text-[10px] text-muted-foreground">
+                    {t('query.settings.systemPromptActive', 'System prompt active — will be injected into every query.')}
+                  </p>
+                )}
               </div>
             </div>
           </div>

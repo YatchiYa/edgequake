@@ -187,6 +187,8 @@ pub async fn chat_completion_stream(
     let workspace_clone = workspace.clone();
     // Clone language for async task - used to enrich query with language directive
     let request_language = request.language.clone();
+    // SPEC-004: Clone system prompt for async task
+    let request_system_prompt = request.system_prompt.clone();
     // FEAT0505: Clone for auto-title generation
     let first_message_for_title = request.message.clone();
 
@@ -217,6 +219,11 @@ pub async fn chat_completion_stream(
         // Using header tenant_id causes 0 results because of tenant_id mismatch.
         let enriched_query = enrich_query_with_language(&message_content, &request_language);
         let mut engine_request = EngineQueryRequest::new(&enriched_query).with_mode(query_mode);
+
+        // SPEC-004: Thread system prompt extension if provided
+        if let Some(ref system_prompt) = request_system_prompt {
+            engine_request = engine_request.with_system_prompt(system_prompt);
+        }
         let data_tenant_id = workspace_clone
             .as_ref()
             .map(|ws| ws.tenant_id.to_string())
