@@ -42,6 +42,7 @@ pub struct ChatCompletionRequest {
 }
 
 /// A source reference in a chat/query response.
+/// @implements SPEC-006: Enriched source references
 #[derive(Debug, Clone, Deserialize)]
 pub struct SourceReference {
     #[serde(default)]
@@ -58,6 +59,15 @@ pub struct SourceReference {
     /// Original file path or title of the source document.
     #[serde(default)]
     pub file_path: Option<String>,
+    /// Entity type (e.g., "PERSON", "ORGANIZATION"). @implements SPEC-006
+    #[serde(default)]
+    pub entity_type: Option<String>,
+    /// Entity degree (number of relationships). @implements SPEC-006
+    #[serde(default)]
+    pub degree: Option<usize>,
+    /// Source chunk IDs that mention this entity. @implements SPEC-006
+    #[serde(default)]
+    pub source_chunk_ids: Option<Vec<String>>,
 }
 
 /// Chat completion response from POST /api/v1/chat/completions.
@@ -118,4 +128,10 @@ pub struct ChatStreamChunk {
     /// LLM model used (present in done event, lineage tracking).
     #[serde(default)]
     pub llm_model: Option<String>,
+    /// Query mode used for retrieval (present in context event). @implements SPEC-006
+    #[serde(default)]
+    pub query_mode: Option<String>,
+    /// Retrieval time in ms (present in context event). @implements SPEC-006
+    #[serde(default)]
+    pub retrieval_time_ms: Option<u64>,
 }

@@ -309,6 +309,9 @@ pub async fn execute_query(
                 start_line: chunk.start_line,
                 end_line: chunk.end_line,
                 chunk_index: chunk.chunk_index,
+                entity_type: None,
+                degree: None,
+                source_chunk_ids: None,
             }
         })
         .collect();
@@ -345,6 +348,14 @@ pub async fn execute_query(
             start_line: None,
             end_line: None,
             chunk_index: None,
+            // SPEC-006: Enrich entity metadata
+            entity_type: Some(entity.entity_type.clone()),
+            degree: if entity.degree > 0 { Some(entity.degree) } else { None },
+            source_chunk_ids: if entity.source_chunk_ids.is_empty() {
+                None
+            } else {
+                Some(entity.source_chunk_ids.clone())
+            },
         });
     }
 
@@ -367,6 +378,9 @@ pub async fn execute_query(
             start_line: None,
             end_line: None,
             chunk_index: None,
+            entity_type: None,
+            degree: None,
+            source_chunk_ids: None,
         });
     }
 

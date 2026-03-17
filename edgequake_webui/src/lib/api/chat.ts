@@ -79,6 +79,7 @@ export interface ChatCompletionRequest {
 
 /**
  * Source reference returned with query results.
+ * @implements SPEC-006: Enriched source references
  */
 export interface SourceReference {
   source_type: string;
@@ -89,6 +90,12 @@ export interface SourceReference {
   reference_id?: number;
   document_id?: string;
   file_path?: string;
+  /** Entity type (e.g., "PERSON", "ORGANIZATION"). @implements SPEC-006 */
+  entity_type?: string;
+  /** Entity degree (number of relationships). @implements SPEC-006 */
+  degree?: number;
+  /** Source chunk IDs that mention this entity. @implements SPEC-006 */
+  source_chunk_ids?: string[];
 }
 
 /**
@@ -143,6 +150,10 @@ export type ChatStreamEvent =
   | {
       type: "context";
       sources: SourceReference[];
+      /** Query mode used for retrieval. @implements SPEC-006 */
+      query_mode?: string;
+      /** Retrieval time in milliseconds. @implements SPEC-006 */
+      retrieval_time_ms?: number;
     }
   | {
       type: "token";
@@ -249,6 +260,10 @@ export interface StreamingState {
   assistantMessageId?: string;
   /** Context sources (if received) */
   sources?: SourceReference[];
+  /** Query mode used for retrieval. @implements SPEC-006 */
+  queryMode?: string;
+  /** Retrieval time in ms. @implements SPEC-006 */
+  retrievalTimeMs?: number;
   /** Token count (available after done event) */
   tokensUsed?: number;
   /** Duration in ms (available after done event) */
@@ -281,6 +296,8 @@ export function reduceStreamingEvent(
       return {
         ...currentState,
         sources: event.sources,
+        queryMode: event.query_mode,
+        retrievalTimeMs: event.retrieval_time_ms,
       };
     case "token":
       return {

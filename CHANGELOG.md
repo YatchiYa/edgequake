@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.0] - 2026-03-18
+
+### Added
+
+#### Unified Streaming Response Protocol (SPEC-006) — Closes [#56](https://github.com/raphaelmansuy/edgequake/issues/56)
+
+- **Structured SSE events** for `/api/v1/query/stream`: New `context`, `token`, `thinking`, `done`, and `error` event types replace raw text streaming (v2 format). Backward-compatible `v1` format available via `stream_format: "v1"` parameter.
+- **`QueryStreamEvent` enum** (`query_types.rs`): Five tagged variants with full context (sources, query mode, retrieval timing) and statistics (tokens/sec, generation time, total time).
+- **`QueryStreamStats` struct**: Comprehensive streaming statistics including `embedding_time_ms`, `retrieval_time_ms`, `generation_time_ms`, `total_time_ms`, `sources_retrieved`, `tokens_used`, `tokens_per_second`, and `query_mode`.
+- **Enriched `SourceReference`**: Added `entity_type`, `degree`, and `source_chunk_ids` fields to source references across all API responses, enabling richer entity display and provenance tracking.
+- **Enriched `ChatStreamEvent::Context`**: Added `query_mode` and `retrieval_time_ms` fields to chat streaming context events for consistent timing feedback.
+- **`StreamQueryRequest` expansion**: New `document_filter`, `llm_provider`, `llm_model`, and `stream_format` parameters for query stream endpoint.
+- **Full provider resolution**: Query stream endpoint now supports workspace-specific embedding providers, vector storage, and LLM provider overrides (same dispatch logic as chat streaming).
+- **Frontend TypeScript**: Updated `SourceReference`, `ChatStreamEvent`, `StreamingState`, `QueryStreamChunk`, and `QueryRequest` types. Added `QueryStreamStats` interface. Updated `reduceStreamingEvent()` and `mapSourcesToContext()` for enriched fields.
+- **Rust SDK**: Updated `SourceReference` (both chat and query types), `ChatStreamChunk`, `QueryStreamChunk`, and `QueryRequest` with SPEC-006 fields. Added `QueryStreamStats` struct.
+- **API documentation**: Updated `/api/v1/query/stream` and `/api/v1/chat/completions` SSE event documentation with v2 structured format examples.
+
+### Changed
+
+- Query stream handler rewritten from 99 lines to full workspace-aware implementation with mpsc channel-based event dispatch (matching chat streaming architecture).
+- `build_sources()` visibility changed from private to `pub(crate)` to allow reuse across query and chat handlers.
+
 ## [0.5.6] - 2026-03-17
 
 ### Added
