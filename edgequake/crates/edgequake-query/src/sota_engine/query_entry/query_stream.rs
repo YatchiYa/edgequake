@@ -142,7 +142,11 @@ impl SOTAQueryEngine {
         }
 
         // Step 7: Build prompt and stream response
-        let prompt = self.build_prompt(&request.query, &final_context, request.system_prompt.as_deref());
+        let prompt = self.build_prompt(
+            &request.query,
+            &final_context,
+            request.system_prompt.as_deref(),
+        );
 
         // Check if provider supports streaming
         if self.llm_provider.supports_streaming() {
@@ -479,7 +483,11 @@ impl SOTAQueryEngine {
         }
 
         // Step 7: Build prompt and stream using LLM override or default
-        let prompt = self.build_prompt(&request.query, &final_context, request.system_prompt.as_deref());
+        let prompt = self.build_prompt(
+            &request.query,
+            &final_context,
+            request.system_prompt.as_deref(),
+        );
 
         // Determine which LLM provider to use for streaming
         let llm_to_use = llm_provider

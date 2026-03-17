@@ -370,8 +370,8 @@ mod tests {
     mod system_prompt_tests {
         use super::*;
         use crate::context::{QueryContext, RetrievedChunk};
-        use edgequake_storage::{MemoryVectorStorage, MemoryGraphStorage};
         use edgequake_llm::MockProvider;
+        use edgequake_storage::{MemoryGraphStorage, MemoryVectorStorage};
         use std::sync::Arc;
 
         /// Helper to create a minimal SOTAQueryEngine for prompt tests.
@@ -380,8 +380,7 @@ mod tests {
             let graph_storage = Arc::new(MemoryGraphStorage::new("test"));
             let embedding_provider: Arc<dyn crate::EmbeddingProvider> =
                 Arc::new(MockProvider::default());
-            let llm_provider: Arc<dyn crate::LLMProvider> =
-                Arc::new(MockProvider::default());
+            let llm_provider: Arc<dyn crate::LLMProvider> = Arc::new(MockProvider::default());
 
             SOTAQueryEngine::new(
                 SOTAQueryConfig::default(),

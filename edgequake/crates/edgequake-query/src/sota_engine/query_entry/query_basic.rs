@@ -177,10 +177,23 @@ impl SOTAQueryEngine {
         let (answer, generated_tokens) = if request.context_only {
             (String::new(), 0)
         } else if request.prompt_only {
-            (self.build_prompt(&request.query, &final_context, request.system_prompt.as_deref()), 0)
+            (
+                self.build_prompt(
+                    &request.query,
+                    &final_context,
+                    request.system_prompt.as_deref(),
+                ),
+                0,
+            )
         } else {
             let gen_start = std::time::Instant::now();
-            let result = self.generate_answer(&request.query, &final_context, request.system_prompt.as_deref()).await?;
+            let result = self
+                .generate_answer(
+                    &request.query,
+                    &final_context,
+                    request.system_prompt.as_deref(),
+                )
+                .await?;
             stats.generation_time_ms = gen_start.elapsed().as_millis() as u64;
             result
         };
@@ -356,10 +369,23 @@ impl SOTAQueryEngine {
         let (answer, generated_tokens) = if request.context_only {
             (String::new(), 0)
         } else if request.prompt_only {
-            (self.build_prompt(&request.query, &final_context, request.system_prompt.as_deref()), 0)
+            (
+                self.build_prompt(
+                    &request.query,
+                    &final_context,
+                    request.system_prompt.as_deref(),
+                ),
+                0,
+            )
         } else {
             let gen_start = std::time::Instant::now();
-            let result = self.generate_answer(&request.query, &final_context, request.system_prompt.as_deref()).await?;
+            let result = self
+                .generate_answer(
+                    &request.query,
+                    &final_context,
+                    request.system_prompt.as_deref(),
+                )
+                .await?;
             stats.generation_time_ms = gen_start.elapsed().as_millis() as u64;
             result
         };
@@ -530,12 +556,24 @@ impl SOTAQueryEngine {
         let (answer, generated_tokens) = if request.context_only {
             (String::new(), 0)
         } else if request.prompt_only {
-            (self.build_prompt(&request.query, &final_context, request.system_prompt.as_deref()), 0)
+            (
+                self.build_prompt(
+                    &request.query,
+                    &final_context,
+                    request.system_prompt.as_deref(),
+                ),
+                0,
+            )
         } else {
             let gen_start = std::time::Instant::now();
             // SPEC-032: Use the override LLM provider
             let result = self
-                .generate_answer_with_provider(&request.query, &final_context, Some(&llm_provider), request.system_prompt.as_deref())
+                .generate_answer_with_provider(
+                    &request.query,
+                    &final_context,
+                    Some(&llm_provider),
+                    request.system_prompt.as_deref(),
+                )
                 .await?;
             stats.generation_time_ms = gen_start.elapsed().as_millis() as u64;
             result

@@ -697,8 +697,8 @@ mod tests {
     /// @implements SPEC-004: system prompt builder test
     #[test]
     fn test_query_request_with_system_prompt() {
-        let request = QueryRequest::new("Tell me about Rust")
-            .with_system_prompt("Always respond in French");
+        let request =
+            QueryRequest::new("Tell me about Rust").with_system_prompt("Always respond in French");
 
         assert_eq!(
             request.system_prompt.as_deref(),
@@ -713,8 +713,7 @@ mod tests {
     /// @implements SPEC-004: system prompt serialization round-trip
     #[test]
     fn test_query_request_system_prompt_serde() {
-        let request = QueryRequest::new("query")
-            .with_system_prompt("Be concise");
+        let request = QueryRequest::new("query").with_system_prompt("Be concise");
 
         let json = serde_json::to_string(&request).unwrap();
         assert!(json.contains("\"system_prompt\":\"Be concise\""));
