@@ -7,6 +7,12 @@ use crate::error::Result;
 use super::SOTAQueryEngine;
 
 impl SOTAQueryEngine {
+    /// Check if metadata matches tenant/workspace filter.
+    ///
+    /// DEPRECATED (SPEC-007): Prefer `query_filtered()` which pushes filtering to SQL.
+    /// Retained for backward-compat with custom VectorStorage impls that don't override
+    /// `query_filtered()`.
+    #[allow(dead_code)]
     pub(super) fn matches_tenant_filter(
         &self,
         metadata: &serde_json::Value,

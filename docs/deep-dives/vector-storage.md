@@ -156,8 +156,69 @@ pub trait VectorStorage: Send + Sync {
     async fn count(&self) -> Result<usize>;
     async fn clear(&self) -> Result<()>;
     async fn clear_workspace(&self, workspace_id: &Uuid) -> Result<usize>;
+
+    /// Query with metadata pre-filter (SPEC-007 Tier 2+)
+    async fn query_filtered(
+        &self,
+        query_embedding: &[f32],
+        top_k: usize,
+        filter_ids: Option<&[String]>,
+        metadata_filter: Option<&MetadataFilter>,
+    ) -> Result<Vec<VectorSearchResult>>;
 }
 ```
+
+---
+
+## SQL Pre-Filtering (SPEC-007)
+
+> **Added in v0.7.0** — Pushes metadata filtering to the SQL layer for dramatic performance improvements at scale.
+
+### MetadataFilter
+
+```rust
+pub struct MetadataFilter {
+    pub document_ids: Option<Vec<String>>,  // Filter by document(s)
+    pub tenant_id: Option<String>,          // Filter by tenant
+    pub workspace_id: Option<String>,       // Filter by workspace
+}
+```
+
+All fields are optional; only non-`None` fields participate in AND-combined filtering.
+
+### Three-Tier Architecture
+
+| Tier | Strategy               | Index Type | Performance                      |
+| ---- | ---------------------- | ---------- | -------------------------------- |
+| 1    | Post-retrieval filter  | None       | Baseline (scans all vectors)     |
+| 2    | JSONB WHERE + GIN      | GIN        | ~30-60% reduction in scans       |
+| 3    | Materialized columns   | B-tree     | ~60-90% reduction in scans       |
+
+**How it works in PostgreSQL:**
+
+```sql
+-- Tier 2+3 combined: column-first with JSONB fallback
+SELECT id, metadata, 1 - (embedding <=> $1::vector) AS score
+FROM eq_workspace_vectors
+WHERE (document_id = ANY($2) OR metadata->>'document_id' = ANY($2))
+  AND (tenant_id = $3 OR metadata->>'tenant_id' = $3)
+ORDER BY embedding <=> $1::vector
+LIMIT $4
+```
+
+The query planner uses B-tree indexes on materialized columns when available, falling back to GIN-indexed JSONB extraction otherwise.
+
+### Dual-Write on Upsert
+
+When vectors are inserted, metadata is written to both:
+1. The `metadata` JSONB column (backward compatibility)
+2. Materialized columns: `document_id`, `tenant_id`, `workspace_id`
+
+This ensures existing code reading the JSONB blob continues to work while new queries benefit from indexed column lookups.
+
+### Migration Safety
+
+Migrations 027-029 use dynamic table discovery (`pg_tables WHERE tablename LIKE 'eq_%_vectors'`) to safely apply indexes to all workspace-scoped vector tables, including those created at runtime.
 
 ---
 

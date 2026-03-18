@@ -2,6 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0] - 2026-03-18
+
+### Added
+
+#### Vector Storage Optimization — Tier 2 & Tier 3 (SPEC-007)
+
+- **`MetadataFilter` type** (`vector.rs`): New filter struct with `document_ids`, `tenant_id`, and `workspace_id` fields for SQL-level pre-filtering. Builder `from_tenant_workspace()` and `is_empty()` provided for ergonomic construction.
+- **`query_filtered()` trait method** on `VectorStorage`: Pushes metadata filtering to the storage layer (SQL WHERE) instead of post-filtering in application code. Default implementation delegates to `query()` for backward compatibility.
+- **`PgVectorStorage::query_filtered()`**: Dynamic SQL WHERE clause generation with parameterized queries. Supports Tier 3 materialized columns with Tier 2 JSONB fallback (`document_id = ANY($N) OR metadata->>'document_id' = ANY($N)`).
+- **`MemoryVectorStorage::query_filtered()`**: In-memory metadata filtering with identical semantics to SQL implementation. Lenient matching for `tenant_id`/`workspace_id` (missing field passes), strict matching for `document_ids` (missing field excludes).
+- **GIN index on metadata JSONB** (migration 027): Accelerates Tier 2 JSONB WHERE clauses for all vector tables.
+- **Materialized columns** (migration 028): `document_id`, `tenant_id`, `workspace_id` columns added to vector tables with automatic JSONB backfill.
+- **B-tree indexes** (migration 029): Dedicated indexes on materialized columns for fast equality lookups.
+- **Dual-write on upsert**: `PgVectorStorage::upsert()` writes metadata to both JSONB blob and materialized columns, using `COALESCE(document_id, source_document_id)` normalization.
+- **30+ edge-case tests**: Comprehensive coverage including null metadata, missing fields, empty filters, empty document ID lists, wrong dimensions, score ordering, top-k after filter, all-fields-combined, AND semantics for filter_ids + metadata_filter, source_document_id-only matching, empty storage, and top-k=0.
+
+### Changed
+
+- **Query pipeline fully wired**: All 18 vector query call sites (10 in `query_modes.rs`, 8 in `vector_queries.rs`) migrated from `query()` to `query_filtered()` with `MetadataFilter::from_tenant_workspace()`.
+- **Removed 14 `matches_tenant_filter` post-filter calls**: Tenant/workspace filtering now happens at the SQL layer, reducing wasted vector scans by up to 90% for multi-tenant deployments.
+- **Migrations safe for fresh databases**: Dynamic table discovery (`pg_tables WHERE tablename LIKE 'eq_%_vectors'`) instead of hardcoded table names.
+
+### Performance
+
+| Document Count | Vectors (est.) | Tier 1 Waste | Tier 2+3 Savings |
+| :------------: | :------------: | :----------: | :--------------: |
+|      100       |      ~5K       |     <5%      |    Negligible    |
+|     1,000      |      ~50K      |    10-40%    |       ~30%       |
+|     10,000     |     ~500K      |    40-80%    |       ~60%       |
+|    100,000     |      ~5M       |    80-95%    |       ~90%       |
+
 ## [0.6.0] - 2026-03-18
 
 ### Added

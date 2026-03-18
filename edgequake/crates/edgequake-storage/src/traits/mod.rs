@@ -29,5 +29,5 @@ mod workspace_vector;
 
 pub use graph::{GraphEdge, GraphNode, GraphStorage, KnowledgeGraph};
 pub use kv::KVStorage;
-pub use vector::{VectorSearchResult, VectorStorage};
+pub use vector::{MetadataFilter, VectorSearchResult, VectorStorage};
 pub use workspace_vector::{WorkspaceVectorConfig, WorkspaceVectorRegistry};

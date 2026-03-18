@@ -26,7 +26,7 @@ use sqlx::Row;
 use super::config::{PostgresConfig, VectorIndexType};
 use super::connection::PostgresPool;
 use crate::error::{Result, StorageError};
-use crate::traits::{VectorSearchResult, VectorStorage};
+use crate::traits::{MetadataFilter, VectorSearchResult, VectorStorage};
 
 /// PostgreSQL vector storage using pgvector.
 ///
@@ -123,6 +123,40 @@ impl PgVectorStorage {
         if !index_sql.is_empty() {
             sqlx::query(&index_sql).execute(&pool).await.ok();
         }
+
+        // GIN index on metadata JSONB for Tier 2 metadata pre-filtering (SPEC-007)
+        let gin_sql = format!(
+            "CREATE INDEX IF NOT EXISTS eq_{}_vectors_metadata_idx ON {} USING GIN (metadata jsonb_path_ops)",
+            self.prefix, self.table_name
+        );
+        sqlx::query(&gin_sql).execute(&pool).await.ok();
+
+        // Materialized columns + B-tree indexes for Tier 3 (SPEC-007)
+        // ADD COLUMN IF NOT EXISTS is safe and instant (no table rewrite)
+        let add_cols = format!(
+            r#"
+            ALTER TABLE {} ADD COLUMN IF NOT EXISTS document_id TEXT;
+            ALTER TABLE {} ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+            ALTER TABLE {} ADD COLUMN IF NOT EXISTS workspace_id TEXT
+            "#,
+            self.table_name, self.table_name, self.table_name
+        );
+        // Each ALTER must be executed separately
+        for stmt in add_cols.split(';').filter(|s| !s.trim().is_empty()) {
+            sqlx::query(stmt.trim()).execute(&pool).await.ok();
+        }
+
+        let doc_idx = format!(
+            "CREATE INDEX IF NOT EXISTS eq_{}_vectors_doc_id_idx ON {} (document_id) WHERE document_id IS NOT NULL",
+            self.prefix, self.table_name
+        );
+        sqlx::query(&doc_idx).execute(&pool).await.ok();
+
+        let tenant_idx = format!(
+            "CREATE INDEX IF NOT EXISTS eq_{}_vectors_tenant_ws_idx ON {} (tenant_id, workspace_id) WHERE tenant_id IS NOT NULL",
+            self.prefix, self.table_name
+        );
+        sqlx::query(&tenant_idx).execute(&pool).await.ok();
 
         Ok(())
     }
@@ -485,13 +519,21 @@ impl VectorStorage for PgVectorStorage {
 
             let embedding_str = Self::format_embedding(embedding);
 
+            // Dual-write: populate both JSONB metadata AND materialized columns (SPEC-007 Tier 3)
+            // COALESCE handles the document_id/source_document_id inconsistency
             let sql = format!(
                 r#"
-                INSERT INTO {} (id, embedding, metadata)
-                VALUES ($1, $2::vector, $3)
+                INSERT INTO {} (id, embedding, metadata, document_id, tenant_id, workspace_id)
+                VALUES ($1, $2::vector, $3,
+                        COALESCE($3->>'document_id', $3->>'source_document_id'),
+                        $3->>'tenant_id',
+                        $3->>'workspace_id')
                 ON CONFLICT (id) DO UPDATE SET
                     embedding = EXCLUDED.embedding,
-                    metadata = EXCLUDED.metadata
+                    metadata = EXCLUDED.metadata,
+                    document_id = EXCLUDED.document_id,
+                    tenant_id = EXCLUDED.tenant_id,
+                    workspace_id = EXCLUDED.workspace_id
                 "#,
                 self.table_name
             );
@@ -657,6 +699,151 @@ impl VectorStorage for PgVectorStorage {
             .map_err(|e| StorageError::Database(format!("Clear workspace failed: {}", e)))?;
 
         Ok(result.rows_affected() as usize)
+    }
+
+    /// Query with metadata pre-filter (SPEC-007 Tier 2/3).
+    ///
+    /// Generates dynamic SQL WHERE clauses from MetadataFilter fields:
+    /// - `document_ids` → checks both `document_id` column AND JSONB keys
+    /// - `tenant_id` → checks `tenant_id` column (falls back to JSONB)
+    /// - `workspace_id` → checks `workspace_id` column (falls back to JSONB)
+    ///
+    /// Uses Tier 3 (column-based) if materialized columns exist, otherwise
+    /// Tier 2 (JSONB extraction) as fallback.
+    ///
+    /// @implements SPEC-007 R-T2-01, R-T3-01
+    async fn query_filtered(
+        &self,
+        query_embedding: &[f32],
+        top_k: usize,
+        filter_ids: Option<&[String]>,
+        metadata_filter: Option<&MetadataFilter>,
+    ) -> Result<Vec<VectorSearchResult>> {
+        // Fast path: if no metadata filter, delegate to standard query
+        let mf = match metadata_filter {
+            Some(mf) if !mf.is_empty() => mf,
+            _ => return self.query(query_embedding, top_k, filter_ids).await,
+        };
+
+        let pool = self.pool.get().await?;
+        let embedding_str = Self::format_embedding(query_embedding);
+
+        // Build dynamic WHERE clause
+        // Parameter $1 is always the embedding
+        let mut conditions: Vec<String> = Vec::new();
+        let mut param_offset = 2u32; // $1 = embedding, params start at $2
+
+        // ID filter
+        let has_id_filter = filter_ids.map(|ids| !ids.is_empty()).unwrap_or(false);
+        if has_id_filter {
+            conditions.push(format!("id = ANY(${}::text[])", param_offset));
+            param_offset += 1;
+        }
+
+        // Document IDs: try column first, fall back to JSONB
+        if mf.document_ids.is_some() {
+            conditions.push(format!(
+                "(document_id = ANY(${}::text[]) OR metadata->>'document_id' = ANY(${}::text[]) OR metadata->>'source_document_id' = ANY(${}::text[]))",
+                param_offset, param_offset, param_offset
+            ));
+            param_offset += 1;
+        }
+
+        // Tenant ID
+        if mf.tenant_id.is_some() {
+            conditions.push(format!(
+                "(tenant_id = ${} OR metadata->>'tenant_id' = ${})",
+                param_offset, param_offset
+            ));
+            param_offset += 1;
+        }
+
+        // Workspace ID
+        if mf.workspace_id.is_some() {
+            conditions.push(format!(
+                "(workspace_id = ${} OR metadata->>'workspace_id' = ${})",
+                param_offset, param_offset
+            ));
+            param_offset += 1;
+        }
+
+        let where_clause = if conditions.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", conditions.join(" AND "))
+        };
+
+        let sql = format!(
+            r#"
+            SELECT id, metadata, 1 - (embedding <=> $1::vector) as score
+            FROM {}
+            {}
+            ORDER BY embedding <=> $1::vector
+            LIMIT ${}
+            "#,
+            self.table_name, where_clause, param_offset
+        );
+
+        // Dynamic parameter binding using raw query + manual bind chain
+        // sqlx doesn't support truly dynamic args with query(), so we build
+        // the query with the right number of bind slots and bind sequentially.
+        use sqlx::postgres::PgArguments;
+        use sqlx::Arguments;
+
+        let mut args = PgArguments::default();
+        args.add(&embedding_str)
+            .map_err(|e| StorageError::Database(format!("Failed to bind embedding: {}", e)))?;
+
+        if let Some(ids) = filter_ids {
+            if !ids.is_empty() {
+                let id_vec: Vec<String> = ids.to_vec();
+                args.add(&id_vec).map_err(|e| {
+                    StorageError::Database(format!("Failed to bind filter_ids: {}", e))
+                })?;
+            }
+        }
+
+        if let Some(doc_ids) = &mf.document_ids {
+            let doc_vec: Vec<String> = doc_ids.clone();
+            args.add(&doc_vec).map_err(|e| {
+                StorageError::Database(format!("Failed to bind document_ids: {}", e))
+            })?;
+        }
+
+        if let Some(tid) = &mf.tenant_id {
+            args.add(tid)
+                .map_err(|e| StorageError::Database(format!("Failed to bind tenant_id: {}", e)))?;
+        }
+
+        if let Some(wid) = &mf.workspace_id {
+            args.add(wid).map_err(|e| {
+                StorageError::Database(format!("Failed to bind workspace_id: {}", e))
+            })?;
+        }
+
+        args.add(top_k as i32)
+            .map_err(|e| StorageError::Database(format!("Failed to bind top_k: {}", e)))?;
+
+        let rows = sqlx::query_with(&sql, args)
+            .fetch_all(&pool)
+            .await
+            .map_err(|e| StorageError::Database(format!("Filtered vector query failed: {}", e)))?;
+
+        let results = rows
+            .iter()
+            .map(|row| {
+                let id: String = row.get("id");
+                let score: f64 = row.get("score");
+                let metadata: serde_json::Value = row.get("metadata");
+                VectorSearchResult {
+                    id,
+                    score: score as f32,
+                    metadata,
+                }
+            })
+            .collect();
+
+        Ok(results)
     }
 }
 

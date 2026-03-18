@@ -37,6 +37,45 @@ pub struct VectorSearchResult {
     pub metadata: serde_json::Value,
 }
 
+/// Metadata-based filter for vector queries (SPEC-007 Tier 2+).
+///
+/// All fields are optional; only non-None fields participate in AND-combined filtering.
+/// Pushes filtering to the SQL layer (JSONB WHERE or column WHERE) to avoid
+/// retrieving and discarding irrelevant vectors in application code.
+///
+/// @implements SPEC-007 R-T2-01
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MetadataFilter {
+    /// Filter by document ID(s). Matches JSONB key `document_id` OR `source_document_id`.
+    pub document_ids: Option<Vec<String>>,
+    /// Filter by tenant ID.
+    pub tenant_id: Option<String>,
+    /// Filter by workspace ID.
+    pub workspace_id: Option<String>,
+}
+
+impl MetadataFilter {
+    /// Returns true when no filter fields are set.
+    pub fn is_empty(&self) -> bool {
+        self.document_ids.is_none() && self.tenant_id.is_none() && self.workspace_id.is_none()
+    }
+
+    /// Build a filter from optional tenant and workspace IDs.
+    pub fn from_tenant_workspace(
+        tenant_id: Option<String>,
+        workspace_id: Option<String>,
+    ) -> Option<Self> {
+        if tenant_id.is_none() && workspace_id.is_none() {
+            return None;
+        }
+        Some(Self {
+            document_ids: None,
+            tenant_id,
+            workspace_id,
+        })
+    }
+}
+
 /// Vector storage interface for similarity search.
 ///
 /// Provides storage and retrieval of vector embeddings with
@@ -138,5 +177,77 @@ pub trait VectorStorage: Send + Sync {
         // Implementations should override this for workspace-scoped clearing
         let _ = workspace_id;
         Ok(0)
+    }
+
+    /// Query with metadata pre-filter (SPEC-007 Tier 2+).
+    ///
+    /// Pushes tenant/workspace/document filters to the storage layer (SQL WHERE)
+    /// instead of post-filtering in application code.
+    ///
+    /// Default implementation ignores `metadata_filter` and delegates to `query()`.
+    /// Backends that support SQL-level filtering override this for better performance.
+    ///
+    /// @implements SPEC-007 R-T2-01
+    async fn query_filtered(
+        &self,
+        query_embedding: &[f32],
+        top_k: usize,
+        filter_ids: Option<&[String]>,
+        metadata_filter: Option<&MetadataFilter>,
+    ) -> Result<Vec<VectorSearchResult>> {
+        let _ = metadata_filter;
+        self.query(query_embedding, top_k, filter_ids).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_metadata_filter_is_empty() {
+        let f = MetadataFilter::default();
+        assert!(f.is_empty());
+
+        let f = MetadataFilter {
+            tenant_id: Some("t1".into()),
+            ..Default::default()
+        };
+        assert!(!f.is_empty());
+    }
+
+    #[test]
+    fn test_metadata_filter_from_tenant_workspace_both_none() {
+        assert!(MetadataFilter::from_tenant_workspace(None, None).is_none());
+    }
+
+    #[test]
+    fn test_metadata_filter_from_tenant_workspace_tenant_only() {
+        let mf = MetadataFilter::from_tenant_workspace(Some("t1".into()), None).unwrap();
+        assert_eq!(mf.tenant_id.as_deref(), Some("t1"));
+        assert!(mf.workspace_id.is_none());
+        assert!(mf.document_ids.is_none());
+    }
+
+    #[test]
+    fn test_metadata_filter_from_tenant_workspace_both() {
+        let mf =
+            MetadataFilter::from_tenant_workspace(Some("t1".into()), Some("ws1".into())).unwrap();
+        assert_eq!(mf.tenant_id.as_deref(), Some("t1"));
+        assert_eq!(mf.workspace_id.as_deref(), Some("ws1"));
+    }
+
+    #[test]
+    fn test_metadata_filter_serialization_roundtrip() {
+        let mf = MetadataFilter {
+            document_ids: Some(vec!["doc1".into(), "doc2".into()]),
+            tenant_id: Some("t1".into()),
+            workspace_id: Some("ws1".into()),
+        };
+        let json = serde_json::to_string(&mf).unwrap();
+        let mf2: MetadataFilter = serde_json::from_str(&json).unwrap();
+        assert_eq!(mf2.tenant_id, mf.tenant_id);
+        assert_eq!(mf2.workspace_id, mf.workspace_id);
+        assert_eq!(mf2.document_ids, mf.document_ids);
     }
 }
