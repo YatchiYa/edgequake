@@ -21,15 +21,15 @@
 # These are used when no explicit provider/model is specified in API calls.
 #
 # Supported default configurations:
-#   - OpenAI: gpt-5-nano (LLM), text-embedding-3-small (embedding)
+#   - OpenAI: gpt-4o-mini (LLM), text-embedding-3-small (embedding)
 #   - Ollama: gemma3:12b (LLM), embeddinggemma (embedding)
 #   - LM Studio: gemma-3n-e4b-it (LLM), text-embedding-nomic-embed-text-v1.5 (embedding)
 
 [defaults]
-llm_provider = "ollama"              # Default LLM provider
-llm_model = "gemma3:12b"             # Default LLM model (128K context, vision support)
-embedding_provider = "ollama"        # Default embedding provider
-embedding_model = "embeddinggemma"   # Default embedding model (768 dimensions, 2K context)
+llm_provider = "openai"              # Default LLM provider
+llm_model = "gpt-4o-mini"             # Default LLM model (128K context, vision support)
+embedding_provider = "openai"        # Default embedding provider
+embedding_model = "text-embedding-3-small"   # Default embedding model (768 dimensions, 2K context)
 
 # =============================================================================
 # OPENAI PROVIDER
@@ -42,7 +42,7 @@ name = "openai"
 display_name = "OpenAI"
 type = "openai"
 api_base = "https://api.openai.com/v1"
-api_key_env = "OPENAI_API_KEY"
+api_key_env = "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"
 enabled = true
 priority = 10
 description = "OpenAI GPT models - Production-grade LLMs with excellent instruction following"
@@ -74,8 +74,8 @@ embedding_per_1k = 0.0
 image_per_unit = 0.0
 
 [[providers.models]]
-name = "gpt-5-nano"
-display_name = "GPT-5 Nano"
+name = "gpt-4o-mini"
+display_name = "GPT-4o Mini"
 model_type = "llm"
 description = "Cost-effective model with excellent performance, ideal for high-volume tasks"
 deprecated = false
@@ -150,7 +150,7 @@ image_per_unit = 0.0
 
 [[providers.models]]
 name = "gpt-4o-mini"
-display_name = "GPT-4o-mini"
+display_name = "GPT-4o Mini"
 model_type = "llm"
 description = "Ultra-efficient model for simple tasks at lowest cost"
 deprecated = false

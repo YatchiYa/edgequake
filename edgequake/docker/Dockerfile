@@ -4,8 +4,7 @@
 # ============================================
 # Stage 1: Build
 # ============================================
-# Use rust:bookworm to match runtime glibc version (debian:bookworm-slim)
-FROM rust:bookworm AS builder
+FROM rust:1.88-bookworm AS builder
 
 WORKDIR /app
 
@@ -16,15 +15,15 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy workspace files
-COPY Cargo.toml Cargo.lock ./
+COPY Cargo.toml  ./
+COPY .sqlx/ .sqlx/
+COPY migrations/ migrations/
 COPY crates/ crates/
 COPY src/ src/
-COPY migrations/ migrations/
-COPY .sqlx .sqlx/
 
-# Build release binary with SQLx offline mode (no database needed)
+# Build release binary with SQLx offline mode
 ENV SQLX_OFFLINE=true
-RUN cargo build --release --locked
+RUN cargo build --release 
 
 # ============================================
 # Stage 2: Runtime

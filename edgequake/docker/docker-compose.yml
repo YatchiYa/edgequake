@@ -8,12 +8,17 @@ services:
     restart: unless-stopped
     ports:
       - "${EDGEQUAKE_PORT:-8080}:8080"
+    env_file:
+      - ../.env
     environment:
       - EDGEQUAKE_HOST=0.0.0.0
-      - EDGEQUAKE_PORT=80 80
+      - EDGEQUAKE_PORT=8080
+      # Override DATABASE_URL to use docker service name 'postgres' instead of 'db'
       - DATABASE_URL=postgres://edgequake:${POSTGRES_PASSWORD:-edgequake_secret}@postgres:5432/edgequake
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      # OPENAI_API_KEY is loaded from .env file, no need to override
       - RUST_LOG=info,edgequake=debug
+      # Ensure models.toml is found
+      - EDGEQUAKE_MODELS_CONFIG=/app/models.toml
     depends_on:
       postgres:
         condition: service_healthy
