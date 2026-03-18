@@ -9,7 +9,7 @@ use crate::helpers::{
 use crate::keywords::ExtractedKeywords;
 use crate::vector_filter::{filter_by_type, VectorType};
 
-use edgequake_storage::traits::VectorStorage;
+use edgequake_storage::traits::{MetadataFilter, VectorStorage};
 
 use super::{QueryEmbeddings, SOTAQueryEngine};
 
@@ -22,11 +22,18 @@ impl SOTAQueryEngine {
         vector_storage: &Arc<dyn VectorStorage>,
     ) -> Result<QueryContext> {
         let mut context = QueryContext::new();
+        let mf = MetadataFilter::from_tenant_workspace(tenant_id, workspace_id);
 
         // WHY 2x oversampling: Vector storage returns all types (entities, relationships, chunks).
         // We retrieve 2x max_chunks to compensate for non-chunk results in top results.
+        // SPEC-007: tenant/workspace filter pushed to storage layer via query_filtered.
         let results = vector_storage
-            .query(&embeddings.query, self.config.max_chunks * 2, None)
+            .query_filtered(
+                &embeddings.query,
+                self.config.max_chunks * 2,
+                None,
+                mf.as_ref(),
+            )
             .await?;
 
         let chunk_results = filter_by_type(results, VectorType::Chunk);
@@ -34,7 +41,6 @@ impl SOTAQueryEngine {
         for result in chunk_results
             .iter()
             .filter(|r| r.score >= self.config.min_score)
-            .filter(|r| self.matches_tenant_filter(&r.metadata, &tenant_id, &workspace_id))
             .take(self.config.max_chunks)
         {
             context.add_chunk(build_chunk_from_result(result));
@@ -53,10 +59,17 @@ impl SOTAQueryEngine {
         vector_storage: &Arc<dyn VectorStorage>,
     ) -> Result<QueryContext> {
         let mut context = QueryContext::new();
+        let mf = MetadataFilter::from_tenant_workspace(tenant_id.clone(), workspace_id.clone());
 
         // Step 1: Vector search with LOW-level keyword embedding
+        // SPEC-007: tenant/workspace filter pushed to storage layer via query_filtered.
         let vector_results = vector_storage
-            .query(&embeddings.low_level, self.config.max_entities * 3, None)
+            .query_filtered(
+                &embeddings.low_level,
+                self.config.max_entities * 3,
+                None,
+                mf.as_ref(),
+            )
             .await?;
 
         // Step 2: Filter to entity vectors only
@@ -66,7 +79,6 @@ impl SOTAQueryEngine {
         let entity_scores: HashMap<String, f32> = entity_vectors
             .iter()
             .filter(|r| r.score >= self.config.min_score)
-            .filter(|r| self.matches_tenant_filter(&r.metadata, &tenant_id, &workspace_id))
             .map(|r| {
                 let entity_name = r
                     .metadata
@@ -82,7 +94,6 @@ impl SOTAQueryEngine {
         let entity_ids: Vec<String> = entity_vectors
             .iter()
             .filter(|r| r.score >= self.config.min_score)
-            .filter(|r| self.matches_tenant_filter(&r.metadata, &tenant_id, &workspace_id))
             .filter_map(|r| {
                 r.metadata
                     .get("entity_name")
@@ -208,11 +219,13 @@ impl SOTAQueryEngine {
             );
 
             // Query with filter to retrieve only the specific chunks, score-ranked
+            // SPEC-007: tenant/workspace filter pushed to storage layer.
             let results = vector_storage
-                .query(
+                .query_filtered(
                     &embeddings.low_level,
                     self.config.max_chunks,
                     Some(&chunk_ids_vec),
+                    mf.as_ref(),
                 )
                 .await?;
 
@@ -223,9 +236,6 @@ impl SOTAQueryEngine {
             );
 
             for result in results {
-                if !self.matches_tenant_filter(&result.metadata, &tenant_id, &workspace_id) {
-                    continue;
-                }
                 context.add_chunk(build_chunk_from_result(&result));
             }
         }
@@ -245,13 +255,16 @@ impl SOTAQueryEngine {
         let mut context = QueryContext::new();
         let mut entity_ids: Vec<String> = Vec::new();
         let mut seen_relationships = std::collections::HashSet::new();
+        let mf = MetadataFilter::from_tenant_workspace(tenant_id.clone(), workspace_id.clone());
 
         // Step 1: Vector search with HIGH-level keyword embedding
+        // SPEC-007: tenant/workspace filter pushed to storage layer via query_filtered.
         let vector_results = vector_storage
-            .query(
+            .query_filtered(
                 &embeddings.high_level,
                 self.config.max_relationships * 3,
                 None,
+                mf.as_ref(),
             )
             .await?;
 
@@ -262,7 +275,6 @@ impl SOTAQueryEngine {
         for result in relationship_vectors
             .iter()
             .filter(|r| r.score >= self.config.min_score)
-            .filter(|r| self.matches_tenant_filter(&r.metadata, &tenant_id, &workspace_id))
             .take(self.config.max_relationships)
         {
             let src_id = result
@@ -421,17 +433,15 @@ impl SOTAQueryEngine {
             let chunk_ids_vec: Vec<String> = chunk_ids.into_iter().collect();
 
             let results = vector_storage
-                .query(
+                .query_filtered(
                     &embeddings.high_level,
                     self.config.max_chunks,
                     Some(&chunk_ids_vec),
+                    mf.as_ref(),
                 )
                 .await?;
 
             for result in results {
-                if !self.matches_tenant_filter(&result.metadata, &tenant_id, &workspace_id) {
-                    continue;
-                }
                 context.add_chunk(build_chunk_from_result(&result));
             }
         }

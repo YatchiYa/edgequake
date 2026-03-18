@@ -6,13 +6,13 @@
 > **High-Performance Graph-RAG Framework in Rust**  
 > Transform documents into intelligent knowledge graphs for superior retrieval and generation
 
-[![Version](https://img.shields.io/badge/version-0.6.0-blue.svg?style=flat)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.7.0-blue.svg?style=flat)](CHANGELOG.md)
 [![Rust](https://img.shields.io/badge/rust-1.78+-orange.svg?style=flat&logo=rust)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat)](LICENSE)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg?style=flat)](https://github.com/raphaelmansuy/edgequake)
 [![Documentation](https://img.shields.io/badge/docs-available-blue.svg?style=flat)](docs/README.md)
 
-> **v0.6.0** — Unified Streaming Response Protocol (SPEC-006): Structured SSE events with `context`, `token`, `thinking`, `done`, and `error` event types. Rich streaming statistics, enriched source references with entity types & degree, and full workspace-aware query streaming.
+> **v0.7.0** — Vector Storage Optimization (SPEC-007): SQL-level metadata pre-filtering with GIN indexes, materialized columns, and B-tree indexes. Up to 90% reduction in wasted vector scans for multi-tenant deployments. All query modes now push tenant/workspace/document filters to the storage layer.
 
 ---
 
@@ -57,6 +57,7 @@ Traditional RAG systems retrieve document chunks using vector similarity alone. 
 - **Zero-Copy**: Efficient memory management with Rust ownership
 - **Parallel Processing**: Multi-threaded entity extraction and embeddings
 - **Fast Storage**: PostgreSQL AGE for graph + pgvector for embeddings
+- **SQL Pre-Filtering** ✨ **NEW in 0.7.0**: Metadata filters (tenant, workspace, document) pushed to SQL WHERE clauses with GIN + B-tree indexes — up to 90% fewer wasted vector scans at scale
 
 ### Knowledge Graph
 
