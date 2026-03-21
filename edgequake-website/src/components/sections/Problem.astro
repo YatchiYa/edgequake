@@ -1,0 +1,95 @@
+---
+/**
+ * Problem section — Why traditional RAG fails.
+ * Content ported from _archive/problem.tsx
+ */
+const problems = [
+  {
+    icon: "link-off",
+    title: "Lost Relationships",
+    description:
+      "Vector search breaks context into isolated chunks, so answers miss the entity relationships, dependencies, and provenance users actually care about.",
+  },
+  {
+    icon: "timer",
+    title: "Slow at Scale",
+    description:
+      "Pipelines that feel fine in demos become slow and brittle on real corpora, where ingestion, extraction, and reprocessing all compound latency.",
+  },
+  {
+    icon: "layers",
+    title: "Single Query Mode",
+    description:
+      "Real questions are not all the same. Some need local evidence, others need global context, and many need both in the same retrieval flow.",
+  },
+  {
+    icon: "building",
+    title: "No Multi-Tenancy",
+    description:
+      "Once multiple teams or clients share the same system, weak workspace isolation turns into operational risk and trust issues.",
+  },
+  {
+    icon: "file-text",
+    title: "PDF Pain",
+    description:
+      "PDFs still break many RAG pipelines, especially when tables, figures, layout structure, and scanned pages matter to the final answer.",
+  },
+  {
+    icon: "dollar-sign",
+    title: "Cloud-Only Cost",
+    description:
+      "If the stack only works with one hosted provider, experimentation gets expensive and production cost becomes hard to control.",
+  },
+];
+
+const iconPaths: Record<string, string> = {
+  "link-off": "M17 17H7a5 5 0 010-10m10.17 3.17A5 5 0 0017 7h0M2 2l20 20",
+  timer: "M12 22a10 10 0 100-20 10 10 0 000 20zM12 6v6l4 2",
+  layers: "M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5",
+  building:
+    "M6 22V4a2 2 0 012-2h8a2 2 0 012 2v18zM6 12H4a2 2 0 00-2 2v6a2 2 0 002 2h2M18 9h2a2 2 0 012 2v9a2 2 0 01-2 2h-2M10 6h4M10 10h4M10 14h4M10 18h4",
+  "file-text":
+    "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8",
+  "dollar-sign": "M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6",
+};
+---
+
+<section class="mkt-section-alt py-20 sm:py-24">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="text-center max-w-3xl mx-auto">
+      <h2 class="text-3xl font-bold tracking-tight mkt-text sm:text-4xl">
+        Traditional RAG Breaks the Thread
+      </h2>
+      <p class="mt-4 text-lg mkt-text-muted">
+        Similarity search alone is not enough when users need grounded answers,
+        entity relationships, source traceability, and predictable operations.
+      </p>
+    </div>
+
+    <div class="mt-16 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      {
+        problems.map((p) => (
+          <div class="mkt-card group rounded-xl p-6 transition-all hover:border-red-500/30">
+            <div class="mkt-danger-surface mb-4 inline-flex h-10 w-10 items-center justify-center rounded-lg">
+              <svg
+                class="h-5 w-5"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                viewBox="0 0 24 24"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d={iconPaths[p.icon]} />
+              </svg>
+            </div>
+            <h3 class="text-lg font-semibold mkt-text">{p.title}</h3>
+            <p class="mt-2 text-sm mkt-text-muted leading-relaxed">
+              {p.description}
+            </p>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</section>

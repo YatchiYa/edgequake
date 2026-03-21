@@ -1,0 +1,88 @@
+---
+/**
+ * Ecosystem section — Crate overview grid.
+ * Content ported from _archive/ecosystem.tsx
+ */
+const crates = [
+  {
+    name: "edgequake-core",
+    version: "0.7.0",
+    description:
+      "Coordinates the pipeline, workspace lifecycle, and top-level APIs used to assemble the full system.",
+  },
+  {
+    name: "edgequake-api",
+    version: "0.7.0",
+    description:
+      "Exposes ingestion, query, health, and streaming endpoints for applications that need a service boundary.",
+  },
+  {
+    name: "edgequake-storage",
+    version: "0.7.0",
+    description:
+      "Implements unified key-value, vector, and graph storage on top of PostgreSQL and Apache AGE.",
+  },
+  {
+    name: "edgequake-pipeline",
+    version: "0.7.0",
+    description:
+      "Handles chunking, extraction, relationship mapping, normalization, and the work required to build graph context from source files.",
+  },
+  {
+    name: "edgequake-query",
+    version: "0.7.0",
+    description:
+      "Contains the retrieval engine behind local, global, hybrid, naive, mix, and graph-aware querying.",
+  },
+  {
+    name: "edgequake-llm",
+    version: "0.3.0",
+    description:
+      "Abstracts LLM providers so teams can move between OpenAI, Ollama, LM Studio, and mocks without rewriting the stack.",
+  },
+  {
+    name: "edgequake-pdf",
+    version: "0.7.0",
+    description:
+      "Turns PDFs into markdown and structured extraction inputs, including layout-heavy documents and vision-assisted flows.",
+  },
+  {
+    name: "edgequake-graph",
+    version: "0.7.0",
+    description:
+      "Provides graph algorithms, traversal, community detection, and entity resolution primitives for graph-aware retrieval.",
+  },
+];
+---
+
+<section class="py-20 sm:py-24">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="text-center max-w-3xl mx-auto">
+      <h2 class="text-3xl font-bold tracking-tight mkt-text sm:text-4xl">
+        Modular by Design
+      </h2>
+      <p class="mt-4 text-lg mkt-text-muted">
+        {crates.length} focused crates. Adopt the whole platform or pull in the
+        pieces you need for your own retrieval stack.
+      </p>
+    </div>
+
+    <div class="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {
+        crates.map((c) => (
+          <div class="mkt-card rounded-xl p-5 hover:border-accent-500/30 transition-colors">
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-semibold font-mono mkt-accent-text">
+                {c.name}
+              </h3>
+              <span class="text-xs mkt-text-dim">v{c.version}</span>
+            </div>
+            <p class="mt-3 text-xs mkt-text-muted leading-relaxed">
+              {c.description}
+            </p>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</section>
