@@ -6,7 +6,7 @@ title: 'PDF Processing Deep Dive'
 
 **Status**: ✅ Production Ready  
 **Crate**: `edgequake-pdf`  
-**Source**: [`edgequake/crates/edgequake-pdf/`](../../../edgequake/crates/edgequake-pdf/)
+**Source**: [`edgequake/crates/edgequake-pdf/`](https://github.com/raphaelmansuy/edgequake/tree/edgequake-main/edgequake/crates/edgequake-pdf/)
 
 ---
 
@@ -334,7 +334,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-**Source**: [`edgequake-pdf/src/lib.rs:52-67`](../../../edgequake/crates/edgequake-pdf/src/lib.rs#L52-L67)
+**Source**: [`edgequake-pdf/src/lib.rs:52-67`](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pdf/src/lib.rs#L52-L67)
 
 ### Get Detailed Results
 
@@ -377,7 +377,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-**Source**: [`edgequake-pdf/src/extractor.rs:308-340`](../../../edgequake/crates/edgequake-pdf/src/extractor.rs#L308-L340)
+**Source**: [`edgequake-pdf/src/extractor.rs:308-340`](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pdf/src/extractor.rs#L308-L340)
 
 ### Custom Configuration
 
@@ -411,7 +411,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-**Source**: [`edgequake-pdf/src/config.rs:189-260`](../../../edgequake/crates/edgequake-pdf/src/config.rs#L189-L260)
+**Source**: [`edgequake-pdf/src/config.rs:189-260`](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pdf/src/config.rs#L189-L260)
 
 ---
 
@@ -535,7 +535,7 @@ EDGE CASES HANDLED:
 5. **Nested tables**: Not supported (children flattened)
 ```
 
-**Source**: [`edgequake-pdf/src/processors/table_detection.rs:20-300`](../../../edgequake/crates/edgequake-pdf/src/processors/table_detection.rs#L20-L300)
+**Source**: [`edgequake-pdf/src/processors/table_detection.rs:20-300`](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pdf/src/processors/table_detection.rs#L20-L300)
 
 ### Code Example: Accessing Tables
 
@@ -574,7 +574,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-**Source**: [`edgequake-pdf/src/extractor.rs:224-240`](../../../edgequake/crates/edgequake-pdf/src/extractor.rs#L224-L240)
+**Source**: [`edgequake-pdf/src/extractor.rs:224-240`](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pdf/src/extractor.rs#L224-L240)
 
 ### When Table Detection Fails
 
@@ -592,7 +592,7 @@ if page.columns.len() > 1 {
 }
 ```
 
-**Source**: [`edgequake-pdf/src/processors/table_detection.rs:63-68`](../../../edgequake/crates/edgequake-pdf/src/processors/table_detection.rs#L63-L68)
+**Source**: [`edgequake-pdf/src/processors/table_detection.rs:63-68`](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pdf/src/processors/table_detection.rs#L63-L68)
 
 **Scenario 2: Complex Merged Cells**
 
@@ -607,7 +607,7 @@ let processor = TextTableReconstructionProcessor::new();
 let doc = processor.process(doc)?;
 ```
 
-**Source**: [`edgequake-pdf/src/processors/table_detection.rs:300-450`](../../../edgequake/crates/edgequake-pdf/src/processors/table_detection.rs#L300-L450)
+**Source**: [`edgequake-pdf/src/processors/table_detection.rs:300-450`](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pdf/src/processors/table_detection.rs#L300-L450)
 
 ---
 
@@ -685,7 +685,7 @@ EdgeQuake uses the **XY-Cut algorithm** to detect columns:
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-**Source**: [`edgequake-pdf/src/layout/xy_cut.rs:1-200`](../../../edgequake/crates/edgequake-pdf/src/layout/xy_cut.rs#L1-L200)
+**Source**: [`edgequake-pdf/src/layout/xy_cut.rs:1-200`](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pdf/src/layout/xy_cut.rs#L1-L200)
 
 ### Reading Order Detection
 
@@ -715,7 +715,7 @@ impl ReadingOrderDetector {
 }
 ```
 
-**Source**: [`edgequake-pdf/src/layout/reading_order.rs:50-100`](../../../edgequake/crates/edgequake-pdf/src/layout/reading_order.rs#L50-L100)
+**Source**: [`edgequake-pdf/src/layout/reading_order.rs:50-100`](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pdf/src/layout/reading_order.rs#L50-L100)
 
 ---
 
@@ -740,7 +740,7 @@ let chain = ProcessorChain::builder()
 let processed_doc = chain.process(raw_doc)?;
 ```
 
-**Source**: [`edgequake-pdf/src/processors/builder.rs:20-60`](../../../edgequake/crates/edgequake-pdf/src/processors/builder.rs#L20-L60)
+**Source**: [`edgequake-pdf/src/processors/builder.rs:20-60`](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pdf/src/processors/builder.rs#L20-L60)
 
 ### Available Processors
 
@@ -790,7 +790,7 @@ if !result.page_errors.is_empty() {
 println!("Extracted {} / {} pages", result.pages.len(), result.page_count);
 ```
 
-**Source**: [`edgequake-pdf/src/extractor.rs:90-110`](../../../edgequake/crates/edgequake-pdf/src/extractor.rs#L90-L110)
+**Source**: [`edgequake-pdf/src/extractor.rs:90-110`](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pdf/src/extractor.rs#L90-L110)
 
 **Why this design?**
 
@@ -838,7 +838,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 - Clean garbled text (encoding issues)
 - **Not used for**: Content generation or summarization (violation of extraction principle)
 
-**Source**: [`edgequake-pdf/src/processors/llm_enhance.rs:1-100`](../../../edgequake/crates/edgequake-pdf/src/processors/llm_enhance.rs#L1-L100)
+**Source**: [`edgequake-pdf/src/processors/llm_enhance.rs:1-100`](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pdf/src/processors/llm_enhance.rs#L1-L100)
 
 ### Vision Model Extraction
 
@@ -864,7 +864,7 @@ let extractor = PdfExtractor::with_config(provider, config);
 - Documents with significant graphical elements
 - Scanned documents (low-quality OCR)
 
-**Source**: [`edgequake-pdf/src/vision.rs:1-200`](../../../edgequake/crates/edgequake-pdf/src/vision.rs#L1-L200)
+**Source**: [`edgequake-pdf/src/vision.rs:1-200`](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pdf/src/vision.rs#L1-L200)
 
 ### Performance Tuning
 
@@ -1134,18 +1134,18 @@ assert!(result.markdown.is_empty()); // Empty!
 
 ### Source Code
 
-- **Main crate**: [`edgequake/crates/edgequake-pdf/`](../../../edgequake/crates/edgequake-pdf/)
-- **Extractor**: [`src/extractor.rs`](../../../edgequake/crates/edgequake-pdf/src/extractor.rs)
-- **Table detection**: [`src/processors/table_detection.rs`](../../../edgequake/crates/edgequake-pdf/src/processors/table_detection.rs)
-- **Layout analysis**: [`src/layout/`](../../../edgequake/crates/edgequake-pdf/src/layout/)
-- **Schema**: [`src/schema/`](../../../edgequake/crates/edgequake-pdf/src/schema/)
+- **Main crate**: [`edgequake/crates/edgequake-pdf/`](https://github.com/raphaelmansuy/edgequake/tree/edgequake-main/edgequake/crates/edgequake-pdf/)
+- **Extractor**: [`src/extractor.rs`](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pdf/src/extractor.rs)
+- **Table detection**: [`src/processors/table_detection.rs`](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pdf/src/processors/table_detection.rs)
+- **Layout analysis**: [`src/layout/`](https://github.com/raphaelmansuy/edgequake/tree/edgequake-main/edgequake/crates/edgequake-pdf/src/layout/)
+- **Schema**: [`src/schema/`](https://github.com/raphaelmansuy/edgequake/tree/edgequake-main/edgequake/crates/edgequake-pdf/src/schema/)
 
 ### Test Examples
 
-- **Basic tests**: [`tests/basic_tests.rs`](../../../edgequake/crates/edgequake-pdf/tests/basic_tests.rs)
-- **Table tests**: [`tests/table_tests.rs`](../../../edgequake/crates/edgequake-pdf/tests/table_tests.rs)
-- **Layout tests**: [`tests/layout_tests.rs`](../../../edgequake/crates/edgequake-pdf/tests/layout_tests.rs)
-- **Test data**: [`test-data/`](../../../edgequake/crates/edgequake-pdf/test-data/)
+- **Basic tests**: [`tests/basic_tests.rs`](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pdf/tests/basic_tests.rs)
+- **Table tests**: [`tests/table_tests.rs`](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pdf/tests/table_tests.rs)
+- **Layout tests**: [`tests/layout_tests.rs`](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pdf/tests/layout_tests.rs)
+- **Test data**: [`test-data/`](https://github.com/raphaelmansuy/edgequake/tree/edgequake-main/edgequake/crates/edgequake-pdf/test-data/)
 
 ### Related Documentation
 

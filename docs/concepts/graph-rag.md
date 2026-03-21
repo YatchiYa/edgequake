@@ -146,4 +146,4 @@ EdgeQuake implements Graph-RAG with these components:
 
 The Graph-RAG orchestration lives in:
 
-- [edgequake-core/src/orchestrator.rs](../../edgequake/crates/edgequake-core/src/orchestrator.rs)
+- [edgequake-core/src/orchestrator.rs](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-core/src/orchestrator.rs)

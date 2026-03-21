@@ -769,10 +769,10 @@ QueryRequest::new("What is AI?")
 2. **GraphRAG Paper**: Edge et al., "From Local to Global: A Graph RAG Approach to Query-Focused Summarization", arXiv:2404.16130, 2024
 
 3. **EdgeQuake Source Code**:
-   - [entity_extraction.rs](../edgequake/crates/edgequake-pipeline/src/prompts/entity_extraction.rs)
-   - [normalizer.rs](../edgequake/crates/edgequake-pipeline/src/prompts/normalizer.rs)
-   - [parser.rs](../edgequake/crates/edgequake-pipeline/src/prompts/parser.rs)
-   - [modes.rs](../edgequake/crates/edgequake-query/src/modes.rs)
+   - [entity_extraction.rs](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pipeline/src/prompts/entity_extraction.rs)
+   - [normalizer.rs](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pipeline/src/prompts/normalizer.rs)
+   - [parser.rs](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pipeline/src/prompts/parser.rs)
+   - [modes.rs](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-query/src/modes.rs)
 
 ---
 
