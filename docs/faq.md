@@ -341,7 +341,7 @@ curl http://localhost:8080/health/ready
 
 1. Fork the repository
 2. Create a feature branch
-3. Make changes following [AGENTS.md](../AGENTS.md)
+3. Make changes following [AGENTS.md](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/AGENTS.md)
 4. Run `cargo clippy && cargo test`
 5. Submit a pull request
 

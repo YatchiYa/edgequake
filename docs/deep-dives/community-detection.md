@@ -450,4 +450,4 @@ Performance on knowledge graphs (100K nodes, 300K edges):
 - [Query Modes](./query-modes.md) - How Global uses communities
 - [Graph Storage](./graph-storage.md) - How graphs are stored
 - [Entity Extraction](./entity-extraction.md) - How entities are created
-- [Architecture: Crates](../architecture/crates/README.md) - Storage crate details
+- [Architecture: Crates](/docs/architecture/crates/) - Storage crate details
