@@ -242,7 +242,7 @@ curl -X POST http://localhost:8080/api/v1/documents/upload \
 - Check `extraction_mode` shows `"Vision"` or `"Hybrid"`
 - Download chunks to verify content extracted
 
-**Related**: See [PDF Ingestion Tutorial](../tutorials/pdf-ingestion.md#vision-mode) for more details on vision mode.
+**Related**: See [PDF Ingestion Tutorial](/docs/tutorials/pdf-ingestion/#vision-mode) for more details on vision mode.
 
 ---
 
@@ -322,7 +322,7 @@ curl -X POST http://localhost:8080/api/v1/documents \
 - Inspect chunk content for proper markdown table format
 - Verify cell alignments correct
 
-**Related**: See [PDF Processing Deep Dive](../deep-dives/pdf-processing.md#table-detection) for algorithm details.
+**Related**: See [PDF Processing Deep Dive](/docs/deep-dives/pdf-processing/#table-detection) for algorithm details.
 
 ---
 
@@ -382,7 +382,7 @@ curl -X POST http://localhost:8080/api/v1/documents \
 
 **Tip**: Academic papers almost always need column detection enabled.
 
-**Related**: See [PDF Processing Deep Dive](../deep-dives/pdf-processing.md#layout-analysis) for XY-Cut algorithm.
+**Related**: See [PDF Processing Deep Dive](/docs/deep-dives/pdf-processing/#layout-analysis) for XY-Cut algorithm.
 
 ---
 
@@ -694,8 +694,8 @@ curl -X POST http://localhost:8080/api/v1/documents/upload -F "file=@critical.pd
 If PDF extraction still fails after trying these solutions:
 
 1. **Read Full Documentation**:
-   - [PDF Ingestion Tutorial](../tutorials/pdf-ingestion.md) - Configuration details
-   - [PDF Processing Deep Dive](../deep-dives/pdf-processing.md) - Algorithm internals
+   - [PDF Ingestion Tutorial](/docs/tutorials/pdf-ingestion/) - Configuration details
+   - [PDF Processing Deep Dive](/docs/deep-dives/pdf-processing/) - Algorithm internals
 
 2. **Check GitHub Issues**:
    - Search existing issues: `https://github.com/org/edgequake/issues`
@@ -1066,6 +1066,6 @@ Include in your report:
 
 ## See Also
 
-- [Configuration Reference](../operations/configuration.md) - All settings
-- [Monitoring Guide](../operations/monitoring.md) - Observability setup
-- [Deployment Guide](../operations/deployment.md) - Production setup
+- [Configuration Reference](/docs/operations/configuration/) - All settings
+- [Monitoring Guide](/docs/operations/monitoring/) - Observability setup
+- [Deployment Guide](/docs/operations/deployment/) - Production setup

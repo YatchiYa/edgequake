@@ -547,6 +547,6 @@ class RobustEdgeQuakeRetriever(EdgeQuakeRetriever):
 
 ## See Also
 
-- [REST API Reference](../api-reference/rest-api.md) - Full API documentation
-- [Query Modes Deep Dive](../deep-dives/query-modes.md) - Understanding query modes
-- [Open WebUI Integration](./open-webui.md) - Alternative UI integration
+- [REST API Reference](/docs/api-reference/rest-api/) - Full API documentation
+- [Query Modes Deep Dive](/docs/deep-dives/query-modes/) - Understanding query modes
+- [Open WebUI Integration](/docs/integrations/open-webui/) - Alternative UI integration

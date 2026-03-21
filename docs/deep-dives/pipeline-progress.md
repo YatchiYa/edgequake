@@ -518,6 +518,6 @@ tracker.set_stage(PipelineStage::Chunking, chunk_count).await;
 
 ## See Also
 
-- [Cost Tracking](./cost-tracking.md) - LLM cost monitoring
-- [Operations: Monitoring](../operations/monitoring.md) - Production observability
-- [REST API](../api-reference/rest-api.md) - Progress endpoints
+- [Cost Tracking](/docs/deep-dives/cost-tracking/) - LLM cost monitoring
+- [Operations: Monitoring](/docs/operations/monitoring/) - Production observability
+- [REST API](/docs/api-reference/rest-api/) - Progress endpoints

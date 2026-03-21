@@ -485,7 +485,7 @@ rag.yourdomain.com {
 
 ## See Also
 
-- [Configuration Reference](configuration.md) - Detailed configuration options
-- [Monitoring Guide](monitoring.md) - Observability setup
-- [Quick Start](../getting-started/quick-start.md) - Development setup
-- [Architecture Overview](../architecture/overview.md) - System design
+- [Configuration Reference](/docs/operations/configuration/) - Detailed configuration options
+- [Monitoring Guide](/docs/operations/monitoring/) - Observability setup
+- [Quick Start](/docs/getting-started/quick-start/) - Development setup
+- [Architecture Overview](/docs/architecture/overview/) - System design

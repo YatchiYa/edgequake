@@ -643,7 +643,7 @@ WITH (m = 8, ef_construction = 32);
 
 ## See Also
 
-- [Graph Storage](./graph-storage.md) - Knowledge graph storage
-- [Entity Extraction](./entity-extraction.md) - How entities get embeddings
-- [Query Modes](./query-modes.md) - How vector search is used
-- [Performance Tuning](../operations/performance-tuning.md) - Optimization guide
+- [Graph Storage](/docs/deep-dives/graph-storage/) - Knowledge graph storage
+- [Entity Extraction](/docs/deep-dives/entity-extraction/) - How entities get embeddings
+- [Query Modes](/docs/deep-dives/query-modes/) - How vector search is used
+- [Performance Tuning](/docs/operations/performance-tuning/) - Optimization guide

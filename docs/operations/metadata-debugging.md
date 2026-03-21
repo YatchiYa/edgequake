@@ -321,6 +321,6 @@ curl -s http://localhost:8080/api/v1/graph/stats | jq '.node_count'
 
 ## Related Documentation
 
-- [Architecture: Lineage Tracking](../architecture/lineage-tracking.md)
-- [API Reference: Lineage Endpoints](../api-reference/lineage-endpoints.md)
-- [Tutorial: Tracing Entity Sources](../tutorials/tracing-entity-sources.md)
+- [Architecture: Lineage Tracking](/docs/architecture/lineage-tracking/)
+- [API Reference: Lineage Endpoints](/docs/api-reference/lineage-endpoints/)
+- [Tutorial: Tracing Entity Sources](/docs/tutorials/tracing-entity-sources/)

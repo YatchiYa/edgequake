@@ -192,9 +192,9 @@ Research shows 1-2 gleaning iterations improve recall by 15-25%.
 
 ## Learn More
 
-- **Where entities are stored**: [Knowledge Graph](knowledge-graph.md)
-- **Algorithm details**: [LightRAG Algorithm](../deep-dives/lightrag-algorithm.md)
-- **How queries use entities**: [Hybrid Retrieval](hybrid-retrieval.md)
+- **Where entities are stored**: [Knowledge Graph](/docs/concepts/knowledge-graph/)
+- **Algorithm details**: [LightRAG Algorithm](/docs/deep-dives/lightrag-algorithm/)
+- **How queries use entities**: [Hybrid Retrieval](/docs/concepts/hybrid-retrieval/)
 
 ---
 

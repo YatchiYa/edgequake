@@ -298,6 +298,6 @@ Both implement the same core algorithm, so query quality is equivalent. The choi
 
 ## See Also
 
-- [LightRAG Algorithm Deep-Dive](../deep-dives/lightrag-algorithm.md)
-- [vs GraphRAG](vs-graphrag.md) - Microsoft's approach
-- [vs Traditional RAG](vs-traditional-rag.md) - Why graphs matter
+- [LightRAG Algorithm Deep-Dive](/docs/deep-dives/lightrag-algorithm/)
+- [vs GraphRAG](/docs/comparisons/vs-graphrag/) - Microsoft's approach
+- [vs Traditional RAG](/docs/comparisons/vs-traditional-rag/) - Why graphs matter

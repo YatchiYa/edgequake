@@ -530,6 +530,6 @@ For security vulnerabilities, contact: security@edgequake.dev
 
 ## See Also
 
-- [Deployment Guide](../operations/deployment.md) - Production setup
-- [Configuration Reference](../operations/configuration.md) - All settings
-- [Monitoring Guide](../operations/monitoring.md) - Observability
+- [Deployment Guide](/docs/operations/deployment/) - Production setup
+- [Configuration Reference](/docs/operations/configuration/) - All settings
+- [Monitoring Guide](/docs/operations/monitoring/) - Observability

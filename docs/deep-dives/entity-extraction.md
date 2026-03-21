@@ -537,7 +537,7 @@ if is_json_truncation {
 
 ## See Also
 
-- [Chunking Strategies](./chunking-strategies.md) - Document chunking deep dive
-- [Entity Deduplication](./entity-deduplication.md) - Merging duplicate entities
-- [Graph Storage](./graph-storage.md) - Storing extracted entities
-- [Document Ingestion Tutorial](../tutorials/document-ingestion.md) - End-to-end guide
+- [Chunking Strategies](/docs/deep-dives/chunking-strategies/) - Document chunking deep dive
+- [Entity Deduplication](/docs/deep-dives/entity-normalization/) - Merging duplicate entities
+- [Graph Storage](/docs/deep-dives/graph-storage/) - Storing extracted entities
+- [Document Ingestion Tutorial](/docs/tutorials/document-ingestion/) - End-to-end guide

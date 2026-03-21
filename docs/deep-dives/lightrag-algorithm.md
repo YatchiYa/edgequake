@@ -778,6 +778,6 @@ QueryRequest::new("What is AI?")
 
 ## Next Steps
 
-- [Query Mode Selection Guide](./query-modes.md)
-- [Entity Normalization Technical Note](./entity-normalization.md)
-- [API Reference: Query Endpoints](../api-reference/query.md)
+- [Query Mode Selection Guide](/docs/deep-dives/query-modes/)
+- [Entity Normalization Technical Note](/docs/deep-dives/entity-normalization/)
+- [API Reference: Query Endpoints](/docs/api-reference/rest-api/)

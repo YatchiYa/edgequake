@@ -619,7 +619,7 @@ HINT: Format: postgresql://user:password@host:port/database
 
 ## See Also
 
-- [Deployment Guide](deployment.md) - Production deployment
-- [Monitoring Guide](monitoring.md) - Observability setup
-- [REST API Reference](../api-reference/rest-api.md) - API documentation
-- [LLM Provider Docs](../concepts/hybrid-retrieval.md) - Provider integration
+- [Deployment Guide](/docs/operations/deployment/) - Production deployment
+- [Monitoring Guide](/docs/operations/monitoring/) - Observability setup
+- [REST API Reference](/docs/api-reference/rest-api/) - API documentation
+- [LLM Provider Docs](/docs/concepts/hybrid-retrieval/) - Provider integration

@@ -476,6 +476,6 @@ ls -lh /backups/edgequake-*.sql.gz
 
 ## See Also
 
-- [Deployment Guide](deployment.md) - Production deployment
-- [Configuration Reference](configuration.md) - All settings
-- [Troubleshooting Guide](../troubleshooting/common-issues.md) - Problem solving
+- [Deployment Guide](/docs/operations/deployment/) - Production deployment
+- [Configuration Reference](/docs/operations/configuration/) - All settings
+- [Troubleshooting Guide](/docs/troubleshooting/common-issues/) - Problem solving

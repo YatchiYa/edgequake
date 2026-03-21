@@ -325,9 +325,9 @@ Isolation enforced at storage layer:
 
 ## Next Steps
 
-- **[Data Flow](data-flow.md)** — Detailed ingestion and query flows
+- **[Data Flow](/docs/architecture/data-flow/)** — Detailed ingestion and query flows
 - **[Crate Details](crates/)** — Deep dive into each crate
-- **[API Reference](../api-reference/rest-api.md)** — REST endpoint documentation
+- **[API Reference](/docs/api-reference/rest-api/)** — REST endpoint documentation
 
 ---
 

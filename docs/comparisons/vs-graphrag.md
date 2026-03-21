@@ -394,13 +394,13 @@ multi_tenant: Built-in via workspaces
 - [Microsoft GraphRAG Paper](https://arxiv.org/pdf/2404.16130) (arxiv:2404.16130)
 - [LightRAG Paper](https://arxiv.org/abs/2410.05779) (arxiv:2410.05779)
 - [GraphRAG Documentation](https://microsoft.github.io/graphrag/)
-- [EdgeQuake Quick Start](../getting-started/quick-start.md)
+- [EdgeQuake Quick Start](/docs/getting-started/quick-start/)
 
 ---
 
 ## See Also
 
-- [vs LightRAG Python](vs-lightrag-python.md) - Comparison with the Python reference implementation
-- [vs Traditional RAG](vs-traditional-rag.md) - Why graphs matter
-- [Query Modes](../deep-dives/query-modes.md) - EdgeQuake's 6 query strategies
-- [LightRAG Algorithm](../deep-dives/lightrag-algorithm.md) - Algorithm deep-dive
+- [vs LightRAG Python](/docs/comparisons/vs-lightrag-python/) - Comparison with the Python reference implementation
+- [vs Traditional RAG](/docs/comparisons/vs-traditional-rag/) - Why graphs matter
+- [Query Modes](/docs/deep-dives/query-modes/) - EdgeQuake's 6 query strategies
+- [LightRAG Algorithm](/docs/deep-dives/lightrag-algorithm/) - Algorithm deep-dive

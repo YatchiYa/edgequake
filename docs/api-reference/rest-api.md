@@ -851,6 +851,6 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 
 ## See Also
 
-- [Quick Start Guide](../getting-started/quick-start.md) - Get running in 5 minutes
-- [Query Modes](../deep-dives/lightrag-algorithm.md#query-modes) - Detailed mode comparison
-- [Architecture Overview](../architecture/overview.md) - System design
+- [Quick Start Guide](/docs/getting-started/quick-start/) - Get running in 5 minutes
+- [Query Modes](/docs/deep-dives/lightrag-algorithm/#query-modes) - Detailed mode comparison
+- [Architecture Overview](/docs/architecture/overview/) - System design

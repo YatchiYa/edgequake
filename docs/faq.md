@@ -280,7 +280,7 @@ EdgeQuake doesn't include built-in authentication. Secure with:
    { "query": "test", "mode": "naive" }
    ```
 
-See [Troubleshooting Guide](troubleshooting/common-issues.md) for more.
+See [Troubleshooting Guide](/docs/troubleshooting/common-issues/) for more.
 
 ### Why is document processing stuck?
 
@@ -366,7 +366,7 @@ cargo fmt
 
 ## See Also
 
-- [Getting Started](getting-started/installation.md)
-- [Architecture Overview](architecture/overview.md)
-- [API Reference](api-reference/rest-api.md)
-- [Troubleshooting](troubleshooting/common-issues.md)
+- [Getting Started](/docs/getting-started/installation/)
+- [Architecture Overview](/docs/architecture/overview/)
+- [API Reference](/docs/api-reference/rest-api/)
+- [Troubleshooting](/docs/troubleshooting/common-issues/)

@@ -47,7 +47,7 @@ curl http://localhost:8080/health
 # Expected: {"status":"ok",...}
 ```
 
-If not running, see [Installation Guide](installation.md).
+If not running, see [Installation Guide](/docs/getting-started/installation/).
 
 ---
 
@@ -312,10 +312,10 @@ curl -X POST http://localhost:8080/api/v1/query \
 
 Now that you've completed the quick start:
 
-1. **[First Ingestion Deep Dive](first-ingestion.md)** — Understanding the pipeline
-2. **[Architecture Overview](../architecture/overview.md)** — System design
-3. **[Query Modes](../deep-dives/query-modes.md)** — Choosing the right mode
-4. **[API Reference](../api-reference/rest-api.md)** — Full API documentation
+1. **[Document Ingestion Deep Dive](/docs/tutorials/document-ingestion/)** — Understanding the pipeline
+2. **[Architecture Overview](/docs/architecture/overview/)** — System design
+3. **[Query Modes](/docs/deep-dives/query-modes/)** — Choosing the right mode
+4. **[API Reference](/docs/api-reference/rest-api/)** — Full API documentation
 
 ---
 

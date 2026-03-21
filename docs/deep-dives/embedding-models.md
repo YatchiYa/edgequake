@@ -492,6 +492,6 @@ Error: Rate limit exceeded
 
 ## See Also
 
-- [Vector Search](./vector-search.md) - How similarity search works
-- [Configuration Reference](../operations/configuration.md) - All embedding settings
-- [Performance Tuning](../operations/performance-tuning.md) - Optimization guide
+- [Vector Search](/docs/deep-dives/vector-storage/) - How similarity search works
+- [Configuration Reference](/docs/operations/configuration/) - All embedding settings
+- [Performance Tuning](/docs/operations/performance-tuning/) - Optimization guide

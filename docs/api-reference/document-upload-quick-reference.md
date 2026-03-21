@@ -287,7 +287,7 @@ curl -X POST http://localhost:8080/api/v1/documents \
 
 ## Next Steps
 
-- **Full API Reference**: [REST API Documentation](rest-api.md)
-- **Tutorial**: [Document Ingestion Deep-Dive](../tutorials/document-ingestion.md)
-- **Troubleshooting**: [Common Issues](../troubleshooting/common-issues.md#1-document-upload-errors)
+- **Full API Reference**: [REST API Documentation](/docs/api-reference/rest-api/)
+- **Tutorial**: [Document Ingestion Deep-Dive](/docs/tutorials/document-ingestion/)
+- **Troubleshooting**: [Common Issues](/docs/troubleshooting/common-issues/#1-document-upload-errors)
 - **OpenAPI Spec**: Available at `/swagger-ui` when server is running
