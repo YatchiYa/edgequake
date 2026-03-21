@@ -518,5 +518,5 @@ Performance on typical workloads (PostgreSQL AGE, 10K nodes, 30K edges):
 
 - [Entity Extraction](./entity-extraction.md) - How entities are created
 - [Query Modes](./query-modes.md) - How graph is queried
-- [Architecture: Crates](../architecture/crates/README.md) - Storage crate details
-- [Performance Tuning](../operations/performance-tuning.md) - Optimization guide
+- [Architecture: Crates](/docs/architecture/crates/) - Storage crate details
+- [Performance Tuning](/docs/operations/performance-tuning/) - Optimization guide

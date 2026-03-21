@@ -1,5 +1,7 @@
 ---
 title: 'Architecture: Crate Reference'
+sidebar:
+  hidden: true
 ---
 
 # Architecture: Crate Reference
