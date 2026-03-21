@@ -1149,10 +1149,10 @@ assert!(result.markdown.is_empty()); // Empty!
 
 ### Related Documentation
 
-- [Architecture Overview](../architecture/overview.md)
-- [Document Ingestion Tutorial](../tutorials/document-ingestion.md)
-- [API Reference: Extended API](../api-reference/extended-api.md)
-- [Troubleshooting Common Issues](../troubleshooting/common-issues.md)
+- [Architecture Overview](/docs/architecture/overview/)
+- [Document Ingestion Tutorial](/docs/tutorials/document-ingestion/)
+- [API Reference: Extended API](/docs/api-reference/extended-api/)
+- [Troubleshooting Common Issues](/docs/troubleshooting/common-issues/)
 
 ### External Resources
 

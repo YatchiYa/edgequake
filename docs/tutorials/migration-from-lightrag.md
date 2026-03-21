@@ -543,7 +543,7 @@ class DualRAG:
 
 ## See Also
 
-- [Installation Guide](../getting-started/installation.md)
-- [Quick Start](../getting-started/quick-start.md)
-- [API Reference](../api-reference/rest-api.md)
-- [LightRAG Algorithm](../deep-dives/lightrag-algorithm.md)
+- [Installation Guide](/docs/getting-started/installation/)
+- [Quick Start](/docs/getting-started/quick-start/)
+- [API Reference](/docs/api-reference/rest-api/)
+- [LightRAG Algorithm](/docs/deep-dives/lightrag-algorithm/)

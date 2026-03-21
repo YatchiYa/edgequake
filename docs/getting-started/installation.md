@@ -301,9 +301,9 @@ ollama list   # Check available models
 
 Now that EdgeQuake is running:
 
-1. **[Quick Start](quick-start.md)** — Ingest your first document
-2. **[Architecture Overview](../architecture/overview.md)** — Understand the system
-3. **[API Reference](../api-reference/rest-api.md)** — Explore endpoints
+1. **[Quick Start](/docs/getting-started/quick-start/)** — Ingest your first document
+2. **[Architecture Overview](/docs/architecture/overview/)** — Understand the system
+3. **[API Reference](/docs/api-reference/rest-api/)** — Explore endpoints
 
 ---
 

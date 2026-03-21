@@ -15,7 +15,7 @@ EdgeQuake extracts text, tables, and metadata from PDF documents using advanced 
 
 **Prerequisites**:
 
-- EdgeQuake server running (see [Quick Start](../quick-start.md))
+- EdgeQuake server running (see [Quick Start](/docs/getting-started/quick-start/))
 - A PDF file to upload
 - `curl` or `httpie` installed
 
@@ -29,13 +29,13 @@ EdgeQuake extracts text, tables, and metadata from PDF documents using advanced 
 - Need quick reference for configuration options
 - Want to verify extraction quality
 
-**Read [PDF Processing Deep Dive](../deep-dives/pdf-processing.md)** if:
+**Read [PDF Processing Deep Dive](/docs/deep-dives/pdf-processing/)** if:
 
 - Understanding extraction internals
 - Advanced table detection algorithms
 - Contributing to PDF crate
 
-**Read [Troubleshooting Guide](../troubleshooting/common-issues.md#pdf-extraction-issues)** if:
+**Read [Troubleshooting Guide](/docs/troubleshooting/common-issues/#pdf-extraction-issues)** if:
 
 - Extraction fails or produces poor quality
 - Tables not detected correctly
@@ -675,7 +675,7 @@ curl -X POST \
 
 ## Troubleshooting Quick Reference
 
-**See full guide**: [Common Issues - PDF Section](../troubleshooting/common-issues.md#pdf-extraction-issues)
+**See full guide**: [Common Issues - PDF Section](/docs/troubleshooting/common-issues/#pdf-extraction-issues)
 
 ### Quick Fixes Table
 
@@ -714,8 +714,8 @@ curl -X POST \
 
 **Next Steps**:
 
-- Read [PDF Processing Deep Dive](../deep-dives/pdf-processing.md) for internals
-- Check [Troubleshooting Guide](../troubleshooting/common-issues.md#pdf-extraction-issues) for detailed solutions
+- Read [PDF Processing Deep Dive](/docs/deep-dives/pdf-processing/) for internals
+- Check [Troubleshooting Guide](/docs/troubleshooting/common-issues/#pdf-extraction-issues) for detailed solutions
 - File GitHub issue with PDF sample
 
 ---
@@ -725,27 +725,27 @@ curl -X POST \
 ### Beginner Path
 
 1. ✅ Uploaded first PDF (this tutorial)
-2. ➡️ Read [Document Ingestion](document-ingestion.md) for chunking details
-3. ➡️ Read [Query Optimization](query-optimization.md) for RAG techniques
+2. ➡️ Read [Document Ingestion](/docs/tutorials/document-ingestion/) for chunking details
+3. ➡️ Read [Query Optimization](/docs/tutorials/query-optimization/) for RAG techniques
 
 ### Advanced Path
 
 1. ✅ Mastered PDF configuration (this tutorial)
-2. ➡️ Read [PDF Processing Deep Dive](../deep-dives/pdf-processing.md) for algorithms
-3. ➡️ Read [Contributing Guide](../contributing/development-setup.md) to improve PDF crate
+2. ➡️ Read [PDF Processing Deep Dive](/docs/deep-dives/pdf-processing/) for algorithms
+3. ➡️ Read the [GitHub Contributing Guide](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/CONTRIBUTING.md) to improve PDF crate
 
 ### Troubleshooting Path
 
 1. ⚠️ Encountered PDF extraction issues
-2. ➡️ Read [Common Issues](../troubleshooting/common-issues.md#pdf-extraction-issues)
+2. ➡️ Read [Common Issues](/docs/troubleshooting/common-issues/#pdf-extraction-issues)
 3. ➡️ File GitHub issue if problem persists
 
 ---
 
 ## Related Documentation
 
-- [PDF Processing Deep Dive](../deep-dives/pdf-processing.md) - Algorithms and internals
-- [Document Ingestion](document-ingestion.md) - Chunking and entity extraction
-- [REST API Reference](../api-reference/rest-api.md#documents-api) - Complete API docs
-- [Troubleshooting](../troubleshooting/common-issues.md#pdf-extraction-issues) - Error solutions
-- [Quick Start](../quick-start.md) - Server setup
+- [PDF Processing Deep Dive](/docs/deep-dives/pdf-processing/) - Algorithms and internals
+- [Document Ingestion](/docs/tutorials/document-ingestion/) - Chunking and entity extraction
+- [REST API Reference](/docs/api-reference/rest-api/#documents-api) - Complete API docs
+- [Troubleshooting](/docs/troubleshooting/common-issues/#pdf-extraction-issues) - Error solutions
+- [Quick Start](/docs/getting-started/quick-start/) - Server setup

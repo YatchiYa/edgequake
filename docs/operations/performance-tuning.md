@@ -538,6 +538,6 @@ curl -X POST http://localhost:8080/api/v1/query \
 
 ## See Also
 
-- [Configuration Reference](../operations/configuration.md) - All settings
-- [Deployment Guide](../operations/deployment.md) - Production setup
-- [Monitoring Guide](../operations/monitoring.md) - Observability
+- [Configuration Reference](/docs/operations/configuration/) - All settings
+- [Deployment Guide](/docs/operations/deployment/) - Production setup
+- [Monitoring Guide](/docs/operations/monitoring/) - Observability

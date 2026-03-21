@@ -378,6 +378,6 @@ curl http://localhost:8080/api/v1/documents?workspace_id=default
 
 ## See Also
 
-- [REST API Reference](../api-reference/rest-api.md) - Full API documentation
-- [Extended API Reference](../api-reference/extended-api.md) - Ollama emulation details
-- [Quick Start Guide](../getting-started/quick-start.md) - Getting started with EdgeQuake
+- [REST API Reference](/docs/api-reference/rest-api/) - Full API documentation
+- [Extended API Reference](/docs/api-reference/extended-api/) - Ollama emulation details
+- [Quick Start Guide](/docs/getting-started/quick-start/) - Getting started with EdgeQuake

@@ -471,6 +471,6 @@ Each query also incurs LLM costs:
 
 ## See Also
 
-- [Pipeline Progress](./pipeline-progress.md) - Real-time progress tracking
-- [Operations Guide](../operations/monitoring.md) - Production monitoring
-- [Configuration](../getting-started/configuration.md) - Model settings
+- [Pipeline Progress](/docs/deep-dives/pipeline-progress/) - Real-time progress tracking
+- [Operations Guide](/docs/operations/monitoring/) - Production monitoring
+- [Configuration](/docs/operations/configuration/) - Model settings

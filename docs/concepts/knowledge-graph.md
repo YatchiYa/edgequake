@@ -222,9 +222,9 @@ LIMIT 10
 
 ## Learn More
 
-- **How entities are extracted**: [Entity Extraction](entity-extraction.md)
-- **How queries combine vector + graph**: [Hybrid Retrieval](hybrid-retrieval.md)
-- **Underlying algorithm**: [LightRAG Algorithm](../deep-dives/lightrag-algorithm.md)
+- **How entities are extracted**: [Entity Extraction](/docs/concepts/entity-extraction/)
+- **How queries combine vector + graph**: [Hybrid Retrieval](/docs/concepts/hybrid-retrieval/)
+- **Underlying algorithm**: [LightRAG Algorithm](/docs/deep-dives/lightrag-algorithm/)
 
 ---
 

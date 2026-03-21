@@ -491,7 +491,7 @@ Key findings:
 
 ## See Also
 
-- [Entity Extraction](./entity-extraction.md) - Base extraction process
-- [Entity Normalization](./entity-normalization.md) - Deduplication after extraction
-- [Document Ingestion Tutorial](../tutorials/document-ingestion.md) - End-to-end guide
-- [Performance Tuning](../operations/performance-tuning.md) - Optimization strategies
+- [Entity Extraction](/docs/deep-dives/entity-extraction/) - Base extraction process
+- [Entity Normalization](/docs/deep-dives/entity-normalization/) - Deduplication after extraction
+- [Document Ingestion Tutorial](/docs/tutorials/document-ingestion/) - End-to-end guide
+- [Performance Tuning](/docs/operations/performance-tuning/) - Optimization strategies

@@ -257,10 +257,10 @@ curl -X POST http://localhost:8080/api/v1/query \
 
 ## Learn More
 
-- **Foundation concept**: [Graph-RAG](graph-rag.md)
-- **How entities are extracted**: [Entity Extraction](entity-extraction.md)
-- **Storage details**: [Knowledge Graph](knowledge-graph.md)
-- **Deep dive**: [LightRAG Algorithm](../deep-dives/lightrag-algorithm.md)
+- **Foundation concept**: [Graph-RAG](/docs/concepts/graph-rag/)
+- **How entities are extracted**: [Entity Extraction](/docs/concepts/entity-extraction/)
+- **Storage details**: [Knowledge Graph](/docs/concepts/knowledge-graph/)
+- **Deep dive**: [LightRAG Algorithm](/docs/deep-dives/lightrag-algorithm/)
 
 ---
 

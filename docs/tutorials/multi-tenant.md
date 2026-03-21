@@ -10,7 +10,7 @@ This tutorial shows how to use EdgeQuake's built-in multi-tenancy to build appli
 
 **Time**: ~25 minutes  
 **Level**: Intermediate  
-**Prerequisites**: Completed [First RAG App](first-rag-app.md)
+**Prerequisites**: Completed [First RAG App](/docs/tutorials/first-rag-app/)
 
 ---
 
@@ -612,14 +612,14 @@ Increase quotas or upgrade tier.
 
 | Tutorial                                  | Description                |
 | ----------------------------------------- | -------------------------- |
-| [Custom Entity Types](custom-entities.md) | Domain-specific extraction |
-| [API Integration](api-integration.md)     | Building on EdgeQuake      |
-| [Scaling Guide](../operations/scaling.md) | Growing your deployment    |
+| [Custom Entity Types](/docs/concepts/entity-extraction/) | Domain-specific extraction |
+| [API Integration](/docs/integrations/custom-clients/)     | Building on EdgeQuake      |
+| [Scaling Guide](/docs/operations/deployment/)             | Growing your deployment    |
 
 ---
 
 ## See Also
 
-- [Architecture Overview](../architecture/overview.md) - System design
-- [Configuration](../operations/configuration.md) - All settings
-- [REST API](../api-reference/rest-api.md) - Complete API reference
+- [Architecture Overview](/docs/architecture/overview/) - System design
+- [Configuration](/docs/operations/configuration/) - All settings
+- [REST API](/docs/api-reference/rest-api/) - Complete API reference

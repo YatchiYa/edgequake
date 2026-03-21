@@ -10,7 +10,7 @@ This tutorial explores EdgeQuake's document processing pipeline in depth, coveri
 
 **Time**: ~25 minutes  
 **Level**: Intermediate  
-**Prerequisites**: Completed [First RAG App](first-rag-app.md)
+**Prerequisites**: Completed [First RAG App](/docs/tutorials/first-rag-app/)
 
 ---
 
@@ -61,7 +61,7 @@ This tutorial explores EdgeQuake's document processing pipeline in depth, coveri
 
 ## Working with PDF Documents
 
-EdgeQuake has advanced PDF extraction capabilities using layout analysis and optional LLM enhancement. This section provides a quick overview - see the [PDF Ingestion Tutorial](pdf-ingestion.md) for complete details.
+EdgeQuake has advanced PDF extraction capabilities using layout analysis and optional LLM enhancement. This section provides a quick overview - see the [PDF Ingestion Tutorial](/docs/tutorials/pdf-ingestion/) for complete details.
 
 ### Quick PDF Upload Example
 
@@ -282,7 +282,7 @@ curl http://localhost:8080/api/v1/documents/doc-uuid
 
 1. Try Vision mode: `{"mode": "Vision"}`
 2. Check if PDF is encrypted/protected
-3. See [PDF Troubleshooting](../troubleshooting/common-issues.md#pdf-extraction-issues)
+3. See [PDF Troubleshooting](/docs/troubleshooting/common-issues/#pdf-extraction-issues)
 
 ---
 
@@ -316,14 +316,14 @@ Common configuration options:
 - First time with EdgeQuake
 - Quick reference for PDF upload
 
-**Read [PDF Ingestion Tutorial](pdf-ingestion.md)** if:
+**Read [PDF Ingestion Tutorial](/docs/tutorials/pdf-ingestion/)** if:
 
 - Complex PDFs (tables, scans, multi-column)
 - Need detailed configuration guidance
 - Troubleshooting extraction issues
 - Understanding quality metrics
 
-**Read [PDF Processing Deep Dive](../deep-dives/pdf-processing.md)** if:
+**Read [PDF Processing Deep Dive](/docs/deep-dives/pdf-processing/)** if:
 
 - Understanding internal algorithms
 - XY-Cut layout analysis details
@@ -349,7 +349,7 @@ Common configuration options:
 - ✅ Enable `{"layout": {"detect_columns": true}}`
 - ✅ Academic papers benefit from column detection
 
-**More details**: See [PDF Troubleshooting](../troubleshooting/common-issues.md#pdf-extraction-issues)
+**More details**: See [PDF Troubleshooting](/docs/troubleshooting/common-issues/#pdf-extraction-issues)
 
 ---
 
@@ -804,14 +804,14 @@ curl "http://localhost:8080/api/v1/workspaces/$WORKSPACE_ID/metrics"
 
 | Tutorial                                    | Description                     |
 | ------------------------------------------- | ------------------------------- |
-| [Query Optimization](query-optimization.md) | Choosing and tuning query modes |
-| [Multi-Tenant Setup](multi-tenant.md)       | Building a SaaS application     |
-| [Custom Entity Types](custom-entities.md)   | Domain-specific extraction      |
+| [Query Optimization](/docs/tutorials/query-optimization/) | Choosing and tuning query modes |
+| [Multi-Tenant Setup](/docs/tutorials/multi-tenant/)       | Building a SaaS application     |
+| [Custom Entity Types](/docs/concepts/entity-extraction/)   | Domain-specific extraction      |
 
 ---
 
 ## See Also
 
-- [LightRAG Algorithm](../deep-dives/lightrag-algorithm.md) - Algorithm deep-dive
-- [Entity Normalization](../deep-dives/entity-normalization.md) - Deduplication details
-- [REST API](../api-reference/rest-api.md) - API reference
+- [LightRAG Algorithm](/docs/deep-dives/lightrag-algorithm/) - Algorithm deep-dive
+- [Entity Normalization](/docs/deep-dives/entity-normalization/) - Deduplication details
+- [REST API](/docs/api-reference/rest-api/) - API reference

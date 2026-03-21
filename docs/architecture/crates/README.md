@@ -538,6 +538,6 @@ Key feature flags across crates:
 
 ## See Also
 
-- [Architecture Overview](./overview.md) - High-level design
-- [Data Flow](./data-flow.md) - How data moves through the system
-- [REST API Reference](../api-reference/rest-api.md) - HTTP endpoints
+- [Architecture Overview](/docs/architecture/overview/) - High-level design
+- [Data Flow](/docs/architecture/data-flow/) - How data moves through the system
+- [REST API Reference](/docs/api-reference/rest-api/) - HTTP endpoints

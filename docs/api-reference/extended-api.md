@@ -6,7 +6,7 @@ title: 'Extended API Reference'
 
 > **Additional Endpoints for Tasks, Pipeline, Costs, and Lineage**
 
-This document covers advanced API endpoints not included in the main [REST API Reference](rest-api.md).
+This document covers advanced API endpoints not included in the main [REST API Reference](/docs/api-reference/rest-api/).
 
 ---
 
@@ -933,6 +933,6 @@ Get current provider status.
 
 ## See Also
 
-- [REST API Reference](rest-api.md) - Core endpoints
-- [Configuration Reference](../operations/configuration.md) - Environment variables
-- [Troubleshooting](../troubleshooting/common-issues.md) - Debugging API issues
+- [REST API Reference](/docs/api-reference/rest-api/) - Core endpoints
+- [Configuration Reference](/docs/operations/configuration/) - Environment variables
+- [Troubleshooting](/docs/troubleshooting/common-issues/) - Debugging API issues

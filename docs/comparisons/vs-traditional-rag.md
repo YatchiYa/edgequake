@@ -277,7 +277,7 @@ This means you get the best of both worlds:
 
 ## See Also
 
-- [LightRAG Algorithm](../deep-dives/lightrag-algorithm.md) - How the algorithm works
-- [Graph-RAG Concepts](../concepts/graph-rag.md) - Understanding graph-enhanced RAG
-- [Query Modes](../deep-dives/query-modes.md) - Choosing the right mode
-- [vs GraphRAG](vs-graphrag.md) - Microsoft's approach comparison
+- [LightRAG Algorithm](/docs/deep-dives/lightrag-algorithm/) - How the algorithm works
+- [Graph-RAG Concepts](/docs/concepts/graph-rag/) - Understanding graph-enhanced RAG
+- [Query Modes](/docs/deep-dives/query-modes/) - Choosing the right mode
+- [vs GraphRAG](/docs/comparisons/vs-graphrag/) - Microsoft's approach comparison

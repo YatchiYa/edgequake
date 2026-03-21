@@ -10,7 +10,7 @@ This tutorial teaches you how to select the right query mode for different quest
 
 **Time**: ~20 minutes  
 **Level**: Intermediate  
-**Prerequisites**: Completed [First RAG App](first-rag-app.md)
+**Prerequisites**: Completed [First RAG App](/docs/tutorials/first-rag-app/)
 
 ---
 
@@ -507,14 +507,14 @@ for mode, data in results.items():
 
 | Tutorial                                  | Description                 |
 | ----------------------------------------- | --------------------------- |
-| [Multi-Tenant Setup](multi-tenant.md)     | Building a SaaS application |
-| [Custom Entity Types](custom-entities.md) | Domain-specific extraction  |
-| [API Integration](api-integration.md)     | Building on EdgeQuake       |
+| [Multi-Tenant Setup](/docs/tutorials/multi-tenant/)     | Building a SaaS application |
+| [Custom Entity Types](/docs/concepts/entity-extraction/) | Domain-specific extraction  |
+| [API Integration](/docs/integrations/custom-clients/)     | Building on EdgeQuake       |
 
 ---
 
 ## See Also
 
-- [Query Modes Deep-Dive](../deep-dives/query-modes.md) - Detailed algorithm explanation
-- [REST API](../api-reference/rest-api.md) - Query endpoint reference
-- [Hybrid Retrieval](../concepts/hybrid-retrieval.md) - Conceptual overview
+- [Query Modes Deep-Dive](/docs/deep-dives/query-modes/) - Detailed algorithm explanation
+- [REST API](/docs/api-reference/rest-api/) - Query endpoint reference
+- [Hybrid Retrieval](/docs/concepts/hybrid-retrieval/) - Conceptual overview

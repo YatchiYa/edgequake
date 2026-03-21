@@ -32,100 +32,100 @@ Welcome to EdgeQuake — an advanced Retrieval-Augmented Generation (RAG) framew
 
 | Guide                                                 | Description                | Time   |
 | ----------------------------------------------------- | -------------------------- | ------ |
-| [Installation](getting-started/installation.md)       | Prerequisites and setup    | 5 min  |
-| [Quick Start](getting-started/quick-start.md)         | First ingestion and query  | 10 min |
-| [First Ingestion](getting-started/first-ingestion.md) | Understanding the pipeline | 15 min |
+| [Installation](/docs/getting-started/installation/)       | Prerequisites and setup    | 5 min  |
+| [Quick Start](/docs/getting-started/quick-start/)         | First ingestion and query  | 10 min |
+| [First Ingestion](/docs/tutorials/document-ingestion/) | Understanding the pipeline | 15 min |
 
 ### 🏗️ Architecture
 
 | Document                                | Description                           |
 | --------------------------------------- | ------------------------------------- |
-| [Overview](architecture/overview.md)    | System design and components          |
-| [Data Flow](architecture/data-flow.md)  | How documents flow through the system |
+| [Overview](/docs/architecture/overview/)    | System design and components          |
+| [Data Flow](/docs/architecture/data-flow/)  | How documents flow through the system |
 | [Crate Reference](architecture/crates/) | 11 Rust crates explained              |
 
 ### 💡 Core Concepts
 
 | Concept                                            | Description                       |
 | -------------------------------------------------- | --------------------------------- |
-| [Graph-RAG](concepts/graph-rag.md)                 | Why knowledge graphs enhance RAG  |
-| [Entity Extraction](concepts/entity-extraction.md) | LLM-based entity recognition      |
-| [Knowledge Graph](concepts/knowledge-graph.md)     | Nodes, edges, and communities     |
-| [Hybrid Retrieval](concepts/hybrid-retrieval.md)   | Combining vector and graph search |
+| [Graph-RAG](/docs/concepts/graph-rag/)                 | Why knowledge graphs enhance RAG  |
+| [Entity Extraction](/docs/concepts/entity-extraction/) | LLM-based entity recognition      |
+| [Knowledge Graph](/docs/concepts/knowledge-graph/)     | Nodes, edges, and communities     |
+| [Hybrid Retrieval](/docs/concepts/hybrid-retrieval/)   | Combining vector and graph search |
 
 ### 🔬 Deep Dives
 
 | Article                                                    | Description                                  |
 | ---------------------------------------------------------- | -------------------------------------------- |
-| [LightRAG Algorithm](deep-dives/lightrag-algorithm.md)     | Core algorithm: extraction, graph, retrieval |
-| [Query Modes](deep-dives/query-modes.md)                   | 6 modes with trade-offs explained            |
-| [Entity Normalization](deep-dives/entity-normalization.md) | Deduplication and description merging        |
-| [Gleaning](deep-dives/gleaning.md)                         | Multi-pass extraction for completeness       |
-| [Entity Extraction](deep-dives/entity-extraction.md)       | LLM-based extraction pipeline                |
-| [Community Detection](deep-dives/community-detection.md)   | Louvain clustering for global queries        |
-| [Chunking Strategies](deep-dives/chunking-strategies.md)   | Token-based segmentation with overlap        |
-| [Embedding Models](deep-dives/embedding-models.md)         | Model selection and dimension trade-offs     |
-| [Graph Storage](deep-dives/graph-storage.md)               | Apache AGE property graph backend            |
-| [Vector Storage](deep-dives/vector-storage.md)             | pgvector HNSW indexing and search            |
-| [PDF Processing](deep-dives/pdf-processing.md)             | Text/Vision/Hybrid extraction pipeline       |
-| [Cost Tracking](deep-dives/cost-tracking.md)               | LLM cost monitoring per operation            |
-| [Pipeline Progress](deep-dives/pipeline-progress.md)       | Real-time progress tracking                  |
+| [LightRAG Algorithm](/docs/deep-dives/lightrag-algorithm/)     | Core algorithm: extraction, graph, retrieval |
+| [Query Modes](/docs/deep-dives/query-modes/)                   | 6 modes with trade-offs explained            |
+| [Entity Normalization](/docs/deep-dives/entity-normalization/) | Deduplication and description merging        |
+| [Gleaning](/docs/deep-dives/gleaning/)                         | Multi-pass extraction for completeness       |
+| [Entity Extraction](/docs/deep-dives/entity-extraction/)       | LLM-based extraction pipeline                |
+| [Community Detection](/docs/deep-dives/community-detection/)   | Louvain clustering for global queries        |
+| [Chunking Strategies](/docs/deep-dives/chunking-strategies/)   | Token-based segmentation with overlap        |
+| [Embedding Models](/docs/deep-dives/embedding-models/)         | Model selection and dimension trade-offs     |
+| [Graph Storage](/docs/deep-dives/graph-storage/)               | Apache AGE property graph backend            |
+| [Vector Storage](/docs/deep-dives/vector-storage/)             | pgvector HNSW indexing and search            |
+| [PDF Processing](/docs/deep-dives/pdf-processing/)             | Text/Vision/Hybrid extraction pipeline       |
+| [Cost Tracking](/docs/deep-dives/cost-tracking/)               | LLM cost monitoring per operation            |
+| [Pipeline Progress](/docs/deep-dives/pipeline-progress/)       | Real-time progress tracking                  |
 
 ### 📊 Comparisons
 
 | Comparison                                                | Key Insights                       |
 | --------------------------------------------------------- | ---------------------------------- |
-| [vs LightRAG (Python)](comparisons/vs-lightrag-python.md) | Performance and design differences |
-| [vs GraphRAG](comparisons/vs-graphrag.md)                 | Microsoft's approach comparison    |
-| [vs Traditional RAG](comparisons/vs-traditional-rag.md)   | Why graphs matter                  |
+| [vs LightRAG (Python)](/docs/comparisons/vs-lightrag-python/) | Performance and design differences |
+| [vs GraphRAG](/docs/comparisons/vs-graphrag/)                 | Microsoft's approach comparison    |
+| [vs Traditional RAG](/docs/comparisons/vs-traditional-rag/)   | Why graphs matter                  |
 
 ### 📖 Tutorials
 
 | Tutorial                                                       | Description                     |
 | -------------------------------------------------------------- | ------------------------------- |
-| [Building Your First RAG App](tutorials/first-rag-app.md)      | End-to-end tutorial             |
-| [PDF Ingestion](tutorials/pdf-ingestion.md)                    | PDF upload and configuration    |
-| [Multi-Tenant Setup](tutorials/multi-tenant.md)                | Workspace isolation             |
-| [Document Ingestion](tutorials/document-ingestion.md)          | Upload and processing workflows |
-| [Migration from LightRAG](tutorials/migration-from-lightrag.md)| Python to Rust migration guide  |
+| [Building Your First RAG App](/docs/tutorials/first-rag-app/)      | End-to-end tutorial             |
+| [PDF Ingestion](/docs/tutorials/pdf-ingestion/)                    | PDF upload and configuration    |
+| [Multi-Tenant Setup](/docs/tutorials/multi-tenant/)                | Workspace isolation             |
+| [Document Ingestion](/docs/tutorials/document-ingestion/)          | Upload and processing workflows |
+| [Migration from LightRAG](/docs/tutorials/migration-from-lightrag/)| Python to Rust migration guide  |
 
 ### 🔌 Integrations
 
 | Integration                                      | Description                          |
 | ------------------------------------------------ | ------------------------------------ |
-| [OpenWebUI](integrations/open-webui.md)          | Chat interface with Ollama emulation |
-| [LangChain](integrations/langchain.md)           | Retriever and agent integration      |
-| [Custom Clients](integrations/custom-clients.md) | Python, TypeScript, Rust, Go clients |
+| [OpenWebUI](/docs/integrations/open-webui/)          | Chat interface with Ollama emulation |
+| [LangChain](/docs/integrations/langchain/)           | Retriever and agent integration      |
+| [Custom Clients](/docs/integrations/custom-clients/) | Python, TypeScript, Rust, Go clients |
 
 ### 📖 API Reference
 
 | API                                              | Description           |
 | ------------------------------------------------ | --------------------- |
-| [REST API](api-reference/rest-api.md)            | HTTP endpoints        |
-| [Extended API](api-reference/extended-api.md)    | Advanced API features |
+| [REST API](/docs/api-reference/rest-api/)            | HTTP endpoints        |
+| [Extended API](/docs/api-reference/extended-api/)    | Advanced API features |
 
 ### 📓 Reference
 
 | Resource                                             | Description                        |
 | ---------------------------------------------------- | ---------------------------------- |
-| [Cookbook](cookbook.md)                                | Practical recipes for common tasks |
-| [FAQ](faq.md)                                        | Frequently asked questions         |
+| [Cookbook](/docs/cookbook/)                                | Practical recipes for common tasks |
+| [FAQ](/docs/faq/)                                        | Frequently asked questions         |
 
 ### 🛠️ Operations
 
 | Guide                                                      | Description            |
 | ---------------------------------------------------------- | ---------------------- |
-| [Deployment](operations/deployment.md)                     | Production deployment  |
-| [Configuration](operations/configuration.md)               | All config options     |
-| [Monitoring](operations/monitoring.md)                     | Observability setup    |
-| [Performance Tuning](operations/performance-tuning.md)     | Optimization guide     |
+| [Deployment](/docs/operations/deployment/)                     | Production deployment  |
+| [Configuration](/docs/operations/configuration/)               | All config options     |
+| [Monitoring](/docs/operations/monitoring/)                     | Observability setup    |
+| [Performance Tuning](/docs/operations/performance-tuning/)     | Optimization guide     |
 
 ### 🔒 Security & Troubleshooting
 
 | Guide                                                    | Description                  |
 | -------------------------------------------------------- | ---------------------------- |
-| [Security Best Practices](security/best-practices.md)   | Security guidelines          |
-| [Common Issues](troubleshooting/common-issues.md)       | Debugging guide              |
+| [Security Best Practices](/docs/security/best-practices/)   | Security guidelines          |
+| [Common Issues](/docs/troubleshooting/common-issues/)       | Debugging guide              |
 
 ---
 
@@ -135,11 +135,11 @@ Welcome to EdgeQuake — an advanced Retrieval-Augmented Generation (RAG) framew
 
 | Goal                          | Go To                                                  |
 | ----------------------------- | ------------------------------------------------------ |
-| Get running in 5 minutes      | [Quick Start](getting-started/quick-start.md)          |
-| Understand the architecture   | [Overview](architecture/overview.md)                   |
-| Learn how the algorithm works | [LightRAG Algorithm](deep-dives/lightrag-algorithm.md) |
-| See API endpoints             | [REST API](api-reference/rest-api.md)                  |
-| Deploy to production          | [Deployment](operations/deployment.md)                 |
+| Get running in 5 minutes      | [Quick Start](/docs/getting-started/quick-start/)          |
+| Understand the architecture   | [Overview](/docs/architecture/overview/)                   |
+| Learn how the algorithm works | [LightRAG Algorithm](/docs/deep-dives/lightrag-algorithm/) |
+| See API endpoints             | [REST API](/docs/api-reference/rest-api/)                  |
+| Deploy to production          | [Deployment](/docs/operations/deployment/)                 |
 
 ---
 

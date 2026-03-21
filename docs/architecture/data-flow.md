@@ -534,6 +534,6 @@ After retrieval, context is assembled and truncated to fit LLM limits:
 
 ## Next Steps
 
-- **[Architecture Overview](overview.md)** — System design
-- **[Query Modes Deep Dive](../deep-dives/query-modes.md)** — Choosing the right mode
-- **[API Reference](../api-reference/rest-api.md)** — Endpoint documentation
+- **[Architecture Overview](/docs/architecture/overview/)** — System design
+- **[Query Modes Deep Dive](/docs/deep-dives/query-modes/)** — Choosing the right mode
+- **[API Reference](/docs/api-reference/rest-api/)** — Endpoint documentation

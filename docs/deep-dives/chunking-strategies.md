@@ -558,6 +558,6 @@ Query returns incomplete answers
 
 ## See Also
 
-- [Embedding Models](./embedding-models.md) - How chunks are embedded
-- [Entity Extraction](./entity-extraction.md) - How entities are extracted from chunks
-- [LightRAG Algorithm](./lightrag-algorithm.md) - Overall pipeline design
+- [Embedding Models](/docs/deep-dives/embedding-models/) - How chunks are embedded
+- [Entity Extraction](/docs/deep-dives/entity-extraction/) - How entities are extracted from chunks
+- [LightRAG Algorithm](/docs/deep-dives/lightrag-algorithm/) - Overall pipeline design

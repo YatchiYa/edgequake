@@ -10,7 +10,7 @@ In this tutorial, you'll build a complete RAG application that can answer questi
 
 **Time**: ~30 minutes  
 **Level**: Beginner  
-**Prerequisites**: EdgeQuake running ([Quick Start](../getting-started/quick-start.md))
+**Prerequisites**: EdgeQuake running ([Quick Start](/docs/getting-started/quick-start/))
 
 ---
 
@@ -464,10 +464,10 @@ curl -X DELETE "http://localhost:8080/api/v1/workspaces/$WORKSPACE_ID"
 
 | Tutorial                                              | Description                    |
 | ----------------------------------------------------- | ------------------------------ |
-| [Document Ingestion Deep-Dive](document-ingestion.md) | Custom chunking and processing |
-| [Query Optimization](query-optimization.md)           | Choosing the right mode        |
-| [Multi-Tenant Setup](multi-tenant.md)                 | Building a SaaS app            |
-| [Custom Entity Types](custom-entities.md)             | Domain-specific extraction     |
+| [Document Ingestion Deep-Dive](/docs/tutorials/document-ingestion/) | Custom chunking and processing |
+| [Query Optimization](/docs/tutorials/query-optimization/)           | Choosing the right mode        |
+| [Multi-Tenant Setup](/docs/tutorials/multi-tenant/)                 | Building a SaaS app            |
+| [Custom Entity Types](/docs/concepts/entity-extraction/)             | Domain-specific extraction     |
 
 ---
 
@@ -563,7 +563,7 @@ for question in questions:
 
 ## See Also
 
-- [Quick Start](../getting-started/quick-start.md) - Minimal setup guide
-- [Query Modes](../deep-dives/query-modes.md) - Understanding retrieval strategies
-- [REST API](../api-reference/rest-api.md) - Complete API reference
-- [Architecture](../architecture/overview.md) - System design
+- [Quick Start](/docs/getting-started/quick-start/) - Minimal setup guide
+- [Query Modes](/docs/deep-dives/query-modes/) - Understanding retrieval strategies
+- [REST API](/docs/api-reference/rest-api/) - Complete API reference
+- [Architecture](/docs/architecture/overview/) - System design

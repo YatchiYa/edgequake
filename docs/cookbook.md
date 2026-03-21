@@ -627,6 +627,6 @@ echo "$RESPONSE" | jq '{
 
 ## See Also
 
-- [REST API Reference](./api-reference/rest-api.md) - Complete API documentation
-- [Troubleshooting](./troubleshooting/common-issues.md) - Common problems and solutions
-- [Performance Tuning](./operations/performance-tuning.md) - Optimization guide
+- [REST API Reference](/docs/api-reference/rest-api/) - Complete API documentation
+- [Troubleshooting](/docs/troubleshooting/common-issues/) - Common problems and solutions
+- [Performance Tuning](/docs/operations/performance-tuning/) - Optimization guide

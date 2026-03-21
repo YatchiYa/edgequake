@@ -664,7 +664,7 @@ Returns the formatted prompt that would be sent to the LLM.
 
 ## See Also
 
-- [LightRAG Algorithm](lightrag-algorithm.md) - The algorithm powering EdgeQuake
-- [Entity Extraction](entity-extraction.md) - How entities are identified
-- [REST API Reference](../api-reference/rest-api.md) - Full API documentation
-- [Architecture Overview](../architecture/overview.md) - System design
+- [LightRAG Algorithm](/docs/deep-dives/lightrag-algorithm/) - The algorithm powering EdgeQuake
+- [Entity Extraction](/docs/deep-dives/entity-extraction/) - How entities are identified
+- [REST API Reference](/docs/api-reference/rest-api/) - Full API documentation
+- [Architecture Overview](/docs/architecture/overview/) - System design

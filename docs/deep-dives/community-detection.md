@@ -447,7 +447,7 @@ Performance on knowledge graphs (100K nodes, 300K edges):
 
 ## See Also
 
-- [Query Modes](./query-modes.md) - How Global uses communities
-- [Graph Storage](./graph-storage.md) - How graphs are stored
-- [Entity Extraction](./entity-extraction.md) - How entities are created
+- [Query Modes](/docs/deep-dives/query-modes/) - How Global uses communities
+- [Graph Storage](/docs/deep-dives/graph-storage/) - How graphs are stored
+- [Entity Extraction](/docs/deep-dives/entity-extraction/) - How entities are created
 - [Architecture: Crates](/docs/architecture/crates/) - Storage crate details

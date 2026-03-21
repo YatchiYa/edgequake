@@ -1081,7 +1081,7 @@ curl "http://localhost:8080/api/v1/query?api_key=your-api-key" ...
 
 ## See Also
 
-- [REST API Reference](../api-reference/rest-api.md) - Full API documentation
-- [Extended API Reference](../api-reference/extended-api.md) - Additional endpoints
-- [LangChain Integration](./langchain.md) - Python RAG integration
-- [Open WebUI Integration](./open-webui.md) - Chat UI integration
+- [REST API Reference](/docs/api-reference/rest-api/) - Full API documentation
+- [Extended API Reference](/docs/api-reference/extended-api/) - Additional endpoints
+- [LangChain Integration](/docs/integrations/langchain/) - Python RAG integration
+- [Open WebUI Integration](/docs/integrations/open-webui/) - Chat UI integration

@@ -135,10 +135,10 @@ EdgeQuake implements Graph-RAG with these components:
 
 ## Learn More
 
-- **How extraction works**: [Entity Extraction](entity-extraction.md)
-- **Where data is stored**: [Knowledge Graph](knowledge-graph.md)
-- **How queries work**: [Hybrid Retrieval](hybrid-retrieval.md)
-- **Algorithm details**: [LightRAG Algorithm Deep-Dive](../deep-dives/lightrag-algorithm.md)
+- **How extraction works**: [Entity Extraction](/docs/concepts/entity-extraction/)
+- **Where data is stored**: [Knowledge Graph](/docs/concepts/knowledge-graph/)
+- **How queries work**: [Hybrid Retrieval](/docs/concepts/hybrid-retrieval/)
+- **Algorithm details**: [LightRAG Algorithm Deep-Dive](/docs/deep-dives/lightrag-algorithm/)
 
 ---
 

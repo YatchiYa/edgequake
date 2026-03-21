@@ -490,7 +490,7 @@ Track these metrics in production:
 
 ## See Also
 
-- [LightRAG Algorithm](lightrag-algorithm.md) - The full extraction pipeline
-- [Entity Extraction](../concepts/entity-extraction.md) - How entities are identified
-- [Knowledge Graph](../concepts/knowledge-graph.md) - Graph structure
-- [Query Modes](query-modes.md) - How normalized entities are queried
+- [LightRAG Algorithm](/docs/deep-dives/lightrag-algorithm/) - The full extraction pipeline
+- [Entity Extraction](/docs/concepts/entity-extraction/) - How entities are identified
+- [Knowledge Graph](/docs/concepts/knowledge-graph/) - Graph structure
+- [Query Modes](/docs/deep-dives/query-modes/) - How normalized entities are queried
