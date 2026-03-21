@@ -152,7 +152,7 @@ Before storing, entity names are normalized to prevent duplicates:
 - Enables entity merging across documents
 - Improves query accuracy
 
-See [normalizer.rs](../../edgequake/crates/edgequake-pipeline/src/prompts/normalizer.rs) for implementation.
+See [normalizer.rs](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pipeline/src/prompts/normalizer.rs) for implementation.
 
 ---
 
@@ -200,7 +200,7 @@ Research shows 1-2 gleaning iterations improve recall by 15-25%.
 
 ## Source Code
 
-- **Extraction logic**: [extractor.rs](../../edgequake/crates/edgequake-pipeline/src/extractor.rs)
-- **Prompts**: [entity_extraction.rs](../../edgequake/crates/edgequake-pipeline/src/prompts/entity_extraction.rs)
-- **Normalization**: [normalizer.rs](../../edgequake/crates/edgequake-pipeline/src/prompts/normalizer.rs)
-- **Parsing**: [parser.rs](../../edgequake/crates/edgequake-pipeline/src/prompts/parser.rs)
+- **Extraction logic**: [extractor.rs](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pipeline/src/extractor.rs)
+- **Prompts**: [entity_extraction.rs](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pipeline/src/prompts/entity_extraction.rs)
+- **Normalization**: [normalizer.rs](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pipeline/src/prompts/normalizer.rs)
+- **Parsing**: [parser.rs](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pipeline/src/prompts/parser.rs)

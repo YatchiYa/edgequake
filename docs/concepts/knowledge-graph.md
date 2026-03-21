@@ -230,6 +230,6 @@ LIMIT 10
 
 ## Source Code
 
-- **Graph storage trait**: [graph.rs](../../edgequake/crates/edgequake-storage/src/traits/graph.rs)
-- **Vector storage trait**: [vector.rs](../../edgequake/crates/edgequake-storage/src/traits/vector.rs)
-- **PostgreSQL implementation**: [postgres/](../../edgequake/crates/edgequake-storage/src/postgres/)
+- **Graph storage trait**: [graph.rs](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-storage/src/traits/graph.rs)
+- **Vector storage trait**: [vector.rs](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-storage/src/traits/vector.rs)
+- **PostgreSQL implementation**: [postgres/](https://github.com/raphaelmansuy/edgequake/tree/edgequake-main/edgequake/crates/edgequake-storage/src/postgres/)

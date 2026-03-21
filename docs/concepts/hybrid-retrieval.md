@@ -266,6 +266,6 @@ curl -X POST http://localhost:8080/api/v1/query \
 
 ## Source Code
 
-- **Query engine**: [engine.rs](../../edgequake/crates/edgequake-query/src/engine.rs)
-- **Query modes**: [modes.rs](../../edgequake/crates/edgequake-query/src/modes.rs)
-- **Context building**: [context.rs](../../edgequake/crates/edgequake-query/src/context.rs)
+- **Query engine**: [engine.rs](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-query/src/engine.rs)
+- **Query modes**: [modes.rs](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-query/src/modes.rs)
+- **Context building**: [context.rs](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-query/src/context.rs)
