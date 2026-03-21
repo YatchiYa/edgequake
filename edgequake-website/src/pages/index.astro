@@ -1,0 +1,40 @@
+---
+import FadeIn from "../components/FadeIn.astro";
+import Architecture from "../components/sections/Architecture.astro";
+import Benchmarks from "../components/sections/Benchmarks.astro";
+import Ecosystem from "../components/sections/Ecosystem.astro";
+import EnterpriseCTA from "../components/sections/EnterpriseCTA.astro";
+import Hero from "../components/sections/Hero.astro";
+import Problem from "../components/sections/Problem.astro";
+import QuickStart from "../components/sections/QuickStart.astro";
+import Solution from "../components/sections/Solution.astro";
+import MarketingLayout from "../layouts/MarketingLayout.astro";
+---
+
+<MarketingLayout
+  title="Graph-RAG Built for Speed"
+  description="EdgeQuake is a Rust Graph-RAG framework for teams that need fast ingestion, lineage-aware knowledge graphs, six retrieval modes, and production-ready PostgreSQL storage."
+>
+  <Hero />
+  <FadeIn>
+    <Problem />
+  </FadeIn>
+  <FadeIn delay={100}>
+    <Solution />
+  </FadeIn>
+  <FadeIn>
+    <Architecture />
+  </FadeIn>
+  <FadeIn delay={100}>
+    <Benchmarks />
+  </FadeIn>
+  <FadeIn>
+    <QuickStart />
+  </FadeIn>
+  <FadeIn delay={100}>
+    <Ecosystem />
+  </FadeIn>
+  <FadeIn>
+    <EnterpriseCTA />
+  </FadeIn>
+</MarketingLayout>

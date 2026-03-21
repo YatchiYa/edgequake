@@ -1,0 +1,193 @@
+---
+import { Code } from "@astrojs/starlight/components";
+
+/**
+ * QuickStart section — Tabbed code examples.
+ * Content ported from _archive/quickstart.tsx
+ */
+const tabs = [
+  {
+    id: "rust",
+    label: "Rust",
+    title: "src/main.rs",
+    lang: "rust",
+    summary:
+      "Create an EdgeQuake client, ingest text, and run a graph-aware query.",
+    code: `use edgequake::EdgeQuake;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let eq = EdgeQuake::new("postgres://localhost/edgequake").await?;
+    let document = "GraphRAG combines vector search with knowledge graphs to deliver more accurate and contextual retrieval.";
+
+    // Ingest documents
+    eq.insert(document).await?;
+
+    // Query with different modes
+    let result = eq.query("How does GraphRAG work?").await?;
+    println!("{}", result);
+
+    Ok(())
+}`,
+  },
+  {
+    id: "docker",
+    label: "Docker",
+    title: "Bootstrap the full stack",
+    lang: "bash",
+    summary:
+      "Download the Compose file, launch the services, and verify API health.",
+    code: `# Start EdgeQuake with Docker Compose
+curl -O https://raw.githubusercontent.com/raphaelmansuy/edgequake/edgequake-main/docker-compose.yml
+
+# Launch all services
+docker compose up -d
+
+# Check health
+curl http://localhost:8080/health`,
+  },
+  {
+    id: "api",
+    label: "REST API",
+    title: "api-demo.sh",
+    lang: "bash",
+    summary:
+      "Post a document, then send a retrieval request to the query endpoint.",
+    code: `# Insert a document
+curl -X POST http://localhost:8080/documents \\
+  -H "Content-Type: application/json" \\
+  -d '{"content": "EdgeQuake is a Graph-RAG framework."}'
+
+# Query the knowledge graph
+curl -X POST http://localhost:8080/query \\
+  -H "Content-Type: application/json" \\
+  -d '{"query": "What is EdgeQuake?", "mode": "hybrid"}'`,
+  },
+];
+---
+
+<section class="mkt-section-alt py-20 sm:py-24">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="text-center max-w-3xl mx-auto">
+      <h2 class="text-3xl font-bold tracking-tight mkt-text sm:text-4xl">
+        Up and Running in Minutes
+      </h2>
+      <p class="mt-4 text-lg mkt-text-muted">
+        Start where you are: embed the Rust crate, launch the full stack with
+        Docker, or hit the API directly.
+      </p>
+    </div>
+
+    <div class="mt-12 max-w-3xl mx-auto">
+      <!-- Tabs -->
+      <div
+        class="mkt-tablist flex"
+        role="tablist"
+        aria-label="Quick start examples"
+      >
+        {
+          tabs.map((tab, i) => (
+            <button
+              type="button"
+              role="tab"
+              data-tab={tab.id}
+              class={`mkt-tab px-4 py-2.5 text-sm font-medium transition-colors ${i === 0 ? "is-active" : ""}`}
+              aria-selected={i === 0 ? "true" : "false"}
+              aria-controls={`panel-${tab.id}`}
+              id={`tab-${tab.id}`}
+              tabindex={i === 0 ? "0" : "-1"}
+            >
+              {tab.label}
+            </button>
+          ))
+        }
+      </div>
+
+      <!-- Code panels -->
+      {
+        tabs.map((tab, i) => (
+          <div
+            data-panel={tab.id}
+            id={`panel-${tab.id}`}
+            role="tabpanel"
+            aria-labelledby={`tab-${tab.id}`}
+            tabindex="0"
+            class={`relative ${i === 0 ? "" : "hidden"}`}
+          >
+            <div class="mkt-code-showcase rounded-b-2xl border border-t-0 p-5 sm:p-6">
+              <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p class="text-sm mkt-text-secondary">{tab.summary}</p>
+                <span class="mkt-badge inline-flex w-fit items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]">
+                  {tab.label}
+                </span>
+              </div>
+              <Code code={tab.code} lang={tab.lang} title={tab.title} />
+            </div>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</section>
+
+<script>
+  const setupQuickStartTabs = () => {
+    document.querySelectorAll('[role="tablist"]').forEach((tablist) => {
+      if (tablist instanceof HTMLElement && tablist.dataset.bound === "true") {
+        return;
+      }
+
+      const tabs = Array.from(
+        tablist.querySelectorAll<HTMLElement>('[role="tab"]'),
+      );
+      const section = tablist.closest("section");
+      const panels = Array.from(
+        section?.querySelectorAll<HTMLElement>('[data-panel]') ?? [],
+      );
+
+      const activateTab = (nextTab?: HTMLElement) => {
+        const nextId = nextTab?.dataset.tab;
+        tabs.forEach((tab) => {
+          const isActive = tab === nextTab;
+          tab.classList.toggle("is-active", isActive);
+          tab.setAttribute("aria-selected", String(isActive));
+          tab.setAttribute("tabindex", isActive ? "0" : "-1");
+        });
+
+        panels.forEach((panel) => {
+          panel.classList.toggle("hidden", panel.dataset.panel !== nextId);
+        });
+      };
+
+      tabs.forEach((tab, index) => {
+        tab.addEventListener("click", () => activateTab(tab));
+        tab.addEventListener("keydown", (event: KeyboardEvent) => {
+          let nextIndex = index;
+
+          if (event.key === "ArrowRight") {
+            nextIndex = (index + 1) % tabs.length;
+          } else if (event.key === "ArrowLeft") {
+            nextIndex = (index - 1 + tabs.length) % tabs.length;
+          } else if (event.key === "Home") {
+            nextIndex = 0;
+          } else if (event.key === "End") {
+            nextIndex = tabs.length - 1;
+          } else {
+            return;
+          }
+
+          event.preventDefault();
+          const nextTab = tabs[nextIndex];
+          activateTab(nextTab);
+          nextTab?.focus();
+        });
+      });
+
+      if (tablist instanceof HTMLElement) {
+        tablist.dataset.bound = "true";
+      }
+    });
+  };
+
+  setupQuickStartTabs();
+</script>
