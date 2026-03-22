@@ -300,6 +300,27 @@ impl AvailableProvidersResponse {
                 },
             },
             ProviderInfo {
+                id: "minimax".to_string(),
+                name: "MiniMax".to_string(),
+                description: "MiniMax AI (MiniMax-M2.7) - Latest flagship model with enhanced reasoning and coding"
+                    .to_string(),
+                available: std::env::var("MINIMAX_API_KEY").is_ok(),
+                config_requirements: {
+                    let api_key_set = std::env::var("MINIMAX_API_KEY").is_ok();
+                    vec![ConfigRequirement {
+                        env_var: "MINIMAX_API_KEY".to_string(),
+                        required: true,
+                        description: "MiniMax API key".to_string(),
+                        satisfied: api_key_set,
+                    }]
+                },
+                default_models: DefaultModels {
+                    chat_model: "MiniMax-M2.7".to_string(),
+                    embedding_model: "".to_string(),
+                    embedding_dimension: 0,
+                },
+            },
+            ProviderInfo {
                 id: "azure".to_string(),
                 name: "Azure OpenAI".to_string(),
                 description: "Azure-hosted OpenAI models (enterprise)".to_string(),
