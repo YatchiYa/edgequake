@@ -68,6 +68,10 @@ pub async fn list_documents(
     let mut metadata_keys: Vec<String> = Vec::new();
 
     for key in &keys {
+        // Skip injection entries — they are managed by the /knowledge route (SPEC-0002)
+        if key.starts_with("injection::") {
+            continue;
+        }
         if key.ends_with("-metadata") {
             debug!(metadata_key = %key, "Found metadata key");
             metadata_keys.push(key.clone());
