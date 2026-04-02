@@ -319,6 +319,15 @@ pub async fn execute_query(
     // Resolve document_id → file_path (document title) for chunk sources
     resolve_chunk_file_paths(state.kv_storage.as_ref(), &mut chunk_sources).await;
 
+    // SPEC-0002: Exclude injection artifacts from cited sources.
+    // Injection chunks enrich LLM context but must NOT appear as source citations.
+    chunk_sources.retain(|s| {
+        !s.document_id
+            .as_deref()
+            .unwrap_or("")
+            .starts_with("injection::")
+    });
+
     // Sort by rerank score if reranking is enabled
     if reranked {
         chunk_sources.sort_by(|a, b| {
@@ -333,6 +342,18 @@ pub async fn execute_query(
     sources.extend(chunk_sources);
 
     for entity in &result.context.entities {
+        // SPEC-0002: Skip injection-only entities from citations.
+        // Injection source_document_id is "injection::{workspace_id}::{id}".
+        // These entities enrich graph context but must not be cited as sources.
+        if entity
+            .source_document_id
+            .as_deref()
+            .unwrap_or("")
+            .starts_with("injection::")
+        {
+            continue;
+        }
+
         let ref_id = ref_counter;
         ref_counter += 1;
 
@@ -364,6 +385,16 @@ pub async fn execute_query(
     }
 
     for rel in &result.context.relationships {
+        // SPEC-0002: Skip injection-only relationships from citations.
+        if rel
+            .source_document_id
+            .as_deref()
+            .unwrap_or("")
+            .starts_with("injection::")
+        {
+            continue;
+        }
+
         let ref_id = ref_counter;
         ref_counter += 1;
 
