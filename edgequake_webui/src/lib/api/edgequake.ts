@@ -1872,17 +1872,11 @@ export async function putInjectionFile(
   if (name.trim()) {
     formData.append('name', name.trim());
   }
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080/api/v1';
-  const url = `${baseUrl}/workspaces/${workspaceId}/injection/file`;
-  const response = await fetch(url, {
-    method: 'PUT',
-    body: formData,
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: response.statusText }));
-    throw new Error(error.message ?? `Upload failed: ${response.status}`);
-  }
-  return response.json() as Promise<PutInjectionResponse>;
+  // WHY: Use api.put to send X-Workspace-ID and auth headers automatically (same as all other API calls)
+  return api.put<PutInjectionResponse>(
+    `/workspaces/${workspaceId}/injection/file`,
+    formData,
+  );
 }
 
 // ============================================================================

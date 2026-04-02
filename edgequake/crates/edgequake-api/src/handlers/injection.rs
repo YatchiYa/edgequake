@@ -716,11 +716,7 @@ pub async fn put_injection_file(
     }
 
     // Validate extension: only plain-text formats (no PDF — needs vision)
-    let ext = filename
-        .rsplit('.')
-        .next()
-        .unwrap_or("")
-        .to_lowercase();
+    let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
     const ALLOWED: [&str; 4] = ["txt", "md", "csv", "json"];
     if !ALLOWED.contains(&ext.as_str()) {
         return Err(ApiError::BadRequest(format!(
@@ -729,12 +725,13 @@ pub async fn put_injection_file(
     }
 
     // Decode UTF-8
-    let content = String::from_utf8(file_bytes).map_err(|_| {
-        ApiError::BadRequest("File must be valid UTF-8 text".to_string())
-    })?;
+    let content = String::from_utf8(file_bytes)
+        .map_err(|_| ApiError::BadRequest("File must be valid UTF-8 text".to_string()))?;
 
     if content.trim().is_empty() {
-        return Err(ApiError::BadRequest("File content cannot be empty".to_string()));
+        return Err(ApiError::BadRequest(
+            "File content cannot be empty".to_string(),
+        ));
     }
 
     if content.len() > MAX_INJECTION_CONTENT_BYTES {
@@ -788,10 +785,7 @@ pub async fn put_injection_file(
     });
 
     let meta_key = injection_meta_key(&workspace_id, &injection_id);
-    state
-        .kv_storage
-        .upsert(&[(meta_key.clone(), meta)])
-        .await?;
+    state.kv_storage.upsert(&[(meta_key.clone(), meta)]).await?;
 
     info!(
         workspace_id = %workspace_id,

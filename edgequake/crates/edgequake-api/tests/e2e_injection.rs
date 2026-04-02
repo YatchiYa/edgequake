@@ -106,13 +106,8 @@ async fn test_put_injection_success() {
 #[tokio::test]
 async fn test_put_injection_empty_name_rejected() {
     let app = create_test_app();
-    let (status, _body) = put_injection(
-        &app,
-        "ws-test",
-        "",
-        "RAG = Retrieval-Augmented Generation.",
-    )
-    .await;
+    let (status, _body) =
+        put_injection(&app, "ws-test", "", "RAG = Retrieval-Augmented Generation.").await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "Empty name must be 400");
 }
 
@@ -121,14 +116,13 @@ async fn test_put_injection_empty_name_rejected() {
 async fn test_put_injection_name_too_long_rejected() {
     let long_name = "x".repeat(101);
     let app = create_test_app();
-    let (status, _) = put_injection(
-        &app,
-        "ws-test",
-        &long_name,
-        "Some content about acronyms.",
-    )
-    .await;
-    assert_eq!(status, StatusCode::BAD_REQUEST, "Name > 100 chars must be 400");
+    let (status, _) =
+        put_injection(&app, "ws-test", &long_name, "Some content about acronyms.").await;
+    assert_eq!(
+        status,
+        StatusCode::BAD_REQUEST,
+        "Name > 100 chars must be 400"
+    );
 }
 
 /// SPEC-0002: PUT with empty content → 400 Bad Request.
@@ -136,11 +130,7 @@ async fn test_put_injection_name_too_long_rejected() {
 async fn test_put_injection_empty_content_rejected() {
     let app = create_test_app();
     let (status, _) = put_injection(&app, "ws-test", "Glossary", "").await;
-    assert_eq!(
-        status,
-        StatusCode::BAD_REQUEST,
-        "Empty content must be 400"
-    );
+    assert_eq!(status, StatusCode::BAD_REQUEST, "Empty content must be 400");
 }
 
 /// SPEC-0002: PUT with whitespace-only content → 400 Bad Request.
@@ -841,11 +831,7 @@ async fn test_injection_not_cited_in_query_sources() {
         .await
         .unwrap();
 
-    assert_eq!(
-        response.status(),
-        StatusCode::OK,
-        "Query must succeed"
-    );
+    assert_eq!(response.status(), StatusCode::OK, "Query must succeed");
     let result = extract_json(response).await;
 
     // Walk all sources and assert none have injection:: document_id
@@ -1019,9 +1005,16 @@ async fn test_put_injection_file_txt_success() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::ACCEPTED, "File upload must return 202");
+    assert_eq!(
+        response.status(),
+        StatusCode::ACCEPTED,
+        "File upload must return 202"
+    );
     let resp = extract_json(response).await;
-    assert!(resp["injection_id"].is_string(), "injection_id required: {resp}");
+    assert!(
+        resp["injection_id"].is_string(),
+        "injection_id required: {resp}"
+    );
     assert_eq!(resp["status"].as_str(), Some("processing"));
     assert_eq!(resp["version"].as_u64(), Some(1));
 }
@@ -1086,11 +1079,7 @@ async fn test_put_injection_file_csv_success() {
 #[tokio::test]
 async fn test_put_injection_file_unsupported_extension() {
     let app = create_test_app();
-    let (boundary, body) = make_injection_multipart(
-        None,
-        "glossary.docx",
-        "Word document content",
-    );
+    let (boundary, body) = make_injection_multipart(None, "glossary.docx", "Word document content");
 
     let response = app
         .oneshot(
@@ -1189,7 +1178,10 @@ async fn test_put_injection_file_appears_in_list() {
     let found = items
         .iter()
         .find(|i| i["injection_id"].as_str() == Some(injection_id));
-    assert!(found.is_some(), "File injection must appear in list: {list}");
+    assert!(
+        found.is_some(),
+        "File injection must appear in list: {list}"
+    );
     assert_eq!(
         found.unwrap()["source_type"].as_str(),
         Some("file"),
