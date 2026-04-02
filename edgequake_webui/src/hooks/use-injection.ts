@@ -9,6 +9,7 @@ import {
     getInjection,
     listInjections,
     putInjection,
+    putInjectionFile,
     updateInjection,
     type InjectionDetailResponse,
     type ListInjectionsResponse,
@@ -80,6 +81,18 @@ export function useUpdateInjection(workspaceId: string, injectionId: string) {
       });
       queryClient.invalidateQueries({
         queryKey: injectionKeys.detail(workspaceId, injectionId),
+      });
+    },
+  });
+}
+
+export function useCreateInjectionFile(workspaceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<PutInjectionResponse, Error, { name: string; file: File }>({
+    mutationFn: ({ name, file }) => putInjectionFile(workspaceId, name, file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: injectionKeys.list(workspaceId),
       });
     },
   });

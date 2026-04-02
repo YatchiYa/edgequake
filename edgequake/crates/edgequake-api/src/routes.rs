@@ -216,6 +216,10 @@ fn api_v1_routes() -> Router<AppState> {
             put(handlers::put_injection),
         )
         .route(
+            "/workspaces/{workspace_id}/injection/file",
+            put(handlers::put_injection_file),
+        )
+        .route(
             "/workspaces/{workspace_id}/injections",
             get(handlers::list_injections),
         )
