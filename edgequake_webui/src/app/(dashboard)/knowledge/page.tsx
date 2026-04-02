@@ -25,23 +25,26 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import {
+    injectionKeys,
     useCreateInjection,
     useCreateInjectionFile,
     useDeleteInjection,
     useInjections,
 } from '@/hooks';
 import useTenantContext from '@/hooks/use-tenant-context';
+import { getInjection } from '@/lib/api/edgequake';
+import { useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, BookOpen, FileText, Plus, Trash2, Upload } from 'lucide-react';
 import Link from 'next/link';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { getInjection } from '@/lib/api/edgequake';
 
-/** Poll until status !== 'processing' then show entity count toast. */
+/** Poll until status !== 'processing', show entity count toast, then call onDone. */
 async function pollForCompletion(
   workspaceId: string,
   injectionId: string,
   injectionName: string,
+  onDone?: () => void,
 ) {
   const MAX_POLLS = 60; // 5 min max (60 × 5s)
   for (let i = 0; i < MAX_POLLS; i++) {
@@ -52,10 +55,12 @@ async function pollForCompletion(
         toast.success(
           `${detail.entity_count} entities extracted from "${injectionName}"`,
         );
+        onDone?.();
         return;
       }
       if (detail.status === 'failed') {
         toast.error(`Processing failed: ${detail.error ?? 'Unknown error'}`);
+        onDone?.();
         return;
       }
     } catch {
@@ -67,6 +72,7 @@ async function pollForCompletion(
 export default function KnowledgePage() {
   const { selectedWorkspaceId } = useTenantContext();
   const { data, isLoading } = useInjections(selectedWorkspaceId);
+  const queryClient = useQueryClient();
   const createMutation = useCreateInjection(selectedWorkspaceId ?? '');
   const createFileMutation = useCreateInjectionFile(selectedWorkspaceId ?? '');
   const deleteMutation = useDeleteInjection(selectedWorkspaceId ?? '');
@@ -100,7 +106,10 @@ export default function KnowledgePage() {
       toast.success('Processing started — entities will be extracted shortly');
       setDialogOpen(false);
       resetDialog();
-      void pollForCompletion(selectedWorkspaceId ?? 'default', result.injection_id, name.trim());
+      const wsId = selectedWorkspaceId ?? 'default';
+      void pollForCompletion(wsId, result.injection_id, name.trim(), () => {
+        void queryClient.invalidateQueries({ queryKey: injectionKeys.list(wsId) });
+      });
     } catch (err) {
       toast.error(`Failed to create injection: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
@@ -120,7 +129,10 @@ export default function KnowledgePage() {
       toast.success('Processing started — entities will be extracted shortly');
       setDialogOpen(false);
       resetDialog();
-      void pollForCompletion(selectedWorkspaceId ?? 'default', result.injection_id, fileNameForInjection);
+      const wsId = selectedWorkspaceId ?? 'default';
+      void pollForCompletion(wsId, result.injection_id, fileNameForInjection, () => {
+        void queryClient.invalidateQueries({ queryKey: injectionKeys.list(wsId) });
+      });
     } catch (err) {
       toast.error(`Failed to upload file: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
@@ -270,6 +282,19 @@ export default function KnowledgePage() {
                     accept=".txt,.md,.csv,.json"
                     onChange={(e) => {
                       const file = e.target.files?.[0] ?? null;
+                      if (file) {
+                        const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+                        if (!['txt', 'md', 'csv', 'json'].includes(ext)) {
+                          toast.error(`Unsupported file type ".${ext}". Allowed: .txt, .md, .csv, .json`);
+                          e.target.value = '';
+                          return;
+                        }
+                        if (file.size > 10 * 1024 * 1024) {
+                          toast.error('File too large. Maximum size is 10 MB');
+                          e.target.value = '';
+                          return;
+                        }
+                      }
                       setSelectedFile(file);
                     }}
                   />
