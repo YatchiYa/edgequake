@@ -14,35 +14,35 @@
  * @see {@link specs/API.md} for endpoint specifications
  */
 import type {
-  CreateWorkspaceRequest,
-  Document,
-  DocumentStatusCounts,
-  EnhancedPipelineStatus,
-  Entity,
-  GraphEdge,
-  GraphNode,
-  HealthResponse,
-  KnowledgeGraph,
-  ListDocumentsResponse,
-  LoginRequest,
-  LoginResponse,
-  MergeEntitiesRequest,
-  MergeEntitiesResponse,
-  PaginatedResponse,
-  PaginationParams,
-  PdfUploadOptions,
-  PdfUploadResponse,
-  PipelineStatus,
-  QueryRequest,
-  QueryResponse,
-  QueryStreamChunk,
-  QueueMetrics,
-  Relationship,
-  Tenant,
-  TrackStatusResponse,
-  UploadDocumentRequest,
-  UploadDocumentResponse,
-  Workspace,
+    CreateWorkspaceRequest,
+    Document,
+    DocumentStatusCounts,
+    EnhancedPipelineStatus,
+    Entity,
+    GraphEdge,
+    GraphNode,
+    HealthResponse,
+    KnowledgeGraph,
+    ListDocumentsResponse,
+    LoginRequest,
+    LoginResponse,
+    MergeEntitiesRequest,
+    MergeEntitiesResponse,
+    PaginatedResponse,
+    PaginationParams,
+    PdfUploadOptions,
+    PdfUploadResponse,
+    PipelineStatus,
+    QueryRequest,
+    QueryResponse,
+    QueryStreamChunk,
+    QueueMetrics,
+    Relationship,
+    Tenant,
+    TrackStatusResponse,
+    UploadDocumentRequest,
+    UploadDocumentResponse,
+    Workspace,
 } from "@/types";
 import { api, SERVER_BASE_URL, streamClient } from "./client";
 
@@ -1757,6 +1757,90 @@ export async function getQueueMetrics(
 }
 
 // ============================================================================
+// Knowledge Injection (SPEC-0002)
+// ============================================================================
+
+export interface PutInjectionRequest {
+  name: string;
+  content: string;
+}
+
+export interface PutInjectionResponse {
+  injection_id: string;
+  workspace_id: string;
+  version: number;
+  status: string;
+}
+
+export interface InjectionSummary {
+  injection_id: string;
+  name: string;
+  status: string;
+  entity_count: number;
+  source_type: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ListInjectionsResponse {
+  items: InjectionSummary[];
+  total: number;
+}
+
+export interface InjectionDetailResponse {
+  injection_id: string;
+  name: string;
+  content: string;
+  version: number;
+  status: string;
+  entity_count: number;
+  source_type: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DeleteInjectionResponse {
+  deleted: boolean;
+  message: string;
+}
+
+export async function putInjection(
+  workspaceId: string,
+  request: PutInjectionRequest,
+): Promise<PutInjectionResponse> {
+  return api.put<PutInjectionResponse>(
+    `/workspaces/${workspaceId}/injection`,
+    request,
+  );
+}
+
+export async function listInjections(
+  workspaceId: string,
+): Promise<ListInjectionsResponse> {
+  return api.get<ListInjectionsResponse>(
+    `/workspaces/${workspaceId}/injections`,
+  );
+}
+
+export async function getInjection(
+  workspaceId: string,
+  injectionId: string,
+): Promise<InjectionDetailResponse> {
+  return api.get<InjectionDetailResponse>(
+    `/workspaces/${workspaceId}/injections/${injectionId}`,
+  );
+}
+
+export async function deleteInjection(
+  workspaceId: string,
+  injectionId: string,
+): Promise<DeleteInjectionResponse> {
+  return api.delete<DeleteInjectionResponse>(
+    `/workspaces/${workspaceId}/injections/${injectionId}`,
+  );
+}
+
+// ============================================================================
 // Export default API object
 // ============================================================================
 
@@ -1857,6 +1941,12 @@ export const edgequakeApi = {
   getBudgetStatus,
   updateBudget,
   getCostHistory,
+
+  // Knowledge Injection (SPEC-0002)
+  putInjection,
+  listInjections,
+  getInjection,
+  deleteInjection,
 };
 
 export default edgequakeApi;
@@ -1868,3 +1958,4 @@ export default edgequakeApi;
 export * from "./conversations";
 export * from "./folders";
 export * from "./query-keys";
+

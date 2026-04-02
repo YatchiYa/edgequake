@@ -210,6 +210,23 @@ fn api_v1_routes() -> Router<AppState> {
             "/workspaces/{workspace_id}/reprocess-documents",
             post(handlers::reprocess_all_documents),
         )
+        // SPEC-0002: Knowledge Injection
+        .route(
+            "/workspaces/{workspace_id}/injection",
+            put(handlers::put_injection),
+        )
+        .route(
+            "/workspaces/{workspace_id}/injections",
+            get(handlers::list_injections),
+        )
+        .route(
+            "/workspaces/{workspace_id}/injections/{injection_id}",
+            get(handlers::get_injection),
+        )
+        .route(
+            "/workspaces/{workspace_id}/injections/{injection_id}",
+            delete(handlers::delete_injection),
+        )
         // Documents
         .route("/documents", post(handlers::upload_document))
         .route("/documents", get(handlers::list_documents))
