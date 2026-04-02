@@ -257,6 +257,10 @@ pub async fn list_injections(
                     .and_then(|v| v.as_str())
                     .unwrap_or("text")
                     .to_string(),
+                error: val
+                    .get("error")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
                 created_at: val
                     .get("created_at")
                     .and_then(|v| v.as_str())
@@ -340,6 +344,10 @@ pub async fn get_injection(
             .and_then(|v| v.as_str())
             .unwrap_or("text")
             .to_string(),
+        error: val
+            .get("error")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
         created_at: val
             .get("created_at")
             .and_then(|v| v.as_str())
@@ -424,6 +432,206 @@ pub async fn delete_injection(
     Ok(Json(DeleteInjectionResponse {
         deleted: true,
         message: format!("Injection {} deleted", injection_id),
+    }))
+}
+
+// ============================================================================
+// PATCH /api/v1/workspaces/:workspace_id/injections/:injection_id — Update
+// ============================================================================
+
+/// Update an existing injection entry. Re-processes if content changes.
+#[utoipa::path(
+    patch,
+    path = "/api/v1/workspaces/{workspace_id}/injections/{injection_id}",
+    tag = "Knowledge Injection",
+    request_body = UpdateInjectionRequest,
+    responses(
+        (status = 200, description = "Injection updated", body = PutInjectionResponse),
+        (status = 404, description = "Injection not found")
+    )
+)]
+pub async fn update_injection(
+    State(state): State<AppState>,
+    tenant_ctx: TenantContext,
+    Path((_workspace_id_path, injection_id)): Path<(String, String)>,
+    Json(request): Json<UpdateInjectionRequest>,
+) -> ApiResult<Json<PutInjectionResponse>> {
+    let workspace_id = tenant_ctx
+        .workspace_id
+        .map(|id| id.to_string())
+        .unwrap_or_else(|| "default".to_string());
+
+    let meta_key = injection_meta_key(&workspace_id, &injection_id);
+
+    let existing = state
+        .kv_storage
+        .get_by_id(&meta_key)
+        .await?
+        .ok_or_else(|| ApiError::NotFound(format!("Injection {} not found", injection_id)))?;
+
+    let old_name = existing
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let old_content = existing
+        .get("content")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let old_version = existing
+        .get("version")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(1) as u32;
+    let created_at = existing
+        .get("created_at")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    // Apply updates
+    let new_name = request
+        .name
+        .as_deref()
+        .map(|n| n.trim().to_string())
+        .unwrap_or(old_name);
+    if new_name.is_empty() || new_name.len() > 100 {
+        return Err(ApiError::BadRequest(
+            "Name must be between 1 and 100 characters".to_string(),
+        ));
+    }
+
+    let content_changed = request.content.is_some();
+    let new_content = request.content.unwrap_or(old_content);
+
+    if new_content.len() > MAX_INJECTION_CONTENT_BYTES {
+        return Err(ApiError::BadRequest(format!(
+            "Injection content exceeds {}KB limit",
+            MAX_INJECTION_CONTENT_BYTES / 1024
+        )));
+    }
+
+    let new_version = if content_changed {
+        old_version + 1
+    } else {
+        old_version
+    };
+    let doc_id = injection_doc_id(&workspace_id, &injection_id);
+
+    let status = if content_changed {
+        "processing"
+    } else {
+        existing
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("completed")
+    };
+
+    let now = Utc::now().to_rfc3339();
+    let meta = serde_json::json!({
+        "id": injection_id,
+        "name": new_name,
+        "content": new_content,
+        "workspace_id": workspace_id,
+        "source_type": "text",
+        "status": status,
+        "version": new_version,
+        "entity_count": existing.get("entity_count").and_then(|v| v.as_u64()).unwrap_or(0),
+        "source_document_id": doc_id,
+        "created_at": created_at,
+        "updated_at": now,
+    });
+
+    state.kv_storage.upsert(&[(meta_key.clone(), meta)]).await?;
+
+    info!(
+        injection_id = %injection_id,
+        content_changed,
+        new_version,
+        "Updated injection entry"
+    );
+
+    // Re-process if content changed
+    if content_changed {
+        let pipeline = state.pipeline.clone();
+        let graph_storage = state.graph_storage.clone();
+        let vector_storage = state.vector_storage.clone();
+        let kv_storage = state.kv_storage.clone();
+        let content = new_content.clone();
+        let doc_id_clone = doc_id.clone();
+        let injection_id_clone = injection_id.clone();
+        let workspace_id_clone = workspace_id.clone();
+        let meta_key_clone = meta_key.clone();
+        let created_at_clone = created_at.clone();
+        let name_clone = new_name.clone();
+        let content_clone = content.clone();
+        let tenant_id = tenant_ctx.tenant_id.map(|id| id.to_string());
+
+        tokio::spawn(async move {
+            match process_injection_pipeline(
+                &pipeline,
+                graph_storage,
+                vector_storage,
+                &doc_id_clone,
+                &content,
+                &workspace_id_clone,
+                tenant_id,
+            )
+            .await
+            {
+                Ok((entity_count, chunk_ids)) => {
+                    let updated_meta = serde_json::json!({
+                        "id": injection_id_clone,
+                        "name": name_clone,
+                        "content": content_clone,
+                        "workspace_id": workspace_id_clone,
+                        "source_type": "text",
+                        "status": "completed",
+                        "version": new_version,
+                        "entity_count": entity_count,
+                        "chunk_ids": chunk_ids,
+                        "source_document_id": doc_id_clone,
+                        "created_at": created_at_clone,
+                        "updated_at": Utc::now().to_rfc3339(),
+                    });
+                    let _ = kv_storage.upsert(&[(meta_key_clone, updated_meta)]).await;
+                    info!(
+                        injection_id = %injection_id_clone,
+                        entity_count,
+                        "Injection re-processing completed"
+                    );
+                }
+                Err(e) => {
+                    warn!(
+                        injection_id = %injection_id_clone,
+                        error = %e,
+                        "Injection re-processing failed"
+                    );
+                    let failed_meta = serde_json::json!({
+                        "id": injection_id_clone,
+                        "name": name_clone,
+                        "content": content_clone,
+                        "workspace_id": workspace_id_clone,
+                        "source_type": "text",
+                        "status": "failed",
+                        "version": new_version,
+                        "entity_count": 0,
+                        "source_document_id": doc_id_clone,
+                        "error": e.to_string(),
+                        "created_at": created_at_clone,
+                        "updated_at": Utc::now().to_rfc3339(),
+                    });
+                    let _ = kv_storage.upsert(&[(meta_key_clone, failed_meta)]).await;
+                }
+            }
+        });
+    }
+
+    Ok(Json(PutInjectionResponse {
+        injection_id,
+        workspace_id,
+        version: new_version,
+        status: status.to_string(),
     }))
 }
 

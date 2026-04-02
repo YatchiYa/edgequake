@@ -29,7 +29,8 @@ import {
     useInjections,
 } from '@/hooks';
 import useTenantContext from '@/hooks/use-tenant-context';
-import { BookOpen, Plus, Trash2 } from 'lucide-react';
+import { AlertCircle, BookOpen, Plus, Trash2 } from 'lucide-react';
+import Link from 'next/link';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
@@ -180,54 +181,67 @@ export default function KnowledgePage() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {data.items.map((item) => (
-            <Card key={item.injection_id}>
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <CardTitle className="text-base">{item.name}</CardTitle>
-                  <Badge variant={statusColor(item.status)}>{item.status}</Badge>
-                </div>
-                <CardDescription className="text-xs">
-                  {item.entity_count} entities &middot; {item.source_type}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>
-                    {new Date(item.created_at).toLocaleDateString()}
-                  </span>
-                  <Dialog
-                    open={deleteTarget === item.injection_id}
-                    onOpenChange={(open) => setDeleteTarget(open ? item.injection_id : null)}
-                  >
-                    <DialogTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-7 w-7">
-                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Delete &ldquo;{item.name}&rdquo;?</DialogTitle>
-                        <DialogDescription>
-                          This will remove the injection and its extracted entities from the knowledge graph.
-                        </DialogDescription>
-                      </DialogHeader>
-                      <DialogFooter>
-                        <Button variant="outline" onClick={() => setDeleteTarget(null)}>
-                          Cancel
-                        </Button>
+            <Link key={item.injection_id} href={`/knowledge/${item.injection_id}`}>
+              <Card className="cursor-pointer hover:border-primary/50 transition-colors">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <CardTitle className="text-base">{item.name}</CardTitle>
+                    <Badge variant={statusColor(item.status)}>{item.status}</Badge>
+                  </div>
+                  <CardDescription className="text-xs">
+                    {item.entity_count} entities &middot; {item.source_type}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {item.status === 'failed' && item.error && (
+                    <div className="flex items-start gap-2 mb-3 text-xs text-destructive">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                      <span className="line-clamp-2">{item.error}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>
+                      {new Date(item.created_at).toLocaleDateString()}
+                    </span>
+                    <Dialog
+                      open={deleteTarget === item.injection_id}
+                      onOpenChange={(open) => setDeleteTarget(open ? item.injection_id : null)}
+                    >
+                      <DialogTrigger asChild>
                         <Button
-                          variant="destructive"
-                          onClick={() => handleDelete(item.injection_id)}
-                          disabled={deleteMutation.isPending}
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={(e) => e.preventDefault()}
                         >
-                          {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
                         </Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-              </CardContent>
-            </Card>
+                      </DialogTrigger>
+                      <DialogContent onClick={(e) => e.stopPropagation()}>
+                        <DialogHeader>
+                          <DialogTitle>Delete &ldquo;{item.name}&rdquo;?</DialogTitle>
+                          <DialogDescription>
+                            This will remove the injection and its extracted entities from the knowledge graph.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <DialogFooter>
+                          <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+                            Cancel
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            onClick={() => handleDelete(item.injection_id)}
+                            disabled={deleteMutation.isPending}
+                          >
+                            {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
           ))}
         </div>
       )}
