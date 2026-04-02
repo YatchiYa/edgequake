@@ -24,6 +24,7 @@ export {
 export {
     injectionKeys,
     useCreateInjection,
+    useCreateInjectionFile,
     useDeleteInjection,
     useInjectionDetail,
     useInjections,

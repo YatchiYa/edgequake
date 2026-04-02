@@ -8,6 +8,7 @@
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
+use axum_extra::extract::Multipart;
 use chrono::Utc;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
@@ -633,6 +634,257 @@ pub async fn update_injection(
         version: new_version,
         status: status.to_string(),
     }))
+}
+
+// ============================================================================
+// PUT /api/v1/workspaces/:workspace_id/injection/file — Upload file
+// ============================================================================
+
+/// Create a knowledge injection from an uploaded file (plain-text formats).
+///
+/// Accepts multipart form with a single "file" field.
+/// Supported: .txt, .md, .csv (plain-text, max 10 MB).
+/// Content is UTF-8 decoded, then processed through the standard pipeline.
+#[utoipa::path(
+    put,
+    path = "/api/v1/workspaces/{workspace_id}/injection/file",
+    tag = "Knowledge Injection",
+    request_body(content_type = "multipart/form-data", description = "File to inject"),
+    responses(
+        (status = 202, description = "Injection accepted for processing", body = PutInjectionResponse),
+        (status = 400, description = "Invalid file or request"),
+        (status = 413, description = "File too large")
+    )
+)]
+pub async fn put_injection_file(
+    State(state): State<AppState>,
+    tenant_ctx: TenantContext,
+    mut multipart: Multipart,
+) -> ApiResult<(StatusCode, Json<PutInjectionResponse>)> {
+    let workspace_id = tenant_ctx
+        .workspace_id
+        .clone()
+        .map(|id| id.to_string())
+        .unwrap_or_else(|| "default".to_string());
+
+    // Max 10 MB per SPEC-0002 UX spec
+    const MAX_FILE_BYTES: usize = 10 * 1024 * 1024;
+
+    let mut filename = String::new();
+    let mut name = String::new();
+    let mut file_bytes: Vec<u8> = Vec::new();
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("Failed to read multipart field: {e}")))?
+    {
+        match field.name().unwrap_or("") {
+            "file" => {
+                filename = field
+                    .file_name()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| "injection.txt".to_string());
+                file_bytes = field
+                    .bytes()
+                    .await
+                    .map_err(|e| ApiError::BadRequest(format!("Failed to read file: {e}")))?
+                    .to_vec();
+            }
+            "name" => {
+                name = field
+                    .text()
+                    .await
+                    .map_err(|e| ApiError::BadRequest(format!("Failed to read name: {e}")))?
+                    .trim()
+                    .to_string();
+            }
+            _ => {} // Ignore unknown fields
+        }
+    }
+
+    if file_bytes.is_empty() {
+        return Err(ApiError::BadRequest("No file provided".to_string()));
+    }
+
+    // Validate file size
+    if file_bytes.len() > MAX_FILE_BYTES {
+        return Err(ApiError::BadRequest(format!(
+            "File exceeds 10 MB limit ({} bytes)",
+            file_bytes.len()
+        )));
+    }
+
+    // Validate extension: only plain-text formats (no PDF — needs vision)
+    let ext = filename
+        .rsplit('.')
+        .next()
+        .unwrap_or("")
+        .to_lowercase();
+    const ALLOWED: [&str; 4] = ["txt", "md", "csv", "json"];
+    if !ALLOWED.contains(&ext.as_str()) {
+        return Err(ApiError::BadRequest(format!(
+            "Unsupported file type '.{ext}'. Allowed: txt, md, csv, json"
+        )));
+    }
+
+    // Decode UTF-8
+    let content = String::from_utf8(file_bytes).map_err(|_| {
+        ApiError::BadRequest("File must be valid UTF-8 text".to_string())
+    })?;
+
+    if content.trim().is_empty() {
+        return Err(ApiError::BadRequest("File content cannot be empty".to_string()));
+    }
+
+    if content.len() > MAX_INJECTION_CONTENT_BYTES {
+        return Err(ApiError::BadRequest(format!(
+            "File content exceeds {}KB limit",
+            MAX_INJECTION_CONTENT_BYTES / 1024
+        )));
+    }
+
+    // Fall back to filename stem if no name provided
+    if name.is_empty() {
+        name = filename
+            .rsplit('/')
+            .next()
+            .unwrap_or(&filename)
+            .rsplit('.')
+            .nth(1)
+            .or_else(|| filename.rsplit('/').next())
+            .unwrap_or("Injection")
+            .to_string();
+    }
+
+    if name.len() > 100 {
+        name.truncate(100);
+    }
+
+    debug!(
+        workspace_id = %workspace_id,
+        filename = %filename,
+        content_len = content.len(),
+        "Creating file injection"
+    );
+
+    let injection_id = Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
+    let doc_id = injection_doc_id(&workspace_id, &injection_id);
+
+    let meta = serde_json::json!({
+        "id": injection_id,
+        "name": name,
+        "content": content,
+        "workspace_id": workspace_id,
+        "source_type": "file",
+        "source_filename": filename,
+        "status": "processing",
+        "version": 1,
+        "entity_count": 0,
+        "source_document_id": doc_id,
+        "created_at": now,
+        "updated_at": now,
+    });
+
+    let meta_key = injection_meta_key(&workspace_id, &injection_id);
+    state
+        .kv_storage
+        .upsert(&[(meta_key.clone(), meta)])
+        .await?;
+
+    info!(
+        workspace_id = %workspace_id,
+        injection_id = %injection_id,
+        filename = %filename,
+        "Created file injection entry"
+    );
+
+    // Process in background — same pipeline as text mode
+    let pipeline = state.pipeline.clone();
+    let graph_storage = state.graph_storage.clone();
+    let vector_storage = state.vector_storage.clone();
+    let kv_storage = state.kv_storage.clone();
+    let doc_id_clone = doc_id.clone();
+    let injection_id_clone = injection_id.clone();
+    let workspace_id_clone = workspace_id.clone();
+    let meta_key_clone = meta_key.clone();
+    let now_clone = now.clone();
+    let name_clone = name.clone();
+    let content_clone = content.clone();
+    let filename_clone = filename.clone();
+    let tenant_id = tenant_ctx.tenant_id.map(|id| id.to_string());
+
+    tokio::spawn(async move {
+        match process_injection_pipeline(
+            &pipeline,
+            graph_storage,
+            vector_storage,
+            &doc_id_clone,
+            &content_clone,
+            &workspace_id_clone,
+            tenant_id,
+        )
+        .await
+        {
+            Ok((entity_count, chunk_ids)) => {
+                let updated_meta = serde_json::json!({
+                    "id": injection_id_clone,
+                    "name": name_clone,
+                    "content": content_clone,
+                    "workspace_id": workspace_id_clone,
+                    "source_type": "file",
+                    "source_filename": filename_clone,
+                    "status": "completed",
+                    "version": 1,
+                    "entity_count": entity_count,
+                    "chunk_ids": chunk_ids,
+                    "source_document_id": doc_id_clone,
+                    "created_at": now_clone,
+                    "updated_at": Utc::now().to_rfc3339(),
+                });
+                let _ = kv_storage.upsert(&[(meta_key_clone, updated_meta)]).await;
+                info!(
+                    injection_id = %injection_id_clone,
+                    entity_count,
+                    "File injection processing completed"
+                );
+            }
+            Err(e) => {
+                warn!(
+                    injection_id = %injection_id_clone,
+                    error = %e,
+                    "File injection processing failed"
+                );
+                let failed_meta = serde_json::json!({
+                    "id": injection_id_clone,
+                    "name": name_clone,
+                    "content": content_clone,
+                    "workspace_id": workspace_id_clone,
+                    "source_type": "file",
+                    "source_filename": filename_clone,
+                    "status": "failed",
+                    "version": 1,
+                    "entity_count": 0,
+                    "source_document_id": doc_id_clone,
+                    "error": e.to_string(),
+                    "created_at": now_clone,
+                    "updated_at": Utc::now().to_rfc3339(),
+                });
+                let _ = kv_storage.upsert(&[(meta_key_clone, failed_meta)]).await;
+            }
+        }
+    });
+
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(PutInjectionResponse {
+            injection_id,
+            workspace_id,
+            version: 1,
+            status: "processing".to_string(),
+        }),
+    ))
 }
 
 // ============================================================================

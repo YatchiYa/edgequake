@@ -1858,6 +1858,33 @@ export async function updateInjection(
   );
 }
 
+/**
+ * Upload a file as a knowledge injection.
+ * Accepts multipart form with "file" field (txt/md/csv/json, max 10 MB).
+ */
+export async function putInjectionFile(
+  workspaceId: string,
+  name: string,
+  file: File,
+): Promise<PutInjectionResponse> {
+  const formData = new FormData();
+  formData.append('file', file, file.name);
+  if (name.trim()) {
+    formData.append('name', name.trim());
+  }
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080/api/v1';
+  const url = `${baseUrl}/workspaces/${workspaceId}/injection/file`;
+  const response = await fetch(url, {
+    method: 'PUT',
+    body: formData,
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: response.statusText }));
+    throw new Error(error.message ?? `Upload failed: ${response.status}`);
+  }
+  return response.json() as Promise<PutInjectionResponse>;
+}
+
 // ============================================================================
 // Export default API object
 // ============================================================================

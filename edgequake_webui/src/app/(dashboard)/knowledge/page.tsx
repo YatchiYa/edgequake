@@ -22,28 +22,45 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import {
     useCreateInjection,
+    useCreateInjectionFile,
     useDeleteInjection,
     useInjections,
 } from '@/hooks';
 import useTenantContext from '@/hooks/use-tenant-context';
-import { AlertCircle, BookOpen, Plus, Trash2 } from 'lucide-react';
+import { AlertCircle, BookOpen, FileText, Plus, Trash2, Upload } from 'lucide-react';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 export default function KnowledgePage() {
   const { selectedWorkspaceId } = useTenantContext();
   const { data, isLoading } = useInjections(selectedWorkspaceId);
   const createMutation = useCreateInjection(selectedWorkspaceId ?? '');
+  const createFileMutation = useCreateInjectionFile(selectedWorkspaceId ?? '');
   const deleteMutation = useDeleteInjection(selectedWorkspaceId ?? '');
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [name, setName] = useState('');
   const [content, setContent] = useState('');
+
+  // File upload state
+  const [fileName, setFileName] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+
+  const resetDialog = () => {
+    setName('');
+    setContent('');
+    setFileName('');
+    setSelectedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   const handleCreate = async () => {
     if (!name.trim() || !content.trim()) {
@@ -52,12 +69,29 @@ export default function KnowledgePage() {
     }
     try {
       await createMutation.mutateAsync({ name: name.trim(), content: content.trim() });
-      toast.success('Knowledge injection created');
+      toast.success('Knowledge injection created — processing started');
       setDialogOpen(false);
-      setName('');
-      setContent('');
+      resetDialog();
     } catch (err) {
       toast.error(`Failed to create injection: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  };
+
+  const handleCreateFile = async () => {
+    if (!selectedFile) {
+      toast.error('Please select a file');
+      return;
+    }
+    try {
+      await createFileMutation.mutateAsync({
+        name: fileName.trim() || selectedFile.name.replace(/\.[^.]+$/, ''),
+        file: selectedFile,
+      });
+      toast.success('File injection created — processing started');
+      setDialogOpen(false);
+      resetDialog();
+    } catch (err) {
+      toast.error(`Failed to upload file: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
@@ -104,47 +138,124 @@ export default function KnowledgePage() {
             <DialogHeader>
               <DialogTitle>Create Knowledge Injection</DialogTitle>
               <DialogDescription>
-                Paste domain glossary, acronym definitions, or background knowledge.
-                Entities will be extracted and merged into the knowledge graph.
+                Add domain context to enrich the knowledge graph.
+                Injected knowledge improves retrieval but never appears as a source citation.
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="injection-name">Name</Label>
-                <Input
-                  id="injection-name"
-                  placeholder="e.g., Manufacturing Glossary"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  maxLength={100}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="injection-content">Content</Label>
-                <Textarea
-                  id="injection-content"
-                  placeholder="OEE: Overall Equipment Effectiveness, a measure of manufacturing productivity&#10;MTBF: Mean Time Between Failures&#10;..."
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  rows={12}
-                  className="font-mono text-sm"
-                />
-                <p className="text-xs text-muted-foreground">
-                  {content.length.toLocaleString()} / 102,400 characters
-                </p>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleCreate}
-                disabled={createMutation.isPending || !name.trim() || !content.trim()}
-              >
-                {createMutation.isPending ? 'Creating...' : 'Create'}
-              </Button>
-            </DialogFooter>
+
+            <Tabs defaultValue="text" className="mt-2">
+              <TabsList className="w-full">
+                <TabsTrigger value="text" className="flex-1 gap-2">
+                  <FileText className="h-4 w-4" />
+                  Text
+                </TabsTrigger>
+                <TabsTrigger value="file" className="flex-1 gap-2">
+                  <Upload className="h-4 w-4" />
+                  File
+                </TabsTrigger>
+              </TabsList>
+
+              {/* ── Text tab ── */}
+              <TabsContent value="text" className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="injection-name">Name</Label>
+                  <Input
+                    id="injection-name"
+                    placeholder="e.g., Manufacturing Glossary"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    maxLength={100}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="injection-content">Content</Label>
+                  <Textarea
+                    id="injection-content"
+                    placeholder="OEE: Overall Equipment Effectiveness, a measure of manufacturing productivity&#10;MTBF: Mean Time Between Failures&#10;..."
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    rows={12}
+                    className="font-mono text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {content.length.toLocaleString()} / 102,400 characters
+                  </p>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => { setDialogOpen(false); resetDialog(); }}>
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleCreate}
+                    disabled={createMutation.isPending || !name.trim() || !content.trim()}
+                  >
+                    {createMutation.isPending ? 'Creating...' : 'Create'}
+                  </Button>
+                </DialogFooter>
+              </TabsContent>
+
+              {/* ── File tab ── */}
+              <TabsContent value="file" className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="file-injection-name">Name (optional)</Label>
+                  <Input
+                    id="file-injection-name"
+                    placeholder="Defaults to filename"
+                    value={fileName}
+                    onChange={(e) => setFileName(e.target.value)}
+                    maxLength={100}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>File</Label>
+                  <div
+                    className="flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-8 gap-3 cursor-pointer hover:border-primary/50 transition-colors"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {selectedFile ? (
+                      <>
+                        <FileText className="h-8 w-8 text-primary" />
+                        <p className="text-sm font-medium">{selectedFile.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {(selectedFile.size / 1024).toFixed(1)} KB
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="h-8 w-8 text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground">
+                          Click to select a file
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Supported: .txt, .md, .csv, .json — max 10 MB
+                        </p>
+                      </>
+                    )}
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="hidden"
+                    accept=".txt,.md,.csv,.json"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] ?? null;
+                      setSelectedFile(file);
+                    }}
+                  />
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => { setDialogOpen(false); resetDialog(); }}>
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleCreateFile}
+                    disabled={createFileMutation.isPending || !selectedFile}
+                  >
+                    {createFileMutation.isPending ? 'Uploading...' : 'Upload'}
+                  </Button>
+                </DialogFooter>
+              </TabsContent>
+            </Tabs>
           </DialogContent>
         </Dialog>
       </div>

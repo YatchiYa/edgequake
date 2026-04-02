@@ -1,7 +1,8 @@
 //! End-to-end tests for the Knowledge Injection API (SPEC-0002).
 //!
 //! Tests cover:
-//! - PUT /api/v1/workspaces/{workspace_id}/injection — create injection
+//! - PUT /api/v1/workspaces/{workspace_id}/injection — create injection (text)
+//! - PUT /api/v1/workspaces/{workspace_id}/injection/file — create injection (file upload)
 //! - GET /api/v1/workspaces/{workspace_id}/injections — list injections
 //! - GET /api/v1/workspaces/{workspace_id}/injections/{id} — get detail
 //! - DELETE /api/v1/workspaces/{workspace_id}/injections/{id} — delete
@@ -964,4 +965,282 @@ async fn test_list_item_shape() {
             "List item missing field '{field}': {item}"
         );
     }
+}
+
+// ============================================================================
+// File Upload — PUT /workspaces/{id}/injection/file
+// ============================================================================
+
+/// Build a multipart body for injection file upload.
+fn make_injection_multipart(
+    name_field: Option<&str>,
+    filename: &str,
+    content: &str,
+) -> (String, Vec<u8>) {
+    let boundary = "----InjectionBoundary7890";
+    let mut body = String::new();
+
+    if let Some(name) = name_field {
+        body.push_str(&format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\n{name}\r\n"
+        ));
+    }
+
+    body.push_str(&format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\nContent-Type: text/plain\r\n\r\n{content}\r\n"
+    ));
+    body.push_str(&format!("--{boundary}--\r\n"));
+
+    (boundary.to_string(), body.into_bytes())
+}
+
+/// SPEC-0002: PUT /injection/file with a .txt file → 202 Accepted.
+#[tokio::test]
+async fn test_put_injection_file_txt_success() {
+    let app = create_test_app();
+    let (boundary, body) = make_injection_multipart(
+        Some("TXT Glossary"),
+        "glossary.txt",
+        "API = Application Programming Interface\nUI = User Interface",
+    );
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/v1/workspaces/ws-file/injection/file")
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::ACCEPTED, "File upload must return 202");
+    let resp = extract_json(response).await;
+    assert!(resp["injection_id"].is_string(), "injection_id required: {resp}");
+    assert_eq!(resp["status"].as_str(), Some("processing"));
+    assert_eq!(resp["version"].as_u64(), Some(1));
+}
+
+/// SPEC-0002: PUT /injection/file with a .md file → 202 Accepted.
+#[tokio::test]
+async fn test_put_injection_file_md_success() {
+    let app = create_test_app();
+    let (boundary, body) = make_injection_multipart(
+        Some("Markdown Glossary"),
+        "glossary.md",
+        "# Glossary\n\n- **RAG**: Retrieval-Augmented Generation\n- **LLM**: Large Language Model",
+    );
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/v1/workspaces/ws-file/injection/file")
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+}
+
+/// SPEC-0002: PUT /injection/file with a .csv file → 202 Accepted.
+#[tokio::test]
+async fn test_put_injection_file_csv_success() {
+    let app = create_test_app();
+    let (boundary, body) = make_injection_multipart(
+        Some("CSV Glossary"),
+        "terms.csv",
+        "term,definition\nRAG,Retrieval-Augmented Generation\nLLM,Large Language Model",
+    );
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/v1/workspaces/ws-file/injection/file")
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+}
+
+/// SPEC-0002: PUT /injection/file with unsupported extension → 400.
+#[tokio::test]
+async fn test_put_injection_file_unsupported_extension() {
+    let app = create_test_app();
+    let (boundary, body) = make_injection_multipart(
+        None,
+        "glossary.docx",
+        "Word document content",
+    );
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/v1/workspaces/ws-file/injection/file")
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::BAD_REQUEST,
+        ".docx must be rejected with 400"
+    );
+}
+
+/// SPEC-0002: PUT /injection/file with no file field → 400.
+#[tokio::test]
+async fn test_put_injection_file_missing_file_field() {
+    let app = create_test_app();
+    let boundary = "----EmptyBoundary";
+    let body = format!("--{boundary}\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\nTest\r\n--{boundary}--\r\n");
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/v1/workspaces/ws-file/injection/file")
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body.into_bytes()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::BAD_REQUEST,
+        "Missing file field must be 400"
+    );
+}
+
+/// SPEC-0002: File upload creates an entry visible in list.
+#[tokio::test]
+async fn test_put_injection_file_appears_in_list() {
+    let app = create_test_app();
+    let ws = "ws-file-list";
+    let (boundary, body) = make_injection_multipart(
+        Some("File Glossary"),
+        "glossary.txt",
+        "ML = Machine Learning.",
+    );
+
+    let put_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!("/api/v1/workspaces/{ws}/injection/file"))
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(put_response.status(), StatusCode::ACCEPTED);
+    let put_body = extract_json(put_response).await;
+    let injection_id = put_body["injection_id"].as_str().unwrap();
+
+    // Check list
+    let list_response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/v1/workspaces/{ws}/injections"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let list = extract_json(list_response).await;
+    let items = list["items"].as_array().unwrap();
+    let found = items
+        .iter()
+        .find(|i| i["injection_id"].as_str() == Some(injection_id));
+    assert!(found.is_some(), "File injection must appear in list: {list}");
+    assert_eq!(
+        found.unwrap()["source_type"].as_str(),
+        Some("file"),
+        "source_type must be 'file'"
+    );
+}
+
+/// SPEC-0002: File upload with name falling back to filename stem.
+#[tokio::test]
+async fn test_put_injection_file_name_fallback() {
+    let app = create_test_app();
+    let ws = "ws-file-name";
+    let (boundary, body) = make_injection_multipart(
+        None, // no explicit name — should use filename stem
+        "my_glossary.txt",
+        "Test content for name fallback.",
+    );
+
+    let put_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!("/api/v1/workspaces/{ws}/injection/file"))
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(put_response.status(), StatusCode::ACCEPTED);
+    let put_body = extract_json(put_response).await;
+    let injection_id = put_body["injection_id"].as_str().unwrap();
+
+    let detail_response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/v1/workspaces/{ws}/injections/{injection_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let detail = extract_json(detail_response).await;
+    // Name should be derived from filename, not empty
+    assert!(
+        !detail["name"].as_str().unwrap_or("").is_empty(),
+        "Name must not be empty when filename fallback applies: {detail}"
+    );
 }
