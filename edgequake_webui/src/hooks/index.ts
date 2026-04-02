@@ -26,7 +26,8 @@ export {
     useCreateInjection,
     useDeleteInjection,
     useInjectionDetail,
-    useInjections
+    useInjections,
+    useUpdateInjection
 } from "./use-injection";
 export {
     lineageKeys,

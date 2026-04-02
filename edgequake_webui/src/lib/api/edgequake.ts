@@ -1778,6 +1778,7 @@ export interface InjectionSummary {
   status: string;
   entity_count: number;
   source_type: string;
+  error?: string;
   created_at: string;
   updated_at: string;
 }
@@ -1795,8 +1796,14 @@ export interface InjectionDetailResponse {
   status: string;
   entity_count: number;
   source_type: string;
+  error?: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface UpdateInjectionRequest {
+  name?: string;
+  content?: string;
 }
 
 export interface DeleteInjectionResponse {
@@ -1837,6 +1844,17 @@ export async function deleteInjection(
 ): Promise<DeleteInjectionResponse> {
   return api.delete<DeleteInjectionResponse>(
     `/workspaces/${workspaceId}/injections/${injectionId}`,
+  );
+}
+
+export async function updateInjection(
+  workspaceId: string,
+  injectionId: string,
+  request: UpdateInjectionRequest,
+): Promise<PutInjectionResponse> {
+  return api.patch<PutInjectionResponse>(
+    `/workspaces/${workspaceId}/injections/${injectionId}`,
+    request,
   );
 }
 
@@ -1946,6 +1964,7 @@ export const edgequakeApi = {
   putInjection,
   listInjections,
   getInjection,
+  updateInjection,
   deleteInjection,
 };
 

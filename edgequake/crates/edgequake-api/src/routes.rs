@@ -221,11 +221,9 @@ fn api_v1_routes() -> Router<AppState> {
         )
         .route(
             "/workspaces/{workspace_id}/injections/{injection_id}",
-            get(handlers::get_injection),
-        )
-        .route(
-            "/workspaces/{workspace_id}/injections/{injection_id}",
-            delete(handlers::delete_injection),
+            get(handlers::get_injection)
+                .delete(handlers::delete_injection)
+                .patch(handlers::update_injection),
         )
         // Documents
         .route("/documents", post(handlers::upload_document))

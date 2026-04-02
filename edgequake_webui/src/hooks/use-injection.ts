@@ -9,10 +9,12 @@ import {
     getInjection,
     listInjections,
     putInjection,
+    updateInjection,
     type InjectionDetailResponse,
     type ListInjectionsResponse,
     type PutInjectionRequest,
-    type PutInjectionResponse
+    type PutInjectionResponse,
+    type UpdateInjectionRequest
 } from "@/lib/api/edgequake";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -63,6 +65,21 @@ export function useDeleteInjection(workspaceId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: injectionKeys.list(workspaceId),
+      });
+    },
+  });
+}
+
+export function useUpdateInjection(workspaceId: string, injectionId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<PutInjectionResponse, Error, UpdateInjectionRequest>({
+    mutationFn: (request) => updateInjection(workspaceId, injectionId, request),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: injectionKeys.list(workspaceId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: injectionKeys.detail(workspaceId, injectionId),
       });
     },
   });

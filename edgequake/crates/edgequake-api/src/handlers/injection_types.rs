@@ -21,6 +21,15 @@ pub struct PutInjectionRequest {
     pub content: String,
 }
 
+/// Request body for updating an existing injection entry.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct UpdateInjectionRequest {
+    /// New name (optional — keeps existing if omitted).
+    pub name: Option<String>,
+    /// New content (optional — if provided, re-triggers pipeline processing).
+    pub content: Option<String>,
+}
+
 // ============================================================================
 // Response Types
 // ============================================================================
@@ -55,6 +64,9 @@ pub struct InjectionDetailResponse {
     pub entity_count: u32,
     /// Source type: "text" or "file".
     pub source_type: String,
+    /// Error message if processing failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
     /// When created (ISO 8601).
     pub created_at: String,
     /// When last updated (ISO 8601).
@@ -83,6 +95,9 @@ pub struct InjectionSummary {
     pub entity_count: u32,
     /// Source type: "text" or "file".
     pub source_type: String,
+    /// Error message if processing failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
     /// When created (ISO 8601).
     pub created_at: String,
     /// When last updated (ISO 8601).
