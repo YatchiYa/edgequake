@@ -35,6 +35,34 @@ import { AlertCircle, BookOpen, FileText, Plus, Trash2, Upload } from 'lucide-re
 import Link from 'next/link';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { getInjection } from '@/lib/api/edgequake';
+
+/** Poll until status !== 'processing' then show entity count toast. */
+async function pollForCompletion(
+  workspaceId: string,
+  injectionId: string,
+  injectionName: string,
+) {
+  const MAX_POLLS = 60; // 5 min max (60 × 5s)
+  for (let i = 0; i < MAX_POLLS; i++) {
+    await new Promise((r) => setTimeout(r, 5000));
+    try {
+      const detail = await getInjection(workspaceId, injectionId);
+      if (detail.status === 'completed') {
+        toast.success(
+          `${detail.entity_count} entities extracted from "${injectionName}"`,
+        );
+        return;
+      }
+      if (detail.status === 'failed') {
+        toast.error(`Processing failed: ${detail.error ?? 'Unknown error'}`);
+        return;
+      }
+    } catch {
+      // ignore transient errors
+    }
+  }
+}
 
 export default function KnowledgePage() {
   const { selectedWorkspaceId } = useTenantContext();
@@ -68,10 +96,11 @@ export default function KnowledgePage() {
       return;
     }
     try {
-      await createMutation.mutateAsync({ name: name.trim(), content: content.trim() });
-      toast.success('Knowledge injection created — processing started');
+      const result = await createMutation.mutateAsync({ name: name.trim(), content: content.trim() });
+      toast.success('Processing started — entities will be extracted shortly');
       setDialogOpen(false);
       resetDialog();
+      void pollForCompletion(selectedWorkspaceId ?? 'default', result.injection_id, name.trim());
     } catch (err) {
       toast.error(`Failed to create injection: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
@@ -83,13 +112,15 @@ export default function KnowledgePage() {
       return;
     }
     try {
-      await createFileMutation.mutateAsync({
-        name: fileName.trim() || selectedFile.name.replace(/\.[^.]+$/, ''),
+      const fileNameForInjection = fileName.trim() || selectedFile.name.replace(/\.[^.]+$/, '');
+      const result = await createFileMutation.mutateAsync({
+        name: fileNameForInjection,
         file: selectedFile,
       });
-      toast.success('File injection created — processing started');
+      toast.success('Processing started — entities will be extracted shortly');
       setDialogOpen(false);
       resetDialog();
+      void pollForCompletion(selectedWorkspaceId ?? 'default', result.injection_id, fileNameForInjection);
     } catch (err) {
       toast.error(`Failed to upload file: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
