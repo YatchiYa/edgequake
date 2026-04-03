@@ -702,5 +702,28 @@
     "updateSuccess": "工作区已成功更新",
     "updated": "更新时间",
     "workspace": "工作区"
+  },
+  "entityTypes": {
+    "title": "实体类型",
+    "description": "要从此工作区文档中提取的实体类型。",
+    "selectorLabel": "实体类型选择器",
+    "presetLabel": "领域预设",
+    "typesLabel": "实体类型",
+    "addCustom": "添加自定义类型",
+    "addPlaceholder": "例如 电路板",
+    "emptyHint": "未选择任何类型 — 将使用服务器默认值",
+    "removeType": "删除 {{type}}",
+    "maxReached": "已达到最多 {{max}} 个实体类型。",
+    "defaults": "使用服务器默认值：",
+    "defaultsHint": "PERSON, ORGANIZATION, LOCATION, EVENT, CONCEPT, TECHNOLOGY, PRODUCT, DATE, DOCUMENT",
+    "presets": {
+      "general": "通用",
+      "manufacturing": "制造",
+      "healthcare": "医疗",
+      "legal": "法律",
+      "research": "研究",
+      "finance": "金融",
+      "custom": "自定义"
+    }
   }
 }

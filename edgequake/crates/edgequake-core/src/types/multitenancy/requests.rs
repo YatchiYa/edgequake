@@ -65,6 +65,25 @@ pub struct CreateWorkspaceRequest {
     /// Vision LLM provider for PDF-to-Markdown extraction (e.g., "openai", "ollama").
     /// If None, auto-detected from vision_llm_model.
     pub vision_llm_provider: Option<String>,
+
+    // === Entity Extraction Configuration (SPEC-085) ===
+    /// Custom entity types for extraction pipeline.
+    ///
+    /// If None, uses [`edgequake_pipeline::prompts::default_entity_types()`].
+    /// Types are normalized to UPPERCASE_UNDERSCORED and deduplicated.
+    /// Maximum 20 types per workspace.
+    ///
+    /// ## Presets
+    ///
+    /// Common domain presets are available in the UI:
+    /// - **General**: PERSON, ORGANIZATION, LOCATION, EVENT, CONCEPT, TECHNOLOGY, PRODUCT, DATE, DOCUMENT
+    /// - **Manufacturing**: adds MACHINE, COMPONENT, DEFECT, MEASUREMENT, PROCESS, MATERIAL
+    /// - **Healthcare**: adds SYMPTOM, DRUG, DIAGNOSIS, PROCEDURE, PATIENT, CONDITION
+    /// - **Legal**: adds CONTRACT, CLAUSE, PARTY, REGULATION, JURISDICTION, CASE
+    /// - **Research**: adds PAPER, METHOD, DATASET, HYPOTHESIS, FINDING, METRIC
+    ///
+    /// @implements SPEC-085: Custom entity configuration from UI
+    pub entity_types: Option<Vec<String>>,
 }
 
 impl CreateWorkspaceRequest {
@@ -205,6 +224,19 @@ impl CreateWorkspaceRequest {
         self.embedding_model = Some(model.into());
         self.embedding_provider = Some(provider.into());
         self.embedding_dimension = Some(dimension);
+        self
+    }
+
+    // === Entity Type Configuration Builder Methods (SPEC-085) ===
+
+    /// Set custom entity types for this workspace.
+    ///
+    /// Types are normalized to UPPERCASE_UNDERSCORED and deduplicated.
+    /// Maximum 20 types are accepted; extras are silently dropped.
+    ///
+    /// @implements SPEC-085: Custom entity configuration
+    pub fn with_entity_types(mut self, types: Vec<String>) -> Self {
+        self.entity_types = Some(types);
         self
     }
 }

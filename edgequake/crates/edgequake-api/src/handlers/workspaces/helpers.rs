@@ -83,6 +83,11 @@ pub(super) fn workspace_to_response(workspace: &Workspace) -> WorkspaceResponse 
         // SPEC-040: Vision LLM configuration
         vision_llm_provider: workspace.vision_llm_provider.clone(),
         vision_llm_model: workspace.vision_llm_model.clone(),
+        // SPEC-085: Entity type configuration (read from workspace metadata)
+        entity_types: workspace
+            .metadata
+            .get("entity_types")
+            .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok()),
         created_at: workspace.created_at.to_rfc3339(),
         updated_at: workspace.updated_at.to_rfc3339(),
     }

@@ -36,6 +36,7 @@ import {
 } from '@/components/ui/tooltip';
 import { EmbeddingModelSelector, type EmbeddingSelection } from '@/components/workspace/embedding-model-selector';
 import { LLMModelSelector, type LLMSelection } from '@/components/workspace/llm-model-selector';
+import { ENTITY_PRESETS } from '@/constants/entity-presets';
 import {
     createTenant,
     createWorkspace,
@@ -56,6 +57,7 @@ import {
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import { EntityTypeSelector } from './entity-type-selector';
 
 interface TenantWorkspaceSelectorProps {
   /**
@@ -108,6 +110,8 @@ export function TenantWorkspaceSelector({
   const [tenantDefaultEmbedding, setTenantDefaultEmbedding] = useState<EmbeddingSelection | undefined>(undefined);
   // Tenant default vision LLM (SPEC-041: vision model selection)
   const [tenantDefaultVision, setTenantDefaultVision] = useState<LLMSelection | undefined>(undefined);
+  // SPEC-085: Entity types for new workspace (defaults to General preset)
+  const [workspaceEntityTypes, setWorkspaceEntityTypes] = useState<string[]>([...ENTITY_PRESETS.general.types]);
 
   // Initialize from storage on mount
   useEffect(() => {
@@ -213,6 +217,8 @@ export function TenantWorkspaceSelector({
       embedding_model?: string;
       embedding_provider?: string;
       embedding_dimension?: number;
+      // SPEC-085: Custom entity types per workspace
+      entity_types?: string[];
     }) =>
       selectedTenantId
         ? createWorkspace(selectedTenantId, data)
@@ -237,6 +243,8 @@ export function TenantWorkspaceSelector({
       setNewWorkspaceDescription('');
       setSelectedLLM(undefined);
       setSelectedEmbedding(undefined);
+      // SPEC-085: Reset entity types to General preset
+      setWorkspaceEntityTypes([...ENTITY_PRESETS.general.types]);
     },
     onError: (error) => {
       toast.error(
@@ -622,8 +630,8 @@ export function TenantWorkspaceSelector({
 
       {/* Create Workspace Dialog */}
       <Dialog open={showCreateWorkspace} onOpenChange={setShowCreateWorkspace}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
+        <DialogContent className="max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
             <DialogTitle>
               {t('workspace.createNew', 'Create New Workspace')}
             </DialogTitle>
@@ -634,7 +642,7 @@ export function TenantWorkspaceSelector({
               )}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <div className="flex-1 overflow-y-auto space-y-4 py-4 pr-1">
             <div className="space-y-2">
               <Label htmlFor="workspace-name">
                 {t('workspace.name', 'Workspace Name')}
@@ -683,8 +691,22 @@ export function TenantWorkspaceSelector({
                 onChange={setSelectedEmbedding}
               />
             </div>
+
+            {/* Entity Type Selection - SPEC-085 */}
+            <div className="space-y-2">
+              <Label>
+                {t('entityTypes.title', 'Entity Types')}
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                {t('entityTypes.description', 'Types of entities to extract from documents in this workspace.')}
+              </p>
+              <EntityTypeSelector
+                value={workspaceEntityTypes}
+                onChange={setWorkspaceEntityTypes}
+              />
+            </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="shrink-0">
             <Button
               variant="outline"
               onClick={() => setShowCreateWorkspace(false)}
@@ -701,6 +723,8 @@ export function TenantWorkspaceSelector({
                   embedding_model: selectedEmbedding?.model,
                   embedding_provider: selectedEmbedding?.provider,
                   embedding_dimension: selectedEmbedding?.dimension,
+                  // SPEC-085: Pass configured entity types
+                  entity_types: workspaceEntityTypes.length > 0 ? workspaceEntityTypes : undefined,
                 })
               }
               disabled={

@@ -168,6 +168,14 @@ pub struct CreateWorkspaceApiRequest {
     /// If not provided, auto-detected from vision_llm_model or inherited from tenant.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vision_llm_provider: Option<String>,
+
+    // === Entity Type Configuration (SPEC-085) ===
+    /// Custom entity types to extract from documents (e.g., ["MACHINE", "COMPONENT", "DEFECT"]).
+    /// Names are normalized to UPPERCASE_UNDERSCORED format.
+    /// If not provided, uses the workspace default (server default_entity_types).
+    /// Maximum 20 types.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entity_types: Option<Vec<String>>,
 }
 
 /// Request to update a workspace.

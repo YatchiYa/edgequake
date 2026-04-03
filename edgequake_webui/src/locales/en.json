@@ -704,5 +704,28 @@
     "deleteFailed": "Delete failed: {{error}}",
     "queryFailed": "Query failed: {{error}}",
     "connectionFailed": "Connection failed"
+  },
+  "entityTypes": {
+    "title": "Entity Types",
+    "description": "Types of entities to extract from documents in this workspace.",
+    "selectorLabel": "Entity type selector",
+    "presetLabel": "Domain Preset",
+    "typesLabel": "Entity Types",
+    "addCustom": "Add Custom Type",
+    "addPlaceholder": "e.g. CIRCUIT_BOARD",
+    "emptyHint": "No types selected — server defaults will be used",
+    "removeType": "Remove {{type}}",
+    "maxReached": "Maximum of {{max}} entity types reached.",
+    "defaults": "Using server defaults:",
+    "defaultsHint": "PERSON, ORGANIZATION, LOCATION, EVENT, CONCEPT, TECHNOLOGY, PRODUCT, DATE, DOCUMENT",
+    "presets": {
+      "general": "General",
+      "manufacturing": "Manufacturing",
+      "healthcare": "Healthcare",
+      "legal": "Legal",
+      "research": "Research",
+      "finance": "Finance",
+      "custom": "Custom"
+    }
   }
 }

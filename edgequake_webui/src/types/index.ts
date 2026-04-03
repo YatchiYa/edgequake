@@ -694,6 +694,13 @@ export interface Workspace {
    * @implements SPEC-040: Workspace-scoped Vision LLM for PDF processing
    */
   vision_llm_model?: string;
+  /**
+   * Custom entity types for the extraction pipeline.
+   * If absent, the server uses the default types (PERSON, ORGANIZATION, etc.).
+   * Surfaced from workspace metadata JSONB.
+   * @implements SPEC-085: Custom entity configuration from UI
+   */
+  entity_types?: string[];
   /** Creation timestamp. */
   created_at: string;
   /** Last update timestamp. */
@@ -755,6 +762,13 @@ export interface CreateWorkspaceRequest {
    * @implements SPEC-041: Workspace-scoped Vision LLM for PDF processing
    */
   vision_llm_provider?: string;
+  /**
+   * Custom entity types for this workspace's extraction pipeline.
+   * Normalized to UPPERCASE_UNDERSCORED and deduplicated (max 20).
+   * If not provided, server defaults are used (PERSON, ORGANIZATION, etc.).
+   * @implements SPEC-085: Custom entity configuration from UI
+   */
+  entity_types?: string[];
 }
 
 /**

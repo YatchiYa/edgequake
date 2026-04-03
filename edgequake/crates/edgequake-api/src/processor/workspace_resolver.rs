@@ -92,7 +92,11 @@ impl DocumentTaskProcessor {
                             "[PIPELINE] SPEC-032: Using workspace-specific providers for document processing"
                         );
 
-                        let extractor = Arc::new(LLMExtractor::new(Arc::clone(llm)));
+                        // SPEC-085: Read workspace entity types; fall back to defaults
+                        let entity_types = workspace_entity_types(&ws);
+                        let extractor = Arc::new(
+                            LLMExtractor::new(Arc::clone(llm)).with_entity_types(entity_types),
+                        );
                         return Arc::new(
                             Pipeline::default_pipeline()
                                 .with_extractor(extractor)
@@ -265,7 +269,10 @@ impl DocumentTaskProcessor {
             "[PIPELINE] OODA-16: Successfully created workspace-specific providers (STRICT mode)"
         );
 
-        let extractor = Arc::new(LLMExtractor::new(Arc::clone(&llm_provider)));
+        // SPEC-085: Read workspace entity types; fall back to defaults
+        let entity_types = workspace_entity_types(&ws);
+        let extractor =
+            Arc::new(LLMExtractor::new(Arc::clone(&llm_provider)).with_entity_types(entity_types));
         Ok(Arc::new(
             Pipeline::default_pipeline()
                 .with_extractor(extractor)
@@ -503,4 +510,18 @@ impl DocumentTaskProcessor {
             _ => default_lineage,
         }
     }
+}
+
+/// SPEC-085: Read entity types from workspace metadata.
+///
+/// Returns the workspace-configured entity types, or the pipeline defaults
+/// if the workspace has no custom configuration.
+///
+/// WHY module-level function: Both `get_workspace_pipeline` and
+/// `get_workspace_pipeline_strict` share this logic (DRY).
+fn workspace_entity_types(ws: &edgequake_core::types::Workspace) -> Vec<String> {
+    ws.metadata
+        .get("entity_types")
+        .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok())
+        .unwrap_or_else(edgequake_pipeline::prompts::default_entity_types)
 }
