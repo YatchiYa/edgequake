@@ -115,6 +115,7 @@ mod postgres_rebuild_tests {
             embedding_dimension: Some(768),
             vision_llm_provider: None,
             vision_llm_model: None,
+            entity_types: None,
         };
 
         let workspace = state
@@ -244,6 +245,7 @@ mod postgres_rebuild_tests {
             embedding_dimension: Some(1536),
             vision_llm_provider: None,
             vision_llm_model: None,
+            entity_types: None,
         };
 
         let workspace = state
@@ -367,6 +369,7 @@ mod postgres_rebuild_tests {
             embedding_dimension: Some(768),
             vision_llm_provider: None,
             vision_llm_model: None,
+            entity_types: None,
         };
 
         let workspace_a = state
@@ -389,6 +392,7 @@ mod postgres_rebuild_tests {
             embedding_dimension: Some(1024),
             vision_llm_provider: None,
             vision_llm_model: None,
+            entity_types: None,
         };
 
         let workspace_b = state
@@ -513,6 +517,7 @@ mod postgres_rebuild_tests {
                 embedding_dimension: Some(1536),
                 vision_llm_provider: None,
                 vision_llm_model: None,
+                entity_types: None,
             };
 
             let workspace = state1
@@ -630,6 +635,7 @@ mod postgres_rebuild_tests {
             embedding_dimension: Some(768),
             vision_llm_provider: None,
             vision_llm_model: None,
+            entity_types: None,
         };
 
         let workspace = state
@@ -775,6 +781,7 @@ mod postgres_rebuild_tests {
             embedding_dimension: Some(768),
             vision_llm_provider: None,
             vision_llm_model: None,
+            entity_types: None,
         };
 
         let workspace = state

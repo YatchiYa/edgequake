@@ -58,6 +58,7 @@ async fn create_workspace_with_providers(
 
         vision_llm_provider: None,
         vision_llm_model: None,
+        entity_types: None,
     };
 
     state

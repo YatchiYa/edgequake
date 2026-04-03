@@ -82,6 +82,7 @@ async fn create_test_workspace_with_config(
         embedding_dimension: Some(embedding_dimension),
         vision_llm_provider: None,
         vision_llm_model: None,
+        entity_types: None,
     };
 
     state

@@ -1,6 +1,12 @@
 'use client';
 
+import { EntityTypeSelector } from '@/components/shared/entity-type-selector';
 import { Button } from '@/components/ui/button';
+import {
+    Collapsible,
+    CollapsibleContent,
+    CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import {
     Dialog,
     DialogContent,
@@ -26,7 +32,6 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { EntityTypeSelector } from '@/components/shared/entity-type-selector';
 import {
     EmbeddingModelSelector,
     type EmbeddingSelection,
@@ -107,6 +112,7 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
   const [tenantDefaultVisionLLM, setTenantDefaultVisionLLM] = useState<LLMSelection | undefined>(undefined);
   // SPEC-085: Custom entity types for new workspace
   const [workspaceEntityTypes, setWorkspaceEntityTypes] = useState<string[]>([...ENTITY_PRESETS.general.types]);
+  const [showEntityTypeConfig, setShowEntityTypeConfig] = useState(false);
 
 
   // Generate URL-safe slug from name
@@ -266,6 +272,7 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
       setEmbeddingSelection(undefined); // Reset embedding selection
       setWorkspaceVisionLLMSelection(undefined); // Reset vision LLM selection
       setWorkspaceEntityTypes([...ENTITY_PRESETS.general.types]); // SPEC-085: Reset entity types
+      setShowEntityTypeConfig(false);
     },
     onError: (error) => {
       toast.error(t('workspace.createFailed', 'Failed to create workspace'), {
@@ -384,7 +391,7 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
                   ) : (
                     <FolderKanban className="h-3.5 w-3.5 text-muted-foreground" />
                   )}
-                  <span className="max-w-[200px] truncate hidden sm:inline">
+                  <span className="max-w-50 truncate hidden sm:inline">
                     {truncatedName}
                   </span>
                   <ChevronDown className="h-3 w-3 text-muted-foreground" />
@@ -499,7 +506,7 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
 
       {/* Create Tenant Dialog */}
       <Dialog open={showCreateTenant} onOpenChange={setShowCreateTenant}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="w-[95vw] sm:max-w-190">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Building2 className="h-5 w-5 text-primary" />
@@ -509,68 +516,77 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
               {t('tenant.createDescription', 'Create a new tenant to organize your workspaces and documents.')}
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="tenant-name">{t('common.name', 'Name')}</Label>
-              <Input
-                id="tenant-name"
-                value={newTenantName}
-                onChange={(e) => setNewTenantName(e.target.value)}
-                placeholder={t('tenant.namePlaceholder', 'My Organization')}
-              />
+          <div className="space-y-3 py-3 max-h-[calc(88vh-10rem)] overflow-y-auto pr-1">
+            <div className="rounded-lg border p-3 space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-2">
+                  <Label htmlFor="tenant-name">{t('common.name', 'Name')}</Label>
+                  <Input
+                    id="tenant-name"
+                    value={newTenantName}
+                    onChange={(e) => setNewTenantName(e.target.value)}
+                    placeholder={t('tenant.namePlaceholder', 'My Organization')}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="tenant-description">{t('common.description', 'Description')}</Label>
+                  <Input
+                    id="tenant-description"
+                    value={newTenantDescription}
+                    onChange={(e) => setNewTenantDescription(e.target.value)}
+                    placeholder={t('tenant.descriptionPlaceholder', 'Optional description')}
+                  />
+                </div>
+              </div>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="tenant-description">{t('common.description', 'Description')}</Label>
-              <Input
-                id="tenant-description"
-                value={newTenantDescription}
-                onChange={(e) => setNewTenantDescription(e.target.value)}
-                placeholder={t('tenant.descriptionPlaceholder', 'Optional description')}
-              />
-            </div>
-            {/* SPEC-032: Default LLM model selection for tenant */}
-            <div className="grid gap-2">
-              <Label>
-                {t('tenant.defaultLLM', 'Default LLM Model')}
-                <span className="text-destructive ml-0.5">*</span>
-              </Label>
-              <LLMModelSelector
-                value={tenantDefaultLLM}
-                onChange={setTenantDefaultLLM}
-              />
-              <p className="text-xs text-muted-foreground">
-                {t('tenant.defaultLLMHint', 'Default LLM for new workspaces. Can be overridden per workspace.')}
+
+            <div className="rounded-lg border p-3 space-y-3">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                {t('tenant.defaultsSection', 'Default Models')}
               </p>
-            </div>
-            {/* SPEC-032: Default embedding model selection for tenant */}
-            <div className="grid gap-2">
-              <Label>
-                {t('tenant.defaultEmbedding', 'Default Embedding Model')}
-                <span className="text-destructive ml-0.5">*</span>
-              </Label>
-              <EmbeddingModelSelector
-                value={tenantDefaultEmbedding}
-                onChange={setTenantDefaultEmbedding}
-              />
-              <p className="text-xs text-muted-foreground">
-                {t('tenant.defaultEmbeddingHint', 'Default embedding for new workspaces. Can be overridden per workspace.')}
-              </p>
-            </div>
-            {/* SPEC-041: Default Vision LLM selection for tenant */}
-            <div className="grid gap-2">
-              <Label>
-                {t('tenant.defaultVisionLLM', 'Default Vision LLM')}
-                <span className="text-destructive ml-0.5">*</span>
-              </Label>
-              <LLMModelSelector
-                value={tenantDefaultVisionLLM}
-                onChange={setTenantDefaultVisionLLM}
-                filterVision
-                showUsageHint={false}
-              />
-              <p className="text-xs text-muted-foreground">
-                {t('tenant.defaultVisionLLMHint', 'Default vision model for PDF extraction. Can be overridden per workspace.')}
-              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-2">
+                  <Label>
+                    {t('tenant.defaultLLM', 'Default LLM Model')}
+                    <span className="text-destructive ml-0.5">*</span>
+                  </Label>
+                  <LLMModelSelector
+                    value={tenantDefaultLLM}
+                    onChange={setTenantDefaultLLM}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {t('tenant.defaultLLMHint', 'Default LLM for new workspaces. Can be overridden per workspace.')}
+                  </p>
+                </div>
+                <div className="grid gap-2">
+                  <Label>
+                    {t('tenant.defaultEmbedding', 'Default Embedding Model')}
+                    <span className="text-destructive ml-0.5">*</span>
+                  </Label>
+                  <EmbeddingModelSelector
+                    value={tenantDefaultEmbedding}
+                    onChange={setTenantDefaultEmbedding}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {t('tenant.defaultEmbeddingHint', 'Default embedding for new workspaces. Can be overridden per workspace.')}
+                  </p>
+                </div>
+                <div className="grid gap-2 sm:col-span-2">
+                  <Label>
+                    {t('tenant.defaultVisionLLM', 'Default Vision LLM')}
+                    <span className="text-destructive ml-0.5">*</span>
+                  </Label>
+                  <LLMModelSelector
+                    value={tenantDefaultVisionLLM}
+                    onChange={setTenantDefaultVisionLLM}
+                    filterVision
+                    showUsageHint={false}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {t('tenant.defaultVisionLLMHint', 'Default vision model for PDF extraction. Can be overridden per workspace.')}
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
           <DialogFooter>
@@ -608,7 +624,7 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
 
       {/* Create Workspace Dialog */}
       <Dialog open={showCreateWorkspace} onOpenChange={setShowCreateWorkspace}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="w-[95vw] sm:max-w-190">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FolderKanban className="h-5 w-5 text-primary" />
@@ -618,103 +634,129 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
               {t('workspace.createDescription', 'Create a new workspace within the current tenant.')}
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
-            <div className="grid gap-2">
-              <Label htmlFor="workspace-name">{t('common.name', 'Name')}</Label>
-              <Input
-                id="workspace-name"
-                value={newWorkspaceName}
-                onChange={(e) => {
-                  setNewWorkspaceName(e.target.value);
-                  // Auto-generate slug from name if user hasn't manually edited it
-                  if (!newWorkspaceSlug || newWorkspaceSlug === generateSlug(newWorkspaceName)) {
-                    setNewWorkspaceSlug(generateSlug(e.target.value));
-                  }
-                }}
-                placeholder={t('workspace.namePlaceholder', 'My Project')}
-              />
+          <div className="space-y-3 py-3 max-h-[calc(88vh-10rem)] overflow-y-auto pr-1">
+            <div className="rounded-lg border p-3 space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-2">
+                  <Label htmlFor="workspace-name">{t('common.name', 'Name')}</Label>
+                  <Input
+                    id="workspace-name"
+                    value={newWorkspaceName}
+                    onChange={(e) => {
+                      setNewWorkspaceName(e.target.value);
+                      if (!newWorkspaceSlug || newWorkspaceSlug === generateSlug(newWorkspaceName)) {
+                        setNewWorkspaceSlug(generateSlug(e.target.value));
+                      }
+                    }}
+                    placeholder={t('workspace.namePlaceholder', 'My Project')}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="workspace-slug">
+                    {t('workspace.slug', 'URL Slug')}
+                    <span className="text-muted-foreground text-xs ml-2">
+                      {t('workspace.slugHint', '(optional, auto-generated)')}
+                    </span>
+                  </Label>
+                  <Input
+                    id="workspace-slug"
+                    value={newWorkspaceSlug}
+                    onChange={(e) => setNewWorkspaceSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
+                    placeholder="my-project"
+                    pattern="[a-z0-9-]+"
+                  />
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="workspace-description">{t('common.description', 'Description')}</Label>
+                <Input
+                  id="workspace-description"
+                  value={newWorkspaceDescription}
+                  onChange={(e) => setNewWorkspaceDescription(e.target.value)}
+                  placeholder={t('workspace.descriptionPlaceholder', 'Optional description')}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {t('workspace.slugDescription', 'Used in URLs: /query?workspace={slug}')}
+                </p>
+              </div>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="workspace-slug">
-                {t('workspace.slug', 'URL Slug')}
-                <span className="text-muted-foreground text-xs ml-2">
-                  {t('workspace.slugHint', '(optional, auto-generated)')}
-                </span>
-              </Label>
-              <Input
-                id="workspace-slug"
-                value={newWorkspaceSlug}
-                onChange={(e) => setNewWorkspaceSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
-                placeholder="my-project"
-                pattern="[a-z0-9-]+"
-              />
-              <p className="text-xs text-muted-foreground">
-                {t('workspace.slugDescription', 'Used in URLs: /query?workspace={slug}')}
+
+            <div className="rounded-lg border p-3 space-y-3">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                {t('workspace.modelsSection', 'Model Configuration')}
               </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-2">
+                  <Label>
+                    {t('workspace.llmModel', 'LLM Model')}
+                    <span className="text-destructive ml-0.5">*</span>
+                  </Label>
+                  <LLMModelSelector
+                    value={workspaceLLMSelection}
+                    onChange={setWorkspaceLLMSelection}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {t('workspace.llmDescription', 'LLM for document ingestion and knowledge graph generation.')}
+                  </p>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="workspace-embedding">
+                    {t('workspace.embeddingModel', 'Embedding Model')}
+                    <span className="text-destructive ml-0.5">*</span>
+                  </Label>
+                  <EmbeddingModelSelector
+                    value={embeddingSelection}
+                    onChange={setEmbeddingSelection}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {t('workspace.embeddingDescription', 'Embedding model determines how documents are indexed. Cannot be changed after creation.')}
+                  </p>
+                </div>
+                <div className="grid gap-2 sm:col-span-2">
+                  <Label>
+                    {t('workspace.visionLLM', 'Vision LLM')}
+                    <span className="text-destructive ml-0.5">*</span>
+                  </Label>
+                  <LLMModelSelector
+                    value={workspaceVisionLLMSelection}
+                    onChange={setWorkspaceVisionLLMSelection}
+                    filterVision
+                    showUsageHint={false}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {t('workspace.visionDescription', 'Vision model for PDF-to-Markdown image extraction. Overrides tenant default.')}
+                  </p>
+                </div>
+              </div>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="workspace-description">{t('common.description', 'Description')}</Label>
-              <Input
-                id="workspace-description"
-                value={newWorkspaceDescription}
-                onChange={(e) => setNewWorkspaceDescription(e.target.value)}
-                placeholder={t('workspace.descriptionPlaceholder', 'Optional description')}
-              />
-            </div>
-            {/* SPEC-032: LLM model selection for workspace */}
-            <div className="grid gap-2">
-              <Label>
-                {t('workspace.llmModel', 'LLM Model')}
-                <span className="text-destructive ml-0.5">*</span>
-              </Label>
-              <LLMModelSelector
-                value={workspaceLLMSelection}
-                onChange={setWorkspaceLLMSelection}
-              />
-              <p className="text-xs text-muted-foreground">
-                {t('workspace.llmDescription', 'LLM for document ingestion and knowledge graph generation.')}
-              </p>
-            </div>
-            {/* SPEC-032: Embedding model selection */}
-            <div className="grid gap-2">
-              <Label htmlFor="workspace-embedding">
-                {t('workspace.embeddingModel', 'Embedding Model')}
-                <span className="text-destructive ml-0.5">*</span>
-              </Label>
-              <EmbeddingModelSelector
-                value={embeddingSelection}
-                onChange={setEmbeddingSelection}
-              />
-              <p className="text-xs text-muted-foreground">
-                {t('workspace.embeddingDescription', 'Embedding model determines how documents are indexed. Cannot be changed after creation.')}
-              </p>
-            </div>
-            {/* SPEC-041: Vision LLM selection for workspace */}
-            <div className="grid gap-2">
-              <Label>
-                {t('workspace.visionLLM', 'Vision LLM')}
-                <span className="text-destructive ml-0.5">*</span>
-              </Label>
-              <LLMModelSelector
-                value={workspaceVisionLLMSelection}
-                onChange={setWorkspaceVisionLLMSelection}
-                filterVision
-                showUsageHint={false}
-              />
-              <p className="text-xs text-muted-foreground">
-                {t('workspace.visionDescription', 'Vision model for PDF-to-Markdown image extraction. Overrides tenant default.')}
-              </p>
-            </div>
-            {/* SPEC-085: Entity type configuration */}
-            <div className="grid gap-2">
-              <Label>{t('entityTypes.title', 'Entity Types')}</Label>
-              <p className="text-xs text-muted-foreground">
-                {t('entityTypes.description', 'Types of entities to extract from documents in this workspace.')}
-              </p>
-              <EntityTypeSelector
-                value={workspaceEntityTypes}
-                onChange={setWorkspaceEntityTypes}
-              />
+
+            <div className="rounded-lg border p-3">
+              <Collapsible open={showEntityTypeConfig} onOpenChange={setShowEntityTypeConfig}>
+                <CollapsibleTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="w-full justify-between px-0 h-auto text-left"
+                  >
+                    <div>
+                      <p className="text-sm font-medium">{t('entityTypes.title', 'Entity Types')}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {workspaceEntityTypes.length} configured
+                      </p>
+                    </div>
+                    <ChevronDown className={cn('h-4 w-4 transition-transform', showEntityTypeConfig && 'rotate-180')} />
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-3">
+                  <p className="text-xs text-muted-foreground mb-2">
+                    {t('entityTypes.description', 'Types of entities to extract from documents in this workspace.')}
+                  </p>
+                  <EntityTypeSelector
+                    value={workspaceEntityTypes}
+                    onChange={setWorkspaceEntityTypes}
+                  />
+                </CollapsibleContent>
+              </Collapsible>
             </div>
           </div>
           <DialogFooter>

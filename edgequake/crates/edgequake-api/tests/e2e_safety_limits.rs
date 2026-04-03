@@ -133,6 +133,7 @@ async fn test_workspace_pipeline_uses_workspace_provider() {
 
         vision_llm_provider: None,
         vision_llm_model: None,
+        entity_types: None,
     };
 
     let workspace = state
@@ -183,6 +184,7 @@ async fn test_multiple_workspaces_different_providers() {
 
         vision_llm_provider: None,
         vision_llm_model: None,
+        entity_types: None,
     };
 
     // Create workspace 2 with different configuration
@@ -199,6 +201,7 @@ async fn test_multiple_workspaces_different_providers() {
 
         vision_llm_provider: None,
         vision_llm_model: None,
+        entity_types: None,
     };
 
     let ws1 = state
