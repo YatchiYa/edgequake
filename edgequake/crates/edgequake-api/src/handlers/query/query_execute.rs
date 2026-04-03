@@ -215,11 +215,26 @@ pub async fn execute_query(
                     .await
                     .map_err(|e| ApiError::Internal(format!("Query failed: {}", e)))?
             }
-            (Ok(None), _) => {
-                // No workspace-specific config, use default engine embedding
+            (Ok(None), Ok(Some(vector_storage))) => {
+                // Workspace uses default embedding model but has its own vector storage table.
+                // WHY: Injection (SPEC-0002) and document ingestion (SPEC-033) store vectors in
+                // the workspace-specific table.  We must search that table even when the
+                // workspace shares the server's default embedding provider.
                 debug!(
                     workspace_id = %workspace_id,
-                    "Using default embedding provider for query"
+                    "Using default embedding + workspace-specific vector storage for query"
+                );
+                state
+                    .sota_engine
+                    .query_with_vector_storage(engine_request, vector_storage)
+                    .await
+                    .map_err(|e| ApiError::Internal(format!("Query failed: {}", e)))?
+            }
+            (Ok(None), _) => {
+                // No workspace-specific config and no workspace vector storage — use defaults.
+                debug!(
+                    workspace_id = %workspace_id,
+                    "Using default embedding provider for query (no workspace vector storage)"
                 );
                 state
                     .sota_engine
