@@ -40,6 +40,19 @@ describe('sanitizeMermaidCode – no-op on valid diagrams', () => {
     const code = 'sequenceDiagram\n  Alice->>Bob: Hello';
     expect(sanitized(code)).toBe(code);
   });
+
+  // First-principles contract: sanitizeMermaidCode must not reject diagram
+  // types it doesn't recognise — that gate belongs to mermaid.parse(), not here.
+  it('does not modify a diagram starting with an unrecognised keyword (future types)', () => {
+    // e.g. a hypothetical new diagram type the sanitiser was never told about
+    const code = 'packet-beta\n  0-7: "Source Port"\n  8-15: "Destination Port"';
+    expect(sanitized(code)).toBe(code);
+  });
+
+  it('does not modify a C4Context diagram (keyword not in old heuristic list)', () => {
+    const code = 'C4Context\n  Person(personAlias, "Actor", "Description")';
+    expect(sanitized(code)).toBe(code);
+  });
 });
 
 // ---------------------------------------------------------------------------
