@@ -189,6 +189,12 @@ const DocumentsTab = ({
   const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set());
   const entries = Object.entries(chunksByDocument);
 
+  // Normalized sum: score / max(1, globalMax) so each value stays in [0, 1].
+  // Handles backends that return unbounded dot-product or hybrid scores (> 1.0).
+  const allRawScores = entries.flatMap(([, chunks]) => chunks.map(c => c.score));
+  const scoreNormalizer = allRawScores.length > 0 ? Math.max(1.0, ...allRawScores) : 1.0;
+  const normalizeScore = (score: number): number => Math.min(1.0, score / scoreNormalizer);
+
   const toggleDocExpand = (docId: string) => {
     setExpandedDocs(prev => {
       const next = new Set(prev);
@@ -221,7 +227,8 @@ const DocumentsTab = ({
       <ScrollArea className="h-70 sm:h-83">
         <div className="space-y-2 pr-2" role="list" aria-label="Source documents">
           {entries.map(([docId, chunks], index) => {
-            const avgScore = chunks.reduce((acc, c) => acc + c.score, 0) / chunks.length;
+            // Normalized sum: mean of per-passage normalized scores → bounded [0, 1]
+            const avgScore = chunks.reduce((acc, c) => acc + normalizeScore(c.score), 0) / chunks.length;
             const { color: scoreColor } = getConfidenceLabel(avgScore);
             const isExpanded = expandedDocs.has(docId);
             const visibleChunks = isExpanded ? chunks : chunks.slice(0, 3);
@@ -305,8 +312,8 @@ const DocumentsTab = ({
                                 {chunk.content.slice(0, 200)}{chunk.content.length > 200 ? '…' : ''}
                               </p>
                               <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                                <span className={`text-xs font-semibold ${getConfidenceLabel(chunk.score).color}`}>
-                                  {Math.round(chunk.score * 100)}%
+                                <span className={`text-xs font-semibold ${getConfidenceLabel(normalizeScore(chunk.score)).color}`}>
+                                  {Math.round(normalizeScore(chunk.score) * 100)}%
                                 </span>
                                 <ExternalLink className="h-2.5 w-2.5 text-muted-foreground opacity-0 group-hover/chunk:opacity-70 transition-opacity" aria-hidden="true" />
                               </div>

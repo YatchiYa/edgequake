@@ -162,11 +162,31 @@ fn enrich_query_with_language(query: &str, language: &Option<String>) -> String 
     }
 }
 
+/// SPEC-0002: Check if a source originates from knowledge injection.
+/// Injection sources enrich the LLM context but are excluded from user-facing citations.
+fn is_injection_source(document_id: Option<&str>, file_path: Option<&str>) -> bool {
+    if let Some(doc_id) = document_id {
+        if doc_id.starts_with("injection::") {
+            return true;
+        }
+    }
+    if let Some(path) = file_path {
+        if path == "injection" {
+            return true;
+        }
+    }
+    false
+}
+
 pub(crate) fn build_sources(context: &edgequake_query::QueryContext) -> Vec<SourceReference> {
     let mut sources = Vec::new();
     let mut ref_counter = 1usize;
 
     for chunk in &context.chunks {
+        // SPEC-0002: Exclude injection-sourced chunks from citations
+        if is_injection_source(chunk.document_id.as_deref(), None) {
+            continue;
+        }
         sources.push(SourceReference {
             source_type: "chunk".to_string(),
             id: chunk.id.clone(),
@@ -188,6 +208,13 @@ pub(crate) fn build_sources(context: &edgequake_query::QueryContext) -> Vec<Sour
     }
 
     for entity in &context.entities {
+        // SPEC-0002: Exclude injection-sourced entities from citations
+        if is_injection_source(
+            entity.source_document_id.as_deref(),
+            entity.source_file_path.as_deref(),
+        ) {
+            continue;
+        }
         sources.push(SourceReference {
             source_type: "entity".to_string(),
             id: entity.name.clone(),
@@ -218,6 +245,13 @@ pub(crate) fn build_sources(context: &edgequake_query::QueryContext) -> Vec<Sour
     }
 
     for rel in &context.relationships {
+        // SPEC-0002: Exclude injection-sourced relationships from citations
+        if is_injection_source(
+            rel.source_document_id.as_deref(),
+            rel.source_file_path.as_deref(),
+        ) {
+            continue;
+        }
         sources.push(SourceReference {
             source_type: "relationship".to_string(),
             id: format!("{}->{}", rel.source, rel.target),

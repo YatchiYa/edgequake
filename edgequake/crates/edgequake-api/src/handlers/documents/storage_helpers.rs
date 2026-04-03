@@ -300,7 +300,7 @@ pub(super) fn extract_source_docs(
 ///
 /// * `Ok(CleanupStats)` - Cleanup statistics
 /// * `Err(ApiError)` - If cleanup fails
-pub(super) async fn cleanup_document_graph_data(
+pub(crate) async fn cleanup_document_graph_data(
     document_id: &str,
     graph_storage: &Arc<dyn edgequake_storage::traits::GraphStorage>,
     vector_storage: Option<&Arc<dyn VectorStorage>>,

@@ -1,6 +1,7 @@
 //! Query entry points using workspace-specific vector storage.
 //!
-//! Contains: `query_with_workspace_config`, `query_with_full_config`.
+//! Contains: `query_with_workspace_config`, `query_with_full_config`,
+//!           `query_with_vector_storage`.
 //! These methods override the default vector storage with a workspace-specific one.
 
 use crate::error::Result;
@@ -13,6 +14,35 @@ use edgequake_storage::traits::VectorStorage;
 use super::super::{QueryEmbeddings, SOTAQueryEngine};
 
 impl SOTAQueryEngine {
+    /// Execute a query with workspace-specific vector storage using the engine's default embedding.
+    ///
+    /// WHY: Workspaces that share the same embedding model as the server default still need
+    /// queries to search their workspace-specific vector table.  Without this method the
+    /// caller would have to duplicate `self.embedding_provider` knowledge.
+    ///
+    /// @implements SPEC-033 (Workspace vector isolation)
+    /// @implements SPEC-0002 (Knowledge injection — vectors stored in workspace table are found)
+    ///
+    /// # Arguments
+    ///
+    /// * `request` - The query request
+    /// * `vector_storage` - The workspace-specific vector storage to search
+    pub async fn query_with_vector_storage(
+        &self,
+        request: crate::engine::QueryRequest,
+        vector_storage: std::sync::Arc<dyn VectorStorage>,
+    ) -> Result<crate::engine::QueryResponse> {
+        // Delegate to query_with_workspace_config using the engine's own embedding provider.
+        // WHY: The workspace may use the same embedding model as the server default but still
+        // needs its vectors searched in the workspace-specific table.
+        self.query_with_workspace_config(
+            request,
+            self.embedding_provider.clone(),
+            vector_storage,
+        )
+        .await
+    }
+
     /// Execute a query with workspace-specific vector storage and embedding provider.
     ///
     /// SPEC-033: Full workspace isolation for vector storage.

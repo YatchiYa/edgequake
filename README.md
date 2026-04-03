@@ -5,13 +5,13 @@
 > **High-Performance Graph-RAG Framework in Rust**  
 > Transform documents into intelligent knowledge graphs for superior retrieval and generation
 
-[![Version](https://img.shields.io/badge/version-0.7.0-blue.svg?style=flat)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.8.0-blue.svg?style=flat)](CHANGELOG.md)
 [![Rust](https://img.shields.io/badge/rust-1.78+-orange.svg?style=flat&logo=rust)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat)](LICENSE)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg?style=flat)](https://github.com/raphaelmansuy/edgequake)
 [![Documentation](https://img.shields.io/badge/docs-available-blue.svg?style=flat)](docs/README.md)
 
-> **v0.7.0** — Vector Storage Optimization (SPEC-007): SQL-level metadata pre-filtering with GIN indexes, materialized columns, and B-tree indexes. Up to 90% reduction in wasted vector scans for multi-tenant deployments. All query modes now push tenant/workspace/document filters to the storage layer.
+> **v0.8.0** — Knowledge Injection (SPEC-0002, [#131](https://github.com/raphaelmansuy/edgequake/issues/131)): Inject acronym definitions, synonym mappings, and domain glossaries that enrich retrieval quality without appearing as cited sources in query results. Full CRUD API + file upload + dedicated `/knowledge` UI page.
 
 ---
 
@@ -56,7 +56,17 @@ Traditional RAG systems retrieve document chunks using vector similarity alone. 
 - **Zero-Copy**: Efficient memory management with Rust ownership
 - **Parallel Processing**: Multi-threaded entity extraction and embeddings
 - **Fast Storage**: PostgreSQL AGE for graph + pgvector for embeddings
-- **SQL Pre-Filtering** ✨ **NEW in 0.7.0**: Metadata filters (tenant, workspace, document) pushed to SQL WHERE clauses with GIN + B-tree indexes — up to 90% fewer wasted vector scans at scale
+- **SQL Pre-Filtering**: Metadata filters (tenant, workspace, document) pushed to SQL WHERE clauses with GIN + B-tree indexes — up to 90% fewer wasted vector scans at scale
+
+### 💉 Knowledge Injection ✨ **NEW in 0.8.0** ([#131](https://github.com/raphaelmansuy/edgequake/issues/131))
+
+- **Domain Glossaries**: Inject acronym definitions (OEE, NLP, ML) and synonym mappings that expand query terms automatically
+- **Invisible Citations**: Injection entries enrich the knowledge graph but are **never shown as source citations** in query results
+- **Full CRUD API**: `PUT`, `GET`, `PATCH`, `DELETE` per workspace — `POST /api/v1/workspaces/:id/injection/upload` for file-based injection
+- **Text & File Input**: Accept plain-text definitions or upload `.txt`/`.md` glossary files
+- **Status Polling**: Background processing with entity count tracking and `completed`/`failed`/`processing` status
+- **Dedicated UI**: `/knowledge` page with list view, inline editing, delete confirmation, and entity count display
+- **Query Expansion**: Automatically expands queries using injected synonyms before vector search
 
 ### Knowledge Graph
 

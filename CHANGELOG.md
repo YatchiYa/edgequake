@@ -2,6 +2,44 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.0] - 2026-04-03
+
+### Added
+
+#### Knowledge Injection — Domain Glossaries & Synonym Enrichment (SPEC-0002) — Closes [#131](https://github.com/raphaelmansuy/edgequake/issues/131)
+
+- **`PUT /api/v1/workspaces/:workspace_id/injection`**: Create or replace a named knowledge injection entry. Content is processed through the standard entity-extraction pipeline with `source_type = "injection"` tagging so entities enrich the knowledge graph without surfacing as document citations.
+- **`POST /api/v1/workspaces/:workspace_id/injection/upload`**: Upload a `.txt`/`.md`/plain-text file as a knowledge injection entry. Supports multipart form upload with the same pipeline semantics as text injection.
+- **`GET /api/v1/workspaces/:workspace_id/injection`**: List all injection entries for a workspace with name, status (`processing` / `completed` / `failed`), entity count, and timestamps.
+- **`GET /api/v1/workspaces/:workspace_id/injection/:injection_id`**: Fetch a single injection entry including full content.
+- **`PATCH /api/v1/workspaces/:workspace_id/injection/:injection_id`**: Update the name and/or content of an existing injection entry; re-triggers pipeline processing when content changes.
+- **`DELETE /api/v1/workspaces/:workspace_id/injection/:injection_id`**: Delete a named injection entry and cascade-remove all its entities, vectors, and graph nodes/edges.
+- **`injection_types.rs`**: New `PutInjectionRequest`, `PutInjectionResponse`, `PatchInjectionRequest`, `InjectionListItem`, `InjectionDetail`, and `InjectionListResponse` types with full OpenAPI annotations.
+- **`injection.rs`** — DRY primitives: `workspace_id_from_tenant()`, `validate_name()`, `run_pipeline_for_injection()` shared across all handlers to eliminate duplication.
+- **Citation exclusion**: All query modes (`/api/v1/query`, `/api/v1/query/stream`, `/api/v1/chat/completions`, `/api/v1/chat/completions/stream`) filter out `source_type = "injection"` from `SourceReference` arrays. Injection knowledge enriches answers but is never listed as a source.
+- **Injection entries excluded from document list**: `GET /api/v1/documents` no longer returns injection KV entries; they are only visible via the `/injection` endpoints.
+- **`query_with_vector_storage()`** on `SOTAQueryEngine`: New convenience method for workspaces that share the server's default embedding model — delegates to `query_with_workspace_config()` without requiring callers to replicate embedding provider access.
+- **`/knowledge` frontend page** (`app/(dashboard)/knowledge/page.tsx`): Dedicated UI for managing injection entries. Features: add/edit/delete dialogs, text and file upload tabs, status badges, entity count display, search filtering, and pagination.
+- **Knowledge detail page** (`app/(dashboard)/knowledge/[id]/page.tsx`): Full-detail view with inline editing, retry, and delete confirmation dialog.
+- **`useInjection` hook** (`hooks/use-injection.ts`): React Query–powered hook for all injection CRUD operations with optimistic updates and cache invalidation.
+- **`edgequake.ts` API client**: 8 new typed methods — `listInjections`, `getInjection`, `putInjection`, `patchInjection`, `deleteInjection`, `uploadInjectionFile`, `pollInjectionStatus`, `queryWithExpansion`.
+- **Sidebar navigation**: New "Knowledge" entry (BookOpen icon) between Documents and Pipeline.
+- **1 000+ line Rust E2E test suite** (`tests/e2e_injection.rs`): Covers create, read, list, PATCH, DELETE, file upload, citation exclusion, document-list exclusion, concurrent operations, large content, unicode names, and edge cases.
+- **5 Playwright E2E tests** (`e2e/knowledge-injection-crud.spec.ts`): Add, edit, delete, API verification, and query-retrieval of injected terms.
+- **Source citation deep-link E2E tests** (`e2e/source-citations-deep-linking.spec.ts`): Verify citation links open document detail pages.
+
+### Changed
+
+- `storage_helpers::cleanup_document_graph_data` visibility widened from `pub(super)` to `pub(crate)` so the injection delete handler can reuse it without duplication.
+- `documents/mod.rs`: `storage_helpers` module visibility widened to `pub(crate)` accordingly.
+- `source-citations.tsx`: Component now filters out injection-tagged sources from the displayed reference list.
+
+### Internal
+
+- Total tests: **1 122+ passing** (526 core, 123 storage, 179 query, 92 pipeline, 34 PDF, 72 worker, 12 graph, 79 LLM, 5 PDF-crate).
+
+---
+
 ## [0.7.0] - 2026-03-18
 
 ### Added
