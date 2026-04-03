@@ -6,6 +6,15 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+#### Graph Edge Labels (Relation Types) Now Display — Closes [#91](https://github.com/raphaelmansuy/edgequake/issues/91)
+
+- **Root cause fixed**: Sigma 3.x only draws edge labels automatically when *both* endpoint nodes have their node-labels visible (limited by `labelDensity` / `labelRenderedSizeThreshold`). Edge labels therefore never appeared even when "Show Edge Labels" was enabled in Settings.
+- **Fix**: all graph edges now receive `forceLabel: true` when the "Show Edge Labels" setting is on. The `forceLabel` flag bypasses the endpoint-label requirement and always draws the edge label canvas text.
+- **Explicit edge-label styling** added to the Sigma constructor: `edgeLabelSize: 10`, `edgeLabelFont` matching the app font, `edgeLabelWeight: '500'`, and `edgeLabelColor` using high-contrast colours (`#e2e8f0` dark / `#334155` light) instead of the default edge colour (which had low contrast).
+- **Streaming path** (`addEdgesToGraph` callback): same `forceLabel` logic applied so progressively-streamed edges also render their labels.
+- **Node-expansion path** (`use-graph-expansion.ts`): edges added via the "expand node" action also receive `forceLabel`, so labels stay consistent after expanding a neighbourhood.
+- **New E2E test** (`e2e/issue-91-edge-labels.spec.ts`): 3 Playwright tests — settings toggle presence, edgeLabels canvas attachment, and forceLabel DOM verification.
+
 #### Mermaid Renderer: Curly-Brace Labels, Forward Slashes, and Graceful Fallback — Closes [#141](https://github.com/raphaelmansuy/edgequake/issues/141)
 
 - **Bare curly-brace node expressions** (`{label}` with no preceding node ID) are now detected and rewritten to a valid quoted rectangular node (`_bare_N["label"]`). This eliminates the `DIAMOND_START` parse error that crashed the renderer when the LLM emitted `People --> {Personnes/Gens}`.
