@@ -50,6 +50,7 @@ async fn create_workspace_with_providers(
         embedding_dimension: Some(embedding_dimension),
         vision_llm_provider: None,
         vision_llm_model: None,
+        entity_types: None,
     };
 
     state
@@ -327,6 +328,7 @@ async fn test_workspace_creation_without_dimension() {
         embedding_dimension: None, // Not specified
         vision_llm_provider: None,
         vision_llm_model: None,
+        entity_types: None,
     };
 
     let workspace = state

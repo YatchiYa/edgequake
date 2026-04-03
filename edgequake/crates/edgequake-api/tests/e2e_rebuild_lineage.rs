@@ -116,6 +116,7 @@ async fn test_workspace_pipeline_uses_workspace_config_for_lineage() {
         embedding_dimension: Some(768),
         vision_llm_provider: None,
         vision_llm_model: None,
+        entity_types: None,
     };
 
     let workspace = state
@@ -174,6 +175,7 @@ async fn test_workspace_update_changes_lineage_source() {
         embedding_dimension: Some(768),
         vision_llm_provider: None,
         vision_llm_model: None,
+        entity_types: None,
     };
 
     let workspace = state
@@ -248,6 +250,7 @@ async fn test_workspaces_have_isolated_lineage_config() {
         embedding_dimension: Some(1536),
         vision_llm_provider: None,
         vision_llm_model: None,
+        entity_types: None,
     };
 
     let workspace_a = state
@@ -269,6 +272,7 @@ async fn test_workspaces_have_isolated_lineage_config() {
         embedding_dimension: Some(768),
         vision_llm_provider: None,
         vision_llm_model: None,
+        entity_types: None,
     };
 
     let workspace_b = state

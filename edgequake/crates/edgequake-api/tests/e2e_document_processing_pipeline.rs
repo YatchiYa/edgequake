@@ -47,6 +47,7 @@ async fn create_workspace_with_providers(
         embedding_dimension: Some(embedding_dimension),
         vision_llm_provider: None,
         vision_llm_model: None,
+        entity_types: None,
     };
 
     state

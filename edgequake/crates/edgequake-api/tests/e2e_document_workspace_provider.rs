@@ -79,6 +79,7 @@ async fn create_test_workspace_with_config(
 
         vision_llm_provider: None,
         vision_llm_model: None,
+        entity_types: None,
     };
 
     state

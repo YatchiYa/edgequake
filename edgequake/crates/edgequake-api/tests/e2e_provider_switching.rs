@@ -105,6 +105,7 @@ async fn test_workspace_custom_embedding_config() {
 
         vision_llm_provider: None,
         vision_llm_model: None,
+        entity_types: None,
     };
 
     let workspace = service
@@ -141,6 +142,7 @@ async fn test_workspace_default_embedding_config() {
 
         vision_llm_provider: None,
         vision_llm_model: None,
+        entity_types: None,
     };
 
     let workspace = service
@@ -209,6 +211,7 @@ async fn test_workspace_provider_switching() {
 
         vision_llm_provider: None,
         vision_llm_model: None,
+        entity_types: None,
     };
 
     let ws_openai = service
@@ -230,6 +233,7 @@ async fn test_workspace_provider_switching() {
 
         vision_llm_provider: None,
         vision_llm_model: None,
+        entity_types: None,
     };
 
     let ws_ollama = service
@@ -401,6 +405,7 @@ async fn test_empty_workspace_embedding_config() {
 
         vision_llm_provider: None,
         vision_llm_model: None,
+        entity_types: None,
     };
 
     let workspace = service
@@ -449,6 +454,7 @@ async fn test_concurrent_workspace_creation() {
 
                     vision_llm_provider: None,
                     vision_llm_model: None,
+                    entity_types: None,
                 };
 
                 service_clone.create_workspace(tenant_id, request).await
@@ -487,6 +493,7 @@ async fn test_lmstudio_workspace_config() {
 
         vision_llm_provider: None,
         vision_llm_model: None,
+        entity_types: None,
     };
 
     let workspace = service

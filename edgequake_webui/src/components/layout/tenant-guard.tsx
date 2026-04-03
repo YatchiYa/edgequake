@@ -2,19 +2,19 @@
 
 import { ModelSelector } from '@/components/models/model-selector';
 import { EntityTypeSelector } from '@/components/shared/entity-type-selector';
-import { ENTITY_PRESETS } from '@/constants/entity-presets';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { ENTITY_PRESETS } from '@/constants/entity-presets';
 import { createTenant, createWorkspace, getTenants, getWorkspaces } from '@/lib/api/edgequake';
 import { useTenantStore } from '@/stores/use-tenant-store';
 import type { Tenant } from '@/types';
@@ -393,15 +393,15 @@ export function TenantGuard({ children }: TenantGuardProps) {
         </div>
 
         <Dialog open={showCreateTenant} onOpenChange={setShowCreateTenant}>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="w-[95vw] sm:max-w-190">
             <DialogHeader>
               <DialogTitle>{t('tenant.createNew', 'Create Tenant')}</DialogTitle>
               <DialogDescription>
                 {t('tenant.createNewDesc', 'Configure your organization and default models.')}
               </DialogDescription>
             </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
+            <div className="grid gap-3 py-3 sm:grid-cols-2 max-h-[calc(88vh-10rem)] overflow-y-auto pr-1">
+              <div className="grid gap-2 sm:col-span-2">
                 <Label htmlFor="tenant-name">{t('common.name', 'Name')}</Label>
                 <Input
                   id="tenant-name"
@@ -506,14 +506,14 @@ export function TenantGuard({ children }: TenantGuardProps) {
         </div>
 
         <Dialog open={showCreateWorkspace} onOpenChange={setShowCreateWorkspace}>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="w-[95vw] sm:max-w-190">
             <DialogHeader>
               <DialogTitle>{t('workspace.createNew', 'Create Workspace')}</DialogTitle>
               <DialogDescription>
                 {t('workspace.createNewDesc', 'Configure your workspace and AI models.')}
               </DialogDescription>
             </DialogHeader>
-            <div className="grid gap-4 py-4">
+            <div className="grid gap-3 py-3 sm:grid-cols-2 max-h-[calc(88vh-10rem)] overflow-y-auto pr-1">
               <div className="grid gap-2">
                 <Label htmlFor="workspace-name">{t('common.name', 'Name')}</Label>
                 <Input
@@ -529,7 +529,7 @@ export function TenantGuard({ children }: TenantGuardProps) {
                   placeholder="My Project"
                 />
               </div>
-              <div className="grid gap-2">
+              <div className="grid gap-2 sm:col-span-2">
                 <Label htmlFor="workspace-slug">
                   {t('workspace.slug', 'URL Slug')}
                   <span className="text-muted-foreground text-xs ml-2">
@@ -600,7 +600,7 @@ export function TenantGuard({ children }: TenantGuardProps) {
                 </p>
               </div>
               {/* SPEC-085: Entity type configuration */}
-              <div className="grid gap-2">
+              <div className="grid gap-2 sm:col-span-2">
                 <Label>{t('entityTypes.title', 'Entity Types')}</Label>
                 <p className="text-xs text-muted-foreground">
                   {t('entityTypes.description', 'Types of entities to extract from documents in this workspace.')}
