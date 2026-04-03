@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.0] - 2026-04-03
+
+### Added
+
+#### Custom Entity Configuration per Workspace (SPEC-085) — Closes [#85](https://github.com/raphaelmansuy/edgequake/issues/85)
+
+- **`entity_types` field in `CreateWorkspaceRequest`**: Users can now specify a custom list of entity types when creating a workspace. Types are normalized (trimmed, uppercased, spaces/hyphens replaced with underscores, deduplicated) and capped at **50 types** (increased from 20).
+- **Entity types persisted in workspace metadata**: Custom entity types are stored as a JSONB array in the `metadata` column of the `workspaces` table — no schema migration required.
+- **Pipeline reads workspace entity types**: The document ingestion pipeline reads custom entity types from workspace metadata at upload time and configures the extractor accordingly. Falls back to `default_entity_types()` (9 general types) when no custom config is present.
+- **`normalize_entity_types()` backend function**: Validates and normalizes entity type input (uppercase, underscore format, deduplication, max-50 cap).
+- **Entity type selector UI** (`EntityTypeSelector` component): Preset buttons (General, Manufacturing, Healthcare, Legal, Research, Finance), chip display with individual remove, custom type input (normalized on add), live count badge, and collapsible Advanced tab.
+- **6 domain presets**: General, Manufacturing, Healthcare, Legal, Research, Finance — each with 9–12 curated entity types.
+- **`MAX_ENTITY_TYPES = 50`** constant mirrored in both backend (`workspace_service_impl.rs`) and frontend (`entity-presets.ts`).
+- **Interactive Playwright E2E tests** (`spec-085-entity-ui-interactive.spec.ts`): 8 tests covering preset selection, custom type input, chip removal, max-50 enforcement, empty state, accessibility (aria-pressed, aria-live), and API round-trip verification.
+- **Dialog layout improvements**: Workspace/tenant creation dialogs now use `overflow-hidden + grid-rows` to prevent entity-type selector from overflowing the viewport.
+
+### Changed
+
+- Entity type limit raised from **20 to 50** per workspace. This allows richer domain-specific vocabularies without prompt-length concerns. At 50 types, the prompt overhead is ~250 additional tokens — acceptable relative to chunk content.
+- `LLMExtractor` defaults now aligned with `default_entity_types()` (9 types: PERSON, ORGANIZATION, LOCATION, EVENT, CONCEPT, TECHNOLOGY, PRODUCT, DATE, DOCUMENT) — previously used 7 types missing DATE and DOCUMENT.
+
 ## [0.8.0] - 2026-04-03
 
 ### Added

@@ -429,7 +429,7 @@ impl WorkspaceService for WorkspaceServiceImpl {
         }
 
         // SPEC-085: Apply entity type configuration from request
-        // Normalize: uppercase, underscored, deduplicated, max 20 types
+        // Normalize: uppercase, underscored, deduplicated, max 50 types
         if let Some(entity_types) = request.entity_types {
             let normalized = normalize_entity_types(&entity_types);
             if !normalized.is_empty() {
@@ -1223,11 +1223,11 @@ impl WorkspaceService for WorkspaceServiceImpl {
 /// - Replace spaces/hyphens with underscores
 /// - Skip empty strings
 /// - Deduplicate (preserving first occurrence order)
-/// - Cap at 20 types to avoid prompt bloat
+/// - Cap at 50 types to avoid prompt bloat
 ///
 /// @implements SPEC-085: Custom entity configuration normalization
 fn normalize_entity_types(types: &[String]) -> Vec<String> {
-    const MAX_ENTITY_TYPES: usize = 20;
+    const MAX_ENTITY_TYPES: usize = 50;
 
     let mut seen = std::collections::HashSet::new();
     types

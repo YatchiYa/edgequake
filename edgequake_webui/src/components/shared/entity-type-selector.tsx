@@ -8,7 +8,7 @@
  * - Preset buttons (General, Manufacturing, Healthcare, Legal, Research, Finance)
  * - Chip list of active types with individual remove buttons
  * - Text input to add custom UPPERCASE_UNDERSCORED types
- * - Max-20 enforcement with visual feedback
+ * - Max-50 enforcement with visual feedback
  *
  * @implements SPEC-085: Custom entity configuration from UI
  */
@@ -297,84 +297,91 @@ export function EntityTypeSelector({
           )}
         </TabsContent>
 
-        <TabsContent value="advanced" className="space-y-3 m-0">
-          <div className="rounded-md border p-3 space-y-2">
-            <p className="text-xs font-medium text-muted-foreground">
-              {t('entityTypes.bulkReplace', 'Bulk Replace Entity Types')}
-            </p>
-            <textarea
-              value={advancedBulkInput}
-              onChange={(e) => setAdvancedBulkInput(e.target.value)}
-              placeholder={t(
-                'entityTypes.bulkPlaceholder',
-                'PERSON, ORGANIZATION, MACHINE or one per line'
-              )}
-              disabled={readOnly}
-              className="w-full min-h-24 rounded-md border bg-background px-3 py-2 text-xs font-mono"
-              data-testid="entity-advanced-bulk-input"
-            />
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                size="sm"
-                onClick={handleApplyBulk}
-                disabled={readOnly || !advancedBulkInput.trim()}
-                data-testid="entity-advanced-apply-bulk"
-              >
-                {t('entityTypes.applyBulk', 'Apply Bulk List')}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setAdvancedBulkInput(value.join('\n'))}
-                disabled={readOnly || value.length === 0}
-                data-testid="entity-advanced-load-current"
-              >
-                {t('entityTypes.loadCurrent', 'Load Current')}
-              </Button>
-            </div>
-          </div>
-
-          <div className="rounded-md border p-3 space-y-2">
-            <p className="text-xs font-medium text-muted-foreground">
-              {t('entityTypes.manage', 'Manage Current Types')}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={handleResetGeneral}
+        <TabsContent value="advanced" className="m-0">
+          <div className="grid gap-3 lg:grid-cols-2">
+            <div className="rounded-md border p-3 space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">
+                {t('entityTypes.bulkReplace', 'Bulk Replace Entity Types')}
+              </p>
+              <textarea
+                value={advancedBulkInput}
+                onChange={(e) => setAdvancedBulkInput(e.target.value)}
+                placeholder={t(
+                  'entityTypes.bulkPlaceholder',
+                  'PERSON, ORGANIZATION, MACHINE or one per line'
+                )}
                 disabled={readOnly}
-                data-testid="entity-advanced-reset-general"
-              >
-                {t('entityTypes.resetGeneral', 'Reset to General')}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={handleSortAZ}
-                disabled={readOnly || value.length < 2}
-                data-testid="entity-advanced-sort-az"
-              >
-                {t('entityTypes.sortAZ', 'Sort A-Z')}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="destructive"
-                onClick={handleClearAll}
-                disabled={readOnly || value.length === 0}
-                data-testid="entity-advanced-clear-all"
-              >
-                {t('entityTypes.clearAll', 'Clear All')}
-              </Button>
+                className="w-full min-h-20 rounded-md border bg-background px-3 py-2 text-xs font-mono"
+                data-testid="entity-advanced-bulk-input"
+              />
+              <div className="grid gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleApplyBulk}
+                  disabled={readOnly || !advancedBulkInput.trim()}
+                  className="w-full justify-center"
+                  data-testid="entity-advanced-apply-bulk"
+                >
+                  {t('entityTypes.applyBulk', 'Apply Bulk List')}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setAdvancedBulkInput(value.join('\n'))}
+                  disabled={readOnly || value.length === 0}
+                  className="w-full justify-center"
+                  data-testid="entity-advanced-load-current"
+                >
+                  {t('entityTypes.loadCurrent', 'Load Current')}
+                </Button>
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground" aria-live="polite">
-              {t('entityTypes.currentCount', 'Current count')}: {value.length}/{MAX_ENTITY_TYPES}
-            </p>
+
+            <div className="rounded-md border p-3 space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">
+                {t('entityTypes.manage', 'Manage Current Types')}
+              </p>
+              <div className="grid gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleResetGeneral}
+                  disabled={readOnly}
+                  className="w-full justify-center"
+                  data-testid="entity-advanced-reset-general"
+                >
+                  {t('entityTypes.resetGeneral', 'Reset to General')}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleSortAZ}
+                  disabled={readOnly || value.length < 2}
+                  className="w-full justify-center"
+                  data-testid="entity-advanced-sort-az"
+                >
+                  {t('entityTypes.sortAZ', 'Sort A-Z')}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="destructive"
+                  onClick={handleClearAll}
+                  disabled={readOnly || value.length === 0}
+                  className="w-full justify-center"
+                  data-testid="entity-advanced-clear-all"
+                >
+                  {t('entityTypes.clearAll', 'Clear All')}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground" aria-live="polite">
+                {t('entityTypes.currentCount', 'Current count')}: {value.length}/{MAX_ENTITY_TYPES}
+              </p>
+            </div>
           </div>
         </TabsContent>
       </Tabs>

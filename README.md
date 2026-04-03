@@ -5,13 +5,13 @@
 > **High-Performance Graph-RAG Framework in Rust**  
 > Transform documents into intelligent knowledge graphs for superior retrieval and generation
 
-[![Version](https://img.shields.io/badge/version-0.8.0-blue.svg?style=flat)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.9.0-blue.svg?style=flat)](CHANGELOG.md)
 [![Rust](https://img.shields.io/badge/rust-1.78+-orange.svg?style=flat&logo=rust)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat)](LICENSE)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg?style=flat)](https://github.com/raphaelmansuy/edgequake)
 [![Documentation](https://img.shields.io/badge/docs-available-blue.svg?style=flat)](docs/README.md)
 
-> **v0.8.0** — Knowledge Injection (SPEC-0002, [#131](https://github.com/raphaelmansuy/edgequake/issues/131)): Inject acronym definitions, synonym mappings, and domain glossaries that enrich retrieval quality without appearing as cited sources in query results. Full CRUD API + file upload + dedicated `/knowledge` UI page.
+> **v0.9.0** — Custom Entity Configuration (SPEC-085, [#85](https://github.com/raphaelmansuy/edgequake/issues/85)): Set domain-specific entity types per workspace (Manufacturing, Healthcare, Legal, Research, Finance presets) with up to **50 types** and a live entity-type selector in the workspace creation UI.
 
 ---
 
@@ -67,6 +67,16 @@ Traditional RAG systems retrieve document chunks using vector similarity alone. 
 - **Status Polling**: Background processing with entity count tracking and `completed`/`failed`/`processing` status
 - **Dedicated UI**: `/knowledge` page with list view, inline editing, delete confirmation, and entity count display
 - **Query Expansion**: Automatically expands queries using injected synonyms before vector search
+
+### 🏷️ Custom Entity Configuration ✨ **NEW in 0.9.0** ([#85](https://github.com/raphaelmansuy/edgequake/issues/85))
+
+- **Domain Presets**: Choose from 6 curated presets — General, Manufacturing, Healthcare, Legal, Research, Finance
+- **Up to 50 Entity Types**: Configure up to 50 domain-specific types per workspace (raised from 20)
+- **Custom Types**: Add any UPPERCASE_UNDERSCORED entity type beyond the preset (e.g. `BEARING_TYPE`, `VIBRATION_ANOMALY`)
+- **Per-Workspace Config**: Entity types are set at workspace creation and stored in workspace metadata
+- **Auto-Normalization**: Input is trimmed, uppercased, and deduplicated before storage
+- **Live UI Selector**: Collapsible entity-type section in workspace creation dialog with chip display and count badge
+- **Backward Compatible**: Existing workspaces without custom config automatically use the 9 default general types
 
 ### Knowledge Graph
 

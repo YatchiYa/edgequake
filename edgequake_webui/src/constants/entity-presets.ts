@@ -148,7 +148,7 @@ export const ENTITY_PRESETS: Record<Exclude<PresetKey, 'custom'>, EntityPreset> 
 } as const;
 
 /** Maximum number of entity types per workspace (mirrors backend MAX_ENTITY_TYPES). */
-export const MAX_ENTITY_TYPES = 20;
+export const MAX_ENTITY_TYPES = 50;
 
 /**
  * Normalize a raw entity type string to UPPERCASE_UNDERSCORED format.

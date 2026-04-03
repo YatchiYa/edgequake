@@ -58,7 +58,7 @@ This file maintains traceability between code features and business requirements
 
 **Capabilities**:
 - Workspace-scoped `entity_types` in create-workspace API payload.
-- Validation and normalization: trim, uppercase, space/hyphen to underscore, dedupe, max 20.
+- Validation and normalization: trim, uppercase, space/hyphen to underscore, dedupe, max 50.
 - Pipeline fallback to server defaults when no custom entity types are configured.
 - Frontend selector with presets (General, Manufacturing, Healthcare, Legal, Research, Finance) and custom add/remove chips.
 - Workspace detail page displays configured entity types.
