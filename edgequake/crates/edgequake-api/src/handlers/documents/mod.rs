@@ -52,7 +52,7 @@ pub use crate::handlers::documents_types::*;
 mod delete;
 mod query;
 mod recovery;
-mod storage_helpers;
+pub(crate) mod storage_helpers;
 mod upload;
 
 // Re-export all public items (includes utoipa __path_* structs for OpenAPI)

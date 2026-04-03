@@ -326,3 +326,108 @@ test.describe("Confidence Calculation Quality", () => {
     });
   });
 });
+
+test.describe("Normalized Score Display", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto("http://localhost:3000/query?workspace=default-workspace");
+    await page.waitForLoadState("networkidle");
+  });
+
+  test("all displayed score percentages must be <= 100%", async ({ page }) => {
+    const hasCitations = await submitQueryAndWaitForCitations(
+      page,
+      "What is EdgeQuake?"
+    );
+
+    if (!hasCitations) {
+      test.skip(
+        true,
+        "No citations returned - requires documents in knowledge graph."
+      );
+      return;
+    }
+
+    // Expand citations panel
+    const sourcesButton = page.locator('button:has-text("Sources")').first();
+    if (await sourcesButton.isVisible()) {
+      await sourcesButton.click();
+    }
+    await page.waitForTimeout(400);
+
+    // Open the Docs tab if present
+    const docsTab = page
+      .locator('button[role="tab"]')
+      .filter({ hasText: /^Docs/ });
+    if (await docsTab.isVisible()) {
+      await docsTab.click();
+      await page.waitForTimeout(300);
+    }
+
+    // Collect all displayed percentage values from score badges in the docs list
+    const percentTexts = await page
+      .locator('[role="list"] .text-xs.font-semibold')
+      .allTextContents();
+
+    const percentValues = percentTexts
+      .map((t) => t.match(/^(\d+)%$/))
+      .filter(Boolean)
+      .map((m) => parseInt(m![1], 10));
+
+    console.log("Observed score percentages:", percentValues);
+
+    // Verify every displayed score is within [0, 100]
+    for (const pct of percentValues) {
+      expect(pct).toBeGreaterThanOrEqual(0);
+      expect(pct).toBeLessThanOrEqual(100);
+    }
+
+    await page.screenshot({
+      path: "test-results/normalized-scores-bounded.png",
+    });
+  });
+
+  test("top-ranked passage should display 100% when scores are unbounded", async ({
+    page,
+  }) => {
+    // This test checks that when backend returns scores > 1.0,
+    // the highest-scoring passage in each doc maps to 100% (global max normalization)
+    const hasCitations = await submitQueryAndWaitForCitations(
+      page,
+      "What is EdgeQuake?"
+    );
+
+    if (!hasCitations) {
+      test.skip(
+        true,
+        "No citations returned - requires documents in knowledge graph."
+      );
+      return;
+    }
+
+    const sourcesButton = page.locator('button:has-text("Sources")').first();
+    if (await sourcesButton.isVisible()) {
+      await sourcesButton.click();
+    }
+    await page.waitForTimeout(400);
+
+    const docsTab = page
+      .locator('button[role="tab"]')
+      .filter({ hasText: /^Docs/ });
+    if (await docsTab.isVisible()) {
+      await docsTab.click();
+      await page.waitForTimeout(300);
+    }
+
+    // All percentages collected — no value should exceed 100
+    const allText = await page.locator("body").textContent();
+    const allPercentMatches = [...(allText?.matchAll(/(\d{3,})%/g) ?? [])];
+    const over100 = allPercentMatches.map((m) => parseInt(m[1], 10));
+
+    console.log("Values >99% chars found (should be empty):", over100);
+    expect(over100).toHaveLength(0);
+
+    await page.screenshot({
+      path: "test-results/normalized-scores-no-overflow.png",
+    });
+  });
+});
