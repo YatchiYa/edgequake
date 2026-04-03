@@ -198,29 +198,7 @@ export function sanitizeMermaidCode(code: string): { sanitized: string; issues: 
   return { sanitized, issues };
 }
 
-/**
- * Check if Mermaid code looks complete enough to attempt rendering.
- * This is a lightweight pre-check before invoking the full parser.
- */
-function isProbablyValidMermaid(code: string): boolean {
-  const trimmed = code.trim();
-  
-  // Must start with a valid diagram type
-  const validStarts = [
-    'graph', 'flowchart', 'sequenceDiagram', 'classDiagram', 
-    'stateDiagram', 'erDiagram', 'gantt', 'pie', 'gitGraph',
-    'journey', 'mindmap', 'timeline', 'sankey', 'block',
-  ];
-  
-  const firstWord = trimmed.split(/[\s\n]/)[0].toLowerCase();
-  if (!validStarts.some(start => firstWord.startsWith(start))) {
-    return false;
-  }
 
-  // Must have at least some content after the declaration
-  const lines = trimmed.split('\n').filter(l => l.trim() && !l.trim().startsWith('%%'));
-  return lines.length >= 2;
-}
 
 export const MermaidBlock = memo(function MermaidBlock({
   code,
@@ -259,40 +237,41 @@ export const MermaidBlock = memo(function MermaidBlock({
         setIsLoading(true);
         setError(null);
 
-        // Pre-validate and sanitize the code
-        const { sanitized, issues } = sanitizeMermaidCode(code);
-        setSanitizedCode(sanitized);
-        
-        if (issues.length > 0) {
-          console.log('Mermaid code sanitization:', issues);
-        }
-
-        // Quick pre-check before loading Mermaid
-        if (!isProbablyValidMermaid(sanitized)) {
-          if (!cancelled) {
-            setError('Invalid diagram format. Mermaid diagrams must start with a diagram type (graph, flowchart, sequenceDiagram, etc.)');
-            setIsLoading(false);
-          }
-          return;
-        }
-
+        // Load mermaid first — the parser is the single source of truth for validity.
+        // WHY: We must not gate rendering on heuristic string checks. Only
+        // mermaid.parse() can correctly determine whether a diagram is valid.
         const mermaid = await getMermaid(isDark);
-        
-        // Try to parse first - this will throw if invalid
-        try {
-          await mermaid.parse(sanitized);
-        } catch (parseError) {
-          if (!cancelled) {
-            const errorMsg = parseError instanceof Error ? parseError.message : 'Syntax error';
-            throw new Error(`Parse error: ${errorMsg}`);
-          }
-          return;
+
+        // Step 1: strip markdown code fence — this is safe pre-processing, not a
+        // heuristic transform: a fenced code block is never valid Mermaid syntax.
+        let stripped = code.trim();
+        if (stripped.startsWith('```')) {
+          stripped = stripped.replace(/^```(?:mermaid)?\n?/, '').replace(/\n?```$/, '').trim();
         }
 
-        // Render the diagram with sanitized code
+        // Step 2: try the fence-stripped original through the real parser.
+        let codeToRender = stripped;
+        try {
+          await mermaid.parse(stripped);
+          // Parser accepted the original — no further transformation needed.
+        } catch {
+          // Step 3: original rejected — apply the sanitizer heuristics as a
+          // targeted fallback for known LLM output patterns.
+          const { sanitized, issues } = sanitizeMermaidCode(code);
+          setSanitizedCode(sanitized);
+          if (issues.length > 0) {
+            console.log('Mermaid sanitization applied:', issues);
+          }
+          // Validate the sanitized version using the same authoritative parser.
+          // If this also throws, the outer catch block handles the error state.
+          await mermaid.parse(sanitized);
+          codeToRender = sanitized;
+        }
+
+        // Render only code that the parser has already accepted.
         const { svg: renderedSvg } = await mermaid.render(
           `mermaid-${uniqueId}-${isDark ? 'd' : 'l'}`,
-          sanitized
+          codeToRender
         );
 
         if (!cancelled) {
