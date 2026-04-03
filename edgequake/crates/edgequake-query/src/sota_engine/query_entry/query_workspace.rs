@@ -35,12 +35,8 @@ impl SOTAQueryEngine {
         // Delegate to query_with_workspace_config using the engine's own embedding provider.
         // WHY: The workspace may use the same embedding model as the server default but still
         // needs its vectors searched in the workspace-specific table.
-        self.query_with_workspace_config(
-            request,
-            self.embedding_provider.clone(),
-            vector_storage,
-        )
-        .await
+        self.query_with_workspace_config(request, self.embedding_provider.clone(), vector_storage)
+            .await
     }
 
     /// Execute a query with workspace-specific vector storage and embedding provider.

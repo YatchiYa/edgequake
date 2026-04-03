@@ -1233,7 +1233,7 @@ fn normalize_entity_types(types: &[String]) -> Vec<String> {
     types
         .iter()
         .filter_map(|t| {
-            let normalized = t.trim().to_uppercase().replace(' ', "_").replace('-', "_");
+            let normalized = t.trim().to_uppercase().replace([' ', '-'], "_");
             if normalized.is_empty() {
                 None
             } else {

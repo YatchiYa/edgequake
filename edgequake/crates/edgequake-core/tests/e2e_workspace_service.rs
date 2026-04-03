@@ -494,7 +494,7 @@ mod workspace_crud_tests {
 
                 vision_llm_provider: None,
                 vision_llm_model: None,
-            entity_types: None,
+                entity_types: None,
             };
             service
                 .create_workspace(tenant.tenant_id, request)
@@ -902,7 +902,7 @@ mod concurrent_tests {
 
                         vision_llm_provider: None,
                         vision_llm_model: None,
-            entity_types: None,
+                        entity_types: None,
                     };
                     service.create_workspace(tenant_id, request).await
                 })

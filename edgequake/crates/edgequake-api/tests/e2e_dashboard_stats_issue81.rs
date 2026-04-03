@@ -49,7 +49,7 @@ async fn setup_workspace(state: &AppState, suffix: &str) -> uuid::Uuid {
                 embedding_provider: None,
                 embedding_dimension: None,
                 vision_llm_model: None,
-        entity_types: None,
+                entity_types: None,
                 vision_llm_provider: None,
             },
         )
