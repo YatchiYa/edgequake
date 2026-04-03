@@ -506,7 +506,7 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
 
       {/* Create Tenant Dialog */}
       <Dialog open={showCreateTenant} onOpenChange={setShowCreateTenant}>
-        <DialogContent className="w-[95vw] sm:max-w-190">
+        <DialogContent className="w-[95vw] sm:max-w-190 max-h-[92vh] overflow-hidden grid-rows-[auto_minmax(0,1fr)_auto]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Building2 className="h-5 w-5 text-primary" />
@@ -516,7 +516,7 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
               {t('tenant.createDescription', 'Create a new tenant to organize your workspaces and documents.')}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 py-3 max-h-[calc(88vh-10rem)] overflow-y-auto pr-1">
+          <div className="space-y-3 py-3 overflow-y-auto pr-1">
             <div className="rounded-lg border p-3 space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="grid gap-2">
@@ -624,7 +624,7 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
 
       {/* Create Workspace Dialog */}
       <Dialog open={showCreateWorkspace} onOpenChange={setShowCreateWorkspace}>
-        <DialogContent className="w-[95vw] sm:max-w-190">
+        <DialogContent className="w-[95vw] sm:max-w-190 max-h-[92vh] overflow-hidden grid-rows-[auto_minmax(0,1fr)_auto]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FolderKanban className="h-5 w-5 text-primary" />
@@ -634,7 +634,7 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
               {t('workspace.createDescription', 'Create a new workspace within the current tenant.')}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 py-3 max-h-[calc(88vh-10rem)] overflow-y-auto pr-1">
+          <div className="space-y-3 py-3 overflow-y-auto pr-1">
             <div className="rounded-lg border p-3 space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="grid gap-2">

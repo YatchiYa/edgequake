@@ -7,7 +7,7 @@
  * 2. Preset buttons are clickable and switch active type set
  * 3. Custom types can be typed, normalized, and added via Enter or button click
  * 4. Type chips can be removed individually
- * 5. Max-20 limit is enforced with visual feedback
+ * 5. Max-50 limit is enforced with visual feedback
  * 6. Empty selection shows hint text (server defaults will be used)
  * 7. Accessibility: aria-pressed on preset buttons, aria-live on count
  * 8. Created workspace has entity_types surfaced in the API response
@@ -116,8 +116,8 @@ test.describe('SPEC-085: Entity Type Selector — Interactive UI', () => {
     // Should contain MACHINE chip
     await expect(page.locator('[data-testid="entity-type-chip-MACHINE"]')).toBeVisible();
 
-    // Count should show "12/20"
-    await expect(page.locator('span[aria-live="polite"]')).toContainText('12/20');
+    // Count should show "12/50"
+    await expect(page.locator('span[aria-live="polite"]')).toContainText('12/50');
 
     console.log('✅ Manufacturing preset: 12 types (MACHINE visible)');
   });
@@ -135,7 +135,7 @@ test.describe('SPEC-085: Entity Type Selector — Interactive UI', () => {
     await expect(page.locator('[data-testid="entity-type-chip-CIRCUIT_BOARD"]')).toBeVisible();
 
     // Count should go from 9 to 10 (General + CIRCUIT_BOARD)
-    await expect(page.locator('span[aria-live="polite"]')).toContainText('10/20');
+    await expect(page.locator('span[aria-live="polite"]')).toContainText('10/50');
 
     // Input should be cleared
     await expect(input).toHaveValue('');
@@ -176,8 +176,8 @@ test.describe('SPEC-085: Entity Type Selector — Interactive UI', () => {
     // DOCUMENT chip should be gone
     await expect(page.locator('[data-testid="entity-type-chip-DOCUMENT"]')).not.toBeVisible();
 
-    // Count should now show "8/20"  
-    await expect(page.locator('span[aria-live="polite"]')).toContainText('8/20');
+    // Count should now show "8/50"  
+    await expect(page.locator('span[aria-live="polite"]')).toContainText('8/50');
 
     // The preset should now show "Custom" since we no longer match General exactly
     await expect(page.locator('[data-testid="preset-btn-custom"]')).toBeVisible();
@@ -206,8 +206,8 @@ test.describe('SPEC-085: Entity Type Selector — Interactive UI', () => {
     await expect(hint).toBeVisible();
     await expect(hint).toContainText(/server defaults/i);
 
-    // Count should show "0/20"
-    await expect(page.locator('span[aria-live="polite"]')).toContainText('0/20');
+    // Count should show "0/50"
+    await expect(page.locator('span[aria-live="polite"]')).toContainText('0/50');
 
     console.log('✅ Empty state shows "No types selected — server defaults will be used"');
   });
@@ -221,7 +221,7 @@ test.describe('SPEC-085: Entity Type Selector — Interactive UI', () => {
     await input.press('Enter');
 
     // Count should still be 9 (PERSON was already there)
-    await expect(page.locator('span[aria-live="polite"]')).toContainText('9/20');
+    await expect(page.locator('span[aria-live="polite"]')).toContainText('9/50');
 
     console.log('✅ Duplicate PERSON not added (deduplication works)');
   });

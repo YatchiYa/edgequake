@@ -764,7 +764,7 @@ export interface CreateWorkspaceRequest {
   vision_llm_provider?: string;
   /**
    * Custom entity types for this workspace's extraction pipeline.
-   * Normalized to UPPERCASE_UNDERSCORED and deduplicated (max 20).
+   * Normalized to UPPERCASE_UNDERSCORED and deduplicated (max 50).
    * If not provided, server defaults are used (PERSON, ORGANIZATION, etc.).
    * @implements SPEC-085: Custom entity configuration from UI
    */

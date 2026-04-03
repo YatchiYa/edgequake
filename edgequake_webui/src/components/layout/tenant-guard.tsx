@@ -393,14 +393,14 @@ export function TenantGuard({ children }: TenantGuardProps) {
         </div>
 
         <Dialog open={showCreateTenant} onOpenChange={setShowCreateTenant}>
-          <DialogContent className="w-[95vw] sm:max-w-190">
+          <DialogContent className="w-[95vw] sm:max-w-190 max-h-[92vh] overflow-hidden grid-rows-[auto_minmax(0,1fr)_auto]">
             <DialogHeader>
               <DialogTitle>{t('tenant.createNew', 'Create Tenant')}</DialogTitle>
               <DialogDescription>
                 {t('tenant.createNewDesc', 'Configure your organization and default models.')}
               </DialogDescription>
             </DialogHeader>
-            <div className="grid gap-3 py-3 sm:grid-cols-2 max-h-[calc(88vh-10rem)] overflow-y-auto pr-1">
+            <div className="grid gap-3 py-3 sm:grid-cols-2 overflow-y-auto pr-1">
               <div className="grid gap-2 sm:col-span-2">
                 <Label htmlFor="tenant-name">{t('common.name', 'Name')}</Label>
                 <Input
@@ -506,14 +506,14 @@ export function TenantGuard({ children }: TenantGuardProps) {
         </div>
 
         <Dialog open={showCreateWorkspace} onOpenChange={setShowCreateWorkspace}>
-          <DialogContent className="w-[95vw] sm:max-w-190">
+          <DialogContent className="w-[95vw] sm:max-w-190 max-h-[92vh] overflow-hidden grid-rows-[auto_minmax(0,1fr)_auto]">
             <DialogHeader>
               <DialogTitle>{t('workspace.createNew', 'Create Workspace')}</DialogTitle>
               <DialogDescription>
                 {t('workspace.createNewDesc', 'Configure your workspace and AI models.')}
               </DialogDescription>
             </DialogHeader>
-            <div className="grid gap-3 py-3 sm:grid-cols-2 max-h-[calc(88vh-10rem)] overflow-y-auto pr-1">
+            <div className="grid gap-3 py-3 sm:grid-cols-2 overflow-y-auto pr-1">
               <div className="grid gap-2">
                 <Label htmlFor="workspace-name">{t('common.name', 'Name')}</Label>
                 <Input
