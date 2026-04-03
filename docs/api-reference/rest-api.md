@@ -4,7 +4,7 @@ title: "EdgeQuake REST API Reference"
 
 # EdgeQuake REST API Reference
 
-> **Version**: 0.7.0  
+> **Version**: 0.8.0  
 > **Base URL**: `http://localhost:8080/api/v1`  
 > **OpenAPI**: Available at `/api-docs/openapi.json`
 
@@ -21,6 +21,7 @@ This reference documents all EdgeQuake REST API endpoints for document ingestion
 - [Chat API](#chat-api)
 - [Graph API](#graph-api)
 - [Workspaces API](#workspaces-api)
+- [Knowledge Injection API](#knowledge-injection-api)
 - [Conversations API](#conversations-api)
 - [Models & Settings](#models--settings)
 - [Error Handling](#error-handling)
@@ -845,6 +846,141 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 │  └─────────────────┘                                            │
 │                                                                   │
 └─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Knowledge Injection API
+
+> **Added in v0.8.0** — Closes [#131](https://github.com/raphaelmansuy/edgequake/issues/131)
+
+Knowledge injection lets you enrich a workspace's knowledge graph with acronym definitions, synonym mappings, and domain glossaries. Injection entries are processed through the standard entity-extraction pipeline but are **never listed as source citations** in query results — they silently improve retrieval quality.
+
+### List Injections
+
+```http
+GET /api/v1/workspaces/{workspace_id}/injection
+X-Workspace-ID: {workspace_id}
+```
+
+**Response 200**
+
+```json
+[
+  {
+    "injection_id": "a1b2c3d4-...",
+    "name": "Domain Glossary",
+    "status": "completed",
+    "entity_count": 15,
+    "content_length": 420,
+    "source_type": "text",
+    "created_at": "2026-04-03T10:00:00Z",
+    "updated_at": "2026-04-03T10:01:30Z"
+  }
+]
+```
+
+### Create / Replace Injection (Text)
+
+```http
+PUT /api/v1/workspaces/{workspace_id}/injection
+Content-Type: application/json
+X-Workspace-ID: {workspace_id}
+
+{
+  "name": "Domain Glossary",
+  "content": "OEE = Overall Equipment Effectiveness\nNLP = Natural Language Processing\n"
+}
+```
+
+**Response 202**
+
+```json
+{
+  "injection_id": "a1b2c3d4-...",
+  "workspace_id": "default",
+  "name": "Domain Glossary",
+  "status": "processing"
+}
+```
+
+### Upload Injection File
+
+```http
+POST /api/v1/workspaces/{workspace_id}/injection/upload
+Content-Type: multipart/form-data
+X-Workspace-ID: {workspace_id}
+
+name=Domain Glossary
+file=@glossary.txt
+```
+
+Accepted MIME types: `text/plain`, `text/markdown`, `application/octet-stream` (for `.md`/`.txt` files).
+
+**Response 202** — same shape as PUT.
+
+### Get Injection Detail
+
+```http
+GET /api/v1/workspaces/{workspace_id}/injection/{injection_id}
+X-Workspace-ID: {workspace_id}
+```
+
+**Response 200**
+
+```json
+{
+  "injection_id": "a1b2c3d4-...",
+  "name": "Domain Glossary",
+  "content": "OEE = Overall Equipment Effectiveness\n...",
+  "status": "completed",
+  "entity_count": 15,
+  "source_type": "text",
+  "created_at": "2026-04-03T10:00:00Z",
+  "updated_at": "2026-04-03T10:01:30Z"
+}
+```
+
+### Update Injection
+
+```http
+PATCH /api/v1/workspaces/{workspace_id}/injection/{injection_id}
+Content-Type: application/json
+X-Workspace-ID: {workspace_id}
+
+{
+  "name": "Updated Glossary",
+  "content": "OEE = Overall Equipment Effectiveness\nKPI = Key Performance Indicator\n"
+}
+```
+
+Updating `content` re-triggers the pipeline (old entities are deleted first). Updating only `name` is instant.
+
+**Response 200** — updated `InjectionDetail`.
+
+### Delete Injection
+
+```http
+DELETE /api/v1/workspaces/{workspace_id}/injection/{injection_id}
+X-Workspace-ID: {workspace_id}
+```
+
+Cascades: removes all KV entries, vectors, graph nodes, and edges created by this injection.
+
+**Response 204 No Content**
+
+### Citation Exclusion
+
+Injection entries enrich the knowledge graph and improve retrieval but are filtered out of `sources` arrays in all query and chat responses:
+
+```json
+{
+  "answer": "OEE stands for Overall Equipment Effectiveness...",
+  "sources": [
+    { "id": "doc-123", "title": "Line 3 Report", "source_type": "chunk" }
+    // injection entries never appear here
+  ]
+}
 ```
 
 ---
