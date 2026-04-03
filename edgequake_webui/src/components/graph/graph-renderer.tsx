@@ -157,6 +157,10 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
   }, [isDark, nodeSize]);
   
   // Function to add edges to existing graph (for streaming)
+  // WHY: forceLabel mirrors the showEdgeLabels setting so edge type text always
+  // appears when the user has toggled "Show Edge Labels" on, even when the
+  // endpoint-node label threshold has not been met (sigma 3.x only draws edge
+  // labels automatically when both endpoint node-labels are visible).
   const addEdgesToGraph = useCallback((graph: Graph, newEdges: GraphEdge[]) => {
     newEdges.forEach((edge) => {
       if (!graph.hasNode(edge.source) || !graph.hasNode(edge.target)) return;
@@ -167,6 +171,7 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
       try {
         graph.addEdgeWithKey(edgeId, edge.source, edge.target, {
           label: edge.relationship_type,
+          forceLabel: showEdgeLabels, // WHY: force-show label when setting is on
           size: Math.max(1, Math.min(edge.weight * 2, 5)),
           color: isDark ? '#4b5563' : '#94a3b8',
           type: 'curvedArrow',
@@ -176,7 +181,7 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
         // Edge already exists or invalid
       }
     });
-  }, [isDark]);
+  }, [isDark, showEdgeLabels]);
   
   // WHY: Track layout performance for adaptive iteration count
   const layoutMetricsRef = useRef({
@@ -361,6 +366,7 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
         try {
           graph.addEdge(edge.source, edge.target, {
             label: edge.relationship_type,
+            forceLabel: showEdgeLabels, // WHY: force-show label when setting is on
             size: Math.max(1, Math.min(edge.weight * 2, 5)),
             color: isDark ? '#4b5563' : '#94a3b8',
             type: 'curvedArrow',
@@ -509,6 +515,13 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
       labelWeight: '500', // Medium weight for better readability
       labelColor: { color: isDark ? LABEL_COLORS.dark : LABEL_COLORS.light },
       labelFont: 'Inter, ui-sans-serif, system-ui, sans-serif',
+      // WHY: Explicit edge-label styling so relation names are clearly legible in
+      // both light and dark themes.  Without these, sigma falls back to using the
+      // edge color as label color (low contrast) and Arial at 14px.
+      edgeLabelSize: 10,
+      edgeLabelFont: 'Inter, ui-sans-serif, system-ui, sans-serif',
+      edgeLabelWeight: '500',
+      edgeLabelColor: { color: isDark ? '#e2e8f0' : '#334155' },
       labelGridCellSize: adaptiveLabelGridCellSize,    // WHY: Larger cells for large graphs
       labelRenderedSizeThreshold: adaptiveLabelThreshold,
       labelDensity: adaptiveLabelDensity,              // WHY: Reduce label density for large graphs

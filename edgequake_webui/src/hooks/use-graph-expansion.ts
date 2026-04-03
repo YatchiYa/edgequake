@@ -15,6 +15,7 @@
 
 import { getEntityNeighborhood } from "@/lib/api/edgequake";
 import { useGraphStore } from "@/stores/use-graph-store";
+import { useSettingsStore } from "@/stores/use-settings-store";
 import type { GraphEdge } from "@/types";
 import forceAtlas2 from "graphology-layout-forceatlas2";
 import { useCallback, useEffect, useRef } from "react";
@@ -55,6 +56,9 @@ export function useGraphExpansion() {
   const sigmaInstance = useGraphStore((s) => s.sigmaInstance);
   const nodes = useGraphStore((s) => s.nodes);
   const expandedNodes = useGraphStore((s) => s.expandedNodes);
+  // WHY: read showEdgeLabels so expanded edges inherit the same forceLabel
+  // behaviour as the initial graph build (fixes issue #91)
+  const showEdgeLabels = useSettingsStore((s) => s.graphSettings.showEdgeLabels ?? false);
 
   // Actions
   const triggerNodeExpand = useGraphStore((s) => s.triggerNodeExpand);
@@ -175,6 +179,7 @@ export function useGraphExpansion() {
             ) {
               sigmaGraph.addEdge(edge.source, edge.target, {
                 label: edge.relationship_type,
+                forceLabel: showEdgeLabels, // WHY: match initial graph forceLabel (issue #91)
                 size: Math.max(1, Math.min((edge.weight || 1) * 2, 5)),
                 color: "#4b5563",
                 type: "curvedArrow",
@@ -235,6 +240,7 @@ export function useGraphExpansion() {
       sigmaInstance,
       nodes,
       expandedNodes,
+      showEdgeLabels,
       setIsExpanding,
       triggerNodeExpand,
       addExpandedNode,
