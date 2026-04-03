@@ -6,7 +6,16 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-#### Disable Demo Login Button in Production — Closes [#139](https://github.com/raphaelmansuy/edgequake/issues/139)
+#### Mermaid Renderer: Curly-Brace Labels, Forward Slashes, and Graceful Fallback — Closes [#141](https://github.com/raphaelmansuy/edgequake/issues/141)
+
+- **Bare curly-brace node expressions** (`{label}` with no preceding node ID) are now detected and rewritten to a valid quoted rectangular node (`_bare_N["label"]`). This eliminates the `DIAMOND_START` parse error that crashed the renderer when the LLM emitted `People --> {Personnes/Gens}`.
+- **Forward slashes `/` and backslashes `\`** inside unquoted square-bracket labels are now included in the sanitiser's special-character class and will be auto-quoted (e.g. `A[yes/no]` → `A["yes/no"]`).
+- **Rhombus/diamond labels** (`NodeId{label}`) containing `/`, `\`, `|`, `<`, or `>` are now quoted in-place while keeping the rhombus shape (e.g. `B{yes/no}` → `B{"yes/no"}`).
+- **Error fallback hardened**: when `mermaid.render()` throws after sanitisation the component now renders a prominent `<pre>` block with the raw Mermaid source and a friendly error message instead of propagating the exception to the Next.js overlay. A collapsible "Show sanitized version" section is shown when the code was rewritten before the failed render.
+- `sanitizeMermaidCode()` exported for direct unit-testing.
+- **23 new unit tests** (`src/components/query/markdown/__tests__/MermaidBlock.test.ts`) covering: bare `{label}` rewrite, forward-slash quoting, backslash quoting, pipe quoting, angle-bracket quoting, rhombus-label quoting, no-regression on already-valid diagrams, code-block stripping, and completeness detection.
+
+
 
 - Added `NEXT_PUBLIC_DISABLE_DEMO_LOGIN` environment variable to the Next.js frontend. When set to `true` at build time, the **"Continue without login (Demo)"** button and its separator are hidden on the login page, preventing unintentional unauthenticated access in production deployments.
 - Updated `.env.example` and `docs/operations/configuration.md` with documentation for the new variable.

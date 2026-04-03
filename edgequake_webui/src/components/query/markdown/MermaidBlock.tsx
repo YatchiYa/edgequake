@@ -86,12 +86,16 @@ async function getMermaid(isDark: boolean) {
  * but syntactically invalid. The most common issues are:
  * 1. Parentheses inside brackets: `A[text (note)]` — Mermaid interprets `(` as shape delimiter
  * 2. Unicode characters in node IDs: `动作模型[label]` — must be ASCII IDs
- * 3. Unquoted labels with special chars: pipes, braces, etc.
+ * 3. Unquoted labels with special chars: pipes, braces, forward slashes, backslashes, etc.
+ * 4. Bare curly-brace expressions `{label}` with no preceding node ID → invalid DIAMOND_START
+ * 5. Forward slashes `/` or backslashes `\` inside node labels without quoting
  *
  * The fix: wrap label text in double quotes when it contains problematic characters.
  * Mermaid supports `A["text with (parens) and 中文"]` syntax.
+ *
+ * Exported for unit-testing.
  */
-function sanitizeMermaidCode(code: string): { sanitized: string; issues: string[] } {
+export function sanitizeMermaidCode(code: string): { sanitized: string; issues: string[] } {
   const issues: string[] = [];
   let sanitized = code.trim();
 
@@ -102,6 +106,7 @@ function sanitizeMermaidCode(code: string): { sanitized: string; issues: string[
   }
 
   const lines = sanitized.split('\n');
+  let bareNodeCounter = 0;
   const fixedLines = lines.map((line) => {
     const trimmed = line.trim();
 
@@ -117,10 +122,9 @@ function sanitizeMermaidCode(code: string): { sanitized: string; issues: string[
 
     // Fix node definitions with bracket-style labels that contain special characters.
     // Matches patterns like: NodeId[label text] or NodeId[label (with parens)]
-    // Captures: (nodeId)(openBracket)(labelText)(closeBracket)
-    // We handle [], (), {}, (()) and >] shapes.
-    return line.replace(
-      /([A-Za-z0-9_\u4e00-\u9fff\u3400-\u4dbf]+)\[([^\]"]*[(){}|><\u4e00-\u9fff\u3400-\u4dbf\u3000-\u303f\uff00-\uffef][^\]"]*)\]/g,
+    // Character class now includes forward-slash `/` and backslash `\`.
+    let processedLine = line.replace(
+      /([A-Za-z0-9_\u4e00-\u9fff\u3400-\u4dbf]+)\[([^\]"]*[(){}|><\/\\\u4e00-\u9fff\u3400-\u4dbf\u3000-\u303f\uff00-\uffef][^\]"]*)\]/g,
       (_match, nodeId: string, labelText: string) => {
         // If the label already has quotes, leave it alone
         if (labelText.startsWith('"') && labelText.endsWith('"')) return _match;
@@ -131,6 +135,36 @@ function sanitizeMermaidCode(code: string): { sanitized: string; issues: string[
         return `${nodeId}["${escaped}"]`;
       }
     );
+
+    // Fix rhombus/diamond nodes with special chars: NodeId{label/with/slashes}
+    // Mermaid `A{label}` is a valid rhombus but the label must be quoted if it
+    // contains `/`, `\`, `|`, `<`, `>` or Unicode.
+    processedLine = processedLine.replace(
+      /([A-Za-z0-9_]+)\{([^}"]*[/\\|<>\u4e00-\u9fff\u3400-\u4dbf][^}"]*)\}/g,
+      (_match, nodeId: string, labelText: string) => {
+        if (labelText.startsWith('"') && labelText.endsWith('"')) return _match;
+        const escaped = labelText.replace(/"/g, '#quot;');
+        issues.push(`Quoted rhombus label: ${nodeId}{"${escaped}"}`);
+        return `${nodeId}{"${escaped}"}`;
+      }
+    );
+
+    // Fix bare curly-brace expressions that have no preceding node ID.
+    // LLMs often emit `A --> {label}` meaning "a node labelled label",
+    // but Mermaid expects `A --> NodeId` or `A --> NodeId["label"]`.
+    // e.g. `People --> {Personnes/Gens}` → `People --> _bare_1["Personnes/Gens"]`
+    // Use a counter scoped to the outer map to produce stable unique IDs.
+    processedLine = processedLine.replace(
+      /(?<![A-Za-z0-9_"])\{([^}]+)\}/g,
+      (_match, content: string) => {
+        bareNodeCounter++;
+        const escaped = content.replace(/"/g, '#quot;');
+        issues.push(`Fixed bare curly-brace node: {${content}} → _bare_${bareNodeCounter}["${escaped}"]`);
+        return `_bare_${bareNodeCounter}["${escaped}"]`;
+      }
+    );
+
+    return processedLine;
   });
   sanitized = fixedLines.join('\n');
 
@@ -330,7 +364,8 @@ export const MermaidBlock = memo(function MermaidBlock({
     );
   }
 
-  // Error state
+  // Error state — graceful <pre> fallback showing raw source with friendly message
+  // instead of propagating the error to the Next.js overlay.
   if (error) {
     return (
       <div
@@ -347,23 +382,22 @@ export const MermaidBlock = memo(function MermaidBlock({
             <p className="text-sm font-medium text-destructive">
               Failed to render Mermaid diagram
             </p>
-            <p className="mt-1 text-xs text-destructive/70 wrap-break-word">{error}</p>
-            <details className="mt-3">
-              <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
-                Show source
-              </summary>
-              <pre className="mt-2 overflow-x-auto rounded bg-muted p-3 text-xs text-muted-foreground">
-                <code>{code}</code>
-              </pre>
-              {sanitizedCode && sanitizedCode !== code && (
-                <>
-                  <p className="mt-2 text-xs text-muted-foreground font-medium">Sanitized version:</p>
-                  <pre className="mt-1 overflow-x-auto rounded bg-muted p-3 text-xs text-muted-foreground">
-                    <code>{sanitizedCode}</code>
-                  </pre>
-                </>
-              )}
-            </details>
+            <p className="mt-1 text-xs text-destructive/70 break-words">{error}</p>
+            {/* Always show the raw source so users can inspect / copy it */}
+            <p className="mt-3 text-xs text-muted-foreground font-medium">Source (raw):</p>
+            <pre className="mt-1 overflow-x-auto rounded bg-muted p-3 text-xs text-muted-foreground whitespace-pre-wrap">
+              <code>{code}</code>
+            </pre>
+            {sanitizedCode && sanitizedCode !== code && (
+              <details className="mt-2">
+                <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
+                  Show sanitized version
+                </summary>
+                <pre className="mt-1 overflow-x-auto rounded bg-muted p-3 text-xs text-muted-foreground whitespace-pre-wrap">
+                  <code>{sanitizedCode}</code>
+                </pre>
+              </details>
+            )}
           </div>
           <Button
             variant="ghost"
