@@ -26,6 +26,7 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { EntityTypeSelector } from '@/components/shared/entity-type-selector';
 import {
     EmbeddingModelSelector,
     type EmbeddingSelection,
@@ -34,6 +35,7 @@ import {
     LLMModelSelector,
     type LLMSelection,
 } from '@/components/workspace/llm-model-selector';
+import { ENTITY_PRESETS } from '@/constants/entity-presets';
 import {
     createTenant,
     createWorkspace,
@@ -103,6 +105,8 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
   const [tenantDefaultEmbedding, setTenantDefaultEmbedding] = useState<EmbeddingSelection | undefined>(undefined);
   // SPEC-041: Tenant default Vision LLM configuration
   const [tenantDefaultVisionLLM, setTenantDefaultVisionLLM] = useState<LLMSelection | undefined>(undefined);
+  // SPEC-085: Custom entity types for new workspace
+  const [workspaceEntityTypes, setWorkspaceEntityTypes] = useState<string[]>([...ENTITY_PRESETS.general.types]);
 
 
   // Generate URL-safe slug from name
@@ -245,6 +249,7 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
       embedding_dimension?: number;
       vision_llm_model?: string;
       vision_llm_provider?: string;
+      entity_types?: string[];
     }) =>
       selectedTenantId
         ? createWorkspace(selectedTenantId, data)
@@ -260,6 +265,7 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
       setWorkspaceLLMSelection(undefined); // Reset LLM selection
       setEmbeddingSelection(undefined); // Reset embedding selection
       setWorkspaceVisionLLMSelection(undefined); // Reset vision LLM selection
+      setWorkspaceEntityTypes([...ENTITY_PRESETS.general.types]); // SPEC-085: Reset entity types
     },
     onError: (error) => {
       toast.error(t('workspace.createFailed', 'Failed to create workspace'), {
@@ -699,6 +705,17 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
                 {t('workspace.visionDescription', 'Vision model for PDF-to-Markdown image extraction. Overrides tenant default.')}
               </p>
             </div>
+            {/* SPEC-085: Entity type configuration */}
+            <div className="grid gap-2">
+              <Label>{t('entityTypes.title', 'Entity Types')}</Label>
+              <p className="text-xs text-muted-foreground">
+                {t('entityTypes.description', 'Types of entities to extract from documents in this workspace.')}
+              </p>
+              <EntityTypeSelector
+                value={workspaceEntityTypes}
+                onChange={setWorkspaceEntityTypes}
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowCreateWorkspace(false)}>
@@ -719,6 +736,8 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
                 // SPEC-041: Include vision LLM configuration if selected
                 vision_llm_model: workspaceVisionLLMSelection?.model,
                 vision_llm_provider: workspaceVisionLLMSelection?.provider,
+                // SPEC-085: Custom entity types
+                entity_types: workspaceEntityTypes.length > 0 ? workspaceEntityTypes : undefined,
               })}
               disabled={!newWorkspaceName.trim() || !workspaceLLMSelection || !embeddingSelection || !workspaceVisionLLMSelection || createWorkspaceMutation.isPending}
             >

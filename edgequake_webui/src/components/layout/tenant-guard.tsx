@@ -1,6 +1,8 @@
 'use client';
 
 import { ModelSelector } from '@/components/models/model-selector';
+import { EntityTypeSelector } from '@/components/shared/entity-type-selector';
+import { ENTITY_PRESETS } from '@/constants/entity-presets';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -69,6 +71,8 @@ export function TenantGuard({ children }: TenantGuardProps) {
   const [workspaceEmbeddingModel, setWorkspaceEmbeddingModel] = useState<string>();
   // SPEC-041: Vision LLM for PDF-to-Markdown extraction (workspace-level override)
   const [workspaceVisionLlmModel, setWorkspaceVisionLlmModel] = useState<string>();
+  // SPEC-085: Custom entity types for workspace
+  const [workspaceEntityTypes, setWorkspaceEntityTypes] = useState<string[]>([...ENTITY_PRESETS.general.types]);
   
   // Track if we're in the middle of context setup (prevents premature children render)
   const [isSettingUpContext, setIsSettingUpContext] = useState(false);
@@ -289,6 +293,8 @@ export function TenantGuard({ children }: TenantGuardProps) {
         ...(embeddingConfig.provider && { embedding_provider: embeddingConfig.provider }),
         ...(visionConfig.model && { vision_llm_model: visionConfig.model }),
         ...(visionConfig.provider && { vision_llm_provider: visionConfig.provider }),
+        // SPEC-085: Custom entity types
+        ...(workspaceEntityTypes.length > 0 && { entity_types: workspaceEntityTypes }),
       };
       
       const newWorkspace = await createWorkspaceMutation.mutateAsync(workspaceData);
@@ -308,6 +314,7 @@ export function TenantGuard({ children }: TenantGuardProps) {
       setWorkspaceLlmModel(undefined);
       setWorkspaceEmbeddingModel(undefined);
       setWorkspaceVisionLlmModel(undefined);
+      setWorkspaceEntityTypes([...ENTITY_PRESETS.general.types]); // SPEC-085: Reset entity types
       setIsSettingUpContext(false);
     } catch (error) {
       setIsSettingUpContext(false);
@@ -315,7 +322,7 @@ export function TenantGuard({ children }: TenantGuardProps) {
         description: error instanceof Error ? error.message : 'Unknown error',
       });
     }
-  }, [newWorkspaceName, newWorkspaceSlug, workspaceLlmModel, workspaceEmbeddingModel, workspaceVisionLlmModel,
+  }, [newWorkspaceName, newWorkspaceSlug, workspaceLlmModel, workspaceEmbeddingModel, workspaceVisionLlmModel, workspaceEntityTypes,
       selectedTenantId, parseModelValue, createWorkspaceMutation, 
       selectWorkspace, setWorkspaces, workspacesData, queryClient, t]);
 
@@ -591,6 +598,17 @@ export function TenantGuard({ children }: TenantGuardProps) {
                 <p className="text-xs text-muted-foreground">
                   {t('workspace.visionLlmModelHint', 'For PDF-to-Markdown image extraction (must support vision)')}
                 </p>
+              </div>
+              {/* SPEC-085: Entity type configuration */}
+              <div className="grid gap-2">
+                <Label>{t('entityTypes.title', 'Entity Types')}</Label>
+                <p className="text-xs text-muted-foreground">
+                  {t('entityTypes.description', 'Types of entities to extract from documents in this workspace.')}
+                </p>
+                <EntityTypeSelector
+                  value={workspaceEntityTypes}
+                  onChange={setWorkspaceEntityTypes}
+                />
               </div>
             </div>
             <DialogFooter>

@@ -42,6 +42,7 @@ import {
     Server,
     Settings,
     Sparkles,
+    Tags,
     XCircle,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -718,6 +719,40 @@ export default function WorkspacePage() {
                   {`${workspace.vision_llm_provider}/${workspace.vision_llm_model}`}
                 </Badge>
               )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Entity Types - SPEC-085: Read-only display of configured entity types */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Tags className="h-5 w-5 text-indigo-600" />
+            {t('entityTypes.title', 'Entity Types')}
+          </CardTitle>
+          <CardDescription>
+            {t('entityTypes.description', 'Types of entities to extract from documents in this workspace.')}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {workspace.entity_types && workspace.entity_types.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {workspace.entity_types.map((type) => (
+                <Badge
+                  key={type}
+                  variant="secondary"
+                  className="text-xs font-mono"
+                  data-testid={`ws-entity-type-${type}`}
+                >
+                  {type}
+                </Badge>
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground">
+              <span className="font-medium">{t('entityTypes.defaults', 'Using server defaults:')}</span>{' '}
+              <span className="font-mono text-xs">{t('entityTypes.defaultsHint', 'PERSON, ORGANIZATION, LOCATION, EVENT, CONCEPT, TECHNOLOGY, PRODUCT, DATE, DOCUMENT')}</span>
             </div>
           )}
         </CardContent>

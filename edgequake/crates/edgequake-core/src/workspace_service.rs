@@ -867,6 +867,7 @@ mod tests {
             embedding_dimension: None,
             vision_llm_model: None,
             vision_llm_provider: None,
+            entity_types: None,
         };
 
         let workspace = service
@@ -901,6 +902,7 @@ mod tests {
                 embedding_dimension: None,
                 vision_llm_model: None,
                 vision_llm_provider: None,
+                entity_types: None,
             };
             service
                 .create_workspace(tenant.tenant_id, request)
@@ -921,6 +923,7 @@ mod tests {
             embedding_dimension: None,
             vision_llm_model: None,
             vision_llm_provider: None,
+            entity_types: None,
         };
         let result = service.create_workspace(tenant.tenant_id, request).await;
         assert!(result.is_err());

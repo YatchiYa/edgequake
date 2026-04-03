@@ -428,6 +428,17 @@ impl WorkspaceService for WorkspaceServiceImpl {
             );
         }
 
+        // SPEC-085: Apply entity type configuration from request
+        // Normalize: uppercase, underscored, deduplicated, max 20 types
+        if let Some(entity_types) = request.entity_types {
+            let normalized = normalize_entity_types(&entity_types);
+            if !normalized.is_empty() {
+                workspace
+                    .metadata
+                    .insert("entity_types".to_string(), serde_json::json!(normalized));
+            }
+        }
+
         sqlx::query(
             r#"
             INSERT INTO workspaces (workspace_id, tenant_id, name, slug, description, is_active, metadata, settings, created_at, updated_at)
@@ -1197,6 +1208,41 @@ impl WorkspaceService for WorkspaceServiceImpl {
         );
         Ok(value)
     }
+}
+
+// ============ Helper Functions ============
+
+/// Normalize entity types for storage.
+///
+/// WHY: Consistent normalization ensures that types like "machine" and "MACHINE"
+/// map to the same entity type, preventing duplicate type entries in the graph.
+///
+/// Rules (per SPEC-085):
+/// - Trim whitespace
+/// - Convert to UPPERCASE
+/// - Replace spaces/hyphens with underscores
+/// - Skip empty strings
+/// - Deduplicate (preserving first occurrence order)
+/// - Cap at 20 types to avoid prompt bloat
+///
+/// @implements SPEC-085: Custom entity configuration normalization
+fn normalize_entity_types(types: &[String]) -> Vec<String> {
+    const MAX_ENTITY_TYPES: usize = 20;
+
+    let mut seen = std::collections::HashSet::new();
+    types
+        .iter()
+        .filter_map(|t| {
+            let normalized = t.trim().to_uppercase().replace(' ', "_").replace('-', "_");
+            if normalized.is_empty() {
+                None
+            } else {
+                Some(normalized)
+            }
+        })
+        .filter(|t| seen.insert(t.clone()))
+        .take(MAX_ENTITY_TYPES)
+        .collect()
 }
 
 // ============ Database Row Types ============

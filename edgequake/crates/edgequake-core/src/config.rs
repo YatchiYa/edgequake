@@ -114,6 +114,8 @@ impl Default for PipelineConfig {
         Self {
             chunk_size: 1200,
             chunk_overlap: 100,
+            // SPEC-085: Use consistent 9 default entity types to match
+            // edgequake_pipeline::prompts::default_entity_types().
             entity_types: vec![
                 "PERSON".to_string(),
                 "ORGANIZATION".to_string(),
@@ -122,6 +124,8 @@ impl Default for PipelineConfig {
                 "CONCEPT".to_string(),
                 "TECHNOLOGY".to_string(),
                 "PRODUCT".to_string(),
+                "DATE".to_string(),
+                "DOCUMENT".to_string(),
             ],
             max_entities_per_chunk: 20,
             max_relations_per_chunk: 20,

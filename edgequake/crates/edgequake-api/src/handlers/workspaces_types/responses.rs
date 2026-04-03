@@ -102,6 +102,12 @@ pub struct WorkspaceResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vision_llm_model: Option<String>,
 
+    // === Entity Type Configuration (SPEC-085) ===
+    /// Custom entity types configured for this workspace.
+    /// None means the workspace uses server default_entity_types.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entity_types: Option<Vec<String>>,
+
     /// Creation timestamp.
     pub created_at: String,
     /// Last update timestamp.

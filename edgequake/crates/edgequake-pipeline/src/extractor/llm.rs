@@ -47,15 +47,9 @@ where
     pub fn new(llm_provider: std::sync::Arc<L>) -> Self {
         Self {
             llm_provider,
-            entity_types: vec![
-                "PERSON".to_string(),
-                "ORGANIZATION".to_string(),
-                "LOCATION".to_string(),
-                "EVENT".to_string(),
-                "CONCEPT".to_string(),
-                "TECHNOLOGY".to_string(),
-                "PRODUCT".to_string(),
-            ],
+            // SPEC-085: Use shared default to align with SOTAExtractor (9 types).
+            // WHY: Previously this used 7 hardcoded types (missing DATE, DOCUMENT).
+            entity_types: crate::prompts::default_entity_types(),
         }
     }
 

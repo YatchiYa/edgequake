@@ -88,6 +88,8 @@ pub async fn create_workspace(
         embedding_dimension,
         vision_llm_model,
         vision_llm_provider,
+        // SPEC-085: Pass entity_types from HTTP request body if provided
+        entity_types: request.entity_types.clone(),
     };
 
     // Store workspace via workspace service
