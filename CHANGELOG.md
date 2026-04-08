@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.8] - 2026-04-09
+
+### Added
+
+- **GPT-5.4 model family** — Added `gpt-5.4` (1M ctx, $2.50/$15/MTok, 128K out), `gpt-5.4-mini` (400K ctx, $0.75/$4.50, fast), and `gpt-5.4-nano` (400K ctx, $0.20/$1.25, ultra-cheap) to the OpenAI provider in `models.toml`. GPT-4 Turbo now points to `gpt-5.4` as its replacement.
+- **Claude Sonnet 4.6** — Added `claude-sonnet-4-6` (1M ctx, $3/$15/MTok, 64K out) as Anthropic's latest recommended model. Fixed `claude-opus-4-6` context window from 200K → 1M tokens.
+- **Gemma 4 model family (Ollama)** — Added `gemma4:latest`, `gemma4:e2b` (7.2GB, 128K ctx), `gemma4:e4b` (9.6GB, 128K ctx), `gemma4:26b` (MoE, 256K ctx), `gemma4:31b` (dense, 256K ctx). Gemma 4 models support multimodal input including audio.
+- **Default model updated** — Changed default Ollama LLM from `gemma3:12b` → `gemma4:e4b` for better multimodal support and performance.
+
+### Fixed
+
+- **"LLM error: Network error: builder error"** — When selecting a cloud LLM provider (OpenAI, Anthropic, etc.) without the corresponding API key configured, the system now returns a clear `ConfigError` before attempting to build the HTTP client, instead of the cryptic reqwest `builder error`. The error message now instructs the user to set the required environment variable or switch to the Ollama provider.
+
 ## [0.9.7] - 2026-04-08
 
 ### Fixed
