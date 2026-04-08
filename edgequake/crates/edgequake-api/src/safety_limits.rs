@@ -307,8 +307,33 @@ impl EmbeddingProvider for SafetyLimitedEmbeddingProviderWrapper {
     }
 }
 
+/// Validate that the required API key environment variable is set and non-empty for the
+/// given provider, returning a clear `ConfigError` before attempting to build the client.
+fn check_api_key(provider_name: &str) -> Result<()> {
+    let (env_var, display_name) = match provider_name {
+        "openai" => ("OPENAI_API_KEY", "OpenAI"),
+        "anthropic" => ("ANTHROPIC_API_KEY", "Anthropic"),
+        "gemini" => ("GEMINI_API_KEY", "Gemini"),
+        "mistral" => ("MISTRAL_API_KEY", "Mistral"),
+        "xai" => ("XAI_API_KEY", "xAI"),
+        "openrouter" => ("OPENROUTER_API_KEY", "OpenRouter"),
+        _ => return Ok(()), // Local / key-less providers (ollama, lmstudio, mock, etc.)
+    };
+    let key_present =
+        std::env::var(env_var).map(|v| !v.trim().is_empty()).unwrap_or(false);
+    if !key_present {
+        return Err(LlmError::ConfigError(format!(
+            "{env_var} is not set. To use the {display_name} provider, \
+             set the environment variable and restart the server. \
+             Alternatively, select the Ollama provider which runs locally."
+        )));
+    }
+    Ok(())
+}
+
 /// Create a safety-limited LLM provider from workspace configuration.
 pub fn create_safe_llm_provider(provider_name: &str, model: &str) -> Result<Arc<dyn LLMProvider>> {
+    check_api_key(provider_name)?;
     let inner = ProviderFactory::create_llm_provider(provider_name, model)?;
     let config = SafetyLimitsConfig::from_env();
 

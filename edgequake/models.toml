@@ -32,7 +32,7 @@
 
 [defaults]
 llm_provider = "ollama"              # Default LLM provider
-llm_model = "gemma3:12b"             # Default LLM model (128K context, vision support)
+llm_model = "gemma4:e4b"             # Default LLM model (128K context, multimodal+audio, 9.6GB)
 embedding_provider = "ollama"        # Default embedding provider
 embedding_model = "embeddinggemma"   # Default embedding model (768 dimensions, 2K context)
 
@@ -201,13 +201,88 @@ output_per_1k = 0.0004
 embedding_per_1k = 0.0
 image_per_unit = 0.0
 
+# --- GPT-5.4 Series (Latest Flagship, April 2026) ---
+# Verified from: https://platform.openai.com/docs/models
+
+[[providers.models]]
+name = "gpt-5.4"
+display_name = "GPT-5.4"
+model_type = "llm"
+description = "OpenAI's latest flagship model — supersedes GPT-4.1 with 1M context and best reasoning"
+deprecated = false
+tags = ["latest", "flagship", "reasoning"]
+
+[providers.models.capabilities]
+context_length = 1000000
+max_output_tokens = 128000
+supports_vision = true
+supports_function_calling = true
+supports_json_mode = true
+supports_streaming = true
+supports_system_message = true
+embedding_dimension = 0
+
+[providers.models.cost]
+input_per_1k = 0.0025
+output_per_1k = 0.015
+embedding_per_1k = 0.0
+image_per_unit = 0.0
+
+[[providers.models]]
+name = "gpt-5.4-mini"
+display_name = "GPT-5.4 Mini"
+model_type = "llm"
+description = "Fast, cost-effective GPT-5.4 class model with 400K context"
+deprecated = false
+tags = ["recommended", "cost-effective", "fast"]
+
+[providers.models.capabilities]
+context_length = 400000
+max_output_tokens = 128000
+supports_vision = true
+supports_function_calling = true
+supports_json_mode = true
+supports_streaming = true
+supports_system_message = true
+embedding_dimension = 0
+
+[providers.models.cost]
+input_per_1k = 0.00075
+output_per_1k = 0.0045
+embedding_per_1k = 0.0
+image_per_unit = 0.0
+
+[[providers.models]]
+name = "gpt-5.4-nano"
+display_name = "GPT-5.4 Nano"
+model_type = "llm"
+description = "Ultra-low-cost GPT-5.4 class model for high-volume tasks"
+deprecated = false
+tags = ["ultra-efficient", "lowest-cost", "fast"]
+
+[providers.models.capabilities]
+context_length = 400000
+max_output_tokens = 128000
+supports_vision = true
+supports_function_calling = true
+supports_json_mode = true
+supports_streaming = true
+supports_system_message = true
+embedding_dimension = 0
+
+[providers.models.cost]
+input_per_1k = 0.0002
+output_per_1k = 0.00125
+embedding_per_1k = 0.0
+image_per_unit = 0.0
+
 [[providers.models]]
 name = "gpt-4-turbo"
 display_name = "GPT-4 Turbo"
 model_type = "llm"
-description = "Legacy model, use GPT-4.1 or GPT-4o instead"
+description = "Legacy model, use GPT-5.4 or GPT-4o instead"
 deprecated = true
-replacement = "gpt-4.1"
+replacement = "gpt-5.4"
 tags = ["legacy"]
 
 [providers.models.capabilities]
@@ -662,6 +737,130 @@ output_per_1k = 0.0
 embedding_per_1k = 0.0
 image_per_unit = 0.0
 
+# --- Gemma 4 Models (Google, April 2026 — New!) ---
+# Verified from: https://ollama.com/library/gemma4
+# Gemma 4 features: multimodal (text+images+audio), 128K–256K context
+
+[[providers.models]]
+name = "gemma4:latest"
+display_name = "Gemma 4 (Latest)"
+model_type = "multimodal"
+description = "Google's Gemma 4 frontier model (alias for gemma4:e4b) — multimodal, audio, 128K context"
+deprecated = false
+tags = ["recommended", "latest", "multimodal", "vision", "audio", "local", "free"]
+
+[providers.models.capabilities]
+context_length = 128000
+max_output_tokens = 8192
+supports_vision = true
+supports_function_calling = true
+supports_json_mode = true
+supports_streaming = true
+supports_system_message = true
+embedding_dimension = 0
+
+[providers.models.cost]
+input_per_1k = 0.0
+output_per_1k = 0.0
+embedding_per_1k = 0.0
+image_per_unit = 0.0
+
+[[providers.models]]
+name = "gemma4:e2b"
+display_name = "Gemma 4 E2B (Edge)"
+model_type = "multimodal"
+description = "Google's Gemma 4 edge model (2B effective params, 7.2GB, 128K context, multimodal+audio)"
+deprecated = false
+tags = ["edge", "lightweight", "multimodal", "vision", "audio", "local", "free"]
+
+[providers.models.capabilities]
+context_length = 128000
+max_output_tokens = 8192
+supports_vision = true
+supports_function_calling = true
+supports_json_mode = true
+supports_streaming = true
+supports_system_message = true
+embedding_dimension = 0
+
+[providers.models.cost]
+input_per_1k = 0.0
+output_per_1k = 0.0
+embedding_per_1k = 0.0
+image_per_unit = 0.0
+
+[[providers.models]]
+name = "gemma4:e4b"
+display_name = "Gemma 4 E4B (Edge)"
+model_type = "multimodal"
+description = "Google's Gemma 4 edge model (4B effective params, 9.6GB, 128K context, multimodal+audio) — recommended default"
+deprecated = false
+tags = ["recommended", "default", "multimodal", "vision", "audio", "local", "free"]
+
+[providers.models.capabilities]
+context_length = 128000
+max_output_tokens = 8192
+supports_vision = true
+supports_function_calling = true
+supports_json_mode = true
+supports_streaming = true
+supports_system_message = true
+embedding_dimension = 0
+
+[providers.models.cost]
+input_per_1k = 0.0
+output_per_1k = 0.0
+embedding_per_1k = 0.0
+image_per_unit = 0.0
+
+[[providers.models]]
+name = "gemma4:26b"
+display_name = "Gemma 4 26B (MoE)"
+model_type = "multimodal"
+description = "Google's Gemma 4 26B MoE model (25.2B total / 3.8B active params, 18GB, 256K context)"
+deprecated = false
+tags = ["large", "moe", "multimodal", "vision", "audio", "local", "free"]
+
+[providers.models.capabilities]
+context_length = 256000
+max_output_tokens = 8192
+supports_vision = true
+supports_function_calling = true
+supports_json_mode = true
+supports_streaming = true
+supports_system_message = true
+embedding_dimension = 0
+
+[providers.models.cost]
+input_per_1k = 0.0
+output_per_1k = 0.0
+embedding_per_1k = 0.0
+image_per_unit = 0.0
+
+[[providers.models]]
+name = "gemma4:31b"
+display_name = "Gemma 4 31B"
+model_type = "multimodal"
+description = "Google's Gemma 4 dense 31B model (30.7B params, 20GB, 256K context) — best quality local"
+deprecated = false
+tags = ["large", "dense", "multimodal", "vision", "audio", "local", "free", "high-quality"]
+
+[providers.models.capabilities]
+context_length = 256000
+max_output_tokens = 8192
+supports_vision = true
+supports_function_calling = true
+supports_json_mode = true
+supports_streaming = true
+supports_system_message = true
+embedding_dimension = 0
+
+[providers.models.cost]
+input_per_1k = 0.0
+output_per_1k = 0.0
+embedding_per_1k = 0.0
+image_per_unit = 0.0
+
 # --- Ollama Embedding Models ---
 
 [[providers.models]]
@@ -1048,12 +1247,12 @@ description = "Anthropic Claude models - Excellent for analysis and long-form co
 name = "claude-opus-4-6"
 display_name = "Claude Opus 4.6"
 model_type = "llm"
-description = "Anthropic's most capable model with 200K context and 128K max output"
+description = "Anthropic's most capable model with 1M context and 128K max output"
 deprecated = false
 tags = ["flagship", "reasoning", "latest"]
 
 [providers.models.capabilities]
-context_length = 200000
+context_length = 1000000
 max_output_tokens = 128000
 supports_vision = true
 supports_function_calling = true
@@ -1065,6 +1264,33 @@ embedding_dimension = 0
 [providers.models.cost]
 input_per_1k = 0.005
 output_per_1k = 0.025
+embedding_per_1k = 0.0
+image_per_unit = 0.0
+
+# --- Claude Sonnet 4.6 (Latest Recommended, April 2026) ---
+# Verified from: https://docs.anthropic.com/en/docs/models-overview
+
+[[providers.models]]
+name = "claude-sonnet-4-6"
+display_name = "Claude Sonnet 4.6"
+model_type = "llm"
+description = "Anthropic's latest recommended model — best balance of speed and intelligence (1M context, 64K out)"
+deprecated = false
+tags = ["recommended", "latest", "balanced"]
+
+[providers.models.capabilities]
+context_length = 1000000
+max_output_tokens = 64000
+supports_vision = true
+supports_function_calling = true
+supports_json_mode = true
+supports_streaming = true
+supports_system_message = true
+embedding_dimension = 0
+
+[providers.models.cost]
+input_per_1k = 0.003
+output_per_1k = 0.015
 embedding_per_1k = 0.0
 image_per_unit = 0.0
 
