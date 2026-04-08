@@ -1286,38 +1286,44 @@ impl TenantRow {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        // SPEC-032: Extract default LLM config from metadata
+        // SPEC-032: Extract default LLM config from metadata.
+        // WHY: Use env-aware defaults (same as Workspace::default_llm_config)
+        // so Docker deployments with EDGEQUAKE_LLM_PROVIDER=openai propagate
+        // correctly to new workspaces created under this tenant.
+        let (env_llm_model, env_llm_provider) = Workspace::default_llm_config();
         let default_llm_model = self
             .metadata
             .get("default_llm_model")
             .and_then(|v| v.as_str())
-            .unwrap_or(crate::types::DEFAULT_LLM_MODEL)
-            .to_string();
+            .map(|s| s.to_string())
+            .unwrap_or(env_llm_model);
         let default_llm_provider = self
             .metadata
             .get("default_llm_provider")
             .and_then(|v| v.as_str())
-            .unwrap_or(crate::types::DEFAULT_LLM_PROVIDER)
-            .to_string();
+            .map(|s| s.to_string())
+            .unwrap_or(env_llm_provider);
 
-        // SPEC-032: Extract default embedding config from metadata
+        // SPEC-032: Extract default embedding config from metadata.
+        let (env_emb_model, env_emb_provider, env_emb_dim) = Workspace::default_embedding_config();
         let default_embedding_model = self
             .metadata
             .get("default_embedding_model")
             .and_then(|v| v.as_str())
-            .unwrap_or(crate::types::DEFAULT_EMBEDDING_MODEL)
-            .to_string();
+            .map(|s| s.to_string())
+            .unwrap_or(env_emb_model);
         let default_embedding_provider = self
             .metadata
             .get("default_embedding_provider")
             .and_then(|v| v.as_str())
-            .unwrap_or(crate::types::DEFAULT_EMBEDDING_PROVIDER)
-            .to_string();
-        let default_embedding_dimension =
-            self.metadata
-                .get("default_embedding_dimension")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(crate::types::DEFAULT_EMBEDDING_DIMENSION as u64) as usize;
+            .map(|s| s.to_string())
+            .unwrap_or(env_emb_provider);
+        let default_embedding_dimension = self
+            .metadata
+            .get("default_embedding_dimension")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize)
+            .unwrap_or(env_emb_dim);
 
         // SPEC-041: Extract default vision LLM config from metadata
         let default_vision_llm_provider = self
@@ -1382,34 +1388,42 @@ impl WorkspaceRow {
                 HashMap::new()
             };
 
-        // SPEC-032: Extract LLM config from metadata
+        // SPEC-032: Extract LLM config from metadata.
+        // WHY: When the workspace has no LLM config in metadata (empty `{}`),
+        // we must fall back to env-aware defaults (Workspace::default_llm_config)
+        // instead of hardcoded Ollama constants. This ensures Docker/Portainer
+        // deployments that set EDGEQUAKE_LLM_PROVIDER=openai get OpenAI for
+        // entity extraction, not a broken Ollama fallback.
+        let (env_llm_model, env_llm_provider) = Workspace::default_llm_config();
         let llm_model = metadata
             .get("llm_model")
             .and_then(|v| v.as_str())
-            .unwrap_or(crate::types::DEFAULT_LLM_MODEL)
-            .to_string();
+            .map(|s| s.to_string())
+            .unwrap_or(env_llm_model);
         let llm_provider = metadata
             .get("llm_provider")
             .and_then(|v| v.as_str())
-            .unwrap_or(crate::types::DEFAULT_LLM_PROVIDER)
-            .to_string();
+            .map(|s| s.to_string())
+            .unwrap_or(env_llm_provider);
 
-        // SPEC-032: Extract embedding config from metadata
+        // SPEC-032: Extract embedding config from metadata.
+        // Same env-aware fallback as LLM config above.
+        let (env_emb_model, env_emb_provider, env_emb_dim) = Workspace::default_embedding_config();
         let embedding_model = metadata
             .get("embedding_model")
             .and_then(|v| v.as_str())
-            .unwrap_or(crate::types::DEFAULT_EMBEDDING_MODEL)
-            .to_string();
+            .map(|s| s.to_string())
+            .unwrap_or(env_emb_model);
         let embedding_provider = metadata
             .get("embedding_provider")
             .and_then(|v| v.as_str())
-            .unwrap_or(crate::types::DEFAULT_EMBEDDING_PROVIDER)
-            .to_string();
+            .map(|s| s.to_string())
+            .unwrap_or(env_emb_provider);
         let embedding_dimension = metadata
             .get("embedding_dimension")
             .and_then(|v| v.as_u64())
-            .unwrap_or(crate::types::DEFAULT_EMBEDDING_DIMENSION as u64)
-            as usize;
+            .map(|v| v as usize)
+            .unwrap_or(env_emb_dim);
 
         // SPEC-040: Extract vision LLM config from metadata
         let vision_llm_provider = metadata

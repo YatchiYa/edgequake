@@ -218,11 +218,11 @@ impl Workspace {
     /// actually compatible with the chosen provider.
     pub fn default_model_for_provider(provider: &str) -> String {
         match provider {
-            "openai" => "gpt-4o-mini".to_string(),
-            "anthropic" => "claude-3-haiku-20240307".to_string(),
-            "gemini" => "gemini-1.5-flash".to_string(),
+            "openai" => "gpt-5-mini".to_string(),
+            "anthropic" => "claude-sonnet-4-20250514".to_string(),
+            "gemini" => "gemini-2.5-flash".to_string(),
             "mistral" => "mistral-small-latest".to_string(),
-            "xai" => "grok-beta".to_string(),
+            "xai" => "grok-3-mini".to_string(),
             "lmstudio" | "openai-compatible" => "local-model".to_string(),
             // ollama and everything else: use the compiled-in Ollama default.
             _ => DEFAULT_LLM_MODEL.to_string(),
@@ -506,7 +506,7 @@ mod tests {
     fn test_default_model_openai() {
         assert_eq!(
             Workspace::default_model_for_provider("openai"),
-            "gpt-4o-mini"
+            "gpt-5-mini"
         );
     }
 
@@ -569,7 +569,7 @@ mod tests {
 
         assert_eq!(provider, "openai");
         assert_eq!(
-            model, "gpt-4o-mini",
+            model, "gpt-5-mini",
             "Should pick the sensible OpenAI default when no model is explicitly set"
         );
     }

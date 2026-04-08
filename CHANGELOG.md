@@ -8,6 +8,10 @@ All notable changes to this project will be documented in this file.
 
 - **Stale `edgequake.tasks` VIEW** — Migration 001 created schema views with `SELECT *` which bakes the column list at creation time. Migration 020 added `error`, `consecutive_timeout_failures`, `circuit_breaker_tripped` columns to `public.tasks` but the view was never refreshed. This caused `column "error" does not exist` errors when listing tasks. Migration 031 recreates all edgequake schema views.
 
+- **Workspace LLM provider ignores environment variables** — When workspace metadata in the database was empty (`{}`), `WorkspaceRow::into_workspace()` fell back to hardcoded `DEFAULT_LLM_PROVIDER = "ollama"` instead of reading `EDGEQUAKE_LLM_PROVIDER` / `OPENAI_API_KEY` from environment. This caused entity extraction to fail in Docker deployments where OpenAI was the intended provider, because the pipeline tried to connect to a non-existent Ollama at `localhost:11434`. The same fix was applied to `TenantRow::into_tenant()` for consistency.
+
+- **Stale default model names** — Updated `default_model_for_provider()` defaults: `gpt-4o-mini` → `gpt-5-mini`, `claude-3-haiku` → `claude-sonnet-4`, `gemini-1.5-flash` → `gemini-2.5-flash`, `grok-beta` → `grok-3-mini`.
+
 ## [0.9.4] - 2026-04-08
 
 ### Added
