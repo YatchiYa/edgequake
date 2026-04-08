@@ -1398,11 +1398,13 @@ impl WorkspaceRow {
         let llm_model = metadata
             .get("llm_model")
             .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty()) // WHY: empty string stored from Docker ${VAR:-} must not override env default
             .map(|s| s.to_string())
             .unwrap_or(env_llm_model);
         let llm_provider = metadata
             .get("llm_provider")
             .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty()) // WHY: same empty-string guard as llm_model
             .map(|s| s.to_string())
             .unwrap_or(env_llm_provider);
 
@@ -1412,11 +1414,13 @@ impl WorkspaceRow {
         let embedding_model = metadata
             .get("embedding_model")
             .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty()) // WHY: empty string from Docker ${VAR:-} must not override env default
             .map(|s| s.to_string())
             .unwrap_or(env_emb_model);
         let embedding_provider = metadata
             .get("embedding_provider")
             .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty()) // WHY: same empty-string guard — prevents "Unknown embedding provider: ''"
             .map(|s| s.to_string())
             .unwrap_or(env_emb_provider);
         let embedding_dimension = metadata

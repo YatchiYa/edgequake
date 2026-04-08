@@ -693,8 +693,14 @@ mod tests {
         std::env::remove_var(key_model);
 
         // Must fall back to the hard-coded Ollama defaults, NOT use empty string
-        assert_eq!(provider, DEFAULT_EMBEDDING_PROVIDER, "empty env var must not override the default provider");
-        assert_eq!(model, DEFAULT_EMBEDDING_MODEL, "empty env var must not override the default model");
+        assert_eq!(
+            provider, DEFAULT_EMBEDDING_PROVIDER,
+            "empty env var must not override the default provider"
+        );
+        assert_eq!(
+            model, DEFAULT_EMBEDDING_MODEL,
+            "empty env var must not override the default model"
+        );
     }
 
     /// Same empty-string guard for LLM config.
@@ -718,7 +724,13 @@ mod tests {
         std::env::remove_var(key_default_model);
         std::env::remove_var(key_model);
 
-        assert_eq!(provider, DEFAULT_LLM_PROVIDER, "empty env var must not override the default provider");
-        assert_eq!(model, DEFAULT_LLM_MODEL, "empty env var must not override the default model");
+        assert_eq!(
+            provider, DEFAULT_LLM_PROVIDER,
+            "empty env var must not override the default provider"
+        );
+        assert_eq!(
+            model, DEFAULT_LLM_MODEL,
+            "empty env var must not override the default model"
+        );
     }
 }
