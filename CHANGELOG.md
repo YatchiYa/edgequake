@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.5] - 2026-04-08
+
+### Fixed
+
+- **Stale `edgequake.tasks` VIEW** — Migration 001 created schema views with `SELECT *` which bakes the column list at creation time. Migration 020 added `error`, `consecutive_timeout_failures`, `circuit_breaker_tripped` columns to `public.tasks` but the view was never refreshed. This caused `column "error" does not exist` errors when listing tasks. Migration 031 recreates all edgequake schema views.
+
 ## [0.9.4] - 2026-04-08
 
 ### Added
