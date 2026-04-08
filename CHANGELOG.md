@@ -2,11 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.9.10] - 2026-04-09
 
 ### Fixed
 
 - **Empty embedding provider crashes document ingestion** — When `EDGEQUAKE_EMBEDDING_PROVIDER` (or its `DEFAULT_` variant) is set to an empty string in Docker Compose via `${VAR:-}` expansion, `std::env::var` returns `Ok("")` rather than `Err`, causing the empty string to silently override the hard-coded Ollama default. The workspace provider resolution chain now filters out empty strings at every step so that `${VAR:-}` and unset variables are treated identically. Symptoms: `"Unknown embedding provider: ''"` error on all document uploads after a fresh quickstart.
+
+- **Existing DB workspaces retain empty embedding_provider after upgrade** — Workspaces created with an old Docker image had `embedding_provider=""` stored in their metadata JSONB column. `WorkspaceRow::into_workspace()` did not filter these empty strings, so even after the env-var fix the loaded workspace struct still carried an empty provider string. Added `.filter(|s| !s.is_empty())` before the `unwrap_or` fallback for all four provider/model fields so that empty-string DB values fall back to the env-var-aware runtime defaults.
 
 - **Quickstart stale compose file causes silent misconfiguration on re-runs** — The quickstart script previously skipped downloading `docker-compose.quickstart.yml` when the file already existed. If a user had re-run the script after an EdgeQuake update, the old compose file (missing new env vars like `EDGEQUAKE_EMBEDDING_MODEL`) was reused silently. The script now always downloads a fresh copy, backing up the previous file to `docker-compose.quickstart.yml.bak`.
 
