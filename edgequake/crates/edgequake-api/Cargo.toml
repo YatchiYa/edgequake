@@ -23,11 +23,10 @@ edgequake-tasks = { path = "../edgequake-tasks", features = ["postgres"] }
 edgequake-auth = { path = "../edgequake-auth" }
 edgequake-rate-limiter = { path = "../edgequake-rate-limiter" }
 edgequake-audit = { path = "../edgequake-audit" }
-# PDF vision extraction via VLM — bundled pdfium, multi-provider, lazy streaming pipeline
-# WHY: edgequake-pdf2md provides higher quality vision extraction than internal implementation
-# v0.8.0: bumps edgequake-llm to 0.5.1 — resolves diamond dep conflict with edgequake workspace
-# TODO: update to =0.8.0 once https://github.com/raphaelmansuy/edgequake-pdf2md/pull/22 is merged and published
-edgequake-pdf2md = "=0.7.0"
+# PDF vision extraction via VLM — bundled pdfium, multi-provider, lazy streaming pipeline.
+# WHY: edgequake-pdf2md provides higher quality vision extraction than internal implementation.
+# v0.8.0: shares edgequake-llm 0.5.1 — resolves diamond dep conflict (PR raphaelmansuy/edgequake-pdf2md#22).
+edgequake-pdf2md = "=0.8.0"
 
 axum.workspace = true
 axum-extra = { version = "0.10", features = ["multipart"] }

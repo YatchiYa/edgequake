@@ -1,0 +1,104 @@
+# EdgeQuake — Full stack using prebuilt GHCR images
+#
+# This is the fastest way to get EdgeQuake running locally.
+# The EdgeQuake API binary is pulled from GitHub Container Registry (no Rust
+# toolchain or cargo build required).
+# PostgreSQL is built locally from the minimal Dockerfile.postgres because the
+# Apache AGE + pgvector extensions require a patched image that is not on Docker Hub.
+#
+# Quick start:
+#   cd edgequake/docker
+#   cp .env.example .env        # set your LLM provider + API key
+#   docker compose -f docker-compose.prebuilt.yml up -d
+#   curl http://localhost:8080/health
+#
+# Use a specific version:
+#   EDGEQUAKE_VERSION=0.9.1 docker compose -f docker-compose.prebuilt.yml up -d
+#
+# Use OPENAI instead of Ollama:
+#   EDGEQUAKE_LLM_PROVIDER=openai OPENAI_API_KEY=sk-... \
+#     docker compose -f docker-compose.prebuilt.yml up -d
+
+services:
+  # ── EdgeQuake API ─────────────────────────────────────────────────────────
+  # Pulled from GHCR — no build step needed.
+  # Multi-arch: linux/amd64 and linux/arm64 (Apple Silicon, AWS Graviton).
+  edgequake:
+    image: ghcr.io/raphaelmansuy/edgequake:${EDGEQUAKE_VERSION:-latest}
+    container_name: edgequake
+    restart: unless-stopped
+    ports:
+      - "${EDGEQUAKE_PORT:-8080}:8080"
+    environment:
+      - EDGEQUAKE_HOST=0.0.0.0
+      - EDGEQUAKE_PORT=8080
+      - DATABASE_URL=postgres://edgequake:${POSTGRES_PASSWORD:-edgequake_secret}@postgres:5432/edgequake
+      # LLM provider — default: ollama (no API key cost)
+      - EDGEQUAKE_LLM_PROVIDER=${EDGEQUAKE_LLM_PROVIDER:-ollama}
+      - EDGEQUAKE_EMBEDDING_PROVIDER=${EDGEQUAKE_EMBEDDING_PROVIDER:-}
+      # Provider API keys — leave empty if not using that provider
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY:-}
+      - XAI_API_KEY=${XAI_API_KEY:-}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT:-}
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT:-}
+      - GOOGLE_ACCESS_TOKEN=${GOOGLE_ACCESS_TOKEN:-}
+      # WHY host.docker.internal: Ollama typically runs on the host, not inside
+      # Docker. Using the gateway address lets the container reach the host port.
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://host.docker.internal:11434}
+      - EDGEQUAKE_EMBEDDING_MODEL=${EDGEQUAKE_EMBEDDING_MODEL:-}
+      - EDGEQUAKE_EMBEDDING_DIMENSION=${EDGEQUAKE_EMBEDDING_DIMENSION:-}
+      - EDGEQUAKE_VISION_TIMEOUT_SECS=${EDGEQUAKE_VISION_TIMEOUT_SECS:-600}
+      - RUST_LOG=${RUST_LOG:-info}
+    # Linux only: lets host.docker.internal resolve to the Docker host IP.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - edgequake-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── PostgreSQL with pgvector + Apache AGE ─────────────────────────────────
+  # WHY built locally: Apache AGE requires a custom build — no official prebuilt
+  # Docker Hub image provides both pgvector AND apache_age in one image.
+  postgres:
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    container_name: edgequake-postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      - POSTGRES_USER=edgequake
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-edgequake_secret}
+      - POSTGRES_DB=edgequake
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init-extensions.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - edgequake-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U edgequake -d edgequake"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  postgres-data:
+    driver: local
+
+networks:
+  edgequake-network:
+    driver: bridge

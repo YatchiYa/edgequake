@@ -144,10 +144,9 @@ criterion = { version = "0.5", features = ["async_tokio"] }
 edgequake-api = { path = "crates/edgequake-api" }
 edgequake-auth = { path = "crates/edgequake-auth" }
 edgequake-core = { path = "crates/edgequake-core" }
-# NOTE: pinned at 0.3.0 until edgequake-pdf2md 0.8.0 is published on crates.io
-# (PR: https://github.com/raphaelmansuy/edgequake-pdf2md/pull/22)
-# Once published, bump both this and edgequake-pdf2md to resolve the diamond dep.
-edgequake-llm = "0.3.0"
+# v0.5.1: adds Azure OpenAI, Mistral AI, Vertex AI; streaming usage fixes; image generation API.
+# Diamond dep resolved: edgequake-pdf2md =0.8.0 also declares llm 0.5.1 (PR #22 squash-merged).
+edgequake-llm = "0.5.1"
 edgequake-pipeline = { path = "crates/edgequake-pipeline" }
 edgequake-query = { path = "crates/edgequake-query" }
 edgequake-storage = { path = "crates/edgequake-storage" }

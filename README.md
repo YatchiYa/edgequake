@@ -419,25 +419,27 @@ See the [CHANGELOG.md](CHANGELOG.md) for SDK and core updates.
 
 ## Docker Deployment
 
-EdgeQuake ships a production-ready multi-arch Docker image published to **GitHub Container Registry** on every tagged release.
-
-### Pull the Image
+EdgeQuake ships a production-ready multi-arch Docker image published to **GitHub Container Registry (GHCR)** on every tagged release. Supports `linux/amd64` (x86 servers, Intel Macs) and `linux/arm64` (Apple Silicon, AWS Graviton) out of the box — no QEMU emulation needed.
 
 ```bash
-# Latest release (linux/amd64 or linux/arm64 — auto-selected)
+# Pull latest release — architecture is selected automatically
 docker pull ghcr.io/raphaelmansuy/edgequake:latest
 
-# Specific version
+# Pin to a specific version
 docker pull ghcr.io/raphaelmansuy/edgequake:0.9.1
 ```
+
+Three deployment options are available depending on your setup:
 
 ---
 
 ### Option A — API only (bring your own PostgreSQL)
 
-Use this when you already have a PostgreSQL instance (with `pgvector` + `apache_age` extensions) and only need the EdgeQuake backend:
+Fastest start if you already have PostgreSQL (with `pgvector` + `apache_age` extensions).
+No Rust toolchain, no local build — just pull and run.
 
 ```bash
+# One-liner
 docker run -d \
   --name edgequake \
   -p 8080:8080 \
@@ -445,36 +447,71 @@ docker run -d \
   -e EDGEQUAKE_LLM_PROVIDER=openai \
   -e OPENAI_API_KEY="sk-..." \
   ghcr.io/raphaelmansuy/edgequake:latest
+
+# Verify
+curl http://localhost:8080/health
 ```
 
-Or with `docker compose` using `edgequake/docker/docker-compose.api-only.yml`:
+Or with `docker compose` (recommended for persistent config):
 
 ```bash
-# Copy and edit the env file
-cp edgequake/docker/.env.example .env
-# Set DATABASE_URL, provider keys, etc.
-
-docker compose -f edgequake/docker/docker-compose.api-only.yml up -d
+cd edgequake/docker
+cp .env.example .env        # set DATABASE_URL and provider key(s)
+docker compose -f docker-compose.api-only.yml up -d
+curl http://localhost:8080/health
 ```
 
 ---
 
-### Option B — Full stack (PostgreSQL + API + Frontend)
+### Option B — Full stack using prebuilt images *(fastest, no Rust needed)*
 
-Use this for a complete self-contained deployment. Everything — database, backend and UI — starts together:
+Pulls the prebuilt EdgeQuake API image from GHCR and builds only the PostgreSQL image locally (required because Apache AGE + pgvector need a patched Postgres — no official combined image exists). No Rust toolchain required.
 
 ```bash
 cd edgequake/docker
-docker compose up -d
+cp .env.example .env        # set EDGEQUAKE_LLM_PROVIDER and your API key
+docker compose -f docker-compose.prebuilt.yml up -d
 ```
 
 Services started:
 
-| Service              | Port | Description                           |
-| -------------------- | ---- | ------------------------------------- |
-| `edgequake` API      | 8080 | REST API + document processing        |
-| `frontend` (Next.js) | 3000 | Web UI                                |
-| `postgres`           | 5432 | PostgreSQL with pgvector + Apache AGE |
+| Service         | Port | Image / Build                                       |
+|-----------------|------|-----------------------------------------------------|
+| `edgequake` API | 8080 | `ghcr.io/raphaelmansuy/edgequake:latest` (pulled)   |
+| `postgres`      | 5432 | Built locally from `Dockerfile.postgres` (pgvector + AGE) |
+
+```bash
+# Use a specific API version
+EDGEQUAKE_VERSION=0.9.1 docker compose -f docker-compose.prebuilt.yml up -d
+
+# Logs
+docker compose -f docker-compose.prebuilt.yml logs -f edgequake
+
+# Health check
+curl http://localhost:8080/health
+
+# Stop
+docker compose -f docker-compose.prebuilt.yml down
+```
+
+---
+
+### Option C — Full stack, build from source (includes frontend)
+
+Builds everything locally including the Next.js web UI. Requires Docker BuildKit and sufficient disk space (~4 GB for the Rust build cache).
+
+```bash
+cd edgequake/docker
+docker compose up -d         # builds API, frontend, and postgres
+```
+
+Services started:
+
+| Service              | Port | Description                               |
+|----------------------|------|-------------------------------------------|
+| `edgequake` API      | 8080 | REST API + document processing            |
+| `frontend` (Next.js) | 3000 | Web UI                                    |
+| `postgres`           | 5432 | PostgreSQL with pgvector + Apache AGE     |
 
 ```bash
 # Follow logs
@@ -491,27 +528,32 @@ docker compose down
 
 ### Environment Variables
 
-Key variables (override via a `.env` file in the same directory as your compose file):
+All compose files read from a `.env` file placed in the same directory. Copy `edgequake/docker/.env.example` to get started.
 
-| Variable                       | Default                             | Description                                                                             |
-| ------------------------------ | ----------------------------------- | --------------------------------------------------------------------------------------- |
-| `DATABASE_URL`                 | (set by compose)                    | PostgreSQL connection string                                                            |
-| `EDGEQUAKE_LLM_PROVIDER`       | `ollama`                            | LLM provider: `openai`, `anthropic`, `gemini`, `mistral`, `azure`, `vertexai`, `ollama` |
-| `EDGEQUAKE_EMBEDDING_PROVIDER` | *(same as LLM)*                     | Separate embedding provider for hybrid mode                                             |
-| `OPENAI_API_KEY`               | —                                   | Required when using `openai` / `azure` provider                                         |
-| `ANTHROPIC_API_KEY`            | —                                   | Required when using `anthropic` provider                                                |
-| `GEMINI_API_KEY`               | —                                   | Required when using `gemini` provider                                                   |
-| `MISTRAL_API_KEY`              | —                                   | Required when using `mistral` provider                                                  |
-| `AZURE_OPENAI_API_KEY`         | —                                   | Required when using `azure` provider                                                    |
-| `AZURE_OPENAI_ENDPOINT`        | —                                   | Azure resource endpoint URL                                                             |
-| `GOOGLE_CLOUD_PROJECT`         | —                                   | Required when using `vertexai` provider                                                 |
-| `XAI_API_KEY`                  | —                                   | Required when using `xai` provider                                                      |
-| `OLLAMA_HOST`                  | `http://host.docker.internal:11434` | Ollama server URL (host machine)                                                        |
-| `RUST_LOG`                     | `info`                              | Log level (`debug`, `info`, `warn`, `error`)                                            |
+| Variable                       | Default                                 | Description                                                                              |
+|--------------------------------|-----------------------------------------|------------------------------------------------------------------------------------------|
+| `DATABASE_URL`                 | *(set by compose in full-stack)*        | PostgreSQL connection string                                                             |
+| `EDGEQUAKE_LLM_PROVIDER`       | `ollama`                                | LLM provider: `openai`, `anthropic`, `gemini`, `mistral`, `azure`, `vertexai`, `ollama` |
+| `EDGEQUAKE_EMBEDDING_PROVIDER` | *(same as LLM)*                         | Separate embedding provider for hybrid mode                                              |
+| `OPENAI_API_KEY`               | —                                       | Required for `openai` / `azure`                                                          |
+| `ANTHROPIC_API_KEY`            | —                                       | Required for `anthropic`                                                                 |
+| `GEMINI_API_KEY`               | —                                       | Required for `gemini`                                                                    |
+| `MISTRAL_API_KEY`              | —                                       | Required for `mistral`                                                                   |
+| `AZURE_OPENAI_API_KEY`         | —                                       | Required for `azure`                                                                     |
+| `AZURE_OPENAI_ENDPOINT`        | —                                       | Azure resource endpoint URL                                                              |
+| `GOOGLE_CLOUD_PROJECT`         | —                                       | Required for `vertexai`                                                                  |
+| `XAI_API_KEY`                  | —                                       | Required for `xai`                                                                       |
+| `OLLAMA_HOST`                  | `http://host.docker.internal:11434`     | Ollama server URL (host machine via gateway)                                             |
+| `EDGEQUAKE_VERSION`            | `latest`                                | GHCR image tag (Option B only)                                                           |
+| `RUST_LOG`                     | `info`                                  | Log level (`debug`, `info`, `warn`, `error`)                                             |
+
+> **Tip — Ollama on the host:** When running EdgeQuake inside Docker and Ollama on your machine, leave `OLLAMA_HOST` at its default (`http://host.docker.internal:11434`). On Linux, the `extra_hosts: host.docker.internal:host-gateway` entry in the compose file resolves this automatically.
+
+---
 
 ### Building the Image Locally
 
-The Dockerfile lives at `edgequake/docker/Dockerfile` and uses a two-stage build (Rust builder → Debian slim runtime). pdfium is embedded at compile time — no external shared library is needed.
+The Dockerfile lives at `edgequake/docker/Dockerfile` and uses a two-stage build (Rust builder → Debian slim runtime). pdfium is embedded at compile time via `pdfium-auto` — no external shared library is needed.
 
 ```bash
 # Build for host architecture
@@ -524,16 +566,20 @@ docker buildx build \
   -t edgequake:local --load
 ```
 
+---
+
 ### CI/CD — Automated Releases
 
 Docker images are built and published automatically via GitHub Actions (`.github/workflows/release-docker.yml`) when a version tag is pushed:
 
 ```bash
-# Tag a release — triggers docker build + publish to ghcr.io
+# Tag a release — triggers multi-arch docker build + publish to ghcr.io
 git tag v0.9.2 && git push origin v0.9.2
 ```
 
-Both `linux/amd64` (ubuntu-latest) and `linux/arm64` (native ARM runner — no QEMU) are built in parallel and merged into a single multi-arch manifest, so the same tag works on x86 servers, Apple Silicon Macs, and AWS Graviton instances.
+Both `linux/amd64` (ubuntu-latest runner) and `linux/arm64` (native ARM64 runner — no QEMU) are built in parallel and merged into a single multi-arch manifest. The same image tag (`ghcr.io/raphaelmansuy/edgequake:0.9.2`) works on x86 servers, Apple Silicon Macs, and AWS Graviton instances.
+
+You can also trigger a manual Docker build + publish without a tag via the `workflow_dispatch` input on GitHub Actions (`Actions → Release — Docker (GHCR) → Run workflow`).
 
 ---
 

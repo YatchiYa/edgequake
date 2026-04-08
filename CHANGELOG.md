@@ -4,29 +4,45 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Added — Docker CI/CD & Multi-Provider Support
+### Added — Docker CI/CD, Prebuilt Deployment & Multi-Provider Support
+
+#### Docker — Three Deployment Options
+- **New `docker-compose.prebuilt.yml`** (Option B): pulls the EdgeQuake API from GHCR (`ghcr.io/raphaelmansuy/edgequake:latest`); builds only the PostgreSQL service locally (required for Apache AGE + pgvector). No Rust toolchain needed. Use `EDGEQUAKE_VERSION=x.y.z` to pin to a specific release.
+- **`docker-compose.api-only.yml`** (Option A): lightweight single-service compose using the GHCR image for bring-your-own-PostgreSQL scenarios.
+- **`docker-compose.yml`** (Option C): unchanged — full build-from-source including the Next.js frontend.
+- **`docker/.env.example`**: annotated environment template for all three compose options.
 
 #### Docker CI/CD — Multi-arch GHCR Publishing
-- New `.github/workflows/release-docker.yml`: automated multi-arch (amd64 + arm64) Docker image builds published to GitHub Container Registry on version tags (`v*.*.*`) or manual `workflow_dispatch`. Native ARM64 runner used (no QEMU emulation) for fast builds.
-- New `edgequake/docker/docker-compose.api-only.yml`: lightweight one-service compose for API-only deployments (no database bundled) — ideal for managed Postgres (Supabase, Neon, RDS).
-- New `edgequake/docker/.env.example`: annotated environment variable template covering all 9 LLM providers, embedding overrides, and `DATABASE_URL`.
+- New `.github/workflows/release-docker.yml`: native `linux/amd64` + `linux/arm64` Docker builds published to GHCR on every `v*.*.*` tag push or `workflow_dispatch`. Native ARM64 runner used (no QEMU). Images merged into a single multi-arch manifest with both `version` and `latest` tags.
 
 #### README — Docker Deployment section rewritten
-- **Option A — API only**: `docker run` one-liner + `docker compose -f docker-compose.api-only.yml`.
-- **Option B — Full stack**: `cd edgequake/docker && docker compose up -d` (API + Next.js frontend + PostgreSQL + Ollama).
-- Environment variables table with all provider keys; "Building Locally" and "CI/CD — Automated Releases" subsections added.
+- Option A (API only): `docker run` one-liner + `docker-compose.api-only.yml`.
+- Option B (prebuilt full stack): **new** — `docker compose -f docker-compose.prebuilt.yml up -d` pulls the prebuilt GHCR image.
+- Option C (build from source): `docker compose up -d` with all three services.
+- Full environment variable reference table with all 13 variables.
+- "Building Locally", "CI/CD — Automated Releases" subsections.
 
-#### New LLM Providers Listed (edgequake-llm 0.5.1 readiness)
-- `provider_types.rs`: Added `ProviderInfo` entries for **Mistral AI** (`mistral-small-latest`, `mistral-embed`, 1024-dim) and **Google Vertex AI** (`gemini-2.5-flash`, `gemini-embedding-001`, 3072-dim). Both surface in the `/api/v1/providers` response and the provider selector UI.
-- `provider_setup.rs` docs: updated embedding-provider table with Azure (`AZURE_OPENAI_API_KEY` + `AZURE_OPENAI_ENDPOINT`) and Mistral (`MISTRAL_API_KEY`) rows.
+#### New LLM Providers (edgequake-llm 0.5.1)
+- `provider_types.rs`: Added `ProviderInfo` for **Mistral AI** (`mistral-small-latest`, `mistral-embed`, 1024-dim) and **Google Vertex AI** (`gemini-2.5-flash`, `gemini-embedding-001`, 3072-dim). Both appear in `/api/v1/providers` and the provider selector UI.
+- `provider_setup.rs` docs: updated embedding-provider table with Azure and Mistral env vars.
 
 #### TypeScript E2E Fix
-- Created `edgequake_webui/e2e/global.d.ts`: augments `Window` with `__requestUrls: string[]` to fix `TS2339` build error in `capture-api.spec.ts`.
+- Created `edgequake_webui/e2e/global.d.ts` to fix `TS2339` (`Window.__requestUrls` not on `Window`).
 
-### Changed — Dependency Management
+### Changed — Dependency Bump
 
-#### edgequake-llm pin — awaiting edgequake-pdf2md 0.8.0
-- `edgequake-llm` workspace pin stays at `0.3.0` until [edgequake-pdf2md PR #22](https://github.com/raphaelmansuy/edgequake-pdf2md/pull/22) is squash-merged and `0.8.0` is published on crates.io. A TODO comment is recorded in `Cargo.toml` and `crates/edgequake-api/Cargo.toml` to guide the follow-up bump to `edgequake-llm = "0.5.1"` + `edgequake-pdf2md = "=0.8.0"`.
+#### edgequake-llm 0.3.0 → 0.5.1
+New capabilities added by upstream:
+- Azure OpenAI chat + embedding provider
+- Mistral AI chat + embedding provider (`mistral-small-latest`, `mistral-embed`)
+- Google Vertex AI provider (`gemini-2.5-flash`, `gemini-embedding-001`)
+- Streaming usage reporting fixes
+- Image generation API extension points
+
+#### edgequake-pdf2md =0.7.0 → =0.8.0
+- Declares `edgequake-llm = "0.5.1"` — resolves the previous diamond dependency that caused `E0308` type mismatch when building the workspace with `edgequake-llm 0.5.1`.
+
+**Build verified:** `cargo build --workspace --lib` ✅  `cargo clippy --workspace -- -D warnings` ✅  `cargo fmt --all -- --check` ✅
 
 ## [0.9.1] - 2026-04-03
 
