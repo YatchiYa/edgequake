@@ -59,6 +59,21 @@ impl PostgresPool {
             .min_connections(self.config.min_connections)
             .acquire_timeout(self.config.connect_timeout)
             .idle_timeout(Some(self.config.idle_timeout))
+            // WHY: Force search_path=public on every connection.
+            // After migration 001 creates the 'edgequake' schema, PostgreSQL's
+            // default search_path "$user",public resolves "$user"="edgequake" to
+            // that schema first. Unqualified table references in storage queries
+            // (e.g. INSERT INTO documents) could resolve to edgequake views instead
+            // of the actual public tables. Pinning search_path to public ensures
+            // consistent, correct table resolution on all pool connections.
+            .after_connect(|conn, _| {
+                Box::pin(async move {
+                    sqlx::query("SET search_path TO public")
+                        .execute(conn)
+                        .await
+                        .map(|_| ())
+                })
+            })
             .connect(&self.config.connection_url())
             .await
             .map_err(|e| StorageError::Connection(format!("Failed to connect: {}", e)))?;
