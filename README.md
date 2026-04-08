@@ -477,9 +477,9 @@ docker compose -f docker-compose.prebuilt.yml up -d
 
 Services started:
 
-| Service         | Port | Image / Build                                       |
-|-----------------|------|-----------------------------------------------------|
-| `edgequake` API | 8080 | `ghcr.io/raphaelmansuy/edgequake:latest` (pulled)   |
+| Service         | Port | Image / Build                                             |
+| --------------- | ---- | --------------------------------------------------------- |
+| `edgequake` API | 8080 | `ghcr.io/raphaelmansuy/edgequake:latest` (pulled)         |
 | `postgres`      | 5432 | Built locally from `Dockerfile.postgres` (pgvector + AGE) |
 
 ```bash
@@ -509,11 +509,11 @@ docker compose up -d         # builds API, frontend, and postgres
 
 Services started:
 
-| Service              | Port | Description                               |
-|----------------------|------|-------------------------------------------|
-| `edgequake` API      | 8080 | REST API + document processing            |
-| `frontend` (Next.js) | 3000 | Web UI                                    |
-| `postgres`           | 5432 | PostgreSQL with pgvector + Apache AGE     |
+| Service              | Port | Description                           |
+| -------------------- | ---- | ------------------------------------- |
+| `edgequake` API      | 8080 | REST API + document processing        |
+| `frontend` (Next.js) | 3000 | Web UI                                |
+| `postgres`           | 5432 | PostgreSQL with pgvector + Apache AGE |
 
 ```bash
 # Follow logs
@@ -532,22 +532,22 @@ docker compose down
 
 All compose files read from a `.env` file placed in the same directory. Copy `edgequake/docker/.env.example` to get started.
 
-| Variable                       | Default                                 | Description                                                                              |
-|--------------------------------|-----------------------------------------|------------------------------------------------------------------------------------------|
-| `DATABASE_URL`                 | *(set by compose in full-stack)*        | PostgreSQL connection string                                                             |
-| `EDGEQUAKE_LLM_PROVIDER`       | `ollama`                                | LLM provider: `openai`, `anthropic`, `gemini`, `mistral`, `azure`, `vertexai`, `ollama` |
-| `EDGEQUAKE_EMBEDDING_PROVIDER` | *(same as LLM)*                         | Separate embedding provider for hybrid mode                                              |
-| `OPENAI_API_KEY`               | —                                       | Required for `openai` / `azure`                                                          |
-| `ANTHROPIC_API_KEY`            | —                                       | Required for `anthropic`                                                                 |
-| `GEMINI_API_KEY`               | —                                       | Required for `gemini`                                                                    |
-| `MISTRAL_API_KEY`              | —                                       | Required for `mistral`                                                                   |
-| `AZURE_OPENAI_API_KEY`         | —                                       | Required for `azure`                                                                     |
-| `AZURE_OPENAI_ENDPOINT`        | —                                       | Azure resource endpoint URL                                                              |
-| `GOOGLE_CLOUD_PROJECT`         | —                                       | Required for `vertexai`                                                                  |
-| `XAI_API_KEY`                  | —                                       | Required for `xai`                                                                       |
-| `OLLAMA_HOST`                  | `http://host.docker.internal:11434`     | Ollama server URL (host machine via gateway)                                             |
-| `EDGEQUAKE_VERSION`            | `latest`                                | GHCR image tag (Option B only)                                                           |
-| `RUST_LOG`                     | `info`                                  | Log level (`debug`, `info`, `warn`, `error`)                                             |
+| Variable                       | Default                             | Description                                                                             |
+| ------------------------------ | ----------------------------------- | --------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                 | *(set by compose in full-stack)*    | PostgreSQL connection string                                                            |
+| `EDGEQUAKE_LLM_PROVIDER`       | `ollama`                            | LLM provider: `openai`, `anthropic`, `gemini`, `mistral`, `azure`, `vertexai`, `ollama` |
+| `EDGEQUAKE_EMBEDDING_PROVIDER` | *(same as LLM)*                     | Separate embedding provider for hybrid mode                                             |
+| `OPENAI_API_KEY`               | —                                   | Required for `openai` / `azure`                                                         |
+| `ANTHROPIC_API_KEY`            | —                                   | Required for `anthropic`                                                                |
+| `GEMINI_API_KEY`               | —                                   | Required for `gemini`                                                                   |
+| `MISTRAL_API_KEY`              | —                                   | Required for `mistral`                                                                  |
+| `AZURE_OPENAI_API_KEY`         | —                                   | Required for `azure`                                                                    |
+| `AZURE_OPENAI_ENDPOINT`        | —                                   | Azure resource endpoint URL                                                             |
+| `GOOGLE_CLOUD_PROJECT`         | —                                   | Required for `vertexai`                                                                 |
+| `XAI_API_KEY`                  | —                                   | Required for `xai`                                                                      |
+| `OLLAMA_HOST`                  | `http://host.docker.internal:11434` | Ollama server URL (host machine via gateway)                                            |
+| `EDGEQUAKE_VERSION`            | `latest`                            | GHCR image tag (Option B only)                                                          |
+| `RUST_LOG`                     | `info`                              | Log level (`debug`, `info`, `warn`, `error`)                                            |
 
 > **Tip — Ollama on the host:** When running EdgeQuake inside Docker and Ollama on your machine, leave `OLLAMA_HOST` at its default (`http://host.docker.internal:11434`). On Linux, the `extra_hosts: host.docker.internal:host-gateway` entry in the compose file resolves this automatically.
 
