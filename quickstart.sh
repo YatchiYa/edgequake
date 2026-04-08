@@ -53,9 +53,11 @@ else
 fi
 ok "Compose found: $($COMPOSE_CMD version --short 2>/dev/null || echo 'v1')"
 
-# ── Download compose file if not present ─────────────────────────────────────
-if [ ! -f "$COMPOSE_FILE" ]; then
-  info "Downloading compose file..."
+# ── Download / refresh compose file ────────────────────────────────────────────
+# WHY always refresh: a cached compose file from a previous run may be an older
+# version that is missing new env vars or service definitions.  We download a
+# fresh copy every time, backing up any local customisations first.
+_download_compose() {
   if command -v curl > /dev/null 2>&1; then
     curl -fsSL "${RAW_BASE}/docker-compose.quickstart.yml" -o "$COMPOSE_FILE"
   elif command -v wget > /dev/null 2>&1; then
@@ -64,38 +66,61 @@ if [ ! -f "$COMPOSE_FILE" ]; then
     fail "curl or wget is required to download the compose file."
     exit 1
   fi
-  ok "Compose file saved to ./${COMPOSE_FILE}"
+}
+
+if [ -f "$COMPOSE_FILE" ]; then
+  info "Refreshing compose file (backing up existing → ${COMPOSE_FILE}.bak)…"
+  cp "$COMPOSE_FILE" "${COMPOSE_FILE}.bak"
+  _download_compose
+  ok "Compose file updated: ./${COMPOSE_FILE}"
 else
-  ok "Using existing ./${COMPOSE_FILE}"
+  info "Downloading compose file…"
+  _download_compose
+  ok "Compose file saved to ./${COMPOSE_FILE}"
 fi
 
-# ── LLM provider auto-detection ───────────────────────────────────────────────
+# ── LLM + Embedding provider auto-detection ───────────────────────────────────
 if [ -n "$OPENAI_API_KEY" ]; then
   EDGEQUAKE_LLM_PROVIDER="${EDGEQUAKE_LLM_PROVIDER:-openai}"
-  ok "OpenAI API key detected — using OpenAI provider"
+  # WHY: When OpenAI is used for LLM inference, prefer OpenAI embeddings by
+  # default so that the workspace is fully self-contained without requiring a
+  # local Ollama instance.  The user can still override these via env vars.
+  EDGEQUAKE_EMBEDDING_PROVIDER="${EDGEQUAKE_EMBEDDING_PROVIDER:-openai}"
+  EDGEQUAKE_LLM_MODEL="${EDGEQUAKE_LLM_MODEL:-gpt-5-mini}"
+  EDGEQUAKE_EMBEDDING_MODEL="${EDGEQUAKE_EMBEDDING_MODEL:-text-embedding-3-small}"
+  ok "OpenAI API key detected — using OpenAI for LLM (${EDGEQUAKE_LLM_MODEL}) and embeddings (${EDGEQUAKE_EMBEDDING_MODEL})"
 else
   EDGEQUAKE_LLM_PROVIDER="${EDGEQUAKE_LLM_PROVIDER:-ollama}"
+  EDGEQUAKE_EMBEDDING_PROVIDER="${EDGEQUAKE_EMBEDDING_PROVIDER:-ollama}"
   info "No API key found — using Ollama (must be running on port 11434)"
   info "  To use OpenAI: export OPENAI_API_KEY=sk-... && sh quickstart.sh"
 fi
 
+# ── Handle existing containers (idempotent re-runs) ───────────────────────────
+# WHY --force-recreate: `docker compose up -d` reuses existing containers even
+# when environment variables have changed.  Force-recreating ensures the latest
+# provider config is always applied on every run.
+# WHY --remove-orphans: removes containers for services that were removed in an
+# updated compose file, keeping the stack clean on upgrades.
+_compose_env() {
+  EDGEQUAKE_VERSION="$EDGEQUAKE_VERSION" \
+  EDGEQUAKE_LLM_PROVIDER="$EDGEQUAKE_LLM_PROVIDER" \
+  EDGEQUAKE_EMBEDDING_PROVIDER="$EDGEQUAKE_EMBEDDING_PROVIDER" \
+  EDGEQUAKE_LLM_MODEL="${EDGEQUAKE_LLM_MODEL:-}" \
+  EDGEQUAKE_EMBEDDING_MODEL="${EDGEQUAKE_EMBEDDING_MODEL:-}" \
+  OPENAI_API_KEY="${OPENAI_API_KEY:-}" \
+  EDGEQUAKE_PORT="$EDGEQUAKE_PORT" \
+  FRONTEND_PORT="$FRONTEND_PORT" \
+  "$@"
+}
+
 # ── Pull images ───────────────────────────────────────────────────────────────
-info "Pulling EdgeQuake images (version: ${EDGEQUAKE_VERSION})..."
-EDGEQUAKE_VERSION="$EDGEQUAKE_VERSION" \
-EDGEQUAKE_LLM_PROVIDER="$EDGEQUAKE_LLM_PROVIDER" \
-OPENAI_API_KEY="${OPENAI_API_KEY:-}" \
-EDGEQUAKE_PORT="$EDGEQUAKE_PORT" \
-FRONTEND_PORT="$FRONTEND_PORT" \
-  $COMPOSE_CMD -f "$COMPOSE_FILE" pull
+info "Pulling EdgeQuake images (version: ${EDGEQUAKE_VERSION})…"
+_compose_env $COMPOSE_CMD -f "$COMPOSE_FILE" pull
 
 # ── Start stack ───────────────────────────────────────────────────────────────
-info "Starting all services (detached)..."
-EDGEQUAKE_VERSION="$EDGEQUAKE_VERSION" \
-EDGEQUAKE_LLM_PROVIDER="$EDGEQUAKE_LLM_PROVIDER" \
-OPENAI_API_KEY="${OPENAI_API_KEY:-}" \
-EDGEQUAKE_PORT="$EDGEQUAKE_PORT" \
-FRONTEND_PORT="$FRONTEND_PORT" \
-  $COMPOSE_CMD -f "$COMPOSE_FILE" up -d
+info "Starting all services (detached)…"
+_compose_env $COMPOSE_CMD -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans
 
 # ── Wait for API health ───────────────────────────────────────────────────────
 info "Waiting for API to be healthy (up to 90s)..."

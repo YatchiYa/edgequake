@@ -59,7 +59,16 @@ services:
       # Default: Ollama running on the host machine.
       # Override: EDGEQUAKE_LLM_PROVIDER=openai OPENAI_API_KEY=sk-...
       EDGEQUAKE_LLM_PROVIDER:       ${EDGEQUAKE_LLM_PROVIDER:-ollama}
+      # Optional model override — when unset the API picks a sensible default
+      # for the resolved provider (e.g. gpt-5-mini for OpenAI, gemma4 for Ollama).
+      EDGEQUAKE_LLM_MODEL:          ${EDGEQUAKE_LLM_MODEL:-}
+      # ── Embedding Provider ───────────────────────────────────────────────────
+      # Default: same provider as LLM.  Set to "openai" when OPENAI_API_KEY is
+      # present and you want OpenAI embeddings regardless of the LLM provider.
       EDGEQUAKE_EMBEDDING_PROVIDER: ${EDGEQUAKE_EMBEDDING_PROVIDER:-}
+      # Optional model override — when unset the API picks a sensible default
+      # (e.g. text-embedding-3-small for OpenAI, embeddinggemma for Ollama).
+      EDGEQUAKE_EMBEDDING_MODEL:    ${EDGEQUAKE_EMBEDDING_MODEL:-}
       OPENAI_API_KEY:               ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL:              ${OPENAI_BASE_URL:-}
       ANTHROPIC_API_KEY:            ${ANTHROPIC_API_KEY:-}

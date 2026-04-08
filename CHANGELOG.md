@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- **Empty embedding provider crashes document ingestion** — When `EDGEQUAKE_EMBEDDING_PROVIDER` (or its `DEFAULT_` variant) is set to an empty string in Docker Compose via `${VAR:-}` expansion, `std::env::var` returns `Ok("")` rather than `Err`, causing the empty string to silently override the hard-coded Ollama default. The workspace provider resolution chain now filters out empty strings at every step so that `${VAR:-}` and unset variables are treated identically. Symptoms: `"Unknown embedding provider: ''"` error on all document uploads after a fresh quickstart.
+
+- **Quickstart stale compose file causes silent misconfiguration on re-runs** — The quickstart script previously skipped downloading `docker-compose.quickstart.yml` when the file already existed. If a user had re-run the script after an EdgeQuake update, the old compose file (missing new env vars like `EDGEQUAKE_EMBEDDING_MODEL`) was reused silently. The script now always downloads a fresh copy, backing up the previous file to `docker-compose.quickstart.yml.bak`.
+
+- **Quickstart ignores embedding provider when detecting OpenAI API key** — When `OPENAI_API_KEY` was set, the script configured `EDGEQUAKE_LLM_PROVIDER=openai` but left `EDGEQUAKE_EMBEDDING_PROVIDER` unset, causing the workspace to use Ollama embeddings even though no local Ollama instance was running inside Docker. The script now sets both providers to `openai` and picks sensible model defaults (`gpt-5-mini` + `text-embedding-3-small`) when an OpenAI key is detected.
+
+- **`docker compose up -d` reuses stale containers on re-run** — Without `--force-recreate`, Docker Compose left existing containers running even when environment variables had changed (e.g. switching from Ollama to OpenAI). The quickstart now passes `--force-recreate --remove-orphans` so every run applies the current configuration.
+
 ## [0.9.8] - 2026-04-09
 
 ### Added

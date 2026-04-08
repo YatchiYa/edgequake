@@ -4,6 +4,18 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
 
+/// Read an environment variable and return `None` when the variable is
+/// absent **or** set to an empty string.
+///
+/// WHY: Docker Compose expands `${VAR:-}` to an empty string when `VAR` is
+/// not set on the host.  `std::env::var` returns `Ok("")` for those values,
+/// which silently overrides the hard-coded fallback.  This helper treats
+/// empty strings the same as missing variables so callers can chain
+/// `.or_else(|| …)` safely.
+fn non_empty_env_var(key: &str) -> Option<String> {
+    std::env::var(key).ok().filter(|s| !s.is_empty())
+}
+
 // ============================================================================
 // Model Configuration Constants (SPEC-032)
 // ============================================================================
@@ -178,13 +190,18 @@ impl Workspace {
     /// model for that provider instead of the hard-coded Ollama default.
     pub fn default_llm_config() -> (String, String) {
         // Resolve provider first so the model default can depend on it.
-        let provider = std::env::var("EDGEQUAKE_DEFAULT_LLM_PROVIDER")
-            .or_else(|_| std::env::var("EDGEQUAKE_LLM_PROVIDER"))
-            .unwrap_or_else(|_| DEFAULT_LLM_PROVIDER.to_string());
+        // WHY: Docker compose may inject empty-string env vars (e.g.
+        // `${EDGEQUAKE_LLM_PROVIDER:-}`) even when the variable is not set on
+        // the host. `std::env::var` returns Ok("") for those, so we must
+        // explicitly filter out empty strings before falling back to the next
+        // candidate in the resolution chain.
+        let provider = non_empty_env_var("EDGEQUAKE_DEFAULT_LLM_PROVIDER")
+            .or_else(|| non_empty_env_var("EDGEQUAKE_LLM_PROVIDER"))
+            .unwrap_or_else(|| DEFAULT_LLM_PROVIDER.to_string());
 
-        let model = std::env::var("EDGEQUAKE_DEFAULT_LLM_MODEL")
-            .or_else(|_| std::env::var("EDGEQUAKE_LLM_MODEL"))
-            .unwrap_or_else(|_| Self::default_model_for_provider(&provider));
+        let model = non_empty_env_var("EDGEQUAKE_DEFAULT_LLM_MODEL")
+            .or_else(|| non_empty_env_var("EDGEQUAKE_LLM_MODEL"))
+            .unwrap_or_else(|| Self::default_model_for_provider(&provider));
 
         (model, provider)
     }
@@ -196,17 +213,22 @@ impl Workspace {
     /// then `EDGEQUAKE_EMBEDDING_PROVIDER / MODEL` as a single-env fallback.
     pub fn default_embedding_config() -> (String, String, usize) {
         // Resolve provider first so the model default can depend on it.
-        let provider = std::env::var("EDGEQUAKE_DEFAULT_EMBEDDING_PROVIDER")
-            .or_else(|_| std::env::var("EDGEQUAKE_EMBEDDING_PROVIDER"))
-            .unwrap_or_else(|_| DEFAULT_EMBEDDING_PROVIDER.to_string());
+        // WHY: Same empty-string guard as in default_llm_config — Docker
+        // compose expansion of `${VAR:-}` produces Ok("") not Err, so we
+        // must filter those out before falling back to the next candidate.
+        let provider = non_empty_env_var("EDGEQUAKE_DEFAULT_EMBEDDING_PROVIDER")
+            .or_else(|| non_empty_env_var("EDGEQUAKE_EMBEDDING_PROVIDER"))
+            .unwrap_or_else(|| DEFAULT_EMBEDDING_PROVIDER.to_string());
 
-        let model = std::env::var("EDGEQUAKE_DEFAULT_EMBEDDING_MODEL")
-            .or_else(|_| std::env::var("EDGEQUAKE_EMBEDDING_MODEL"))
-            .unwrap_or_else(|_| Self::default_embedding_model_for_provider(&provider));
+        let model = non_empty_env_var("EDGEQUAKE_DEFAULT_EMBEDDING_MODEL")
+            .or_else(|| non_empty_env_var("EDGEQUAKE_EMBEDDING_MODEL"))
+            .unwrap_or_else(|| Self::default_embedding_model_for_provider(&provider));
 
         let dimension = std::env::var("EDGEQUAKE_DEFAULT_EMBEDDING_DIMENSION")
-            .and_then(|s| s.parse().map_err(|_| std::env::VarError::NotPresent))
-            .unwrap_or_else(|_| Self::detect_dimension_from_model(&model));
+            .ok()
+            .filter(|s| !s.is_empty())
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| Self::detect_dimension_from_model(&model));
 
         (model, provider, dimension)
     }
@@ -500,6 +522,11 @@ impl Workspace {
 mod tests {
     use super::*;
 
+    // WHY: Tests that read/write process-level env vars must not run in
+    // parallel.  A single `static Mutex` provides a lightweight serial gate
+    // without pulling in external crates.
+    static ENV_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     // ── default_model_for_provider ─────────────────────────────────────────
 
     #[test]
@@ -548,6 +575,7 @@ mod tests {
 
     #[test]
     fn test_llm_config_reads_edgequake_llm_provider_as_fallback() {
+        let _guard = ENV_TEST_LOCK.lock().unwrap();
         // Simulate a Portainer / Docker deployment where only the factory var is set.
         // EDGEQUAKE_DEFAULT_LLM_PROVIDER is NOT set; EDGEQUAKE_LLM_PROVIDER IS set.
         // The workspace must honour it and pick a sensible model for OpenAI.
@@ -576,6 +604,7 @@ mod tests {
 
     #[test]
     fn test_llm_config_default_vars_take_priority_over_llm_provider() {
+        let _guard = ENV_TEST_LOCK.lock().unwrap();
         // EDGEQUAKE_DEFAULT_LLM_PROVIDER takes priority over EDGEQUAKE_LLM_PROVIDER.
         let key_default_provider = "EDGEQUAKE_DEFAULT_LLM_PROVIDER";
         let key_default_model = "EDGEQUAKE_DEFAULT_LLM_MODEL";
@@ -597,6 +626,7 @@ mod tests {
 
     #[test]
     fn test_llm_config_constant_fallback_when_no_env_set() {
+        let _guard = ENV_TEST_LOCK.lock().unwrap();
         let key_default_provider = "EDGEQUAKE_DEFAULT_LLM_PROVIDER";
         let key_default_model = "EDGEQUAKE_DEFAULT_LLM_MODEL";
         let key_provider = "EDGEQUAKE_LLM_PROVIDER";
@@ -617,6 +647,7 @@ mod tests {
 
     #[test]
     fn test_embedding_config_reads_edgequake_embedding_provider_as_fallback() {
+        let _guard = ENV_TEST_LOCK.lock().unwrap();
         let key_provider = "EDGEQUAKE_EMBEDDING_PROVIDER";
         let key_default_provider = "EDGEQUAKE_DEFAULT_EMBEDDING_PROVIDER";
         let key_default_model = "EDGEQUAKE_DEFAULT_EMBEDDING_MODEL";
@@ -634,5 +665,60 @@ mod tests {
         assert_eq!(provider, "openai");
         assert_eq!(model, "text-embedding-3-small");
         assert_eq!(dim, 1536);
+    }
+
+    /// Regression test: Docker Compose expands `${VAR:-}` to empty string when
+    /// the variable is not set on the host.  `std::env::var` returns `Ok("")`
+    /// for those values.  The provider resolution chain MUST treat empty strings
+    /// as absent and fall through to the next candidate / hard-coded default.
+    #[test]
+    fn test_embedding_config_ignores_empty_string_env_vars() {
+        let _guard = ENV_TEST_LOCK.lock().unwrap();
+        let key_default_provider = "EDGEQUAKE_DEFAULT_EMBEDDING_PROVIDER";
+        let key_provider = "EDGEQUAKE_EMBEDDING_PROVIDER";
+        let key_default_model = "EDGEQUAKE_DEFAULT_EMBEDDING_MODEL";
+        let key_model = "EDGEQUAKE_EMBEDDING_MODEL";
+
+        // Simulate Docker Compose injecting empty strings (${VAR:-})
+        std::env::set_var(key_default_provider, "");
+        std::env::set_var(key_provider, "");
+        std::env::set_var(key_default_model, "");
+        std::env::set_var(key_model, "");
+
+        let (model, provider, _dim) = Workspace::default_embedding_config();
+
+        std::env::remove_var(key_default_provider);
+        std::env::remove_var(key_provider);
+        std::env::remove_var(key_default_model);
+        std::env::remove_var(key_model);
+
+        // Must fall back to the hard-coded Ollama defaults, NOT use empty string
+        assert_eq!(provider, DEFAULT_EMBEDDING_PROVIDER, "empty env var must not override the default provider");
+        assert_eq!(model, DEFAULT_EMBEDDING_MODEL, "empty env var must not override the default model");
+    }
+
+    /// Same empty-string guard for LLM config.
+    #[test]
+    fn test_llm_config_ignores_empty_string_env_vars() {
+        let _guard = ENV_TEST_LOCK.lock().unwrap();
+        let key_default_provider = "EDGEQUAKE_DEFAULT_LLM_PROVIDER";
+        let key_provider = "EDGEQUAKE_LLM_PROVIDER";
+        let key_default_model = "EDGEQUAKE_DEFAULT_LLM_MODEL";
+        let key_model = "EDGEQUAKE_LLM_MODEL";
+
+        std::env::set_var(key_default_provider, "");
+        std::env::set_var(key_provider, "");
+        std::env::set_var(key_default_model, "");
+        std::env::set_var(key_model, "");
+
+        let (model, provider) = Workspace::default_llm_config();
+
+        std::env::remove_var(key_default_provider);
+        std::env::remove_var(key_provider);
+        std::env::remove_var(key_default_model);
+        std::env::remove_var(key_model);
+
+        assert_eq!(provider, DEFAULT_LLM_PROVIDER, "empty env var must not override the default provider");
+        assert_eq!(model, DEFAULT_LLM_MODEL, "empty env var must not override the default model");
     }
 }
