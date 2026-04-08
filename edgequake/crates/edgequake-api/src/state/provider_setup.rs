@@ -11,11 +11,14 @@
 //!
 //! | Variable | Purpose | Example |
 //! |---|---|---|
-//! | `EDGEQUAKE_EMBEDDING_PROVIDER` | Override provider type | `ollama`, `openai` |
+//! | `EDGEQUAKE_EMBEDDING_PROVIDER` | Override provider type | `ollama`, `openai`, `azure`, `mistral` |
 //! | `OLLAMA_EMBEDDING_HOST` | Dedicated Ollama host for embeddings | `http://gpu-box:11434` |
 //! | `OLLAMA_EMBEDDING_MODEL` | Model on the dedicated embedding host | `nomic-embed-text` |
 //! | `EDGEQUAKE_EMBEDDING_MODEL` | Alternative embedding model override | `text-embedding-3-small` |
 //! | `EDGEQUAKE_EMBEDDING_DIMENSION` | Dimension of the embedding vectors | `768`, `1536` |
+//! | `AZURE_OPENAI_API_KEY` | Azure embedding (auto-detected when `EDGEQUAKE_EMBEDDING_PROVIDER=azure`) | `sk-...` |
+//! | `AZURE_OPENAI_ENDPOINT` | Azure endpoint for embedding | `https://my-resource.openai.azure.com` |
+//! | `MISTRAL_API_KEY` | Mistral embedding (auto-detected when `EDGEQUAKE_EMBEDDING_PROVIDER=mistral`) | `...` |
 
 use std::sync::Arc;
 
