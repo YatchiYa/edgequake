@@ -132,8 +132,14 @@ mod tests {
         assert!(ids.contains(&"ollama"));
         assert!(ids.contains(&"lmstudio"));
         assert!(ids.contains(&"mock"));
-        assert!(ids.contains(&"mistral"), "mistral provider missing from llm_providers");
-        assert!(ids.contains(&"vertexai"), "vertexai provider missing from llm_providers");
+        assert!(
+            ids.contains(&"mistral"),
+            "mistral provider missing from llm_providers"
+        );
+        assert!(
+            ids.contains(&"vertexai"),
+            "vertexai provider missing from llm_providers"
+        );
 
         // Assert: Mock is always available
         let mock = response

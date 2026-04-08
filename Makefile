@@ -134,7 +134,7 @@ release: ## Bump all crate versions and tag release using cargo-release (uses VE
         backend-dev backend-db backend-memory backend-bg backend-build backend-build-online backend-sqlx-prepare backend-test backend-run \
         frontend-dev frontend-build frontend-test frontend-lint \
         db-start db-stop db-wait db-logs db-shell \
-        docker-build docker-up docker-prebuilt docker-prebuilt-down docker-api-only docker-down docker-logs \
+        docker-build docker-up docker-prebuilt docker-prebuilt-down docker-prebuilt-logs docker-ps-prebuilt docker-api-only docker-down docker-logs \
         check-deps status \
         test-quality test-invariants test-timing test-count test-flaky \
         test-e2e-critical test-e2e-full test-stability-report
@@ -255,13 +255,16 @@ help: ## Show this help message
 	@echo "  $(GREEN)make db-clean-force$(RESET) Destroy and recreate DB container"
 	@echo ""
 	@echo "$(BOLD)$(BLUE)🐳 Docker$(RESET)"
-	@echo "  $(GREEN)make docker-up$(RESET)           Start full stack via Docker (build from source)"
-	@echo "  $(GREEN)make docker-prebuilt$(RESET)     Start full stack using prebuilt GHCR image (fastest)"
-	@echo "  $(GREEN)make docker-api-only$(RESET)     Start API only (bring your own PostgreSQL)"
-	@echo "  $(GREEN)make docker-down$(RESET)         Stop Docker stack"
-	@echo "  $(GREEN)make docker-build$(RESET)        Rebuild Docker images"
-	@echo "  $(GREEN)make docker-logs$(RESET)         View Docker logs"
-	@echo "  $(GREEN)make docker-ps$(RESET)           Show Docker container status"
+	@echo "  $(GREEN)make docker-up$(RESET)               Start full stack via Docker (build from source)"
+	@echo "  $(GREEN)make docker-prebuilt$(RESET)         Start full stack using prebuilt GHCR images (fastest, no build)"
+	@echo "  $(GREEN)make docker-prebuilt-down$(RESET)    Stop prebuilt stack"
+	@echo "  $(GREEN)make docker-prebuilt-logs$(RESET)    View prebuilt stack logs"
+	@echo "  $(GREEN)make docker-ps-prebuilt$(RESET)      Show prebuilt stack container status"
+	@echo "  $(GREEN)make docker-api-only$(RESET)         Start API only (bring your own PostgreSQL)"
+	@echo "  $(GREEN)make docker-down$(RESET)             Stop Docker stack (build-from-source)"
+	@echo "  $(GREEN)make docker-build$(RESET)            Rebuild Docker images"
+	@echo "  $(GREEN)make docker-logs$(RESET)             View Docker logs"
+	@echo "  $(GREEN)make docker-ps$(RESET)               Show Docker container status"
 	@echo ""
 	@echo "$(BOLD)$(BLUE)📦 SDKs$(RESET)"
 	@echo "  $(GREEN)make sdk-rust-build$(RESET)    Build Rust SDK (sdks/rust)"
@@ -801,13 +804,55 @@ docker-logs: ## View Docker logs
 docker-ps: ## Show Docker container status
 	@cd $(DOCKER_DIR) && docker compose ps
 
-docker-prebuilt: ## Start full stack using prebuilt GHCR image (no Rust build needed)
-	@echo "$(BLUE)Starting EdgeQuake using prebuilt GHCR image...$(RESET)"
+docker-prebuilt: ## Start full stack (API + Web UI + DB) from latest published GHCR images — no build needed
+	@echo ""
+	@echo "$(BOLD)$(BLUE)🐳 Starting EdgeQuake Full Stack (latest published GHCR images)$(RESET)"
+	@echo ""
+	@if [ ! -f "$(DOCKER_DIR)/.env" ]; then \
+		echo "$(YELLOW)→ Creating $(DOCKER_DIR)/.env from .env.example$(RESET)"; \
+		cp $(DOCKER_DIR)/.env.example $(DOCKER_DIR)/.env; \
+		echo "$(YELLOW)  Edit $(DOCKER_DIR)/.env to set your LLM provider + API key$(RESET)"; \
+	fi
+	@echo "$(YELLOW)→ Pulling latest images from GHCR...$(RESET)"
+	@cd $(DOCKER_DIR) && docker compose -f docker-compose.prebuilt.yml pull --ignore-pull-failures edgequake frontend 2>/dev/null || true
+	@echo "$(YELLOW)→ Starting services (API + Web UI + PostgreSQL)...$(RESET)"
 	@cd $(DOCKER_DIR) && docker compose -f docker-compose.prebuilt.yml up -d
-	@echo "$(GREEN)✓ EdgeQuake started (API: http://localhost:8080/health)$(RESET)"
+	@echo "$(YELLOW)→ Waiting for API to be healthy...$(RESET)"
+	@for i in $$(seq 1 30); do \
+		if curl -sf http://localhost:8080/health > /dev/null 2>&1; then \
+			echo "$(GREEN)✓ API is healthy$(RESET)"; break; \
+		fi; \
+		sleep 2; \
+	done
+	@echo ""
+	@echo "$(BOLD)$(GREEN)✅ EdgeQuake Full Stack is Running$(RESET)"
+	@echo ""
+	@echo "$(BOLD)📍 Access Points:$(RESET)"
+	@echo ""
+	@echo "  $(BLUE)Frontend (Web UI)$(RESET)"
+	@echo "    🌐 URL: $(BOLD)http://localhost:3000$(RESET)"
+	@echo ""
+	@echo "  $(BLUE)Backend API$(RESET)"
+	@echo "    🔗 URL: $(BOLD)http://localhost:8080$(RESET)"
+	@echo "    📚 Swagger: $(BOLD)http://localhost:8080/swagger-ui$(RESET)"
+	@echo "    🏥 Health:  $(BOLD)http://localhost:8080/health$(RESET)"
+	@echo ""
+	@echo "$(YELLOW)→ Management:$(RESET)"
+	@echo "  $(BOLD)Logs:$(RESET)   make docker-prebuilt-logs"
+	@echo "  $(BOLD)Status:$(RESET) make docker-ps-prebuilt"
+	@echo "  $(BOLD)Stop:$(RESET)   make docker-prebuilt-down"
+	@echo ""
 
 docker-prebuilt-down: ## Stop prebuilt stack
+	@echo "$(BLUE)Stopping prebuilt Docker stack...$(RESET)"
 	@cd $(DOCKER_DIR) && docker compose -f docker-compose.prebuilt.yml down
+	@echo "$(GREEN)✓ Prebuilt stack stopped$(RESET)"
+
+docker-prebuilt-logs: ## View logs from prebuilt stack
+	@cd $(DOCKER_DIR) && docker compose -f docker-compose.prebuilt.yml logs -f
+
+docker-ps-prebuilt: ## Show container status for prebuilt stack
+	@cd $(DOCKER_DIR) && docker compose -f docker-compose.prebuilt.yml ps
 
 docker-api-only: ## Start API only using prebuilt GHCR image (bring your own PostgreSQL)
 	@echo "$(YELLOW)Reminder: set DATABASE_URL in $(DOCKER_DIR)/.env first$(RESET)"

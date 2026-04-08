@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.3] - 2026-04-08
+
+### Added
+
+#### Docker — Frontend Image Published to GHCR
+- **`ghcr.io/raphaelmansuy/edgequake-frontend`** multi-arch image (amd64 + arm64) now published on every `v*.*.*` tag alongside the API image. Bakes `NEXT_PUBLIC_API_URL=http://localhost:8080` for standard local + docker-compose use.
+- **`docker-compose.prebuilt.yml`** updated: added `frontend` service pulling `ghcr.io/raphaelmansuy/edgequake-frontend:${EDGEQUAKE_VERSION:-latest}`. Full stack (API + Web UI + PostgreSQL) now starts from three published images — no Rust toolchain, no Node.js required.
+- **`make docker-prebuilt`** updated: always pulls latest GHCR images before starting (`docker compose pull`), auto-creates `.env` from `.env.example` on first run, waits for API health, then prints access URLs.
+- **New Makefile targets**: `make docker-prebuilt-logs`, `make docker-ps-prebuilt` for log tailing and status inspection of the prebuilt stack.
+- **`release-docker.yml`** CI: added `build-frontend` job building the Next.js frontend image with QEMU multi-arch and pushing to GHCR.
+
+#### Quick Start (zero local build)
+```bash
+cd edgequake/docker
+make docker-prebuilt   # pulls latest API + Web UI + starts postgres
+# → http://localhost:3000  (Web UI)
+# → http://localhost:8080  (API)
+```
+Pin to a specific release: `EDGEQUAKE_VERSION=0.9.3 make docker-prebuilt`
+
+### Changed
+- `make docker-prebuilt` now performs `docker compose pull` before `up -d` so re-running the command always fetches the latest published images without needing `--pull always`.
+
 ## [Unreleased]
 
 ### Added — Docker CI/CD, Prebuilt Deployment & Multi-Provider Support
