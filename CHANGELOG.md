@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.7] - 2026-04-08
+
+### Fixed
+
+- **Document status constraint prevents `partial_failure` state** — Migration 017 (`add_processing_substates`) replaced the status constraint but dropped the wrong constraint name: it dropped `valid_document_status` while the original was named `documents_valid_status`. Both constraints coexisted, and `partial_failure` was absent from both. Result: any document that had successful entity extraction but failed entity-embedding storage would panic with `new row for relation "documents" violates check constraint "documents_valid_status"`. **Fix:** Migration 032 drops both old constraints and creates a single canonical `documents_valid_status` constraint that includes all valid status values including `partial_failure`.
+
 ## [0.9.6] - 2026-04-08
 
 ### Fixed
