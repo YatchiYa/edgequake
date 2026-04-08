@@ -40,27 +40,33 @@ pub fn resolve_embedding_provider(
     fallback: Arc<dyn EmbeddingProvider>,
 ) -> Arc<dyn EmbeddingProvider> {
     // --- Priority 1: EDGEQUAKE_EMBEDDING_PROVIDER (explicit provider type) ---
+    // WHY: docker-compose may pass an empty string when the host env var is unset
+    // (e.g. `EDGEQUAKE_EMBEDDING_PROVIDER: ${EDGEQUAKE_EMBEDDING_PROVIDER:-}`).
+    // Treat empty string as "not set" to avoid a spurious warning and fall through
+    // to the auto-detection logic below.
     if let Ok(provider_name) = std::env::var("EDGEQUAKE_EMBEDDING_PROVIDER") {
-        let model = embedding_model_from_env();
-        let dimension = embedding_dimension_from_env();
+        if !provider_name.is_empty() {
+            let model = embedding_model_from_env();
+            let dimension = embedding_dimension_from_env();
 
-        match ProviderFactory::create_embedding_provider(&provider_name, &model, dimension) {
-            Ok(provider) => {
-                tracing::info!(
-                    provider = %provider_name,
-                    model = %model,
-                    dimension,
-                    "Embedding provider overridden via EDGEQUAKE_EMBEDDING_PROVIDER"
-                );
-                return provider;
-            }
-            Err(e) => {
-                tracing::warn!(
-                    error = %e,
-                    provider = %provider_name,
-                    "Failed to create embedding provider from EDGEQUAKE_EMBEDDING_PROVIDER; \
-                     using default"
-                );
+            match ProviderFactory::create_embedding_provider(&provider_name, &model, dimension) {
+                Ok(provider) => {
+                    tracing::info!(
+                        provider = %provider_name,
+                        model = %model,
+                        dimension,
+                        "Embedding provider overridden via EDGEQUAKE_EMBEDDING_PROVIDER"
+                    );
+                    return provider;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        provider = %provider_name,
+                        "Failed to create embedding provider from EDGEQUAKE_EMBEDDING_PROVIDER; \
+                         using default"
+                    );
+                }
             }
         }
     }

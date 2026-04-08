@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.6] - 2026-04-08
+
+### Fixed
+
+- **API container crashes on every restart** — `duplicate key value violates unique constraint "_sqlx_migrations_pkey"` panic on startup. Root cause: migration 001 creates the `edgequake` schema; PostgreSQL's default `"$user",public` search_path then resolves `$user="edgequake"` to that schema first. Without a fixed search_path, SQLx's `migrate!()` created a fresh empty `_sqlx_migrations` in the `edgequake` schema, saw no applied migrations, ran migration 001 (which contains `SET search_path = public`), then tried to INSERT version=1 into `public._sqlx_migrations` — which already existed from the previous install — causing a duplicate key panic on every restart. **Fix:** both the API migration pool and the storage connection pool now use `PgPoolOptions::after_connect` to pin `search_path TO public` on every connection, making `_sqlx_migrations` consistently read/written in the correct schema regardless of pool connection assignment order.
+
+- **Spurious "Unknown embedding provider" warning on startup** — when `EDGEQUAKE_EMBEDDING_PROVIDER` is set to an empty string in Docker Compose (via `${EDGEQUAKE_EMBEDDING_PROVIDER:-}`), the code logged a noisy warning and fell through to defaults. Empty string is now treated as "not set", silencing the warning.
+
 ## [0.9.5] - 2026-04-08
 
 ### Fixed

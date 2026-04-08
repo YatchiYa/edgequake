@@ -126,9 +126,28 @@ impl AppState {
         .with_namespace("default")
         .with_max_connections(10);
 
-        // Create PostgreSQL connection pool for conversation service
+        // Create PostgreSQL connection pool for conversation service.
+        //
+        // WHY after_connect sets search_path=public:
+        // Migration 001 creates the 'edgequake' schema. After that, PostgreSQL's
+        // default search_path "$user",public resolves "$user"="edgequake" to that
+        // schema first. Without this, SQLx finds no _sqlx_migrations in edgequake
+        // (it's in public), creates a fresh empty one, thinks all migrations are
+        // unapplied, then tries to re-insert version=1 into public._sqlx_migrations
+        // which already exists → "duplicate key value violates unique constraint
+        // _sqlx_migrations_pkey" → panic on every restart.
+        // Using after_connect guarantees ALL pool connections always use public,
+        // so _sqlx_migrations is consistently read/written in the correct schema.
         let pool = sqlx::postgres::PgPoolOptions::new()
             .max_connections(10)
+            .after_connect(|conn, _| {
+                Box::pin(async move {
+                    sqlx::query("SET search_path TO public")
+                        .execute(conn)
+                        .await
+                        .map(|_| ())
+                })
+            })
             .connect(&database_url)
             .await?;
 
@@ -160,12 +179,6 @@ impl AppState {
                 tracing::warn!("Could not check extensions: {}", e);
             }
         }
-
-        // CRITICAL: Set search_path to public BEFORE running migrations
-        // This ensures _sqlx_migrations table is created in public schema, not user's default schema
-        sqlx::query("SET search_path TO public")
-            .execute(&pool)
-            .await?;
 
         // Run migrations from the workspace root migrations directory
         // SQLx migrations will create all required tables automatically
