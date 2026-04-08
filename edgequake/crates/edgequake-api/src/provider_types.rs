@@ -346,6 +346,51 @@ impl AvailableProvidersResponse {
                 },
             },
             ProviderInfo {
+                id: "mistral".to_string(),
+                name: "Mistral AI".to_string(),
+                description: "Mistral La Plateforme (Mistral Small, Mistral Medium, Pixtral)".to_string(),
+                available: std::env::var("MISTRAL_API_KEY").is_ok(),
+                config_requirements: vec![ConfigRequirement {
+                    env_var: "MISTRAL_API_KEY".to_string(),
+                    required: true,
+                    description: "Mistral API key".to_string(),
+                    satisfied: std::env::var("MISTRAL_API_KEY").is_ok(),
+                }],
+                default_models: DefaultModels {
+                    chat_model: "mistral-small-latest".to_string(),
+                    embedding_model: "mistral-embed".to_string(),
+                    embedding_dimension: 1024,
+                },
+            },
+            ProviderInfo {
+                id: "vertexai".to_string(),
+                name: "Google Vertex AI".to_string(),
+                description: "Google Cloud Vertex AI Gemini (paid, high-quota, ADC auth)".to_string(),
+                available: std::env::var("GOOGLE_CLOUD_PROJECT").is_ok()
+                    && (std::env::var("GOOGLE_ACCESS_TOKEN").is_ok()
+                        || std::env::var("GOOGLE_APPLICATION_CREDENTIALS").is_ok()),
+                config_requirements: vec![
+                    ConfigRequirement {
+                        env_var: "GOOGLE_CLOUD_PROJECT".to_string(),
+                        required: true,
+                        description: "Google Cloud project ID".to_string(),
+                        satisfied: std::env::var("GOOGLE_CLOUD_PROJECT").is_ok(),
+                    },
+                    ConfigRequirement {
+                        env_var: "GOOGLE_ACCESS_TOKEN".to_string(),
+                        required: false,
+                        description: "Access token (or use Application Default Credentials)".to_string(),
+                        satisfied: std::env::var("GOOGLE_ACCESS_TOKEN").is_ok()
+                            || std::env::var("GOOGLE_APPLICATION_CREDENTIALS").is_ok(),
+                    },
+                ],
+                default_models: DefaultModels {
+                    chat_model: "gemini-2.5-flash".to_string(),
+                    embedding_model: "gemini-embedding-001".to_string(),
+                    embedding_dimension: 3072,
+                },
+            },
+            ProviderInfo {
                 id: "mock".to_string(),
                 name: "Mock".to_string(),
                 description: "Mock provider for testing (no API calls)".to_string(),

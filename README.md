@@ -417,6 +417,126 @@ See the [CHANGELOG.md](CHANGELOG.md) for SDK and core updates.
 
 ---
 
+## Docker Deployment
+
+EdgeQuake ships a production-ready multi-arch Docker image published to **GitHub Container Registry** on every tagged release.
+
+### Pull the Image
+
+```bash
+# Latest release (linux/amd64 or linux/arm64 — auto-selected)
+docker pull ghcr.io/raphaelmansuy/edgequake:latest
+
+# Specific version
+docker pull ghcr.io/raphaelmansuy/edgequake:0.9.1
+```
+
+---
+
+### Option A — API only (bring your own PostgreSQL)
+
+Use this when you already have a PostgreSQL instance (with `pgvector` + `apache_age` extensions) and only need the EdgeQuake backend:
+
+```bash
+docker run -d \
+  --name edgequake \
+  -p 8080:8080 \
+  -e DATABASE_URL="postgres://user:password@your-db-host:5432/edgequake" \
+  -e EDGEQUAKE_LLM_PROVIDER=openai \
+  -e OPENAI_API_KEY="sk-..." \
+  ghcr.io/raphaelmansuy/edgequake:latest
+```
+
+Or with `docker compose` using `edgequake/docker/docker-compose.api-only.yml`:
+
+```bash
+# Copy and edit the env file
+cp edgequake/docker/.env.example .env
+# Set DATABASE_URL, provider keys, etc.
+
+docker compose -f edgequake/docker/docker-compose.api-only.yml up -d
+```
+
+---
+
+### Option B — Full stack (PostgreSQL + API + Frontend)
+
+Use this for a complete self-contained deployment. Everything — database, backend and UI — starts together:
+
+```bash
+cd edgequake/docker
+docker compose up -d
+```
+
+Services started:
+
+| Service              | Port | Description                           |
+| -------------------- | ---- | ------------------------------------- |
+| `edgequake` API      | 8080 | REST API + document processing        |
+| `frontend` (Next.js) | 3000 | Web UI                                |
+| `postgres`           | 5432 | PostgreSQL with pgvector + Apache AGE |
+
+```bash
+# Follow logs
+docker compose logs -f edgequake
+
+# Check health
+curl http://localhost:8080/health
+
+# Stop
+docker compose down
+```
+
+---
+
+### Environment Variables
+
+Key variables (override via a `.env` file in the same directory as your compose file):
+
+| Variable                       | Default                             | Description                                                                             |
+| ------------------------------ | ----------------------------------- | --------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                 | (set by compose)                    | PostgreSQL connection string                                                            |
+| `EDGEQUAKE_LLM_PROVIDER`       | `ollama`                            | LLM provider: `openai`, `anthropic`, `gemini`, `mistral`, `azure`, `vertexai`, `ollama` |
+| `EDGEQUAKE_EMBEDDING_PROVIDER` | *(same as LLM)*                     | Separate embedding provider for hybrid mode                                             |
+| `OPENAI_API_KEY`               | —                                   | Required when using `openai` / `azure` provider                                         |
+| `ANTHROPIC_API_KEY`            | —                                   | Required when using `anthropic` provider                                                |
+| `GEMINI_API_KEY`               | —                                   | Required when using `gemini` provider                                                   |
+| `MISTRAL_API_KEY`              | —                                   | Required when using `mistral` provider                                                  |
+| `AZURE_OPENAI_API_KEY`         | —                                   | Required when using `azure` provider                                                    |
+| `AZURE_OPENAI_ENDPOINT`        | —                                   | Azure resource endpoint URL                                                             |
+| `GOOGLE_CLOUD_PROJECT`         | —                                   | Required when using `vertexai` provider                                                 |
+| `XAI_API_KEY`                  | —                                   | Required when using `xai` provider                                                      |
+| `OLLAMA_HOST`                  | `http://host.docker.internal:11434` | Ollama server URL (host machine)                                                        |
+| `RUST_LOG`                     | `info`                              | Log level (`debug`, `info`, `warn`, `error`)                                            |
+
+### Building the Image Locally
+
+The Dockerfile lives at `edgequake/docker/Dockerfile` and uses a two-stage build (Rust builder → Debian slim runtime). pdfium is embedded at compile time — no external shared library is needed.
+
+```bash
+# Build for host architecture
+docker build -f edgequake/docker/Dockerfile edgequake -t edgequake:local
+
+# Multi-platform build (requires docker buildx)
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  -f edgequake/docker/Dockerfile edgequake \
+  -t edgequake:local --load
+```
+
+### CI/CD — Automated Releases
+
+Docker images are built and published automatically via GitHub Actions (`.github/workflows/release-docker.yml`) when a version tag is pushed:
+
+```bash
+# Tag a release — triggers docker build + publish to ghcr.io
+git tag v0.9.2 && git push origin v0.9.2
+```
+
+Both `linux/amd64` (ubuntu-latest) and `linux/arm64` (native ARM runner — no QEMU) are built in parallel and merged into a single multi-arch manifest, so the same tag works on x86 servers, Apple Silicon Macs, and AWS Graviton instances.
+
+---
+
 ## Development
 
 ### Building and Testing
@@ -560,8 +680,8 @@ EdgeQuake is inspired by and builds upon the excellent work of:
 
 ## Quick Links
 
-| Resource              | URL                                                                              |
-| --------------------- | -------------------------------------------------------------------------------- |
+| Resource             | URL                                                                              |
+| -------------------- | -------------------------------------------------------------------------------- |
 | 📚 Full Documentation | [docs/README.md](docs/README.md)                                                 |
 | 🚀 Quick Start Guide  | [docs/getting-started/quick-start.md](docs/getting-started/quick-start.md)       |
 | 📦 SDKs Overview      | [sdks/](sdks/)                                                                   |
