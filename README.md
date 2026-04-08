@@ -426,8 +426,10 @@ EdgeQuake ships a production-ready multi-arch Docker image published to **GitHub
 docker pull ghcr.io/raphaelmansuy/edgequake:latest
 
 # Pin to a specific version
-docker pull ghcr.io/raphaelmansuy/edgequake:0.9.1
+docker pull ghcr.io/raphaelmansuy/edgequake:0.9.2
 ```
+
+> **First-time package visibility:** After the first CI/CD publish, you may need to set the GHCR package visibility to **Public** under [GitHub → Your Profile → Packages → edgequake → Package Settings → Change Visibility](https://github.com/raphaelmansuy?tab=packages). Once public, `docker pull` works without authentication.
 
 Three deployment options are available depending on your setup:
 
@@ -574,7 +576,7 @@ Docker images are built and published automatically via GitHub Actions (`.github
 
 ```bash
 # Tag a release — triggers multi-arch docker build + publish to ghcr.io
-git tag v0.9.2 && git push origin v0.9.2
+git tag v0.9.3 && git push origin v0.9.3
 ```
 
 Both `linux/amd64` (ubuntu-latest runner) and `linux/arm64` (native ARM64 runner — no QEMU) are built in parallel and merged into a single multi-arch manifest. The same image tag (`ghcr.io/raphaelmansuy/edgequake:0.9.2`) works on x86 servers, Apple Silicon Macs, and AWS Graviton instances.
