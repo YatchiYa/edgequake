@@ -160,6 +160,38 @@ _http_get() {
 }
 
 # ════════════════════════════════════════════════════════════════════════════
+# § Docker host address translation
+#
+# WHY: Inside Docker containers, 'localhost' and '127.x.x.x' refer to the
+# container itself — NOT to the host machine where Ollama is running.
+# Docker provides the special DNS name 'host.docker.internal' to reach host
+# services from inside any container:
+#   - macOS / Windows: works natively via Docker Desktop
+#   - Linux: resolved via 'extra_hosts: host.docker.internal:host-gateway'
+#             which is already declared in docker-compose.quickstart.yml
+#
+# This function translates any loopback address to 'host.docker.internal',
+# leaving non-loopback addresses (real IPs, hostnames, SSO endpoints) unchanged.
+#
+# Edge cases handled:
+#   http://localhost:11434            → http://host.docker.internal:11434
+#   http://127.0.0.1:11434            → http://host.docker.internal:11434
+#   http://127.x.x.x:PORT             → http://host.docker.internal:PORT
+#   http://host.docker.internal:PORT  → unchanged (already correct)
+#   http://my-ollama-server:PORT      → unchanged (custom remote host)
+#   http://192.168.1.x:PORT           → unchanged (LAN host)
+# ════════════════════════════════════════════════════════════════════════════
+_to_docker_host() {
+  # $1 = raw OLLAMA_HOST URL from the host environment
+  # stdout = Docker-safe URL
+  printf "%s" "$1" | sed \
+    -e 's|//localhost\([:/]\)|//host.docker.internal\1|g' \
+    -e 's|//localhost$|//host.docker.internal|g' \
+    -e 's|//127\.[0-9]*\.[0-9]*\.[0-9]*\([:/]\)|//host.docker.internal\1|g' \
+    -e 's|//127\.[0-9]*\.[0-9]*\.[0-9]*$|//host.docker.internal|g'
+}
+
+# ════════════════════════════════════════════════════════════════════════════
 # § Management footer (printed after a user chooses "Quit")
 # ════════════════════════════════════════════════════════════════════════════
 _print_mgmt_footer() {
@@ -450,13 +482,24 @@ validate_provider() {
 
   else  # ollama
 
-    _ollama_host="${OLLAMA_HOST:-http://localhost:11434}"
+    # WHY: Validate from the HOST side using the host-accessible address.
+    # The Docker container will use host.docker.internal (see start_stack),
+    # but for this pre-flight check we need to reach Ollama from THIS shell.
+    _ollama_host_local="${OLLAMA_HOST:-http://localhost:11434}"
+    _ollama_host_docker="$(_to_docker_host "$_ollama_host_local")"
 
-    if curl -sf "${_ollama_host}/api/tags" > /dev/null 2>&1; then
-      ui_ok "Ollama is reachable at ${_ollama_host}"
+    if curl -sf "${_ollama_host_local}/api/tags" > /dev/null 2>&1; then
+      ui_ok "Ollama is reachable at ${_ollama_host_local}"
+
+      # Inform the user when translation will occur — no surprises.
+      if [ "$_ollama_host_docker" != "$_ollama_host_local" ]; then
+        ui_info "Docker will connect to Ollama at: ${C_BOLD}${_ollama_host_docker}${C_RESET}"
+        ui_info "(loopback addresses are auto-translated for container networking)"
+      fi
 
       # Non-critical: check if chosen model is already pulled
-      if curl -sf "${_ollama_host}/api/tags" 2>/dev/null | grep -q "\"${LLM_MODEL}\"" 2>/dev/null; then
+      if curl -sf "${_ollama_host_local}/api/tags" 2>/dev/null \
+           | grep -q "\"${LLM_MODEL}\"" 2>/dev/null; then
         ui_ok "Model '${LLM_MODEL}' is available in Ollama."
       else
         ui_warn "Model '${LLM_MODEL}' may not be pulled yet."
@@ -464,7 +507,7 @@ validate_provider() {
       fi
 
     else
-      ui_warn "Ollama is not reachable at ${_ollama_host}"
+      ui_warn "Ollama is not reachable at ${_ollama_host_local}"
       ui_blank
       printf "  ${C_DIM}To start Ollama:${C_RESET}\n"
       printf "    ollama serve &\n"
@@ -511,6 +554,25 @@ start_stack() {
   if [ -z "${OPENAI_BASE_URL:-}" ]; then
     unset OPENAI_BASE_URL 2>/dev/null || true
   fi
+
+  # ── Ollama host: translate loopback → host.docker.internal ────────────────
+  # WHY (first principle): Docker containers use their own network namespace.
+  # 'localhost' or '127.x.x.x' inside a container refers to the container,
+  # NOT to the host where Ollama is running.  'host.docker.internal' is the
+  # canonical Docker DNS name for the host machine on all platforms:
+  #   - macOS/Windows: provided natively by Docker Desktop
+  #   - Linux: mapped by 'extra_hosts: host.docker.internal:host-gateway'
+  #            in docker-compose.quickstart.yml
+  # We always set OLLAMA_HOST explicitly so the docker-compose default
+  # (${OLLAMA_HOST:-http://host.docker.internal:11434}) is never used — our
+  # computed value is deterministic regardless of the user's shell environment.
+  _raw_ollama="${OLLAMA_HOST:-http://localhost:11434}"
+  OLLAMA_HOST="$(_to_docker_host "$_raw_ollama")"
+  if [ "$OLLAMA_HOST" != "$_raw_ollama" ]; then
+    ui_info "Translating Ollama host for Docker networking:"
+    ui_info "  ${_raw_ollama}  →  ${OLLAMA_HOST}"
+  fi
+  export OLLAMA_HOST
 
   ui_info "Pulling images (version: ${EDGEQUAKE_VERSION})..."
   $COMPOSE_CMD -f "$COMPOSE_FILE" pull

@@ -82,12 +82,22 @@ services:
       ANTHROPIC_API_KEY:            ${ANTHROPIC_API_KEY:-}
       GEMINI_API_KEY:               ${GEMINI_API_KEY:-}
       MISTRAL_API_KEY:              ${MISTRAL_API_KEY:-}
-      # host.docker.internal resolves to the Docker host on macOS + Windows.
-      # On Linux it resolves via the extra_hosts entry below.
+      # WHY host.docker.internal (NOT localhost):
+      #   Docker containers have their own network namespace. 'localhost' inside
+      #   a container refers to the container itself, NOT to the host where Ollama
+      #   runs. 'host.docker.internal' is the canonical name for the host machine:
+      #     macOS/Windows: provided natively by Docker Desktop
+      #     Linux:         mapped via extra_hosts below (host-gateway)
+      #
+      # IMPORTANT: If you set OLLAMA_HOST manually, never use 'localhost' or
+      #   '127.x.x.x' — use 'host.docker.internal' or a real IP/hostname.
+      #   quickstart.sh auto-translates loopback addresses when launching.
       OLLAMA_HOST:                  ${OLLAMA_HOST:-http://host.docker.internal:11434}
       PDFIUM_AUTO_CACHE_DIR:        /tmp/edgequake-pdfium-cache
       RUST_LOG:                     ${RUST_LOG:-info}
     extra_hosts:
+      # Maps host.docker.internal → host machine IP on Linux.
+      # On macOS/Windows, Docker Desktop provides this DNS name natively.
       - "host.docker.internal:host-gateway"
     depends_on:
       postgres:

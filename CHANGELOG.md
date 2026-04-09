@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.15] - 2026-04-09
+
+### Fixed
+
+- **Ollama unreachable inside Docker — `http://localhost:11434` fails** — Docker containers
+  have their own network namespace: `localhost` inside a container refers to the container
+  itself, not the host machine where Ollama runs. `quickstart.sh` now auto-translates any
+  loopback address (`localhost`, `127.x.x.x`) in `OLLAMA_HOST` to `host.docker.internal`
+  before passing it to Docker Compose. The translation is deterministic and covers all edge
+  cases:
+  - `http://localhost:11434` → `http://host.docker.internal:11434`
+  - `http://127.0.0.1:PORT`  → `http://host.docker.internal:PORT`
+  - Custom remote hosts (e.g. `http://my-ollama-server:11434`) are passed unchanged.
+  - `host.docker.internal` resolves natively on macOS/Windows (Docker Desktop) and via
+    `extra_hosts: host-gateway` on Linux (already in `docker-compose.quickstart.yml`).
+- **Validation feedback**: `quickstart.sh` now shows the Docker-side address when it differs
+  from the host-side address, so users understand what address the container will use.
+- **docker-compose.quickstart.yml**: Expanded `OLLAMA_HOST` comment to explain why
+  `localhost` must not be used and document the `extra_hosts` Linux mechanism.
+
 ## [0.9.14] - 2026-04-09
 
 ### Fixed
