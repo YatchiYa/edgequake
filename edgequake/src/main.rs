@@ -571,6 +571,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Starting EdgeQuake v{}", env!("CARGO_PKG_VERSION"));
 
+    // WHY: Docker Compose passes empty-string env vars when the variable is unset on the host
+    // (e.g. `OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}`). The OpenAI provider checks
+    // `if let Ok(base_url) = std::env::var("OPENAI_BASE_URL")` and uses it as the API base URL.
+    // An empty string produces a malformed URL that causes `reqwest` to fail with "builder error"
+    // on every request. Removing the variable when it is empty lets the provider fall back to its
+    // built-in default (https://api.openai.com/v1).
+    for var in &["OPENAI_BASE_URL", "OPENAI_API_KEY"] {
+        if let Ok(val) = std::env::var(var) {
+            if val.is_empty() {
+                std::env::remove_var(var);
+                info!("Removed empty env var '{}' to prevent provider misconfiguration", var);
+            }
+        }
+    }
+
     // Get API key from environment (optional - Ollama doesn't need it)
     let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_default();
 
