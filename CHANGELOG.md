@@ -2,6 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.11] - 2026-04-09
+
+### Fixed
+
+- **"LLM error: Network error: builder error" on every document when using OpenAI** —
+  Docker Compose evaluates `OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}` to an empty string `""` when
+  the variable is not set on the host. The OpenAI provider reads this empty string via
+  `std::env::var("OPENAI_BASE_URL")` (which returns `Ok("")`) and passes it as the API base URL,
+  causing every `reqwest` request to fail immediately with "builder error". The API now strips
+  empty-string env vars (`OPENAI_BASE_URL`, `OPENAI_API_KEY`) at startup before any provider is
+  initialised so that the provider library falls back to its built-in defaults.
+
+- **Prior installation not detected by quickstart** — Re-running `curl | sh` on a machine that
+  already has EdgeQuake installed no longer silently force-restarts containers. The script now
+  detects running or stopped containers and volumes, shows a clear summary of what was found, and
+  asks the user whether to update or exit. Existing data is preserved in both cases.
+
+- **Ollama not reachable — silent failure** — When `EDGEQUAKE_LLM_PROVIDER=ollama` (the
+  default), the quickstart now checks whether Ollama is reachable before starting the stack. If
+  not, it prints actionable instructions (`ollama serve`, model pull command, or OpenAI switch)
+  and asks the user whether to continue or abort.
+
+### Changed
+
+- Quickstart `_compose_env` no longer explicitly forwards `OPENAI_API_KEY` and `OPENAI_BASE_URL`
+  as prefixed env var assignments (they were always forwarded as empty strings when unset). Docker
+  Compose now picks them up directly from the host shell environment, which is the correct
+  behaviour.
+- Quickstart success message now shows which LLM provider is active and, for Ollama, reminds the
+  user to pull a model (`ollama pull gemma4:latest`).
+- Added `Update: sh quickstart.sh` to the management commands in the success footer.
+
 ## [0.9.10] - 2026-04-09
 
 ### Fixed

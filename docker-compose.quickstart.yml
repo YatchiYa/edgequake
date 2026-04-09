@@ -70,6 +70,13 @@ services:
       # (e.g. text-embedding-3-small for OpenAI, embeddinggemma for Ollama).
       EDGEQUAKE_EMBEDDING_MODEL:    ${EDGEQUAKE_EMBEDDING_MODEL:-}
       OPENAI_API_KEY:               ${OPENAI_API_KEY:-}
+      # WHY: OPENAI_BASE_URL must NOT be set to an empty string.
+      # When unset on the host ${OPENAI_BASE_URL:-} evaluates to "", which the
+      # OpenAI provider uses as the base URL, breaking every request with
+      # "builder error".  The API server strips empty env vars at startup, but
+      # setting a safe default here provides defence-in-depth.
+      # Override only when using a custom OpenAI-compatible endpoint
+      # (e.g. OPENAI_BASE_URL=http://localhost:11434/v1 for Ollama in compat mode).
       OPENAI_BASE_URL:              ${OPENAI_BASE_URL:-}
       ANTHROPIC_API_KEY:            ${ANTHROPIC_API_KEY:-}
       GEMINI_API_KEY:               ${GEMINI_API_KEY:-}
