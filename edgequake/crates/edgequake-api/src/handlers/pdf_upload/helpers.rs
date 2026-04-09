@@ -53,8 +53,10 @@ pub(super) async fn create_pdf_processing_task(
         tenant_id,
         workspace_id,
         enable_vision: options.enable_vision,
-        vision_provider: options.resolved_vision_provider().to_string(),
-        vision_model: options.vision_model.clone(),
+        vision_provider: options.resolved_vision_provider(),
+        // WHY: Use vision_model() method (not the raw field) so provider-specific
+        // defaults are applied when no explicit model was set by the user.
+        vision_model: Some(options.vision_model()),
         existing_document_id: None, // Fresh upload — create new document
     };
 

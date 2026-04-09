@@ -177,16 +177,23 @@ pub async fn upload_pdf_document(
     // Priority: form explicit > workspace config > server default.
     // WHY: Workspace can pin a specific vision provider/model for all PDF uploads,
     // avoiding the need for callers to pass vision_provider/vision_model every time.
+    // 5b. SPEC-040: Apply workspace-level vision LLM config as defaults.
+    // Priority: form explicit > workspace vision config > workspace main LLM > server env default.
+    // WHY: When vision_llm_provider is not set in the workspace, fall back to the workspace's
+    // main llm_provider so that Ollama users don't silently hit the "openai" hard-coded default.
     if options.vision_provider.is_none() || options.vision_model.is_none() {
         if let Ok(Some(ws)) = state.workspace_service.get_workspace(workspace_id).await {
             if options.vision_provider.is_none() {
-                if let Some(ref wp) = ws.vision_llm_provider {
-                    debug!(
-                        "SPEC-040: Applying workspace vision_provider={} from workspace config",
-                        wp
-                    );
-                    options.vision_provider = Some(wp.clone());
-                }
+                let effective_vision_provider = ws
+                    .vision_llm_provider
+                    .as_deref()
+                    .filter(|p| !p.is_empty())
+                    .unwrap_or(&ws.llm_provider);
+                debug!(
+                    "SPEC-040: Resolved vision_provider={} (workspace vision={:?}, main={})",
+                    effective_vision_provider, ws.vision_llm_provider, ws.llm_provider
+                );
+                options.vision_provider = Some(effective_vision_provider.to_string());
             }
             if options.vision_model.is_none() {
                 if let Some(ref wm) = ws.vision_llm_model {
@@ -196,6 +203,8 @@ pub async fn upload_pdf_document(
                     );
                     options.vision_model = Some(wm.clone());
                 }
+                // Note: if ws.vision_llm_model is also None, resolved_vision_provider() +
+                // default_vision_model_for_provider() will derive the right default at task creation.
             }
         }
     }

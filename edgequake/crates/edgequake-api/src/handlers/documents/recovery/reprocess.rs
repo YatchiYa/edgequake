@@ -362,9 +362,15 @@ pub async fn reprocess_failed(
                 .await
                 .map_err(|e| ApiError::Internal(format!("Failed to list failed PDFs: {}", e)))?;
 
-            let vision_provider =
-                std::env::var("EDGEQUAKE_VISION_PROVIDER").unwrap_or_else(|_| "openai".to_string());
-            let vision_model = std::env::var("EDGEQUAKE_VISION_MODEL").ok();
+            // WHY: Prefer EDGEQUAKE_VISION_PROVIDER if set; fall back to the main
+            // LLM provider (EDGEQUAKE_LLM_PROVIDER) so Ollama deployments don't
+            // accidentally use "openai" and fail with a missing API key error.
+            let vision_provider = std::env::var("EDGEQUAKE_VISION_PROVIDER")
+                .or_else(|_| std::env::var("EDGEQUAKE_LLM_PROVIDER"))
+                .unwrap_or_else(|_| "ollama".to_string());
+            let vision_model = std::env::var("EDGEQUAKE_VISION_MODEL")
+                .or_else(|_| std::env::var("EDGEQUAKE_LLM_MODEL"))
+                .ok();
 
             for pdf in failed_pdfs.items {
                 // Determine tenant_id: prefer from context, fall back to a

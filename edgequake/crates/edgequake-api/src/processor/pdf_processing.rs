@@ -213,10 +213,14 @@ impl DocumentTaskProcessor {
             {
                 use edgequake_pdf2md::{convert_from_bytes, ConversionConfig};
 
-                let model = data
-                    .vision_model
-                    .clone()
-                    .unwrap_or_else(|| "gpt-4.1-nano".to_string());
+                // WHY: Use provider-specific default model so Ollama deployments
+                // don't fall back to "gpt-4.1-nano" (an OpenAI model). If the
+                // task was created with helpers.rs vision_model() method, this
+                // unwrap_or_else branch is never reached; it is only a safety net.
+                let model = data.vision_model.clone().unwrap_or_else(|| {
+                    use crate::handlers::pdf_upload::types::default_vision_model_for_provider;
+                    default_vision_model_for_provider(&data.vision_provider)
+                });
                 let pdf_bytes = pdf.pdf_data.clone();
 
                 // WHY: Vision extraction uses a provider selected per-workspace

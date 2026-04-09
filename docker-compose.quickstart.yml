@@ -70,6 +70,18 @@ services:
       # Optional model override — when unset the API picks a sensible default
       # (e.g. text-embedding-3-small for OpenAI, embeddinggemma for Ollama).
       EDGEQUAKE_EMBEDDING_MODEL:    ${EDGEQUAKE_EMBEDDING_MODEL:-}
+      # ── Vision LLM Provider (PDF → Markdown) ────────────────────────────────
+      # Used exclusively for rendering PDF pages into Markdown (multimodal LLM).
+      # Default: same provider as EDGEQUAKE_LLM_PROVIDER (set by quickstart.sh).
+      # Override: EDGEQUAKE_VISION_PROVIDER=openai to use OpenAI even if Ollama
+      #           is the main entity-extraction LLM.
+      # WHY: Without this variable the server falls back to EDGEQUAKE_LLM_PROVIDER,
+      # so Ollama users get Ollama vision for free without setting OPENAI_API_KEY.
+      EDGEQUAKE_VISION_PROVIDER:    ${EDGEQUAKE_VISION_PROVIDER:-}
+      # Optional vision model override — when unset uses EDGEQUAKE_LLM_MODEL or
+      # a provider-specific sensible default (gemma3:latest for Ollama,
+      # gpt-4.1-nano for OpenAI).
+      EDGEQUAKE_VISION_MODEL:       ${EDGEQUAKE_VISION_MODEL:-}
       OPENAI_API_KEY:               ${OPENAI_API_KEY:-}
       # WHY: OPENAI_BASE_URL must NOT be set to an empty string.
       # When unset on the host ${OPENAI_BASE_URL:-} evaluates to "", which the

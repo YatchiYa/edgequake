@@ -52,9 +52,17 @@ mod tests {
         opts.vision_model = Some("custom-model".to_string());
         assert_eq!(opts.vision_model(), "custom-model");
 
-        // Test default (None provider = "openai" default)
+        // Test default (None provider = env var EDGEQUAKE_LLM_PROVIDER or "ollama")
+        // WHY: Should NOT default to "openai" — that requires an API key and breaks
+        // Ollama-only deployments. Default to "ollama" (safe, no API key needed).
         let default_opts = PdfUploadOptions::default();
-        assert_eq!(default_opts.vision_model(), "gpt-4.1-nano");
+        // In test environments EDGEQUAKE_LLM_PROVIDER is unset, so defaults to "ollama"
+        // which gives "gemma3:latest" as the default model.
+        let resolved_provider = default_opts.resolved_vision_provider();
+        assert_ne!(
+            resolved_provider, "openai",
+            "Must not hardcode openai as default vision provider"
+        );
     }
 
     /// OODA-17: Test PdfOperationResponse serialization

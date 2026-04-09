@@ -26,18 +26,38 @@ pub struct PdfUploadOptions {
 
 impl PdfUploadOptions {
     /// Get the resolved vision provider (with fallback to server default).
-    pub fn resolved_vision_provider(&self) -> &str {
-        self.vision_provider.as_deref().unwrap_or("openai")
+    ///
+    /// WHY: When no vision provider is explicitly configured, fall back to the
+    /// server's main LLM provider (EDGEQUAKE_LLM_PROVIDER env var) rather than
+    /// hardcoding "openai". This ensures PDF vision extraction works out-of-the-box
+    /// for Ollama deployments that have no OPENAI_API_KEY.
+    pub fn resolved_vision_provider(&self) -> String {
+        self.vision_provider.clone().unwrap_or_else(|| {
+            std::env::var("EDGEQUAKE_LLM_PROVIDER").unwrap_or_else(|_| "ollama".to_string())
+        })
     }
 
     /// Get the vision model to use (with fallback from provider).
     pub fn vision_model(&self) -> String {
         self.vision_model
             .clone()
-            .unwrap_or_else(|| match self.resolved_vision_provider() {
-                "ollama" => "gemma3:latest".to_string(),
-                _ => "gpt-4.1-nano".to_string(),
-            })
+            .unwrap_or_else(|| default_vision_model_for_provider(&self.resolved_vision_provider()))
+    }
+}
+
+/// Return a sensible default vision model for the given provider.
+///
+/// WHY: Different providers have different default multimodal models.
+/// For Ollama, use the configured LLM model if set (multimodal models
+/// like gemma4 support vision natively). For OpenAI, use gpt-4.1-nano.
+pub(crate) fn default_vision_model_for_provider(provider: &str) -> String {
+    match provider {
+        "openai" => {
+            std::env::var("EDGEQUAKE_VISION_MODEL").unwrap_or_else(|_| "gpt-4.1-nano".to_string())
+        }
+        _ => std::env::var("EDGEQUAKE_VISION_MODEL")
+            .or_else(|_| std::env::var("EDGEQUAKE_LLM_MODEL"))
+            .unwrap_or_else(|_| "gemma3:latest".to_string()),
     }
 }
 

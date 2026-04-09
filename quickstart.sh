@@ -539,6 +539,23 @@ start_stack() {
   export EDGEQUAKE_EMBEDDING_PROVIDER="$EMBED_PROVIDER"
   export EDGEQUAKE_EMBEDDING_MODEL="$EMBED_MODEL"
 
+  # WHY: EDGEQUAKE_VISION_PROVIDER defaults to the same provider as the main LLM.
+  # This is the First-Principle correct behaviour: the vision LLM (PDF → Markdown)
+  # should use whatever provider the user selected, not a hardcoded "openai".
+  # An explicit EDGEQUAKE_VISION_PROVIDER env var overrides this (power users).
+  if [ -z "${EDGEQUAKE_VISION_PROVIDER:-}" ]; then
+    export EDGEQUAKE_VISION_PROVIDER="$LLM_PROVIDER"
+  else
+    export EDGEQUAKE_VISION_PROVIDER
+  fi
+  # Vision model: if not explicitly set, leave empty so the server derives it
+  # from EDGEQUAKE_LLM_MODEL / provider default (DRY: one source of truth).
+  if [ -n "${EDGEQUAKE_VISION_MODEL:-}" ]; then
+    export EDGEQUAKE_VISION_MODEL
+  else
+    unset EDGEQUAKE_VISION_MODEL 2>/dev/null || true
+  fi
+
   # WHY: Only export OPENAI_API_KEY for OpenAI mode.
   # For Ollama mode, unset it to prevent an empty string reaching the container
   # (Docker Compose maps unset -> "" via ${VAR:-}; the API strips empty env vars

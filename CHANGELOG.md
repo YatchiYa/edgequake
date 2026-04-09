@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.16] - 2026-04-09
+
+### Fixed
+
+- **Vision LLM hardcoded to OpenAI even when Ollama is selected** — PDF → Markdown
+  extraction (vision LLM) was always attempting to create an OpenAI provider regardless of
+  which provider the user configured. Root cause: `resolved_vision_provider()` returned a
+  hardcoded `"openai"` when no explicit `vision_llm_provider` workspace setting existed.
+
+  **First-Principle fix across all five code paths:**
+  1. `types.rs` — `resolved_vision_provider()` now reads `EDGEQUAKE_LLM_PROVIDER` env var as
+     fallback (default `"ollama"`) instead of hardcoding `"openai"`.
+  2. `upload.rs` — When workspace has no `vision_llm_provider`, falls back to
+     `workspace.llm_provider` (the main LLM) rather than the hardcoded default.
+  3. `helpers.rs` — Passes `vision_model: Some(options.vision_model())` so the
+     provider-specific default model is always stored in the task (no surprise fallback at
+     execution time).
+  4. `pdf_processing.rs` — Uses `default_vision_model_for_provider()` for the rare case
+     where `vision_model` is None at processing time (safety net).
+  5. `reprocess.rs` / `bulk_ops/mod.rs` — Retry/rebuild paths also fall back to
+     `EDGEQUAKE_LLM_PROVIDER` / `workspace.llm_provider` instead of hardcoded strings.
+
+  **Infrastructure fix:**
+  - `docker-compose.quickstart.yml`: added `EDGEQUAKE_VISION_PROVIDER` and
+    `EDGEQUAKE_VISION_MODEL` pass-through env vars with safe empty defaults.
+  - `quickstart.sh`: `start_stack()` now explicitly exports
+    `EDGEQUAKE_VISION_PROVIDER="$LLM_PROVIDER"` so there is zero ambiguity — the vision
+    provider always matches the selected provider unless the user overrides it.
+
 ## [0.9.15] - 2026-04-09
 
 ### Fixed

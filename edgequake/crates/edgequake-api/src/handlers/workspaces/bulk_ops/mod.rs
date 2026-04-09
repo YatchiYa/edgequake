@@ -153,11 +153,14 @@ pub(super) fn build_pdf_task(
     pdf_id: Uuid,
     doc_id: &str,
 ) -> edgequake_tasks::PdfProcessingData {
+    // WHY: When workspace has no explicit vision_llm_provider, fall back to the
+    // workspace's main llm_provider instead of hardcoding "ollama". This ensures
+    // OpenAI workspaces also rebuild with the correct vision provider.
     let vision_provider = workspace
         .vision_llm_provider
         .as_deref()
         .filter(|p| !p.is_empty())
-        .unwrap_or("ollama")
+        .unwrap_or_else(|| workspace.llm_provider.as_str())
         .to_string();
     let vision_model = workspace.vision_llm_model.clone().filter(|m| !m.is_empty());
 
