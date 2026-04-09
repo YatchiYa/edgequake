@@ -581,7 +581,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Ok(val) = std::env::var(var) {
             if val.is_empty() {
                 std::env::remove_var(var);
-                info!("Removed empty env var '{}' to prevent provider misconfiguration", var);
+                info!(
+                    "Removed empty env var '{}' to prevent provider misconfiguration",
+                    var
+                );
             }
         }
     }
