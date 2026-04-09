@@ -29,6 +29,7 @@ services:
     image: ghcr.io/raphaelmansuy/edgequake-postgres:${EDGEQUAKE_VERSION:-latest}
     container_name: edgequake-postgres
     restart: unless-stopped
+    shm_size: '256m'
     environment:
       POSTGRES_USER:     edgequake
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-edgequake_secret}
