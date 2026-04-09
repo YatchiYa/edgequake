@@ -75,13 +75,15 @@ services:
       # Default: same provider as EDGEQUAKE_LLM_PROVIDER (set by quickstart.sh).
       # Override: EDGEQUAKE_VISION_PROVIDER=openai to use OpenAI even if Ollama
       #           is the main entity-extraction LLM.
-      # WHY: Without this variable the server falls back to EDGEQUAKE_LLM_PROVIDER,
-      # so Ollama users get Ollama vision for free without setting OPENAI_API_KEY.
-      EDGEQUAKE_VISION_PROVIDER:    ${EDGEQUAKE_VISION_PROVIDER:-}
-      # Optional vision model override — when unset uses EDGEQUAKE_LLM_MODEL or
-      # a provider-specific sensible default (gemma3:latest for Ollama,
-      # gpt-4.1-nano for OpenAI).
-      EDGEQUAKE_VISION_MODEL:       ${EDGEQUAKE_VISION_MODEL:-}
+      # WHY nested substitution: Docker Compose ${VAR:-} maps an unset host var to
+      # the empty string "" inside the container. std::env::var then returns Ok("")
+      # which looks like a valid value and bypasses fallback chains in the server code.
+      # Using ${VISION_VAR:-${LLM_VAR:-default}} ensures the container always has a
+      # non-empty value derived from the corresponding LLM setting when not explicit.
+      EDGEQUAKE_VISION_PROVIDER:    ${EDGEQUAKE_VISION_PROVIDER:-${EDGEQUAKE_LLM_PROVIDER:-ollama}}
+      # Vision model: when unset falls back to the main LLM model so Ollama users
+      # automatically use their configured model (e.g. gemma4:e4b) for vision too.
+      EDGEQUAKE_VISION_MODEL:       ${EDGEQUAKE_VISION_MODEL:-${EDGEQUAKE_LLM_MODEL:-}}
       OPENAI_API_KEY:               ${OPENAI_API_KEY:-}
       # WHY: OPENAI_BASE_URL must NOT be set to an empty string.
       # When unset on the host ${OPENAI_BASE_URL:-} evaluates to "", which the

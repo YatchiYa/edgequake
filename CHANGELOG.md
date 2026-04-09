@@ -2,6 +2,52 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.17] - 2026-04-09
+
+### Fixed
+
+- **Vision model sent as empty string to Ollama — `{"error":"model is required"}`** — After
+  the v0.9.16 fix, vision provider correctly resolved to Ollama, but Ollama rejected every
+  page with a 400 error because the model name was an empty string.
+
+  **Root cause:** Docker Compose `${VAR:-}` maps an unset host variable to the literal empty
+  string `""` inside the container. `std::env::var("EDGEQUAKE_VISION_MODEL")` returns `Ok("")`
+  for that case — not an error — so every `.or_else(|_| ...)` fallback chain silently short-
+  circuits and the caller receives `""` as the model. Ollama then gets
+  `{"model":"","messages":[...]}` and responds with `400 model is required`.
+
+  **First-Principle fix — defence in depth across all resolution layers:**
+
+  1. **`types.rs` — `default_vision_model_for_provider()`:** Switched from
+     `std::env::var(X).or_else(|_| std::env::var(Y))` to
+     `std::env::var(X).ok().filter(|s| !s.is_empty()).or_else(|| ...)` so empty strings are
+     treated identically to unset variables. This is the single source of truth for vision
+     model defaults.
+  2. **`types.rs` — `vision_model()`:** Added `.filter(|s| !s.is_empty())` before the
+     `unwrap_or_else` so an empty `self.vision_model` falls through to the provider default.
+  3. **`types.rs` — `resolved_vision_provider()`:** Same empty-string filter applied so an
+     explicitly empty vision provider also falls through to `EDGEQUAKE_LLM_PROVIDER` / "ollama".
+  4. **`pdf_processing.rs` safety-net:** Added `.filter(|s| !s.is_empty())` on `data.vision_model`
+     before the `unwrap_or_else` branch so a task stored with `""` still resolves correctly.
+  5. **`reprocess.rs` — PDF retry path:** Changed env var reads to use
+     `.ok().filter(|s| !s.is_empty()).or_else(|| ...)` for both `vision_provider` and
+     `vision_model`.
+
+  **Infrastructure fix — docker-compose.quickstart.yml:**
+  - Changed `EDGEQUAKE_VISION_PROVIDER: ${EDGEQUAKE_VISION_PROVIDER:-}` to
+    `${EDGEQUAKE_VISION_PROVIDER:-${EDGEQUAKE_LLM_PROVIDER:-ollama}}` so the container always
+    receives a non-empty provider derived from the main LLM setting.
+  - Changed `EDGEQUAKE_VISION_MODEL: ${EDGEQUAKE_VISION_MODEL:-}` to
+    `${EDGEQUAKE_VISION_MODEL:-${EDGEQUAKE_LLM_MODEL:-}}` so Ollama users automatically get
+    their configured model (e.g. `gemma4:e4b`) for vision without any extra configuration.
+
+  **Invariant now enforced end-to-end:**
+  ```
+  vision_model = EDGEQUAKE_VISION_MODEL (non-empty)
+             ?? EDGEQUAKE_LLM_MODEL     (non-empty)
+             ?? "gemma3:latest"         (Ollama) / "gpt-4.1-nano" (OpenAI)
+  ```
+
 ## [0.9.16] - 2026-04-09
 
 ### Fixed
