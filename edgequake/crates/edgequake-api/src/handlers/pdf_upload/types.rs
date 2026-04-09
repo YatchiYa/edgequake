@@ -32,15 +32,26 @@ impl PdfUploadOptions {
     /// hardcoding "openai". This ensures PDF vision extraction works out-of-the-box
     /// for Ollama deployments that have no OPENAI_API_KEY.
     pub fn resolved_vision_provider(&self) -> String {
-        self.vision_provider.clone().unwrap_or_else(|| {
-            std::env::var("EDGEQUAKE_LLM_PROVIDER").unwrap_or_else(|_| "ollama".to_string())
-        })
+        // WHY filter empty strings: same Docker Compose ${VAR:-} → "" issue as above.
+        self.vision_provider
+            .clone()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| {
+                std::env::var("EDGEQUAKE_LLM_PROVIDER")
+                    .ok()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| "ollama".to_string())
+            })
     }
 
     /// Get the vision model to use (with fallback from provider).
+    ///
+    /// WHY filter empty strings: if workspace stored an empty model string,
+    /// treat it the same as "not configured" and fall back to the provider default.
     pub fn vision_model(&self) -> String {
         self.vision_model
             .clone()
+            .filter(|s| !s.is_empty()) // treat "" same as None
             .unwrap_or_else(|| default_vision_model_for_provider(&self.resolved_vision_provider()))
     }
 }
@@ -50,14 +61,25 @@ impl PdfUploadOptions {
 /// WHY: Different providers have different default multimodal models.
 /// For Ollama, use the configured LLM model if set (multimodal models
 /// like gemma4 support vision natively). For OpenAI, use gpt-4.1-nano.
+///
+/// WHY filter empty strings: Docker Compose `${VAR:-}` maps an unset host
+/// variable to the empty string "" inside the container. `std::env::var`
+/// returns `Ok("")` for that case, so the `.or_else` chain never fires and
+/// the caller receives an empty model name which Ollama rejects with
+/// `{"error":"model is required"}`. We treat "" the same as "unset".
 pub(crate) fn default_vision_model_for_provider(provider: &str) -> String {
+    // Filter empty strings: Docker Compose ${VAR:-} maps unset vars to "" in containers.
+    let env_vision = std::env::var("EDGEQUAKE_VISION_MODEL")
+        .ok()
+        .filter(|s| !s.is_empty());
+    let env_llm = std::env::var("EDGEQUAKE_LLM_MODEL")
+        .ok()
+        .filter(|s| !s.is_empty());
     match provider {
-        "openai" => {
-            std::env::var("EDGEQUAKE_VISION_MODEL").unwrap_or_else(|_| "gpt-4.1-nano".to_string())
-        }
-        _ => std::env::var("EDGEQUAKE_VISION_MODEL")
-            .or_else(|_| std::env::var("EDGEQUAKE_LLM_MODEL"))
-            .unwrap_or_else(|_| "gemma3:latest".to_string()),
+        "openai" => env_vision.unwrap_or_else(|| "gpt-4.1-nano".to_string()),
+        _ => env_vision
+            .or(env_llm)
+            .unwrap_or_else(|| "gemma3:latest".to_string()),
     }
 }
 

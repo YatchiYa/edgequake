@@ -365,12 +365,27 @@ pub async fn reprocess_failed(
             // WHY: Prefer EDGEQUAKE_VISION_PROVIDER if set; fall back to the main
             // LLM provider (EDGEQUAKE_LLM_PROVIDER) so Ollama deployments don't
             // accidentally use "openai" and fail with a missing API key error.
+            // WHY filter empty strings: Docker Compose ${VAR:-} maps unset host vars
+            // to "" inside the container. std::env::var returns Ok("") for that case,
+            // so the or_else chain never fires and callers receive empty provider/model
+            // names (Ollama: 400 "model is required"). Treat "" the same as unset.
             let vision_provider = std::env::var("EDGEQUAKE_VISION_PROVIDER")
-                .or_else(|_| std::env::var("EDGEQUAKE_LLM_PROVIDER"))
-                .unwrap_or_else(|_| "ollama".to_string());
+                .ok()
+                .filter(|s| !s.is_empty())
+                .or_else(|| {
+                    std::env::var("EDGEQUAKE_LLM_PROVIDER")
+                        .ok()
+                        .filter(|s| !s.is_empty())
+                })
+                .unwrap_or_else(|| "ollama".to_string());
             let vision_model = std::env::var("EDGEQUAKE_VISION_MODEL")
-                .or_else(|_| std::env::var("EDGEQUAKE_LLM_MODEL"))
-                .ok();
+                .ok()
+                .filter(|s| !s.is_empty())
+                .or_else(|| {
+                    std::env::var("EDGEQUAKE_LLM_MODEL")
+                        .ok()
+                        .filter(|s| !s.is_empty())
+                });
 
             for pdf in failed_pdfs.items {
                 // Determine tenant_id: prefer from context, fall back to a
