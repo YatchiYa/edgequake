@@ -116,10 +116,13 @@ pub async fn list_models(State(state): State<AppState>) -> ApiResult<Json<Models
     let providers: Vec<ProviderResponse> =
         config.providers.iter().map(provider_to_response).collect();
 
+    // WHY: Return the runtime-active provider/model, not static models.toml defaults.
+    // The runtime provider is wired via ProviderFactory::from_env(); using config
+    // defaults would show "ollama/gemma4:e4b" even when OpenAI is active.
     Ok(Json(ModelsListResponse {
         providers,
-        default_llm_provider: config.defaults.llm_provider.clone(),
-        default_llm_model: config.defaults.llm_model.clone(),
+        default_llm_provider: state.llm_provider.name().to_string(),
+        default_llm_model: state.llm_provider.model().to_string(),
         default_embedding_provider: config.defaults.embedding_provider.clone(),
         default_embedding_model: config.defaults.embedding_model.clone(),
     }))
@@ -155,10 +158,13 @@ pub async fn list_llm_models(State(state): State<AppState>) -> ApiResult<Json<Ll
         })
         .collect();
 
+    // WHY: Return the runtime-active provider/model, not static models.toml defaults.
+    // The runtime provider is wired via ProviderFactory::from_env(); using config
+    // defaults would show "ollama/gemma4:e4b" even when OpenAI is active.
     Ok(Json(LlmModelsResponse {
         models,
-        default_provider: config.defaults.llm_provider.clone(),
-        default_model: config.defaults.llm_model.clone(),
+        default_provider: state.llm_provider.name().to_string(),
+        default_model: state.llm_provider.model().to_string(),
     }))
 }
 

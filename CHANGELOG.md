@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.14] - 2026-04-09
+
+### Fixed
+
+- **Query UI default model now matches the extraction model (First Principle)** — The
+  `/api/models/llm` and `/api/models` endpoints previously returned the static `models.toml`
+  default (`ollama/gemma4:e4b`) as `default_model` / `default_provider`, regardless of the
+  runtime-configured provider (e.g. `openai/gpt-5.4-mini` set via env vars). Both handlers now
+  read `state.llm_provider.name()` and `state.llm_provider.model()` from the live `AppState`
+  so the dropdown always pre-selects the same model that entity extraction uses.
+
 ## [0.9.13] - 2026-04-09
 
 ### Fixed
