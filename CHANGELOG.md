@@ -2,6 +2,61 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.12] - 2026-04-09
+
+### Added
+
+- **Interactive setup wizard** — `quickstart.sh` is a fully redesigned step-by-step terminal
+  wizard that guides users through provider selection, model choice, and validation before
+  starting the stack. Replaces the heuristic-based auto-detect approach.
+
+- **Explicit provider selection (ADR-001)** — The wizard always asks whether to use OpenAI or
+  Ollama; it never auto-detects from `OPENAI_API_KEY`. The environment variable is shown as an
+  informational hint only, preventing "flaky heuristic" surprises when the variable happens to be
+  set for an unrelated purpose.
+
+- **In-wizard model catalogue (ADR-003)** — Users choose from a curated, priced menu:
+  - OpenAI LLM: `gpt-5-mini` (default), `gpt-5-nano`, `gpt-5.4`, `gpt-5.4-mini`
+  - OpenAI Embeddings: `text-embedding-3-small` (default), `text-embedding-3-large`
+  - Ollama LLM: `gemma4:e4b` (default), `gemma4:e2b`, `gemma4:26b`, `qwen2.5:latest`, `llama3.2:latest`
+  - Ollama Embeddings: `embeddinggemma:latest` (default), `nomic-embed-text:latest`
+  Selected models are exported to Docker Compose; no manual editing of `.env` files required.
+
+- **Three-state volume lifecycle detection (ADR-002)** — On re-run the wizard detects:
+  - Running containers → offer "Update & Reconfigure" or "Quit"
+  - Stopped containers / orphaned volumes → offer "Restart & Reconfigure", "Fresh Start", or "Quit"
+  - No prior installation → fresh install path
+  Data volumes are explicitly listed so users know exactly what will be preserved or destroyed.
+
+- **Irreversible fresh-start gate** — Choosing "Fresh Start" requires the user to type `DELETE`
+  verbatim. Any other input cancels the destructive wipe and falls back to restart.
+
+- **`/dev/tty` reads for `curl | sh` compatibility (ADR-004)** — All interactive input uses
+  `read < /dev/tty`, keeping the wizard fully functional when the script body is piped from curl
+  (stdin is the shell pipe, TTY remains available for keystrokes). When `/dev/tty` is unavailable
+  (CI mode) the wizard exits immediately with env-var instructions for headless installs.
+
+- **Premium terminal UX (ADR-005)** — Design tokens (8 semantic colors, `C_BOLD`, `C_DIM`),
+  consistent component library (`ui_banner`, `ui_section`, `ui_ok/info/warn/fail`, `ui_menu`,
+  `ui_confirm`), and POSIX-safe 90-second health polling with animated dots.
+
+- **Spec documents** — Five Architecture Decision Records in `specs/install_script/` document
+  every design choice, rejected alternative, edge case, and mitigation in the new wizard:
+  ADR-001 (provider selection), ADR-002 (volume lifecycle), ADR-003 (model catalogue),
+  ADR-004 (TTY/POSIX compatibility), ADR-005 (UX design system).
+
+### Fixed
+
+- **`grep -c || echo 0` double-output under `set -e`** — When container/volume counts were
+  computed with `$(grep -c "…" || echo 0)`, a zero-match `grep` exited 1 and printed "0", then
+  `|| echo 0` ran, producing the string `"0\n0"` and breaking `-eq 0` integer tests. Replaced
+  with `| grep "…" | wc -l | tr -d ' '` which always exits 0 and emits a single clean integer.
+
+- **`printf "…\\\n"` renders literal `\n` (no newline)** — Double-quoted backslash-newline escape
+  sequences `"\\\n"` were shell-collapsed to `\n` before reaching `printf`, which then printed a
+  literal two-character `\n` instead of a backslash followed by a newline. Fixed by switching to
+  single-quoted format strings (`'\\\n'`) so the shell passes them unchanged to `printf`.
+
 ## [0.9.11] - 2026-04-09
 
 ### Fixed

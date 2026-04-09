@@ -11,7 +11,7 @@
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg?style=flat)](https://github.com/raphaelmansuy/edgequake)
 [![Documentation](https://img.shields.io/badge/docs-available-blue.svg?style=flat)](docs/README.md)
 
-> **v0.9.4** — One-command Docker quickstart (`curl ... | sh`), fix deletion of pending/processing documents, update default LLM model to gemma4 + embeddinggemma:latest. See [CHANGELOG](CHANGELOG.md) for full details.
+> **v0.9.12** — Interactive setup wizard: explicit OpenAI/Ollama provider selection, in-terminal model catalogue, volume lifecycle detection with safe "Fresh Start" gate, and `/dev/tty` reads for `curl | sh` compatibility. See [CHANGELOG](CHANGELOG.md) for full details.
 
 ---
 
@@ -136,9 +136,16 @@ See [mcp/](mcp/) for server implementation details.
 > No Rust, no Node.js, no `cargo build`, no `npm install`.
 
 ```bash
-# Download and start the full stack in one command
+# Download and run the interactive setup wizard
 curl -fsSL https://raw.githubusercontent.com/raphaelmansuy/edgequake/edgequake-main/quickstart.sh | sh
 ```
+
+The wizard guides you through:
+1. **Provider selection** — choose OpenAI or Ollama (never guessed from environment variables)
+2. **Model selection** — pick your LLM + embedding model from a curated, priced menu
+3. **Validation** — API key check (OpenAI) or Ollama ping + model-availability check
+4. **Stack startup** — pulls images, starts services, and polls health for up to 90 seconds
+5. **Re-run aware** — detects running/stopped containers and existing data volumes; offers "Update & Reconfigure" or safe "Fresh Start" (requires typing `DELETE`)
 
 Or with `docker compose` directly (pipe to compose):
 
@@ -164,14 +171,12 @@ docker compose -f docker-compose.quickstart.yml up -d
 | Swagger | http://localhost:8080/swagger-ui |
 | Health  | http://localhost:8080/health     |
 
-**LLM Provider (choose one):**
+**Headless / CI install (no interactive terminal):**
 
 ```bash
-# Default: Ollama running locally on port 11434
-# Make sure Ollama is running: https://ollama.ai
-
-# Or use OpenAI:
-OPENAI_API_KEY=sk-... curl -fsSL https://raw.githubusercontent.com/raphaelmansuy/edgequake/edgequake-main/quickstart.sh | sh
+EDGEQUAKE_LLM_PROVIDER=openai \
+  OPENAI_API_KEY=sk-... \
+  docker compose -f docker-compose.quickstart.yml up -d
 ```
 
 **Management:**
@@ -182,7 +187,7 @@ docker compose -f docker-compose.quickstart.yml ps         # check status
 docker compose -f docker-compose.quickstart.yml down       # stop
 ```
 
-> **Pinned version:** `EDGEQUAKE_VERSION=0.9.4 sh quickstart.sh` to use a specific release.
+> **Pinned version:** `EDGEQUAKE_VERSION=0.9.12 sh quickstart.sh` to use a specific release.
 
 ---
 
