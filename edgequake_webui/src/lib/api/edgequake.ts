@@ -43,6 +43,7 @@ import type {
     UploadDocumentRequest,
     UploadDocumentResponse,
     Workspace,
+    WorkspacePdfParserBackendUpdate,
 } from "@/types";
 import { api, SERVER_BASE_URL, streamClient } from "./client";
 
@@ -278,6 +279,8 @@ export interface UpdateWorkspaceRequest {
    * @implements SPEC-040: Workspace-scoped Vision LLM for PDF processing
    */
   vision_llm_model?: string;
+  /** Default PDF parser backend for this workspace. */
+  pdf_parser_backend?: WorkspacePdfParserBackendUpdate;
 }
 
 /**
@@ -591,6 +594,9 @@ export async function uploadPdfDocument(
   }
   if (options?.force_reindex !== undefined) {
     formData.append("force_reindex", String(options.force_reindex));
+  }
+  if (options?.pdf_parser_backend) {
+    formData.append("pdf_parser_backend", options.pdf_parser_backend);
   }
 
   return api.post<PdfUploadResponse>("/documents/pdf", formData, {
@@ -2011,4 +2017,3 @@ export default edgequakeApi;
 export * from "./conversations";
 export * from "./folders";
 export * from "./query-keys";
-

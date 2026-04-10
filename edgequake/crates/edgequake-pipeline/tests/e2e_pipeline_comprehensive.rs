@@ -549,7 +549,7 @@ mod summarizer_tests {
     async fn test_summarize_combined() {
         let summarizer = SimpleSummarizer::default();
 
-        let descriptions = vec!["Description one.", "Description two."];
+        let descriptions = ["Description one.", "Description two."];
         let refs: Vec<&str> = descriptions.iter().map(|s| s.as_ref()).collect();
         let result = summarizer.summarize_combined(&refs).await.unwrap();
 

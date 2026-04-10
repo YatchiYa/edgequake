@@ -536,8 +536,10 @@ mod tests {
     #[tokio::test]
     async fn test_pipeline_without_lineage_tracking() {
         // OODA-06: Explicitly disable lineage to test the opt-out path
-        let mut config = PipelineConfig::default();
-        config.enable_lineage_tracking = false;
+        let config = PipelineConfig {
+            enable_lineage_tracking: false,
+            ..Default::default()
+        };
         let pipeline = Pipeline::new(config);
 
         let result = pipeline

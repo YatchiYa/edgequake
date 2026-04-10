@@ -1,4 +1,6 @@
 #![cfg(feature = "pipeline")]
+#![allow(clippy::needless_borrows_for_generic_args)]
+#![allow(clippy::to_string_in_format_args)]
 
 //! Edge Case and Error Handling Tests
 //!

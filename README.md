@@ -313,7 +313,7 @@ curl -X POST http://localhost:8080/api/v1/query \
 │  │  edgequake-api           │  REST API server                          │   │
 │  │  edgequake-pipeline      │  Document ingestion pipeline              │   │
 │  │  edgequake-query         │  Query engine (6 modes)                   │   │
-│  │  edgequake-pdf           │  PDF extraction (text/vision/hybrid)      │   │
+│  │  edgequake-pdf           │  PDF extraction (vision / edgeparse)      │   │
 │  │  edgequake-auth          │  Authentication & authorization           │   │
 │  │  edgequake-audit         │  Compliance & audit logging               │   │
 │  │  edgequake-tasks         │  Background job processing                │   │
@@ -428,7 +428,7 @@ See the [CHANGELOG.md](CHANGELOG.md) for SDK and core updates.
 | [Embedding Models](docs/deep-dives/embedding-models.md)         | Model selection and dimension trade-offs     |
 | [Graph Storage](docs/deep-dives/graph-storage.md)               | Apache AGE property graph backend            |
 | [Vector Storage](docs/deep-dives/vector-storage.md)             | pgvector HNSW indexing and search            |
-| [PDF Processing](docs/deep-dives/pdf-processing.md)             | Text/Vision/Hybrid extraction pipeline       |
+| [PDF Processing](docs/deep-dives/pdf-processing.md)             | Vision and EdgeParse extraction pipeline     |
 | [Cost Tracking](docs/deep-dives/cost-tracking.md)               | LLM cost monitoring per operation            |
 | [Pipeline Progress](docs/deep-dives/pipeline-progress.md)       | Real-time progress tracking                  |
 

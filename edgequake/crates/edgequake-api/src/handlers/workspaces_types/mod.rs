@@ -80,6 +80,7 @@ mod tests {
             embedding_dimension: None,
             vision_llm_model: None,
             vision_llm_provider: None,
+            pdf_parser_backend: None,
             entity_types: None,
         };
 
@@ -102,6 +103,7 @@ mod tests {
             embedding_dimension: None,
             vision_llm_provider: None,
             vision_llm_model: None,
+            pdf_parser_backend: None,
         };
 
         let json = serde_json::to_string(&req).unwrap();
@@ -159,6 +161,7 @@ mod tests {
             embedding_full_id: "openai/text-embedding-3-small".to_string(),
             vision_llm_provider: None,
             vision_llm_model: None,
+            pdf_parser_backend: None,
             entity_types: None,
             created_at: "2024-01-01T00:00:00Z".to_string(),
             updated_at: "2024-01-01T00:00:00Z".to_string(),

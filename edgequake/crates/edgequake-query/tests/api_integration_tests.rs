@@ -410,7 +410,7 @@ async fn test_offtopic_graceful_degradation() {
     println!("Answer length: {} chars", response.answer.len());
 
     // Should gracefully decline rather than crash
-    assert!(response.answer.len() > 0, "Should return some response");
+    assert!(!response.answer.is_empty(), "Should return some response");
 }
 
 /// Test adjacent domain query (OODA 69)
@@ -430,7 +430,7 @@ async fn test_adjacent_domain_tesla() {
     println!("Answer length: {} chars", response.answer.len());
 
     // Should respond gracefully, possibly suggesting alternatives
-    assert!(response.answer.len() > 0, "Should return some response");
+    assert!(!response.answer.is_empty(), "Should return some response");
 }
 
 /// Test all query modes work

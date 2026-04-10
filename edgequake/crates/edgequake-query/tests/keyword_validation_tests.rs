@@ -470,7 +470,7 @@ async fn test_mixed_keyword_query_succeeds() {
     println!("Context chunks: {}", response.context.chunks.len());
 
     // With mock provider, answer will be minimal, but execution should succeed
-    assert!(response.answer.len() > 0, "Should return an answer");
+    assert!(!response.answer.is_empty(), "Should return an answer");
 }
 
 /// Test 3: Verify fallback when ALL keywords are invalid

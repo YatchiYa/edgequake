@@ -10,6 +10,7 @@ use crate::error::ApiError;
 use crate::handlers::workspaces_types::*;
 use crate::middleware::TenantContext;
 use crate::state::AppState;
+use edgequake_pdf::PdfParserBackend;
 
 /// Create a new workspace.
 ///
@@ -88,6 +89,10 @@ pub async fn create_workspace(
         embedding_dimension,
         vision_llm_model,
         vision_llm_provider,
+        pdf_parser_backend: request
+            .pdf_parser_backend
+            .as_deref()
+            .and_then(PdfParserBackend::from_env_str),
         // SPEC-085: Pass entity_types from HTTP request body if provided
         entity_types: request.entity_types.clone(),
     };
@@ -264,6 +269,7 @@ pub async fn update_workspace(
         // SPEC-040: Vision LLM configuration
         vision_llm_provider: request.vision_llm_provider,
         vision_llm_model: request.vision_llm_model,
+        pdf_parser_backend: request.pdf_parser_backend,
     };
 
     let workspace = state

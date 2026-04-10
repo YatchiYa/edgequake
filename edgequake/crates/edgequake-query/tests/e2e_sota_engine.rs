@@ -475,9 +475,11 @@ mod adaptive_mode_tests {
         let graph_storage = create_test_graph_storage().await;
         let provider = create_mock_provider();
 
-        let mut config = SOTAQueryConfig::default();
-        config.use_adaptive_mode = true;
-        config.use_keyword_extraction = true;
+        let config = SOTAQueryConfig {
+            use_adaptive_mode: true,
+            use_keyword_extraction: true,
+            ..Default::default()
+        };
 
         let engine = SOTAQueryEngine::with_mock_keywords(
             config,
@@ -506,8 +508,10 @@ mod adaptive_mode_tests {
         let graph_storage = create_test_graph_storage().await;
         let provider = create_mock_provider();
 
-        let mut config = SOTAQueryConfig::default();
-        config.use_adaptive_mode = true;
+        let config = SOTAQueryConfig {
+            use_adaptive_mode: true,
+            ..Default::default()
+        };
 
         let engine = SOTAQueryEngine::with_mock_keywords(
             config,
@@ -543,9 +547,11 @@ mod adaptive_mode_tests {
         let graph_storage = create_test_graph_storage().await;
         let provider = create_mock_provider();
 
-        let mut config = SOTAQueryConfig::default();
-        config.use_adaptive_mode = false;
-        config.default_mode = QueryMode::Naive;
+        let config = SOTAQueryConfig {
+            use_adaptive_mode: false,
+            default_mode: QueryMode::Naive,
+            ..Default::default()
+        };
 
         let engine = SOTAQueryEngine::with_mock_keywords(
             config,
@@ -653,7 +659,7 @@ mod tenant_tests {
             .with_tenant_id("tenant-1")
             .context_only();
 
-        let response = engine.query(request).await.unwrap();
+        let _response = engine.query(request).await.unwrap();
 
         // Should complete without error - time may be 0 for very fast execution
         // Stats are populated (u64 is always >= 0)
@@ -677,7 +683,7 @@ mod tenant_tests {
             .with_workspace_id("workspace-1")
             .context_only();
 
-        let response = engine.query(request).await.unwrap();
+        let _response = engine.query(request).await.unwrap();
 
         // Should complete without error - time may be 0 for very fast execution
         // Stats are populated (u64 is always >= 0)

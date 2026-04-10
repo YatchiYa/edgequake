@@ -28,12 +28,22 @@ export function ProcessingDetails({ lineage }: ProcessingDetailsProps) {
       {/* Model Information */}
       <div className="grid gap-y-3 text-sm">
         {/* SPEC-040: Vision LLM used for PDF→Markdown extraction */}
-        {lineage.pdf_vision_model && (
+        {(lineage.pdf_vision_model || lineage.pdf_extraction_method) && (
           <DetailRow
-            label="Vision LLM (PDF)"
-            value={`${lineage.pdf_vision_model}${lineage.pdf_extraction_method ? ` · ${lineage.pdf_extraction_method}` : ''}`}
+            label="PDF Extraction"
+            value={[
+              lineage.pdf_extraction_method === 'edgeparse'
+                ? 'EdgeParse'
+                : lineage.pdf_extraction_method,
+              lineage.pdf_vision_model,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
             mono
           />
+        )}
+        {lineage.pdf_extraction_warning && (
+          <DetailRow label="PDF Warning" value={lineage.pdf_extraction_warning} />
         )}
         {lineage.llm_model && (
           <DetailRow label="LLM Model" value={lineage.llm_model} mono />

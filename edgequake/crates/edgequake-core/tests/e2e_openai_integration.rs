@@ -15,7 +15,7 @@ use std::collections::HashSet;
 use std::env;
 use std::sync::Arc;
 
-use edgequake_core::{EdgeQuake, EdgeQuakeConfig, QueryParams, StorageBackend, StorageConfig};
+use edgequake_core::{EdgeQuake, EdgeQuakeConfig, StorageBackend, StorageConfig};
 use edgequake_llm::{EmbeddingProvider, LLMProvider, OpenAIProvider};
 use edgequake_storage::{GraphStorage, MemoryGraphStorage, MemoryKVStorage, MemoryVectorStorage};
 

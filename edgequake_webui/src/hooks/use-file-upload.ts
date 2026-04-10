@@ -33,6 +33,8 @@ export interface UseFileUploadOptions {
   workspaceId?: string | null;
   /** Callback when upload starts (e.g., to switch filter) */
   onUploadStart?: () => void;
+  /** Optional per-upload PDF parser backend override. */
+  pdfParserBackend?: "vision" | "edgeparse";
 }
 
 export interface UseFileUploadReturn {
@@ -73,6 +75,7 @@ export function useFileUpload(
   options: UseFileUploadOptions = {},
 ): UseFileUploadReturn {
   const { tenantId, workspaceId, onUploadStart } = options;
+  const { pdfParserBackend } = options;
 
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -185,6 +188,7 @@ export function useFileUpload(
               title: file.name,
               enable_vision: true, // Enable vision extraction by default for PDFs
               track_id: trackId,
+              pdf_parser_backend: pdfParserBackend,
             });
 
             response = {

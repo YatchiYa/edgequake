@@ -61,15 +61,27 @@ This tutorial explores EdgeQuake's document processing pipeline in depth, coveri
 
 ## Working with PDF Documents
 
-EdgeQuake has advanced PDF extraction capabilities using layout analysis and optional LLM enhancement. This section provides a quick overview - see the [PDF Ingestion Tutorial](/docs/tutorials/pdf-ingestion/) for complete details.
+EdgeQuake has two PDF extraction backends:
+- `vision` (default) for scanned, image-heavy, or layout-complex PDFs
+- `edgeparse` for fast CPU-only extraction of digital-native PDFs
+
+You can choose the backend per upload, set a workspace default, or use
+`EDGEQUAKE_PDF_PARSER_BACKEND` as a server fallback. This section provides a quick overview - see
+the [PDF Ingestion Tutorial](/docs/tutorials/pdf-ingestion/) for complete details.
 
 ### Quick PDF Upload Example
 
 ```bash
-# Upload a PDF with default settings (text mode)
+# Upload a PDF with default settings (vision backend)
 curl -X POST "http://localhost:8080/api/v1/documents/upload" \
   -F "file=@research_paper.pdf" \
   -F "title=AI Research Paper"
+
+# Upload a digital-native PDF with EdgeParse
+curl -X POST "http://localhost:8080/api/v1/documents/upload" \
+  -F "file=@annual_report.pdf" \
+  -F "title=Annual Report" \
+  -F "pdf_parser_backend=edgeparse"
 ```
 
 **What Gets Extracted**:
@@ -112,31 +124,31 @@ curl -X POST http://localhost:8080/api/v1/documents/upload \
 - Processing: 2-5 seconds
 - Cost: Free
 
-**Vision Mode** (scanned documents):
+**Vision Backend** (scanned documents):
 
 ```bash
 # LLM-based OCR for scanned/image PDFs
 curl -X POST http://localhost:8080/api/v1/documents/upload \
   -F "file=@scanned_book.pdf" \
-  -F 'config={"mode": "Vision"}'
+  -F "pdf_parser_backend=vision"
 ```
 
 - Use for: Scanned documents, poor quality PDFs
 - Processing: 20-50 seconds
 - Cost: ~$0.001-0.01 per page
 
-**Hybrid Mode** (automatic quality detection):
+**Workspace Default Override** (scan-heavy corpus):
 
 ```bash
-# Automatic fallback to vision for low-quality pages
-curl -X POST http://localhost:8080/api/v1/documents/upload \
-  -F "file=@mixed_quality.pdf" \
-  -F 'config={"mode": "Hybrid", "quality_threshold": 0.7}'
+# Prefer vision for all uploads in this workspace
+curl -X PUT http://localhost:8080/api/v1/workspaces/$WORKSPACE_ID \
+  -H "Content-Type: application/json" \
+  -d '{"pdf_parser_backend":"vision"}'
 ```
 
-- Use for: Unknown PDF quality
-- Processing: Variable (2-50 seconds)
-- Cost: Only low-quality pages incur LLM cost
+- Use for: Teams that mostly ingest scans or image-heavy PDFs
+- Processing: Consistent Vision behavior across uploads
+- Cost: All uploads use the Vision backend unless overridden per upload
 
 ---
 
@@ -150,7 +162,7 @@ curl -X POST http://localhost:8080/api/v1/documents/upload \
   -F 'config={"enhance_tables": true}'
 ```
 
-**Before** (text mode):
+**Before** (raw extraction):
 
 ```
 Column1 Header Column2 Header
@@ -265,7 +277,7 @@ curl http://localhost:8080/api/v1/documents/doc-uuid
   "metadata": {
     "pages": 12,
     "tables_detected": 3,
-    "extraction_mode": "Text"
+    "pdf_extraction_method": "edgeparse"
   },
   "chunk_count": 24,
   "entity_count": 18
@@ -280,7 +292,7 @@ curl http://localhost:8080/api/v1/documents/doc-uuid
 
 **If chunk_count = 0**:
 
-1. Try Vision mode: `{"mode": "Vision"}`
+1. Retry with the Vision backend: `{"pdf_parser_backend":"vision"}`
 2. Check if PDF is encrypted/protected
 3. See [PDF Troubleshooting](/docs/troubleshooting/common-issues/#pdf-extraction-issues)
 
@@ -292,15 +304,13 @@ Common configuration options:
 
 ```json
 {
-  "mode": "Text", // Text | Vision | Hybrid
+  "pdf_parser_backend": "edgeparse", // edgeparse | vision
   "enhance_tables": false, // Enable LLM table refinement
-  "quality_threshold": 0.5, // Hybrid mode threshold
   "layout": {
     "detect_columns": true, // Multi-column detection
     "detect_tables": true, // Table detection
     "column_gap_threshold": 20.0 // Column separation (points)
   },
-  "vision_dpi": 150, // DPI for vision mode
   "max_pages": null, // Limit pages (null = all)
   "normalize_spacing": true, // Fix concatenated words
   "extract_figure_captions": true // Extract figure captions
@@ -336,7 +346,7 @@ Common configuration options:
 
 **No text extracted**:
 
-- ✅ Try `{"mode": "Vision"}` for scanned PDFs
+- ✅ Try `{"pdf_parser_backend":"vision"}` for scanned PDFs
 - ✅ Check PDF is not encrypted
 
 **Tables not detected**:

@@ -8,6 +8,8 @@
 //! - ProcessingStats cost fields
 //! - Edge cases and thread safety
 
+#![allow(deprecated)]
+
 use edgequake_pipeline::{
     default_model_pricing, CostBreakdown, CostBreakdownStats, CostTracker, ModelPricing,
     OperationCost, ProcessingStats,
@@ -437,11 +439,12 @@ mod processing_stats_tests {
 
     #[test]
     fn test_processing_stats_cost_fields() {
-        let mut stats = ProcessingStats::default();
-
-        stats.input_tokens = 1000;
-        stats.output_tokens = 500;
-        stats.cost_usd = 0.00045;
+        let stats = ProcessingStats {
+            input_tokens: 1000,
+            output_tokens: 500,
+            cost_usd: 0.00045,
+            ..Default::default()
+        };
 
         assert_eq!(stats.input_tokens, 1000);
         assert_eq!(stats.output_tokens, 500);
@@ -450,17 +453,19 @@ mod processing_stats_tests {
 
     #[test]
     fn test_processing_stats_cost_breakdown() {
-        let mut stats = ProcessingStats::default();
-
-        let mut breakdown = CostBreakdownStats::default();
-        breakdown.extraction_cost_usd = 0.00045;
-        breakdown.embedding_cost_usd = 0.0001;
-        breakdown.extraction_input_tokens = 1000;
-        breakdown.extraction_output_tokens = 500;
-        breakdown.embedding_tokens = 5000;
-
-        stats.cost_breakdown = Some(breakdown);
-        stats.cost_usd = 0.00045 + 0.0001;
+        let breakdown = CostBreakdownStats {
+            extraction_cost_usd: 0.00045,
+            embedding_cost_usd: 0.0001,
+            extraction_input_tokens: 1000,
+            extraction_output_tokens: 500,
+            embedding_tokens: 5000,
+            ..Default::default()
+        };
+        let stats = ProcessingStats {
+            cost_breakdown: Some(breakdown),
+            cost_usd: 0.00045 + 0.0001,
+            ..Default::default()
+        };
 
         let breakdown = stats.cost_breakdown.as_ref().unwrap();
         assert!((breakdown.extraction_cost_usd - 0.00045).abs() < 0.000001);
@@ -469,12 +474,14 @@ mod processing_stats_tests {
 
     #[test]
     fn test_processing_stats_serialization() {
-        let mut stats = ProcessingStats::default();
-        stats.chunk_count = 5;
-        stats.entity_count = 10;
-        stats.input_tokens = 1000;
-        stats.output_tokens = 500;
-        stats.cost_usd = 0.00045;
+        let stats = ProcessingStats {
+            chunk_count: 5,
+            entity_count: 10,
+            input_tokens: 1000,
+            output_tokens: 500,
+            cost_usd: 0.00045,
+            ..Default::default()
+        };
 
         let json = serde_json::to_string(&stats).unwrap();
 
@@ -550,12 +557,14 @@ mod cost_breakdown_stats_tests {
 
     #[test]
     fn test_cost_breakdown_stats_serialization() {
-        let mut breakdown = CostBreakdownStats::default();
-        breakdown.extraction_cost_usd = 0.00045;
-        breakdown.embedding_cost_usd = 0.0001;
-        breakdown.extraction_input_tokens = 1000;
-        breakdown.extraction_output_tokens = 500;
-        breakdown.embedding_tokens = 5000;
+        let breakdown = CostBreakdownStats {
+            extraction_cost_usd: 0.00045,
+            embedding_cost_usd: 0.0001,
+            extraction_input_tokens: 1000,
+            extraction_output_tokens: 500,
+            embedding_tokens: 5000,
+            ..Default::default()
+        };
 
         let json = serde_json::to_string(&breakdown).unwrap();
 
@@ -566,10 +575,12 @@ mod cost_breakdown_stats_tests {
 
     #[test]
     fn test_cost_breakdown_stats_total_calculation() {
-        let mut breakdown = CostBreakdownStats::default();
-        breakdown.extraction_cost_usd = 0.00045;
-        breakdown.embedding_cost_usd = 0.0001;
-        breakdown.summarization_cost_usd = 0.00005;
+        let breakdown = CostBreakdownStats {
+            extraction_cost_usd: 0.00045,
+            embedding_cost_usd: 0.0001,
+            summarization_cost_usd: 0.00005,
+            ..Default::default()
+        };
 
         let total = breakdown.extraction_cost_usd
             + breakdown.embedding_cost_usd

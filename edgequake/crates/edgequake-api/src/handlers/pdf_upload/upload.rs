@@ -11,6 +11,7 @@ use super::types::*;
 use crate::error::{ApiError, ApiResult};
 use crate::middleware::TenantContext;
 use crate::state::AppState;
+use edgequake_pdf::PdfParserBackend;
 use edgequake_storage::{
     calculate_pdf_checksum, validate_pdf_data, CreatePdfRequest, PdfProcessingStatus,
 };
@@ -87,6 +88,7 @@ pub async fn upload_pdf_document(
         metadata: None,
         track_id: None,
         force_reindex: false,
+        pdf_parser_backend: None,
     };
 
     while let Some(field) = multipart
@@ -144,6 +146,11 @@ pub async fn upload_pdf_document(
                     options.force_reindex = text.parse().unwrap_or(false);
                 }
             }
+            Some("pdf_parser_backend") => {
+                if let Ok(text) = field.text().await {
+                    options.pdf_parser_backend = PdfParserBackend::from_env_str(&text);
+                }
+            }
             _ => {}
         }
     }
@@ -181,8 +188,17 @@ pub async fn upload_pdf_document(
     // Priority: form explicit > workspace vision config > workspace main LLM > server env default.
     // WHY: When vision_llm_provider is not set in the workspace, fall back to the workspace's
     // main llm_provider so that Ollama users don't silently hit the "openai" hard-coded default.
-    if options.vision_provider.is_none() || options.vision_model.is_none() {
-        if let Ok(Some(ws)) = state.workspace_service.get_workspace(workspace_id).await {
+    let workspace = state
+        .workspace_service
+        .get_workspace(workspace_id)
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let resolved_backend = options.resolved_backend(workspace.as_ref());
+
+    if resolved_backend == PdfParserBackend::Vision
+        && (options.vision_provider.is_none() || options.vision_model.is_none())
+    {
+        if let Some(ws) = workspace.as_ref() {
             if options.vision_provider.is_none() {
                 let effective_vision_provider = ws
                     .vision_llm_provider
@@ -244,8 +260,14 @@ pub async fn upload_pdf_document(
                 .map_err(|e| ApiError::Internal(format!("Failed to reset PDF status: {}", e)))?;
 
             // Create new processing task
-            let task_id =
-                create_pdf_processing_task(&state, &context, existing.pdf_id, &options).await?;
+            let task_id = create_pdf_processing_task(
+                &state,
+                &context,
+                existing.pdf_id,
+                &options,
+                workspace.as_ref(),
+            )
+            .await?;
 
             // Initialize progress tracking
             let effective_track_id = options.track_id.clone().unwrap_or_else(|| task_id.clone());
@@ -411,7 +433,8 @@ pub async fn upload_pdf_document(
     );
 
     // 8. Create background task
-    let task_id = create_pdf_processing_task(&state, &context, pdf_id, &options).await?;
+    let task_id =
+        create_pdf_processing_task(&state, &context, pdf_id, &options, workspace.as_ref()).await?;
 
     // 9. OODA-01: Initialize progress tracking immediately
     //

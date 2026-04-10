@@ -1,5 +1,6 @@
 //! Workspace type, model configuration constants, and builder methods.
 
+use edgequake_pdf::PdfParserBackend;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -131,6 +132,10 @@ pub struct Workspace {
     /// When set, overrides the per-request vision_model in PDF uploads.
     /// If None, uses the default for the configured vision provider.
     pub vision_llm_model: Option<String>,
+
+    /// Default PDF parser backend for this workspace.
+    /// None falls back to the environment and then Vision.
+    pub pdf_parser_backend: Option<PdfParserBackend>,
 }
 
 impl Workspace {
@@ -165,7 +170,15 @@ impl Workspace {
             embedding_dimension,
             vision_llm_provider: None,
             vision_llm_model: None,
+            pdf_parser_backend: None,
         }
+    }
+
+    /// Resolve the effective PDF parser backend for this workspace.
+    pub fn resolved_pdf_parser_backend(&self) -> PdfParserBackend {
+        self.pdf_parser_backend
+            .or_else(PdfParserBackend::from_env)
+            .unwrap_or_default()
     }
 
     /// Get default LLM configuration from environment.

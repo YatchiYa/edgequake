@@ -113,10 +113,11 @@ pub async fn get_document(
     // WHY: Documents processed before pdf_vision_model was written to KV metadata JSON
     // don't have that field. We query the pdf_documents table as fallback using the
     // pdf_id that IS stored in all document metadata records.
-    let (fallback_pdf_vision_model, fallback_pdf_extraction_method): (
-        Option<String>,
-        Option<String>,
-    ) = {
+    let (
+        fallback_pdf_vision_model,
+        fallback_pdf_extraction_method,
+        fallback_pdf_extraction_warning,
+    ): (Option<String>, Option<String>, Option<String>) = {
         let needs_fallback = meta_obj
             .and_then(|obj| obj.get("pdf_vision_model"))
             .is_none();
@@ -132,27 +133,34 @@ pub async fn get_document(
             #[cfg(feature = "postgres")]
             {
                 if let Some(ref pool) = state.pg_pool {
-                    match sqlx::query_as::<_, (Option<String>, Option<String>)>(
-                        "SELECT vision_model, extraction_method FROM pdf_documents WHERE pdf_id = $1",
+                    match sqlx::query_as::<_, (Option<String>, Option<String>, Option<serde_json::Value>)>(
+                        "SELECT vision_model, extraction_method, extraction_errors FROM pdf_documents WHERE pdf_id = $1",
                     )
                     .bind(pdf_uuid)
                     .fetch_optional(pool)
                     .await
                     {
-                        Ok(Some((vision_model, extraction_method))) => (vision_model, extraction_method),
-                        _ => (None, None),
+                        Ok(Some((vision_model, extraction_method, extraction_errors))) => (
+                            vision_model,
+                            extraction_method,
+                            extraction_errors
+                                .and_then(|value| value.get("low_content_warning").cloned())
+                                .and_then(|value| value.get("message").cloned())
+                                .and_then(|value| value.as_str().map(str::to_string)),
+                        ),
+                        _ => (None, None, None),
                     }
                 } else {
-                    (None, None)
+                    (None, None, None)
                 }
             }
             #[cfg(not(feature = "postgres"))]
             {
                 let _ = pdf_uuid;
-                (None, None)
+                (None, None, None)
             }
         } else {
-            (None, None)
+            (None, None, None)
         }
     };
 
@@ -255,6 +263,11 @@ pub async fn get_document(
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string())
                 .or_else(|| fallback_pdf_extraction_method.clone());
+            let pdf_extraction_warning = obj
+                .get("pdf_extraction_warning")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .or_else(|| fallback_pdf_extraction_warning.clone());
 
             // Only include lineage if we have at least one field
             if llm_model.is_some()
@@ -267,6 +280,7 @@ pub async fn get_document(
                 || input_tokens.is_some()
                 || cost_usd.is_some()
                 || pdf_vision_model.is_some()
+                || pdf_extraction_warning.is_some()
             {
                 Some(DocumentLineage {
                     llm_model,
@@ -284,6 +298,7 @@ pub async fn get_document(
                     cost_usd,
                     pdf_vision_model,
                     pdf_extraction_method,
+                    pdf_extraction_warning,
                 })
             } else {
                 None

@@ -8,7 +8,6 @@
 /// - node_degrees_batch: <100ms for 100 nodes (was 5000ms+ with N queries)
 /// - get_popular_nodes_with_degree: <100ms for 1000 nodes (was 4000ms+ timeout)
 /// - search_labels: <100ms with fuzzy matching
-
 #[cfg(test)]
 mod tests {
     use edgequake_storage::adapters::memory::MemoryGraphStorage;

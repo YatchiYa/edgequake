@@ -548,7 +548,7 @@ async fn test_postgres_e2e_document_to_knowledge_graph() {
         password,
         namespace: format!(
             "test_e2e_{}",
-            uuid::Uuid::new_v4().to_string().replace("-", "")[..8].to_string()
+            &uuid::Uuid::new_v4().to_string().replace('-', "")[..8]
         ),
         max_connections: 5,
         min_connections: 1,

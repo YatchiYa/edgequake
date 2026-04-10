@@ -169,6 +169,10 @@ pub struct CreateWorkspaceApiRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vision_llm_provider: Option<String>,
 
+    /// Default PDF parser backend for this workspace ("vision" or "edgeparse").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pdf_parser_backend: Option<String>,
+
     // === Entity Type Configuration (SPEC-085) ===
     /// Custom entity types to extract from documents (e.g., ["MACHINE", "COMPONENT", "DEFECT"]).
     /// Names are normalized to UPPERCASE_UNDERSCORED format.
@@ -229,4 +233,8 @@ pub struct UpdateWorkspaceApiRequest {
     /// Pass empty string or "none" to clear the workspace override.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vision_llm_provider: Option<String>,
+
+    /// Default PDF parser backend for this workspace ("vision" or "edgeparse").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pdf_parser_backend: Option<String>,
 }

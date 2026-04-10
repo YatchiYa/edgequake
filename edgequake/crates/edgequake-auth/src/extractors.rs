@@ -183,7 +183,7 @@ impl ApiKeyAuth {
 #[derive(Debug, Clone)]
 pub enum CombinedAuth {
     /// Authenticated via JWT.
-    Jwt(AuthUser),
+    Jwt(Box<AuthUser>),
     /// Authenticated via API key.
     ApiKey(ApiKeyAuth),
 }
@@ -262,7 +262,7 @@ mod tests {
 
     #[test]
     fn test_auth_user_permissions() {
-        let rbac = RbacService::default();
+        let rbac = RbacService;
 
         let admin_claims = Claims::new(Uuid::new_v4(), Role::Admin, 3600);
         let admin = AuthUser {
@@ -334,7 +334,7 @@ mod tests {
             claims,
         };
 
-        let jwt_auth = CombinedAuth::Jwt(user);
+        let jwt_auth = CombinedAuth::Jwt(Box::new(user));
         assert!(jwt_auth.is_jwt());
         assert!(!jwt_auth.is_api_key());
         assert_eq!(jwt_auth.user_id(), user_id);

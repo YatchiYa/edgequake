@@ -1,5 +1,6 @@
 //! Workspace request types (create, update) and statistics.
 
+use edgequake_pdf::PdfParserBackend;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -65,6 +66,9 @@ pub struct CreateWorkspaceRequest {
     /// Vision LLM provider for PDF-to-Markdown extraction (e.g., "openai", "ollama").
     /// If None, auto-detected from vision_llm_model.
     pub vision_llm_provider: Option<String>,
+
+    /// Default PDF parser backend for this workspace.
+    pub pdf_parser_backend: Option<PdfParserBackend>,
 
     // === Entity Extraction Configuration (SPEC-085) ===
     /// Custom entity types for extraction pipeline.
@@ -275,6 +279,9 @@ pub struct UpdateWorkspaceRequest {
     /// New Vision LLM model for PDF extraction (optional).
     /// Set to Some("") or Some("none") to clear it.
     pub vision_llm_model: Option<String>,
+    /// New PDF parser backend for PDF extraction (optional).
+    /// Set to Some("") or Some("none") to clear the workspace override.
+    pub pdf_parser_backend: Option<String>,
 }
 
 /// Statistics for a workspace.

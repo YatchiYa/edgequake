@@ -196,9 +196,10 @@ curl -X POST "http://localhost:8080/api/v1/documents/$DOC_ID/reprocess"
 
 PDF extraction can fail or produce poor quality results due to PDF structure, encoding, or layout complexity. This section covers the most common PDF-specific problems.
 
-#### Issue 3.1: No Text Extracted (chunk_count = 0)
+#### Issue 3.1: No Text Extracted or Low-Content Warning
 
-**Symptom**: After PDF upload, `chunk_count = 0` or chunks are empty
+**Symptom**: After PDF upload, `chunk_count = 0`, chunks are empty, or the UI shows
+"Low text content - consider using Vision extraction"
 
 **Diagnosis**:
 
@@ -209,40 +210,51 @@ curl http://localhost:8080/api/v1/documents/doc-uuid
 # Response shows:
 {
   "chunk_count": 0,
-  "metadata": {"pages": 50, "extraction_mode": "Text"}
+  "metadata": {"pages": 50, "pdf_extraction_method": "edgeparse"}
 }
 ```
 
-**Cause**: PDF is image-based (scanned document, no embedded text layer)
+**Cause**:
+- PDF is image-based (scanned document, no embedded text layer)
+- `edgeparse` was used on a scan or image-only PDF
 
-**Solution 1** - Enable Vision Mode:
+**Solution 1** - Retry with Vision backend:
 
 ```bash
-# Re-upload with vision mode
+# Re-upload with explicit Vision backend
 curl -X POST http://localhost:8080/api/v1/documents/upload \
   -F "file=@scanned_book.pdf" \
   -F "title=Scanned Book" \
-  -F 'config={"mode": "Vision", "vision_dpi": 150}'
+  -F "pdf_parser_backend=vision"
 ```
 
-**Solution 2** - Try Hybrid Mode (automatic detection):
+**Solution 2** - Set Vision as the workspace default for scan-heavy corpora:
 
 ```bash
-# Hybrid mode automatically detects low-quality pages
-curl -X POST http://localhost:8080/api/v1/documents/upload \
-  -F "file=@mixed_quality.pdf" \
-  -F 'config={"mode": "Hybrid", "quality_threshold": 0.7}'
+curl -X PUT http://localhost:8080/api/v1/workspaces/$WORKSPACE_ID \
+  -H "Content-Type: application/json" \
+  -d '{"pdf_parser_backend":"vision"}'
 ```
 
-**Cost Warning**: Vision mode costs ~$0.001-0.01 per page with OpenAI GPT-4o-mini.
+**When to use EdgeParse**:
+- Digital-native reports
+- Invoices and statements with embedded text
+- PDFs where speed and deterministic output matter more than OCR-like robustness
+
+**When to use Vision**:
+- Scanned documents
+- Image-heavy PDFs
+- Layouts with poor embedded text quality
+
+**Cost Warning**: Vision mode consumes LLM calls and is slower than EdgeParse.
 
 **Verification**:
 
 - Check `chunk_count > 0` in response
-- Check `extraction_mode` shows `"Vision"` or `"Hybrid"`
+- Check document lineage shows `pdf_extraction_method = "vision"`
 - Download chunks to verify content extracted
 
-**Related**: See [PDF Ingestion Tutorial](/docs/tutorials/pdf-ingestion/#vision-mode) for more details on vision mode.
+**Related**: See [PDF Ingestion Tutorial](/docs/tutorials/pdf-ingestion/) for backend selection guidance.
 
 ---
 
@@ -250,7 +262,7 @@ curl -X POST http://localhost:8080/api/v1/documents/upload \
 
 **Symptom**: Tables appear as scrambled text or not detected at all
 
-**Before** (text mode):
+**Before** (raw extraction):
 
 ```
 Header1 Header2 Header3 Data1a Data1b
@@ -407,13 +419,13 @@ curl http://localhost:8080/api/v1/documents/doc-uuid/chunks | jq -r '.chunks[0].
 
 **Cause**: PDF uses custom fonts or non-standard encoding not supported by text extraction
 
-**Solution 1** - Enable Vision Mode:
+**Solution 1** - Retry with the Vision backend:
 
 ```bash
 # LLM vision reads the actual glyphs
-curl -X POST http://localhost:8080/api/v1/documents \
+curl -X POST http://localhost:8080/api/v1/documents/upload \
   -F "file=@custom_fonts.pdf" \
-  -F 'config={"mode": "Vision"}'
+  -F "pdf_parser_backend=vision"
 ```
 
 **Solution 2** - Check PDF Font Embedding:
@@ -426,7 +438,7 @@ pdffonts document.pdf
 # These fonts may cause encoding issues
 ```
 
-**Workaround**: If vision mode too expensive, consider:
+**Workaround**: If Vision is too expensive, consider:
 
 1. Re-generate PDF with embedded fonts
 2. Convert PDF to another format (DOCX) then back to PDF
@@ -601,13 +613,13 @@ Use this flowchart to quickly diagnose PDF issues:
 PDF Upload Issue?
   │
   ├─ chunk_count = 0
-  │   ├─ Try Vision mode → {"mode": "Vision"}
+  │   ├─ Retry with Vision → {"pdf_parser_backend":"vision"}
   │   ├─ Still 0? → Check if PDF encrypted/protected
   │   └─ Still 0? → File GitHub issue with sample
   │
   ├─ Tables not detected / malformed
   │   ├─ Enable table enhancement → {"enhance_tables": true}
-  │   ├─ Still bad? → Try Vision + enhance → {"mode": "Vision", "enhance_tables": true}
+  │   ├─ Still bad? → Try Vision + enhance → {"pdf_parser_backend":"vision", "enhance_tables": true}
   │   └─ Complex table? → Known limitation (file issue)
   │
   ├─ Text order wrong
@@ -615,7 +627,7 @@ PDF Upload Issue?
   │   └─ Still wrong? → Adjust column_gap_threshold
   │
   ├─ Encoding errors (�, ?)
-  │   ├─ Try Vision mode → {"mode": "Vision"}
+  │   ├─ Retry with Vision → {"pdf_parser_backend":"vision"}
   │   └─ Still bad? → Check PDF font embedding (pdffonts)
   │
   ├─ Upload fails / timeout
@@ -646,7 +658,7 @@ curl -X POST http://localhost:8080/api/v1/documents/upload -F "file=@digital.pdf
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/documents/upload -F "file=@scanned.pdf" \
-     -F 'config={"mode": "Vision", "vision_dpi": 150}' \
+     -F "pdf_parser_backend=vision" \
      http://localhost:8080/api/v1/documents/upload
 ```
 
@@ -666,11 +678,11 @@ curl -X POST http://localhost:8080/api/v1/documents/upload -F "file=@financials.
      http://localhost:8080/api/v1/documents/upload
 ```
 
-**Unknown Quality (auto-detect)**:
+**Unknown Quality**:
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/documents/upload -F "file=@unknown.pdf" \
-     -F 'config={"mode": "Hybrid", "quality_threshold": 0.7}' \
+     -F "pdf_parser_backend=edgeparse" \
      http://localhost:8080/api/v1/documents/upload
 ```
 
@@ -679,7 +691,7 @@ curl -X POST http://localhost:8080/api/v1/documents/upload -F "file=@unknown.pdf
 ```bash
 curl -X POST http://localhost:8080/api/v1/documents/upload -F "file=@critical.pdf" \
      -F 'config={
-       "mode": "Vision",
+       "pdf_parser_backend": "vision",
        "enhance_tables": true,
        "enhance_readability": true,
        "vision_dpi": 200

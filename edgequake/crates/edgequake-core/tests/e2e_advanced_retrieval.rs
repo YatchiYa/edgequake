@@ -1,4 +1,6 @@
 #![cfg(feature = "pipeline")]
+#![allow(unused_imports)]
+#![allow(clippy::len_zero)]
 
 //! Advanced E2E Retrieval Tests
 //!

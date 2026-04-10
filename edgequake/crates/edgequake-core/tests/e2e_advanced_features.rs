@@ -57,9 +57,9 @@ fn test_truncation_with_large_context() {
     let entities: Vec<RetrievedEntity> = (0..30)
         .map(|i| {
             RetrievedEntity::new(
-                &format!("VeryLongEntityName{}", i),
+                format!("VeryLongEntityName{}", i),
                 "DETAILED_TYPE",
-                &format!("This is an extremely detailed and comprehensive description that contains many words and takes up a significant number of tokens for entity number {}", i),
+                format!("This is an extremely detailed and comprehensive description that contains many words and takes up a significant number of tokens for entity number {}", i),
             )
         })
         .collect();
@@ -207,9 +207,9 @@ fn test_balance_reduces_proportionally() {
     let entities: Vec<RetrievedEntity> = (0..15)
         .map(|i| {
             RetrievedEntity::new(
-                &format!("EntityWithLongName{}", i),
+                format!("EntityWithLongName{}", i),
                 "TYPE",
-                &format!("This is a detailed description with many words that take up space for entity number {}", i),
+                format!("This is a detailed description with many words that take up space for entity number {}", i),
             )
         })
         .collect();
@@ -217,19 +217,19 @@ fn test_balance_reduces_proportionally() {
     let relationships: Vec<RetrievedRelationship> = (0..15)
         .map(|i| {
             RetrievedRelationship::new(
-                &format!("SourceEntityA{}", i),
-                &format!("TargetEntityB{}", i),
+                format!("SourceEntityA{}", i),
+                format!("TargetEntityB{}", i),
                 "COMPLEX_RELATIONSHIP_TYPE",
             )
-            .with_description(&format!("A comprehensive description of the relationship between the two entities, explaining their connection in detail for relationship number {}", i))
+            .with_description(format!("A comprehensive description of the relationship between the two entities, explaining their connection in detail for relationship number {}", i))
         })
         .collect();
 
     let chunks: Vec<RetrievedChunk> = (0..15)
         .map(|i| {
             RetrievedChunk::new(
-                &format!("chunk_{}", i),
-                &format!("This is a long chunk of text content that contains many words and takes up significant space in the context window for chunk number {}", i),
+                format!("chunk_{}", i),
+                format!("This is a long chunk of text content that contains many words and takes up significant space in the context window for chunk number {}", i),
                 1.0,
             )
         })

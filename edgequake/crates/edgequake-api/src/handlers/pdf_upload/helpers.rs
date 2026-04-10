@@ -7,6 +7,7 @@ use super::types::PdfUploadOptions;
 use crate::error::{ApiError, ApiResult};
 use crate::middleware::TenantContext;
 use crate::state::AppState;
+use edgequake_core::Workspace;
 use edgequake_storage::PdfDocumentStorage;
 use edgequake_tasks::{PdfProcessingData, Task, TaskStatus, TaskType};
 
@@ -39,6 +40,7 @@ pub(super) async fn create_pdf_processing_task(
     context: &TenantContext,
     pdf_id: Uuid,
     options: &PdfUploadOptions,
+    workspace: Option<&Workspace>,
 ) -> ApiResult<String> {
     let workspace_id = context
         .workspace_id_uuid()
@@ -58,6 +60,7 @@ pub(super) async fn create_pdf_processing_task(
         // defaults are applied when no explicit model was set by the user.
         vision_model: Some(options.vision_model()),
         existing_document_id: None, // Fresh upload — create new document
+        pdf_parser_backend: options.resolved_backend(workspace),
     };
 
     let track_id = format!("pdf-{}", Uuid::new_v4());

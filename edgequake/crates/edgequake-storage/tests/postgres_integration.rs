@@ -38,7 +38,7 @@ fn get_test_config() -> Option<PostgresConfig> {
         password,
         namespace: format!(
             "test_{}",
-            uuid::Uuid::new_v4().to_string().replace("-", "")[..8].to_string()
+            &uuid::Uuid::new_v4().to_string().replace('-', "")[..8]
         ),
         max_connections: 5,
         min_connections: 1,
@@ -231,8 +231,8 @@ async fn test_pgvector_similarity_search() {
     // Add vectors from cluster 1
     for i in 0..5 {
         let mut embedding = cluster1_base.clone();
-        for j in 0..384 {
-            embedding[j] += (i as f32) * 0.001;
+        for value in embedding.iter_mut().take(384) {
+            *value += (i as f32) * 0.001;
         }
         vector_storage
             .upsert(&[(
@@ -247,8 +247,8 @@ async fn test_pgvector_similarity_search() {
     // Add vectors from cluster 2
     for i in 0..5 {
         let mut embedding = cluster2_base.clone();
-        for j in 0..384 {
-            embedding[j] += (i as f32) * 0.001;
+        for value in embedding.iter_mut().take(384) {
+            *value += (i as f32) * 0.001;
         }
         vector_storage
             .upsert(&[(

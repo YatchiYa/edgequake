@@ -492,15 +492,3 @@ impl PdfDocumentStorage for PostgresPdfStorage {
         Ok(count)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    // Note: Integration tests would require a test database
-    // These are placeholder unit tests
-
-    #[test]
-    fn test_postgres_pdf_storage_creation() {
-        // This is a placeholder - actual tests would use sqlx test pool
-        assert!(true);
-    }
-}

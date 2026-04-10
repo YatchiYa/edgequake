@@ -128,10 +128,11 @@ pub async fn retry_pdf_processing(
             enable_vision: true,
             vision_provider: None, // will be resolved from workspace config or server default
             vision_model: None,
+            pdf_parser_backend: None,
             ..Default::default()
         };
 
-        let task_id = create_pdf_processing_task(&state, &tenant, pdf_uuid, &options).await?;
+        let task_id = create_pdf_processing_task(&state, &tenant, pdf_uuid, &options, None).await?;
 
         info!(
             pdf_id = %pdf_id,

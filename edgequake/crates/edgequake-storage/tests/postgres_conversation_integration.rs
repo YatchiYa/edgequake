@@ -34,7 +34,7 @@ fn get_test_config() -> Option<PostgresConfig> {
         password,
         namespace: format!(
             "test_conv_{}",
-            uuid::Uuid::new_v4().to_string().replace("-", "")[..8].to_string()
+            &uuid::Uuid::new_v4().to_string().replace('-', "")[..8]
         ),
         max_connections: 5,
         min_connections: 1,
@@ -330,7 +330,7 @@ mod full_workflow_tests {
         .bind(tenant_id)
         .bind(format!(
             "test_{}",
-            tenant_id.to_string().replace("-", "")[..8].to_string()
+            &tenant_id.to_string().replace('-', "")[..8]
         ))
         .execute(pool)
         .await;
@@ -352,7 +352,7 @@ mod full_workflow_tests {
         .bind(tenant_id)
         .bind(format!(
             "test_{}@example.com",
-            user_id.to_string().replace("-", "")[..8].to_string()
+            &user_id.to_string().replace('-', "")[..8]
         ))
         .execute(pool)
         .await;
@@ -374,7 +374,7 @@ mod full_workflow_tests {
         .bind(tenant_id)
         .bind(format!(
             "test_{}",
-            workspace_id.to_string().replace("-", "")[..8].to_string()
+            &workspace_id.to_string().replace('-', "")[..8]
         ))
         .execute(pool)
         .await;
@@ -563,6 +563,7 @@ mod full_workflow_tests {
             .list_messages(conv_id, 10, 0)
             .await
             .expect("Failed to list after delete");
+        assert_eq!(messages_after.len(), 1);
         assert_eq!(total_after, 1);
 
         // 12. Delete the conversation
@@ -851,6 +852,7 @@ mod full_workflow_tests {
             )
             .await
             .expect("Failed to list");
+        assert_eq!(convs.len() as i64, total);
         assert_eq!(total, 2);
 
         // List pinned only

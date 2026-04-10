@@ -15,6 +15,7 @@ vision = []
 
 [dependencies]
 edgequake-core = { path = "../edgequake-core" }
+edgequake-pdf = { workspace = true }
 edgequake-storage = { path = "../edgequake-storage" }
 edgequake-llm = { workspace = true }
 edgequake-pipeline = { path = "../edgequake-pipeline" }
@@ -23,9 +24,7 @@ edgequake-tasks = { path = "../edgequake-tasks", features = ["postgres"] }
 edgequake-auth = { path = "../edgequake-auth" }
 edgequake-rate-limiter = { path = "../edgequake-rate-limiter" }
 edgequake-audit = { path = "../edgequake-audit" }
-# PDF vision extraction via VLM — bundled pdfium, multi-provider, lazy streaming pipeline.
-# WHY: edgequake-pdf2md provides higher quality vision extraction than internal implementation.
-# v0.8.0: shares edgequake-llm 0.5.1 — resolves diamond dep conflict (PR raphaelmansuy/edgequake-pdf2md#22).
+# Direct dependency kept because the API crate implements the progress callback type.
 edgequake-pdf2md = "=0.8.0"
 
 axum.workspace = true
