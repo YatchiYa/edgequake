@@ -171,4 +171,8 @@ pub struct DocumentLineage {
     /// PDF extraction method used: "vision" or "text" (PDF documents only).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pdf_extraction_method: Option<String>,
+
+    /// PDF extraction warning (for example low text content from EdgeParse).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pdf_extraction_warning: Option<String>,
 }

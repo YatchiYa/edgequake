@@ -153,6 +153,8 @@ pub enum ExtractionMethod {
     Vision,
     /// Hybrid (text + vision).
     Hybrid,
+    /// EdgeParse CPU-only extraction.
+    EdgeParse,
 }
 
 impl ExtractionMethod {
@@ -162,6 +164,7 @@ impl ExtractionMethod {
             Self::Text => "text",
             Self::Vision => "vision",
             Self::Hybrid => "hybrid",
+            Self::EdgeParse => "edgeparse",
         }
     }
 }
@@ -175,6 +178,7 @@ impl std::str::FromStr for ExtractionMethod {
             "text" => Ok(Self::Text),
             "vision" => Ok(Self::Vision),
             "hybrid" => Ok(Self::Hybrid),
+            "edgeparse" => Ok(Self::EdgeParse),
             _ => Err(StorageError::InvalidData(format!(
                 "Invalid extraction method: {}",
                 s
@@ -499,10 +503,15 @@ mod tests {
         assert_eq!(ExtractionMethod::Text.as_str(), "text");
         assert_eq!(ExtractionMethod::Vision.as_str(), "vision");
         assert_eq!(ExtractionMethod::Hybrid.as_str(), "hybrid");
+        assert_eq!(ExtractionMethod::EdgeParse.as_str(), "edgeparse");
 
         assert_eq!(
             ExtractionMethod::from_str("vision").unwrap(),
             ExtractionMethod::Vision
+        );
+        assert_eq!(
+            ExtractionMethod::from_str("edgeparse").unwrap(),
+            ExtractionMethod::EdgeParse
         );
         assert!(ExtractionMethod::from_str("invalid").is_err());
     }

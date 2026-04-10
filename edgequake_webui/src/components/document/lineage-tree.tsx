@@ -33,13 +33,19 @@ export function LineageTree({ lineage }: LineageTreeProps) {
         status="completed"
       />
       <LineageConnector />
-      {/* SPEC-040: PDF Vision Extraction node — shown only for PDF documents */}
-      {lineage.pdf_vision_model && (
+      {/* PDF extraction node — shown only for PDF documents */}
+      {(lineage.pdf_vision_model || lineage.pdf_extraction_method) && (
         <>
           <LineageNode
             icon={<FileSearch className="h-3.5 w-3.5" />}
-            label="PDF → Markdown (Vision LLM)"
-            details={`${lineage.pdf_extraction_method ?? 'vision'} · ${lineage.pdf_vision_model}`}
+            label={`PDF → Markdown (${lineage.pdf_extraction_method === 'edgeparse' ? 'EdgeParse' : 'Vision'})`}
+            details={[
+              lineage.pdf_extraction_method,
+              lineage.pdf_vision_model,
+              lineage.pdf_extraction_warning,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
             status="completed"
           />
           <LineageConnector />

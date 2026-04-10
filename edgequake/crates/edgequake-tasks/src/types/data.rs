@@ -3,6 +3,7 @@
 //! Typed payloads for each task type, serialized into the
 //! `task_data` JSON field of a Task.
 
+use edgequake_pdf::PdfParserBackend;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -55,6 +56,11 @@ pub struct PdfProcessingData {
     /// was overwritten, causing it to display wrong/hallucinated content.
     #[serde(default)]
     pub existing_document_id: Option<String>,
+
+    /// PDF parser backend to use for this task.
+    /// Old queued tasks omit this field and therefore default to Vision.
+    #[serde(default)]
+    pub pdf_parser_backend: PdfParserBackend,
 }
 
 /// Text insert task payload

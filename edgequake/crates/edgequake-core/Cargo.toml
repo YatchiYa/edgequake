@@ -24,6 +24,7 @@ tracing = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
 tiktoken-rs = { workspace = true }
 edgequake-llm.workspace = true
+edgequake-pdf = { workspace = true }
 edgequake-storage = { path = "../edgequake-storage", default-features = false }
 edgequake-pipeline = { workspace = true, optional = true }
 async-trait.workspace = true

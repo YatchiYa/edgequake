@@ -245,7 +245,7 @@ mod tests {
         // Verify chunks cover the text
         let total_unique: std::collections::HashSet<_> =
             chunks.iter().flat_map(|c| c.content.chars()).collect();
-        assert!(total_unique.len() > 0);
+        assert!(!total_unique.is_empty());
     }
 
     #[test]
@@ -475,7 +475,7 @@ This work is supported by \u{7814}\u{7A76} and \u{5F00}\u{53D1} funding.";
         let chunks = strategy.chunk(text, &config).await.unwrap();
 
         // Should split on all three sentence types
-        assert!(chunks.len() >= 1);
+        assert!(!chunks.is_empty());
     }
 
     // =========================================================================
@@ -517,7 +517,7 @@ This work is supported by \u{7814}\u{7A76} and \u{5F00}\u{53D1} funding.";
 
         // Should have multiple chunks due to small chunk_size
         assert!(
-            chunks.len() >= 1,
+            !chunks.is_empty(),
             "Expected at least 1 chunk, got {}",
             chunks.len()
         );

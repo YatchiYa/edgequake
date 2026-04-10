@@ -4,6 +4,8 @@
 //! entities are extracted, embeddings are generated, and documents
 //! are processed through the full pipeline.
 
+#![allow(deprecated)]
+
 use std::sync::Arc;
 
 use edgequake_pipeline::{

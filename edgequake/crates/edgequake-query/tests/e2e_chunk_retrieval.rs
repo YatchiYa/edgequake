@@ -197,7 +197,7 @@ async fn test_entity_has_source_chunk_ids() {
 
     // Get ALICE entity
     let results = storage
-        .query(&vec![0.1f32; 768], 1, Some(&vec!["ALICE".to_string()]))
+        .query(&vec![0.1f32; 768], 1, Some(&["ALICE".to_string()]))
         .await
         .unwrap();
 

@@ -612,6 +612,6 @@ mod tests {
         let result = detect_communities(&graph, &config).await.unwrap();
 
         // Should detect at least 2 communities
-        assert!(result.communities.len() >= 1);
+        assert!(!result.communities.is_empty());
     }
 }

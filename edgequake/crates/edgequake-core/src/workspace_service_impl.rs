@@ -27,6 +27,8 @@
 #[cfg(feature = "postgres")]
 use async_trait::async_trait;
 #[cfg(feature = "postgres")]
+use edgequake_pdf::PdfParserBackend;
+#[cfg(feature = "postgres")]
 use sqlx::PgPool;
 #[cfg(feature = "postgres")]
 use std::collections::HashMap;
@@ -427,6 +429,13 @@ impl WorkspaceService for WorkspaceServiceImpl {
                 serde_json::json!(provider),
             );
         }
+        if let Some(pdf_parser_backend) = request.pdf_parser_backend {
+            workspace.pdf_parser_backend = Some(pdf_parser_backend);
+            workspace.metadata.insert(
+                "pdf_parser_backend".to_string(),
+                serde_json::json!(pdf_parser_backend.as_str()),
+            );
+        }
 
         // SPEC-085: Apply entity type configuration from request
         // Normalize: uppercase, underscored, deduplicated, max 50 types
@@ -462,6 +471,12 @@ impl WorkspaceService for WorkspaceServiceImpl {
             metadata.insert("embedding_provider".to_string(), serde_json::Value::String(workspace.embedding_provider.clone()));
             metadata.insert("embedding_dimension".to_string(), serde_json::Value::Number(workspace.embedding_dimension.into()));
             // SPEC-041: Vision LLM configuration (already set in workspace.metadata above)
+            if let Some(pdf_parser_backend) = workspace.pdf_parser_backend {
+                metadata.insert(
+                    "pdf_parser_backend".to_string(),
+                    serde_json::Value::String(pdf_parser_backend.as_str().to_string()),
+                );
+            }
             serde_json::json!(metadata)
         })
         .bind(workspace.created_at)
@@ -648,6 +663,25 @@ impl WorkspaceService for WorkspaceServiceImpl {
                     serde_json::json!(vision_model.clone()),
                 );
                 workspace.vision_llm_model = Some(vision_model);
+            }
+        }
+        if let Some(pdf_parser_backend) = request.pdf_parser_backend {
+            let normalized_backend = pdf_parser_backend.trim().to_ascii_lowercase();
+            if normalized_backend.is_empty() || normalized_backend == "none" {
+                workspace.pdf_parser_backend = None;
+                workspace.metadata.remove("pdf_parser_backend");
+            } else if let Some(parsed_backend) = PdfParserBackend::from_env_str(&normalized_backend)
+            {
+                workspace.pdf_parser_backend = Some(parsed_backend);
+                workspace.metadata.insert(
+                    "pdf_parser_backend".to_string(),
+                    serde_json::json!(parsed_backend.as_str()),
+                );
+            } else {
+                return Err(Error::validation(format!(
+                    "Invalid pdf_parser_backend '{}'. Expected 'vision', 'edgeparse', or 'none'",
+                    pdf_parser_backend
+                )));
             }
         }
         workspace.updated_at = chrono::Utc::now();
@@ -1440,6 +1474,10 @@ impl WorkspaceRow {
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
             .map(|s| s.to_string());
+        let pdf_parser_backend = metadata
+            .get("pdf_parser_backend")
+            .and_then(|v| v.as_str())
+            .and_then(PdfParserBackend::from_env_str);
 
         Workspace {
             workspace_id: self.workspace_id,
@@ -1458,6 +1496,7 @@ impl WorkspaceRow {
             embedding_dimension,
             vision_llm_provider,
             vision_llm_model,
+            pdf_parser_backend,
         }
     }
 }

@@ -111,7 +111,7 @@ async fn test_naive_mode_retrieval() {
         result.context.chunks.len()
     );
     assert!(
-        result.context.chunks.len() > 0,
+        !result.context.chunks.is_empty(),
         "Naive mode should retrieve chunks"
     );
 
@@ -197,7 +197,7 @@ async fn test_local_mode_retrieval() {
 
     // Local mode should return entities (via entity vector search)
     assert!(
-        result.context.entities.len() > 0,
+        !result.context.entities.is_empty(),
         "Local mode should retrieve entities"
     );
 

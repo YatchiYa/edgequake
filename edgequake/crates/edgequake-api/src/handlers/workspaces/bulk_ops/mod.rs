@@ -142,11 +142,11 @@ pub(super) async fn collect_workspace_documents(
 }
 
 /// Build a [`PdfProcessingData`] task for re-extracting a document from its
-/// original PDF bytes using the workspace's current vision LLM.
+/// original PDF bytes using the workspace's current PDF parser configuration.
 ///
 /// SPEC-041: PDF documents are re-queued as PdfProcessing tasks to re-extract
-/// from the original PDF using the workspace's current vision LLM, then rechunk
-/// and re-embed with the new embedding model.
+/// from the original PDF using the workspace's current PDF parser backend, then
+/// rechunk and re-embed with the new embedding model.
 pub(super) fn build_pdf_task(
     workspace: &edgequake_core::Workspace,
     workspace_id: Uuid,
@@ -174,6 +174,7 @@ pub(super) fn build_pdf_task(
         // FIX-REBUILD: Pass existing document ID so the processor updates
         // the existing document in-place instead of creating a duplicate.
         existing_document_id: Some(doc_id.to_string()),
+        pdf_parser_backend: workspace.resolved_pdf_parser_backend(),
     }
 }
 

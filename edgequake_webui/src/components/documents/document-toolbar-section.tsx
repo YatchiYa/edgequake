@@ -42,6 +42,8 @@ export interface DocumentToolbarSectionProps {
   getInputProps: DocumentDropzoneProps['getInputProps'];
   isDragActive: boolean;
   openFileDialog: () => void;
+  pdfParserBackend: 'default' | 'vision' | 'edgeparse';
+  onPdfParserBackendChange: (value: 'default' | 'vision' | 'edgeparse') => void;
   
   // Bulk actions
   selectedCount: number;
@@ -74,6 +76,8 @@ export function DocumentToolbarSection({
   getInputProps,
   isDragActive,
   openFileDialog,
+  pdfParserBackend,
+  onPdfParserBackendChange,
   selectedCount,
   onBulkReprocess,
   onBulkDelete,
@@ -118,6 +122,8 @@ export function DocumentToolbarSection({
         getInputProps={getInputProps}
         isDragActive={isDragActive}
         openFileDialog={openFileDialog}
+        pdfParserBackend={pdfParserBackend}
+        onPdfParserBackendChange={onPdfParserBackendChange}
       />
 
       {/* Bulk Actions Bar */}

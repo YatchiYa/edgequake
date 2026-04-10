@@ -67,7 +67,7 @@ Welcome to EdgeQuake — an advanced Retrieval-Augmented Generation (RAG) framew
 | [Embedding Models](/docs/deep-dives/embedding-models/)         | Model selection and dimension trade-offs     |
 | [Graph Storage](/docs/deep-dives/graph-storage/)               | Apache AGE property graph backend            |
 | [Vector Storage](/docs/deep-dives/vector-storage/)             | pgvector HNSW indexing and search            |
-| [PDF Processing](/docs/deep-dives/pdf-processing/)             | Text/Vision/Hybrid extraction pipeline       |
+| [PDF Processing](/docs/deep-dives/pdf-processing/)             | Vision and EdgeParse extraction pipeline     |
 | [Cost Tracking](/docs/deep-dives/cost-tracking/)               | LLM cost monitoring per operation            |
 | [Pipeline Progress](/docs/deep-dives/pipeline-progress/)       | Real-time progress tracking                  |
 

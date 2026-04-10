@@ -11,11 +11,10 @@
 //! For PostgreSQL: `cargo test --package edgequake-storage --test e2e_storage_backends --features postgres`
 
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 
 use edgequake_storage::{
-    GraphEdge, GraphNode, GraphStorage, KVStorage, KnowledgeGraph, MemoryGraphStorage,
-    MemoryKVStorage, MemoryVectorStorage, VectorSearchResult, VectorStorage,
+    GraphStorage, KVStorage, MemoryGraphStorage, MemoryKVStorage, MemoryVectorStorage,
+    VectorStorage,
 };
 
 // ============================================================================
@@ -26,7 +25,7 @@ use edgequake_storage::{
 fn generate_namespace() -> String {
     format!(
         "test_{}",
-        uuid::Uuid::new_v4().to_string().replace("-", "")[..12].to_string()
+        &uuid::Uuid::new_v4().to_string().replace('-', "")[..12]
     )
 }
 
@@ -367,8 +366,8 @@ mod memory_vector_tests {
         // Create two clusters of vectors
         for i in 0..5 {
             let mut embedding = create_orthogonal_embedding(0);
-            for j in 0..DIMENSION {
-                embedding[j] += i as f32 * 0.001;
+            for value in embedding.iter_mut().take(DIMENSION) {
+                *value += i as f32 * 0.001;
             }
             storage
                 .upsert(&[(
@@ -382,8 +381,8 @@ mod memory_vector_tests {
 
         for i in 0..5 {
             let mut embedding = create_orthogonal_embedding(1);
-            for j in 0..DIMENSION {
-                embedding[j] += i as f32 * 0.001;
+            for value in embedding.iter_mut().take(DIMENSION) {
+                *value += i as f32 * 0.001;
             }
             storage
                 .upsert(&[(

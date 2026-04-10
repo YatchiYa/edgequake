@@ -4,6 +4,13 @@ import { cn } from '@/lib/utils';
 import { Upload } from 'lucide-react';
 import type React from 'react';
 import type { DropzoneInputProps, DropzoneRootProps } from 'react-dropzone';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useTranslation } from 'react-i18next';
 
 /**
@@ -18,6 +25,10 @@ export interface DocumentDropzoneProps {
   isDragActive: boolean;
   /** Function to programmatically open file dialog (explicit click handler) */
   openFileDialog: () => void;
+  /** Per-upload PDF parser backend override. */
+  pdfParserBackend: 'default' | 'vision' | 'edgeparse';
+  /** Change handler for the PDF parser override selector. */
+  onPdfParserBackendChange: (value: 'default' | 'vision' | 'edgeparse') => void;
 }
 
 /**
@@ -40,6 +51,8 @@ export function DocumentDropzone({
   getInputProps,
   isDragActive,
   openFileDialog,
+  pdfParserBackend,
+  onPdfParserBackendChange,
 }: DocumentDropzoneProps) {
   const { t } = useTranslation();
   return (
@@ -79,6 +92,36 @@ export function DocumentDropzone({
             {t('documents.upload.uploadDrop', 'Drag & drop or click to upload')} • TXT, MD, JSON, PDF (max 100MB)
           </p>
         )}
+      </div>
+      <div
+        className="flex items-center gap-2"
+        onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => event.stopPropagation()}
+      >
+        <span className="hidden sm:inline text-xs text-muted-foreground">
+          {t('documents.upload.pdfParser', 'PDF parser')}
+        </span>
+        <Select
+          value={pdfParserBackend}
+          onValueChange={(value: 'default' | 'vision' | 'edgeparse') =>
+            onPdfParserBackendChange(value)
+          }
+        >
+          <SelectTrigger className="w-[150px] h-9 bg-background">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="default">
+              {t('documents.upload.pdfParserDefault', 'Default')}
+            </SelectItem>
+            <SelectItem value="vision">
+              {t('documents.upload.pdfParserVision', 'Vision')}
+            </SelectItem>
+            <SelectItem value="edgeparse">
+              {t('documents.upload.pdfParserEdgeParse', 'EdgeParse')}
+            </SelectItem>
+          </SelectContent>
+        </Select>
       </div>
     </div>
   );

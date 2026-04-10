@@ -65,6 +65,12 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_pdf_upload_options_backend_resolution_defaults_to_vision() {
+        let opts = PdfUploadOptions::default();
+        assert_eq!(opts.resolved_backend(None).as_str(), "vision");
+    }
+
     /// OODA-17: Test PdfOperationResponse serialization
     #[test]
     fn test_pdf_operation_response_serialization() {

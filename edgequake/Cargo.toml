@@ -5,6 +5,7 @@ members = [
     "crates/edgequake-audit",
     "crates/edgequake-auth",
     "crates/edgequake-core",
+    "crates/edgequake-pdf",
     "crates/edgequake-pipeline",
     "crates/edgequake-query",
     "crates/edgequake-rate-limiter",
@@ -70,7 +71,7 @@ tokio-test = { workspace = true }
 [workspace.package]
 version = "0.9.18"
 edition = "2021"
-rust-version = "1.78"
+rust-version = "1.85"
 license = "Apache-2.0"
 authors = ["EdgeQuake Team"]
 repository = "https://github.com/edgequake/edgequake"
@@ -144,6 +145,7 @@ criterion = { version = "0.5", features = ["async_tokio"] }
 edgequake-api = { path = "crates/edgequake-api" }
 edgequake-auth = { path = "crates/edgequake-auth" }
 edgequake-core = { path = "crates/edgequake-core" }
+edgequake-pdf = { path = "crates/edgequake-pdf" }
 # v0.5.1: adds Azure OpenAI, Mistral AI, Vertex AI; streaming usage fixes; image generation API.
 # Diamond dep resolved: edgequake-pdf2md =0.8.0 also declares llm 0.5.1 (PR #22 squash-merged).
 edgequake-llm = "0.5.1"
@@ -151,6 +153,7 @@ edgequake-pipeline = { path = "crates/edgequake-pipeline" }
 edgequake-query = { path = "crates/edgequake-query" }
 edgequake-storage = { path = "crates/edgequake-storage" }
 edgequake-tasks = { path = "crates/edgequake-tasks" }
+edgeparse-core = "0.2.3"
 
 # CPU utilities
 num_cpus = "1.16"

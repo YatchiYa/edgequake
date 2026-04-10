@@ -83,6 +83,9 @@ pub(super) fn workspace_to_response(workspace: &Workspace) -> WorkspaceResponse 
         // SPEC-040: Vision LLM configuration
         vision_llm_provider: workspace.vision_llm_provider.clone(),
         vision_llm_model: workspace.vision_llm_model.clone(),
+        pdf_parser_backend: workspace
+            .pdf_parser_backend
+            .map(|backend| backend.as_str().to_string()),
         // SPEC-085: Entity type configuration (read from workspace metadata)
         entity_types: workspace
             .metadata

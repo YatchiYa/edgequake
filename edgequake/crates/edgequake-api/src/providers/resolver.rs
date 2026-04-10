@@ -577,6 +577,7 @@ mod tests {
                 embedding_dimension: Some(1536),
                 vision_llm_model: None,
                 vision_llm_provider: None,
+                pdf_parser_backend: None,
                 entity_types: None,
             };
 

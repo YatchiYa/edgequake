@@ -17,6 +17,9 @@ This file maintains traceability between code features and business requirements
 | FEAT-0005  | Custom Entity Configuration                        | Completed | SPEC-0005 / #85      |
 | FEAT-006   | Unified Streaming Response Protocol                | Completed | SPEC-006 / #56       |
 | FEAT-007   | Vector Storage SQL Pre-Filtering                   | Completed | SPEC-007             |
+| FEAT-008   | Explicit Provider/Model Transparency in UI          | Completed | MISSION-01 / v0.9.19 |
+| FEAT-009   | Document Deletion Correctness                       | Completed | MISSION-02 / v0.9.19 |
+| FEAT-010   | Configurable PDF Parser Backend (Vision/EdgeParse) | Completed | MISSION-03 / v0.10.0 |
 
 ## Feature Definitions
 
@@ -74,5 +77,38 @@ This file maintains traceability between code features and business requirements
 
 ---
 
-**Last Updated**: 2026-04-03
-**Total Features**: 7
+### FEAT-010 — Configurable PDF Parser Backend
+
+**Spec**: [mission/03-pdf-parser.md](../mission/03-pdf-parser.md)  
+**Released**: v0.10.0 (2026-04-10)  
+**Status**: ✅ Completed
+
+**Problem**: Vision-only PDF extraction is expensive, slower on digital-native PDFs, and
+unnecessarily dependent on an LLM for documents that already contain structured text.
+
+**Solution**: EdgeQuake now supports two runtime PDF extraction backends:
+- `vision` for scanned, image-heavy, or layout-complex PDFs.
+- `edgeparse` for fast CPU-only extraction of digital-native PDFs.
+
+**Resolution order**:
+- Per-upload multipart override `pdf_parser_backend`
+- Workspace default `workspace.pdf_parser_backend`
+- Environment variable `EDGEQUAKE_PDF_PARSER_BACKEND`
+- Fallback default `vision`
+
+**Capabilities**:
+- New `edgequake-pdf` abstraction crate with a backend strategy pattern.
+- EdgeParse integration via `edgeparse-core` without temp files.
+- Workspace-level default parser setting in the Settings UI.
+- Per-upload parser selection in the document upload flow.
+- Extraction lineage includes parser method and low-content warnings for image-only PDFs.
+- Storage now records `extraction_method = edgeparse`.
+
+**Operational note**:
+- EdgeParse does not auto-fallback to Vision. If output is low-content, the UI surfaces a warning
+  so the user can explicitly retry with Vision.
+
+---
+
+**Last Updated**: 2026-04-10
+**Total Features**: 10

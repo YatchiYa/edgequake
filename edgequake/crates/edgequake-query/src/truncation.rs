@@ -310,7 +310,7 @@ mod tests {
         let truncated = truncate_entities(entities.clone(), 10, &tokenizer);
 
         // Should keep at least one entity
-        assert!(truncated.len() > 0);
+        assert!(!truncated.is_empty());
         assert!(truncated.len() <= entities.len());
     }
 
@@ -326,7 +326,7 @@ mod tests {
 
         let truncated = truncate_relationships(rels.clone(), 10, &tokenizer);
 
-        assert!(truncated.len() > 0);
+        assert!(!truncated.is_empty());
         assert!(truncated.len() <= rels.len());
     }
 
@@ -342,7 +342,7 @@ mod tests {
 
         let truncated = truncate_chunks(chunks.clone(), 10, &tokenizer);
 
-        assert!(truncated.len() > 0);
+        assert!(!truncated.is_empty());
         assert!(truncated.len() <= chunks.len());
     }
 

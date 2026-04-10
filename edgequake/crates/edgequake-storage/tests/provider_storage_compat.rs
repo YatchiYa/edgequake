@@ -19,7 +19,7 @@ mod memory_vector_provider_tests {
     fn generate_namespace() -> String {
         format!(
             "provider_test_{}",
-            uuid::Uuid::new_v4().to_string().replace('-', "")[..8].to_string()
+            &uuid::Uuid::new_v4().to_string().replace('-', "")[..8]
         )
     }
 
@@ -141,11 +141,11 @@ mod memory_vector_provider_tests {
         assert_eq!(storage_openai.dimension(), 1536);
 
         // Ollama dimension
-        let storage_ollama = MemoryVectorStorage::new(&format!("{}_ollama", ns), 768);
+        let storage_ollama = MemoryVectorStorage::new(format!("{}_ollama", ns), 768);
         assert_eq!(storage_ollama.dimension(), 768);
 
         // LM Studio dimension
-        let storage_lmstudio = MemoryVectorStorage::new(&format!("{}_lmstudio", ns), 768);
+        let storage_lmstudio = MemoryVectorStorage::new(format!("{}_lmstudio", ns), 768);
         assert_eq!(storage_lmstudio.dimension(), 768);
     }
 }
@@ -160,7 +160,7 @@ mod storage_clear_tests {
     fn generate_namespace() -> String {
         format!(
             "clear_test_{}",
-            uuid::Uuid::new_v4().to_string().replace('-', "")[..8].to_string()
+            &uuid::Uuid::new_v4().to_string().replace('-', "")[..8]
         )
     }
 
@@ -257,7 +257,7 @@ mod dimension_compatibility_tests {
     fn generate_namespace() -> String {
         format!(
             "compat_test_{}",
-            uuid::Uuid::new_v4().to_string().replace('-', "")[..8].to_string()
+            &uuid::Uuid::new_v4().to_string().replace('-', "")[..8]
         )
     }
 
@@ -411,7 +411,7 @@ mod edge_case_tests {
     fn generate_namespace() -> String {
         format!(
             "edge_test_{}",
-            uuid::Uuid::new_v4().to_string().replace('-', "")[..8].to_string()
+            &uuid::Uuid::new_v4().to_string().replace('-', "")[..8]
         )
     }
 

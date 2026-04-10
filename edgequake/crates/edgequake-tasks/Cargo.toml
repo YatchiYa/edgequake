@@ -22,6 +22,7 @@ anyhow = "1.0"
 
 # Logging
 tracing = "0.1"
+edgequake-pdf = { path = "../edgequake-pdf" }
 
 # Time handling
 chrono = { version = "0.4", features = ["serde"] }

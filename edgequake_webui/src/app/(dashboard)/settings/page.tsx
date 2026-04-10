@@ -2,6 +2,7 @@
 
 import { AdminQuotaSection } from '@/components/settings/admin-quota-section';
 import { ProviderStatusCard } from '@/components/settings/provider-status-card';
+import { PdfParserSettingsCard } from '@/components/settings/pdf-parser-settings-card';
 import { VisionLLMSettingsCard } from '@/components/settings/vision-llm-settings-card';
 import {
   AlertDialog,
@@ -220,6 +221,9 @@ export default function SettingsPage() {
 
       {/* Provider Status */}
       <ProviderStatusCard />
+
+      {/* PDF parser backend configuration */}
+      <PdfParserSettingsCard />
 
       {/* Vision LLM Configuration (SPEC-040) */}
       <VisionLLMSettingsCard />

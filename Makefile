@@ -132,7 +132,7 @@ release: ## Bump all crate versions and tag release using cargo-release (uses VE
 
 .PHONY: help install dev dev-bg dev-memory stop clean build test lint format \
         backend-dev backend-db backend-memory backend-bg backend-build backend-build-online backend-sqlx-prepare backend-test backend-run \
-        frontend-dev frontend-build frontend-test frontend-lint \
+        frontend-dev frontend-bg frontend-build frontend-test frontend-lint \
         db-start db-stop db-wait db-logs db-shell \
         docker-build docker-up docker-prebuilt docker-prebuilt-down docker-prebuilt-logs docker-ps-prebuilt docker-api-only docker-down docker-logs \
         stack stack-down stack-logs stack-status stack-restart stack-pull \
@@ -469,33 +469,49 @@ dev-bg: check-deps check-ports ## Start full development stack in BACKGROUND (ag
 	done
 	@echo ""
 	@echo "$(YELLOW)→ Starting backend in background...$(RESET)"
-	@# Use EDGEQUAKE_LLM_PROVIDER (not _DEFAULT_) to explicitly select provider
-	@# When OPENAI_API_KEY is set, use OpenAI. Otherwise use Ollama.
-	@if [ -n "$(OPENAI_API_KEY)" ]; then \
-		cd $(BACKEND_DIR) && \
-			DATABASE_URL="$(DATABASE_URL)" \
-			OPENAI_API_KEY="$(OPENAI_API_KEY)" \
-			EDGEQUAKE_LLM_PROVIDER="openai" \
-			nohup cargo run > /tmp/edgequake-backend.log 2>&1 & \
-	else \
-		cd $(BACKEND_DIR) && \
-			DATABASE_URL="$(DATABASE_URL)" \
-			EDGEQUAKE_LLM_PROVIDER="ollama" \
-			OLLAMA_HOST="http://localhost:11434" \
-			OLLAMA_MODEL="gemma4:latest" \
-			OLLAMA_EMBEDDING_MODEL="embeddinggemma:latest" \
-			nohup cargo run > /tmp/edgequake-backend.log 2>&1 & \
-	fi
-	@echo "$(GREEN)✓ Backend starting (log: /tmp/edgequake-backend.log)$(RESET)"
+	@$(MAKE) backend-bg --no-print-directory
 	@echo ""
 	@echo "$(YELLOW)→ Waiting for backend to start...$(RESET)"
-	@sleep 8
+	@BACKEND_OK=""; \
+	for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do \
+		if curl -fsS http://localhost:8080/health >/dev/null 2>&1; then \
+			BACKEND_OK=1; \
+			break; \
+		fi; \
+		if [ -f /tmp/edgequake-backend.pid ] && ! kill -0 "$$(cat /tmp/edgequake-backend.pid)" 2>/dev/null; then \
+			echo "$(RED)✗ Backend exited during startup$(RESET)"; \
+			tail -n 100 /tmp/edgequake-backend.log; \
+			exit 1; \
+		fi; \
+		sleep 2; \
+	done; \
+	if [ -z "$$BACKEND_OK" ]; then \
+		echo "$(RED)✗ Backend did not become healthy in time$(RESET)"; \
+		tail -n 100 /tmp/edgequake-backend.log; \
+		exit 1; \
+	fi
 	@echo ""
 	@echo "$(YELLOW)→ Starting frontend in background...$(RESET)"
-	@cd $(FRONTEND_DIR) && nohup sh -c 'bun run dev 2>/dev/null || npm run dev' > /tmp/edgequake-frontend.log 2>&1 &
-	@echo "$(GREEN)✓ Frontend starting (log: /tmp/edgequake-frontend.log)$(RESET)"
+	@$(MAKE) frontend-bg --no-print-directory
 	@echo ""
-	@sleep 3
+	@FRONTEND_OK=""; \
+	for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do \
+		if curl -fsS http://localhost:3000 >/dev/null 2>&1; then \
+			FRONTEND_OK=1; \
+			break; \
+		fi; \
+		if [ -f /tmp/edgequake-frontend.pid ] && ! kill -0 "$$(cat /tmp/edgequake-frontend.pid)" 2>/dev/null; then \
+			echo "$(RED)✗ Frontend exited during startup$(RESET)"; \
+			tail -n 100 /tmp/edgequake-frontend.log; \
+			exit 1; \
+		fi; \
+		sleep 2; \
+	done; \
+	if [ -z "$$FRONTEND_OK" ]; then \
+		echo "$(RED)✗ Frontend did not become healthy in time$(RESET)"; \
+		tail -n 100 /tmp/edgequake-frontend.log; \
+		exit 1; \
+	fi
 	@echo "$(BOLD)$(GREEN)✅ EdgeQuake Background Stack Started$(RESET)"
 	@echo ""
 	@echo "  $(BLUE)Backend$(RESET):  http://localhost:8080"
@@ -516,17 +532,21 @@ dev-bg: check-deps check-ports ## Start full development stack in BACKGROUND (ag
 stop: ## Stop all development services
 	@echo "$(YELLOW)Stopping services...$(RESET)"
 	@echo "$(BLUE)→ Stopping backend processes...$(RESET)"
+	@-if [ -f /tmp/edgequake-backend.pid ]; then kill -9 $$(cat /tmp/edgequake-backend.pid) 2>/dev/null || true; fi
 	@-pkill -f "cargo run" 2>/dev/null || true
 	@-pkill -9 -f "edgequake-api" 2>/dev/null || true
 	@-pkill -9 -f "target/debug/edgequake" 2>/dev/null || true
 	@-pkill -9 -f "target/release/edgequake" 2>/dev/null || true
+	@-rm -f /tmp/edgequake-backend.pid /tmp/edgequake-start.sh
 	@# OODA-256: Force-kill any process on port 8080
 	@-lsof -ti:8080 | xargs -r kill -9 2>/dev/null || true
 	@echo "$(BLUE)→ Stopping frontend processes...$(RESET)"
+	@-if [ -f /tmp/edgequake-frontend.pid ]; then kill -9 $$(cat /tmp/edgequake-frontend.pid) 2>/dev/null || true; fi
 	@-pkill -f "next dev" 2>/dev/null || true
 	@-pkill -f "node.*edgequake_webui" 2>/dev/null || true
 	@-pkill -9 -f "bun.*dev" 2>/dev/null || true
 	@-pkill -9 -f "next-server" 2>/dev/null || true
+	@-rm -f /tmp/edgequake-frontend.pid /tmp/edgequake-frontend-start.sh
 	@# OODA-256: Force-kill any process on port 3000
 	@-lsof -ti:3000 | xargs -r kill -9 2>/dev/null || true
 	@echo "$(BLUE)→ Stopping database...$(RESET)"
@@ -538,8 +558,12 @@ stop: ## Stop all development services
 # Backend
 # ============================================================================
 
-# Database URL for PostgreSQL mode
-DATABASE_URL := postgresql://edgequake:edgequake_secret@localhost:5432/edgequake
+# Database URL for PostgreSQL mode.
+# WHY: Some shells / .env setups export DATABASE_URL as an empty string, which
+# causes the backend to panic with `RelativeUrlWithoutBase`. Treat empty as
+# unset and fall back to the local development PostgreSQL container.
+DEFAULT_DATABASE_URL := postgresql://edgequake:edgequake_secret@localhost:5432/edgequake
+DATABASE_URL := $(if $(strip $(DATABASE_URL)),$(strip $(DATABASE_URL)),$(DEFAULT_DATABASE_URL))
 
 # SPEC-040 v0.4.1: pdfium is now EMBEDDED in the edgequake-pdf2md 0.4.1 binary
 # via pdfium-auto at compile time. No external libpdfium.dylib, no env vars needed.
@@ -609,7 +633,7 @@ backend-bg: db-wait ## Run backend in background with PostgreSQL (respects OPENA
 		printf '%s\n' "export EDGEQUAKE_LLM_PROVIDER=\"openai\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "cd $(BACKEND_DIR) && exec cargo run" >> /tmp/edgequake-start.sh; \
 		chmod +x /tmp/edgequake-start.sh; \
-		nohup /tmp/edgequake-start.sh > /tmp/edgequake-backend.log 2>&1 & \
+		/bin/bash -lc 'nohup /tmp/edgequake-start.sh > /tmp/edgequake-backend.log 2>&1 < /dev/null & backend_pid=$$!; disown "$$backend_pid"; printf "%s\n" "$$backend_pid" > /tmp/edgequake-backend.pid'; \
 	else \
 		echo "$(YELLOW)→ No OPENAI_API_KEY, using Ollama provider$(RESET)"; \
 		printf '%s\n' "#!/bin/bash" > /tmp/edgequake-start.sh; \
@@ -620,7 +644,7 @@ backend-bg: db-wait ## Run backend in background with PostgreSQL (respects OPENA
 		printf '%s\n' "export OLLAMA_EMBEDDING_MODEL=\"embeddinggemma:latest\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "cd $(BACKEND_DIR) && exec cargo run" >> /tmp/edgequake-start.sh; \
 		chmod +x /tmp/edgequake-start.sh; \
-		nohup /tmp/edgequake-start.sh > /tmp/edgequake-backend.log 2>&1 & \
+		/bin/bash -lc 'nohup /tmp/edgequake-start.sh > /tmp/edgequake-backend.log 2>&1 < /dev/null & backend_pid=$$!; disown "$$backend_pid"; printf "%s\n" "$$backend_pid" > /tmp/edgequake-backend.pid'; \
 	fi
 	@echo "$(GREEN)✓ Backend starting in background. Log: /tmp/edgequake-backend.log$(RESET)"
 
@@ -666,6 +690,18 @@ backend-fmt: ## Format backend code
 frontend-dev: ## Start frontend development server
 	@echo "$(BLUE)Starting frontend development server...$(RESET)"
 	@cd $(FRONTEND_DIR) && (bun run dev 2>/dev/null || npm run dev)
+
+frontend-bg: ## Start frontend development server in background
+	@echo "$(BLUE)Starting frontend in background...$(RESET)"
+	@printf '%s\n' "#!/bin/bash" > /tmp/edgequake-frontend-start.sh
+	@printf '%s\n' "cd $(FRONTEND_DIR)" >> /tmp/edgequake-frontend-start.sh
+	@printf '%s\n' "if command -v bun >/dev/null 2>&1; then" >> /tmp/edgequake-frontend-start.sh
+	@printf '%s\n' "  exec bun run dev" >> /tmp/edgequake-frontend-start.sh
+	@printf '%s\n' "fi" >> /tmp/edgequake-frontend-start.sh
+	@printf '%s\n' "exec npm run dev" >> /tmp/edgequake-frontend-start.sh
+	@chmod +x /tmp/edgequake-frontend-start.sh
+	@/bin/bash -lc 'nohup /tmp/edgequake-frontend-start.sh > /tmp/edgequake-frontend.log 2>&1 < /dev/null & frontend_pid=$$!; disown "$$frontend_pid"; printf "%s\n" "$$frontend_pid" > /tmp/edgequake-frontend.pid'
+	@echo "$(GREEN)✓ Frontend starting in background. Log: /tmp/edgequake-frontend.log$(RESET)"
 
 frontend-build: ## Build frontend for production
 	@echo "$(BLUE)Building frontend...$(RESET)"

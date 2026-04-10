@@ -1,3 +1,5 @@
+use edgequake_core::Workspace;
+use edgequake_pdf::PdfParserBackend;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -22,6 +24,8 @@ pub struct PdfUploadOptions {
     /// WHY (OODA-08): When true, existing graph/vector data is cleared
     /// and the document is re-processed with current LLM/config.
     pub force_reindex: bool,
+    /// Explicit parser backend override for this upload.
+    pub pdf_parser_backend: Option<PdfParserBackend>,
 }
 
 impl PdfUploadOptions {
@@ -53,6 +57,14 @@ impl PdfUploadOptions {
             .clone()
             .filter(|s| !s.is_empty()) // treat "" same as None
             .unwrap_or_else(|| default_vision_model_for_provider(&self.resolved_vision_provider()))
+    }
+
+    /// Resolve the effective PDF parser backend.
+    pub fn resolved_backend(&self, workspace: Option<&Workspace>) -> PdfParserBackend {
+        self.pdf_parser_backend
+            .or_else(|| workspace.and_then(|ws| ws.pdf_parser_backend))
+            .or_else(PdfParserBackend::from_env)
+            .unwrap_or_default()
     }
 }
 

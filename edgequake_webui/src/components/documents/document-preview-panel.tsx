@@ -434,7 +434,7 @@ export function DocumentPreviewPanel({
                   </div>
                 )}
 
-                {/* Vision Model — shown when PDF was processed with vision LLM (SPEC-040) */}
+                {/* PDF extraction lineage */}
                 {(document.lineage?.pdf_vision_model || document.lineage?.pdf_extraction_method) && (
                   <div className="pt-1 border-t border-border/50 space-y-1">
                     {document.lineage?.pdf_vision_model && (
@@ -457,8 +457,15 @@ export function DocumentPreviewPanel({
                           {t('documents.preview.extractionMethod', 'Extraction Method')}
                         </span>
                         <Badge variant="outline" className="text-[10px] h-4 capitalize">
-                          {document.lineage.pdf_extraction_method}
+                          {document.lineage.pdf_extraction_method === 'edgeparse'
+                            ? 'EdgeParse'
+                            : document.lineage.pdf_extraction_method}
                         </Badge>
+                      </div>
+                    )}
+                    {document.lineage?.pdf_extraction_warning && (
+                      <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-800 dark:text-amber-200">
+                        {document.lineage.pdf_extraction_warning}
                       </div>
                     )}
                   </div>

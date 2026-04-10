@@ -6,6 +6,7 @@
 
 use axum::{extract::State, Json};
 use chrono::Utc;
+use edgequake_pdf::PdfParserBackend;
 use tracing::debug;
 use uuid::Uuid;
 
@@ -196,7 +197,7 @@ pub async fn reprocess_failed(
                         }
 
                         // Look up workspace to get vision provider/model settings
-                        let (vision_provider, vision_model) =
+                        let (vision_provider, vision_model, pdf_parser_backend) =
                             if let Ok(ws_uuid) = uuid::Uuid::parse_str(&workspace_id) {
                                 if let Ok(Some(ws)) =
                                     state.workspace_service.get_workspace(ws_uuid).await
@@ -207,13 +208,21 @@ pub async fn reprocess_failed(
                                         .filter(|p| !p.is_empty())
                                         .unwrap_or("ollama")
                                         .to_string();
-                                    let vm = ws.vision_llm_model.filter(|m| !m.is_empty());
-                                    (vp, vm)
+                                    let vm = ws.vision_llm_model.clone().filter(|m| !m.is_empty());
+                                    (vp, vm, ws.resolved_pdf_parser_backend())
                                 } else {
-                                    ("ollama".to_string(), None)
+                                    (
+                                        "ollama".to_string(),
+                                        None,
+                                        PdfParserBackend::from_env().unwrap_or_default(),
+                                    )
                                 }
                             } else {
-                                ("ollama".to_string(), None)
+                                (
+                                    "ollama".to_string(),
+                                    None,
+                                    PdfParserBackend::from_env().unwrap_or_default(),
+                                )
                             };
 
                         use edgequake_tasks::{PdfProcessingData, Task, TaskType};
@@ -231,6 +240,7 @@ pub async fn reprocess_failed(
                             vision_model,
                             // FIX-REBUILD: Reuse existing document ID
                             existing_document_id: Some(doc_id.clone()),
+                            pdf_parser_backend,
                         };
 
                         let task = Task::new(
@@ -404,6 +414,15 @@ pub async fn reprocess_failed(
                         ApiError::Internal(format!("Failed to reset PDF status: {}", e))
                     })?;
 
+                let pdf_parser_backend = match state
+                    .workspace_service
+                    .get_workspace(pdf.workspace_id)
+                    .await
+                {
+                    Ok(Some(workspace)) => workspace.resolved_pdf_parser_backend(),
+                    Ok(None) | Err(_) => PdfParserBackend::from_env().unwrap_or_default(),
+                };
+
                 let task_data = PdfProcessingData {
                     pdf_id: pdf.pdf_id,
                     tenant_id: tenant_uuid,
@@ -412,6 +431,7 @@ pub async fn reprocess_failed(
                     vision_provider: vision_provider.clone(),
                     vision_model: vision_model.clone(),
                     existing_document_id: pdf.document_id.map(|id| id.to_string()),
+                    pdf_parser_backend,
                 };
 
                 let track_id = format!("pdf-{}", Uuid::new_v4());

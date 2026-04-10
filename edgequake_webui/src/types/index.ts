@@ -76,6 +76,9 @@ export interface KnowledgeGraph {
   total_edges?: number;
 }
 
+export type PdfParserBackend = "vision" | "edgeparse";
+export type WorkspacePdfParserBackendUpdate = PdfParserBackend | "none";
+
 // Document types
 export interface Document {
   id: string;
@@ -212,6 +215,8 @@ export interface DocumentLineage {
    * @implements SPEC-040
    */
   pdf_extraction_method?: string;
+  /** PDF extraction warning surfaced from the backend. */
+  pdf_extraction_warning?: string;
   /** Total tokens consumed. */
   total_tokens?: number;
   /** Input tokens consumed. */
@@ -387,6 +392,8 @@ export interface PdfUploadOptions {
    * @implements BR-dup-replace - Replace = force_reindex on existing PDF
    */
   force_reindex?: boolean;
+  /** Per-upload PDF parser backend override. Omit to use workspace/server default. */
+  pdf_parser_backend?: PdfParserBackend;
 }
 
 export interface PdfMetadata {
@@ -695,6 +702,11 @@ export interface Workspace {
    */
   vision_llm_model?: string;
   /**
+   * Default PDF parser backend for this workspace.
+   * @implements Mission 03: Configurable PDF parser backend
+   */
+  pdf_parser_backend?: PdfParserBackend;
+  /**
    * Custom entity types for the extraction pipeline.
    * If absent, the server uses the default types (PERSON, ORGANIZATION, etc.).
    * Surfaced from workspace metadata JSONB.
@@ -762,6 +774,8 @@ export interface CreateWorkspaceRequest {
    * @implements SPEC-041: Workspace-scoped Vision LLM for PDF processing
    */
   vision_llm_provider?: string;
+  /** Default PDF parser backend for this workspace. */
+  pdf_parser_backend?: PdfParserBackend;
   /**
    * Custom entity types for this workspace's extraction pipeline.
    * Normalized to UPPERCASE_UNDERSCORED and deduplicated (max 50).

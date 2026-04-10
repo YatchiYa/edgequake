@@ -101,6 +101,9 @@ pub struct WorkspaceResponse {
     /// Vision LLM model for PDF page image extraction (None if not configured).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vision_llm_model: Option<String>,
+    /// Default PDF parser backend for this workspace (None means server default).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pdf_parser_backend: Option<String>,
 
     // === Entity Type Configuration (SPEC-085) ===
     /// Custom entity types configured for this workspace.

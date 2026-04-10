@@ -65,6 +65,7 @@ export function DocumentManager() {
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
+  const [pdfParserBackend, setPdfParserBackend] = useState<'default' | 'vision' | 'edgeparse'>('default');
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -94,6 +95,8 @@ export function DocumentManager() {
     tenantId: selectedTenantId,
     workspaceId: selectedWorkspaceId,
     onUploadStart: () => setStatusFilter('all'),
+    pdfParserBackend:
+      pdfParserBackend === 'default' ? undefined : pdfParserBackend,
   });
 
   // OODA-14: Document mutations extracted to useDocumentMutations hook
@@ -242,6 +245,8 @@ export function DocumentManager() {
             getInputProps={getInputProps}
             isDragActive={isDragActive}
             openFileDialog={openFileDialog}
+            pdfParserBackend={pdfParserBackend}
+            onPdfParserBackendChange={setPdfParserBackend}
             selectedCount={selectedCount}
             onBulkReprocess={handleBulkReprocess}
             onBulkDelete={handleBulkDelete}

@@ -127,7 +127,7 @@ fn inv_003_edge_unknown_provider() {
 /// Test provider resolution with empty config
 #[test]
 fn inv_003_edge_empty_config() {
-    let config: Option<String> = None;
+    let config = std::env::var("EDGEQUAKE_TEST_PROVIDER").ok();
     let default = "openai";
     let resolved = config.unwrap_or(default.to_string());
     assert_eq!(resolved, "openai", "Empty config should use default");
@@ -148,7 +148,7 @@ fn inv_003_edge_whitespace_provider() {
 /// Test graph with no edges (valid)
 #[test]
 fn inv_004_edge_no_edges() {
-    let nodes = vec!["A", "B", "C"];
+    let nodes = ["A", "B", "C"];
     let edges: Vec<(&str, &str)> = vec![];
 
     // Graph with no edges is valid
@@ -159,7 +159,7 @@ fn inv_004_edge_no_edges() {
 /// Test graph with self-loop (edge case)
 #[test]
 fn inv_004_edge_self_loop() {
-    let nodes = vec!["A"];
+    let nodes = ["A"];
     let edges = vec![("A", "A")]; // Self-loop
 
     // Self-loops should have valid source/target (both exist)
@@ -172,7 +172,7 @@ fn inv_004_edge_self_loop() {
 /// Test graph with duplicate edges
 #[test]
 fn inv_004_edge_duplicate_edges() {
-    let nodes = vec!["A", "B"];
+    let nodes = ["A", "B"];
     let edges = vec![("A", "B"), ("A", "B")]; // Duplicate
 
     // Duplicate edges should both be valid

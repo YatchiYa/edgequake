@@ -11,7 +11,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use edgequake_llm::{EmbeddingProvider, LLMProvider, MockProvider};
+use edgequake_llm::{EmbeddingProvider, MockProvider};
 use edgequake_pipeline::{
     Chunker, ChunkerConfig, EntityExtractor, ExtractedEntity, ExtractedRelationship,
     ExtractionResult, KnowledgeGraphMerger, LLMExtractor, MergerConfig, Pipeline, PipelineConfig,
@@ -44,23 +44,6 @@ the system can scale horizontally with shared PostgreSQL storage.
 Dr. Sarah Chen, the lead architect, designed the modular crate structure. The six crates
 (core, storage, llm, pipeline, query, api) enable independent testing and development.
 John Smith contributed the Axum-based REST API implementation.
-"#;
-
-const SAMPLE_DOCUMENT_2: &str = r#"
-LightRAG is the original Python implementation that inspired EdgeQuake. It was created by
-researchers at Hong Kong University to improve upon traditional RAG systems.
-
-The key innovation of LightRAG is the knowledge graph approach. Instead of treating documents
-as flat vector collections, it extracts entities like people, organizations, and concepts.
-Relationships between entities are also captured, enabling graph traversal during retrieval.
-
-LightRAG supports multiple storage backends including PostgreSQL, Neo4j, and NetworkX.
-Vector storage options include pgvector, Milvus, and Qdrant. This flexibility allows
-deployment in various environments from local development to cloud production.
-
-Professor Wei Liu led the research team that developed LightRAG. The project has been
-adopted by several organizations including TechCorp and DataSystems Inc. for their
-enterprise knowledge management needs.
 "#;
 
 // ============ Unit Tests for Chunker ============
@@ -814,7 +797,7 @@ async fn test_complete_e2e_flow() {
     // In real usage, you'd add a response for each chunk
     if !result.extractions.is_empty() {
         assert!(
-            result.extractions[0].entities.len() >= 1,
+            !result.extractions[0].entities.is_empty(),
             "Should extract entities"
         );
     }

@@ -1,4 +1,5 @@
 #![cfg(feature = "pipeline")]
+#![allow(clippy::needless_borrows_for_generic_args)]
 
 //! Comprehensive End-to-End Workspace Service Tests
 //!
@@ -211,6 +212,7 @@ mod workspace_crud_tests {
 
             vision_llm_provider: None,
             vision_llm_model: None,
+            pdf_parser_backend: None,
             entity_types: None,
         };
 
@@ -246,6 +248,7 @@ mod workspace_crud_tests {
 
             vision_llm_provider: None,
             vision_llm_model: None,
+            pdf_parser_backend: None,
             entity_types: None,
         };
 
@@ -278,6 +281,7 @@ mod workspace_crud_tests {
 
             vision_llm_provider: None,
             vision_llm_model: None,
+            pdf_parser_backend: None,
             entity_types: None,
         };
         service
@@ -298,6 +302,7 @@ mod workspace_crud_tests {
 
             vision_llm_provider: None,
             vision_llm_model: None,
+            pdf_parser_backend: None,
             entity_types: None,
         };
         let result = service.create_workspace(tenant.tenant_id, request2).await;
@@ -328,6 +333,7 @@ mod workspace_crud_tests {
 
             vision_llm_provider: None,
             vision_llm_model: None,
+            pdf_parser_backend: None,
             entity_types: None,
         };
 
@@ -382,6 +388,7 @@ mod workspace_crud_tests {
 
             vision_llm_provider: None,
             vision_llm_model: None,
+            pdf_parser_backend: None,
             entity_types: None,
         };
         let created = service
@@ -412,6 +419,7 @@ mod workspace_crud_tests {
 
             vision_llm_provider: None,
             vision_llm_model: None,
+            pdf_parser_backend: None,
             entity_types: None,
         };
         service
@@ -494,6 +502,7 @@ mod workspace_crud_tests {
 
                 vision_llm_provider: None,
                 vision_llm_model: None,
+                pdf_parser_backend: None,
                 entity_types: None,
             };
             service
@@ -902,6 +911,7 @@ mod concurrent_tests {
 
                         vision_llm_provider: None,
                         vision_llm_model: None,
+                        pdf_parser_backend: None,
                         entity_types: None,
                     };
                     service.create_workspace(tenant_id, request).await

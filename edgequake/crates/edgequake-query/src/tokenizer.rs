@@ -119,7 +119,7 @@ mod tests {
         let tokenizer = SimpleTokenizer::new();
 
         let tokens = tokenizer.encode("test");
-        assert!(tokens.len() > 0);
+        assert!(!tokens.is_empty());
 
         let decoded = tokenizer.decode(&tokens);
         assert!(!decoded.is_empty());
