@@ -69,6 +69,12 @@ You can choose the backend per upload, set a workspace default, or use
 `EDGEQUAKE_PDF_PARSER_BACKEND` as a server fallback. This section provides a quick overview - see
 the [PDF Ingestion Tutorial](/docs/tutorials/pdf-ingestion/) for complete details.
 
+In the Web UI:
+- Set the workspace default on the workspace configuration page (`/workspace` or
+  `/w/[slug]/workspace`).
+- Override it per file in the upload dialog with the `Parser for this upload` selector.
+- Leave the upload selector on `Workspace Default` to inherit the workspace setting.
+
 ### Quick PDF Upload Example
 
 ```bash
@@ -149,6 +155,12 @@ curl -X PUT http://localhost:8080/api/v1/workspaces/$WORKSPACE_ID \
 - Use for: Teams that mostly ingest scans or image-heavy PDFs
 - Processing: Consistent Vision behavior across uploads
 - Cost: All uploads use the Vision backend unless overridden per upload
+
+### EdgeParse Operational Note
+
+EdgeParse is intentionally deterministic and does not auto-fallback to Vision. If a PDF is
+scanned or image-only, EdgeParse may produce thin markdown and the document lineage will include a
+warning telling you to retry with Vision.
 
 ---
 

@@ -58,7 +58,13 @@ pub(super) async fn create_pdf_processing_task(
         vision_provider: options.resolved_vision_provider(),
         // WHY: Use vision_model() method (not the raw field) so provider-specific
         // defaults are applied when no explicit model was set by the user.
-        vision_model: Some(options.vision_model()),
+        vision_model: if options.resolved_backend(workspace)
+            == edgequake_pdf::PdfParserBackend::Vision
+        {
+            Some(options.vision_model())
+        } else {
+            None
+        },
         existing_document_id: None, // Fresh upload — create new document
         pdf_parser_backend: options.resolved_backend(workspace),
     };

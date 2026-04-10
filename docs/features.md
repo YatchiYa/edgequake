@@ -99,9 +99,13 @@ unnecessarily dependent on an LLM for documents that already contain structured 
 **Capabilities**:
 - New `edgequake-pdf` abstraction crate with a backend strategy pattern.
 - EdgeParse integration via `edgeparse-core` without temp files.
-- Workspace-level default parser setting in the Settings UI.
-- Per-upload parser selection in the document upload flow.
+- Workspace-level default parser setting on the workspace configuration page (`/workspace` and
+  `/w/[slug]/workspace`).
+- Per-upload parser selection in the document upload flow via the `Parser for this upload`
+  selector, including a `Workspace Default` option.
 - Extraction lineage includes parser method and low-content warnings for image-only PDFs.
+- EdgeParse markdown is sanitized before persistence to remove embedded NUL bytes that PostgreSQL
+  rejects as invalid UTF-8 payload.
 - Storage now records `extraction_method = edgeparse`.
 
 **Operational note**:

@@ -133,16 +133,35 @@ pub async fn get_document(
             #[cfg(feature = "postgres")]
             {
                 if let Some(ref pool) = state.pg_pool {
-                    match sqlx::query_as::<_, (Option<String>, Option<String>, Option<serde_json::Value>)>(
-                        "SELECT vision_model, extraction_method, extraction_errors FROM pdf_documents WHERE pdf_id = $1",
+                    match sqlx::query_as::<
+                        _,
+                        (
+                            Option<String>,
+                            Option<String>,
+                            Option<serde_json::Value>,
+                            String,
+                        ),
+                    >(
+                        "SELECT vision_model, extraction_method, extraction_errors, processing_status FROM pdf_documents WHERE pdf_id = $1",
                     )
                     .bind(pdf_uuid)
                     .fetch_optional(pool)
                     .await
                     {
-                        Ok(Some((vision_model, extraction_method, extraction_errors))) => (
+                        Ok(Some((
                             vision_model,
                             extraction_method,
+                            extraction_errors,
+                            processing_status,
+                        ))) => (
+                            vision_model.clone(),
+                            extraction_method.or_else(|| {
+                                if processing_status == "completed" && vision_model.is_some() {
+                                    Some("vision".to_string())
+                                } else {
+                                    None
+                                }
+                            }),
                             extraction_errors
                                 .and_then(|value| value.get("low_content_warning").cloned())
                                 .and_then(|value| value.get("message").cloned())
@@ -279,7 +298,7 @@ pub async fn get_document(
                 || processing_duration_ms.is_some()
                 || input_tokens.is_some()
                 || cost_usd.is_some()
-                || pdf_vision_model.is_some()
+                || pdf_extraction_method.is_some()
                 || pdf_extraction_warning.is_some()
             {
                 Some(DocumentLineage {

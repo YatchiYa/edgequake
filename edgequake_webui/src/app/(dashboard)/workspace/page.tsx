@@ -17,6 +17,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  PdfParserBackendField,
+  type PdfParserBackendChoice,
+} from '@/components/settings/pdf-parser-backend-field';
 import { EmbeddingModelSelector, type EmbeddingSelection } from '@/components/workspace/embedding-model-selector';
 import { LLMModelSelector, type LLMSelection } from '@/components/workspace/llm-model-selector';
 import { RebuildEmbeddingsButton } from '@/components/workspace/rebuild-embeddings-button';
@@ -33,8 +37,10 @@ import {
     Cloud,
     Cpu,
     Database,
+    Eye,
     FileText,
     FolderKanban,
+    Gauge,
     GitBranch,
     Layers,
     RefreshCw,
@@ -85,6 +91,8 @@ export default function WorkspacePage() {
   const [selectedLLM, setSelectedLLM] = useState<LLMSelection | undefined>(undefined);
   const [selectedEmbedding, setSelectedEmbedding] = useState<EmbeddingSelection | undefined>(undefined);
   const [selectedVisionLLM, setSelectedVisionLLM] = useState<LLMSelection | undefined>(undefined);
+  const [selectedPdfParserBackend, setSelectedPdfParserBackend] =
+    useState<PdfParserBackendChoice>('none');
 
   // Fetch workspace data
   const {
@@ -166,6 +174,9 @@ export default function WorkspacePage() {
           fullId: `${workspace.vision_llm_provider}/${workspace.vision_llm_model}`,
         });
       }
+      setSelectedPdfParserBackend(
+        (workspace.pdf_parser_backend as PdfParserBackendChoice | undefined) ?? 'none',
+      );
     }
   }, [workspace, isEditing]);
 
@@ -179,6 +190,7 @@ export default function WorkspacePage() {
       embedding_dimension?: number;
       vision_llm_provider?: string;
       vision_llm_model?: string;
+      pdf_parser_backend?: PdfParserBackendChoice;
       _embeddingChanged?: boolean;
       _llmChanged?: boolean;
       _visionChanged?: boolean;
@@ -191,6 +203,7 @@ export default function WorkspacePage() {
         embedding_dimension: data.embedding_dimension,
         vision_llm_provider: data.vision_llm_provider,
         vision_llm_model: data.vision_llm_model,
+        pdf_parser_backend: data.pdf_parser_backend,
       }),
     onSuccess: (_result, variables) => {
       toast.success(t('workspace.updateSuccess', 'Workspace updated successfully'));
@@ -280,6 +293,7 @@ export default function WorkspacePage() {
     // Vision LLM config (SPEC-040: empty string clears workspace override)
     data.vision_llm_provider = selectedVisionLLM?.provider ?? '';
     data.vision_llm_model = selectedVisionLLM?.model ?? '';
+    data.pdf_parser_backend = selectedPdfParserBackend;
 
     // Track which models changed for post-save rebuild notification
     data._embeddingChanged = embeddingModelChanged ?? false;
@@ -320,6 +334,9 @@ export default function WorkspacePage() {
       } else {
         setSelectedVisionLLM(undefined);
       }
+      setSelectedPdfParserBackend(
+        (workspace.pdf_parser_backend as PdfParserBackendChoice | undefined) ?? 'none',
+      );
     }
   };
 
@@ -676,53 +693,92 @@ export default function WorkspacePage() {
       </div>
 
       {/* Vision LLM Configuration - SPEC-040: PDF-to-Markdown vision model */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-orange-600" />
-            {t('workspace.visionLlmConfig', 'Vision LLM (PDF Extraction)')}
-          </CardTitle>
-          <CardDescription>
-            {t('workspace.visionLlmConfigDesc', 'Multimodal model used for PDF page rendering and text extraction. Overrides server default for this workspace.')}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {isEditing ? (
-            <>
-              <LLMModelSelector
-                value={selectedVisionLLM}
-                onChange={setSelectedVisionLLM}
-                showUsageHint
-              />
-              {visionLLMChanged && (
-                <div className="flex items-center gap-2 p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
-                  <AlertTriangle className="h-4 w-4 text-orange-600" />
-                  <span className="text-sm text-orange-700 dark:text-orange-300">
-                    {t('workspace.visionLlmChangeWarning', 'New Vision LLM will be used for all subsequent PDF uploads.')}
-                  </span>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-orange-600" />
+              {t('workspace.visionLlmConfig', 'Vision LLM (PDF Extraction)')}
+            </CardTitle>
+            <CardDescription>
+              {t('workspace.visionLlmConfigDesc', 'Multimodal model used for PDF page rendering and text extraction. Overrides server default for this workspace.')}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {isEditing ? (
+              <>
+                <LLMModelSelector
+                  value={selectedVisionLLM}
+                  onChange={setSelectedVisionLLM}
+                  showUsageHint
+                />
+                {visionLLMChanged && (
+                  <div className="flex items-center gap-2 p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
+                    <AlertTriangle className="h-4 w-4 text-orange-600" />
+                    <span className="text-sm text-orange-700 dark:text-orange-300">
+                      {t('workspace.visionLlmChangeWarning', 'New Vision LLM will be used for all subsequent PDF uploads.')}
+                    </span>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+                {getProviderIcon(workspace.vision_llm_provider)}
+                <div>
+                  <div className="font-medium">
+                    {workspace.vision_llm_model || t('workspace.serverDefault', 'Server Default')}
+                  </div>
+                  <div className="text-sm text-muted-foreground capitalize">
+                    {workspace.vision_llm_provider || t('workspace.autoDetect', 'Auto-detected')}
+                  </div>
                 </div>
-              )}
-            </>
-          ) : (
-            <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
-              {getProviderIcon(workspace.vision_llm_provider)}
-              <div>
-                <div className="font-medium">
-                  {workspace.vision_llm_model || t('workspace.serverDefault', 'Server Default')}
-                </div>
-                <div className="text-sm text-muted-foreground capitalize">
-                  {workspace.vision_llm_provider || t('workspace.autoDetect', 'Auto-detected')}
-                </div>
+                {workspace.vision_llm_provider && workspace.vision_llm_model && (
+                  <Badge variant="outline" className="ml-auto">
+                    {`${workspace.vision_llm_provider}/${workspace.vision_llm_model}`}
+                  </Badge>
+                )}
               </div>
-              {workspace.vision_llm_provider && workspace.vision_llm_model && (
-                <Badge variant="outline" className="ml-auto">
-                  {`${workspace.vision_llm_provider}/${workspace.vision_llm_model}`}
-                </Badge>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              {selectedPdfParserBackend === 'vision' ? (
+                <Eye className="h-5 w-5 text-amber-600" />
+              ) : (
+                <Gauge className="h-5 w-5 text-amber-600" />
               )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              {t('workspace.pdfParserConfig', 'PDF Parser')}
+            </CardTitle>
+            <CardDescription>
+              {t(
+                'workspace.pdfParserConfigDesc',
+                'Choose the default parser for new PDF uploads in this workspace. EdgeParse is best for digital PDFs; Vision is better for scanned or image-heavy files.',
+              )}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <PdfParserBackendField
+              value={selectedPdfParserBackend}
+              isEditing={isEditing}
+              onChange={setSelectedPdfParserBackend}
+            />
+            {isEditing && (
+              <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <span className="text-sm text-amber-700 dark:text-amber-300">
+                  {t(
+                    'workspace.pdfParserChangeWarning',
+                    'This default applies to subsequent PDF uploads. Existing documents keep their original extraction method unless reprocessed.',
+                  )}
+                </span>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Entity Types - SPEC-085: Read-only display of configured entity types */}
       <Card>

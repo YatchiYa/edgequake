@@ -362,7 +362,7 @@ pub async fn upload_pdf_document(
     let page_count = extract_page_count(&file_data);
 
     // 7. Store raw PDF
-    let vision_model = if options.enable_vision {
+    let vision_model = if resolved_backend == PdfParserBackend::Vision && options.enable_vision {
         Some(options.vision_model())
     } else {
         None

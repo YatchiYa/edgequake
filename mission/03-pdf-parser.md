@@ -1,7 +1,21 @@
 # Mission 03 — Configurable PDF → Markdown Parser
 
-**Version**: 1.0.0 | **Date**: 2026-04-10 | **Branch**: `feat/edgequake-v0.10.0`
-**Status**: PLANNING → IMPLEMENTATION READY
+**Version**: 1.0.1 | **Date**: 2026-04-10 | **Branch**: `feat/edgequake-v0.10.0`
+**Status**: IMPLEMENTED
+
+## Implementation Status
+
+Mission 03 is now implemented in code.
+
+Code-is-law verification completed against the current tree:
+- `EdgeParse` and `vision` are both runtime-selectable PDF parser backends.
+- Resolution order implemented in code is `per-upload override -> workspace default -> env -> vision`.
+- Workspace-level configuration is exposed on the workspace page.
+- Per-upload override is exposed in the upload UI with a `Workspace Default` option.
+- The processor records `pdf_extraction_method` and low-content warnings for EdgeParse outputs.
+- EdgeParse output is sanitized before persistence to remove NUL bytes that PostgreSQL rejects.
+- Failed/non-Vision document lineage no longer infers a fake Vision extraction step from stale
+  `vision_model` data alone.
 
 ---
 
