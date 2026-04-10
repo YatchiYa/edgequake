@@ -1,43 +1,26 @@
 'use client';
 
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getWorkspace, updateWorkspace } from '@/lib/api/edgequake';
 import { useTenantStore } from '@/stores/use-tenant-store';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Eye, Gauge, Pencil, Save, X } from 'lucide-react';
+import { Gauge, Pencil, Save, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-
-type BackendChoice = 'none' | 'vision' | 'edgeparse';
-
-function backendLabel(value: BackendChoice) {
-  switch (value) {
-    case 'edgeparse':
-      return 'EdgeParse';
-    case 'vision':
-      return 'Vision';
-    default:
-      return 'Server Default';
-  }
-}
+import {
+  PdfParserBackendField,
+  type PdfParserBackendChoice,
+} from './pdf-parser-backend-field';
 
 export function PdfParserSettingsCard() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { selectedTenantId, selectedWorkspaceId } = useTenantStore();
   const [isEditing, setIsEditing] = useState(false);
-  const [backend, setBackend] = useState<BackendChoice>('none');
+  const [backend, setBackend] = useState<PdfParserBackendChoice>('none');
 
   const { data: workspace, isLoading } = useQuery({
     queryKey: ['workspace', selectedTenantId, selectedWorkspaceId],
@@ -51,7 +34,9 @@ export function PdfParserSettingsCard() {
     if (!workspace || isEditing) {
       return;
     }
-    setBackend((workspace.pdf_parser_backend as BackendChoice | undefined) ?? 'none');
+    setBackend(
+      (workspace.pdf_parser_backend as PdfParserBackendChoice | undefined) ?? 'none',
+    );
   }, [workspace, isEditing]);
 
   const updateMutation = useMutation({
@@ -114,25 +99,11 @@ export function PdfParserSettingsCard() {
           <Skeleton className="h-14 w-full" />
         ) : isEditing ? (
           <>
-            <Select
+            <PdfParserBackendField
               value={backend}
-              onValueChange={(value: BackendChoice) => setBackend(value)}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">
-                  {t('settings.pdfParser.serverDefault', 'Server Default')}
-                </SelectItem>
-                <SelectItem value="vision">
-                  {t('settings.pdfParser.vision', 'Vision')}
-                </SelectItem>
-                <SelectItem value="edgeparse">
-                  {t('settings.pdfParser.edgeparse', 'EdgeParse')}
-                </SelectItem>
-              </SelectContent>
-            </Select>
+              isEditing
+              onChange={setBackend}
+            />
             <div className="flex items-center gap-2 pt-2">
               <Button
                 size="sm"
@@ -147,7 +118,7 @@ export function PdfParserSettingsCard() {
                 size="sm"
                 onClick={() => {
                   setBackend(
-                    (workspace?.pdf_parser_backend as BackendChoice | undefined) ??
+                    (workspace?.pdf_parser_backend as PdfParserBackendChoice | undefined) ??
                       'none',
                   );
                   setIsEditing(false);
@@ -160,26 +131,7 @@ export function PdfParserSettingsCard() {
             </div>
           </>
         ) : workspace ? (
-          <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
-            {backend === 'vision' ? (
-              <Eye className="h-4 w-4 text-orange-600" />
-            ) : (
-              <Gauge className="h-4 w-4 text-amber-600" />
-            )}
-            <div>
-              <div className="font-medium">{backendLabel(backend)}</div>
-              <div className="text-sm text-muted-foreground">
-                {backend === 'edgeparse'
-                  ? t('settings.pdfParser.edgeparseHint', 'Fast, CPU-only, no API key required')
-                  : t('settings.pdfParser.visionHint', 'Best for scanned and image-heavy PDFs')}
-              </div>
-            </div>
-            <Badge variant="outline" className="ml-auto">
-              {backend === 'none'
-                ? t('settings.pdfParser.fallbackVision', 'Fallback: Vision')
-                : backendLabel(backend)}
-            </Badge>
-          </div>
+          <PdfParserBackendField value={backend} isEditing={false} onChange={setBackend} />
         ) : null}
       </CardContent>
     </Card>

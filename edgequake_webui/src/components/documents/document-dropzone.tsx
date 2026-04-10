@@ -88,9 +88,17 @@ export function DocumentDropzone({
         {isDragActive ? (
           <p className="text-sm font-medium text-primary">{t('documents.upload.uploadDropActive', 'Drop files here')}</p>
         ) : (
-          <p className="text-sm text-muted-foreground">
-            {t('documents.upload.uploadDrop', 'Drag & drop or click to upload')} • TXT, MD, JSON, PDF (max 100MB)
-          </p>
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">
+              {t('documents.upload.uploadDrop', 'Drag & drop or click to upload')} • TXT, MD, JSON, PDF (max 100MB)
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {t(
+                'documents.upload.pdfParserHint',
+                'Choose a PDF parser override for this upload, or keep the workspace default.',
+              )}
+            </p>
+          </div>
         )}
       </div>
       <div
@@ -98,8 +106,8 @@ export function DocumentDropzone({
         onClick={(event) => event.stopPropagation()}
         onKeyDown={(event) => event.stopPropagation()}
       >
-        <span className="hidden sm:inline text-xs text-muted-foreground">
-          {t('documents.upload.pdfParser', 'PDF parser')}
+        <span className="text-xs text-muted-foreground whitespace-nowrap">
+          {t('documents.upload.pdfParser', 'Parser for this upload')}
         </span>
         <Select
           value={pdfParserBackend}
@@ -107,12 +115,12 @@ export function DocumentDropzone({
             onPdfParserBackendChange(value)
           }
         >
-          <SelectTrigger className="w-[150px] h-9 bg-background">
+          <SelectTrigger className="w-[190px] h-9 bg-background">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="default">
-              {t('documents.upload.pdfParserDefault', 'Default')}
+              {t('documents.upload.pdfParserDefault', 'Workspace Default')}
             </SelectItem>
             <SelectItem value="vision">
               {t('documents.upload.pdfParserVision', 'Vision')}

@@ -1,6 +1,22 @@
 use super::*;
 use tokio_util::sync::CancellationToken;
 
+#[cfg(feature = "postgres")]
+fn strip_nul_bytes(text: String) -> String {
+    if !text.contains('\0') {
+        return text;
+    }
+
+    let nul_count = text.chars().filter(|&ch| ch == '\0').count();
+    let sanitized = text.replace('\0', "");
+    warn!(
+        nul_count,
+        sanitized_len = sanitized.len(),
+        "Removed NUL bytes from extracted PDF markdown before persistence"
+    );
+    sanitized
+}
+
 impl DocumentTaskProcessor {
     /// Process PDF processing task (SPEC-007).
     ///
@@ -371,6 +387,8 @@ impl DocumentTaskProcessor {
                     })?
             }
         };
+
+        let markdown = strip_nul_bytes(markdown);
 
         let extraction_errors = if backend == edgequake_pdf::PdfParserBackend::EdgeParse {
             let avg_chars_per_page = markdown.len() / page_count.max(1);
