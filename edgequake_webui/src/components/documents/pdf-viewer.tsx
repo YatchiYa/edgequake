@@ -29,6 +29,7 @@ import {
     ZoomOut,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
+import type { DocumentProps } from 'react-pdf';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -151,28 +152,44 @@ export function PDFViewer({
   // though we handle the error in onLoadError. The HEAD request is cheap (no body
   // download) and prevents the noisy console warning entirely.
   const [urlOk, setUrlOk] = useState<boolean | null>(null);
+  const [probeError, setProbeError] = useState<string | null>(null);
 
   useEffect(() => {
     // Only pre-check simple URL strings; data/object sources skip the check.
     const url = typeof file === 'string' ? file : (file as { url?: string } | null)?.url;
-    if (!url) {
-      setUrlOk(true);
-      return;
-    }
-    setUrlOk(null); // reset on file change
     let cancelled = false;
-    fetch(url, { method: 'HEAD' })
-      .then((res) => {
-        if (!cancelled) setUrlOk(res.ok);
-        if (!res.ok && !cancelled) {
-          setError(`ResponseException: Unexpected server response (${res.status})`);
+    Promise.resolve().then(async () => {
+      if (!url) {
+        if (!cancelled) {
+          setUrlOk(true);
+          setProbeError(null);
+        }
+        return;
+      }
+
+      if (!cancelled) {
+        setUrlOk(null);
+        setProbeError(null);
+      }
+
+      try {
+        const res = await fetch(url, { method: 'HEAD' });
+        if (cancelled) {
+          return;
+        }
+
+        setUrlOk(res.ok);
+        if (!res.ok) {
+          setProbeError(`ResponseException: Unexpected server response (${res.status})`);
           setIsLoading(false);
         }
-      })
-      .catch(() => {
-        // Network error — let react-pdf handle it via onLoadError
-        if (!cancelled) setUrlOk(true);
-      });
+      } catch {
+        if (!cancelled) {
+          // Network error: let react-pdf surface the real error
+          setUrlOk(true);
+        }
+      }
+    });
     return () => { cancelled = true; };
   }, [file]);
 
@@ -217,8 +234,19 @@ export function PDFViewer({
     );
   }
 
-  if (error) {
-    return <PDFErrorState error={error} onRetry={() => { setError(null); setUrlOk(null); }} />;
+  const displayError = error ?? probeError;
+
+  if (displayError) {
+    return (
+      <PDFErrorState
+        error={displayError}
+        onRetry={() => {
+          setError(null);
+          setProbeError(null);
+          setUrlOk(null);
+        }}
+      />
+    );
   }
 
   // WHY: Show loading skeleton while the HEAD pre-check is in flight or urlOk is false
@@ -230,6 +258,8 @@ export function PDFViewer({
       </div>
     );
   }
+
+  const documentFile: DocumentProps['file'] = file;
 
   return (
     <div className={cn('flex flex-col h-full min-h-0', className)}>
@@ -316,9 +346,8 @@ export function PDFViewer({
         }}
       >
         <div className="flex justify-center py-4">
-          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
           <Document
-            file={file as any}
+            file={documentFile}
             onLoadSuccess={handleLoadSuccess}
             onLoadError={handleLoadError}
             loading={<PDFLoadingSkeleton />}

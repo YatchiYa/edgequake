@@ -45,8 +45,6 @@ import {
 import { useState } from 'react';
 
 interface FailedChunksCardProps {
-  /** Document ID */
-  documentId: string;
   /** List of failed chunks */
   failedChunks: ChunkFailureInfo[];
   /** Total chunks in document */
@@ -71,7 +69,6 @@ interface FailedChunksCardProps {
  * - Retry button (when onRetry provided)
  */
 export function FailedChunksCard({
-  documentId,
   failedChunks,
   totalChunks,
   successfulChunks,

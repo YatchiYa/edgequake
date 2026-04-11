@@ -68,14 +68,6 @@ export default function KnowledgeDetailPage() {
   const [editContent, setEditContent] = useState('');
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  // Sync edit fields when data loads
-  useEffect(() => {
-    if (data) {
-      setEditName(data.name);
-      setEditContent(data.content);
-    }
-  }, [data]);
-
   // Auto-refresh while processing
   useEffect(() => {
     if (data?.status === 'processing') {

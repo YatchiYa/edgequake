@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Shared test helpers for E2E tests (OODA-10 through OODA-18+).
 //!
 //! WHY: All OODA E2E test files duplicate the same helper functions:

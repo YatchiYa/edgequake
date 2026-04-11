@@ -611,7 +611,7 @@ export function SourceCitations({
       acc[chunk.document_id].push(chunk);
       return acc;
     }, {} as Record<string, NonNullable<typeof context.chunks>>) || {},
-    [context.chunks]
+    [context]
   );
 
   const confidence = useMemo(() => calculateConfidence(context), [context]);

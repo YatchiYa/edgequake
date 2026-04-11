@@ -301,13 +301,15 @@ mod tests {
         Arc::new(MockProvider::new())
     }
 
-    /// Create test storage instances for testing
-    fn create_test_storages() -> (
+    type TestStorages = (
         Arc<dyn KVStorage>,
         Arc<dyn VectorStorage>,
         Arc<dyn WorkspaceVectorRegistry>,
         Arc<dyn GraphStorage>,
-    ) {
+    );
+
+    /// Create test storage instances for testing
+    fn create_test_storages() -> TestStorages {
         let kv = Arc::new(MemoryKVStorage::new("test_processor"));
         // MemoryVectorStorage requires dimension - use 1536 (common embedding size)
         let vector: Arc<dyn VectorStorage> =
@@ -613,7 +615,7 @@ mod tests {
         let test_workspace = uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000002").unwrap();
 
         for task_type in types {
-            let mut task = Task::new(test_tenant, test_workspace, task_type.clone(), json!({}));
+            let mut task = Task::new(test_tenant, test_workspace, task_type, json!({}));
 
             let result = processor.process(&mut task, CancellationToken::new()).await;
 

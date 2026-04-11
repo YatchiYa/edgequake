@@ -150,9 +150,11 @@ export function getCommunityColor(communityId: number): string {
   return COMMUNITY_COLORS[communityId % COMMUNITY_COLORS.length];
 }
 
-export default {
+const clusteringUtils = {
   detectCommunities,
   applyCommuntiyColors,
   getCommunitySummary,
   getCommunityColor,
 };
+
+export default clusteringUtils;

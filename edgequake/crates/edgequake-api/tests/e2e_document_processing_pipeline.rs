@@ -26,8 +26,8 @@ async fn create_workspace_with_providers(
     embedding_dimension: usize,
 ) -> edgequake_core::Workspace {
     let tenant = Tenant::new(
-        &format!("Tenant {}", name),
-        &format!("tenant-{}", Uuid::new_v4()),
+        format!("Tenant {}", name),
+        format!("tenant-{}", Uuid::new_v4()),
     );
     let created_tenant = state
         .workspace_service
@@ -47,6 +47,7 @@ async fn create_workspace_with_providers(
         embedding_dimension: Some(embedding_dimension),
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
         entity_types: None,
     };
 
@@ -233,6 +234,7 @@ async fn test_provider_switch_affects_document_processing() {
         embedding_dimension: Some(512), // Different dimension
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
     };
 
     state

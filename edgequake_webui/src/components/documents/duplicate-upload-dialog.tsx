@@ -24,7 +24,7 @@ import {
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { FileText, RefreshCw, SkipForward } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 // ---------------------------------------------------------------------------
@@ -70,18 +70,7 @@ export function DuplicateUploadDialog({
   const { t } = useTranslation();
 
   // Per-file decision state: 'replace' is the default (user expects reprocess)
-  const [decisions, setDecisions] = useState<Record<string, DuplicateDecision>>(
-    () => Object.fromEntries(duplicates.map((d) => [d.existingDocId, 'replace'])),
-  );
-
-  // Reset decisions when a new batch of duplicates arrives
-  // WHY: useState initializer only runs on mount; if component stays mounted
-  //      while duplicates change, decisions must be re-initialized.
-  useEffect(() => {
-    setDecisions(
-      Object.fromEntries(duplicates.map((d) => [d.existingDocId, 'replace'])),
-    );
-  }, [duplicates]);
+  const [decisions, setDecisions] = useState<Record<string, DuplicateDecision>>({});
 
   // Derived list with per-file decision for rendering
   const decisionEntries = useMemo(() => {
@@ -112,12 +101,18 @@ export function DuplicateUploadDialog({
   }, [duplicates]);
 
   const handleConfirm = useCallback(() => {
-    onResolve(decisions);
-  }, [onResolve, decisions]);
+    onResolve(
+      Object.fromEntries(
+        duplicates.map((d) => [d.existingDocId, decisions[d.existingDocId] ?? 'replace']),
+      ),
+    );
+    setDecisions({});
+  }, [decisions, duplicates, onResolve]);
 
   const handleSkipAll = useCallback(() => {
     onResolve(Object.fromEntries(duplicates.map((d) => [d.existingDocId, 'skip'])));
-  }, [onResolve, duplicates]);
+    setDecisions({});
+  }, [duplicates, onResolve]);
 
   // ---------------------------------------------------------------------------
   // Render

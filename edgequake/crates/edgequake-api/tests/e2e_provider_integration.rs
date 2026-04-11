@@ -19,6 +19,7 @@ use serial_test::serial;
 /// Check if Ollama is available at localhost:11434.
 /// This is a best-effort check - provider creation may still fail if Ollama
 /// is not fully operational.
+#[allow(dead_code)]
 fn is_ollama_available() -> bool {
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(2))

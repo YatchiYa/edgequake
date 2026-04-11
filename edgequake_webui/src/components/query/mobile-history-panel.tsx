@@ -58,7 +58,7 @@ const MobileConversationItem = memo(function MobileConversationItem({
   onDelete,
 }: MobileConversationItemProps) {
   const { t } = useTranslation();
-  const [showDelete, setShowDelete] = useState(false);
+  const [showDelete] = useState(false);
 
   const formattedDate = useMemo(() => {
     const date = new Date(conversation.updated_at);

@@ -141,6 +141,7 @@ export const MarkdownInlineTokens = memo(function MarkdownInlineTokens({
               );
             }
             return (
+              // eslint-disable-next-line @next/next/no-img-element
               <img
                 key={tokenId}
                 src={imgToken.href}

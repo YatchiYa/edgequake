@@ -293,7 +293,7 @@ describe("Performance: Memory Efficiency", () => {
       const { durationMs } = measureTime(() => {
         for (let i = 0; i < 100; i++) {
           // Simulate map update
-          const newPhases = phases.map((p, idx) =>
+          phases.map((p, idx) =>
             idx === 0 ? { ...p, percentage: i } : p,
           );
         }

@@ -74,7 +74,7 @@ async fn test_rebuild_embeddings_returns_updated_provider_config() {
     let state = create_memory_state();
 
     // Create tenant
-    let tenant = Tenant::new("Rebuild Test", &format!("test-{}", Uuid::new_v4()));
+    let tenant = Tenant::new("Rebuild Test", format!("test-{}", Uuid::new_v4()));
     let created_tenant = state
         .workspace_service
         .create_tenant(tenant)
@@ -94,6 +94,7 @@ async fn test_rebuild_embeddings_returns_updated_provider_config() {
         embedding_dimension: Some(768),
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
         entity_types: None,
     };
 
@@ -175,7 +176,7 @@ async fn test_rebuild_embeddings_requires_force_if_unchanged() {
     let state = create_memory_state();
 
     // Create tenant and workspace
-    let tenant = Tenant::new("Force Test", &format!("test-{}", Uuid::new_v4()));
+    let tenant = Tenant::new("Force Test", format!("test-{}", Uuid::new_v4()));
     let created_tenant = state
         .workspace_service
         .create_tenant(tenant)
@@ -194,6 +195,7 @@ async fn test_rebuild_embeddings_requires_force_if_unchanged() {
         embedding_dimension: Some(1536),
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
         entity_types: None,
     };
 
@@ -247,7 +249,7 @@ async fn test_rebuild_knowledge_graph_returns_updated_provider_config() {
     let state = create_memory_state();
 
     // Create tenant
-    let tenant = Tenant::new("KG Rebuild Test", &format!("test-{}", Uuid::new_v4()));
+    let tenant = Tenant::new("KG Rebuild Test", format!("test-{}", Uuid::new_v4()));
     let created_tenant = state
         .workspace_service
         .create_tenant(tenant)
@@ -267,6 +269,7 @@ async fn test_rebuild_knowledge_graph_returns_updated_provider_config() {
         embedding_dimension: Some(1536),
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
         entity_types: None,
     };
 
@@ -342,7 +345,7 @@ async fn test_rebuild_knowledge_graph_requires_force_if_unchanged() {
     let state = create_memory_state();
 
     // Create tenant and workspace
-    let tenant = Tenant::new("KG Force Test", &format!("test-{}", Uuid::new_v4()));
+    let tenant = Tenant::new("KG Force Test", format!("test-{}", Uuid::new_v4()));
     let created_tenant = state
         .workspace_service
         .create_tenant(tenant)
@@ -361,6 +364,7 @@ async fn test_rebuild_knowledge_graph_requires_force_if_unchanged() {
         embedding_dimension: Some(1536),
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
         entity_types: None,
     };
 
@@ -413,7 +417,7 @@ async fn test_rebuild_workspace_isolation() {
     let state = create_memory_state();
 
     // Create tenant
-    let tenant = Tenant::new("Isolation Test", &format!("test-{}", Uuid::new_v4()));
+    let tenant = Tenant::new("Isolation Test", format!("test-{}", Uuid::new_v4()));
     let created_tenant = state
         .workspace_service
         .create_tenant(tenant)
@@ -433,6 +437,7 @@ async fn test_rebuild_workspace_isolation() {
         embedding_dimension: Some(768),
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
         entity_types: None,
     };
 
@@ -455,6 +460,7 @@ async fn test_rebuild_workspace_isolation() {
         embedding_dimension: Some(1024),
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
         entity_types: None,
     };
 
@@ -532,7 +538,7 @@ async fn test_pipeline_uses_updated_config_after_rebuild() {
     let state = create_memory_state();
 
     // Create tenant
-    let tenant = Tenant::new("Pipeline Test", &format!("test-{}", Uuid::new_v4()));
+    let tenant = Tenant::new("Pipeline Test", format!("test-{}", Uuid::new_v4()));
     let created_tenant = state
         .workspace_service
         .create_tenant(tenant)
@@ -552,6 +558,7 @@ async fn test_pipeline_uses_updated_config_after_rebuild() {
         embedding_dimension: Some(768),
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
         entity_types: None,
     };
 
@@ -658,7 +665,7 @@ async fn test_rebuild_embeddings_response_fields() {
     let state = create_memory_state();
 
     // Create tenant and workspace
-    let tenant = Tenant::new("Response Test", &format!("test-{}", Uuid::new_v4()));
+    let tenant = Tenant::new("Response Test", format!("test-{}", Uuid::new_v4()));
     let created_tenant = state
         .workspace_service
         .create_tenant(tenant)
@@ -677,6 +684,7 @@ async fn test_rebuild_embeddings_response_fields() {
         embedding_dimension: Some(1536),
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
         entity_types: None,
     };
 
@@ -763,7 +771,7 @@ async fn test_rebuild_knowledge_graph_response_fields() {
     let state = create_memory_state();
 
     // Create tenant and workspace
-    let tenant = Tenant::new("KG Response Test", &format!("test-{}", Uuid::new_v4()));
+    let tenant = Tenant::new("KG Response Test", format!("test-{}", Uuid::new_v4()));
     let created_tenant = state
         .workspace_service
         .create_tenant(tenant)
@@ -782,6 +790,7 @@ async fn test_rebuild_knowledge_graph_response_fields() {
         embedding_dimension: Some(1536),
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
         entity_types: None,
     };
 

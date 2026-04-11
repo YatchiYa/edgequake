@@ -28,8 +28,8 @@ async fn create_workspace_with_providers(
 ) -> edgequake_core::Workspace {
     // Create tenant
     let tenant = Tenant::new(
-        &format!("Tenant {}", name),
-        &format!("tenant-{}", Uuid::new_v4()),
+        format!("Tenant {}", name),
+        format!("tenant-{}", Uuid::new_v4()),
     );
     let created_tenant = state
         .workspace_service
@@ -51,6 +51,7 @@ async fn create_workspace_with_providers(
 
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
         entity_types: None,
     };
 
@@ -257,6 +258,7 @@ async fn test_pipeline_changes_after_provider_switch() {
 
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
     };
 
     state

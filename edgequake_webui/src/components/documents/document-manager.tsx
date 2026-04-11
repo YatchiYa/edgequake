@@ -102,10 +102,8 @@ export function DocumentManager() {
   // OODA-14: Document mutations extracted to useDocumentMutations hook
   const {
     deleteMutation,
-    deleteAllMutation,
     reprocessMutation,
     cancelMutation,
-    retryTaskMutation,
   } = useDocumentMutations({
     onReprocessSuccess: () => setPipelineDialogOpen(true),
   });

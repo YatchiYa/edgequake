@@ -323,7 +323,7 @@ async fn test_get_relationship_success() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(&format!("/api/v1/graph/relationships/{}", relationship_id))
+                .uri(format!("/api/v1/graph/relationships/{}", relationship_id))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -422,7 +422,7 @@ async fn test_update_relationship_success() {
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri(&format!("/api/v1/graph/relationships/{}", relationship_id))
+                .uri(format!("/api/v1/graph/relationships/{}", relationship_id))
                 .header("Content-Type", "application/json")
                 .body(Body::from(serde_json::to_string(&update_request).unwrap()))
                 .unwrap(),
@@ -521,7 +521,7 @@ async fn test_update_relationship_partial() {
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri(&format!("/api/v1/graph/relationships/{}", relationship_id))
+                .uri(format!("/api/v1/graph/relationships/{}", relationship_id))
                 .header("Content-Type", "application/json")
                 .body(Body::from(serde_json::to_string(&update_request).unwrap()))
                 .unwrap(),
@@ -592,7 +592,7 @@ async fn test_delete_relationship_success() {
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri(&format!("/api/v1/graph/relationships/{}", relationship_id))
+                .uri(format!("/api/v1/graph/relationships/{}", relationship_id))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -614,7 +614,7 @@ async fn test_delete_relationship_success() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(&format!("/api/v1/graph/relationships/{}", relationship_id))
+                .uri(format!("/api/v1/graph/relationships/{}", relationship_id))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -697,7 +697,7 @@ async fn test_complete_relationship_lifecycle() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(&format!("/api/v1/graph/relationships/{}", relationship_id))
+                .uri(format!("/api/v1/graph/relationships/{}", relationship_id))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -717,7 +717,7 @@ async fn test_complete_relationship_lifecycle() {
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri(&format!("/api/v1/graph/relationships/{}", relationship_id))
+                .uri(format!("/api/v1/graph/relationships/{}", relationship_id))
                 .header("Content-Type", "application/json")
                 .body(Body::from(serde_json::to_string(&update_request).unwrap()))
                 .unwrap(),
@@ -733,7 +733,7 @@ async fn test_complete_relationship_lifecycle() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(&format!("/api/v1/graph/relationships/{}", relationship_id))
+                .uri(format!("/api/v1/graph/relationships/{}", relationship_id))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -751,7 +751,7 @@ async fn test_complete_relationship_lifecycle() {
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri(&format!("/api/v1/graph/relationships/{}", relationship_id))
+                .uri(format!("/api/v1/graph/relationships/{}", relationship_id))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -766,7 +766,7 @@ async fn test_complete_relationship_lifecycle() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(&format!("/api/v1/graph/relationships/{}", relationship_id))
+                .uri(format!("/api/v1/graph/relationships/{}", relationship_id))
                 .body(Body::empty())
                 .unwrap(),
         )

@@ -159,8 +159,9 @@ export function DocumentPreviewPanel({
    * WHY: Categorized errors with suggestions help users understand and resolve issues
    */
   const errorInfo = useMemo(() => {
-    if (!document?.error_message) return null;
-    return categorizeError(document.error_message);
+    const errorMessage = document?.error_message;
+    if (!errorMessage) return null;
+    return categorizeError(errorMessage);
   }, [document?.error_message]);
 
   const handleCopyId = useCallback(async () => {

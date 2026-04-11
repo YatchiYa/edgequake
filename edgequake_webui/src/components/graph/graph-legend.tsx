@@ -110,7 +110,6 @@ export function GraphLegend({ className, collapsed = true }: GraphLegendProps) {
                   !isVisible(type) ? 'opacity-40' : 'opacity-100'
                 }`}
                 onClick={() => toggleEntityType(type)}
-                aria-pressed={isVisible(type)}
                 aria-label={`${label}: ${count} ${t('graph.legend.entities', 'entities')}. ${isVisible(type) ? t('graph.legend.clickToHide', 'Click to hide') : t('graph.legend.clickToShow', 'Click to show')}`}
               >
                 <div

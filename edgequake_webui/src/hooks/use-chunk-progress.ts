@@ -15,6 +15,7 @@
 import { getWebSocketClient } from "@/lib/websocket";
 import type { ChunkFailureEvent, ChunkProgressEvent } from "@/types/ingestion";
 import { useCallback, useEffect, useState } from "react";
+import { useCurrentTime } from "./use-current-time";
 
 /**
  * Information about a single failed chunk.
@@ -107,6 +108,7 @@ export function useChunkProgress(): UseChunkProgressResult {
   const [progressMap, setProgressMap] = useState<
     Map<string, ChunkProgressState>
   >(() => new Map());
+  const now = useCurrentTime(1000);
 
   // Handle incoming chunk progress events
   const handleChunkProgress = useCallback((event: ChunkProgressEvent) => {
@@ -259,7 +261,7 @@ export function useChunkProgress(): UseChunkProgressResult {
 
   // Check if any documents have active progress (updated in last 30s)
   const hasActiveProgress = Array.from(progressMap.values()).some((p) => {
-    const age = Date.now() - p.lastUpdated.getTime();
+    const age = now - p.lastUpdated.getTime();
     return age < 30000 && p.chunkIndex < p.totalChunks - 1;
   });
 

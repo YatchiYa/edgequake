@@ -21,6 +21,7 @@ import {
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useChunkProgress } from '@/hooks';
+import { useCurrentTime } from '@/hooks/use-current-time';
 import { getEnhancedPipelineStatus, requestPipelineCancellation } from '@/lib/api/edgequake';
 import type { PipelineMessage } from '@/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -93,6 +94,7 @@ function MessageItem({ message }: { message: PipelineMessage }) {
  */
 function ChunkProgressSection() {
   const { chunkProgress, hasActiveProgress } = useChunkProgress();
+  const now = useCurrentTime(1000);
 
   // Format time for display
   const formatTime = (seconds: number): string => {
@@ -119,11 +121,11 @@ function ChunkProgressSection() {
   const activeProgress = useMemo(() => {
     return Array.from(chunkProgress.values())
       .filter(p => {
-        const age = Date.now() - p.lastUpdated.getTime();
+        const age = now - p.lastUpdated.getTime();
         return age < 60000; // Show progress from last 60 seconds
       })
       .sort((a, b) => b.lastUpdated.getTime() - a.lastUpdated.getTime());
-  }, [chunkProgress]);
+  }, [chunkProgress, now]);
 
   if (!hasActiveProgress || activeProgress.length === 0) {
     return null;
@@ -366,10 +368,6 @@ function ClearSummarySection({ clearStats }: { clearStats?: ClearStats }) {
     return null;
   }
 
-  const hasGraphStats =
-    clearStats.nodesCleared !== undefined || clearStats.edgesCleared !== undefined;
-  const hasVectorStats = clearStats.vectorsCleared !== undefined;
-
   // Determine grid columns based on what stats we have
   const statCount =
     (clearStats.nodesCleared !== undefined ? 1 : 0) +
@@ -439,6 +437,7 @@ export function PipelineStatusDialog({
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const now = useCurrentTime(1000);
 
   // Use enhanced pipeline status with history messages (Phase 3)
   // CRITICAL: Include tenantId and workspaceId for multi-tenancy isolation
@@ -491,7 +490,6 @@ export function PipelineStatusDialog({
     }
     
     const startTime = new Date(data.job_start).getTime();
-    const now = Date.now();
     const elapsedMs = now - startTime;
     const elapsedMinutes = elapsedMs / 60000;
     
@@ -521,7 +519,7 @@ export function PipelineStatusDialog({
       return t('pipeline.etaHours', '~{{count}} hour(s)', { count: hours });
     }
     return t('pipeline.etaHoursMinutes', '~{{hours}}h {{mins}}m', { hours, mins });
-  }, [data?.job_start, data?.processed_documents, data?.total_documents, t]);
+  }, [data, now, t]);
   
   // Use custom title or default
   const dialogTitle = title || t('pipeline.title', 'Pipeline Status');

@@ -15,39 +15,25 @@ import { useQuery } from '@tanstack/react-query';
 import {
     AlertCircle,
     ArrowLeft,
-    CheckCircle,
-    Clock,
     Download,
     Loader2,
     Network,
     RefreshCw,
     StopCircle,
-    XCircle
 } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
 
-const statusConfig = {
-  pending: { icon: Clock, color: 'text-yellow-500', bg: 'bg-yellow-500/10', label: 'Pending' },
-  processing: { icon: Loader2, color: 'text-blue-500', bg: 'bg-blue-500/10', label: 'Processing' },
-  completed: { icon: CheckCircle, color: 'text-green-500', bg: 'bg-green-500/10', label: 'Completed' },
-  indexed: { icon: CheckCircle, color: 'text-green-500', bg: 'bg-green-500/10', label: 'Indexed' },
-  partial_failure: { icon: AlertCircle, color: 'text-orange-500', bg: 'bg-orange-500/10', label: 'Partial Failure' },
-  failed: { icon: XCircle, color: 'text-red-500', bg: 'bg-red-500/10', label: 'Failed' },
-  cancelled: { icon: StopCircle, color: 'text-gray-500', bg: 'bg-gray-500/10', label: 'Cancelled' },
-} as const;
-
-type DocumentStatus = keyof typeof statusConfig;
-
-function formatFileSize(bytes: number | undefined): string {
-  if (!bytes) return 'Unknown';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-}
+type DocumentStatus =
+  | 'pending'
+  | 'processing'
+  | 'completed'
+  | 'indexed'
+  | 'partial_failure'
+  | 'failed'
+  | 'cancelled';
 
 export default function DocumentViewPage() {
   const { t } = useTranslation();
@@ -158,15 +144,6 @@ export default function DocumentViewPage() {
     staleTime: 60 * 1000,
   });
 
-  const handleCopyId = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(documentId);
-      toast.success(t('documents.preview.idCopied', 'Document ID copied to clipboard'));
-    } catch {
-      toast.error(t('common.copyFailed', 'Failed to copy'));
-    }
-  }, [documentId, t]);
-
   const handleViewInGraph = useCallback(() => {
     if (document) {
       router.push(`/graph?highlight=${document.id}`);
@@ -195,11 +172,8 @@ export default function DocumentViewPage() {
 
   // Derived status values (safe to compute even if document is null)
   const status = (document?.status || 'completed') as DocumentStatus;
-  const statusInfo = statusConfig[status] || statusConfig.completed;
-  const StatusIcon = statusInfo.icon;
   const isFailed = status === 'failed' || status === 'partial_failure';
   const isCancelled = status === 'cancelled';
-  const isRetryable = isFailed || isCancelled;
 
   // Loading state
   if (isLoading) {

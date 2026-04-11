@@ -11,3 +11,10 @@ All notable changes to the EdgeQuake documentation are tracked here. See the roo
 ### Added
 
 - CHANGELOG.md for documentation directory.
+
+### Changed
+
+- Added Sigma graph-viewer performance tuning guidance to
+  `docs/operations/performance-tuning.md`.
+- Recast `mission/05-improve-performance-sigma.md` as an accepted ADR with
+  explicit decision rules, alternatives, consequences, and verification.

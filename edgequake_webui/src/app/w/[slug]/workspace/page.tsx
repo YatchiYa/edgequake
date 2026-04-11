@@ -22,6 +22,10 @@ import { RebuildEmbeddingsButton } from '@/components/workspace/rebuild-embeddin
 import { RebuildKnowledgeGraphButton } from '@/components/workspace/rebuild-knowledge-graph-button';
 import { getWorkspace, getWorkspaceStats, updateWorkspace } from '@/lib/api/edgequake';
 import { fetchProvidersHealth } from '@/lib/api/models';
+import {
+  getWorkspaceEmbeddingSelection,
+  getWorkspaceLlmSelection,
+} from '@/lib/workspace/drafts';
 import { useTenantStore } from '@/stores/use-tenant-store';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -42,7 +46,7 @@ import {
     Sparkles,
     XCircle,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -111,26 +115,6 @@ export default function WorkspacePage() {
     staleTime: 60000, // Cache for 1 minute
     retry: 1, // Only retry once since providers may be down
   });
-
-  // Initialize edit state from workspace data
-  useEffect(() => {
-    if (workspace && !isEditing) {
-      if (workspace.llm_provider && workspace.llm_model) {
-        setSelectedLLM({
-          model: workspace.llm_model,
-          provider: workspace.llm_provider,
-          fullId: `${workspace.llm_provider}/${workspace.llm_model}`,
-        });
-      }
-      if (workspace.embedding_provider && workspace.embedding_model) {
-        setSelectedEmbedding({
-          model: workspace.embedding_model,
-          provider: workspace.embedding_provider,
-          dimension: workspace.embedding_dimension ?? 768,
-        });
-      }
-    }
-  }, [workspace, isEditing]);
 
   // Update workspace mutation
   const updateMutation = useMutation({
@@ -231,39 +215,30 @@ export default function WorkspacePage() {
 
   const handleCancel = () => {
     setIsEditing(false);
-    // Reset to workspace values
-    if (workspace) {
-      if (workspace.llm_provider && workspace.llm_model) {
-        setSelectedLLM({
-          model: workspace.llm_model,
-          provider: workspace.llm_provider,
-          fullId: `${workspace.llm_provider}/${workspace.llm_model}`,
-        });
-      } else {
-        setSelectedLLM(undefined);
-      }
-      if (workspace.embedding_provider && workspace.embedding_model) {
-        setSelectedEmbedding({
-          model: workspace.embedding_model,
-          provider: workspace.embedding_provider,
-          dimension: workspace.embedding_dimension ?? 768,
-        });
-      } else {
-        setSelectedEmbedding(undefined);
-      }
-    }
+    setSelectedLLM(getWorkspaceLlmSelection(workspace));
+    setSelectedEmbedding(getWorkspaceEmbeddingSelection(workspace));
+  };
+
+  const handleEditStart = () => {
+    setSelectedLLM(getWorkspaceLlmSelection(workspace));
+    setSelectedEmbedding(getWorkspaceEmbeddingSelection(workspace));
+    setIsEditing(true);
   };
 
   // Check if embedding model changed (needs rebuild)
-  const embeddingModelChanged = workspace && selectedEmbedding && (
-    workspace.embedding_model !== selectedEmbedding.model ||
-    workspace.embedding_provider !== selectedEmbedding.provider
+  const embeddingModelChanged = Boolean(
+    workspace && selectedEmbedding && (
+      workspace.embedding_model !== selectedEmbedding.model ||
+      workspace.embedding_provider !== selectedEmbedding.provider
+    )
   );
 
   // Check if LLM model changed (needs extraction rebuild)
-  const llmModelChanged = workspace && selectedLLM && (
-    workspace.llm_model !== selectedLLM.model ||
-    workspace.llm_provider !== selectedLLM.provider
+  const llmModelChanged = Boolean(
+    workspace && selectedLLM && (
+      workspace.llm_model !== selectedLLM.model ||
+      workspace.llm_provider !== selectedLLM.provider
+    )
   );
 
   // Track if rebuild is needed after save
@@ -351,7 +326,7 @@ export default function WorkspacePage() {
             <Button
               variant="default"
               size="sm"
-              onClick={() => setIsEditing(true)}
+              onClick={handleEditStart}
             >
               <Settings className="h-4 w-4 mr-2" />
               {t('workspace.editConfig', 'Edit Configuration')}

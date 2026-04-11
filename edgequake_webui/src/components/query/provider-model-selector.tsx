@@ -35,7 +35,7 @@ import {
 import { useLlmModels, useAvailableProviders } from '@/hooks/use-providers';
 import { cn } from '@/lib/utils';
 import { Brain, Check, ChevronDown, Cloud, Cpu, Eye, FlaskConical, Loader2, Zap } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 
 interface ProviderModelSelectorProps {
   /** Currently selected full model ID (e.g., "ollama/gemma3:12b") */
@@ -97,6 +97,7 @@ export function ProviderModelSelector({
   className,
 }: ProviderModelSelectorProps) {
   const [open, setOpen] = useState(false);
+  const listboxId = useId();
   const { data: llmData, isLoading, error } = useLlmModels();
   const { data: providers } = useAvailableProviders();
 
@@ -180,6 +181,7 @@ export function ProviderModelSelector({
         <button
           type="button"
           role="combobox"
+          aria-controls={listboxId}
           aria-expanded={open}
           disabled={disabled}
           className={cn(
@@ -203,7 +205,7 @@ export function ProviderModelSelector({
           <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-[320px] p-0" align="start">
+      <PopoverContent id={listboxId} className="w-[320px] p-0" align="start">
         <Command>
           <CommandInput placeholder="Search models..." />
           <CommandList className="max-h-[350px]">

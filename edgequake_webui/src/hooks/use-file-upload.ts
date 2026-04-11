@@ -471,7 +471,7 @@ export function useFileUpload(
         setUploadingFiles([]);
       }, 3000);
     },
-    [queryClient, t, router, tenantId, workspaceId, onUploadStart, isUploading],
+    [isUploading, onUploadStart, pdfParserBackend, queryClient, router, t, tenantId, workspaceId],
   );
 
   /**

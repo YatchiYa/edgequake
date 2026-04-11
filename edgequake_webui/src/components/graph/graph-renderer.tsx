@@ -17,20 +17,21 @@
 'use client';
 
 import { detectCommunities, getCommunityColor } from '@/lib/graph/clustering';
+import { getGraphEdgeKeyFromEdge } from '@/lib/graph/ids';
+import {
+  applyLayoutToGraph,
+  calculateLayoutPositions,
+  getGraphPerformanceProfile,
+  type GraphLayoutType,
+} from '@/lib/graph/layouts';
 import { useGraphStore } from '@/stores/use-graph-store';
 import { useSettingsStore } from '@/stores/use-settings-store';
 import type { GraphEdge, GraphNode } from '@/types';
 import { EdgeCurvedArrowProgram, createEdgeCurveProgram } from '@sigma/edge-curve';
 import { NodeBorderProgram } from '@sigma/node-border';
 import Graph from 'graphology';
-import forceLayout from 'graphology-layout-force';
-import forceAtlas2 from 'graphology-layout-forceatlas2';
-import noverlap from 'graphology-layout-noverlap';
-import circlepack from 'graphology-layout/circlepack';
-import circular from 'graphology-layout/circular';
-import random from 'graphology-layout/random';
 import { useTheme } from 'next-themes';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import Sigma from 'sigma';
 import { animateNodes } from 'sigma/utils';
 
@@ -82,12 +83,17 @@ interface GraphRendererProps {
   onNodeRightClick?: (nodeId: string, x: number, y: number) => void;
 }
 
+interface HoverState {
+  nodeId: string | null;
+  neighborIds: Set<string>;
+  edgeId: string | null;
+}
+
 export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRightClick }: GraphRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sigmaRef = useRef<Sigma | null>(null);
   const graphRef = useRef<Graph | null>(null);
-  const previousLayoutRef = useRef<string | null>(null);
-  const previousSelectedNodeRef = useRef<string | null>(null);
+  const previousLayoutRef = useRef<GraphLayoutType | null>(null);
   const setSigmaInstance = useGraphStore((s) => s.setSigmaInstance);
   const selectedNodeId = useGraphStore((s) => s.selectedNodeId);
   const colorMode = useGraphStore((s) => s.colorMode);
@@ -100,7 +106,6 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
   // Track previous node/edge counts for incremental updates
   const prevNodesCountRef = useRef(0);
   const prevEdgesCountRef = useRef(0);
-  const pendingLayoutUpdateRef = useRef(false);
   const layoutUpdateTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Get settings with defaults
@@ -111,18 +116,54 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
   const hideUnselectedEdges = graphSettings.hideUnselectedEdges ?? false;
   const nodeSize = NODE_SIZES[graphSettings.nodeSize] ?? NODE_SIZES.medium;
   const layout = graphSettings.layout ?? 'force';
+  const hoverStateRef = useRef<HoverState>({
+    nodeId: null,
+    neighborIds: new Set<string>(),
+    edgeId: null,
+  });
+  const selectedNodeIdRef = useRef<string | null>(selectedNodeId);
+  const showEdgeLabelsRef = useRef(showEdgeLabels);
+  const showLabelsRef = useRef(showLabels);
+  const enableNodeDragRef = useRef(enableNodeDrag);
+  const highlightNeighborsRef = useRef(highlightNeighbors);
+  const hideUnselectedEdgesRef = useRef(hideUnselectedEdges);
+  const nodeSizeRef = useRef(nodeSize);
+  const layoutRef = useRef<GraphLayoutType>(layout);
+  const onNodeClickRef = useRef(onNodeClick);
+  const onNodeHoverRef = useRef(onNodeHover);
+  const onNodeRightClickRef = useRef(onNodeRightClick);
   
   // Check if currently streaming
   const isActivelyStreaming = useStreaming && 
     (streamingProgress.phase === 'nodes' || streamingProgress.phase === 'edges' || streamingProgress.phase === 'metadata');
-  
-  // Memoize node and edge sets for efficient diffing
-  const nodeIdSet = useMemo(() => new Set(nodes.map(n => n.id)), [nodes]);
-  const edgeIdSet = useMemo(() => {
-    const set = new Set<string>();
-    edges.forEach(e => set.add(`${e.source}-${e.target}-${e.relationship_type}`));
-    return set;
-  }, [edges]);
+
+  useEffect(() => {
+    selectedNodeIdRef.current = selectedNodeId;
+  }, [selectedNodeId]);
+
+  useEffect(() => {
+    showLabelsRef.current = showLabels;
+    showEdgeLabelsRef.current = showEdgeLabels;
+    enableNodeDragRef.current = enableNodeDrag;
+    highlightNeighborsRef.current = highlightNeighbors;
+    hideUnselectedEdgesRef.current = hideUnselectedEdges;
+    nodeSizeRef.current = nodeSize;
+    layoutRef.current = layout;
+    onNodeClickRef.current = onNodeClick;
+    onNodeHoverRef.current = onNodeHover;
+    onNodeRightClickRef.current = onNodeRightClick;
+  }, [
+    enableNodeDrag,
+    hideUnselectedEdges,
+    highlightNeighbors,
+    layout,
+    nodeSize,
+    onNodeClick,
+    onNodeHover,
+    onNodeRightClick,
+    showEdgeLabels,
+    showLabels,
+  ]);
 
   // Function to add nodes to existing graph (for streaming)
   const addNodesToGraph = useCallback((graph: Graph, newNodes: GraphNode[]) => {
@@ -138,7 +179,7 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
 
       // WHY: Dynamic node sizing based on degree (connections)
       const nodeDegree = node.degree || 0;
-      const dynamicSize = calculateNodeSize(nodeDegree, nodeSize);
+      const dynamicSize = calculateNodeSize(nodeDegree, nodeSizeRef.current);
 
       graph.addNode(node.id, {
         label: node.label,
@@ -154,7 +195,7 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
         degree: nodeDegree, // Store degree for later reference
       });
     });
-  }, [isDark, nodeSize]);
+  }, [isDark]);
   
   // Function to add edges to existing graph (for streaming)
   // WHY: forceLabel mirrors the showEdgeLabels setting so edge type text always
@@ -165,13 +206,13 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
     newEdges.forEach((edge) => {
       if (!graph.hasNode(edge.source) || !graph.hasNode(edge.target)) return;
       
-      const edgeId = `${edge.source}-${edge.target}-${edge.relationship_type}`;
+      const edgeId = getGraphEdgeKeyFromEdge(edge);
       if (graph.hasEdge(edgeId)) return; // Skip existing edges
       
       try {
         graph.addEdgeWithKey(edgeId, edge.source, edge.target, {
           label: edge.relationship_type,
-          forceLabel: showEdgeLabels, // WHY: force-show label when setting is on
+          forceLabel: showEdgeLabelsRef.current, // WHY: force-show label when setting is on
           size: Math.max(1, Math.min(edge.weight * 2, 5)),
           color: isDark ? '#4b5563' : '#94a3b8',
           type: 'curvedArrow',
@@ -181,7 +222,7 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
         // Edge already exists or invalid
       }
     });
-  }, [isDark, showEdgeLabels]);
+  }, [isDark]);
   
   // WHY: Track layout performance for adaptive iteration count
   const layoutMetricsRef = useRef({
@@ -199,8 +240,6 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
       clearTimeout(layoutUpdateTimerRef.current);
     }
     
-    pendingLayoutUpdateRef.current = true;
-    
     // Delay layout update to batch multiple node additions
     layoutUpdateTimerRef.current = setTimeout(() => {
       const graph = graphRef.current;
@@ -215,39 +254,11 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
       
       rafIdRef.current = requestAnimationFrame(() => {
         const startTime = performance.now();
-        
-        // WHY: Adaptive iteration count based on graph size and previous performance
-        // Small graphs (<100 nodes): 50 iterations for quality
-        // Medium graphs (100-500 nodes): 30 iterations for balance
-        // Large graphs (>500 nodes): 15 iterations for speed
         const nodeCount = graph.order;
-        let iterations = 50;
-        if (nodeCount > 500) {
-          iterations = 15;
-        } else if (nodeCount > 100) {
-          iterations = 30;
-        }
-        
-        // WHY: Further reduce iterations if previous layout was slow (>100ms)
-        if (layoutMetricsRef.current.avgDurationMs > 100) {
-          iterations = Math.max(10, Math.floor(iterations * 0.7));
-        }
         
         try {
-          forceAtlas2.assign(graph, {
-            iterations,
-            settings: {
-              gravity: 1,
-              scalingRatio: 2,
-              strongGravityMode: true,
-              barnesHutOptimize: nodeCount > 50, // Enable Barnes-Hut earlier for better perf
-              barnesHutTheta: 0.6, // WHY: Higher theta = faster but less accurate
-              slowDown: 2,
-              edgeWeightInfluence: 0.5, // WHY: Reduce edge weight influence for faster convergence
-            },
-          });
-          
-          sigma.refresh();
+          applyLayoutToGraph(graph, 'force', 'streaming');
+          sigma.scheduleRefresh();
         } catch (e) {
           console.warn('Layout update failed:', e);
         }
@@ -260,10 +271,9 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
         metrics.avgDurationMs = (metrics.avgDurationMs * (metrics.updateCount - 1) + duration) / metrics.updateCount;
         
         if (duration > 100) {
-          console.warn(`[GraphRenderer] Layout took ${duration.toFixed(1)}ms (${nodeCount} nodes, ${iterations} iterations)`);
+          console.warn(`[GraphRenderer] Layout took ${duration.toFixed(1)}ms (${nodeCount} nodes, streaming mode)`);
         }
         
-        pendingLayoutUpdateRef.current = false;
         rafIdRef.current = null;
       });
     }, 100); // 100ms debounce
@@ -282,9 +292,8 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
     const graph = new Graph();
     graphRef.current = graph;
 
-    // Add nodes with border styling
-    const nodeColor = (type: string | undefined) => getNodeColor(type);
     const borderColor = isDark ? '#374151' : '#ffffff';
+    const defaultEdgeColor = isDark ? '#4b5563' : '#94a3b8';
     
     let addedNodeCount = 0;
     let skippedNodeCount = 0;
@@ -312,7 +321,7 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
 
       // WHY: Dynamic node sizing based on degree (connections)
       const nodeDegree = node.degree || 0;
-      const dynamicSize = calculateNodeSize(nodeDegree, nodeSize);
+      const dynamicSize = calculateNodeSize(nodeDegree, nodeSizeRef.current);
 
       try {
         graph.addNode(node.id, {
@@ -320,7 +329,7 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
           x: Math.cos(angle) * radius,
           y: Math.sin(angle) * radius,
           size: dynamicSize, // Use dynamic size based on connections
-          color: nodeColor(node.node_type),
+          color: getNodeColor(node.node_type),
           borderColor: borderColor,
           borderSize: 0.2, // Slightly larger border for better visibility
           type: 'border', // Explicitly set node type for NodeBorderProgram
@@ -364,16 +373,16 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
       
       if (graph.hasNode(edge.source) && graph.hasNode(edge.target)) {
         try {
-          graph.addEdge(edge.source, edge.target, {
+          graph.addEdgeWithKey(getGraphEdgeKeyFromEdge(edge), edge.source, edge.target, {
             label: edge.relationship_type,
-            forceLabel: showEdgeLabels, // WHY: force-show label when setting is on
+            forceLabel: showEdgeLabelsRef.current, // WHY: force-show label when setting is on
             size: Math.max(1, Math.min(edge.weight * 2, 5)),
-            color: isDark ? '#4b5563' : '#94a3b8',
+            color: defaultEdgeColor,
             type: 'curvedArrow',
             curvature: 0.25,
           });
           addedEdgeCount++;
-        } catch (error) {
+        } catch {
           // Edge already exists or invalid - silently skip
           skippedEdgeCount++;
         }
@@ -413,81 +422,9 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
       }
     }
 
-    // Apply layout based on settings (calculate positions first, then animate)
-    const calculateLayoutPositions = () => {
-      const positions: Record<string, { x: number; y: number }> = {};
-      
-      // First calculate positions in a temporary graph
-      const tempGraph = graph.copy();
-      
-      switch (layout) {
-        case 'circular':
-          circular.assign(tempGraph);
-          break;
-        case 'circlepack':
-          circlepack.assign(tempGraph);
-          break;
-        case 'random':
-          random.assign(tempGraph);
-          break;
-        case 'noverlaps':
-          // Apply noverlap to prevent overlaps
-          noverlap.assign(tempGraph, {
-            maxIterations: 100,
-            settings: {
-              margin: 5,
-              expansion: 1.1,
-              gridSize: 1,
-              ratio: 1,
-              speed: 3,
-            },
-          });
-          break;
-        case 'force-directed':
-          // Use synchronous force-directed layout
-          forceLayout.assign(tempGraph, {
-            maxIterations: 100,
-            settings: {
-              attraction: 0.0003,
-              repulsion: 0.02,
-              gravity: 0.02,
-              inertia: 0.4,
-              maxMove: 100,
-            },
-          });
-          break;
-        case 'hierarchical':
-          // Hierarchical layout (using circular as fallback)
-          circular.assign(tempGraph);
-          break;
-        case 'force':
-        default:
-          forceAtlas2.assign(tempGraph, {
-            iterations: 100,
-            settings: {
-              gravity: 1,
-              scalingRatio: 2,
-              strongGravityMode: true,
-              barnesHutOptimize: tempGraph.order > 100,
-            },
-          });
-          break;
-      }
-      
-      // Extract positions
-      tempGraph.forEachNode((nodeId) => {
-        positions[nodeId] = {
-          x: tempGraph.getNodeAttribute(nodeId, 'x'),
-          y: tempGraph.getNodeAttribute(nodeId, 'y'),
-        };
-      });
-      
-      return positions;
-    };
-
     // Apply initial layout
     if (graph.order > 0) {
-      const positions = calculateLayoutPositions();
+      const positions = calculateLayoutPositions(graph, layoutRef.current, 'initial');
       // Apply positions directly for initial load (no animation yet)
       Object.entries(positions).forEach(([nodeId, pos]) => {
         graph.setNodeAttribute(nodeId, 'x', pos.x);
@@ -495,22 +432,85 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
       });
     }
 
-    // WHY: Calculate adaptive settings based on graph size for LOD optimization
-    const nodeCount = graph.order;
-    const edgeCount = graph.size;
-    const isLargeGraph = nodeCount > 200 || edgeCount > 400;
-    const isVeryLargeGraph = nodeCount > 500 || edgeCount > 1000;
-    
-    // WHY: Adaptive label settings - balance visibility vs performance
-    // With 500 node max, we can be more generous with labels
-    const adaptiveLabelGridCellSize = isVeryLargeGraph ? 150 : (isLargeGraph ? 100 : 80);
-    const adaptiveLabelDensity = isVeryLargeGraph ? 0.6 : (isLargeGraph ? 0.7 : 0.8);
-    const adaptiveLabelThreshold = isVeryLargeGraph ? 4 : (isLargeGraph ? 3 : 2);
+    const performanceProfile = getGraphPerformanceProfile(graph.order, graph.size);
+
+    const nodeReducer = (node: string, attrs: Record<string, unknown>) => {
+      const hoverState = hoverStateRef.current;
+      const isSelected = selectedNodeIdRef.current === node;
+      const isHoveredNode = hoverState.nodeId === node;
+      const isNeighbor = hoverState.neighborIds.has(node);
+      const isEdgeEndpoint =
+        hoverState.edgeId !== null &&
+        graph.hasEdge(hoverState.edgeId) &&
+        (graph.source(hoverState.edgeId) === node || graph.target(hoverState.edgeId) === node);
+
+      if (
+        highlightNeighborsRef.current &&
+        hoverState.nodeId !== null &&
+        !isSelected &&
+        !isHoveredNode &&
+        !isNeighbor
+      ) {
+        return {
+          ...attrs,
+          hidden: true,
+        };
+      }
+
+      if (!isSelected && !isHoveredNode && !isNeighbor && !isEdgeEndpoint) {
+        return attrs;
+      }
+
+      const next = { ...attrs };
+
+      if (isSelected) {
+        next.size = (typeof attrs.size === 'number' ? attrs.size : nodeSizeRef.current) * 1.8;
+        next.borderSize = 3.5;
+        next.borderColor = isDark ? '#60a5fa' : '#2563eb';
+        next.zIndex = 999;
+        return next;
+      }
+
+      next.borderSize = Math.max(typeof attrs.borderSize === 'number' ? attrs.borderSize : 0.2, 1.5);
+      next.borderColor = isDark ? '#60a5fa' : '#2563eb';
+      next.zIndex = 50;
+      return next;
+    };
+
+    const edgeReducer = (edge: string, attrs: Record<string, unknown>) => {
+      const hoverState = hoverStateRef.current;
+
+      if (
+        highlightNeighborsRef.current &&
+        hideUnselectedEdgesRef.current &&
+        hoverState.nodeId !== null &&
+        hoverState.edgeId !== edge
+      ) {
+        const source = graph.source(edge);
+        const target = graph.target(edge);
+        if (source !== hoverState.nodeId && target !== hoverState.nodeId) {
+          return {
+            ...attrs,
+            hidden: true,
+          };
+        }
+      }
+
+      if (hoverState.edgeId !== edge) {
+        return attrs;
+      }
+
+      return {
+        ...attrs,
+        color: isDark ? '#60a5fa' : '#3b82f6',
+        size: (typeof attrs.size === 'number' ? attrs.size : 2) * 2,
+      };
+    };
     
     // Create Sigma instance with visual quality settings and LOD optimizations
     const sigma = new Sigma(graph, containerRef.current, {
-      renderLabels: showLabels,
-      renderEdgeLabels: showEdgeLabels && !isVeryLargeGraph, // WHY: Disable edge labels for very large graphs
+      renderLabels: showLabelsRef.current,
+      renderEdgeLabels: showEdgeLabelsRef.current && !performanceProfile.isVeryLargeGraph,
       labelSize: 13, // Slightly larger for better readability
       labelWeight: '500', // Medium weight for better readability
       labelColor: { color: isDark ? LABEL_COLORS.dark : LABEL_COLORS.light },
@@ -522,11 +522,11 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
       edgeLabelFont: 'Inter, ui-sans-serif, system-ui, sans-serif',
       edgeLabelWeight: '500',
       edgeLabelColor: { color: isDark ? '#e2e8f0' : '#334155' },
-      labelGridCellSize: adaptiveLabelGridCellSize,    // WHY: Larger cells for large graphs
-      labelRenderedSizeThreshold: adaptiveLabelThreshold,
-      labelDensity: adaptiveLabelDensity,              // WHY: Reduce label density for large graphs
+      labelGridCellSize: performanceProfile.labelGridCellSize,
+      labelRenderedSizeThreshold: performanceProfile.labelRenderedSizeThreshold,
+      labelDensity: performanceProfile.labelDensity,
       defaultNodeColor: '#64748b',
-      defaultEdgeColor: isDark ? '#4b5563' : '#94a3b8',
+      defaultEdgeColor: defaultEdgeColor,
       defaultNodeType: 'border',
       defaultEdgeType: 'curvedArrow',
       nodeProgramClasses: {
@@ -538,17 +538,19 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
       },
       minCameraRatio: 0.1,
       maxCameraRatio: 10,
-      enableEdgeEvents: !isVeryLargeGraph, // WHY: Disable edge events for very large graphs (perf)
+      enableEdgeEvents: !performanceProfile.disableEdgeEvents,
       stagePadding: 50, // Add padding around graph for better visibility
       // WHY: Always enable zIndex so selected nodes can render on top
       zIndex: true,
+      nodeReducer,
+      edgeReducer,
     });
     
     // WHY: Log performance info for debugging
-    if (isLargeGraph) {
+    if (performanceProfile.isLargeGraph) {
       console.info(
-        `[GraphRenderer] Large graph detected: ${nodeCount} nodes, ${edgeCount} edges. ` +
-        `Applied LOD optimizations: labelDensity=${adaptiveLabelDensity}, gridCellSize=${adaptiveLabelGridCellSize}`
+        `[GraphRenderer] Large graph detected: ${performanceProfile.nodeCount} nodes, ${performanceProfile.edgeCount} edges. ` +
+        `Applied LOD optimizations: labelDensity=${performanceProfile.labelDensity}, gridCellSize=${performanceProfile.labelGridCellSize}`
       );
     }
 
@@ -557,7 +559,7 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
 
     // Node click
     sigma.on('clickNode', ({ node }) => {
-      onNodeClick?.(node);
+      onNodeClickRef.current?.(node);
     });
 
     // Node right-click
@@ -566,226 +568,100 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
       if (containerRef.current) {
         containerRef.current.addEventListener('contextmenu', (e) => e.preventDefault(), { once: true });
       }
-      onNodeRightClick?.(node, event.x, event.y);
+      onNodeRightClickRef.current?.(node, event.x, event.y);
     });
 
-    // Node drag - only if enabled
-    if (enableNodeDrag) {
-      // Node drag - start
-      sigma.on('downNode', (e) => {
-        draggedNode = e.node;
-        graph.setNodeAttribute(e.node, 'highlighted', true);
-      });
+    sigma.on('downNode', (e) => {
+      if (!enableNodeDragRef.current) return;
+      draggedNode = e.node;
+    });
 
-      // Mouse move for dragging
-      sigma.getMouseCaptor().on('mousemovebody', (e) => {
-        if (!draggedNode) return;
-        
-        // Get position in graph coordinates
-        const pos = sigma.viewportToGraph(e);
-        
-        // Update node position
-        graph.setNodeAttribute(draggedNode, 'x', pos.x);
-        graph.setNodeAttribute(draggedNode, 'y', pos.y);
-        
-        // Prevent camera movement
-        e.preventSigmaDefault();
-        e.original.preventDefault();
-        e.original.stopPropagation();
-      });
+    sigma.getMouseCaptor().on('mousemovebody', (e) => {
+      if (!draggedNode) return;
+      
+      const pos = sigma.viewportToGraph(e);
+      
+      graph.setNodeAttribute(draggedNode, 'x', pos.x);
+      graph.setNodeAttribute(draggedNode, 'y', pos.y);
+      
+      e.preventSigmaDefault();
+      e.original.preventDefault();
+      e.original.stopPropagation();
+    });
 
-      // Mouse up - end drag
-      sigma.getMouseCaptor().on('mouseup', () => {
-        if (draggedNode) {
-          graph.removeNodeAttribute(draggedNode, 'highlighted');
-          draggedNode = null;
-        }
-      });
-    }
+    sigma.getMouseCaptor().on('mouseup', () => {
+      draggedNode = null;
+    });
 
     // Node hover - with optional neighbor highlighting and edge hiding
     sigma.on('enterNode', ({ node }) => {
-      onNodeHover?.(node);
-      
-      if (highlightNeighbors) {
-        // Highlight connected nodes
-        const connectedNodes = new Set<string>();
-        graph.forEachNeighbor(node, (neighbor) => connectedNodes.add(neighbor));
-        
-        graph.forEachNode((n) => {
-          if (n === node) {
-            graph.setNodeAttribute(n, 'highlighted', true);
-          } else if (connectedNodes.has(n)) {
-            graph.setNodeAttribute(n, 'highlighted', true);
-          } else {
-            graph.setNodeAttribute(n, 'hidden', true);
-          }
-        });
-        
-        // Hide unselected edges if setting is enabled
-        if (hideUnselectedEdges) {
-          graph.forEachEdge((edge, attrs, source, target) => {
-            const isConnected = source === node || target === node;
-            if (!isConnected) {
-              graph.setEdgeAttribute(edge, 'hidden', true);
-            }
-          });
-        }
-        
-        sigma.refresh();
+      onNodeHoverRef.current?.(node);
+
+      if (highlightNeighborsRef.current) {
+        const neighborIds = new Set<string>();
+        graph.forEachNeighbor(node, (neighbor) => neighborIds.add(neighbor));
+        hoverStateRef.current = {
+          ...hoverStateRef.current,
+          nodeId: node,
+          neighborIds,
+        };
+        sigma.scheduleRefresh();
       }
     });
 
     sigma.on('leaveNode', () => {
-      onNodeHover?.(null);
-      
-      if (highlightNeighbors) {
-        // Reset all nodes
-        graph.forEachNode((n) => {
-          graph.removeNodeAttribute(n, 'hidden');
-          graph.removeNodeAttribute(n, 'highlighted');
-        });
-        
-        // Reset all edges
-        if (hideUnselectedEdges) {
-          graph.forEachEdge((edge) => {
-            graph.removeEdgeAttribute(edge, 'hidden');
-          });
-        }
-        
-        sigma.refresh();
-      }
+      onNodeHoverRef.current?.(null);
+      hoverStateRef.current = {
+        ...hoverStateRef.current,
+        nodeId: null,
+        neighborIds: new Set<string>(),
+      };
+      sigma.scheduleRefresh();
     });
 
     // Edge hover - highlight edge and connected nodes
     sigma.on('enterEdge', ({ edge }) => {
-      const source = graph.source(edge);
-      const target = graph.target(edge);
-      
-      // Store original edge attributes for restoration
-      const originalSize = graph.getEdgeAttribute(edge, 'size') || 2;
-      const originalColor = graph.getEdgeAttribute(edge, 'color');
-      
-      // Highlight the edge
-      graph.setEdgeAttribute(edge, 'size', originalSize * 2);
-      graph.setEdgeAttribute(edge, 'color', isDark ? '#60a5fa' : '#3b82f6');
-      graph.setEdgeAttribute(edge, 'originalSize', originalSize);
-      graph.setEdgeAttribute(edge, 'originalColor', originalColor);
-      
-      // Highlight connected nodes
-      graph.setNodeAttribute(source, 'highlighted', true);
-      graph.setNodeAttribute(target, 'highlighted', true);
-      
-      sigma.refresh();
+      hoverStateRef.current = {
+        ...hoverStateRef.current,
+        edgeId: edge,
+      };
+      sigma.scheduleRefresh();
     });
 
-    sigma.on('leaveEdge', ({ edge }) => {
-      // Restore original edge attributes
-      const originalSize = graph.getEdgeAttribute(edge, 'originalSize');
-      const originalColor = graph.getEdgeAttribute(edge, 'originalColor');
-      
-      if (originalSize !== undefined) {
-        graph.setEdgeAttribute(edge, 'size', originalSize);
-        graph.removeEdgeAttribute(edge, 'originalSize');
-      }
-      if (originalColor !== undefined) {
-        graph.setEdgeAttribute(edge, 'color', originalColor);
-        graph.removeEdgeAttribute(edge, 'originalColor');
-      }
-      
-      // Reset connected nodes
-      const source = graph.source(edge);
-      const target = graph.target(edge);
-      graph.removeNodeAttribute(source, 'highlighted');
-      graph.removeNodeAttribute(target, 'highlighted');
-      
-      sigma.refresh();
+    sigma.on('leaveEdge', () => {
+      hoverStateRef.current = {
+        ...hoverStateRef.current,
+        edgeId: null,
+      };
+      sigma.scheduleRefresh();
     });
 
     sigmaRef.current = sigma;
     setSigmaInstance(sigma);
-    previousLayoutRef.current = layout;
+    previousLayoutRef.current = layoutRef.current;
 
     return () => {
       sigma.kill();
       sigmaRef.current = null;
       graphRef.current = null;
+      hoverStateRef.current = {
+        nodeId: null,
+        neighborIds: new Set<string>(),
+        edgeId: null,
+      };
       setSigmaInstance(null);
     };
-  }, [nodes, edges, colorMode, layout, nodeSize, showLabels, showEdgeLabels, enableNodeDrag, highlightNeighbors, hideUnselectedEdges, isDark, onNodeClick, onNodeHover, onNodeRightClick, setSigmaInstance]);
+  }, [nodes, edges, colorMode, isDark, setSigmaInstance]);
 
   // Animate layout changes (when layout prop changes after initial render)
   useEffect(() => {
     const graph = graphRef.current;
-    const sigma = sigmaRef.current;
     
     // Only animate if we have an existing graph and the layout actually changed
-    if (!graph || !sigma || !previousLayoutRef.current || previousLayoutRef.current === layout) {
+    if (!graph || !previousLayoutRef.current || previousLayoutRef.current === layout) {
       return;
     }
-    
-    // Calculate new positions
-    const tempGraph = graph.copy();
-    
-    switch (layout) {
-      case 'circular':
-        circular.assign(tempGraph);
-        break;
-      case 'circlepack':
-        circlepack.assign(tempGraph);
-        break;
-      case 'random':
-        random.assign(tempGraph);
-        break;
-      case 'noverlaps':
-        noverlap.assign(tempGraph, {
-          maxIterations: 100,
-          settings: {
-            margin: 5,
-            expansion: 1.1,
-            gridSize: 1,
-            ratio: 1,
-            speed: 3,
-          },
-        });
-        break;
-      case 'force-directed':
-        forceLayout.assign(tempGraph, {
-          maxIterations: 100,
-          settings: {
-            attraction: 0.0003,
-            repulsion: 0.02,
-            gravity: 0.02,
-            inertia: 0.4,
-            maxMove: 100,
-          },
-        });
-        break;
-      case 'hierarchical':
-        circular.assign(tempGraph);
-        break;
-      case 'force':
-      default:
-        forceAtlas2.assign(tempGraph, {
-          iterations: 100,
-          settings: {
-            gravity: 1,
-            scalingRatio: 2,
-            strongGravityMode: true,
-            barnesHutOptimize: tempGraph.order > 100,
-          },
-        });
-        break;
-    }
-    
-    // Extract new positions
-    const newPositions: Record<string, { x: number; y: number }> = {};
-    tempGraph.forEachNode((nodeId) => {
-      newPositions[nodeId] = {
-        x: tempGraph.getNodeAttribute(nodeId, 'x'),
-        y: tempGraph.getNodeAttribute(nodeId, 'y'),
-      };
-    });
+    const newPositions = calculateLayoutPositions(graph, layout, 'interactive');
     
     // Animate to new positions (300ms transition)
     animateNodes(graph, newPositions, { duration: 300, easing: 'quadraticInOut' });
@@ -820,19 +696,19 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
       if (newNodes.length > 0) {
         addNodesToGraph(graph, newNodes);
         scheduleLayoutUpdate();
-        sigma.refresh();
+        sigma.scheduleRefresh();
       }
     }
     
     // Check for new edges
     if (currentEdgeCount > prevEdgeCount) {
       const newEdges = edges.filter(e => {
-        const edgeId = `${e.source}-${e.target}-${e.relationship_type}`;
+        const edgeId = getGraphEdgeKeyFromEdge(e);
         return !graph.hasEdge(edgeId) && graph.hasNode(e.source) && graph.hasNode(e.target);
       });
       if (newEdges.length > 0) {
         addEdgesToGraph(graph, newEdges);
-        sigma.refresh();
+        sigma.scheduleRefresh();
       }
     }
     
@@ -853,90 +729,43 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
     };
   }, []);
 
-  // Handle selected node visual highlighting
-  // WHY: Make selected nodes EXTREMELY visible with size increase, pulsing border, and strong glow
+  useEffect(() => {
+    const sigma = sigmaRef.current;
+    if (!sigma) return;
+    sigma.scheduleRefresh();
+  }, [selectedNodeId]);
+
   useEffect(() => {
     const graph = graphRef.current;
     const sigma = sigmaRef.current;
 
     if (!graph || !sigma) return;
 
-    // Clear previous selection highlight and stop pulse animation
-    if (previousSelectedNodeRef.current && graph.hasNode(previousSelectedNodeRef.current)) {
-      const prevNodeId = previousSelectedNodeRef.current;
-      // Restore original size
-      const degree = graph.getNodeAttribute(prevNodeId, 'degree') || 0;
-      const originalSize = calculateNodeSize(degree, nodeSize);
-      graph.setNodeAttribute(prevNodeId, 'size', originalSize);
-      // Restore original border
-      graph.setNodeAttribute(prevNodeId, 'borderSize', 0.2);
-      graph.setNodeAttribute(prevNodeId, 'borderColor', isDark ? '#374151' : '#ffffff');
-      // Restore normal z-index
-      graph.setNodeAttribute(prevNodeId, 'zIndex', 0);
-      // Remove selected flag
-      graph.removeNodeAttribute(prevNodeId, 'selected');
-    }
+    graph.forEachNode((nodeId) => {
+      const degree = graph.getNodeAttribute(nodeId, 'degree') || 0;
+      graph.setNodeAttribute(nodeId, 'size', calculateNodeSize(degree, nodeSize));
+    });
 
-    // Highlight new selection with dramatic emphasis
-    if (selectedNodeId && graph.hasNode(selectedNodeId)) {
-      const currentSize = graph.getNodeAttribute(selectedNodeId, 'size') || nodeSize;
+    sigma.scheduleRefresh();
+  }, [nodeSize]);
 
-      // DRAMATIC size increase (2x) for maximum visibility
-      graph.setNodeAttribute(selectedNodeId, 'size', currentSize * 2);
+  useEffect(() => {
+    const graph = graphRef.current;
+    const sigma = sigmaRef.current;
 
-      // Strong border with vibrant theme-aware color
-      const glowColor = isDark ? '#60a5fa' : '#2563eb'; // Brighter blue
-      graph.setNodeAttribute(selectedNodeId, 'borderSize', 4); // Thicker border
-      graph.setNodeAttribute(selectedNodeId, 'borderColor', glowColor);
+    if (!graph || !sigma) return;
 
-      // Force max z-index to render on top of all other nodes
-      graph.setNodeAttribute(selectedNodeId, 'zIndex', 999);
+    graph.forEachEdge((edgeId) => {
+      graph.setEdgeAttribute(edgeId, 'forceLabel', showEdgeLabels);
+    });
 
-      // Mark as selected
-      graph.setNodeAttribute(selectedNodeId, 'selected', true);
-
-      // Update previous selected node ref
-      previousSelectedNodeRef.current = selectedNodeId;
-
-      // Pulsing animation for extra attention
-      let pulsePhase = 0;
-      const pulseInterval = setInterval(() => {
-        if (!graph.hasNode(selectedNodeId)) {
-          clearInterval(pulseInterval);
-          return;
-        }
-
-        // Pulse between 3.5 and 4.5 border size
-        pulsePhase = (pulsePhase + 0.15) % (Math.PI * 2);
-        const pulseBorder = 4 + Math.sin(pulsePhase) * 0.5;
-
-        graph.setNodeAttribute(selectedNodeId, 'borderSize', pulseBorder);
-        sigma.refresh();
-      }, 50); // 20fps pulsing animation
-
-      // Store interval for cleanup
-      (sigma as any)._selectionPulseInterval = pulseInterval;
-
-      // Initial refresh
-      sigma.refresh();
-    } else {
-      previousSelectedNodeRef.current = null;
-
-      // Clear any existing pulse interval
-      if ((sigma as any)._selectionPulseInterval) {
-        clearInterval((sigma as any)._selectionPulseInterval);
-        (sigma as any)._selectionPulseInterval = null;
-      }
-    }
-
-    // Cleanup function
-    return () => {
-      if (sigma && (sigma as any)._selectionPulseInterval) {
-        clearInterval((sigma as any)._selectionPulseInterval);
-        (sigma as any)._selectionPulseInterval = null;
-      }
-    };
-  }, [selectedNodeId, isDark, nodeSize]);
+    sigma.setSetting('renderLabels', showLabels);
+    sigma.setSetting(
+      'renderEdgeLabels',
+      showEdgeLabels && !getGraphPerformanceProfile(graph.order, graph.size).isVeryLargeGraph,
+    );
+    sigma.scheduleRefresh();
+  }, [showLabels, showEdgeLabels]);
 
   useEffect(() => {
     const cleanup = initializeGraph();

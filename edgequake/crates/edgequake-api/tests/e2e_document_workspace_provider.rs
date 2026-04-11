@@ -56,8 +56,8 @@ async fn create_test_workspace_with_config(
 ) -> edgequake_core::Workspace {
     // Create tenant first
     let tenant = Tenant::new(
-        &format!("Test Tenant {}", name),
-        &format!("test-{}", Uuid::new_v4()),
+        format!("Test Tenant {}", name),
+        format!("test-{}", Uuid::new_v4()),
     );
     let created_tenant = state
         .workspace_service
@@ -79,6 +79,7 @@ async fn create_test_workspace_with_config(
 
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
         entity_types: None,
     };
 
@@ -253,6 +254,7 @@ async fn test_document_provider_switch_config() {
 
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
     };
 
     state

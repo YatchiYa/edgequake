@@ -24,7 +24,6 @@ interface CodeBlockProps {
   code: string;
   language?: string;
   className?: string;
-  showLineNumbers?: boolean;
 }
 
 // Map common language aliases to Shiki language identifiers
@@ -81,7 +80,6 @@ export const CodeBlock = memo(function CodeBlock({
   code,
   language,
   className,
-  showLineNumbers = false,
 }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
   const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null);

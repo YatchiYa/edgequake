@@ -32,14 +32,14 @@ fn clean_provider_env() {
 async fn test_processing_stats_stores_provider_lineage() {
     clean_provider_env();
 
-    let mut stats = ProcessingStats::default();
-
-    // Set provider lineage
-    stats.llm_provider = Some("openai".to_string());
-    stats.llm_model = Some("gpt-4o-mini".to_string());
-    stats.embedding_provider = Some("openai".to_string());
-    stats.embedding_model = Some("text-embedding-3-small".to_string());
-    stats.embedding_dimensions = Some(1536);
+    let stats = ProcessingStats {
+        llm_provider: Some("openai".to_string()),
+        llm_model: Some("gpt-4o-mini".to_string()),
+        embedding_provider: Some("openai".to_string()),
+        embedding_model: Some("text-embedding-3-small".to_string()),
+        embedding_dimensions: Some(1536),
+        ..Default::default()
+    };
 
     // Verify
     assert_eq!(stats.llm_provider, Some("openai".to_string()));
@@ -60,13 +60,15 @@ async fn test_processing_stats_stores_provider_lineage() {
 async fn test_processing_stats_serializes_lineage() {
     clean_provider_env();
 
-    let mut stats = ProcessingStats::default();
-    stats.llm_provider = Some("ollama".to_string());
-    stats.llm_model = Some("gemma3:12b".to_string());
-    stats.embedding_provider = Some("ollama".to_string());
-    stats.embedding_model = Some("nomic-embed-text:latest".to_string());
-    stats.embedding_dimensions = Some(768);
-    stats.chunk_count = 5;
+    let stats = ProcessingStats {
+        llm_provider: Some("ollama".to_string()),
+        llm_model: Some("gemma3:12b".to_string()),
+        embedding_provider: Some("ollama".to_string()),
+        embedding_model: Some("nomic-embed-text:latest".to_string()),
+        embedding_dimensions: Some(768),
+        chunk_count: 5,
+        ..Default::default()
+    };
 
     // Serialize and deserialize
     let json = serde_json::to_string(&stats).expect("Should serialize");
@@ -96,7 +98,7 @@ async fn test_workspace_pipeline_uses_workspace_config_for_lineage() {
     let state = edgequake_api::AppState::new_memory(None::<String>);
 
     // Create tenant
-    let tenant = Tenant::new("Lineage Test", &format!("test-{}", Uuid::new_v4()));
+    let tenant = Tenant::new("Lineage Test", format!("test-{}", Uuid::new_v4()));
     let created_tenant = state
         .workspace_service
         .create_tenant(tenant)
@@ -116,6 +118,7 @@ async fn test_workspace_pipeline_uses_workspace_config_for_lineage() {
         embedding_dimension: Some(768),
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
         entity_types: None,
     };
 
@@ -156,7 +159,7 @@ async fn test_workspace_update_changes_lineage_source() {
     let state = edgequake_api::AppState::new_memory(None::<String>);
 
     // Create tenant and workspace
-    let tenant = Tenant::new("Update Test", &format!("test-{}", Uuid::new_v4()));
+    let tenant = Tenant::new("Update Test", format!("test-{}", Uuid::new_v4()));
     let created_tenant = state
         .workspace_service
         .create_tenant(tenant)
@@ -175,6 +178,7 @@ async fn test_workspace_update_changes_lineage_source() {
         embedding_dimension: Some(768),
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
         entity_types: None,
     };
 
@@ -230,7 +234,7 @@ async fn test_workspaces_have_isolated_lineage_config() {
     let state = edgequake_api::AppState::new_memory(None::<String>);
 
     // Create tenant
-    let tenant = Tenant::new("Isolation Test", &format!("test-{}", Uuid::new_v4()));
+    let tenant = Tenant::new("Isolation Test", format!("test-{}", Uuid::new_v4()));
     let created_tenant = state
         .workspace_service
         .create_tenant(tenant)
@@ -250,6 +254,7 @@ async fn test_workspaces_have_isolated_lineage_config() {
         embedding_dimension: Some(1536),
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
         entity_types: None,
     };
 
@@ -272,6 +277,7 @@ async fn test_workspaces_have_isolated_lineage_config() {
         embedding_dimension: Some(768),
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
         entity_types: None,
     };
 
@@ -313,22 +319,26 @@ async fn test_processing_stats_workspace_differentiation() {
     clean_provider_env();
 
     // Create stats for workspace A (OpenAI)
-    let mut stats_a = ProcessingStats::default();
-    stats_a.llm_provider = Some("openai".to_string());
-    stats_a.llm_model = Some("gpt-4o-mini".to_string());
-    stats_a.embedding_provider = Some("openai".to_string());
-    stats_a.embedding_model = Some("text-embedding-3-small".to_string());
-    stats_a.embedding_dimensions = Some(1536);
-    stats_a.chunk_count = 10;
+    let stats_a = ProcessingStats {
+        llm_provider: Some("openai".to_string()),
+        llm_model: Some("gpt-4o-mini".to_string()),
+        embedding_provider: Some("openai".to_string()),
+        embedding_model: Some("text-embedding-3-small".to_string()),
+        embedding_dimensions: Some(1536),
+        chunk_count: 10,
+        ..Default::default()
+    };
 
     // Create stats for workspace B (Ollama)
-    let mut stats_b = ProcessingStats::default();
-    stats_b.llm_provider = Some("ollama".to_string());
-    stats_b.llm_model = Some("gemma3:12b".to_string());
-    stats_b.embedding_provider = Some("ollama".to_string());
-    stats_b.embedding_model = Some("nomic-embed-text:latest".to_string());
-    stats_b.embedding_dimensions = Some(768);
-    stats_b.chunk_count = 10;
+    let stats_b = ProcessingStats {
+        llm_provider: Some("ollama".to_string()),
+        llm_model: Some("gemma3:12b".to_string()),
+        embedding_provider: Some("ollama".to_string()),
+        embedding_model: Some("nomic-embed-text:latest".to_string()),
+        embedding_dimensions: Some(768),
+        chunk_count: 10,
+        ..Default::default()
+    };
 
     // Verify they are different
     assert_ne!(stats_a.llm_provider, stats_b.llm_provider);

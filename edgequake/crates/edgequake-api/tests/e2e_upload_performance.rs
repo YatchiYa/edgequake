@@ -324,7 +324,7 @@ async fn execute_concurrent_uploads(
             res.lock().await.push(result);
             let done = comp.fetch_add(1, Ordering::SeqCst) + 1;
 
-            if done % 10 == 0 || done == count {
+            if done.is_multiple_of(10) || done == count {
                 println!("  Progress: {}/{} uploads completed", done, count);
             }
         });

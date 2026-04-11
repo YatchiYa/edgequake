@@ -245,12 +245,10 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_lineage_cache_max_entries_bounded() {
-        // WHY: Unbounded cache = memory leak in production
+    const _: () = {
         assert!(LINEAGE_CACHE_MAX_ENTRIES > 0);
         assert!(LINEAGE_CACHE_MAX_ENTRIES <= 10_000, "Cache too large");
-    }
+    };
 
     #[tokio::test]
     async fn test_invalidate_lineage_cache() {

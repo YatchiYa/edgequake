@@ -132,7 +132,7 @@ function PropertyValue({
 }
 
 export function NodeDetails({ node }: NodeDetailsProps) {
-  const { selectNode, focusNode, edges, nodes } = useGraphStore();
+  const { focusNode, edges, nodes } = useGraphStore();
   const queryClient = useQueryClient();
   
   // Dialog states
@@ -340,7 +340,7 @@ export function NodeDetails({ node }: NodeDetailsProps) {
                         No connections found
                       </p>
                     ) : (
-                      relatedNodes.map(({ edge, isSource, node: relatedNode, nodeId, label, type }, index) => {
+                      relatedNodes.map(({ edge, isSource, nodeId, label, type }, index) => {
                         const relationColor = TYPE_COLORS[type.toUpperCase()] || TYPE_COLORS.DEFAULT;
                         
                         return (

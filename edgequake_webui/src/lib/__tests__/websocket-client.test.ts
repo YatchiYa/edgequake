@@ -241,7 +241,10 @@ describe("WebSocket Client", () => {
 
       const result = parseMessage(json);
       expect(result).not.toBeNull();
-      expect((result?.data as any).phases).toHaveLength(2);
+      const payload = result?.data as {
+        phases?: Array<{ phase: string; percentage: number }>;
+      };
+      expect(payload.phases).toHaveLength(2);
     });
   });
 

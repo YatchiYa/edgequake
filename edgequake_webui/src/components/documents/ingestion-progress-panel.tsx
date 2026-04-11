@@ -289,7 +289,6 @@ export function IngestionProgressPanel({
         {/* SPEC-003: Display failed chunks if any */}
         {progress?.document_id && hasFailedChunks(progress.document_id) && (
           <FailedChunksCard
-            documentId={progress.document_id}
             failedChunks={getFailedChunks(progress.document_id)}
             totalChunks={getProgress(progress.document_id)?.totalChunks ?? 0}
             successfulChunks={getProgress(progress.document_id)?.successfulChunks ?? 0}

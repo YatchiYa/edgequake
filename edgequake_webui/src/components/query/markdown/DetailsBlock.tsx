@@ -29,29 +29,35 @@ export const DetailsBlock = memo(function DetailsBlock({
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const contentRef = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState<number | 'auto'>(defaultOpen ? 'auto' : 0);
+  const heightRef = useRef<number | 'auto'>(defaultOpen ? 'auto' : 0);
+
+  const updateHeight = useCallback((nextHeight: number | 'auto') => {
+    heightRef.current = nextHeight;
+    setHeight(nextHeight);
+  }, []);
 
   // Calculate content height for smooth animation
   useEffect(() => {
     if (contentRef.current) {
       if (isOpen) {
         const contentHeight = contentRef.current.scrollHeight;
-        setHeight(contentHeight);
+        updateHeight(contentHeight);
         // After animation, set to auto for dynamic content
-        const timer = setTimeout(() => setHeight('auto'), 200);
+        const timer = setTimeout(() => updateHeight('auto'), 200);
         return () => clearTimeout(timer);
       } else {
         // First set the current height, then animate to 0
-        if (height === 'auto') {
-          setHeight(contentRef.current.scrollHeight);
+        if (heightRef.current === 'auto') {
+          updateHeight(contentRef.current.scrollHeight);
           requestAnimationFrame(() => {
-            setHeight(0);
+            updateHeight(0);
           });
         } else {
-          setHeight(0);
+          updateHeight(0);
         }
       }
     }
-  }, [isOpen]);
+  }, [isOpen, updateHeight]);
 
   const toggle = useCallback(() => {
     setIsOpen(prev => !prev);

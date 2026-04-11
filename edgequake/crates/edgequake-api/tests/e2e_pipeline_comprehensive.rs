@@ -256,6 +256,7 @@ async fn query_rag(app: &axum::Router, query: &str) -> Value {
     extract_json(response).await
 }
 
+#[allow(dead_code)]
 async fn get_entity_lineage(app: &axum::Router, entity_name: &str) -> Value {
     let response = app
         .clone()
@@ -453,7 +454,7 @@ async fn test_pipeline_medium_document_keywords() {
     // At least some edges should have metadata
     if !edges.is_empty() {
         assert!(
-            edges_with_keywords > 0 || edges.len() > 0,
+            edges_with_keywords > 0 || !edges.is_empty(),
             "Relationships should have keywords or descriptions"
         );
     }

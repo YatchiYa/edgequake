@@ -129,8 +129,10 @@ async fn test_tenant_isolation_e2e() {
     // 4. Verify Isolation: Tenant A queries for its content
     {
         let rag = instance_a.read().await;
-        let mut params = edgequake_core::types::QueryParams::default();
-        params.mode = edgequake_core::types::QueryMode::Mix;
+        let params = edgequake_core::types::QueryParams {
+            mode: edgequake_core::types::QueryMode::Mix,
+            ..Default::default()
+        };
 
         let result = rag
             .query("What is Project Alpha?", Some(params))
@@ -174,8 +176,10 @@ async fn test_tenant_isolation_e2e() {
     // 5. Verify Isolation: Tenant B queries for its content
     {
         let rag = instance_b.read().await;
-        let mut params = edgequake_core::types::QueryParams::default();
-        params.mode = edgequake_core::types::QueryMode::Mix;
+        let params = edgequake_core::types::QueryParams {
+            mode: edgequake_core::types::QueryMode::Mix,
+            ..Default::default()
+        };
 
         let result = rag
             .query("What is Project Beta?", Some(params))

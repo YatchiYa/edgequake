@@ -616,6 +616,7 @@ export function ConversationHistoryPanelV2({ className }: ConversationHistoryPan
   }, [data]);
 
   // Virtualizer for large lists
+  // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: conversations.length + (hasNextPage ? 1 : 0),
     getScrollElement: () => parentRef.current,

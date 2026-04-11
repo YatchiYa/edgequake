@@ -390,7 +390,7 @@ export function QueryInterface() {
     }
 
     return result;
-  }, [activeConversation?.messages, pendingMessage, optimisticUserMessage, convertServerMessage, activeConversationId]);
+  }, [activeConversation?.messages, pendingMessage, optimisticUserMessage, convertServerMessage]);
 
   // Handle tenant/workspace change - start fresh
   useEffect(() => {
@@ -471,15 +471,9 @@ export function QueryInterface() {
 
     try {
       let fullContent = '';
-      let tokensUsed = 0;
-      let durationMs = 0;
       let context: QueryContext | undefined;
       let thinkingTimeMs: number | undefined;
       let newConversationId = conversationId;
-      let assistantMessageId: string | undefined;
-      // SPEC-032: Track LLM provider/model for lineage display
-      let llmProvider: string | undefined;
-      let llmModel: string | undefined;
 
       // Use the unified chat API - server handles message persistence
       // SPEC-032: Pass selected provider and model for query
@@ -545,12 +539,6 @@ export function QueryInterface() {
 
           case 'done':
             // Server has saved the assistant message
-            assistantMessageId = chunk.assistant_message_id;
-            tokensUsed = chunk.tokens_used || 0;
-            durationMs = chunk.duration_ms || 0;
-            // SPEC-032: Capture LLM provider/model for lineage tracking
-            llmProvider = chunk.llm_provider;
-            llmModel = chunk.llm_model;
             break;
 
           case 'title_update':
@@ -648,7 +636,7 @@ export function QueryInterface() {
       abortControllerRef.current = null;
       thinkingStartRef.current = null;
     }
-  }, [querySettings, queryClient, store, t]);
+  }, [i18n.language, querySettings, queryClient, store, t]);
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();

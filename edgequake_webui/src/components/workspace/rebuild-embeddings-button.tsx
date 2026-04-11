@@ -38,7 +38,6 @@ import {
     rebuildEmbeddings,
     reprocessAllDocuments,
     type RebuildEmbeddingsResponse,
-    type ReprocessAllResponse,
 } from '@/lib/api/edgequake';
 import { useTenantStore } from '@/stores/use-tenant-store';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -82,7 +81,6 @@ export function RebuildEmbeddingsButton({
   const { selectedTenantId, selectedWorkspaceId, workspaces } = useTenantStore();
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isPipelineOpen, setIsPipelineOpen] = useState(false);
-  const [reprocessResult, setReprocessResult] = useState<ReprocessAllResponse | null>(null);
   // OODA-26: Store clear stats from rebuild response
   const [clearStats, setClearStats] = useState<ClearStats | null>(null);
 
@@ -104,7 +102,6 @@ export function RebuildEmbeddingsButton({
       });
     },
     onSuccess: (response) => {
-      setReprocessResult(response);
       if (response.documents_queued > 0) {
         toast.info(
           t(

@@ -115,6 +115,7 @@ mod postgres_rebuild_tests {
             embedding_dimension: Some(768),
             vision_llm_provider: None,
             vision_llm_model: None,
+            pdf_parser_backend: None,
             entity_types: None,
         };
 
@@ -245,6 +246,7 @@ mod postgres_rebuild_tests {
             embedding_dimension: Some(1536),
             vision_llm_provider: None,
             vision_llm_model: None,
+            pdf_parser_backend: None,
             entity_types: None,
         };
 
@@ -369,6 +371,7 @@ mod postgres_rebuild_tests {
             embedding_dimension: Some(768),
             vision_llm_provider: None,
             vision_llm_model: None,
+            pdf_parser_backend: None,
             entity_types: None,
         };
 
@@ -392,6 +395,7 @@ mod postgres_rebuild_tests {
             embedding_dimension: Some(1024),
             vision_llm_provider: None,
             vision_llm_model: None,
+            pdf_parser_backend: None,
             entity_types: None,
         };
 
@@ -517,6 +521,7 @@ mod postgres_rebuild_tests {
                 embedding_dimension: Some(1536),
                 vision_llm_provider: None,
                 vision_llm_model: None,
+                pdf_parser_backend: None,
                 entity_types: None,
             };
 
@@ -635,6 +640,7 @@ mod postgres_rebuild_tests {
             embedding_dimension: Some(768),
             vision_llm_provider: None,
             vision_llm_model: None,
+            pdf_parser_backend: None,
             entity_types: None,
         };
 
@@ -781,6 +787,7 @@ mod postgres_rebuild_tests {
             embedding_dimension: Some(768),
             vision_llm_provider: None,
             vision_llm_model: None,
+            pdf_parser_backend: None,
             entity_types: None,
         };
 
