@@ -78,8 +78,7 @@ pub async fn list_conversations(
             params.cursor,
             limit,
         )
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+        .await?;
 
     Ok(Json(PaginatedConversationsResponse {
         items: result.items.into_iter().map(Into::into).collect(),
@@ -134,8 +133,7 @@ pub async fn create_conversation(
                 folder_id: request.folder_id,
             },
         )
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+        .await?;
 
     Ok((StatusCode::CREATED, Json(conversation.into())))
 }
@@ -161,8 +159,7 @@ pub async fn get_conversation(
     let conversation = state
         .conversation_service
         .get_conversation(id)
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .await?
         .ok_or_else(|| ApiError::NotFound("Conversation not found".into()))?;
 
     // Verify tenant access - RLS policies handle user-level access
@@ -177,8 +174,7 @@ pub async fn get_conversation(
     let messages = state
         .conversation_service
         .list_messages(id, None, 200)
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+        .await?;
 
     Ok(Json(ConversationWithMessagesResponse {
         conversation: conversation.into(),
@@ -231,8 +227,7 @@ pub async fn update_conversation(
                 folder_id: request.folder_id,
             },
         )
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+        .await?;
 
     Ok(Json(conversation.into()))
 }
@@ -258,8 +253,7 @@ pub async fn delete_conversation(
     state
         .conversation_service
         .delete_conversation(id)
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

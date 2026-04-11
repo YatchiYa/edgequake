@@ -265,6 +265,35 @@ impl From<ProviderResolutionError> for ApiError {
     }
 }
 
+/// Convert a core domain error into an appropriate HTTP API error.
+///
+/// ## Semantic mapping (First Principles)
+///
+/// | CoreError variant  | ApiError variant   | HTTP |
+/// |--------------------|-------------------|------|
+/// | NotFound           | NotFound          | 404  |
+/// | Validation         | ValidationError   | 422  |
+/// | Config             | ConfigError       | 422  |
+/// | Storage            | Storage           | 500  |
+/// | Llm                | Llm               | 502  |
+/// | everything else    | Internal          | 500  |
+///
+/// This single `From` impl is the **only** place where CoreError → ApiError
+/// mapping lives (DRY). Handlers just use `?` — no hand-rolled `map_err`.
+impl From<edgequake_core::Error> for ApiError {
+    fn from(e: edgequake_core::Error) -> Self {
+        use edgequake_core::Error as CoreError;
+        match e {
+            CoreError::NotFound(msg) => ApiError::NotFound(msg),
+            CoreError::Validation(msg) => ApiError::ValidationError(msg),
+            CoreError::Config(msg) => ApiError::ConfigError(msg),
+            CoreError::Storage(se) => ApiError::Storage(se),
+            CoreError::Llm(le) => ApiError::Llm(le),
+            other => ApiError::Internal(other.to_string()),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -565,6 +594,47 @@ mod tests {
             ProviderResolutionError::WorkspaceServiceError("DB connection failed".to_string());
         let api_err: ApiError = err.into();
         assert_eq!(api_err.code(), "INTERNAL_ERROR");
+        assert_eq!(api_err.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    // From<edgequake_core::Error> for ApiError — semantic mapping tests
+    #[test]
+    fn test_core_not_found_maps_to_404() {
+        let core_err = edgequake_core::Error::not_found("Message abc-123 not found");
+        let api_err: ApiError = core_err.into();
+        assert_eq!(api_err.code(), "NOT_FOUND");
+        assert_eq!(api_err.status_code(), StatusCode::NOT_FOUND);
+        assert!(api_err.to_string().contains("abc-123"));
+    }
+
+    #[test]
+    fn test_core_validation_maps_to_422() {
+        let core_err = edgequake_core::Error::validation("field 'name' is required");
+        let api_err: ApiError = core_err.into();
+        assert_eq!(api_err.code(), "VALIDATION_ERROR");
+        assert_eq!(api_err.status_code(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[test]
+    fn test_core_config_maps_to_config_error() {
+        let core_err = edgequake_core::Error::config("DATABASE_URL not set");
+        let api_err: ApiError = core_err.into();
+        assert_eq!(api_err.code(), "CONFIG_ERROR");
+    }
+
+    #[test]
+    fn test_core_internal_maps_to_500() {
+        let core_err = edgequake_core::Error::internal("unexpected state");
+        let api_err: ApiError = core_err.into();
+        assert_eq!(api_err.code(), "INTERNAL_ERROR");
+        assert_eq!(api_err.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[test]
+    fn test_core_not_initialized_maps_to_500() {
+        let core_err = edgequake_core::Error::not_initialized("pipeline not ready");
+        let api_err: ApiError = core_err.into();
+        // NotInitialized falls through to Internal
         assert_eq!(api_err.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 }

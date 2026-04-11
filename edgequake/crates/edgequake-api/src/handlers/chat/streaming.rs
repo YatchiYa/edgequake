@@ -129,8 +129,7 @@ pub async fn chat_completion_stream(
         let conv = state
             .conversation_service
             .get_conversation(id)
-            .await
-            .map_err(|e| ApiError::Internal(format!("Failed to get conversation: {}", e)))?
+            .await?
             .ok_or_else(|| ApiError::NotFound(format!("Conversation {} not found", id)))?;
 
         if conv.tenant_id != tenant_id {
@@ -150,8 +149,7 @@ pub async fn chat_completion_stream(
                     folder_id: None,
                 },
             )
-            .await
-            .map_err(|e| ApiError::Internal(format!("Failed to create conversation: {}", e)))?;
+            .await?;
 
         info!(conversation_id = %conv.conversation_id, "Created new conversation for streaming");
         conv.conversation_id
@@ -169,8 +167,7 @@ pub async fn chat_completion_stream(
                 stream: true,
             },
         )
-        .await
-        .map_err(|e| ApiError::Internal(format!("Failed to save user message: {}", e)))?;
+        .await?;
 
     debug!(message_id = %user_message.message_id, "Saved user message before streaming");
 
