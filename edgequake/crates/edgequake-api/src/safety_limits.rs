@@ -371,6 +371,115 @@ pub fn create_safe_embedding_provider(
     )))
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Vision / PDF provider helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Maximum allowed outer PDF-vision conversion timeout (24 hours).
+///
+/// This is a sanity upper-bound only. Vision extraction for very large documents
+/// (1 000+ pages) with local models can legitimately take hours.
+pub const VISION_MAX_OUTER_TIMEOUT_SECS: u64 = 86_400;
+
+/// Returns `true` when `provider_name` refers to a local, in-process inference
+/// server (Ollama, LM Studio, …) rather than a cloud API.
+///
+/// Local providers are memory-bound rather than network-bound, so they need
+/// longer per-page timeouts and lower concurrency.
+pub fn is_local_provider(provider_name: &str) -> bool {
+    matches!(
+        provider_name.to_ascii_lowercase().as_str(),
+        "ollama" | "lmstudio" | "lm-studio" | "lm_studio" | "mock"
+    )
+}
+
+/// Returns the recommended default seconds-per-page for the given provider.
+///
+/// Reads `EDGEQUAKE_PDF_SECS_PER_PAGE` first; falls back to:
+/// - Local providers: 30 s / page (conservative for a mid-range GPU)
+/// - Cloud providers:  8 s / page
+pub fn secs_per_page_for_provider(provider_name: &str) -> u64 {
+    if let Ok(val) = std::env::var("EDGEQUAKE_PDF_SECS_PER_PAGE") {
+        if let Ok(n) = val.parse::<u64>() {
+            // Enforce a floor of 5 s to prevent accidentally tiny timeouts.
+            return n.max(5);
+        }
+    }
+    if is_local_provider(provider_name) {
+        30
+    } else {
+        8
+    }
+}
+
+/// Compute the outer vision-conversion timeout for the entire PDF.
+///
+/// Formula: `120 + (page_count × secs_per_page_for_provider(provider))`
+/// clamped to `VISION_MAX_OUTER_TIMEOUT_SECS`.
+pub fn vision_outer_timeout_secs(provider_name: &str, page_count: usize) -> u64 {
+    let per_page = secs_per_page_for_provider(provider_name);
+    let computed = 120_u64.saturating_add(per_page.saturating_mul(page_count as u64));
+    computed.min(VISION_MAX_OUTER_TIMEOUT_SECS)
+}
+
+/// Returns the per-page LLM call timeout for vision/OCR requests.
+///
+/// Reads `EDGEQUAKE_VISION_PAGE_TIMEOUT_SECS` first; falls back to:
+/// - Local providers: 600 s per page (no hard upper cap applied here)
+/// - Cloud providers: 120 s per page
+///
+/// Unlike `create_safe_llm_provider`, this value is NOT clamped to
+/// `MAXIMUM_TIMEOUT_SECS` so that local providers can handle slow pages.
+pub fn vision_page_timeout_secs(provider_name: &str) -> u64 {
+    if let Ok(val) = std::env::var("EDGEQUAKE_VISION_PAGE_TIMEOUT_SECS") {
+        if let Ok(n) = val.parse::<u64>() {
+            return n.max(10);
+        }
+    }
+    if is_local_provider(provider_name) {
+        600
+    } else {
+        120
+    }
+}
+
+/// Create a safety-limited LLM provider suitable for **vision/PDF OCR** calls.
+///
+/// Unlike [`create_safe_llm_provider`] (which caps timeouts at `MAXIMUM_TIMEOUT_SECS`),
+/// this function derives the per-page timeout from [`vision_page_timeout_secs`] so that
+/// local providers (Ollama, LM Studio) are not artificially cut off mid-page.
+///
+/// # Usage
+/// ```ignore
+/// let provider = create_safe_vision_provider("ollama", "glm-ocr:latest")?;
+/// ```
+pub fn create_safe_vision_provider(
+    provider_name: &str,
+    model: &str,
+) -> Result<Arc<dyn LLMProvider>> {
+    check_api_key(provider_name)?;
+    let inner = ProviderFactory::create_llm_provider(provider_name, model)?;
+
+    let timeout_secs = vision_page_timeout_secs(provider_name);
+    let config = SafetyLimitsConfig {
+        max_tokens: DEFAULT_MAX_TOKENS,
+        timeout: Duration::from_secs(timeout_secs),
+        log_enforcement: true,
+    };
+
+    tracing::info!(
+        provider = provider_name,
+        model = model,
+        timeout_secs = timeout_secs,
+        is_local = is_local_provider(provider_name),
+        "Creating safety-limited VISION LLM provider (provider-aware timeout)"
+    );
+
+    Ok(Arc::new(SafetyLimitedProviderWrapper::new(inner, config)))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 /// Get the default model for a given provider name.
 pub fn default_model_for_provider(provider_name: &str) -> &'static str {
     match provider_name.to_lowercase().as_str() {

@@ -419,7 +419,36 @@ impl Pipeline {
     }
 
     /// Set the embedding provider.
+    ///
+    /// ## Side-effect: chunk_size cap
+    ///
+    /// WHY: The chunker estimates tokens as `chars / 4` (normal prose), but dense
+    /// technical content (tables, formulas, numeric data) can be 2–3× denser.
+    /// When the provider declares a `max_tokens()` limit, we cap `chunk_size` at
+    /// `max_tokens / 2` (a 2× safety margin) so chunks reliably fit within the
+    /// model's context even for the densest scientific text.
+    ///
+    /// Example: embeddinggemma reports `max_tokens = 2048` →
+    /// cap becomes 1024 est-tokens = 4096 chars.
+    /// At 2 chars/true_token: 2048 true tokens = exactly at limit (truncation guard in
+    /// `generate_all_embeddings` provides the final safety net).
     pub fn with_embedding_provider(mut self, provider: Arc<dyn EmbeddingProvider>) -> Self {
+        let max_tokens = provider.max_tokens();
+        if max_tokens > 0 {
+            // Cap: max_tokens / 2 converts the hard token limit to a safe estimated-token
+            // chunk size (factor 2 accounts for worst-case tokenizer density divergence).
+            let max_safe = (max_tokens / 2).max(100);
+            if self.config.chunker.chunk_size > max_safe {
+                tracing::info!(
+                    current_chunk_size = self.config.chunker.chunk_size,
+                    capped_chunk_size = max_safe,
+                    embedding_max_tokens = max_tokens,
+                    "Reducing chunk_size to fit embedding model context (2x safety margin)"
+                );
+                self.config.chunker.chunk_size = max_safe;
+                self.chunker = Chunker::new(self.config.chunker.clone());
+            }
+        }
         self.embedding_provider = Some(provider);
         self
     }

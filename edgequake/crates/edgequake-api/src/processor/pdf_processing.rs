@@ -245,9 +245,14 @@ impl DocumentTaskProcessor {
                 }
                 #[cfg(feature = "vision")]
                 {
-                    use crate::safety_limits::create_safe_llm_provider;
+                    // WHY: Use create_safe_vision_provider (not create_safe_llm_provider)
+                    // so that local providers (Ollama, LM Studio) receive a
+                    // per-page timeout derived from EDGEQUAKE_VISION_PAGE_TIMEOUT_SECS
+                    // rather than being hard-capped at MAXIMUM_TIMEOUT_SECS (600s).
+                    // See ADR-04-001 in mission/04-heavy-pdf.md.
+                    use crate::safety_limits::create_safe_vision_provider;
 
-                    let provider = create_safe_llm_provider(
+                    let provider = create_safe_vision_provider(
                         &data.vision_provider,
                         vision_model.as_deref().unwrap_or_default(),
                     )
@@ -271,14 +276,26 @@ impl DocumentTaskProcessor {
             }
         };
 
+        // WHY: Local providers (Ollama, LM Studio) run on a single GPU that is
+        // memory-bound. High concurrency causes VRAM thrashing and *increases*
+        // total conversion time. Cap local concurrency at 2. Cloud providers
+        // retain the original scale-with-page-count formula.
+        // See ADR-04-003 in mission/04-heavy-pdf.md.
         let concurrency = std::env::var("EDGEQUAKE_PDF_CONCURRENCY")
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
-            .unwrap_or(match page_count {
-                0..=49 => 10,
-                50..=199 => 8,
-                200..=499 => 5,
-                _ => 3,
+            .unwrap_or_else(|| {
+                use crate::safety_limits::is_local_provider;
+                if is_local_provider(&data.vision_provider) {
+                    2 // Local GPU: sequential-ish to avoid VRAM thrashing
+                } else {
+                    match page_count {
+                        0..=49 => 10,
+                        50..=199 => 8,
+                        200..=499 => 5,
+                        _ => 3,
+                    }
+                }
             });
         let dpi = std::env::var("EDGEQUAKE_PDF_DPI")
             .ok()
@@ -311,6 +328,12 @@ impl DocumentTaskProcessor {
 
         let markdown = match backend {
             edgequake_pdf::PdfParserBackend::Vision => {
+                // WHY: EDGEQUAKE_VISION_TIMEOUT_SECS is kept for backwards
+                // compatibility. When not set, use the provider-aware formula:
+                //   120 + (page_count × secs_per_page_for_provider)
+                // This gives ~3 720s for 120 pages with Ollama vs the previous
+                // 660s, matching the real hardware requirement.
+                // See ADR-04-002 in mission/04-heavy-pdf.md.
                 let base_timeout_secs: u64 = std::env::var("EDGEQUAKE_VISION_TIMEOUT_SECS")
                     .ok()
                     .and_then(|v| v.parse().ok())
@@ -318,8 +341,8 @@ impl DocumentTaskProcessor {
                 let vision_timeout_secs = if base_timeout_secs > 0 {
                     base_timeout_secs
                 } else {
-                    let adaptive = 60 + (page_count as u64 * 5);
-                    adaptive.max(600)
+                    use crate::safety_limits::vision_outer_timeout_secs;
+                    vision_outer_timeout_secs(&data.vision_provider, page_count)
                 };
                 let vision_timeout = std::time::Duration::from_secs(vision_timeout_secs);
 

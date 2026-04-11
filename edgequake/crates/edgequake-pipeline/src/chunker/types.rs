@@ -69,7 +69,12 @@ pub struct ChunkerConfig {
 impl Default for ChunkerConfig {
     fn default() -> Self {
         Self {
-            chunk_size: 1200,
+            // WHY 800: The chunker estimates 4 chars/token, but dense technical content
+            // (scientific tables, formulas, gene names, numeric data) can be 2–3× denser.
+            // At 2 chars/true_token: 800 est-tokens × 4 chars = 3200 chars → 1600 true tokens.
+            // This keeps chunks safely within embeddinggemma's 2048-token hard limit (80% margin).
+            // Prior default of 1200 produced 4800-char chunks → 2400 true tokens → 400 errors.
+            chunk_size: 800,
             chunk_overlap: 100,
             min_chunk_size: 100,
             separators: vec![

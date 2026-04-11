@@ -12,7 +12,11 @@
 //!
 //! # Enforces
 //!
-//! - **BR0002**: Chunk size 1200 tokens, overlap 100 tokens (default config)
+//! - **BR0002**: Chunk size 800 tokens, overlap 100 tokens (default config)
+//!   Reduced from 1200 to prevent "input length exceeds context length" errors
+//!   on embedding models with 2048-token limits (e.g., embeddinggemma) when
+//!   processing dense scientific text (tables, formulas) where actual token
+//!   density is 2–3× higher than the 4 chars/token estimation.
 //!
 //! # WHY: Overlapping Chunks
 //!

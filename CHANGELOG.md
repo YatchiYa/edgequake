@@ -2,6 +2,62 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.10.0] - 2026-04-11
+
+### Fixed
+
+- **Embedding error: "input length exceeds context length" for scientific PDFs (Ollama)**
+
+  Scientific papers with dense tables, gene IDs, p-values, and numeric data have an actual
+  tokenizer density of ~2 chars/true-token — roughly 2× worse than the chunker's 4 chars/token
+  assumption. A 1200-estimated-token chunk (4800 chars) therefore becomes ~2400 true tokens,
+  exceeding `embeddinggemma`'s hard 2048-token limit and causing a 400 Bad Request error that
+  aborted the entire document ingestion.
+
+  **Three-layer fix applied (defense in depth):**
+
+  1. **Reduce default `chunk_size` 1200 → 800** (`ChunkerConfig::default`).
+     At 2 chars/true-token: 800 × 4 = 3200 chars → 1600 true tokens, comfortably within 2048
+     (80% margin). Prior value produced 4800-char chunks → 2400 true tokens → 400 error.
+
+  2. **Adaptive cap in `Pipeline::with_embedding_provider`** (`pipeline/mod.rs`).
+     When the embedding provider reports `max_tokens > 0`, the pipeline caps `chunk_size` to
+     `max_tokens / 2`, accounting for worst-case tokenizer density divergence. For embeddinggemma
+     (2048 tokens): cap = 1024 est-tokens → 4096 chars.
+
+  3. **Pre-embedding truncation guard** (`pipeline/helpers.rs`).
+     Before every `embed()` call (chunks, entities, relationships), texts are truncated to
+     `max_tokens × 2.5 × 0.85` chars and a WARNING is logged. This catches edge cases where
+     the chunker cannot split (e.g., an entire 10 000-char markdown table with no sentence
+     boundaries) and prevents hard 400 failures. A partial embedding is more useful than an
+     aborted pipeline.
+
+- **Large PDF ingestion fails with local Ollama models (timeout loop circuit-breaker) — Issue #90**
+
+  `SafetyLimitedProviderWrapper` hard-capped every per-page LLM call at `MAXIMUM_TIMEOUT_SECS`
+  (600 s) even for local providers. A 120-page document at 30 s/page needs ≥ 3 600 s but hit
+  a 660 s outer timeout three times, triggering the circuit-breaker.
+
+  - Added `create_safe_vision_provider()` with provider-aware per-page timeout:
+    600 s/page for Ollama/LM Studio, 120 s/page for cloud APIs.
+  - Fixed outer vision-conversion timeout formula: `120 + (page_count × secs_per_page)`.
+    Replaces the old `max(60 + pages×5, 600)` which assumed cloud API speed.
+  - Fixed default OCR concurrency for local providers: now 2 (was 8), preventing VRAM thrashing
+    on single-GPU inference.
+
+### Added
+
+- **Embedding context safety** — new private helpers in `edgequake-pipeline`:
+  - `embed_max_chars(max_tokens)` — converts a provider's token limit to a safe char cap
+  - `guard_for_embedding(texts, max_chars)` — truncates and logs oversized inputs
+  - `truncate_at_char_boundary(s, max_bytes)` — UTF-8-safe truncation utility
+
+- **New environment variables for tuning large-PDF local inference:**
+  - `EDGEQUAKE_PDF_SECS_PER_PAGE` — estimated seconds per page (default: 30 local / 8 cloud)
+  - `EDGEQUAKE_VISION_PAGE_TIMEOUT_SECS` — per-page LLM call timeout (default: 600 s local /
+    120 s cloud)
+  - `EDGEQUAKE_PDF_CONCURRENCY` — parallel page workers (default: 2 local)
+
 ## [0.9.18] - 2026-04-09
 
 ### Fixed

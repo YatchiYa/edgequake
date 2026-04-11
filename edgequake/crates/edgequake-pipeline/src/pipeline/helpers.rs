@@ -132,6 +132,86 @@ pub(super) fn aggregate_extraction_stats(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//                       EMBEDDING GENERATION HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Conservative chars-per-true-token for dense technical content.
+///
+/// WHY 2.5: The chunker uses 4 chars/token (English prose).
+/// Scientific PDFs contain tables with numbers, gene IDs, p-values, and
+/// formulas where tokenizers split aggressively — real density can reach
+/// 1.5–2.0 chars/token. Using 2.5 provides a safe intermediate buffer.
+const EMBED_CHARS_PER_TOKEN: f64 = 2.5;
+
+/// Safety headroom factor applied to the embedding context limit.
+///
+/// WHY 0.85: Leaves 15% slack for tokenizer variance, whitespace tokens,
+/// and any prompt overhead the embedding endpoint may add.
+const EMBED_SAFETY_FACTOR: f64 = 0.85;
+
+/// Fallback maximum characters when `provider.max_tokens()` returns 0 (unknown).
+///
+/// 6 000 chars ≈ 2 400 tokens at 2.5 chars/token, keeping chunks well within
+/// the 2 048-token limit of models like embeddinggemma.
+const EMBED_FALLBACK_MAX_CHARS: usize = 6_000;
+
+/// Compute the maximum safe character count for a single embedding input.
+///
+/// When the provider exposes its context limit, we derive the char cap from it.
+/// When the limit is unknown (0), we fall back to `EMBED_FALLBACK_MAX_CHARS`.
+fn embed_max_chars(max_tokens: usize) -> usize {
+    if max_tokens == 0 {
+        EMBED_FALLBACK_MAX_CHARS
+    } else {
+        (max_tokens as f64 * EMBED_CHARS_PER_TOKEN * EMBED_SAFETY_FACTOR) as usize
+    }
+}
+
+/// Truncate `s` to at most `max_bytes`, preserving UTF-8 character boundaries.
+fn truncate_at_char_boundary(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut end = max_bytes;
+    // Walk back to the nearest valid UTF-8 boundary.
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
+/// Guard a text batch before sending to the embedding provider.
+///
+/// Truncates any string that exceeds `max_chars` and logs a WARNING so
+/// operators know chunks are being trimmed and can tune `chunk_size` or
+/// switch to an embedding model with a larger context window.
+///
+/// WHY: A partial embedding is more useful than a pipeline failure.
+/// The 400 "input length exceeds context length" error from Ollama would
+/// otherwise abort the entire document ingestion.
+fn guard_for_embedding(texts: &[String], max_chars: usize) -> Vec<String> {
+    texts
+        .iter()
+        .enumerate()
+        .map(|(i, text)| {
+            if text.len() > max_chars {
+                tracing::warn!(
+                    input_index = i,
+                    original_chars = text.len(),
+                    cap_chars = max_chars,
+                    "Embedding input truncated: text exceeds the safe token limit for the \
+                     embedding model. Consider reducing chunk_size in PipelineConfig or \
+                     switching to an embedding model with a larger context window."
+                );
+                truncate_at_char_boundary(text, max_chars).to_string()
+            } else {
+                text.clone()
+            }
+        })
+        .collect()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //                       EMBEDDING GENERATION
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -161,12 +241,18 @@ impl Pipeline {
         stats.embedding_provider = Some(provider.name().to_string());
         stats.embedding_dimensions = Some(provider.dimension());
 
+        // Pre-compute the safe character limit for this provider once.
+        // WHY: Avoids repeated calls to max_tokens() in tight loops and keeps
+        // the guard logic in a single reusable helper (DRY).
+        let max_chars = embed_max_chars(provider.max_tokens());
+
         // ── Chunk embeddings ──
         if self.config.enable_chunk_embeddings {
             let texts: Vec<String> = chunks.iter().map(|c| c.content.clone()).collect();
             if !texts.is_empty() {
+                let safe_texts = guard_for_embedding(&texts, max_chars);
                 let embeddings = provider
-                    .embed(&texts)
+                    .embed(&safe_texts)
                     .await
                     .map_err(|e| crate::error::PipelineError::EmbeddingError(e.to_string()))?;
 
@@ -189,8 +275,9 @@ impl Pipeline {
             }
 
             if !all_entity_texts.is_empty() {
+                let safe_entity_texts = guard_for_embedding(&all_entity_texts, max_chars);
                 let all_embeddings = provider
-                    .embed(&all_entity_texts)
+                    .embed(&safe_entity_texts)
                     .await
                     .map_err(|e| crate::error::PipelineError::EmbeddingError(e.to_string()))?;
 
@@ -234,8 +321,9 @@ impl Pipeline {
             }
 
             if !all_relationship_texts.is_empty() {
+                let safe_rel_texts = guard_for_embedding(&all_relationship_texts, max_chars);
                 let all_embeddings = provider
-                    .embed(&all_relationship_texts)
+                    .embed(&safe_rel_texts)
                     .await
                     .map_err(|e| crate::error::PipelineError::EmbeddingError(e.to_string()))?;
 

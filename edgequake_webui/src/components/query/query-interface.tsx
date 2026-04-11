@@ -757,27 +757,41 @@ export function QueryInterface() {
     // Clear pending message immediately
     setPendingMessage(null);
 
+    // WHY: Optimistic/local messages (id starts with "optimistic-") have never been
+    // persisted to the server. Attempting DELETE /messages/<local-uuid> returns 404.
+    // Only delete messages that the server actually knows about.
+    const isServerMessage = (id: string) => !id.startsWith('optimistic-');
+
+    const tryDelete = async (id: string): Promise<void> => {
+      if (!isServerMessage(id)) return;
+      try {
+        await deleteMessage(id);
+      } catch (err) {
+        // 404 means the message was already deleted or never saved — safe to ignore.
+        // Any other error is also non-fatal: regeneration should still proceed so the
+        // user gets a fresh response even if cleanup of the old one failed.
+        if (!(err instanceof ApiRequestError && err.status === 404)) {
+          console.warn('Could not delete message during regeneration:', id, err);
+        }
+      }
+    };
+
     try {
-      // Delete BOTH the old assistant AND user messages from server
-      // This prevents duplicate user messages since handleStreamQuery will create a fresh pair
-      const deletePromises = [];
-      
+      const deleteOps: Promise<void>[] = [];
       if (lastAssistantMessage && !lastAssistantMessage.isStreaming) {
-        deletePromises.push(deleteMessage(lastAssistantMessage.id));
+        deleteOps.push(tryDelete(lastAssistantMessage.id));
       }
-      if (lastUserMessage) {
-        deletePromises.push(deleteMessage(lastUserMessage.id));
-      }
-      
-      await Promise.all(deletePromises);
-      
+      deleteOps.push(tryDelete(lastUserMessage.id));
+      await Promise.all(deleteOps);
+
       // Invalidate the conversation cache to remove the old messages from UI
       await queryClient.invalidateQueries({ 
         queryKey: conversationKeys.detail(activeConversationId) 
       });
     } catch (error) {
-      console.error('Failed to delete old messages:', error);
-      // Continue with regeneration even if delete fails
+      // Outer catch is a last-resort guard. Individual delete errors are already
+      // handled inside tryDelete above. Log anything unexpected.
+      console.error('Unexpected error during regeneration cleanup:', error);
     }
 
     // Regenerate with the same user query - server will create fresh user+assistant pair
