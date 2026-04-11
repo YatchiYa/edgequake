@@ -36,8 +36,7 @@ pub async fn list_folders(
     let folders = state
         .conversation_service
         .list_folders(tenant_id, user_id)
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+        .await?;
 
     Ok(Json(folders.into_iter().map(Into::into).collect()))
 }
@@ -66,8 +65,7 @@ pub async fn create_folder(
     let folder = state
         .conversation_service
         .create_folder(tenant_id, user_id, request.name, request.parent_id)
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+        .await?;
 
     Ok((StatusCode::CREATED, Json(folder.into())))
 }
@@ -107,8 +105,7 @@ pub async fn update_folder(
             request.parent_id,
             request.position,
         )
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+        .await?;
 
     Ok(Json(folder.into()))
 }
@@ -139,8 +136,7 @@ pub async fn delete_folder(
     state
         .conversation_service
         .delete_folder(tenant_id, user_id, folder_id)
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

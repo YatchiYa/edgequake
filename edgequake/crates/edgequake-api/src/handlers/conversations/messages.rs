@@ -9,7 +9,7 @@ use axum::{
 };
 use uuid::Uuid;
 
-use crate::error::{ApiError, ApiResult};
+use crate::error::ApiResult;
 use crate::handlers::conversations_types::*;
 use crate::middleware::TenantContext;
 use crate::state::AppState;
@@ -39,8 +39,7 @@ pub async fn list_messages(
     let result = state
         .conversation_service
         .list_messages(id, params.cursor, limit)
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+        .await?;
 
     Ok(Json(PaginatedMessagesResponse {
         items: result.items.into_iter().map(Into::into).collect(),
@@ -89,8 +88,7 @@ pub async fn create_message(
                 stream: request.stream,
             },
         )
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+        .await?;
 
     Ok((StatusCode::CREATED, Json(message.into())))
 }
@@ -129,8 +127,7 @@ pub async fn update_message(
                 is_error: request.is_error,
             },
         )
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+        .await?;
 
     Ok(Json(message.into()))
 }
@@ -152,11 +149,12 @@ pub async fn delete_message(
     _tenant_ctx: TenantContext,
     Path(message_id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
+    // WHY: From<edgequake_core::Error> for ApiError maps NotFound → 404,
+    // Validation → 422, Llm → 502, etc. The handler just propagates with `?`.
     state
         .conversation_service
         .delete_message(message_id)
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

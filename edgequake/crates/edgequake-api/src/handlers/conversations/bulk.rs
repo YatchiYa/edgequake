@@ -33,8 +33,7 @@ pub async fn import_conversations(
     let result = state
         .conversation_service
         .import_conversations(tenant_id, user_id, request.conversations)
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+        .await?;
 
     Ok(Json(ImportConversationsResponse {
         imported: result.imported,
@@ -68,8 +67,7 @@ pub async fn bulk_delete_conversations(
     let affected = state
         .conversation_service
         .bulk_delete(request.conversation_ids)
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+        .await?;
 
     Ok(Json(BulkOperationResponse { affected }))
 }
@@ -92,8 +90,7 @@ pub async fn bulk_archive_conversations(
     let affected = state
         .conversation_service
         .bulk_archive(request.conversation_ids, request.archive)
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+        .await?;
 
     Ok(Json(BulkOperationResponse { affected }))
 }
@@ -116,8 +113,7 @@ pub async fn bulk_move_conversations(
     let affected = state
         .conversation_service
         .bulk_move_to_folder(request.conversation_ids, request.folder_id)
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+        .await?;
 
     Ok(Json(BulkOperationResponse { affected }))
 }

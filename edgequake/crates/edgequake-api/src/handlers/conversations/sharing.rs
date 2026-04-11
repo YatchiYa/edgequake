@@ -31,11 +31,7 @@ pub async fn share_conversation(
     _tenant_ctx: TenantContext,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<ShareResponse>> {
-    let share_id = state
-        .conversation_service
-        .share_conversation(id)
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let share_id = state.conversation_service.share_conversation(id).await?;
 
     // Build share URL
     let share_url = format!("/shared/{}", share_id);
@@ -63,11 +59,7 @@ pub async fn unshare_conversation(
     _tenant_ctx: TenantContext,
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
-    state
-        .conversation_service
-        .unshare_conversation(id)
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    state.conversation_service.unshare_conversation(id).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -92,15 +84,13 @@ pub async fn get_shared_conversation(
     let conversation = state
         .conversation_service
         .get_shared_conversation(&share_id)
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .await?
         .ok_or_else(|| ApiError::NotFound("Shared conversation not found".into()))?;
 
     let messages = state
         .conversation_service
         .list_messages(conversation.conversation_id, None, 200)
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+        .await?;
 
     Ok(Json(ConversationWithMessagesResponse {
         conversation: conversation.into(),
