@@ -25,6 +25,7 @@
 
 "use client";
 
+import { getGraphEdgeKeyFromEdge } from "@/lib/graph/ids";
 import type { GraphEdge, GraphNode, KnowledgeGraph } from "@/types";
 import Sigma from "sigma";
 import { create } from "zustand";
@@ -354,7 +355,7 @@ export const useGraphStore = create<GraphStore>()((set, get) => ({
         invalidEdgeCount++;
         continue;
       }
-      const edgeKey = `${edge.source}-${edge.target}-${edge.relationship_type}`;
+      const edgeKey = getGraphEdgeKeyFromEdge(edge);
       uniqueEdgesMap.set(edgeKey, edge);
     }
     const uniqueEdges = Array.from(uniqueEdgesMap.values());
@@ -399,7 +400,7 @@ export const useGraphStore = create<GraphStore>()((set, get) => ({
 
     // Index edges
     for (const edge of uniqueEdges) {
-      const edgeId = `${edge.source}-${edge.target}-${edge.relationship_type}`;
+      const edgeId = getGraphEdgeKeyFromEdge(edge);
       edgeMap.set(edgeId, edge);
 
       // Index by source
@@ -625,18 +626,13 @@ export const useGraphStore = create<GraphStore>()((set, get) => ({
       // Create sets of existing IDs for quick lookup
       const existingNodeIds = new Set(state.nodes.map((n) => n.id));
       const existingEdgeIds = new Set(
-        state.edges.map(
-          (e) => `${e.source}-${e.target}-${e.relationship_type}`,
-        ),
+        state.edges.map((e) => getGraphEdgeKeyFromEdge(e)),
       );
 
       // Filter out duplicates
       const nodesToAdd = newNodes.filter((n) => !existingNodeIds.has(n.id));
       const edgesToAdd = newEdges.filter(
-        (e) =>
-          !existingEdgeIds.has(
-            `${e.source}-${e.target}-${e.relationship_type}`,
-          ),
+        (e) => !existingEdgeIds.has(getGraphEdgeKeyFromEdge(e)),
       );
 
       // Update entity types if needed
@@ -666,7 +662,7 @@ export const useGraphStore = create<GraphStore>()((set, get) => ({
 
       // Index new edges
       for (const edge of edgesToAdd) {
-        const edgeId = `${edge.source}-${edge.target}-${edge.relationship_type}`;
+        const edgeId = getGraphEdgeKeyFromEdge(edge);
         edgeMap.set(edgeId, edge);
         if (!edgesBySource.has(edge.source)) {
           edgesBySource.set(edge.source, new Set());
@@ -731,7 +727,7 @@ export const useGraphStore = create<GraphStore>()((set, get) => ({
 
       // Remove edges from indexes
       for (const edge of edgesToRemove) {
-        const edgeId = `${edge.source}-${edge.target}-${edge.relationship_type}`;
+        const edgeId = getGraphEdgeKeyFromEdge(edge);
         edgeMap.delete(edgeId);
 
         const sourceSet = edgesBySource.get(edge.source);

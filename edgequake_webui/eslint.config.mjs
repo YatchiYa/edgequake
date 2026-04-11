@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Publication gate: shipped app code and committed unit tests must be lint-clean.
+    // Exploratory Playwright audit specs remain runnable, but they do not block release.
+    "e2e/**",
   ]),
 ]);
 

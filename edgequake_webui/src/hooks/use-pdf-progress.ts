@@ -257,28 +257,29 @@ export function usePdfProgress(
 
     // Subscribe to this track
     wsClient.subscribe([trackId]);
-    setWsConnected(wsClient.connected);
+    Promise.resolve().then(() => {
+      setWsConnected(wsClient.connected);
+    });
 
     // Listen for connection status changes
-    const handleConnected = () => {
+    const unsubscribeConnected = wsClient.on("connected", () => {
       setWsConnected(true);
       setWsError(null);
-    };
+    });
 
-    const handleDisconnected = () => {
+    const unsubscribeDisconnected = wsClient.on("disconnected", () => {
       setWsConnected(false);
-    };
+    });
 
-    const handleError = (err: unknown) => {
+    const unsubscribeError = wsClient.on("error", (err: unknown) => {
       setWsError(err instanceof Error ? err : new Error("WebSocket error"));
       setWsConnected(false);
-    };
-
-    // Set up event handlers via the internal listeners system
-    // Note: ProgressWebSocket uses an internal emit system
-    // We rely on the ingestion store being updated by the WebSocket client
+    });
 
     return () => {
+      unsubscribeConnected();
+      unsubscribeDisconnected();
+      unsubscribeError();
       // Unsubscribe from this track on cleanup
       wsClient.unsubscribe([trackId]);
     };

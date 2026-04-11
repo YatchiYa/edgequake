@@ -40,6 +40,43 @@ export interface UseDocumentQueriesReturn {
   queryClient: ReturnType<typeof useQueryClient>;
 }
 
+type DocumentsResult = Awaited<ReturnType<typeof getDocuments>>;
+type ListedDocument = DocumentsResult["items"][number];
+
+function isDocumentActivelyProcessing(doc: ListedDocument): boolean {
+  return (
+    doc.status === "processing" ||
+    doc.current_stage === "processing" ||
+    doc.current_stage === "converting" ||
+    doc.current_stage === "preprocessing" ||
+    doc.current_stage === "chunking" ||
+    doc.current_stage === "extracting" ||
+    doc.current_stage === "embedding" ||
+    doc.current_stage === "storing"
+  );
+}
+
+function isDocumentTransitioning(doc: ListedDocument): boolean {
+  return (
+    doc.status === "processing" &&
+    Boolean(
+      doc.stage_message &&
+      (doc.stage_message.includes("100%") ||
+        doc.stage_message.includes("complete")),
+    )
+  );
+}
+
+function hasProcessingStatus(doc: ListedDocument): boolean {
+  return (
+    doc.status === "processing" ||
+    doc.current_stage === "chunking" ||
+    doc.current_stage === "extracting" ||
+    doc.current_stage === "embedding" ||
+    doc.current_stage === "indexing"
+  );
+}
+
 export function useDocumentQueries({
   tenantId,
   workspaceId,
@@ -79,26 +116,10 @@ export function useDocumentQueries({
       const documents = query.state.data?.items || [];
 
       // Check for actively processing documents
-      const hasProcessingDocs = documents.some(
-        (doc: any) =>
-          doc.status === "processing" ||
-          doc.current_stage === "processing" ||
-          doc.current_stage === "converting" ||
-          doc.current_stage === "preprocessing" ||
-          doc.current_stage === "chunking" ||
-          doc.current_stage === "extracting" ||
-          doc.current_stage === "embedding" ||
-          doc.current_stage === "storing",
-      );
+      const hasProcessingDocs = documents.some(isDocumentActivelyProcessing);
 
       // Check for documents that completed a stage (might transition soon)
-      const hasTransitioningDocs = documents.some(
-        (doc: any) =>
-          doc.status === "processing" &&
-          doc.stage_message &&
-          (doc.stage_message.includes("100%") ||
-            doc.stage_message.includes("complete")),
-      );
+      const hasTransitioningDocs = documents.some(isDocumentTransitioning);
 
       // Poll every 2s when documents are processing or transitioning.
       // WHY 30s fallback: After a server restart, orphan recovery may
@@ -115,14 +136,7 @@ export function useDocumentQueries({
   // WHY: Only poll pipeline status when there are actively processing documents.
   // Constant 2s polling regardless of state wastes API calls idle workspaces.
   const hasProcessingDocuments =
-    data?.items?.some(
-      (doc: any) =>
-        doc.status === "processing" ||
-        doc.status === "chunking" ||
-        doc.status === "extracting" ||
-        doc.status === "embedding" ||
-        doc.status === "indexing",
-    ) ?? false;
+    data?.items?.some(hasProcessingStatus) ?? false;
 
   // WHY: When processing transitions from active → done, the pipelineStatus cache
   // may still hold a stale "is_busy: true" value for up to 10-30s (staleTime).

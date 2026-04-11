@@ -6,6 +6,45 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Sigma graph viewer performance hardening**
+
+  The knowledge-graph UI was doing redundant heavy work in the browser:
+
+  1. Layout changes could rebuild the entire Sigma instance instead of only
+     animating node positions.
+  2. Selection highlighting used a perpetual 20fps pulse loop that refreshed
+     the whole canvas indefinitely.
+  3. Layout logic was duplicated across multiple components with inconsistent
+     parameters.
+  4. Hover highlighting mutated large portions of the graph instead of using
+     Sigma's reducer model and scheduled refresh flow.
+
+  **Fix applied:**
+
+  - Extracted a shared graph layout engine with adaptive ForceAtlas2/Noverlap
+    profiles and shared graph performance thresholds.
+  - Extracted deterministic graph edge-key helpers so store, renderer, and
+    streaming updates use the same identity rules.
+  - Refactored the Sigma renderer to keep the instance alive across layout
+    changes and to use render-time reducers for hover/selection emphasis.
+  - Replaced eager refresh calls with scheduled refreshes on the external-state
+    paths where Sigma recommends debouncing.
+  - Removed the perpetual selected-node pulse loop.
+
+- **Mermaid label sanitizer no longer strips angle-bracket labels**
+
+  The Mermaid fallback sanitizer treated `A[a<b>c]` like HTML and collapsed the
+  label to `ac`, which broke the existing frontend unit suite. HTML stripping is
+  now limited to the real tag shapes we need to neutralize, so Mermaid labels
+  containing literal angle brackets remain intact.
+
+- **Frontend publication lint gate aligned with shipped surface area**
+
+  The default `edgequake_webui` lint command now ignores exploratory Playwright
+  specs under `e2e/` and enforces a clean gate over shipped application code and
+  committed unit-test support files. This keeps the release signal focused on
+  publishable artifacts while leaving audit scripts available for manual use.
+
 - **Embedding error: "input length exceeds context length" for scientific PDFs (Ollama)**
 
   Scientific papers with dense tables, gene IDs, p-values, and numeric data have an actual

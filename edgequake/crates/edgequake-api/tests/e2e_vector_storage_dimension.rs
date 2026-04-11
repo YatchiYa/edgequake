@@ -26,8 +26,8 @@ async fn create_workspace_with_providers(
     embedding_dimension: usize,
 ) -> edgequake_core::Workspace {
     let tenant = Tenant::new(
-        &format!("Tenant {}", name),
-        &format!("tenant-{}", Uuid::new_v4()),
+        format!("Tenant {}", name),
+        format!("tenant-{}", Uuid::new_v4()),
     );
     let created_tenant = state
         .workspace_service
@@ -50,6 +50,7 @@ async fn create_workspace_with_providers(
         embedding_dimension: Some(embedding_dimension),
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
         entity_types: None,
     };
 
@@ -221,6 +222,7 @@ async fn test_dimension_update_on_existing_workspace() {
         embedding_dimension: Some(1536),
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
     };
 
     state
@@ -292,7 +294,7 @@ async fn test_dimension_persistence() {
             .workspace_service
             .get_workspace(workspace.workspace_id)
             .await
-            .expect(&format!("Get #{}", i))
+            .unwrap_or_else(|_| panic!("Get #{}", i))
             .expect("Exists");
 
         assert_eq!(
@@ -308,7 +310,7 @@ async fn test_dimension_persistence() {
 async fn test_workspace_creation_without_dimension() {
     let state = AppState::test_state();
 
-    let tenant = Tenant::new("No Dim Tenant", &format!("tenant-{}", Uuid::new_v4()));
+    let tenant = Tenant::new("No Dim Tenant", format!("tenant-{}", Uuid::new_v4()));
     let created_tenant = state
         .workspace_service
         .create_tenant(tenant)
@@ -328,6 +330,7 @@ async fn test_workspace_creation_without_dimension() {
         embedding_dimension: None, // Not specified
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
         entity_types: None,
     };
 

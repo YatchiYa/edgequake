@@ -175,7 +175,7 @@ export function EntityEditDialog({
 
   // Merge mutation
   const mergeMutation = useMutation({
-    mutationFn: (targetEntityId: string) =>
+    mutationFn: () =>
       mergeEntities({
         source_ids: [node!.id],
         target_label: mergeConflict.existingEntity?.label || label,
@@ -233,7 +233,7 @@ export function EntityEditDialog({
 
   const handleMerge = () => {
     if (mergeConflict.existingEntity) {
-      mergeMutation.mutate(mergeConflict.existingEntity.id);
+      mergeMutation.mutate();
     }
   };
 

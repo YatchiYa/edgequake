@@ -288,7 +288,7 @@ export function TenantWorkspaceSelector({
         onWorkspaceChange?.(workspace);
       }
     },
-    [selectWorkspace, workspaces, onWorkspaceChange, queryClient]
+    [onWorkspaceChange, queryClient, selectWorkspace, selectedWorkspaceId, t, workspaces]
   );
 
   const selectedTenant = tenants.find((t) => t.id === selectedTenantId);

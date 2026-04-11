@@ -25,8 +25,6 @@ const MermaidBlock = lazy(() => import('./MermaidBlock'));
 const KatexMath = lazy(() => import('./KatexMath'));
 const GitHubAlert = lazy(() => import('./GitHubAlert'));
 const DetailsBlock = lazy(() => import('./DetailsBlock'));
-const TableSkeleton = lazy(() => import('./TableSkeleton'));
-
 interface MarkdownTokensProps {
   tokens: Token[];
   isStreaming?: boolean;

@@ -129,7 +129,6 @@ const ConversationItem = memo(function ConversationItem({
           onSelect();
         }
       }}
-      aria-pressed={isActive}
     >
       <div className={cn(
         "w-7 h-7 rounded-md flex items-center justify-center shrink-0 transition-colors",

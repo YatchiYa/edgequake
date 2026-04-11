@@ -272,7 +272,8 @@ mod tenant_tests {
     async fn test_tenant_slug_uniqueness() {
         let pool = require_postgres!();
 
-        let slug = format!("unique-{}", Uuid::new_v4().to_string()[..8].to_string());
+        let uuid = Uuid::new_v4().to_string();
+        let slug = format!("unique-{}", &uuid[..8]);
         let tenant_id_1 = Uuid::new_v4();
         let tenant_id_2 = Uuid::new_v4();
 
@@ -886,7 +887,6 @@ mod stress_tests {
         let handles: Vec<_> = (0..10)
             .map(|i| {
                 let pool = pool.clone();
-                let tenant_id = tenant_id;
                 tokio::spawn(async move {
                     let workspace_id = Uuid::new_v4();
                     sqlx::query(

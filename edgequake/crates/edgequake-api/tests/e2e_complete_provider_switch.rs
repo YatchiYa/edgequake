@@ -31,8 +31,8 @@ async fn create_workspace_with_providers(
 ) -> edgequake_core::Workspace {
     // Create tenant
     let tenant = Tenant::new(
-        &format!("Tenant {}", name),
-        &format!("tenant-{}", Uuid::new_v4()),
+        format!("Tenant {}", name),
+        format!("tenant-{}", Uuid::new_v4()),
     );
     let created_tenant = state
         .workspace_service
@@ -53,6 +53,7 @@ async fn create_workspace_with_providers(
         embedding_dimension: Some(embedding_dimension),
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
         entity_types: None,
     };
 
@@ -118,6 +119,7 @@ async fn test_complete_ollama_to_openai_switch() {
         embedding_dimension: Some(1536),
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
     };
 
     state
@@ -176,6 +178,7 @@ async fn test_complete_openai_to_ollama_switch() {
         embedding_dimension: Some(768),
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
     };
 
     state
@@ -229,6 +232,7 @@ async fn test_complete_switch_to_lmstudio() {
         embedding_dimension: Some(768),
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
     };
 
     state
@@ -470,7 +474,7 @@ async fn test_provider_config_persistence() {
             .workspace_service
             .get_workspace(workspace.workspace_id)
             .await
-            .expect(&format!("Retrieval {} should succeed", i))
+            .unwrap_or_else(|_| panic!("Retrieval {} should succeed", i))
             .expect("Workspace should exist");
 
         // Config should be consistent every time

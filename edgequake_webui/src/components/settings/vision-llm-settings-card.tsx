@@ -15,10 +15,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton';
 import { LLMModelSelector, type LLMSelection } from '@/components/workspace/llm-model-selector';
 import { getWorkspace, updateWorkspace } from '@/lib/api/edgequake';
+import { getWorkspaceVisionSelection } from '@/lib/workspace/drafts';
 import { useTenantStore } from '@/stores/use-tenant-store';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Brain, Cloud, Cpu, Eye, Pencil, Save, Sparkles, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -61,21 +62,6 @@ export function VisionLLMSettingsCard() {
     retry: 1,
   });
 
-  // Sync local state from workspace when not editing
-  useEffect(() => {
-    if (workspace && !isEditing) {
-      if (workspace.vision_llm_provider && workspace.vision_llm_model) {
-        setSelectedVisionLLM({
-          model: workspace.vision_llm_model,
-          provider: workspace.vision_llm_provider,
-          fullId: `${workspace.vision_llm_provider}/${workspace.vision_llm_model}`,
-        });
-      } else {
-        setSelectedVisionLLM(undefined);
-      }
-    }
-  }, [workspace, isEditing]);
-
   // Save mutation
   const updateMutation = useMutation({
     mutationFn: () =>
@@ -97,18 +83,7 @@ export function VisionLLMSettingsCard() {
 
   const handleCancel = () => {
     setIsEditing(false);
-    // Reset to saved workspace values
-    if (workspace) {
-      if (workspace.vision_llm_provider && workspace.vision_llm_model) {
-        setSelectedVisionLLM({
-          model: workspace.vision_llm_model,
-          provider: workspace.vision_llm_provider,
-          fullId: `${workspace.vision_llm_provider}/${workspace.vision_llm_model}`,
-        });
-      } else {
-        setSelectedVisionLLM(undefined);
-      }
-    }
+    setSelectedVisionLLM(getWorkspaceVisionSelection(workspace));
   };
 
   // Don't render if no workspace context
@@ -128,7 +103,10 @@ export function VisionLLMSettingsCard() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setIsEditing(true)}
+              onClick={() => {
+                setSelectedVisionLLM(getWorkspaceVisionSelection(workspace));
+                setIsEditing(true);
+              }}
               aria-label={t('common.edit', 'Edit')}
             >
               <Pencil className="h-4 w-4" />

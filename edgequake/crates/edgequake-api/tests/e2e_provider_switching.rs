@@ -88,7 +88,7 @@ async fn test_workspace_custom_embedding_config() {
     let service = InMemoryWorkspaceService::new();
 
     // Create a tenant first
-    let tenant = Tenant::new("Test Tenant", &format!("test-{}", Uuid::new_v4()));
+    let tenant = Tenant::new("Test Tenant", format!("test-{}", Uuid::new_v4()));
     let created_tenant = service.create_tenant(tenant).await.unwrap();
 
     // Create workspace with custom embedding config
@@ -105,6 +105,7 @@ async fn test_workspace_custom_embedding_config() {
 
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
         entity_types: None,
     };
 
@@ -126,7 +127,7 @@ async fn test_workspace_default_embedding_config() {
 
     let service = InMemoryWorkspaceService::new();
 
-    let tenant = Tenant::new("Test Tenant", &format!("test-{}", Uuid::new_v4()));
+    let tenant = Tenant::new("Test Tenant", format!("test-{}", Uuid::new_v4()));
     let created_tenant = service.create_tenant(tenant).await.unwrap();
 
     let request = CreateWorkspaceRequest {
@@ -142,6 +143,7 @@ async fn test_workspace_default_embedding_config() {
 
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
         entity_types: None,
     };
 
@@ -194,7 +196,7 @@ async fn test_workspace_provider_switching() {
 
     let service = InMemoryWorkspaceService::new();
 
-    let tenant = Tenant::new("Test Tenant", &format!("test-{}", Uuid::new_v4()));
+    let tenant = Tenant::new("Test Tenant", format!("test-{}", Uuid::new_v4()));
     let created_tenant = service.create_tenant(tenant).await.unwrap();
 
     // Create OpenAI-configured workspace
@@ -211,6 +213,7 @@ async fn test_workspace_provider_switching() {
 
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
         entity_types: None,
     };
 
@@ -233,6 +236,7 @@ async fn test_workspace_provider_switching() {
 
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
         entity_types: None,
     };
 
@@ -389,7 +393,7 @@ async fn test_empty_workspace_embedding_config() {
 
     let service = InMemoryWorkspaceService::new();
 
-    let tenant = Tenant::new("Test Tenant", &format!("test-{}", Uuid::new_v4()));
+    let tenant = Tenant::new("Test Tenant", format!("test-{}", Uuid::new_v4()));
     let created_tenant = service.create_tenant(tenant).await.unwrap();
 
     let request = CreateWorkspaceRequest {
@@ -405,6 +409,7 @@ async fn test_empty_workspace_embedding_config() {
 
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
         entity_types: None,
     };
 
@@ -427,7 +432,7 @@ async fn test_concurrent_workspace_creation() {
 
     let service = std::sync::Arc::new(InMemoryWorkspaceService::new());
 
-    let tenant = Tenant::new("Test Tenant", &format!("test-{}", Uuid::new_v4()));
+    let tenant = Tenant::new("Test Tenant", format!("test-{}", Uuid::new_v4()));
     let created_tenant = service.create_tenant(tenant).await.unwrap();
     let tenant_id = created_tenant.tenant_id;
 
@@ -454,6 +459,7 @@ async fn test_concurrent_workspace_creation() {
 
                     vision_llm_provider: None,
                     vision_llm_model: None,
+                    pdf_parser_backend: None,
                     entity_types: None,
                 };
 
@@ -477,7 +483,7 @@ async fn test_lmstudio_workspace_config() {
 
     let service = InMemoryWorkspaceService::new();
 
-    let tenant = Tenant::new("Test Tenant", &format!("test-{}", Uuid::new_v4()));
+    let tenant = Tenant::new("Test Tenant", format!("test-{}", Uuid::new_v4()));
     let created_tenant = service.create_tenant(tenant).await.unwrap();
 
     let request = CreateWorkspaceRequest {
@@ -493,6 +499,7 @@ async fn test_lmstudio_workspace_config() {
 
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
         entity_types: None,
     };
 

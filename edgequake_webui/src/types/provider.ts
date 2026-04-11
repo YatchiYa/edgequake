@@ -18,7 +18,7 @@ export interface LLMProviderStatus {
   status: ConnectionStatus;
   model: string;
   base_url?: string;
-  config: Record<string, any>;
+  config: Record<string, unknown>;
 }
 
 export interface EmbeddingProviderStatus {

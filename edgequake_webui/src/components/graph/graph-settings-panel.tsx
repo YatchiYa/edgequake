@@ -45,7 +45,6 @@ export function GraphSettingsPanel({ onSettingsChange }: GraphSettingsPanelProps
   const [localMaxNodes, setLocalMaxNodes] = useState(maxNodes);
   const [localDepth, setLocalDepth] = useState(depth);
   const [includeOrphans, setIncludeOrphans] = useState(false);
-  const [autoOptimize, setAutoOptimize] = useState(false);
   
   // WHY: Detect device tier once on mount for consistent recommendations
   const [deviceTier, setDeviceTier] = useState<DeviceTier>('medium');
@@ -137,7 +136,6 @@ export function GraphSettingsPanel({ onSettingsChange }: GraphSettingsPanelProps
     setLocalDepth(optimizedSettings.depth);
     setMaxNodes(optimizedSettings.maxNodes);
     setDepth(optimizedSettings.depth);
-    setAutoOptimize(true);
     
     try {
       localStorage.setItem('graph-max-nodes', String(optimizedSettings.maxNodes));

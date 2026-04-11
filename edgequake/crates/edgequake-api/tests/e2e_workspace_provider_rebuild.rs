@@ -43,7 +43,7 @@ async fn test_workspace_update_changes_provider_config() {
     let state = edgequake_api::AppState::new_memory(None::<String>);
 
     // Create tenant
-    let tenant = Tenant::new("Test Tenant", &format!("test-{}", Uuid::new_v4()));
+    let tenant = Tenant::new("Test Tenant", format!("test-{}", Uuid::new_v4()));
     let created_tenant = state
         .workspace_service
         .create_tenant(tenant)
@@ -64,6 +64,7 @@ async fn test_workspace_update_changes_provider_config() {
 
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
         entity_types: None,
     };
 
@@ -91,6 +92,7 @@ async fn test_workspace_update_changes_provider_config() {
         is_active: None,
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
     };
 
     let updated = state
@@ -128,7 +130,7 @@ async fn test_pipeline_uses_updated_workspace_config() {
     let state = edgequake_api::AppState::new_memory(None::<String>);
 
     // Create tenant and workspace
-    let tenant = Tenant::new("Test Tenant", &format!("test-{}", Uuid::new_v4()));
+    let tenant = Tenant::new("Test Tenant", format!("test-{}", Uuid::new_v4()));
     let created_tenant = state
         .workspace_service
         .create_tenant(tenant)
@@ -148,6 +150,7 @@ async fn test_pipeline_uses_updated_workspace_config() {
 
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
         entity_types: None,
     };
 
@@ -264,7 +267,7 @@ async fn test_concurrent_workspace_pipelines() {
     let state = edgequake_api::AppState::new_memory(None::<String>);
 
     // Create tenant
-    let tenant = Tenant::new("Concurrent Test", &format!("test-{}", Uuid::new_v4()));
+    let tenant = Tenant::new("Concurrent Test", format!("test-{}", Uuid::new_v4()));
     let created_tenant = state
         .workspace_service
         .create_tenant(tenant)
@@ -287,6 +290,7 @@ async fn test_concurrent_workspace_pipelines() {
 
             vision_llm_provider: None,
             vision_llm_model: None,
+            pdf_parser_backend: None,
             entity_types: None,
         };
 
@@ -345,7 +349,7 @@ async fn test_invalid_provider_logs_error_and_falls_back() {
     let state = edgequake_api::AppState::new_memory(None::<String>);
 
     // Create tenant and workspace with OpenAI (but no API key)
-    let tenant = Tenant::new("Invalid Provider Test", &format!("test-{}", Uuid::new_v4()));
+    let tenant = Tenant::new("Invalid Provider Test", format!("test-{}", Uuid::new_v4()));
     let created_tenant = state
         .workspace_service
         .create_tenant(tenant)
@@ -365,6 +369,7 @@ async fn test_invalid_provider_logs_error_and_falls_back() {
 
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
         entity_types: None,
     };
 

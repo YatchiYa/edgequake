@@ -83,6 +83,12 @@ interface SearchResult {
   isServerResult?: boolean; // True if from server-side search
 }
 
+interface ServerSearchState {
+  query: string;
+  results: SearchResult[];
+  error: string | null;
+}
+
 interface GraphSearchProps {
   onSelect?: (nodeId: string) => void;
 }
@@ -92,14 +98,26 @@ export function GraphSearch({ onSelect }: GraphSearchProps) {
   const { nodes, sigmaInstance, selectNode, isTruncated, addNodesToGraph } = useGraphStore();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [isSearching, setIsSearching] = useState(false);
-  const [isServerSearching, setIsServerSearching] = useState(false);
-  const [serverResults, setServerResults] = useState<SearchResult[]>([]);
-  const [serverSearchError, setServerSearchError] = useState<string | null>(null);
+  const [activeServerSearchQuery, setActiveServerSearchQuery] = useState<string | null>(null);
+  const [serverSearch, setServerSearch] = useState<ServerSearchState>({
+    query: '',
+    results: [],
+    error: null,
+  });
   const inputRef = useRef<HTMLInputElement>(null);
   
   // Debounce search query for better performance
   const debouncedQuery = useDebounce(query, 150);
+  const serverResults = useMemo(
+    () => (serverSearch.query === debouncedQuery ? serverSearch.results : []),
+    [debouncedQuery, serverSearch.query, serverSearch.results],
+  );
+  const serverSearchError = useMemo(
+    () => (serverSearch.query === debouncedQuery ? serverSearch.error : null),
+    [debouncedQuery, serverSearch.error, serverSearch.query],
+  );
+  const isSearching = query !== debouncedQuery;
+  const isServerSearching = activeServerSearchQuery === debouncedQuery;
 
   // Create search index when nodes change
   const searchEngine = useMemo(() => {
@@ -149,18 +167,6 @@ export function GraphSearch({ onSelect }: GraphSearchProps) {
       return null;
     }
   }, [nodes]);
-
-  // Show searching state while debouncing
-  // Intentional: Synchronizing UI state with debounced value
-  /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
-    if (query !== debouncedQuery) {
-      setIsSearching(true);
-    } else {
-      setIsSearching(false);
-    }
-  }, [query, debouncedQuery]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Compute search results based on debounced query
   const results = useMemo<SearchResult[]>(() => {
@@ -233,22 +239,21 @@ export function GraphSearch({ onSelect }: GraphSearchProps) {
   // Server-side search when graph is truncated and local search has no results
   // This enables searching the full database when the displayed graph is limited
   useEffect(() => {
-    // Reset server results when query changes
-    setServerResults([]);
-    setServerSearchError(null);
-
     // FEAT0405: Always trigger server search for comprehensive results
     // WHY: Users expect search to cover the entire knowledge base,
     // not just currently visible nodes. Removed isTruncated restriction.
     const shouldServerSearch = debouncedQuery.trim().length >= 2;
 
     if (!shouldServerSearch) {
-      setIsServerSearching(false);
       return;
     }
 
     let cancelled = false;
-    setIsServerSearching(true);
+    Promise.resolve().then(() => {
+      if (!cancelled) {
+        setActiveServerSearchQuery(debouncedQuery);
+      }
+    });
 
     searchNodes({
       q: debouncedQuery.trim(),
@@ -274,16 +279,24 @@ export function GraphSearch({ onSelect }: GraphSearchProps) {
           isServerResult: true,
         }));
 
-        setServerResults(serverSearchResults);
+        setServerSearch({
+          query: debouncedQuery,
+          results: serverSearchResults,
+          error: null,
+        });
       })
       .catch((error) => {
         if (cancelled) return;
         console.error('[GraphSearch] Server search failed:', error);
-        setServerSearchError(error.message || 'Search failed');
+        setServerSearch({
+          query: debouncedQuery,
+          results: [],
+          error: error.message || 'Search failed',
+        });
       })
       .finally(() => {
         if (!cancelled) {
-          setIsServerSearching(false);
+          setActiveServerSearchQuery(null);
         }
       });
 

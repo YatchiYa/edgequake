@@ -39,8 +39,8 @@ async fn create_test_workspace(
 ) -> edgequake_core::Workspace {
     // Create tenant first
     let tenant = Tenant::new(
-        &format!("Test Tenant {}", name),
-        &format!("test-{}", Uuid::new_v4()),
+        format!("Test Tenant {}", name),
+        format!("test-{}", Uuid::new_v4()),
     );
     let created_tenant = state
         .workspace_service
@@ -61,6 +61,7 @@ async fn create_test_workspace(
         embedding_dimension: Some(embedding_dimension),
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
         entity_types: None,
     };
 
@@ -211,12 +212,14 @@ async fn test_provider_lineage_struct_serialization() {
     use edgequake_pipeline::ProcessingStats;
 
     // Create stats with provider lineage
-    let mut stats = ProcessingStats::default();
-    stats.llm_provider = Some("ollama".to_string());
-    stats.llm_model = Some("gemma3:12b".to_string());
-    stats.embedding_provider = Some("ollama".to_string());
-    stats.embedding_model = Some("nomic-embed-text".to_string());
-    stats.embedding_dimensions = Some(768);
+    let stats = ProcessingStats {
+        llm_provider: Some("ollama".to_string()),
+        llm_model: Some("gemma3:12b".to_string()),
+        embedding_provider: Some("ollama".to_string()),
+        embedding_model: Some("nomic-embed-text".to_string()),
+        embedding_dimensions: Some(768),
+        ..Default::default()
+    };
 
     // Serialize to JSON
     let json_str = serde_json::to_string(&stats).expect("Should serialize");
@@ -315,6 +318,7 @@ async fn test_provider_switch_updates_lineage_config() {
         is_active: None,
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
     };
 
     let updated = state

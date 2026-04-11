@@ -23,6 +23,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useChunkProgress } from '@/hooks';
+import { useCurrentTime } from '@/hooks/use-current-time';
 import {
     getDocuments,
     getEnhancedPipelineStatus,
@@ -59,7 +60,6 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { createContext, useContext, useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 /**
@@ -189,16 +189,17 @@ function MessageItem({ message, documentMap }: { message: PipelineMessage; docum
  */
 function ChunkProgressCard() {
   const { chunkProgress, hasActiveProgress } = useChunkProgress();
+  const now = useCurrentTime(1000);
 
   // Convert Map to array for rendering
   const activeProgress = useMemo(() => {
     return Array.from(chunkProgress.values())
       .filter(p => {
-        const age = Date.now() - p.lastUpdated.getTime();
+        const age = now - p.lastUpdated.getTime();
         return age < 60000; // Show progress from last 60 seconds
       })
       .sort((a, b) => b.lastUpdated.getTime() - a.lastUpdated.getTime());
-  }, [chunkProgress]);
+  }, [chunkProgress, now]);
 
   // Format cost for display
   const formatCost = (cost: number) => {
@@ -280,7 +281,7 @@ function ChunkProgressCard() {
                 {progress.chunkPreview && (
                   <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
                     <span className="text-foreground font-medium">Current: </span>
-                    "{progress.chunkPreview.slice(0, 80)}..."
+                    &quot;{progress.chunkPreview.slice(0, 80)}...&quot;
                   </div>
                 )}
 
@@ -493,7 +494,7 @@ function ActivityLogCard() {
       }
     }
     return map;
-  }, [documentsData?.items]);
+  }, [documentsData]);
 
   const messages = status?.history_messages || [];
 
@@ -745,6 +746,7 @@ function ProcessingDocumentsCard() {
  */
 function TaskQueueCard() {
   const { selectedTenantId, selectedWorkspaceId } = usePipelineWorkspace();
+  const now = useCurrentTime(1000);
 
   const { data: tasks, isLoading } = useQuery({
     queryKey: scopedQueryKey('tasks', selectedTenantId, selectedWorkspaceId),
@@ -754,7 +756,7 @@ function TaskQueueCard() {
 
   // Format wait time for display
   const formatWaitTime = (createdAt: string): string => {
-    const waitMs = Date.now() - new Date(createdAt).getTime();
+    const waitMs = now - new Date(createdAt).getTime();
     const seconds = Math.floor(waitMs / 1000);
     if (seconds < 60) return `${seconds}s`;
     const minutes = Math.floor(seconds / 60);
@@ -893,7 +895,6 @@ function TaskQueueCard() {
  * data leakage between tenants.
  */
 export function PipelineMonitor() {
-  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { selectedTenantId, selectedWorkspaceId, workspaces } = useTenantStore();
 

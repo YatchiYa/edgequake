@@ -137,6 +137,40 @@ curl -X POST http://localhost:8080/api/v1/documents/upload/batch \
 
 ---
 
+## Graph UI Optimization
+
+The WebUI graph viewer uses Sigma.js and Graphology. For interactive graphs,
+browser-side lifecycle mistakes are often more expensive than backend latency.
+
+### Current defaults
+
+- Layout selection reuses a single shared layout engine.
+- Large graph thresholds reduce label density and disable expensive edge events.
+- Hover and selection emphasis are handled through Sigma reducers plus
+  `scheduleRefresh()` rather than broad graph mutations.
+- Streaming graph updates append nodes and edges incrementally instead of
+  rebuilding the renderer.
+
+### Operational guidance
+
+- Prefer `force` for general exploration and `circular` or `hierarchical` when
+  you want faster deterministic rearrangement.
+- Keep edge labels off for dense graphs unless relationship text is essential.
+- If you extend the graph UI, add new layout logic only in
+  `edgequake_webui/src/lib/graph/layouts.ts`.
+- If you add new edge-identity rules, keep them centralized in
+  `edgequake_webui/src/lib/graph/ids.ts`.
+
+### Anti-patterns to avoid
+
+- Recreating the Sigma instance for a plain layout switch.
+- Long-lived animation loops that refresh the full graph continuously.
+- Re-implementing layout parameters in multiple components.
+- Mutating every node and edge on hover when a reducer can express the same
+  visual state.
+
+---
+
 ## Database Optimization
 
 ### PostgreSQL Configuration

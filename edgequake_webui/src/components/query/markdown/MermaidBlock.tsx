@@ -98,6 +98,8 @@ async function getMermaid(isDark: boolean) {
 export function sanitizeMermaidCode(code: string): { sanitized: string; issues: string[] } {
   const issues: string[] = [];
   let sanitized = code.trim();
+  const htmlTagPattern =
+    /<(?:\/)?(?:br|strong|em|code|span|div|p|ul|ol|li|table|thead|tbody|tr|td|th|pre|sup|sub)\b[^>]*>/gi;
 
   // Remove markdown code block markers if present
   if (sanitized.startsWith('```')) {
@@ -110,9 +112,10 @@ export function sanitizeMermaidCode(code: string): { sanitized: string; issues: 
   // Mermaid's tokeniser treats `<` as a shape delimiter (asymmetric node shape),
   // so `<br>` in a label causes a parse error even with htmlLabels:true.
   // We strip all HTML tags here; Mermaid's own \n handling is sufficient for layout.
-  if (/<[a-zA-Z][^>]*>|<\/[a-zA-Z]+>/.test(sanitized)) {
-    sanitized = sanitized.replace(/<br\s*\/?>/gi, ' ')  // <br> → space (most common)
-                          .replace(/<[^>]+>/g, '');     // strip any remaining HTML tags
+  if (htmlTagPattern.test(sanitized)) {
+    htmlTagPattern.lastIndex = 0;
+    sanitized = sanitized.replace(/<br\s*\/?>/gi, ' ')
+                          .replace(htmlTagPattern, '');
     issues.push('Stripped HTML tags from diagram source');
   }
 
@@ -292,7 +295,6 @@ export const MermaidBlock = memo(function MermaidBlock({
   const uniqueId = useId().replace(/:/g, '-');
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [sanitizedCode, setSanitizedCode] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isFullView, setIsFullView] = useState(false);
   const { resolvedTheme } = useTheme();
@@ -341,7 +343,6 @@ export const MermaidBlock = memo(function MermaidBlock({
           // Step 3: original rejected — apply the sanitizer heuristics as a
           // targeted fallback for known LLM output patterns.
           const { sanitized, issues } = sanitizeMermaidCode(code);
-          setSanitizedCode(sanitized);
           if (issues.length > 0) {
             console.log('Mermaid sanitization applied:', issues);
           }

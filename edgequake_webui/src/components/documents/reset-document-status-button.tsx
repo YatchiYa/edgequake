@@ -197,9 +197,11 @@ export function ResetDocumentStatusButton({
               <AlertDialogCancel>{t('common.cancel', 'Cancel')}</AlertDialogCancel>
               <AlertDialogAction
                 onClick={() => {
-                  (document.status === 'failed' || document.status === 'cancelled')
-                    ? retryMutation.mutate()
-                    : reprocessMutation.mutate();
+                  if (document.status === 'failed' || document.status === 'cancelled') {
+                    retryMutation.mutate();
+                    return;
+                  }
+                  reprocessMutation.mutate();
                 }}
               >
                 {t('common.confirm', 'Confirm')}

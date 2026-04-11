@@ -28,8 +28,8 @@ async fn create_workspace_with_providers(
     embedding_dimension: usize,
 ) -> edgequake_core::Workspace {
     let tenant = Tenant::new(
-        &format!("Tenant {}", name),
-        &format!("tenant-{}", Uuid::new_v4()),
+        format!("Tenant {}", name),
+        format!("tenant-{}", Uuid::new_v4()),
     );
     let created_tenant = state
         .workspace_service
@@ -50,6 +50,7 @@ async fn create_workspace_with_providers(
 
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
         entity_types: None,
     };
 
@@ -162,6 +163,7 @@ async fn test_llm_provider_switch_updates_config() {
 
         vision_llm_provider: None,
         vision_llm_model: None,
+        pdf_parser_backend: None,
     };
 
     state
@@ -304,7 +306,7 @@ async fn test_llm_config_persistence() {
             .workspace_service
             .get_workspace(workspace.workspace_id)
             .await
-            .expect(&format!("Get #{}", i))
+            .unwrap_or_else(|_| panic!("Get #{}", i))
             .expect("Exists");
 
         assert_eq!(retrieved.llm_provider, "mock", "Provider persists #{}", i);

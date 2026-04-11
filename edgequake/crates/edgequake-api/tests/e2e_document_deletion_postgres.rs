@@ -119,7 +119,7 @@ async fn create_postgres_test_state(pool: &PgPool) -> AppState {
     // Generate unique namespace for this test run
     let namespace = format!(
         "test_{}",
-        Uuid::new_v4().to_string().replace('-', "")[..12].to_string()
+        &Uuid::new_v4().to_string().replace('-', "")[..12]
     );
     let pg_config = create_pg_config(&namespace);
 

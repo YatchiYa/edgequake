@@ -4,10 +4,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getWorkspace, updateWorkspace } from '@/lib/api/edgequake';
+import { getWorkspacePdfParserBackend } from '@/lib/workspace/drafts';
 import { useTenantStore } from '@/stores/use-tenant-store';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Gauge, Pencil, Save, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
@@ -29,15 +30,6 @@ export function PdfParserSettingsCard() {
     staleTime: 60000,
     retry: 1,
   });
-
-  useEffect(() => {
-    if (!workspace || isEditing) {
-      return;
-    }
-    setBackend(
-      (workspace.pdf_parser_backend as PdfParserBackendChoice | undefined) ?? 'none',
-    );
-  }, [workspace, isEditing]);
 
   const updateMutation = useMutation({
     mutationFn: () =>
@@ -79,7 +71,10 @@ export function PdfParserSettingsCard() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setIsEditing(true)}
+              onClick={() => {
+                setBackend(getWorkspacePdfParserBackend(workspace));
+                setIsEditing(true);
+              }}
               aria-label={t('common.edit', 'Edit')}
             >
               <Pencil className="h-4 w-4" />
@@ -117,10 +112,7 @@ export function PdfParserSettingsCard() {
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  setBackend(
-                    (workspace?.pdf_parser_backend as PdfParserBackendChoice | undefined) ??
-                      'none',
-                  );
+                  setBackend(getWorkspacePdfParserBackend(workspace));
                   setIsEditing(false);
                 }}
                 disabled={updateMutation.isPending}
@@ -131,7 +123,11 @@ export function PdfParserSettingsCard() {
             </div>
           </>
         ) : workspace ? (
-          <PdfParserBackendField value={backend} isEditing={false} onChange={setBackend} />
+          <PdfParserBackendField
+            value={getWorkspacePdfParserBackend(workspace)}
+            isEditing={false}
+            onChange={setBackend}
+          />
         ) : null}
       </CardContent>
     </Card>

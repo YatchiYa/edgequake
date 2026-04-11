@@ -275,6 +275,7 @@ export const VirtualizedMarkdownContent = memo(function VirtualizedMarkdownConte
   // Virtualizer instance — dynamic row heights with measureElement.
   // We pass the discovered scroll element; when it's null (before mount) the
   // virtualizer gracefully does nothing.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: chunks.length,
     getScrollElement: () => scrollElement,

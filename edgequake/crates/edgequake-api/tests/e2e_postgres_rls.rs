@@ -8,7 +8,7 @@
 //! 2. set_config is session-scoped - we must use the same connection for set and query
 //! 3. Connection pools give different connections - use acquire() for dedicated connection
 
-use sqlx::{postgres::PgPoolOptions, Acquire, Pool, Postgres};
+use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 use uuid::Uuid;
 
 /// Create non-superuser pool for RLS testing
@@ -45,6 +45,7 @@ async fn clean_test_data(admin_pool: &Pool<Postgres>) -> Result<(), sqlx::Error>
 
 /// Query with tenant context on a dedicated connection
 /// This ensures set_config and query use the same session
+#[allow(dead_code)]
 async fn query_with_tenant_context<T>(
     pool: &Pool<Postgres>,
     tenant_id: Uuid,

@@ -22,6 +22,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
 import { useWebSocket } from "./use-websocket";
 
+const TERMINAL_STATUSES = ["completed", "failed", "cancelled"] as const;
+
 interface UseIngestionProgressOptions {
   /** Whether to enable WebSocket subscription (default: true) */
   enableWebSocket?: boolean;
@@ -171,8 +173,6 @@ export function useIngestionProgress(
   // response shows a terminal status (completed/failed/cancelled) while the
   // store still shows a processing state (e.g., WS "completed" event was
   // missed), we prefer the polled value so the panel doesn't get stuck.
-  const TERMINAL_STATUSES = ["completed", "failed", "cancelled"] as const;
-
   const progress = useMemo(() => {
     if (!storeProgress && !mappedPolledProgress) return null;
     if (!storeProgress) return mappedPolledProgress;

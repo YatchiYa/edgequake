@@ -1196,7 +1196,7 @@ async fn test_multiple_concurrent_deletions() {
     );
 
     // All should succeed
-    let results = vec![r1, r2, r3, r4, r5];
+    let results = [r1, r2, r3, r4, r5];
     for (i, (status, _)) in results.iter().enumerate() {
         assert!(
             *status == StatusCode::OK || *status == StatusCode::NOT_FOUND,
@@ -2122,7 +2122,7 @@ async fn test_high_volume_concurrent_deletions_stress() {
         delete_document_http(&app5, &doc_ids[4])
     );
 
-    let batch1 = vec![r1, r2, r3, r4, r5];
+    let batch1 = [r1, r2, r3, r4, r5];
     for (i, (status, _)) in batch1.iter().enumerate() {
         assert_eq!(*status, StatusCode::OK, "Delete batch1[{}] failed", i);
     }
@@ -2141,7 +2141,7 @@ async fn test_high_volume_concurrent_deletions_stress() {
         delete_document_http(&app10, &doc_ids[9])
     );
 
-    let batch2 = vec![r6, r7, r8, r9, r10];
+    let batch2 = [r6, r7, r8, r9, r10];
     for (i, (status, _)) in batch2.iter().enumerate() {
         assert_eq!(*status, StatusCode::OK, "Delete batch2[{}] failed", i);
     }
@@ -2158,40 +2158,25 @@ async fn test_high_volume_concurrent_deletions_stress() {
 
     // Entity 1 and 2 should be deleted
     assert!(
-        nodes_after_phase1
-            .iter()
-            .find(|n| n.id == "STRESS_ENTITY_1")
-            .is_none(),
+        !nodes_after_phase1.iter().any(|n| n.id == "STRESS_ENTITY_1"),
         "Entity 1 should be deleted (all refs in docs 1-5 gone)"
     );
     assert!(
-        nodes_after_phase1
-            .iter()
-            .find(|n| n.id == "STRESS_ENTITY_2")
-            .is_none(),
+        !nodes_after_phase1.iter().any(|n| n.id == "STRESS_ENTITY_2"),
         "Entity 2 should be deleted (all refs in docs 3-8 gone)"
     );
 
     // Entities 3, 4, 5 should be preserved
     assert!(
-        nodes_after_phase1
-            .iter()
-            .find(|n| n.id == "STRESS_ENTITY_3")
-            .is_some(),
+        nodes_after_phase1.iter().any(|n| n.id == "STRESS_ENTITY_3"),
         "Entity 3 should be preserved (doc 11 remains)"
     );
     assert!(
-        nodes_after_phase1
-            .iter()
-            .find(|n| n.id == "STRESS_ENTITY_4")
-            .is_some(),
+        nodes_after_phase1.iter().any(|n| n.id == "STRESS_ENTITY_4"),
         "Entity 4 should be preserved (docs 11-13 remain)"
     );
     assert!(
-        nodes_after_phase1
-            .iter()
-            .find(|n| n.id == "STRESS_ENTITY_5")
-            .is_some(),
+        nodes_after_phase1.iter().any(|n| n.id == "STRESS_ENTITY_5"),
         "Entity 5 should be preserved (docs 11-15 remain)"
     );
 
@@ -2217,7 +2202,7 @@ async fn test_high_volume_concurrent_deletions_stress() {
         delete_document_http(&app15, &doc_ids[14])
     );
 
-    let batch3 = vec![r11, r12, r13, r14, r15];
+    let batch3 = [r11, r12, r13, r14, r15];
     for (i, (status, _)) in batch3.iter().enumerate() {
         assert_eq!(*status, StatusCode::OK, "Delete batch3[{}] failed", i);
     }
@@ -4245,7 +4230,7 @@ async fn test_batch_cleanup_verification() {
 async fn test_document_with_unicode_title() {
     let app = create_test_app();
 
-    let unicode_titles = vec![
+    let unicode_titles = [
         "日本語ドキュメント",
         "Документ на русском",
         "📚 Book with Emoji 🎉",

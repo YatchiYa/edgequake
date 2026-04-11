@@ -28,8 +28,7 @@ import {
     PanelLeftClose,
     PanelRightClose
 } from 'lucide-react';
-import { useCallback, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 type ViewMode = 'side-by-side' | 'pdf-only' | 'markdown-only';
 
@@ -67,15 +66,12 @@ export function SideBySideViewer({
   className,
   height,
   initialMode = 'side-by-side',
-  leftTitle = 'PDF Document',
-  rightTitle = 'Extracted Markdown',
   onModeChange,
 }: SideBySideViewerProps) {
-  const { t } = useTranslation();
   const [mode, setMode] = useState<ViewMode>(initialMode);
   const [leftWidth, setLeftWidth] = useState(50); // Percentage
+  const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const isDragging = useRef(false);
   const startX = useRef(0);
   const startWidth = useRef(50);
 
@@ -86,7 +82,7 @@ export function SideBySideViewer({
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
-    isDragging.current = true;
+    setIsDragging(true);
     startX.current = e.clientX;
     startWidth.current = leftWidth;
     document.body.style.cursor = 'col-resize';
@@ -94,7 +90,7 @@ export function SideBySideViewer({
   }, [leftWidth]);
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isDragging.current || !containerRef.current) return;
+    if (!isDragging || !containerRef.current) return;
     
     const containerRect = containerRef.current.getBoundingClientRect();
     const containerWidth = containerRect.width;
@@ -104,29 +100,27 @@ export function SideBySideViewer({
     // Clamp between 25% and 75%
     const newWidth = Math.min(75, Math.max(25, startWidth.current + deltaPercent));
     setLeftWidth(newWidth);
-  }, []);
+  }, [isDragging]);
 
   const handleMouseUp = useCallback(() => {
-    isDragging.current = false;
+    setIsDragging(false);
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
   }, []);
 
-  // Add global mouse event listeners when dragging
-  useState(() => {
-    if (typeof window === 'undefined') return;
-    
-    const handleMove = (e: MouseEvent) => handleMouseMove(e);
-    const handleUp = () => handleMouseUp();
-    
-    window.addEventListener('mousemove', handleMove);
-    window.addEventListener('mouseup', handleUp);
-    
+  useEffect(() => {
+    if (typeof window === 'undefined' || !isDragging) {
+      return;
+    }
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+
     return () => {
-      window.removeEventListener('mousemove', handleMove);
-      window.removeEventListener('mouseup', handleUp);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
     };
-  });
+  }, [handleMouseMove, handleMouseUp, isDragging]);
 
   return (
     <div className={cn('flex flex-col min-h-0', className)}>
@@ -206,7 +200,7 @@ export function SideBySideViewer({
             className={cn(
               'w-1 bg-border hover:bg-primary/30 cursor-col-resize transition-colors',
               'flex items-center justify-center',
-              isDragging.current && 'bg-primary/50'
+              isDragging && 'bg-primary/50'
             )}
             onMouseDown={handleMouseDown}
           >

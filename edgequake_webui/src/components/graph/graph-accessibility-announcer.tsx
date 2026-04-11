@@ -15,7 +15,7 @@
  */
 
 import { useGraphStore } from '@/stores/use-graph-store';
-import { useEffect, useState } from 'react';
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 /**
@@ -29,20 +29,14 @@ export function GraphAccessibilityAnnouncer() {
   const nodes = useGraphStore((s) => s.nodes);
   const edges = useGraphStore((s) => s.edges);
   
-  const [announcement, setAnnouncement] = useState('');
-  
-  // WHY: Update announcement when selected node changes
-  // This triggers screen reader to read the new content
-  useEffect(() => {
+  const announcement = useMemo(() => {
     if (!selectedNodeId) {
-      setAnnouncement(t('graph.a11y.noSelection', 'No node selected'));
-      return;
+      return t('graph.a11y.noSelection', 'No node selected');
     }
     
     const node = nodes.find(n => n.id === selectedNodeId);
     if (!node) {
-      setAnnouncement(t('graph.a11y.nodeNotFound', 'Node not found'));
-      return;
+      return t('graph.a11y.nodeNotFound', 'Node not found');
     }
     
     // Calculate degree (number of connections)
@@ -57,13 +51,11 @@ export function GraphAccessibilityAnnouncer() {
       ? t('graph.a11y.oneConnection', '1 connection')
       : t('graph.a11y.connections', '{{count}} connections', { count: degree });
     
-    setAnnouncement(
-      t('graph.a11y.selectedNode', 'Selected: {{label}}, type {{type}}, {{connections}}', {
-        label,
-        type,
-        connections: connectionsText,
-      })
-    );
+    return t('graph.a11y.selectedNode', 'Selected: {{label}}, type {{type}}, {{connections}}', {
+      label,
+      type,
+      connections: connectionsText,
+    });
   }, [selectedNodeId, nodes, edges, t]);
   
   // WHY: sr-only class hides the element visually but keeps it accessible

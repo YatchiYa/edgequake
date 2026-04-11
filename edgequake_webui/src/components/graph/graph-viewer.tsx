@@ -142,7 +142,6 @@ export function GraphViewer() {
   const maxNodes = useGraphStore((s) => s.maxNodes);
   const depth = useGraphStore((s) => s.depth);
   const startNode = useGraphStore((s) => s.startNode);
-  const setStartNode = useGraphStore((s) => s.setStartNode);
   const setTruncationInfo = useGraphStore((s) => s.setTruncationInfo);
   
   // Streaming state for progressive loading
@@ -155,13 +154,11 @@ export function GraphViewer() {
   // Streaming hook for progressive graph loading
   const {
     nodes: streamedNodes,
-    edges: streamedEdges,
     progress: streamingProgress,
     error: streamingError,
     isStreaming,
     startStream,
     cancel: cancelStream,
-    reset: resetStream,
   } = useGraphStream({
     enabled: false, // Manual control - don't auto-start
     maxNodes,
@@ -218,7 +215,7 @@ export function GraphViewer() {
   // Enable keyboard navigation for graph
   useGraphKeyboardNavigation({
     enabled: true,
-    onNodeFocus: (nodeId) => {
+    onNodeFocus: () => {
       // Node focus is handled by the hook itself
     },
     onDeselect: () => {

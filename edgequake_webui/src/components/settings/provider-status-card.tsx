@@ -246,7 +246,7 @@ export EDGEQUAKE_LLM_MODEL="MiniMax-M2.7"`,
                   Dimension Mismatch Detected
                 </h4>
                 <p className="text-sm text-muted-foreground">
-                  Storage dimension ({status.storage.dimension}) doesn't match provider dimension ({status.embedding.dimension}).
+                  Storage dimension ({status.storage.dimension}) doesn&apos;t match provider dimension ({status.embedding.dimension}).
                   Queries may return incorrect results. Please restart the server with the correct provider configuration.
                 </p>
               </div>

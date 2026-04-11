@@ -589,7 +589,7 @@ async fn test_get_user_by_id() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(&format!("/api/v1/users/{}", user_id))
+                .uri(format!("/api/v1/users/{}", user_id))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -663,7 +663,7 @@ async fn test_delete_user() {
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri(&format!("/api/v1/users/{}", user_id))
+                .uri(format!("/api/v1/users/{}", user_id))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -678,7 +678,7 @@ async fn test_delete_user() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(&format!("/api/v1/users/{}", user_id))
+                .uri(format!("/api/v1/users/{}", user_id))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -815,7 +815,7 @@ async fn test_revoke_api_key() {
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri(&format!("/api/v1/api-keys/{}", key_id))
+                .uri(format!("/api/v1/api-keys/{}", key_id))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -990,7 +990,7 @@ async fn test_complete_auth_flow() {
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri(&format!("/api/v1/api-keys/{}", key_id))
+                .uri(format!("/api/v1/api-keys/{}", key_id))
                 .header(header::AUTHORIZATION, format!("Bearer {}", access_token))
                 .body(Body::empty())
                 .unwrap(),
@@ -1048,7 +1048,7 @@ async fn test_complete_auth_flow() {
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri(&format!("/api/v1/users/{}", user_id))
+                .uri(format!("/api/v1/users/{}", user_id))
                 .body(Body::empty())
                 .unwrap(),
         )

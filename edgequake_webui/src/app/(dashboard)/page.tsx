@@ -116,7 +116,7 @@ export default function DashboardPage() {
   // This ensures stats are always current, especially after document uploads
   // OODA-ITERATION-04-HYDRATION-FIX: Query now waits for Zustand hydration
   // This prevents racing condition where query runs before workspace ID is loaded from localStorage
-  const { data: stats, isLoading: isLoadingStats, error: statsError, isError: isStatsError } = useQuery({
+  const { data: stats, isLoading: isLoadingStats } = useQuery({
     queryKey: ['workspaceStats', selectedWorkspaceId],
     queryFn: async () => {
       if (!selectedWorkspaceId) {

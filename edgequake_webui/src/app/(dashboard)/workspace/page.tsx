@@ -26,8 +26,14 @@ import { LLMModelSelector, type LLMSelection } from '@/components/workspace/llm-
 import { RebuildEmbeddingsButton } from '@/components/workspace/rebuild-embeddings-button';
 import { RebuildKnowledgeGraphButton } from '@/components/workspace/rebuild-knowledge-graph-button';
 import { useWorkspaceTenantValidator } from '@/hooks/use-workspace-tenant-validator';
-import { checkHealth, getWorkspace, getWorkspaceStats, updateWorkspace } from '@/lib/api/edgequake';
+import { getWorkspace, getWorkspaceStats, updateWorkspace } from '@/lib/api/edgequake';
 import { fetchProvidersHealth } from '@/lib/api/models';
+import {
+  getWorkspaceEmbeddingSelection,
+  getWorkspaceLlmSelection,
+  getWorkspacePdfParserBackend,
+  getWorkspaceVisionSelection,
+} from '@/lib/workspace/drafts';
 import { useTenantStore } from '@/stores/use-tenant-store';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -51,7 +57,7 @@ import {
     Tags,
     XCircle,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -126,19 +132,6 @@ export default function WorkspacePage() {
     refetchOnMount: 'always', // Always refetch when component mounts
   });
 
-  // Fetch health to get current active provider configuration
-  // WHY: When workspace has 0 documents, show current active provider from environment
-  // instead of stale workspace record (which may show old provider like "ollama/embeddinggemma"
-  // even when OpenAI is now active)
-  const {
-    data: healthData,
-  } = useQuery({
-    queryKey: ['health'],
-    queryFn: checkHealth,
-    staleTime: 10000, // Cache for 10 seconds
-    retry: 1,
-  });
-
   // Fetch provider health status (SPEC-032: OODA 201-210)
   const {
     data: providerHealth,
@@ -149,36 +142,6 @@ export default function WorkspacePage() {
     staleTime: 60000, // Cache for 1 minute
     retry: 1, // Only retry once since providers may be down
   });
-
-  // Initialize edit state from workspace data
-  useEffect(() => {
-    if (workspace && !isEditing) {
-      if (workspace.llm_provider && workspace.llm_model) {
-        setSelectedLLM({
-          model: workspace.llm_model,
-          provider: workspace.llm_provider,
-          fullId: `${workspace.llm_provider}/${workspace.llm_model}`,
-        });
-      }
-      if (workspace.embedding_provider && workspace.embedding_model) {
-        setSelectedEmbedding({
-          model: workspace.embedding_model,
-          provider: workspace.embedding_provider,
-          dimension: workspace.embedding_dimension ?? 768,
-        });
-      }
-      if (workspace.vision_llm_provider && workspace.vision_llm_model) {
-        setSelectedVisionLLM({
-          model: workspace.vision_llm_model,
-          provider: workspace.vision_llm_provider,
-          fullId: `${workspace.vision_llm_provider}/${workspace.vision_llm_model}`,
-        });
-      }
-      setSelectedPdfParserBackend(
-        (workspace.pdf_parser_backend as PdfParserBackendChoice | undefined) ?? 'none',
-      );
-    }
-  }, [workspace, isEditing]);
 
   // Update workspace mutation
   const updateMutation = useMutation({
@@ -305,57 +268,42 @@ export default function WorkspacePage() {
 
   const handleCancel = () => {
     setIsEditing(false);
-    // Reset to workspace values
-    if (workspace) {
-      if (workspace.llm_provider && workspace.llm_model) {
-        setSelectedLLM({
-          model: workspace.llm_model,
-          provider: workspace.llm_provider,
-          fullId: `${workspace.llm_provider}/${workspace.llm_model}`,
-        });
-      } else {
-        setSelectedLLM(undefined);
-      }
-      if (workspace.embedding_provider && workspace.embedding_model) {
-        setSelectedEmbedding({
-          model: workspace.embedding_model,
-          provider: workspace.embedding_provider,
-          dimension: workspace.embedding_dimension ?? 768,
-        });
-      } else {
-        setSelectedEmbedding(undefined);
-      }
-      if (workspace.vision_llm_provider && workspace.vision_llm_model) {
-        setSelectedVisionLLM({
-          model: workspace.vision_llm_model,
-          provider: workspace.vision_llm_provider,
-          fullId: `${workspace.vision_llm_provider}/${workspace.vision_llm_model}`,
-        });
-      } else {
-        setSelectedVisionLLM(undefined);
-      }
-      setSelectedPdfParserBackend(
-        (workspace.pdf_parser_backend as PdfParserBackendChoice | undefined) ?? 'none',
-      );
-    }
+    setSelectedLLM(getWorkspaceLlmSelection(workspace));
+    setSelectedEmbedding(getWorkspaceEmbeddingSelection(workspace));
+    setSelectedVisionLLM(getWorkspaceVisionSelection(workspace));
+    setSelectedPdfParserBackend(getWorkspacePdfParserBackend(workspace));
+  };
+
+  const handleEditStart = () => {
+    setSelectedLLM(getWorkspaceLlmSelection(workspace));
+    setSelectedEmbedding(getWorkspaceEmbeddingSelection(workspace));
+    setSelectedVisionLLM(getWorkspaceVisionSelection(workspace));
+    setSelectedPdfParserBackend(getWorkspacePdfParserBackend(workspace));
+    setIsEditing(true);
   };
 
   // Check if embedding model changed (needs rebuild)
-  const embeddingModelChanged = workspace && selectedEmbedding && (
-    workspace.embedding_model !== selectedEmbedding.model ||
-    workspace.embedding_provider !== selectedEmbedding.provider
+  const embeddingModelChanged = Boolean(
+    workspace && selectedEmbedding && (
+      workspace.embedding_model !== selectedEmbedding.model ||
+      workspace.embedding_provider !== selectedEmbedding.provider
+    )
   );
 
   // Check if LLM model changed (needs extraction rebuild)
-  const llmModelChanged = workspace && selectedLLM && (
-    workspace.llm_model !== selectedLLM.model ||
-    workspace.llm_provider !== selectedLLM.provider
+  const llmModelChanged = Boolean(
+    workspace && selectedLLM && (
+      workspace.llm_model !== selectedLLM.model ||
+      workspace.llm_provider !== selectedLLM.provider
+    )
   );
 
   // Check if Vision LLM changed (triggers full re-extraction of existing PDF documents from originals)
-  const visionLLMChanged = workspace && selectedVisionLLM && (
-    workspace.vision_llm_model !== selectedVisionLLM.model ||
-    workspace.vision_llm_provider !== selectedVisionLLM.provider
+  const visionLLMChanged = Boolean(
+    workspace && selectedVisionLLM && (
+      workspace.vision_llm_model !== selectedVisionLLM.model ||
+      workspace.vision_llm_provider !== selectedVisionLLM.provider
+    )
   );
 
   // Track if rebuild is needed after save
@@ -458,7 +406,7 @@ export default function WorkspacePage() {
             <Button
               variant="default"
               size="sm"
-              onClick={() => setIsEditing(true)}
+              onClick={handleEditStart}
             >
               <Settings className="h-4 w-4 mr-2" />
               {t('workspace.editConfig', 'Edit Configuration')}

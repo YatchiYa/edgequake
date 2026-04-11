@@ -192,7 +192,7 @@ const VirtualizedEntityList = memo(function VirtualizedEntityList({
 }: VirtualizedEntityListProps) {
   const { t } = useTranslation();
   const parentRef = useRef<HTMLDivElement>(null);
-  
+  // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: nodes.length,
     getScrollElement: () => parentRef.current,
@@ -331,8 +331,11 @@ const EntityTypeGroup = memo(function EntityTypeGroup({
 // Sort Options
 // ============================================================================
 
-type SortOption = "name" | "degree" | "type";
 type SortDirection = "asc" | "desc";
+interface ServerSearchState {
+  query: string;
+  nodes: GraphNode[];
+}
 
 // ============================================================================
 // Main Entity Browser Panel
@@ -360,8 +363,11 @@ export function EntityBrowserPanel({ className }: EntityBrowserPanelProps) {
   // Local state (not persisted)
   const [searchQuery, setSearchQuery] = useState("");
   const [focusedIndex, setFocusedIndex] = useState(-1);
-  const [isServerSearching, setIsServerSearching] = useState(false);
-  const [serverSearchNodes, setServerSearchNodes] = useState<GraphNode[]>([]);
+  const [activeServerSearchQuery, setActiveServerSearchQuery] = useState<string | null>(null);
+  const [serverSearch, setServerSearch] = useState<ServerSearchState>({
+    query: "",
+    nodes: [],
+  });
   const listRef = useRef<HTMLDivElement>(null);
   
   // Derived state from preferences
@@ -372,9 +378,17 @@ export function EntityBrowserPanel({ className }: EntityBrowserPanelProps) {
   const sortBy = entityBrowserSortBy;
   const setSortBy = setEntityBrowserSortBy;
   const sortDirection: SortDirection = entityBrowserSortAsc ? "asc" : "desc";
-  const setSortDirection = (dir: SortDirection) => setEntityBrowserSortAsc(dir === "asc");
+  const setSortDirection = useCallback(
+    (dir: SortDirection) => setEntityBrowserSortAsc(dir === "asc"),
+    [setEntityBrowserSortAsc],
+  );
 
   const { nodes, selectedNodeId, selectNode, sigmaInstance, isTruncated, addNodesToGraph } = useGraphStore();
+  const serverSearchNodes = useMemo(
+    () => (serverSearch.query === searchQuery ? serverSearch.nodes : []),
+    [searchQuery, serverSearch.nodes, serverSearch.query],
+  );
+  const isServerSearching = activeServerSearchQuery === searchQuery;
 
   // Filter nodes by search query (local/client-side)
   const localFilteredNodes = useMemo(() => {
@@ -392,20 +406,20 @@ export function EntityBrowserPanel({ className }: EntityBrowserPanelProps) {
   // WHY: Users expect search to find all entities in the knowledge base,
   // not just what's currently visible in the graph
   useEffect(() => {
-    // Reset server results when query changes
-    setServerSearchNodes([]);
-
     // FEAT0405: Enable server search for any query >= 2 chars
     // Removed isTruncated check to always search the full knowledge base
     const shouldServerSearch = searchQuery.trim().length >= 2;
 
     if (!shouldServerSearch) {
-      setIsServerSearching(false);
       return;
     }
 
     let cancelled = false;
-    setIsServerSearching(true);
+    Promise.resolve().then(() => {
+      if (!cancelled) {
+        setActiveServerSearchQuery(searchQuery);
+      }
+    });
 
     searchNodes({
       q: searchQuery.trim(),
@@ -421,7 +435,7 @@ export function EntityBrowserPanel({ className }: EntityBrowserPanelProps) {
           addNodesToGraph(response.nodes, response.edges);
         }
 
-        setServerSearchNodes(response.nodes);
+        setServerSearch({ query: searchQuery, nodes: response.nodes });
       })
       .catch((error) => {
         if (cancelled) return;
@@ -429,7 +443,7 @@ export function EntityBrowserPanel({ className }: EntityBrowserPanelProps) {
       })
       .finally(() => {
         if (!cancelled) {
-          setIsServerSearching(false);
+          setActiveServerSearchQuery(null);
         }
       });
 

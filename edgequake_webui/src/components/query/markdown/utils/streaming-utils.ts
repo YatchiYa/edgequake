@@ -118,7 +118,6 @@ export function isTableComplete(content: string): boolean {
  * Check if a code block is complete (has closing ```)
  */
 export function isCodeBlockComplete(content: string): boolean {
-  const codeBlockPattern = /```[\s\S]*?```/g;
   const openPattern = /```[^\n]*\n?/g;
 
   const opens = (content.match(openPattern) || []).length;

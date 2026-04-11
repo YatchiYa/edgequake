@@ -28,7 +28,6 @@ import {
 } from "@/components/ui/tooltip";
 import {
     type PhaseInfo,
-    type PipelinePhase,
     usePdfProgress,
 } from "@/hooks/use-pdf-progress";
 import { cn } from "@/lib/utils";
@@ -70,15 +69,6 @@ interface PdfUploadProgressProps {
 // Phase Icon Helper
 // ============================================================================
 
-const PHASE_ICONS: Record<PipelinePhase, React.ComponentType<{ className?: string }>> = {
-  upload: FileText,
-  pdf_conversion: FileText,
-  chunking: FileText,
-  embedding: FileText,
-  extraction: FileText,
-  graph_storage: FileText,
-};
-
 function getPhaseStatusIcon(status: PhaseInfo["status"]) {
   switch (status.type) {
     case "pending":
@@ -94,21 +84,6 @@ function getPhaseStatusIcon(status: PhaseInfo["status"]) {
   }
 }
 
-function getStatusBadgeVariant(
-  status: PhaseInfo["status"]["type"]
-): "default" | "secondary" | "destructive" | "outline" {
-  switch (status) {
-    case "completed":
-      return "default";
-    case "active":
-      return "secondary";
-    case "failed":
-      return "destructive";
-    default:
-      return "outline";
-  }
-}
-
 // ============================================================================
 // Sub-components
 // ============================================================================
@@ -118,12 +93,9 @@ function getStatusBadgeVariant(
  */
 function PhaseIndicator({
   phase,
-  isLast,
 }: {
   phase: PhaseInfo;
-  isLast: boolean;
 }) {
-  const Icon = PHASE_ICONS[phase.phase];
   const statusIcon = getPhaseStatusIcon(phase.status);
 
   return (
@@ -247,12 +219,10 @@ function LargeDocProgress({
   currentPage,
   totalPages,
   pagesPerMinute,
-  sseConnected,
 }: {
   currentPage: number;
   totalPages: number;
   pagesPerMinute: number | null;
-  sseConnected: boolean;
 }) {
   const percent = totalPages > 0 ? Math.round((currentPage / totalPages) * 100) : 0;
   const remainingPages = totalPages - currentPage;
@@ -360,7 +330,6 @@ export function PdfUploadProgress({
     progress,
     isLoading,
     phases,
-    currentPhaseIndex,
     overallPercent,
     etaSeconds,
     retry,
@@ -530,7 +499,7 @@ export function PdfUploadProgress({
         <div className="flex items-start justify-between">
           {phases.map((phase, index) => (
             <div key={phase.phase} className="flex items-center">
-              <PhaseIndicator phase={phase} isLast={index === phases.length - 1} />
+              <PhaseIndicator phase={phase} />
               {index < phases.length - 1 && (
                 <PhaseConnector
                   completed={phase.status.type === "completed"}
@@ -547,7 +516,6 @@ export function PdfUploadProgress({
             currentPage={currentPage}
             totalPages={totalPages}
             pagesPerMinute={pagesPerMinute}
-            sseConnected={sseConnected}
           />
         )}
 
