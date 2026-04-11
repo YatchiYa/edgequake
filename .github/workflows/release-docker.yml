@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Tag name to publish (e.g. v0.9.1)'
+        description: 'Tag name to publish (e.g. v0.10.0)'
         required: true
-        default: 'v0.9.1'
+        default: 'v0.10.0'
 
 permissions:
   contents: read
@@ -299,7 +299,12 @@ jobs:
           NOTES="## Docker Quickstart
 
           \`\`\`bash
-          # One command — no build required (~30 s on first pull, <5 s on cached)
+          # Interactive one-command install (Docker only, no git clone)
+          curl -fsSL https://raw.githubusercontent.com/raphaelmansuy/edgequake/edgequake-main/quickstart.sh | sh
+          \`\`\`
+
+          Or with plain Docker Compose:
+          \`\`\`bash
           curl -fsSL https://raw.githubusercontent.com/raphaelmansuy/edgequake/edgequake-main/docker-compose.quickstart.yml \\
             -o docker-compose.quickstart.yml
           docker compose -f docker-compose.quickstart.yml up -d
