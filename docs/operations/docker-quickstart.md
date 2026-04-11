@@ -55,7 +55,7 @@ make stack
 
 ```bash
 # Download a specific version's compose file
-EDGEQUAKE_VERSION=0.10.0
+EDGEQUAKE_VERSION=0.10.1
 curl -fsSL "https://raw.githubusercontent.com/raphaelmansuy/edgequake/edgequake-main/docker-compose.quickstart.yml" \
   -o docker-compose.quickstart.yml
 
@@ -172,9 +172,9 @@ All images are multi-arch (`linux/amd64`, `linux/arm64`) and published to GitHub
 
 | Image                                      | Tag                | Description                        |
 | ------------------------------------------ | ------------------ | ---------------------------------- |
-| `ghcr.io/raphaelmansuy/edgequake`          | `latest` / `0.10.0` | Rust API server                    |
-| `ghcr.io/raphaelmansuy/edgequake-frontend` | `latest` / `0.10.0` | Next.js Web UI                     |
-| `ghcr.io/raphaelmansuy/edgequake-postgres` | `latest` / `0.10.0` | PostgreSQL + pgvector + Apache AGE |
+| `ghcr.io/raphaelmansuy/edgequake`          | `latest` / `0.10.1` | Rust API server                    |
+| `ghcr.io/raphaelmansuy/edgequake-frontend` | `latest` / `0.10.1` | Next.js Web UI                     |
+| `ghcr.io/raphaelmansuy/edgequake-postgres` | `latest` / `0.10.1` | PostgreSQL + pgvector + Apache AGE |
 
 Pull an image manually:
 ```bash

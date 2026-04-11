@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.10.1] - 2026-04-11
+
+### Fixed
+
+- **Release candidate promoted to a fully green publication**
+
+  The exact GitHub CI formatting gate (`cargo fmt --all -- --check`) caught two
+  Rust files that had not been normalized with the same invocation used in CI.
+  The official publish tag now advances to `0.10.1`, ensuring the default
+  branch checks, release workflow, and published install surface all describe
+  the same green release.
+
 ## [0.10.0] - 2026-04-11
 
 ### Fixed
