@@ -250,10 +250,7 @@ pub async fn delete_conversation(
     _tenant_ctx: TenantContext,
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
-    state
-        .conversation_service
-        .delete_conversation(id)
-        .await?;
+    state.conversation_service.delete_conversation(id).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

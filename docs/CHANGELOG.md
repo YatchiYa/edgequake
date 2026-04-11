@@ -18,5 +18,7 @@ All notable changes to the EdgeQuake documentation are tracked here. See the roo
   `docs/operations/performance-tuning.md`.
 - Recast `mission/05-improve-performance-sigma.md` as an accepted ADR with
   explicit decision rules, alternatives, consequences, and verification.
-- Aligned pinned quickstart and release examples with the official `0.10.0`
-  publication version.
+- Aligned pinned quickstart and release examples with the April 2026 release
+  line, finalized as official version `0.10.1`.
+- Promoted the official publish target to `0.10.1` after matching the exact CI
+  formatting gate used on GitHub Actions.
