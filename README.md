@@ -5,13 +5,13 @@
 > **High-Performance Graph-RAG Framework in Rust**  
 > Transform documents into intelligent knowledge graphs for superior retrieval and generation
 
-[![Version](https://img.shields.io/badge/version-0.9.4-blue.svg?style=flat)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.10.0-blue.svg?style=flat)](CHANGELOG.md)
 [![Rust](https://img.shields.io/badge/rust-1.78+-orange.svg?style=flat&logo=rust)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat)](LICENSE)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg?style=flat)](https://github.com/raphaelmansuy/edgequake)
 [![Documentation](https://img.shields.io/badge/docs-available-blue.svg?style=flat)](docs/README.md)
 
-> **v0.9.12** — Interactive setup wizard: explicit OpenAI/Ollama provider selection, in-terminal model catalogue, volume lifecycle detection with safe "Fresh Start" gate, and `/dev/tty` reads for `curl | sh` compatibility. See [CHANGELOG](CHANGELOG.md) for full details.
+> **v0.10.0** — Sigma graph-viewer performance hardening, safer embedding limits for dense PDFs, and release-ready quickstart alignment for `curl | sh` and GHCR installs. See [CHANGELOG](CHANGELOG.md) for full details.
 
 ---
 
@@ -187,7 +187,7 @@ docker compose -f docker-compose.quickstart.yml ps         # check status
 docker compose -f docker-compose.quickstart.yml down       # stop
 ```
 
-> **Pinned version:** `EDGEQUAKE_VERSION=0.9.12 sh quickstart.sh` to use a specific release.
+> **Pinned version:** `EDGEQUAKE_VERSION=0.10.0 sh quickstart.sh` to use a specific release.
 
 ---
 
@@ -489,7 +489,7 @@ EdgeQuake ships a production-ready multi-arch Docker image published to **GitHub
 docker pull ghcr.io/raphaelmansuy/edgequake:latest
 
 # Pin to a specific version
-docker pull ghcr.io/raphaelmansuy/edgequake:0.9.2
+docker pull ghcr.io/raphaelmansuy/edgequake:0.10.0
 ```
 
 > **First-time package visibility:** After the first CI/CD publish, you may need to set the GHCR package visibility to **Public** under [GitHub → Your Profile → Packages → edgequake → Package Settings → Change Visibility](https://github.com/raphaelmansuy?tab=packages). Once public, `docker pull` works without authentication.
@@ -530,7 +530,7 @@ curl http://localhost:8080/health
 
 ### Option B — Full stack using prebuilt images *(fastest, no Rust needed)*
 
-Pulls the prebuilt EdgeQuake API image from GHCR and builds only the PostgreSQL image locally (required because Apache AGE + pgvector need a patched Postgres — no official combined image exists). No Rust toolchain required.
+Pulls the EdgeQuake API, frontend, and PostgreSQL images directly from GHCR. No Rust toolchain, Node.js toolchain, or local Docker build is required.
 
 ```bash
 cd edgequake/docker
@@ -540,14 +540,15 @@ docker compose -f docker-compose.prebuilt.yml up -d
 
 Services started:
 
-| Service         | Port | Image / Build                                             |
+| Service         | Port | Image                                                     |
 | --------------- | ---- | --------------------------------------------------------- |
-| `edgequake` API | 8080 | `ghcr.io/raphaelmansuy/edgequake:latest` (pulled)         |
-| `postgres`      | 5432 | Built locally from `Dockerfile.postgres` (pgvector + AGE) |
+| `edgequake` API | 8080 | `ghcr.io/raphaelmansuy/edgequake:latest`                  |
+| `frontend`      | 3000 | `ghcr.io/raphaelmansuy/edgequake-frontend:latest`         |
+| `postgres`      | 5432 | `ghcr.io/raphaelmansuy/edgequake-postgres:latest`         |
 
 ```bash
 # Use a specific API version
-EDGEQUAKE_VERSION=0.9.1 docker compose -f docker-compose.prebuilt.yml up -d
+EDGEQUAKE_VERSION=0.10.0 docker compose -f docker-compose.prebuilt.yml up -d
 
 # Logs
 docker compose -f docker-compose.prebuilt.yml logs -f edgequake
@@ -639,10 +640,10 @@ Docker images are built and published automatically via GitHub Actions (`.github
 
 ```bash
 # Tag a release — triggers multi-arch docker build + publish to ghcr.io
-git tag v0.9.3 && git push origin v0.9.3
+git tag v0.10.0 && git push origin v0.10.0
 ```
 
-Both `linux/amd64` (ubuntu-latest runner) and `linux/arm64` (native ARM64 runner — no QEMU) are built in parallel and merged into a single multi-arch manifest. The same image tag (`ghcr.io/raphaelmansuy/edgequake:0.9.2`) works on x86 servers, Apple Silicon Macs, and AWS Graviton instances.
+Both `linux/amd64` (ubuntu-latest runner) and `linux/arm64` (native ARM64 runner — no QEMU) are built in parallel and merged into a single multi-arch manifest. The same image tag (`ghcr.io/raphaelmansuy/edgequake:0.10.0`) works on x86 servers, Apple Silicon Macs, and AWS Graviton instances.
 
 You can also trigger a manual Docker build + publish without a tag via the `workflow_dispatch` input on GitHub Actions (`Actions → Release — Docker (GHCR) → Run workflow`).
 

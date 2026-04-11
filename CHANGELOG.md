@@ -97,6 +97,15 @@ All notable changes to this project will be documented in this file.
     120 s cloud)
   - `EDGEQUAKE_PDF_CONCURRENCY` — parallel page workers (default: 2 local)
 
+### Changed
+
+- **Release metadata and quickstart surfaces aligned to `0.10.0`**
+
+  The workspace version, frontend package metadata, pinned Docker examples, and
+  release workflow defaults now all point to the same official release number.
+  This removes version drift between the changelog, the tag-triggered GHCR
+  publication flow, and the `curl | sh` quickstart path.
+
 ## [0.9.18] - 2026-04-09
 
 ### Fixed
