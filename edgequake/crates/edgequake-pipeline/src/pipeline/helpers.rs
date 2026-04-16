@@ -252,7 +252,7 @@ impl Pipeline {
             if !texts.is_empty() {
                 let safe_texts = guard_for_embedding(&texts, max_chars);
                 let embeddings = provider
-                    .embed(&safe_texts)
+                    .embed_batched(&safe_texts)
                     .await
                     .map_err(|e| crate::error::PipelineError::EmbeddingError(e.to_string()))?;
 
@@ -277,7 +277,7 @@ impl Pipeline {
             if !all_entity_texts.is_empty() {
                 let safe_entity_texts = guard_for_embedding(&all_entity_texts, max_chars);
                 let all_embeddings = provider
-                    .embed(&safe_entity_texts)
+                    .embed_batched(&safe_entity_texts)
                     .await
                     .map_err(|e| crate::error::PipelineError::EmbeddingError(e.to_string()))?;
 
@@ -323,7 +323,7 @@ impl Pipeline {
             if !all_relationship_texts.is_empty() {
                 let safe_rel_texts = guard_for_embedding(&all_relationship_texts, max_chars);
                 let all_embeddings = provider
-                    .embed(&safe_rel_texts)
+                    .embed_batched(&safe_rel_texts)
                     .await
                     .map_err(|e| crate::error::PipelineError::EmbeddingError(e.to_string()))?;
 

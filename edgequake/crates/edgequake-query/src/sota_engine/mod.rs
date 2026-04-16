@@ -336,6 +336,26 @@ impl SOTAQueryEngine {
     pub fn config(&self) -> &SOTAQueryConfig {
         &self.config
     }
+
+    /// Get the engine's default embedding provider.
+    ///
+    /// WHY: Callers that override only part of the query config (e.g., LLM provider
+    /// but not embedding) need access to the default embedding provider to pass it
+    /// to `query_with_full_config`. Without this accessor, callers cannot construct
+    /// a full config call when they only have partial overrides.
+    /// @implements FIX-168
+    pub fn default_embedding_provider(&self) -> Arc<dyn EmbeddingProvider> {
+        self.embedding_provider.clone()
+    }
+
+    /// Get the engine's default vector storage.
+    ///
+    /// WHY: Same rationale as `default_embedding_provider` — callers with partial
+    /// overrides need the default vector storage to construct full config calls.
+    /// @implements FIX-168
+    pub fn default_vector_storage(&self) -> Arc<dyn VectorStorage> {
+        self.vector_storage.clone()
+    }
 }
 
 mod prompt;

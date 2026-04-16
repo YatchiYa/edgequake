@@ -288,6 +288,10 @@ impl EmbeddingProvider for SafetyLimitedEmbeddingProviderWrapper {
         self.inner.max_tokens()
     }
 
+    fn max_batch_size(&self) -> usize {
+        self.inner.max_batch_size()
+    }
+
     async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
         let result = tokio::time::timeout(self.config.timeout, self.inner.embed(texts)).await;
 
@@ -350,12 +354,46 @@ pub fn create_safe_llm_provider(provider_name: &str, model: &str) -> Result<Arc<
 }
 
 /// Create a safety-limited embedding provider from workspace configuration.
+///
+/// FIX #163: When the provider is OpenAI-compatible, checks `EDGEQUAKE_EMBEDDING_BASE_URL`
+/// and `EDGEQUAKE_EMBEDDING_API_KEY` before falling back to standard env vars.
 pub fn create_safe_embedding_provider(
     provider_name: &str,
     model: &str,
     dimension: usize,
 ) -> Result<Arc<dyn EmbeddingProvider>> {
-    let inner = ProviderFactory::create_embedding_provider(provider_name, model, dimension)?;
+    // FIX #163: If embedding-specific env vars are set and provider is openai-compatible,
+    // create the provider with dedicated credentials.
+    let is_openai_compatible = matches!(
+        provider_name.to_ascii_lowercase().as_str(),
+        "openai" | "openai-compatible" | "openai_compatible"
+    );
+
+    let inner = if is_openai_compatible {
+        let embed_base_url = std::env::var("EDGEQUAKE_EMBEDDING_BASE_URL").ok();
+        let embed_api_key = std::env::var("EDGEQUAKE_EMBEDDING_API_KEY").ok();
+
+        if embed_base_url.is_some() || embed_api_key.is_some() {
+            let api_key = embed_api_key
+                .or_else(|| std::env::var("OPENAI_API_KEY").ok())
+                .unwrap_or_default();
+            let base_url = embed_base_url.or_else(|| std::env::var("OPENAI_BASE_URL").ok());
+
+            let provider: Arc<dyn EmbeddingProvider> = if let Some(base_url) = base_url {
+                Arc::new(
+                    edgequake_llm::OpenAIProvider::compatible(api_key, base_url)
+                        .with_embedding_model(model),
+                )
+            } else {
+                Arc::new(edgequake_llm::OpenAIProvider::new(api_key).with_embedding_model(model))
+            };
+            provider
+        } else {
+            ProviderFactory::create_embedding_provider(provider_name, model, dimension)?
+        }
+    } else {
+        ProviderFactory::create_embedding_provider(provider_name, model, dimension)?
+    };
     let config = SafetyLimitsConfig::from_env();
 
     tracing::info!(

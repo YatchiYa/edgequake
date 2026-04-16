@@ -114,6 +114,9 @@ impl AppState {
             std::env::set_var("OPENAI_API_KEY", key.into());
         }
 
+        // FIX #166: Recognize EDGEQUAKE_CHAT_* as aliases for the standard LLM env vars.
+        super::provider_setup::apply_chat_env_aliases();
+
         // Use ProviderFactory for auto-detection
         let (llm_provider, embedding_provider) =
             ProviderFactory::from_env().expect("Failed to create LLM provider from environment");
