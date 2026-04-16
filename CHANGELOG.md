@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.10.2] - 2026-04-16
+
+### Fixed
+
+- **Ollama Cloud returns 401 Unauthorized (#162).** Upgraded to `edgequake-llm`
+  v0.6.0 which adds `OLLAMA_API_KEY` environment variable for Bearer token
+  authentication with Ollama Cloud and authenticated Ollama endpoints.
+
+- **Embedding deserialization fails with HuggingFace TEI (#164).** Upgraded to
+  `edgequake-llm` v0.6.0 which replaces async-openai's strict embedding types
+  with lenient HTTP deserialization, supporting HuggingFace TEI, Infinity,
+  FastEmbed, and other OpenAI-compatible embedding servers.
+
+- **Embedding batch size not configurable (#165).** Upgraded to `edgequake-llm`
+  v0.6.0 and switched pipeline helpers to `embed_batched()`. Large embedding
+  requests are now auto-chunked per `EDGEQUAKE_EMBEDDING_BATCH_SIZE` (default
+  2048), preventing 422 errors from servers with batch limits.
+
+### Changed
+
+- Upgraded `edgequake-llm` from 0.5.1 to 0.6.0.
+- Upgraded `edgequake-pdf2md` from 0.8.0 to 0.8.1 (diamond dependency resolution).
+- Pipeline embedding helpers (`helpers.rs`) now use `embed_batched()` for all
+  chunk, entity, and relationship embeddings.
+- `SafetyLimitedEmbeddingProviderWrapper` forwards `max_batch_size()`.
+
 ## [0.10.1] - 2026-04-11
 
 ### Fixed
