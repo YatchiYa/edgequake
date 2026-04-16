@@ -91,7 +91,7 @@ pub(crate) fn default_vision_model_for_provider(provider: &str) -> String {
         "openai" => env_vision.unwrap_or_else(|| "gpt-4.1-nano".to_string()),
         _ => env_vision
             .or(env_llm)
-            .unwrap_or_else(|| "gemma3:latest".to_string()),
+            .unwrap_or_else(|| "gemma4:latest".to_string()),
     }
 }
 

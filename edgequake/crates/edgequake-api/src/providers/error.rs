@@ -159,7 +159,7 @@ mod tests {
     fn test_non_api_key_error() {
         let err = ProviderResolutionError::from_creation_error(
             "ollama",
-            "gemma3:12b",
+            "gemma4:latest",
             "Connection refused",
         );
         assert!(!err.is_api_key_error());
