@@ -365,29 +365,53 @@ async fn check_provider_health(
             } else {
                 "http://localhost:1234"
             };
-            let base_url = provider.base_url.as_deref().unwrap_or(default_url);
+            // FIX #167: Honor OLLAMA_HOST env var for health checks in Docker.
+            // WHY: In Docker deployments, Ollama runs on the host and is reached via
+            // `host.docker.internal:11434`. The static `models.toml` config has
+            // `base_url: http://localhost:11434` which is unreachable from inside
+            // the container. The runtime uses OLLAMA_HOST but the health check didn't.
+            let env_url = if provider.provider_type == ProviderType::Ollama {
+                std::env::var("OLLAMA_HOST").ok()
+            } else {
+                None
+            };
+            let base_url = env_url
+                .as_deref()
+                .or(provider.base_url.as_deref())
+                .unwrap_or(default_url);
             let host_port = base_url
                 .strip_prefix("http://")
                 .unwrap_or(base_url)
                 .strip_prefix("https://")
                 .unwrap_or(base_url);
 
-            match std::net::TcpStream::connect_timeout(
-                &host_port
-                    .parse()
-                    .unwrap_or_else(|_| "127.0.0.1:11434".parse().unwrap()),
+            // FIX #167: Use DNS-aware connection instead of SocketAddr::parse().
+            // WHY: `host.docker.internal:11434` is a hostname, not an IP address.
+            // SocketAddr::parse() silently fails on hostnames, falling back to
+            // 127.0.0.1:11434 which defeats the purpose of OLLAMA_HOST.
+            let connect_result = tokio::time::timeout(
                 std::time::Duration::from_secs(2),
-            ) {
-                Ok(_) => ProviderHealthResponse {
+                tokio::net::TcpStream::connect(host_port),
+            )
+            .await;
+
+            match connect_result {
+                Ok(Ok(_)) => ProviderHealthResponse {
                     available: true,
                     latency_ms: start.elapsed().as_millis() as u64,
                     error: None,
                     checked_at: checked_at.to_string(),
                 },
-                Err(e) => ProviderHealthResponse {
+                Ok(Err(e)) => ProviderHealthResponse {
                     available: false,
                     latency_ms: start.elapsed().as_millis() as u64,
                     error: Some(format!("Connection failed: {}", e)),
+                    checked_at: checked_at.to_string(),
+                },
+                Err(_) => ProviderHealthResponse {
+                    available: false,
+                    latency_ms: start.elapsed().as_millis() as u64,
+                    error: Some("Connection timed out".to_string()),
                     checked_at: checked_at.to_string(),
                 },
             }

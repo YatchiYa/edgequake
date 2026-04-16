@@ -3,12 +3,10 @@
 //! @implements SPEC-032: Ollama/LM Studio provider support - Dimension validation
 //! @iteration OODA Loop #4 - Phase 6C
 
-use edgequake_api::state::AppState;
-use serial_test::serial;
-
 #[cfg(feature = "postgres")]
 mod postgres_tests {
-    use super::*;
+    use edgequake_api::state::AppState;
+    use serial_test::serial;
 
     /// Helper: Check if PostgreSQL is available
     fn is_postgres_available() -> bool {
