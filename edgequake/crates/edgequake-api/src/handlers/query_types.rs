@@ -485,7 +485,7 @@ mod tests {
             tokens_used: Some(124),
             tokens_per_second: Some(248.0),
             llm_provider: Some("ollama".to_string()),
-            llm_model: Some("gemma3:12b".to_string()),
+            llm_model: Some("gemma4:latest".to_string()),
         };
         let json = serde_json::to_value(&stats).unwrap();
         assert_eq!(json["total_time_ms"], 650);
@@ -495,7 +495,7 @@ mod tests {
         assert_eq!(json["tokens_used"], 124);
         assert_eq!(json["tokens_per_second"], 248.0);
         assert_eq!(json["llm_provider"], "ollama");
-        assert_eq!(json["llm_model"], "gemma3:12b");
+        assert_eq!(json["llm_model"], "gemma4:latest");
     }
 
     #[test]

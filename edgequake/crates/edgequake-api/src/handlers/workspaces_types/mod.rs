@@ -35,7 +35,7 @@ mod tests {
             slug: Some("acme".to_string()),
             description: Some("Test tenant".to_string()),
             plan: Some("pro".to_string()),
-            default_llm_model: Some("gemma3:12b".to_string()),
+            default_llm_model: Some("gemma4:latest".to_string()),
             default_llm_provider: Some("ollama".to_string()),
             default_embedding_model: Some("text-embedding-3-small".to_string()),
             default_embedding_provider: Some("openai".to_string()),
@@ -47,7 +47,7 @@ mod tests {
         let json = serde_json::to_string(&req).unwrap();
         assert!(json.contains("Acme Corp"));
         assert!(json.contains("acme"));
-        assert!(json.contains("gemma3:12b"));
+        assert!(json.contains("gemma4:latest"));
         assert!(json.contains("ollama"));
     }
 
@@ -120,9 +120,9 @@ mod tests {
             plan: "free".to_string(),
             is_active: true,
             max_workspaces: 10, // SPEC-028: Updated to reflect new Free tier limit
-            default_llm_model: "gemma3:12b".to_string(),
+            default_llm_model: "gemma4:latest".to_string(),
             default_llm_provider: "ollama".to_string(),
-            default_llm_full_id: "ollama/gemma3:12b".to_string(),
+            default_llm_full_id: "ollama/gemma4:latest".to_string(),
             default_embedding_model: "text-embedding-3-small".to_string(),
             default_embedding_provider: "openai".to_string(),
             default_embedding_dimension: 1536,
@@ -136,7 +136,7 @@ mod tests {
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("Test Tenant"));
         assert!(json.contains("\"max_workspaces\":10")); // SPEC-028
-        assert!(json.contains("\"default_llm_model\":\"gemma3:12b\""));
+        assert!(json.contains("\"default_llm_model\":\"gemma4:latest\""));
         assert!(json.contains("\"default_embedding_dimension\":1536"));
     }
 
@@ -151,9 +151,9 @@ mod tests {
             is_active: true,
             max_documents: Some(100),
             // SPEC-032: LLM configuration
-            llm_model: "gemma3:12b".to_string(),
+            llm_model: "gemma4:latest".to_string(),
             llm_provider: "ollama".to_string(),
-            llm_full_id: "ollama/gemma3:12b".to_string(),
+            llm_full_id: "ollama/gemma4:latest".to_string(),
             // SPEC-032: Embedding configuration
             embedding_model: "text-embedding-3-small".to_string(),
             embedding_provider: "openai".to_string(),
@@ -170,8 +170,8 @@ mod tests {
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("Test Workspace"));
         assert!(json.contains("A test workspace"));
-        assert!(json.contains("\"llm_model\":\"gemma3:12b\""));
-        assert!(json.contains("\"llm_full_id\":\"ollama/gemma3:12b\""));
+        assert!(json.contains("\"llm_model\":\"gemma4:latest\""));
+        assert!(json.contains("\"llm_full_id\":\"ollama/gemma4:latest\""));
         assert!(json.contains("\"embedding_model\":\"text-embedding-3-small\""));
         assert!(json.contains("\"embedding_dimension\":1536"));
     }

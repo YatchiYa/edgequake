@@ -49,7 +49,7 @@ mod tests {
         assert_eq!(opts.vision_model(), "gpt-4.1-nano");
 
         opts.vision_provider = Some("ollama".to_string());
-        assert_eq!(opts.vision_model(), "gemma3:latest");
+        assert_eq!(opts.vision_model(), "gemma4:latest");
 
         opts.vision_model = Some("custom-model".to_string());
         assert_eq!(opts.vision_model(), "custom-model");
@@ -59,7 +59,7 @@ mod tests {
         // Ollama-only deployments. Default to "ollama" (safe, no API key needed).
         let default_opts = PdfUploadOptions::default();
         // In test environments EDGEQUAKE_LLM_PROVIDER is unset, so defaults to "ollama"
-        // which gives "gemma3:latest" as the default model.
+        // which gives "gemma4:latest" as the default model.
         let resolved_provider = default_opts.resolved_vision_provider();
         assert_ne!(
             resolved_provider, "openai",

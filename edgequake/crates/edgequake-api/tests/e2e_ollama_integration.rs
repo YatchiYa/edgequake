@@ -62,7 +62,7 @@ async fn is_ollama_available() -> bool {
                 let has_llm = models.iter().any(|m| {
                     m.get("name")
                         .and_then(|n| n.as_str())
-                        .map(|n| n.starts_with("gemma3"))
+                        .map(|n| n.starts_with("gemma4") || n.starts_with("gemma3"))
                         .unwrap_or(false)
                 });
 

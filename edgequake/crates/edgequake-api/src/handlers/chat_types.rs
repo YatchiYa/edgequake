@@ -263,14 +263,14 @@ mod tests {
             tokens_used: 150,
             duration_ms: 1200,
             llm_provider: Some("ollama".to_string()),
-            llm_model: Some("gemma3:12b".to_string()),
+            llm_model: Some("gemma4:latest".to_string()),
         };
         let json = serde_json::to_value(&event).unwrap();
         assert_eq!(json["type"], "done");
         assert_eq!(json["tokens_used"], 150);
         assert_eq!(json["duration_ms"], 1200);
         assert_eq!(json["llm_provider"], "ollama");
-        assert_eq!(json["llm_model"], "gemma3:12b");
+        assert_eq!(json["llm_model"], "gemma4:latest");
     }
 
     #[test]

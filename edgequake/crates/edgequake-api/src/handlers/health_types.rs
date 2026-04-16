@@ -301,7 +301,7 @@ mod tests {
         let providers = ProvidersHealth {
             llm: LlmProviderHealth {
                 name: "ollama".to_string(),
-                model: "gemma3:latest".to_string(),
+                model: "gemma4:latest".to_string(),
             },
             embedding: EmbeddingProviderHealth {
                 name: "ollama".to_string(),
@@ -311,7 +311,7 @@ mod tests {
         };
         let json = serde_json::to_string(&providers).unwrap();
         assert!(json.contains("\"name\":\"ollama\""));
-        assert!(json.contains("\"model\":\"gemma3:latest\""));
+        assert!(json.contains("\"model\":\"gemma4:latest\""));
         assert!(json.contains("\"model\":\"nomic-embed-text\""));
         assert!(json.contains("\"dimension\":768"));
     }
