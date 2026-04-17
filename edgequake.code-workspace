@@ -4,10 +4,10 @@
 			"path": "."
 		},
 		{
-			"path": "../edgeparse"
+			"path": "../edgequake-llm"
 		},
 		{
-			"path": "../edgecrab"
+			"path": "../edgequake-pdf2md"
 		}
 	],
 	"settings": {
@@ -32,9 +32,6 @@
 				"approve": true,
 				"matchCommandLine": true
 			}
-		},
-		"files.watcherExclude": {
-			"**/target": true
 		}
 	}
 }

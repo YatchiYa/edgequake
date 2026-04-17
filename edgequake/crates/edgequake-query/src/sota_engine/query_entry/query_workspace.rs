@@ -74,11 +74,14 @@ impl SOTAQueryEngine {
         let mut stats = crate::engine::QueryStats::default();
 
         // Step 1: Extract keywords (with caching)
+        // WHY: Use extract_with_llm_override(None) so the default LLM is used explicitly.
+        // This keeps the call consistent with query_with_full_config which also uses
+        // extract_with_llm_override. Using extract_extended would bypass the override path.
         let raw_keywords = if self.config.use_keyword_extraction {
             let kw_start = std::time::Instant::now();
             let kw = self
                 .keyword_extractor
-                .extract_extended(&request.query)
+                .extract_with_llm_override(&request.query, None)
                 .await?;
             tracing::debug!(
                 query = %request.query,

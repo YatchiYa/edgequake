@@ -304,6 +304,17 @@ export async function updateWorkspace(
   return api.put<Workspace>(`/workspaces/${workspaceId}`, data);
 }
 
+/**
+ * Delete a workspace and cascade delete all associated data.
+ *
+ * FIX #171: Workspace deletion from UI.
+ *
+ * @param workspaceId - Workspace ID to delete
+ */
+export async function deleteWorkspace(workspaceId: string): Promise<void> {
+  return api.delete(`/workspaces/${workspaceId}`);
+}
+
 // ============================================================================
 // Rebuild Embeddings (SPEC-032)
 // ============================================================================
@@ -1920,6 +1931,7 @@ export const edgequakeApi = {
   getWorkspace,
   getWorkspaceStats,
   createWorkspace,
+  deleteWorkspace,
 
   // Documents
   getDocuments,
@@ -2017,3 +2029,4 @@ export default edgequakeApi;
 export * from "./conversations";
 export * from "./folders";
 export * from "./query-keys";
+

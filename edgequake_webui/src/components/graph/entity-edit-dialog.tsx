@@ -42,9 +42,10 @@ import {
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import { MergeTargetCombobox } from './merge-target-combobox';
 
-// Common entity types
-const ENTITY_TYPES = [
+// Default entity types (fallback when workspace has no custom config)
+const DEFAULT_ENTITY_TYPES = [
   'PERSON',
   'ORGANIZATION',
   'LOCATION',
@@ -78,6 +79,15 @@ interface EntityEditDialogProps {
    * Optional list of other entities for merge target selection
    */
   otherEntities?: Array<{ id: string; label: string; entity_type: string }>;
+  /**
+   * Controls whether the dialog is being used for editing or explicit merge.
+   */
+  mode?: 'edit' | 'merge';
+  /**
+   * FIX #174: Workspace-configured entity types.
+   * Falls back to DEFAULT_ENTITY_TYPES when empty/undefined.
+   */
+  workspaceEntityTypes?: string[];
 }
 
 interface MergeConflictState {
@@ -92,6 +102,8 @@ export function EntityEditDialog({
   onOpenChange,
   onUpdated,
   otherEntities = [],
+  mode = 'edit',
+  workspaceEntityTypes,
 }: EntityEditDialogProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -107,19 +119,50 @@ export function EntityEditDialog({
     show: false,
     newLabel: '',
   });
+  const [selectedMergeTargetId, setSelectedMergeTargetId] = useState('');
+
+  const mergeCandidates = otherEntities.filter((entity) => entity.id !== node?.id);
+  const selectedMergeTarget = mergeCandidates.find(
+    (entity) => entity.id === selectedMergeTargetId
+  );
+  const getEntityMergeName = useCallback((entity: GraphNode | Entity | null | undefined) => {
+    if (!entity) return '';
+
+    if ('entity_name' in entity && entity.entity_name) {
+      return entity.entity_name;
+    }
+
+    return entity.label || entity.id;
+  }, []);
+
+  const getCandidateMergeName = useCallback(
+    (candidate?: { id: string; label: string; entity_type: string }) =>
+      candidate?.label || candidate?.id || '',
+    []
+  );
+
+  const availableEntityTypes = Array.from(
+    new Set(
+      [
+        ...(workspaceEntityTypes?.length ? workspaceEntityTypes : DEFAULT_ENTITY_TYPES),
+        entityType,
+      ].filter(Boolean)
+    )
+  );
 
   // Initialize form when node changes
   useEffect(() => {
     if (node) {
       const nodeLabel = node.label || '';
       const nodeType = 'entity_type' in node ? node.entity_type : node.node_type;
-      
+
       // Intentional: Form initialization from props is standard React pattern
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setLabel(nodeLabel);
       setOriginalLabel(nodeLabel);
       setDescription(node.description || '');
       setEntityType(nodeType || '');
+      setSelectedMergeTargetId('');
     }
   }, [node]);
 
@@ -177,18 +220,23 @@ export function EntityEditDialog({
   const mergeMutation = useMutation({
     mutationFn: () =>
       mergeEntities({
-        source_ids: [node!.id],
-        target_label: mergeConflict.existingEntity?.label || label,
-        target_type: mergeConflict.existingEntity?.entity_type || entityType,
+        source_entity: getEntityMergeName(node),
+        target_entity:
+          getCandidateMergeName(mergeConflict.existingEntity) ||
+          getCandidateMergeName(selectedMergeTarget),
+        merge_strategy: 'prefer_target',
       }),
     onSuccess: (result) => {
+      const mergedRelationshipCount =
+        result.merge_details?.relationships_merged ?? result.merged_count ?? 0;
+
       toast.success(
         t('entity.mergeSuccess', 'Entities merged successfully'),
         {
           description: t(
             'entity.mergeSuccessDesc',
-            'Merged {{count}} entities into one.',
-            { count: result.merged_count }
+            'Merge completed and {{count}} relationship(s) were preserved.',
+            { count: mergedRelationshipCount }
           ),
         }
       );
@@ -209,6 +257,20 @@ export function EntityEditDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (mode === 'merge') {
+      if (!selectedMergeTarget) {
+        toast.error(t('entity.selectMergeTarget', 'Select an entity to merge into'));
+        return;
+      }
+
+      setMergeConflict({
+        show: true,
+        existingEntity: selectedMergeTarget,
+        newLabel: selectedMergeTarget.label,
+      });
+      return;
+    }
 
     const updates: Record<string, string> = {};
 
@@ -260,99 +322,157 @@ export function EntityEditDialog({
   return (
     <>
       <Dialog open={open && !mergeConflict.show} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg flex flex-col max-h-[90dvh]">
           <DialogHeader className="space-y-3">
             <DialogTitle className="flex items-center gap-2 text-lg">
               <div className="p-2 rounded-lg bg-primary/10">
-                <Edit className="h-5 w-5 text-primary" />
+                {mode === 'merge' ? (
+                  <GitMerge className="h-5 w-5 text-primary" />
+                ) : (
+                  <Edit className="h-5 w-5 text-primary" />
+                )}
               </div>
-              {t('entity.edit', 'Edit Entity')}
+              {mode === 'merge'
+                ? t('entity.merge', 'Merge Entities')
+                : t('entity.edit', 'Edit Entity')}
             </DialogTitle>
             <DialogDescription className="text-sm leading-relaxed">
-              {t(
-                'entity.editDescription',
-                'Modify the entity properties. Renaming may trigger a merge if another entity with the same name exists.'
-              )}
+              {mode === 'merge'
+                ? t(
+                    'entity.mergeSelectDescription',
+                    'Choose the target entity. The current entity will be merged into it, combining relationships and metadata.'
+                  )
+                : t(
+                    'entity.editDescription',
+                    'Modify the entity properties. Renaming may trigger a merge if another entity with the same name exists.'
+                  )}
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleSubmit} className="space-y-5 mt-2">
-            {/* Editable Fields Section */}
-            <div className="space-y-4">
+          <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden mt-2">
+            <ScrollArea className="flex-1 min-h-0 pr-1">
+            <div className="space-y-5 pb-2">
               <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                <Edit className="h-3.5 w-3.5" />
-                {t('entity.editableFields', 'Editable Fields')}
-              </div>
-              
-              {/* Label */}
-              <div className="space-y-2">
-                <Label htmlFor="entity-label" className="flex items-center gap-1">
-                  {t('entity.label', 'Entity Name')}
-                  <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="entity-label"
-                  value={label}
-                  onChange={(e) => setLabel(e.target.value)}
-                  placeholder={t('entity.labelPlaceholder', 'Entity name')}
-                  className="font-medium h-10"
-                  required
-                />
-                {label !== originalLabel && (
-                  <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5 bg-amber-50 dark:bg-amber-900/20 px-2 py-1.5 rounded-md">
-                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                    {t(
-                      'entity.renameWarning',
-                      'Renaming may trigger a merge if a duplicate exists'
-                    )}
-                  </p>
-                )}
+                {mode === 'merge'
+                  ? t('entity.mergeTarget', 'Merge Target')
+                  : t('entity.editableFields', 'Editable Fields')}
               </div>
 
-              {/* Entity Type */}
-              <div className="space-y-2">
-                <Label htmlFor="entity-type">
-                  {t('entity.type', 'Entity Type')}
-                </Label>
-                <Select value={entityType} onValueChange={setEntityType}>
-                  <SelectTrigger id="entity-type" className="h-10">
-                    <SelectValue
-                      placeholder={t('entity.selectType', 'Select type...')}
+              {mode === 'merge' ? (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="merge-target-combobox">
+                      {t('entity.selectTargetEntity', 'Select target entity')}
+                    </Label>
+                    <MergeTargetCombobox
+                      candidates={mergeCandidates}
+                      value={selectedMergeTargetId}
+                      onChange={setSelectedMergeTargetId}
+                      currentLabel={originalLabel}
+                      currentType={entityType}
+                      disabled={isLoading}
                     />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ENTITY_TYPES.map((type) => (
-                      <SelectItem key={type} value={type}>
-                        {type}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+                  </div>
 
-              {/* Description */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="entity-description">
-                    {t('entity.description', 'Description')}
-                  </Label>
-                  <span className="text-xs text-muted-foreground">
-                    {description.length}/500
-                  </span>
-                </div>
-                <Textarea
-                  id="entity-description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value.slice(0, 500))}
-                  placeholder={t(
-                    'entity.descriptionPlaceholder',
-                    'A brief description of this entity...'
+                  {selectedMergeTarget && (
+                    <div className="rounded-lg border border-border/50 bg-muted/30 p-3 text-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <Badge variant="outline">{originalLabel}</Badge>
+                        <GitMerge className="h-4 w-4 text-muted-foreground" />
+                        <Badge variant="outline">{selectedMergeTarget.label}</Badge>
+                      </div>
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        {t(
+                          'entity.mergePreview',
+                          'The current entity will be merged into the selected target entity after confirmation.'
+                        )}
+                      </p>
+                    </div>
                   )}
-                  rows={3}
-                  maxLength={500}
-                  className="resize-none"
-                />
-              </div>
+
+                  {mergeCandidates.length === 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {t('entity.noMergeCandidates', 'No other entities are available to merge with.')}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <>
+                  {/* Label */}
+                  <div className="space-y-2">
+                    <Label htmlFor="entity-label" className="flex items-center gap-1">
+                      {t('entity.label', 'Entity Name')}
+                      <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="entity-label"
+                      value={label}
+                      onChange={(e) => setLabel(e.target.value)}
+                      placeholder={t('entity.labelPlaceholder', 'Entity name')}
+                      className="h-10 font-medium"
+                      required
+                    />
+                    {label !== originalLabel && (
+                      <p className="flex items-center gap-1.5 rounded-md bg-amber-50 px-2 py-1.5 text-xs text-amber-600 dark:bg-amber-900/20 dark:text-amber-400">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        {t(
+                          'entity.renameWarning',
+                          'Renaming may trigger a merge if a duplicate exists'
+                        )}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Entity Type */}
+                  <div className="space-y-2">
+                    <Label htmlFor="entity-type">
+                      {t('entity.type', 'Entity Type')}
+                    </Label>
+                    <Select value={entityType} onValueChange={setEntityType}>
+                      <SelectTrigger
+                        id="entity-type"
+                        aria-label={t('entity.type', 'Entity Type')}
+                        className="h-10"
+                      >
+                        <SelectValue
+                          placeholder={t('entity.selectType', 'Select type...')}
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableEntityTypes.map((type) => (
+                          <SelectItem key={type} value={type}>
+                            {type}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Description */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="entity-description">
+                        {t('entity.description', 'Description')}
+                      </Label>
+                      <span className="text-xs text-muted-foreground">
+                        {description.length}/500
+                      </span>
+                    </div>
+                    <Textarea
+                      id="entity-description"
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value.slice(0, 500))}
+                      placeholder={t(
+                        'entity.descriptionPlaceholder',
+                        'A brief description of this entity...'
+                      )}
+                      rows={3}
+                      maxLength={500}
+                      className="resize-none"
+                    />
+                  </div>
+                </>
+              )}
             </div>
 
             <Separator />
@@ -365,66 +485,70 @@ export function EntityEditDialog({
                   {t('entity.systemProperties', 'System Properties')}
                   <span className="text-[10px] font-normal normal-case">(read-only)</span>
                 </div>
-                <ScrollArea className="max-h-[160px]">
-                  <div className="bg-muted/30 rounded-lg p-3 space-y-2 border border-border/50">
-                    {Object.entries(node.properties)
-                      .filter(([key]) => !['description', 'entity_type'].includes(key))
-                      .map(([key, value]) => {
-                        const stringValue = String(value);
-                        const isLongValue = stringValue.length > 24;
-                        
-                        return (
-                          <div key={key} className="flex items-center justify-between gap-2 text-xs group">
-                            <span className="text-muted-foreground min-w-[80px]">{key}</span>
-                            <div className="flex items-center gap-1.5 flex-1 justify-end min-w-0">
-                              <span 
-                                className="font-mono text-[10px] bg-background/50 px-2 py-1 rounded truncate max-w-[180px]"
-                                title={stringValue}
-                              >
-                                {isLongValue ? `${stringValue.slice(0, 24)}...` : stringValue}
-                              </span>
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                                      onClick={() => handleCopyValue(stringValue, key)}
-                                    >
-                                      <Copy className="h-3 w-3" />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>Copy {key}</TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            </div>
+                <div className="bg-muted/30 rounded-lg p-3 space-y-2 border border-border/50">
+                  {Object.entries(node.properties)
+                    .filter(([key]) => !['description', 'entity_type'].includes(key))
+                    .map(([key, value]) => {
+                      const stringValue = String(value);
+                      const isLongValue = stringValue.length > 24;
+                      
+                      return (
+                        <div key={key} className="flex items-center justify-between gap-2 text-xs group">
+                          <span className="min-w-20 text-muted-foreground">{key}</span>
+                          <div className="flex items-center gap-1.5 flex-1 justify-end min-w-0">
+                            <span 
+                              className="max-w-45 truncate rounded bg-background/50 px-2 py-1 font-mono text-[10px]"
+                              title={stringValue}
+                            >
+                              {isLongValue ? `${stringValue.slice(0, 24)}...` : stringValue}
+                            </span>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
+                                    aria-label={`Copy ${key}`}
+                                    onClick={() => handleCopyValue(stringValue, key)}
+                                  >
+                                    <Copy className="h-3 w-3" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Copy {key}</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           </div>
-                        );
-                      })}
-                  </div>
-                </ScrollArea>
+                        </div>
+                      );
+                    })}
+                </div>
               </div>
             )}
+            </ScrollArea>
 
-            <DialogFooter className="gap-2 sm:gap-2 pt-2">
+            <DialogFooter className="gap-2 sm:gap-2 pt-3 mt-2 border-t">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => onOpenChange(false)}
                 disabled={isLoading}
-                className="min-w-[100px]"
+                className="min-w-25"
               >
                 {t('common.cancel', 'Cancel')}
               </Button>
-              <Button 
-                type="submit" 
-                disabled={!hasChanges || isLoading}
-                className="min-w-[120px]"
+              <Button
+                type="submit"
+                disabled={mode === 'merge' ? !selectedMergeTarget || isLoading : !hasChanges || isLoading}
+                className="min-w-30"
               >
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {isLoading ? t('common.saving', 'Saving...') : t('common.save', 'Save Changes')}
+                {isLoading
+                  ? t('common.saving', 'Saving...')
+                  : mode === 'merge'
+                    ? t('entity.merge', 'Merge Entities')
+                    : t('common.save', 'Save Changes')}
               </Button>
             </DialogFooter>
           </form>
@@ -440,13 +564,20 @@ export function EntityEditDialog({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-yellow-600">
               <AlertTriangle className="h-5 w-5" />
-              {t('entity.mergeConflict', 'Merge Conflict')}
+              {mode === 'merge'
+                ? t('entity.confirmMerge', 'Confirm Merge')
+                : t('entity.mergeConflict', 'Merge Conflict')}
             </DialogTitle>
             <DialogDescription>
-              {t(
-                'entity.mergeConflictDescription',
-                'An entity with this name already exists. Would you like to merge them?'
-              )}
+              {mode === 'merge'
+                ? t(
+                    'entity.confirmMergeDescription',
+                    'Review the target below and confirm the merge. Relationships and metadata will be preserved where possible.'
+                  )
+                : t(
+                    'entity.mergeConflictDescription',
+                    'An entity with this name already exists. Would you like to merge them?'
+                  )}
             </DialogDescription>
           </DialogHeader>
 
@@ -472,7 +603,7 @@ export function EntityEditDialog({
             <p className="text-sm text-muted-foreground">
               {t(
                 'entity.mergeExplanation',
-                'Merging will combine all relationships and properties from both entities into one. This action cannot be undone.'
+                'Merging will combine the relationships and properties from both entities into one canonical record. This action cannot be undone.'
               )}
             </p>
           </div>
@@ -480,6 +611,7 @@ export function EntityEditDialog({
           <DialogFooter className="gap-2">
             <Button
               variant="outline"
+              autoFocus
               onClick={handleCancelMerge}
               disabled={mergeMutation.isPending}
             >

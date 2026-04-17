@@ -18,9 +18,9 @@
 
 import { getTenantContext, setTenantContext } from "@/lib/api/client";
 import {
-  LEGACY_STORAGE_KEYS,
-  STORE_VERSIONS,
-  ZUSTAND_STORAGE_KEYS,
+    LEGACY_STORAGE_KEYS,
+    STORE_VERSIONS,
+    ZUSTAND_STORAGE_KEYS,
 } from "@/lib/storage-keys";
 import type { Tenant, Workspace } from "@/types";
 import { create } from "zustand";
@@ -43,7 +43,7 @@ interface TenantActions {
   setTenants: (tenants: Tenant[]) => void;
   setWorkspaces: (workspaces: Workspace[]) => void;
   selectTenant: (tenantId: string) => void;
-  selectWorkspace: (workspaceId: string) => void;
+  selectWorkspace: (workspaceId: string | null) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   reset: () => void;
@@ -89,7 +89,7 @@ export const useTenantStore = create<TenantStore>()(
         const { selectedTenantId } = get();
         set({ selectedWorkspaceId: workspaceId });
         if (selectedTenantId) {
-          setTenantContext(selectedTenantId, workspaceId);
+          setTenantContext(selectedTenantId, workspaceId ?? undefined);
         }
       },
 

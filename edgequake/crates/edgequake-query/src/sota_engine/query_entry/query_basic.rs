@@ -436,11 +436,14 @@ impl SOTAQueryEngine {
         let mut stats = crate::engine::QueryStats::default();
 
         // Step 1: Extract keywords (with caching)
+        // FIX #168: Use extract_with_llm_override so keyword extraction uses the same
+        // LLM provider as answer generation. Without this, keyword extraction used the
+        // server default (e.g., Ollama) while answers used the user's choice (e.g., OpenAI).
         let raw_keywords = if self.config.use_keyword_extraction {
             let kw_start = std::time::Instant::now();
             let kw = self
                 .keyword_extractor
-                .extract_extended(&request.query)
+                .extract_with_llm_override(&request.query, Some(llm_provider.clone()))
                 .await?;
             tracing::debug!(
                 query = %request.query,

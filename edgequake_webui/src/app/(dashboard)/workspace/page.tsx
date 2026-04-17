@@ -11,22 +11,32 @@
  */
 'use client';
 
+import {
+  PdfParserBackendField,
+  type PdfParserBackendChoice,
+} from '@/components/settings/pdf-parser-backend-field';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  PdfParserBackendField,
-  type PdfParserBackendChoice,
-} from '@/components/settings/pdf-parser-backend-field';
 import { EmbeddingModelSelector, type EmbeddingSelection } from '@/components/workspace/embedding-model-selector';
 import { LLMModelSelector, type LLMSelection } from '@/components/workspace/llm-model-selector';
 import { RebuildEmbeddingsButton } from '@/components/workspace/rebuild-embeddings-button';
 import { RebuildKnowledgeGraphButton } from '@/components/workspace/rebuild-knowledge-graph-button';
 import { useWorkspaceTenantValidator } from '@/hooks/use-workspace-tenant-validator';
-import { getWorkspace, getWorkspaceStats, updateWorkspace } from '@/lib/api/edgequake';
+import { deleteWorkspace, getWorkspace, getWorkspaceStats, updateWorkspace } from '@/lib/api/edgequake';
 import { fetchProvidersHealth } from '@/lib/api/models';
 import {
   getWorkspaceEmbeddingSelection,
@@ -37,26 +47,28 @@ import {
 import { useTenantStore } from '@/stores/use-tenant-store';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-    AlertTriangle,
-    Brain,
-    CheckCircle,
-    Cloud,
-    Cpu,
-    Database,
-    Eye,
-    FileText,
-    FolderKanban,
-    Gauge,
-    GitBranch,
-    Layers,
-    RefreshCw,
-    Save,
-    Server,
-    Settings,
-    Sparkles,
-    Tags,
-    XCircle,
+  AlertTriangle,
+  Brain,
+  CheckCircle,
+  Cloud,
+  Cpu,
+  Database,
+  Eye,
+  FileText,
+  FolderKanban,
+  Gauge,
+  GitBranch,
+  Layers,
+  RefreshCw,
+  Save,
+  Server,
+  Settings,
+  Sparkles,
+  Tags,
+  Trash2,
+  XCircle,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -80,7 +92,8 @@ function getProviderIcon(providerId: string | undefined) {
 export default function WorkspacePage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const { selectedTenantId, selectedWorkspaceId } = useTenantStore();
+  const router = useRouter();
+  const { selectedTenantId, selectedWorkspaceId, selectWorkspace } = useTenantStore();
 
   // Auto-validate workspace-tenant consistency and fix mismatches
   useWorkspaceTenantValidator({
@@ -99,6 +112,27 @@ export default function WorkspacePage() {
   const [selectedVisionLLM, setSelectedVisionLLM] = useState<LLMSelection | undefined>(undefined);
   const [selectedPdfParserBackend, setSelectedPdfParserBackend] =
     useState<PdfParserBackendChoice>('none');
+  // FIX #171: Delete workspace state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // FIX #171: Delete workspace handler
+  const handleDeleteWorkspace = async () => {
+    if (!selectedWorkspaceId) return;
+    setIsDeleting(true);
+    try {
+      await deleteWorkspace(selectedWorkspaceId);
+      selectWorkspace(null);
+      queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+      toast.success(t('workspace.deleted', 'Workspace deleted'));
+      router.push('/');
+    } catch (err) {
+      toast.error(`Failed to delete workspace: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  };
 
   // Fetch workspace data
   const {
@@ -315,7 +349,7 @@ export default function WorkspacePage() {
 
   if (!selectedTenantId || !selectedWorkspaceId) {
     return (
-      <ScrollArea className="h-[calc(100vh-theme(spacing.20))]">
+      <ScrollArea className="h-full">
         <div className="container mx-auto p-6">
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
@@ -335,7 +369,7 @@ export default function WorkspacePage() {
 
   if (isLoadingWorkspace) {
     return (
-      <ScrollArea className="h-[calc(100vh-theme(spacing.20))]">
+      <ScrollArea className="h-full">
         <div className="container mx-auto p-6 space-y-6">
           <Skeleton className="h-8 w-64" />
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -351,7 +385,7 @@ export default function WorkspacePage() {
 
   if (!workspace) {
     return (
-      <ScrollArea className="h-[calc(100vh-theme(spacing.20))]">
+      <ScrollArea className="h-full">
         <div className="container mx-auto p-6">
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
@@ -377,10 +411,10 @@ export default function WorkspacePage() {
   }
 
   return (
-    <ScrollArea className="h-[calc(100vh-theme(spacing.20))]">
+    <ScrollArea className="h-full">
       <div className="container mx-auto p-6 space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="space-y-1">
           <div className="flex items-center gap-3">
             <FolderKanban className="h-8 w-8 text-primary" />
@@ -393,7 +427,7 @@ export default function WorkspacePage() {
             <p className="text-muted-foreground">{workspace.description}</p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
           <Button
             variant="outline"
             size="sm"
@@ -830,7 +864,7 @@ export default function WorkspacePage() {
           {/* Pending rebuild alert */}
           {pendingRebuild && (pendingRebuild.embeddings || pendingRebuild.extraction || pendingRebuild.vision) && (
             <div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
-              <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
               <div className="flex-1">
                 <p className="font-medium text-amber-800 dark:text-amber-200">
                   {t('workspace.rebuildPending', 'Rebuild Required')}
@@ -881,11 +915,11 @@ export default function WorkspacePage() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">{t('workspace.id', 'Workspace ID')}</span>
-                    <code className="text-xs bg-muted px-2 py-1 rounded">{workspace.id}</code>
+                    <code className="max-w-[60%] break-all rounded bg-muted px-2 py-1 text-right text-xs">{workspace.id}</code>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">{t('workspace.slug', 'Slug')}</span>
-                    <code className="text-xs bg-muted px-2 py-1 rounded">{workspace.slug || '-'}</code>
+                    <code className="max-w-[60%] break-all rounded bg-muted px-2 py-1 text-right text-xs">{workspace.slug || '-'}</code>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">{t('workspace.created', 'Created')}</span>
@@ -911,7 +945,53 @@ export default function WorkspacePage() {
           <CheckCircle className="h-4 w-4 text-green-500" />
           {t('workspace.statusReady', 'Workspace ready for queries and document ingestion')}
         </div>
+
+        {/* FIX #171: Danger Zone — Delete Workspace */}
+        <Card className="border-destructive/50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="h-5 w-5" />
+              {t('workspace.dangerZone', 'Danger Zone')}
+            </CardTitle>
+            <CardDescription>
+              {t('workspace.deleteWarning', 'Deleting a workspace permanently removes all documents, entities, relationships, and embeddings. This action cannot be undone.')}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button
+              variant="destructive"
+              className="w-full sm:w-auto"
+              aria-label={t('workspace.deleteButtonAria', 'Delete workspace {{name}}', { name: workspace.name })}
+              onClick={() => setShowDeleteConfirm(true)}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              {t('workspace.deleteButton', 'Delete this workspace')}
+            </Button>
+          </CardContent>
+        </Card>
       </div>
+
+      {/* Delete Workspace Confirmation */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('workspace.deleteConfirmTitle', 'Delete Workspace')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('workspace.deleteConfirmDesc', 'Are you sure you want to delete workspace "{name}"? This will permanently remove all documents, entities, relationships, and embeddings.', { name: workspace?.name || '' })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel autoFocus disabled={isDeleting}>{t('common.cancel', 'Cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteWorkspace}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? t('workspace.deleting', 'Deleting...') : t('workspace.deleteConfirmButton', 'Delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </ScrollArea>
   );
 }

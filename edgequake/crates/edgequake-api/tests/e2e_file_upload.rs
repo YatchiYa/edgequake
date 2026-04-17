@@ -15,6 +15,9 @@ use edgequake_api::{AppState, Server, ServerConfig};
 use serde_json::Value;
 use tower::ServiceExt;
 
+const TEST_TENANT_ID: &str = "e2e-file-upload-tenant";
+const TEST_WORKSPACE_ID: &str = "e2e-file-upload-workspace";
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
@@ -299,6 +302,8 @@ async fn test_upload_file_deduplication() {
                     "Content-Type",
                     format!("multipart/form-data; boundary={}", boundary),
                 )
+                .header("X-Tenant-ID", TEST_TENANT_ID)
+                .header("X-Workspace-ID", TEST_WORKSPACE_ID)
                 .body(Body::from(body))
                 .unwrap(),
         )
@@ -324,28 +329,30 @@ async fn test_upload_file_deduplication() {
                     "Content-Type",
                     format!("multipart/form-data; boundary={}", boundary2),
                 )
+                .header("X-Tenant-ID", TEST_TENANT_ID)
+                .header("X-Workspace-ID", TEST_WORKSPACE_ID)
                 .body(Body::from(body2))
                 .unwrap(),
         )
         .await
         .unwrap();
 
-    // WHY: Duplicate content returns 200 OK (not 201) since no new resource created
-    assert_eq!(response2.status(), StatusCode::OK);
+    // WHY: Duplicate content now triggers clean re-ingestion, so a fresh resource is created.
+    assert_eq!(response2.status(), StatusCode::CREATED);
     let body2 = extract_json(response2).await;
     let doc_id2 = body2.get("document_id").and_then(|v| v.as_str()).unwrap();
     let hash2 = body2.get("content_hash").and_then(|v| v.as_str()).unwrap();
 
-    // Same hash
+    // Same hash proves the duplicate content was detected.
     assert_eq!(hash1, hash2);
 
-    // Same document ID (deduplicated)
-    assert_eq!(doc_id1, doc_id2);
+    // A new document ID confirms the old copy was replaced by a clean re-ingestion.
+    assert_ne!(doc_id1, doc_id2);
 
-    // Status should indicate duplicate
+    // Final status should be the normal processed success path.
     assert_eq!(
         body2.get("status").and_then(|v| v.as_str()),
-        Some("duplicate")
+        Some("processed")
     );
 }
 

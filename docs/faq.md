@@ -22,12 +22,12 @@ Think of it as a smarter search engine that understands concepts, not just keywo
 
 ### How is EdgeQuake different from vector-only RAG?
 
-| Aspect                  | Vector-Only RAG     | EdgeQuake (Graph-RAG)    |
-| ----------------------- | ------------------- | ------------------------ |
-| Retrieval               | Semantic similarity | Semantic + structural    |
-| Multi-hop               | ❌ Single retrieval | ✅ Follows relationships |
-| Context                 | Flat chunks         | Connected entities       |
-| "What connects X to Y?" | Cannot answer       | Native query type        |
+| Aspect                  | Vector-Only RAG     | EdgeQuake (Graph-RAG)   |
+| ----------------------- | ------------------- | ----------------------- |
+| Retrieval               | Semantic similarity | Semantic + structural   |
+| Multi-hop               | ❌ Single retrieval  | ✅ Follows relationships |
+| Context                 | Flat chunks         | Connected entities      |
+| "What connects X to Y?" | Cannot answer       | Native query type       |
 
 ### What's the relationship to LightRAG?
 
@@ -234,8 +234,8 @@ EdgeQuake doesn't include built-in authentication. Secure with:
 
 ### What document formats are supported?
 
-| Format     | Support                      |
-| ---------- | ---------------------------- |
+| Format     | Support                     |
+| ---------- | --------------------------- |
 | Plain text | ✅ Full                      |
 | Markdown   | ✅ Full                      |
 | PDF        | ✅ Full (with edgequake-pdf) |
@@ -244,8 +244,8 @@ EdgeQuake doesn't include built-in authentication. Secure with:
 
 ### What LLM providers are supported?
 
-| Provider     | Support    | Notes               |
-| ------------ | ---------- | ------------------- |
+| Provider     | Support   | Notes               |
+| ------------ | --------- | ------------------- |
 | OpenAI       | ✅ Full    | GPT-4o, GPT-4o-mini |
 | Ollama       | ✅ Full    | Any local model     |
 | LM Studio    | ✅ Full    | OpenAI-compatible   |
@@ -367,6 +367,75 @@ cargo clippy
 # Format before commit
 cargo fmt
 ```
+
+---
+
+## Vision & PDF Processing
+
+### Why is my PDF failing with "Vision extraction timed out" or "Circuit breaker tripped"?
+
+This almost always means the **vision model does not match the vision provider**.
+For example, `EDGEQUAKE_VISION_MODEL=gpt-4.1-nano` paired with `EDGEQUAKE_LLM_PROVIDER=ollama`
+will fail because Ollama cannot serve OpenAI models.
+
+**Diagnose** — check the effective config endpoint:
+
+```bash
+curl -s http://localhost:8080/api/v1/config/effective | jq '.areas[] | select(.name == "Vision")'
+```
+
+If `has_mismatch` is `true`, the response explains exactly which env var is wrong
+and how to fix it.
+
+**Fix** — pick one:
+
+| Option | Action                                                                                     |
+| ------ | ------------------------------------------------------------------------------------------ |
+| A      | **Unset** the mismatched env var so the default takes over: `unset EDGEQUAKE_VISION_MODEL` |
+| B      | **Change the provider** to match the model: `EDGEQUAKE_VISION_PROVIDER=openai`             |
+| C      | **Change the model** to match the provider: `EDGEQUAKE_VISION_MODEL=gemma4:latest`         |
+
+Then restart the backend.
+
+### How does EdgeQuake decide which vision provider and model to use?
+
+The resolution chain (highest priority first):
+
+1. **Per-request form field** (`vision_provider` / `vision_model` in upload)
+2. **`EDGEQUAKE_VISION_PROVIDER`** / **`EDGEQUAKE_VISION_MODEL`** env vars
+3. **`EDGEQUAKE_VISION_LLM_PROVIDER`** / **`EDGEQUAKE_VISION_LLM_MODEL`** env vars
+4. **`EDGEQUAKE_DEFAULT_LLM_PROVIDER`** / **`EDGEQUAKE_DEFAULT_LLM_MODEL`** env vars
+5. **`EDGEQUAKE_LLM_PROVIDER`** / **`EDGEQUAKE_LLM_MODEL`** env vars
+6. **Built-in default**: `ollama` / `gemma4:latest`
+
+At each step, the resolved model is checked for compatibility with the resolved
+provider. Incompatible combinations (e.g. `gpt-4.1-nano` on `ollama`) are
+automatically skipped with a warning log, and the next candidate is tried.
+
+### Can I use a different model for vision than for text extraction?
+
+**Yes**. Set the vision-specific env vars:
+
+```bash
+# Main LLM for entity extraction
+EDGEQUAKE_DEFAULT_LLM_PROVIDER=ollama
+EDGEQUAKE_DEFAULT_LLM_MODEL=gemma4:latest
+
+# Separate vision model for PDF OCR
+EDGEQUAKE_VISION_PROVIDER=openai
+EDGEQUAKE_VISION_MODEL=gpt-4.1-nano
+OPENAI_API_KEY=sk-...
+```
+
+### Where can I see the active configuration in the UI?
+
+Open **Settings → Configuration Explainability** panel. It shows:
+
+- The resolved provider and model for each area (LLM, Embedding, Vision)
+- The full resolution chain (which env var won)
+- Mismatch warnings with actionable fix instructions (auto-expanded)
+
+The same data is available via `GET /api/v1/config/effective`.
 
 ---
 

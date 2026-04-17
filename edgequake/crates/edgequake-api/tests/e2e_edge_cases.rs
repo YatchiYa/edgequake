@@ -22,6 +22,9 @@ use serde_json::{json, Value};
 use std::time::Duration;
 use tower::ServiceExt;
 
+const TEST_TENANT_ID: &str = "e2e-edge-cases-tenant";
+const TEST_WORKSPACE_ID: &str = "e2e-edge-cases-workspace";
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -35,7 +38,7 @@ where
         .map_err(|_| format!("Test exceeded timeout of {:?}", duration))
 }
 
-fn create_test_app() -> axum::Router {
+fn create_test_server() -> Server {
     let config = ServerConfig {
         host: "127.0.0.1".to_string(),
         port: 0,
@@ -43,8 +46,11 @@ fn create_test_app() -> axum::Router {
         enable_compression: false,
         enable_swagger: true,
     };
-    let server = Server::new(config, AppState::test_state());
-    server.build_router()
+    Server::new(config, AppState::test_state())
+}
+
+fn create_test_app() -> axum::Router {
+    create_test_server().build_router()
 }
 
 async fn extract_json(response: axum::response::Response) -> Value {
@@ -62,6 +68,8 @@ async fn upload_raw(app: &axum::Router, body: &str) -> (StatusCode, Value) {
                 .method("POST")
                 .uri("/api/v1/documents")
                 .header("Content-Type", "application/json")
+                .header("X-Tenant-ID", TEST_TENANT_ID)
+                .header("X-Workspace-ID", TEST_WORKSPACE_ID)
                 .body(Body::from(body.to_owned()))
                 .unwrap(),
         )
@@ -360,7 +368,7 @@ async fn test_content_only_newlines_tabs() {
 #[tokio::test]
 async fn test_rapid_sequential_uploads() {
     let result = with_timeout(Duration::from_secs(30), async {
-        let app = create_test_app();
+        let server = create_test_server();
 
         let mut doc_ids = Vec::new();
         for i in 0..10 {
@@ -373,22 +381,25 @@ async fn test_rapid_sequential_uploads() {
                 "title": format!("Rapid {}", i)
             });
 
+            let app = server.build_router();
             let (status, body) = upload_json(&app, &payload).await;
             assert_eq!(status, StatusCode::CREATED, "Upload {} should succeed", i);
             doc_ids.push(body["document_id"].as_str().unwrap().to_string());
         }
 
-        // All IDs should be unique
+        // All IDs should be unique.
         let unique: std::collections::HashSet<&str> = doc_ids.iter().map(|s| s.as_str()).collect();
         assert_eq!(doc_ids.len(), unique.len(), "All doc IDs should be unique");
 
-        // List documents should show them all
+        // List documents should reflect the shared server state.
+        let app = server.build_router();
         let list_resp = app
-            .clone()
             .oneshot(
                 Request::builder()
                     .method("GET")
                     .uri("/api/v1/documents")
+                    .header("X-Tenant-ID", TEST_TENANT_ID)
+                    .header("X-Workspace-ID", TEST_WORKSPACE_ID)
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -400,8 +411,9 @@ async fn test_rapid_sequential_uploads() {
         let docs = list["documents"].as_array().unwrap();
         assert!(
             docs.len() >= 10,
-            "Should have at least 10 documents, got {}",
-            docs.len()
+            "Should have at least 10 documents, got {}: {}",
+            docs.len(),
+            list
         );
 
         doc_ids

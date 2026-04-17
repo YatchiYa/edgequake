@@ -182,15 +182,16 @@ fn test_tokenizer_consistency() {
     assert!(long_tokens > medium_tokens);
 }
 
-/// Test truncation config defaults match LightRAG.
+/// Test truncation config defaults match the current LightRAG-style token budgets.
 #[test]
 fn test_truncation_config_defaults() {
     let config = TruncationConfig::default();
 
-    // Should match LightRAG defaults
-    assert_eq!(config.max_entity_tokens, 8000);
-    assert_eq!(config.max_relation_tokens, 8000);
-    assert_eq!(config.max_total_tokens, 16000);
+    // WHY: the query engine now reserves 10k each for entities and relationships,
+    // leaving the remaining 10k for chunks under a 30k total context budget.
+    assert_eq!(config.max_entity_tokens, 10000);
+    assert_eq!(config.max_relation_tokens, 10000);
+    assert_eq!(config.max_total_tokens, 30000);
 }
 
 /// Test balance_context reduces all categories proportionally.

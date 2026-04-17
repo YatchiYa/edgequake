@@ -1,10 +1,10 @@
 //! OODA-14: Re-indexing E2E tests.
 //!
 //! Verifies document re-indexing workflows:
-//! 1. Upload same content → returns "duplicate" with 200 OK
+//! 1. Upload same content → triggers clean re-ingestion with 201 Created
 //! 2. Reprocess endpoint with force=true → re-processes document
 //! 3. Delete + re-upload → creates fresh document
-//! 4. Upload with different title but same content → duplicate
+//! 4. Upload with different title but same content → still re-ingests by content
 
 use axum::{
     body::Body,
@@ -89,7 +89,7 @@ const DIFFERENT_CONTENT: &str = "Albert Einstein developed the theory of relativ
 // Duplicate Detection Tests
 // ============================================================================
 
-/// OODA-14: Uploading same content twice returns "duplicate" with 200 OK.
+/// OODA-14: Uploading same content twice now performs a clean re-ingestion.
 #[tokio::test]
 async fn test_duplicate_detection_same_content() {
     let result = with_timeout(Duration::from_secs(30), async {
@@ -99,27 +99,28 @@ async fn test_duplicate_detection_same_content() {
         let (status1, body1) = upload_text(&app, TEST_CONTENT, "First Upload").await;
         assert_eq!(status1, StatusCode::CREATED, "First upload should succeed");
         assert_eq!(body1["status"].as_str(), Some("processed"));
-        let doc_id = body1["document_id"].as_str().unwrap().to_string();
+        let doc_id_1 = body1["document_id"].as_str().unwrap().to_string();
 
-        // Second upload with same content
+        // Second upload with same content should still succeed via re-ingestion.
         let (status2, body2) = upload_text(&app, TEST_CONTENT, "Second Upload").await;
         assert_eq!(
             status2,
-            StatusCode::OK,
-            "Duplicate should return 200 OK, not 201"
+            StatusCode::CREATED,
+            "Duplicate re-ingestion should return 201 Created"
         );
         assert_eq!(
             body2["status"].as_str(),
-            Some("duplicate"),
-            "Should return 'duplicate' status"
-        );
-        assert_eq!(
-            body2["duplicate_of"].as_str(),
-            Some(doc_id.as_str()),
-            "Should reference original doc"
+            Some("processed"),
+            "Re-ingested duplicate should finish on the normal processed path"
         );
 
-        (doc_id, body2)
+        let doc_id_2 = body2["document_id"].as_str().unwrap().to_string();
+        assert_ne!(
+            doc_id_1, doc_id_2,
+            "Re-ingestion should replace the old copy with a fresh document id"
+        );
+
+        (doc_id_1, body2)
     })
     .await;
 
@@ -157,22 +158,26 @@ async fn test_different_content_not_duplicate() {
     assert!(result.is_ok(), "Different: {}", result.unwrap_err());
 }
 
-/// OODA-14: Same content with different title is still duplicate (content-based).
+/// OODA-14: Same content with different title is still detected by content and re-ingested.
 #[tokio::test]
 async fn test_duplicate_ignores_title_difference() {
     let result = with_timeout(Duration::from_secs(30), async {
         let app = create_test_app();
 
-        let (status1, _) = upload_text(&app, TEST_CONTENT, "Title A").await;
+        let (status1, body1) = upload_text(&app, TEST_CONTENT, "Title A").await;
         assert_eq!(status1, StatusCode::CREATED);
+        let doc_id_1 = body1["document_id"].as_str().unwrap().to_string();
 
         let (status2, body2) = upload_text(&app, TEST_CONTENT, "Title B").await;
         assert_eq!(
             status2,
-            StatusCode::OK,
-            "Same content with different title is still duplicate"
+            StatusCode::CREATED,
+            "Same content with different title should re-ingest successfully"
         );
-        assert_eq!(body2["status"].as_str(), Some("duplicate"));
+        assert_eq!(body2["status"].as_str(), Some("processed"));
+
+        let doc_id_2 = body2["document_id"].as_str().unwrap().to_string();
+        assert_ne!(doc_id_1, doc_id_2, "Re-ingestion should create a fresh id");
 
         body2
     })
