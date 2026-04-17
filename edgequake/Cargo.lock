@@ -1715,9 +1715,9 @@ dependencies = [
 
 [[package]]
 name = "edgequake-llm"
-version = "0.6.1"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a195c82bf3b2d1727a54bbd59673f741012dfde2a282f4717ad1504862764481"
+checksum = "5924658622fc28069b15dcf49108576798e23964af53cc069ae36b1c795ddfb2"
 dependencies = [
  "anyhow",
  "async-openai",
