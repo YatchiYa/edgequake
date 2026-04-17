@@ -75,11 +75,11 @@ curl -X POST http://localhost:8080/api/v1/documents/upload \
 
 **Solution**: Choose the correct endpoint and format:
 
-| Upload Type | Endpoint                        | Content-Type               | Format        |
-| ----------- | ------------------------------- | -------------------------- | ------------- |
-| Text/JSON   | `/api/v1/documents`             | `application/json`         | `-d '{...}'`  |
-| Files       | `/api/v1/documents/upload`      | `multipart/form-data`      | `-F "file=@"` |
-| Batch Files | `/api/v1/documents/upload/batch`| `multipart/form-data`      | `-F "files=@"`|
+| Upload Type | Endpoint                         | Content-Type          | Format         |
+| ----------- | -------------------------------- | --------------------- | -------------- |
+| Text/JSON   | `/api/v1/documents`              | `application/json`    | `-d '{...}'`   |
+| Files       | `/api/v1/documents/upload`       | `multipart/form-data` | `-F "file=@"`  |
+| Batch Files | `/api/v1/documents/upload/batch` | `multipart/form-data` | `-F "files=@"` |
 
 **Examples**:
 
@@ -641,11 +641,11 @@ Sections with mismatches are auto-expanded and show remediation options.
 
 **Fix** — choose one:
 
-| Option | Command | When to use |
-|--------|---------|-------------|
-| A | `unset EDGEQUAKE_VISION_MODEL` | You want to use the default model for your provider |
-| B | `EDGEQUAKE_VISION_PROVIDER=openai` + set `OPENAI_API_KEY` | You want to use the OpenAI model |
-| C | `EDGEQUAKE_VISION_MODEL=gemma4:latest` | You want to stay on Ollama |
+| Option | Command                                                   | When to use                                         |
+| ------ | --------------------------------------------------------- | --------------------------------------------------- |
+| A      | `unset EDGEQUAKE_VISION_MODEL`                            | You want to use the default model for your provider |
+| B      | `EDGEQUAKE_VISION_PROVIDER=openai` + set `OPENAI_API_KEY` | You want to use the OpenAI model                    |
+| C      | `EDGEQUAKE_VISION_MODEL=gemma4:latest`                    | You want to stay on Ollama                          |
 
 Then restart the backend.
 

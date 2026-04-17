@@ -22,12 +22,12 @@ Think of it as a smarter search engine that understands concepts, not just keywo
 
 ### How is EdgeQuake different from vector-only RAG?
 
-| Aspect                  | Vector-Only RAG     | EdgeQuake (Graph-RAG)    |
-| ----------------------- | ------------------- | ------------------------ |
-| Retrieval               | Semantic similarity | Semantic + structural    |
-| Multi-hop               | ❌ Single retrieval | ✅ Follows relationships |
-| Context                 | Flat chunks         | Connected entities       |
-| "What connects X to Y?" | Cannot answer       | Native query type        |
+| Aspect                  | Vector-Only RAG     | EdgeQuake (Graph-RAG)   |
+| ----------------------- | ------------------- | ----------------------- |
+| Retrieval               | Semantic similarity | Semantic + structural   |
+| Multi-hop               | ❌ Single retrieval  | ✅ Follows relationships |
+| Context                 | Flat chunks         | Connected entities      |
+| "What connects X to Y?" | Cannot answer       | Native query type       |
 
 ### What's the relationship to LightRAG?
 
@@ -234,8 +234,8 @@ EdgeQuake doesn't include built-in authentication. Secure with:
 
 ### What document formats are supported?
 
-| Format     | Support                      |
-| ---------- | ---------------------------- |
+| Format     | Support                     |
+| ---------- | --------------------------- |
 | Plain text | ✅ Full                      |
 | Markdown   | ✅ Full                      |
 | PDF        | ✅ Full (with edgequake-pdf) |
@@ -244,8 +244,8 @@ EdgeQuake doesn't include built-in authentication. Secure with:
 
 ### What LLM providers are supported?
 
-| Provider     | Support    | Notes               |
-| ------------ | ---------- | ------------------- |
+| Provider     | Support   | Notes               |
+| ------------ | --------- | ------------------- |
 | OpenAI       | ✅ Full    | GPT-4o, GPT-4o-mini |
 | Ollama       | ✅ Full    | Any local model     |
 | LM Studio    | ✅ Full    | OpenAI-compatible   |
@@ -389,11 +389,11 @@ and how to fix it.
 
 **Fix** — pick one:
 
-| Option | Action |
-|--------|--------|
-| A | **Unset** the mismatched env var so the default takes over: `unset EDGEQUAKE_VISION_MODEL` |
-| B | **Change the provider** to match the model: `EDGEQUAKE_VISION_PROVIDER=openai` |
-| C | **Change the model** to match the provider: `EDGEQUAKE_VISION_MODEL=gemma4:latest` |
+| Option | Action                                                                                     |
+| ------ | ------------------------------------------------------------------------------------------ |
+| A      | **Unset** the mismatched env var so the default takes over: `unset EDGEQUAKE_VISION_MODEL` |
+| B      | **Change the provider** to match the model: `EDGEQUAKE_VISION_PROVIDER=openai`             |
+| C      | **Change the model** to match the provider: `EDGEQUAKE_VISION_MODEL=gemma4:latest`         |
 
 Then restart the backend.
 

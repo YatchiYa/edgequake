@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.10.3] - 2026-04-17
+
+### Fixed
+
+- **Entity merge UX is now searchable and accessible for large graphs.** The merge dialog now uses a ranked search combobox so users can quickly find the correct canonical entity even when the workspace contains many concepts and people.
+
+- **Human-readable entity merges now resolve correctly in the backend.** Merge requests using labels such as person and organization names are now resolved robustly instead of depending on brittle transient IDs or over-normalized keys.
+
+- **Graph merge semantics are preserved during deduplication.** When duplicate entities are merged, relationships are rewired onto the canonical node while preserving provenance and relation meaning through merged metadata.
+
+- **Provider/model diagnostics remain actionable and safe.** The effective configuration chain and compatibility checks now make it much easier to understand and fix mismatched vision or LLM settings.
+
+### Changed
+
+- Verified release dependency alignment with published crates: `edgequake-llm` v0.6.2 and `edgequake-pdf2md` v0.8.1.
+- Release metadata, quickstart examples, and pinned version references are now aligned to `0.10.3`.
+
 ## [0.10.2] - 2026-04-16
 
 ### Fixed

@@ -93,16 +93,20 @@ fn resolve_llm_chain() -> (Vec<ConfigLevel>, String, String) {
     let env_secondary_model = non_empty("EDGEQUAKE_LLM_MODEL");
 
     // ── Level 3: legacy aliases ──
-    let env_alias_provider = edgequake_core::env::first_non_empty_env_var(&["MODEL_PROVIDER", "CHAT_PROVIDER"]);
-    let env_alias_model = edgequake_core::env::first_non_empty_env_var(&["CHAT_MODEL", "LLM_MODEL"]);
+    let env_alias_provider =
+        edgequake_core::env::first_non_empty_env_var(&["MODEL_PROVIDER", "CHAT_PROVIDER"]);
+    let env_alias_model =
+        edgequake_core::env::first_non_empty_env_var(&["CHAT_MODEL", "LLM_MODEL"]);
 
     // ── Effective values (mirrors Workspace::default_llm_config) ──
-    let effective_provider = env_primary_provider.clone()
+    let effective_provider = env_primary_provider
+        .clone()
         .or_else(|| env_secondary_provider.clone())
         .or_else(|| env_alias_provider.clone())
         .unwrap_or_else(|| compiled_provider.clone());
 
-    let effective_model = env_primary_model.clone()
+    let effective_model = env_primary_model
+        .clone()
         .or_else(|| env_secondary_model.clone())
         .or_else(|| env_alias_model.clone())
         .unwrap_or_else(|| Workspace::default_model_for_provider(&effective_provider));
@@ -134,7 +138,10 @@ fn resolve_llm_chain() -> (Vec<ConfigLevel>, String, String) {
             provider: env_alias_provider.clone(),
             model: env_alias_model.clone(),
             active: active_level == "env_alias",
-            note: Some("Compatibility aliases: MODEL_PROVIDER / CHAT_PROVIDER / CHAT_MODEL / LLM_MODEL".to_string()),
+            note: Some(
+                "Compatibility aliases: MODEL_PROVIDER / CHAT_PROVIDER / CHAT_MODEL / LLM_MODEL"
+                    .to_string(),
+            ),
             source: Some("MODEL_PROVIDER | CHAT_PROVIDER | CHAT_MODEL | LLM_MODEL".to_string()),
         },
         ConfigLevel {
@@ -153,7 +160,9 @@ fn resolve_llm_chain() -> (Vec<ConfigLevel>, String, String) {
             model: env_primary_model.clone(),
             active: active_level == "env_primary",
             note: Some("Recommended primary variables. Overrides all other env vars.".to_string()),
-            source: Some("EDGEQUAKE_DEFAULT_LLM_PROVIDER | EDGEQUAKE_DEFAULT_LLM_MODEL".to_string()),
+            source: Some(
+                "EDGEQUAKE_DEFAULT_LLM_PROVIDER | EDGEQUAKE_DEFAULT_LLM_MODEL".to_string(),
+            ),
         },
     ];
 
@@ -172,11 +181,13 @@ fn resolve_embedding_chain() -> (Vec<ConfigLevel>, String, String) {
     let env_secondary_provider = non_empty("EDGEQUAKE_EMBEDDING_PROVIDER");
     let env_secondary_model = non_empty("EDGEQUAKE_EMBEDDING_MODEL");
 
-    let effective_provider = env_primary_provider.clone()
+    let effective_provider = env_primary_provider
+        .clone()
         .or_else(|| env_secondary_provider.clone())
         .unwrap_or_else(|| compiled_provider.clone());
 
-    let effective_model = env_primary_model.clone()
+    let effective_model = env_primary_model
+        .clone()
         .or_else(|| env_secondary_model.clone())
         .unwrap_or_else(|| Workspace::default_embedding_model_for_provider(&effective_provider));
 
@@ -214,7 +225,10 @@ fn resolve_embedding_chain() -> (Vec<ConfigLevel>, String, String) {
             model: env_primary_model,
             active: active_level == "env_primary",
             note: Some("Recommended primary variables. Overrides all other env vars.".to_string()),
-            source: Some("EDGEQUAKE_DEFAULT_EMBEDDING_PROVIDER | EDGEQUAKE_DEFAULT_EMBEDDING_MODEL".to_string()),
+            source: Some(
+                "EDGEQUAKE_DEFAULT_EMBEDDING_PROVIDER | EDGEQUAKE_DEFAULT_EMBEDDING_MODEL"
+                    .to_string(),
+            ),
         },
     ];
 
@@ -235,8 +249,8 @@ fn resolve_vision_chain() -> (Vec<ConfigLevel>, String, String) {
     // Read ALL vision-related env vars (matching types.rs resolution order)
     let env_vision_provider = non_empty("EDGEQUAKE_VISION_PROVIDER")
         .or_else(|| non_empty("EDGEQUAKE_VISION_LLM_PROVIDER"));
-    let env_vision_model = non_empty("EDGEQUAKE_VISION_MODEL")
-        .or_else(|| non_empty("EDGEQUAKE_VISION_LLM_MODEL"));
+    let env_vision_model =
+        non_empty("EDGEQUAKE_VISION_MODEL").or_else(|| non_empty("EDGEQUAKE_VISION_LLM_MODEL"));
 
     // Track which specific env var was the source for accurate diagnostics
     let vision_provider_source = if non_empty("EDGEQUAKE_VISION_PROVIDER").is_some() {
@@ -254,16 +268,22 @@ fn resolve_vision_chain() -> (Vec<ConfigLevel>, String, String) {
         "(inherited from LLM)"
     };
 
-    let effective_provider = env_vision_provider.clone()
+    let effective_provider = env_vision_provider
+        .clone()
         .unwrap_or_else(|| llm_effective_provider.clone());
 
-    let effective_model = env_vision_model.clone()
+    let effective_model = env_vision_model
+        .clone()
         .unwrap_or_else(|| llm_effective_model.clone());
 
     let active_level: String = if env_vision_provider.is_some() || env_vision_model.is_some() {
         "env_vision".to_string()
     } else {
-        llm_levels.iter().find(|l| l.active).map(|l| l.level.clone()).unwrap_or_else(|| "compiled_default".to_string())
+        llm_levels
+            .iter()
+            .find(|l| l.active)
+            .map(|l| l.level.clone())
+            .unwrap_or_else(|| "compiled_default".to_string())
     };
 
     let llm_fallback_note = format!(
@@ -296,20 +316,30 @@ fn resolve_vision_chain() -> (Vec<ConfigLevel>, String, String) {
             provider: env_vision_provider,
             model: env_vision_model,
             active: active_level == "env_vision",
-            note: Some("Dedicated vision override. Takes priority over all LLM settings.".to_string()),
-            source: Some(format!("{} | {}", vision_provider_source, vision_model_source)),
+            note: Some(
+                "Dedicated vision override. Takes priority over all LLM settings.".to_string(),
+            ),
+            source: Some(format!(
+                "{} | {}",
+                vision_provider_source, vision_model_source
+            )),
         },
     ];
 
     (levels, effective_provider, effective_model)
 }
 
-fn build_config_area(levels: Vec<ConfigLevel>, effective_provider: String, effective_model: String) -> ConfigAreaResponse {
+fn build_config_area(
+    levels: Vec<ConfigLevel>,
+    effective_provider: String,
+    effective_model: String,
+) -> ConfigAreaResponse {
     let has_mismatch = is_model_provider_mismatch(&effective_provider, &effective_model);
 
     // Find which env var set the mismatched value to give targeted remediation.
     let mismatch_description = if has_mismatch {
-        let source_var = levels.iter()
+        let source_var = levels
+            .iter()
             .find(|l| l.active)
             .and_then(|l| l.source.as_deref())
             .unwrap_or("unknown");

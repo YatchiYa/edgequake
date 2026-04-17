@@ -57,9 +57,9 @@ const BASE_GRAPH = {
 };
 
 type MergePayload = {
-  source_ids: string[];
-  target_label: string;
-  target_type: string;
+  source_entity: string;
+  target_entity: string;
+  merge_strategy?: string;
 };
 
 type MockState = {
@@ -308,7 +308,24 @@ test.describe('Mission 06 regression proof', () => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ merged_count: 2 }),
+        body: JSON.stringify({
+          status: 'success',
+          message: 'Entities merged successfully',
+          merged_entity: {
+            id: 'BETA',
+            entity_name: 'BETA',
+            entity_type: 'ORGANIZATION',
+            description: 'Beta entity',
+          },
+          merge_details: {
+            source_entity_id: 'ALPHA',
+            target_entity_id: 'BETA',
+            relationships_merged: 1,
+            duplicate_relationships_removed: 0,
+            description_strategy: 'prefer_target',
+            metadata_strategy: 'merge',
+          },
+        }),
       });
     });
 
@@ -351,17 +368,18 @@ test.describe('Mission 06 regression proof', () => {
     await page.getByRole('button', { name: /^Merge/i }).click();
     const mergeDialog = page.locator('[role="dialog"]').last();
     await expect(mergeDialog).toContainText(/merge entities/i);
-    await mergeDialog.locator('#merge-target').click();
+    await mergeDialog.getByTestId('merge-target-combobox').click();
+    await page.getByTestId('merge-target-search').fill('BETA');
     await page.getByRole('option', { name: /BETA/i }).click();
     await mergeDialog.getByRole('button', { name: /merge entities/i }).click();
 
     const mergeConfirmDialog = page.locator('[role="dialog"]').last();
-    await expect(mergeConfirmDialog).toContainText(/merge conflict/i);
+    await expect(mergeConfirmDialog).toContainText(/confirm merge/i);
     await mergeConfirmDialog.getByRole('button', { name: /merge entities/i }).click();
 
     await expect.poll(() => state.mergeCalls.length).toBe(1);
-    await expect.poll(() => state.mergeCalls[0]?.target_label).toBe('BETA');
-    await expect.poll(() => state.mergeCalls[0]?.source_ids).toEqual(['node-1']);
+    await expect.poll(() => state.mergeCalls[0]?.target_entity).toBe('BETA');
+    await expect.poll(() => state.mergeCalls[0]?.source_entity).toBe('ALPHA');
 
     await page.getByText('BETA').first().click();
     await page.getByRole('button', { name: /^Delete/i }).click();

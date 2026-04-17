@@ -55,7 +55,7 @@ make stack
 
 ```bash
 # Download a specific version's compose file
-EDGEQUAKE_VERSION=0.10.1
+EDGEQUAKE_VERSION=0.10.3
 curl -fsSL "https://raw.githubusercontent.com/raphaelmansuy/edgequake/edgequake-main/docker-compose.quickstart.yml" \
   -o docker-compose.quickstart.yml
 
@@ -111,30 +111,30 @@ OPENAI_BASE_URL=http://localhost:1234/v1 \
 
 ### Provider reference
 
-| Variable                 | Default                             | Description                            |
-| ------------------------ | ----------------------------------- | -------------------------------------- |
-| `EDGEQUAKE_LLM_PROVIDER` | `ollama`                            | `ollama`, `openai`, `lmstudio`, `mock` |
-| `EDGEQUAKE_LLM_MODEL`    | provider-specific default           | Main chat / extraction model           |
-| `EDGEQUAKE_EMBEDDING_PROVIDER` | same as LLM                   | Override embedding provider            |
-| `EDGEQUAKE_EMBEDDING_MODEL` | provider-specific default        | Embedding model override               |
-| `OPENAI_API_KEY`         | _(empty)_                           | Required when provider is `openai`     |
-| `OPENAI_BASE_URL`        | _(empty)_                           | Override OpenAI base URL               |
-| `OLLAMA_HOST`            | `http://host.docker.internal:11434` | Ollama server address                  |
-| `EDGEQUAKE_VERSION`      | `latest`                            | Pin to a specific release tag          |
-| `EDGEQUAKE_PORT`         | `8080`                              | API port                               |
-| `FRONTEND_PORT`          | `3000`                              | Web UI port                            |
-| `POSTGRES_PASSWORD`      | `edgequake_secret`                  | PostgreSQL password                    |
+| Variable                       | Default                             | Description                            |
+| ------------------------------ | ----------------------------------- | -------------------------------------- |
+| `EDGEQUAKE_LLM_PROVIDER`       | `ollama`                            | `ollama`, `openai`, `lmstudio`, `mock` |
+| `EDGEQUAKE_LLM_MODEL`          | provider-specific default           | Main chat / extraction model           |
+| `EDGEQUAKE_EMBEDDING_PROVIDER` | same as LLM                         | Override embedding provider            |
+| `EDGEQUAKE_EMBEDDING_MODEL`    | provider-specific default           | Embedding model override               |
+| `OPENAI_API_KEY`               | _(empty)_                           | Required when provider is `openai`     |
+| `OPENAI_BASE_URL`              | _(empty)_                           | Override OpenAI base URL               |
+| `OLLAMA_HOST`                  | `http://host.docker.internal:11434` | Ollama server address                  |
+| `EDGEQUAKE_VERSION`            | `latest`                            | Pin to a specific release tag          |
+| `EDGEQUAKE_PORT`               | `8080`                              | API port                               |
+| `FRONTEND_PORT`                | `3000`                              | Web UI port                            |
+| `POSTGRES_PASSWORD`            | `edgequake_secret`                  | PostgreSQL password                    |
 
 ### Migration aliases
 
 If you are migrating from a LightRAG-style environment file, EdgeQuake also accepts:
 
-| Alias | Canonical variable |
-| --- | --- |
-| `MODEL_PROVIDER` | `EDGEQUAKE_LLM_PROVIDER` |
-| `CHAT_MODEL` | `EDGEQUAKE_LLM_MODEL` |
-| `EMBEDDING_PROVIDER` | `EDGEQUAKE_EMBEDDING_PROVIDER` |
-| `EMBEDDING_MODEL` | `EDGEQUAKE_EMBEDDING_MODEL` |
+| Alias                 | Canonical variable              |
+| --------------------- | ------------------------------- |
+| `MODEL_PROVIDER`      | `EDGEQUAKE_LLM_PROVIDER`        |
+| `CHAT_MODEL`          | `EDGEQUAKE_LLM_MODEL`           |
+| `EMBEDDING_PROVIDER`  | `EDGEQUAKE_EMBEDDING_PROVIDER`  |
+| `EMBEDDING_MODEL`     | `EDGEQUAKE_EMBEDDING_MODEL`     |
 | `EMBEDDING_DIMENSION` | `EDGEQUAKE_EMBEDDING_DIMENSION` |
 
 Canonical `EDGEQUAKE_*` variables always win when both are set.
@@ -170,11 +170,11 @@ docker compose -f docker-compose.quickstart.yml restart api
 
 All images are multi-arch (`linux/amd64`, `linux/arm64`) and published to GitHub Container Registry on every tagged release.
 
-| Image                                      | Tag                | Description                        |
-| ------------------------------------------ | ------------------ | ---------------------------------- |
-| `ghcr.io/raphaelmansuy/edgequake`          | `latest` / `0.10.1` | Rust API server                    |
-| `ghcr.io/raphaelmansuy/edgequake-frontend` | `latest` / `0.10.1` | Next.js Web UI                     |
-| `ghcr.io/raphaelmansuy/edgequake-postgres` | `latest` / `0.10.1` | PostgreSQL + pgvector + Apache AGE |
+| Image                                      | Tag                 | Description                        |
+| ------------------------------------------ | ------------------- | ---------------------------------- |
+| `ghcr.io/raphaelmansuy/edgequake`          | `latest` / `0.10.3` | Rust API server                    |
+| `ghcr.io/raphaelmansuy/edgequake-frontend` | `latest` / `0.10.3` | Next.js Web UI                     |
+| `ghcr.io/raphaelmansuy/edgequake-postgres` | `latest` / `0.10.3` | PostgreSQL + pgvector + Apache AGE |
 
 Pull an image manually:
 ```bash

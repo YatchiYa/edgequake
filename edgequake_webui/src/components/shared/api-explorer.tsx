@@ -77,7 +77,7 @@ const endpoints: Endpoint[] = [
   { method: 'GET', path: '/entities/{id}', description: 'Get entity by ID', category: 'Entities' },
   { method: 'PATCH', path: '/entities/{id}', description: 'Update entity', category: 'Entities', body: '{\n  "label": "New Label",\n  "description": "Updated description"\n}' },
   { method: 'DELETE', path: '/entities/{id}', description: 'Delete entity', category: 'Entities' },
-  { method: 'POST', path: '/entities/merge', description: 'Merge entities', category: 'Entities', body: '{\n  "source_ids": ["id1", "id2"],\n  "target_label": "Merged Entity"\n}' },
+  { method: 'POST', path: '/entities/merge', description: 'Merge entities', category: 'Entities', body: '{\n  "source_entity": "SOURCE_ENTITY",\n  "target_entity": "TARGET_ENTITY",\n  "merge_strategy": "prefer_target"\n}' },
   
   // Relationships
   { method: 'GET', path: '/relationships', description: 'List all relationships', category: 'Relationships' },
