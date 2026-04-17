@@ -68,6 +68,7 @@ edgequake_webui/node_modules/
 edgequake_webui/.next/
 edgequake_webui/.turbo/
 edgequake_webui/playwright-report/
+edgequake_webui/test-results/
 edgequake_webui/build_pid.txt
 edgequake_webui/tsc_output.txt
 edgequake_webui/tsc_pid.txt
