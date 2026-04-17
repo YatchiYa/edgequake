@@ -103,7 +103,7 @@ function ConfigAreaSection({
   areaKey: string;
   area: ConfigAreaResponse;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(area.has_mismatch); // auto-expand if mismatch
   const meta = AREA_META[areaKey] ?? { title: areaKey, icon: null, description: '' };
 
   return (
@@ -153,13 +153,29 @@ function ConfigAreaSection({
             <span className="font-mono font-semibold">{area.effective_provider} / {area.effective_model}</span>
           </div>
 
-          {/* Mismatch banner */}
+          {/* Mismatch banner with remediation guidance */}
           {area.has_mismatch && area.mismatch_description && (
-            <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 px-3 py-2">
-              <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
-              <div>
-                <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">Configuration Mismatch</p>
-                <p className="text-xs text-amber-600 dark:text-amber-500 mt-0.5">{area.mismatch_description}</p>
+            <div className="rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 px-3 py-2 space-y-2">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+                <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">Configuration Mismatch Detected</p>
+              </div>
+              <div className="text-xs text-amber-600 dark:text-amber-500 space-y-1.5 ml-6">
+                {area.mismatch_description.split('\n').filter(Boolean).map((line, i) => {
+                  const trimmed = line.trim();
+                  if (trimmed.startsWith('•')) {
+                    return (
+                      <div key={i} className="flex items-start gap-1.5 pl-2">
+                        <span className="shrink-0 mt-0.5">•</span>
+                        <span className="font-mono text-[11px]">{trimmed.slice(1).trim()}</span>
+                      </div>
+                    );
+                  }
+                  if (trimmed.startsWith('How to fix')) {
+                    return <p key={i} className="font-semibold mt-1">{trimmed}</p>;
+                  }
+                  return <p key={i}>{trimmed}</p>;
+                })}
               </div>
             </div>
           )}
