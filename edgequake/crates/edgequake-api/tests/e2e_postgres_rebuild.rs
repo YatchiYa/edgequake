@@ -12,11 +12,8 @@
 //! @implements SPEC-032: PostgreSQL Provider Persistence
 //! @implements OODA-204-206: PostgreSQL Rebuild Tests
 
-use serial_test::serial;
-
 #[cfg(feature = "postgres")]
 mod postgres_rebuild_tests {
-    use super::*;
     use axum::{
         body::Body,
         http::{Request, StatusCode},
@@ -26,6 +23,7 @@ mod postgres_rebuild_tests {
     use edgequake_core::types::CreateWorkspaceRequest;
     use edgequake_core::Tenant;
     use serde_json::{json, Value};
+    use serial_test::serial;
     use tower::ServiceExt;
     use uuid::Uuid;
 

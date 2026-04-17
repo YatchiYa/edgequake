@@ -17,36 +17,48 @@
  */
 'use client';
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import {
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { deleteEntity } from '@/lib/api/edgequake';
 import { cn } from '@/lib/utils';
 import { useGraphStore } from '@/stores/use-graph-store';
+import { useSelectedWorkspace } from '@/stores/use-tenant-store';
 import type { GraphEdge, GraphNode } from '@/types';
 import { useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import {
-    ArrowLeft,
-    ArrowRight,
-    Calendar,
-    Check,
-    ChevronDown,
-    ChevronRight,
-    Copy,
-    Edit,
-    ExternalLink,
-    GitMerge,
-    Hash,
-    Info,
-    Link2,
-    Sparkles,
-    Trash2
+  ArrowLeft,
+  ArrowRight,
+  Calendar,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  Edit,
+  ExternalLink,
+  GitMerge,
+  Hash,
+  Info,
+  Link2,
+  Sparkles,
+  Trash2
 } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
@@ -134,11 +146,17 @@ function PropertyValue({
 export function NodeDetails({ node }: NodeDetailsProps) {
   const { focusNode, edges, nodes } = useGraphStore();
   const queryClient = useQueryClient();
+  // FIX #174: Read workspace entity types for the edit dialog dropdown
+  const workspace = useSelectedWorkspace();
   
   // Dialog states
   const [showEntityEdit, setShowEntityEdit] = useState(false);
+  const [entityDialogMode, setEntityDialogMode] = useState<'edit' | 'merge'>('edit');
   const [showRelationshipEdit, setShowRelationshipEdit] = useState(false);
   const [selectedEdge, setSelectedEdge] = useState<GraphEdge | null>(null);
+  // FIX #175: Delete confirmation dialog state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const connectedEdges = edges.filter(
     (e) => e.source === node.id || e.target === node.id
@@ -170,6 +188,21 @@ export function NodeDetails({ node }: NodeDetailsProps) {
     toast.success('Entity label copied to clipboard');
   };
 
+  // FIX #175: Delete entity handler
+  const handleDeleteEntity = async () => {
+    setIsDeleting(true);
+    try {
+      await deleteEntity(node.id);
+      queryClient.invalidateQueries({ queryKey: ['graph'] });
+      toast.success(`Entity "${node.label}" deleted`);
+      setShowDeleteConfirm(false);
+    } catch (err) {
+      toast.error(`Failed to delete entity: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const typeColor = TYPE_COLORS[node.node_type?.toUpperCase()] || TYPE_COLORS.DEFAULT;
 
   return (
@@ -192,6 +225,7 @@ export function NodeDetails({ node }: NodeDetailsProps) {
                     variant="ghost"
                     size="icon"
                     className="h-5 w-5 shrink-0 hover:bg-muted/80"
+                    aria-label={`Copy label for ${node.label}`}
                     onClick={handleCopyLabel}
                   >
                     <Copy className="h-3 w-3" />
@@ -222,7 +256,7 @@ export function NodeDetails({ node }: NodeDetailsProps) {
                     Description
                   </h5>
                 </div>
-                <p className="text-xs leading-relaxed text-foreground/90 break-words">{node.description}</p>
+                <p className="wrap-break-word text-xs leading-relaxed text-foreground/90">{node.description}</p>
               </div>
             )}
 
@@ -288,6 +322,7 @@ export function NodeDetails({ node }: NodeDetailsProps) {
                       variant="ghost"
                       size="icon"
                       className="h-4 w-4"
+                      aria-label={`Copy entity ID for ${node.label}`}
                       onClick={handleCopyId}
                     >
                       <Copy className="h-2.5 w-2.5" />
@@ -333,7 +368,7 @@ export function NodeDetails({ node }: NodeDetailsProps) {
                 </Badge>
               </div>
               <div className="bg-muted/20 rounded-md border border-border/20 overflow-hidden">
-                <div className="max-h-[160px] overflow-y-auto">
+                <div className="max-h-40 overflow-y-auto">
                   <div className="p-1.5 space-y-0.5">
                     {relatedNodes.length === 0 ? (
                       <p className="text-[10px] text-muted-foreground text-center py-4">
@@ -359,9 +394,11 @@ export function NodeDetails({ node }: NodeDetailsProps) {
                                 </div>
                               )}
                             </div>
-                            <Badge 
-                              variant="secondary" 
-                              className="text-[8px] font-normal shrink-0 max-w-[70px] truncate px-1 h-4 cursor-pointer hover:bg-secondary/80"
+                            <button
+                              type="button"
+                              className="h-4 max-w-17.5 shrink-0 truncate rounded-md bg-secondary px-1 text-[8px] font-normal text-secondary-foreground transition-colors hover:bg-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              aria-label={`Open relationship ${edge.relationship_type}`}
+                              title={`Open relationship ${edge.relationship_type}`}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setSelectedEdge(edge);
@@ -369,7 +406,7 @@ export function NodeDetails({ node }: NodeDetailsProps) {
                               }}
                             >
                               {edge.relationship_type}
-                            </Badge>
+                            </button>
                             <div 
                               className="flex items-center gap-1 flex-1 min-w-0"
                               onClick={() => focusNode(nodeId)}
@@ -380,10 +417,15 @@ export function NodeDetails({ node }: NodeDetailsProps) {
                               />
                               <span className="truncate group-hover:underline font-medium">{label}</span>
                             </div>
-                            <ExternalLink 
-                              className="h-2.5 w-2.5 text-muted-foreground opacity-0 group-hover:opacity-100 shrink-0 cursor-pointer transition-opacity" 
+                            <button
+                              type="button"
+                              className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
+                              aria-label={`Focus entity ${label}`}
+                              title={`Focus entity ${label}`}
                               onClick={() => focusNode(nodeId)}
-                            />
+                            >
+                              <ExternalLink className="h-2.5 w-2.5" />
+                            </button>
                           </div>
                         );
                       })
@@ -395,16 +437,21 @@ export function NodeDetails({ node }: NodeDetailsProps) {
 
         <Separator className="my-1" />
 
-        {/* Actions - More compact */}
-        <div className="flex gap-1.5 pt-1">
+        {/* Actions - Accessible and responsive */}
+        <div className="grid grid-cols-1 gap-2 pt-1 sm:grid-cols-3" role="group" aria-label={`Entity actions for ${node.label}`}>
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button 
                   variant="outline" 
                   size="sm" 
-                  className="flex-1 h-7 text-[10px] font-medium hover:bg-primary/10 hover:border-primary/50"
-                  onClick={() => setShowEntityEdit(true)}
+                  className="h-8 w-full text-xs font-medium hover:border-primary/50 hover:bg-primary/10"
+                  aria-label={`Edit entity ${node.label}`}
+                  title={`Edit entity ${node.label}`}
+                  onClick={() => {
+                    setEntityDialogMode('edit');
+                    setShowEntityEdit(true);
+                  }}
                 >
                   <Edit className="h-3 w-3 mr-1" />
                   Edit
@@ -419,7 +466,13 @@ export function NodeDetails({ node }: NodeDetailsProps) {
                 <Button 
                   variant="outline" 
                   size="sm" 
-                  className="flex-1 h-7 text-[10px] font-medium hover:bg-purple-500/10 hover:border-purple-500/50"
+                  className="h-8 w-full text-xs font-medium hover:border-purple-500/50 hover:bg-purple-500/10"
+                  aria-label={`Merge entity ${node.label}`}
+                  title={`Merge entity ${node.label}`}
+                  onClick={() => {
+                    setEntityDialogMode('merge');
+                    setShowEntityEdit(true);
+                  }}
                 >
                   <GitMerge className="h-3 w-3 mr-1" />
                   Merge
@@ -434,7 +487,10 @@ export function NodeDetails({ node }: NodeDetailsProps) {
                 <Button 
                   variant="outline" 
                   size="sm" 
-                  className="flex-1 h-7 text-[10px] font-medium text-destructive hover:bg-destructive/10 hover:border-destructive/50"
+                  className="h-8 w-full text-xs font-medium text-destructive hover:border-destructive/50 hover:bg-destructive/10"
+                  aria-label={`Delete entity ${node.label}`}
+                  title={`Delete entity ${node.label}`}
+                  onClick={() => setShowDeleteConfirm(true)}
                 >
                   <Trash2 className="h-3 w-3 mr-1" />
                   Delete
@@ -451,9 +507,22 @@ export function NodeDetails({ node }: NodeDetailsProps) {
         open={showEntityEdit}
         onOpenChange={setShowEntityEdit}
         node={node}
+        mode={entityDialogMode}
+        otherEntities={nodes
+          .filter((candidate) => candidate.id !== node.id)
+          .map((candidate) => ({
+            id: candidate.id,
+            label: candidate.label,
+            entity_type: candidate.node_type || 'UNKNOWN',
+          }))}
+        workspaceEntityTypes={workspace?.entity_types}
         onUpdated={() => {
           queryClient.invalidateQueries({ queryKey: ['graph'] });
-          toast.success('Entity updated successfully');
+          toast.success(
+            entityDialogMode === 'merge'
+              ? 'Entity merged successfully'
+              : 'Entity updated successfully'
+          );
         }}
       />
 
@@ -472,6 +541,27 @@ export function NodeDetails({ node }: NodeDetailsProps) {
           }}
         />
       )}
+      {/* FIX #175: Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Entity</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete &quot;{node.label}&quot;? This will also remove all relationships connected to this entity. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel autoFocus disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteEntity}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

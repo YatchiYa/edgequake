@@ -205,14 +205,12 @@ else
 endif
 
 # SPEC-040: Vision/VLM provider defaults for PDF-to-Markdown conversion
-# When OpenAI key is set, use OpenAI vision; otherwise use local Ollama gemma4
-ifdef OPENAI_API_KEY
-  EDGEQUAKE_VISION_PROVIDER ?= openai
-  EDGEQUAKE_VISION_MODEL ?= gpt-4.1-nano
-else
-  EDGEQUAKE_VISION_PROVIDER ?= ollama
-  EDGEQUAKE_VISION_MODEL ?= gemma4:latest
-endif
+# WHY: Vision provider MUST inherit from the resolved DEFAULT_LLM values (set above,
+# potentially overridden by .env).  Previous code had a separate ifdef that could
+# produce a provider/model mismatch (e.g. .env → ollama but vision → gpt-4.1-nano).
+# First Principle: ONE source of truth for "which provider am I using?"
+EDGEQUAKE_VISION_PROVIDER ?= $(EDGEQUAKE_DEFAULT_LLM_PROVIDER)
+EDGEQUAKE_VISION_MODEL    ?= $(EDGEQUAKE_DEFAULT_LLM_MODEL)
 
 # Default target
 .DEFAULT_GOAL := help

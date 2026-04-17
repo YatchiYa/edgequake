@@ -2,6 +2,49 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.10.3] - 2026-04-17
+
+### Fixed
+
+- **Entity merge UX is now searchable and accessible for large graphs.** The merge dialog now uses a ranked search combobox so users can quickly find the correct canonical entity even when the workspace contains many concepts and people.
+
+- **Human-readable entity merges now resolve correctly in the backend.** Merge requests using labels such as person and organization names are now resolved robustly instead of depending on brittle transient IDs or over-normalized keys.
+
+- **Graph merge semantics are preserved during deduplication.** When duplicate entities are merged, relationships are rewired onto the canonical node while preserving provenance and relation meaning through merged metadata.
+
+- **Provider/model diagnostics remain actionable and safe.** The effective configuration chain and compatibility checks now make it much easier to understand and fix mismatched vision or LLM settings.
+
+### Changed
+
+- Verified release dependency alignment with published crates: `edgequake-llm` v0.6.2 and `edgequake-pdf2md` v0.8.1.
+- Release metadata, quickstart examples, and pinned version references are now aligned to `0.10.3`.
+
+## [0.10.2] - 2026-04-16
+
+### Fixed
+
+- **Ollama Cloud returns 401 Unauthorized (#162).** Upgraded to `edgequake-llm`
+  v0.6.0 which adds `OLLAMA_API_KEY` environment variable for Bearer token
+  authentication with Ollama Cloud and authenticated Ollama endpoints.
+
+- **Embedding deserialization fails with HuggingFace TEI (#164).** Upgraded to
+  `edgequake-llm` v0.6.0 which replaces async-openai's strict embedding types
+  with lenient HTTP deserialization, supporting HuggingFace TEI, Infinity,
+  FastEmbed, and other OpenAI-compatible embedding servers.
+
+- **Embedding batch size not configurable (#165).** Upgraded to `edgequake-llm`
+  v0.6.0 and switched pipeline helpers to `embed_batched()`. Large embedding
+  requests are now auto-chunked per `EDGEQUAKE_EMBEDDING_BATCH_SIZE` (default
+  2048), preventing 422 errors from servers with batch limits.
+
+### Changed
+
+- Upgraded `edgequake-llm` from 0.5.1 to 0.6.0.
+- Upgraded `edgequake-pdf2md` from 0.8.0 to 0.8.1 (diamond dependency resolution).
+- Pipeline embedding helpers (`helpers.rs`) now use `embed_batched()` for all
+  chunk, entity, and relationship embeddings.
+- `SafetyLimitedEmbeddingProviderWrapper` forwards `max_batch_size()`.
+
 ## [0.10.1] - 2026-04-11
 
 ### Fixed

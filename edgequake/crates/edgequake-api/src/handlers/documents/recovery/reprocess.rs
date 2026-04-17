@@ -372,30 +372,13 @@ pub async fn reprocess_failed(
                 .await
                 .map_err(|e| ApiError::Internal(format!("Failed to list failed PDFs: {}", e)))?;
 
-            // WHY: Prefer EDGEQUAKE_VISION_PROVIDER if set; fall back to the main
-            // LLM provider (EDGEQUAKE_LLM_PROVIDER) so Ollama deployments don't
-            // accidentally use "openai" and fail with a missing API key error.
-            // WHY filter empty strings: Docker Compose ${VAR:-} maps unset host vars
-            // to "" inside the container. std::env::var returns Ok("") for that case,
-            // so the or_else chain never fires and callers receive empty provider/model
-            // names (Ollama: 400 "model is required"). Treat "" the same as unset.
-            let vision_provider = std::env::var("EDGEQUAKE_VISION_PROVIDER")
-                .ok()
-                .filter(|s| !s.is_empty())
-                .or_else(|| {
-                    std::env::var("EDGEQUAKE_LLM_PROVIDER")
-                        .ok()
-                        .filter(|s| !s.is_empty())
-                })
-                .unwrap_or_else(|| "ollama".to_string());
-            let vision_model = std::env::var("EDGEQUAKE_VISION_MODEL")
-                .ok()
-                .filter(|s| !s.is_empty())
-                .or_else(|| {
-                    std::env::var("EDGEQUAKE_LLM_MODEL")
-                        .ok()
-                        .filter(|s| !s.is_empty())
-                });
+            // DRY: Use the same resolution chain as PdfUploadOptions (types.rs).
+            // WHY: Previously this was a duplicated inline chain that could diverge
+            // from the upload path, causing reprocessed PDFs to use different
+            // provider/model than new uploads.
+            let vision_opts = crate::handlers::pdf_upload::types::PdfUploadOptions::default();
+            let vision_provider = vision_opts.resolved_vision_provider();
+            let vision_model: Option<String> = Some(vision_opts.vision_model());
 
             for pdf in failed_pdfs.items {
                 // Determine tenant_id: prefer from context, fall back to a

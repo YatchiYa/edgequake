@@ -36,11 +36,11 @@ const navItems = [
   { href: '/', icon: Home, labelKey: 'nav.dashboard' },
   { href: '/graph', icon: Network, labelKey: 'nav.graph' },
   { href: '/documents', icon: FileText, labelKey: 'nav.documents' },
-  { href: '/knowledge', icon: BookOpen, labelKey: 'nav.knowledge' },
   { href: '/pipeline', icon: Activity, labelKey: 'nav.pipeline' },
   { href: '/query', icon: MessageSquare, labelKey: 'nav.query' },
   { href: '/workspace', icon: FolderKanban, labelKey: 'nav.workspace' },
   { href: '/costs', icon: DollarSign, labelKey: 'nav.costs' },
+  { href: '/knowledge', icon: BookOpen, labelKey: 'nav.knowledge' },
   { href: '/api-explorer', icon: Terminal, labelKey: 'nav.apiExplorer' },
   { href: '/settings', icon: Settings, labelKey: 'nav.settings' },
 ];

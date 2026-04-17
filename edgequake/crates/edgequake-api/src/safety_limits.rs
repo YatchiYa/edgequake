@@ -288,6 +288,10 @@ impl EmbeddingProvider for SafetyLimitedEmbeddingProviderWrapper {
         self.inner.max_tokens()
     }
 
+    fn max_batch_size(&self) -> usize {
+        self.inner.max_batch_size()
+    }
+
     async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
         let result = tokio::time::timeout(self.config.timeout, self.inner.embed(texts)).await;
 
@@ -335,12 +339,28 @@ fn check_api_key(provider_name: &str) -> Result<()> {
 /// Create a safety-limited LLM provider from workspace configuration.
 pub fn create_safe_llm_provider(provider_name: &str, model: &str) -> Result<Arc<dyn LLMProvider>> {
     check_api_key(provider_name)?;
-    let inner = ProviderFactory::create_llm_provider(provider_name, model)?;
+
+    // WHY: Same compat guard as create_safe_vision_provider — entity extraction
+    // tasks may also carry stale model names from a prior provider session.
+    let effective_model = if is_model_provider_mismatch(provider_name, model) {
+        let corrected = default_model_for_provider(provider_name);
+        tracing::warn!(
+            provider = provider_name,
+            requested_model = model,
+            corrected_model = corrected,
+            "COMPAT-GUARD: LLM model/provider mismatch — auto-correcting to provider default."
+        );
+        corrected
+    } else {
+        model
+    };
+
+    let inner = ProviderFactory::create_llm_provider(provider_name, effective_model)?;
     let config = SafetyLimitsConfig::from_env();
 
     tracing::info!(
         provider = provider_name,
-        model = model,
+        model = effective_model,
         max_tokens = config.max_tokens,
         timeout_secs = config.timeout.as_secs(),
         "Creating safety-limited LLM provider"
@@ -350,12 +370,46 @@ pub fn create_safe_llm_provider(provider_name: &str, model: &str) -> Result<Arc<
 }
 
 /// Create a safety-limited embedding provider from workspace configuration.
+///
+/// FIX #163: When the provider is OpenAI-compatible, checks `EDGEQUAKE_EMBEDDING_BASE_URL`
+/// and `EDGEQUAKE_EMBEDDING_API_KEY` before falling back to standard env vars.
 pub fn create_safe_embedding_provider(
     provider_name: &str,
     model: &str,
     dimension: usize,
 ) -> Result<Arc<dyn EmbeddingProvider>> {
-    let inner = ProviderFactory::create_embedding_provider(provider_name, model, dimension)?;
+    // FIX #163: If embedding-specific env vars are set and provider is openai-compatible,
+    // create the provider with dedicated credentials.
+    let is_openai_compatible = matches!(
+        provider_name.to_ascii_lowercase().as_str(),
+        "openai" | "openai-compatible" | "openai_compatible"
+    );
+
+    let inner = if is_openai_compatible {
+        let embed_base_url = std::env::var("EDGEQUAKE_EMBEDDING_BASE_URL").ok();
+        let embed_api_key = std::env::var("EDGEQUAKE_EMBEDDING_API_KEY").ok();
+
+        if embed_base_url.is_some() || embed_api_key.is_some() {
+            let api_key = embed_api_key
+                .or_else(|| std::env::var("OPENAI_API_KEY").ok())
+                .unwrap_or_default();
+            let base_url = embed_base_url.or_else(|| std::env::var("OPENAI_BASE_URL").ok());
+
+            let provider: Arc<dyn EmbeddingProvider> = if let Some(base_url) = base_url {
+                Arc::new(
+                    edgequake_llm::OpenAIProvider::compatible(api_key, base_url)
+                        .with_embedding_model(model),
+                )
+            } else {
+                Arc::new(edgequake_llm::OpenAIProvider::new(api_key).with_embedding_model(model))
+            };
+            provider
+        } else {
+            ProviderFactory::create_embedding_provider(provider_name, model, dimension)?
+        }
+    } else {
+        ProviderFactory::create_embedding_provider(provider_name, model, dimension)?
+    };
     let config = SafetyLimitsConfig::from_env();
 
     tracing::info!(
@@ -458,7 +512,32 @@ pub fn create_safe_vision_provider(
     model: &str,
 ) -> Result<Arc<dyn LLMProvider>> {
     check_api_key(provider_name)?;
-    let inner = ProviderFactory::create_llm_provider(provider_name, model)?;
+
+    // WHY: Guard against stale task data where a model was stored at upload time
+    // under one provider (e.g., OpenAI) and is later retried under a different
+    // provider (e.g., Ollama). Without this check, Ollama receives "gpt-4.1-nano"
+    // and returns 404 Not Found, failing all pages and exhausting all retries.
+    //
+    // When a clear mismatch is detected (OpenAI model name with non-OpenAI provider),
+    // we auto-correct to the provider's default model and log a warning so operators
+    // can update stale workspace / task configurations.
+    let effective_model = if is_model_provider_mismatch(provider_name, model) {
+        let corrected = default_model_for_provider(provider_name);
+        tracing::warn!(
+            provider = provider_name,
+            requested_model = model,
+            corrected_model = corrected,
+            "COMPAT-GUARD: Model/provider mismatch detected — auto-correcting to provider default. \
+             This indicates stale task data or misconfigured workspace settings. \
+             Update workspace vision_llm_model to a {}-compatible model to suppress this warning.",
+            provider_name
+        );
+        corrected
+    } else {
+        model
+    };
+
+    let inner = ProviderFactory::create_llm_provider(provider_name, effective_model)?;
 
     let timeout_secs = vision_page_timeout_secs(provider_name);
     let config = SafetyLimitsConfig {
@@ -469,7 +548,7 @@ pub fn create_safe_vision_provider(
 
     tracing::info!(
         provider = provider_name,
-        model = model,
+        model = effective_model,
         timeout_secs = timeout_secs,
         is_local = is_local_provider(provider_name),
         "Creating safety-limited VISION LLM provider (provider-aware timeout)"
@@ -480,6 +559,41 @@ pub fn create_safe_vision_provider(
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Detect whether a model name is clearly incompatible with the given provider.
+///
+/// WHY: Stale task data or misconfigured workspaces can store a model name that
+/// was valid for a different provider (e.g., "gpt-4.1-nano" stored when OpenAI
+/// was active, then retried with Ollama). We detect the most common cases to
+/// auto-correct rather than fail with a confusing 404 from the local provider.
+///
+/// This is intentionally conservative: we only flag clear cross-provider names
+/// (OpenAI model naming conventions used with non-OpenAI providers) to avoid
+/// false positives on valid custom model names.
+pub fn is_model_provider_mismatch(provider_name: &str, model: &str) -> bool {
+    if model.is_empty() {
+        return false;
+    }
+    let provider = provider_name.to_lowercase();
+    // OpenAI model patterns: gpt-*, o1-*, o3-*, o4-*, text-embedding-*
+    let is_openai_model = model.starts_with("gpt-")
+        || model.starts_with("o1-")
+        || model.starts_with("o3-")
+        || model.starts_with("o4-")
+        || model.starts_with("text-embedding-");
+    // Anthropic model patterns: claude-*
+    let is_anthropic_model = model.starts_with("claude-");
+    // Gemini model patterns: gemini-*
+    let is_gemini_model = model.starts_with("gemini-") || model.starts_with("text-embedding-004");
+
+    match provider.as_str() {
+        "ollama" | "lmstudio" | "lm-studio" | "lm_studio" => {
+            // Local providers cannot run cloud-hosted models
+            is_openai_model || is_anthropic_model || is_gemini_model
+        }
+        _ => false,
+    }
+}
+
 /// Get the default model for a given provider name.
 pub fn default_model_for_provider(provider_name: &str) -> &'static str {
     match provider_name.to_lowercase().as_str() {
@@ -488,7 +602,7 @@ pub fn default_model_for_provider(provider_name: &str) -> &'static str {
         "gemini" => "gemini-2.5-flash",
         "xai" => "grok-4-1-fast",
         "openrouter" => "openai/gpt-4o-mini",
-        "ollama" => "gemma3:12b",
+        "ollama" => "gemma4:latest",
         "lmstudio" | "lm-studio" | "lm_studio" => "gemma-3n-e4b-it",
         "minimax" => "MiniMax-M2.7",
         "mock" => "mock-model",

@@ -134,9 +134,9 @@ mod tests {
             plan: "free".to_string(),
             is_active: true,
             max_workspaces: 5,
-            default_llm_model: "gemma3:12b".to_string(),
+            default_llm_model: "gemma4:latest".to_string(),
             default_llm_provider: "ollama".to_string(),
-            default_llm_full_id: "ollama/gemma3:12b".to_string(),
+            default_llm_full_id: "ollama/gemma4:latest".to_string(),
             default_embedding_model: "text-embedding-3-small".to_string(),
             default_embedding_provider: "openai".to_string(),
             default_embedding_dimension: 1536,
@@ -150,7 +150,7 @@ mod tests {
         assert!(json.is_ok());
         let json_str = json.unwrap();
         assert!(json_str.contains("test-tenant"));
-        assert!(json_str.contains("gemma3:12b"));
+        assert!(json_str.contains("gemma4:latest"));
         assert!(json_str.contains("text-embedding-3-small"));
     }
 

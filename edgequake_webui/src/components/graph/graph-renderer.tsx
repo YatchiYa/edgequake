@@ -19,10 +19,10 @@
 import { detectCommunities, getCommunityColor } from '@/lib/graph/clustering';
 import { getGraphEdgeKeyFromEdge } from '@/lib/graph/ids';
 import {
-  applyLayoutToGraph,
-  calculateLayoutPositions,
-  getGraphPerformanceProfile,
-  type GraphLayoutType,
+    applyLayoutToGraph,
+    calculateLayoutPositions,
+    getGraphPerformanceProfile,
+    type GraphLayoutType,
 } from '@/lib/graph/layouts';
 import { useGraphStore } from '@/stores/use-graph-store';
 import { useSettingsStore } from '@/stores/use-settings-store';
@@ -31,7 +31,7 @@ import { EdgeCurvedArrowProgram, createEdgeCurveProgram } from '@sigma/edge-curv
 import { NodeBorderProgram } from '@sigma/node-border';
 import Graph from 'graphology';
 import { useTheme } from 'next-themes';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Sigma from 'sigma';
 import { animateNodes } from 'sigma/utils';
 
@@ -107,6 +107,7 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
   const prevNodesCountRef = useRef(0);
   const prevEdgesCountRef = useRef(0);
   const layoutUpdateTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [renderError, setRenderError] = useState<string | null>(null);
 
   // Get settings with defaults
   const showLabels = graphSettings.showLabels ?? true;
@@ -508,43 +509,58 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
     };
     
     // Create Sigma instance with visual quality settings and LOD optimizations
-    const sigma = new Sigma(graph, containerRef.current, {
-      renderLabels: showLabelsRef.current,
-      renderEdgeLabels: showEdgeLabelsRef.current && !performanceProfile.isVeryLargeGraph,
-      labelSize: 13, // Slightly larger for better readability
-      labelWeight: '500', // Medium weight for better readability
-      labelColor: { color: isDark ? LABEL_COLORS.dark : LABEL_COLORS.light },
-      labelFont: 'Inter, ui-sans-serif, system-ui, sans-serif',
-      // WHY: Explicit edge-label styling so relation names are clearly legible in
-      // both light and dark themes.  Without these, sigma falls back to using the
-      // edge color as label color (low contrast) and Arial at 14px.
-      edgeLabelSize: 10,
-      edgeLabelFont: 'Inter, ui-sans-serif, system-ui, sans-serif',
-      edgeLabelWeight: '500',
-      edgeLabelColor: { color: isDark ? '#e2e8f0' : '#334155' },
-      labelGridCellSize: performanceProfile.labelGridCellSize,
-      labelRenderedSizeThreshold: performanceProfile.labelRenderedSizeThreshold,
-      labelDensity: performanceProfile.labelDensity,
-      defaultNodeColor: '#64748b',
-      defaultEdgeColor: defaultEdgeColor,
-      defaultNodeType: 'border',
-      defaultEdgeType: 'curvedArrow',
-      nodeProgramClasses: {
-        border: NodeBorderProgram,
-      },
-      edgeProgramClasses: {
-        curvedArrow: EdgeCurvedArrowProgram,
-        curved: createEdgeCurveProgram(),
-      },
-      minCameraRatio: 0.1,
-      maxCameraRatio: 10,
-      enableEdgeEvents: !performanceProfile.disableEdgeEvents,
-      stagePadding: 50, // Add padding around graph for better visibility
-      // WHY: Always enable zIndex so selected nodes can render on top
-      zIndex: true,
-      nodeReducer,
-      edgeReducer,
-    });
+    let sigma: Sigma;
+    try {
+      sigma = new Sigma(graph, containerRef.current, {
+        renderLabels: showLabelsRef.current,
+        renderEdgeLabels: showEdgeLabelsRef.current && !performanceProfile.isVeryLargeGraph,
+        labelSize: 13, // Slightly larger for better readability
+        labelWeight: '500', // Medium weight for better readability
+        labelColor: { color: isDark ? LABEL_COLORS.dark : LABEL_COLORS.light },
+        labelFont: 'Inter, ui-sans-serif, system-ui, sans-serif',
+        // WHY: Explicit edge-label styling so relation names are clearly legible in
+        // both light and dark themes.  Without these, sigma falls back to using the
+        // edge color as label color (low contrast) and Arial at 14px.
+        edgeLabelSize: 10,
+        edgeLabelFont: 'Inter, ui-sans-serif, system-ui, sans-serif',
+        edgeLabelWeight: '500',
+        edgeLabelColor: { color: isDark ? '#e2e8f0' : '#334155' },
+        labelGridCellSize: performanceProfile.labelGridCellSize,
+        labelRenderedSizeThreshold: performanceProfile.labelRenderedSizeThreshold,
+        labelDensity: performanceProfile.labelDensity,
+        defaultNodeColor: '#64748b',
+        defaultEdgeColor: defaultEdgeColor,
+        defaultNodeType: 'border',
+        defaultEdgeType: 'curvedArrow',
+        nodeProgramClasses: {
+          border: NodeBorderProgram,
+        },
+        edgeProgramClasses: {
+          curvedArrow: EdgeCurvedArrowProgram,
+          curved: createEdgeCurveProgram(),
+        },
+        minCameraRatio: 0.1,
+        maxCameraRatio: 10,
+        enableEdgeEvents: !performanceProfile.disableEdgeEvents,
+        stagePadding: 50, // Add padding around graph for better visibility
+        // WHY: Always enable zIndex so selected nodes can render on top
+        zIndex: true,
+        nodeReducer,
+        edgeReducer,
+      });
+      setRenderError(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to initialize graph renderer';
+      console.warn('[GraphRenderer] Sigma initialization failed:', error);
+      setRenderError(message);
+      sigmaRef.current = null;
+      graphRef.current = graph;
+      setSigmaInstance(null);
+      return () => {
+        graphRef.current = null;
+        setSigmaInstance(null);
+      };
+    }
     
     // WHY: Log performance info for debugging
     if (performanceProfile.isLargeGraph) {
@@ -775,8 +791,23 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
   return (
     <div
       ref={containerRef}
-      className="w-full h-full min-h-[400px] bg-muted/20 rounded-lg"
-    />
+      className="relative h-full min-h-100 w-full rounded-lg bg-muted/20"
+    >
+      {renderError && (
+        <div
+          className="absolute inset-0 z-10 flex items-center justify-center rounded-lg border border-dashed bg-background/90 p-4 text-center"
+          role="status"
+          aria-live="polite"
+        >
+          <div>
+            <p className="font-medium text-sm">Graph visualization unavailable</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {renderError}
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

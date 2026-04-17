@@ -115,6 +115,78 @@ Configuration for the language model and embedding providers.
 
 ---
 
+## Vision Configuration
+
+Vision settings control which LLM provider and model are used for PDF OCR
+(image-based page extraction). By default, vision inherits from the main LLM
+configuration — you only need to set these if you want a **separate** model
+for vision processing.
+
+| Variable                             | Default (inherited)                | Description             |
+| ------------------------------------ | ---------------------------------- | ----------------------- |
+| `EDGEQUAKE_VISION_PROVIDER`          | ← `EDGEQUAKE_DEFAULT_LLM_PROVIDER` | Vision LLM provider     |
+| `EDGEQUAKE_VISION_MODEL`             | ← `EDGEQUAKE_DEFAULT_LLM_MODEL`    | Vision LLM model        |
+| `EDGEQUAKE_VISION_LLM_PROVIDER`      | ← `EDGEQUAKE_DEFAULT_LLM_PROVIDER` | Alias (legacy)          |
+| `EDGEQUAKE_VISION_LLM_MODEL`         | ← `EDGEQUAKE_DEFAULT_LLM_MODEL`    | Alias (legacy)          |
+| `EDGEQUAKE_VISION_TIMEOUT_SECS`      | `480`                              | Total vision timeout    |
+| `EDGEQUAKE_VISION_PAGE_TIMEOUT_SECS` | `120`                              | Per-page vision timeout |
+
+### Resolution Chain (highest priority first)
+
+```
+Per-request form field (vision_provider / vision_model)
+  → EDGEQUAKE_VISION_PROVIDER / EDGEQUAKE_VISION_MODEL
+    → EDGEQUAKE_VISION_LLM_PROVIDER / EDGEQUAKE_VISION_LLM_MODEL
+      → EDGEQUAKE_DEFAULT_LLM_PROVIDER / EDGEQUAKE_DEFAULT_LLM_MODEL
+        → EDGEQUAKE_LLM_PROVIDER / EDGEQUAKE_LLM_MODEL
+          → Built-in default: ollama / gemma4:latest
+```
+
+At each step, the resolved model is validated for compatibility with the resolved
+provider. Incompatible combinations are skipped with a warning log.
+
+### Compatibility Guard
+
+EdgeQuake detects when a model name is incompatible with the resolved provider:
+
+| Pattern                                         | Expected Provider      |
+| ----------------------------------------------- | ---------------------- |
+| `gpt-*`, `o1-*`, `o3-*`, `o4-*`                 | `openai` or `azure`    |
+| `claude-*`                                      | `anthropic`            |
+| `gemini-*`                                      | `google` or `vertexai` |
+| `gemma*`, `llama*`, `mistral*`, `phi*`, `qwen*` | `ollama`               |
+
+If a mismatch is detected:
+1. The incompatible env var is skipped (WARN log)
+2. The next candidate in the chain is tried
+3. The `/api/v1/config/effective` endpoint reports the mismatch
+4. The Settings UI highlights the mismatch with remediation steps
+
+### Example: Separate Vision Model
+
+```bash
+# Main LLM: Ollama for text extraction
+EDGEQUAKE_DEFAULT_LLM_PROVIDER=ollama
+EDGEQUAKE_DEFAULT_LLM_MODEL=gemma4:latest
+
+# Vision: OpenAI for better OCR on scanned PDFs
+EDGEQUAKE_VISION_PROVIDER=openai
+EDGEQUAKE_VISION_MODEL=gpt-4.1-nano
+OPENAI_API_KEY=sk-...
+```
+
+### Diagnostics
+
+```bash
+# Check effective vision configuration
+curl -s http://localhost:8080/api/v1/config/effective | jq '.areas[] | select(.name == "Vision")'
+
+# Check for mismatches
+curl -s http://localhost:8080/api/v1/config/effective | jq '[.areas[] | select(.has_mismatch)] | length'
+```
+
+---
+
 ## Pipeline Configuration
 
 Configuration for document processing and entity extraction.

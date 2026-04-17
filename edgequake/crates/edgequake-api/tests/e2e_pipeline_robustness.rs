@@ -18,6 +18,9 @@ use serde_json::{json, Value};
 use std::time::Duration;
 use tower::ServiceExt;
 
+const TEST_TENANT_ID: &str = "11111111-1111-1111-1111-111111111111";
+const TEST_WORKSPACE_ID: &str = "22222222-2222-2222-2222-222222222222";
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -57,6 +60,8 @@ async fn get_endpoint(app: &axum::Router, uri: &str) -> (StatusCode, Value) {
             Request::builder()
                 .method("GET")
                 .uri(uri)
+                .header("X-Tenant-ID", TEST_TENANT_ID)
+                .header("X-Workspace-ID", TEST_WORKSPACE_ID)
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -75,6 +80,8 @@ async fn post_json(app: &axum::Router, uri: &str, payload: &Value) -> (StatusCod
                 .method("POST")
                 .uri(uri)
                 .header("Content-Type", "application/json")
+                .header("X-Tenant-ID", TEST_TENANT_ID)
+                .header("X-Workspace-ID", TEST_WORKSPACE_ID)
                 .body(Body::from(serde_json::to_string(payload).unwrap()))
                 .unwrap(),
         )

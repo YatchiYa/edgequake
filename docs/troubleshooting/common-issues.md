@@ -75,11 +75,11 @@ curl -X POST http://localhost:8080/api/v1/documents/upload \
 
 **Solution**: Choose the correct endpoint and format:
 
-| Upload Type | Endpoint                        | Content-Type               | Format        |
-| ----------- | ------------------------------- | -------------------------- | ------------- |
-| Text/JSON   | `/api/v1/documents`             | `application/json`         | `-d '{...}'`  |
-| Files       | `/api/v1/documents/upload`      | `multipart/form-data`      | `-F "file=@"` |
-| Batch Files | `/api/v1/documents/upload/batch`| `multipart/form-data`      | `-F "files=@"`|
+| Upload Type | Endpoint                         | Content-Type          | Format         |
+| ----------- | -------------------------------- | --------------------- | -------------- |
+| Text/JSON   | `/api/v1/documents`              | `application/json`    | `-d '{...}'`   |
+| Files       | `/api/v1/documents/upload`       | `multipart/form-data` | `-F "file=@"`  |
+| Batch Files | `/api/v1/documents/upload/batch` | `multipart/form-data` | `-F "files=@"` |
 
 **Examples**:
 
@@ -605,6 +605,68 @@ pdftk original.pdf output repaired.pdf
 
 ---
 
+#### Issue 3.7: Vision Extraction Timeout — Provider/Model Mismatch
+
+**Symptom**: PDF processing fails with:
+- "Processing failed permanently after 3 attempts"
+- "Circuit breaker tripped after 3 consecutive timeouts"
+- "Vision extraction timed out after 480s"
+- "Provider 'ollama' may be unresponsive"
+
+**Root Cause**: The vision **model** does not belong to the vision **provider**.
+For example, `EDGEQUAKE_VISION_MODEL=gpt-4.1-nano` paired with provider `ollama`
+will always time out because Ollama cannot serve OpenAI models.
+
+This commonly happens when:
+- A Makefile or Docker Compose file sets `EDGEQUAKE_VISION_MODEL` to an OpenAI model
+  but `.env` overrides the provider to `ollama`
+- Env vars are inherited from a parent process (e.g. Makefile `export`)
+
+**Diagnosis**:
+
+```bash
+# Check the effective configuration and mismatch status
+curl -s http://localhost:8080/api/v1/config/effective | jq '.areas[] | select(.name == "Vision")'
+
+# Expected response when mismatched:
+# {
+#   "name": "Vision",
+#   "has_mismatch": true,
+#   "mismatch_description": "Model 'gpt-4.1-nano' is incompatible with provider 'ollama'.\nHow to fix:\n..."
+# }
+```
+
+You can also check in the **Settings UI** → **Configuration Explainability** panel.
+Sections with mismatches are auto-expanded and show remediation options.
+
+**Fix** — choose one:
+
+| Option | Command                                                   | When to use                                         |
+| ------ | --------------------------------------------------------- | --------------------------------------------------- |
+| A      | `unset EDGEQUAKE_VISION_MODEL`                            | You want to use the default model for your provider |
+| B      | `EDGEQUAKE_VISION_PROVIDER=openai` + set `OPENAI_API_KEY` | You want to use the OpenAI model                    |
+| C      | `EDGEQUAKE_VISION_MODEL=gemma4:latest`                    | You want to stay on Ollama                          |
+
+Then restart the backend.
+
+**Verification**:
+
+```bash
+# Confirm no mismatch
+curl -s http://localhost:8080/api/v1/config/effective | jq '.areas[] | select(.name == "Vision") | .has_mismatch'
+# Should return: false
+
+# Re-upload the failed PDF
+curl -X POST http://localhost:8080/api/v1/documents/upload -F "file=@document.pdf"
+```
+
+**Prevention**: EdgeQuake now auto-corrects mismatches at runtime — if a model
+is incompatible with the resolved provider, it is skipped and the next candidate
+in the resolution chain is used (with a WARN log). The explainability endpoint
+helps you fix the env vars permanently.
+
+---
+
 ### PDF Troubleshooting Decision Tree
 
 Use this flowchart to quickly diagnose PDF issues:
@@ -633,6 +695,7 @@ PDF Upload Issue?
   ├─ Upload fails / timeout
   │   ├─ File > 50MB? → Split PDF or increase limit
   │   ├─ Timeout? → Test with max_pages: 10
+  │   ├─ Vision timeout + circuit breaker? → Check provider/model mismatch (Issue 3.7)
   │   └─ Error 500? → Repair PDF (ghostscript, pdftk)
   │
   └─ Poor quality chunks

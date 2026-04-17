@@ -41,6 +41,7 @@ import { useTenantStore } from '@/stores/use-tenant-store';
 import type { GraphNode } from '@/types';
 import { useQuery } from '@tanstack/react-query';
 import { AlertCircle, ChevronLeft, ChevronRight, Filter, Loader2, Maximize2, Menu, Network, PanelRightClose, RefreshCw, Upload, ZoomIn, ZoomOut } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { GraphEmptyIllustration } from '../illustrations/graph-empty-illustration';
@@ -98,6 +99,7 @@ export function GraphViewer() {
 
   // Get tenant context for query key
   const { selectedTenantId, selectedWorkspaceId } = useTenantStore();
+  const searchParams = useSearchParams();
 
   // Memoize filtered nodes to prevent re-render loops
   const filteredNodes = useMemo(() => {
@@ -146,10 +148,27 @@ export function GraphViewer() {
   
   // Streaming state for progressive loading
   const useStreaming = useGraphStore((s) => s.useStreaming);
+  const setUseStreaming = useGraphStore((s) => s.setUseStreaming);
   const addNodesToGraph = useGraphStore((s) => s.addNodesToGraph);
   const clearGraphForStreaming = useGraphStore((s) => s.clearGraphForStreaming);
   const setStreamingProgress = useGraphStore((s) => s.setStreamingProgress);
   const resetStreamingProgress = useGraphStore((s) => s.resetStreamingProgress);
+
+  useEffect(() => {
+    const streamMode = searchParams.get('stream');
+
+    // WHY: Allow a deterministic fallback to non-streaming graph loading.
+    // This helps users and browser tests avoid SSE timing issues when needed
+    // without changing the default production behavior.
+    if (streamMode === '0' || streamMode === 'false') {
+      setUseStreaming(false);
+      return;
+    }
+
+    if (streamMode === '1' || streamMode === 'true') {
+      setUseStreaming(true);
+    }
+  }, [searchParams, setUseStreaming]);
   
   // Streaming hook for progressive graph loading
   const {
@@ -748,7 +767,7 @@ export function GraphViewer() {
               </div>
 
               {/* Panel Content - Full height scroll */}
-              <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block" showShadows>
+              <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:block!" showShadows>
                 <div className="px-4 py-4 space-y-5 overflow-hidden">
                   {/* Node Details - Primary content when selected */}
                   {selectedNode && showNodeDetails && (

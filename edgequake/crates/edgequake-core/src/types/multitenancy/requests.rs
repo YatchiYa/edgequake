@@ -15,7 +15,7 @@ use super::workspace::Workspace;
 /// - Provider and dimension auto-detected from model name
 ///
 /// If `llm_model` is not provided, the workspace will use server defaults:
-/// - `EDGEQUAKE_DEFAULT_LLM_MODEL` or "gemma3:12b" (Ollama)
+/// - `EDGEQUAKE_DEFAULT_LLM_MODEL` or "gemma4:latest" (Ollama)
 /// - Provider auto-detected from model name
 ///
 /// ## Model ID Format

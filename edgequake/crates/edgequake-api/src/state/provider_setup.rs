@@ -16,6 +16,8 @@
 //! | `OLLAMA_EMBEDDING_MODEL` | Model on the dedicated embedding host | `nomic-embed-text` |
 //! | `EDGEQUAKE_EMBEDDING_MODEL` | Alternative embedding model override | `text-embedding-3-small` |
 //! | `EDGEQUAKE_EMBEDDING_DIMENSION` | Dimension of the embedding vectors | `768`, `1536` |
+//! | `EDGEQUAKE_EMBEDDING_BASE_URL` | Override base URL for embedding provider | `https://embed.example.com/v1` |
+//! | `EDGEQUAKE_EMBEDDING_API_KEY` | Override API key for embedding provider | `sk-embed-...` |
 //! | `AZURE_OPENAI_API_KEY` | Azure embedding (auto-detected when `EDGEQUAKE_EMBEDDING_PROVIDER=azure`) | `sk-...` |
 //! | `AZURE_OPENAI_ENDPOINT` | Azure endpoint for embedding | `https://my-resource.openai.azure.com` |
 //! | `MISTRAL_API_KEY` | Mistral embedding (auto-detected when `EDGEQUAKE_EMBEDDING_PROVIDER=mistral`) | `...` |
@@ -23,7 +25,7 @@
 use std::sync::Arc;
 
 use edgequake_llm::traits::EmbeddingProvider;
-use edgequake_llm::{OllamaProvider, ProviderFactory};
+use edgequake_llm::{OllamaProvider, OpenAIProvider, ProviderFactory};
 
 /// Resolve the embedding provider from environment, optionally overriding the
 /// `fallback` returned by `ProviderFactory::from_env()`.
@@ -48,6 +50,46 @@ pub fn resolve_embedding_provider(
         if !provider_name.is_empty() {
             let model = embedding_model_from_env();
             let dimension = embedding_dimension_from_env();
+
+            // FIX #163: Check for embedding-specific base URL and API key.
+            // WHY: In split-provider deployments, chat and embedding traffic go to
+            // different servers with different API keys. Without these overrides,
+            // both providers share OPENAI_BASE_URL / OPENAI_API_KEY.
+            let embed_base_url = std::env::var("EDGEQUAKE_EMBEDDING_BASE_URL").ok();
+            let embed_api_key = std::env::var("EDGEQUAKE_EMBEDDING_API_KEY").ok();
+
+            let has_custom_base_url = embed_base_url.is_some();
+            let has_custom_api_key = embed_api_key.is_some();
+            let is_openai_compatible = matches!(
+                provider_name.to_ascii_lowercase().as_str(),
+                "openai" | "openai-compatible" | "openai_compatible"
+            );
+
+            if is_openai_compatible && (has_custom_base_url || has_custom_api_key) {
+                // Use dedicated credentials only for OpenAI-compatible embedding providers.
+                let api_key = embed_api_key
+                    .or_else(|| std::env::var("OPENAI_API_KEY").ok())
+                    .unwrap_or_default();
+                let base_url = embed_base_url.or_else(|| std::env::var("OPENAI_BASE_URL").ok());
+
+                let provider: Arc<dyn EmbeddingProvider> = if let Some(base_url) = base_url {
+                    Arc::new(
+                        OpenAIProvider::compatible(api_key, base_url).with_embedding_model(&model),
+                    )
+                } else {
+                    Arc::new(OpenAIProvider::new(api_key).with_embedding_model(&model))
+                };
+
+                tracing::info!(
+                    provider = %provider_name,
+                    model = %model,
+                    dimension,
+                    has_custom_base_url,
+                    has_custom_api_key,
+                    "Embedding provider overridden with dedicated base URL/API key (FIX #163)"
+                );
+                return provider;
+            }
 
             match ProviderFactory::create_embedding_provider(&provider_name, &model, dimension) {
                 Ok(provider) => {
@@ -102,6 +144,35 @@ pub fn resolve_embedding_provider(
 
     // --- Priority 3: use whatever from_env() already gave us ---
     fallback
+}
+
+/// Apply `EDGEQUAKE_CHAT_*` → standard LLM env var aliases.
+///
+/// FIX #166: Users expect symmetry with `EDGEQUAKE_EMBEDDING_*` naming.
+/// This function maps chat-specific env vars to the standard ones used by
+/// `ProviderFactory::from_env()`:
+///
+/// - `EDGEQUAKE_CHAT_BASE_URL` → `OPENAI_BASE_URL` (if not already set)
+/// - `EDGEQUAKE_CHAT_API_KEY`  → `OPENAI_API_KEY`  (if not already set)
+/// - `EDGEQUAKE_CHAT_MODEL`    → `EDGEQUAKE_LLM_MODEL` (if not already set)
+///
+/// Must be called BEFORE `ProviderFactory::from_env()`.
+pub fn apply_chat_env_aliases() {
+    if let Ok(chat_base_url) = std::env::var("EDGEQUAKE_CHAT_BASE_URL") {
+        if std::env::var("OPENAI_BASE_URL").is_err() {
+            std::env::set_var("OPENAI_BASE_URL", chat_base_url);
+        }
+    }
+    if let Ok(chat_api_key) = std::env::var("EDGEQUAKE_CHAT_API_KEY") {
+        if std::env::var("OPENAI_API_KEY").is_err() {
+            std::env::set_var("OPENAI_API_KEY", chat_api_key);
+        }
+    }
+    if let Ok(chat_model) = std::env::var("EDGEQUAKE_CHAT_MODEL") {
+        if std::env::var("EDGEQUAKE_LLM_MODEL").is_err() {
+            std::env::set_var("EDGEQUAKE_LLM_MODEL", chat_model);
+        }
+    }
 }
 
 /// Read the embedding model name from environment variables.
@@ -219,5 +290,72 @@ mod tests {
         std::env::set_var("EDGEQUAKE_EMBEDDING_DIMENSION", "not_a_number");
         assert_eq!(embedding_dimension_from_env(), 768);
         std::env::remove_var("EDGEQUAKE_EMBEDDING_DIMENSION");
+    }
+
+    #[test]
+    #[serial]
+    fn apply_chat_env_aliases_populates_missing_standard_vars() {
+        std::env::remove_var("EDGEQUAKE_CHAT_BASE_URL");
+        std::env::remove_var("EDGEQUAKE_CHAT_API_KEY");
+        std::env::remove_var("EDGEQUAKE_CHAT_MODEL");
+        std::env::remove_var("OPENAI_BASE_URL");
+        std::env::remove_var("OPENAI_API_KEY");
+        std::env::remove_var("EDGEQUAKE_LLM_MODEL");
+
+        std::env::set_var("EDGEQUAKE_CHAT_BASE_URL", "https://chat.example.test/v1");
+        std::env::set_var("EDGEQUAKE_CHAT_API_KEY", "chat-key");
+        std::env::set_var("EDGEQUAKE_CHAT_MODEL", "gpt-test");
+
+        apply_chat_env_aliases();
+
+        assert_eq!(
+            std::env::var("OPENAI_BASE_URL").as_deref(),
+            Ok("https://chat.example.test/v1")
+        );
+        assert_eq!(std::env::var("OPENAI_API_KEY").as_deref(), Ok("chat-key"));
+        assert_eq!(
+            std::env::var("EDGEQUAKE_LLM_MODEL").as_deref(),
+            Ok("gpt-test")
+        );
+
+        std::env::remove_var("EDGEQUAKE_CHAT_BASE_URL");
+        std::env::remove_var("EDGEQUAKE_CHAT_API_KEY");
+        std::env::remove_var("EDGEQUAKE_CHAT_MODEL");
+        std::env::remove_var("OPENAI_BASE_URL");
+        std::env::remove_var("OPENAI_API_KEY");
+        std::env::remove_var("EDGEQUAKE_LLM_MODEL");
+    }
+
+    #[test]
+    #[serial]
+    fn apply_chat_env_aliases_preserves_explicit_standard_vars() {
+        std::env::set_var("EDGEQUAKE_CHAT_BASE_URL", "https://chat.example.test/v1");
+        std::env::set_var("EDGEQUAKE_CHAT_API_KEY", "chat-key");
+        std::env::set_var("EDGEQUAKE_CHAT_MODEL", "gpt-chat");
+        std::env::set_var("OPENAI_BASE_URL", "https://explicit.example.test/v1");
+        std::env::set_var("OPENAI_API_KEY", "explicit-key");
+        std::env::set_var("EDGEQUAKE_LLM_MODEL", "gpt-explicit");
+
+        apply_chat_env_aliases();
+
+        assert_eq!(
+            std::env::var("OPENAI_BASE_URL").as_deref(),
+            Ok("https://explicit.example.test/v1")
+        );
+        assert_eq!(
+            std::env::var("OPENAI_API_KEY").as_deref(),
+            Ok("explicit-key")
+        );
+        assert_eq!(
+            std::env::var("EDGEQUAKE_LLM_MODEL").as_deref(),
+            Ok("gpt-explicit")
+        );
+
+        std::env::remove_var("EDGEQUAKE_CHAT_BASE_URL");
+        std::env::remove_var("EDGEQUAKE_CHAT_API_KEY");
+        std::env::remove_var("EDGEQUAKE_CHAT_MODEL");
+        std::env::remove_var("OPENAI_BASE_URL");
+        std::env::remove_var("OPENAI_API_KEY");
+        std::env::remove_var("EDGEQUAKE_LLM_MODEL");
     }
 }

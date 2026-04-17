@@ -19,16 +19,42 @@ use serial_test::serial;
 use tower::ServiceExt;
 use uuid::Uuid;
 
-/// Test helper: Clean environment for isolated provider tests
+/// Test helper: Clean environment for isolated provider tests.
 fn clean_provider_env() {
-    std::env::remove_var("EDGEQUAKE_LLM_PROVIDER");
-    std::env::remove_var("OLLAMA_HOST");
-    std::env::remove_var("OLLAMA_MODEL");
-    std::env::remove_var("LMSTUDIO_HOST");
-    std::env::remove_var("LMSTUDIO_MODEL");
-    std::env::remove_var("OPENAI_API_KEY");
-    std::env::remove_var("EDGEQUAKE_DEFAULT_EMBEDDING_MODEL");
-    std::env::remove_var("EDGEQUAKE_DEFAULT_EMBEDDING_PROVIDER");
+    const PREFIXES: &[&str] = &[
+        "EDGEQUAKE_",
+        "OLLAMA_",
+        "LMSTUDIO_",
+        "OPENAI_",
+        "AZURE_OPENAI_",
+        "GEMINI_",
+        "GOOGLE_",
+        "ANTHROPIC_",
+        "MISTRAL_",
+        "COHERE_",
+        "VERTEX_",
+        "XAI_",
+        "DEEPSEEK_",
+        "FIREWORKS_",
+        "HUGGINGFACE_",
+        "HF_",
+    ];
+
+    let keys_to_remove: Vec<String> = std::env::vars()
+        .map(|(key, _)| key)
+        .filter(|key| PREFIXES.iter().any(|prefix| key.starts_with(prefix)))
+        .collect();
+
+    for key in keys_to_remove {
+        std::env::remove_var(key);
+    }
+}
+
+fn force_mock_provider_env() {
+    clean_provider_env();
+    std::env::set_var("EDGEQUAKE_LLM_PROVIDER", "mock");
+    std::env::set_var("EDGEQUAKE_DEFAULT_EMBEDDING_PROVIDER", "mock");
+    std::env::set_var("EDGEQUAKE_DEFAULT_EMBEDDING_MODEL", "mock-embedding");
 }
 
 // ============================================================================
@@ -39,7 +65,7 @@ fn clean_provider_env() {
 #[tokio::test]
 #[serial]
 async fn test_provider_autodetect_default_mock() {
-    clean_provider_env();
+    force_mock_provider_env();
 
     let state = edgequake_api::AppState::new_memory(None::<String>);
 
@@ -56,7 +82,7 @@ async fn test_provider_autodetect_default_mock() {
 #[tokio::test]
 #[serial]
 async fn test_provider_detection_priority() {
-    clean_provider_env();
+    force_mock_provider_env();
 
     // Test 1: Only OpenAI set - should use OpenAI
     std::env::set_var("OPENAI_API_KEY", "sk-test-key");
@@ -70,7 +96,8 @@ async fn test_provider_detection_priority() {
     // Provider factory should check Ollama first
     clean_provider_env();
 
-    // Test 3: All cleared - back to Mock
+    // Test 3: Explicit mock env - deterministic fallback for hermetic testing
+    force_mock_provider_env();
     let state_mock = edgequake_api::AppState::new_memory(None::<String>);
     assert_eq!(state_mock.llm_provider.name(), "mock");
 }
@@ -306,7 +333,7 @@ async fn test_provider_registry_api() {
 #[tokio::test]
 #[serial]
 async fn test_provider_status_api() {
-    clean_provider_env();
+    force_mock_provider_env();
     let state = edgequake_api::AppState::new_memory(None::<String>);
     let app = edgequake_api::create_router(state);
 

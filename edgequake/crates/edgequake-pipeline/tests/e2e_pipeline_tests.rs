@@ -105,7 +105,9 @@ fn test_chunker_overlap() {
 #[test]
 fn test_chunker_default_config() {
     let config = ChunkerConfig::default();
-    assert_eq!(config.chunk_size, 1200);
+    // WHY: the default was tightened from 1200 to 800 to keep dense technical
+    // content safely under the embedding model token limit.
+    assert_eq!(config.chunk_size, 800);
     assert_eq!(config.chunk_overlap, 100);
     assert_eq!(config.min_chunk_size, 100);
     assert!(config.preserve_sentences);
@@ -334,11 +336,15 @@ async fn test_merger_updates_existing_entities() {
 
 #[tokio::test]
 async fn test_full_pipeline_with_mock_llm() {
-    // Create mock that returns valid extraction JSON
+    // Create mock responses for every chunk extraction call.
+    // WHY: the safer 800-token default chunk size produces multiple chunks for this
+    // document, so the extractor needs more than one valid JSON response queued.
     let mock_provider = Arc::new(MockProvider::new());
-    mock_provider
-        .add_response(r#"{"entities": [], "relationships": []}"#)
-        .await;
+    for _ in 0..16 {
+        mock_provider
+            .add_response(r#"{"entities": [], "relationships": []}"#)
+            .await;
+    }
 
     // Create the extractor wrapping the mock provider
     let extractor: Arc<dyn EntityExtractor> = Arc::new(LLMExtractor::new(mock_provider.clone()));

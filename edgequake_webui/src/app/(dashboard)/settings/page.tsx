@@ -1,29 +1,30 @@
 'use client';
 
 import { AdminQuotaSection } from '@/components/settings/admin-quota-section';
-import { ProviderStatusCard } from '@/components/settings/provider-status-card';
+import { ConfigExplainabilityPanel } from '@/components/settings/config-explainability-panel';
 import { PdfParserSettingsCard } from '@/components/settings/pdf-parser-settings-card';
+import { ProviderStatusCard } from '@/components/settings/provider-status-card';
 import { VisionLLMSettingsCard } from '@/components/settings/vision-llm-settings-card';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
@@ -221,6 +222,9 @@ export default function SettingsPage() {
 
       {/* Provider Status */}
       <ProviderStatusCard />
+
+      {/* Config Explainability — full priority chain per area */}
+      <ConfigExplainabilityPanel />
 
       {/* PDF parser backend configuration */}
       <PdfParserSettingsCard />
