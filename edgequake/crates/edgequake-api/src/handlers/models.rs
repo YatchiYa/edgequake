@@ -30,7 +30,7 @@
 //! capability tooltips and cost estimates.
 
 use axum::{extract::State, Json};
-use edgequake_llm::model_config::ProviderType;
+use edgequake_llm::model_config::{ModelType, ProviderType};
 
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
@@ -190,9 +190,16 @@ pub async fn list_embedding_models(
 ) -> ApiResult<Json<EmbeddingModelsResponse>> {
     let config = &*state.models_config;
 
+    // WHY: `all_embedding_models()` in published edgequake-llm <=0.6.1 incorrectly
+    // includes ModelType::Multimodal models (e.g. gemma4, gemma3, llama3.2-vision).
+    // We apply an authoritative, deterministic filter here:
+    // ONLY models with ModelType::Embedding are true vector-embedding models.
+    // This is the single source of truth — no multimodal/LLM model must ever
+    // appear in the embedding selector. (First Principle, explicit, no hidden config)
     let models: Vec<EmbeddingModelItem> = config
         .all_embedding_models()
         .into_iter()
+        .filter(|(_, model)| matches!(model.model_type, ModelType::Embedding))
         .map(|(provider, model)| EmbeddingModelItem {
             provider: provider.name.clone(),
             provider_display_name: provider.display_name.clone(),

@@ -32,7 +32,7 @@
 
 [defaults]
 llm_provider = "ollama"              # Default LLM provider
-llm_model = "gemma4:e4b"             # Default LLM model (128K context, multimodal+audio, 9.6GB)
+llm_model = "gemma4:latest"          # Default LLM model (alias for gemma4:e4b — 128K context, multimodal+audio)
 embedding_provider = "ollama"        # Default embedding provider
 embedding_model = "embeddinggemma"   # Default embedding model (768 dimensions, 2K context)
 

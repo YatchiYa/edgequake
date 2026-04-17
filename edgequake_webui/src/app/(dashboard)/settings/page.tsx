@@ -1,6 +1,7 @@
 'use client';
 
 import { AdminQuotaSection } from '@/components/settings/admin-quota-section';
+import { ConfigExplainabilityPanel } from '@/components/settings/config-explainability-panel';
 import { ProviderStatusCard } from '@/components/settings/provider-status-card';
 import { PdfParserSettingsCard } from '@/components/settings/pdf-parser-settings-card';
 import { VisionLLMSettingsCard } from '@/components/settings/vision-llm-settings-card';
@@ -221,6 +222,9 @@ export default function SettingsPage() {
 
       {/* Provider Status */}
       <ProviderStatusCard />
+
+      {/* Config Explainability — full priority chain per area */}
+      <ConfigExplainabilityPanel />
 
       {/* PDF parser backend configuration */}
       <PdfParserSettingsCard />

@@ -3,41 +3,41 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { mergeEntities, updateEntity } from '@/lib/api/edgequake';
 import type { Entity, GraphNode } from '@/types';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  AlertTriangle,
-  Copy,
-  Edit,
-  GitMerge,
-  Loader2,
-  Lock
+    AlertTriangle,
+    Copy,
+    Edit,
+    GitMerge,
+    Loader2,
+    Lock
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -300,7 +300,7 @@ export function EntityEditDialog({
   return (
     <>
       <Dialog open={open && !mergeConflict.show} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg flex flex-col max-h-[90dvh]">
           <DialogHeader className="space-y-3">
             <DialogTitle className="flex items-center gap-2 text-lg">
               <div className="p-2 rounded-lg bg-primary/10">
@@ -327,11 +327,10 @@ export function EntityEditDialog({
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleSubmit} className="space-y-5 mt-2">
-            {/* Editable Fields Section */}
-            <div className="space-y-4">
+          <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden mt-2">
+            <ScrollArea className="flex-1 min-h-0 pr-1">
+            <div className="space-y-5 pb-2">
               <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                {mode === 'merge' ? <GitMerge className="h-3.5 w-3.5" /> : <Edit className="h-3.5 w-3.5" />}
                 {mode === 'merge'
                   ? t('entity.mergeTarget', 'Merge Target')
                   : t('entity.editableFields', 'Editable Fields')}
@@ -474,51 +473,50 @@ export function EntityEditDialog({
                   {t('entity.systemProperties', 'System Properties')}
                   <span className="text-[10px] font-normal normal-case">(read-only)</span>
                 </div>
-                <ScrollArea className="max-h-40">
-                  <div className="bg-muted/30 rounded-lg p-3 space-y-2 border border-border/50">
-                    {Object.entries(node.properties)
-                      .filter(([key]) => !['description', 'entity_type'].includes(key))
-                      .map(([key, value]) => {
-                        const stringValue = String(value);
-                        const isLongValue = stringValue.length > 24;
-                        
-                        return (
-                          <div key={key} className="flex items-center justify-between gap-2 text-xs group">
-                            <span className="min-w-20 text-muted-foreground">{key}</span>
-                            <div className="flex items-center gap-1.5 flex-1 justify-end min-w-0">
-                              <span 
-                                className="max-w-45 truncate rounded bg-background/50 px-2 py-1 font-mono text-[10px]"
-                                title={stringValue}
-                              >
-                                {isLongValue ? `${stringValue.slice(0, 24)}...` : stringValue}
-                              </span>
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
-                                      aria-label={`Copy ${key}`}
-                                      onClick={() => handleCopyValue(stringValue, key)}
-                                    >
-                                      <Copy className="h-3 w-3" />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>Copy {key}</TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            </div>
+                <div className="bg-muted/30 rounded-lg p-3 space-y-2 border border-border/50">
+                  {Object.entries(node.properties)
+                    .filter(([key]) => !['description', 'entity_type'].includes(key))
+                    .map(([key, value]) => {
+                      const stringValue = String(value);
+                      const isLongValue = stringValue.length > 24;
+                      
+                      return (
+                        <div key={key} className="flex items-center justify-between gap-2 text-xs group">
+                          <span className="min-w-20 text-muted-foreground">{key}</span>
+                          <div className="flex items-center gap-1.5 flex-1 justify-end min-w-0">
+                            <span 
+                              className="max-w-45 truncate rounded bg-background/50 px-2 py-1 font-mono text-[10px]"
+                              title={stringValue}
+                            >
+                              {isLongValue ? `${stringValue.slice(0, 24)}...` : stringValue}
+                            </span>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
+                                    aria-label={`Copy ${key}`}
+                                    onClick={() => handleCopyValue(stringValue, key)}
+                                  >
+                                    <Copy className="h-3 w-3" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Copy {key}</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           </div>
-                        );
-                      })}
-                  </div>
-                </ScrollArea>
+                        </div>
+                      );
+                    })}
+                </div>
               </div>
             )}
+            </ScrollArea>
 
-            <DialogFooter className="gap-2 sm:gap-2 pt-2">
+            <DialogFooter className="gap-2 sm:gap-2 pt-3 mt-2 border-t">
               <Button
                 type="button"
                 variant="outline"
