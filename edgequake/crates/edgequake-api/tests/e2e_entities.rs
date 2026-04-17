@@ -15,6 +15,10 @@ use axum::{
 use edgequake_api::{AppState, Server, ServerConfig};
 use serde_json::{json, Value};
 use tower::ServiceExt;
+use uuid::Uuid;
+
+const TEST_TENANT_ID: &str = "e2e-entities-tenant";
+const TEST_WORKSPACE_ID: &str = "e2e-entities-workspace";
 
 // ============================================================================
 // Helper Functions
@@ -857,6 +861,204 @@ async fn test_merge_entities_with_strategy() {
     assert!(description.contains("detailed") || description.contains("very"));
 }
 
+#[tokio::test]
+async fn test_merge_entities_resolves_human_readable_entity_names() {
+    let server = Server::new(create_test_config(), AppState::test_state());
+
+    for entity_name in ["Rachel Troublawietch", "Rachel Troublawitch"] {
+        let create_request = json!({
+            "entity_name": entity_name,
+            "entity_type": "PERSON",
+            "description": format!("{} description", entity_name),
+            "source_id": "manual_entry"
+        });
+
+        let app = server.build_router();
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/graph/entities")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(serde_json::to_string(&create_request).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    let merge_request = json!({
+        "source_entity": "Rachel Troublawietch",
+        "target_entity": "Rachel Troublawitch",
+        "merge_strategy": "prefer_target"
+    });
+
+    let app = server.build_router();
+    let merge_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/graph/entities/merge")
+                .header("Content-Type", "application/json")
+                .body(Body::from(serde_json::to_string(&merge_request).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(merge_response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_merge_entities_preserves_relationships_in_graph() {
+    let server = Server::new(create_test_config(), AppState::test_state());
+
+    for entity_name in [
+        "Source Person",
+        "Target Person",
+        "Acme Org",
+        "Investor Ally",
+    ] {
+        let create_request = json!({
+            "entity_name": entity_name,
+            "entity_type": "TEST",
+            "description": format!("{} description", entity_name),
+            "source_id": "manual_entry"
+        });
+
+        let app = server.build_router();
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/graph/entities")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(serde_json::to_string(&create_request).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    for relationship_request in [
+        json!({
+            "src_id": "Source Person",
+            "tgt_id": "Acme Org",
+            "description": "Works with Acme",
+            "keywords": "WORKS_WITH",
+            "weight": 0.9,
+            "source_id": "manual_entry",
+            "metadata": {}
+        }),
+        json!({
+            "src_id": "Investor Ally",
+            "tgt_id": "Source Person",
+            "description": "Backs the founder",
+            "keywords": "BACKS",
+            "weight": 0.8,
+            "source_id": "manual_entry",
+            "metadata": {}
+        }),
+    ] {
+        let app = server.build_router();
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/graph/relationships")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_string(&relationship_request).unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    let merge_request = json!({
+        "source_entity": "Source Person",
+        "target_entity": "Target Person",
+        "merge_strategy": "prefer_target"
+    });
+
+    let app = server.build_router();
+    let merge_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/graph/entities/merge")
+                .header("Content-Type", "application/json")
+                .body(Body::from(serde_json::to_string(&merge_request).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(merge_response.status(), StatusCode::OK);
+
+    let app = server.build_router();
+    let neighborhood_response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/graph/entities/TARGET_PERSON/neighborhood?depth=1")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(neighborhood_response.status(), StatusCode::OK);
+
+    let body = extract_json(neighborhood_response).await;
+    let nodes = body
+        .get("nodes")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let edges = body
+        .get("edges")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    assert!(nodes
+        .iter()
+        .any(|node| node.get("id").and_then(|v| v.as_str()) == Some("ACME_ORG")));
+    assert!(nodes
+        .iter()
+        .any(|node| node.get("id").and_then(|v| v.as_str()) == Some("INVESTOR_ALLY")));
+    assert!(edges.iter().all(|edge| {
+        let source = edge
+            .get("source")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let target = edge
+            .get("target")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        source != "SOURCE_PERSON" && target != "SOURCE_PERSON"
+    }));
+    assert!(edges.iter().any(|edge| {
+        let source = edge
+            .get("source")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let target = edge
+            .get("target")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        source == "TARGET_PERSON" || target == "TARGET_PERSON"
+    }));
+}
+
 // ============================================================================
 // Entity Lifecycle Test
 // ============================================================================
@@ -1009,36 +1211,47 @@ async fn test_list_entities_empty() {
 #[tokio::test]
 async fn test_list_entities_with_pagination() {
     let server = create_test_server();
+    let unique_prefix = format!("list_test_entity_{}", Uuid::new_v4().simple());
 
-    // Create some entities first
+    // Create isolated entities for this test run.
     for i in 1..=5 {
         let app = server.build_router();
         let request = json!({
-            "entity_name": format!("list_test_entity_{}", i),
+            "entity_name": format!("{}_{}", unique_prefix, i),
             "entity_type": "CONCEPT",
             "description": format!("Test entity {}", i),
             "source_id": "test"
         });
 
-        app.oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/v1/graph/entities")
-                .header("Content-Type", "application/json")
-                .body(Body::from(serde_json::to_string(&request).unwrap()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/graph/entities")
+                    .header("Content-Type", "application/json")
+                    .header("X-Tenant-ID", TEST_TENANT_ID)
+                    .header("X-Workspace-ID", TEST_WORKSPACE_ID)
+                    .body(Body::from(serde_json::to_string(&request).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
     }
 
-    // List with pagination
+    // List only the entities created by this test for deterministic pagination.
     let app = server.build_router();
     let response = app
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/v1/graph/entities?page=1&page_size=3")
+                .uri(format!(
+                    "/api/v1/graph/entities?page=1&page_size=3&search={}",
+                    unique_prefix
+                ))
+                .header("X-Tenant-ID", TEST_TENANT_ID)
+                .header("X-Workspace-ID", TEST_WORKSPACE_ID)
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1050,8 +1263,7 @@ async fn test_list_entities_with_pagination() {
     let body = extract_json(response).await;
     assert_eq!(body.get("page").and_then(|v| v.as_u64()), Some(1));
     assert_eq!(body.get("page_size").and_then(|v| v.as_u64()), Some(3));
-    // Should have at least 5 total (may have more from other tests)
-    assert!(body.get("total").and_then(|v| v.as_u64()).unwrap_or(0) >= 5);
+    assert_eq!(body.get("total").and_then(|v| v.as_u64()), Some(5));
 }
 
 #[tokio::test]

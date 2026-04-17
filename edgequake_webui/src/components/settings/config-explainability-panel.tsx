@@ -22,14 +22,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Separator } from '@/components/ui/separator';
 import { SERVER_BASE_URL } from '@/lib/api/client';
 import {
-  AlertTriangle,
-  CheckCircle2,
-  ChevronDown,
-  ChevronRight,
-  Info,
-  RefreshCw,
-  Settings2,
-  Zap,
+    AlertTriangle,
+    CheckCircle2,
+    ChevronDown,
+    ChevronRight,
+    Info,
+    RefreshCw,
+    Settings2,
+    Zap,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 

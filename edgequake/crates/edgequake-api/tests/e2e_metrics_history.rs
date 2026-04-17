@@ -19,6 +19,7 @@ use tower::ServiceExt;
 use uuid::Uuid;
 
 use edgequake_api::{AppState, Server, ServerConfig};
+use edgequake_core::{CreateWorkspaceRequest, Tenant};
 
 /// Create a test server configuration.
 fn create_test_config() -> ServerConfig {
@@ -31,14 +32,65 @@ fn create_test_config() -> ServerConfig {
     }
 }
 
-/// Create a test server with default AppState.
-fn create_test_server() -> (Router, String) {
+/// Resolve a real workspace ID from the initialized test state.
+async fn get_test_workspace_id(state: &AppState) -> String {
+    let tenants = state
+        .workspace_service
+        .list_tenants(10, 0)
+        .await
+        .expect("Should list test tenants");
+
+    if let Some(tenant) = tenants.first() {
+        let workspaces = state
+            .workspace_service
+            .list_workspaces(tenant.tenant_id)
+            .await
+            .expect("Should list test workspaces");
+
+        if let Some(workspace) = workspaces.first() {
+            return workspace.workspace_id.to_string();
+        }
+
+        let workspace = state
+            .workspace_service
+            .create_workspace(
+                tenant.tenant_id,
+                CreateWorkspaceRequest::new("Metrics History Test Workspace"),
+            )
+            .await
+            .expect("Should create test workspace");
+
+        return workspace.workspace_id.to_string();
+    }
+
+    let tenant = Tenant::new(
+        "Metrics History Test Tenant",
+        format!("metrics-{}", Uuid::new_v4()),
+    );
+    let created_tenant = state
+        .workspace_service
+        .create_tenant(tenant)
+        .await
+        .expect("Should create test tenant");
+
+    let workspace = state
+        .workspace_service
+        .create_workspace(
+            created_tenant.tenant_id,
+            CreateWorkspaceRequest::new("Metrics History Test Workspace"),
+        )
+        .await
+        .expect("Should create test workspace");
+
+    workspace.workspace_id.to_string()
+}
+
+/// Create a test server with a real initialized workspace.
+async fn create_test_server() -> (Router, String) {
     let state = AppState::test_state();
+    let workspace_id = get_test_workspace_id(&state).await;
     let server = Server::new(create_test_config(), state);
     let router = server.build_router();
-
-    // Create a test workspace ID (default workspace)
-    let workspace_id = Uuid::nil().to_string();
 
     (router, workspace_id)
 }
@@ -46,7 +98,7 @@ fn create_test_server() -> (Router, String) {
 /// Test: GET /api/v1/workspaces/{id}/metrics-history returns empty list for new workspace
 #[tokio::test]
 async fn test_metrics_history_empty_for_new_workspace() {
-    let (router, workspace_id) = create_test_server();
+    let (router, workspace_id) = create_test_server().await;
 
     let response = router
         .oneshot(
@@ -85,7 +137,7 @@ async fn test_metrics_history_empty_for_new_workspace() {
 /// Test: Metrics history endpoint respects limit parameter
 #[tokio::test]
 async fn test_metrics_history_limit_parameter() {
-    let (router, workspace_id) = create_test_server();
+    let (router, workspace_id) = create_test_server().await;
 
     let response = router
         .oneshot(
@@ -115,7 +167,7 @@ async fn test_metrics_history_limit_parameter() {
 /// Test: Metrics history endpoint respects offset parameter
 #[tokio::test]
 async fn test_metrics_history_offset_parameter() {
-    let (router, workspace_id) = create_test_server();
+    let (router, workspace_id) = create_test_server().await;
 
     let response = router
         .oneshot(
@@ -145,7 +197,7 @@ async fn test_metrics_history_offset_parameter() {
 /// Test: Metrics history endpoint limits maximum results
 #[tokio::test]
 async fn test_metrics_history_max_limit_enforced() {
-    let (router, workspace_id) = create_test_server();
+    let (router, workspace_id) = create_test_server().await;
 
     let response = router
         .oneshot(
@@ -175,7 +227,7 @@ async fn test_metrics_history_max_limit_enforced() {
 /// Test: Metrics history endpoint with both limit and offset
 #[tokio::test]
 async fn test_metrics_history_pagination_combined() {
-    let (router, workspace_id) = create_test_server();
+    let (router, workspace_id) = create_test_server().await;
 
     let response = router
         .oneshot(
@@ -210,7 +262,7 @@ async fn test_metrics_history_pagination_combined() {
 /// Test: POST /api/v1/workspaces/{id}/metrics-snapshot creates a snapshot
 #[tokio::test]
 async fn test_trigger_metrics_snapshot_creates_snapshot() {
-    let (router, workspace_id) = create_test_server();
+    let (router, workspace_id) = create_test_server().await;
 
     let response = router
         .oneshot(
@@ -244,7 +296,7 @@ async fn test_trigger_metrics_snapshot_response_structure() {
     // This test documents expected response format for PostgreSQL
     // With in-memory, it returns an error since the stub isn't fully implemented
 
-    let (router, workspace_id) = create_test_server();
+    let (router, workspace_id) = create_test_server().await;
 
     let response = router
         .oneshot(
@@ -294,7 +346,7 @@ async fn test_trigger_metrics_snapshot_response_structure() {
 /// Test: Manual snapshot trigger endpoint accepts POST method only
 #[tokio::test]
 async fn test_trigger_metrics_snapshot_method_not_allowed() {
-    let (router, workspace_id) = create_test_server();
+    let (router, workspace_id) = create_test_server().await;
 
     // Try GET method (should fail)
     let response = router

@@ -122,14 +122,14 @@ Vision settings control which LLM provider and model are used for PDF OCR
 configuration — you only need to set these if you want a **separate** model
 for vision processing.
 
-| Variable                        | Default (inherited)              | Description                   |
-| ------------------------------- | -------------------------------- | ----------------------------- |
-| `EDGEQUAKE_VISION_PROVIDER`     | ← `EDGEQUAKE_DEFAULT_LLM_PROVIDER` | Vision LLM provider        |
-| `EDGEQUAKE_VISION_MODEL`        | ← `EDGEQUAKE_DEFAULT_LLM_MODEL`    | Vision LLM model           |
-| `EDGEQUAKE_VISION_LLM_PROVIDER` | ← `EDGEQUAKE_DEFAULT_LLM_PROVIDER` | Alias (legacy)             |
-| `EDGEQUAKE_VISION_LLM_MODEL`    | ← `EDGEQUAKE_DEFAULT_LLM_MODEL`    | Alias (legacy)             |
-| `EDGEQUAKE_VISION_TIMEOUT_SECS` | `480`                               | Total vision timeout       |
-| `EDGEQUAKE_VISION_PAGE_TIMEOUT_SECS` | `120`                          | Per-page vision timeout    |
+| Variable                             | Default (inherited)                | Description             |
+| ------------------------------------ | ---------------------------------- | ----------------------- |
+| `EDGEQUAKE_VISION_PROVIDER`          | ← `EDGEQUAKE_DEFAULT_LLM_PROVIDER` | Vision LLM provider     |
+| `EDGEQUAKE_VISION_MODEL`             | ← `EDGEQUAKE_DEFAULT_LLM_MODEL`    | Vision LLM model        |
+| `EDGEQUAKE_VISION_LLM_PROVIDER`      | ← `EDGEQUAKE_DEFAULT_LLM_PROVIDER` | Alias (legacy)          |
+| `EDGEQUAKE_VISION_LLM_MODEL`         | ← `EDGEQUAKE_DEFAULT_LLM_MODEL`    | Alias (legacy)          |
+| `EDGEQUAKE_VISION_TIMEOUT_SECS`      | `480`                              | Total vision timeout    |
+| `EDGEQUAKE_VISION_PAGE_TIMEOUT_SECS` | `120`                              | Per-page vision timeout |
 
 ### Resolution Chain (highest priority first)
 
@@ -149,12 +149,12 @@ provider. Incompatible combinations are skipped with a warning log.
 
 EdgeQuake detects when a model name is incompatible with the resolved provider:
 
-| Pattern | Expected Provider |
-|---------|-------------------|
-| `gpt-*`, `o1-*`, `o3-*`, `o4-*` | `openai` or `azure` |
-| `claude-*` | `anthropic` |
-| `gemini-*` | `google` or `vertexai` |
-| `gemma*`, `llama*`, `mistral*`, `phi*`, `qwen*` | `ollama` |
+| Pattern                                         | Expected Provider      |
+| ----------------------------------------------- | ---------------------- |
+| `gpt-*`, `o1-*`, `o3-*`, `o4-*`                 | `openai` or `azure`    |
+| `claude-*`                                      | `anthropic`            |
+| `gemini-*`                                      | `google` or `vertexai` |
+| `gemma*`, `llama*`, `mistral*`, `phi*`, `qwen*` | `ollama`               |
 
 If a mismatch is detected:
 1. The incompatible env var is skipped (WARN log)

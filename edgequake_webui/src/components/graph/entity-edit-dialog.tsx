@@ -42,6 +42,7 @@ import {
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import { MergeTargetCombobox } from './merge-target-combobox';
 
 // Default entity types (fallback when workspace has no custom config)
 const DEFAULT_ENTITY_TYPES = [
@@ -124,6 +125,22 @@ export function EntityEditDialog({
   const selectedMergeTarget = mergeCandidates.find(
     (entity) => entity.id === selectedMergeTargetId
   );
+  const getEntityMergeName = useCallback((entity: GraphNode | Entity | null | undefined) => {
+    if (!entity) return '';
+
+    if ('entity_name' in entity && entity.entity_name) {
+      return entity.entity_name;
+    }
+
+    return entity.label || entity.id;
+  }, []);
+
+  const getCandidateMergeName = useCallback(
+    (candidate?: { id: string; label: string; entity_type: string }) =>
+      candidate?.label || candidate?.id || '',
+    []
+  );
+
   const availableEntityTypes = Array.from(
     new Set(
       [
@@ -203,18 +220,23 @@ export function EntityEditDialog({
   const mergeMutation = useMutation({
     mutationFn: () =>
       mergeEntities({
-        source_ids: [node!.id],
-        target_label: mergeConflict.existingEntity?.label || label,
-        target_type: mergeConflict.existingEntity?.entity_type || entityType,
+        source_entity: getEntityMergeName(node),
+        target_entity:
+          getCandidateMergeName(mergeConflict.existingEntity) ||
+          getCandidateMergeName(selectedMergeTarget),
+        merge_strategy: 'prefer_target',
       }),
     onSuccess: (result) => {
+      const mergedRelationshipCount =
+        result.merge_details?.relationships_merged ?? result.merged_count ?? 0;
+
       toast.success(
         t('entity.mergeSuccess', 'Entities merged successfully'),
         {
           description: t(
             'entity.mergeSuccessDesc',
-            'Merged {{count}} entities into one.',
-            { count: result.merged_count }
+            'Merge completed and {{count}} relationship(s) were preserved.',
+            { count: mergedRelationshipCount }
           ),
         }
       );
@@ -339,27 +361,17 @@ export function EntityEditDialog({
               {mode === 'merge' ? (
                 <>
                   <div className="space-y-2">
-                    <Label htmlFor="merge-target">
+                    <Label htmlFor="merge-target-combobox">
                       {t('entity.selectTargetEntity', 'Select target entity')}
                     </Label>
-                    <Select value={selectedMergeTargetId} onValueChange={setSelectedMergeTargetId}>
-                      <SelectTrigger
-                        id="merge-target"
-                        aria-label={t('entity.selectTargetEntity', 'Select target entity')}
-                        className="h-10"
-                      >
-                        <SelectValue
-                          placeholder={t('entity.selectMergeTarget', 'Select an entity to merge into')}
-                        />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {mergeCandidates.map((entity) => (
-                          <SelectItem key={entity.id} value={entity.id}>
-                            {entity.label} · {entity.entity_type}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <MergeTargetCombobox
+                      candidates={mergeCandidates}
+                      value={selectedMergeTargetId}
+                      onChange={setSelectedMergeTargetId}
+                      currentLabel={originalLabel}
+                      currentType={entityType}
+                      disabled={isLoading}
+                    />
                   </div>
 
                   {selectedMergeTarget && (
@@ -552,13 +564,20 @@ export function EntityEditDialog({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-yellow-600">
               <AlertTriangle className="h-5 w-5" />
-              {t('entity.mergeConflict', 'Merge Conflict')}
+              {mode === 'merge'
+                ? t('entity.confirmMerge', 'Confirm Merge')
+                : t('entity.mergeConflict', 'Merge Conflict')}
             </DialogTitle>
             <DialogDescription>
-              {t(
-                'entity.mergeConflictDescription',
-                'An entity with this name already exists. Would you like to merge them?'
-              )}
+              {mode === 'merge'
+                ? t(
+                    'entity.confirmMergeDescription',
+                    'Review the target below and confirm the merge. Relationships and metadata will be preserved where possible.'
+                  )
+                : t(
+                    'entity.mergeConflictDescription',
+                    'An entity with this name already exists. Would you like to merge them?'
+                  )}
             </DialogDescription>
           </DialogHeader>
 
@@ -584,7 +603,7 @@ export function EntityEditDialog({
             <p className="text-sm text-muted-foreground">
               {t(
                 'entity.mergeExplanation',
-                'Merging will combine all relationships and properties from both entities into one. This action cannot be undone.'
+                'Merging will combine the relationships and properties from both entities into one canonical record. This action cannot be undone.'
               )}
             </p>
           </div>

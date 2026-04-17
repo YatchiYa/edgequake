@@ -952,14 +952,25 @@ export interface Entity {
 }
 
 export interface MergeEntitiesRequest {
-  source_ids: string[];
-  target_label: string;
-  target_type?: string;
+  source_entity: string;
+  target_entity: string;
+  merge_strategy?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface MergeEntitiesResponse {
+  status?: string;
+  message?: string;
   merged_entity: Entity;
-  merged_count: number;
+  merged_count?: number;
+  merge_details?: {
+    source_entity_id: string;
+    target_entity_id: string;
+    relationships_merged: number;
+    duplicate_relationships_removed: number;
+    description_strategy: string;
+    metadata_strategy: string;
+  };
 }
 
 // Relationship types

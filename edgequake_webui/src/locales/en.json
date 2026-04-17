@@ -662,12 +662,14 @@
     "labelConflict": "An entity with this name already exists. Consider merging instead.",
     "mergeConflict": "Merge Conflict",
     "mergeConflictDescription": "An entity with this name already exists. Would you like to merge them?",
+    "confirmMerge": "Confirm Merge",
+    "confirmMergeDescription": "Review the selected target and confirm the merge. Relationships and metadata will be preserved where possible.",
     "currentEntity": "Current Entity",
     "existingEntity": "Existing Entity",
-    "mergeExplanation": "Merging will combine all relationships and properties from both entities into one. This action cannot be undone.",
+    "mergeExplanation": "Merging will combine the relationships and properties from both entities into one canonical record. This action cannot be undone.",
     "merge": "Merge Entities",
     "mergeSuccess": "Entities merged successfully",
-    "mergeSuccessDesc": "Merged {{count}} entities into one.",
+    "mergeSuccessDesc": "Merge completed and {{count}} relationship(s) were preserved.",
     "mergeFailed": "Failed to merge entities"
   },
   "relationship": {

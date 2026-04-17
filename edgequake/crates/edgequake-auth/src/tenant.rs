@@ -2,7 +2,7 @@
 //!
 //! This module is conditionally compiled when the `multi-tenant` feature is enabled.
 
-use std::sync::Arc;
+use std::{str::FromStr, sync::Arc};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -93,14 +93,23 @@ impl TenantPlan {
         }
     }
 
-    /// Parse from string.
-    pub fn from_str(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
+    /// Parse from a user-provided label, defaulting to free when unknown.
+    pub fn from_name(s: &str) -> Self {
+        s.parse().unwrap_or(Self::Free)
+    }
+}
+
+impl FromStr for TenantPlan {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s.to_lowercase().as_str() {
+            "free" => Self::Free,
             "basic" => Self::Basic,
             "pro" => Self::Pro,
             "enterprise" => Self::Enterprise,
-            _ => Self::Free,
-        }
+            _ => return Err(()),
+        })
     }
 }
 
@@ -202,7 +211,7 @@ impl TenantContext {
 
     /// Check if tenant is active.
     pub fn is_active(&self) -> bool {
-        self.tenant.is_active && self.workspace.as_ref().map_or(true, |w| w.is_active)
+        self.tenant.is_active && self.workspace.as_ref().is_none_or(|w| w.is_active)
     }
 
     /// Check if user is tenant admin.
@@ -417,7 +426,7 @@ mod tests {
     #[test]
     fn test_plan_string_conversion() {
         assert_eq!(TenantPlan::Pro.as_str(), "pro");
-        assert_eq!(TenantPlan::from_str("PRO"), TenantPlan::Pro);
-        assert_eq!(TenantPlan::from_str("unknown"), TenantPlan::Free);
+        assert_eq!(TenantPlan::from_name("PRO"), TenantPlan::Pro);
+        assert_eq!(TenantPlan::from_name("unknown"), TenantPlan::Free);
     }
 }
