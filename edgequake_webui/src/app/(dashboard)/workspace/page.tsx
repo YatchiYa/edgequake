@@ -349,7 +349,7 @@ export default function WorkspacePage() {
 
   if (!selectedTenantId || !selectedWorkspaceId) {
     return (
-      <ScrollArea className="min-h-[calc(100dvh-5rem)]">
+      <ScrollArea className="h-full">
         <div className="container mx-auto p-6">
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
@@ -369,7 +369,7 @@ export default function WorkspacePage() {
 
   if (isLoadingWorkspace) {
     return (
-      <ScrollArea className="min-h-[calc(100dvh-5rem)]">
+      <ScrollArea className="h-full">
         <div className="container mx-auto p-6 space-y-6">
           <Skeleton className="h-8 w-64" />
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -385,7 +385,7 @@ export default function WorkspacePage() {
 
   if (!workspace) {
     return (
-      <ScrollArea className="min-h-[calc(100dvh-5rem)]">
+      <ScrollArea className="h-full">
         <div className="container mx-auto p-6">
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
@@ -411,7 +411,7 @@ export default function WorkspacePage() {
   }
 
   return (
-    <ScrollArea className="min-h-[calc(100dvh-5rem)]">
+    <ScrollArea className="h-full">
       <div className="container mx-auto p-6 space-y-6">
         {/* Header */}
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
