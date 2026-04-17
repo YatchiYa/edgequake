@@ -229,38 +229,45 @@ fn resolve_vision_chain() -> (Vec<ConfigLevel>, String, String) {
     use edgequake_core::Workspace;
 
     let (llm_levels, llm_effective_provider, llm_effective_model) = resolve_llm_chain();
-    // The "compiled default for vision" is whatever the LLM default is
     let compiled_provider = llm_effective_provider.clone();
     let compiled_model = Workspace::default_model_for_provider(&compiled_provider);
 
-    let env_vision_provider = non_empty("EDGEQUAKE_VISION_LLM_PROVIDER");
-    let env_vision_model = non_empty("EDGEQUAKE_VISION_LLM_MODEL").or_else(|| non_empty("EDGEQUAKE_VISION_MODEL"));
+    // Read ALL vision-related env vars (matching types.rs resolution order)
+    let env_vision_provider = non_empty("EDGEQUAKE_VISION_PROVIDER")
+        .or_else(|| non_empty("EDGEQUAKE_VISION_LLM_PROVIDER"));
+    let env_vision_model = non_empty("EDGEQUAKE_VISION_MODEL")
+        .or_else(|| non_empty("EDGEQUAKE_VISION_LLM_MODEL"));
+
+    // Track which specific env var was the source for accurate diagnostics
+    let vision_provider_source = if non_empty("EDGEQUAKE_VISION_PROVIDER").is_some() {
+        "EDGEQUAKE_VISION_PROVIDER"
+    } else if non_empty("EDGEQUAKE_VISION_LLM_PROVIDER").is_some() {
+        "EDGEQUAKE_VISION_LLM_PROVIDER"
+    } else {
+        "(inherited from LLM)"
+    };
+    let vision_model_source = if non_empty("EDGEQUAKE_VISION_MODEL").is_some() {
+        "EDGEQUAKE_VISION_MODEL"
+    } else if non_empty("EDGEQUAKE_VISION_LLM_MODEL").is_some() {
+        "EDGEQUAKE_VISION_LLM_MODEL"
+    } else {
+        "(inherited from LLM)"
+    };
 
     let effective_provider = env_vision_provider.clone()
         .unwrap_or_else(|| llm_effective_provider.clone());
 
     let effective_model = env_vision_model.clone()
-        .unwrap_or_else(|| {
-            // Mirror default_vision_model_for_provider logic: for OpenAI, prefer gpt-4.1-nano;
-            // for others, fall back to the general LLM model.
-            if effective_provider == "openai" {
-                non_empty("EDGEQUAKE_VISION_LLM_MODEL")
-                    .or_else(|| non_empty("EDGEQUAKE_DEFAULT_LLM_MODEL"))
-                    .unwrap_or_else(|| "gpt-4.1-nano".to_string())
-            } else {
-                llm_effective_model.clone()
-            }
-        });
+        .unwrap_or_else(|| llm_effective_model.clone());
 
     let active_level: String = if env_vision_provider.is_some() || env_vision_model.is_some() {
         "env_vision".to_string()
     } else {
-        // Inherited from LLM — find which LLM level was active
         llm_levels.iter().find(|l| l.active).map(|l| l.level.clone()).unwrap_or_else(|| "compiled_default".to_string())
     };
 
     let llm_fallback_note = format!(
-        "Inherited from LLM config (provider={}, model={}). Set EDGEQUAKE_VISION_LLM_PROVIDER / EDGEQUAKE_VISION_LLM_MODEL to override.",
+        "Inherited from LLM config (provider={}, model={}). Set EDGEQUAKE_VISION_PROVIDER / EDGEQUAKE_VISION_MODEL to override.",
         llm_effective_provider, llm_effective_model
     );
 
@@ -285,12 +292,12 @@ fn resolve_vision_chain() -> (Vec<ConfigLevel>, String, String) {
         },
         ConfigLevel {
             level: "env_vision".to_string(),
-            label: "Env: EDGEQUAKE_VISION_LLM_*".to_string(),
+            label: "Env: Vision Override".to_string(),
             provider: env_vision_provider,
             model: env_vision_model,
             active: active_level == "env_vision",
             note: Some("Dedicated vision override. Takes priority over all LLM settings.".to_string()),
-            source: Some("EDGEQUAKE_VISION_LLM_PROVIDER | EDGEQUAKE_VISION_LLM_MODEL".to_string()),
+            source: Some(format!("{} | {}", vision_provider_source, vision_model_source)),
         },
     ];
 
@@ -299,11 +306,22 @@ fn resolve_vision_chain() -> (Vec<ConfigLevel>, String, String) {
 
 fn build_config_area(levels: Vec<ConfigLevel>, effective_provider: String, effective_model: String) -> ConfigAreaResponse {
     let has_mismatch = is_model_provider_mismatch(&effective_provider, &effective_model);
+
+    // Find which env var set the mismatched value to give targeted remediation.
     let mismatch_description = if has_mismatch {
+        let source_var = levels.iter()
+            .find(|l| l.active)
+            .and_then(|l| l.source.as_deref())
+            .unwrap_or("unknown");
         Some(format!(
             "Model '{}' is not compatible with provider '{}'. \
-             The backend will auto-correct to the provider default, but you should update your configuration.",
-            effective_model, effective_provider
+             This causes timeouts or 404 errors. \
+             \n\nHow to fix:\n\
+             • Option A: Remove or unset the env var that set this model (source: {}).\n\
+             • Option B: Set EDGEQUAKE_VISION_PROVIDER to match the model (e.g. 'openai' for gpt-* models).\n\
+             • Option C: Set EDGEQUAKE_VISION_MODEL to a model your provider supports (e.g. 'gemma4:latest' for Ollama).\n\
+             \nThe backend will auto-correct at runtime, but fixing the source prevents confusion.",
+            effective_model, effective_provider, source_var
         ))
     } else {
         None
@@ -424,7 +442,8 @@ pub async fn get_effective_config(
         priority_rule:
             "Higher-indexed levels override lower. \
              compiled_default < env_alias < env_secondary < env_primary. \
-             Vision inherits from LLM when no EDGEQUAKE_VISION_LLM_* vars are set.".to_string(),
+             Vision inherits from LLM when no EDGEQUAKE_VISION_PROVIDER / EDGEQUAKE_VISION_MODEL vars are set. \
+             The backend auto-corrects provider/model mismatches at runtime, but fixing the env var source is recommended.".to_string(),
     }))
 }
 

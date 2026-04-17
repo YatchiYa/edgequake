@@ -31,21 +31,22 @@ pub struct PdfUploadOptions {
 impl PdfUploadOptions {
     /// Get the resolved vision provider (with fallback to server default).
     ///
-    /// WHY: When no vision provider is explicitly configured, fall back to the
-    /// server's main LLM provider (EDGEQUAKE_LLM_PROVIDER env var) rather than
-    /// hardcoding "openai". This ensures PDF vision extraction works out-of-the-box
-    /// for Ollama deployments that have no OPENAI_API_KEY.
+    /// WHY (First Principle): Single resolution chain with explicit priority:
+    ///   1. Explicit form field `vision_provider`
+    ///   2. EDGEQUAKE_VISION_PROVIDER / EDGEQUAKE_VISION_LLM_PROVIDER env
+    ///   3. EDGEQUAKE_DEFAULT_LLM_PROVIDER env (inherit from LLM)
+    ///   4. EDGEQUAKE_LLM_PROVIDER env (legacy alias)
+    ///   5. Hardcoded fallback: "ollama"
     pub fn resolved_vision_provider(&self) -> String {
-        // WHY filter empty strings: same Docker Compose ${VAR:-} → "" issue as above.
+        // WHY filter empty strings: Docker Compose ${VAR:-} → "" issue.
         self.vision_provider
             .clone()
             .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| {
-                std::env::var("EDGEQUAKE_LLM_PROVIDER")
-                    .ok()
-                    .filter(|s| !s.is_empty())
-                    .unwrap_or_else(|| "ollama".to_string())
-            })
+            .or_else(|| non_empty_env("EDGEQUAKE_VISION_PROVIDER"))
+            .or_else(|| non_empty_env("EDGEQUAKE_VISION_LLM_PROVIDER"))
+            .or_else(|| non_empty_env("EDGEQUAKE_DEFAULT_LLM_PROVIDER"))
+            .or_else(|| non_empty_env("EDGEQUAKE_LLM_PROVIDER"))
+            .unwrap_or_else(|| "ollama".to_string())
     }
 
     /// Get the vision model to use (with fallback from provider).
@@ -68,30 +69,53 @@ impl PdfUploadOptions {
     }
 }
 
+/// Read an env var, treating empty strings as None.
+/// WHY: Docker Compose `${VAR:-}` maps unset host vars to "" inside containers.
+fn non_empty_env(key: &str) -> Option<String> {
+    std::env::var(key).ok().filter(|s| !s.is_empty())
+}
+
 /// Return a sensible default vision model for the given provider.
 ///
-/// WHY: Different providers have different default multimodal models.
-/// For Ollama, use the configured LLM model if set (multimodal models
-/// like gemma4 support vision natively). For OpenAI, use gpt-4.1-nano.
+/// WHY (First Principle): The model MUST be compatible with the resolved provider.
+/// Previous code returned `EDGEQUAKE_VISION_MODEL` for ALL providers, which caused
+/// gpt-4.1-nano to be sent to Ollama when a stale env var leaked in.
 ///
-/// WHY filter empty strings: Docker Compose `${VAR:-}` maps an unset host
-/// variable to the empty string "" inside the container. `std::env::var`
-/// returns `Ok("")` for that case, so the `.or_else` chain never fires and
-/// the caller receives an empty model name which Ollama rejects with
-/// `{"error":"model is required"}`. We treat "" the same as "unset".
+/// Resolution chain (same priority for all providers):
+///   1. EDGEQUAKE_VISION_MODEL env (only if compatible with provider)
+///   2. EDGEQUAKE_VISION_LLM_MODEL env (only if compatible with provider)
+///   3. EDGEQUAKE_DEFAULT_LLM_MODEL env (only if compatible with provider)
+///   4. EDGEQUAKE_LLM_MODEL env (legacy alias, only if compatible)
+///   5. Provider-specific hardcoded default
 pub(crate) fn default_vision_model_for_provider(provider: &str) -> String {
-    // Filter empty strings: Docker Compose ${VAR:-} maps unset vars to "" in containers.
-    let env_vision = std::env::var("EDGEQUAKE_VISION_MODEL")
-        .ok()
-        .filter(|s| !s.is_empty());
-    let env_llm = std::env::var("EDGEQUAKE_LLM_MODEL")
-        .ok()
-        .filter(|s| !s.is_empty());
+    use crate::safety_limits::is_model_provider_mismatch;
+
+    let candidates = [
+        non_empty_env("EDGEQUAKE_VISION_MODEL"),
+        non_empty_env("EDGEQUAKE_VISION_LLM_MODEL"),
+        non_empty_env("EDGEQUAKE_DEFAULT_LLM_MODEL"),
+        non_empty_env("EDGEQUAKE_LLM_MODEL"),
+    ];
+
+    // Pick the first candidate that is compatible with the provider.
+    for candidate in candidates.into_iter().flatten() {
+        if !is_model_provider_mismatch(provider, &candidate) {
+            return candidate;
+        }
+        tracing::warn!(
+            provider,
+            model = %candidate,
+            "Skipping incompatible vision model from env — model '{}' cannot run on provider '{}'",
+            candidate,
+            provider,
+        );
+    }
+
+    // Hardcoded provider-specific defaults (always compatible).
     match provider {
-        "openai" => env_vision.unwrap_or_else(|| "gpt-4.1-nano".to_string()),
-        _ => env_vision
-            .or(env_llm)
-            .unwrap_or_else(|| "gemma4:latest".to_string()),
+        "openai" => "gpt-4.1-nano".to_string(),
+        "anthropic" => "claude-sonnet-4-20250514".to_string(),
+        _ => "gemma4:latest".to_string(),
     }
 }
 
