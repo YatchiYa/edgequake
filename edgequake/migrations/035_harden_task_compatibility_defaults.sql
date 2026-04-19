@@ -1,4 +1,4 @@
--- Migration: 033_harden_task_compatibility_defaults
+-- Migration: 035_harden_task_compatibility_defaults
 -- Description: Normalize legacy task inserts and enforce safe tenant/workspace defaults
 -- Date: 2026-04-19
 -- WHY: Older scripts, tests, or queued work can still use pre-refactor task_type/status
@@ -74,5 +74,5 @@ FOR EACH ROW
 EXECUTE FUNCTION normalize_edgequake_task_legacy_fields();
 
 DO $$ BEGIN
-    RAISE NOTICE 'Migration 033 completed: task legacy compatibility + safe defaults enabled';
+    RAISE NOTICE 'Migration 035 completed: task legacy compatibility + safe defaults enabled';
 END $$;
