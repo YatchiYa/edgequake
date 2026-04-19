@@ -266,7 +266,7 @@ jobs:
 
     services:
       postgres:
-        image: pgvector/pgvector:pg16
+        image: ghcr.io/raphaelmansuy/edgequake-postgres:latest
         env:
           POSTGRES_DB: edgequake_test
           POSTGRES_USER: edgequake_test
@@ -274,10 +274,11 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U edgequake_test"
+          --health-cmd "pg_isready -U edgequake_test -d edgequake_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 10
+          --health-start-period 60s
 
     steps:
       - uses: actions/checkout@v4
@@ -304,12 +305,36 @@ jobs:
 
       - name: Setup database
         run: |
-          PGPASSWORD=test_password_123 psql -h localhost -p 5432 -U edgequake_test -d edgequake_test -c "CREATE EXTENSION IF NOT EXISTS vector;" || true
+          PGPASSWORD=test_password_123 psql -h localhost -p 5432 -U edgequake_test -d edgequake_test << 'EOSQL'
+            CREATE EXTENSION IF NOT EXISTS vector;
+            CREATE EXTENSION IF NOT EXISTS age;
+            LOAD 'age';
+            SET search_path = ag_catalog, "$user", public;
 
-          # Run migrations
+            DO $$
+            BEGIN
+              IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'app_user') THEN
+                CREATE ROLE app_user WITH LOGIN PASSWORD 'app_password_123';
+              END IF;
+            END $$;
+
+            GRANT CONNECT ON DATABASE edgequake_test TO app_user;
+            GRANT USAGE ON SCHEMA public TO app_user;
+            GRANT USAGE ON SCHEMA ag_catalog TO app_user;
+            ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_user;
+          EOSQL
+
+          # Run migrations with strict error handling now that the service image contains both extensions
           for file in edgequake/migrations/*.sql; do
-            PGPASSWORD=test_password_123 psql -h localhost -p 5432 -U edgequake_test -d edgequake_test -f "$file" || true
+            echo "Applying migration: $file"
+            PGPASSWORD=test_password_123 psql -v ON_ERROR_STOP=1 -h localhost -p 5432 -U edgequake_test -d edgequake_test -f "$file"
           done
+
+          PGPASSWORD=test_password_123 psql -h localhost -p 5432 -U edgequake_test -d edgequake_test << 'EOSQL'
+            GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user;
+            GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_user;
+            GRANT SELECT ON ALL TABLES IN SCHEMA ag_catalog TO app_user;
+          EOSQL
 
       - name: Generate PostgreSQL-specific coverage
         working-directory: edgequake
