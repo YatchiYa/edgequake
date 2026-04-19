@@ -87,10 +87,7 @@ pub async fn upload_document(
     let content_hash = ContentHasher::hash_str(&request.content);
 
     // Extract tenant context for storage (needed for hash_key)
-    let workspace_id_for_storage = tenant_ctx
-        .workspace_id
-        .clone()
-        .unwrap_or_else(|| "default".to_string());
+    let workspace_id_for_storage = tenant_ctx.workspace_id_or_default();
     let tenant_id_for_storage = tenant_ctx.tenant_id.clone();
 
     // WHY-OODA81+84: Workspace-scoped duplicate detection
@@ -215,14 +212,8 @@ pub async fn upload_document(
         use edgequake_tasks::{Task, TaskType, TextInsertData};
 
         // Use tenant context for workspace_id, fallback to "default"
-        let workspace_id = tenant_ctx
-            .workspace_id
-            .clone()
-            .unwrap_or_else(|| "default".to_string());
-        let tenant_id = tenant_ctx
-            .tenant_id
-            .clone()
-            .unwrap_or_else(|| "default".to_string());
+        let workspace_id = tenant_ctx.workspace_id_or_default();
+        let tenant_id = tenant_ctx.tenant_id_or_default();
 
         let task_data = TextInsertData {
             text: request.content.clone(),

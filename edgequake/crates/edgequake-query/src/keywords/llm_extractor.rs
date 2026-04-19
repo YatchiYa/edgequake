@@ -13,7 +13,9 @@ use crate::error::{QueryError, Result};
 use edgequake_llm::LLMProvider;
 
 use super::cache::KeywordCache;
-use super::extractor::{ExtractedKeywords, KeywordExtractor, Keywords};
+use super::extractor::{
+    rule_based_keyword_extraction, ExtractedKeywords, KeywordExtractor, Keywords,
+};
 use super::intent::QueryIntent;
 
 /// LLM-based keyword extractor.
@@ -60,6 +62,12 @@ impl LLMKeywordExtractor {
         query: &str,
         llm_override: Arc<dyn LLMProvider>,
     ) -> Result<ExtractedKeywords> {
+        if llm_override.name().eq_ignore_ascii_case("mock") {
+            let mut extracted = self.rule_based_keywords_for_mock(query);
+            extracted.cache_key = self.cache_key(query);
+            return Ok(extracted);
+        }
+
         let prompt = self.build_prompt(query);
 
         // Use the provided LLM override instead of self.llm_provider
@@ -176,6 +184,15 @@ Now extract keywords from the query above. Respond with JSON only:"#
         ))
     }
 
+    fn rule_based_keywords_for_mock(&self, query: &str) -> ExtractedKeywords {
+        let keywords = rule_based_keyword_extraction(query);
+        ExtractedKeywords::new(
+            keywords.high_level,
+            keywords.low_level,
+            QueryIntent::classify_heuristic(query),
+        )
+    }
+
     /// Extract JSON from a potentially messy LLM response.
     fn extract_json(&self, response: &str) -> Result<String> {
         let trimmed = response.trim();
@@ -261,6 +278,10 @@ fn default_intent() -> String {
 #[async_trait]
 impl KeywordExtractor for LLMKeywordExtractor {
     async fn extract(&self, query: &str) -> Result<Keywords> {
+        if self.llm_provider.name().eq_ignore_ascii_case("mock") {
+            return Ok(self.rule_based_keywords_for_mock(query).to_simple());
+        }
+
         let prompt = self.build_prompt(query);
 
         let response = self
@@ -275,6 +296,12 @@ impl KeywordExtractor for LLMKeywordExtractor {
     }
 
     async fn extract_extended(&self, query: &str) -> Result<ExtractedKeywords> {
+        if self.llm_provider.name().eq_ignore_ascii_case("mock") {
+            let mut extracted = self.rule_based_keywords_for_mock(query);
+            extracted.cache_key = self.cache_key(query);
+            return Ok(extracted);
+        }
+
         let prompt = self.build_prompt(query);
 
         let response = self
@@ -476,5 +503,19 @@ Done!"#;
         assert_eq!(extracted.high_level.len(), 2);
         assert_eq!(extracted.low_level.len(), 2);
         assert_eq!(extracted.query_intent, QueryIntent::Relational);
+    }
+
+    #[tokio::test]
+    async fn test_extract_extended_uses_rule_based_keywords_for_mock_provider() {
+        let llm = Arc::new(edgequake_llm::MockProvider::new());
+        let extractor = LLMKeywordExtractor::new(llm);
+
+        let extracted = extractor
+            .extract_extended("What is the verification code in the uploaded proof document?")
+            .await
+            .expect("mock-provider keyword extraction should stay deterministic");
+
+        assert!(!extracted.high_level.is_empty() || !extracted.low_level.is_empty());
+        assert_eq!(extracted.query_intent, QueryIntent::Factual);
     }
 }

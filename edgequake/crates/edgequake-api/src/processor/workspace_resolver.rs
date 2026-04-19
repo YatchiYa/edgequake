@@ -39,25 +39,20 @@ impl DocumentTaskProcessor {
                 }
             };
 
-        // If no workspace_id provided, use default pipeline
-        let workspace_id = match workspace_id {
-            Some(id) if !id.is_empty() && id != "default" => id,
-            _ => {
-                info!(
-                    workspace_id = ?workspace_id,
-                    "SPEC-032: No valid workspace_id, using default pipeline"
-                );
-                return Arc::clone(&self.pipeline);
-            }
+        let Some(workspace_id) = workspace_id.map(str::trim).filter(|id| !id.is_empty()) else {
+            info!(
+                workspace_id = ?workspace_id,
+                "SPEC-032: No valid workspace_id, using default pipeline"
+            );
+            return Arc::clone(&self.pipeline);
         };
 
-        // Parse workspace_id to UUID
-        let workspace_uuid = match uuid::Uuid::parse_str(workspace_id) {
-            Ok(uuid) => uuid,
-            Err(e) => {
+        // Parse workspace_id to UUID, preserving the legacy `default` alias.
+        let workspace_uuid = match crate::middleware::resolve_workspace_uuid(Some(workspace_id)) {
+            Some(uuid) => uuid,
+            None => {
                 warn!(
                     workspace_id = workspace_id,
-                    error = %e,
                     "Invalid workspace ID format, using default pipeline"
                 );
                 return Arc::clone(&self.pipeline);
@@ -199,24 +194,21 @@ impl DocumentTaskProcessor {
                 }
             };
 
-        // If no workspace_id provided, fail explicitly
-        let workspace_id = match workspace_id {
-            Some(id) if !id.is_empty() && id != "default" => id,
-            _ => {
-                return Err(format!(
-                    "OODA-16: Invalid workspace_id '{:?}' - must provide valid workspace ID in strict mode",
-                    workspace_id
-                ));
-            }
+        let Some(workspace_id) = workspace_id.map(str::trim).filter(|id| !id.is_empty()) else {
+            return Err(format!(
+                "OODA-16: Invalid workspace_id '{:?}' - must provide valid workspace ID in strict mode",
+                workspace_id
+            ));
         };
 
-        // Parse workspace_id to UUID
-        let workspace_uuid = uuid::Uuid::parse_str(workspace_id).map_err(|e| {
-            format!(
-                "OODA-16: Invalid workspace ID format '{}': {}",
-                workspace_id, e
-            )
-        })?;
+        // Parse workspace_id to UUID, preserving the legacy `default` alias.
+        let workspace_uuid = crate::middleware::resolve_workspace_uuid(Some(workspace_id))
+            .ok_or_else(|| {
+                format!(
+                    "OODA-16: Invalid workspace ID format '{}': could not resolve to a UUID",
+                    workspace_id
+                )
+            })?;
 
         // Look up workspace configuration
         let ws = workspace_service
@@ -305,34 +297,32 @@ impl DocumentTaskProcessor {
         // OODA-223: Check if we should allow fallback
         let allow_fallback = !self.strict_workspace_mode;
 
-        // Handle empty/default workspace IDs
-        if workspace_id.is_empty() || workspace_id == "default" {
+        let workspace_id = workspace_id.trim();
+        if workspace_id.is_empty() {
             if allow_fallback {
                 warn!(
                     workspace_id = %workspace_id,
                     strict_mode = self.strict_workspace_mode,
-                    "Empty/default workspace ID - using default storage (non-strict mode)"
+                    "Empty workspace ID - using default storage (non-strict mode)"
                 );
                 return Ok(Arc::clone(&self.vector_storage));
             }
             error!(
                 workspace_id = %workspace_id,
-                "CRITICAL INGESTION ERROR: Cannot use 'default' workspace for document ingestion. \
-                 Data must be stored in workspace-specific tables."
+                "CRITICAL INGESTION ERROR: Cannot ingest documents without a workspace ID"
             );
             return Err("Cannot ingest documents without a valid workspace ID. \
                  Please ensure workspace context is properly set."
                 .to_string());
         }
 
-        // Parse workspace UUID
-        let workspace_uuid = match uuid::Uuid::parse_str(workspace_id) {
-            Ok(uuid) => uuid,
-            Err(e) => {
+        // Parse workspace UUID, preserving the legacy `default` alias.
+        let workspace_uuid = match crate::middleware::resolve_workspace_uuid(Some(workspace_id)) {
+            Some(uuid) => uuid,
+            None => {
                 if allow_fallback {
                     warn!(
                         workspace_id = %workspace_id,
-                        error = %e,
                         strict_mode = self.strict_workspace_mode,
                         "Invalid workspace ID format - using default storage (non-strict mode)"
                     );
@@ -340,12 +330,11 @@ impl DocumentTaskProcessor {
                 }
                 error!(
                     workspace_id = %workspace_id,
-                    error = %e,
                     "CRITICAL INGESTION ERROR: Invalid workspace ID format"
                 );
                 return Err(format!(
-                    "Invalid workspace ID format '{}': {}",
-                    workspace_id, e
+                    "Invalid workspace ID format '{}': could not resolve to a UUID",
+                    workspace_id
                 ));
             }
         };
@@ -484,14 +473,13 @@ impl DocumentTaskProcessor {
             embedding_dimension: DEFAULT_EMBEDDING_DIMENSION,
         };
 
-        let workspace_id = match workspace_id {
-            Some(id) if !id.is_empty() && id != "default" => id,
-            _ => return default_lineage,
+        let Some(workspace_id) = workspace_id.map(str::trim).filter(|id| !id.is_empty()) else {
+            return default_lineage;
         };
 
-        let workspace_uuid = match uuid::Uuid::parse_str(workspace_id) {
-            Ok(uuid) => uuid,
-            Err(_) => return default_lineage,
+        let Some(workspace_uuid) = crate::middleware::resolve_workspace_uuid(Some(workspace_id))
+        else {
+            return default_lineage;
         };
 
         let workspace_service = match &self.workspace_service {

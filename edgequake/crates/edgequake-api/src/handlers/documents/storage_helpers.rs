@@ -20,18 +20,17 @@ use edgequake_tasks::{Pagination, TaskFilter, TaskStatus};
 /// WHY: reliability fixes must work for both new UUID-based workspaces and the
 /// historical `workspace_id = "default"` representation.
 pub(crate) fn parse_workspace_uuid_or_default(workspace_id: Option<&str>) -> Option<Uuid> {
-    match workspace_id.map(str::trim) {
-        Some("") | Some("default") => Some(Uuid::from_u128(3)),
-        Some(value) => Uuid::parse_str(value).ok(),
-        None => None,
-    }
+    crate::middleware::resolve_workspace_uuid(workspace_id)
 }
 
 fn is_legacy_default_workspace_context(workspace_id: Option<&str>) -> bool {
     match workspace_id.map(str::trim) {
         None | Some("") | Some("default") => true,
         Some(value) => match Uuid::parse_str(value) {
-            Ok(uuid) => uuid == Uuid::from_u128(2) || uuid == Uuid::from_u128(3),
+            Ok(uuid) => {
+                uuid == crate::middleware::default_tenant_uuid()
+                    || uuid == crate::middleware::default_workspace_uuid()
+            }
             Err(_) => false,
         },
     }

@@ -35,10 +35,7 @@ fn injection_meta_key(workspace_id: &str, injection_id: &str) -> String {
 
 /// Extract the effective workspace ID from the tenant context.
 fn workspace_id_from_tenant(ctx: &TenantContext) -> String {
-    ctx.workspace_id
-        .as_ref()
-        .map(|id| id.to_string())
-        .unwrap_or_else(|| "default".to_string())
+    ctx.workspace_id_or_default()
 }
 
 /// Validate injection name: non-empty, max 100 chars.

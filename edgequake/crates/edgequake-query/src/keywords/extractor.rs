@@ -70,6 +70,55 @@ impl Default for Keywords {
     }
 }
 
+/// Deterministic rule-based keyword extraction.
+///
+/// WHY: The mock provider intentionally does not perform JSON keyword extraction,
+/// so query mode still needs a stable, non-LLM path that derives keywords directly
+/// from the user query.
+pub(crate) fn rule_based_keyword_extraction(query: &str) -> Keywords {
+    let stopwords = [
+        "the", "a", "an", "is", "are", "was", "were", "what", "who", "how", "why", "when", "where",
+        "this", "that", "these", "those", "and", "or", "but", "for", "with", "about", "between",
+        "from", "into", "does", "do", "did", "can", "could", "would", "should", "tell", "explain",
+        "describe", "please",
+    ];
+
+    let mut high_level = Vec::new();
+    let mut low_level = Vec::new();
+
+    for word in query
+        .split_whitespace()
+        .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric() && c != '-' && c != '_'))
+        .filter(|w| w.len() > 2)
+    {
+        let lower = word.to_lowercase();
+
+        if stopwords.contains(&lower.as_str()) {
+            continue;
+        }
+
+        let first_char = word.chars().next().unwrap_or('a');
+        let looks_specific = first_char.is_uppercase()
+            || word.chars().any(|c| c.is_ascii_digit())
+            || word.chars().skip(1).any(|c| c.is_uppercase());
+
+        if looks_specific {
+            if !low_level.iter().any(|existing| existing == word) {
+                low_level.push(word.to_string());
+            }
+        } else if !high_level.iter().any(|existing| existing == &lower) {
+            high_level.push(lower);
+        }
+    }
+
+    if low_level.is_empty() && high_level.len() > 1 {
+        let mid = high_level.len() / 2;
+        low_level = high_level.split_off(mid);
+    }
+
+    Keywords::new(high_level, low_level)
+}
+
 /// Extended keywords with metadata for caching and adaptive retrieval.
 ///
 /// This is the SOTA form that includes:

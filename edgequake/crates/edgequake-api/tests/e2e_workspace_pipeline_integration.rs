@@ -102,6 +102,26 @@ async fn test_workspace_pipeline_with_ollama() {
     );
 }
 
+/// Test: create_workspace_pipeline with the legacy `default` alias.
+///
+/// The alias must resolve identically to the canonical built-in default workspace UUID.
+#[tokio::test]
+async fn test_workspace_pipeline_default_alias() {
+    let state = AppState::test_state();
+    let default_uuid = Uuid::from_u128(3).to_string();
+
+    let alias_pipeline = state.create_workspace_pipeline("default").await;
+    let uuid_pipeline = state.create_workspace_pipeline(&default_uuid).await;
+
+    assert!(
+        std::ptr::eq(
+            alias_pipeline.as_ref() as *const _,
+            uuid_pipeline.as_ref() as *const _
+        ),
+        "Legacy default alias should resolve the same way as the canonical default workspace UUID"
+    );
+}
+
 /// Test: create_workspace_pipeline with invalid UUID.
 ///
 /// Invalid workspace ID should fall back to global pipeline.

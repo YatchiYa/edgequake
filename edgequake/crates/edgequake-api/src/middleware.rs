@@ -355,6 +355,46 @@ pub async fn tenant_rate_limit(
 }
 
 // ============================================================================
+// Default identity helpers
+// ============================================================================
+
+/// Stable UUID used for the built-in default user in non-authenticated flows.
+pub fn default_user_uuid() -> uuid::Uuid {
+    uuid::Uuid::from_u128(1)
+}
+
+/// Stable UUID used for the built-in default tenant in non-authenticated flows.
+pub fn default_tenant_uuid() -> uuid::Uuid {
+    uuid::Uuid::from_u128(2)
+}
+
+/// Stable UUID used for the built-in default workspace in non-authenticated flows.
+pub fn default_workspace_uuid() -> uuid::Uuid {
+    uuid::Uuid::from_u128(3)
+}
+
+fn resolve_context_uuid(
+    raw_id: Option<&str>,
+    default_uuid: Option<uuid::Uuid>,
+) -> Option<uuid::Uuid> {
+    match raw_id.map(str::trim) {
+        None | Some("") => None,
+        Some("default") => default_uuid,
+        Some(value) => uuid::Uuid::parse_str(value).ok(),
+    }
+}
+
+/// Resolve a tenant identifier while preserving the legacy `default` alias.
+pub fn resolve_tenant_uuid(tenant_id: Option<&str>) -> Option<uuid::Uuid> {
+    resolve_context_uuid(tenant_id, Some(default_tenant_uuid()))
+}
+
+/// Resolve a workspace identifier while preserving the legacy `default` alias.
+pub fn resolve_workspace_uuid(workspace_id: Option<&str>) -> Option<uuid::Uuid> {
+    resolve_context_uuid(workspace_id, Some(default_workspace_uuid()))
+}
+
+// ============================================================================
 // Tenant Context Extractor
 // ============================================================================
 
@@ -414,23 +454,31 @@ impl TenantContext {
 
     /// Get tenant ID as UUID.
     pub fn tenant_id_uuid(&self) -> Option<uuid::Uuid> {
-        self.tenant_id
-            .as_ref()
-            .and_then(|s| uuid::Uuid::parse_str(s).ok())
+        resolve_tenant_uuid(self.tenant_id.as_deref())
+    }
+
+    /// Get tenant ID, falling back to the built-in default tenant.
+    pub fn tenant_id_or_default(&self) -> String {
+        self.tenant_id_uuid()
+            .unwrap_or_else(default_tenant_uuid)
+            .to_string()
     }
 
     /// Get workspace ID as UUID.
     pub fn workspace_id_uuid(&self) -> Option<uuid::Uuid> {
-        self.workspace_id
-            .as_ref()
-            .and_then(|s| uuid::Uuid::parse_str(s).ok())
+        resolve_workspace_uuid(self.workspace_id.as_deref())
+    }
+
+    /// Get workspace ID, falling back to the built-in default workspace.
+    pub fn workspace_id_or_default(&self) -> String {
+        self.workspace_id_uuid()
+            .unwrap_or_else(default_workspace_uuid)
+            .to_string()
     }
 
     /// Get user ID as UUID.
     pub fn user_id_uuid(&self) -> Option<uuid::Uuid> {
-        self.user_id
-            .as_ref()
-            .and_then(|s| uuid::Uuid::parse_str(s).ok())
+        resolve_context_uuid(self.user_id.as_deref(), None)
     }
 }
 
@@ -452,6 +500,38 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_resolve_workspace_uuid_maps_default_alias() {
+        assert_eq!(
+            resolve_workspace_uuid(Some("default")),
+            Some(default_workspace_uuid())
+        );
+        assert_eq!(
+            resolve_workspace_uuid(Some("00000000-0000-0000-0000-000000000003")),
+            Some(default_workspace_uuid())
+        );
+    }
+
+    #[test]
+    fn test_tenant_context_uuid_helpers_handle_default_aliases() {
+        let ctx = TenantContext {
+            tenant_id: Some("default".to_string()),
+            workspace_id: Some("default".to_string()),
+            user_id: None,
+        };
+
+        assert_eq!(ctx.tenant_id_uuid(), Some(default_tenant_uuid()));
+        assert_eq!(ctx.workspace_id_uuid(), Some(default_workspace_uuid()));
+        assert_eq!(
+            ctx.tenant_id_or_default(),
+            default_tenant_uuid().to_string()
+        );
+        assert_eq!(
+            ctx.workspace_id_or_default(),
+            default_workspace_uuid().to_string()
+        );
+    }
 
     #[test]
     fn test_auth_config_default() {
