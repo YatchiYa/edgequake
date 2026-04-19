@@ -1,9 +1,9 @@
 {
   "name": "edgequake_webui",
-  "version": "0.10.4",
+  "version": "0.10.5",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3000",
+    "dev": "next dev",
     "build": "./scripts/safe-build.sh",
     "build:safe": "./scripts/safe-build.sh",
     "build:check": "./scripts/safe-build.sh --check",
