@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.10.11] - 2026-04-19
+
+### Changed
+
+- Canonical clean main-branch release published after the squash merge of PR #183 so the default branch and published Docker artifacts stay aligned.
+
+### Verified
+
+- Re-ran the published Docker validation plan for both OpenAI and local Ollama or Gemma flows from the clean release baseline.
+
 ## [0.10.10] - 2026-04-19
 
 ### Fixed

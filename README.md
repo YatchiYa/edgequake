@@ -5,13 +5,13 @@
 > **High-Performance Graph-RAG Framework in Rust**  
 > Transform documents into intelligent knowledge graphs for superior retrieval and generation
 
-[![Version](https://img.shields.io/badge/version-0.10.10-blue.svg?style=flat)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.10.11-blue.svg?style=flat)](CHANGELOG.md)
 [![Rust](https://img.shields.io/badge/rust-1.95+-orange.svg?style=flat&logo=rust)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat)](LICENSE)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg?style=flat)](https://github.com/raphaelmansuy/edgequake)
 [![Documentation](https://img.shields.io/badge/docs-available-blue.svg?style=flat)](docs/README.md)
 
-> **v0.10.10** — Published Docker quickstarts now report local Ollama or Gemma provider availability correctly during live validation, while preserving the earlier unauthenticated local-dev defaults and cleaner startup diagnostics. See [CHANGELOG](CHANGELOG.md) for full details.
+> **v0.10.11** — Clean canonical main-branch release after the squash merge, preserving the published Docker validation fixes for both OpenAI and local Ollama or Gemma flows. See [CHANGELOG](CHANGELOG.md) for full details.
 
 ---
 
