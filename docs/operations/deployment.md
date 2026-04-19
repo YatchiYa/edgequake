@@ -50,7 +50,7 @@ EDGEQUAKE_LLM_PROVIDER=openai OPENAI_API_KEY=sk-... make stack
 
 **Pin to a specific version:**
 ```bash
-EDGEQUAKE_VERSION=0.10.4 make stack
+EDGEQUAKE_VERSION=0.10.5 make stack
 ```
 
 For full documentation see: [Docker Quickstart Guide](./docker-quickstart.md)
@@ -438,11 +438,11 @@ EdgeQuake automatically selects storage based on `DATABASE_URL`:
 
 EdgeQuake provides health endpoints for monitoring:
 
-| Endpoint            | Purpose         | Response             |
-| ------------------- | --------------- | -------------------- |
-| `GET /health`       | Basic health    | `{ "status": "ok" }` |
-| `GET /health/ready` | Readiness check | Storage + LLM status |
-| `GET /health/live`  | Liveness check  | Process alive        |
+| Endpoint      | Purpose         | Response                  |
+| ------------- | --------------- | ------------------------- |
+| `GET /health` | Basic health    | `{ "status": "healthy" }` |
+| `GET /ready`  | Readiness check | Storage + LLM status      |
+| `GET /live`   | Liveness check  | Process alive             |
 
 ### Docker Healthcheck
 
@@ -456,14 +456,14 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 ```yaml
 livenessProbe:
   httpGet:
-    path: /health/live
+    path: /live
     port: 8080
   initialDelaySeconds: 10
   periodSeconds: 30
 
 readinessProbe:
   httpGet:
-    path: /health/ready
+    path: /ready
     port: 8080
   initialDelaySeconds: 5
   periodSeconds: 10
