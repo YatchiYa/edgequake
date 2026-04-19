@@ -260,6 +260,11 @@ jobs:
         continue-on-error: true # AGE tests may fail if extension setup differs
 
   coverage-postgres:
+    # WHY: Tarpaulin across the PostgreSQL feature set is significantly slower
+    # than the functional integration checks and is not a first-principles
+    # release gate. Keep it available for manual coverage audits instead of
+    # blocking normal pushes and release validation.
+    if: github.event_name == 'workflow_dispatch'
     name: PostgreSQL Integration Coverage
     runs-on: ubuntu-latest
     timeout-minutes: 30
