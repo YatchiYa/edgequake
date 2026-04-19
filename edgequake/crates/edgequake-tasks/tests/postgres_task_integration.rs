@@ -134,7 +134,7 @@ mod task_crud {
         let status: String = row.get("status");
 
         assert_eq!(retrieved_track_id, track_id);
-        assert_eq!(task_type, "document_ingestion");
+        assert_eq!(task_type, "scan");
         assert_eq!(status, "pending");
 
         // Cleanup
@@ -170,11 +170,11 @@ mod task_crud {
         .await
         .expect("Failed to create task");
 
-        // Update status to running
+        // Update status to processing
         sqlx::query(
             "UPDATE tasks SET status = $1, started_at = $2, updated_at = $2 WHERE track_id = $3",
         )
-        .bind("running")
+        .bind("processing")
         .bind(Utc::now())
         .bind(&track_id)
         .execute(&pool)
@@ -189,7 +189,7 @@ mod task_crud {
             .expect("Failed to get task");
 
         let status: String = row.get("status");
-        assert_eq!(status, "running");
+        assert_eq!(status, "processing");
 
         // Cleanup
         let _ = sqlx::query("DELETE FROM tasks WHERE track_id = $1")
@@ -234,7 +234,7 @@ mod task_crud {
         sqlx::query(
             "UPDATE tasks SET status = $1, completed_at = $2, result = $3, updated_at = $2 WHERE track_id = $4"
         )
-        .bind("completed")
+        .bind("indexed")
         .bind(now)
         .bind(&result)
         .bind(&track_id)
@@ -252,7 +252,7 @@ mod task_crud {
         let status: String = row.get("status");
         let stored_result: serde_json::Value = row.get("result");
 
-        assert_eq!(status, "completed");
+        assert_eq!(status, "indexed");
         assert_eq!(stored_result["entities_extracted"], 15);
 
         // Cleanup
@@ -424,15 +424,18 @@ mod task_queries {
     async fn test_list_tasks_by_status() {
         let pool = require_postgres!();
 
+        let pending_prefix = format!("status-pending-{}", Uuid::new_v4());
+        let running_prefix = format!("status-running-{}", Uuid::new_v4());
+
         let pending_ids =
-            create_test_tasks(&pool, "status-pending", 3, "document_ingestion", "pending").await;
+            create_test_tasks(&pool, &pending_prefix, 3, "document_ingestion", "pending").await;
         let running_ids =
-            create_test_tasks(&pool, "status-running", 2, "document_ingestion", "running").await;
+            create_test_tasks(&pool, &running_prefix, 2, "document_ingestion", "running").await;
 
         // Query pending tasks
         let rows = sqlx::query("SELECT track_id FROM tasks WHERE status = $1 AND track_id LIKE $2")
             .bind("pending")
-            .bind("status-pending%")
+            .bind(format!("{}%", pending_prefix))
             .fetch_all(&pool)
             .await
             .expect("Failed to list tasks");
@@ -448,11 +451,14 @@ mod task_queries {
     async fn test_list_tasks_by_type() {
         let pool = require_postgres!();
 
+        let ingestion_prefix = format!("type-ingestion-{}", Uuid::new_v4());
+        let embedding_prefix = format!("type-embedding-{}", Uuid::new_v4());
+
         let ingestion_ids =
-            create_test_tasks(&pool, "type-ingestion", 2, "document_ingestion", "pending").await;
+            create_test_tasks(&pool, &ingestion_prefix, 2, "document_ingestion", "pending").await;
         let embedding_ids = create_test_tasks(
             &pool,
-            "type-embedding",
+            &embedding_prefix,
             3,
             "embedding_generation",
             "pending",
@@ -462,8 +468,8 @@ mod task_queries {
         // Query by type
         let rows =
             sqlx::query("SELECT track_id FROM tasks WHERE task_type = $1 AND track_id LIKE $2")
-                .bind("embedding_generation")
-                .bind("type-embedding%")
+                .bind("insert")
+                .bind(format!("{}%", embedding_prefix))
                 .fetch_all(&pool)
                 .await
                 .expect("Failed to list tasks");
@@ -479,14 +485,15 @@ mod task_queries {
     async fn test_list_tasks_with_pagination() {
         let pool = require_postgres!();
 
+        let paginate_prefix = format!("paginate-{}", Uuid::new_v4());
         let all_ids =
-            create_test_tasks(&pool, "paginate", 10, "document_ingestion", "pending").await;
+            create_test_tasks(&pool, &paginate_prefix, 10, "document_ingestion", "pending").await;
 
         // Get first page
         let page1 = sqlx::query(
             "SELECT track_id FROM tasks WHERE track_id LIKE $1 ORDER BY created_at ASC LIMIT 5",
         )
-        .bind("paginate%")
+        .bind(format!("{}%", paginate_prefix))
         .fetch_all(&pool)
         .await
         .expect("Failed to get page 1");
@@ -495,7 +502,7 @@ mod task_queries {
 
         // Get second page
         let page2 = sqlx::query("SELECT track_id FROM tasks WHERE track_id LIKE $1 ORDER BY created_at ASC LIMIT 5 OFFSET 5")
-            .bind("paginate%")
+            .bind(format!("{}%", paginate_prefix))
             .fetch_all(&pool)
             .await
             .expect("Failed to get page 2");

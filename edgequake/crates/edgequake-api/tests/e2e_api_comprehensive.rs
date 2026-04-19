@@ -1105,20 +1105,66 @@ mod tenant_tests {
 
     #[tokio::test]
     async fn test_request_with_tenant_header() {
-        let app = create_test_app();
+        let server = create_test_server();
+
+        // Create a real tenant so the scoped headers use valid UUIDs.
+        let tenant_slug = format!("header-tenant-{}", uuid::Uuid::new_v4().simple());
+        let tenant = json!({
+            "name": "Header Tenant",
+            "slug": tenant_slug
+        });
+
+        let app = server.build_router();
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/tenants")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(serde_json::to_string(&tenant).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let tenant_json = extract_json(response).await;
+        let tenant_id = tenant_json["id"].as_str().expect("tenant id should exist");
+
+        let app = server.build_router();
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/v1/tenants/{}/workspaces", tenant_id))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let workspaces_json = extract_json(response).await;
+        let workspace_id = workspaces_json["items"]
+            .as_array()
+            .and_then(|items| items.first())
+            .and_then(|ws| ws.get("id"))
+            .and_then(|id| id.as_str())
+            .expect("default workspace id should exist");
 
         let request = json!({
             "query": "Test with tenant"
         });
 
+        let app = server.build_router();
         let response = app
             .oneshot(
                 Request::builder()
                     .method("POST")
                     .uri("/api/v1/query")
                     .header("Content-Type", "application/json")
-                    .header("X-Tenant-ID", "test-tenant")
-                    .header("X-Workspace-ID", "test-workspace")
+                    .header("X-Tenant-ID", tenant_id)
+                    .header("X-Workspace-ID", workspace_id)
                     .body(Body::from(serde_json::to_string(&request).unwrap()))
                     .unwrap(),
             )
