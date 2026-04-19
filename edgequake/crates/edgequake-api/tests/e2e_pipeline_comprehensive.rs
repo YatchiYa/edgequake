@@ -14,7 +14,6 @@ use edgequake_api::{AppState, Server, ServerConfig};
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
-
 // ============================================================================
 // Test Documents
 // ============================================================================
@@ -177,7 +176,6 @@ async fn extract_json(response: axum::response::Response) -> Value {
 }
 
 async fn upload_document(app: &axum::Router, content: &str, title: &str) -> Value {
-
     let request = json!({
         "content": content,
         "title": title,
@@ -432,7 +430,10 @@ async fn test_pipeline_medium_document_extraction() {
         assert_eq!(doc_id, document_id);
     }
     if let Some(entities) = lineage.get("entities") {
-        assert!(entities.is_array(), "entities should be an array when present");
+        assert!(
+            entities.is_array(),
+            "entities should be an array when present"
+        );
     }
     if let Some(relationships) = lineage.get("relationships") {
         assert!(
@@ -572,7 +573,10 @@ async fn test_lineage_entity_provenance() {
 
     // Response should be valid JSON. In mock/test mode the lineage payload may
     // be partial, so only enforce structure for fields that are present.
-    assert!(lineage.is_object(), "Lineage response should be a JSON object");
+    assert!(
+        lineage.is_object(),
+        "Lineage response should be a JSON object"
+    );
 
     if let Some(lineage_doc_id) = lineage.get("document_id").and_then(|v| v.as_str()) {
         assert_eq!(lineage_doc_id, document_id);
