@@ -26,10 +26,13 @@ import {
     useConversation,
     useConversations,
 } from '@/hooks/use-conversations';
+import { useProvidersHealth } from '@/hooks/use-models';
+import { useLlmModels as useProviderLlmModels } from '@/hooks/use-providers';
 import { chatCompletion, chatCompletionStream } from '@/lib/api/chat';
 import { ApiRequestError } from '@/lib/api/client';
 import { deleteMessage } from '@/lib/api/conversations';
 import { conversationKeys } from '@/lib/api/query-keys';
+import { sanitizeQueryModelSelection } from '@/lib/query-model-selection';
 import { mapSourcesToContext } from '@/lib/utils/source-mapper';
 import { generateUUID } from '@/lib/utils/uuid';
 import { useActiveConversationId, useQueryUIStore } from '@/stores/use-query-ui-store';
@@ -212,10 +215,16 @@ export function QueryInterface() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const thinkingStartRef = useRef<number | null>(null);
   const hasInitializedRef = useRef(false);
+  const hasResetUnavailableModelRef = useRef(false);
 
   const queryClient = useQueryClient();
   const { querySettings, setQuerySettings } = useSettingsStore();
   const { selectedTenantId, selectedWorkspaceId } = useTenantStore();
+  const { data: llmCatalog } = useProviderLlmModels();
+  const { data: providerHealth } = useProvidersHealth({
+    enabled: true,
+    refetchInterval: 60 * 1000,
+  });
   
   // Use the new server-synced state
   const store = useQueryUIStore();
@@ -259,6 +268,34 @@ export function QueryInterface() {
     }
   }, [isConversationError, conversationError, activeConversationId, store, t]);
   
+  useEffect(() => {
+    const sanitizedSelection = sanitizeQueryModelSelection(
+      {
+        provider: querySettings.provider,
+        model: querySettings.model,
+      },
+      llmCatalog?.models,
+      providerHealth,
+    );
+
+    if (
+      sanitizedSelection.provider !== querySettings.provider ||
+      sanitizedSelection.model !== querySettings.model
+    ) {
+      setQuerySettings(sanitizedSelection);
+
+      if (!hasResetUnavailableModelRef.current && (querySettings.provider || querySettings.model)) {
+        hasResetUnavailableModelRef.current = true;
+        toast.warning(t('query.modelReset', 'Model selection reset'), {
+          description: t(
+            'query.modelResetDesc',
+            'Your previous model is unavailable in this environment, so the server default will be used.',
+          ),
+        });
+      }
+    }
+  }, [llmCatalog?.models, providerHealth, querySettings.model, querySettings.provider, setQuerySettings, t]);
+
   // Auto-load most recent conversation on mount if none is active
   // Only do this once on initial mount, not when user clicks "New"
   useEffect(() => {

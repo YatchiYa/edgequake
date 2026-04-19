@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.10.7] - 2026-04-19
+
+### Fixed
+
+- **Default-workspace uploads and queries now use the same canonical workspace identity.** The legacy default alias is resolved through shared helpers across middleware, ingestion, pipeline creation, and vector storage so browser uploads no longer drift into the wrong embedding configuration.
+
+- **Workspace-scoped document ingestion no longer hits hidden embedding-dimension mismatches.** File and text uploads now run through the same workspace-aware pipeline that later serves queries, preventing the 768-vs-1536 split that previously produced empty answers in the UI.
+
+- **Query verification remains deterministic in mock-backed environments.** Mock keyword extraction now uses a rule-based path instead of brittle fallback parsing, keeping release validation stable and non-flaky.
+
+- **The query UI self-heals stale provider selections.** Persisted local model choices are sanitized against live provider health so invalid environments cleanly fall back to the server default.
+
+### Changed
+
+- Added shared default tenant/workspace UUID resolvers and regression tests to keep the multitenant contract DRY and auditable.
+- Verified the release end to end with fresh workspace integration tests, local stack health checks, and a live browser proof returning EQ-10642.
+
 ## [0.10.6] - 2026-04-19
 
 ### Fixed

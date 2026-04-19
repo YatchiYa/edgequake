@@ -5,19 +5,21 @@
 use async_trait::async_trait;
 use std::sync::RwLock;
 
-use super::extractor::{ExtractedKeywords, KeywordExtractor, Keywords};
+use super::extractor::{
+    rule_based_keyword_extraction, ExtractedKeywords, KeywordExtractor, Keywords,
+};
 use super::intent::QueryIntent;
 use crate::error::Result;
 
 /// Mock keyword extractor for testing.
 ///
-/// Can be configured with specific responses or uses simple
-/// heuristic-based extraction as a fallback.
+/// Can be configured with specific responses or use deterministic
+/// rule-based extraction as a fallback.
 pub struct MockKeywordExtractor {
     /// Pre-configured responses for testing.
     responses: RwLock<Vec<Keywords>>,
-    /// Whether to use intelligent heuristics when no response is configured.
-    use_heuristics: bool,
+    /// Whether to use deterministic rule-based extraction when no response is configured.
+    use_rule_based_extraction: bool,
 }
 
 impl MockKeywordExtractor {
@@ -25,7 +27,7 @@ impl MockKeywordExtractor {
     pub fn new() -> Self {
         Self {
             responses: RwLock::new(Vec::new()),
-            use_heuristics: true,
+            use_rule_based_extraction: true,
         }
     }
 
@@ -39,65 +41,19 @@ impl MockKeywordExtractor {
         Self::new()
     }
 
-    /// Create a mock that doesn't use heuristics (always empty).
+    /// Create a mock that disables rule-based extraction (always empty).
     pub fn without_heuristics() -> Self {
         Self {
             responses: RwLock::new(Vec::new()),
-            use_heuristics: false,
+            use_rule_based_extraction: false,
         }
     }
 
-    /// Heuristic-based keyword extraction.
+    /// Deterministic rule-based keyword extraction.
     ///
-    /// This provides reasonable keywords for testing without LLM calls.
-    fn extract_heuristic(&self, query: &str) -> Keywords {
-        let words: Vec<String> = query
-            .split_whitespace()
-            .filter(|w| w.len() > 2) // Filter very short words
-            .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_string())
-            .filter(|w| !w.is_empty())
-            .collect();
-
-        // Simple heuristics for classification:
-        // - Capitalized words → low-level (likely entities)
-        // - Common words → skip
-        // - Other words → high-level (concepts)
-
-        let stopwords = [
-            "the", "a", "an", "is", "are", "was", "were", "what", "who", "how", "why", "when",
-            "where", "this", "that", "these", "those", "and", "or", "but", "for", "with", "about",
-            "between", "from", "into", "does", "do",
-        ];
-
-        let mut high_level = Vec::new();
-        let mut low_level = Vec::new();
-
-        for word in words {
-            let lower = word.to_lowercase();
-
-            // Skip stopwords
-            if stopwords.contains(&lower.as_str()) {
-                continue;
-            }
-
-            // Check if it looks like a proper noun (capitalized in middle of sentence)
-            let first_char = word.chars().next().unwrap_or('a');
-            if first_char.is_uppercase() && word.len() > 1 {
-                // Likely an entity
-                low_level.push(word);
-            } else {
-                // Likely a concept
-                high_level.push(lower);
-            }
-        }
-
-        // If we didn't find any entities, use the last half of high-level
-        if low_level.is_empty() && high_level.len() > 1 {
-            let mid = high_level.len() / 2;
-            low_level = high_level.split_off(mid);
-        }
-
-        Keywords::new(high_level, low_level)
+    /// This provides stable keywords for testing without LLM calls.
+    fn extract_rule_based(&self, query: &str) -> Keywords {
+        rule_based_keyword_extraction(query)
     }
 }
 
@@ -117,9 +73,9 @@ impl KeywordExtractor for MockKeywordExtractor {
             }
         }
 
-        // Fallback to heuristics
-        if self.use_heuristics {
-            Ok(self.extract_heuristic(query))
+        // Fall back to deterministic rule-based extraction.
+        if self.use_rule_based_extraction {
+            Ok(self.extract_rule_based(query))
         } else {
             Ok(Keywords::empty())
         }
@@ -184,18 +140,18 @@ mod tests {
     }
 
     #[test]
-    fn test_heuristic_extraction() {
+    fn test_rule_based_extraction() {
         let mock = MockKeywordExtractor::new();
 
         // Test with proper nouns
-        let result = mock.extract_heuristic("Sarah Chen works at OpenAI on machine learning");
+        let result = mock.extract_rule_based("Sarah Chen works at OpenAI on machine learning");
         assert!(result
             .low_level
             .iter()
             .any(|w| w == "Sarah" || w == "Chen" || w == "OpenAI"));
 
         // Test without proper nouns
-        let result = mock.extract_heuristic("how to implement neural networks");
+        let result = mock.extract_rule_based("how to implement neural networks");
         assert!(!result.high_level.is_empty() || !result.low_level.is_empty());
     }
 }

@@ -228,12 +228,10 @@ impl AppState {
         // Define default user ID for anonymous/unauthenticated access
         // WHY: Used only in postgres feature block, suppressed warning with allow
         #[allow(unused_variables)]
-        let default_user_id = uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001")
-            .expect("Invalid default user UUID");
+        let default_user_id = crate::middleware::default_user_uuid();
 
         // Define default tenant ID for consistency
-        let default_tenant_id = uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000002")
-            .expect("Invalid default tenant UUID");
+        let default_tenant_id = crate::middleware::default_tenant_uuid();
 
         // When using PostgreSQL, just ensure the default user exists
         // The WorkspaceServiceImpl already creates default tenant/workspace
@@ -334,13 +332,12 @@ impl AppState {
         use crate::safety_limits::{create_safe_embedding_provider, create_safe_llm_provider};
         use edgequake_pipeline::LLMExtractor;
 
-        // Parse workspace_id to UUID
-        let workspace_uuid = match uuid::Uuid::parse_str(workspace_id) {
-            Ok(uuid) => uuid,
-            Err(e) => {
+        // Resolve legacy aliases like `default` before falling back.
+        let workspace_uuid = match crate::middleware::resolve_workspace_uuid(Some(workspace_id)) {
+            Some(uuid) => uuid,
+            None => {
                 tracing::warn!(
                     workspace_id = workspace_id,
-                    error = %e,
                     "Invalid workspace ID format, using global pipeline"
                 );
                 return Arc::clone(&self.pipeline);

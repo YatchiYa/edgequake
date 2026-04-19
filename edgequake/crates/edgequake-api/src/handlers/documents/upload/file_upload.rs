@@ -108,10 +108,7 @@ pub async fn upload_file(
     // Extract tenant context for workspace-scoped uniqueness
     // WHY-OODA81: Uniqueness must be scoped to workspace, not global
     // Same document in different workspaces is allowed (multi-tenancy)
-    let workspace_id_for_storage = tenant_ctx
-        .workspace_id
-        .clone()
-        .unwrap_or_else(|| "default".to_string());
+    let workspace_id_for_storage = tenant_ctx.workspace_id_or_default();
     let tenant_id_for_storage = tenant_ctx.tenant_id.clone();
 
     // WHY-OODA81+83: Use ContentHasher for workspace-scoped hash key
@@ -223,9 +220,12 @@ pub async fn upload_file(
         .upsert(&[(doc_content_key, doc_content)])
         .await?;
 
-    // Process through pipeline
-    let result = state
-        .pipeline
+    // Process through the workspace-aware pipeline so ingestion uses the same
+    // provider configuration as later queries and vector storage.
+    let workspace_pipeline = state
+        .create_workspace_pipeline(&workspace_id_for_storage)
+        .await;
+    let result = workspace_pipeline
         .process_with_resilience(&document_id, &text_content, None)
         .await?;
 
