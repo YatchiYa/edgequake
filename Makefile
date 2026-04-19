@@ -179,11 +179,11 @@ FRONTEND_DIR := $(ROOT_DIR)/edgequake_webui
 DOCKER_DIR := $(BACKEND_DIR)/docker
 
 # Local development ports.
-# WHY: Other local stacks may already occupy common web ports. EdgeQuake now
-# deterministically reuses its own running port or selects the next free one so
-# it does not interfere with unrelated services.
+# WHY: Local EdgeQuake and the published Docker stack both document the Web UI
+# on localhost:3000. Keep that as the primary development default, then shift to
+# the next safe free port only when 3000 is already occupied.
 DEFAULT_BACKEND_PORT ?= 8080
-DEFAULT_FRONTEND_PORT ?= 3001
+DEFAULT_FRONTEND_PORT ?= 3000
 PORT_SCAN_WINDOW ?= 20
 ifndef BACKEND_PORT
 BACKEND_PORT := $(shell python3 $(ROOT_DIR)/scripts/select_edgequake_port.py backend $(DEFAULT_BACKEND_PORT) $(PORT_SCAN_WINDOW))
@@ -369,7 +369,8 @@ check-ports: ## Validate configured ports without killing unrelated processes
 		echo "$(YELLOW)→ Preferred backend port $(DEFAULT_BACKEND_PORT) is busy; using $(BACKEND_PORT) to avoid interference$(RESET)"; \
 	fi
 	@if [ "$(FRONTEND_PORT)" != "$(DEFAULT_FRONTEND_PORT)" ]; then \
-		echo "$(YELLOW)→ Preferred frontend port $(DEFAULT_FRONTEND_PORT) is busy; using $(FRONTEND_PORT) to avoid interference$(RESET)"; \
+		echo "$(YELLOW)→ Preferred frontend port $(DEFAULT_FRONTEND_PORT) is busy; using $(FRONTEND_PORT) instead$(RESET)"; \
+		echo "$(YELLOW)  Open $(FRONTEND_URL) in your browser for this session$(RESET)"; \
 	fi
 	@for port in $(BACKEND_PORT) $(FRONTEND_PORT); do \
 		PID=$$(lsof -nP -iTCP:$$port -sTCP:LISTEN -t 2>/dev/null | head -n 1 || true); \

@@ -79,7 +79,7 @@ curl -X POST http://localhost:8080/api/v1/documents \
 
 ### Option B: Via WebUI
 
-1. Open <http://localhost:3001> when using `make dev` locally
+1. Open <http://localhost:3000> when using `make dev` locally
 2. Navigate to **Documents** → **Upload**
 3. Paste the text above or upload a file
 4. Click **Process**
@@ -208,7 +208,7 @@ curl -X POST http://localhost:8080/api/v1/query \
 
 ## Step 4: Visualize in WebUI
 
-1. Open <http://localhost:3001> when using `make dev` locally
+1. Open <http://localhost:3000> when using `make dev` locally
 2. Navigate to **Graph** (left sidebar)
 3. See your knowledge graph visualization
 

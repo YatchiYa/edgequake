@@ -114,7 +114,7 @@ Traditional RAG systems retrieve document chunks using vector similarity alone. 
 - **Streaming**: Server-Sent Events (SSE) for real-time responses
 - **Versioned**: `/api/v1/*` with backward compatibility
 - **Health Checks**: Kubernetes-ready `/health`, `/ready`, `/live`
-- **Safer Local Startup**: Make-based development prefers UI port 3001 and auto-selects the next free ports if another local stack is already using the defaults
+- **Safer Local Startup**: Make-based development uses the standard UI port 3000 when available and auto-selects the next free port only if another local stack is already using it
 - **Runtime Auth Hardening** ✨: prebuilt WebUI images now consume runtime API/auth config, and protected dashboard routes fail closed when authentication is enabled
 
 ### 🎯 React 19 Frontend
@@ -153,7 +153,7 @@ The wizard guides you through:
 4. **Stack startup** — pulls images, starts services, and polls health for up to 90 seconds
 5. **Re-run aware** — detects running/stopped containers and existing data volumes; offers "Update & Reconfigure" or safe "Fresh Start" (requires typing `DELETE`)
 
-> For local Make-based development, the UI now prefers port 3001 and automatically moves to a safe free port if 3001 or 8080 are already occupied.
+> For local Make-based development, the UI uses port 3000 by default and automatically moves to a safe free port if 3000 or 8080 are already occupied.
 
 Or with `docker compose` directly (pipe to compose):
 
@@ -233,7 +233,7 @@ make dev-auth
 **That's it!** 🎉
 
 - **Backend**: http://localhost:8080
-- **Frontend**: http://localhost:3001 by default, or the next free port if 3001 is busy
+- **Frontend**: http://localhost:3000 by default, or the next free port if 3000 is busy
 - **Swagger UI**: http://localhost:8080/swagger-ui
 - **Provider**: Ollama or OpenAI depending on your environment
 - **Auth**: disabled in make dev, enabled in make dev-auth

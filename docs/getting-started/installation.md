@@ -62,7 +62,7 @@ make dev
 1. Ensures PostgreSQL is reachable on port 5432
 2. Runs database migrations
 3. Builds and starts the Rust backend on port 8080
-4. Starts the Next.js frontend, preferring port 3001 and automatically shifting if that port is already in use
+4. Starts the Next.js frontend on port 3000 by default and automatically shifts only if that port is already in use
 
 **Verify**:
 
@@ -72,10 +72,10 @@ curl http://localhost:8080/health
 # Expected: JSON containing "status":"healthy"
 
 # Open WebUI (default local Make-based port)
-open <http://localhost:3001>
+open <http://localhost:3000>
 ```
 
-> If another stack is already using 3001, run `make status` to see the exact frontend URL that was selected.
+> If another stack is already using 3000, run `make status` to see the exact frontend URL that was selected.
 
 ---
 

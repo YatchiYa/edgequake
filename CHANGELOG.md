@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.10.12] - 2026-04-19
+
+### Fixed
+
+- Restored localhost:3000 as the default WebUI URL for `make dev` and `make dev-bg`, matching the documented local startup path and preventing confusion when developers opened the UI on the wrong port.
+- Improved the startup messaging so when the UI must move to a different free port, the Makefile now prints the exact browser URL to use for that session.
+
+### Verified
+
+- Reproduced the local startup regression, restarted the stack with the fix, and confirmed via live browser clicks that the dashboard and documents flow load cleanly on localhost:3000 with no console connection errors.
+
 ## [0.10.11] - 2026-04-19
 
 ### Changed
