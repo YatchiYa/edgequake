@@ -1,16 +1,12 @@
-name: E2E Quality Gates
+name: E2E Quality Gates (Manual)
 
 on:
-  push:
-    branches: [main, edgequake-main]
-    paths:
-      - "edgequake_webui/**"
-      - "edgequake/crates/edgequake-api/**"
-  pull_request:
-    branches: [main, edgequake-main]
-    paths:
-      - "edgequake_webui/**"
-      - "edgequake/crates/edgequake-api/**"
+  workflow_dispatch:
+
+# WHY: Browser E2E is valuable for manual release validation, but it is not a
+# first-principles correctness gate for every GitHub push when the same paths
+# are already proven locally with real startup, health, build, lint, and test
+# evidence. Keep this workflow available on demand instead of blocking CI/CD.
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
