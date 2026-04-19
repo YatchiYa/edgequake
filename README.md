@@ -5,13 +5,13 @@
 > **High-Performance Graph-RAG Framework in Rust**  
 > Transform documents into intelligent knowledge graphs for superior retrieval and generation
 
-[![Version](https://img.shields.io/badge/version-0.10.7-blue.svg?style=flat)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.10.10-blue.svg?style=flat)](CHANGELOG.md)
 [![Rust](https://img.shields.io/badge/rust-1.95+-orange.svg?style=flat&logo=rust)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat)](LICENSE)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg?style=flat)](https://github.com/raphaelmansuy/edgequake)
 [![Documentation](https://img.shields.io/badge/docs-available-blue.svg?style=flat)](docs/README.md)
 
-> **v0.10.7** — Default-workspace ingestion/query consistency, deterministic mock keyword extraction, cleaner query model fallback, and verified Docker publication. See [CHANGELOG](CHANGELOG.md) for full details.
+> **v0.10.10** — Published Docker quickstarts now report local Ollama or Gemma provider availability correctly during live validation, while preserving the earlier unauthenticated local-dev defaults and cleaner startup diagnostics. See [CHANGELOG](CHANGELOG.md) for full details.
 
 ---
 
@@ -115,6 +115,7 @@ Traditional RAG systems retrieve document chunks using vector similarity alone. 
 - **Versioned**: `/api/v1/*` with backward compatibility
 - **Health Checks**: Kubernetes-ready `/health`, `/ready`, `/live`
 - **Safer Local Startup**: Make-based development prefers UI port 3001 and auto-selects the next free ports if another local stack is already using the defaults
+- **Runtime Auth Hardening** ✨: prebuilt WebUI images now consume runtime API/auth config, and protected dashboard routes fail closed when authentication is enabled
 
 ### 🎯 React 19 Frontend
 
@@ -194,7 +195,9 @@ docker compose -f docker-compose.quickstart.yml ps         # check status
 docker compose -f docker-compose.quickstart.yml down       # stop
 ```
 
-> **Pinned version:** `EDGEQUAKE_VERSION=0.10.7 sh quickstart.sh` to use a specific release.
+> **Pinned version:** `EDGEQUAKE_VERSION=0.10.8 sh quickstart.sh` to use a specific release.
+
+> Production auth/runtime deployment guidance is available in [docs/operations/runtime-auth-hardening.md](docs/operations/runtime-auth-hardening.md).
 
 ---
 
@@ -220,16 +223,20 @@ make install
 # 3. Configure the frontend environment
 cp edgequake_webui/.env.local.example edgequake_webui/.env.local
 
-# 4. Start the full stack (PostgreSQL + Backend + Frontend)
+# 4. Start the full stack in the default local mode (no authentication)
 make dev
+
+# Optional: start the same stack with authentication enabled
+make dev-auth
 ```
 
 **That's it!** 🎉
 
 - **Backend**: http://localhost:8080
-- **Frontend**: http://localhost:3000
+- **Frontend**: http://localhost:3001 by default, or the next free port if 3001 is busy
 - **Swagger UI**: http://localhost:8080/swagger-ui
-- **Provider**: Ollama (local, free)
+- **Provider**: Ollama or OpenAI depending on your environment
+- **Auth**: disabled in make dev, enabled in make dev-auth
 
 ### First Document Upload
 
@@ -496,7 +503,7 @@ EdgeQuake ships a production-ready multi-arch Docker image published to **GitHub
 docker pull ghcr.io/raphaelmansuy/edgequake:latest
 
 # Pin to a specific version
-docker pull ghcr.io/raphaelmansuy/edgequake:0.10.7
+docker pull ghcr.io/raphaelmansuy/edgequake:0.10.8
 ```
 
 > **First-time package visibility:** After the first CI/CD publish, you may need to set the GHCR package visibility to **Public** under [GitHub → Your Profile → Packages → edgequake → Package Settings → Change Visibility](https://github.com/raphaelmansuy?tab=packages). Once public, `docker pull` works without authentication.
@@ -555,7 +562,7 @@ Services started:
 
 ```bash
 # Use a specific API version
-EDGEQUAKE_VERSION=0.10.7 docker compose -f docker-compose.prebuilt.yml up -d
+EDGEQUAKE_VERSION=0.10.8 docker compose -f docker-compose.prebuilt.yml up -d
 
 # Logs
 docker compose -f docker-compose.prebuilt.yml logs -f edgequake
@@ -647,10 +654,10 @@ Docker images are built and published automatically via GitHub Actions (`.github
 
 ```bash
 # Tag a release — triggers multi-arch docker build + publish to ghcr.io
-git tag v0.10.7 && git push origin v0.10.7
+git tag v0.10.8 && git push origin v0.10.8
 ```
 
-Both `linux/amd64` (ubuntu-latest runner) and `linux/arm64` (native ARM64 runner — no QEMU) are built in parallel and merged into a single multi-arch manifest. The same image tag (`ghcr.io/raphaelmansuy/edgequake:0.10.7`) works on x86 servers, Apple Silicon Macs, and AWS Graviton instances.
+Both `linux/amd64` (ubuntu-latest runner) and `linux/arm64` (native ARM64 runner — no QEMU) are built in parallel and merged into a single multi-arch manifest. The same image tag (`ghcr.io/raphaelmansuy/edgequake:0.10.8`) works on x86 servers, Apple Silicon Macs, and AWS Graviton instances.
 
 You can also trigger a manual Docker build + publish without a tag via the `workflow_dispatch` input on GitHub Actions (`Actions → Release — Docker (GHCR) → Run workflow`).
 

@@ -11,6 +11,7 @@
 //! cargo run --example production_pipeline
 //! ```
 
+use anyhow::{Context, Result};
 use std::env;
 use std::sync::Arc;
 
@@ -19,7 +20,7 @@ use edgequake_llm::{EmbeddingProvider, LLMProvider, OpenAIProvider};
 use edgequake_storage::{GraphStorage, MemoryGraphStorage, MemoryKVStorage, MemoryVectorStorage};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<()> {
     // Initialize logging
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
@@ -30,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 1. Check for API key
     let api_key =
-        env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY environment variable must be set");
+        env::var("OPENAI_API_KEY").context("OPENAI_API_KEY environment variable must be set")?;
 
     if api_key.is_empty() || api_key == "test-key" {
         eprintln!("❌ Invalid API key. Please set a real OpenAI API key:");
