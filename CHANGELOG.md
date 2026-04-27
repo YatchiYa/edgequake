@@ -2,6 +2,68 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.0] - 2026-04-27
+
+### Added — Mistral as First-Class LLM Provider
+
+- **edgequake-llm upgraded to v0.6.14** — the external `edgequake-llm` crate now ships full Mistral La Plateforme support including chat, vision (`pixtral-large-latest`), and embeddings (`mistral-embed`, 1024 dims).
+- **Mistral provider fully integrated at every layer:**
+  - `models.toml` — 11 new Mistral model cards (chat, vision, embedding families).
+  - `workspace.rs` — `default_embedding_model_for_provider("mistral")` returns `"mistral-embed"`; `known_embedding_dimension` maps all Mistral embedding model variants to 1024.
+  - `pdf_upload/types.rs` — `default_vision_model_for_provider("mistral")` returns `"pixtral-large-latest"` for PDF ingestion.
+  - `safety_limits.rs` — Mistral model family detection added; `"mistral-small-latest"` set as safe default.
+  - `state/provider_setup.rs` — provider-aware embedding model and dimension resolution; `MISTRAL_API_KEY` detection; `mistral-embed` registered at 1024 dims.
+- **Makefile** — `backend-bg` detects `MISTRAL_API_KEY` first (priority over OpenAI/Ollama) and exports the full Mistral environment block including `EDGEQUAKE_LLM_PROVIDER=mistral`, `EDGEQUAKE_EMBEDDING_PROVIDER=mistral`, `EDGEQUAKE_VISION_PROVIDER=mistral`, `EDGEQUAKE_VISION_MODEL=pixtral-large-latest`, `EDGEQUAKE_EMBEDDING_BATCH_SIZE=16` (critical — Mistral allows ≤16 embeddings per request).
+- **`.env.example`** — Option 5 (Mistral La Plateforme) documented with all required and optional env vars.
+
+### Fixed
+
+- **Mistral embedding batch size limit** — Mistral API rejects requests with > 16 texts in a single embedding call (HTTP 400, code 3210). Fixed by exporting `EDGEQUAKE_EMBEDDING_BATCH_SIZE=16` in Makefile Mistral startup; `edgequake-llm`'s `embed_batched()` respects `max_batch_size()` which reads this env var.
+- **Embedding model bleed-through in hybrid mode** — `OLLAMA_EMBEDDING_MODEL` env var was silently overriding Mistral embedding selection. Fixed by provider-aware env key resolution in `provider_setup.rs` (`provider_specific_embedding_env_key()`).
+
+### Verified E2E
+
+- Full pipeline tested with real Mistral API keys:
+  - Health endpoint confirms `llm_provider_name: "mistral"`, `model: "mistral-small-latest"`, `embedding.model: "mistral-embed"`, `embedding.dimension: 1024`.
+  - PDF ingestion: `AI_Services__Elitizon.pdf` → **45 entities extracted** (status: Completed).
+  - PDF ingestion: `national-capitals.pdf` → **570 entities extracted** (status: Completed).
+  - RAG query: "What are the main AI services and technologies described in these documents?" → **2,916 tokens, 224.5 tok/s, 2 Sources, 97 Topics, 100% confidence** using `mistral-small-latest` + `mistral-embed`.
+- All 550 Rust workspace tests pass (`cargo test --workspace --lib`).
+- `cargo clippy --workspace --lib -- -D warnings` passes with zero warnings.
+- `cargo fmt --all -- --check` passes.
+
+## [0.10.14] - 2026-04-27
+
+### Fixed
+
+- **Issue #189 & #192 — WebUI cannot reach API in any non-default deployment.** The `frontend` Docker service had no `EDGEQUAKE_API_URL` environment variable. The Next.js image bakes `http://localhost:8080` into the JS bundle at build time via `NEXT_PUBLIC_API_URL` (a Next.js build-time constant). With no runtime override, all deployments used the baked URL regardless of `EDGEQUAKE_PORT` — breaking custom-port setups (#189) and causing "Connection Error" when `apiUrl` fell back to empty (relative `/api/v1` hits Next.js with no proxy, #192).
+  - **Fix 1:** `runtime-config.ts` now reads `process.env.EDGEQUAKE_API_URL` (a plain env var, read at request time by the server component) before falling back to `NEXT_PUBLIC_API_URL`. This allows the API URL to be set at container startup without rebuilding the image.
+  - **Fix 2:** `docker-compose.quickstart.yml` frontend service now passes `EDGEQUAKE_API_URL: http://localhost:${EDGEQUAKE_PORT:-8080}`, so custom port deployments work automatically.
+  - **Fix 3:** `websocket-manager.ts` SSR fallback changed from hardcoded `ws://localhost:8080/ws/pipeline/progress` to the relative path `/ws/pipeline/progress`, eliminating the port-8080 assumption in SSR context.
+
+### Verified
+
+- TypeScript compile check: `tsc --noEmit --strict` passes (exit 0).
+- 31/31 WebSocket client tests pass unchanged.
+- Logic proof: `EDGEQUAKE_PORT=8081` scenario correctly injects `http://localhost:8081` into `window.__EDGEQUAKE_RUNTIME_CONFIG__` at runtime.
+- `window.__EDGEQUAKE_RUNTIME_CONFIG__` override (highest priority) still works; `NEXT_PUBLIC_API_URL` (local dev `.env.local`) still works as fallback.
+
+## [0.10.13] - 2026-04-27
+
+### Fixed
+
+- **Bug 1 (CRITICAL) — Migration 019 checksum mismatch on v0.10.1 → v0.10.12 upgrade.** Commit `6f3d0204` modified `019_add_tenant_workspace_to_tasks.sql` after it had been deployed in v0.10.1, adding `ALTER TABLE tasks ALTER COLUMN tenant_id/workspace_id SET DEFAULT` statements that changed the SHA-384 checksum. Any database that had run v0.10.1 stored the old checksum; the v0.10.12 binary shipped the mutated file, causing sqlx to abort at startup with *"migration 19 was previously applied but has been modified"*. The file has been restored to its byte-for-byte v0.10.1 content. The DEFAULT-value logic correctly lives in the separately-created migration 035.
+- **Bug 2 — sqlx-cli schema ambiguity causing duplicate-key error on every restart.** When the PostgreSQL user is named `edgequake`, the default search_path `"$user",public` resolves to `edgequake,public` once migration 001 creates the `edgequake` schema. On a second `sqlx migrate run` invocation, sqlx-cli resolved `_sqlx_migrations` to the `edgequake` schema (empty), then migration 001's session-level `SET search_path = public` redirected tracking writes back to `public._sqlx_migrations` (already fully populated), producing a duplicate-key constraint violation. Fixed by: (1) adding `?options=-c%20search_path%3Dpublic` to `DEFAULT_DATABASE_URL` in the Makefile, `.env`, and `.env.example` so sqlx-cli always connects with `search_path=public`; (2) changing `SET search_path = public` to `SET LOCAL search_path = public` in migration 001 so the path override is transaction-scoped, not session-scoped. The compiled application binary was not affected (its connection pool already sets `search_path TO public` via an `after_connect` hook).
+
+### Documentation
+
+- Added `specs/fix-migration-db-issue/` documentation suite: root cause analysis with SHA-384 proof, step-by-step reproduction guide (Docker-based), prevention playbook with golden rules for migration immutability, and a runnable Python checksum proof script.
+
+### Verified
+
+- Restored migration 019: `sha384sum` output matches the golden v0.10.1 checksum (`1f538faa…`).
+- Two-run proof on a fresh Docker PostgreSQL container: first `sqlx migrate run` applies all 35 migrations (exit 0); second run exits 0 silently with no duplicate-key error and no `edgequake._sqlx_migrations` ghost table.
+
 ## [0.10.12] - 2026-04-19
 
 ### Fixed
