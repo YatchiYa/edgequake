@@ -138,7 +138,8 @@ release: ## Bump all crate versions and tag release using cargo-release (uses VE
         stack stack-down stack-logs stack-status stack-restart stack-pull \
         check-deps status \
         test-quality test-invariants test-timing test-count test-flaky \
-        test-e2e-critical test-e2e-full test-stability-report
+        test-e2e-critical test-e2e-full test-stability-report \
+        sdk-e2e sdk-e2e-with-stack sdk-csharp-test-unit
 
 # ============================================================================
 # Version Management
@@ -334,6 +335,9 @@ help: ## Show this help message
 	@echo "  $(GREEN)make test-flaky$(RESET)       Detect flaky tests"
 	@echo "  $(GREEN)make test-e2e-critical$(RESET) Run E2E critical path"
 	@echo "  $(GREEN)make test-e2e-full$(RESET)    Run full E2E suite"
+	@echo "  $(GREEN)make sdk-e2e$(RESET)          Run Rust/Python/TS SDK E2E vs SDK_E2E_URL (needs healthy API)"
+	@echo "  $(GREEN)make sdk-e2e-with-stack$(RESET)  $(GREEN)make stack$(RESET) then SDK E2E (Docker quickstart)"
+	@echo "  $(GREEN)make sdk-csharp-test-unit$(RESET)  C# SDK unit tests only (excludes E2E trait)"
 	@echo ""
 
 # ============================================================================
@@ -605,6 +609,10 @@ dev-bg: check-deps check-ports ## Start full development stack in BACKGROUND wit
 	@if [ -n "$(OPENAI_API_KEY)" ]; then \
 		echo "  $(BLUE)LLM Provider$(RESET): openai (gpt-5-nano)"; \
 		echo "  $(BLUE)Embedding$(RESET): openai (text-embedding-3-small, 1536d)"; \
+	elif [ -n "$(MISTRAL_API_KEY)" ]; then \
+		echo "  $(BLUE)LLM Provider$(RESET): mistral (mistral-small-latest)"; \
+		echo "  $(BLUE)Embedding$(RESET): mistral (mistral-embed, 1024d)"; \
+		echo "  $(BLUE)Vision$(RESET): mistral (pixtral-large-latest)"; \
 	else \
 		echo "  $(BLUE)LLM Provider$(RESET): ollama (gemma4:latest)"; \
 		echo "  $(BLUE)Embedding$(RESET): ollama (embeddinggemma:latest, 768d)"; \
@@ -659,7 +667,13 @@ stop: ## Stop all development services
 # causes the backend to panic with `RelativeUrlWithoutBase`. Treat empty as
 # unset and fall back to the local development PostgreSQL container, while
 # still respecting any explicit external DATABASE_URL provided by the user.
-DEFAULT_DATABASE_URL := postgresql://edgequake:edgequake_secret@localhost:5432/edgequake
+# WHY ?options=-c%20search_path%3Dpublic: The edgequake schema is created by
+# migration 001. PostgreSQL's default search_path "$user",public resolves
+# "$user"=edgequake to that schema on subsequent connections. Without forcing
+# search_path=public at connection time, sqlx-cli creates _sqlx_migrations in
+# the edgequake schema (empty), then migration 001 switches the session path to
+# public, and subsequent tracking writes collide with public._sqlx_migrations.
+DEFAULT_DATABASE_URL := postgresql://edgequake:edgequake_secret@localhost:5432/edgequake?options=-c%20search_path%3Dpublic
 ENV_DATABASE_URL := $(strip $(shell printf '%s' "$$DATABASE_URL"))
 ifneq ($(ENV_DATABASE_URL),)
   DATABASE_URL := $(ENV_DATABASE_URL)
@@ -733,13 +747,32 @@ backend-memory: ## DEPRECATED - In-memory storage removed, use backend-dev with 
 	@echo "$(RED)╚══════════════════════════════════════════════════════════════════╝$(RESET)"
 	@exit 1
 
-backend-bg: db-wait ## Run backend in background with PostgreSQL (respects OPENAI_API_KEY if set)
+backend-bg: db-wait ## Run backend in background with PostgreSQL (respects MISTRAL_API_KEY, OPENAI_API_KEY if set)
 	@if curl -fsS "$(BACKEND_URL)/health" >/dev/null 2>&1; then \
 		echo "$(GREEN)✓ Backend already healthy on port $(BACKEND_PORT)$(RESET)"; \
 		exit 0; \
 	fi
 	@echo "$(BLUE)Starting backend in background...$(RESET)"
-	@if [ -n "$(OPENAI_API_KEY)" ]; then \
+	@if [ -n "$$MISTRAL_API_KEY" ] || [ -n "$(MISTRAL_API_KEY)" ]; then \
+		_MISTRAL_KEY="$${MISTRAL_API_KEY:-$(MISTRAL_API_KEY)}"; \
+		echo "$(YELLOW)→ MISTRAL_API_KEY detected - using Mistral as default provider$(RESET)"; \
+		printf '%s\n' "#!/bin/bash" > /tmp/edgequake-start.sh; \
+		printf '%s\n' "export PORT=\"$(BACKEND_PORT)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export DATABASE_URL=\"$(DATABASE_URL)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export MISTRAL_API_KEY=\"$$_MISTRAL_KEY\"" >> /tmp/edgequake-start.sh; \
+		[ -n "$(OPENAI_API_KEY)" ] && printf '%s\n' "export OPENAI_API_KEY=\"$(OPENAI_API_KEY)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_AUTH_ENABLED=\"$(DEV_AUTH_ENABLED)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export AUTH_ENABLED=\"$(DEV_AUTH_ENABLED)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_LLM_PROVIDER=\"mistral\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_EMBEDDING_PROVIDER=\"mistral\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export MISTRAL_EMBEDDING_MODEL=\"mistral-embed\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_VISION_PROVIDER=\"mistral\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_VISION_MODEL=\"pixtral-large-latest\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_EMBEDDING_BATCH_SIZE=\"16\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "cd $(BACKEND_DIR) && exec cargo run" >> /tmp/edgequake-start.sh; \
+		chmod +x /tmp/edgequake-start.sh; \
+		/bin/bash -lc 'nohup /tmp/edgequake-start.sh > /tmp/edgequake-backend.log 2>&1 < /dev/null & backend_pid=$$!; disown "$$backend_pid"; printf "%s\n" "$$backend_pid" > /tmp/edgequake-backend.pid'; \
+	elif [ -n "$(OPENAI_API_KEY)" ]; then \
 		echo "$(YELLOW)→ OPENAI_API_KEY detected - using OpenAI as default provider$(RESET)"; \
 		printf '%s\n' "#!/bin/bash" > /tmp/edgequake-start.sh; \
 		printf '%s\n' "export PORT=\"$(BACKEND_PORT)\"" >> /tmp/edgequake-start.sh; \
@@ -1281,6 +1314,42 @@ test-e2e-full: ## Run full E2E test suite
 	@echo "$(BLUE)Running full E2E suite...$(RESET)"
 	@cd $(FRONTEND_DIR) && PLAYWRIGHT_BASE_URL=http://localhost:3000 \
 		pnpm exec playwright test --reporter=line
+
+# ============================================================================
+# SDK E2E — Rust, Python, TypeScript against a live API (Docker Compose stack)
+# ============================================================================
+#
+# Prerequisites: API healthy at SDK_E2E_URL (default http://localhost:8080).
+#   make stack              # root quickstart (GHCR images)
+#   make docker-prebuilt    # edgequake/docker/docker-compose.prebuilt.yml
+#   make docker-up          # build-from-source full stack
+#
+# Override:  make sdk-e2e SDK_E2E_URL=http://127.0.0.1:9090
+
+SDK_E2E_URL ?= http://localhost:8080
+
+sdk-e2e: ## Run SDK E2E suites (Rust --features e2e, Python test_e2e, TS tests/e2e)
+	@echo "$(BOLD)$(BLUE)SDK E2E → $(SDK_E2E_URL)$(RESET)"
+	@curl -sf "$(SDK_E2E_URL)/health" >/dev/null || { \
+		echo "$(RED)✗ API not healthy at $(SDK_E2E_URL)$(RESET)"; \
+		echo "  Start: $(GREEN)make stack$(RESET) or $(GREEN)make docker-prebuilt$(RESET) or $(GREEN)make docker-up$(RESET)"; \
+		exit 1; \
+	}
+	@echo "$(YELLOW)→ Rust SDK (cargo test --features e2e)$(RESET)"
+	@cd $(ROOT_DIR)/sdks/rust && EDGEQUAKE_BASE_URL="$(SDK_E2E_URL)" \
+		cargo test -p edgequake-sdk --test e2e_tests --features e2e -- --nocapture
+	@echo "$(YELLOW)→ Python SDK (pytest tests/test_e2e.py)$(RESET)"
+	@cd $(ROOT_DIR)/sdks/python && EDGEQUAKE_E2E_URL="$(SDK_E2E_URL)" \
+		python3 -m pytest tests/test_e2e.py -v
+	@echo "$(YELLOW)→ TypeScript SDK (bun test tests/e2e)$(RESET)"
+	@cd $(ROOT_DIR)/sdks/typescript && EDGEQUAKE_E2E_URL="$(SDK_E2E_URL)" bun test tests/e2e
+	@echo "$(GREEN)✓ SDK E2E complete$(RESET)"
+
+sdk-e2e-with-stack: stack sdk-e2e ## Start quickstart stack, then run SDK E2E (containers left running)
+
+sdk-csharp-test-unit: ## Run C# SDK unit tests only (requires dotnet; skips live E2E tests)
+	@echo "$(BLUE)C# SDK unit tests (filter out E2E trait)...$(RESET)"
+	cd $(ROOT_DIR)/sdks/csharp && dotnet test --filter "E2E!=true"
 
 test-stability-report: ## Generate test stability report
 	@echo "$(BLUE)Generating stability report...$(RESET)"
