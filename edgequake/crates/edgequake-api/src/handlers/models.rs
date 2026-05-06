@@ -558,6 +558,7 @@ mod tests {
     // ---- Issue #204b: Model visibility / provider filtering tests ----
 
     #[test]
+    #[serial_test::serial]
     fn test_active_provider_names_no_env_returns_active_only() {
         // Unset or empty → only the active LLM + embedding provider
         std::env::remove_var("EDGEQUAKE_ALLOWED_PROVIDERS");
@@ -569,6 +570,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_active_provider_names_star_returns_none() {
         std::env::set_var("EDGEQUAKE_ALLOWED_PROVIDERS", "*");
         let result = active_provider_names("openai", "ollama");
@@ -577,6 +579,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_active_provider_names_explicit_list() {
         std::env::set_var("EDGEQUAKE_ALLOWED_PROVIDERS", "openai,lmstudio");
         let result = active_provider_names("ollama", "ollama");
