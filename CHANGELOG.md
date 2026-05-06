@@ -6,6 +6,26 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.12.0] — 2026-05-06
+
+### Fixed
+
+- **Issue #203 — Image attachment support for vision-capable models**
+  - Added `images` field to `ChatCompletionRequest` (backend and frontend).
+  - Backend validates attachments: max 4 images, ≤ 20 MiB each, accepted MIME types `image/jpeg`, `image/png`, `image/gif`, `image/webp`.
+  - Frontend query interface now has an image attachment button (📎), drag-and-drop on textarea, Ctrl+V clipboard paste, per-image preview strip with remove button.
+
+- **Issue #204 — Auth token expiry / model visibility**
+  - **(#204a)** `AuthGuard` now checks JWT expiry on mount and listens for `auth:logout-required` events dispatched by the API client on failed token refresh. Users are redirected to `/login` instead of silently hanging.
+  - **(#204b)** `GET /api/models` and `GET /api/models/llm` now filter providers by the active runtime LLM/embedding providers. Set `EDGEQUAKE_ALLOWED_PROVIDERS=*` to expose all, or a comma-separated list to restrict further.
+
+- **Issue #205 — User management API and admin UI**
+  - `GET /v1/users` now performs a real KV prefix scan to list all users (was a `TODO` returning an empty array).
+  - New `PATCH /v1/users/{user_id}` endpoint to update `role`, `is_active`, `display_name`, and `email`. Guards demotion of the last admin.
+  - New `UserManagementCard` admin UI in the Settings page (visible to admins only): table with role selector, active toggle, delete confirmation, create-user dialog, and pagination.
+
+---
+
 ## [0.11.3] — 2026-05-06
 
 ### Added

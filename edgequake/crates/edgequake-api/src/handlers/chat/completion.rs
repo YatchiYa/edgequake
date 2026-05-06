@@ -51,6 +51,11 @@ pub async fn chat_completion(
         ));
     }
 
+    // Validate image attachments (Issue #203) — delegated to shared helper (DRY).
+    if let Some(ref images) = request.images {
+        super::validation::validate_image_attachments(images)?;
+    }
+
     let tenant_id = tenant_ctx
         .tenant_id
         .ok_or(ApiError::Unauthorized)?
