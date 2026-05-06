@@ -95,6 +95,7 @@ pub use crate::handlers::chat_types::*;
 
 pub mod completion;
 pub mod streaming;
+pub mod validation;
 
 pub use completion::*;
 pub use streaming::*;
