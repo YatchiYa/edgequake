@@ -164,9 +164,17 @@ The answer must integrate relevant facts from the Knowledge Graph and Document C
 
         // FEAT0203: Use chat() with image attachments when images are present;
         // otherwise fall back to the cheaper text-only complete() path.
+        // WHY: If the configured LLM doesn't support vision, chat() with images will
+        // error; we catch that and retry with text-only so the query still succeeds.
         let response = if let Some(imgs) = images.filter(|i| !i.is_empty()) {
             let user_msg = ChatMessage::user_with_images(&prompt, imgs.to_vec());
-            provider.chat(&[user_msg], None).await?
+            match provider.chat(&[user_msg], None).await {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::warn!(error = %e, "Vision chat failed; retrying as text-only query");
+                    provider.complete(&prompt).await?
+                }
+            }
         } else {
             provider.complete(&prompt).await?
         };
