@@ -387,6 +387,7 @@ impl Pipeline {
     /// - Entity embeddings (name: description → vector)
     /// - Relationship embeddings (keywords + source→target + description → vector)
     /// - Embedding cost calculation
+    ///
     /// Fire an `EmbedProgressUpdate` via the optional callback.
     ///
     /// WHY helper fn: keeps the embedding loop bodies readable — avoids

@@ -167,6 +167,11 @@ pub fn resolve_embedding_provider(
 ///
 /// Returns `None` when no Mistral/OpenAI key is configured or when
 /// `EDGEQUAKE_VISION_PROVIDER=none` is set explicitly.
+///
+/// WHY: The function is only called from `postgres.rs` (production path).
+/// Test builds only exercise `memory.rs` construction sites, so the compiler
+/// reports it as unused in `--lib` tests; suppress that false positive here.
+#[allow(dead_code)]
 pub fn resolve_vision_llm_provider() -> Option<Arc<dyn LLMProvider>> {
     use tracing::{debug, warn};
 
@@ -178,10 +183,11 @@ pub fn resolve_vision_llm_provider() -> Option<Arc<dyn LLMProvider>> {
     }
 
     // Determine which provider family to use.
-    let llm_provider_name = explicit_provider
-        .is_empty()
-        .then(|| std::env::var("EDGEQUAKE_LLM_PROVIDER").unwrap_or_default())
-        .unwrap_or(explicit_provider.clone());
+    let llm_provider_name = if explicit_provider.is_empty() {
+        std::env::var("EDGEQUAKE_LLM_PROVIDER").unwrap_or_default()
+    } else {
+        explicit_provider.clone()
+    };
 
     // Attempt to determine the API key.
     let api_key = std::env::var("EDGEQUAKE_VISION_API_KEY")
