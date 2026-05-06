@@ -266,6 +266,17 @@ pub async fn chat_completion_stream(
             }
         }
 
+        // FEAT0203: Forward image attachments to the query engine for vision queries.
+        if let Some(ref images) = request.images {
+            let image_data: Vec<edgequake_llm::traits::ImageData> = images
+                .iter()
+                .map(|i| edgequake_llm::traits::ImageData::new(&i.data, &i.mime_type))
+                .collect();
+            if !image_data.is_empty() {
+                engine_request = engine_request.with_images(image_data);
+            }
+        }
+
         // SPEC-032 + OODA-227: Unified provider resolution with safety limits (streaming)
         // Priority order:
         //   1. Request-specified provider/model (explicit user selection)

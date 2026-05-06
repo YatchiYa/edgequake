@@ -211,7 +211,18 @@ pub async fn chat_completion(
         }
     }
 
-    // SPEC-032 + OODA-227: Unified provider resolution with safety limits
+    // FEAT0203: Forward image attachments to the query engine for vision queries.
+    if let Some(ref images) = request.images {
+        let image_data: Vec<edgequake_llm::traits::ImageData> = images
+            .iter()
+            .map(|i| edgequake_llm::traits::ImageData::new(&i.data, &i.mime_type))
+            .collect();
+        if !image_data.is_empty() {
+            engine_request = engine_request.with_images(image_data);
+        }
+    }
+
+    // SPEC-032 + OADA-227: Unified provider resolution with safety limits
     // Priority order:
     //   1. Request-specified provider/model (explicit user selection)
     //   2. Workspace-configured provider/model (workspace settings)
