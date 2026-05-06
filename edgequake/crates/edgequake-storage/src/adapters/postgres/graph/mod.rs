@@ -1332,13 +1332,15 @@ impl GraphStorage for PostgresAGEGraphStorage {
             String::new()
         };
 
+        // WHY: graphid cannot be cast directly to bigint in Apache AGE — must go via ::text first.
+        // See: https://github.com/apache/age/issues — graphid::text::bigint is the required two-step cast.
         let sql = format!(
             "WITH edge_counts AS ( \
                 SELECT \
-                    start_id::bigint as start_id_int, \
+                    start_id::text::bigint as start_id_int, \
                     COUNT(*) as out_degree \
                 FROM {}.\"_ag_label_edge\" \
-                GROUP BY start_id::bigint \
+                GROUP BY start_id::text::bigint \
             ), \
             node_degrees AS ( \
                 SELECT \
@@ -1346,7 +1348,7 @@ impl GraphStorage for PostgresAGEGraphStorage {
                     v.properties, \
                     COALESCE(ec.out_degree, 0) as degree \
                 FROM {}.\"_ag_label_vertex\" v \
-                LEFT JOIN edge_counts ec ON v.id::bigint = ec.start_id_int \
+                LEFT JOIN edge_counts ec ON v.id::text::bigint = ec.start_id_int \
                 {} \
             ) \
             SELECT \
