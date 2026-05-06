@@ -19,6 +19,10 @@ All notable changes to this project will be documented in this file.
   - **(#204a)** `AuthGuard` now checks JWT expiry on mount and listens for `auth:logout-required` events dispatched by the API client on failed token refresh. Users are redirected to `/login` instead of silently hanging.
   - **(#204b)** `GET /api/models` and `GET /api/models/llm` now filter providers by the active runtime LLM/embedding providers. Set `EDGEQUAKE_ALLOWED_PROVIDERS=*` to expose all, or a comma-separated list to restrict further.
 
+- **Bugfix — Knowledge Graph `graphid` cast error**
+  - Fixed `cannot cast type graphid to bigint` on the Knowledge Graph page and Hybrid/Local query mode.
+  - Root cause: Apache AGE's `graphid` type has no direct cast to `bigint` — must use `::text::bigint`.
+
 - **Issue #205 — User management API and admin UI**
   - `GET /v1/users` now performs a real KV prefix scan to list all users (was a `TODO` returning an empty array).
   - New `PATCH /v1/users/{user_id}` endpoint to update `role`, `is_active`, `display_name`, and `email`. Guards demotion of the last admin.
