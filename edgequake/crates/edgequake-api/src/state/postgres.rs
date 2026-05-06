@@ -344,6 +344,7 @@ impl AppState {
             graph_storage: Arc::clone(&graph_storage)
                 as Arc<dyn edgequake_storage::traits::GraphStorage>,
             llm_provider: Arc::clone(&llm_provider) as Arc<dyn edgequake_llm::traits::LLMProvider>,
+            vision_llm_provider: super::provider_setup::resolve_vision_llm_provider(),
             embedding_provider: Arc::clone(&embedding_provider),
             query_engine,
             sota_engine,
