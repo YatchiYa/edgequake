@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use crate::context::QueryContext;
 use crate::error::Result;
+use edgequake_llm::traits::{ChatMessage, ImageData};
 
 use super::SOTAQueryEngine;
 
@@ -140,12 +141,16 @@ The answer must integrate relevant facts from the Knowledge Graph and Document C
     ///
     /// If `llm_override` is provided, uses that provider instead of the default.
     /// This enables per-request provider selection (SPEC-032).
+    ///
+    /// If `images` is Some and non-empty, uses `provider.chat()` with image
+    /// attachments instead of `provider.complete()` (FEAT0203: vision queries).
     pub(super) async fn generate_answer_with_provider(
         &self,
         query: &str,
         context: &QueryContext,
         llm_override: Option<&Arc<dyn crate::LLMProvider>>,
         system_prompt_extension: Option<&str>,
+        images: Option<&[ImageData]>,
     ) -> Result<(String, usize)> {
         if context.is_empty() {
             return Ok((
@@ -155,12 +160,15 @@ The answer must integrate relevant facts from the Knowledge Graph and Document C
         }
 
         let prompt = self.build_prompt(query, context, system_prompt_extension);
+        let provider = llm_override.unwrap_or(&self.llm_provider);
 
-        // SPEC-032: Use override provider if provided, else default
-        let response = if let Some(provider) = llm_override {
-            provider.complete(&prompt).await?
+        // FEAT0203: Use chat() with image attachments when images are present;
+        // otherwise fall back to the cheaper text-only complete() path.
+        let response = if let Some(imgs) = images.filter(|i| !i.is_empty()) {
+            let user_msg = ChatMessage::user_with_images(&prompt, imgs.to_vec());
+            provider.chat(&[user_msg], None).await?
         } else {
-            self.llm_provider.complete(&prompt).await?
+            provider.complete(&prompt).await?
         };
 
         Ok((response.content, response.completion_tokens))
@@ -173,7 +181,7 @@ The answer must integrate relevant facts from the Knowledge Graph and Document C
         context: &QueryContext,
         system_prompt_extension: Option<&str>,
     ) -> Result<(String, usize)> {
-        self.generate_answer_with_provider(query, context, None, system_prompt_extension)
+        self.generate_answer_with_provider(query, context, None, system_prompt_extension, None)
             .await
     }
 }

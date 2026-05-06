@@ -646,6 +646,7 @@ impl SOTAQueryEngine {
                     &final_context,
                     Some(&llm_provider),
                     request.system_prompt.as_deref(),
+                    request.images.as_deref(),
                 )
                 .await?;
             stats.generation_time_ms = gen_start.elapsed().as_millis() as u64;

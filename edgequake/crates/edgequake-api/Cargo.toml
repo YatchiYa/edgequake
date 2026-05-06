@@ -48,6 +48,7 @@ utoipa-swagger-ui = { version = "9", features = ["axum"] }
 uuid.workspace = true
 futures.workspace = true
 chrono = { version = "0.4", features = ["serde"] }
+base64 = "0.22"
 async-trait.workspace = true
 sqlx = { workspace = true, optional = true }
 reqwest = { version = "0.12", features = ["blocking", "json"] }

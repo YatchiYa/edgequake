@@ -487,6 +487,7 @@ impl SOTAQueryEngine {
                     &final_context,
                     Some(llm),
                     request.system_prompt.as_deref(),
+                    request.images.as_deref(),
                 )
                 .await?
             } else {
