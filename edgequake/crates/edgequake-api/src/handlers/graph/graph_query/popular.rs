@@ -30,7 +30,9 @@ pub async fn get_popular_labels(
     State(state): State<AppState>,
     Query(params): Query<PopularLabelsQuery>,
 ) -> ApiResult<Json<PopularLabelsResponse>> {
-    let total_entities = state.graph_storage.node_count().await?;
+    // SPEC-011 iter 02 Fix B: total_entities feeds a dashboard counter — the
+    // planner estimate is O(1) and accurate within autovacuum's threshold.
+    let total_entities = state.graph_storage.node_count_fast().await?;
 
     // OPTIMIZED: Use get_popular_nodes_with_degree for single-query performance
     let popular_nodes = state

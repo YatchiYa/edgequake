@@ -37,6 +37,8 @@ use crate::traits::{MetadataFilter, VectorSearchResult, VectorStorage};
 pub struct PgVectorStorage {
     pool: PostgresPool,
     table_name: String,
+    /// Maintained-counter table for O(1) `count()` (SPEC-011 iter 02 Fix A).
+    stats_table_name: String,
     namespace: String,
     dimension: usize,
     index_type: VectorIndexType,
@@ -56,6 +58,7 @@ impl PgVectorStorage {
     pub fn with_pool(pool: PostgresPool, config: PostgresConfig, dimension: usize) -> Self {
         let prefix = config.table_prefix();
         let table_name = format!("public.eq_{}_vectors", prefix);
+        let stats_table_name = format!("public.eq_{}_vectors_stats", prefix);
         let namespace = config.namespace.clone();
         let index_type = config.vector_index_type;
         let ivfflat_lists = config.ivfflat_lists;
@@ -65,6 +68,7 @@ impl PgVectorStorage {
         Self {
             pool,
             table_name,
+            stats_table_name,
             namespace,
             dimension,
             index_type,
@@ -168,6 +172,152 @@ impl PgVectorStorage {
             self.prefix, self.table_name
         );
         sqlx::query(&tenant_idx).execute(&pool).await.ok();
+
+        // SPEC-011 iter 02 Fix A: O(1) maintained counter for `count()`.
+        self.ensure_row_count_stats(&pool).await?;
+
+        Ok(())
+    }
+
+    /// O(1) row counter for `count()` — avoids `SELECT COUNT(*) FROM vectors`.
+    ///
+    /// SPEC-011 iter 02 Fix A: production polls vector `count()` every 30 s; while
+    /// today it is fast (small table), it is O(N) and will degrade as embeddings grow.
+    /// This mirrors the proven KV pattern: counter table + INSERT/DELETE triggers.
+    /// `clear()` / `clear_workspace()` use `DELETE FROM` (not TRUNCATE), so row
+    /// triggers fire naturally — no explicit reset needed unlike KV.
+    async fn ensure_row_count_stats(&self, pool: &sqlx::PgPool) -> Result<()> {
+        let stats_sql = format!(
+            r#"
+            CREATE TABLE IF NOT EXISTS {} (
+                id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+                row_count BIGINT NOT NULL DEFAULT 0
+            )
+            "#,
+            self.stats_table_name
+        );
+        sqlx::query(&stats_sql).execute(pool).await.map_err(|e| {
+            StorageError::Database(format!("Failed to create vectors stats table: {}", e))
+        })?;
+
+        // One-time backfill for existing tables (runs COUNT(*) once at migration).
+        let backfill_sql = format!(
+            r#"
+            INSERT INTO {} (id, row_count)
+            SELECT 1, COUNT(*)::bigint FROM {}
+            ON CONFLICT (id) DO NOTHING
+            "#,
+            self.stats_table_name, self.table_name
+        );
+        sqlx::query(&backfill_sql).execute(pool).await.ok();
+
+        let fn_insert = format!("eq_{}_vectors_stats_insert", self.prefix);
+        let fn_delete = format!("eq_{}_vectors_stats_delete", self.prefix);
+
+        let create_insert_fn = format!(
+            r#"
+            CREATE OR REPLACE FUNCTION {fn_insert}() RETURNS trigger AS $$
+            BEGIN
+                UPDATE {stats}
+                SET row_count = row_count + 1
+                WHERE id = 1;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql
+            "#,
+            fn_insert = fn_insert,
+            stats = self.stats_table_name
+        );
+        sqlx::query(&create_insert_fn)
+            .execute(pool)
+            .await
+            .map_err(|e| {
+                StorageError::Database(format!(
+                    "Failed to create vectors stats insert fn: {}",
+                    e
+                ))
+            })?;
+
+        let create_delete_fn = format!(
+            r#"
+            CREATE OR REPLACE FUNCTION {fn_delete}() RETURNS trigger AS $$
+            BEGIN
+                UPDATE {stats}
+                SET row_count = GREATEST(row_count - 1, 0)
+                WHERE id = 1;
+                RETURN OLD;
+            END;
+            $$ LANGUAGE plpgsql
+            "#,
+            fn_delete = fn_delete,
+            stats = self.stats_table_name
+        );
+        sqlx::query(&create_delete_fn)
+            .execute(pool)
+            .await
+            .map_err(|e| {
+                StorageError::Database(format!(
+                    "Failed to create vectors stats delete fn: {}",
+                    e
+                ))
+            })?;
+
+        let trigger_insert = format!("eq_{}_vectors_stats_insert_trg", self.prefix);
+        let trigger_delete = format!("eq_{}_vectors_stats_delete_trg", self.prefix);
+
+        let drop_insert = format!(
+            "DROP TRIGGER IF EXISTS {trigger_insert} ON {table}",
+            trigger_insert = trigger_insert,
+            table = self.table_name
+        );
+        sqlx::query(&drop_insert).execute(pool).await.ok();
+
+        let create_insert_trg = format!(
+            r#"
+            CREATE TRIGGER {trigger_insert}
+            AFTER INSERT ON {table}
+            FOR EACH ROW EXECUTE FUNCTION {fn_insert}()
+            "#,
+            trigger_insert = trigger_insert,
+            table = self.table_name,
+            fn_insert = fn_insert
+        );
+        sqlx::query(&create_insert_trg)
+            .execute(pool)
+            .await
+            .map_err(|e| {
+                StorageError::Database(format!(
+                    "Failed to create vectors stats insert trigger: {}",
+                    e
+                ))
+            })?;
+
+        let drop_delete = format!(
+            "DROP TRIGGER IF EXISTS {trigger_delete} ON {table}",
+            trigger_delete = trigger_delete,
+            table = self.table_name
+        );
+        sqlx::query(&drop_delete).execute(pool).await.ok();
+
+        let create_delete_trg = format!(
+            r#"
+            CREATE TRIGGER {trigger_delete}
+            AFTER DELETE ON {table}
+            FOR EACH ROW EXECUTE FUNCTION {fn_delete}()
+            "#,
+            trigger_delete = trigger_delete,
+            table = self.table_name,
+            fn_delete = fn_delete
+        );
+        sqlx::query(&create_delete_trg)
+            .execute(pool)
+            .await
+            .map_err(|e| {
+                StorageError::Database(format!(
+                    "Failed to create vectors stats delete trigger: {}",
+                    e
+                ))
+            })?;
 
         Ok(())
     }
@@ -679,13 +829,38 @@ impl VectorStorage for PgVectorStorage {
     async fn count(&self) -> Result<usize> {
         let pool = self.pool.get().await?;
 
-        let sql = format!("SELECT COUNT(*) FROM {}", self.table_name);
+        // SPEC-011 iter 02 Fix A: O(1) read from maintained counter — never
+        // `SELECT COUNT(*) FROM vectors`. Fallback to raw COUNT only if the
+        // stats table is somehow absent (defensive, should not happen after init).
+        let sql = format!(
+            "SELECT row_count FROM {} WHERE id = 1",
+            self.stats_table_name
+        );
 
-        let row: (i64,) = sqlx::query_as(&sql)
+        let row: Option<(i64,)> = sqlx::query_as(&sql)
+            .fetch_optional(&pool)
+            .await
+            .map_err(|e| StorageError::Database(format!("Vector count failed: {}", e)))?;
+
+        if let Some((count,)) = row {
+            return Ok(count as usize);
+        }
+
+        // SPEC-012 Fix H (self-heal): bootstrap stats on first hit if missing
+        // (handles deployments that predate SPEC-011 iter 02).
+        tracing::warn!(
+            stats_table = %self.stats_table_name,
+            "Vector stats row missing — running self-heal"
+        );
+        if let Err(e) = self.ensure_row_count_stats(&pool).await {
+            tracing::warn!(error = %e, "Vector stats self-heal failed; falling back to COUNT(*)");
+        }
+
+        let fallback = format!("SELECT COUNT(*) FROM {}", self.table_name);
+        let row: (i64,) = sqlx::query_as(&fallback)
             .fetch_one(&pool)
             .await
-            .map_err(|e| StorageError::Database(format!("Count failed: {}", e)))?;
-
+            .map_err(|e| StorageError::Database(format!("Vector count fallback failed: {}", e)))?;
         Ok(row.0 as usize)
     }
 

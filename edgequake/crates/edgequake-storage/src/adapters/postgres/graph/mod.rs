@@ -129,6 +129,38 @@ impl PostgresAGEGraphStorage {
     pub fn graph_name(&self) -> &str {
         &self.graph_name
     }
+
+    /// Read an O(1) planner estimate of `(graph_name).<label>` row count.
+    ///
+    /// Returns 0 if the table is missing or the catalog row is unavailable —
+    /// callers (the `*_fast` variants) treat that as "no estimate", which is
+    /// the correct behaviour for an empty / uninitialised graph. If you need
+    /// an exact value, call [`node_count`] / [`edge_count`] instead.
+    ///
+    /// SPEC-011 iter 02 Fix B.
+    async fn reltuples_estimate(&self, label: &str) -> Result<usize> {
+        let pool = self.pool.get().await?;
+        let mut conn = pool.acquire().await.map_err(|e| {
+            StorageError::Connection(format!("Failed to acquire connection: {}", e))
+        })?;
+        // `pg_class.reltuples` is a float estimate maintained by ANALYZE / autovacuum.
+        // A value < 0 means "never analysed" — clamp to 0 and let the caller fall back.
+        let row: Option<(f32,)> = sqlx::query_as(
+            "SELECT c.reltuples
+             FROM pg_class c
+             JOIN pg_namespace n ON n.oid = c.relnamespace
+             WHERE n.nspname = $1 AND c.relname = $2",
+        )
+        .bind(&self.graph_name)
+        .bind(label)
+        .fetch_optional(&mut *conn)
+        .await
+        .map_err(|e| StorageError::Database(format!("reltuples estimate failed: {}", e)))?;
+
+        Ok(row
+            .map(|(t,)| if t < 0.0 { 0 } else { t as usize })
+            .unwrap_or(0))
+    }
 }
 
 #[async_trait]
@@ -1132,6 +1164,21 @@ impl GraphStorage for PostgresAGEGraphStorage {
             .map_err(|e| StorageError::Database(format!("edge_count SQL failed: {}", e)))?;
         let count: i64 = row.get(0);
         Ok(count as usize)
+    }
+
+    /// O(1) node count estimate from the planner statistics.
+    ///
+    /// SPEC-011 iter 02 Fix B: graph stream / popular / traversal endpoints
+    /// poll node counts every ~30 s for UI display. Exact COUNT(*) is O(N)
+    /// and grows with the graph; `pg_class.reltuples` is an in-memory catalog
+    /// lookup and accurate within autovacuum's threshold (typically <10 %).
+    async fn node_count_fast(&self) -> Result<usize> {
+        self.reltuples_estimate("_ag_label_vertex").await
+    }
+
+    /// O(1) edge count estimate. See [`node_count_fast`].
+    async fn edge_count_fast(&self) -> Result<usize> {
+        self.reltuples_estimate("_ag_label_edge").await
     }
 
     /// Get node count for a specific workspace (OODA-03: Fix dashboard stats).

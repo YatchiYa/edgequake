@@ -102,6 +102,16 @@ impl PostgresKVStorage {
 
         sqlx::query(&gin_sql).execute(&pool).await.ok();
 
+        // SPEC-011 iter 02 Fix C: B-tree index on reverse(key) for O(log N) suffix scans.
+        // Used by `keys_with_suffix`, which the workspace stats endpoint calls every 30 s
+        // with `"-metadata"`. Without this index the equivalent `LIKE '%-metadata'` does
+        // a full table scan.
+        let reverse_idx_sql = format!(
+            "CREATE INDEX IF NOT EXISTS eq_{}_kv_reverse_key_idx ON {} (reverse(key) text_pattern_ops)",
+            self.prefix, self.table_name
+        );
+        sqlx::query(&reverse_idx_sql).execute(&pool).await.ok();
+
         self.ensure_row_count_stats(&pool).await?;
 
         Ok(())
@@ -403,7 +413,19 @@ impl KVStorage for PostgresKVStorage {
             return Ok(count as usize);
         }
 
-        // Fallback if stats table missing (should not happen after initialize).
+        // SPEC-012 Fix H (self-heal): production logs showed `SELECT COUNT(*) as count
+        // FROM eq_eq_default_kv` running 5806× / 12 s total on a deployment that
+        // predated SPEC-011 — the stats table was never bootstrapped. Run the
+        // initialiser inline so the *next* call hits the O(1) path, then return the
+        // exact count from the bootstrap backfill we just inserted.
+        tracing::warn!(
+            stats_table = %self.stats_table_name,
+            "KV stats row missing — running self-heal (one-time COUNT(*) + create triggers)"
+        );
+        if let Err(e) = self.ensure_row_count_stats(&pool).await {
+            tracing::warn!(error = %e, "KV stats self-heal failed; falling back to COUNT(*)");
+        }
+
         let fallback = format!("SELECT COUNT(*) as count FROM {}", self.table_name);
         let row: (i64,) = sqlx::query_as(&fallback)
             .fetch_one(&pool)
@@ -450,6 +472,41 @@ impl KVStorage for PostgresKVStorage {
             .fetch_all(&pool)
             .await
             .map_err(|e| StorageError::Database(format!("KV keys_with_prefix failed: {}", e)))?;
+
+        Ok(rows.into_iter().map(|(k,)| k).collect())
+    }
+
+    async fn keys_with_suffix(&self, suffix: &str) -> Result<Vec<String>> {
+        // SPEC-011 iter 02 Fix C: convert `WHERE key LIKE '%suffix'` into an
+        // indexed prefix scan on the reverse-key expression index.
+        //
+        // Plain LIKE '%suffix' is a full table scan; LIKE 'reverse(suffix)%'
+        // over `reverse(key)` is a B-tree range scan over
+        // `eq_{prefix}_kv_reverse_key_idx` (created in `create_table`).
+        let pool = self.pool.get().await?;
+
+        // Escape LIKE meta-chars in the suffix to keep the prefix scan honest
+        // (defensive: today only literal suffixes like "-metadata" are passed).
+        let escaped: String = suffix
+            .chars()
+            .flat_map(|c| match c {
+                '%' | '_' | '\\' => vec!['\\', c],
+                _ => vec![c],
+            })
+            .collect();
+        let reversed: String = escaped.chars().rev().collect();
+        let like_pattern = format!("{reversed}%");
+
+        let sql = format!(
+            "SELECT key FROM {} WHERE reverse(key) LIKE $1",
+            self.table_name
+        );
+
+        let rows: Vec<(String,)> = sqlx::query_as(&sql)
+            .bind(&like_pattern)
+            .fetch_all(&pool)
+            .await
+            .map_err(|e| StorageError::Database(format!("KV keys_with_suffix failed: {}", e)))?;
 
         Ok(rows.into_iter().map(|(k,)| k).collect())
     }

@@ -254,11 +254,12 @@ pub async fn get_graph(
         (nodes, edges, false) // is_truncated calculated after counts arrive
     };
 
-    // WHY: Run node_count/edge_count concurrently AFTER main query completes.
-    // These are cheap COUNT(*) queries but still save ~50ms by running in parallel.
+    // SPEC-011 iter 02 Fix B: use planner estimate (O(1)) instead of exact
+    // `COUNT(*)` (O(N) — production logs showed 38 s / 5780 calls for the
+    // vertex count alone). The graph traversal endpoint is polled by the UI.
     let (total_nodes_result, total_edges_result) = tokio::join!(
-        state.graph_storage.node_count(),
-        state.graph_storage.edge_count(),
+        state.graph_storage.node_count_fast(),
+        state.graph_storage.edge_count_fast(),
     );
     let total_nodes = total_nodes_result.unwrap_or(nodes.len());
     let total_edges = total_edges_result.unwrap_or(edges.len());

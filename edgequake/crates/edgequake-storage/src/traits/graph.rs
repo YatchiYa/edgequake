@@ -556,11 +556,29 @@ pub trait GraphStorage: Send + Sync {
 
     // ========== Utility Operations ==========
 
-    /// Get node count.
+    /// Get exact node count. O(N) on most backends — use [`node_count_fast`] for polling.
     async fn node_count(&self) -> Result<usize>;
 
-    /// Get edge count.
+    /// Get exact edge count. O(N) on most backends — use [`edge_count_fast`] for polling.
     async fn edge_count(&self) -> Result<usize>;
+
+    /// Best-effort node count, returning a planner estimate when available.
+    ///
+    /// WHY (SPEC-011 iter 02 Fix B): the dashboard, graph stream and traversal
+    /// endpoints poll node/edge counts every ~30 s. Exact counts force a heap
+    /// scan of `_ag_label_vertex` on every poll. Estimates from `pg_class.reltuples`
+    /// are O(1) and accurate within autovacuum's threshold (~10 %).
+    ///
+    /// Implementations without an estimate source MUST delegate to `node_count()`.
+    async fn node_count_fast(&self) -> Result<usize> {
+        self.node_count().await
+    }
+
+    /// Best-effort edge count, returning a planner estimate when available.
+    /// See [`node_count_fast`] for rationale.
+    async fn edge_count_fast(&self) -> Result<usize> {
+        self.edge_count().await
+    }
 
     /// Lightweight connectivity probe — must not count all graph vertices.
     async fn ping(&self) -> Result<()> {
