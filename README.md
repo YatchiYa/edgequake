@@ -5,13 +5,13 @@
 > **High-Performance Graph-RAG Framework in Rust**  
 > Transform documents into intelligent knowledge graphs for superior retrieval and generation
 
-[![Version](https://img.shields.io/badge/version-0.11.3-blue.svg?style=flat)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.12.3-blue.svg?style=flat)](CHANGELOG.md)
 [![Rust](https://img.shields.io/badge/rust-1.95+-orange.svg?style=flat&logo=rust)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat)](LICENSE)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg?style=flat)](https://github.com/raphaelmansuy/edgequake)
 [![Documentation](https://img.shields.io/badge/docs-available-blue.svg?style=flat)](docs/README.md)
 
-> **v0.11.0** — Mistral La Plateforme is now a first-class citizen: chat (`mistral-small-latest`), vision PDF ingestion (`pixtral-large-latest`), and embeddings (`mistral-embed`, 1024 dims) all work out of the box. Set `MISTRAL_API_KEY` and `make dev` — no other config needed. See [CHANGELOG](CHANGELOG.md) for full details.
+> **v0.12.3** — Storage performance: O(1) KV/vector counts via maintained stats tables, O(log N) key suffix lookups via reverse-key expression index, and correct Apache AGE graph-size estimates via `pg_inherits` SUM. Benchmarked from real production CSV data (SPEC-012). See [CHANGELOG](CHANGELOG.md) for full details.
 
 ---
 
