@@ -137,19 +137,31 @@ impl PostgresAGEGraphStorage {
     /// the correct behaviour for an empty / uninitialised graph. If you need
     /// an exact value, call [`node_count`] / [`edge_count`] instead.
     ///
-    /// SPEC-011 iter 02 Fix B.
+    /// SPEC-011 iter 02 Fix B / SPEC-012 Fix B'.
+    ///
+    /// WHY pg_inherits SUM: Apache AGE stores graph rows in **child label tables**
+    /// (e.g. `Node`, `EDGE`) that inherit from the abstract parent tables
+    /// `_ag_label_vertex` / `_ag_label_edge`. The parent tables hold 0 rows
+    /// themselves, so querying `pg_class.reltuples` directly for the parent gives
+    /// 0 or -1 (never analysed). The correct O(1) estimate is the SUM of
+    /// `reltuples` across all child tables registered in `pg_inherits`.
     async fn reltuples_estimate(&self, label: &str) -> Result<usize> {
         let pool = self.pool.get().await?;
         let mut conn = pool.acquire().await.map_err(|e| {
             StorageError::Connection(format!("Failed to acquire connection: {}", e))
         })?;
-        // `pg_class.reltuples` is a float estimate maintained by ANALYZE / autovacuum.
-        // A value < 0 means "never analysed" — clamp to 0 and let the caller fall back.
-        let row: Option<(f32,)> = sqlx::query_as(
-            "SELECT c.reltuples
+        // Sum reltuples of all child tables that inherit from the parent label.
+        // Falls back to 0 if no children exist or parent is not found.
+        let row: Option<(f64,)> = sqlx::query_as(
+            "SELECT COALESCE(SUM(c.reltuples), 0)::float8
              FROM pg_class c
-             JOIN pg_namespace n ON n.oid = c.relnamespace
-             WHERE n.nspname = $1 AND c.relname = $2",
+             JOIN pg_inherits i ON i.inhrelid = c.oid
+             WHERE i.inhparent = (
+                 SELECT pc.oid
+                 FROM pg_class pc
+                 JOIN pg_namespace pn ON pn.oid = pc.relnamespace
+                 WHERE pn.nspname = $1 AND pc.relname = $2
+             )",
         )
         .bind(&self.graph_name)
         .bind(label)
