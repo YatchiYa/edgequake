@@ -6,6 +6,41 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.12.3] — 2026-05-21
+
+### Performance
+
+- **SPEC-012 — Production-CSV-driven storage optimisations** (`9b4f3f90`):
+  - **KV `count()` — O(1) stats table** (`eq_*_kv_stats`): replaces full
+    `COUNT(*)` scan with a maintained counter updated by AFTER INSERT/DELETE
+    triggers. Self-heals on missing stats row for backward compatibility.
+  - **Vector `count()` — O(1) stats table** (`eq_*_vectors_stats`): same
+    pattern as KV; dimension-mismatch (e.g. 768→1024) detected at startup with
+    an automatic table-recreation warning.
+  - **`keys_with_suffix` trait + reverse-key expression index**: new
+    `KvStorage::keys_with_suffix()` backed by a `reverse(key) text_pattern_ops`
+    expression index enabling O(log N) suffix lookups. All callers that
+    previously fetched all keys and filtered client-side have been migrated
+    (tasks, workspace stats, costs ×2, bulk-delete, user-management prefix scan).
+  - **`node_count_fast` / `edge_count_fast` O(1) graph traits**: new trait
+    methods that default to exact `COUNT(*)` but are overridden with O(1)
+    `pg_class.reltuples` estimates in the Postgres adapter. Used by
+    `graph/stream`, `popular`, and `traversal` endpoints.
+
+### Fixed
+
+- **Fix B' — AGE `reltuples` via `pg_inherits` SUM** (`3ad41c2a`):
+  - Root cause: `reltuples_estimate()` queried Apache AGE's parent abstract
+    tables (`_ag_label_vertex` / `_ag_label_edge`) which always hold 0 rows.
+    Data lives in labelled child tables (`Node`, `EDGE`) registered in
+    `pg_inherits`.
+  - Fix: SUM `pg_class.reltuples` across all `pg_inherits` children of the
+    parent label. Gives correct O(1) estimates post-ANALYZE without a full scan.
+  - Verified: estimated 22,652 == actual `COUNT(*)` 22,652 (vertex);
+    27,191 == 27,191 (edge).
+
+---
+
 ## [0.12.1] — 2026-05-06
 
 ### Fixed
