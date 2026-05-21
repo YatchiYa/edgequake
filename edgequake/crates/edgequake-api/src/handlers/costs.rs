@@ -370,8 +370,8 @@ pub async fn get_cost_history(
 
     let granularity = params.granularity.as_deref().unwrap_or("day");
 
-    // Query all document metadata
-    let metadata_keys = state.kv_storage.keys_like("%-metadata").await?;
+    // SPEC-012 Fix C+: indexed suffix scan (was `keys_like(\"%-metadata\")`).
+    let metadata_keys = state.kv_storage.keys_with_suffix("-metadata").await?;
 
     // Group costs by time period
     let mut period_data: BTreeMap<String, (f64, usize, usize)> = BTreeMap::new();

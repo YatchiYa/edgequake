@@ -371,6 +371,9 @@ pub async fn delete_workspace(
     let mut documents_deleted = 0;
     let mut chunks_deleted = 0;
 
+    // NOTE (SPEC-012): keep the `kv.keys()` scan here \u2014 deletion needs the full key
+    // universe to find chunk keys per document. This is *not* a polled hotspot
+    // (delete workspace is a rare admin op), so a full scan is acceptable.
     if let Ok(all_keys) = state.kv_storage.keys().await {
         // Find metadata keys and check workspace membership
         let metadata_keys: Vec<String> = all_keys

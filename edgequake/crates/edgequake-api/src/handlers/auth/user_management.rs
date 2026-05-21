@@ -199,14 +199,14 @@ pub async fn list_users(
     let page = query.page.max(1);
     let page_size = query.page_size.clamp(1, 100);
 
-    // WHY Issue #205: Use prefix scan to list all user keys.
-    // USER_KEY_PREFIX = "auth:user:" so filter to keys starting with that prefix.
-    let all_keys = state.kv_storage.keys().await.map_err(storage_err)?;
-
-    let user_keys: Vec<String> = all_keys
-        .into_iter()
-        .filter(|k| k.starts_with(USER_KEY_PREFIX))
-        .collect();
+    // SPEC-012 Fix C+: USER_KEY_PREFIX is a prefix — use the index-friendly
+    // `keys_with_prefix` instead of `keys() + filter starts_with(...)` which
+    // scans the entire kv table on every admin user-list call.
+    let user_keys: Vec<String> = state
+        .kv_storage
+        .keys_with_prefix(USER_KEY_PREFIX)
+        .await
+        .map_err(storage_err)?;
 
     // Load each user record in batch-style (sequential for now).
     let mut users: Vec<UserInfo> = Vec::with_capacity(user_keys.len());

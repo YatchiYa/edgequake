@@ -41,7 +41,7 @@ pub async fn delete_all_documents(
 ) -> ApiResult<Json<DeleteAllDocumentsResponse>> {
     tracing::info!(workspace_id = ?tenant_ctx.workspace_id, "Bulk delete documents requested");
 
-    let metadata_keys = state.kv_storage.keys_like("%-metadata").await?;
+    let metadata_keys = state.kv_storage.keys_with_suffix("-metadata").await?;
 
     let mut deleted_count = 0usize;
     let mut total_chunks_deleted = 0usize;

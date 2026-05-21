@@ -224,14 +224,11 @@ pub async fn cancel_task(
     // SPEC-002: First, always try to update document status for this track_id
     // WHY: After backend restart, tasks are lost but documents persist in KV storage.
     // Users need a way to cancel "stuck" documents even when the task no longer exists.
+    // SPEC-012 Fix C+: production logs show `SELECT key FROM kv` runs ~1166 times
+    // (9.3 s total). This was caused by `keys() + filter ends_with("-metadata")`.
+    // `keys_with_suffix` uses the reverse-key expression index for O(log N + K).
     let mut doc_updated = false;
-    if let Ok(keys) = state.kv_storage.keys().await {
-        let metadata_keys: Vec<String> = keys
-            .iter()
-            .filter(|k| k.ends_with("-metadata"))
-            .cloned()
-            .collect();
-
+    if let Ok(metadata_keys) = state.kv_storage.keys_with_suffix("-metadata").await {
         if let Ok(metadata_values) = state.kv_storage.get_by_ids(&metadata_keys).await {
             for (key, value) in metadata_keys.iter().zip(metadata_values.iter()) {
                 if let Some(obj) = value.as_object() {

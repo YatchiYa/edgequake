@@ -168,6 +168,25 @@ pub trait KVStorage: Send + Sync {
         self.keys_like(&pattern).await
     }
 
+    /// Return keys ending with the given suffix.
+    ///
+    /// # WHY (SPEC-011 iter 02 Fix C)
+    ///
+    /// `keys_like("%-metadata")` defeats B-tree indexes (leading wildcard) and
+    /// triggers a full table scan every time the workspace stats endpoint polls
+    /// (every ~30 s). The Postgres adapter overrides this method to use a
+    /// `reverse(key)` expression index for an O(log N + K) prefix scan; other
+    /// backends fall back to the default implementation, which simply filters
+    /// the full key list in-process.
+    ///
+    /// **Constraint**: `suffix` should be ASCII (UUID / structural suffixes such
+    /// as `"-metadata"` / `"-chunk-summary"`). The Postgres `reverse()` function
+    /// is byte-aware and does not respect Unicode grapheme clusters.
+    async fn keys_with_suffix(&self, suffix: &str) -> Result<Vec<String>> {
+        let pattern = format!("%{suffix}");
+        self.keys_like(&pattern).await
+    }
+
     /// Get all keys in storage.
     async fn keys(&self) -> Result<Vec<String>>;
 

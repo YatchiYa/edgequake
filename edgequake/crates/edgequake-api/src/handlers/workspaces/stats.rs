@@ -161,12 +161,16 @@ async fn try_kv_storage_stats(
     state: &AppState,
     workspace_id: Uuid,
 ) -> Result<WorkspaceStatsResponse, ApiError> {
-    // SPEC-011: fetch only metadata + chunk keys instead of full table scan.
+    // SPEC-011 iter 02 Fix C: `keys_with_suffix("-metadata")` uses the reverse-key
+    // expression index (`eq_{prefix}_kv_reverse_key_idx`) for an O(log N + K)
+    // prefix scan — replaces the previous `keys_like("%-metadata")` full scan.
     let metadata_keys = state
         .kv_storage
-        .keys_like("%-metadata")
+        .keys_with_suffix("-metadata")
         .await
         .map_err(|e| ApiError::Internal(format!("Failed to get KV metadata keys: {}", e)))?;
+    // `"%-chunk-%"` is an interior wildcard, not a suffix — still uses the slow
+    // path. Documented as a known gap in SPEC-011 ITERATION_02_AUDIT.md §8.
     let chunk_keys = state
         .kv_storage
         .keys_like("%-chunk-%")
