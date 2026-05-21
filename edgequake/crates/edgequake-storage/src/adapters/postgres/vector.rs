@@ -232,10 +232,7 @@ impl PgVectorStorage {
             .execute(pool)
             .await
             .map_err(|e| {
-                StorageError::Database(format!(
-                    "Failed to create vectors stats insert fn: {}",
-                    e
-                ))
+                StorageError::Database(format!("Failed to create vectors stats insert fn: {}", e))
             })?;
 
         let create_delete_fn = format!(
@@ -256,10 +253,7 @@ impl PgVectorStorage {
             .execute(pool)
             .await
             .map_err(|e| {
-                StorageError::Database(format!(
-                    "Failed to create vectors stats delete fn: {}",
-                    e
-                ))
+                StorageError::Database(format!("Failed to create vectors stats delete fn: {}", e))
             })?;
 
         let trigger_insert = format!("eq_{}_vectors_stats_insert_trg", self.prefix);

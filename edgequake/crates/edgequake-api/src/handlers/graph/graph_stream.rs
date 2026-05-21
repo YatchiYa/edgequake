@@ -80,8 +80,20 @@ pub async fn stream_graph(
 
         let (total_nodes, total_edges, nodes_result) = tokio::join!(
             // SPEC-011 iter 02 Fix B: planner estimate (O(1)) for polling endpoint.
-            async { state_clone.graph_storage.node_count_fast().await.unwrap_or(0) },
-            async { state_clone.graph_storage.edge_count_fast().await.unwrap_or(0) },
+            async {
+                state_clone
+                    .graph_storage
+                    .node_count_fast()
+                    .await
+                    .unwrap_or(0)
+            },
+            async {
+                state_clone
+                    .graph_storage
+                    .edge_count_fast()
+                    .await
+                    .unwrap_or(0)
+            },
             tokio::time::timeout(
                 Duration::from_secs(QUERY_TIMEOUT_SECS),
                 state_clone.graph_storage.get_popular_nodes_with_degree(
