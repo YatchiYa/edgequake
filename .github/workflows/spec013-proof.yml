@@ -17,22 +17,10 @@ env:
   SPEC013_CARGO_TEST_ARGS: --test-threads=1
 
 jobs:
-  secret-missing:
-    name: MISTRAL_API_KEY not configured (skipped)
-    runs-on: ubuntu-latest
-    if: ${{ secrets.MISTRAL_API_KEY == '' }}
-    steps:
-      - name: Explain skip
-        run: |
-          echo "::warning::Nightly SPEC-013 Mistral proof skipped."
-          echo "Add repository secret MISTRAL_API_KEY (Settings → Secrets → Actions)."
-          echo "PRs still run .github/workflows/spec013-proof-pr.yml (mock + storage)."
-
   spec013-proof:
     name: SPEC-013 deterministic proof (3×)
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    if: ${{ secrets.MISTRAL_API_KEY != '' }}
 
     services:
       postgres:
@@ -52,17 +40,31 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Require MISTRAL_API_KEY
+        env:
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+        run: |
+          if [ -z "$MISTRAL_API_KEY" ]; then
+            echo "::warning::MISTRAL_API_KEY not configured — skipping nightly Mistral proof."
+            echo "Add repository secret MISTRAL_API_KEY (Settings → Secrets → Actions)."
+            echo "PRs still run spec013-proof-pr.yml (mock + storage)."
+            echo "SKIP_SPEC013_PROOF=1" >> "$GITHUB_ENV"
+          fi
+
       - name: Install Rust
+        if: env.SKIP_SPEC013_PROOF != '1'
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
 
       - name: Cache cargo
+        if: env.SKIP_SPEC013_PROOF != '1'
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: edgequake
 
       - name: Wait for PostgreSQL
+        if: env.SKIP_SPEC013_PROOF != '1'
         run: |
           for i in $(seq 1 30); do
             pg_isready -h localhost -p 5432 -U edgequake -d edgequake && exit 0
@@ -71,6 +73,7 @@ jobs:
           exit 1
 
       - name: Run SPEC-013 proof (3×)
+        if: env.SKIP_SPEC013_PROOF != '1'
         env:
           DATABASE_URL: postgresql://edgequake:edgequake_secret@localhost:5432/edgequake
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
