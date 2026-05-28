@@ -286,6 +286,8 @@ export interface UpdateWorkspaceRequest {
   pdf_parser_backend?: WorkspacePdfParserBackendUpdate;
   /** Entity types for future ingestions (SPEC-085 / GitHub #216). */
   entity_types?: string[];
+  /** Strict entity type enforcement (default true). */
+  entity_types_strict?: boolean;
 }
 
 /**

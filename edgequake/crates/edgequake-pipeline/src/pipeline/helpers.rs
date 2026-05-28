@@ -739,7 +739,7 @@ mod tests {
     #[test]
     fn test_guard_truncates_long_texts() {
         let long_text = "a".repeat(200);
-        let result = guard_for_embedding(&[long_text.clone()], 50);
+        let result = guard_for_embedding(std::slice::from_ref(&long_text), 50);
         assert_eq!(result.len(), 1);
         assert!(result[0].len() <= 50);
     }

@@ -12,6 +12,7 @@
 //!    `make dev-bg` is running or two worker pools contend on `DATABASE_URL`.
 
 #![cfg(feature = "postgres")]
+#![allow(dead_code)] // shared harness symbols used by mistral vs github issue test binaries
 
 use axum::body::Body;
 use axum::http::Request;
@@ -111,8 +112,11 @@ fn test_server_config() -> ServerConfig {
 
 async fn shutdown_worker_pool() {
     let slot = SPEC013_WORKER_POOL.get_or_init(|| Mutex::new(None));
-    let mut guard = slot.lock().expect("SPEC013 worker pool mutex");
-    if let Some(pool) = guard.take() {
+    let pool = {
+        let mut guard = slot.lock().expect("SPEC013 worker pool mutex");
+        guard.take()
+    };
+    if let Some(pool) = pool {
         pool.shutdown().await;
         // Let in-flight PDF tasks finish cancellation before next test's AppState.
         tokio::time::sleep(Duration::from_millis(500)).await;
@@ -207,7 +211,7 @@ async fn build_postgres_router(mut state: AppState) -> axum::Router {
 
 /// Build an Axum app backed by PostgreSQL with mock LLM (deterministic, no API keys).
 pub async fn create_postgres_mock_app() -> axum::Router {
-    crate::common::clear_provider_detection_env();
+    super::clear_provider_detection_env();
     env::set_var("EDGEQUAKE_LLM_PROVIDER", "mock");
     env::set_var("EDGEQUAKE_EMBEDDING_PROVIDER", "mock");
 
@@ -223,7 +227,7 @@ pub async fn create_postgres_mock_app() -> axum::Router {
 pub async fn create_postgres_mistral_app() -> axum::Router {
     let mistral_key =
         env::var("MISTRAL_API_KEY").expect("MISTRAL_API_KEY required for Mistral live tests");
-    crate::common::clear_provider_detection_env();
+    super::clear_provider_detection_env();
     env::set_var("MISTRAL_API_KEY", &mistral_key);
     env::set_var("EDGEQUAKE_LLM_PROVIDER", "mistral");
     env::set_var("EDGEQUAKE_EMBEDDING_PROVIDER", "mistral");

@@ -497,23 +497,17 @@ impl WorkspaceService for InMemoryWorkspaceService {
                 .insert("max_documents".to_string(), serde_json::json!(max_docs));
         }
 
-        // SPEC-032: LLM model configuration updates
-        if let Some(llm_model) = request.llm_model {
-            workspace.llm_model = llm_model;
-        }
-        if let Some(llm_provider) = request.llm_provider {
-            workspace.llm_provider = llm_provider;
-        }
-        // SPEC-032: Embedding model configuration updates
-        if let Some(embedding_model) = request.embedding_model {
-            workspace.embedding_model = embedding_model;
-        }
-        if let Some(embedding_provider) = request.embedding_provider {
-            workspace.embedding_provider = embedding_provider;
-        }
-        if let Some(embedding_dimension) = request.embedding_dimension {
-            workspace.embedding_dimension = embedding_dimension;
-        }
+        crate::workspace_model_update::apply_llm_config_update(
+            workspace,
+            request.llm_model,
+            request.llm_provider,
+        );
+        crate::workspace_model_update::apply_embedding_config_update(
+            workspace,
+            request.embedding_model,
+            request.embedding_provider,
+            request.embedding_dimension,
+        );
 
         // SPEC-085 / GitHub #216: entity type updates (mirror Postgres impl)
         if let Some(entity_types) = request.entity_types {
@@ -528,6 +522,15 @@ impl WorkspaceService for InMemoryWorkspaceService {
                 workspace
                     .metadata
                     .insert("entity_types".to_string(), serde_json::json!(normalized));
+            }
+        }
+        if let Some(strict) = request.entity_types_strict {
+            if strict {
+                workspace.metadata.remove("entity_types_strict");
+            } else {
+                workspace
+                    .metadata
+                    .insert("entity_types_strict".to_string(), serde_json::json!(false));
             }
         }
 
@@ -885,6 +888,7 @@ mod tests {
             vision_llm_provider: None,
             pdf_parser_backend: None,
             entity_types: None,
+            entity_types_strict: None,
         };
 
         let workspace = service
@@ -921,6 +925,7 @@ mod tests {
                 vision_llm_provider: None,
                 pdf_parser_backend: None,
                 entity_types: None,
+                entity_types_strict: None,
             };
             service
                 .create_workspace(tenant.tenant_id, request)
@@ -943,6 +948,7 @@ mod tests {
             vision_llm_provider: None,
             pdf_parser_backend: None,
             entity_types: None,
+            entity_types_strict: None,
         };
         let result = service.create_workspace(tenant.tenant_id, request).await;
         assert!(result.is_err());

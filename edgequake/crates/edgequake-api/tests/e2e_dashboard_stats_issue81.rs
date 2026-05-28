@@ -52,7 +52,8 @@ async fn setup_workspace(state: &AppState, suffix: &str) -> uuid::Uuid {
                 pdf_parser_backend: None,
                 entity_types: None,
                 vision_llm_provider: None,
-            },
+            
+                ..Default::default()},
         )
         .await
         .unwrap();

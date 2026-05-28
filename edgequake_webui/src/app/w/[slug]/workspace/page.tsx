@@ -11,6 +11,15 @@
  */
 'use client';
 
+import { useParams } from 'next/navigation';
+
+import {
+  WorkspaceLoading,
+  WorkspaceNotFound,
+} from '@/components/workspace/workspace-deeplink-states';
+import { WorkspaceEntityTypesCard } from '@/components/workspace/workspace-entity-types-card';
+import { ENTITY_PRESETS } from '@/constants/entity-presets';
+import { useWorkspaceSlugResolver } from '@/hooks/use-workspace-slug-resolver';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -69,12 +78,20 @@ function getProviderIcon(providerId: string | undefined) {
 export default function WorkspacePage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const params = useParams();
+  const slug = params?.slug as string;
+  const { isLoading: resolvingSlug, error: slugError, isReady } =
+    useWorkspaceSlugResolver(slug);
   const { selectedTenantId, selectedWorkspaceId } = useTenantStore();
 
   // Edit mode state
   const [isEditing, setIsEditing] = useState(false);
   const [selectedLLM, setSelectedLLM] = useState<LLMSelection | undefined>(undefined);
   const [selectedEmbedding, setSelectedEmbedding] = useState<EmbeddingSelection | undefined>(undefined);
+  const [selectedEntityTypes, setSelectedEntityTypes] = useState<string[]>([
+    ...ENTITY_PRESETS.general.types,
+  ]);
+  const [selectedEntityTypesStrict, setSelectedEntityTypesStrict] = useState(true);
 
   // Fetch workspace data
   const {
@@ -124,6 +141,8 @@ export default function WorkspacePage() {
       embedding_model?: string;
       embedding_provider?: string;
       embedding_dimension?: number;
+      entity_types?: string[];
+      entity_types_strict?: boolean;
       _embeddingChanged?: boolean;
       _llmChanged?: boolean;
     }) =>
@@ -133,6 +152,8 @@ export default function WorkspacePage() {
         embedding_model: data.embedding_model,
         embedding_provider: data.embedding_provider,
         embedding_dimension: data.embedding_dimension,
+        entity_types: data.entity_types,
+        entity_types_strict: data.entity_types_strict,
       }),
     onSuccess: (_result, variables) => {
       toast.success(t('workspace.updateSuccess', 'Workspace updated successfully'));
@@ -193,35 +214,49 @@ export default function WorkspacePage() {
   });
 
   const handleSave = () => {
-    const data: Record<string, string | number | boolean | undefined> = {};
-
-    if (selectedLLM) {
-      data.llm_model = selectedLLM.model;
-      data.llm_provider = selectedLLM.provider;
-    }
+    const data: Parameters<typeof updateMutation.mutate>[0] = {
+      _embeddingChanged: embeddingModelChanged ?? false,
+      _llmChanged: llmModelChanged ?? false,
+      entity_types: selectedEntityTypes,
+      entity_types_strict: selectedEntityTypesStrict,
+      llm_model: selectedLLM?.model ?? '',
+      llm_provider: selectedLLM?.provider ?? '',
+    };
 
     if (selectedEmbedding) {
       data.embedding_model = selectedEmbedding.model;
       data.embedding_provider = selectedEmbedding.provider;
       data.embedding_dimension = selectedEmbedding.dimension;
+    } else {
+      data.embedding_model = '';
+      data.embedding_provider = '';
+      data.embedding_dimension = 0;
     }
 
-    // Track which models changed for post-save rebuild notification
-    data._embeddingChanged = embeddingModelChanged ?? false;
-    data._llmChanged = llmModelChanged ?? false;
+    updateMutation.mutate(data);
+  };
 
-    updateMutation.mutate(data as Parameters<typeof updateMutation.mutate>[0]);
+  const syncEntityTypeDrafts = (ws: NonNullable<typeof workspace>) => {
+    setSelectedEntityTypes(
+      ws.entity_types?.length ? [...ws.entity_types] : [...ENTITY_PRESETS.general.types]
+    );
+    setSelectedEntityTypesStrict(ws.entity_types_strict ?? true);
   };
 
   const handleCancel = () => {
     setIsEditing(false);
-    setSelectedLLM(getWorkspaceLlmSelection(workspace));
-    setSelectedEmbedding(getWorkspaceEmbeddingSelection(workspace));
+    if (workspace) {
+      setSelectedLLM(getWorkspaceLlmSelection(workspace));
+      setSelectedEmbedding(getWorkspaceEmbeddingSelection(workspace));
+      syncEntityTypeDrafts(workspace);
+    }
   };
 
   const handleEditStart = () => {
+    if (!workspace) return;
     setSelectedLLM(getWorkspaceLlmSelection(workspace));
     setSelectedEmbedding(getWorkspaceEmbeddingSelection(workspace));
+    syncEntityTypeDrafts(workspace);
     setIsEditing(true);
   };
 
@@ -246,6 +281,20 @@ export default function WorkspacePage() {
     embeddings: boolean;
     extraction: boolean;
   } | null>(null);
+
+  if (resolvingSlug || !isReady) {
+    return <WorkspaceLoading context="workspace configuration" />;
+  }
+
+  if (slugError) {
+    return (
+      <WorkspaceNotFound
+        slug={slug}
+        fallbackHref="/workspace"
+        fallbackLabel={t('workspace.goToSettings', 'Go to Workspace Settings')}
+      />
+    );
+  }
 
   if (!selectedTenantId || !selectedWorkspaceId) {
     return (
@@ -538,6 +587,15 @@ export default function WorkspacePage() {
           </CardContent>
         </Card>
       </div>
+
+      <WorkspaceEntityTypesCard
+        isEditing={isEditing}
+        workspace={workspace}
+        selectedTypes={selectedEntityTypes}
+        onTypesChange={setSelectedEntityTypes}
+        strictLimit={selectedEntityTypesStrict}
+        onStrictLimitChange={setSelectedEntityTypesStrict}
+      />
 
       {/* Provider Health Status - SPEC-032: OODA 201-210 */}
       <Card>

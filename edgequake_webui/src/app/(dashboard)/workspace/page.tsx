@@ -35,8 +35,8 @@ import { EmbeddingModelSelector, type EmbeddingSelection } from '@/components/wo
 import { LLMModelSelector, type LLMSelection } from '@/components/workspace/llm-model-selector';
 import { RebuildEmbeddingsButton } from '@/components/workspace/rebuild-embeddings-button';
 import { RebuildKnowledgeGraphButton } from '@/components/workspace/rebuild-knowledge-graph-button';
-import { EntityTypeSelector } from '@/components/shared/entity-type-selector';
 import { ENTITY_PRESETS } from '@/constants/entity-presets';
+import { WorkspaceEntityTypesCard } from '@/components/workspace/workspace-entity-types-card';
 import { useWorkspaceTenantValidator } from '@/hooks/use-workspace-tenant-validator';
 import { deleteWorkspace, getWorkspace, getWorkspaceStats, updateWorkspace } from '@/lib/api/edgequake';
 import { fetchProvidersHealth } from '@/lib/api/models';
@@ -66,7 +66,6 @@ import {
   Server,
   Settings,
   Sparkles,
-  Tags,
   Trash2,
   XCircle,
 } from 'lucide-react';
@@ -117,6 +116,7 @@ export default function WorkspacePage() {
   const [selectedEntityTypes, setSelectedEntityTypes] = useState<string[]>([
     ...ENTITY_PRESETS.general.types,
   ]);
+  const [selectedEntityTypesStrict, setSelectedEntityTypesStrict] = useState(true);
   // FIX #171: Delete workspace state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -194,6 +194,7 @@ export default function WorkspacePage() {
       vision_llm_model?: string;
       pdf_parser_backend?: PdfParserBackendChoice;
       entity_types?: string[];
+      entity_types_strict?: boolean;
       _embeddingChanged?: boolean;
       _llmChanged?: boolean;
       _visionChanged?: boolean;
@@ -208,6 +209,7 @@ export default function WorkspacePage() {
         vision_llm_model: data.vision_llm_model,
         pdf_parser_backend: data.pdf_parser_backend,
         entity_types: data.entity_types,
+        entity_types_strict: data.entity_types_strict,
       }),
     onSuccess: (_result, variables) => {
       toast.success(t('workspace.updateSuccess', 'Workspace updated successfully'));
@@ -281,31 +283,33 @@ export default function WorkspacePage() {
   });
 
   const handleSave = () => {
-    const data: Record<string, string | number | boolean | undefined> = {};
+    const data: Parameters<typeof updateMutation.mutate>[0] = {
+      _embeddingChanged: embeddingModelChanged ?? false,
+      _llmChanged: llmModelChanged ?? false,
+      _visionChanged: visionLLMChanged ?? false,
+      entity_types: selectedEntityTypes,
+      entity_types_strict: selectedEntityTypesStrict,
+    };
 
-    if (selectedLLM) {
-      data.llm_model = selectedLLM.model;
-      data.llm_provider = selectedLLM.provider;
-    }
+    // SPEC-013: empty strings clear workspace override → server/env defaults (same as vision)
+    data.llm_model = selectedLLM?.model ?? '';
+    data.llm_provider = selectedLLM?.provider ?? '';
 
     if (selectedEmbedding) {
       data.embedding_model = selectedEmbedding.model;
       data.embedding_provider = selectedEmbedding.provider;
       data.embedding_dimension = selectedEmbedding.dimension;
+    } else {
+      data.embedding_model = '';
+      data.embedding_provider = '';
+      data.embedding_dimension = 0;
     }
 
     // Vision LLM config (SPEC-040: empty string clears workspace override)
     data.vision_llm_provider = selectedVisionLLM?.provider ?? '';
     data.vision_llm_model = selectedVisionLLM?.model ?? '';
     data.pdf_parser_backend = selectedPdfParserBackend;
-    data.entity_types = selectedEntityTypes;
-
-    // Track which models changed for post-save rebuild notification
-    data._embeddingChanged = embeddingModelChanged ?? false;
-    data._llmChanged = llmModelChanged ?? false;
-    data._visionChanged = visionLLMChanged ?? false;
-
-    updateMutation.mutate(data as Parameters<typeof updateMutation.mutate>[0]);
+    updateMutation.mutate(data);
   };
 
   const handleCancel = () => {
@@ -319,6 +323,7 @@ export default function WorkspacePage() {
         ? [...workspace.entity_types]
         : [...ENTITY_PRESETS.general.types]
     );
+    setSelectedEntityTypesStrict(workspace?.entity_types_strict ?? true);
   };
 
   const handleEditStart = () => {
@@ -331,22 +336,27 @@ export default function WorkspacePage() {
         ? [...workspace.entity_types]
         : [...ENTITY_PRESETS.general.types]
     );
+    setSelectedEntityTypesStrict(workspace?.entity_types_strict ?? true);
     setIsEditing(true);
   };
 
   // Check if embedding model changed (needs rebuild)
   const embeddingModelChanged = Boolean(
-    workspace && selectedEmbedding && (
-      workspace.embedding_model !== selectedEmbedding.model ||
-      workspace.embedding_provider !== selectedEmbedding.provider
+    workspace && (
+      selectedEmbedding
+        ? workspace.embedding_model !== selectedEmbedding.model ||
+          workspace.embedding_provider !== selectedEmbedding.provider
+        : Boolean(workspace.embedding_provider || workspace.embedding_model)
     )
   );
 
   // Check if LLM model changed (needs extraction rebuild)
   const llmModelChanged = Boolean(
-    workspace && selectedLLM && (
-      workspace.llm_model !== selectedLLM.model ||
-      workspace.llm_provider !== selectedLLM.provider
+    workspace && (
+      selectedLLM
+        ? workspace.llm_model !== selectedLLM.model ||
+          workspace.llm_provider !== selectedLLM.provider
+        : Boolean(workspace.llm_provider || workspace.llm_model)
     )
   );
 
@@ -780,44 +790,14 @@ export default function WorkspacePage() {
         </Card>
       </div>
 
-      {/* Entity Types - SPEC-085 / GitHub #216: editable for future ingestions */}
-      <Card data-testid="workspace-entity-types-card">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Tags className="h-5 w-5 text-indigo-600" />
-            {t('entityTypes.title', 'Entity Types')}
-          </CardTitle>
-          <CardDescription>
-            {t(
-              'entityTypes.futureOnlyHint',
-              'Applies to future document ingestions. Use Rebuild Knowledge Graph to re-extract existing documents.'
-            )}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isEditing ? (
-            <EntityTypeSelector value={selectedEntityTypes} onChange={setSelectedEntityTypes} />
-          ) : workspace.entity_types && workspace.entity_types.length > 0 ? (
-            <div className="flex flex-wrap gap-1.5">
-              {workspace.entity_types.map((type) => (
-                <Badge
-                  key={type}
-                  variant="secondary"
-                  className="text-xs font-mono"
-                  data-testid={`ws-entity-type-${type}`}
-                >
-                  {type}
-                </Badge>
-              ))}
-            </div>
-          ) : (
-            <div className="text-sm text-muted-foreground">
-              <span className="font-medium">{t('entityTypes.defaults', 'Using server defaults:')}</span>{' '}
-              <span className="font-mono text-xs">{t('entityTypes.defaultsHint', 'PERSON, ORGANIZATION, LOCATION, EVENT, CONCEPT, TECHNOLOGY, PRODUCT, DATE, DOCUMENT')}</span>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <WorkspaceEntityTypesCard
+        isEditing={isEditing}
+        workspace={workspace}
+        selectedTypes={selectedEntityTypes}
+        onTypesChange={setSelectedEntityTypes}
+        strictLimit={selectedEntityTypesStrict}
+        onStrictLimitChange={setSelectedEntityTypesStrict}
+      />
 
       {/* Provider Health Status - SPEC-032: OODA 201-210 */}
       <Card>

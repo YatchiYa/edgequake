@@ -439,14 +439,8 @@ impl WorkspaceService for WorkspaceServiceImpl {
 
         // SPEC-085: Apply entity type configuration from request
         // Normalize: uppercase, underscored, deduplicated, max 50 types
-        if let Some(entity_types) = request.entity_types {
-            let normalized = normalize_entity_types(&entity_types);
-            if !normalized.is_empty() {
-                workspace
-                    .metadata
-                    .insert("entity_types".to_string(), serde_json::json!(normalized));
-            }
-        }
+        apply_entity_types_metadata(&mut workspace.metadata, request.entity_types);
+        apply_entity_types_strict_metadata(&mut workspace.metadata, request.entity_types_strict);
 
         sqlx::query(
             r#"
@@ -603,43 +597,18 @@ impl WorkspaceService for WorkspaceServiceImpl {
                 .metadata
                 .insert("max_documents".to_string(), serde_json::json!(max_docs));
         }
-        // SPEC-032: LLM model configuration updates
-        // Store in metadata JSON for compatibility with database schema
-        if let Some(llm_model) = request.llm_model {
-            workspace.llm_model = llm_model.clone();
-            workspace
-                .metadata
-                .insert("llm_model".to_string(), serde_json::json!(llm_model));
-        }
-        if let Some(llm_provider) = request.llm_provider {
-            workspace.llm_provider = llm_provider.clone();
-            workspace
-                .metadata
-                .insert("llm_provider".to_string(), serde_json::json!(llm_provider));
-        }
-        // SPEC-032: Embedding model configuration updates
-        // WARNING: Changing embedding model requires vector rebuild
-        if let Some(embedding_model) = request.embedding_model {
-            workspace.embedding_model = embedding_model.clone();
-            workspace.metadata.insert(
-                "embedding_model".to_string(),
-                serde_json::json!(embedding_model),
-            );
-        }
-        if let Some(embedding_provider) = request.embedding_provider {
-            workspace.embedding_provider = embedding_provider.clone();
-            workspace.metadata.insert(
-                "embedding_provider".to_string(),
-                serde_json::json!(embedding_provider),
-            );
-        }
-        if let Some(embedding_dimension) = request.embedding_dimension {
-            workspace.embedding_dimension = embedding_dimension;
-            workspace.metadata.insert(
-                "embedding_dimension".to_string(),
-                serde_json::json!(embedding_dimension),
-            );
-        }
+        // SPEC-032 / SPEC-013: LLM + embedding updates (empty string = server/env default)
+        crate::workspace_model_update::apply_llm_config_update(
+            &mut workspace,
+            request.llm_model,
+            request.llm_provider,
+        );
+        crate::workspace_model_update::apply_embedding_config_update(
+            &mut workspace,
+            request.embedding_model,
+            request.embedding_provider,
+            request.embedding_dimension,
+        );
         // SPEC-040: Vision LLM configuration updates
         if let Some(vision_provider) = request.vision_llm_provider {
             if vision_provider.is_empty() || vision_provider == "none" {
@@ -684,16 +653,8 @@ impl WorkspaceService for WorkspaceServiceImpl {
                 )));
             }
         }
-        if let Some(entity_types) = request.entity_types {
-            let normalized = normalize_entity_types(&entity_types);
-            if normalized.is_empty() {
-                workspace.metadata.remove("entity_types");
-            } else {
-                workspace
-                    .metadata
-                    .insert("entity_types".to_string(), serde_json::json!(normalized));
-            }
-        }
+        apply_entity_types_metadata(&mut workspace.metadata, request.entity_types);
+        apply_entity_types_strict_metadata(&mut workspace.metadata, request.entity_types_strict);
         workspace.updated_at = chrono::Utc::now();
 
         // Store all config in metadata JSONB column (database schema uses metadata, not separate columns)
@@ -1269,6 +1230,35 @@ impl WorkspaceService for WorkspaceServiceImpl {
 /// - Deduplicate (preserving first occurrence order)
 /// - Cap at 50 types to avoid prompt bloat
 ///
+/// Apply `entity_types` list to workspace metadata (create/update).
+fn apply_entity_types_metadata(
+    metadata: &mut HashMap<String, serde_json::Value>,
+    entity_types: Option<Vec<String>>,
+) {
+    if let Some(entity_types) = entity_types {
+        let normalized = normalize_entity_types(&entity_types);
+        if normalized.is_empty() {
+            metadata.remove("entity_types");
+        } else {
+            metadata.insert("entity_types".to_string(), serde_json::json!(normalized));
+        }
+    }
+}
+
+/// Apply strict entity-type enforcement flag (default true when key absent).
+fn apply_entity_types_strict_metadata(
+    metadata: &mut HashMap<String, serde_json::Value>,
+    strict: Option<bool>,
+) {
+    if let Some(strict) = strict {
+        if strict {
+            metadata.remove("entity_types_strict");
+        } else {
+            metadata.insert("entity_types_strict".to_string(), serde_json::json!(false));
+        }
+    }
+}
+
 /// @implements SPEC-085: Custom entity configuration normalization
 fn normalize_entity_types(types: &[String]) -> Vec<String> {
     const MAX_ENTITY_TYPES: usize = 50;

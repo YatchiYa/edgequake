@@ -612,6 +612,7 @@ mod tests {
                 vision_llm_provider: None,
                 pdf_parser_backend: None,
                 entity_types: None,
+                entity_types_strict: None,
             };
 
             let workspace = service

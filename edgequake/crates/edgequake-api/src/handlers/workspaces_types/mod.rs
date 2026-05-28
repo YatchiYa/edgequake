@@ -82,6 +82,7 @@ mod tests {
             vision_llm_provider: None,
             pdf_parser_backend: None,
             entity_types: None,
+            entity_types_strict: None,
         };
 
         let json = serde_json::to_string(&req).unwrap();
@@ -105,6 +106,7 @@ mod tests {
             vision_llm_model: None,
             pdf_parser_backend: None,
             entity_types: Some(vec!["PERSON".to_string(), "ORGANIZATION".to_string()]),
+            entity_types_strict: None,
         };
 
         let json = serde_json::to_string(&req).unwrap();
@@ -165,6 +167,7 @@ mod tests {
             vision_llm_model: None,
             pdf_parser_backend: None,
             entity_types: None,
+            entity_types_strict: true,
             created_at: "2024-01-01T00:00:00Z".to_string(),
             updated_at: "2024-01-01T00:00:00Z".to_string(),
         };

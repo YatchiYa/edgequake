@@ -8,7 +8,8 @@
 #![cfg(feature = "postgres")]
 
 mod common;
-mod spec013_postgres;
+
+use common::spec013_postgres;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -136,6 +137,87 @@ async fn spec013_issue216_update_workspace_entity_types() {
         .filter_map(|v| v.as_str())
         .collect();
     assert!(persisted_types.contains(&"PRODUCT"));
+}
+
+#[tokio::test]
+#[serial]
+async fn spec013_entity_types_strict_persist_and_defaults() {
+    let app = spec013_postgres::create_postgres_mock_app().await;
+    let suffix = uuid::Uuid::new_v4();
+
+    let (_, tenant_body) = post_json(
+        &app,
+        "/api/v1/tenants",
+        &json!({ "name": format!("SPEC013 strict {suffix}") }),
+    )
+    .await;
+    let tenant_id = tenant_body["id"].as_str().unwrap();
+
+    let (_, ws_body) = post_json(
+        &app,
+        &format!("/api/v1/tenants/{tenant_id}/workspaces"),
+        &json!({ "name": "Strict WS" }),
+    )
+    .await;
+    let workspace_id = ws_body["id"].as_str().unwrap();
+
+    let get_default = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/v1/workspaces/{workspace_id}"))
+                .header("X-Tenant-ID", tenant_id)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(get_default.status(), StatusCode::OK);
+    let default_body = extract_json(get_default).await;
+    assert_eq!(default_body["entity_types_strict"].as_bool(), Some(true));
+
+    let put_off = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!("/api/v1/workspaces/{workspace_id}"))
+                .header("Content-Type", "application/json")
+                .header("X-Tenant-ID", tenant_id)
+                .body(Body::from(
+                    json!({ "entity_types_strict": false }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(put_off.status(), StatusCode::OK);
+    assert_eq!(
+        extract_json(put_off).await["entity_types_strict"].as_bool(),
+        Some(false)
+    );
+
+    let put_on = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!("/api/v1/workspaces/{workspace_id}"))
+                .header("Content-Type", "application/json")
+                .header("X-Tenant-ID", tenant_id)
+                .body(Body::from(
+                    json!({ "entity_types_strict": true }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(put_on.status(), StatusCode::OK);
+    assert_eq!(
+        extract_json(put_on).await["entity_types_strict"].as_bool(),
+        Some(true)
+    );
 }
 
 #[tokio::test]
@@ -466,4 +548,110 @@ async fn spec013_pdf_cancel_on_completed_returns_conflict_live() {
         "cancel on completed PDF must be 409: {}",
         cancel.text().await.unwrap_or_default()
     );
+}
+
+/// Resetting LLM/embedding to server default must clear stale workspace overrides (e.g. mock).
+#[tokio::test]
+#[serial]
+async fn spec013_workspace_reset_llm_embedding_to_server_default() {
+    let app = spec013_postgres::create_postgres_mock_app().await;
+    let suffix = uuid::Uuid::new_v4();
+
+    let (_, tenant_body) = post_json(
+        &app,
+        "/api/v1/tenants",
+        &json!({ "name": format!("SPEC013 server-default {suffix}") }),
+    )
+    .await;
+    let tenant_id = tenant_body["id"].as_str().unwrap();
+
+    let (_, ws_body) = post_json(
+        &app,
+        &format!("/api/v1/tenants/{tenant_id}/workspaces"),
+        &json!({ "name": "Server Default WS" }),
+    )
+    .await;
+    let workspace_id = ws_body["id"].as_str().unwrap();
+
+    // Simulate stale E2E/test override stuck in metadata
+    let pin = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!("/api/v1/workspaces/{workspace_id}"))
+                .header("Content-Type", "application/json")
+                .header("X-Tenant-ID", tenant_id)
+                .body(Body::from(
+                    json!({
+                        "llm_provider": "mock",
+                        "llm_model": "stale-stuck-model",
+                        "embedding_provider": "mock",
+                        "embedding_model": "stale-embed-model",
+                        "embedding_dimension": 768
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(pin.status(), StatusCode::OK);
+    let pinned = extract_json(pin).await;
+    assert_eq!(pinned["llm_provider"].as_str(), Some("mock"));
+
+    // Simulate production server env (ollama) before reset — create_postgres_mock_app sets mock
+    std::env::set_var("EDGEQUAKE_LLM_PROVIDER", "ollama");
+    std::env::set_var("EDGEQUAKE_LLM_MODEL", "gemma4:latest");
+    std::env::set_var("EDGEQUAKE_EMBEDDING_PROVIDER", "ollama");
+    std::env::set_var("EDGEQUAKE_EMBEDDING_MODEL", "embeddinggemma:latest");
+
+    // UI "Server default" → empty strings
+    let reset = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!("/api/v1/workspaces/{workspace_id}"))
+                .header("Content-Type", "application/json")
+                .header("X-Tenant-ID", tenant_id)
+                .body(Body::from(
+                    json!({
+                        "llm_provider": "",
+                        "llm_model": "",
+                        "embedding_provider": "",
+                        "embedding_model": "",
+                        "embedding_dimension": 0
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(reset.status(), StatusCode::OK);
+    let body = extract_json(reset).await;
+    assert_eq!(body["llm_provider"].as_str(), Some("ollama"));
+    assert_eq!(body["llm_model"].as_str(), Some("gemma4:latest"));
+    assert_eq!(body["embedding_provider"].as_str(), Some("ollama"));
+    assert!(
+        body["llm_provider"].as_str() != Some("mock"),
+        "mock override must be cleared"
+    );
+
+    let get = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/v1/workspaces/{workspace_id}"))
+                .header("X-Tenant-ID", tenant_id)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(get.status(), StatusCode::OK);
+    let persisted = extract_json(get).await;
+    assert_eq!(persisted["llm_provider"].as_str(), Some("ollama"));
+    assert_eq!(persisted["llm_model"].as_str(), Some("gemma4:latest"));
 }

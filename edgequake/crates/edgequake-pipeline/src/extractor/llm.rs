@@ -36,7 +36,7 @@ where
     L: edgequake_llm::LLMProvider + ?Sized,
 {
     llm_provider: std::sync::Arc<L>,
-    entity_types: Vec<String>,
+    entity_schema: crate::prompts::EntityExtractionSchema,
 }
 
 impl<L> LLMExtractor<L>
@@ -47,28 +47,31 @@ where
     pub fn new(llm_provider: std::sync::Arc<L>) -> Self {
         Self {
             llm_provider,
-            // SPEC-085: Use shared default to align with SOTAExtractor (9 types).
-            // WHY: Previously this used 7 hardcoded types (missing DATE, DOCUMENT).
-            entity_types: crate::prompts::default_entity_types(),
+            entity_schema: crate::prompts::EntityExtractionSchema::server_default(),
         }
     }
 
-    /// Create with custom entity types.
+    /// Create with custom entity types (strict enforcement, backward compatible).
     pub fn with_entity_types(mut self, types: Vec<String>) -> Self {
-        self.entity_types = types;
+        self.entity_schema = crate::prompts::EntityExtractionSchema::with_types(types);
+        self
+    }
+
+    /// Create with full schema (types + strict/permissive mode).
+    pub fn with_entity_schema(mut self, schema: crate::prompts::EntityExtractionSchema) -> Self {
+        self.entity_schema = schema;
         self
     }
 
     /// Build the extraction prompt.
     fn build_prompt(&self, text: &str) -> String {
-        let entity_types_str = self.entity_types.join(", ");
+        let types_section =
+            crate::prompts::json_entity_types_prompt_section(&self.entity_schema);
 
         format!(
             r#"Extract entities and relationships from the following text.
 
-## Entity Types (STRICT)
-Use ONLY these types exactly as written — never invent new types: {entity_types_str}
-If nothing fits, use OTHER when listed, otherwise CONCEPT.
+{types_section}
 
 ## Output Format
 Respond with valid JSON in this exact format:
@@ -155,7 +158,7 @@ Respond with valid JSON in this exact format:
                     entity_val.get("description").and_then(|v| v.as_str()),
                 ) {
                     let (enforced_type, remapped) =
-                        crate::prompts::enforce_entity_type(entity_type, &self.entity_types);
+                        crate::prompts::enforce_entity_type(entity_type, &self.entity_schema);
                     if remapped {
                         tracing::debug!(
                             raw_type = %entity_type,

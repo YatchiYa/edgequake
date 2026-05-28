@@ -22,6 +22,9 @@ use serde_json::{json, Value};
 use std::time::Duration;
 use tower::ServiceExt;
 
+#[cfg(feature = "postgres")]
+pub mod spec013_postgres;
+
 // ============================================================================
 // Constants
 // ============================================================================

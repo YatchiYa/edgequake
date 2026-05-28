@@ -88,9 +88,12 @@ impl DocumentTaskProcessor {
                         );
 
                         // SPEC-085: Read workspace entity types; fall back to defaults
-                        let entity_types = workspace_entity_types(&ws);
+                        let entity_schema =
+                            edgequake_pipeline::prompts::EntityExtractionSchema::from_workspace_metadata(
+                                &ws.metadata,
+                            );
                         let extractor = Arc::new(
-                            LLMExtractor::new(Arc::clone(llm)).with_entity_types(entity_types),
+                            LLMExtractor::new(Arc::clone(llm)).with_entity_schema(entity_schema),
                         );
                         return Arc::new(
                             Pipeline::default_pipeline()
@@ -262,9 +265,13 @@ impl DocumentTaskProcessor {
         );
 
         // SPEC-085: Read workspace entity types; fall back to defaults
-        let entity_types = workspace_entity_types(&ws);
-        let extractor =
-            Arc::new(LLMExtractor::new(Arc::clone(&llm_provider)).with_entity_types(entity_types));
+        let entity_schema =
+            edgequake_pipeline::prompts::EntityExtractionSchema::from_workspace_metadata(
+                &ws.metadata,
+            );
+        let extractor = Arc::new(
+            LLMExtractor::new(Arc::clone(&llm_provider)).with_entity_schema(entity_schema),
+        );
         Ok(Arc::new(
             Pipeline::default_pipeline()
                 .with_extractor(extractor)
@@ -500,16 +507,3 @@ impl DocumentTaskProcessor {
     }
 }
 
-/// SPEC-085: Read entity types from workspace metadata.
-///
-/// Returns the workspace-configured entity types, or the pipeline defaults
-/// if the workspace has no custom configuration.
-///
-/// WHY module-level function: Both `get_workspace_pipeline` and
-/// `get_workspace_pipeline_strict` share this logic (DRY).
-fn workspace_entity_types(ws: &edgequake_core::types::Workspace) -> Vec<String> {
-    ws.metadata
-        .get("entity_types")
-        .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok())
-        .unwrap_or_else(edgequake_pipeline::prompts::default_entity_types)
-}

@@ -4,18 +4,37 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Release readiness
+
+- **2026-05-28 verification** — Local release gates are green (`spec013-proof-pr`, strict clippy on touched crates, WebUI `tsc --noEmit`, `spec013-proof-ui` with dashboard + deeplink entity strict coverage). Latest `SPEC-013 Proof` workflow run on `edgequake-main` is successful.
+
 ### Fixed
 
 - **GitHub #218** — Root layout now uses `export const dynamic = 'force-dynamic'` so `EDGEQUAKE_API_URL`, `NEXT_PUBLIC_AUTH_ENABLED`, and `NEXT_PUBLIC_DISABLE_DEMO_LOGIN` are read at request time in container deployments (not baked into static HTML).
 - **GitHub #232** — `GET /api/v1/api-keys` lists keys via `keys_with_prefix("auth:api_key:")` filtered by authenticated user (was a TODO stub returning empty).
 - **GitHub #231** — Document/PDF/text upload OpenAPI specs document `X-Tenant-ID` and `X-Workspace-ID` headers; batch upload respects `TenantContext` workspace instead of hardcoded `"default"`.
 - **GitHub #233** — Workspace creation UI collapses model configuration when server defaults exist (`WorkspaceCreateModelSection` + `/api/v1/models`); create works without manual LLM/embedding/vision picks.
-- **GitHub #217** — Entity extraction enforces workspace schema post-parse (`enforce_entity_type`) and uses stricter prompts; unknown types remap to `OTHER` / closest allowed type.
+- **GitHub #217** — Entity extraction enforces workspace schema post-parse (`enforce_entity_type`) and uses stricter prompts; unknown types remap to `OTHER` / closest allowed type when strict mode is on. **Existing graph nodes are unchanged** until re-ingest or rebuild — see `specs/013-fix-issues-05-2026/issue-217/003-historical-cleanup-runbook.md`.
 - **GitHub #216** — `PUT /api/v1/workspaces/{id}` accepts `entity_types`; in-memory and Postgres workspace services persist updates; workspace settings page allows editing entity types for future ingestions.
+- **Workspace server-default reset** — Saving workspace model settings with “Server default” (empty LLM/embedding fields) clears workspace-level overrides (including stale `mock`) and applies `Workspace::server_runtime_llm_config()` / `server_runtime_embedding_config()` so reset matches the **running** server provider (`EDGEQUAKE_LLM_PROVIDER`), not only static `EDGEQUAKE_DEFAULT_*` vars.
+- **Entity extraction strict toggle** — Workspace supports `entity_types_strict` (default `true`); checked keeps strict remap-to-`OTHER` behavior, unchecked allows permissive free-form type labels without forced `OTHER` fallback.
 
 ### Added
 
-- **SPEC-013** — Intensive E2E coverage: `e2e_spec013_github_issues` and `e2e_spec013_mistral_live` use **PostgreSQL** (`--features postgres`, `DATABASE_URL`); Playwright `spec013-intensive-mistral.spec.ts`; Makefile targets `spec013-e2e-rust`, `spec013-mistral-backend-bg`, `spec013-e2e-playwright-intensive`, `spec013-e2e-mistral`, `spec013-e2e-mistral-live`. Audit docs under `specs/013-fix-issues-05-2026/`.
+- **SPEC-013 proof gates** — `make spec013-proof-pr` (mock LLM + Postgres API tests + vector stats), `make spec013-proof-ui` (Playwright with `spec013-wait-stack`), and GitHub Actions workflows `spec013-proof-pr.yml` / `spec013-proof.yml`. Shared Postgres harness lives at `edgequake-api/tests/common/spec013_postgres.rs`.
+- **SPEC-013 entity extraction UX** — Entity Types “limit to listed types” checkbox on workspace settings (dashboard `/workspace` and deeplink `/w/[slug]/workspace`); shared `WorkspaceEntityTypesCard`; Playwright `entity-types-strict-limit.spec.ts` (API + dashboard + deeplink save); API test `spec013_entity_types_strict_persist_and_defaults`.
+- **SPEC-013 documentation** — Per-issue proof folders, implementation evidence logs, entity-extraction design pack, and release assessment `specs/013-fix-issues-05-2026/009-brutal-assessment.md`.
+
+### Changed
+
+- **Workspace model update logic** — Extracted to `edgequake-core::workspace_model_update` (clear-override contract shared by in-memory and Postgres services).
+- **WebUI workspace entity types** — `WorkspaceEntityTypesCard` shared between dashboard and deeplink workspace routes; deeplink page resolves slug via `useWorkspaceSlugResolver`.
+- **Entity extraction pipeline** — `EntityExtractionSchema` centralizes strict/permissive prompts and `enforce_entity_type` policy (DRY across LLM and SOTA extractors).
+
+### Known limitations (SPEC-013)
+
+- Release scope is the **documented** fixes (#216–#218, #231–#233, server-default reset, entity strict mode), not every issue numbered 219–230 unless separately proven.
+- PR CI does not run Mistral live ingest; use `make spec013-proof` with `MISTRAL_API_KEY` before production promotion.
 
 ---
 

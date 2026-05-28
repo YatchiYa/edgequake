@@ -9,7 +9,7 @@
 #![cfg(feature = "postgres")]
 
 mod common;
-mod spec013_postgres;
+use common::spec013_postgres;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};

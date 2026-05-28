@@ -63,7 +63,8 @@ async fn create_test_workspace(
         vision_llm_model: None,
         pdf_parser_backend: None,
         entity_types: None,
-    };
+    
+        ..Default::default()};
 
     state
         .workspace_service
@@ -319,7 +320,8 @@ async fn test_provider_switch_updates_lineage_config() {
         vision_llm_provider: None,
         vision_llm_model: None,
         pdf_parser_backend: None,
-    };
+    
+        ..Default::default()};
 
     let updated = state
         .workspace_service
