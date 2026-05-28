@@ -96,6 +96,7 @@ pub async fn create_workspace(
             .and_then(PdfParserBackend::from_env_str),
         // SPEC-085: Pass entity_types from HTTP request body if provided
         entity_types: request.entity_types.clone(),
+        entity_types_strict: request.entity_types_strict,
     };
 
     // Store workspace via workspace service
@@ -272,6 +273,7 @@ pub async fn update_workspace(
         vision_llm_model: request.vision_llm_model,
         pdf_parser_backend: request.pdf_parser_backend,
         entity_types: request.entity_types,
+        entity_types_strict: request.entity_types_strict,
     };
 
     let workspace = state

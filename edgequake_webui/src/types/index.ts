@@ -719,6 +719,11 @@ export interface Workspace {
    * @implements SPEC-085: Custom entity configuration from UI
    */
   entity_types?: string[];
+  /**
+   * When true, extraction is limited to listed types; unknown types map to OTHER.
+   * @implements SPEC-013 entity_extraction strict mode
+   */
+  entity_types_strict?: boolean;
   /** Creation timestamp. */
   created_at: string;
   /** Last update timestamp. */

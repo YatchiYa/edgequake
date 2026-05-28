@@ -32,7 +32,10 @@ mod parser;
 mod summarization;
 
 pub use entity_extraction::EntityExtractionPrompts;
-pub use entity_type_policy::{enforce_entity_type, normalize_type_token};
+pub use entity_type_policy::{
+    enforce_entity_type, json_entity_types_prompt_section, normalize_type_token,
+    sota_entity_type_instruction, EntityExtractionSchema, METADATA_ENTITY_TYPES_STRICT,
+};
 pub use normalizer::normalize_entity_name;
 pub use parser::{HybridExtractionParser, JsonExtractionParser, TupleParser};
 pub use summarization::SummarizationPrompts;

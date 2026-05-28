@@ -120,7 +120,8 @@ async fn test_workspace_pipeline_uses_workspace_config_for_lineage() {
         vision_llm_model: None,
         pdf_parser_backend: None,
         entity_types: None,
-    };
+    
+        ..Default::default()};
 
     let workspace = state
         .workspace_service
@@ -180,7 +181,8 @@ async fn test_workspace_update_changes_lineage_source() {
         vision_llm_model: None,
         pdf_parser_backend: None,
         entity_types: None,
-    };
+    
+        ..Default::default()};
 
     let workspace = state
         .workspace_service
@@ -256,7 +258,8 @@ async fn test_workspaces_have_isolated_lineage_config() {
         vision_llm_model: None,
         pdf_parser_backend: None,
         entity_types: None,
-    };
+    
+        ..Default::default()};
 
     let workspace_a = state
         .workspace_service
@@ -279,7 +282,8 @@ async fn test_workspaces_have_isolated_lineage_config() {
         vision_llm_model: None,
         pdf_parser_backend: None,
         entity_types: None,
-    };
+    
+        ..Default::default()};
 
     let workspace_b = state
         .workspace_service

@@ -18,7 +18,7 @@ where
     L: edgequake_llm::LLMProvider + ?Sized,
 {
     llm_provider: std::sync::Arc<L>,
-    entity_types: Vec<String>,
+    entity_schema: crate::prompts::EntityExtractionSchema,
     prompts: crate::prompts::EntityExtractionPrompts,
     parser: crate::prompts::HybridExtractionParser,
     language: String,
@@ -32,16 +32,22 @@ where
     pub fn new(llm_provider: std::sync::Arc<L>) -> Self {
         Self {
             llm_provider,
-            entity_types: crate::prompts::default_entity_types(),
+            entity_schema: crate::prompts::EntityExtractionSchema::server_default(),
             prompts: crate::prompts::EntityExtractionPrompts::default(),
             parser: crate::prompts::HybridExtractionParser::new(true),
             language: "English".to_string(),
         }
     }
 
-    /// Set custom entity types.
+    /// Set custom entity types (strict enforcement).
     pub fn with_entity_types(mut self, types: Vec<String>) -> Self {
-        self.entity_types = types;
+        self.entity_schema = crate::prompts::EntityExtractionSchema::with_types(types);
+        self
+    }
+
+    /// Set full entity schema (types + strict mode).
+    pub fn with_entity_schema(mut self, schema: crate::prompts::EntityExtractionSchema) -> Self {
+        self.entity_schema = schema;
         self
     }
 
@@ -114,10 +120,12 @@ where
         // Build system and user prompts
         let system_prompt = self
             .prompts
-            .system_prompt(&self.entity_types, &self.language);
-        let user_prompt =
-            self.prompts
-                .user_prompt(&chunk.content, &self.entity_types, &self.language);
+            .system_prompt(&self.entity_schema, &self.language);
+        let user_prompt = self.prompts.user_prompt(
+            &chunk.content,
+            &self.entity_schema.types,
+            &self.language,
+        );
 
         // Create chat messages for system + user prompt
         let messages = vec![
@@ -478,7 +486,7 @@ where
                     for entity in &mut result.entities {
                         let (enforced, remapped) = crate::prompts::enforce_entity_type(
                             &entity.entity_type,
-                            &self.entity_types,
+                            &self.entity_schema,
                         );
                         if remapped {
                             tracing::debug!(

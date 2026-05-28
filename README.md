@@ -13,6 +13,47 @@
 
 > **v0.12.3** — Storage performance: O(1) KV/vector counts via maintained stats tables, O(log N) key suffix lookups via reverse-key expression index, and correct Apache AGE graph-size estimates via `pg_inherits` SUM. Benchmarked from real production CSV data (SPEC-012). See [CHANGELOG](CHANGELOG.md) for full details.
 
+## Release & CD Cycle
+
+Use this sequence to cut a release with a deterministic quality gate and publish pipeline.
+
+### 1) Local release gates (must pass before tag)
+
+```bash
+make stop
+make spec013-proof-pr
+cd edgequake && cargo clippy -p edgequake-pipeline -p edgequake-core -p edgequake-api --all-targets --features postgres -- -D warnings
+cd ../edgequake_webui && pnpm exec tsc --noEmit
+cd .. && make backend-bg frontend-bg && make spec013-proof-ui
+```
+
+### 2) CI validation (GitHub Actions)
+
+- `SPEC-013 PR Proof` must be green on the target branch/PR.
+- Core CI workflows (`CI`, `Test Quality Gates`, integration tests) must be green.
+- Ignore unrelated external automation failures (for example Dependabot noise) only if all required project gates are green.
+
+### 3) Cut release (CD publish)
+
+```bash
+# Example
+git tag v0.12.4
+git push origin v0.12.4
+```
+
+This triggers `.github/workflows/release-docker.yml`, which:
+- builds/publishes multi-arch API, frontend, and postgres images to GHCR
+- creates/updates the GitHub Release notes for that tag
+
+### 4) Post-publish verification
+
+```bash
+gh release view v0.12.4
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake:0.12.4
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-frontend:0.12.4
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.12.4
+```
+
 ---
 
 ![Screenshot of EdgeQuake Frontend](docs/assets/01-screenshot.png)

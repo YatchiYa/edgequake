@@ -214,7 +214,8 @@ mod workspace_crud_tests {
             vision_llm_model: None,
             pdf_parser_backend: None,
             entity_types: None,
-        };
+        
+            ..Default::default()};
 
         let workspace = service
             .create_workspace(tenant.tenant_id, request)
@@ -250,7 +251,8 @@ mod workspace_crud_tests {
             vision_llm_model: None,
             pdf_parser_backend: None,
             entity_types: None,
-        };
+        
+            ..Default::default()};
 
         let workspace = service
             .create_workspace(tenant.tenant_id, request)
@@ -283,7 +285,8 @@ mod workspace_crud_tests {
             vision_llm_model: None,
             pdf_parser_backend: None,
             entity_types: None,
-        };
+        
+            ..Default::default()};
         service
             .create_workspace(tenant.tenant_id, request1)
             .await
@@ -304,7 +307,8 @@ mod workspace_crud_tests {
             vision_llm_model: None,
             pdf_parser_backend: None,
             entity_types: None,
-        };
+        
+            ..Default::default()};
         let result = service.create_workspace(tenant.tenant_id, request2).await;
 
         assert!(result.is_err());
@@ -335,7 +339,8 @@ mod workspace_crud_tests {
             vision_llm_model: None,
             pdf_parser_backend: None,
             entity_types: None,
-        };
+        
+            ..Default::default()};
 
         // Same slug in different tenants should work
         service
@@ -390,7 +395,8 @@ mod workspace_crud_tests {
             vision_llm_model: None,
             pdf_parser_backend: None,
             entity_types: None,
-        };
+        
+            ..Default::default()};
         let created = service
             .create_workspace(tenant.tenant_id, request)
             .await
@@ -421,7 +427,8 @@ mod workspace_crud_tests {
             vision_llm_model: None,
             pdf_parser_backend: None,
             entity_types: None,
-        };
+        
+            ..Default::default()};
         service
             .create_workspace(tenant.tenant_id, request)
             .await
@@ -504,7 +511,8 @@ mod workspace_crud_tests {
                 vision_llm_model: None,
                 pdf_parser_backend: None,
                 entity_types: None,
-            };
+            
+                ..Default::default()};
             service
                 .create_workspace(tenant.tenant_id, request)
                 .await
@@ -913,7 +921,8 @@ mod concurrent_tests {
                         vision_llm_model: None,
                         pdf_parser_backend: None,
                         entity_types: None,
-                    };
+                    
+                        ..Default::default()};
                     service.create_workspace(tenant_id, request).await
                 })
             })

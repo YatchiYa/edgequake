@@ -110,12 +110,19 @@ export type Spec013BootstrapContext = {
   tenantId: string;
   workspaceId: string;
   workspaceName: string;
+  workspaceSlug: string;
+};
+
+export type CreateTenantWorkspaceOptions = {
+  /** URL slug for deeplink routes `/w/[slug]/…` */
+  slug?: string;
 };
 
 /** Create tenant + Mistral workspace through the backend API (no UI). */
 export async function createTenantWorkspaceViaApi(
   request: import('@playwright/test').APIRequestContext,
-  label: string
+  label: string,
+  options: CreateTenantWorkspaceOptions = {}
 ): Promise<Spec013BootstrapContext> {
   const suffix = Date.now();
   const tenantRes = await request.post(`${SPEC013_BACKEND}/api/v1/tenants`, {
@@ -128,19 +135,27 @@ export async function createTenantWorkspaceViaApi(
   }
   const tenant = (await tenantRes.json()) as { id: string };
   const workspaceName = `${label} ws ${suffix}`;
+  const workspaceSlug =
+    options.slug ?? `${label}-ws-${suffix}`.toLowerCase().replace(/[^a-z0-9]+/g, '-');
   const wsRes = await request.post(
     `${SPEC013_BACKEND}/api/v1/tenants/${tenant.id}/workspaces`,
-    { data: mistralWorkspacePayload(workspaceName) }
+    {
+      data: {
+        ...mistralWorkspacePayload(workspaceName),
+        slug: workspaceSlug,
+      },
+    }
   );
   if (!wsRes.ok()) {
     throw new Error(
       `workspace create failed: ${wsRes.status()} ${await wsRes.text()}`
     );
   }
-  const ws = (await wsRes.json()) as { id: string };
+  const ws = (await wsRes.json()) as { id: string; slug?: string };
   return {
     tenantId: tenant.id,
     workspaceId: ws.id,
     workspaceName,
+    workspaceSlug: ws.slug ?? workspaceSlug,
   };
 }

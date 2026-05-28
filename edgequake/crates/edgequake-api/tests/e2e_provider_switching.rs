@@ -134,7 +134,8 @@ async fn test_workspace_custom_embedding_config() {
         vision_llm_model: None,
         pdf_parser_backend: None,
         entity_types: None,
-    };
+    
+        ..Default::default()};
 
     let workspace = service
         .create_workspace(created_tenant.tenant_id, request)
@@ -172,7 +173,8 @@ async fn test_workspace_default_embedding_config() {
         vision_llm_model: None,
         pdf_parser_backend: None,
         entity_types: None,
-    };
+    
+        ..Default::default()};
 
     let workspace = service
         .create_workspace(created_tenant.tenant_id, request)
@@ -242,7 +244,8 @@ async fn test_workspace_provider_switching() {
         vision_llm_model: None,
         pdf_parser_backend: None,
         entity_types: None,
-    };
+    
+        ..Default::default()};
 
     let ws_openai = service
         .create_workspace(created_tenant.tenant_id, openai_request)
@@ -265,7 +268,8 @@ async fn test_workspace_provider_switching() {
         vision_llm_model: None,
         pdf_parser_backend: None,
         entity_types: None,
-    };
+    
+        ..Default::default()};
 
     let ws_ollama = service
         .create_workspace(created_tenant.tenant_id, ollama_request)
@@ -438,7 +442,8 @@ async fn test_empty_workspace_embedding_config() {
         vision_llm_model: None,
         pdf_parser_backend: None,
         entity_types: None,
-    };
+    
+        ..Default::default()};
 
     let workspace = service
         .create_workspace(created_tenant.tenant_id, request)
@@ -488,7 +493,8 @@ async fn test_concurrent_workspace_creation() {
                     vision_llm_model: None,
                     pdf_parser_backend: None,
                     entity_types: None,
-                };
+                
+                    ..Default::default()};
 
                 service_clone.create_workspace(tenant_id, request).await
             })
@@ -528,7 +534,8 @@ async fn test_lmstudio_workspace_config() {
         vision_llm_model: None,
         pdf_parser_backend: None,
         entity_types: None,
-    };
+    
+        ..Default::default()};
 
     let workspace = service
         .create_workspace(created_tenant.tenant_id, request)

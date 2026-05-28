@@ -52,7 +52,8 @@ async fn create_workspace_with_providers(
         vision_llm_model: None,
         pdf_parser_backend: None,
         entity_types: None,
-    };
+    
+        ..Default::default()};
 
     state
         .workspace_service
@@ -223,7 +224,8 @@ async fn test_dimension_update_on_existing_workspace() {
         vision_llm_provider: None,
         vision_llm_model: None,
         pdf_parser_backend: None,
-    };
+    
+        ..Default::default()};
 
     state
         .workspace_service
@@ -332,7 +334,8 @@ async fn test_workspace_creation_without_dimension() {
         vision_llm_model: None,
         pdf_parser_backend: None,
         entity_types: None,
-    };
+    
+        ..Default::default()};
 
     let workspace = state
         .workspace_service

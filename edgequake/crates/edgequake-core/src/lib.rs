@@ -49,6 +49,7 @@ pub mod tenant_manager;
 pub mod token_budget;
 pub mod types;
 pub mod utils;
+pub mod workspace_model_update;
 pub mod workspace_service;
 
 // Production service implementations (feature-gated)

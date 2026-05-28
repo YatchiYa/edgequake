@@ -1517,12 +1517,9 @@ endef
 
 spec013-proof-ui: ## Playwright SPEC-013 UI proof (#216–#233); requires backend + frontend up
 	@echo "$(BOLD)$(BLUE)SPEC-013 UI proof (Playwright)$(RESET)"
+	@$(MAKE) spec013-wait-stack --no-print-directory
 	@_BE="$(call spec013_effective_backend_url)"; \
-	echo "$(YELLOW)→ Backend: $$_BE$(RESET)"; \
-	curl -sf "$$_BE/health" >/dev/null || { \
-		echo "$(RED)✗ Backend not healthy at $$_BE$(RESET)"; \
-		echo "  Start: $(GREEN)make dev-bg$(RESET) or $(GREEN)make backend-bg$(RESET)"; exit 1; \
-	}
+	echo "$(YELLOW)→ Backend: $$_BE$(RESET)"
 	@curl -sfI "$(SPEC013_FRONTEND_URL)" >/dev/null || { \
 		echo "$(RED)✗ Frontend not reachable at $(SPEC013_FRONTEND_URL)$(RESET)"; exit 1; \
 	}; \

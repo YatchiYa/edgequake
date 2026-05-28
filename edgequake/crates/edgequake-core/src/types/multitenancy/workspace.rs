@@ -224,6 +224,58 @@ impl Workspace {
         (model, provider)
     }
 
+    /// LLM config for "server default" reset (SPEC-013 / UI clear override).
+    ///
+    /// Matches the running API server: active `EDGEQUAKE_LLM_PROVIDER` wins over
+    /// static `EDGEQUAKE_DEFAULT_*` so health `providers.llm` and workspace reset agree.
+    pub fn server_runtime_llm_config() -> (String, String) {
+        let provider = non_empty_env_var("EDGEQUAKE_LLM_PROVIDER").or_else(|| {
+            first_non_empty_env_var(&[
+                LLM_PROVIDER_ALIASES[0],
+                LLM_PROVIDER_ALIASES[1],
+            ])
+        });
+        if let Some(provider) = provider {
+            let model = non_empty_env_var("EDGEQUAKE_LLM_MODEL")
+                .or_else(|| {
+                    first_non_empty_env_var(&[LLM_MODEL_ALIASES[0], LLM_MODEL_ALIASES[1]])
+                })
+                .unwrap_or_else(|| Self::default_model_for_provider(&provider));
+            return (model, provider);
+        }
+        Self::default_llm_config()
+    }
+
+    /// Embedding config for "server default" reset (mirrors [`Self::server_runtime_llm_config`]).
+    pub fn server_runtime_embedding_config() -> (String, String, usize) {
+        let provider = non_empty_env_var("EDGEQUAKE_EMBEDDING_PROVIDER").or_else(|| {
+            first_non_empty_env_var(&[
+                "EDGEQUAKE_EMBEDDING_PROVIDER",
+                EMBEDDING_PROVIDER_ALIASES[0],
+            ])
+        });
+        if let Some(provider) = provider {
+            let model = non_empty_env_var("EDGEQUAKE_EMBEDDING_MODEL")
+                .or_else(|| {
+                    first_non_empty_env_var(&["EDGEQUAKE_EMBEDDING_MODEL", EMBEDDING_MODEL_ALIASES[0]])
+                })
+                .unwrap_or_else(|| Self::default_embedding_model_for_provider(&provider));
+
+            let detected_dimension = Self::detect_dimension_from_model(&model);
+            let known_model_dimension = Self::known_embedding_dimension(&model);
+            let dimension = first_non_empty_env_var(&[
+                "EDGEQUAKE_EMBEDDING_DIMENSION",
+                EMBEDDING_DIMENSION_ALIASES[0],
+            ])
+            .and_then(|s| s.parse().ok())
+            .filter(|dim| known_model_dimension.is_none() || *dim == detected_dimension)
+            .unwrap_or(detected_dimension);
+
+            return (model, provider, dimension);
+        }
+        Self::default_embedding_config()
+    }
+
     /// Get default embedding configuration from environment.
     ///
     /// Returns `(model, provider, dimension)`.  Resolution order mirrors
