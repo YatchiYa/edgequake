@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+---
+
+## [0.12.5] — 2026-05-28
+
 ### Release readiness
 
 - **2026-05-28 verification** — Local release gates are green (`spec013-proof-pr`, strict clippy on touched crates, WebUI `tsc --noEmit`, `spec013-proof-ui` with dashboard + deeplink entity strict coverage). Latest `SPEC-013 Proof` workflow run on `edgequake-main` is successful.
