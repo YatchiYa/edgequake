@@ -141,7 +141,10 @@ pub fn json_entity_types_prompt_section(schema: &EntityExtractionSchema) -> Stri
 }
 
 /// Strict-mode instruction for SOTA system prompt entity_type field.
-pub fn sota_entity_type_instruction(schema: &EntityExtractionSchema, entity_types_str: &str) -> String {
+pub fn sota_entity_type_instruction(
+    schema: &EntityExtractionSchema,
+    entity_types_str: &str,
+) -> String {
     if schema.strict {
         format!(
             "You MUST use ONLY one of these types exactly as written (same spelling): `{entity_types_str}`. \
@@ -227,10 +230,7 @@ mod tests {
     #[test]
     fn metadata_reads_strict_false() {
         let mut md = HashMap::new();
-        md.insert(
-            METADATA_ENTITY_TYPES_STRICT.to_string(),
-            Value::Bool(false),
-        );
+        md.insert(METADATA_ENTITY_TYPES_STRICT.to_string(), Value::Bool(false));
         let schema = EntityExtractionSchema::from_workspace_metadata(&md);
         assert!(!schema.strict);
     }

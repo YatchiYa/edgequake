@@ -135,8 +135,9 @@ async fn test_workspace_pipeline_uses_workspace_provider() {
         vision_llm_model: None,
         pdf_parser_backend: None,
         entity_types: None,
-    
-        ..Default::default()};
+
+        ..Default::default()
+    };
 
     let workspace = state
         .workspace_service
@@ -185,8 +186,9 @@ async fn test_multiple_workspaces_different_providers() {
         vision_llm_model: None,
         pdf_parser_backend: None,
         entity_types: None,
-    
-        ..Default::default()};
+
+        ..Default::default()
+    };
 
     // Create workspace 2 with different configuration
     let ws2_request = CreateWorkspaceRequest {
@@ -204,8 +206,9 @@ async fn test_multiple_workspaces_different_providers() {
         vision_llm_model: None,
         pdf_parser_backend: None,
         entity_types: None,
-    
-        ..Default::default()};
+
+        ..Default::default()
+    };
 
     let ws1 = state
         .workspace_service

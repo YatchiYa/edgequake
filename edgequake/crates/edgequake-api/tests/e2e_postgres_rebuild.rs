@@ -115,8 +115,9 @@ mod postgres_rebuild_tests {
             vision_llm_model: None,
             pdf_parser_backend: None,
             entity_types: None,
-        
-            ..Default::default()};
+
+            ..Default::default()
+        };
 
         let workspace = state
             .workspace_service
@@ -247,8 +248,9 @@ mod postgres_rebuild_tests {
             vision_llm_model: None,
             pdf_parser_backend: None,
             entity_types: None,
-        
-            ..Default::default()};
+
+            ..Default::default()
+        };
 
         let workspace = state
             .workspace_service
@@ -373,8 +375,9 @@ mod postgres_rebuild_tests {
             vision_llm_model: None,
             pdf_parser_backend: None,
             entity_types: None,
-        
-            ..Default::default()};
+
+            ..Default::default()
+        };
 
         let workspace_a = state
             .workspace_service
@@ -398,8 +401,9 @@ mod postgres_rebuild_tests {
             vision_llm_model: None,
             pdf_parser_backend: None,
             entity_types: None,
-        
-            ..Default::default()};
+
+            ..Default::default()
+        };
 
         let workspace_b = state
             .workspace_service
@@ -525,8 +529,9 @@ mod postgres_rebuild_tests {
                 vision_llm_model: None,
                 pdf_parser_backend: None,
                 entity_types: None,
-            
-                ..Default::default()};
+
+                ..Default::default()
+            };
 
             let workspace = state1
                 .workspace_service
@@ -645,8 +650,9 @@ mod postgres_rebuild_tests {
             vision_llm_model: None,
             pdf_parser_backend: None,
             entity_types: None,
-        
-            ..Default::default()};
+
+            ..Default::default()
+        };
 
         let workspace = state
             .workspace_service
@@ -793,8 +799,9 @@ mod postgres_rebuild_tests {
             vision_llm_model: None,
             pdf_parser_backend: None,
             entity_types: None,
-        
-            ..Default::default()};
+
+            ..Default::default()
+        };
 
         let workspace = state
             .workspace_service

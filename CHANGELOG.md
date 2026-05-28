@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
 - **GitHub #233** — Workspace creation UI collapses model configuration when server defaults exist (`WorkspaceCreateModelSection` + `/api/v1/models`); create works without manual LLM/embedding/vision picks.
 - **GitHub #217** — Entity extraction enforces workspace schema post-parse (`enforce_entity_type`) and uses stricter prompts; unknown types remap to `OTHER` / closest allowed type when strict mode is on. **Existing graph nodes are unchanged** until re-ingest or rebuild — see `specs/013-fix-issues-05-2026/issue-217/003-historical-cleanup-runbook.md`.
 - **GitHub #216** — `PUT /api/v1/workspaces/{id}` accepts `entity_types`; in-memory and Postgres workspace services persist updates; workspace settings page allows editing entity types for future ingestions.
+- **GitHub #236** — Batch upload contract is now explicit and complete: OpenAPI exposes `/api/v1/documents/upload/batch`, and API adds `/api/v1/documents/pdf/batch` for multi-PDF uploads in a single request (with per-file status reporting).
 - **Workspace server-default reset** — Saving workspace model settings with “Server default” (empty LLM/embedding fields) clears workspace-level overrides (including stale `mock`) and applies `Workspace::server_runtime_llm_config()` / `server_runtime_embedding_config()` so reset matches the **running** server provider (`EDGEQUAKE_LLM_PROVIDER`), not only static `EDGEQUAKE_DEFAULT_*` vars.
 - **Entity extraction strict toggle** — Workspace supports `entity_types_strict` (default `true`); checked keeps strict remap-to-`OTHER` behavior, unchecked allows permissive free-form type labels without forced `OTHER` fallback.
 
@@ -24,6 +25,18 @@ All notable changes to this project will be documented in this file.
 - **SPEC-013 proof gates** — `make spec013-proof-pr` (mock LLM + Postgres API tests + vector stats), `make spec013-proof-ui` (Playwright with `spec013-wait-stack`), and GitHub Actions workflows `spec013-proof-pr.yml` / `spec013-proof.yml`. Shared Postgres harness lives at `edgequake-api/tests/common/spec013_postgres.rs`.
 - **SPEC-013 entity extraction UX** — Entity Types “limit to listed types” checkbox on workspace settings (dashboard `/workspace` and deeplink `/w/[slug]/workspace`); shared `WorkspaceEntityTypesCard`; Playwright `entity-types-strict-limit.spec.ts` (API + dashboard + deeplink save); API test `spec013_entity_types_strict_persist_and_defaults`.
 - **SPEC-013 documentation** — Per-issue proof folders, implementation evidence logs, entity-extraction design pack, and release assessment `specs/013-fix-issues-05-2026/009-brutal-assessment.md`.
+- **SPEC-014 SDK parity for batch upload** — SDKs now expose the new batch APIs for text/files and PDFs:
+  - `POST /api/v1/documents/upload/batch`
+  - `POST /api/v1/documents/pdf/batch`
+  Implemented across TypeScript, Python (sync + async), Rust, Go, PHP, C#, Java, Kotlin, Swift, and Ruby.
+
+### Documentation
+
+- Updated release-facing docs to reflect canonical batch ingestion contracts and examples:
+  - `README.md` (batch endpoint callouts)
+  - `docs/api-reference/document-upload-quick-reference.md` (PDF batch endpoint + response schema)
+  - `docs/tutorials/document-ingestion.md` (replaced legacy `/api/v1/batches` flow with current `/api/v1/documents/*/batch`)
+  - `docs/sdks/README.md` (SDK parity note for batch upload)
 
 ### Changed
 

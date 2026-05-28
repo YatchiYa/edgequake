@@ -58,8 +58,9 @@ async fn create_test_workspace(
         vision_llm_model: None,
         pdf_parser_backend: None,
         entity_types: None,
-    
-        ..Default::default()};
+
+        ..Default::default()
+    };
 
     state
         .workspace_service
@@ -255,8 +256,9 @@ async fn test_workspace_provider_update_affects_query_config() {
         vision_llm_provider: None,
         vision_llm_model: None,
         pdf_parser_backend: None,
-    
-        ..Default::default()};
+
+        ..Default::default()
+    };
 
     let updated = state
         .workspace_service

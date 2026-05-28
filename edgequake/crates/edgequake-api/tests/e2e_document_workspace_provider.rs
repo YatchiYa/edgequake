@@ -81,8 +81,9 @@ async fn create_test_workspace_with_config(
         vision_llm_model: None,
         pdf_parser_backend: None,
         entity_types: None,
-    
-        ..Default::default()};
+
+        ..Default::default()
+    };
 
     state
         .workspace_service
@@ -256,8 +257,9 @@ async fn test_document_provider_switch_config() {
         vision_llm_provider: None,
         vision_llm_model: None,
         pdf_parser_backend: None,
-    
-        ..Default::default()};
+
+        ..Default::default()
+    };
 
     state
         .workspace_service

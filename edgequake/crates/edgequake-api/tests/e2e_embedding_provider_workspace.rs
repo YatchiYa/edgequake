@@ -61,8 +61,9 @@ async fn create_workspace_with_providers(
         vision_llm_model: None,
         pdf_parser_backend: None,
         entity_types: None,
-    
-        ..Default::default()};
+
+        ..Default::default()
+    };
 
     state
         .workspace_service
@@ -178,8 +179,9 @@ async fn test_embedding_provider_switch_updates_config() {
         vision_llm_provider: None,
         vision_llm_model: None,
         pdf_parser_backend: None,
-    
-        ..Default::default()};
+
+        ..Default::default()
+    };
 
     state
         .workspace_service
