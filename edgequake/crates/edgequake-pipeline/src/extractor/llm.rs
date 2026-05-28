@@ -65,8 +65,7 @@ where
 
     /// Build the extraction prompt.
     fn build_prompt(&self, text: &str) -> String {
-        let types_section =
-            crate::prompts::json_entity_types_prompt_section(&self.entity_schema);
+        let types_section = crate::prompts::json_entity_types_prompt_section(&self.entity_schema);
 
         format!(
             r#"Extract entities and relationships from the following text.

@@ -230,16 +230,11 @@ impl Workspace {
     /// static `EDGEQUAKE_DEFAULT_*` so health `providers.llm` and workspace reset agree.
     pub fn server_runtime_llm_config() -> (String, String) {
         let provider = non_empty_env_var("EDGEQUAKE_LLM_PROVIDER").or_else(|| {
-            first_non_empty_env_var(&[
-                LLM_PROVIDER_ALIASES[0],
-                LLM_PROVIDER_ALIASES[1],
-            ])
+            first_non_empty_env_var(&[LLM_PROVIDER_ALIASES[0], LLM_PROVIDER_ALIASES[1]])
         });
         if let Some(provider) = provider {
             let model = non_empty_env_var("EDGEQUAKE_LLM_MODEL")
-                .or_else(|| {
-                    first_non_empty_env_var(&[LLM_MODEL_ALIASES[0], LLM_MODEL_ALIASES[1]])
-                })
+                .or_else(|| first_non_empty_env_var(&[LLM_MODEL_ALIASES[0], LLM_MODEL_ALIASES[1]]))
                 .unwrap_or_else(|| Self::default_model_for_provider(&provider));
             return (model, provider);
         }
@@ -257,7 +252,10 @@ impl Workspace {
         if let Some(provider) = provider {
             let model = non_empty_env_var("EDGEQUAKE_EMBEDDING_MODEL")
                 .or_else(|| {
-                    first_non_empty_env_var(&["EDGEQUAKE_EMBEDDING_MODEL", EMBEDDING_MODEL_ALIASES[0]])
+                    first_non_empty_env_var(&[
+                        "EDGEQUAKE_EMBEDDING_MODEL",
+                        EMBEDDING_MODEL_ALIASES[0],
+                    ])
                 })
                 .unwrap_or_else(|| Self::default_embedding_model_for_provider(&provider));
 

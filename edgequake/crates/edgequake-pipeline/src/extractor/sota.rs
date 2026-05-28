@@ -121,11 +121,9 @@ where
         let system_prompt = self
             .prompts
             .system_prompt(&self.entity_schema, &self.language);
-        let user_prompt = self.prompts.user_prompt(
-            &chunk.content,
-            &self.entity_schema.types,
-            &self.language,
-        );
+        let user_prompt =
+            self.prompts
+                .user_prompt(&chunk.content, &self.entity_schema.types, &self.language);
 
         // Create chat messages for system + user prompt
         let messages = vec![

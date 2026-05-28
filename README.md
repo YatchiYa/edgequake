@@ -154,6 +154,7 @@ Traditional RAG systems retrieve document chunks using vector similarity alone. 
 - **OpenAPI 3.0**: Full Swagger documentation at `/swagger-ui`
 - **Streaming**: Server-Sent Events (SSE) for real-time responses
 - **Versioned**: `/api/v1/*` with backward compatibility
+- **Batch Ingestion APIs** ✨: `POST /api/v1/documents/upload/batch` and `POST /api/v1/documents/pdf/batch` for multi-file and multi-PDF ingestion with per-file status reporting
 - **Health Checks**: Kubernetes-ready `/health`, `/ready`, `/live`
 - **Safer Local Startup**: Make-based development uses the standard UI port 3000 when available and auto-selects the next free port only if another local stack is already using it
 - **Runtime Auth Hardening** ✨: prebuilt WebUI images now consume runtime API/auth config, and protected dashboard routes fail closed when authentication is enabled

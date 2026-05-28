@@ -117,20 +117,12 @@ mod tests {
         let mut ws = Workspace::new(Uuid::new_v4(), "t", "t");
         ws.llm_provider = "mock".to_string();
         ws.llm_model = "stale-model".to_string();
-        ws.metadata.insert(
-            "llm_provider".to_string(),
-            serde_json::json!("mock"),
-        );
-        ws.metadata.insert(
-            "llm_model".to_string(),
-            serde_json::json!("stale-model"),
-        );
+        ws.metadata
+            .insert("llm_provider".to_string(), serde_json::json!("mock"));
+        ws.metadata
+            .insert("llm_model".to_string(), serde_json::json!("stale-model"));
 
-        apply_llm_config_update(
-            &mut ws,
-            Some(String::new()),
-            Some(String::new()),
-        );
+        apply_llm_config_update(&mut ws, Some(String::new()), Some(String::new()));
 
         assert_eq!(ws.llm_provider, "ollama");
         assert_eq!(ws.llm_model, "gemma4:latest");

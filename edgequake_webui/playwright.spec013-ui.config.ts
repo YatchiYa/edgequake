@@ -10,7 +10,7 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:3000';
 export default defineConfig({
   testDir: './e2e',
   testMatch:
-    /issue-(216|218|231|232|233|workspace-server-default)-.*\.spec\.ts|entity-types-strict-limit\.spec\.ts/,
+    /issue-(216|218|231|232|233|236|workspace-server-default)-.*\.spec\.ts|entity-types-strict-limit\.spec\.ts/,
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,

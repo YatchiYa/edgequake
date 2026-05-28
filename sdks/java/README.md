@@ -92,6 +92,12 @@ var doc = client.documents().get("document-id");
 // Upload text content
 var upload = client.documents().uploadText("Content here...", "Title");
 
+// Upload multiple files in one request
+var batch = client.documents().uploadBatch(List.of("a.txt", "b.md"));
+
+// Upload multiple PDFs in one request
+var pdfBatch = client.documents().uploadPdfBatch(List.of("a.pdf", "b.pdf"));
+
 // Track upload progress
 var track = client.documents().track("track-id");
 System.out.println("Status: " + track.status + " Progress: " + track.progress);

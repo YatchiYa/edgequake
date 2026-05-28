@@ -75,8 +75,9 @@ async fn setup_app_with_workspace() -> (AppState, Router, Uuid, Uuid) {
                 pdf_parser_backend: None,
                 entity_types: None,
                 vision_llm_provider: None,
-            
-                ..Default::default()},
+
+                ..Default::default()
+            },
         )
         .await
         .unwrap();

@@ -55,8 +55,9 @@ async fn create_workspace_with_providers(
         vision_llm_model: None,
         pdf_parser_backend: None,
         entity_types: None,
-    
-        ..Default::default()};
+
+        ..Default::default()
+    };
 
     state
         .workspace_service
@@ -121,8 +122,9 @@ async fn test_complete_ollama_to_openai_switch() {
         vision_llm_provider: None,
         vision_llm_model: None,
         pdf_parser_backend: None,
-    
-        ..Default::default()};
+
+        ..Default::default()
+    };
 
     state
         .workspace_service
@@ -181,8 +183,9 @@ async fn test_complete_openai_to_ollama_switch() {
         vision_llm_provider: None,
         vision_llm_model: None,
         pdf_parser_backend: None,
-    
-        ..Default::default()};
+
+        ..Default::default()
+    };
 
     state
         .workspace_service
@@ -236,8 +239,9 @@ async fn test_complete_switch_to_lmstudio() {
         vision_llm_provider: None,
         vision_llm_model: None,
         pdf_parser_backend: None,
-    
-        ..Default::default()};
+
+        ..Default::default()
+    };
 
     state
         .workspace_service
