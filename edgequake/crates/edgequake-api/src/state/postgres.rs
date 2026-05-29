@@ -126,15 +126,17 @@ impl AppState {
         let password = url.password().unwrap_or("").to_string();
 
         // Create PostgreSQL configuration
-        // WHY 25 connections (env-configurable via DATABASE_POOL_SIZE):
+        // WHY 32 connections (env-configurable via DATABASE_POOL_SIZE):
         // The frontend polls ~8 concurrent endpoints every 2s. Pipeline workers
         // hold connections for the full processing duration (embedding = minutes).
         // 10 connections are exhausted instantly under any real load, causing
-        // "pool timed out" 500s → polling feedback loop. 25 gives headroom.
+        // "pool timed out" 500s → polling feedback loop. QW5: raised 25→32 to
+        // match PostgresConfig::default max_connections and absorb the new
+        // bounded-concurrency batch ingestion (EDGEQUAKE_INGEST_CONCURRENCY).
         let db_pool_size: u32 = std::env::var("DATABASE_POOL_SIZE")
             .ok()
             .and_then(|v| v.parse().ok())
-            .unwrap_or(25);
+            .unwrap_or(32);
         let pg_config = edgequake_storage::adapters::postgres::PostgresConfig::new(
             host, port, database, user, password,
         )
@@ -373,9 +375,12 @@ impl AppState {
             cache_manager: CacheManager::with_defaults(),
             rate_limiter: RateLimiter::new(TokenBucketConfig::default()),
             storage_mode: StorageMode::PostgreSQL,
-            models_config: Arc::new(
-                ModelsConfig::load().unwrap_or_else(|_| ModelsConfig::builtin_defaults()),
-            ),
+            models_config: Arc::new({
+                const BUNDLED_MODELS: &str = include_str!("../../../../models.toml");
+                ModelsConfig::from_toml(BUNDLED_MODELS)
+                    .or_else(|_| ModelsConfig::load())
+                    .unwrap_or_else(|_| ModelsConfig::builtin_defaults())
+            }),
             pg_pool: Some(pool),
             pdf_storage: Some(pdf_storage),
             start_time: std::time::Instant::now(),
