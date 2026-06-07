@@ -8,8 +8,11 @@ use super::helpers::{
     extract_page_count, get_pdf_storage,
 };
 use super::types::*;
+use edgequake_audit::{AuditEventType, AuditResult};
+
 use crate::error::{ApiError, ApiResult};
 use crate::middleware::TenantContext;
+use crate::services::record_compliance_event;
 use crate::state::AppState;
 use edgequake_pdf::PdfParserBackend;
 use edgequake_storage::{
@@ -414,6 +417,7 @@ async fn process_pdf_upload_parts(
 
             let effective_track_id = options.track_id.clone().unwrap_or_else(|| task_id.clone());
             state
+                .tasks
                 .pipeline_state
                 .start_pdf_progress(
                     &effective_track_id,
@@ -448,6 +452,7 @@ async fn process_pdf_upload_parts(
 
         if let Some(ref track_id) = options.track_id {
             state
+                .tasks
                 .pipeline_state
                 .start_pdf_progress(track_id, &existing.pdf_id.to_string(), &existing.filename)
                 .await;
@@ -537,11 +542,28 @@ async fn process_pdf_upload_parts(
         create_pdf_processing_task(state, context, pdf_id, &options, workspace.as_ref()).await?;
     let effective_track_id = options.track_id.clone().unwrap_or_else(|| task_id.clone());
     state
+        .tasks
         .pipeline_state
         .start_pdf_progress(&effective_track_id, &pdf_id.to_string(), &filename)
         .await;
 
     let estimated_time = estimate_processing_time(&file_data, page_count);
+
+    let tenant_for_audit = context
+        .tenant_id
+        .clone()
+        .unwrap_or_else(|| "default".to_string());
+    record_compliance_event(
+        state,
+        tenant_for_audit,
+        AuditEventType::DocumentUpload,
+        "upload_pdf",
+        AuditResult::Success,
+        context.workspace_id.clone(),
+        context.user_id.clone(),
+        Some(("pdf".to_string(), pdf_id.to_string())),
+    );
+
     Ok(PdfUploadResponse {
         pdf_id: pdf_id.to_string(),
         document_id: None,

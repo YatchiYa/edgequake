@@ -5,13 +5,13 @@
 > **High-Performance Graph-RAG Framework in Rust**  
 > Transform documents into intelligent knowledge graphs for superior retrieval and generation
 
-[![Version](https://img.shields.io/badge/version-0.12.5-blue.svg?style=flat)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.12.7-blue.svg?style=flat)](CHANGELOG.md)
 [![Rust](https://img.shields.io/badge/rust-1.95+-orange.svg?style=flat&logo=rust)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat)](LICENSE)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg?style=flat)](https://github.com/raphaelmansuy/edgequake)
 [![Documentation](https://img.shields.io/badge/docs-available-blue.svg?style=flat)](docs/README.md)
 
-> **v0.12.6** — Model catalog refresh (gpt-5.5, claude-opus-4-8, grok-4.3, gemini-3.5-flash) + bundled `models.toml` (no CWD dependency) + all enabled providers now visible in workspace/tenant model dropdowns by default. See [CHANGELOG](CHANGELOG.md) for full details.
+> **v0.12.7** — SPEC-006 resource safety (P0–P9): bounded graph ops, materialization guard, migration 038, production delivery checklist. SPEC-018 observability: structured logs, metrics, OTLP/Jaeger. See [CHANGELOG](CHANGELOG.md).
 
 ## Release & CD Cycle
 
@@ -783,7 +783,28 @@ make test             # Run all tests
 make lint             # Lint all code
 make format           # Format all code
 make clean            # Clean build artifacts
+
+# Resource safety (SPEC-006)
+make resource-proof   # Bounded graph ops + migration 038 package gates
 ```
+
+### Database Migrations & Resource Safety (SPEC-006)
+
+PostgreSQL migrations auto-apply on backend start (sqlx). For production index rollout and verification:
+
+```bash
+export DATABASE_URL="postgres://edgequake:edgequake@localhost/edgequake"
+./edgequake/scripts/migrations/apply_038.sh --dry-run    # preflight
+./edgequake/scripts/migrations/apply_038.sh --apply --yes
+./edgequake/scripts/migrations/apply_038.sh --verify
+```
+
+| Doc | Purpose |
+|-----|---------|
+| [edgequake/docs/migrations.md](edgequake/docs/migrations.md) | Migration overview & troubleshooting |
+| [edgequake/docs/migrations/038-source-ids-indexes.md](edgequake/docs/migrations/038-source-ids-indexes.md) | Migration 038 FAQ & edge cases |
+| [edgequake/docs/migrations/bootstrap-first-principles.md](edgequake/docs/migrations/bootstrap-first-principles.md) | Bootstrap migration design |
+| [specifications/006-ensure-perf/](specifications/006-ensure-perf/000-index.md) | Resource safety spec & brutal assessment |
 
 ### Agent Workflow
 

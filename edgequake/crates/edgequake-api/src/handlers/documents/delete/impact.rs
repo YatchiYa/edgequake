@@ -7,6 +7,7 @@ use axum::{extract::State, Json};
 
 use crate::error::{ApiError, ApiResult};
 use crate::handlers::documents_types::*;
+use crate::services::{analyze_deletion_impact_stats, DocumentSourceScope};
 use crate::state::AppState;
 
 /// Analyze the impact of deleting a document before actually deleting it.
@@ -31,12 +32,26 @@ pub async fn analyze_deletion_impact(
     axum::extract::Path(document_id): axum::extract::Path<String>,
 ) -> ApiResult<Json<DeletionImpactResponse>> {
     let chunk_prefix = format!("{}-chunk-", document_id);
-    let chunk_ids = state.kv_storage.keys_with_prefix(&chunk_prefix).await?;
+    let chunk_ids = state
+        .storage
+        .kv_storage
+        .keys_with_prefix(&chunk_prefix)
+        .await?;
 
     let metadata_key = format!("{}-metadata", document_id);
     let content_key = format!("{}-content", document_id);
-    let has_metadata = state.kv_storage.get_by_id(&metadata_key).await?.is_some();
-    let has_content = state.kv_storage.get_by_id(&content_key).await?.is_some();
+    let has_metadata = state
+        .storage
+        .kv_storage
+        .get_by_id(&metadata_key)
+        .await?
+        .is_some();
+    let has_content = state
+        .storage
+        .kv_storage
+        .get_by_id(&content_key)
+        .await?
+        .is_some();
 
     // Document must have either chunks, metadata, or content
     if chunk_ids.is_empty() && !has_metadata && !has_content {
@@ -47,46 +62,14 @@ pub async fn analyze_deletion_impact(
     }
 
     let chunks_to_delete = chunk_ids.len();
-    let mut entities_to_remove = 0usize;
-    let mut entities_to_update = 0usize;
-    let mut relationships_to_remove = 0usize;
-    let mut relationships_to_update = 0usize;
 
-    // Analyze entities (read-only)
-    let all_nodes = state.graph_storage.get_all_nodes().await?;
-    for node in all_nodes {
-        if let Some(source_id) = node.properties.get("source_id").and_then(|v| v.as_str()) {
-            let sources: Vec<&str> = source_id.split('|').collect();
-            let remaining = sources
-                .iter()
-                .filter(|s| !s.starts_with(&chunk_prefix) && !s.starts_with(&document_id))
-                .count();
-
-            if remaining == 0 {
-                entities_to_remove += 1;
-            } else if remaining < sources.len() {
-                entities_to_update += 1;
-            }
-        }
-    }
-
-    // Analyze edges (read-only)
-    let all_edges = state.graph_storage.get_all_edges().await?;
-    for edge in all_edges {
-        if let Some(source_id) = edge.properties.get("source_id").and_then(|v| v.as_str()) {
-            let sources: Vec<&str> = source_id.split('|').collect();
-            let remaining = sources
-                .iter()
-                .filter(|s| !s.starts_with(&chunk_prefix) && !s.starts_with(&document_id))
-                .count();
-
-            if remaining == 0 {
-                relationships_to_remove += 1;
-            } else if remaining < sources.len() {
-                relationships_to_update += 1;
-            }
-        }
-    }
+    // SPEC-006 P1: bounded impact analysis (document-scoped, no full graph scan)
+    let scope = DocumentSourceScope::from_document_id(document_id.clone());
+    let impact = analyze_deletion_impact_stats(&state.storage.graph_storage, None, &scope).await?;
+    let entities_to_remove = impact.entities_removed;
+    let entities_to_update = impact.entities_updated;
+    let relationships_to_remove = impact.relationships_removed;
+    let relationships_to_update = impact.relationships_updated;
 
     Ok(Json(DeletionImpactResponse {
         document_id,

@@ -4,9 +4,9 @@
  */
 
 import type { APIRequestContext, Page } from '@playwright/test';
+import { waitForAppReady } from './app-ready';
 import {
   createTenantWorkspaceViaApi,
-  SPEC013_FRONTEND,
   type Spec013BootstrapContext,
 } from './spec013-api';
 
@@ -18,9 +18,10 @@ const ZUSTAND_TENANT_KEY = 'edgequake-tenant';
 /** Seed browser storage so header tenant/workspace selector is deterministic. */
 export async function seedTenantStoreOnPage(
   page: Page,
-  ctx: Spec013BootstrapContext
+  ctx: Spec013BootstrapContext,
+  options?: { waitForReady?: boolean },
 ): Promise<void> {
-  await page.goto(SPEC013_FRONTEND, { waitUntil: 'domcontentloaded' });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.evaluate(
     ({ tenantId, workspaceId }) => {
       localStorage.clear();
@@ -43,10 +44,9 @@ export async function seedTenantStoreOnPage(
     { tenantId: ctx.tenantId, workspaceId: ctx.workspaceId }
   );
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.getByTestId('workspace-selector').waitFor({
-    state: 'visible',
-    timeout: 30_000,
-  });
+  if (options?.waitForReady !== false) {
+    await waitForAppReady(page);
+  }
 }
 
 /** API bootstrap + storage seed + wait for workspace selector. */
@@ -57,10 +57,6 @@ export async function bootstrapDeterministicUiContext(
 ): Promise<Spec013BootstrapContext> {
   const ctx = await createTenantWorkspaceViaApi(request, label);
   await seedTenantStoreOnPage(page, ctx);
-  await page.getByTestId('workspace-selector').waitFor({
-    state: 'visible',
-    timeout: 30_000,
-  });
   return ctx;
 }
 
