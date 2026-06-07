@@ -1,7 +1,9 @@
+import { skipUnlessLiveStack } from "./helpers/live-stack";
 /**
  * SPEC-014 / GitHub #236 — batch upload API for document and PDF.
  */
 import { expect, test } from '@playwright/test';
+import { issueScreenshot } from "./helpers/screenshot-paths";
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -10,15 +12,6 @@ import {
   tenantHeaders,
 } from './helpers/spec013-api';
 
-const SCREENSHOT_DIR = path.resolve(
-  process.cwd(),
-  '..',
-  'specs',
-  '014-multi',
-  'e2e',
-  'screenshosts'
-);
-fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
 
 function multipartBody(
   files: { field: string; filename: string; contentType: string; content: Buffer | string }[]
@@ -40,6 +33,11 @@ function multipartBody(
   return { boundary, body: Buffer.concat(chunks) };
 }
 
+
+test.beforeEach(() => {
+  skipUnlessLiveStack();
+});
+
 test.describe('Issue #236 batch upload API', () => {
   test('openapi exposes batch upload endpoints', async ({ page, request }) => {
     await page.setViewportSize({ width: 1600, height: 1200 });
@@ -53,7 +51,7 @@ test.describe('Issue #236 batch upload API', () => {
     await expect(page.getByText('/api/v1/documents/upload/batch')).toBeVisible();
     await expect(page.getByText('/api/v1/documents/pdf/batch')).toBeVisible();
     await page.screenshot({
-      path: path.join(SCREENSHOT_DIR, '001-swagger-batch-endpoints.png'),
+      path: issueScreenshot("issue-236", "001-swagger-batch-endpoints.png"),
       fullPage: false,
     });
   });

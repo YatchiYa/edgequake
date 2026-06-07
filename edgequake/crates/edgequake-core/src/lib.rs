@@ -40,10 +40,12 @@ pub mod config;
 pub mod conversation_service;
 pub mod env;
 pub mod error;
+pub mod graph_mapping;
 pub mod keyword_extractor;
 #[cfg(feature = "pipeline")]
 pub mod orchestrator;
-pub mod query;
+pub mod resource;
+pub mod sota_bridge;
 #[cfg(feature = "pipeline")]
 pub mod tenant_manager;
 pub mod token_budget;
@@ -90,12 +92,18 @@ pub use conversation_service::{ConversationService, InMemoryConversationService}
 // Re-export token budget
 pub use token_budget::{BudgetAllocation, BudgetSource, ContextSource, TokenBudget};
 
+// SPEC-006: Resource safety SSOT
+pub use resource::{
+    AdmissionDecision, GraphMaterializationSemaphore, GraphOperation, ResourceBudgetConfig,
+    ResourceGuard, MAX_GRAPH_DEPTH, MAX_GRAPH_NODES, MAX_ORCHESTRATOR_CONTEXT_TOKENS,
+    MAX_UPLOAD_BYTES,
+};
+
 // Re-export commonly used types
 pub use config::Config;
 pub use error::{Error, Result};
 #[cfg(feature = "pipeline")]
 pub use orchestrator::{EdgeQuake, EdgeQuakeConfig, StorageBackend, StorageConfig};
-pub use query::QueryEngine;
 pub use types::{
     Chunk, ContextChunk, ContextEntity, ContextRelationship, Conversation, ConversationFilter,
     ConversationMode, ConversationSortField, CreateConversationRequest, CreateFolderRequest,

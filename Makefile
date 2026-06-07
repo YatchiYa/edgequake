@@ -138,7 +138,7 @@ release: ## Bump all crate versions and tag release using cargo-release (uses VE
         stack stack-down stack-logs stack-status stack-restart stack-pull \
         check-deps status \
         test-quality test-invariants test-timing test-count test-flaky \
-        test-e2e-critical test-e2e-full test-stability-report \
+        test-e2e-critical test-e2e-full test-e2e-lint test-stability-report \
         sdk-e2e sdk-e2e-with-stack sdk-csharp-test-unit
 
 # ============================================================================
@@ -334,6 +334,7 @@ help: ## Show this help message
 	@echo "  $(GREEN)make test-count$(RESET)       Verify test count (>=2600)"
 	@echo "  $(GREEN)make test-flaky$(RESET)       Detect flaky tests"
 	@echo "  $(GREEN)make test-e2e-critical$(RESET) Run E2E critical path"
+	@echo "  $(GREEN)make test-e2e-lint$(RESET)      Validate chromium gate for flake anti-patterns"
 	@echo "  $(GREEN)make test-e2e-full$(RESET)    Run full E2E suite"
 	@echo "  $(GREEN)make sdk-e2e$(RESET)          Run Rust/Python/TS SDK E2E vs SDK_E2E_URL (needs healthy API)"
 	@echo "  $(GREEN)make sdk-e2e-with-stack$(RESET)  $(GREEN)make stack$(RESET) then SDK E2E (Docker quickstart)"
@@ -763,6 +764,8 @@ backend-bg: db-wait ## Run backend in background with PostgreSQL (respects MISTR
 	@# Read the effective DATABASE_URL resolved by db-start (may differ in port
 	@# when another PostgreSQL occupies the default 5432).
 	@$(LOAD_EFF_DB_URL); \
+	_BIN="$(BACKEND_DIR)/target/debug/edgequake"; \
+	if [ -x "$$_BIN" ]; then _RUN="exec $$_BIN"; else _RUN="cd $(BACKEND_DIR) && exec cargo run"; fi; \
 	if [ -n "$$MISTRAL_API_KEY" ] || [ -n "$(MISTRAL_API_KEY)" ]; then \
 		_MISTRAL_KEY="$${MISTRAL_API_KEY:-$(MISTRAL_API_KEY)}"; \
 		echo "$(YELLOW)→ MISTRAL_API_KEY detected - using Mistral as default provider$(RESET)"; \
@@ -781,7 +784,7 @@ backend-bg: db-wait ## Run backend in background with PostgreSQL (respects MISTR
 		printf '%s\n' "export EDGEQUAKE_VISION_MODEL=\"pixtral-large-latest\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_EMBEDDING_BATCH_SIZE=\"16\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_ALLOWED_PROVIDERS=\"*\"" >> /tmp/edgequake-start.sh; \
-		printf '%s\n' "cd $(BACKEND_DIR) && exec cargo run" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "$$_RUN" >> /tmp/edgequake-start.sh; \
 		chmod +x /tmp/edgequake-start.sh; \
 		/bin/bash -lc 'nohup /tmp/edgequake-start.sh > /tmp/edgequake-backend.log 2>&1 < /dev/null & backend_pid=$$!; disown "$$backend_pid"; printf "%s\n" "$$backend_pid" > /tmp/edgequake-backend.pid'; \
 	elif [ -n "$(OPENAI_API_KEY)" ]; then \
@@ -796,7 +799,7 @@ backend-bg: db-wait ## Run backend in background with PostgreSQL (respects MISTR
 		printf '%s\n' "export AUTH_ENABLED=\"$(DEV_AUTH_ENABLED)\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_LLM_PROVIDER=\"openai\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_ALLOWED_PROVIDERS=\"*\"" >> /tmp/edgequake-start.sh; \
-		printf '%s\n' "cd $(BACKEND_DIR) && exec cargo run" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "$$_RUN" >> /tmp/edgequake-start.sh; \
 		chmod +x /tmp/edgequake-start.sh; \
 		/bin/bash -lc 'nohup /tmp/edgequake-start.sh > /tmp/edgequake-backend.log 2>&1 < /dev/null & backend_pid=$$!; disown "$$backend_pid"; printf "%s\n" "$$backend_pid" > /tmp/edgequake-backend.pid'; \
 	else \
@@ -811,7 +814,7 @@ backend-bg: db-wait ## Run backend in background with PostgreSQL (respects MISTR
 		printf '%s\n' "export OLLAMA_MODEL=\"gemma4:latest\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export OLLAMA_EMBEDDING_MODEL=\"embeddinggemma:latest\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_ALLOWED_PROVIDERS=\"*\"" >> /tmp/edgequake-start.sh; \
-		printf '%s\n' "cd $(BACKEND_DIR) && exec cargo run" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "$$_RUN" >> /tmp/edgequake-start.sh; \
 		chmod +x /tmp/edgequake-start.sh; \
 		/bin/bash -lc 'nohup /tmp/edgequake-start.sh > /tmp/edgequake-backend.log 2>&1 < /dev/null & backend_pid=$$!; disown "$$backend_pid"; printf "%s\n" "$$backend_pid" > /tmp/edgequake-backend.pid'; \
 	fi
@@ -1391,10 +1394,28 @@ test-e2e-critical: ## Run E2E critical path tests
 	@cd $(FRONTEND_DIR) && PLAYWRIGHT_BASE_URL=http://localhost:3000 \
 		pnpm exec playwright test ooda-228-critical-path.spec.ts --reporter=line
 
-test-e2e-full: ## Run full E2E test suite
-	@echo "$(BLUE)Running full E2E suite...$(RESET)"
-	@cd $(FRONTEND_DIR) && PLAYWRIGHT_BASE_URL=http://localhost:3000 \
-		pnpm exec playwright test --reporter=line
+test-e2e-lint: ## Fail if chromium-gate e2e specs contain flake anti-patterns
+	@python3 $(FRONTEND_DIR)/scripts/validate-e2e-flake.py
+
+test-e2e-ui: test-e2e-lint ## UI-only chromium gate (no backend; skips integration specs)
+	@echo "$(BLUE)Running UI-only E2E chromium gate (PLAYWRIGHT_SKIP_STACK_CHECK=1)$(RESET)"
+	@FPID=$$(lsof -nP -iTCP:3001 -sTCP:LISTEN -t 2>/dev/null | head -1); \
+	if [ -n "$$FPID" ] && ! curl -fsS --max-time 3 http://127.0.0.1:3001 2>/dev/null | grep -qi EdgeQuake; then \
+		echo "$(YELLOW)→ Killing unhealthy frontend listener on port 3001$(RESET)"; \
+		kill "$$FPID" 2>/dev/null || true; \
+		sleep 1; \
+	fi
+	@cd $(FRONTEND_DIR) && PLAYWRIGHT_SKIP_STACK_CHECK=1 \
+		pnpm exec playwright test --project=chromium --reporter=line
+
+test-e2e-full: dev-bg test-e2e-lint ## Run full E2E suite (requires make dev-bg stack)
+	@echo "$(BLUE)Running full E2E suite → frontend $(FRONTEND_URL) backend $(BACKEND_URL)$(RESET)"
+	@curl -sf "$(BACKEND_URL)/health" >/dev/null || { \
+		echo "$(RED)✗ EdgeQuake backend not healthy at $(BACKEND_URL)$(RESET)"; exit 1; \
+	}
+	@cd $(FRONTEND_DIR) && EQ_BACKEND_URL="$(BACKEND_URL)" E2E_BACKEND_URL="$(BACKEND_URL)" \
+		SPEC013_BACKEND_URL="$(BACKEND_URL)" E2E_LIVE_STACK=1 PLAYWRIGHT_BASE_URL="$(FRONTEND_URL)" \
+		pnpm exec playwright test --project=chromium --reporter=line
 
 # ============================================================================
 # SPEC-013 — GitHub issues #216–#233 (May 2026)
@@ -1419,15 +1440,59 @@ spec013-mistral-backend-bg: db-wait ## Backend on :8081 with Mistral (avoids Doc
 
 spec013-e2e-playwright-intensive: ## Playwright intensive SPEC-013 suite (Mistral stack)
 	@echo "$(BLUE)SPEC-013 Playwright intensive → backend $(SPEC013_BACKEND_URL)$(RESET)"
-	@curl -sf "$(SPEC013_BACKEND_URL)/api/v1/health" >/dev/null 2>&1 || { \
+	@curl -sf "$(SPEC013_BACKEND_URL)/health" >/dev/null 2>&1 || { \
 		echo "$(RED)✗ Backend not healthy at $(SPEC013_BACKEND_URL)$(RESET)"; \
 		echo "  Run: $(GREEN)make spec013-mistral-backend-bg$(RESET) and $(GREEN)make frontend-bg$(RESET)"; \
+		exit 1; \
+	}
+	@curl -sf "$(SPEC013_BACKEND_URL)/health" | python3 -c 'import json,sys; d=json.load(sys.stdin); p=d.get("llm_provider_name") or d.get("providers",{}).get("llm",{}).get("name"); sys.exit(0 if p=="mistral" else 1)' || { \
+		echo "$(RED)✗ Backend is not using live Mistral (llm_provider_name != mistral)$(RESET)"; \
+		echo "  Current health: $$(curl -sf "$(SPEC013_BACKEND_URL)/health" 2>/dev/null || echo unavailable)"; \
 		exit 1; \
 	}
 	@cd $(FRONTEND_DIR) && SPEC013_BACKEND_URL="$(SPEC013_BACKEND_URL)" \
 		E2E_BACKEND_URL="$(SPEC013_BACKEND_URL)" \
 		PLAYWRIGHT_BASE_URL=http://localhost:$(FRONTEND_PORT) \
 		pnpm exec playwright test -c playwright.spec013.config.ts --reporter=line
+
+test-e2e-mistral-live: ## Run chromium e2e against live Mistral backend (requires MISTRAL_API_KEY)
+	@if [ -z "$(MISTRAL_API_KEY)" ] && [ -z "$$MISTRAL_API_KEY" ]; then \
+		echo "$(RED)✗ MISTRAL_API_KEY required for test-e2e-mistral-live$(RESET)"; \
+		exit 1; \
+	fi
+	@BPID=$$(lsof -nP -iTCP:$(BACKEND_PORT) -sTCP:LISTEN -t 2>/dev/null | head -1); \
+	if [ -n "$$BPID" ]; then \
+		echo "$(YELLOW)→ Restarting backend on port $(BACKEND_PORT) for deterministic auth/provider config$(RESET)"; \
+		kill "$$BPID" 2>/dev/null || true; \
+		sleep 1; \
+	fi
+	@FPID=$$(lsof -nP -iTCP:$(FRONTEND_PORT) -sTCP:LISTEN -t 2>/dev/null | head -1); \
+	if [ -n "$$FPID" ]; then \
+		echo "$(YELLOW)→ Freeing frontend port $(FRONTEND_PORT) for Playwright-managed webServer$(RESET)"; \
+		kill "$$FPID" 2>/dev/null || true; \
+		sleep 1; \
+	fi
+	@$(MAKE) backend-bg DEV_AUTH_ENABLED=false WORKER_THREADS=1 MAX_TASKS_PER_TENANT=1 --no-print-directory
+	@for i in $$(seq 1 30); do \
+		if curl -sf "$(BACKEND_URL)/health" >/dev/null 2>&1; then break; fi; \
+		sleep 2; \
+	done; \
+	curl -sf "$(BACKEND_URL)/health" >/dev/null || { \
+		echo "$(RED)✗ Backend not healthy at $(BACKEND_URL)$(RESET)"; \
+		echo "  Last backend logs:"; tail -20 /tmp/edgequake-backend.log 2>/dev/null || true; \
+		exit 1; \
+	}
+	@curl -sf "$(BACKEND_URL)/health" | python3 -c 'import json,sys; d=json.load(sys.stdin); p=d.get("llm_provider_name") or d.get("providers",{}).get("llm",{}).get("name"); sys.exit(0 if p=="mistral" else 1)' || { \
+		echo "$(RED)✗ Backend is not running live Mistral$(RESET)"; \
+		echo "  Current health: $$(curl -sf "$(BACKEND_URL)/health" 2>/dev/null || echo unavailable)"; \
+		exit 1; \
+	}
+	@echo "$(GREEN)✓ Live Mistral backend verified at $(BACKEND_URL)$(RESET)"
+	@cd $(FRONTEND_DIR) && EQ_BACKEND_URL="$(BACKEND_URL)" E2E_BACKEND_URL="$(BACKEND_URL)" \
+		SPEC013_BACKEND_URL="$(BACKEND_URL)" E2E_LIVE_STACK=1 NEXT_PUBLIC_API_URL="$(BACKEND_URL)" \
+		EDGEQUAKE_API_URL="$(BACKEND_URL)" NEXT_PUBLIC_AUTH_ENABLED=false \
+		NEXT_PUBLIC_DISABLE_DEMO_LOGIN=false PLAYWRIGHT_SKIP_STACK_CHECK=1 \
+		pnpm exec playwright test --project=chromium --project=load --reporter=line
 
 spec013-e2e-mistral-live: db-wait ## Live Mistral document ingest (MISTRAL_API_KEY + PostgreSQL)
 	@echo "$(BLUE)SPEC-013 live Mistral ingest test (PostgreSQL)...$(RESET)"
@@ -1655,12 +1720,15 @@ test-stability-report: ## Generate test stability report
 
 test-postgres-start: ## Start PostgreSQL test containers
 	@echo "$(BLUE)Starting PostgreSQL test containers...$(RESET)"
-	@cd $(DOCKER_DIR) && docker compose -f docker-compose.test.yml up -d
+	@cd $(DOCKER_DIR) && docker compose -f docker-compose.test.yml up -d --build postgres-test
 	@echo "$(YELLOW)Waiting for databases to be ready...$(RESET)"
-	@for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do \
+	@for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 20 25 30; do \
 		(docker exec edgequake-postgres-test pg_isready -U edgequake_test -d edgequake_test 2>/dev/null) && break || sleep 2; \
 	done
-	@echo "$(GREEN)✓ PostgreSQL test containers ready$(RESET)"
+	@echo "$(YELLOW)Verifying pgvector + AGE extensions...$(RESET)"
+	@docker exec edgequake-postgres-test psql -U edgequake_test -d edgequake_test -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS age;" >/dev/null 2>&1 \
+		|| (echo "$(RED)✗ Failed to enable vector/age extensions$(RESET)" && exit 1)
+	@echo "$(GREEN)✓ PostgreSQL test containers ready (pgvector + AGE)$(RESET)"
 
 test-postgres-stop: ## Stop PostgreSQL test containers
 	@echo "$(BLUE)Stopping PostgreSQL test containers...$(RESET)"
@@ -1787,6 +1855,33 @@ logs: ## Show recent logs from all services
 	@echo ""
 	@echo "$(BOLD)Docker Container Status:$(RESET)"
 	@cd $(DOCKER_DIR) && docker compose ps 2>/dev/null || echo "Docker not running"
+
+.PHONY: observability-proof observability-jaeger resource-proof resource-proof-postgres
+
+resource-proof: ## Run SPEC-006 resource safety proof suite (mock; no Postgres required)
+	@chmod +x specifications/006-ensure-perf/e2e/run_resource_proof.sh scripts/spec006_no_get_all_api.sh scripts/spec006_budget_catalog_sync.sh scripts/spec006_source_ids_migration.sh scripts/spec006_no_unguarded_community_api.sh scripts/spec006_no_adhoc_resource_budget.sh scripts/spec006_apply_migration_038.sh edgequake/scripts/migrations/apply_038.sh
+	@DATABASE_URL= POSTGRES_PASSWORD= ./specifications/006-ensure-perf/e2e/run_resource_proof.sh
+
+resource-proof-postgres: test-postgres-start ## SPEC-006 battle test with live Postgres (migration bootstrap e2e)
+	@echo "$(BLUE)Running SPEC-006 Postgres battle tests...$(RESET)"
+	@cd $(BACKEND_DIR) && \
+		POSTGRES_HOST=localhost \
+		POSTGRES_PORT=5433 \
+		POSTGRES_DB=edgequake_test \
+		POSTGRES_USER=edgequake_test \
+		POSTGRES_PASSWORD=test_password_123 \
+		DATABASE_URL="postgresql://edgequake_test:test_password_123@localhost:5433/edgequake_test" \
+		cargo test -p edgequake-api --test migration_bootstrap_proof --test migration_readiness_proof --features postgres --quiet
+	@POSTGRES_HOST=localhost POSTGRES_PORT=5433 POSTGRES_DB=edgequake_test POSTGRES_USER=edgequake_test POSTGRES_PASSWORD=test_password_123 \
+		DATABASE_URL="postgresql://edgequake_test:test_password_123@localhost:5433/edgequake_test" \
+		./specifications/006-ensure-perf/e2e/run_resource_proof.sh
+	@echo "$(GREEN)✓ SPEC-006 resource-proof-postgres complete$(RESET)"
+
+observability-proof: ## Run SPEC-018 observability proof suite (Rust + WebUI)
+	@./specs/018-observability/e2e/run_observability_proof.sh
+
+observability-jaeger: ## Docker stack with Jaeger OTLP + JSON logs (SPEC-018)
+	@cd $(DOCKER_DIR) && docker compose -f docker-compose.yml -f docker-compose.observability.yml --profile observability up --build
 
 status: ## Show status of all services
 	@echo ""
