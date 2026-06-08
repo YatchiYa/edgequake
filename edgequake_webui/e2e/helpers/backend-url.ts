@@ -11,7 +11,15 @@ export const BACKEND_URL =
 
 export const API_V1_URL = `${BACKEND_URL}/api/v1`;
 
-/** True when backend health returns EdgeQuake JSON (not a foreign app on :8080). */
+type HealthBody = {
+  status?: string;
+  storage_mode?: string;
+  components?: Record<string, boolean>;
+};
+
+const OPERATIONAL_HEALTH = new Set(["healthy", "degraded"]);
+
+/** True when backend health returns operational EdgeQuake JSON (not a foreign app on :8080). */
 export async function isEdgequakeBackendHealthy(
   request: { get: (url: string) => Promise<{ ok: () => boolean; json: () => Promise<unknown> }> },
 ): Promise<boolean> {
@@ -19,8 +27,12 @@ export async function isEdgequakeBackendHealthy(
     try {
       const response = await request.get(`${BACKEND_URL}${path}`);
       if (!response.ok()) continue;
-      const body = (await response.json()) as { status?: string; storage_mode?: string };
-      if (body.status === "healthy" && typeof body.storage_mode === "string") {
+      const body = (await response.json()) as HealthBody;
+      if (!OPERATIONAL_HEALTH.has(body.status ?? "") || typeof body.storage_mode !== "string") {
+        continue;
+      }
+      const c = body.components;
+      if (c?.kv_storage && c.vector_storage && c.graph_storage && c.llm_provider) {
         return true;
       }
     } catch {

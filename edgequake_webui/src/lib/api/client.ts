@@ -384,6 +384,7 @@ export function logClientNetworkError(err: NetworkError): void {
     message: err.message,
     code: "NETWORK_ERROR",
     source: "webui_client",
+    apiBase: getRuntimeApiBaseUrl() || "(relative via dev proxy)",
     traceparent: trace.traceparent,
     trace_id: trace.trace_id,
   });

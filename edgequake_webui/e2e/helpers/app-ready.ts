@@ -9,12 +9,30 @@ import { BACKEND_URL } from "./backend-url";
 /** Safe goto options for Next.js dev (HMR keeps connections open). */
 export const GOTO_OPTS = { waitUntil: "domcontentloaded" as const };
 
-/** Poll backend /health until ready (uses EQ_BACKEND_URL from Makefile). */
+type HealthComponents = {
+  status?: string;
+  storage_mode?: string;
+  components?: Record<string, boolean>;
+};
+
+function isOperationalEdgequakeHealth(body: HealthComponents): boolean {
+  const okStatus = body.status === "healthy" || body.status === "degraded";
+  if (!okStatus || body.storage_mode !== "postgresql") return false;
+  const c = body.components;
+  return Boolean(
+    c?.kv_storage && c.vector_storage && c.graph_storage && c.llm_provider,
+  );
+}
+
+/** Poll backend /health until PostgreSQL-backed components are ready. */
 export async function waitForBackendHealthy(maxAttempts = 30): Promise<void> {
   for (let i = 0; i < maxAttempts; i++) {
     try {
       const res = await fetch(`${BACKEND_URL}/health`);
-      if (res.ok) return;
+      if (res.ok) {
+        const body = (await res.json()) as HealthComponents;
+        if (isOperationalEdgequakeHealth(body)) return;
+      }
     } catch {
       /* retry */
     }

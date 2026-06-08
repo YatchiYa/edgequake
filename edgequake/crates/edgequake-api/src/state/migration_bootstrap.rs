@@ -408,6 +408,10 @@ mod tests {
         assert!(SQL_038_APPLY.contains("source_ids_gin"));
         assert!(SQL_038_APPLY.contains("CREATE INDEX IF NOT EXISTS"));
         assert!(SQL_038_APPLY.contains("migration_large_graph_threshold"));
+        assert!(
+            SQL_038_APPLY.contains("::jsonb") && SQL_038_APPLY.contains("jsonb_ops"),
+            "GIN indexes must cast agtype to jsonb (json has no GIN opclass)"
+        );
     }
 
     #[test]

@@ -174,6 +174,67 @@ async fn test_mixed_document_types_all_counted() {
     );
 }
 
+/// Regression FIX-SPEC020: workspace stats only count graph nodes with `workspace_id`.
+/// Sync text upload must attach scope or dashboard entity KPI stays at 0.
+#[tokio::test]
+async fn test_workspace_stats_requires_graph_workspace_scope() {
+    let (state, app, ws_id) = app_with_workspace().await;
+    let ws_str = ws_id.to_string();
+    let doc_id = uuid::Uuid::new_v4().to_string();
+
+    state
+        .storage
+        .kv_storage
+        .upsert(&[(
+            format!("{}-metadata", doc_id),
+            json!({"id": doc_id,"title":"scope.md","status":"completed","workspace_id": ws_str}),
+        )])
+        .await
+        .unwrap();
+
+    // Unscoped node (pre-FIX-SPEC020 bug pattern).
+    {
+        let mut p = std::collections::HashMap::new();
+        p.insert("entity_type".into(), json!("PERSON"));
+        state
+            .storage
+            .graph_storage
+            .upsert_node("ORPHAN_ENTITY", p)
+            .await
+            .unwrap();
+    }
+
+    // Scoped node (post-fix text_upload pattern) must be counted.
+    {
+        let mut p = std::collections::HashMap::new();
+        p.insert("entity_type".into(), json!("PERSON"));
+        p.insert("workspace_id".into(), json!(ws_str));
+        state
+            .storage
+            .graph_storage
+            .upsert_node("SCOPED_ENTITY", p)
+            .await
+            .unwrap();
+    }
+
+    let (_, stats) = get_stats(&app, ws_id).await;
+    assert_eq!(stats["document_count"], 1);
+    assert_eq!(
+        stats["entity_count"], 1,
+        "FIX-SPEC020: only workspace-scoped graph nodes count toward entity KPI"
+    );
+    assert_eq!(
+        state
+            .storage
+            .graph_storage
+            .node_count_by_workspace(&ws_id)
+            .await
+            .unwrap(),
+        1,
+        "orphan node must be excluded from workspace-scoped graph count"
+    );
+}
+
 /// Entity + relationship counts must come from graph, not empty PG tables.
 #[tokio::test]
 async fn test_entity_relationship_counts_from_graph() {

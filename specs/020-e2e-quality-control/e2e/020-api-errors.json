@@ -1,0 +1,11 @@
+{
+  "malformedStatus": 422,
+  "emptyResult": {
+    "status": 422,
+    "rejected": true
+  },
+  "graphSearch": {
+    "status": 200,
+    "nodeCount": 0
+  }
+}
