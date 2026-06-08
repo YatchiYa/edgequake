@@ -20,7 +20,7 @@
 
 Run proofs: [`e2e/run_observability_proof.sh`](./e2e/run_observability_proof.sh)
 
-**Related:** [SPEC-006 resource safety](../../specifications/006-ensure-perf/000-index.md) — graph 503s (`graph_materialization_busy`, `graph_query_timeout`) surface via `ApiError` diagnostics + structured logs (`request_id`, `http.status=503`, `Retry-After`). CI: `make resource-proof` alongside `make observability-proof`.
+**Related:** [SPEC-006 resource safety](../../specifications/006-ensure-perf/000-index.md) — graph 503s surface via `ApiError` diagnostics. [SPEC-020 E2E QC](../020-e2e-quality-control/README.md) — release gate for ingest/query/delete/isolation.
 
 ---
 
@@ -62,18 +62,25 @@ export RUST_LOG=edgequake_api=info,edgequake_storage=warn
 Operator guide: [`docs/OBSERVABILITY.md`](../../docs/OBSERVABILITY.md)  
 Resource safety runbook: [`specifications/006-ensure-perf/009_operator_runbook.md`](../../specifications/006-ensure-perf/009_operator_runbook.md)
 
-### CI gates (release pipeline)
+### CI gates (release pipeline — v0.12.8+)
 
 ```bash
-make observability-proof   # SPEC-018
-make resource-proof        # SPEC-006 P0–P9 (mock; Postgres e2e in postgres-age-tests job)
+make release-gates           # fmt + clippy (all workspace crates) + tests + proofs
+make observability-proof     # SPEC-018 Rust + WebUI
+make resource-proof          # SPEC-006 P0–P9 (mock; Postgres e2e in postgres-age-tests job)
+make spec020-qc-proof-strict # SPEC-020 E2E (migration-038 + /ready)
+make spec020-qc-proof-full   # SPEC-020 + Ollama required (local prod gate)
 ```
 
-### CD / Docker publication (v0.12.7+)
+GitHub Actions: [`release-gates.yml`](../../.github/workflows/release-gates.yml) (manual + tag preflight), [`ci.yml`](../../.github/workflows/ci.yml) (`observability-proof` job), [`e2e-quality-gates.yml`](../../.github/workflows/e2e-quality-gates.yml) (`spec020-qc`).
+
+### CD / Docker publication (v0.12.8+)
 
 ```bash
-git tag v0.12.7 && git push origin v0.12.7
-# → release-docker.yml publishes ghcr.io/raphaelmansuy/edgequake:{version}
+make release-gates
+git tag v0.12.8 && git push origin v0.12.8
+# → release-docker.yml: preflight gates → GHCR multi-arch images
+# → ghcr.io/raphaelmansuy/edgequake:{version}
 # → ghcr.io/raphaelmansuy/edgequake-frontend:{version}
 # → ghcr.io/raphaelmansuy/edgequake-postgres:{version}
 

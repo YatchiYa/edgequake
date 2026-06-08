@@ -1,0 +1,8 @@
+{
+  "documentId": "bd57908c-cbef-4fe5-b007-57b47dba6af4",
+  "deleteStatus": 200,
+  "afterDelete": {
+    "getStatus": 404,
+    "listed": false
+  }
+}

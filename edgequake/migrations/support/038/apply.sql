@@ -71,7 +71,7 @@ BEGIN
             BEGIN
                 EXECUTE format(
                     'CREATE INDEX IF NOT EXISTS idx_%s_vertex_source_ids_gin ON %I."_ag_label_vertex" '
-                    'USING gin ((ag_catalog.agtype_to_json(properties)->''source_ids''))',
+                    'USING gin ((ag_catalog.agtype_to_json(properties)::jsonb -> ''source_ids'') jsonb_ops)',
                     idx_prefix, graph_schema
                 );
                 RAISE NOTICE '  ✓ vertex source_ids GIN';
@@ -84,7 +84,7 @@ BEGIN
             BEGIN
                 EXECUTE format(
                     'CREATE INDEX IF NOT EXISTS idx_%s_edge_source_ids_gin ON %I."_ag_label_edge" '
-                    'USING gin ((ag_catalog.agtype_to_json(properties)->''source_ids''))',
+                    'USING gin ((ag_catalog.agtype_to_json(properties)::jsonb -> ''source_ids'') jsonb_ops)',
                     idx_prefix, graph_schema
                 );
                 RAISE NOTICE '  ✓ edge source_ids GIN';

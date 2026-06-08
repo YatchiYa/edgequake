@@ -8,15 +8,53 @@ on:
       tag_name:
         description: 'Tag name to publish (e.g. v0.10.7)'
         required: true
-        default: 'v0.12.7'
+        default: 'v0.12.8'
 
 permissions:
   contents: read
   packages: write
 
 jobs:
+  # ── Preflight: fmt, clippy, tests, SPEC-006 + SPEC-018 proofs ─────────────────
+  quality-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: edgequake
+
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install frontend dependencies
+        working-directory: edgequake_webui
+        run: bun install
+
+      - name: Run release gates
+        env:
+          DATABASE_URL: ""
+          POSTGRES_PASSWORD: ""
+          RUST_LOG: warn
+        run: |
+          chmod +x scripts/release_gates.sh
+          ./scripts/release_gates.sh
+
   # ── Extract version once ──────────────────────────────────────────────────────
   meta:
+    needs: quality-gates
     runs-on: ubuntu-latest
     outputs:
       version:  ${{ steps.v.outputs.version }}

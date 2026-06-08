@@ -390,13 +390,10 @@ pub async fn upload_file(
                 "source_chunk_ids".to_string(),
                 serde_json::json!(&entity.source_chunk_ids),
             );
-            // Add tenant scoping
-            if let Some(ref tid) = tenant_id_for_storage {
-                properties.insert("tenant_id".to_string(), serde_json::json!(tid));
-            }
-            properties.insert(
-                "workspace_id".to_string(),
-                serde_json::json!(&workspace_id_for_storage),
+            crate::handlers::documents::storage_helpers::insert_graph_tenant_scope(
+                &mut properties,
+                &tenant_id_for_storage,
+                &workspace_id_for_storage,
             );
 
             // WHY: Normalize entity names to UPPERCASE_UNDERSCORE before storage.
@@ -478,13 +475,10 @@ pub async fn upload_file(
                     serde_json::json!(vec![chunk_id]),
                 );
             }
-            // Add tenant scoping
-            if let Some(ref tid) = tenant_id_for_storage {
-                properties.insert("tenant_id".to_string(), serde_json::json!(tid));
-            }
-            properties.insert(
-                "workspace_id".to_string(),
-                serde_json::json!(&workspace_id_for_storage),
+            crate::handlers::documents::storage_helpers::insert_graph_tenant_scope(
+                &mut properties,
+                &tenant_id_for_storage,
+                &workspace_id_for_storage,
             );
 
             let _ = state

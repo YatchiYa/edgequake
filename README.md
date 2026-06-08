@@ -5,13 +5,13 @@
 > **High-Performance Graph-RAG Framework in Rust**  
 > Transform documents into intelligent knowledge graphs for superior retrieval and generation
 
-[![Version](https://img.shields.io/badge/version-0.12.7-blue.svg?style=flat)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.12.8-blue.svg?style=flat)](CHANGELOG.md)
 [![Rust](https://img.shields.io/badge/rust-1.95+-orange.svg?style=flat&logo=rust)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat)](LICENSE)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg?style=flat)](https://github.com/raphaelmansuy/edgequake)
 [![Documentation](https://img.shields.io/badge/docs-available-blue.svg?style=flat)](docs/README.md)
 
-> **v0.12.7** — SPEC-006 resource safety (P0–P9): bounded graph ops, materialization guard, migration 038, production delivery checklist. SPEC-018 observability: structured logs, metrics, OTLP/Jaeger. See [CHANGELOG](CHANGELOG.md).
+> **v0.12.8** — SPEC-020 full E2E quality control (24 tests), migration-038 auto-repair, graph scope + delete cascade fixes, dev proxy hardening. SPEC-018 observability proofs in release CI. See [CHANGELOG](CHANGELOG.md).
 
 ## Release & CD Cycle
 
@@ -20,25 +20,28 @@ Use this sequence to cut a release with a deterministic quality gate and publish
 ### 1) Local release gates (must pass before tag)
 
 ```bash
+make release-gates          # fmt + clippy (all crates) + resource + observability proofs
+make spec020-qc-proof-strict # SPEC-020 E2E (migration-038 strict)
+make spec020-qc-proof-full    # SPEC-020 + require Ollama (0 skips)
 make stop
 make spec013-proof-pr
 cd edgequake && cargo clippy -p edgequake-pipeline -p edgequake-core -p edgequake-api --all-targets --features postgres -- -D warnings
-cd ../edgequake_webui && pnpm exec tsc --noEmit
+cd ../edgequake_webui && bunx tsc --noEmit -p tsconfig.release.json
 cd .. && make backend-bg frontend-bg && make spec013-proof-ui
 ```
 
 ### 2) CI validation (GitHub Actions)
 
-- `SPEC-013 PR Proof` must be green on the target branch/PR.
-- Core CI workflows (`CI`, `Test Quality Gates`, integration tests) must be green.
+- `Release Gates` workflow must be green (or tag push runs preflight in `release-docker.yml`).
+- `SPEC-013 PR Proof`, `CI`, `Test Quality Gates`, and integration tests must be green.
 - Ignore unrelated external automation failures (for example Dependabot noise) only if all required project gates are green.
 
 ### 3) Cut release (CD publish)
 
 ```bash
 # Example
-git tag v0.12.4
-git push origin v0.12.4
+git tag v0.12.8
+git push origin v0.12.8
 ```
 
 This triggers `.github/workflows/release-docker.yml`, which:
@@ -48,10 +51,10 @@ This triggers `.github/workflows/release-docker.yml`, which:
 ### 4) Post-publish verification
 
 ```bash
-gh release view v0.12.4
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake:0.12.4
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-frontend:0.12.4
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.12.4
+gh release view v0.12.8
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake:0.12.8
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-frontend:0.12.8
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.12.8
 ```
 
 ---

@@ -1,5 +1,14 @@
 import type { NextConfig } from "next";
 
+/** Backend URL for dev rewrites (proxy target — not exposed to browser). */
+function devProxyBackend(): string {
+  const raw =
+    process.env.EDGEQUAKE_API_URL?.trim() ||
+    process.env.NEXT_PUBLIC_API_URL?.trim() ||
+    "http://127.0.0.1:8081";
+  return raw.replace(/\/$/, "");
+}
+
 const nextConfig: NextConfig = {
   // ============================================================================
   // Build Performance Optimization
@@ -31,6 +40,22 @@ const nextConfig: NextConfig = {
     fetches: {
       fullUrl: false,
     },
+  },
+
+  // Dev proxy: browser uses relative /api/v1 (same origin as :3001 UI).
+  // Avoids NEXT_PUBLIC_API_URL port drift when backend auto-selects :8081.
+  async rewrites() {
+    if (process.env.NODE_ENV !== "development") {
+      return [];
+    }
+    const backend = devProxyBackend();
+    return [
+      { source: "/api/:path*", destination: `${backend}/api/:path*` },
+      { source: "/health", destination: `${backend}/health` },
+      { source: "/ready", destination: `${backend}/ready` },
+      { source: "/live", destination: `${backend}/live` },
+      { source: "/ws/:path*", destination: `${backend}/ws/:path*` },
+    ];
   },
 };
 
