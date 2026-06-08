@@ -6,6 +6,18 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.12.10] — 2026-06-08
+
+### Fixed
+
+- **FIX-SYNC-OLLAMA-TIMEOUT** — Synchronous markdown upload uses provider-aware HTTP timeout: 600s for Ollama/LM Studio workspaces (was 120s → 408 in Docker E2E), 120s for cloud/mock. Override via `EDGEQUAKE_SYNC_PROCESSING_TIMEOUT_SECS`. SPEC-020 Playwright client timeout aligned for Ollama workspaces.
+
+### Operations
+
+- **CD:** Tag `v0.12.10` → GHCR multi-arch images + GitHub Release.
+
+---
+
 ## [0.12.9] — 2026-06-08
 
 ### Fixed
