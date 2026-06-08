@@ -76,11 +76,16 @@ async fn audit_worker(pool: Pool<Postgres>, mut receiver: mpsc::UnboundedReceive
     );
 }
 
+/// PostgreSQL `audit_*` enums use PascalCase labels (see migrations/001_init_database.sql).
+fn audit_enum_label<T: std::fmt::Debug>(value: &T) -> String {
+    format!("{value:?}")
+}
+
 /// Write a single audit event to the database
 async fn write_audit_event(pool: &Pool<Postgres>, event: &AuditEvent) -> Result<()> {
-    let event_type = format!("{:?}", event.event_type).to_lowercase();
-    let result = format!("{:?}", event.result).to_lowercase();
-    let severity = format!("{:?}", event.severity).to_lowercase();
+    let event_type = audit_enum_label(&event.event_type);
+    let result = audit_enum_label(&event.result);
+    let severity = audit_enum_label(&event.severity);
 
     sqlx::query(
         r#"
@@ -337,5 +342,25 @@ mod tests {
         let query = AuditQuery::default();
         assert_eq!(query.limit, 100);
         assert!(query.tenant_id.is_none());
+    }
+
+    #[test]
+    fn audit_enum_labels_match_postgres_pascal_case() {
+        use crate::event::{AuditEventType, AuditResult, AuditSeverity};
+
+        assert_eq!(
+            audit_enum_label(&AuditEventType::DocumentUpload),
+            "DocumentUpload"
+        );
+        assert_eq!(
+            audit_enum_label(&AuditEventType::WorkspaceAccess),
+            "WorkspaceAccess"
+        );
+        assert_eq!(
+            audit_enum_label(&AuditEventType::Authorization),
+            "Authorization"
+        );
+        assert_eq!(audit_enum_label(&AuditResult::Success), "Success");
+        assert_eq!(audit_enum_label(&AuditSeverity::Critical), "Critical");
     }
 }
