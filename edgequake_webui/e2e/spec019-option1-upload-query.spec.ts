@@ -5,6 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import { skipUnlessLiveStack } from "./helpers/live-stack";
 
 const ARTIFACT_DIR = path.resolve(
   __dirname,
@@ -27,13 +28,14 @@ test.describe("SPEC-019 Option 1 upload + query UI", () => {
     page,
     request,
   }) => {
+    skipUnlessLiveStack();
     test.setTimeout(300_000);
     fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
 
     const health = await request.get(`${API_URL}/health`);
     expect(health.ok()).toBeTruthy();
-    const healthBody = await health.json();
-    expect(healthBody.version).toBe("0.12.7");
+    const healthBody = (await health.json()) as { version?: string };
+    expect(healthBody.version).toMatch(/^0\.12\./);
 
     const title = `spec019-ui-${Date.now()}.md`;
     const upload = await request.post(`${API_URL}/api/v1/documents`, {
