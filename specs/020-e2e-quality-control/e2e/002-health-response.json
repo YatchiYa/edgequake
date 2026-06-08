@@ -1,0 +1,47 @@
+{
+  "status": "healthy",
+  "version": "0.12.7",
+  "build_info": {
+    "git_hash": "bb1b9955",
+    "git_branch": "edgequake-main",
+    "build_timestamp": "2026-06-08T07:32:04Z",
+    "build_number": "20260608.073204"
+  },
+  "storage_mode": "postgresql",
+  "workspace_id": "default",
+  "components": {
+    "kv_storage": true,
+    "vector_storage": true,
+    "graph_storage": true,
+    "llm_provider": true
+  },
+  "llm_provider_name": "ollama",
+  "schema": {
+    "latest_version": 38,
+    "migrations_applied": 37,
+    "last_applied_at": "2026-06-06T12:53:26.920835+00:00",
+    "source_ids_indexes": {
+      "ready": true,
+      "graphs_checked": 40,
+      "indexes_repaired_at_bootstrap": false
+    }
+  },
+  "providers": {
+    "llm": {
+      "name": "ollama",
+      "model": "gemma4:latest"
+    },
+    "embedding": {
+      "name": "ollama",
+      "model": "embeddinggemma",
+      "dimension": 768
+    }
+  },
+  "pdf_storage_enabled": true,
+  "migration038": {
+    "ready": true,
+    "missingCount": 0,
+    "migrationsApplied": 37,
+    "latestVersion": 38
+  }
+}

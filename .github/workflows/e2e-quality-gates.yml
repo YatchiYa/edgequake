@@ -327,6 +327,85 @@ jobs:
           path: edgequake_webui/e2e_output.json
           retention-days: 7
 
+  # SPEC-020 full quality-control proof (manual release gate)
+  spec020-qc:
+    name: "SPEC-020 QC Proof (24 tests)"
+    runs-on: ubuntu-latest
+    needs: e2e-setup
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: edgequake_test
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download backend
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-binary
+          path: ./backend
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install frontend dependencies
+        working-directory: edgequake_webui
+        run: bun install
+
+      - name: Install Playwright
+        working-directory: edgequake_webui
+        run: bunx playwright install chromium
+
+      - name: Start backend
+        run: |
+          chmod +x ./backend/edgequake
+          DATABASE_URL="postgresql://postgres:postgres@localhost:5432/edgequake_test" \
+          EDGEQUAKE_LLM_PROVIDER=mock \
+          ./backend/edgequake &
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:8080/health >/dev/null 2>&1 && exit 0
+            sleep 2
+          done
+          exit 1
+
+      - name: Start frontend
+        working-directory: edgequake_webui
+        run: |
+          PORT=3001 NEXT_PUBLIC_API_URL=http://localhost:8080 bun run dev &
+          for i in $(seq 1 45); do
+            curl -fsS http://localhost:3001/ >/dev/null 2>&1 && exit 0
+            sleep 2
+          done
+          exit 1
+
+      - name: Run SPEC-020 quality control
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/edgequake_test
+        run: |
+          chmod +x specs/020-e2e-quality-control/e2e/run_quality_control_proof.sh
+          EQ_BACKEND_URL=http://localhost:8080 BACKEND_PORT=8080 FRONTEND_PORT=3001 \
+            SPEC020_STRICT_MIGRATION=1 \
+            ./specs/020-e2e-quality-control/e2e/run_quality_control_proof.sh
+
+      - name: Upload SPEC-020 artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spec020-qc-artifacts
+          path: specs/020-e2e-quality-control/e2e/
+          retention-days: 7
+
   # E2E summary
   e2e-summary:
     name: E2E Quality Summary

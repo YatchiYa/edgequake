@@ -861,7 +861,7 @@ backend-fmt: ## Format backend code
 
 frontend-dev: ## Start frontend development server
 	@echo "$(BLUE)Starting frontend development server on port $(FRONTEND_PORT)...$(RESET)"
-	@cd $(FRONTEND_DIR) && PORT="$(FRONTEND_PORT)" NEXT_PUBLIC_API_URL="$(BACKEND_URL)" NEXT_PUBLIC_AUTH_ENABLED="$(DEV_AUTH_ENABLED)" NEXT_PUBLIC_DISABLE_DEMO_LOGIN="$(DEV_DISABLE_DEMO_LOGIN)" sh -c '(pnpm run dev 2>/dev/null || bun run dev)'
+	@cd $(FRONTEND_DIR) && PORT="$(FRONTEND_PORT)" EDGEQUAKE_API_URL="$(BACKEND_URL)" NEXT_PUBLIC_API_URL="$(BACKEND_URL)" NEXT_PUBLIC_AUTH_ENABLED="$(DEV_AUTH_ENABLED)" NEXT_PUBLIC_DISABLE_DEMO_LOGIN="$(DEV_DISABLE_DEMO_LOGIN)" sh -c '(pnpm run dev 2>/dev/null || bun run dev)'
 
 frontend-bg: ## Start frontend development server in background
 	@if curl -fsS "$(FRONTEND_URL)" 2>/dev/null | grep -qi 'EdgeQuake'; then \
@@ -872,6 +872,7 @@ frontend-bg: ## Start frontend development server in background
 	@printf '%s\n' "#!/bin/bash" > /tmp/edgequake-frontend-start.sh
 	@printf '%s\n' "cd $(FRONTEND_DIR)" >> /tmp/edgequake-frontend-start.sh
 	@printf '%s\n' "export PORT=\"$(FRONTEND_PORT)\"" >> /tmp/edgequake-frontend-start.sh
+	@printf '%s\n' "export EDGEQUAKE_API_URL=\"$(BACKEND_URL)\"" >> /tmp/edgequake-frontend-start.sh
 	@printf '%s\n' "export NEXT_PUBLIC_API_URL=\"$(BACKEND_URL)\"" >> /tmp/edgequake-frontend-start.sh
 	@printf '%s\n' "export NEXT_PUBLIC_AUTH_ENABLED=\"$(DEV_AUTH_ENABLED)\"" >> /tmp/edgequake-frontend-start.sh
 	@printf '%s\n' "export NEXT_PUBLIC_DISABLE_DEMO_LOGIN=\"$(DEV_DISABLE_DEMO_LOGIN)\"" >> /tmp/edgequake-frontend-start.sh
@@ -1856,7 +1857,7 @@ logs: ## Show recent logs from all services
 	@echo "$(BOLD)Docker Container Status:$(RESET)"
 	@cd $(DOCKER_DIR) && docker compose ps 2>/dev/null || echo "Docker not running"
 
-.PHONY: observability-proof observability-jaeger resource-proof resource-proof-postgres
+.PHONY: spec020-qc-proof observability-proof observability-jaeger resource-proof resource-proof-postgres release-gates
 
 resource-proof: ## Run SPEC-006 resource safety proof suite (mock; no Postgres required)
 	@chmod +x specifications/006-ensure-perf/e2e/run_resource_proof.sh scripts/spec006_no_get_all_api.sh scripts/spec006_budget_catalog_sync.sh scripts/spec006_source_ids_migration.sh scripts/spec006_no_unguarded_community_api.sh scripts/spec006_no_adhoc_resource_budget.sh scripts/spec006_apply_migration_038.sh edgequake/scripts/migrations/apply_038.sh
@@ -1876,6 +1877,26 @@ resource-proof-postgres: test-postgres-start ## SPEC-006 battle test with live P
 		DATABASE_URL="postgresql://edgequake_test:test_password_123@localhost:5433/edgequake_test" \
 		./specifications/006-ensure-perf/e2e/run_resource_proof.sh
 	@echo "$(GREEN)✓ SPEC-006 resource-proof-postgres complete$(RESET)"
+
+spec020-qc-proof: ## SPEC-020 full Playwright quality-control E2E (screenshots + proof)
+	@chmod +x specs/020-e2e-quality-control/e2e/run_quality_control_proof.sh
+	@./specs/020-e2e-quality-control/e2e/run_quality_control_proof.sh
+
+spec020-qc-proof-strict: ## SPEC-020 prod gate (migration-038 + /ready strict)
+	@chmod +x specs/020-e2e-quality-control/e2e/run_quality_control_proof.sh
+	@SPEC020_STRICT_MIGRATION=1 ./specs/020-e2e-quality-control/e2e/run_quality_control_proof.sh
+
+spec020-qc-proof-full: ## SPEC-020 full prod gate (strict migration + require Ollama)
+	@chmod +x specs/020-e2e-quality-control/e2e/run_quality_control_proof.sh
+	@SPEC020_STRICT_MIGRATION=1 SPEC020_REQUIRE_OLLAMA=1 ./specs/020-e2e-quality-control/e2e/run_quality_control_proof.sh
+
+spec020-qc-proof-auth: ## SPEC-020 auth-enabled login proof (DEV_AUTH_ENABLED=true)
+	@chmod +x specs/020-e2e-quality-control/e2e/run_quality_control_proof.sh
+	@SPEC020_AUTH_PROOF=1 ./specs/020-e2e-quality-control/e2e/run_quality_control_proof.sh
+
+release-gates: ## Pre-release gate: fmt, per-crate clippy, tests, SPEC-006 + SPEC-018 proofs
+	@chmod +x scripts/release_gates.sh
+	@./scripts/release_gates.sh
 
 observability-proof: ## Run SPEC-018 observability proof suite (Rust + WebUI)
 	@./specs/018-observability/e2e/run_observability_proof.sh

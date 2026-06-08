@@ -6,7 +6,34 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-## [0.12.7] — 2026-06-06
+## [0.12.8] — 2026-06-08
+
+### Added
+
+- **SPEC-020 full E2E quality control** — 24 Playwright tests with DRY helpers (`qc-*`), proof runner (`specs/020-e2e-quality-control/e2e/run_quality_control_proof.sh`), migration-038 auto-repair (`ensure_migration_038.sh`), strict/full/auth proof Makefile targets (`spec020-qc-proof-strict`, `spec020-qc-proof-full`, `spec020-qc-proof-auth`). CI job `spec020-qc` in `e2e-quality-gates.yml`.
+- **Release gates** — `make release-gates` + `.github/workflows/release-gates.yml` (fmt, per-crate clippy, tests, SPEC-006 resource proof, SPEC-018 observability proof). Tag builds in `release-docker.yml` wait on preflight gates.
+- **WebUI runtime-config tests** — dev proxy uses relative `/api/v1`; production uses `EDGEQUAKE_API_URL`.
+
+### Fixed
+
+- **FIX-SPEC020** — Sync markdown/file upload now scopes graph nodes with `workspace_id` / `tenant_id` (workspace stats `entity_count` was 0).
+- **FIX-MIG038-GIN** — Migration 038 GIN indexes cast `agtype_to_json` → `::jsonb` with `jsonb_ops` (indexes were silently failing on `json` type).
+- **FIX-SPEC020-CASCADE** — Document DELETE cascade: source-prefix scan casts to `jsonb` (was 500: `jsonb_typeof(json) does not exist`).
+- **FIX-METRICS** — `workspace_metrics_history.workspace_id` bound as UUID, not text.
+- **FIX-AUDIT-INET** — Audit log `ip_address` uses `$13::inet` SQL cast.
+- **FIX-DEV-PROXY** — Next.js dev rewrites + empty `apiUrl` in development; proof runner verifies frontend proxy matches backend version.
+
+### Changed
+
+- **Migration bootstrap** — Asserts embedded migration-038 SQL contains `::jsonb` + `jsonb_ops`.
+- **E2E helpers** — `guardOllamaAvailability`, graph search (SARAH), empty graph search edge case, auth login proof path.
+
+### Operations
+
+- **CD:** Tag `v0.12.8` → `release-docker.yml` preflight gates → GHCR multi-arch images + GitHub Release.
+- **CI:** `release-gates.yml`, `observability-proof` in main CI, `SPEC020_STRICT_MIGRATION=1` on spec020-qc job.
+
+---
 
 ### Added
 

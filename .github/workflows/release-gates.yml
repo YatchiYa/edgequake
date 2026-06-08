@@ -1,0 +1,65 @@
+name: Release Gates
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main, edgequake-main]
+    paths:
+      - 'edgequake/**'
+      - 'edgequake_webui/**'
+      - 'Makefile'
+      - 'scripts/release_gates.sh'
+      - '.github/workflows/release-gates.yml'
+  push:
+    branches: [main, edgequake-main]
+    paths:
+      - 'edgequake/**'
+      - 'edgequake_webui/**'
+      - 'Makefile'
+      - 'scripts/release_gates.sh'
+
+concurrency:
+  group: release-gates-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUST_TOOLCHAIN: 1.95.0
+  CARGO_TERM_COLOR: always
+
+jobs:
+  gates:
+    name: Pre-release quality gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: edgequake
+
+      - name: Install ripgrep (resource-proof scripts)
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install frontend dependencies
+        working-directory: edgequake_webui
+        run: bun install
+
+      - name: Run release gates
+        env:
+          DATABASE_URL: ""
+          POSTGRES_PASSWORD: ""
+          RUST_LOG: warn
+        run: |
+          chmod +x scripts/release_gates.sh
+          ./scripts/release_gates.sh

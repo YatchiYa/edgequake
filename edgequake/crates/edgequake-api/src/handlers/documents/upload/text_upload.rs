@@ -16,7 +16,7 @@ use edgequake_pipeline::normalize_entity_name;
 #[allow(unused_imports)]
 use crate::handlers::documents::storage_helpers::get_workspace_vector_storage_with_fallback;
 use crate::handlers::documents::storage_helpers::{
-    delete_document_for_reingestion, get_workspace_vector_storage_strict,
+    delete_document_for_reingestion, get_workspace_vector_storage_strict, insert_graph_tenant_scope,
 };
 use crate::handlers::documents_types::*;
 
@@ -479,6 +479,11 @@ pub async fn upload_document(
                     "source_chunk_ids".to_string(),
                     serde_json::json!(&entity.source_chunk_ids),
                 );
+                insert_graph_tenant_scope(
+                    &mut properties,
+                    &tenant_id_for_storage,
+                    &workspace_id_for_storage,
+                );
 
                 // WHY: Normalize entity names to UPPERCASE_UNDERSCORE before storage.
                 // Without this, variants like "Systems Thinking" and "systems thinking"
@@ -568,6 +573,11 @@ pub async fn upload_document(
                         serde_json::json!(vec![chunk_id]),
                     );
                 }
+                insert_graph_tenant_scope(
+                    &mut properties,
+                    &tenant_id_for_storage,
+                    &workspace_id_for_storage,
+                );
 
                 state
                     .storage

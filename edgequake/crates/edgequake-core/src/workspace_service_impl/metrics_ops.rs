@@ -28,7 +28,7 @@ impl WorkspaceServiceImpl {
         struct SnapshotRow {
             id: Uuid,
             #[allow(dead_code)]
-            workspace_id: String,
+            workspace_id: Uuid,
             recorded_at: chrono::DateTime<chrono::Utc>,
             trigger_type: String,
             document_count: i64,
@@ -52,7 +52,7 @@ impl WorkspaceServiceImpl {
                       embedding_count, storage_bytes
             "#,
         )
-        .bind(workspace_id.to_string())
+        .bind(workspace_id)
         .bind(trigger_type.as_str())
         .bind(stats.document_count as i64)
         .bind(stats.chunk_count as i64)
@@ -91,7 +91,7 @@ impl WorkspaceServiceImpl {
         struct HistoryRow {
             id: Uuid,
             #[allow(dead_code)]
-            workspace_id: String,
+            workspace_id: Uuid,
             recorded_at: chrono::DateTime<chrono::Utc>,
             trigger_type: String,
             document_count: i64,
@@ -113,7 +113,7 @@ impl WorkspaceServiceImpl {
             LIMIT $2 OFFSET $3
             "#,
         )
-        .bind(workspace_id.to_string())
+        .bind(workspace_id)
         .bind(limit as i64)
         .bind(offset as i64)
         .fetch_all(&self.pool)
