@@ -601,6 +601,41 @@ pub fn vision_outer_timeout_secs(provider_name: &str, page_count: usize) -> u64 
     computed.min(VISION_MAX_OUTER_TIMEOUT_SECS)
 }
 
+/// Default HTTP timeout for synchronous markdown/text upload processing (cloud/mock).
+pub const DEFAULT_SYNC_PROCESSING_TIMEOUT_SECS: u64 = 120;
+
+/// HTTP timeout for synchronous upload when workspace uses Ollama or LM Studio.
+///
+/// WHY: Local LLM extraction + embedding commonly exceeds 120 s (especially
+/// Docker → host Ollama). SPEC-020 Ollama proofs hit 408 at 120 s on v0.12.9.
+pub const LOCAL_SYNC_PROCESSING_TIMEOUT_SECS: u64 = 600;
+
+/// Returns `true` for local inference servers that need longer sync upload windows.
+pub fn is_slow_local_provider(provider_name: &str) -> bool {
+    matches!(
+        provider_name.to_ascii_lowercase().as_str(),
+        "ollama" | "lmstudio" | "lm-studio" | "lm_studio"
+    )
+}
+
+/// HTTP-level timeout for synchronous document upload (`async_processing: false`).
+///
+/// Reads `EDGEQUAKE_SYNC_PROCESSING_TIMEOUT_SECS` first (global override).
+/// Falls back to [`LOCAL_SYNC_PROCESSING_TIMEOUT_SECS`] for Ollama/LM Studio,
+/// [`DEFAULT_SYNC_PROCESSING_TIMEOUT_SECS`] for cloud and mock providers.
+pub fn sync_processing_timeout_secs(provider_name: &str) -> u64 {
+    if let Ok(val) = std::env::var("EDGEQUAKE_SYNC_PROCESSING_TIMEOUT_SECS") {
+        if let Ok(n) = val.parse::<u64>() {
+            return n.max(30);
+        }
+    }
+    if is_slow_local_provider(provider_name) {
+        LOCAL_SYNC_PROCESSING_TIMEOUT_SECS
+    } else {
+        DEFAULT_SYNC_PROCESSING_TIMEOUT_SECS
+    }
+}
+
 /// Returns the per-page LLM call timeout for vision/OCR requests.
 ///
 /// Reads `EDGEQUAKE_VISION_PAGE_TIMEOUT_SECS` first; falls back to:
@@ -767,5 +802,47 @@ pub fn default_model_for_provider(provider_name: &str) -> &'static str {
         "minimax" => "MiniMax-M2.7",
         "mock" => "mock-model",
         _ => "gpt-4.1-nano",
+    }
+}
+
+#[cfg(test)]
+mod sync_timeout_tests {
+    use super::*;
+    use serial_test::serial;
+
+    #[test]
+    #[serial]
+    fn sync_timeout_ollama_uses_extended_default() {
+        std::env::remove_var("EDGEQUAKE_SYNC_PROCESSING_TIMEOUT_SECS");
+        assert_eq!(
+            sync_processing_timeout_secs("ollama"),
+            LOCAL_SYNC_PROCESSING_TIMEOUT_SECS
+        );
+        assert_eq!(
+            sync_processing_timeout_secs("LMStudio"),
+            LOCAL_SYNC_PROCESSING_TIMEOUT_SECS
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn sync_timeout_mock_uses_cloud_default() {
+        std::env::remove_var("EDGEQUAKE_SYNC_PROCESSING_TIMEOUT_SECS");
+        assert_eq!(
+            sync_processing_timeout_secs("mock"),
+            DEFAULT_SYNC_PROCESSING_TIMEOUT_SECS
+        );
+        assert_eq!(
+            sync_processing_timeout_secs("openai"),
+            DEFAULT_SYNC_PROCESSING_TIMEOUT_SECS
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn sync_timeout_env_override_wins() {
+        std::env::set_var("EDGEQUAKE_SYNC_PROCESSING_TIMEOUT_SECS", "900");
+        assert_eq!(sync_processing_timeout_secs("ollama"), 900);
+        std::env::remove_var("EDGEQUAKE_SYNC_PROCESSING_TIMEOUT_SECS");
     }
 }
