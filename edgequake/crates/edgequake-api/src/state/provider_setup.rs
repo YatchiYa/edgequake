@@ -272,6 +272,99 @@ pub fn apply_chat_env_aliases() {
     }
 }
 
+/// Returns true when the process runs inside a Docker container.
+fn is_running_in_docker() -> bool {
+    std::path::Path::new("/.dockerenv").exists()
+        || std::env::var("EDGEQUAKE_IN_DOCKER").is_ok_and(|value| {
+            !value.trim().is_empty()
+                && value != "0"
+                && !value.eq_ignore_ascii_case("false")
+        })
+}
+
+/// Rewrite loopback hostnames in a provider URL to `host.docker.internal`.
+///
+/// WHY: `localhost` / `127.x.x.x` inside a container refers to the container itself,
+/// not the host where Ollama/LM Studio runs. Workspace-scoped providers use the same
+/// `OLLAMA_HOST` env var as the server default (`ProviderFactory::create_llm_provider`).
+fn rewrite_loopback_host_for_docker(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let mut parsed = url::Url::parse(trimmed).ok()?;
+    let host = parsed.host_str()?;
+    let is_loopback =
+        host.eq_ignore_ascii_case("localhost") || host.starts_with("127.");
+    if !is_loopback {
+        return None;
+    }
+
+    parsed.set_host(Some("host.docker.internal")).ok()?;
+    Some(parsed.to_string())
+}
+
+/// Normalize local LLM provider host env vars for Docker networking.
+///
+/// Must run BEFORE `ProviderFactory::from_env()` and any workspace provider creation
+/// so every Ollama/LM Studio client (server default + per-workspace pipeline) shares
+/// the same host resolution semantics.
+pub fn normalize_local_provider_hosts_for_docker() {
+    if !is_running_in_docker() {
+        return;
+    }
+
+    const OLLAMA_DEFAULT: &str = "http://localhost:11434";
+    const LMSTUDIO_DEFAULT: &str = "http://localhost:1234";
+    const DOCKER_OLLAMA: &str = "http://host.docker.internal:11434";
+    const DOCKER_LMSTUDIO: &str = "http://host.docker.internal:1234";
+
+    let ollama_raw = std::env::var("OLLAMA_HOST").unwrap_or_else(|_| OLLAMA_DEFAULT.to_string());
+    if let Some(rewritten) = rewrite_loopback_host_for_docker(&ollama_raw) {
+        tracing::info!(
+            env_var = "OLLAMA_HOST",
+            from = %ollama_raw,
+            to = %rewritten,
+            "Rewrote loopback Ollama host for Docker"
+        );
+        std::env::set_var("OLLAMA_HOST", &rewritten);
+    } else if std::env::var("OLLAMA_HOST").is_err() {
+        tracing::info!(
+            env_var = "OLLAMA_HOST",
+            to = DOCKER_OLLAMA,
+            "Set default Ollama host for Docker (factory fallback is container localhost)"
+        );
+        std::env::set_var("OLLAMA_HOST", DOCKER_OLLAMA);
+    }
+
+    if let Ok(raw) = std::env::var("OLLAMA_EMBEDDING_HOST") {
+        if let Some(rewritten) = rewrite_loopback_host_for_docker(&raw) {
+            tracing::info!(
+                env_var = "OLLAMA_EMBEDDING_HOST",
+                from = %raw,
+                to = %rewritten,
+                "Rewrote loopback Ollama embedding host for Docker"
+            );
+            std::env::set_var("OLLAMA_EMBEDDING_HOST", rewritten);
+        }
+    }
+
+    let lmstudio_raw =
+        std::env::var("LMSTUDIO_HOST").unwrap_or_else(|_| LMSTUDIO_DEFAULT.to_string());
+    if let Some(rewritten) = rewrite_loopback_host_for_docker(&lmstudio_raw) {
+        tracing::info!(
+            env_var = "LMSTUDIO_HOST",
+            from = %lmstudio_raw,
+            to = %rewritten,
+            "Rewrote loopback LM Studio host for Docker"
+        );
+        std::env::set_var("LMSTUDIO_HOST", &rewritten);
+    } else if std::env::var("LMSTUDIO_HOST").is_err() {
+        std::env::set_var("LMSTUDIO_HOST", DOCKER_LMSTUDIO);
+    }
+}
+
 /// Resolve the embedding model name for a named provider.
 ///
 /// # Priority (First Principle: most-specific wins)
@@ -624,5 +717,25 @@ mod tests {
             "Env override must win over well-known table"
         );
         std::env::remove_var("EDGEQUAKE_EMBEDDING_DIMENSION");
+    }
+
+    #[test]
+    fn rewrite_loopback_host_for_docker_localhost() {
+        let rewritten =
+            rewrite_loopback_host_for_docker("http://localhost:11434").expect("rewritten");
+        assert_eq!(rewritten, "http://host.docker.internal:11434/");
+    }
+
+    #[test]
+    fn rewrite_loopback_host_for_docker_127() {
+        let rewritten =
+            rewrite_loopback_host_for_docker("http://127.0.0.1:1234").expect("rewritten");
+        assert_eq!(rewritten, "http://host.docker.internal:1234/");
+    }
+
+    #[test]
+    fn rewrite_loopback_host_for_docker_remote_unchanged() {
+        assert!(rewrite_loopback_host_for_docker("http://my-gpu:11434").is_none());
+        assert!(rewrite_loopback_host_for_docker("http://host.docker.internal:11434").is_none());
     }
 }
