@@ -113,10 +113,12 @@ export async function syncUploadMarkdown(
   entityCount: number;
   status: string;
 }> {
+  // Ollama/LM Studio sync uploads use 600s server timeout (v0.12.10+); mock stays 120s.
+  const uploadTimeoutMs = ctx.llmProvider === "ollama" ? 660_000 : 180_000;
   const upload = await request.post(`${BACKEND_URL}/api/v1/documents`, {
     headers: tenantHeaders(ctx.tenantId, ctx.workspaceId),
     data: { title, content, async_processing: false },
-    timeout: 180_000,
+    timeout: uploadTimeoutMs,
   });
   expect([200, 201]).toContain(upload.status());
   const body = (await upload.json()) as {

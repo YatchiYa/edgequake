@@ -276,29 +276,25 @@ pub async fn upload_document(
             .create_workspace_pipeline(&workspace_id_for_storage)
             .await;
 
-        // OODA-01: Add HTTP-level timeout to prevent indefinite hangs
-        // WHY: Large documents (100KB+) can take 5-10 minutes to process,
-        // but HTTP clients expect responses within 60-120 seconds.
-        // Without this timeout, requests hang indefinitely causing poor UX.
-        //
-        // Timeout Strategy:
-        // - 120 seconds (2 minutes): Conservative limit for synchronous mode
-        // - For larger documents, users should use async_processing: true
-        // - Timeout applies to ENTIRE pipeline, not just individual LLM calls
-        //
-        // See: specs/002-bullet-proof-ingestion-process.md
-        const SYNC_PROCESSING_TIMEOUT_SECS: u64 = 120;
+        let sync_llm_provider =
+            resolve_workspace_llm_provider_name(&state, &workspace_id_for_storage).await;
+        let sync_processing_timeout_secs =
+            crate::safety_limits::sync_processing_timeout_secs(&sync_llm_provider);
 
+        // OODA-01: Add HTTP-level timeout to prevent indefinite hangs.
+        // Provider-aware: Ollama/LM Studio get 600 s (Docker→host latency); cloud/mock 120 s.
+        // Override globally via EDGEQUAKE_SYNC_PROCESSING_TIMEOUT_SECS.
         let processing_start = std::time::Instant::now();
         debug!(
             document_id = %document_id,
             content_length = request.content.len(),
-            timeout_secs = SYNC_PROCESSING_TIMEOUT_SECS,
+            llm_provider = %sync_llm_provider,
+            timeout_secs = sync_processing_timeout_secs,
             "Starting synchronous document processing"
         );
 
         let result = tokio::time::timeout(
-            std::time::Duration::from_secs(SYNC_PROCESSING_TIMEOUT_SECS),
+            std::time::Duration::from_secs(sync_processing_timeout_secs),
             // SPEC-003: Use resilient processing with chunk-level error isolation
             // WHY: Map-reduce pattern continues processing even if some chunks fail
             workspace_pipeline.process_with_resilience(&document_id, &request.content, None),
@@ -308,16 +304,18 @@ pub async fn upload_document(
             let processing_time = processing_start.elapsed();
             warn!(
                 document_id = %document_id,
-                timeout_secs = SYNC_PROCESSING_TIMEOUT_SECS,
+                llm_provider = %sync_llm_provider,
+                timeout_secs = sync_processing_timeout_secs,
                 processing_time_secs = processing_time.as_secs(),
                 content_length = request.content.len(),
                 "Document processing timeout - consider using async mode for large documents"
             );
             ApiError::Timeout(format!(
-                "Document processing exceeded {} seconds. For large documents (>50KB), \
+                "Document processing exceeded {} seconds (provider: {}). For large documents (>50KB), \
                  use async_processing: true to avoid timeouts. \
                  Current document size: {} bytes",
-                SYNC_PROCESSING_TIMEOUT_SECS,
+                sync_processing_timeout_secs,
+                sync_llm_provider,
                 request.content.len()
             ))
         })??;
@@ -755,4 +753,14 @@ pub async fn upload_document(
             }),
         ))
     }
+}
+
+/// Resolve workspace LLM provider for sync-upload timeout selection.
+async fn resolve_workspace_llm_provider_name(state: &AppState, workspace_id: &str) -> String {
+    if let Some(workspace_uuid) = crate::middleware::resolve_workspace_uuid(Some(workspace_id)) {
+        if let Ok(Some(ws)) = state.workspace_service.get_workspace(workspace_uuid).await {
+            return ws.llm_provider;
+        }
+    }
+    state.query.llm_provider.name().to_string()
 }

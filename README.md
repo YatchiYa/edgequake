@@ -5,13 +5,13 @@
 > **High-Performance Graph-RAG Framework in Rust**  
 > Transform documents into intelligent knowledge graphs for superior retrieval and generation
 
-[![Version](https://img.shields.io/badge/version-0.12.9-blue.svg?style=flat)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.12.10-blue.svg?style=flat)](CHANGELOG.md)
 [![Rust](https://img.shields.io/badge/rust-1.95+-orange.svg?style=flat&logo=rust)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat)](LICENSE)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg?style=flat)](https://github.com/raphaelmansuy/edgequake)
 [![Documentation](https://img.shields.io/badge/docs-available-blue.svg?style=flat)](docs/README.md)
 
-> **v0.12.9** — Docker Ollama workspace fix (loopback → host.docker.internal), audit enum PascalCase fix. See [CHANGELOG](CHANGELOG.md).
+> **v0.12.10** — Ollama sync upload timeout (600s), Docker networking + audit enum fixes. See [CHANGELOG](CHANGELOG.md).
 
 ## Release & CD Cycle
 
@@ -40,8 +40,8 @@ cd .. && make backend-bg frontend-bg && make spec013-proof-ui
 
 ```bash
 # Example
-git tag v0.12.9
-git push origin v0.12.9
+git tag v0.12.10
+git push origin v0.12.10
 ```
 
 This triggers `.github/workflows/release-docker.yml`, which:
@@ -51,10 +51,10 @@ This triggers `.github/workflows/release-docker.yml`, which:
 ### 4) Post-publish verification
 
 ```bash
-gh release view v0.12.9
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake:0.12.9
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-frontend:0.12.9
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.12.9
+gh release view v0.12.10
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake:0.12.10
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-frontend:0.12.10
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.12.10
 ```
 
 ---
