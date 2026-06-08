@@ -276,9 +276,7 @@ pub fn apply_chat_env_aliases() {
 fn is_running_in_docker() -> bool {
     std::path::Path::new("/.dockerenv").exists()
         || std::env::var("EDGEQUAKE_IN_DOCKER").is_ok_and(|value| {
-            !value.trim().is_empty()
-                && value != "0"
-                && !value.eq_ignore_ascii_case("false")
+            !value.trim().is_empty() && value != "0" && !value.eq_ignore_ascii_case("false")
         })
 }
 
@@ -295,8 +293,7 @@ fn rewrite_loopback_host_for_docker(raw: &str) -> Option<String> {
 
     let mut parsed = url::Url::parse(trimmed).ok()?;
     let host = parsed.host_str()?;
-    let is_loopback =
-        host.eq_ignore_ascii_case("localhost") || host.starts_with("127.");
+    let is_loopback = host.eq_ignore_ascii_case("localhost") || host.starts_with("127.");
     if !is_loopback {
         return None;
     }
