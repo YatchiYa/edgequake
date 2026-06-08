@@ -78,6 +78,40 @@ pub(crate) fn metadata_matches_tenant_context(
     stored_workspace_id == ctx_workspace_id
 }
 
+/// Attach tenant/workspace scope to graph node or edge properties (BR0201).
+///
+/// WHY: Workspace stats (`node_count_by_workspace`) filter AGE nodes by
+/// `workspace_id`. Sync text upload must set this on every graph write.
+pub(crate) fn insert_graph_tenant_scope(
+    properties: &mut std::collections::HashMap<String, serde_json::Value>,
+    tenant_id: &Option<String>,
+    workspace_id: &str,
+) {
+    if let Some(ref tid) = tenant_id {
+        properties.insert("tenant_id".to_string(), serde_json::json!(tid));
+    }
+    properties.insert("workspace_id".to_string(), serde_json::json!(workspace_id));
+}
+
+#[cfg(test)]
+mod graph_scope_tests {
+    use super::insert_graph_tenant_scope;
+
+    #[test]
+    fn insert_graph_tenant_scope_sets_workspace_and_tenant() {
+        let mut props = std::collections::HashMap::new();
+        insert_graph_tenant_scope(&mut props, &Some("tenant-abc".to_string()), "workspace-xyz");
+        assert_eq!(
+            props.get("workspace_id").and_then(|v| v.as_str()),
+            Some("workspace-xyz")
+        );
+        assert_eq!(
+            props.get("tenant_id").and_then(|v| v.as_str()),
+            Some("tenant-abc")
+        );
+    }
+}
+
 fn task_references_document(task: &edgequake_tasks::Task, document_id: &str) -> bool {
     task.task_data
         .get("existing_document_id")

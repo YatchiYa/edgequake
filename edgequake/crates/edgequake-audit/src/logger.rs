@@ -99,7 +99,7 @@ async fn write_audit_event(pool: &Pool<Postgres>, event: &AuditEvent) -> Result<
             $6::audit_event_type, $7, $8,
             $9, $10,
             $11::audit_result, $12::audit_severity,
-            $13, $14, $15, $16,
+            $13::inet, $14, $15, $16,
             $17, $18,
             $19, $20
         )

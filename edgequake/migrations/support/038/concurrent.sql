@@ -35,7 +35,7 @@ WHERE to_regclass(format('%I._ag_label_vertex', g.name)) IS NOT NULL
 
 SELECT format(
     'CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_%s_vertex_source_ids_gin ON %I."_ag_label_vertex" '
-    'USING gin ((ag_catalog.agtype_to_json(properties)->''source_ids''));',
+    'USING gin ((ag_catalog.agtype_to_json(properties)::jsonb -> ''source_ids'') jsonb_ops);',
     replace(g.name, '.', '_'), g.name
 )
 FROM ag_catalog.ag_graph g
@@ -44,7 +44,7 @@ WHERE to_regclass(format('%I._ag_label_vertex', g.name)) IS NOT NULL
 
 SELECT format(
     'CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_%s_edge_source_ids_gin ON %I."_ag_label_edge" '
-    'USING gin ((ag_catalog.agtype_to_json(properties)->''source_ids''));',
+    'USING gin ((ag_catalog.agtype_to_json(properties)::jsonb -> ''source_ids'') jsonb_ops);',
     replace(g.name, '.', '_'), g.name
 )
 FROM ag_catalog.ag_graph g

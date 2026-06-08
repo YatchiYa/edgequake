@@ -207,6 +207,8 @@ impl PostgresAGEGraphStorage {
     }
 
     fn build_source_prefix_clause(props_expr: &str, source_prefixes: &[String]) -> String {
+        // agtype_to_json returns json; jsonb_* functions require jsonb (FIX-SPEC020-CASCADE).
+        let props = format!("({props_expr})::jsonb");
         let mut conditions = Vec::new();
         for prefix in source_prefixes {
             let esc = Self::escape_sql_string(prefix);
@@ -226,7 +228,7 @@ impl PostgresAGEGraphStorage {
                      ) src
                      WHERE src LIKE '{esc}%' OR src LIKE '{chunk}%' OR src = '{esc}'
                  ))",
-                props = props_expr,
+                props = props,
                 esc = esc,
                 chunk = chunk
             ));
@@ -402,5 +404,24 @@ impl PostgresAGEGraphStorage {
                 properties,
             }
         }))
+    }
+}
+
+#[cfg(test)]
+mod source_prefix_clause_tests {
+    use super::PostgresAGEGraphStorage;
+
+    #[test]
+    fn source_prefix_clause_casts_agtype_json_to_jsonb() {
+        let clause = PostgresAGEGraphStorage::build_source_prefix_clause(
+            "ag_catalog.agtype_to_json(v.properties)",
+            &["doc-abc".to_string()],
+        );
+        assert!(
+            clause.contains("::jsonb"),
+            "jsonb_* functions require jsonb cast: {clause}"
+        );
+        assert!(clause.contains("jsonb_typeof"));
+        assert!(clause.contains("jsonb_array_elements_text"));
     }
 }

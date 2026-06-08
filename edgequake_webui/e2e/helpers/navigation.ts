@@ -5,6 +5,8 @@
 import type { Page } from "@playwright/test";
 import { GOTO_OPTS, waitForAppReady } from "./app-ready";
 
+export { GOTO_OPTS };
+
 /** Navigate to an app route using Playwright's configured baseURL. */
 export async function gotoApp(
   page: Page,
