@@ -6,6 +6,19 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.12.9] — 2026-06-08
+
+### Fixed
+
+- **FIX-AUDIT-ENUM** — Audit logger inserts PascalCase enum labels (`DocumentUpload`, `WorkspaceAccess`, …) matching Postgres `audit_event_type` / `audit_result` / `audit_severity`. Lowercase writes (`documentupload`) caused silent insert failures.
+- **FIX-DOCKER-OLLAMA** — At startup inside Docker, `normalize_local_provider_hosts_for_docker()` rewrites loopback `OLLAMA_HOST` / `OLLAMA_EMBEDDING_HOST` / `LMSTUDIO_HOST` (`localhost`, `127.x.x.x`) to `host.docker.internal` and sets a Docker-safe default when unset. Fixes workspace-scoped Ollama pipelines hitting `http://localhost:11434` inside the API container (SPEC-020 tests 10, 19, 22 on GHCR images).
+
+### Operations
+
+- **CD:** Tag `v0.12.9` → `release-docker.yml` preflight gates → GHCR multi-arch images + GitHub Release.
+
+---
+
 ## [0.12.8] — 2026-06-08
 
 ### Added
