@@ -12,7 +12,9 @@ use edgequake_audit::{AuditEventType, AuditResult};
 
 use crate::error::{ApiError, ApiResult};
 use crate::middleware::TenantContext;
-use crate::services::record_compliance_event;
+use crate::services::{
+    record_compliance_event, recycle_orphan_workspace_pdf, workspace_has_visible_document_for_pdf,
+};
 use crate::state::AppState;
 use edgequake_pdf::PdfParserBackend;
 use edgequake_storage::{
@@ -382,11 +384,26 @@ async fn process_pdf_upload_parts(
         }
     }
 
-    if let Some(existing) = pdf_storage
+    let mut existing_pdf = pdf_storage
         .find_pdf_by_checksum(&workspace_id, &checksum)
         .await
-        .map_err(|e| ApiError::Internal(format!("Failed to check for duplicates: {}", e)))?
-    {
+        .map_err(|e| ApiError::Internal(format!("Failed to check for duplicates: {}", e)))?;
+
+    if let Some(ref existing) = existing_pdf {
+        let is_visible_duplicate =
+            workspace_has_visible_document_for_pdf(state, context, existing).await?;
+        if !is_visible_duplicate {
+            info!(
+                pdf_id = %existing.pdf_id,
+                workspace_id = %workspace_id,
+                "Orphan PDF checksum collision — recycling row for fresh upload"
+            );
+            recycle_orphan_workspace_pdf(pdf_storage.clone(), existing).await?;
+            existing_pdf = None;
+        }
+    }
+
+    if let Some(existing) = existing_pdf {
         if options.force_reindex {
             info!(
                 "OODA-08: Force re-indexing requested for existing PDF: id={}, document_id={:?}",

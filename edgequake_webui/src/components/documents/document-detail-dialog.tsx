@@ -27,6 +27,10 @@ import {
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  getEffectiveErrorMessage,
+  isTerminalFailureDocument,
+} from '@/lib/utils/document-status';
 import type { Document } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
 import {
@@ -208,19 +212,21 @@ export function DocumentDetailDialog({
             </div>
 
             {/* Error message if failed or cancelled */}
-            {(document.status === 'failed' || document.status === 'partial_failure' || document.status === 'cancelled') && document.error_message && (
+            {isTerminalFailureDocument(document) && getEffectiveErrorMessage(document) && (
               <div className={`p-4 ${document.status === 'cancelled' ? 'bg-gray-500/10 border-gray-200' : 'bg-destructive/10 border-destructive/20'} border rounded-lg`}>
                 <h4 className={`text-sm font-medium ${document.status === 'cancelled' ? 'text-gray-600 dark:text-gray-400' : 'text-destructive'} mb-1`}>
                   {document.status === 'cancelled' 
                     ? t('documents.details.cancelled', 'Cancelled')
                     : t('documents.details.error', 'Error')}
                 </h4>
-                <p className={`text-xs break-words overflow-hidden ${document.status === 'cancelled' ? 'text-gray-500' : 'text-destructive/80'}`}>{document.error_message}</p>
+                <p className={`text-xs break-words overflow-hidden ${document.status === 'cancelled' ? 'text-gray-500' : 'text-destructive/80'}`}>
+                  {getEffectiveErrorMessage(document)}
+                </p>
               </div>
             )}
 
             {/* Cancelled banner when no error message */}
-            {document.status === 'cancelled' && !document.error_message && (
+            {document.status === 'cancelled' && !getEffectiveErrorMessage(document) && (
               <div className="p-4 bg-gray-500/10 border border-gray-200 rounded-lg">
                 <h4 className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
                   {t('documents.details.cancelled', 'Cancelled')}

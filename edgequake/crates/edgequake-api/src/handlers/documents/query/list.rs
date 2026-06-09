@@ -111,6 +111,7 @@ pub async fn list_documents(
         content_length: Option<usize>,
         status: Option<String>,
         error_message: Option<String>,
+        warning_message: Option<String>,
         track_id: Option<String>,
         created_at: Option<String>,
         updated_at: Option<String>,
@@ -129,6 +130,16 @@ pub async fn list_documents(
         stage_progress: Option<f32>,
         stage_message: Option<String>,
         pdf_id: Option<String>,
+    }
+
+    impl DocMetadata {
+        fn normalized_notices(&self) -> (Option<String>, Option<String>) {
+            crate::document_metadata::normalize_notice_fields(
+                self.status.as_deref(),
+                self.error_message.clone(),
+                self.warning_message.clone(),
+            )
+        }
     }
 
     let mut doc_metadata: std::collections::HashMap<String, DocMetadata> =
@@ -177,9 +188,13 @@ pub async fn list_documents(
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string());
 
-                // Get error_message
+                // Get error_message / warning_message (normalized at response build time)
                 meta.error_message = obj
                     .get("error_message")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                meta.warning_message = obj
+                    .get("warning_message")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string());
 
@@ -287,16 +302,13 @@ pub async fn list_documents(
         }
     }
 
-    // Filter documents by tenant context
-    let filter_workspace_id = tenant_ctx.workspace_id.clone();
-    let filter_tenant_id = tenant_ctx.tenant_id.clone();
-
-    // SECURITY: STRICT tenant filtering - both tenant_id AND workspace_id must match
-    // This matches the strict filtering in entities.rs and relationships.rs (commit d11edba8)
+    // Filter documents by tenant/workspace scope (UUID-normalized; shared with dedup/delete).
     let matches_tenant_context = |meta: &DocMetadata| -> bool {
-        // Both must match exactly (None is already handled by early return above)
-        meta.workspace_id.as_ref() == filter_workspace_id.as_ref()
-            && meta.tenant_id.as_ref() == filter_tenant_id.as_ref()
+        let value = serde_json::json!({
+            "workspace_id": meta.workspace_id,
+            "tenant_id": meta.tenant_id,
+        });
+        crate::workspace_scope::metadata_matches_tenant_context(&value, &tenant_ctx)
     };
 
     // Build document list from BOTH:
@@ -310,6 +322,7 @@ pub async fn list_documents(
             if !matches_tenant_context(&meta) {
                 return None;
             }
+            let (error_message, warning_message) = meta.normalized_notices();
             Some(DocumentSummary {
                 id,
                 title: meta.title,
@@ -319,7 +332,8 @@ pub async fn list_documents(
                 chunk_count,
                 entity_count: meta.entity_count,
                 status: meta.status,
-                error_message: meta.error_message,
+                error_message,
+                warning_message,
                 track_id: meta.track_id,
                 created_at: meta.created_at,
                 updated_at: meta.updated_at,
@@ -345,6 +359,7 @@ pub async fn list_documents(
         if !matches_tenant_context(&meta) {
             continue;
         }
+        let (error_message, warning_message) = meta.normalized_notices();
         documents.push(DocumentSummary {
             id,
             title: meta.title,
@@ -354,7 +369,8 @@ pub async fn list_documents(
             chunk_count: 0,
             entity_count: meta.entity_count,
             status: meta.status,
-            error_message: meta.error_message,
+            error_message,
+            warning_message,
             track_id: meta.track_id,
             created_at: meta.created_at,
             updated_at: meta.updated_at,

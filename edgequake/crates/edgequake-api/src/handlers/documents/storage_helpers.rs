@@ -14,26 +14,12 @@ use crate::state::AppState;
 use edgequake_storage::traits::VectorStorage;
 use edgequake_tasks::{Pagination, TaskFilter, TaskStatus};
 
-/// Parse a workspace identifier into a UUID while preserving the legacy
-/// `default` workspace mapping used by older document metadata.
-///
-/// WHY: reliability fixes must work for both new UUID-based workspaces and the
-/// historical `workspace_id = "default"` representation.
-pub(crate) fn parse_workspace_uuid_or_default(workspace_id: Option<&str>) -> Option<Uuid> {
-    crate::middleware::resolve_workspace_uuid(workspace_id)
-}
-
-fn is_legacy_default_workspace_context(workspace_id: Option<&str>) -> bool {
-    match workspace_id.map(str::trim) {
-        None | Some("") | Some("default") => true,
-        Some(value) => match Uuid::parse_str(value) {
-            Ok(uuid) => {
-                uuid == crate::middleware::default_tenant_uuid()
-                    || uuid == crate::middleware::default_workspace_uuid()
-            }
-            Err(_) => false,
-        },
-    }
+/// Check whether a metadata payload belongs to the requester's tenant + workspace.
+pub(crate) fn metadata_matches_tenant_context(
+    metadata: &serde_json::Value,
+    tenant_ctx: &TenantContext,
+) -> bool {
+    crate::workspace_scope::metadata_matches_tenant_context(metadata, tenant_ctx)
 }
 
 fn parse_explicit_workspace_uuid(workspace_id: Option<&str>) -> Option<Uuid> {
@@ -41,41 +27,6 @@ fn parse_explicit_workspace_uuid(workspace_id: Option<&str>) -> Option<Uuid> {
         None | Some("") | Some("default") => None,
         Some(value) => Uuid::parse_str(value).ok(),
     }
-}
-
-/// Check whether a metadata payload belongs to the requester's workspace.
-///
-/// WHY: destructive and recovery operations must fail closed across workspaces.
-/// When no tenant context is present (tests or legacy callers), we preserve the
-/// old permissive behavior to avoid breaking non-multi-tenant flows.
-pub(crate) fn metadata_matches_tenant_context(
-    metadata: &serde_json::Value,
-    tenant_ctx: &TenantContext,
-) -> bool {
-    // WHY: Older documents stored `workspace_id = "default"` (or omitted the
-    // field entirely) before strict workspace scoping existed. Those rows must
-    // remain operable from the default workspace for backward compatibility,
-    // but they must NOT become visible to arbitrary explicit workspaces.
-    let stored_workspace_raw = metadata
-        .get("workspace_id")
-        .and_then(|value| value.as_str())
-        .map(str::trim);
-
-    if matches!(stored_workspace_raw, None | Some("") | Some("default")) {
-        return is_legacy_default_workspace_context(tenant_ctx.workspace_id.as_deref());
-    }
-
-    let Some(ctx_workspace_id) =
-        parse_workspace_uuid_or_default(tenant_ctx.workspace_id.as_deref())
-    else {
-        return true;
-    };
-
-    let Some(stored_workspace_id) = parse_workspace_uuid_or_default(stored_workspace_raw) else {
-        return false;
-    };
-
-    stored_workspace_id == ctx_workspace_id
 }
 
 /// Attach tenant/workspace scope to graph node or edge properties (BR0201).

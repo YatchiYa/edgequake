@@ -10,6 +10,7 @@ import { ResizablePanel } from '@/components/ui/resizable-panel';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getDocument, getPdfContent, getPdfDownloadUrl } from '@/lib/api/edgequake';
+import { getEffectiveErrorMessage } from '@/lib/utils/document-status';
 import { useTenantStore } from '@/stores/use-tenant-store';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -281,9 +282,11 @@ export default function DocumentViewPage() {
           </div>
         </div>
 
-        {isFailed && document.error_message && (
+        {isFailed && getEffectiveErrorMessage(document) && (
           <div className="px-3 py-2 bg-destructive/10 border-t">
-            <p className="text-xs text-destructive break-words overflow-hidden">{document.error_message}</p>
+            <p className="text-xs text-destructive break-words overflow-hidden">
+              {getEffectiveErrorMessage(document)}
+            </p>
           </div>
         )}
         {isCancelled && (

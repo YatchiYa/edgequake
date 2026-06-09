@@ -6,6 +6,24 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.12.11] — 2026-06-09
+
+### Fixed
+
+- **FIX-DOC-NOTICE** — Vision/parser fallback text stored in `error_message` during processing no longer renders as a red **Failed** badge. Non-fatal notices use `warning_message`; API list/detail/track normalize legacy rows (`document_metadata`, `document-status.ts`).
+- **FIX-WORKSPACE-DUP** — PDF checksum duplicate detection aligned with documents list via shared `workspace_scope` (UUID + `default` alias). Orphan `pdf_documents` rows without visible KV metadata are recycled on re-upload instead of a false duplicate dialog. Bulk delete removes only workspace-linked PDF rows.
+
+### Added
+
+- **DRY document status** — `edgequake_webui/src/lib/utils/document-status.ts` + Vitest; Playwright `document-status-notice.spec.ts`, `workspace-duplicate-scope.spec.ts`.
+- **API** — `warning_message` on `DocumentSummary` / `DocumentDetailResponse`; integration test `workspace_document_scope.rs`.
+
+### Operations
+
+- **CD:** Tag `v0.12.11` → `release-gates` preflight → GHCR multi-arch images + GitHub Release.
+
+---
+
 ## [0.12.10] — 2026-06-08
 
 ### Fixed

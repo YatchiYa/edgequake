@@ -63,6 +63,9 @@ pub async fn get_track_status(
                     created_times.push(created_at.to_string());
                 }
 
+                let (error_message, warning_message) =
+                    crate::document_metadata::extract_notices_from_metadata(obj);
+
                 track_docs.push(DocumentSummary {
                     id,
                     title: obj.get("title").and_then(|v| v.as_str()).map(String::from),
@@ -84,10 +87,8 @@ pub async fn get_track_status(
                         .and_then(|v| v.as_u64())
                         .map(|n| n as usize),
                     status: obj.get("status").and_then(|v| v.as_str()).map(String::from),
-                    error_message: obj
-                        .get("error_message")
-                        .and_then(|v| v.as_str())
-                        .map(String::from),
+                    error_message,
+                    warning_message,
                     track_id: Some(track_id.clone()),
                     created_at: obj
                         .get("created_at")
