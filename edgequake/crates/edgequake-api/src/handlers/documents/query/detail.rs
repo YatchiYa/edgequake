@@ -458,6 +458,17 @@ pub async fn get_document(
         )
     };
 
+    let raw_warning = meta_obj.and_then(|obj| {
+        obj.get("warning_message")
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+    });
+    let (error_message, warning_message) = crate::document_metadata::normalize_notice_fields(
+        Some(status.as_str()),
+        error_message,
+        raw_warning,
+    );
+
     Ok(Json(DocumentDetailResponse {
         id: document_id,
         title,
@@ -471,6 +482,7 @@ pub async fn get_document(
         relationship_count,
         status,
         error_message,
+        warning_message,
         source_type,
         mime_type,
         file_size,

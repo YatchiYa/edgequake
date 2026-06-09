@@ -16,6 +16,8 @@ export interface Document {
     | "indexed"
     | "cancelled";
   error_message?: string;
+  /** Non-fatal processing notice (e.g. vision parser fallback). */
+  warning_message?: string;
   file_name?: string;
   file_size?: number;
   mime_type?: string;

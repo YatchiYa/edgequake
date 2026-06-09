@@ -128,6 +128,10 @@ pub struct DocumentSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_message: Option<String>,
 
+    /// Non-fatal processing notice (e.g. vision parser fallback).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warning_message: Option<String>,
+
     /// Track ID for batch grouping.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub track_id: Option<String>,

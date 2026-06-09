@@ -93,6 +93,7 @@
 //! - **error**: API error types and HTTP status mapping
 
 pub mod cache_manager;
+pub mod document_metadata;
 pub mod error;
 pub mod file_validation;
 pub mod handlers;
@@ -113,6 +114,7 @@ pub mod state;
 pub mod streaming;
 pub mod validation;
 pub mod workspace_pipeline_factory;
+pub mod workspace_scope;
 
 // Re-export commonly used types
 pub use middleware::TenantContext;

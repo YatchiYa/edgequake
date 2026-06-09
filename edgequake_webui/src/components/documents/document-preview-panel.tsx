@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/tooltip';
 import { getDocument } from '@/lib/api/edgequake';
 import { categorizeError, getCategoryColor, type ErrorCategory } from '@/lib/error-categories';
+import { getEffectiveErrorMessage } from '@/lib/utils/document-status';
 import type { Document } from '@/types';
 import { useQuery } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
@@ -159,10 +160,11 @@ export function DocumentPreviewPanel({
    * WHY: Categorized errors with suggestions help users understand and resolve issues
    */
   const errorInfo = useMemo(() => {
-    const errorMessage = document?.error_message;
+    if (!document) return null;
+    const errorMessage = getEffectiveErrorMessage(document);
     if (!errorMessage) return null;
     return categorizeError(errorMessage);
-  }, [document?.error_message]);
+  }, [document]);
 
   const handleCopyId = useCallback(async () => {
     if (!document) return;

@@ -62,7 +62,7 @@ export RUST_LOG=edgequake_api=info,edgequake_storage=warn
 Operator guide: [`docs/OBSERVABILITY.md`](../../docs/OBSERVABILITY.md)  
 Resource safety runbook: [`specifications/006-ensure-perf/009_operator_runbook.md`](../../specifications/006-ensure-perf/009_operator_runbook.md)
 
-### CI gates (release pipeline — v0.12.8+)
+### CI gates (release pipeline — v0.12.11+)
 
 ```bash
 make release-gates           # fmt + clippy (all workspace crates) + tests + proofs
@@ -74,19 +74,25 @@ make spec020-qc-proof-full   # SPEC-020 + Ollama required (local prod gate)
 
 GitHub Actions: [`release-gates.yml`](../../.github/workflows/release-gates.yml) (manual + tag preflight), [`ci.yml`](../../.github/workflows/ci.yml) (`observability-proof` job), [`e2e-quality-gates.yml`](../../.github/workflows/e2e-quality-gates.yml) (`spec020-qc`).
 
-### CD / Docker publication (v0.12.8+)
+### CD / Docker publication (v0.12.11+)
 
 ```bash
 make release-gates
-git tag v0.12.8 && git push origin v0.12.8
+git tag v0.12.11 && git push origin v0.12.11
 # → release-docker.yml: preflight gates → GHCR multi-arch images
 # → ghcr.io/raphaelmansuy/edgequake:{version}
 # → ghcr.io/raphaelmansuy/edgequake-frontend:{version}
 # → ghcr.io/raphaelmansuy/edgequake-postgres:{version}
 
+# Verify publication
+gh release view v0.12.11
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake:0.12.11
+
 make stack-pull   # pull prebuilt GHCR images
 make stack        # start API + UI + DB
 ```
+
+**v0.12.11 release notes (document scope):** workspace tenant/workspace matching is centralized in `workspace_scope.rs` (list, delete, PDF dedup). Observability correlation headers (`X-Request-ID`, `traceparent`) continue to propagate through upload/list handlers — audit events on PDF upload remain wired via `record_compliance_event`.
 
 ---
 

@@ -50,6 +50,10 @@ pub struct DocumentDetailResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_message: Option<String>,
 
+    /// Non-fatal processing notice (e.g. vision parser fallback).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warning_message: Option<String>,
+
     /// Source type (file, text, url).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_type: Option<String>,
