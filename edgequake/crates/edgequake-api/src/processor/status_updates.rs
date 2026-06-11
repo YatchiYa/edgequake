@@ -1,4 +1,39 @@
 use super::*;
+use crate::document_metadata::{is_informational_notice, is_terminal_failure_status};
+
+fn apply_status_notice_fields(
+    metadata: &mut serde_json::Map<String, serde_json::Value>,
+    status: &str,
+    message: Option<&str>,
+) {
+    if let Some(msg) = message {
+        if is_terminal_failure_status(status) {
+            metadata.insert("error_message".to_string(), json!(msg));
+        } else {
+            metadata.insert("warning_message".to_string(), json!(msg));
+            // Scrub legacy informational errors that would render as Failed in the WebUI.
+            if let Some(existing) = metadata
+                .get("error_message")
+                .and_then(|v| v.as_str())
+                .filter(|s| is_informational_notice(s))
+            {
+                if metadata.get("warning_message").is_none() {
+                    metadata.insert("warning_message".to_string(), json!(existing));
+                }
+                metadata.remove("error_message");
+            }
+        }
+        metadata.insert("stage_message".to_string(), json!(msg));
+    } else if !is_terminal_failure_status(status) && status != "cancelled" {
+        // Forward progress: drop stale terminal errors from prior attempts / legacy writes.
+        if let Some(existing) = metadata.get("error_message").and_then(|v| v.as_str()) {
+            if is_informational_notice(existing) && metadata.get("warning_message").is_none() {
+                metadata.insert("warning_message".to_string(), json!(existing));
+            }
+            metadata.remove("error_message");
+        }
+    }
+}
 
 impl DocumentTaskProcessor {
     /// Update document metadata status.
@@ -24,6 +59,8 @@ impl DocumentTaskProcessor {
             "indexing" => "storing",
             "completed" | "indexed" => "completed",
             "failed" => "failed",
+            "partial_failure" => "partial_failure",
+            "cancelled" => "cancelled",
             other => other, // Pass through unknown statuses
         };
 
@@ -37,6 +74,8 @@ impl DocumentTaskProcessor {
             "indexing" | "storing" => "Storing in knowledge graph...",
             "completed" | "indexed" => "Processing complete",
             "failed" => "Processing failed",
+            "partial_failure" => "Processing completed with issues",
+            "cancelled" => "Processing cancelled",
             _ => "Processing...",
         };
 
@@ -59,10 +98,7 @@ impl DocumentTaskProcessor {
                 updated.insert("current_stage".to_string(), json!(unified_stage));
                 updated.insert("stage_message".to_string(), json!(stage_message));
 
-                if let Some(msg) = error_message {
-                    updated.insert("error_message".to_string(), json!(msg));
-                    updated.insert("stage_message".to_string(), json!(msg));
-                }
+                apply_status_notice_fields(&mut updated, status, error_message);
 
                 json!(updated)
             } else {
@@ -86,10 +122,7 @@ impl DocumentTaskProcessor {
             );
             // Note: source_type will be set later if available from task metadata
 
-            if let Some(msg) = error_message {
-                new_metadata.insert("error_message".to_string(), json!(msg));
-                new_metadata.insert("stage_message".to_string(), json!(msg));
-            }
+            apply_status_notice_fields(&mut new_metadata, status, error_message);
 
             json!(new_metadata)
         };
@@ -350,7 +383,20 @@ impl DocumentTaskProcessor {
                     updated.insert("avg_chunk_size".to_string(), json!(avg_chunk_size));
                 }
 
-                updated.remove("error_message");
+                if status == "completed" || status == "indexed" {
+                    updated.remove("error_message");
+                    updated.remove("warning_message");
+                } else if status == "failed" || status == "partial_failure" {
+                    if let Some(ref details) = stats.error_details {
+                        updated.insert("error_message".to_string(), json!(details));
+                    } else if status == "partial_failure" || !updated.contains_key("error_message")
+                    {
+                        updated.insert("error_message".to_string(), json!(stage_message));
+                    }
+                    updated.remove("warning_message");
+                } else if status == "cancelled" {
+                    updated.remove("warning_message");
+                }
 
                 self.kv_storage
                     .upsert(&[(metadata_key, json!(updated))])

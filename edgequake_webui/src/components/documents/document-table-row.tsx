@@ -18,6 +18,10 @@
 import { Checkbox } from '@/components/ui/checkbox';
 import { TableCell, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
+import {
+  getEffectiveErrorMessage,
+  isTerminalFailureDocument,
+} from '@/lib/utils/document-status';
 import type { Document } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
 import {
@@ -210,17 +214,16 @@ export const DocumentTableRow = memo(function DocumentTableRow({
             </span>
           </div>
           {/* Error message for failed/cancelled documents */}
-          {(doc.status === 'failed' || doc.status === 'partial_failure' || doc.status === 'cancelled') &&
-            doc.error_message && (
+          {isTerminalFailureDocument(doc) && getEffectiveErrorMessage(doc) && (
               <ErrorMessagePopover
-                message={doc.error_message}
+                message={getEffectiveErrorMessage(doc)!}
                 documentId={doc.id}
                 onRetry={() => onRetry(doc.id)}
                 isRetrying={isRetrying}
               />
             )}
           {/* Cancelled indicator when no error message */}
-          {doc.status === 'cancelled' && !doc.error_message && (
+          {doc.status === 'cancelled' && !getEffectiveErrorMessage(doc) && (
             <span className="text-xs text-muted-foreground">
               {t('documents.cancelled.subtitle', 'Processing was cancelled')}
             </span>

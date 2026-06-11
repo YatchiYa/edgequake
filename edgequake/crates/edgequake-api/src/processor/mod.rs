@@ -90,7 +90,10 @@ use crate::handlers::websocket_types::ProgressBroadcaster;
 use crate::pipeline_progress_callback::PipelineProgressCallback;
 use crate::state::SharedWorkspaceService;
 use edgequake_llm::ModelsConfig;
-use edgequake_pipeline::{ChunkProgressCallback, ChunkProgressUpdate, LLMExtractor, Pipeline};
+use edgequake_pipeline::{
+    ChunkProgressCallback, ChunkProgressUpdate, EmbedProgressCallback, EmbedProgressUpdate,
+    Pipeline,
+};
 use edgequake_storage::traits::{GraphStorage, KVStorage, VectorStorage, WorkspaceVectorRegistry};
 use edgequake_tasks::{
     PipelinePhase, PipelineState, Task, TaskError, TaskProcessor, TaskResult, TaskType,
@@ -536,6 +539,94 @@ mod tests {
         let metadata = kv.get_by_id(&metadata_key).await.unwrap().unwrap();
         assert_eq!(metadata["status"], "failed");
         assert_eq!(metadata["error_message"], "Test error message");
+    }
+
+    #[tokio::test]
+    async fn test_update_document_status_with_warning_message() {
+        let pipeline = create_test_pipeline();
+        let (kv, vector, vector_registry, graph) = create_test_storages();
+        let pipeline_state = PipelineState::new();
+
+        let doc_id = "test-doc-warning";
+        let metadata_key = format!("{}-metadata", doc_id);
+        kv.upsert(&[(
+            metadata_key.clone(),
+            json!({
+                "document_id": doc_id,
+                "status": "processing",
+                "error_message": "Vision unavailable. Falling back to EdgeParse."
+            }),
+        )])
+        .await
+        .unwrap();
+
+        let processor = DocumentTaskProcessor::new(
+            pipeline,
+            create_test_llm_provider(),
+            kv.clone(),
+            vector,
+            vector_registry,
+            graph,
+            pipeline_state,
+        );
+
+        let fallback = "Vision unavailable. Falling back to EdgeParse.";
+        let result = processor
+            .update_document_status(doc_id, "processing", Some(fallback))
+            .await;
+        assert!(result.is_ok());
+
+        let metadata = kv.get_by_id(&metadata_key).await.unwrap().unwrap();
+        assert_eq!(metadata["status"], "processing");
+        assert!(
+            metadata.get("error_message").is_none()
+                || metadata["error_message"].as_str() == Some(""),
+            "non-fatal notice must not remain in error_message"
+        );
+        assert_eq!(metadata["warning_message"].as_str(), Some(fallback));
+    }
+
+    #[tokio::test]
+    async fn test_update_document_status_clears_stale_error_on_chunking() {
+        let pipeline = create_test_pipeline();
+        let (kv, vector, vector_registry, graph) = create_test_storages();
+        let pipeline_state = PipelineState::new();
+
+        let doc_id = "test-doc-clear-stale";
+        let metadata_key = format!("{}-metadata", doc_id);
+        kv.upsert(&[(
+            metadata_key.clone(),
+            json!({
+                "document_id": doc_id,
+                "status": "processing",
+                "error_message": "Vision unavailable. Falling back to EdgeParse."
+            }),
+        )])
+        .await
+        .unwrap();
+
+        let processor = DocumentTaskProcessor::new(
+            pipeline,
+            create_test_llm_provider(),
+            kv.clone(),
+            vector,
+            vector_registry,
+            graph,
+            pipeline_state,
+        );
+
+        let result = processor
+            .update_document_status(doc_id, "chunking", None)
+            .await;
+        assert!(result.is_ok());
+
+        let metadata = kv.get_by_id(&metadata_key).await.unwrap().unwrap();
+        assert_eq!(metadata["status"], "chunking");
+        assert!(metadata.get("error_message").is_none());
+        assert_eq!(
+            metadata["warning_message"].as_str(),
+            Some("Vision unavailable. Falling back to EdgeParse.")
+        );
     }
 
     #[tokio::test]

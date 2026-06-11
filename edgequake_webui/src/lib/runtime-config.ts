@@ -19,6 +19,24 @@ function parseBoolean(value: string | boolean | undefined | null): boolean {
   return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on';
 }
 
+function resolveClientApiUrl(
+  browserConfig: Partial<EdgeQuakeRuntimeConfig> | undefined,
+): string {
+  if (browserConfig?.apiUrl !== undefined) {
+    return browserConfig.apiUrl.replace(/\/$/, "");
+  }
+  // Local dev: relative /api/v1 → Next.js rewrites (see next.config.ts).
+  // Ignores stale NEXT_PUBLIC_API_URL=http://localhost:8080 in .env.local.
+  if (process.env.NODE_ENV === "development") {
+    return "";
+  }
+  return (
+    process.env.EDGEQUAKE_API_URL ??
+    process.env.NEXT_PUBLIC_API_URL ??
+    ""
+  ).replace(/\/$/, "");
+}
+
 export function getRuntimeConfig(): EdgeQuakeRuntimeConfig {
   const browserConfig = typeof window !== 'undefined' ? window.__EDGEQUAKE_RUNTIME_CONFIG__ : undefined;
 
@@ -35,12 +53,7 @@ export function getRuntimeConfig(): EdgeQuakeRuntimeConfig {
   // a build-time bake. The NEXT_PUBLIC_API_URL fallback is kept for local dev
   // (where .env.local may define it) and backwards compatibility.
   return {
-    apiUrl: (
-      browserConfig?.apiUrl ??
-      process.env.EDGEQUAKE_API_URL ??
-      process.env.NEXT_PUBLIC_API_URL ??
-      ''
-    ).replace(/\/$/, ''),
+    apiUrl: resolveClientApiUrl(browserConfig),
     authEnabled: parseBoolean(browserConfig?.authEnabled ?? process.env.NEXT_PUBLIC_AUTH_ENABLED),
     disableDemoLogin: parseBoolean(
       browserConfig?.disableDemoLogin ?? process.env.NEXT_PUBLIC_DISABLE_DEMO_LOGIN

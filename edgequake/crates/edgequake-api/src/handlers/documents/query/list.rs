@@ -59,31 +59,36 @@ pub async fn list_documents(
         }));
     }
 
-    let keys = state.kv_storage.keys().await?;
-    debug!(key_count = keys.len(), "Total keys in KV storage");
-    debug!(keys = ?keys, "All keys in KV storage");
+    // SPEC-011: SQL LIKE filters avoid O(N) full key scan + in-memory filter.
+    let metadata_keys = state.storage.kv_storage.keys_like("%-metadata").await?;
+    let chunk_keys = state.storage.kv_storage.keys_like("%-chunk-%").await?;
+    debug!(
+        metadata_key_count = metadata_keys.len(),
+        chunk_key_count = chunk_keys.len(),
+        "KV keys loaded via LIKE filters"
+    );
 
     // Group by document and collect metadata keys
     let mut doc_chunks: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-    let mut metadata_keys: Vec<String> = Vec::new();
 
-    for key in &keys {
+    for key in &chunk_keys {
         // Skip injection entries — they are managed by the /knowledge route (SPEC-0002)
         if key.starts_with("injection::") {
             continue;
         }
-        if key.ends_with("-metadata") {
-            debug!(metadata_key = %key, "Found metadata key");
-            metadata_keys.push(key.clone());
-        } else if key.contains("-chunk-") {
-            // Only count actual chunk keys (e.g., "doc-id-chunk-0")
-            if let Some(doc_id) = key.split("-chunk-").next() {
-                // Filter out non-document keys (like -metadata, -content suffixes)
-                if !doc_id.ends_with("-metadata") && !doc_id.ends_with("-content") {
-                    *doc_chunks.entry(doc_id.to_string()).or_default() += 1;
-                }
+        if let Some(doc_id) = key.split("-chunk-").next() {
+            // Filter out non-document keys (like -metadata, -content suffixes)
+            if !doc_id.ends_with("-metadata") && !doc_id.ends_with("-content") {
+                *doc_chunks.entry(doc_id.to_string()).or_default() += 1;
             }
         }
+    }
+
+    for key in &metadata_keys {
+        if key.starts_with("injection::") {
+            continue;
+        }
+        debug!(metadata_key = %key, "Found metadata key");
     }
 
     // Fetch all metadata and store complete document info
@@ -91,7 +96,7 @@ pub async fn list_documents(
         metadata_keys_count = metadata_keys.len(),
         "Fetching metadata for keys"
     );
-    let metadata_values = state.kv_storage.get_by_ids(&metadata_keys).await?;
+    let metadata_values = state.storage.kv_storage.get_by_ids(&metadata_keys).await?;
     debug!(
         metadata_values_count = metadata_values.len(),
         "Metadata values retrieved"
@@ -106,6 +111,7 @@ pub async fn list_documents(
         content_length: Option<usize>,
         status: Option<String>,
         error_message: Option<String>,
+        warning_message: Option<String>,
         track_id: Option<String>,
         created_at: Option<String>,
         updated_at: Option<String>,
@@ -124,6 +130,16 @@ pub async fn list_documents(
         stage_progress: Option<f32>,
         stage_message: Option<String>,
         pdf_id: Option<String>,
+    }
+
+    impl DocMetadata {
+        fn normalized_notices(&self) -> (Option<String>, Option<String>) {
+            crate::document_metadata::normalize_notice_fields(
+                self.status.as_deref(),
+                self.error_message.clone(),
+                self.warning_message.clone(),
+            )
+        }
     }
 
     let mut doc_metadata: std::collections::HashMap<String, DocMetadata> =
@@ -172,9 +188,13 @@ pub async fn list_documents(
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string());
 
-                // Get error_message
+                // Get error_message / warning_message (normalized at response build time)
                 meta.error_message = obj
                     .get("error_message")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                meta.warning_message = obj
+                    .get("warning_message")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string());
 
@@ -282,16 +302,13 @@ pub async fn list_documents(
         }
     }
 
-    // Filter documents by tenant context
-    let filter_workspace_id = tenant_ctx.workspace_id.clone();
-    let filter_tenant_id = tenant_ctx.tenant_id.clone();
-
-    // SECURITY: STRICT tenant filtering - both tenant_id AND workspace_id must match
-    // This matches the strict filtering in entities.rs and relationships.rs (commit d11edba8)
+    // Filter documents by tenant/workspace scope (UUID-normalized; shared with dedup/delete).
     let matches_tenant_context = |meta: &DocMetadata| -> bool {
-        // Both must match exactly (None is already handled by early return above)
-        meta.workspace_id.as_ref() == filter_workspace_id.as_ref()
-            && meta.tenant_id.as_ref() == filter_tenant_id.as_ref()
+        let value = serde_json::json!({
+            "workspace_id": meta.workspace_id,
+            "tenant_id": meta.tenant_id,
+        });
+        crate::workspace_scope::metadata_matches_tenant_context(&value, &tenant_ctx)
     };
 
     // Build document list from BOTH:
@@ -305,6 +322,7 @@ pub async fn list_documents(
             if !matches_tenant_context(&meta) {
                 return None;
             }
+            let (error_message, warning_message) = meta.normalized_notices();
             Some(DocumentSummary {
                 id,
                 title: meta.title,
@@ -314,7 +332,8 @@ pub async fn list_documents(
                 chunk_count,
                 entity_count: meta.entity_count,
                 status: meta.status,
-                error_message: meta.error_message,
+                error_message,
+                warning_message,
                 track_id: meta.track_id,
                 created_at: meta.created_at,
                 updated_at: meta.updated_at,
@@ -340,6 +359,7 @@ pub async fn list_documents(
         if !matches_tenant_context(&meta) {
             continue;
         }
+        let (error_message, warning_message) = meta.normalized_notices();
         documents.push(DocumentSummary {
             id,
             title: meta.title,
@@ -349,7 +369,8 @@ pub async fn list_documents(
             chunk_count: 0,
             entity_count: meta.entity_count,
             status: meta.status,
-            error_message: meta.error_message,
+            error_message,
+            warning_message,
             track_id: meta.track_id,
             created_at: meta.created_at,
             updated_at: meta.updated_at,

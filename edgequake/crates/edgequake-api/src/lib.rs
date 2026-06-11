@@ -93,14 +93,17 @@
 //! - **error**: API error types and HTTP status mapping
 
 pub mod cache_manager;
+pub mod document_metadata;
 pub mod error;
 pub mod file_validation;
 pub mod handlers;
 pub mod middleware;
+pub mod observability_middleware;
 pub mod openapi;
 pub mod path_validation;
 pub mod pipeline_progress_callback;
 pub mod processor;
+mod provider_catalog;
 pub mod provider_types;
 pub mod providers;
 pub mod routes;
@@ -110,6 +113,8 @@ pub mod services;
 pub mod state;
 pub mod streaming;
 pub mod validation;
+pub mod workspace_pipeline_factory;
+pub mod workspace_scope;
 
 // Re-export commonly used types
 pub use middleware::TenantContext;
@@ -120,7 +125,7 @@ pub use middleware::{tenant_rate_limit, AuthConfig, AuthState, RateLimitConfig, 
 pub use processor::DocumentTaskProcessor;
 pub use routes::create_router;
 pub use server::{Server, ServerConfig};
-pub use state::{AppState, StorageMode};
+pub use state::{AppState, AuthRuntime, QueryRuntime, StorageMode, StorageRuntime, TaskRuntime};
 
 // Re-export production services from edgequake-core when feature is enabled
 #[cfg(feature = "postgres")]

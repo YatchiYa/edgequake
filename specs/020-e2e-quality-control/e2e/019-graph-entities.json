@@ -1,0 +1,24 @@
+{
+  "before": {
+    "entityCount": 0,
+    "relationshipCount": 0,
+    "documentCount": 0,
+    "chunkCount": 0
+  },
+  "after": {
+    "entityCount": 11,
+    "relationshipCount": 25,
+    "documentCount": 1,
+    "chunkCount": 1
+  },
+  "entityDelta": 11,
+  "ingestEntityCount": 11,
+  "search": {
+    "matchCount": 2,
+    "labels": [
+      "SARAH_CHEN",
+      "GRAPHRAG"
+    ]
+  },
+  "statsSynced": true
+}

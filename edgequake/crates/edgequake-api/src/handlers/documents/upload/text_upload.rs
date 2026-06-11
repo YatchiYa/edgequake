@@ -11,11 +11,12 @@ use crate::middleware::TenantContext;
 use crate::services::ContentHasher;
 use crate::state::AppState;
 use edgequake_core::MetricsTriggerType;
+use edgequake_pipeline::normalize_entity_name;
 
 #[allow(unused_imports)]
 use crate::handlers::documents::storage_helpers::get_workspace_vector_storage_with_fallback;
 use crate::handlers::documents::storage_helpers::{
-    delete_document_for_reingestion, get_workspace_vector_storage_strict,
+    delete_document_for_reingestion, get_workspace_vector_storage_strict, insert_graph_tenant_scope,
 };
 use crate::handlers::documents_types::*;
 
@@ -53,6 +54,10 @@ use crate::handlers::documents_types::*;
     post,
     path = "/api/v1/documents",
     tag = "Documents",
+    params(
+        ("X-Tenant-ID" = Option<String>, Header, description = "Tenant UUID for multi-tenant isolation"),
+        ("X-Workspace-ID" = Option<String>, Header, description = "Workspace UUID — scopes uploaded documents"),
+    ),
     request_body = UploadDocumentRequest,
     responses(
         (status = 201, description = "Document uploaded successfully", body = UploadDocumentResponse),
@@ -96,7 +101,7 @@ pub async fn upload_document(
     // Same content in different workspace = allowed (multi-tenancy)
     let hash_key = ContentHasher::workspace_hash_key(&workspace_id_for_storage, &content_hash);
     debug!(hash_key = %hash_key, workspace_id = %workspace_id_for_storage, "Checking for workspace-scoped duplicate hash");
-    if let Some(existing_doc_id) = state.kv_storage.get_by_id(&hash_key).await? {
+    if let Some(existing_doc_id) = state.storage.kv_storage.get_by_id(&hash_key).await? {
         debug!(existing_doc_id = ?existing_doc_id, "Found existing document for hash in workspace");
         if let Some(doc_id_str) = existing_doc_id.as_str() {
             // FIX-4: Try to delete old document data for re-ingestion
@@ -151,6 +156,7 @@ pub async fn upload_document(
     // Store hash mapping for deduplication (workspace-scoped)
     // WHY-OODA81+84: Must store before creating document to prevent race conditions
     state
+        .storage
         .kv_storage
         .upsert(&[(hash_key.clone(), serde_json::json!(document_id))])
         .await?;
@@ -192,6 +198,7 @@ pub async fn upload_document(
         "stage_message": "Document received, starting processing",
     });
     state
+        .storage
         .kv_storage
         .upsert(&[(doc_metadata_key.clone(), doc_metadata)])
         .await?;
@@ -202,6 +209,7 @@ pub async fn upload_document(
         "content": request.content,
     });
     state
+        .storage
         .kv_storage
         .upsert(&[(doc_content_key, doc_content)])
         .await?;
@@ -237,19 +245,7 @@ pub async fn upload_document(
         );
         let task_id = task.track_id.clone();
 
-        // Store task
-        state
-            .task_storage
-            .create_task(&task)
-            .await
-            .map_err(|e| ApiError::Internal(format!("Failed to create task: {}", e)))?;
-
-        // Queue task for processing
-        state
-            .task_queue
-            .send(task)
-            .await
-            .map_err(|e| ApiError::Internal(format!("Failed to queue task: {}", e)))?;
+        state.enqueue_task(task).await?;
 
         Ok((
             StatusCode::CREATED,
@@ -269,7 +265,10 @@ pub async fn upload_document(
         // Synchronous processing (original behavior)
         // Broadcast job started
         let start_time = std::time::Instant::now();
-        state.progress_broadcaster.job_started(&document_id, 1, 1);
+        state
+            .tasks
+            .progress_broadcaster
+            .job_started(&document_id, 1, 1);
 
         // SPEC-032: Use workspace-specific pipeline with workspace LLM configuration
         // This ensures the workspace's LLM model is used for entity extraction
@@ -277,29 +276,25 @@ pub async fn upload_document(
             .create_workspace_pipeline(&workspace_id_for_storage)
             .await;
 
-        // OODA-01: Add HTTP-level timeout to prevent indefinite hangs
-        // WHY: Large documents (100KB+) can take 5-10 minutes to process,
-        // but HTTP clients expect responses within 60-120 seconds.
-        // Without this timeout, requests hang indefinitely causing poor UX.
-        //
-        // Timeout Strategy:
-        // - 120 seconds (2 minutes): Conservative limit for synchronous mode
-        // - For larger documents, users should use async_processing: true
-        // - Timeout applies to ENTIRE pipeline, not just individual LLM calls
-        //
-        // See: specs/002-bullet-proof-ingestion-process.md
-        const SYNC_PROCESSING_TIMEOUT_SECS: u64 = 120;
+        let sync_llm_provider =
+            resolve_workspace_llm_provider_name(&state, &workspace_id_for_storage).await;
+        let sync_processing_timeout_secs =
+            crate::safety_limits::sync_processing_timeout_secs(&sync_llm_provider);
 
+        // OODA-01: Add HTTP-level timeout to prevent indefinite hangs.
+        // Provider-aware: Ollama/LM Studio get 600 s (Docker→host latency); cloud/mock 120 s.
+        // Override globally via EDGEQUAKE_SYNC_PROCESSING_TIMEOUT_SECS.
         let processing_start = std::time::Instant::now();
         debug!(
             document_id = %document_id,
             content_length = request.content.len(),
-            timeout_secs = SYNC_PROCESSING_TIMEOUT_SECS,
+            llm_provider = %sync_llm_provider,
+            timeout_secs = sync_processing_timeout_secs,
             "Starting synchronous document processing"
         );
 
         let result = tokio::time::timeout(
-            std::time::Duration::from_secs(SYNC_PROCESSING_TIMEOUT_SECS),
+            std::time::Duration::from_secs(sync_processing_timeout_secs),
             // SPEC-003: Use resilient processing with chunk-level error isolation
             // WHY: Map-reduce pattern continues processing even if some chunks fail
             workspace_pipeline.process_with_resilience(&document_id, &request.content, None),
@@ -309,16 +304,18 @@ pub async fn upload_document(
             let processing_time = processing_start.elapsed();
             warn!(
                 document_id = %document_id,
-                timeout_secs = SYNC_PROCESSING_TIMEOUT_SECS,
+                llm_provider = %sync_llm_provider,
+                timeout_secs = sync_processing_timeout_secs,
                 processing_time_secs = processing_time.as_secs(),
                 content_length = request.content.len(),
                 "Document processing timeout - consider using async mode for large documents"
             );
             ApiError::Timeout(format!(
-                "Document processing exceeded {} seconds. For large documents (>50KB), \
+                "Document processing exceeded {} seconds (provider: {}). For large documents (>50KB), \
                  use async_processing: true to avoid timeouts. \
                  Current document size: {} bytes",
-                SYNC_PROCESSING_TIMEOUT_SECS,
+                sync_processing_timeout_secs,
+                sync_llm_provider,
                 request.content.len()
             ))
         })??;
@@ -336,7 +333,7 @@ pub async fn upload_document(
             // Emit WebSocket events for failed chunks
             if let Some(ref chunk_errors) = result.stats.chunk_errors {
                 for error_info in chunk_errors {
-                    state.progress_broadcaster.broadcast_chunk_failure(
+                    state.tasks.progress_broadcaster.broadcast_chunk_failure(
                         document_id.clone(),
                         document_id.clone(), // Use doc_id as track_id for sync
                         error_info.chunk_index as u32,
@@ -375,7 +372,7 @@ pub async fn upload_document(
             })
             .collect();
 
-        state.kv_storage.upsert(&chunks).await?;
+        state.storage.kv_storage.upsert(&chunks).await?;
 
         // SPEC-033: Get workspace-specific vector storage for document embeddings
         // This ensures embeddings are stored with correct dimension per workspace
@@ -426,6 +423,7 @@ pub async fn upload_document(
 
         // Broadcast document progress (chunking complete)
         state
+            .tasks
             .progress_broadcaster
             .document_progress(&document_id, 0, 1, 3);
 
@@ -437,24 +435,25 @@ pub async fn upload_document(
                 // accumulate source_ids from ALL documents, not replace with just the current one.
                 // Without this, deleting one document could orphan an entity that's still
                 // referenced by other documents.
-                let merged_source_ids = match state.graph_storage.get_node(&entity.name).await {
-                    Ok(Some(existing)) => {
-                        let mut existing_sources: std::collections::HashSet<String> = existing
-                            .properties
-                            .get("source_ids")
-                            .and_then(|v| v.as_array())
-                            .map(|arr| {
-                                arr.iter()
-                                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                                    .collect()
-                            })
-                            .unwrap_or_default();
-                        // Add new document reference (HashSet deduplicates)
-                        existing_sources.insert(document_id.clone());
-                        existing_sources.into_iter().collect::<Vec<_>>()
-                    }
-                    _ => vec![document_id.clone()],
-                };
+                let merged_source_ids =
+                    match state.storage.graph_storage.get_node(&entity.name).await {
+                        Ok(Some(existing)) => {
+                            let mut existing_sources: std::collections::HashSet<String> = existing
+                                .properties
+                                .get("source_ids")
+                                .and_then(|v| v.as_array())
+                                .map(|arr| {
+                                    arr.iter()
+                                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                                        .collect()
+                                })
+                                .unwrap_or_default();
+                            // Add new document reference (HashSet deduplicates)
+                            existing_sources.insert(document_id.clone());
+                            existing_sources.into_iter().collect::<Vec<_>>()
+                        }
+                        _ => vec![document_id.clone()],
+                    };
 
                 let mut properties = std::collections::HashMap::new();
                 properties.insert(
@@ -478,10 +477,20 @@ pub async fn upload_document(
                     "source_chunk_ids".to_string(),
                     serde_json::json!(&entity.source_chunk_ids),
                 );
+                insert_graph_tenant_scope(
+                    &mut properties,
+                    &tenant_id_for_storage,
+                    &workspace_id_for_storage,
+                );
 
+                // WHY: Normalize entity names to UPPERCASE_UNDERSCORE before storage.
+                // Without this, variants like "Systems Thinking" and "systems thinking"
+                // are stored as separate nodes, bypassing deduplication in the merger.
+                let entity_key = normalize_entity_name(&entity.name);
                 state
+                    .storage
                     .graph_storage
-                    .upsert_node(&entity.name, properties)
+                    .upsert_node(&entity_key, properties)
                     .await?;
 
                 // CRITICAL: Also store entity embedding in vector storage for query_local retrieval
@@ -500,7 +509,7 @@ pub async fn upload_document(
                     }
                     metadata["workspace_id"] = serde_json::json!(&workspace_id_for_storage);
 
-                    let entity_id = format!("entity:{}", entity.name);
+                    let entity_id = format!("entity:{}", entity_key);
                     if let Err(e) = workspace_vector_storage
                         .upsert(&[(entity_id.clone(), embedding.clone(), metadata)])
                         .await
@@ -515,6 +524,7 @@ pub async fn upload_document(
                 // WHY: Same as entities - when the same relationship appears in multiple
                 // documents, we must accumulate source_ids from ALL documents.
                 let merged_source_ids = match state
+                    .storage
                     .graph_storage
                     .get_edge(&relationship.source, &relationship.target)
                     .await
@@ -561,8 +571,14 @@ pub async fn upload_document(
                         serde_json::json!(vec![chunk_id]),
                     );
                 }
+                insert_graph_tenant_scope(
+                    &mut properties,
+                    &tenant_id_for_storage,
+                    &workspace_id_for_storage,
+                );
 
                 state
+                    .storage
                     .graph_storage
                     .upsert_edge(&relationship.source, &relationship.target, properties)
                     .await?;
@@ -570,9 +586,12 @@ pub async fn upload_document(
         }
 
         // Broadcast document progress (extraction complete)
-        state
-            .progress_broadcaster
-            .document_progress(&document_id, result.stats.entity_count, 2, 3);
+        state.tasks.progress_broadcaster.document_progress(
+            &document_id,
+            result.stats.entity_count,
+            2,
+            3,
+        );
 
         // OODA-03: Determine final status based on chunk extraction results
         // - "completed": All chunks extracted successfully WITH entities
@@ -622,16 +641,21 @@ pub async fn upload_document(
             "embedding_model": result.stats.embedding_model,
         });
         state
+            .storage
             .kv_storage
             .upsert(&[(doc_metadata_key, doc_metadata)])
             .await?;
 
         // Broadcast job finished
         let duration = start_time.elapsed();
+        state.tasks.progress_broadcaster.document_progress(
+            &document_id,
+            result.stats.entity_count,
+            3,
+            3,
+        );
         state
-            .progress_broadcaster
-            .document_progress(&document_id, result.stats.entity_count, 3, 3);
-        state
+            .tasks
             .progress_broadcaster
             .job_finished(1, duration.as_millis() as u64);
 
@@ -654,7 +678,7 @@ pub async fn upload_document(
             // The PostgreSQL `documents` table stays incomplete, causing Dashboard
             // KPI mismatch when the PostgreSQL path is eventually re-enabled.
             #[cfg(feature = "postgres")]
-            if let Some(ref pdf_storage) = state.pdf_storage {
+            if let Some(ref pdf_storage) = state.storage.pdf_storage {
                 if let Ok(doc_uuid) = Uuid::parse_str(&document_id) {
                     let tenant_uuid = tenant_id_for_storage
                         .as_ref()
@@ -729,4 +753,14 @@ pub async fn upload_document(
             }),
         ))
     }
+}
+
+/// Resolve workspace LLM provider for sync-upload timeout selection.
+async fn resolve_workspace_llm_provider_name(state: &AppState, workspace_id: &str) -> String {
+    if let Some(workspace_uuid) = crate::middleware::resolve_workspace_uuid(Some(workspace_id)) {
+        if let Ok(Some(ws)) = state.workspace_service.get_workspace(workspace_uuid).await {
+            return ws.llm_provider;
+        }
+    }
+    state.query.llm_provider.name().to_string()
 }

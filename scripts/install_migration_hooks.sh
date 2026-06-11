@@ -20,10 +20,11 @@ HOOK_CONTENT='#!/usr/bin/env bash
 # Migration immutability pre-commit hook.
 # Installed by: scripts/install_migration_hooks.sh
 #
-# Blocks modification of existing migration files. New files (.sql additions)
-# are allowed. Run --no-verify to bypass (e.g., when reverting a broken migration).
+# Blocks modification of existing top-level sqlx migrations (NNN_*.sql).
+# Auxiliary DDL under migrations/support/ remains editable (not in _sqlx_migrations).
 
-STAGED_MODIFIED=$(git diff --cached --name-only --diff-filter=M -- '"'"'edgequake/migrations/*.sql'"'"')
+STAGED_MODIFIED=$(git diff --cached --name-only --diff-filter=M -- '"'"'edgequake/migrations/'"'"' \
+  | grep -E '"'"'^edgequake/migrations/[0-9]+_.*\.sql$'"'"' || true)
 
 if [[ -n "$STAGED_MODIFIED" ]]; then
   echo ""
