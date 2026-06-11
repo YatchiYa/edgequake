@@ -100,6 +100,70 @@ pub async fn execute_query(
     // Build engine query request with conversation history and tenant context
     let mut engine_request = EngineQueryRequest::new(&request.query).with_mode(mode);
 
+    // Load conversation history from database if conversation_id is provided
+    let conversation_id_uuid = if let Some(ref conv_id_str) = request.conversation_id {
+        match uuid::Uuid::parse_str(conv_id_str) {
+            Ok(conv_id) => {
+                // Load existing conversation and its messages
+                if let Ok(Some(_conv)) = state.conversation_service.get_conversation(conv_id).await
+                {
+                    // Load messages from the conversation
+                    match state
+                        .conversation_service
+                        .list_messages(conv_id, None, 200)
+                        .await
+                    {
+                        Ok(msg_result) => {
+                            let engine_history: Vec<edgequake_query::ConversationMessage> =
+                                msg_result
+                                    .items
+                                    .iter()
+                                    .map(|m| edgequake_query::ConversationMessage {
+                                        role: match m.role {
+                                            edgequake_core::types::MessageRole::User => {
+                                                "user".to_string()
+                                            }
+                                            edgequake_core::types::MessageRole::Assistant => {
+                                                "assistant".to_string()
+                                            }
+                                            edgequake_core::types::MessageRole::System => {
+                                                "system".to_string()
+                                            }
+                                        },
+                                        content: m.content.clone(),
+                                    })
+                                    .collect();
+
+                            if !engine_history.is_empty() {
+                                debug!(
+                                    conversation_id = %conv_id,
+                                    message_count = engine_history.len(),
+                                    "Loaded conversation history from database"
+                                );
+                                engine_request =
+                                    engine_request.with_conversation_history(engine_history);
+                            }
+                        }
+                        Err(e) => {
+                            error!(
+                                conversation_id = %conv_id,
+                                error = %e,
+                                "Failed to load conversation messages"
+                            );
+                        }
+                    }
+                }
+                Some(conv_id)
+            }
+            Err(e) => {
+                error!(error = %e, "Invalid conversation_id format");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     // SPEC-004: Thread system prompt extension if provided
     if let Some(ref system_prompt) = request.system_prompt {
         engine_request = engine_request.with_system_prompt(system_prompt);
@@ -151,16 +215,18 @@ pub async fn execute_query(
         engine_request = engine_request.with_llm_model(model);
     }
 
-    // Add conversation history if provided
-    if let Some(history) = &request.conversation_history {
-        let engine_history: Vec<edgequake_query::ConversationMessage> = history
-            .iter()
-            .map(|m| edgequake_query::ConversationMessage {
-                role: m.role.clone(),
-                content: m.content.clone(),
-            })
-            .collect();
-        engine_request = engine_request.with_conversation_history(engine_history);
+    // Add conversation history if provided (and not already loaded from DB)
+    if conversation_id_uuid.is_none() {
+        if let Some(history) = &request.conversation_history {
+            let engine_history: Vec<edgequake_query::ConversationMessage> = history
+                .iter()
+                .map(|m| edgequake_query::ConversationMessage {
+                    role: m.role.clone(),
+                    content: m.content.clone(),
+                })
+                .collect();
+            engine_request = engine_request.with_conversation_history(engine_history);
+        }
     }
 
     // SPEC-005: Resolve document filter → allowed_document_ids
@@ -446,7 +512,7 @@ pub async fn execute_query(
     let conversation_id = if request.conversation_history.is_some() {
         Some(uuid::Uuid::new_v4().to_string())
     } else {
-        None
+        conversation_id_uuid.map(|id| id.to_string())
     };
 
     // SPEC-032 Item 18, 22: Get LLM provider/model info for lineage tracking
@@ -492,6 +558,56 @@ pub async fn execute_query(
         conversation_id,
         reranked,
     };
+
+    // Save messages to conversation if conversation_id was provided
+    if let Some(conv_id) = conversation_id_uuid {
+        // Save user query as a message
+        if let Err(e) = state
+            .conversation_service
+            .create_message(
+                conv_id,
+                edgequake_core::types::CreateMessageRequest {
+                    content: request.query.clone(),
+                    role: edgequake_core::types::MessageRole::User,
+                    parent_id: None,
+                    stream: false,
+                },
+            )
+            .await
+        {
+            error!(
+                conversation_id = %conv_id,
+                error = %e,
+                "Failed to save user query message"
+            );
+        }
+
+        // Save assistant response as a message
+        if let Err(e) = state
+            .conversation_service
+            .create_message(
+                conv_id,
+                edgequake_core::types::CreateMessageRequest {
+                    content: response.answer.clone(),
+                    role: edgequake_core::types::MessageRole::Assistant,
+                    parent_id: None,
+                    stream: false,
+                },
+            )
+            .await
+        {
+            error!(
+                conversation_id = %conv_id,
+                error = %e,
+                "Failed to save assistant response message"
+            );
+        } else {
+            debug!(
+                conversation_id = %conv_id,
+                "Saved query and response to conversation"
+            );
+        }
+    }
 
     Ok(Json(response))
 }

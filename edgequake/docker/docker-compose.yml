@@ -14,6 +14,8 @@ services:
     restart: unless-stopped
     ports:
       - "${EDGEQUAKE_PORT:-8080}:8080"
+    env_file:
+      - ../.env
     environment:
       - EDGEQUAKE_HOST=0.0.0.0
       - EDGEQUAKE_PORT=8080
@@ -61,6 +63,7 @@ services:
       # Override with PDFIUM_AUTO_CACHE_DIR if you mount a persistent volume.
       - PDFIUM_AUTO_CACHE_DIR=${PDFIUM_AUTO_CACHE_DIR:-/tmp/edgequake-pdfium-cache}
       - RUST_LOG=info,edgequake=debug
+      - EDGEQUAKE_MODELS_CONFIG=/app/models.toml
     # Linux only: enable host.docker.internal resolution
     extra_hosts:
       - "host.docker.internal:host-gateway"

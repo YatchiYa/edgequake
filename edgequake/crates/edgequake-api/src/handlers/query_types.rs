@@ -85,6 +85,11 @@ pub struct QueryRequest {
     #[serde(default)]
     pub conversation_history: Option<Vec<ConversationMessage>>,
 
+    /// Conversation ID to persist this query/response.
+    /// If provided, loads history from database and saves new messages.
+    #[serde(default)]
+    pub conversation_id: Option<String>,
+
     /// Enable reranking of retrieved chunks for better relevance.
     #[serde(default = "default_enable_rerank")]
     pub enable_rerank: bool,
