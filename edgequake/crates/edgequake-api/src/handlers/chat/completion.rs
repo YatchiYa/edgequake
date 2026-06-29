@@ -20,8 +20,8 @@ use edgequake_query::QueryRequest as EngineQueryRequest;
 
 use super::{
     build_sources, build_sources_with_content, enrich_query_with_language, filter_sources_by_type,
-    parse_mode, parse_query_mode, sources_to_message_context, ChatCompletionRequest,
-    ChatCompletionResponse,
+    parse_mode, parse_query_mode, resolve_source_types, sources_to_message_context,
+    ChatCompletionRequest, ChatCompletionResponse,
 };
 
 /// Execute a non-streaming chat completion.
@@ -306,8 +306,9 @@ pub async fn chat_completion(
         build_sources(&result.context)
     };
     resolve_chunk_file_paths(state.storage.kv_storage.as_ref(), &mut sources).await;
-    // Restrict surfaced sources to requested types (e.g. chunks only).
-    let sources = filter_sources_by_type(sources, &request.source_types);
+    // Restrict surfaced sources to requested types (defaults to chunks only via
+    // EDGEQUAKE_DEFAULT_SOURCE_TYPES unless the request specifies otherwise).
+    let sources = filter_sources_by_type(sources, &resolve_source_types(&request.source_types));
     let context = sources_to_message_context(&sources);
 
     // 5. Save assistant message

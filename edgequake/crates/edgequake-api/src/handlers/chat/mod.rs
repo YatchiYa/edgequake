@@ -313,6 +313,37 @@ fn build_sources_inner(
     sources
 }
 
+/// Resolve the effective source-type filter for a request.
+///
+/// Precedence:
+///   1. Explicit request `source_types` (always wins).
+///   2. `EDGEQUAKE_DEFAULT_SOURCE_TYPES` env var (comma-separated, e.g.
+///      `chunk` or `chunk,entity,relationship`; `all` or empty = every type).
+///   3. Built-in default: `["chunk"]` — chunks only (entities/relationships are
+///      excluded unless explicitly requested or the env var widens the set).
+pub(crate) fn resolve_source_types(request_types: &Option<Vec<String>>) -> Option<Vec<String>> {
+    if let Some(types) = request_types {
+        return Some(types.clone());
+    }
+    match std::env::var("EDGEQUAKE_DEFAULT_SOURCE_TYPES") {
+        Ok(v) => {
+            let v = v.trim();
+            if v.is_empty() || v.eq_ignore_ascii_case("all") {
+                None
+            } else {
+                Some(
+                    v.split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect(),
+                )
+            }
+        }
+        // Default when the env var is unset: chunks only.
+        Err(_) => Some(vec!["chunk".to_string()]),
+    }
+}
+
 /// Restrict `sources` to the requested `source_type` values (case-insensitive).
 /// `None`/empty → return all sources unchanged. Used to let callers fetch only
 /// chunks (e.g. `["chunk"]`) instead of the full chunk+entity+relationship set.

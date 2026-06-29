@@ -33,8 +33,8 @@ use edgequake_query::QueryRequest as EngineQueryRequest;
 
 use super::{
     build_sources, build_sources_with_content, enrich_query_with_language, filter_sources_by_type,
-    parse_mode, parse_query_mode, sources_to_message_context, ChatCompletionRequest,
-    ChatStreamEvent,
+    parse_mode, parse_query_mode, resolve_source_types, sources_to_message_context,
+    ChatCompletionRequest, ChatStreamEvent,
 };
 
 /// Execute a streaming chat completion.
@@ -437,8 +437,10 @@ pub async fn chat_completion_stream(
                         &mut sources,
                     )
                     .await;
-                    // Restrict surfaced sources to requested types (e.g. chunks only).
-                    let sources = filter_sources_by_type(sources, &request.source_types);
+                    // Restrict surfaced sources to requested types (defaults to
+                    // chunks only via EDGEQUAKE_DEFAULT_SOURCE_TYPES).
+                    let sources =
+                        filter_sources_by_type(sources, &resolve_source_types(&request.source_types));
                     saved_message_context = Some(sources_to_message_context(&sources));
                     let retrieval_elapsed_ms = retrieval_start.elapsed().as_millis() as u64;
 
@@ -507,8 +509,10 @@ pub async fn chat_completion_stream(
                 resolve_chunk_file_paths(state_clone.storage.kv_storage.as_ref(), &mut sources)
                     .await;
 
-                // Restrict surfaced sources to requested types (e.g. chunks only).
-                let sources = filter_sources_by_type(sources, &request.source_types);
+                // Restrict surfaced sources to requested types (defaults to
+                // chunks only via EDGEQUAKE_DEFAULT_SOURCE_TYPES).
+                let sources =
+                    filter_sources_by_type(sources, &resolve_source_types(&request.source_types));
 
                 // Save message context for later persistence
                 saved_message_context = Some(sources_to_message_context(&sources));
