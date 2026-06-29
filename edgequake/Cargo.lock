@@ -1669,7 +1669,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake"
-version = "0.12.11"
+version = "0.13.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1693,7 +1693,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-api"
-version = "0.12.11"
+version = "0.13.0"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -1759,7 +1759,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-auth"
-version = "0.12.11"
+version = "0.13.0"
 dependencies = [
  "argon2",
  "async-trait",
@@ -1777,7 +1777,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-core"
-version = "0.12.11"
+version = "0.13.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1841,7 +1841,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-observability"
-version = "0.12.11"
+version = "0.13.0"
 dependencies = [
  "http 1.4.2",
  "metrics",
@@ -1859,7 +1859,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-pdf"
-version = "0.12.11"
+version = "0.13.0"
 dependencies = [
  "async-trait",
  "edgeparse-core",
@@ -1903,7 +1903,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-pipeline"
-version = "0.12.11"
+version = "0.13.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1924,7 +1924,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-query"
-version = "0.12.11"
+version = "0.13.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1965,7 +1965,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-storage"
-version = "0.12.11"
+version = "0.13.0"
 dependencies = [
  "async-trait",
  "chrono",

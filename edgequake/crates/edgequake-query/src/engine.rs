@@ -192,6 +192,17 @@ impl QueryRequest {
         self
     }
 
+    /// Set the maximum number of chunks to return (request-level `top_k`).
+    ///
+    /// Caps the retrieved chunk list to `n`. Chunks are score-sorted, so the
+    /// most relevant ones are kept. The effective ceiling is the engine's
+    /// configured `max_chunks` (chunks are retrieved up to that depth, then
+    /// capped to `n`).
+    pub fn with_max_results(mut self, n: usize) -> Self {
+        self.max_results = Some(n);
+        self
+    }
+
     /// Set prompt-only mode.
     pub fn prompt_only(mut self) -> Self {
         self.prompt_only = true;

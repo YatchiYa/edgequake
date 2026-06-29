@@ -96,6 +96,8 @@ export function useQueryStreaming({
           top_k: querySettings.topK,
           stream: true,
           retrieval_only: querySettings.retrievalOnly || undefined,
+          // Surface chunks only in the context event (no entity/relationship noise).
+          source_types: ["chunk"],
           provider: querySettings.provider,
           model: querySettings.model,
           language: i18n.language,
@@ -290,6 +292,8 @@ export function useQueryStreaming({
           top_k: querySettings.topK,
           stream: false,
           retrieval_only: querySettings.retrievalOnly || undefined,
+          // Surface chunks only in the context event (no entity/relationship noise).
+          source_types: ["chunk"],
           provider: querySettings.provider,
           model: querySettings.model,
           language: i18n.language,

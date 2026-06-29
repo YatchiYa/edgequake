@@ -49,6 +49,23 @@ pub struct ChatCompletionRequest {
     #[serde(default)]
     pub retrieval_only: bool,
 
+    /// Restrict the returned `sources` (and the streaming `context` event) to
+    /// these source types: `"chunk"`, `"entity"`, `"relationship"`. When omitted
+    /// or empty, all types are returned. This ONLY affects what is surfaced to
+    /// the caller — the LLM answer is still generated from the full context.
+    /// Example: `["chunk"]` returns chunks only (no entities/relationships).
+    #[serde(default)]
+    pub source_types: Option<Vec<String>>,
+
+    /// Include the fully-assembled prompt (the EXACT text the LLM would receive:
+    /// role + instructions + formatted knowledge-graph context + document chunks
+    /// + the query) in the response. Returned in `prompt` (non-streaming) or in
+    /// the `context` SSE event's `prompt` field (streaming). Only honoured in
+    /// retrieval-only mode; lets an external agent inject the same context the
+    /// LLM would use, with zero LLM cost.
+    #[serde(default)]
+    pub include_prompt: bool,
+
     /// Maximum tokens for response.
     #[serde(default)]
     pub max_tokens: Option<usize>,
@@ -147,6 +164,11 @@ pub struct ChatCompletionResponse {
     /// Sources retrieved.
     pub sources: Vec<SourceReference>,
 
+    /// Fully-assembled prompt (the exact context the LLM would receive). Only
+    /// present when `include_prompt` was requested in retrieval-only mode.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
+
     /// Generation statistics.
     pub stats: QueryStats,
 
@@ -191,6 +213,10 @@ pub enum ChatStreamEvent {
         /// Time taken for retrieval in milliseconds.
         #[serde(skip_serializing_if = "Option::is_none")]
         retrieval_time_ms: Option<u64>,
+        /// Fully-assembled prompt (exact LLM-ready context). Only present when
+        /// `include_prompt` was requested in retrieval-only mode.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        prompt: Option<String>,
     },
 
     /// Token generated during streaming.

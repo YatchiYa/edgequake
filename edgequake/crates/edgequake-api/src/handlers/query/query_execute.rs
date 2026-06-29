@@ -202,6 +202,13 @@ pub async fn execute_query(
         engine_request = engine_request.prompt_only();
     }
 
+    // Thread request-level max_results (top_k) → cap on retrieved chunks.
+    if let Some(max_results) = request.max_results {
+        if max_results > 0 {
+            engine_request = engine_request.with_max_results(max_results);
+        }
+    }
+
     // Add rerank settings to engine request
     engine_request = engine_request.with_rerank(request.enable_rerank);
     if let Some(top_k) = request.rerank_top_k {
@@ -329,6 +336,8 @@ pub async fn execute_query(
                 score: chunk.score,
                 rerank_score,
                 snippet: Some(chunk.content.chars().take(200).collect()),
+                // Always expose the full chunk text (snippet stays the preview).
+                content: Some(chunk.content.clone()),
                 reference_id: Some(ref_id),
                 document_id: chunk.document_id.clone(),
                 file_path: None, // Resolved below via KV metadata lookup
@@ -389,6 +398,11 @@ pub async fn execute_query(
             score: entity.score,
             rerank_score: None,
             snippet: Some(entity.description.chars().take(200).collect()),
+            content: if request.context_only {
+                Some(entity.description.clone())
+            } else {
+                None
+            },
             reference_id: Some(ref_id),
             document_id: entity.source_document_id.clone(),
             file_path: entity.source_file_path.clone(),
@@ -433,6 +447,7 @@ pub async fn execute_query(
                 "{} {} {}",
                 rel.source, rel.relation_type, rel.target
             )),
+            content: None,
             reference_id: Some(ref_id),
             document_id: rel.source_document_id.clone(),
             file_path: rel.source_file_path.clone(),

@@ -32,8 +32,9 @@ use edgequake_observability::RequestContext;
 use edgequake_query::QueryRequest as EngineQueryRequest;
 
 use super::{
-    build_sources, enrich_query_with_language, parse_mode, parse_query_mode,
-    sources_to_message_context, ChatCompletionRequest, ChatStreamEvent,
+    build_sources, build_sources_with_content, enrich_query_with_language, filter_sources_by_type,
+    parse_mode, parse_query_mode, sources_to_message_context, ChatCompletionRequest,
+    ChatStreamEvent,
 };
 
 /// Execute a streaming chat completion.
@@ -215,6 +216,13 @@ pub async fn chat_completion_stream(
         // SPEC-004: Thread system prompt extension if provided
         if let Some(ref system_prompt) = request_system_prompt {
             engine_request = engine_request.with_system_prompt(system_prompt);
+        }
+
+        // Thread request-level top_k → cap on retrieved chunks.
+        if let Some(top_k) = request.top_k {
+            if top_k > 0 {
+                engine_request = engine_request.with_max_results(top_k);
+            }
         }
         let data_tenant_id = workspace_clone
             .as_ref()
@@ -405,7 +413,13 @@ pub async fn chat_completion_stream(
         // "zero LLM calls" contract. No token events are sent; the assistant
         // message is persisted with empty content + the retrieved context.
         if request.retrieval_only {
-            let ro_request = engine_request.context_only();
+            // include_prompt → prompt_only (answer = assembled prompt); otherwise
+            // context_only (empty answer). Both skip the LLM entirely.
+            let ro_request = if request.include_prompt {
+                engine_request.prompt_only()
+            } else {
+                engine_request.context_only()
+            };
             match execute_sota_query_with_auth_fallback(
                 &state_clone,
                 ro_request,
@@ -415,20 +429,32 @@ pub async fn chat_completion_stream(
             .await
             {
                 Ok(result) => {
-                    let mut sources = build_sources(&result.context);
+                    // Retrieval-only: embed FULL chunk/entity content so the caller
+                    // (e.g. an external agent) gets complete material, not a preview.
+                    let mut sources = build_sources_with_content(&result.context);
                     resolve_chunk_file_paths(
                         state_clone.storage.kv_storage.as_ref(),
                         &mut sources,
                     )
                     .await;
+                    // Restrict surfaced sources to requested types (e.g. chunks only).
+                    let sources = filter_sources_by_type(sources, &request.source_types);
                     saved_message_context = Some(sources_to_message_context(&sources));
                     let retrieval_elapsed_ms = retrieval_start.elapsed().as_millis() as u64;
 
-                    if !sources.is_empty() {
+                    // prompt_only puts the assembled LLM-ready prompt in `answer`.
+                    let assembled_prompt = if request.include_prompt {
+                        Some(result.answer.clone())
+                    } else {
+                        None
+                    };
+
+                    if !sources.is_empty() || assembled_prompt.is_some() {
                         let context_event = ChatStreamEvent::Context {
                             sources: sources.clone(),
                             query_mode: Some(result.mode.to_string()),
                             retrieval_time_ms: Some(retrieval_elapsed_ms),
+                            prompt: assembled_prompt,
                         };
                         if tx.send(context_event).await.is_err() {
                             ErrorEvent::log_stream_disconnect(
@@ -481,6 +507,9 @@ pub async fn chat_completion_stream(
                 resolve_chunk_file_paths(state_clone.storage.kv_storage.as_ref(), &mut sources)
                     .await;
 
+                // Restrict surfaced sources to requested types (e.g. chunks only).
+                let sources = filter_sources_by_type(sources, &request.source_types);
+
                 // Save message context for later persistence
                 saved_message_context = Some(sources_to_message_context(&sources));
 
@@ -491,6 +520,7 @@ pub async fn chat_completion_stream(
                         sources: sources.clone(),
                         query_mode: Some(used_mode.to_string()),
                         retrieval_time_ms: Some(retrieval_elapsed_ms),
+                        prompt: None,
                     };
                     if tx.send(context_event).await.is_err() {
                         ErrorEvent::log_stream_disconnect(

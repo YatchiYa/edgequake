@@ -19,8 +19,9 @@ use edgequake_core::types::{
 use edgequake_query::QueryRequest as EngineQueryRequest;
 
 use super::{
-    build_sources, enrich_query_with_language, parse_mode, parse_query_mode,
-    sources_to_message_context, ChatCompletionRequest, ChatCompletionResponse,
+    build_sources, build_sources_with_content, enrich_query_with_language, filter_sources_by_type,
+    parse_mode, parse_query_mode, sources_to_message_context, ChatCompletionRequest,
+    ChatCompletionResponse,
 };
 
 /// Execute a non-streaming chat completion.
@@ -149,12 +150,24 @@ pub async fn chat_completion(
         engine_request = engine_request.with_system_prompt(system_prompt);
     }
 
+    // Thread request-level top_k → cap on retrieved chunks.
+    if let Some(top_k) = request.top_k {
+        if top_k > 0 {
+            engine_request = engine_request.with_max_results(top_k);
+        }
+    }
+
     // Retrieval-only mode: retrieve context but skip LLM answer generation.
-    // The engine honours `context_only` by returning an empty answer with the
-    // full retrieved context (zero LLM calls). Callers receive the chunks in
-    // `sources` and formulate the answer themselves.
+    // Both `context_only` and `prompt_only` skip the LLM (zero LLM calls):
+    //   - context_only → empty answer, full context in `sources`.
+    //   - prompt_only  → answer is the fully-assembled LLM-ready prompt, which
+    //     we surface in the response `prompt` field (with `include_prompt`).
     if request.retrieval_only {
-        engine_request = engine_request.context_only();
+        if request.include_prompt {
+            engine_request = engine_request.prompt_only();
+        } else {
+            engine_request = engine_request.context_only();
+        }
     }
 
     let data_tenant_id = workspace
@@ -270,9 +283,31 @@ pub async fn chat_completion(
     )
     .await?;
 
-    // 4. Build sources and resolve document names for chunk sources
-    let mut sources = build_sources(&result.context);
+    // In retrieval-only + include_prompt mode, `result.answer` holds the
+    // fully-assembled LLM-ready prompt (not a generated answer). Capture it for
+    // the `prompt` field and keep `content` empty for retrieval-only.
+    let assembled_prompt = if request.retrieval_only && request.include_prompt {
+        Some(result.answer.clone())
+    } else {
+        None
+    };
+    let response_content = if request.retrieval_only {
+        String::new()
+    } else {
+        result.answer.clone()
+    };
+
+    // 4. Build sources and resolve document names for chunk sources.
+    // In retrieval-only mode, embed the full chunk/entity content so callers
+    // receive complete material instead of a truncated preview.
+    let mut sources = if request.retrieval_only {
+        build_sources_with_content(&result.context)
+    } else {
+        build_sources(&result.context)
+    };
     resolve_chunk_file_paths(state.storage.kv_storage.as_ref(), &mut sources).await;
+    // Restrict surfaced sources to requested types (e.g. chunks only).
+    let sources = filter_sources_by_type(sources, &request.source_types);
     let context = sources_to_message_context(&sources);
 
     // 5. Save assistant message
@@ -281,7 +316,7 @@ pub async fn chat_completion(
         .create_message(
             conversation_id,
             CreateMessageRequest {
-                content: result.answer.clone(),
+                content: response_content.clone(),
                 role: MessageRole::Assistant,
                 parent_id: Some(user_message.message_id),
                 stream: false,
@@ -371,9 +406,10 @@ pub async fn chat_completion(
         conversation_id,
         user_message_id: user_message.message_id,
         assistant_message_id: assistant_message.message_id,
-        content: result.answer,
+        content: response_content,
         mode: result.mode.to_string(),
         sources,
+        prompt: assembled_prompt,
         stats: QueryStats {
             embedding_time_ms: result.stats.embedding_time_ms,
             retrieval_time_ms: result.stats.retrieval_time_ms,

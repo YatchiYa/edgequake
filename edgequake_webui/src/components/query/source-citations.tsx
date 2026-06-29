@@ -187,6 +187,8 @@ const DocumentsTab = ({
 }) => {
   // Track which documents have their chunk list expanded beyond the default 3
   const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set());
+  // Track which individual passages are expanded to show their FULL content.
+  const [expandedPassages, setExpandedPassages] = useState<Set<string>>(new Set());
   const entries = Object.entries(chunksByDocument);
 
   // Normalized sum: score / max(1, globalMax) so each value stays in [0, 1].
@@ -199,6 +201,14 @@ const DocumentsTab = ({
     setExpandedDocs(prev => {
       const next = new Set(prev);
       if (next.has(docId)) next.delete(docId); else next.add(docId);
+      return next;
+    });
+  };
+
+  const togglePassageExpand = (key: string) => {
+    setExpandedPassages(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
   };
@@ -286,50 +296,91 @@ const DocumentsTab = ({
                       
                       {/* Passages — each is clickable and deep-links via ?chunk=<id> */}
                       <div className="space-y-1.5 mt-2">
-                        {visibleChunks.map((chunk, chunkIdx) => (
-                          <button
-                            key={chunk.chunk_id ?? chunkIdx}
-                            onClick={() => onDocumentClick?.(
-                              docId,
-                              chunk.content,
-                              chunk.chunk_index ?? chunkIdx,
-                              chunk.start_line,
-                              chunk.end_line,
-                              chunk.chunk_id
-                            )}
-                          className="w-full text-left p-2 rounded-md bg-muted/30 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 border border-transparent hover:border-yellow-200 dark:hover:border-yellow-800 transition-colors group/chunk focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
-                            title="Click to open and highlight this passage in the document viewer"
-                            aria-label={`Open passage ${(chunk.chunk_index ?? chunkIdx) + 1}: ${chunk.content.slice(0, 80)}${chunk.content.length > 80 ? '...' : ''}`}
+                        {visibleChunks.map((chunk, chunkIdx) => {
+                          const passageKey = chunk.chunk_id ?? `${docId}-${chunkIdx}`;
+                          const isPassageExpanded = expandedPassages.has(passageKey);
+                          const isLong = chunk.content.length > 200;
+                          return (
+                          <div
+                            key={passageKey}
+                            className="rounded-md bg-muted/30 border border-transparent hover:border-yellow-200 dark:hover:border-yellow-800 transition-colors group/chunk"
                           >
-                            <div className="flex items-start gap-2">
+                            <div className="flex items-start gap-2 p-2">
                               <Badge
                                 variant="outline"
                                 className="text-[9px] h-4 px-1 flex-shrink-0 mt-0.5"
                               >
                                 §{(chunk.chunk_index ?? chunkIdx) + 1}
                               </Badge>
-                              <p className="text-xs text-foreground/80 line-clamp-2 flex-1 leading-relaxed break-words overflow-hidden">
-                                {chunk.content.slice(0, 200)}{chunk.content.length > 200 ? '…' : ''}
-                              </p>
+                              {/* Click the text to expand/collapse the full passage */}
+                              <button
+                                type="button"
+                                onClick={() => isLong && togglePassageExpand(passageKey)}
+                                className="flex-1 text-left min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 rounded"
+                                aria-expanded={isPassageExpanded}
+                                title={isLong ? (isPassageExpanded ? 'Collapse passage' : 'Click to read the full passage') : undefined}
+                              >
+                                {isPassageExpanded ? (
+                                  <p className="text-xs text-foreground/90 leading-relaxed break-words whitespace-pre-wrap max-h-80 overflow-y-auto pr-1">
+                                    {chunk.content}
+                                  </p>
+                                ) : (
+                                  <p className="text-xs text-foreground/80 line-clamp-2 leading-relaxed break-words overflow-hidden">
+                                    {chunk.content.slice(0, 200)}{isLong ? '…' : ''}
+                                  </p>
+                                )}
+                              </button>
                               <div className="flex flex-col items-end gap-1 flex-shrink-0">
                                 <span className={`text-xs font-semibold ${getConfidenceLabel(normalizeScore(chunk.score)).color}`}>
                                   {Math.round(normalizeScore(chunk.score) * 100)}%
                                 </span>
-                                <ExternalLink className="h-2.5 w-2.5 text-muted-foreground opacity-0 group-hover/chunk:opacity-70 transition-opacity" aria-hidden="true" />
+                                {/* Deep-link to the document viewer (highlight this passage) */}
+                                <button
+                                  type="button"
+                                  onClick={() => onDocumentClick?.(
+                                    docId,
+                                    chunk.content,
+                                    chunk.chunk_index ?? chunkIdx,
+                                    chunk.start_line,
+                                    chunk.end_line,
+                                    chunk.chunk_id
+                                  )}
+                                  title="Open and highlight this passage in the document viewer"
+                                  aria-label={`Open passage ${(chunk.chunk_index ?? chunkIdx) + 1} in document`}
+                                  className="opacity-0 group-hover/chunk:opacity-70 hover:!opacity-100 transition-opacity"
+                                >
+                                  <ExternalLink className="h-2.5 w-2.5 text-muted-foreground" aria-hidden="true" />
+                                </button>
                               </div>
                             </div>
-                            {/* Locator: line range preferred, chunk ID as fallback */}
-                            {chunk.start_line !== undefined && chunk.end_line !== undefined ? (
-                              <div className="text-[9px] text-muted-foreground mt-1 pl-6">
-                                L{chunk.start_line}–{chunk.end_line}
-                              </div>
-                            ) : chunk.chunk_id ? (
-                              <div className="text-[9px] text-muted-foreground/50 mt-1 pl-6 font-mono truncate">
-                                {chunk.chunk_id.slice(0, 12)}…
-                              </div>
-                            ) : null}
-                          </button>
-                        ))}
+                            {/* Footer: locator + expand affordance */}
+                            <div className="flex items-center justify-between px-2 pb-1.5 pl-8">
+                              {chunk.start_line !== undefined && chunk.end_line !== undefined ? (
+                                <span className="text-[9px] text-muted-foreground">
+                                  L{chunk.start_line}–{chunk.end_line} · {chunk.content.length.toLocaleString()} chars
+                                </span>
+                              ) : (
+                                <span className="text-[9px] text-muted-foreground/60 font-mono truncate">
+                                  {chunk.content.length.toLocaleString()} chars
+                                </span>
+                              )}
+                              {isLong && (
+                                <button
+                                  type="button"
+                                  onClick={() => togglePassageExpand(passageKey)}
+                                  className="text-[9px] text-primary/70 hover:text-primary flex items-center gap-0.5 flex-shrink-0"
+                                >
+                                  {isPassageExpanded ? (
+                                    <><ChevronUp className="h-2.5 w-2.5" />Réduire</>
+                                  ) : (
+                                    <><ChevronDown className="h-2.5 w-2.5" />Voir tout</>
+                                  )}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          );
+                        })}
 
                         {/* Per-document expand / collapse for docs with many passages */}
                         {hiddenCount > 0 && (

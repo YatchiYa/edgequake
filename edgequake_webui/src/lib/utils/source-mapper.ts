@@ -41,11 +41,15 @@ export function mapSourcesToContext(sources: SourceReference[]): QueryContext {
     chunks: sources
       .filter((s) => s.source_type === "chunk")
       .map((s) => ({
-        content: s.snippet || "",
+        // Prefer the full content (retrieval-only) over the truncated snippet.
+        content: s.content || s.snippet || "",
         // Extract document ID from chunk ID (format: "uuid-chunk-N" -> "uuid")
         document_id: extractDocumentId(s.id),
         score: s.score,
         file_path: s.file_path,
+        start_line: s.start_line,
+        end_line: s.end_line,
+        chunk_index: s.chunk_index,
         // Chunk UUID for deep-linking to document detail sidebar selection
         chunk_id: s.id,
       })),

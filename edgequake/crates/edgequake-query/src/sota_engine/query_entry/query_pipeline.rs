@@ -226,7 +226,7 @@ impl SOTAQueryEngine {
         let keywords = &prepared.keywords;
         let embeddings = &prepared.embeddings;
 
-        match providers.vector_storage {
+        let mut context = match providers.vector_storage {
             Some(vector_storage) => match mode {
                 QueryMode::Local => {
                     self.query_local_with_vector_storage(
@@ -299,7 +299,24 @@ impl SOTAQueryEngine {
                 QueryMode::Naive => self.query_naive(embeddings, tenant, workspace).await,
                 QueryMode::Bypass => Ok(QueryContext::default()),
             },
+        }?;
+
+        // Request-level `top_k`: cap the retrieved chunks to `max_results`.
+        // Chunks are score-sorted (most relevant first), so truncation keeps the
+        // top-K most relevant. Entities/relationships are graph context and are
+        // governed separately by the engine config.
+        if let Some(max) = request.max_results {
+            if context.chunks.len() > max {
+                tracing::debug!(
+                    requested_top_k = max,
+                    retrieved = context.chunks.len(),
+                    "Capping chunks to request top_k"
+                );
+                context.chunks.truncate(max);
+            }
         }
+
+        Ok(context)
     }
 
     async fn pipeline_finalize(

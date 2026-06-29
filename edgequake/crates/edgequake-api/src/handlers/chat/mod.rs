@@ -187,6 +187,23 @@ fn is_injection_source(document_id: Option<&str>, file_path: Option<&str>) -> bo
 }
 
 pub(crate) fn build_sources(context: &edgequake_query::QueryContext) -> Vec<SourceReference> {
+    build_sources_inner(context, false)
+}
+
+/// Like [`build_sources`] but additionally embeds the FULL source content
+/// (chunk text / entity description) in each [`SourceReference::content`] field.
+/// Used by retrieval-only mode so external consumers receive complete material
+/// instead of a truncated preview.
+pub(crate) fn build_sources_with_content(
+    context: &edgequake_query::QueryContext,
+) -> Vec<SourceReference> {
+    build_sources_inner(context, true)
+}
+
+fn build_sources_inner(
+    context: &edgequake_query::QueryContext,
+    include_full_content: bool,
+) -> Vec<SourceReference> {
     let mut sources = Vec::new();
     let mut ref_counter = 1usize;
 
@@ -201,6 +218,9 @@ pub(crate) fn build_sources(context: &edgequake_query::QueryContext) -> Vec<Sour
             score: chunk.score,
             rerank_score: None,
             snippet: Some(chunk.content.chars().take(200).collect()),
+            // Always expose the FULL chunk text so callers (UI + external agents)
+            // never receive a truncated chunk. `snippet` remains the short preview.
+            content: Some(chunk.content.clone()),
             reference_id: Some(ref_counter),
             document_id: chunk.document_id.clone(),
             file_path: None,
@@ -229,6 +249,11 @@ pub(crate) fn build_sources(context: &edgequake_query::QueryContext) -> Vec<Sour
             score: entity.score,
             rerank_score: None,
             snippet: Some(entity.description.chars().take(200).collect()),
+            content: if include_full_content {
+                Some(entity.description.clone())
+            } else {
+                None
+            },
             reference_id: Some(ref_counter),
             // Source tracking for citations (LightRAG parity)
             document_id: entity.source_document_id.clone(),
@@ -269,6 +294,7 @@ pub(crate) fn build_sources(context: &edgequake_query::QueryContext) -> Vec<Sour
                 "{} {} {}",
                 rel.source, rel.relation_type, rel.target
             )),
+            content: None,
             reference_id: Some(ref_counter),
             // Source tracking for citations (LightRAG parity)
             document_id: rel.source_document_id.clone(),
@@ -284,6 +310,21 @@ pub(crate) fn build_sources(context: &edgequake_query::QueryContext) -> Vec<Sour
         ref_counter += 1;
     }
 
+    sources
+}
+
+/// Restrict `sources` to the requested `source_type` values (case-insensitive).
+/// `None`/empty → return all sources unchanged. Used to let callers fetch only
+/// chunks (e.g. `["chunk"]`) instead of the full chunk+entity+relationship set.
+pub(crate) fn filter_sources_by_type(
+    mut sources: Vec<SourceReference>,
+    types: &Option<Vec<String>>,
+) -> Vec<SourceReference> {
+    if let Some(types) = types {
+        if !types.is_empty() {
+            sources.retain(|s| types.iter().any(|t| t.eq_ignore_ascii_case(&s.source_type)));
+        }
+    }
     sources
 }
 
@@ -452,6 +493,7 @@ mod tests {
             sources: vec![],
             query_mode: None,
             retrieval_time_ms: None,
+            prompt: None,
         };
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("\"type\":\"context\""));
@@ -478,6 +520,7 @@ mod tests {
             score: 0.95,
             rerank_score: None,
             snippet: Some("Test content".to_string()),
+            content: None,
             reference_id: Some(1),
             document_id: Some("doc-123".to_string()),
             file_path: Some("research_paper.pdf".to_string()),
@@ -506,6 +549,7 @@ mod tests {
             score: 0.8,
             rerank_score: None,
             snippet: Some("Content".to_string()),
+            content: None,
             reference_id: Some(1),
             document_id: Some("doc-456".to_string()),
             file_path: None,
@@ -532,6 +576,7 @@ mod tests {
             score: 0.7,
             rerank_score: None,
             snippet: Some("Some text".to_string()),
+            content: None,
             reference_id: Some(1),
             document_id: None,
             file_path: None,
