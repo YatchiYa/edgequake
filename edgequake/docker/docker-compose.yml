@@ -72,10 +72,6 @@ services:
       # pdfium-auto cache dir — writable by the non-root container user.
       # Override with PDFIUM_AUTO_CACHE_DIR if you mount a persistent volume.
       - PDFIUM_AUTO_CACHE_DIR=${PDFIUM_AUTO_CACHE_DIR:-/tmp/edgequake-pdfium-cache}
-<<<<<<< HEAD
-      - RUST_LOG=info,edgequake=debug
-      - EDGEQUAKE_MODELS_CONFIG=/app/models.toml
-=======
       - RUST_LOG=${RUST_LOG:-edgequake=info,edgequake_api=info,edgequake_query=warn,edgequake_pipeline=info,edgequake_storage=warn,tower_http=warn,sqlx=warn}
       - EDGEQUAKE_LOG_FORMAT=${EDGEQUAKE_LOG_FORMAT:-plain}
       - EDGEQUAKE_LOG_SPAN_EVENTS=${EDGEQUAKE_LOG_SPAN_EVENTS:-}
@@ -90,7 +86,6 @@ services:
       - EDGEQUAKE_GRAPH_MATERIALIZE_CONCURRENT=${EDGEQUAKE_GRAPH_MATERIALIZE_CONCURRENT:-1}
       - EDGEQUAKE_GRAPH_QUERY_TIMEOUT_SECS=${EDGEQUAKE_GRAPH_QUERY_TIMEOUT_SECS:-15}
       - EDGEQUAKE_MAX_UPLOAD_BYTES=${EDGEQUAKE_MAX_UPLOAD_BYTES:-52428800}
->>>>>>> 2882651e7e396f02af21da647f52148719654d63
     # Linux only: enable host.docker.internal resolution
     extra_hosts:
       - "host.docker.internal:host-gateway"

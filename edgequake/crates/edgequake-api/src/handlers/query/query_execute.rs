@@ -9,7 +9,7 @@ use edgequake_audit::{AuditEvent, AuditEventType, AuditResult};
 use edgequake_observability::{
     record_llm_request, scope_llm_provider, PropagationHeaders, QueryOutcomeGuard, RequestContext,
 };
-use tracing::debug;
+use tracing::{debug, error};
 
 use crate::error::{ApiError, ApiResult};
 use crate::middleware::TenantContext;
