@@ -86,6 +86,11 @@ services:
       - EDGEQUAKE_GRAPH_MATERIALIZE_CONCURRENT=${EDGEQUAKE_GRAPH_MATERIALIZE_CONCURRENT:-1}
       - EDGEQUAKE_GRAPH_QUERY_TIMEOUT_SECS=${EDGEQUAKE_GRAPH_QUERY_TIMEOUT_SECS:-15}
       - EDGEQUAKE_MAX_UPLOAD_BYTES=${EDGEQUAKE_MAX_UPLOAD_BYTES:-52428800}
+      # Which source types are surfaced in query `sources` / the `context` SSE
+      # event by default (when a request does not pass `source_types`).
+      # Default "chunk" = chunks only (no entities/relationships). Set to "all"
+      # (or "chunk,entity,relationship") to include the knowledge-graph sources.
+      - EDGEQUAKE_DEFAULT_SOURCE_TYPES=${EDGEQUAKE_DEFAULT_SOURCE_TYPES:-chunk}
     # Linux only: enable host.docker.internal resolution
     extra_hosts:
       - "host.docker.internal:host-gateway"
