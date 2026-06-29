@@ -38,6 +38,13 @@ export interface ChatCompletionRequest {
   mode?: QueryMode;
   /** Whether to stream the response. */
   stream?: boolean;
+  /**
+   * Retrieval-only mode. When true, the backend retrieves the relevant chunks
+   * and returns them WITHOUT invoking the LLM to generate an answer. The
+   * response `content` is empty; chunks arrive in `sources` (non-streaming) or
+   * via the `context` SSE event (streaming).
+   */
+  retrieval_only?: boolean;
   /** Maximum tokens for response. */
   max_tokens?: number;
   /** Temperature for generation (0.0-2.0). */

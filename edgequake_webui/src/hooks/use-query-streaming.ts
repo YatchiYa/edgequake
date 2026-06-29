@@ -95,6 +95,7 @@ export function useQueryStreaming({
           temperature: querySettings.temperature,
           top_k: querySettings.topK,
           stream: true,
+          retrieval_only: querySettings.retrievalOnly || undefined,
           provider: querySettings.provider,
           model: querySettings.model,
           language: i18n.language,
@@ -124,6 +125,13 @@ export function useQueryStreaming({
                   accumulator,
                   mapSourcesToContext(chunk.sources),
                 );
+                // Push context onto the pending message immediately so sources
+                // render even when no tokens follow (retrieval-only mode).
+                setPendingMessage({
+                  ...assistantMessage,
+                  content: accumulator.fullContent,
+                  context: accumulator.context,
+                });
               }
               break;
 
@@ -281,6 +289,7 @@ export function useQueryStreaming({
           temperature: querySettings.temperature,
           top_k: querySettings.topK,
           stream: false,
+          retrieval_only: querySettings.retrievalOnly || undefined,
           provider: querySettings.provider,
           model: querySettings.model,
           language: i18n.language,

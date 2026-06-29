@@ -118,6 +118,7 @@ export function QueryInterface() {
             <QuerySettingsSheet
               settings={{
                 stream: querySettings.stream,
+                retrievalOnly: querySettings.retrievalOnly,
                 topK: querySettings.topK,
                 temperature: querySettings.temperature,
                 maxTokens: querySettings.maxTokens,

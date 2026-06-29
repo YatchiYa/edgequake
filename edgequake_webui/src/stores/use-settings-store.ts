@@ -45,6 +45,7 @@ const defaultQuerySettings: QuerySettings = {
   maxTokens: 2048,
   temperature: 0.7,
   stream: true, // Enable streaming by default for better UX
+  retrievalOnly: false, // Default: LLM-enhanced answer (set true to return raw chunks)
   enableRerank: true, // Enable reranking by default for SOTA quality
   rerankTopK: 10,
   provider: undefined, // Use server default provider (SPEC-032)

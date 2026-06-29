@@ -40,6 +40,15 @@ pub struct ChatCompletionRequest {
     #[serde(default = "chat_default_stream")]
     pub stream: bool,
 
+    /// Retrieval-only mode. When `true`, the server retrieves the relevant
+    /// chunks/entities/relationships and returns them WITHOUT invoking the LLM
+    /// to generate an answer. The response `content` is empty and the retrieved
+    /// material is returned in `sources` (non-streaming) or via the `context`
+    /// SSE event (streaming). Intended for callers that want the raw context to
+    /// formulate the answer themselves (e.g. an external agent).
+    #[serde(default)]
+    pub retrieval_only: bool,
+
     /// Maximum tokens for response.
     #[serde(default)]
     pub max_tokens: Option<usize>,
@@ -237,6 +246,20 @@ mod tests {
         assert!(req.stream); // default is true
         assert!(req.conversation_id.is_none());
         assert!(req.mode.is_none());
+    }
+
+    #[test]
+    fn test_chat_request_retrieval_only_defaults_false() {
+        let json = r#"{"message": "hi"}"#;
+        let req: ChatCompletionRequest = serde_json::from_str(json).unwrap();
+        assert!(!req.retrieval_only);
+    }
+
+    #[test]
+    fn test_chat_request_retrieval_only_true() {
+        let json = r#"{"message": "hi", "retrieval_only": true}"#;
+        let req: ChatCompletionRequest = serde_json::from_str(json).unwrap();
+        assert!(req.retrieval_only);
     }
 
     #[test]

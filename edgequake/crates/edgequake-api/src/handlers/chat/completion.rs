@@ -149,6 +149,14 @@ pub async fn chat_completion(
         engine_request = engine_request.with_system_prompt(system_prompt);
     }
 
+    // Retrieval-only mode: retrieve context but skip LLM answer generation.
+    // The engine honours `context_only` by returning an empty answer with the
+    // full retrieved context (zero LLM calls). Callers receive the chunks in
+    // `sources` and formulate the answer themselves.
+    if request.retrieval_only {
+        engine_request = engine_request.context_only();
+    }
+
     let data_tenant_id = workspace
         .as_ref()
         .map(|ws| ws.tenant_id.to_string())
@@ -315,8 +323,9 @@ pub async fn chat_completion(
             None
         };
 
-    // FEAT0505: Auto-generate conversation title for new conversations (fire-and-forget)
-    if is_new_conversation {
+    // FEAT0505: Auto-generate conversation title for new conversations (fire-and-forget).
+    // Skipped in retrieval-only mode to honour the "zero LLM calls" contract.
+    if is_new_conversation && !request.retrieval_only {
         let title_llm = llm_override.unwrap_or_else(|| state.query.llm_provider.clone());
         let title_conv_service = state.conversation_service.clone();
         let title_conv_id = conversation_id;

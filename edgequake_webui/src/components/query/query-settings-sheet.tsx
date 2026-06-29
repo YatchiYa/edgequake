@@ -51,6 +51,7 @@ import { useTranslation } from 'react-i18next';
 
 interface QuerySettings {
   stream: boolean;
+  retrievalOnly: boolean;
   topK: number;
   temperature: number;
   maxTokens: number;
@@ -122,6 +123,28 @@ export function QuerySettingsSheet({
                     id="stream-toggle"
                     checked={settings.stream}
                     onCheckedChange={(stream) => onSettingsChange({ stream })}
+                  />
+                </div>
+
+                <Separator className="my-1" />
+
+                {/* Retrieval-only Toggle */}
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5 pr-3">
+                    <Label htmlFor="retrieval-only-toggle" className="text-sm font-medium cursor-pointer">
+                      {t('query.settings.retrievalOnly', 'Retrieval only (raw chunks)')}
+                    </Label>
+                    <p className="text-[11px] text-muted-foreground leading-tight">
+                      {t(
+                        'query.settings.retrievalOnlyDescription',
+                        'Return the retrieved chunks directly without an LLM-generated answer. Lets an external agent formulate the response.',
+                      )}
+                    </p>
+                  </div>
+                  <Switch
+                    id="retrieval-only-toggle"
+                    checked={settings.retrievalOnly}
+                    onCheckedChange={(retrievalOnly) => onSettingsChange({ retrievalOnly })}
                   />
                 </div>
               </div>

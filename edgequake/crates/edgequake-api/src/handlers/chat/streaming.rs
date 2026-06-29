@@ -19,7 +19,8 @@ use crate::handlers::query::{resolve_chunk_file_paths, resolve_query_workspace};
 use crate::middleware::TenantContext;
 use crate::providers::{LlmResolutionRequest, WorkspaceProviderResolver};
 use crate::services::{
-    execute_sota_query_stream_with_auth_fallback, resolve_workspace_query_resources,
+    execute_sota_query_stream_with_auth_fallback, execute_sota_query_with_auth_fallback,
+    resolve_workspace_query_resources,
 };
 use crate::state::AppState;
 use crate::streaming::StreamAccumulator;
@@ -397,6 +398,72 @@ pub async fn chat_completion_stream(
 
         let retrieval_start = std::time::Instant::now();
 
+        // Retrieval-only mode: retrieve context and emit it as a single `context`
+        // event WITHOUT invoking the LLM. We route through the non-streaming
+        // `context_only` engine path because the streaming path eagerly starts
+        // the LLM request when building the token stream — that would defeat the
+        // "zero LLM calls" contract. No token events are sent; the assistant
+        // message is persisted with empty content + the retrieved context.
+        if request.retrieval_only {
+            let ro_request = engine_request.context_only();
+            match execute_sota_query_with_auth_fallback(
+                &state_clone,
+                ro_request,
+                resources,
+                llm_override.clone(),
+            )
+            .await
+            {
+                Ok(result) => {
+                    let mut sources = build_sources(&result.context);
+                    resolve_chunk_file_paths(
+                        state_clone.storage.kv_storage.as_ref(),
+                        &mut sources,
+                    )
+                    .await;
+                    saved_message_context = Some(sources_to_message_context(&sources));
+                    let retrieval_elapsed_ms = retrieval_start.elapsed().as_millis() as u64;
+
+                    if !sources.is_empty() {
+                        let context_event = ChatStreamEvent::Context {
+                            sources: sources.clone(),
+                            query_mode: Some(result.mode.to_string()),
+                            retrieval_time_ms: Some(retrieval_elapsed_ms),
+                        };
+                        if tx.send(context_event).await.is_err() {
+                            ErrorEvent::log_stream_disconnect(
+                                &stream_request_id_spawn,
+                                "chat_stream",
+                                "context_event",
+                            );
+                            return;
+                        }
+                    }
+
+                    info!(
+                        "Retrieval-only: returned {} sources (no LLM generation)",
+                        sources.len()
+                    );
+                }
+                Err(e) => {
+                    let msg = e.to_string();
+                    ErrorEvent::log_stream_error(
+                        &stream_request_id_spawn,
+                        "chat_stream",
+                        "QUERY_FAILED",
+                        &msg,
+                        json!({ "phase": "retrieval_only" }),
+                    );
+                    let _ = tx
+                        .send(ChatStreamEvent::Error {
+                            message: msg,
+                            code: "QUERY_FAILED".to_string(),
+                        })
+                        .await;
+                    return;
+                }
+            }
+        } else {
         let stream_result = execute_sota_query_stream_with_auth_fallback(
             &state_clone,
             engine_request,
@@ -499,6 +566,7 @@ pub async fn chat_completion_stream(
                 return;
             }
         }
+        } // end else (non-retrieval-only streaming path)
 
         // Get metrics from accumulator (proper token estimation instead of chunk count)
         let duration_ms = accumulator.duration_ms();
@@ -558,8 +626,9 @@ pub async fn chat_completion_stream(
                     })
                     .await;
 
-                // FEAT0505: Auto-generate conversation title for new conversations
-                if is_new_conversation {
+                // FEAT0505: Auto-generate conversation title for new conversations.
+                // Skipped in retrieval-only mode to honour the "zero LLM calls" contract.
+                if is_new_conversation && !request.retrieval_only {
                     let title_llm =
                         llm_override.unwrap_or_else(|| state_clone.query.llm_provider.clone());
                     let title_conv_service = state_clone.conversation_service.clone();
