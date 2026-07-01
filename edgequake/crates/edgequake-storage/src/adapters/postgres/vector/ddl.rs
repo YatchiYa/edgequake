@@ -2,6 +2,7 @@
 
 use super::super::config::VectorIndexType;
 use super::super::row_count_stats::{self, RowCountStatsConfig};
+use super::super::schema;
 use super::PgVectorStorage;
 use crate::error::{Result, StorageError};
 
@@ -49,11 +50,15 @@ impl PgVectorStorage {
             sqlx::query(&index_sql).execute(&pool).await.ok();
         }
 
-        let gin_sql = format!(
-            "CREATE INDEX IF NOT EXISTS eq_{}_vectors_metadata_idx ON {} USING GIN (metadata jsonb_path_ops)",
-            self.prefix, self.table_name
-        );
-        sqlx::query(&gin_sql).execute(&pool).await.ok();
+        // SPEC-034 IMP-08: Vector metadata GIN index removed.
+        // WHY: 0 query scans — all metadata lookups use metadata->>'key' = value
+        // (equality on extracted text), served by doc_id_idx / tenant_ws_idx btrees.
+        // This was 13 MB per workspace with zero benefit.
+        // To restore: uncomment the line below.
+        // sqlx::query(&format!(
+        //     "CREATE INDEX IF NOT EXISTS eq_{}_vectors_metadata_idx ON {} USING GIN (metadata jsonb_path_ops)",
+        //     self.prefix, self.table_name
+        // )).execute(&pool).await.ok();
 
         let add_cols = format!(
             r#"
@@ -78,6 +83,8 @@ impl PgVectorStorage {
             self.prefix, self.table_name
         );
         sqlx::query(&tenant_idx).execute(&pool).await.ok();
+
+        self.ensure_content_fts(&pool).await?;
 
         self.ensure_row_count_stats(&pool).await?;
 
@@ -123,29 +130,47 @@ impl PgVectorStorage {
             Err(_) => return Ok(false),
         };
 
-        let (schema, table) = if self.table_name.contains('.') {
-            let parts: Vec<&str> = self.table_name.split('.').collect();
-            (parts[0], parts[1])
-        } else {
-            ("public", self.table_name.as_str())
-        };
+        schema::relation_exists(&pool, &self.table_name).await
+    }
 
-        let sql = r#"
-            SELECT EXISTS (
-                SELECT 1 FROM information_schema.tables 
-                WHERE table_schema = $1 AND table_name = $2
-            )
-        "#;
+    /// Add GIN-backed `content_tsv` for native Postgres FTS on chunk content (SPEC-023 I10).
+    pub(crate) async fn ensure_content_fts(&self, pool: &sqlx::PgPool) -> Result<()> {
+        let table_only = self
+            .table_name
+            .split('.')
+            .next_back()
+            .unwrap_or(&self.table_name);
 
-        let exists: (bool,) = sqlx::query_as(sql)
-            .bind(schema)
-            .bind(table)
-            .fetch_one(&pool)
-            .await
-            .map_err(|e| {
-                StorageError::Database(format!("Failed to check table existence: {}", e))
-            })?;
+        let add_col = format!(
+            r#"
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = '{table_only}'
+                      AND column_name = 'content_tsv'
+                ) THEN
+                    ALTER TABLE {table}
+                    ADD COLUMN content_tsv TSVECTOR
+                    GENERATED ALWAYS AS (
+                        to_tsvector('english', coalesce(metadata->>'content', ''))
+                    ) STORED;
+                END IF;
+            END $$;
+            "#,
+            table_only = table_only,
+            table = self.table_name
+        );
 
-        Ok(exists.0)
+        sqlx::query(&add_col).execute(pool).await.ok();
+
+        let fts_idx = format!(
+            "CREATE INDEX IF NOT EXISTS eq_{}_vectors_content_tsv_idx ON {} USING GIN (content_tsv)",
+            self.prefix, self.table_name
+        );
+        sqlx::query(&fts_idx).execute(pool).await.ok();
+
+        Ok(())
     }
 }

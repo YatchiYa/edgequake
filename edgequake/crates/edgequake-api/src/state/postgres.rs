@@ -6,9 +6,7 @@
 use std::sync::Arc;
 
 use super::config::{AppConfig, SharedConversationService, SharedWorkspaceService, StorageMode};
-use super::{
-    create_bm25_reranker, AppState, AuthRuntime, QueryRuntime, StorageRuntime, TaskRuntime,
-};
+use super::{ApiSecurityConfig, AppState, AuthRuntime, QueryRuntime, StorageRuntime, TaskRuntime};
 use crate::cache_manager::CacheManager;
 use edgequake_audit::AuditLogger;
 use edgequake_core::env::apply_model_env_aliases;
@@ -269,6 +267,10 @@ impl AppState {
                 Install Apache AGE extension for full functionality.",
                 e
             );
+        } else {
+            edgequake_storage::spawn_community_backfill_if_needed(
+                Arc::clone(&graph_storage) as Arc<dyn edgequake_storage::traits::GraphStorage>
+            );
         }
 
         tracing::info!("PostgreSQL storage backends initialized successfully");
@@ -310,13 +312,12 @@ impl AppState {
         let task_queue = Arc::new(edgequake_tasks::queue::ChannelTaskQueue::new(100));
         tracing::info!("✓ Task storage: PostgreSQL (persistent across restarts)");
 
-        let reranker = create_bm25_reranker();
-        let (query_engine, sota_engine) = super::query_bootstrap::build_production_query_engines(
+        let engine_impl = super::query_bootstrap::build_production_query_engine(
             Arc::clone(&vector_storage) as Arc<dyn edgequake_storage::traits::VectorStorage>,
             Arc::clone(&graph_storage) as Arc<dyn edgequake_storage::traits::GraphStorage>,
             Arc::clone(&embedding_provider),
             Arc::clone(&llm_provider) as Arc<dyn edgequake_llm::traits::LLMProvider>,
-            reranker,
+            Arc::clone(&kv_storage) as Arc<dyn edgequake_storage::traits::KVStorage>,
         );
 
         // Create workspace vector registry for per-workspace dimensions
@@ -342,23 +343,24 @@ impl AppState {
             vector_registry,
             graph_storage: Arc::clone(&graph_storage)
                 as Arc<dyn edgequake_storage::traits::GraphStorage>,
+            auth_memory: Arc::new(crate::services::auth_memory_store::AuthMemoryStore::new()),
             pdf_storage: Some(pdf_storage),
             mode: StorageMode::PostgreSQL,
         };
         storage.validate_postgres_adapters()?;
 
         let audit_logger = AuditLogger::new(pool.clone());
-        let (resource_guard, graph_materialize) = super::resource_runtime::build_resource_runtime();
+        let (resource_guard, graph_materialize, pdf_vision) =
+            super::resource_runtime::build_resource_runtime();
 
-        Ok(Self {
+        let app_state = Self {
             storage,
             query: QueryRuntime {
                 llm_provider: Arc::clone(&llm_provider)
                     as Arc<dyn edgequake_llm::traits::LLMProvider>,
                 vision_llm_provider: super::provider_setup::resolve_vision_llm_provider(),
                 embedding_provider: Arc::clone(&embedding_provider),
-                query_engine,
-                sota_engine,
+                engine_impl,
                 pipeline,
                 models_config: super::bundled_models::bundled_models_config(),
             },
@@ -369,13 +371,55 @@ impl AppState {
             config: AppConfig::default(),
             cache_manager: CacheManager::with_defaults(),
             rate_limiter: RateLimiter::new(TokenBucketConfig::default()),
-            pg_pool: Some(pool),
+            pg_pool: Some(pool.clone()),
             start_time: std::time::Instant::now(),
             path_validation_config: Self::load_path_validation_config(),
             audit_logger: Some(audit_logger),
             resource_guard,
             graph_materialize,
+            pdf_vision,
             migration_bootstrap: Some(migration_bootstrap),
-        })
+            security: ApiSecurityConfig::from_env(),
+        };
+
+        // SPEC-021 P4-02: Startup storage invariant check + auto-repair (SAFE tier)
+        // SPEC-021 P3-01: Log the entity sync mode for observability
+        {
+            use crate::storage_inspector::{InspectorConfig, StorageInspector};
+            let inspector =
+                StorageInspector::new(Arc::new(pool.clone()), InspectorConfig::default());
+            let report = inspector.inspect().await;
+            if report.has_critical {
+                tracing::error!(
+                    schema_issues = report.schema_issues.len(),
+                    invariant_violations = report.invariant_violations.len(),
+                    "CRITICAL: Storage invariant violations detected at startup (SPEC-021)"
+                );
+            } else if report.has_warning {
+                tracing::warn!(
+                    schema_issues = report.schema_issues.len(),
+                    invariant_violations = report.invariant_violations.len(),
+                    duration_ms = report.duration_ms,
+                    "Storage health warnings at startup (SPEC-021)"
+                );
+            } else {
+                tracing::info!(
+                    duration_ms = report.duration_ms,
+                    "Storage health OK (SPEC-021)"
+                );
+            }
+            let repaired = inspector.auto_repair_safe(&report).await;
+            if !repaired.is_empty() {
+                tracing::info!(
+                    count = repaired.len(),
+                    "Storage auto-repairs applied at startup"
+                );
+            }
+            // SPEC-021 P-D1: re-enable the hourly invariant monitor so drift
+            // accumulating after startup is detected and SAFE-tier auto-repaired.
+            std::sync::Arc::new(inspector).spawn_hourly_monitor();
+        }
+
+        Ok(app_state)
     }
 }

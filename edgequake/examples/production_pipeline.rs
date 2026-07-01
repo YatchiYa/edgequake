@@ -180,7 +180,7 @@ integration. The project is open source and welcomes contributions from the comm
                 println!("✓ Entity found: {}", entity);
 
                 // Get neighbors
-                if let Ok(neighbors) = graph_storage.get_neighbors(entity, 1).await {
+                if let Ok(neighbors) = graph_storage.get_neighbors(entity, 1, None, None).await {
                     println!("  Connected to {} other entities", neighbors.len());
                 }
             }
@@ -196,7 +196,10 @@ integration. The project is open source and welcomes contributions from the comm
     // 9. Demonstrate graph traversal
     println!("\n🗺️  Graph Traversal Example...\n");
 
-    if let Ok(kg) = graph_storage.get_knowledge_graph("EDGEQUAKE", 2, 50).await {
+    if let Ok(kg) = graph_storage
+        .get_knowledge_graph("EDGEQUAKE", 2, 50, None, None)
+        .await
+    {
         println!("EdgeQuake subgraph (2-hop neighborhood):");
         println!("  • Nodes: {}", kg.node_count());
         println!("  • Edges: {}", kg.edge_count());

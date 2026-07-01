@@ -6,6 +6,8 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use super::context_types::ContentGranularity;
+
 // ============================================================================
 // Default value helper functions
 // ============================================================================
@@ -15,17 +17,26 @@ pub fn default_enable_rerank() -> bool {
     true
 }
 
+fn default_include_subgraph() -> bool {
+    true
+}
+
+fn default_content_granularity() -> ContentGranularity {
+    ContentGranularity::Citation
+}
+
 // ============================================================================
 // Request DTOs
 // ============================================================================
 
 /// Document filter criteria for narrowing query scope.
 ///
-/// Allows filtering RAG query results to only include content from documents
-/// matching the specified date range and/or name pattern.
+/// Fields are AND-combined across types: date range AND (document_ids OR document_pattern).
+/// Within `document_ids` and `document_pattern`, matches are OR-unioned.
 ///
 /// @implements SPEC-005: Document date and pattern filters
-#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
+/// @implements SPEC-031: Explicit document scope selection
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema, Default)]
 pub struct DocumentFilter {
     /// Start date (inclusive) in ISO 8601 format (e.g., "2025-01-01T00:00:00Z").
     /// Only documents created on or after this date are included.
@@ -42,6 +53,32 @@ pub struct DocumentFilter {
     /// Example: "report,summary" matches documents containing "report" OR "summary".
     #[serde(default)]
     pub document_pattern: Option<String>,
+
+    /// Explicit document IDs to restrict query scope.
+    ///
+    /// When set, only these documents contribute RAG context, subject to any
+    /// active date_from/date_to constraints (AND logic across field types).
+    /// Union with document_pattern when both are set (OR membership logic).
+    ///
+    /// An empty list `[]` is treated identically to `null` (no filtering).
+    /// IDs not present in the workspace are silently ignored.
+    ///
+    /// @implements SPEC-031: Explicit document scope selection
+    #[serde(default)]
+    pub document_ids: Option<Vec<String>>,
+}
+
+impl DocumentFilter {
+    /// Returns true when no filter criteria are active (all-pass, no KV scan needed).
+    pub fn is_empty(&self) -> bool {
+        self.date_from.is_none()
+            && self.date_to.is_none()
+            && self.document_pattern.is_none()
+            && self
+                .document_ids
+                .as_ref()
+                .map_or(true, |ids| ids.is_empty())
+    }
 }
 
 /// A single message in the conversation history.
@@ -52,6 +89,31 @@ pub struct ConversationMessage {
 
     /// Content of the message.
     pub content: String,
+}
+
+/// Per-request Mix mode weight overrides (SPEC-022 P-H6).
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
+pub struct MixWeightRequest {
+    #[serde(default)]
+    pub local: Option<f32>,
+    #[serde(default)]
+    pub global: Option<f32>,
+    #[serde(default)]
+    pub naive: Option<f32>,
+}
+
+impl MixWeightRequest {
+    pub(crate) fn to_engine_override(&self) -> edgequake_query::MixWeightOverride {
+        edgequake_query::MixWeightOverride {
+            local: self.local,
+            global: self.global,
+            naive: self.naive,
+        }
+    }
+
+    pub(crate) fn is_set(&self) -> bool {
+        self.local.is_some() || self.global.is_some() || self.naive.is_some()
+    }
 }
 
 /// Query request.
@@ -76,6 +138,10 @@ pub struct QueryRequest {
     /// Include detailed reference metadata (document_id, file_path, reference_id) in sources.
     #[serde(default)]
     pub include_references: bool,
+
+    /// Include structured query-matched graph (entities + relationships) in the response.
+    #[serde(default = "default_include_subgraph")]
+    pub include_subgraph: bool,
 
     /// Maximum number of results.
     #[serde(default)]
@@ -122,6 +188,11 @@ pub struct QueryRequest {
     #[serde(default)]
     pub document_filter: Option<DocumentFilter>,
 
+    /// Per-request Mix mode weight overrides (SPEC-022 P-H6).
+    /// Example: `{"local": 0, "global": 0, "naive": 1}` for naive-only blend.
+    #[serde(default)]
+    pub mix_weights: Option<MixWeightRequest>,
+
     /// Optional HTTP headers to propagate to the upstream LLM provider call.
     ///
     /// Useful for B2B / multi-tenant deployments where the caller needs to pass
@@ -137,6 +208,11 @@ pub struct QueryRequest {
     /// Other providers silently ignore this field.
     #[serde(default)]
     pub extra_headers: Option<std::collections::HashMap<String, String>>,
+
+    /// Payload tier for source snippets: citation (200 chars) | agent (full chunk) | debug.
+    /// @implements SPEC-037 + SPEC-028
+    #[serde(default = "default_content_granularity")]
+    pub content_granularity: ContentGranularity,
 }
 
 /// Streaming query request.
@@ -183,6 +259,15 @@ pub struct StreamQueryRequest {
     /// LLM API on streaming queries. Same semantics as `QueryRequest.extra_headers`.
     #[serde(default)]
     pub extra_headers: Option<std::collections::HashMap<String, String>>,
+
+    /// Include structured query-matched graph in stream context events (v2+).
+    #[serde(default = "default_include_subgraph")]
+    pub include_subgraph: bool,
+
+    /// Payload tier for source snippets in context events.
+    /// @implements SPEC-037 + SPEC-028
+    #[serde(default = "default_content_granularity")]
+    pub content_granularity: ContentGranularity,
 }
 
 // ============================================================================
@@ -200,6 +285,12 @@ pub enum QueryStreamEvent {
         sources: Vec<SourceReference>,
         query_mode: String,
         retrieval_time_ms: u64,
+        /// SPEC-028 FP-028-09: structured graph on v2 stream (when bundle absent).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        subgraph: Option<crate::handlers::context_types::SubgraphBundle>,
+        /// SPEC-028: Full structured bundle (stream_format=v3 only).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        bundle: Option<crate::handlers::context_types::ContextBundle>,
     },
 
     /// Token generated during LLM streaming.
@@ -268,6 +359,10 @@ pub struct QueryResponse {
     /// Retrieved context sources.
     pub sources: Vec<SourceReference>,
 
+    /// Query-matched knowledge graph (entities + relationships).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subgraph: Option<crate::handlers::context_types::SubgraphBundle>,
+
     /// Query statistics.
     pub stats: QueryStats,
 
@@ -322,6 +417,16 @@ pub struct SourceReference {
     /// Chunk index in the document.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chunk_index: Option<usize>,
+
+    /// PDF page number (1-indexed) where this chunk starts.
+    /// Present only when the source is a PDF with page-aware chunking (SPEC-032).
+    /// The UI uses this to deep-link to `#page=N` in the document viewer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_start: Option<u32>,
+
+    /// PDF page number where this chunk ends (always equals page_start).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_end: Option<u32>,
 
     // ========================================================================
     // SPEC-006: Entity metadata enrichment (FR-002)
@@ -461,6 +566,8 @@ mod tests {
             entity_type: None,
             degree: None,
             source_chunk_ids: None,
+            page_start: None,
+            page_end: None,
         };
         let json = serde_json::to_value(&source).unwrap();
         assert_eq!(json["source_type"], "chunk");
@@ -486,6 +593,8 @@ mod tests {
             entity_type: Some("ORGANIZATION".to_string()),
             degree: Some(5),
             source_chunk_ids: Some(vec!["chunk-1".to_string()]),
+            page_start: None,
+            page_end: None,
         };
         let json = serde_json::to_value(&source).unwrap();
         assert!(json.get("rerank_score").is_none());
@@ -528,6 +637,7 @@ mod tests {
             answer: "RAG is Retrieval Augmented Generation".to_string(),
             mode: "hybrid".to_string(),
             sources: vec![],
+            subgraph: None,
             stats: QueryStats {
                 embedding_time_ms: 10,
                 retrieval_time_ms: 20,

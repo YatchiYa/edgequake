@@ -3,17 +3,15 @@
 use axum::http::StatusCode;
 use axum::{extract::State, Json};
 
-use uuid::Uuid;
-
 use crate::error::{ApiError, ApiResult};
-use crate::middleware::TenantContext;
-use crate::services::ContentHasher;
-use crate::state::AppState;
-
-use crate::file_validation::validate_file;
-#[allow(unused_imports)]
-use crate::handlers::documents::storage_helpers::get_workspace_vector_storage_with_fallback;
+use crate::handlers::documents::upload::{
+    admit_document_for_processing, DocumentAdmissionInput, DocumentAdmissionOutcome,
+    GleaningAdmissionOptions, MultipartUploadFields,
+};
 use crate::handlers::documents_types::*;
+use crate::middleware::TenantContext;
+use crate::services::{resolve_upload_content, ContentHasher};
+use crate::state::AppState;
 use axum_extra::extract::Multipart;
 
 /// Upload multiple files via multipart form.
@@ -27,7 +25,7 @@ use axum_extra::extract::Multipart;
     ),
     request_body(content_type = "multipart/form-data", description = "Files to upload"),
     responses(
-        (status = 201, description = "Batch upload completed", body = BatchUploadResponse),
+        (status = 202, description = "Batch accepted for async processing", body = BatchUploadResponse),
         (status = 400, description = "Invalid request")
     )
 )]
@@ -40,9 +38,8 @@ pub async fn upload_files_batch(
     let mut processed = 0usize;
     let mut duplicates = 0usize;
     let mut failed = 0usize;
-
-    // Collect all files first
     let mut files: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut multipart_fields = MultipartUploadFields::default();
 
     while let Some(field) = multipart
         .next_field()
@@ -50,28 +47,44 @@ pub async fn upload_files_batch(
         .map_err(|e| ApiError::BadRequest(format!("Failed to read multipart field: {}", e)))?
     {
         let field_name = field.name().unwrap_or("").to_string();
-
-        if field_name == "files" || field_name == "file" {
-            let filename = field
-                .file_name()
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| format!("file_{}.txt", files.len()));
-
-            let content = field
-                .bytes()
-                .await
-                .map_err(|e| ApiError::BadRequest(format!("Failed to read file: {}", e)))?
-                .to_vec();
-
-            files.push((filename, content));
+        match field_name.as_str() {
+            "files" | "file" => {
+                let filename = field
+                    .file_name()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| format!("file_{}.txt", files.len()));
+                let content = field
+                    .bytes()
+                    .await
+                    .map_err(|e| ApiError::BadRequest(format!("Failed to read file: {}", e)))?
+                    .to_vec();
+                files.push((filename, content));
+            }
+            "metadata" | "chunk_strategy" | "chunk_options" => {
+                let text = field.text().await.map_err(|e| {
+                    ApiError::BadRequest(format!("Failed to read {field_name}: {e}"))
+                })?;
+                multipart_fields.ingest_text_field(&field_name, &text);
+            }
+            _ => {}
         }
     }
 
-    let workspace_id = tenant_ctx.workspace_id_or_default();
-    for (filename, content) in files {
-        let result = process_single_file(&state, &filename, &content, &workspace_id).await;
+    let (batch_chunk_strategy, batch_chunk_options, batch_metadata) =
+        multipart_fields.effective_chunk_fields();
 
-        match result {
+    for (filename, content) in files {
+        match enqueue_single_file(
+            &state,
+            &tenant_ctx,
+            &filename,
+            &content,
+            batch_chunk_strategy,
+            batch_chunk_options.clone(),
+            batch_metadata.clone(),
+        )
+        .await
+        {
             Ok((doc_id, is_duplicate)) => {
                 if is_duplicate {
                     duplicates += 1;
@@ -86,7 +99,7 @@ pub async fn upload_files_batch(
                     results.push(BatchFileResult {
                         filename,
                         document_id: Some(doc_id),
-                        status: "processed".to_string(),
+                        status: "pending".to_string(),
                         error: None,
                     });
                 }
@@ -104,7 +117,7 @@ pub async fn upload_files_batch(
     }
 
     Ok((
-        StatusCode::CREATED,
+        StatusCode::ACCEPTED,
         Json(BatchUploadResponse {
             total_files: results.len(),
             processed,
@@ -115,100 +128,45 @@ pub async fn upload_files_batch(
     ))
 }
 
-/// Process a single file and return (document_id, is_duplicate).
-///
-/// WHY-OODA81: workspace_id parameter enables workspace-scoped duplicate detection.
-/// Same document in different workspaces is allowed (multi-tenancy support).
-///
-/// Note: Uses default vector storage for batch uploads without tenant context.
-/// For workspace-specific storage, use the main upload_file endpoint with tenant context.
-async fn process_single_file(
+async fn enqueue_single_file(
     state: &AppState,
+    tenant_ctx: &TenantContext,
     filename: &str,
     content: &[u8],
-    workspace_id: &str,
+    chunk_strategy: Option<edgequake_pipeline::ChunkStrategy>,
+    chunk_options: Option<edgequake_pipeline::ChunkOptions>,
+    custom_metadata: Option<serde_json::Value>,
 ) -> Result<(String, bool), ApiError> {
-    // Validate file (size, extension, UTF-8, non-empty)
-    let (_extension, text_content, _mime_type) =
-        validate_file(filename, content, state.config.max_document_size)?;
-
-    // WHY-OODA83: Use ContentHasher service for consistent hash computation (DRY)
+    let resolved =
+        resolve_upload_content(state, tenant_ctx.workspace_id_uuid(), filename, content).await?;
     let content_hash = ContentHasher::hash_bytes(content);
 
-    // WHY-OODA81+83: Use ContentHasher for workspace-scoped hash key
-    let hash_key = ContentHasher::workspace_hash_key(workspace_id, &content_hash);
-    if let Some(existing) = state.storage.kv_storage.get_by_id(&hash_key).await? {
-        if let Some(doc_id) = existing.as_str() {
-            return Ok((doc_id.to_string(), true));
-        }
+    let outcome = admit_document_for_processing(
+        state,
+        tenant_ctx,
+        DocumentAdmissionInput {
+            text_content: resolved.text_content,
+            title: filename.to_string(),
+            source_type: resolved.meta.source_type,
+            mime_type: Some(resolved.mime_type),
+            raw_byte_size: content.len(),
+            content_hash,
+            custom_metadata,
+            track_id: None,
+            gleaning: GleaningAdmissionOptions::default(),
+            document_type: None,
+            chunk_strategy,
+            chunk_options,
+            multimodal: resolved.meta.multimodal,
+            ingest_mode: resolved.meta.ingest_mode,
+            multimodal_manifest: resolved.manifest,
+        },
+        "batch",
+    )
+    .await?;
+
+    match outcome {
+        DocumentAdmissionOutcome::DuplicateProcessing(dup) => Ok((dup.document_id, true)),
+        DocumentAdmissionOutcome::Accepted(accepted) => Ok((accepted.document_id, false)),
     }
-
-    // Generate document ID
-    let document_id = Uuid::new_v4().to_string();
-
-    // Store hash mapping
-    state
-        .storage
-        .kv_storage
-        .upsert(&[(hash_key, serde_json::json!(document_id))])
-        .await?;
-
-    // Process through pipeline (resilient - tolerates partial chunk failures)
-    let result = state
-        .query
-        .pipeline
-        .process_with_resilience(&document_id, &text_content, None)
-        .await?;
-
-    if result.stats.failed_chunks > 0 {
-        tracing::warn!(
-            document_id = %document_id,
-            filename = %filename,
-            failed_chunks = result.stats.failed_chunks,
-            chunk_count = result.stats.chunk_count,
-            "Batch file pipeline completed with partial failures"
-        );
-    }
-
-    // Store chunks
-    let chunks: Vec<(String, serde_json::Value)> = result
-        .chunks
-        .iter()
-        .map(|c| {
-            (
-                c.id.clone(),
-                serde_json::json!({
-                    "content": c.content,
-                    "document_id": document_id,
-                    "index": c.index,
-                    "source_file": filename,
-                }),
-            )
-        })
-        .collect();
-
-    state.storage.kv_storage.upsert(&chunks).await?;
-
-    // Store chunk embeddings in vector storage for semantic search
-    // Note: Batch upload uses default vector storage since there's no workspace context.
-    // For workspace-specific storage, use the main upload_file endpoint with tenant context.
-    for chunk in &result.chunks {
-        if let Some(embedding) = &chunk.embedding {
-            let metadata = serde_json::json!({
-                "type": "chunk",
-                "document_id": document_id,
-                "index": chunk.index,
-                "content": chunk.content,
-                "source_file": filename,
-            });
-
-            let _ = state
-                .storage
-                .vector_storage
-                .upsert(&[(chunk.id.clone(), embedding.clone(), metadata)])
-                .await;
-        }
-    }
-
-    Ok((document_id, false))
 }

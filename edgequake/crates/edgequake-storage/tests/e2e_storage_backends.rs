@@ -492,19 +492,9 @@ mod memory_graph_tests {
             .await
             .unwrap();
 
-        // Get all nodes
-        let nodes = storage
-            .get_all_nodes()
-            .await
-            .expect("Failed to get all nodes");
-        assert_eq!(nodes.len(), 5);
-
-        // Get all edges
-        let edges = storage
-            .get_all_edges()
-            .await
-            .expect("Failed to get all edges");
-        assert_eq!(edges.len(), 3);
+        // Count nodes and edges (bounded analytics — avoid deprecated full-graph scans).
+        assert_eq!(storage.node_count().await.expect("node count"), 5);
+        assert_eq!(storage.edge_count().await.expect("edge count"), 3);
     }
 
     #[tokio::test]
@@ -555,7 +545,7 @@ mod memory_graph_tests {
 
         // Get knowledge graph starting from A
         let kg = storage
-            .get_knowledge_graph("A", 2, 10)
+            .get_knowledge_graph("A", 2, 10, None, None)
             .await
             .expect("Failed to get knowledge graph");
 
@@ -595,7 +585,7 @@ mod memory_graph_tests {
         }
 
         let popular = storage
-            .get_popular_labels(5)
+            .get_popular_labels(5, None, None)
             .await
             .expect("Failed to get popular");
         assert!(!popular.is_empty());
@@ -620,7 +610,7 @@ mod memory_graph_tests {
             .unwrap();
 
         let results = storage
-            .search_labels("ALPHA", 10)
+            .search_labels("ALPHA", 10, None, None)
             .await
             .expect("Failed to search");
         assert_eq!(results.len(), 2);
@@ -642,7 +632,7 @@ mod memory_graph_tests {
 
         // Depth 1 from A should include B
         let neighbors = storage
-            .get_neighbors("A", 1)
+            .get_neighbors("A", 1, None, None)
             .await
             .expect("Failed to get neighbors");
         assert!(!neighbors.is_empty());
@@ -876,6 +866,7 @@ mod trait_compliance_tests {
     }
 
     #[tokio::test]
+    #[allow(deprecated)] // trait compliance exercises legacy GraphStorageReadOps surface
     async fn test_memory_graph_trait_compliance() {
         let storage = MemoryGraphStorage::new("trait_test");
         storage.initialize().await.unwrap();
@@ -898,10 +889,13 @@ mod trait_compliance_tests {
         storage.get_all_edges().await.unwrap();
 
         // Graph queries
-        storage.get_knowledge_graph("N", 1, 10).await.unwrap();
-        storage.get_popular_labels(5).await.unwrap();
-        storage.search_labels("N", 5).await.unwrap();
-        storage.get_neighbors("N", 1).await.unwrap();
+        storage
+            .get_knowledge_graph("N", 1, 10, None, None)
+            .await
+            .unwrap();
+        storage.get_popular_labels(5, None, None).await.unwrap();
+        storage.search_labels("N", 5, None, None).await.unwrap();
+        storage.get_neighbors("N", 1, None, None).await.unwrap();
 
         // Utility
         storage.node_count().await.unwrap();

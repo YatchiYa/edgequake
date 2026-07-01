@@ -35,7 +35,7 @@
 //! │   ├── Vector Storage (embeddings)
 //! │   └── Graph Storage (entities, relationships)
 //! ├── Services
-//! │   ├── QueryEngine (hybrid search)
+//! │   ├── QueryEngine (SOTA RAG search)
 //! │   ├── Pipeline (document processing)
 //! │   ├── ConversationService
 //! │   └── WorkspaceService
@@ -71,28 +71,39 @@
 
 mod auth_runtime;
 pub(crate) mod bundled_models;
+mod compliance_runtime;
 mod config;
+mod graph_query_runtime;
 mod memory;
 #[cfg(feature = "postgres")]
 pub mod migration_bootstrap;
 #[cfg(feature = "postgres")]
 mod postgres;
+mod postgres_runtime;
 mod provider_setup;
 mod query_bootstrap;
 mod query_runtime;
 mod resource_runtime;
+pub mod runtime_extractors;
+pub mod security_config;
 mod storage_runtime;
 mod task_runtime;
 
 pub use auth_runtime::AuthRuntime;
+pub use compliance_runtime::ComplianceRuntime;
 pub use config::*;
+pub use graph_query_runtime::GraphQueryRuntime;
+pub use postgres_runtime::PostgresRuntime;
 pub use query_runtime::QueryRuntime;
+pub use security_config::ApiSecurityConfig;
 pub use storage_runtime::StorageRuntime;
 pub use task_runtime::TaskRuntime;
 
 use std::sync::Arc;
 
-use edgequake_core::{GraphMaterializationSemaphore, ResourceBudgetConfig, ResourceGuard};
+use edgequake_core::{
+    GraphMaterializationSemaphore, PdfVisionSemaphore, ResourceBudgetConfig, ResourceGuard,
+};
 
 use crate::cache_manager::CacheManager;
 use edgequake_pipeline::Pipeline;
@@ -100,26 +111,6 @@ use edgequake_rate_limiter::RateLimiter;
 
 #[cfg(feature = "postgres")]
 use sqlx::PgPool;
-
-// ── Shared Utility ────────────────────────────────────────────────────────
-
-/// Create the configured BM25 reranker.
-///
-/// Enhanced mode (default) adds:
-/// - Porter2 stemming: "running" matches "run", "runner"
-/// - NFKD Unicode normalization: "café" matches "cafe"
-/// - Stop word filtering: Removes noise words like "the", "and"
-///
-/// Set `BM25_ENHANCED=false` to disable enhanced features.
-fn create_bm25_reranker() -> Arc<dyn edgequake_llm::Reranker> {
-    if std::env::var("BM25_ENHANCED").unwrap_or_default() == "false" {
-        tracing::info!("Using minimal BM25 reranker (BM25_ENHANCED=false)");
-        Arc::new(edgequake_llm::reranker::BM25Reranker::new())
-    } else {
-        tracing::info!("Using enhanced BM25 reranker with stemming and Unicode normalization");
-        Arc::new(edgequake_llm::reranker::BM25Reranker::new_enhanced())
-    }
-}
 
 // ── AppState ──────────────────────────────────────────────────────────────
 
@@ -172,9 +163,15 @@ pub struct AppState {
     /// SPEC-006: caps concurrent graph materialization queries.
     pub graph_materialize: Arc<GraphMaterializationSemaphore>,
 
+    /// P-G13: caps concurrent vision PDF conversions process-wide.
+    pub pdf_vision: Arc<PdfVisionSemaphore>,
+
     /// Bootstrap migration report (PostgreSQL only).
     #[cfg(feature = "postgres")]
     pub migration_bootstrap: Option<crate::state::migration_bootstrap::MigrationBootstrapReport>,
+
+    /// SPEC-027: runtime security flags (auth hardening, CORS, rate limits).
+    pub security: ApiSecurityConfig,
 }
 
 // ── Operational Methods ───────────────────────────────────────────────────

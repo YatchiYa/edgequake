@@ -31,6 +31,17 @@ pub struct ReprocessFailedRequest {
     /// Force reprocess even if document is not failed. Default: false.
     #[serde(default)]
     pub force: bool,
+
+    /// Reprocess intent for PDF documents.
+    /// - `entities` (default): reuse cached markdown, only re-run the KG pipeline.
+    /// - `full`: re-run PDF -> markdown conversion from the stored PDF bytes
+    ///   (spends vision tokens) before re-running the KG pipeline.
+    ///
+    /// WHY: Users must be able to re-convert a PDF to markdown when the cached
+    /// conversion is stale or was produced with a different vision model.
+    /// Non-PDF documents ignore this field.
+    #[serde(default)]
+    pub mode: Option<String>,
 }
 
 /// WHY: Manual Default impl ensures max_documents defaults to 100 (same as serde default),
@@ -42,6 +53,7 @@ impl Default for ReprocessFailedRequest {
             track_id: None,
             max_documents: default_max_reprocess(),
             force: false,
+            mode: None,
         }
     }
 }
@@ -51,6 +63,10 @@ impl Default for ReprocessFailedRequest {
 pub struct ReprocessFailedResponse {
     /// Track ID for the reprocess batch.
     pub track_id: String,
+
+    /// Level 4 v2 migration hint (additive).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub v2_migration: Option<crate::services::job_registry::V2MigrationHint>,
 
     /// Number of failed documents found.
     pub failed_found: usize,
@@ -88,6 +104,10 @@ pub struct RecoverStuckRequest {
 pub struct RecoverStuckResponse {
     /// Track ID for the recovery batch.
     pub track_id: String,
+
+    /// Level 4 v2 migration hint (additive).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub v2_migration: Option<crate::services::job_registry::V2MigrationHint>,
 
     /// Number of stuck documents found.
     pub stuck_found: usize,
@@ -185,4 +205,37 @@ pub struct ListFailedChunksResponse {
 
     /// Number of successful chunks.
     pub successful_chunks: usize,
+}
+
+// ============================================================================
+// Multimodal re-analyze DTOs (Phase 4h — LightRAG analyze-without-reparse)
+// ============================================================================
+
+fn default_reindex_true() -> bool {
+    true
+}
+
+/// Request to re-run multimodal analyze on stored markdown (no PDF re-convert).
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct ReanalyzeMultimodalRequest {
+    /// Override stored `multimodal_process_options` (e.g. `"ite"`).
+    #[serde(default)]
+    pub process_options: Option<String>,
+
+    /// Re-run entity extraction after analyze. Default: true.
+    #[serde(default = "default_reindex_true")]
+    pub reindex: bool,
+}
+
+/// Response from multimodal re-analyze.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ReanalyzeMultimodalResponse {
+    pub document_id: String,
+    pub track_id: Option<String>,
+    pub requeued: bool,
+    pub success: u32,
+    pub skipped: u32,
+    pub failed: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub v2_migration: Option<crate::services::job_registry::V2MigrationHint>,
 }

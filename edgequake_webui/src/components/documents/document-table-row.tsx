@@ -19,8 +19,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { TableCell, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import {
-  getEffectiveErrorMessage,
-  isTerminalFailureDocument,
+    getEffectiveErrorMessage,
+    isTerminalFailureDocument,
 } from '@/lib/utils/document-status';
 import type { Document } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
@@ -129,8 +129,10 @@ export interface DocumentTableRowProps {
   onViewInGraph: (doc: Document) => void;
   /** Called when View PDF action is triggered */
   onViewPdf: (doc: Document) => void;
-  /** Called when Retry action is triggered */
+  /** Called when Retry action is triggered (failed-doc quick retry, no dialog) */
   onRetry: (docId: string) => void;
+  /** Called when Reprocess action is triggered (opens the choice dialog) */
+  onReprocess: (docId: string) => void;
   /** Called when Cancel action is triggered */
   onCancel: (trackId: string) => void;
   /** Called when Delete action is triggered */
@@ -158,6 +160,7 @@ export const DocumentTableRow = memo(function DocumentTableRow({
   onViewInGraph,
   onViewPdf,
   onRetry,
+  onReprocess,
   onCancel,
   onDelete,
   isRetrying,
@@ -191,7 +194,7 @@ export const DocumentTableRow = memo(function DocumentTableRow({
 
   return (
     <TableRow
-      className={rowClassName}
+      className={cn(rowClassName, 'group/row')}
       onClick={() => onClick(doc)}
       onDoubleClick={() => onDoubleClick(doc)}
     >
@@ -255,9 +258,9 @@ export const DocumentTableRow = memo(function DocumentTableRow({
       </TableCell>
 
       {/* Created Date */}
-      <TableCell className="text-muted-foreground">
+      <TableCell className="text-muted-foreground max-w-0 overflow-hidden">
         {doc.created_at ? (
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1 whitespace-nowrap truncate">
             {isNew && (
               <span className="text-xs font-medium text-green-600 dark:text-green-400 animate-pulse">
                 NEW
@@ -273,9 +276,9 @@ export const DocumentTableRow = memo(function DocumentTableRow({
       </TableCell>
 
       {/* Last Updated Date — shows when doc was last reprocessed/rebuilt */}
-      <TableCell className="text-muted-foreground">
+      <TableCell className="text-muted-foreground max-w-0 overflow-hidden">
         {(doc.updated_at || doc.processed_at) ? (
-          <span title={new Date(doc.updated_at ?? doc.processed_at!).toLocaleString()}>
+          <span className="whitespace-nowrap truncate block" title={new Date(doc.updated_at ?? doc.processed_at!).toLocaleString()}>
             {formatDistanceToNow(new Date(doc.updated_at ?? doc.processed_at!), { addSuffix: true })}
           </span>
         ) : (
@@ -297,7 +300,7 @@ export const DocumentTableRow = memo(function DocumentTableRow({
             doc={doc}
             onViewPdf={onViewPdf}
             onCancel={onCancel}
-            onReprocess={onRetry}
+            onReprocess={onReprocess}
             onDelete={onDelete}
             isCancelling={isCancelling}
           />

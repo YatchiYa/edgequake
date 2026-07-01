@@ -28,6 +28,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { searchNodes } from "@/lib/api/edgequake";
 import { focusCameraOnNode } from "@/lib/graph/camera-utils";
+import { formatEntityLabel, formatEntityType, getEntityTypeColor } from "@/lib/graph/label-utils";
 import { cn } from "@/lib/utils";
 import { useGraphStore } from "@/stores/use-graph-store";
 import { useUIPreferencesStore } from "@/stores/use-ui-preferences-store";
@@ -113,14 +114,14 @@ const EntityItem = memo(function EntityItem({
           "text-xs font-medium truncate leading-tight",
           isSelected && "font-semibold"
         )}>
-          {node.label ?? node.id ?? "Unknown"}
+          {formatEntityLabel(node.label ?? node.id ?? "Unknown")}
         </p>
         <div className="flex items-center gap-1.5 mt-0.5">
           <span className={cn(
-            "text-[9px] uppercase tracking-wider",
+            "text-[9px] tracking-wide",
             isSelected ? "text-primary-foreground/70" : "text-muted-foreground"
           )}>
-            {node.node_type ?? "unknown"}
+            {formatEntityType(node.node_type ?? "unknown")}
           </span>
           {node.degree && node.degree > 0 && (
             <>
@@ -152,22 +153,6 @@ const EntityItem = memo(function EntityItem({
     </button>
   );
 });
-
-// Entity type color mapping
-function getEntityTypeColor(type: string): string {
-  const colorMap: Record<string, string> = {
-    PERSON: "#3b82f6",
-    ORGANIZATION: "#8b5cf6",
-    LOCATION: "#22c55e",
-    EVENT: "#f97316",
-    CONCEPT: "#ec4899",
-    DOCUMENT: "#6366f1",
-    TECHNOLOGY: "#14b8a6",
-    PRODUCT: "#f59e0b",
-    DEFAULT: "#94a3b8",
-  };
-  return colorMap[type.toUpperCase()] || colorMap.DEFAULT;
-}
 
 // ============================================================================
 // Virtualized Entity List Component (for performance with large datasets)
@@ -296,7 +281,7 @@ const EntityTypeGroup = memo(function EntityTypeGroup({
               style={{ backgroundColor: getEntityTypeColor(type) }}
               aria-hidden="true"
             />
-            <span className="text-sm font-medium">{type}</span>
+            <span className="text-sm font-medium">{formatEntityType(type)}</span>
           </div>
           <div className="flex items-center gap-2">
             <Badge variant="secondary" className="text-xs" aria-label={t("graph.entityBrowser.entityCount", "{{count}} entities", { count: nodes.length })}>
@@ -311,7 +296,7 @@ const EntityTypeGroup = memo(function EntityTypeGroup({
         </Button>
       </CollapsibleTrigger>
       <CollapsibleContent className="pl-2 space-y-1" id={groupId}>
-        <div role="group" aria-label={`${type} ${t("graph.entityBrowser.entities", "entities")}`}>
+        <div role="group" aria-label={`${formatEntityType(type)} ${t("graph.entityBrowser.entities", "entities")}`}>
           {nodes.map((node) => (
             <EntityItem
               key={node.id}

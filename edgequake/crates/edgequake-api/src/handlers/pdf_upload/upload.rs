@@ -98,6 +98,7 @@ pub async fn upload_pdf_document(
         track_id: None,
         force_reindex: false,
         pdf_parser_backend: None,
+        process_options: None,
     };
 
     while let Some(field) = multipart
@@ -160,6 +161,14 @@ pub async fn upload_pdf_document(
                     options.pdf_parser_backend = PdfParserBackend::from_env_str(&text);
                 }
             }
+            Some("process_options") => {
+                if let Ok(text) = field.text().await {
+                    let trimmed = text.trim();
+                    if !trimmed.is_empty() {
+                        options.process_options = Some(trimmed.to_string());
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -200,6 +209,7 @@ pub async fn upload_pdf_batch_document(
         track_id: None,
         force_reindex: false,
         pdf_parser_backend: None,
+        process_options: None,
     };
     let mut files: Vec<(String, Vec<u8>)> = Vec::new();
 
@@ -258,6 +268,14 @@ pub async fn upload_pdf_batch_document(
             Some("pdf_parser_backend") => {
                 if let Ok(text) = field.text().await {
                     options.pdf_parser_backend = PdfParserBackend::from_env_str(&text);
+                }
+            }
+            Some("process_options") => {
+                if let Ok(text) = field.text().await {
+                    let trimmed = text.trim();
+                    if !trimmed.is_empty() {
+                        options.process_options = Some(trimmed.to_string());
+                    }
                 }
             }
             _ => {}
@@ -409,11 +427,76 @@ async fn process_pdf_upload_parts(
                 "OODA-08: Force re-indexing requested for existing PDF: id={}, document_id={:?}",
                 existing.pdf_id, existing.document_id
             );
-            if let Some(document_id) = existing.document_id {
-                if let Err(e) = clear_document_derived_data(state, &document_id.to_string()).await {
+            // Replace = TRUE re-conversion: reuse the existing document id so the
+            // old document is updated in-place (no orphan), and force
+            // restart_from_scratch so the PDF -> markdown conversion re-runs.
+            let existing_document_id = existing.document_id.map(|id| id.to_string());
+            if let Some(ref document_id) = existing_document_id {
+                if let Err(e) = clear_document_derived_data(state, document_id).await {
                     warn!(
                         "Failed to clear document data during re-index: {} (continuing anyway)",
                         e
+                    );
+                }
+                // Clear cached markdown + KV content/chunks so the resume shortcut
+                // cannot reuse the stale conversion. This is the authoritative
+                // re-conversion signal (DRY with reprocess mode=full).
+                if let Err(e) =
+                    crate::handlers::documents::storage_helpers::clear_document_markdown_and_content(
+                        state,
+                        document_id,
+                        &existing.pdf_id,
+                    )
+                    .await
+                {
+                    warn!(
+                        "Failed to clear cached markdown during re-index: {} (continuing anyway)",
+                        e
+                    );
+                }
+
+                // Reset the existing document's KV metadata so the UI shows it
+                // returning to processing on the SAME document id (no new UUID).
+                let metadata_key =
+                    crate::services::document_metadata_scan::metadata_key_for_document(document_id);
+                if let Ok(Some(mut metadata)) =
+                    state.storage.kv_storage.get_by_id(&metadata_key).await
+                {
+                    if let Some(obj) = metadata.as_object_mut() {
+                        obj.insert("status".to_string(), serde_json::json!("processing"));
+                        obj.insert("current_stage".to_string(), serde_json::json!("converting"));
+                        obj.insert("stage_progress".to_string(), serde_json::json!(0.0));
+                        obj.insert("error_message".to_string(), serde_json::Value::Null);
+                        if let Some(track) = options.track_id.as_ref() {
+                            obj.insert("track_id".to_string(), serde_json::json!(track));
+                        }
+                    }
+                    let _ = crate::services::upsert_metadata_kv_with_index(
+                        state.storage.kv_storage.as_ref(),
+                        &metadata_key,
+                        metadata,
+                    )
+                    .await;
+                }
+
+                // Cancel any in-flight task for this document before requeueing.
+                let ws_for_tasks = context
+                    .workspace_id
+                    .clone()
+                    .unwrap_or_else(|| "default".to_string());
+                let purged =
+                    crate::handlers::documents::storage_helpers::purge_persisted_tasks_for_document(
+                        state,
+                        document_id,
+                        None,
+                        Some(&ws_for_tasks),
+                    )
+                    .await;
+                if purged > 0 {
+                    info!(
+                        document_id = %document_id,
+                        tasks_purged = purged,
+                        "Cancelled in-flight tasks before force re-index"
                     );
                 }
             }
@@ -423,16 +506,26 @@ async fn process_pdf_upload_parts(
                 .await
                 .map_err(|e| ApiError::Internal(format!("Failed to reset PDF status: {}", e)))?;
 
-            let task_id = create_pdf_processing_task(
+            let enqueue = create_pdf_processing_task(
                 state,
                 context,
                 existing.pdf_id,
                 &options,
                 workspace.as_ref(),
+                super::helpers::PdfReprocessIntent {
+                    existing_document_id: existing_document_id.clone(),
+                    restart_from_scratch: true, // re-run PDF -> markdown conversion
+                    reprocess_mode: Some(edgequake_tasks::ReprocessMode::Full),
+                },
+                existing.page_count,
+                existing.file_size_bytes.max(0) as u64,
             )
             .await?;
 
-            let effective_track_id = options.track_id.clone().unwrap_or_else(|| task_id.clone());
+            let effective_track_id = options
+                .track_id
+                .clone()
+                .unwrap_or_else(|| enqueue.track_id.clone());
             state
                 .tasks
                 .pipeline_state
@@ -442,15 +535,21 @@ async fn process_pdf_upload_parts(
                     &existing.filename,
                 )
                 .await;
-            let estimated_time = estimate_processing_time(&[], existing.page_count);
+            let estimated_time = estimate_processing_time(
+                existing.file_size_bytes.max(0) as u64,
+                existing.page_count,
+                options.resolved_backend(workspace.as_ref()),
+                &options.resolved_vision_provider(),
+            );
             return Ok(PdfUploadResponse {
                 pdf_id: existing.pdf_id.to_string(),
-                document_id: None,
+                document_id: existing_document_id,
                 status: "reindexing".to_string(),
-                task_id: task_id.to_string(),
+                task_id: enqueue.track_id.to_string(),
                 track_id: options.track_id.clone(),
-                message: "Re-indexing document. Previous graph/vector data cleared.".to_string(),
+                message: "Re-indexing document. PDF will be re-converted to markdown and graph/vector data cleared.".to_string(),
                 estimated_time_seconds: estimated_time,
+                ingestion_estimate: None,
                 metadata: PdfMetadata {
                     filename: existing.filename,
                     file_size_bytes: existing.file_size_bytes,
@@ -484,6 +583,7 @@ async fn process_pdf_upload_parts(
             track_id: options.track_id.clone(),
             message: format!("PDF already uploaded with ID: {}", existing_pdf_id),
             estimated_time_seconds: 0,
+            ingestion_estimate: None,
             metadata: PdfMetadata {
                 filename: existing.filename,
                 file_size_bytes: existing.file_size_bytes,
@@ -496,21 +596,23 @@ async fn process_pdf_upload_parts(
         });
     }
 
+    let file_size_bytes = file_data.len() as u64;
     let page_count = extract_page_count(&file_data);
     let vision_model = if resolved_backend == PdfParserBackend::Vision && options.enable_vision {
         Some(options.vision_model())
     } else {
         None
     };
+    // SPEC-038 REQ-038-11: move bytes into storage — avoid clone() doubling RAM on admit.
     let pdf_id = match pdf_storage
         .create_pdf(CreatePdfRequest {
             workspace_id,
             filename: filename.clone(),
             content_type: "application/pdf".to_string(),
-            file_size_bytes: file_data.len() as i64,
+            file_size_bytes: file_size_bytes as i64,
             sha256_checksum: checksum.clone(),
             page_count,
-            pdf_data: file_data.clone(),
+            pdf_data: file_data,
             vision_model: vision_model.clone(),
         })
         .await
@@ -539,6 +641,7 @@ async fn process_pdf_upload_parts(
                             existing_pdf_id
                         ),
                         estimated_time_seconds: 0,
+                        ingestion_estimate: None,
                         metadata: PdfMetadata {
                             filename: existing.filename,
                             file_size_bytes: existing.file_size_bytes,
@@ -555,16 +658,66 @@ async fn process_pdf_upload_parts(
         }
     };
 
-    let task_id =
-        create_pdf_processing_task(state, context, pdf_id, &options, workspace.as_ref()).await?;
-    let effective_track_id = options.track_id.clone().unwrap_or_else(|| task_id.clone());
+    let enqueue = create_pdf_processing_task(
+        state,
+        context,
+        pdf_id,
+        &options,
+        workspace.as_ref(),
+        super::helpers::PdfReprocessIntent::fresh(), // fresh upload — mint a new document id
+        page_count,
+        file_size_bytes,
+    )
+    .await?;
+
+    let workspace_id = context
+        .workspace_id_uuid()
+        .ok_or_else(|| ApiError::BadRequest("Workspace ID required".to_string()))?;
+    let tenant_id = context
+        .tenant_id_uuid()
+        .ok_or_else(|| ApiError::BadRequest("Tenant ID required".to_string()))?;
+
+    crate::services::provision_queued_pdf_document_shell(
+        &state.storage.kv_storage,
+        &enqueue.document_id,
+        &crate::services::QueuedPdfDocumentShell {
+            pdf_id,
+            filename: filename.clone(),
+            tenant_id,
+            workspace_id,
+            track_id: enqueue.track_id.clone(),
+            file_size_bytes: file_size_bytes as i64,
+            sha256_checksum: checksum.clone(),
+            page_count,
+        },
+    )
+    .await
+    .map_err(|e| ApiError::Internal(format!("Failed to provision queued document: {e}")))?;
+
+    let effective_track_id = options
+        .track_id
+        .clone()
+        .unwrap_or_else(|| enqueue.track_id.clone());
     state
         .tasks
         .pipeline_state
         .start_pdf_progress(&effective_track_id, &pdf_id.to_string(), &filename)
         .await;
 
-    let estimated_time = estimate_processing_time(&file_data, page_count);
+    let estimated_time = estimate_processing_time(
+        file_size_bytes,
+        page_count,
+        resolved_backend,
+        &options.resolved_vision_provider(),
+    );
+    let ingestion_estimate = {
+        let pages = page_count.unwrap_or(1).max(1) as usize;
+        let profile = crate::services::LargeDocumentProfile::new(pages, file_size_bytes);
+        Some(profile.ingestion_estimate(
+            resolved_backend,
+            &options.resolved_vision_provider(),
+        ))
+    };
 
     let tenant_for_audit = context
         .tenant_id
@@ -583,15 +736,16 @@ async fn process_pdf_upload_parts(
 
     Ok(PdfUploadResponse {
         pdf_id: pdf_id.to_string(),
-        document_id: None,
-        status: "processing".to_string(),
-        task_id: task_id.to_string(),
+        document_id: Some(enqueue.document_id),
+        status: "queued".to_string(),
+        task_id: enqueue.track_id.to_string(),
         track_id: options.track_id,
         message: "PDF uploaded successfully. Processing in background.".to_string(),
         estimated_time_seconds: estimated_time,
+        ingestion_estimate,
         metadata: PdfMetadata {
             filename,
-            file_size_bytes: file_data.len() as i64,
+            file_size_bytes: file_size_bytes as i64,
             page_count,
             sha256_checksum: checksum,
             vision_enabled: options.enable_vision,

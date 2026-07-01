@@ -3,6 +3,7 @@
 //! This module contains all Data Transfer Objects (DTOs) for graph operations,
 //! extracted from the main graph.rs handler for better modularity.
 
+use edgequake_storage::GraphEdge;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -52,6 +53,29 @@ pub struct GraphEdgeResponse {
 
     /// Additional properties.
     pub properties: serde_json::Value,
+}
+
+impl GraphEdgeResponse {
+    /// SSOT mapping from storage [`GraphEdge`] to API DTO (ARCH-006 / SPEC-027).
+    pub fn from_storage_edge(edge: GraphEdge) -> Self {
+        Self {
+            source: edge.source,
+            target: edge.target,
+            relationship_type: edge
+                .properties
+                .get("relationship_type")
+                .or_else(|| edge.properties.get("relation_type"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("RELATED_TO")
+                .to_string(),
+            weight: edge
+                .properties
+                .get("weight")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(1.0) as f32,
+            properties: serde_json::to_value(&edge.properties).unwrap_or_default(),
+        }
+    }
 }
 
 /// Knowledge graph response.
@@ -375,6 +399,17 @@ pub enum GraphStreamEvent {
     Error {
         /// Error message.
         message: String,
+        /// Machine-readable reason code for transient congestion
+        /// (e.g. `"transient_congestion"`) so the client can retry
+        /// appropriately. Absent for non-transient errors.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
+        /// Seconds the client should wait before retrying, when the
+        /// error is transient congestion. Mirrors the HTTP 503
+        /// `retry_after_secs` so the SSE path is not lossy vs the
+        /// REST path (SPEC-021 R2).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        retry_after_secs: Option<u64>,
     },
 }
 
@@ -483,5 +518,31 @@ mod tests {
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("metadata"));
         assert!(json.contains("total_nodes"));
+    }
+
+    /// SPEC-021 R2: the SSE error event must carry reason + retry_after_secs
+    /// for transient congestion so the client can retry, and must omit those
+    /// fields (skip_serializing_if) for non-transient errors to stay compact.
+    #[test]
+    fn test_graph_stream_error_event_serialization_transient_and_non_transient() {
+        let transient = GraphStreamEvent::Error {
+            message: "Graph materialization capacity reached".into(),
+            reason: Some("transient_congestion".into()),
+            retry_after_secs: Some(5),
+        };
+        let json = serde_json::to_string(&transient).unwrap();
+        assert!(json.contains("\"error\""));
+        assert!(json.contains("\"reason\":\"transient_congestion\""));
+        assert!(json.contains("\"retry_after_secs\":5"));
+
+        let non_transient = GraphStreamEvent::Error {
+            message: "Failed to fetch edges: boom".into(),
+            reason: None,
+            retry_after_secs: None,
+        };
+        let json = serde_json::to_string(&non_transient).unwrap();
+        assert!(json.contains("\"error\""));
+        assert!(!json.contains("reason"));
+        assert!(!json.contains("retry_after_secs"));
     }
 }

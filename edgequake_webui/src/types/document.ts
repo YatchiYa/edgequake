@@ -6,7 +6,7 @@ export interface Document {
   id: string;
   title?: string | null;
   content?: string;
-  source_type?: "file" | "text" | "url" | "pdf" | "markdown";
+  source_type?: "file" | "text" | "url" | "pdf" | "markdown" | "image";
   status?:
     | "pending"
     | "processing"
@@ -286,9 +286,11 @@ export interface UploadDocumentResponse {
   status: string;
   task_id?: string;
   /** Track ID for batch grouping. */
-  track_id: string;
+  track_id?: string;
   /** ID of existing document if this is a duplicate. */
   duplicate_of?: string;
+  /** Multipart file upload: true when hash matches in-flight document. */
+  is_duplicate?: boolean;
   chunk_count?: number;
   entity_count?: number;
   relationship_count?: number;
@@ -318,6 +320,13 @@ export interface PdfUploadOptions {
   force_reindex?: boolean;
   /** Per-upload PDF parser backend override. Omit to use workspace/server default. */
   pdf_parser_backend?: PdfParserBackend;
+  /**
+   * LightRAG `process_options` string (e.g. `"i"` for inline image VLM analysis).
+   * When omitted, `analyze_inline_images` controls whether `"i"` is sent.
+   */
+  process_options?: string;
+  /** When true, sends `process_options=i` on PDF upload (inline image VLM). */
+  analyze_inline_images?: boolean;
 }
 
 export interface PdfMetadata {
@@ -337,4 +346,25 @@ export interface PdfUploadResponse {
   estimated_time_seconds: number;
   metadata: PdfMetadata;
   duplicate_of?: string;
+}
+
+// ── SPEC-031: Lightweight document search types ───────────────────────────────
+
+/**
+ * Minimal document projection for the scope picker.
+ * Returned by GET /api/v1/documents/search.
+ * @implements SPEC-031
+ */
+export interface DocumentSearchItem {
+  id: string;
+  title: string;
+  status: string;
+  created_at?: string;
+}
+
+/** Response from GET /api/v1/documents/search. @implements SPEC-031 */
+export interface DocumentSearchResponse {
+  items: DocumentSearchItem[];
+  total: number;
+  has_more: boolean;
 }

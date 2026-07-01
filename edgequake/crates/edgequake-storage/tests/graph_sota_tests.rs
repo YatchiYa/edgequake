@@ -11,7 +11,9 @@
 #[cfg(test)]
 mod tests {
     use edgequake_storage::adapters::memory::MemoryGraphStorage;
-    use edgequake_storage::{GraphStorage, GraphStorageMutateOps, GraphStorageReadOps};
+    use edgequake_storage::{
+        GraphStorage, GraphStorageAnalyticsOps, GraphStorageMutateOps, GraphStorageReadOps,
+    };
     use std::collections::HashMap;
     use std::time::Instant;
 
@@ -262,7 +264,10 @@ mod tests {
         setup_test_graph(&storage).await;
 
         // Exact match search
-        let results = storage.search_labels("ALICE_CHEN", 10).await.unwrap();
+        let results = storage
+            .search_labels("ALICE_CHEN", 10, None, None)
+            .await
+            .unwrap();
 
         assert!(!results.is_empty(), "Should find exact match");
         assert!(
@@ -278,7 +283,10 @@ mod tests {
         setup_test_graph(&storage).await;
 
         // Prefix search
-        let results = storage.search_labels("ALICE", 10).await.unwrap();
+        let results = storage
+            .search_labels("ALICE", 10, None, None)
+            .await
+            .unwrap();
 
         assert!(!results.is_empty(), "Should find prefix match");
         assert!(
@@ -294,7 +302,10 @@ mod tests {
         setup_test_graph(&storage).await;
 
         // Case-insensitive search
-        let results = storage.search_labels("alice", 10).await.unwrap();
+        let results = storage
+            .search_labels("alice", 10, None, None)
+            .await
+            .unwrap();
 
         assert!(!results.is_empty(), "Should find case-insensitive match");
     }
@@ -363,8 +374,11 @@ mod tests {
         setup_test_graph(&storage).await;
 
         // Verify node count
-        let nodes = storage.get_all_nodes().await.unwrap();
-        assert_eq!(nodes.len(), 7, "Should have 7 nodes");
+        assert_eq!(
+            storage.node_count().await.unwrap(),
+            7,
+            "Should have 7 nodes"
+        );
 
         // Verify edges exist
         let has_edge = storage.has_edge("ACME_CORP", "ALICE_CHEN").await.unwrap();
@@ -384,7 +398,7 @@ mod tests {
         );
 
         // Verify popular labels ordering
-        let labels = storage.get_popular_labels(3).await.unwrap();
+        let labels = storage.get_popular_labels(3, None, None).await.unwrap();
         assert_eq!(labels.len(), 3, "Should return 3 labels");
     }
 

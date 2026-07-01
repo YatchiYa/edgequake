@@ -4,8 +4,10 @@
 
 use axum::{
     body::Body,
+    extract::{FromRef, Query, State},
     http::{Request, StatusCode},
 };
+use edgequake_api::state::{GraphQueryRuntime, StorageRuntime};
 use edgequake_api::{AppState, Server, ServerConfig};
 use edgequake_core::ResourceBudgetConfig;
 use edgequake_storage::traits::NodeListFilter;
@@ -67,6 +69,7 @@ async fn resource_safety_list_entities_bounded_page() {
         workspace_id: Some(PROOF_WORKSPACE.to_string()),
         entity_type: None,
         search: None,
+        community_ids: None,
     };
 
     let page = state
@@ -251,6 +254,7 @@ async fn resource_safety_get_graph_503_when_materialize_full() {
 async fn resource_safety_popular_labels_503_when_materialize_full() {
     use axum::extract::{Query, State};
     use edgequake_api::handlers::{get_popular_labels, graph_types::PopularLabelsQuery};
+    use edgequake_api::middleware::TenantContext;
     use edgequake_core::GraphMaterializationSemaphore;
     use std::sync::Arc;
 
@@ -263,7 +267,9 @@ async fn resource_safety_popular_labels_503_when_materialize_full() {
         .expect("hold slot");
 
     let result = get_popular_labels(
-        State(state),
+        State(StorageRuntime::from_ref(&state)),
+        State(GraphQueryRuntime::from_ref(&state)),
+        TenantContext::default(),
         Query(PopularLabelsQuery {
             limit: 5,
             min_degree: None,
@@ -458,7 +464,6 @@ fn resource_safety_orchestrator_token_cap_ssot() {
 #[tokio::test]
 async fn resource_safety_community_guard_rejects_large_graph() {
     use edgequake_core::{ResourceBudgetConfig, ResourceGuard};
-    use edgequake_storage::traits::GraphStorageMutateOps;
     use serde_json::json;
 
     let state = AppState::test_state();
@@ -541,7 +546,7 @@ async fn resource_safety_cascade_legacy_source_id_pipe_format() {
         .unwrap_or_default();
     assert_eq!(refs, vec!["other-doc-chunk-0"]);
     assert!(
-        node.properties.get("source_id").is_none(),
+        !node.properties.contains_key("source_id"),
         "legacy source_id must be cleared after partial cascade"
     );
 }

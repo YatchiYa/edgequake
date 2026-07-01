@@ -15,10 +15,14 @@ use edgequake_storage::GraphNode;
 use std::collections::HashMap;
 
 use crate::error::{ApiError, ApiResult};
+use crate::handlers::isolation::{
+    filter_edges_by_tenant_context, load_node_for_tenant_context, properties_match_tenant_context,
+    stamp_tenant_context_properties,
+};
 use crate::middleware::TenantContext;
 use crate::state::AppState;
 
-use super::{node_to_entity_response, normalize_entity_name};
+use super::{node_to_entity_response, normalize_entity_name_for_graph};
 pub use crate::handlers::entities_types::{
     ChangesSummary, CreateEntityRequest, CreateEntityResponse, DeleteEntityQuery,
     DeleteEntityResponse, EntityStatistics, GetEntityResponse, ListEntitiesQuery,
@@ -61,6 +65,7 @@ pub async fn list_entities(
         workspace_id: tenant_ctx.workspace_id.clone(),
         entity_type: query.entity_type.clone(),
         search: query.search.clone(),
+        community_ids: None,
     };
 
     let page_result = state
@@ -73,15 +78,24 @@ pub async fn list_entities(
     let total_pages = ((total as f64) / (page_size as f64)).ceil() as u32;
     let page_nodes = page_result.items;
 
-    // Convert to response format
-    let mut items = Vec::with_capacity(page_nodes.len());
-    for node in page_nodes {
-        let degree = state
+    // Convert to response format (SPEC-027 IMP-015: batch degree lookup)
+    let node_ids: Vec<String> = page_nodes.iter().map(|node| node.id.clone()).collect();
+    let degree_map: std::collections::HashMap<String, usize> = if node_ids.is_empty() {
+        std::collections::HashMap::new()
+    } else {
+        state
             .storage
             .graph_storage
-            .node_degree(&node.id)
+            .node_degrees_batch(&node_ids)
             .await
-            .unwrap_or(0);
+            .unwrap_or_default()
+            .into_iter()
+            .collect()
+    };
+
+    let mut items = Vec::with_capacity(page_nodes.len());
+    for node in page_nodes {
+        let degree = degree_map.get(&node.id).copied().unwrap_or(0);
         items.push(node_to_entity_response(node, degree));
     }
 
@@ -114,16 +128,17 @@ pub async fn create_entity(
     tenant_ctx: TenantContext,
     Json(req): Json<CreateEntityRequest>,
 ) -> ApiResult<Json<CreateEntityResponse>> {
-    let entity_name = normalize_entity_name(&req.entity_name);
+    let entity_name = normalize_entity_name_for_graph(&req.entity_name);
 
-    // Check if entity already exists
-    if state
-        .storage
-        .graph_storage
-        .get_node(&entity_name)
-        .await?
-        .is_some()
-    {
+    // Check if entity already exists in this tenant/workspace
+    if let Some(existing) = state.storage.graph_storage.get_node(&entity_name).await? {
+        if properties_match_tenant_context(&existing.properties, &tenant_ctx) {
+            return Err(ApiError::Conflict(format!(
+                "Entity '{}' already exists",
+                entity_name
+            )));
+        }
+        // Node id collision across tenants — deny write (MERGE would IDOR-overwrite).
         return Err(ApiError::Conflict(format!(
             "Entity '{}' already exists",
             entity_name
@@ -141,13 +156,7 @@ pub async fn create_entity(
     properties.insert("is_manual".to_string(), true.into());
     properties.insert("metadata".to_string(), req.metadata.clone());
 
-    // WHY: Add tenant context to isolate entity to the current tenant/workspace
-    if let Some(ref tenant_id) = tenant_ctx.tenant_id {
-        properties.insert("tenant_id".to_string(), tenant_id.clone().into());
-    }
-    if let Some(ref workspace_id) = tenant_ctx.workspace_id {
-        properties.insert("workspace_id".to_string(), workspace_id.clone().into());
-    }
+    stamp_tenant_context_properties(&mut properties, &tenant_ctx)?;
 
     // Create node using upsert_node
     state
@@ -186,17 +195,17 @@ pub async fn create_entity(
 )]
 pub async fn get_entity(
     State(state): State<AppState>,
+    tenant_ctx: TenantContext,
     Path(entity_name): Path<String>,
 ) -> ApiResult<Json<GetEntityResponse>> {
-    let entity_name = normalize_entity_name(&entity_name);
+    let entity_name = normalize_entity_name_for_graph(&entity_name);
 
-    // Get entity node
-    let node = state
-        .storage
-        .graph_storage
-        .get_node(&entity_name)
-        .await?
-        .ok_or_else(|| ApiError::NotFound(format!("Entity '{}' not found", entity_name)))?;
+    let node = load_node_for_tenant_context(
+        state.storage.graph_storage.as_ref(),
+        &entity_name,
+        &tenant_ctx,
+    )
+    .await?;
 
     let degree = state
         .storage
@@ -205,12 +214,15 @@ pub async fn get_entity(
         .await?;
     let entity = node_to_entity_response(node, degree);
 
-    // Get relationships (outgoing and incoming)
-    let edges = state
-        .storage
-        .graph_storage
-        .get_node_edges(&entity_name)
-        .await?;
+    // Get relationships (outgoing and incoming) — tenant-scoped
+    let edges = filter_edges_by_tenant_context(
+        state
+            .storage
+            .graph_storage
+            .get_node_edges(&entity_name)
+            .await?,
+        &tenant_ctx,
+    );
 
     let mut outgoing = Vec::new();
     let mut incoming = Vec::new();
@@ -278,18 +290,18 @@ pub async fn get_entity(
 )]
 pub async fn update_entity(
     State(state): State<AppState>,
+    tenant_ctx: TenantContext,
     Path(entity_name): Path<String>,
     Json(req): Json<UpdateEntityRequest>,
 ) -> ApiResult<Json<UpdateEntityResponse>> {
-    let entity_name = normalize_entity_name(&entity_name);
+    let entity_name = normalize_entity_name_for_graph(&entity_name);
 
-    // Get existing entity
-    let mut node = state
-        .storage
-        .graph_storage
-        .get_node(&entity_name)
-        .await?
-        .ok_or_else(|| ApiError::NotFound(format!("Entity '{}' not found", entity_name)))?;
+    let mut node = load_node_for_tenant_context(
+        state.storage.graph_storage.as_ref(),
+        &entity_name,
+        &tenant_ctx,
+    )
+    .await?;
 
     let previous_description = node
         .properties
@@ -320,6 +332,9 @@ pub async fn update_entity(
     // Update timestamp
     let now = Utc::now().to_rfc3339();
     node.properties.insert("updated_at".to_string(), now.into());
+
+    // Preserve tenant scope (defense in depth — never strip on update)
+    stamp_tenant_context_properties(&mut node.properties, &tenant_ctx)?;
 
     // Update node in storage using upsert_node
     state
@@ -366,10 +381,11 @@ pub async fn update_entity(
 )]
 pub async fn delete_entity(
     State(state): State<AppState>,
+    tenant_ctx: TenantContext,
     Path(entity_name): Path<String>,
     Query(params): Query<DeleteEntityQuery>,
 ) -> ApiResult<Json<DeleteEntityResponse>> {
-    let entity_name = normalize_entity_name(&entity_name);
+    let entity_name = normalize_entity_name_for_graph(&entity_name);
 
     // Check confirmation
     if !params.confirm {
@@ -378,26 +394,33 @@ pub async fn delete_entity(
         ));
     }
 
-    // Check if entity exists
-    if state
-        .storage
-        .graph_storage
-        .get_node(&entity_name)
-        .await?
-        .is_none()
-    {
-        return Err(ApiError::NotFound(format!(
-            "Entity '{}' not found",
-            entity_name
-        )));
-    }
+    let (tenant_id, workspace_id) = (
+        tenant_ctx
+            .tenant_id
+            .as_deref()
+            .ok_or_else(|| ApiError::BadRequest("Tenant context required".to_string()))?,
+        tenant_ctx
+            .workspace_id
+            .as_deref()
+            .ok_or_else(|| ApiError::BadRequest("Workspace context required".to_string()))?,
+    );
 
-    // Get affected entities (neighbors)
-    let edges = state
-        .storage
-        .graph_storage
-        .get_node_edges(&entity_name)
-        .await?;
+    // Verify entity belongs to tenant before collecting edge metadata
+    let _ = load_node_for_tenant_context(
+        state.storage.graph_storage.as_ref(),
+        &entity_name,
+        &tenant_ctx,
+    )
+    .await?;
+
+    let edges = filter_edges_by_tenant_context(
+        state
+            .storage
+            .graph_storage
+            .get_node_edges(&entity_name)
+            .await?,
+        &tenant_ctx,
+    );
 
     let mut affected_entities = Vec::new();
     for edge in &edges {
@@ -409,12 +432,18 @@ pub async fn delete_entity(
     }
     let deleted_relationships = edges.len();
 
-    // Delete node (edges will be deleted automatically)
-    state
+    let deleted = state
         .storage
         .graph_storage
-        .delete_node(&entity_name)
+        .delete_node_scoped(&entity_name, tenant_id, workspace_id)
         .await?;
+
+    if !deleted {
+        return Err(ApiError::NotFound(format!(
+            "Entity '{}' not found",
+            entity_name
+        )));
+    }
 
     Ok(Json(DeleteEntityResponse {
         status: "success".to_string(),

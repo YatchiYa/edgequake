@@ -56,21 +56,45 @@
 //! - [`crate::adapters::postgres`] for PostgreSQL adapters
 
 pub mod adapters;
+pub mod chunk_content;
 pub mod community;
+pub mod community_index_service;
+pub mod community_persist;
+pub mod compensation;
 pub mod conversation_storage;
 pub mod conversation_types;
+pub mod entity_id;
+pub mod entity_reconcile;
 pub mod error;
+pub mod kv_key_schema;
 pub mod metadata_filter_sql;
 pub mod pdf_storage;
 pub mod traits;
+pub mod vector_id;
+
+// Re-export entity identity (RC-6 / P-G1): single normalization entry point.
+pub use entity_id::{normalize_entity_name, EntityId};
 
 // Re-export community detection
+pub use crate::community_index_service::{
+    community_refresh_debounce_secs, pending_community_refresh_workspaces,
+    refresh_community_index_now, schedule_community_index_refresh,
+};
+pub use chunk_content::{
+    batch_fetch_chunk_contents, content_from_kv_value, content_from_metadata_or_kv,
+};
 pub use community::{Community, CommunityAlgorithm, CommunityConfig, CommunityDetectionResult};
+pub use community_persist::{
+    backfill_communities_if_needed, community_features_enabled, detect_and_persist_communities,
+    needs_community_backfill, persist_community_labels, refresh_community_index,
+    spawn_community_backfill_if_needed,
+};
 
 // Re-export PDF storage types
 pub use pdf_storage::{
-    calculate_pdf_checksum, validate_pdf_data, CreatePdfRequest, ExtractionMethod, ListPdfFilter,
-    PdfDocument, PdfDocumentStorage, PdfList, PdfProcessingStatus, UpdatePdfProcessingRequest,
+    calculate_pdf_checksum, validate_pdf_data, CreatePdfRequest, DocumentStatsUpdate,
+    ExtractionMethod, ListPdfFilter, PdfDocument, PdfDocumentStorage, PdfList, PdfProcessingStatus,
+    UpdatePdfProcessingRequest,
 };
 
 pub use conversation_storage::ConversationStorage;
@@ -97,3 +121,6 @@ pub use adapters::postgres::{
     PgVectorStorage, PgWorkspaceVectorRegistry, PostgresAGEGraphStorage, PostgresConfig,
     PostgresConversationStorage, PostgresKVStorage, PostgresPdfStorage, PostgresPool,
 };
+
+// Re-export KV key schema for use across all crates
+pub use kv_key_schema::kv_keys;

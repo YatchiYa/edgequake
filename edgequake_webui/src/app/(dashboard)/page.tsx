@@ -16,7 +16,7 @@
 import { QuickActions, RecentActivity, StatsCard, SystemStatus } from '@/components/dashboard';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useWorkspaceTenantValidator } from '@/hooks/use-workspace-tenant-validator';
-import { getDocuments, getWorkspaceStats } from '@/lib/api/edgequake';
+import { getDocuments, getWorkspaceStats, getWorkspaces } from '@/lib/api/edgequake';
 import { validateAndClearCache } from '@/lib/cache-manager';
 import { useTenantStore } from '@/stores/use-tenant-store';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -64,7 +64,20 @@ export default function DashboardPage() {
   const { t } = useTranslation();
 
   // Get tenant context for query keys
-  const { selectedTenantId, selectedWorkspaceId, _hasHydrated } = useTenantStore();
+  const { selectedTenantId, selectedWorkspaceId, workspaces: storeWorkspaces, _hasHydrated } = useTenantStore();
+
+  // WHY: workspaces aren't persisted in localStorage (only IDs are), so fetch
+  // them here with the same queryKey HeaderTenantSelector uses — React Query
+  // deduplicates the request, so this adds zero extra network calls.
+  const { data: fetchedWorkspaces } = useQuery({
+    queryKey: ['workspaces', selectedTenantId],
+    queryFn: () => selectedTenantId ? getWorkspaces(selectedTenantId) : Promise.resolve([]),
+    enabled: _hasHydrated && !!selectedTenantId,
+    staleTime: 60_000,
+  });
+
+  const workspaces = fetchedWorkspaces ?? storeWorkspaces;
+  const selectedWorkspace = workspaces.find((w) => w.id === selectedWorkspaceId);
   
   // Get query client for cache management
   const queryClient = useQueryClient();
@@ -146,6 +159,7 @@ export default function DashboardPage() {
   const entityValue = stats?.entity_count ?? 0;
   const relationshipValue = stats?.relationship_count ?? 0;
   const chunkValue = stats?.chunk_count ?? 0;
+  const statsStale = stats?.stale ?? false;
 
   return (
     <ScrollArea className="h-full">
@@ -154,13 +168,21 @@ export default function DashboardPage() {
         <WorkspaceUrlUpdater />
       </Suspense>
       <div className="p-page space-y-6">
-        {/* Header Section - Compact */}
+        {/* Header Section — contextual, not generic marketing copy */}
         <header className="space-y-1">
           <h1 className="text-2xl font-bold tracking-tight">
-            {t('dashboard.title', 'Dashboard')}
+            {selectedWorkspace?.name ?? t('dashboard.title', 'Dashboard')}
           </h1>
-          <p className="text-sm text-muted-foreground max-w-2xl">
-            {t('dashboard.welcome', 'Welcome to EdgeQuake - Your Knowledge Graph RAG Platform')}
+          <p className="text-sm text-muted-foreground">
+            {isLoadingStats
+              ? t('common.loading', 'Loading...')
+              : documentValue > 0
+                ? t(
+                    'dashboard.contextSubtitle',
+                    '{{docs}} documents · {{entities}} entities · {{relationships}} relationships',
+                    { docs: documentValue, entities: entityValue, relationships: relationshipValue }
+                  )
+                : t('dashboard.emptySubtitle', 'Upload your first document to get started')}
           </p>
         </header>
 
@@ -171,33 +193,41 @@ export default function DashboardPage() {
             title={t('dashboard.stats.documents', 'Documents')}
             value={documentValue}
             description={t('dashboard.stats.documentsDesc', 'Uploaded documents')}
+            zeroHint={t('dashboard.stats.documentsZero', 'Upload documents to get started')}
             icon={FileText}
             variant="documents"
             isLoading={isLoadingStats || !selectedWorkspaceId}
+            isStale={statsStale}
           />
           <StatsCard
             title={t('dashboard.stats.entities', 'Entities')}
             value={entityValue}
             description={t('dashboard.stats.entitiesDesc', 'Extracted entities')}
+            zeroHint={t('dashboard.stats.entitiesZero', 'Process documents to extract entities')}
             icon={Users}
             variant="entities"
             isLoading={isLoadingStats || !selectedWorkspaceId}
+            isStale={statsStale}
           />
           <StatsCard
             title={t('dashboard.stats.relationships', 'Relationships')}
             value={relationshipValue}
             description={t('dashboard.stats.relationshipsDesc', 'Entity connections')}
+            zeroHint={t('dashboard.stats.relationshipsZero', 'Relationships appear after processing')}
             icon={GitBranch}
             variant="relationships"
             isLoading={isLoadingStats || !selectedWorkspaceId}
+            isStale={statsStale}
           />
           <StatsCard
             title={t('dashboard.stats.chunks', 'Chunks')}
             value={chunkValue}
             description={t('dashboard.stats.chunksDesc', 'Text segments')}
+            zeroHint={t('dashboard.stats.chunksZero', 'Chunks are created during ingestion')}
             icon={Tags}
             variant="types"
             isLoading={isLoadingStats || !selectedWorkspaceId}
+            isStale={statsStale}
           />
         </section>
 

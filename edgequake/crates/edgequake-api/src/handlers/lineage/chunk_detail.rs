@@ -16,7 +16,7 @@ use crate::handlers::lineage_types::{
 };
 use crate::middleware::TenantContext;
 use crate::services::{find_document_edges, find_document_nodes, DocumentSourceScope};
-use crate::state::AppState;
+use crate::state::StorageRuntime;
 
 /// Get chunk detail.
 #[utoipa::path(
@@ -32,13 +32,12 @@ use crate::state::AppState;
     )
 )]
 pub async fn get_chunk_detail(
-    State(state): State<AppState>,
+    State(storage): State<StorageRuntime>,
     tenant_ctx: TenantContext,
     Path(chunk_id): Path<String>,
 ) -> ApiResult<Json<ChunkDetailResponse>> {
     // Look up chunk in KV storage
-    let chunk_data = state
-        .storage
+    let chunk_data = storage
         .kv_storage
         .get_by_id(&chunk_id)
         .await?
@@ -84,6 +83,18 @@ pub async fn get_chunk_detail(
         .and_then(|v: &serde_json::Value| v.as_u64())
         .map(|v| v as usize);
 
+    // SPEC-033: Read PDF page attribution from chunk KV record.
+    // Written by chunk_storage::chunk_kv_value() during ingestion.
+    let page_start = chunk_data
+        .get("page_start")
+        .and_then(|v: &serde_json::Value| v.as_u64())
+        .map(|v| v as u32);
+
+    let page_end = chunk_data
+        .get("page_end")
+        .and_then(|v: &serde_json::Value| v.as_u64())
+        .map(|v| v as u32);
+
     // WHY: Chunk IDs follow a deterministic format "{document_id}-chunk-{N}".
     // Extracting the document ID from this format avoids an extra KV lookup
     // and maintains the F8 bidirectional chain (Document ↔ Chunk).
@@ -100,8 +111,7 @@ pub async fn get_chunk_detail(
     // SECURITY: Verify the parent document belongs to the requesting tenant/workspace.
     // Returns 404 (not 403) to avoid leaking cross-tenant document IDs.
     let doc_metadata =
-        verify_document_access(state.storage.kv_storage.as_ref(), &document_id, &tenant_ctx)
-            .await?;
+        verify_document_access(storage.kv_storage.as_ref(), &document_id, &tenant_ctx).await?;
 
     // Get document name from already-fetched metadata
     let doc_name = doc_metadata
@@ -111,12 +121,8 @@ pub async fn get_chunk_detail(
 
     // SPEC-006 P1: chunk-scoped prefix query (bounded)
     let chunk_scope = DocumentSourceScope::from_document_id(chunk_id.clone());
-    let chunk_nodes = find_document_nodes(
-        &state.storage.graph_storage,
-        Some(&tenant_ctx),
-        &chunk_scope,
-    )
-    .await?;
+    let chunk_nodes =
+        find_document_nodes(&storage.graph_storage, Some(&tenant_ctx), &chunk_scope).await?;
     let mut entities: Vec<ExtractedEntityInfo> = Vec::new();
     for node in &chunk_nodes {
         let entity_type = node
@@ -138,12 +144,8 @@ pub async fn get_chunk_detail(
         });
     }
 
-    let chunk_edges = find_document_edges(
-        &state.storage.graph_storage,
-        Some(&tenant_ctx),
-        &chunk_scope,
-    )
-    .await?;
+    let chunk_edges =
+        find_document_edges(&storage.graph_storage, Some(&tenant_ctx), &chunk_scope).await?;
     let mut relationships: Vec<ExtractedRelationshipInfo> = Vec::new();
     for edge in chunk_edges {
         let relation_type = edge
@@ -178,6 +180,8 @@ pub async fn get_chunk_detail(
         },
         start_line,
         end_line,
+        page_start,
+        page_end,
         token_count,
         entities,
         relationships,

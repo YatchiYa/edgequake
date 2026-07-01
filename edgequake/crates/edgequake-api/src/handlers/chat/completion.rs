@@ -8,10 +8,14 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::error::{ApiError, ApiResult};
+use crate::handlers::auth::OptionalAuth;
 use crate::handlers::query::{resolve_chunk_file_paths, resolve_query_workspace, QueryStats};
 use crate::middleware::TenantContext;
 use crate::providers::{LlmResolutionRequest, WorkspaceProviderResolver};
-use crate::services::{execute_sota_query_with_auth_fallback, resolve_workspace_query_resources};
+use crate::services::{
+    build_message_context_from_engine, ensure_debug_granularity_allowed,
+    execute_sota_query_with_auth_fallback, resolve_workspace_query_resources,
+};
 use crate::state::AppState;
 use edgequake_core::types::{
     CreateConversationRequest, CreateMessageRequest, MessageRole, UpdateMessageRequest,
@@ -19,8 +23,8 @@ use edgequake_core::types::{
 use edgequake_query::QueryRequest as EngineQueryRequest;
 
 use super::{
-    build_sources, enrich_query_with_language, parse_mode, parse_query_mode,
-    sources_to_message_context, ChatCompletionRequest, ChatCompletionResponse,
+    build_sources, enrich_query_with_language, parse_mode, parse_query_mode, ChatCompletionRequest,
+    ChatCompletionResponse,
 };
 
 /// Execute a non-streaming chat completion.
@@ -42,6 +46,7 @@ use super::{
 pub async fn chat_completion(
     State(state): State<AppState>,
     tenant_ctx: TenantContext,
+    OptionalAuth(auth_user): OptionalAuth,
     Json(request): Json<ChatCompletionRequest>,
 ) -> ApiResult<Json<ChatCompletionResponse>> {
     // Validate request
@@ -55,6 +60,10 @@ pub async fn chat_completion(
     if let Some(ref images) = request.images {
         super::validation::validate_image_attachments(images)?;
     }
+    ensure_debug_granularity_allowed(
+        request.content_granularity,
+        auth_user.as_ref().map(|u| u.role.clone()),
+    )?;
 
     let tenant_id = tenant_ctx
         .tenant_id
@@ -190,7 +199,7 @@ pub async fn chat_completion(
     // Priority order:
     //   1. Request-specified provider/model (explicit user selection)
     //   2. Workspace-configured provider/model (workspace settings)
-    //   3. Server default (sota_engine's default provider)
+    //   3. Server default (engine_impl's default provider)
     // Supports both formats:
     //   - Legacy format: provider="provider/model" (e.g., "ollama/gemma3:12b")
     //   - New format: provider="provider", model="model_name"
@@ -263,9 +272,9 @@ pub async fn chat_completion(
     .await?;
 
     // 4. Build sources and resolve document names for chunk sources
-    let mut sources = build_sources(&result.context);
+    let mut sources = build_sources(&result.context, request.content_granularity);
     resolve_chunk_file_paths(state.storage.kv_storage.as_ref(), &mut sources).await;
-    let context = sources_to_message_context(&sources);
+    let context = build_message_context_from_engine(&result.context, &sources);
 
     // 5. Save assistant message
     let assistant_message = state
@@ -373,7 +382,7 @@ pub async fn chat_completion(
             sources_retrieved: result.context.chunks.len()
                 + result.context.entities.len()
                 + result.context.relationships.len(),
-            rerank_time_ms: None,
+            rerank_time_ms: result.stats.rerank_time_ms,
             // SPEC-032 Item 18, 22: Token metrics and model lineage
             tokens_used: Some(result.stats.generated_tokens),
             tokens_per_second,

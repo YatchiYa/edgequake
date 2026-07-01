@@ -23,6 +23,8 @@
 //! - Document deletion cascade verification
 //! - Entity extraction quality verification
 
+mod common;
+
 use axum::{
     body::Body,
     http::{Request, StatusCode},
@@ -105,15 +107,120 @@ fn create_test_config() -> ServerConfig {
 
 /// Create test app with mock provider (for basic structure tests).
 /// WHY: Ollama E2E tests use the API endpoints; provider is configured via env vars.
+#[allow(dead_code)]
 fn create_test_app() -> axum::Router {
     Server::new(create_test_config(), AppState::test_state()).build_router()
 }
 
 /// Create test app and state (for inspection tests).
+#[allow(dead_code)]
 fn create_test_app_with_state() -> (axum::Router, AppState) {
     let state = AppState::test_state();
     let app = Server::new(create_test_config(), state.clone()).build_router();
     (app, state)
+}
+
+/// Worker-backed test app + state (P-G2b). WHY: the mock inspection tests upload
+/// via HTTP and then read `state.storage.graph_storage` directly. Since uploads
+/// now always enqueue a background task, a real `WorkerPool` must process it or
+/// the graph stays empty. `AppState` is `Clone` and shares `Arc`-backed
+/// storage/queue, so the router (built from the clone) and the worker pool
+/// (bound to the original's queue) see the same stores.
+async fn create_test_app_with_state_and_workers() -> (axum::Router, AppState) {
+    use edgequake_tasks::worker::{WorkerPool, WorkerPoolConfig};
+    use edgequake_tasks::{TaskQueue, TaskStorage};
+    use std::sync::Arc;
+
+    let mut state = AppState::test_state();
+    state.workspace_service.seed_default_workspace().await;
+
+    let processor = edgequake_api::DocumentTaskProcessor::with_workspace_support_strict(
+        Arc::clone(&state.query.pipeline),
+        Arc::clone(&state.query.llm_provider),
+        Arc::clone(&state.storage.kv_storage),
+        Arc::clone(&state.storage.vector_storage),
+        Arc::clone(&state.storage.vector_registry),
+        Arc::clone(&state.storage.graph_storage),
+        state.tasks.pipeline_state.clone(),
+        Arc::clone(&state.workspace_service),
+        Arc::clone(&state.query.models_config),
+    )
+    .with_progress_broadcaster(state.tasks.progress_broadcaster.clone());
+    let processor = Arc::new(processor);
+
+    let worker_config = WorkerPoolConfig {
+        num_workers: 2,
+        auto_retry: false,
+        initial_retry_delay_ms: 100,
+        max_retry_delay_ms: 1_000,
+        backoff_multiplier: 2.0,
+        max_tasks_per_tenant: 4,
+        processing_timeout_secs: 120,
+    };
+    let mut worker_pool = WorkerPool::new(
+        worker_config,
+        Arc::clone(&state.tasks.queue) as Arc<dyn TaskQueue>,
+        Arc::clone(&state.tasks.storage) as Arc<dyn TaskStorage>,
+        processor,
+    );
+    state.tasks.cancellation_registry = worker_pool.cancellation_registry();
+
+    let app = Server::new(create_test_config(), state.clone()).build_router();
+    worker_pool.start();
+    // Leak the pool so its worker tasks live for the test's duration. The test
+    // process tears them down on exit; these are short-lived mock tests.
+    std::mem::forget(worker_pool);
+
+    (app, state)
+}
+
+/// Upload + wait for ingestion via track-status polling (P-G2b). Returns the
+/// document_id.
+async fn upload_and_wait_http(app: &axum::Router, title: &str, content: &str) -> String {
+    let (status, body) = upload_document(app, title, content).await;
+    assert!(
+        status == StatusCode::CREATED || status == StatusCode::ACCEPTED,
+        "upload status: {} | body={}",
+        status,
+        body
+    );
+    let doc_id = body
+        .get("document_id")
+        .and_then(|v| v.as_str())
+        .expect("document_id")
+        .to_string();
+    let track_id = body
+        .get("track_id")
+        .and_then(|v| v.as_str())
+        .expect("track_id")
+        .to_string();
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    loop {
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/v1/documents/track/{}", track_id))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        if resp.status().is_success() {
+            let b = extract_json(resp).await;
+            if b.get("is_complete")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+            {
+                return doc_id;
+            }
+        }
+        if std::time::Instant::now() >= deadline {
+            panic!("document {} did not finish processing within 30s", doc_id);
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
 }
 
 async fn extract_json(response: axum::response::Response) -> Value {
@@ -216,26 +323,18 @@ async fn test_ollama_availability() {
 /// It's always enabled since it doesn't require Ollama.
 #[tokio::test]
 async fn test_mock_document_upload_baseline() {
-    let app = create_test_app();
+    let (app, _state) = create_test_app_with_state_and_workers().await;
 
-    // Upload document
-    let (status, upload_resp) = upload_document(
+    // Upload document + wait for ingestion (P-G2b).
+    let doc_id = upload_and_wait_http(
         &app,
         "Tech Company Profile",
         "Alice Chen is a software engineer at TechCorp Inc. She works closely with Bob Smith.",
     )
     .await;
 
-    println!("Upload response: {:?}", upload_resp);
-
-    assert_eq!(status, StatusCode::CREATED);
-    let doc_id = upload_resp
-        .get("document_id")
-        .and_then(|v| v.as_str())
-        .expect("Should have document_id");
-
     // Clean up
-    let (delete_status, _) = delete_document(&app, doc_id).await;
+    let (delete_status, _) = delete_document(&app, &doc_id).await;
     assert_eq!(delete_status, StatusCode::OK);
 
     println!("✅ MOCK BASELINE TEST PASSED");
@@ -246,10 +345,10 @@ async fn test_mock_document_upload_baseline() {
 /// This verifies the mock provider extracts entities.
 #[tokio::test]
 async fn test_mock_entity_extraction() {
-    let (app, state) = create_test_app_with_state();
+    let (app, state) = create_test_app_with_state_and_workers().await;
 
-    // Upload document with clear entity mentions
-    let (status, upload_resp) = upload_document(
+    // Upload document with clear entity mentions + wait for ingestion (P-G2b).
+    let doc_id = upload_and_wait_http(
         &app,
         "Tech Company Profile",
         "Alice Chen is a software engineer at TechCorp Inc. She works closely with Bob Smith \
@@ -259,41 +358,22 @@ async fn test_mock_entity_extraction() {
     )
     .await;
 
-    println!("Upload response: {:?}", upload_resp);
-
-    assert_eq!(status, StatusCode::CREATED);
-    let doc_id = upload_resp
-        .get("document_id")
-        .and_then(|v| v.as_str())
-        .expect("Should have document_id");
-
-    let entity_count = upload_resp
-        .get("entity_count")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
-
-    let relationship_count = upload_resp
-        .get("relationship_count")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
-
+    // Check graph state
+    let nodes = common::list_all_graph_nodes(&state.storage.graph_storage).await;
+    let edges = common::list_all_graph_edges(&state.storage.graph_storage).await;
     println!(
-        "📊 Mock provider extracted {} entities, {} relationships",
-        entity_count, relationship_count
+        "📊 Graph state: {} nodes, {} edges",
+        nodes.len(),
+        edges.len()
     );
 
-    // Check graph state
-    let nodes = state.storage.graph_storage.get_all_nodes().await.unwrap();
-    let edges = state.storage.graph_storage.get_all_edges().await.unwrap();
-    println!("Graph state: {} nodes, {} edges", nodes.len(), edges.len());
-
     // Clean up
-    let (delete_status, _) = delete_document(&app, doc_id).await;
+    let (delete_status, _) = delete_document(&app, &doc_id).await;
     assert_eq!(delete_status, StatusCode::OK);
 
     // Verify cleanup
-    let nodes_after = state.storage.graph_storage.get_all_nodes().await.unwrap();
-    let edges_after = state.storage.graph_storage.get_all_edges().await.unwrap();
+    let nodes_after = common::list_all_graph_nodes(&state.storage.graph_storage).await;
+    let edges_after = common::list_all_graph_edges(&state.storage.graph_storage).await;
     assert!(nodes_after.is_empty(), "All nodes should be deleted");
     assert!(edges_after.is_empty(), "All edges should be deleted");
 
@@ -303,10 +383,10 @@ async fn test_mock_entity_extraction() {
 /// Test query modes with mock provider.
 #[tokio::test]
 async fn test_mock_query_modes() {
-    let app = create_test_app();
+    let (app, _state) = create_test_app_with_state_and_workers().await;
 
-    // Upload document
-    let (status, upload_resp) = upload_document(
+    // Upload document + wait for ingestion (P-G2b) so the query has data.
+    let doc_id = upload_and_wait_http(
         &app,
         "AI Research Paper",
         "The transformer architecture revolutionized natural language processing. \
@@ -314,12 +394,6 @@ async fn test_mock_query_modes() {
          BERT and GPT are both based on transformers but have different training objectives.",
     )
     .await;
-
-    assert_eq!(status, StatusCode::CREATED);
-    let doc_id = upload_resp
-        .get("document_id")
-        .and_then(|v| v.as_str())
-        .expect("Should have document_id");
 
     // Test llm_only mode
     let (query_status, query_resp) = query_kg(
@@ -340,7 +414,7 @@ async fn test_mock_query_modes() {
     assert_eq!(query_status, StatusCode::OK);
 
     // Clean up
-    delete_document(&app, doc_id).await;
+    delete_document(&app, &doc_id).await;
 
     println!("✅ MOCK QUERY MODES TEST PASSED");
 }
@@ -348,10 +422,10 @@ async fn test_mock_query_modes() {
 /// Test deletion cascade with mock-extracted entities.
 #[tokio::test]
 async fn test_mock_deletion_cascade() {
-    let (app, state) = create_test_app_with_state();
+    let (app, state) = create_test_app_with_state_and_workers().await;
 
-    // Upload document
-    let (status, upload_resp) = upload_document(
+    // Upload document + wait for ingestion (P-G2b).
+    let doc_id = upload_and_wait_http(
         &app,
         "Biography",
         "Marie Curie was a physicist who discovered radium. She won two Nobel Prizes. \
@@ -359,22 +433,9 @@ async fn test_mock_deletion_cascade() {
     )
     .await;
 
-    assert_eq!(status, StatusCode::CREATED);
-    let doc_id = upload_resp
-        .get("document_id")
-        .and_then(|v| v.as_str())
-        .expect("Should have document_id");
-
-    let entity_count = upload_resp
-        .get("entity_count")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
-
-    println!("Before deletion: {} entities extracted", entity_count);
-
     // Check graph state before deletion
-    let nodes_before = state.storage.graph_storage.get_all_nodes().await.unwrap();
-    let edges_before = state.storage.graph_storage.get_all_edges().await.unwrap();
+    let nodes_before = common::list_all_graph_nodes(&state.storage.graph_storage).await;
+    let edges_before = common::list_all_graph_edges(&state.storage.graph_storage).await;
 
     println!(
         "Graph before deletion: {} nodes, {} edges",
@@ -383,7 +444,7 @@ async fn test_mock_deletion_cascade() {
     );
 
     // Delete document
-    let (delete_status, delete_resp) = delete_document(&app, doc_id).await;
+    let (delete_status, delete_resp) = delete_document(&app, &doc_id).await;
 
     println!("Delete response: {:?}", delete_resp);
 
@@ -394,8 +455,8 @@ async fn test_mock_deletion_cascade() {
     );
 
     // Verify all entities and relationships are cleaned up
-    let nodes_after = state.storage.graph_storage.get_all_nodes().await.unwrap();
-    let edges_after = state.storage.graph_storage.get_all_edges().await.unwrap();
+    let nodes_after = common::list_all_graph_nodes(&state.storage.graph_storage).await;
+    let edges_after = common::list_all_graph_edges(&state.storage.graph_storage).await;
 
     println!(
         "Graph after deletion: {} nodes, {} edges",
@@ -420,24 +481,18 @@ async fn test_mock_deletion_cascade() {
 /// Test query after deletion returns no errors.
 #[tokio::test]
 async fn test_mock_query_after_deletion() {
-    let app = create_test_app();
+    let (app, _state) = create_test_app_with_state_and_workers().await;
 
-    // Upload document
-    let (status, upload_resp) = upload_document(
+    // Upload document + wait for ingestion (P-G2b).
+    let doc_id = upload_and_wait_http(
         &app,
         "Temporary Document",
         "This is a temporary document about quantum computing and qubits.",
     )
     .await;
 
-    assert_eq!(status, StatusCode::CREATED);
-    let doc_id = upload_resp
-        .get("document_id")
-        .and_then(|v| v.as_str())
-        .expect("Should have document_id");
-
     // Delete document
-    let (delete_status, _) = delete_document(&app, doc_id).await;
+    let (delete_status, _) = delete_document(&app, &doc_id).await;
     assert_eq!(delete_status, StatusCode::OK);
 
     // Query should not error even with empty knowledge graph
@@ -459,7 +514,7 @@ async fn test_mock_query_after_deletion() {
 /// Stress test: Multiple document operations with mock provider.
 #[tokio::test]
 async fn test_mock_multi_document_stress() {
-    let (app, state) = create_test_app_with_state();
+    let (app, state) = create_test_app_with_state_and_workers().await;
 
     let documents = vec![
         (
@@ -478,22 +533,16 @@ async fn test_mock_multi_document_stress() {
 
     let mut doc_ids = Vec::new();
 
-    // Upload all documents
+    // Upload + wait for each document (P-G2b).
     for (title, content) in &documents {
-        let (status, upload_resp) = upload_document(&app, title, content).await;
-        assert_eq!(status, StatusCode::CREATED);
-        let doc_id = upload_resp
-            .get("document_id")
-            .and_then(|v| v.as_str())
-            .expect("Should have document_id")
-            .to_string();
+        let doc_id = upload_and_wait_http(&app, title, content).await;
         doc_ids.push(doc_id);
         println!("Uploaded: {}", title);
     }
 
     // Check graph state
-    let nodes = state.storage.graph_storage.get_all_nodes().await.unwrap();
-    let edges = state.storage.graph_storage.get_all_edges().await.unwrap();
+    let nodes = common::list_all_graph_nodes(&state.storage.graph_storage).await;
+    let edges = common::list_all_graph_edges(&state.storage.graph_storage).await;
     println!(
         "After uploading {} docs: {} nodes, {} edges",
         documents.len(),
@@ -519,8 +568,8 @@ async fn test_mock_multi_document_stress() {
     }
 
     // Verify cleanup
-    let nodes_after = state.storage.graph_storage.get_all_nodes().await.unwrap();
-    let edges_after = state.storage.graph_storage.get_all_edges().await.unwrap();
+    let nodes_after = common::list_all_graph_nodes(&state.storage.graph_storage).await;
+    let edges_after = common::list_all_graph_edges(&state.storage.graph_storage).await;
 
     assert!(
         nodes_after.is_empty(),

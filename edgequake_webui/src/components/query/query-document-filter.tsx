@@ -12,9 +12,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
 } from '@/components/ui/popover';
 import type { DocumentFilter } from '@/types';
 import { Filter, X } from 'lucide-react';
@@ -51,7 +51,7 @@ export function QueryDocumentFilter({
   const count = activeFilterCount(value);
 
   const handleFieldChange = useCallback(
-    (field: keyof DocumentFilter, val: string) => {
+    (field: 'date_from' | 'date_to' | 'document_pattern', val: string) => {
       const next: DocumentFilter = { ...value };
       if (val) {
         next[field] = val;

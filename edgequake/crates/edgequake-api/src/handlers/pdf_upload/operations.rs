@@ -133,11 +133,21 @@ pub async fn retry_pdf_processing(
             ..Default::default()
         };
 
-        let task_id = create_pdf_processing_task(&state, &tenant, pdf_uuid, &options, None).await?;
+        let enqueue = create_pdf_processing_task(
+            &state,
+            &tenant,
+            pdf_uuid,
+            &options,
+            None,
+            super::helpers::PdfReprocessIntent::fresh(),
+            pdf.page_count,
+            pdf.file_size_bytes.max(0) as u64,
+        )
+        .await?;
 
         info!(
             pdf_id = %pdf_id,
-            task_id = %task_id,
+            task_id = %enqueue.track_id,
             "PDF processing retry initiated"
         );
 
@@ -145,7 +155,7 @@ pub async fn retry_pdf_processing(
             success: true,
             pdf_id,
             message: "PDF retry initiated successfully".to_string(),
-            task_id: Some(task_id),
+            task_id: Some(enqueue.track_id),
         }))
     }
 }

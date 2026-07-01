@@ -76,6 +76,7 @@
 //! - [`BR0472`]: Documents processed with workspace-specific providers
 
 // Sub-modules organized by responsibility (SRP)
+mod injection_processing;
 mod pdf_processing;
 pub mod pipeline_checkpoint;
 mod status_updates;
@@ -91,13 +92,13 @@ use crate::pipeline_progress_callback::PipelineProgressCallback;
 use crate::state::SharedWorkspaceService;
 use edgequake_llm::ModelsConfig;
 use edgequake_pipeline::{
-    ChunkProgressCallback, ChunkProgressUpdate, EmbedProgressCallback, EmbedProgressUpdate,
-    Pipeline,
+    ChunkProgressCallback, ChunkProgressUpdate, ChunkVectorBuildOptions, EmbedProgressCallback,
+    EmbedProgressUpdate, NoopEntitySink, Pipeline, RelationalEntitySink,
 };
 use edgequake_storage::traits::{GraphStorage, KVStorage, VectorStorage, WorkspaceVectorRegistry};
 use edgequake_tasks::{
-    PipelinePhase, PipelineState, Task, TaskError, TaskProcessor, TaskResult, TaskType,
-    TextInsertData,
+    KnowledgeInjectionData, PipelinePhase, PipelineState, Task, TaskError, TaskProcessor,
+    TaskResult, TaskType, TextInsertData,
 };
 use serde_json::json;
 use tracing::{error, info, warn};
@@ -160,6 +161,20 @@ pub struct DocumentTaskProcessor {
     /// OODA-223: Strict workspace mode - when true, fail if workspace not found.
     /// When false (memory/test mode), allow fallback to default storage.
     strict_workspace_mode: bool,
+    /// SPEC-021 P3-01: Relational CQRS dual-write sink.
+    /// WHY: Defaults to NoopEntitySink (zero overhead). Set to PostgresEntitySink
+    /// via `with_relational_sink()` when entity_sync_mode = dual_write|full.
+    relational_sink: Arc<dyn RelationalEntitySink>,
+    /// SPEC-032 W-08: Chunk lineage sink for chunk→entity/relation provenance.
+    /// Defaults to NoopLineageSink. Set to PostgresLineageSink when migration 066 applied.
+    lineage_sink: Arc<dyn edgequake_pipeline::LineageSink>,
+    /// Persist task rows when ingestion identity is allocated mid-flight.
+    task_storage: Option<edgequake_tasks::SharedTaskStorage>,
+    /// P-G9: Invalidate query result cache after ingest (DIP port).
+    query_cache_invalidator: Option<Arc<dyn edgequake_query::QueryResultCacheInvalidator>>,
+    /// P-G13: Process-wide cap on concurrent vision PDF conversions.
+    #[cfg(feature = "postgres")]
+    pdf_vision: Option<Arc<edgequake_core::PdfVisionSemaphore>>,
 }
 
 impl DocumentTaskProcessor {
@@ -188,6 +203,12 @@ impl DocumentTaskProcessor {
             workspace_service: None,
             models_config: None,
             strict_workspace_mode: false, // OODA-223: Legacy mode allows fallback
+            relational_sink: Arc::new(NoopEntitySink), // SPEC-021: no-op default
+            lineage_sink: Arc::new(edgequake_pipeline::NoopLineageSink), // SPEC-032 W-08
+            task_storage: None,
+            query_cache_invalidator: None,
+            #[cfg(feature = "postgres")]
+            pdf_vision: None,
         }
     }
 
@@ -225,6 +246,12 @@ impl DocumentTaskProcessor {
             workspace_service: Some(workspace_service),
             models_config: Some(models_config),
             strict_workspace_mode: false, // OODA-223: Legacy mode allows fallback
+            relational_sink: Arc::new(NoopEntitySink), // SPEC-021: no-op default
+            lineage_sink: Arc::new(edgequake_pipeline::NoopLineageSink), // SPEC-032 W-08
+            task_storage: None,
+            query_cache_invalidator: None,
+            #[cfg(feature = "postgres")]
+            pdf_vision: None,
         }
     }
 
@@ -259,7 +286,38 @@ impl DocumentTaskProcessor {
             workspace_service: Some(workspace_service),
             models_config: Some(models_config),
             strict_workspace_mode: true, // OODA-223: Production mode - fail on workspace errors
+            relational_sink: Arc::new(NoopEntitySink), // SPEC-021: no-op default
+            lineage_sink: Arc::new(edgequake_pipeline::NoopLineageSink), // SPEC-032 W-08
+            task_storage: None,
+            query_cache_invalidator: None,
+            #[cfg(feature = "postgres")]
+            pdf_vision: None,
         }
+    }
+
+    /// Set the relational CQRS sink for dual-write to the entities table (SPEC-021 P3-01).
+    ///
+    /// WHY: Defaults to `NoopEntitySink` (zero cost). Set this to `PostgresEntitySink`
+    /// when `entity_sync_mode = dual_write|full` to enable CQRS dual-write.
+    pub fn with_relational_sink(mut self, sink: Arc<dyn RelationalEntitySink>) -> Self {
+        self.relational_sink = sink;
+        self
+    }
+
+    /// Set the lineage sink (SPEC-032 W-08).
+    ///
+    /// WHY: Defaults to `NoopLineageSink` (zero cost). Set this to `PostgresLineageSink`
+    /// when migration 066 has been applied to enable chunk→entity lineage persistence.
+    pub fn with_lineage_sink(mut self, sink: Arc<dyn edgequake_pipeline::LineageSink>) -> Self {
+        self.lineage_sink = sink;
+        self
+    }
+
+    /// Resolve the lineage sink for this processor (SPEC-032 W-08).
+    ///
+    /// Returns `self.lineage_sink` directly (already resolved at construction time).
+    pub(super) async fn resolve_lineage_sink(&self) -> Arc<dyn edgequake_pipeline::LineageSink> {
+        self.lineage_sink.clone()
     }
 
     /// Set PDF storage for PDF processing support (SPEC-007).
@@ -281,6 +339,37 @@ impl DocumentTaskProcessor {
     /// WebSocket clients in real-time.
     pub fn with_progress_broadcaster(mut self, broadcaster: ProgressBroadcaster) -> Self {
         self.progress_broadcaster = Some(broadcaster);
+        self
+    }
+
+    /// P-G14: Persist task identity updates during PDF ingestion.
+    pub fn with_task_storage(mut self, task_storage: edgequake_tasks::SharedTaskStorage) -> Self {
+        self.task_storage = Some(task_storage);
+        self
+    }
+
+    /// P-G9: Wire cache invalidator (typically `Arc<QueryEngine>`).
+    pub fn with_query_cache_invalidator(
+        mut self,
+        invalidator: Arc<dyn edgequake_query::QueryResultCacheInvalidator>,
+    ) -> Self {
+        self.query_cache_invalidator = Some(invalidator);
+        self
+    }
+
+    /// Convenience wrapper for production wiring.
+    pub fn with_query_engine(mut self, engine: Arc<edgequake_query::QueryEngine>) -> Self {
+        self.query_cache_invalidator = Some(engine);
+        self
+    }
+
+    /// P-G13: Set process-wide vision PDF admission semaphore.
+    #[cfg(feature = "postgres")]
+    pub fn with_pdf_vision_semaphore(
+        mut self,
+        pdf_vision: Arc<edgequake_core::PdfVisionSemaphore>,
+    ) -> Self {
+        self.pdf_vision = Some(pdf_vision);
         self
     }
 }
@@ -469,7 +558,7 @@ mod tests {
 
         // Pre-populate metadata
         let doc_id = "test-doc-status";
-        let metadata_key = format!("{}-metadata", doc_id);
+        let metadata_key = edgequake_storage::kv_keys::doc_metadata(doc_id);
         kv.upsert(&[(
             metadata_key.clone(),
             json!({
@@ -508,7 +597,7 @@ mod tests {
         let pipeline_state = PipelineState::new();
 
         let doc_id = "test-doc-error";
-        let metadata_key = format!("{}-metadata", doc_id);
+        let metadata_key = edgequake_storage::kv_keys::doc_metadata(doc_id);
         kv.upsert(&[(
             metadata_key.clone(),
             json!({
@@ -548,7 +637,7 @@ mod tests {
         let pipeline_state = PipelineState::new();
 
         let doc_id = "test-doc-warning";
-        let metadata_key = format!("{}-metadata", doc_id);
+        let metadata_key = edgequake_storage::kv_keys::doc_metadata(doc_id);
         kv.upsert(&[(
             metadata_key.clone(),
             json!({
@@ -593,7 +682,7 @@ mod tests {
         let pipeline_state = PipelineState::new();
 
         let doc_id = "test-doc-clear-stale";
-        let metadata_key = format!("{}-metadata", doc_id);
+        let metadata_key = edgequake_storage::kv_keys::doc_metadata(doc_id);
         kv.upsert(&[(
             metadata_key.clone(),
             json!({
@@ -627,6 +716,45 @@ mod tests {
             metadata["warning_message"].as_str(),
             Some("Vision unavailable. Falling back to EdgeParse.")
         );
+    }
+
+    #[tokio::test]
+    async fn test_update_document_status_staging_metadata() {
+        let pipeline = create_test_pipeline();
+        let (kv, vector, vector_registry, graph) = create_test_storages();
+        let pipeline_state = PipelineState::new();
+
+        let doc_id = "test-doc-staging-status";
+        let staging_key = edgequake_storage::kv_keys::staging_doc_metadata(doc_id);
+        kv.upsert(&[(
+            staging_key.clone(),
+            json!({
+                "id": doc_id,
+                "status": "pending",
+                "current_stage": "uploading",
+            }),
+        )])
+        .await
+        .unwrap();
+
+        let processor = DocumentTaskProcessor::new(
+            pipeline,
+            create_test_llm_provider(),
+            kv.clone(),
+            vector,
+            vector_registry,
+            graph,
+            pipeline_state,
+        );
+
+        processor
+            .update_document_status(doc_id, "chunking", None)
+            .await
+            .unwrap();
+
+        let metadata = kv.get_by_id(&staging_key).await.unwrap().unwrap();
+        assert_eq!(metadata["status"], "chunking");
+        assert_eq!(metadata["current_stage"], "chunking");
     }
 
     #[tokio::test]

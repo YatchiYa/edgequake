@@ -5,6 +5,7 @@
 
 use axum::{
     extract::{Path, State},
+    response::IntoResponse,
     Json,
 };
 use uuid::Uuid;
@@ -41,7 +42,8 @@ use super::{build_reprocess_task, collect_workspace_documents, mark_document_pen
         ("workspace_id" = Uuid, Path, description = "Workspace ID")
     ),
     responses(
-        (status = 200, description = "Rebuild started", body = RebuildEmbeddingsResponse),
+        (status = 200, description = "Rebuild started (legacy default)", body = RebuildEmbeddingsResponse),
+        (status = 202, description = "Rebuild accepted when EDGEQUAKE_V1_RPC_RETURN_202=1 or strict startup", body = RebuildEmbeddingsResponse),
         (status = 404, description = "Workspace not found"),
         (status = 400, description = "Invalid request"),
     ),
@@ -52,7 +54,25 @@ pub async fn rebuild_embeddings(
     Path(workspace_id): Path<Uuid>,
     tenant_ctx: TenantContext,
     Json(request): Json<RebuildEmbeddingsRequest>,
-) -> Result<Json<RebuildEmbeddingsResponse>, ApiError> {
+) -> Result<impl IntoResponse, ApiError> {
+    let return_202 = state.security.v1_rpc_return_202;
+    let ws = workspace_id.to_string();
+    let response = run_rebuild_embeddings(state, workspace_id, tenant_ctx, request).await?;
+    let job_id = response.job_id.clone();
+    crate::services::v1_rpc_migration::respond_v1_async_rpc(
+        &ws,
+        job_id.as_deref(),
+        return_202,
+        response,
+    )
+}
+
+pub(crate) async fn run_rebuild_embeddings(
+    state: AppState,
+    workspace_id: Uuid,
+    tenant_ctx: TenantContext,
+    request: RebuildEmbeddingsRequest,
+) -> Result<RebuildEmbeddingsResponse, ApiError> {
     use tracing::info;
 
     // 1. Get the workspace
@@ -329,6 +349,10 @@ pub async fn rebuild_embeddings(
         model_context_length,
         estimated_time_seconds: estimated_time,
         job_id: track_id.clone(),
+        v2_migration: Some(crate::services::job_registry::v2_migration_hint(
+            "rebuild_embeddings",
+            &workspace_id.to_string(),
+        )),
         compatibility_warning,
     };
 
@@ -346,5 +370,5 @@ pub async fn rebuild_embeddings(
         "Embedding rebuild complete - documents queued for re-embedding"
     );
 
-    Ok(Json(response))
+    Ok(response)
 }

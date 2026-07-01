@@ -8,7 +8,7 @@ use axum::{
 use crate::error::ApiResult;
 use crate::handlers::relationships_types::DeleteRelationshipResponse;
 use crate::middleware::TenantContext;
-use crate::state::AppState;
+use crate::state::StorageRuntime;
 
 use super::helpers::find_relationship_edge;
 
@@ -26,21 +26,37 @@ use super::helpers::find_relationship_edge;
     )
 )]
 pub async fn delete_relationship(
-    State(state): State<AppState>,
+    State(storage): State<StorageRuntime>,
     tenant_ctx: TenantContext,
     Path(relationship_id): Path<String>,
 ) -> ApiResult<Json<DeleteRelationshipResponse>> {
     let edge =
-        find_relationship_edge(&state.storage.graph_storage, &tenant_ctx, &relationship_id).await?;
+        find_relationship_edge(&storage.graph_storage, &tenant_ctx, &relationship_id).await?;
 
     let src_id = edge.source.clone();
     let tgt_id = edge.target.clone();
 
-    state
-        .storage
+    let (tenant_id, workspace_id) = (
+        tenant_ctx
+            .tenant_id
+            .as_deref()
+            .ok_or_else(|| crate::error::ApiError::BadRequest("Tenant context required".into()))?,
+        tenant_ctx.workspace_id.as_deref().ok_or_else(|| {
+            crate::error::ApiError::BadRequest("Workspace context required".into())
+        })?,
+    );
+
+    let deleted = storage
         .graph_storage
-        .delete_edge(&src_id, &tgt_id)
+        .delete_edge_scoped(&src_id, &tgt_id, tenant_id, workspace_id)
         .await?;
+
+    if !deleted {
+        return Err(crate::error::ApiError::NotFound(format!(
+            "Relationship '{}' not found",
+            relationship_id
+        )));
+    }
 
     Ok(Json(DeleteRelationshipResponse {
         status: "success".to_string(),

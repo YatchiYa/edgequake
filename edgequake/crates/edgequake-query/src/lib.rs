@@ -1,4 +1,4 @@
-//! EdgeQuake Query - SOTA Query Engine for RAG
+//! EdgeQuake Query - Query Engine for RAG
 //!
 //! # Implements
 //!
@@ -40,58 +40,63 @@
 //!
 //! # Key Components
 //!
-//! - [`SOTAQueryEngine`]: Main engine implementing LightRAG algorithm
+//! - [`QueryEngine`]: Main engine implementing LightRAG algorithm
 //! - [`QueryMode`]: Enum of all supported query modes
 //! - [`QueryContext`]: Retrieved context (entities, relationships, chunks)
 //! - [`TruncationConfig`]: Token budget configuration
 //!
 //! # See Also
 //!
-//! - [`crate::sota_engine`] for the SOTA implementation
+//! - [`crate::engine_impl`] for the engine implementation
 //! - [`crate::keywords`] for keyword extraction
 //! - [`crate::truncation`] for token budgeting
 
-pub mod chunk_retrieval;
+pub mod bootstrap;
+pub mod cache;
+pub mod chunk_hydration;
+pub mod community_global;
 pub mod context;
 pub mod context_filter;
+pub mod conversation_context;
 pub mod engine;
+pub mod engine_impl;
 pub mod error;
+pub mod eval;
+pub mod fusion;
+pub mod graph_hops;
 pub mod helpers;
+pub mod hybrid_merge;
 pub mod keywords;
+pub mod mix_weights;
 pub mod modes;
-pub mod sota_engine;
-pub mod strategies;
+pub mod sparse_retrieval;
 pub mod tokenizer;
 pub mod truncation;
+pub mod types;
 pub mod vector_filter;
 
-pub use chunk_retrieval::{
-    merge_chunks, retrieve_chunks_from_entities, retrieve_chunks_from_relationships,
-    ChunkSelectionMethod,
-};
 pub use context::{QueryContext, RetrievedContext};
-pub use engine::{
-    ConversationMessage, QueryEngine, QueryEngineConfig, QueryRequest, QueryResponse,
-};
+pub use engine::{ConversationMessage, QueryRequest, QueryResponse, QueryStats};
 pub use error::{QueryError, Result};
 // Re-export keywords module types
+pub use bootstrap::{
+    build_production_query_engine, create_production_reranker,
+    create_production_reranker_with_embedding,
+};
+pub use cache::{QueryResultCache, QueryResultCacheInvalidator};
+pub use engine_impl::{QueryEmbeddings, QueryEngine, QueryEngineConfig};
 #[cfg(feature = "postgres")]
 pub use keywords::PostgresKeywordCache;
 pub use keywords::{
     CachedKeywordExtractor, ExtractedKeywords, InMemoryKeywordCache, KeywordCache,
     KeywordExtractor, Keywords, LLMKeywordExtractor, MockKeywordExtractor, QueryIntent,
 };
+pub use mix_weights::MixWeightOverride;
 pub use modes::QueryMode;
-pub use sota_engine::{QueryEmbeddings, SOTAQueryConfig, SOTAQueryEngine};
-pub use strategies::{
-    create_strategy, GlobalStrategy, HybridStrategy, LocalStrategy, MixStrategy, NaiveStrategy,
-    QueryStrategy, StrategyConfig,
-};
 pub use tokenizer::{MockTokenizer, SimpleTokenizer, Tokenizer};
 pub use truncation::{
     balance_context, truncate_chunks, truncate_entities, truncate_relationships, TruncationConfig,
 };
-pub use vector_filter::{filter_by_type, get_typed_vectors, VectorType};
 
 // Re-export EmbeddingProvider and LLMProvider for workspace-specific query execution
 pub use edgequake_llm::traits::EmbeddingProvider;
