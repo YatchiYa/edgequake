@@ -2,19 +2,22 @@
  * Domain API module — split from edgequake.ts (SPEC-017 UI-DRY-001).
  */
 
-import { api } from "../client";
 import { getRuntimeServerBaseUrl } from "@/lib/runtime-config";
+import { api } from "../client";
+import { buildQueryString, withQuery } from "../query-params";
+import { postMultipart, type MultipartUploadProgress } from "@/lib/upload/multipart-upload-client";
+import { buildPdfUploadFormData } from "@/lib/upload/pdf-upload-form-data";
 
 import type {
-  Document,
-  DocumentStatusCounts,
-  ListDocumentsResponse,
-  PaginatedResponse,
-  PaginationParams,
-  PdfUploadOptions,
-  PdfUploadResponse,
-  UploadDocumentRequest,
-  UploadDocumentResponse,
+    Document,
+    DocumentStatusCounts,
+    ListDocumentsResponse,
+    PaginatedResponse,
+    PaginationParams,
+    PdfUploadOptions,
+    PdfUploadResponse,
+    UploadDocumentRequest,
+    UploadDocumentResponse,
 } from "@/types";
 
 /** Extended paginated response that includes status_counts from the server. */
@@ -33,23 +36,20 @@ export async function getDocuments(
     document_pattern?: string;
   },
 ): Promise<DocumentsListResult> {
-  const searchParams = new URLSearchParams();
-  if (params?.page) searchParams.set("page", String(params.page));
-  if (params?.page_size)
-    searchParams.set("page_size", String(params.page_size));
-  if (params?.sort_by) searchParams.set("sort_by", params.sort_by);
-  if (params?.sort_order) searchParams.set("sort_order", params.sort_order);
-  if (params?.status) searchParams.set("status", params.status);
-  if (params?.date_from) searchParams.set("date_from", params.date_from);
-  if (params?.date_to) searchParams.set("date_to", params.date_to);
-  if (params?.document_pattern)
-    searchParams.set("document_pattern", params.document_pattern);
-
-  const query = searchParams.toString();
+  const query = buildQueryString({
+    page: params?.page,
+    page_size: params?.page_size,
+    sort_by: params?.sort_by,
+    sort_order: params?.sort_order,
+    status: params?.status,
+    date_from: params?.date_from,
+    date_to: params?.date_to,
+    document_pattern: params?.document_pattern,
+  });
 
   // API now returns { documents: [...], total, page, page_size, total_pages, has_more, status_counts }
   const response = await api.get<ListDocumentsResponse>(
-    `/documents${query ? `?${query}` : ""}`,
+    withQuery("/documents", query),
   );
 
   return {
@@ -81,16 +81,22 @@ export async function uploadDocument(
   return api.post<UploadDocumentResponse>("/documents", data);
 }
 
-export async function uploadFile(file: File): Promise<UploadDocumentResponse> {
+export async function uploadFile(
+  file: File,
+  options?: { onUploadProgress?: (progress: MultipartUploadProgress) => void },
+): Promise<UploadDocumentResponse> {
   const formData = new FormData();
   formData.append("file", file);
 
-  return api.post<UploadDocumentResponse>("/documents/upload", formData, {
-    headers: {
-      // Let browser set Content-Type with boundary for multipart
-    },
+  return postMultipart<UploadDocumentResponse>("/documents/upload", formData, {
+    fileSizeBytes: file.size,
+    onProgress: options?.onUploadProgress,
   });
 }
+
+export type PdfUploadRequestOptions = PdfUploadOptions & {
+  onUploadProgress?: (progress: MultipartUploadProgress) => void;
+};
 
 /**
  * Upload a PDF document for vision-based extraction.
@@ -100,41 +106,13 @@ export async function uploadFile(file: File): Promise<UploadDocumentResponse> {
  */
 export async function uploadPdfDocument(
   file: File,
-  options?: PdfUploadOptions,
+  options?: PdfUploadRequestOptions,
 ): Promise<PdfUploadResponse> {
-  const formData = new FormData();
-  formData.append("file", file);
+  const formData = buildPdfUploadFormData(file, options);
 
-  // Add optional parameters as form fields
-  if (options?.enable_vision !== undefined) {
-    formData.append("enable_vision", String(options.enable_vision));
-  }
-  if (options?.vision_provider) {
-    formData.append("vision_provider", options.vision_provider);
-  }
-  if (options?.vision_model) {
-    formData.append("vision_model", options.vision_model);
-  }
-  if (options?.title) {
-    formData.append("title", options.title);
-  }
-  if (options?.metadata) {
-    formData.append("metadata", JSON.stringify(options.metadata));
-  }
-  if (options?.track_id) {
-    formData.append("track_id", options.track_id);
-  }
-  if (options?.force_reindex !== undefined) {
-    formData.append("force_reindex", String(options.force_reindex));
-  }
-  if (options?.pdf_parser_backend) {
-    formData.append("pdf_parser_backend", options.pdf_parser_backend);
-  }
-
-  return api.post<PdfUploadResponse>("/documents/pdf", formData, {
-    headers: {
-      // Let browser set Content-Type with boundary for multipart
-    },
+  return postMultipart<PdfUploadResponse>("/documents/pdf", formData, {
+    fileSizeBytes: file.size,
+    onProgress: options?.onUploadProgress,
   });
 }
 
@@ -331,18 +309,28 @@ export async function deleteAllDocuments(): Promise<{ deleted_count: number }> {
 }
 
 /**
+ * Reprocess intent for a document.
+ * - `entities`: reuse cached markdown, only re-run the KG pipeline (default).
+ * - `full`: re-run PDF -> markdown conversion from the stored PDF bytes
+ *   (spends vision tokens) before re-running the KG pipeline.
+ */
+export type ReprocessMode = "entities" | "full";
+
+/**
  * Reprocess a single document by its document ID.
  * Uses the reprocess endpoint with document_id filter and force flag.
  * @param documentId The ID of the document to reprocess
  * @param force Whether to force reprocess even if document is not failed (default: true)
+ * @param mode Reprocess intent: "entities" (reuse markdown) or "full" (re-convert PDF)
  */
 export async function reprocessDocument(
   documentId: string,
   force: boolean = true,
+  mode: ReprocessMode = "entities",
 ): Promise<{ track_id: string; message: string; count: number }> {
   return api.post<{ track_id: string; message: string; count: number }>(
     "/documents/reprocess",
-    { document_id: documentId, force, max_documents: 1 },
+    { document_id: documentId, force, max_documents: 1, mode },
   );
 }
 
@@ -474,5 +462,25 @@ export async function listFailedChunks(
 ): Promise<ListFailedChunksResponse> {
   return api.get<ListFailedChunksResponse>(
     `/documents/${documentId}/failed-chunks`,
+  );
+}
+
+/**
+ * Search documents by title for the scope picker (type-ahead).
+ * Returns minimal projections (id, title, status) — no chunk/entity counts.
+ * @implements SPEC-031: Document search endpoint
+ */
+export async function searchDocuments(params: {
+  q?: string;
+  page_size?: number;
+  status?: string;
+}): Promise<import("@/types").DocumentSearchResponse> {
+  const query = buildQueryString({
+    q: params.q,
+    page_size: params.page_size ?? 20,
+    status: params.status ?? "completed",
+  });
+  return api.get<import("@/types").DocumentSearchResponse>(
+    withQuery("/documents/search", query),
   );
 }

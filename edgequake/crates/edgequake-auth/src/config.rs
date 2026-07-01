@@ -2,6 +2,19 @@
 
 use std::time::Duration;
 
+/// Default JWT secret when `JWT_SECRET` is unset — **must not** be used in production.
+pub const DEFAULT_INSECURE_JWT_SECRET: &str = "change-me-in-production-256-bit-secret-key";
+
+/// Built-in authentication mechanisms (SPEC-027 phase 49). OAuth2/OIDC is **not** in-process.
+pub const BUILTIN_AUTH_MECHANISMS: &[&str] = &["jwt_password", "api_key"];
+
+/// Compile-time marker: in-process OIDC is opt-in at runtime via `OidcConfig`.
+/// `/health` uses `OidcConfig::is_runtime_builtin()` when OIDC env is set.
+pub const OAUTH2_OIDC_BUILTIN: bool = false;
+
+/// Recommended external pattern for enterprise SSO (documented in `docs/security/best-practices.md`).
+pub const EXTERNAL_SSO_PATTERN: &str = "oauth2-proxy";
+
 /// Authentication service configuration.
 #[derive(Debug, Clone)]
 pub struct AuthConfig {
@@ -47,6 +60,9 @@ pub struct AuthConfig {
     /// Whether protected API routes require authentication.
     pub auth_enabled: bool,
 
+    /// Local development mode — authentication disabled (EDGEQUAKE_DEV_MODE).
+    pub dev_mode: bool,
+
     /// Optional bootstrap/master API key for secure first-time setup.
     pub master_api_key: Option<String>,
 
@@ -57,7 +73,7 @@ pub struct AuthConfig {
 impl Default for AuthConfig {
     fn default() -> Self {
         Self {
-            jwt_secret: "change-me-in-production-256-bit-secret-key".to_string(),
+            jwt_secret: DEFAULT_INSECURE_JWT_SECRET.to_string(),
             jwt_expiry: Duration::from_secs(24 * 60 * 60), // 24 hours
             refresh_token_expiry: Duration::from_secs(30 * 24 * 60 * 60), // 30 days
             api_key_prefix: "sk_".to_string(),
@@ -70,7 +86,8 @@ impl Default for AuthConfig {
             require_email_verification: false,
             default_role: "user".to_string(),
             allow_registration: true,
-            auth_enabled: false,
+            auth_enabled: true,
+            dev_mode: false,
             master_api_key: None,
             api_keys: Vec::new(),
         }
@@ -137,8 +154,8 @@ impl AuthConfig {
 
     /// Create configuration from environment variables.
     pub fn from_env() -> Self {
-        let jwt_secret = std::env::var("JWT_SECRET")
-            .unwrap_or_else(|_| "change-me-in-production-256-bit-secret-key".to_string());
+        let jwt_secret =
+            std::env::var("JWT_SECRET").unwrap_or_else(|_| DEFAULT_INSECURE_JWT_SECRET.to_string());
 
         let jwt_expiry_hours: u64 = std::env::var("JWT_EXPIRY_HOURS")
             .ok()
@@ -163,8 +180,8 @@ impl AuthConfig {
             .unwrap_or(15);
 
         let allow_registration = parse_bool_env("ALLOW_REGISTRATION", true);
-        let auth_enabled = parse_bool_env("EDGEQUAKE_AUTH_ENABLED", false)
-            || parse_bool_env("AUTH_ENABLED", false);
+        let dev_mode = parse_bool_env("EDGEQUAKE_DEV_MODE", false);
+        let auth_enabled = resolve_auth_enabled_from_env(dev_mode);
 
         let master_api_key = std::env::var("EDGEQUAKE_MASTER_API_KEY")
             .ok()
@@ -201,6 +218,7 @@ impl AuthConfig {
             lockout_duration: Duration::from_secs(lockout_minutes * 60),
             allow_registration,
             auth_enabled,
+            dev_mode,
             master_api_key,
             api_keys,
             ..Default::default()
@@ -208,7 +226,37 @@ impl AuthConfig {
     }
 }
 
-fn parse_bool_env(var_name: &str, default: bool) -> bool {
+/// Resolve whether API authentication is required (SPEC-027 AC-4 phase 44).
+///
+/// Priority: `EDGEQUAKE_DEV_MODE` → explicit disable → explicit enable env → **secure default true**.
+fn resolve_auth_enabled_from_env(dev_mode: bool) -> bool {
+    if dev_mode {
+        return false;
+    }
+
+    if parse_bool_env("EDGEQUAKE_AUTH_DISABLED", false) {
+        return false;
+    }
+
+    if let Ok(value) = std::env::var("EDGEQUAKE_AUTH_ENABLED") {
+        return parse_bool_value(&value);
+    }
+
+    if let Ok(value) = std::env::var("AUTH_ENABLED") {
+        return parse_bool_value(&value);
+    }
+
+    true
+}
+
+fn parse_bool_value(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
+}
+
+pub(crate) fn parse_bool_env(var_name: &str, default: bool) -> bool {
     std::env::var(var_name)
         .ok()
         .map(|value| {
@@ -224,12 +272,35 @@ fn parse_bool_env(var_name: &str, default: bool) -> bool {
 mod tests {
     use super::*;
 
+    fn clear_auth_env_for_tests() {
+        for key in [
+            "EDGEQUAKE_AUTH_ENABLED",
+            "EDGEQUAKE_AUTH_DISABLED",
+            "AUTH_ENABLED",
+        ] {
+            std::env::remove_var(key);
+        }
+    }
+
     #[test]
     fn test_default_config() {
         let config = AuthConfig::default();
         assert_eq!(config.jwt_expiry, Duration::from_secs(24 * 60 * 60));
         assert_eq!(config.api_key_prefix, "sk_");
         assert_eq!(config.max_login_attempts, 5);
+        assert!(config.auth_enabled);
+        assert!(!config.dev_mode);
+    }
+
+    #[test]
+    fn resolve_auth_enabled_from_env_variants() {
+        clear_auth_env_for_tests();
+        assert!(resolve_auth_enabled_from_env(false));
+        assert!(!resolve_auth_enabled_from_env(true));
+
+        std::env::set_var("EDGEQUAKE_AUTH_ENABLED", "false");
+        assert!(!resolve_auth_enabled_from_env(false));
+        std::env::remove_var("EDGEQUAKE_AUTH_ENABLED");
     }
 
     #[test]

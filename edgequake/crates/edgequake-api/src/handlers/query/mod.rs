@@ -51,11 +51,15 @@
 //!   Format response + sources
 //! ```
 
+pub mod context;
 pub(crate) mod document_filter_resolver;
 mod query_execute;
 mod query_stream;
 pub(crate) mod workspace_resolve;
 
+pub use context::{
+    fetch_query_context, get_context_artifact, retrieve_query_context, search_query_context,
+};
 pub use query_execute::*;
 pub use query_stream::*;
 
@@ -99,7 +103,8 @@ async fn resolve_document_names(
     let mut doc_names = HashMap::new();
 
     for doc_id in &unique_ids {
-        let metadata_key = format!("{}-metadata", doc_id);
+        let metadata_key =
+            crate::services::document_metadata_scan::metadata_key_for_document(doc_id);
         match kv_storage.get_by_id(&metadata_key).await {
             Ok(Some(metadata)) => {
                 if let Some(title) = metadata
@@ -160,11 +165,17 @@ pub use workspace_resolve::{
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::handlers::auth::OptionalAuth;
+    use crate::handlers::context_types::ContentGranularity;
     use crate::middleware::TenantContext;
     use crate::state::AppState;
     use axum::extract::State;
     use axum::{Extension, Json};
     use edgequake_observability::{PropagationHeaders, RequestContext};
+
+    fn no_auth() -> OptionalAuth {
+        OptionalAuth(None)
+    }
 
     fn test_extensions() -> (Extension<RequestContext>, Extension<PropagationHeaders>) {
         (
@@ -193,11 +204,22 @@ mod tests {
             llm_model: None,
             system_prompt: None,
             document_filter: None,
+            mix_weights: None,
             extra_headers: None,
+            include_subgraph: true,
+            content_granularity: ContentGranularity::Citation,
         };
 
         let (ctx, propagation) = test_extensions();
-        let result = execute_query(State(state), tenant_ctx, ctx, propagation, Json(request)).await;
+        let result = execute_query(
+            State(state),
+            tenant_ctx,
+            no_auth(),
+            ctx,
+            propagation,
+            Json(request),
+        )
+        .await;
         assert!(result.is_err());
     }
 
@@ -221,11 +243,22 @@ mod tests {
             llm_model: None,
             system_prompt: None,
             document_filter: None,
+            mix_weights: None,
             extra_headers: None,
+            include_subgraph: true,
+            content_granularity: ContentGranularity::Citation,
         };
 
         let (ctx, propagation) = test_extensions();
-        let result = execute_query(State(state), tenant_ctx, ctx, propagation, Json(request)).await;
+        let result = execute_query(
+            State(state),
+            tenant_ctx,
+            no_auth(),
+            ctx,
+            propagation,
+            Json(request),
+        )
+        .await;
         assert!(result.is_ok());
     }
 
@@ -243,10 +276,20 @@ mod tests {
             llm_model: None,
             stream_format: None,
             extra_headers: None,
+            include_subgraph: true,
+            content_granularity: ContentGranularity::Citation,
         };
 
         let (ctx, propagation) = test_extensions();
-        let result = stream_query(State(state), tenant_ctx, ctx, propagation, Json(request)).await;
+        let result = stream_query(
+            State(state),
+            tenant_ctx,
+            no_auth(),
+            ctx,
+            propagation,
+            Json(request),
+        )
+        .await;
         assert!(result.is_ok());
     }
 
@@ -272,13 +315,17 @@ mod tests {
                 llm_model: None,
                 system_prompt: None,
                 document_filter: None,
+                mix_weights: None,
                 extra_headers: None,
+                include_subgraph: true,
+                content_granularity: ContentGranularity::Citation,
             };
 
             let (ctx, propagation) = test_extensions();
             let result = execute_query(
                 State(state.clone()),
                 tenant_ctx,
+                no_auth(),
                 ctx,
                 propagation,
                 Json(request),
@@ -308,11 +355,22 @@ mod tests {
             llm_model: None,
             system_prompt: None,
             document_filter: None,
+            mix_weights: None,
             extra_headers: None,
+            include_subgraph: true,
+            content_granularity: ContentGranularity::Citation,
         };
 
         let (ctx, propagation) = test_extensions();
-        let result = execute_query(State(state), tenant_ctx, ctx, propagation, Json(request)).await;
+        let result = execute_query(
+            State(state),
+            tenant_ctx,
+            no_auth(),
+            ctx,
+            propagation,
+            Json(request),
+        )
+        .await;
         assert!(result.is_ok());
     }
 
@@ -336,11 +394,22 @@ mod tests {
             llm_model: None,
             system_prompt: None,
             document_filter: None,
+            mix_weights: None,
             extra_headers: None,
+            include_subgraph: true,
+            content_granularity: ContentGranularity::Citation,
         };
 
         let (ctx, propagation) = test_extensions();
-        let result = execute_query(State(state), tenant_ctx, ctx, propagation, Json(request)).await;
+        let result = execute_query(
+            State(state),
+            tenant_ctx,
+            no_auth(),
+            ctx,
+            propagation,
+            Json(request),
+        )
+        .await;
         assert!(result.is_err());
     }
 
@@ -358,10 +427,20 @@ mod tests {
             llm_model: None,
             stream_format: None,
             extra_headers: None,
+            include_subgraph: true,
+            content_granularity: ContentGranularity::Citation,
         };
 
         let (ctx, propagation) = test_extensions();
-        let result = stream_query(State(state), tenant_ctx, ctx, propagation, Json(request)).await;
+        let result = stream_query(
+            State(state),
+            tenant_ctx,
+            no_auth(),
+            ctx,
+            propagation,
+            Json(request),
+        )
+        .await;
         assert!(result.is_err());
     }
 }

@@ -4,7 +4,15 @@
 
 import type { SourceReference } from "@/lib/api/chat";
 import { describe, expect, it } from "vitest";
-import { hasContextContent, mapSourcesToContext } from "../source-mapper";
+import {
+    buildQueryContextFromRetrieval,
+    buildQueryContextFromStreamChunk,
+    hasContextContent,
+    mapServerMessageContextToQueryContext,
+    mapSourcesToContext,
+    mapSubgraphToQueryContext,
+} from "../source-mapper";
+import type { SubgraphBundle } from "../subgraph-types";
 
 describe("mapSourcesToContext", () => {
   it("should return empty context for empty sources array", () => {
@@ -171,6 +179,138 @@ describe("mapSourcesToContext", () => {
   });
 });
 
+describe("buildQueryContextFromRetrieval with subgraph", () => {
+  const subgraph: SubgraphBundle = {
+    entities: [
+      {
+        id: "ent:EDGEQUAKE",
+        name: "EDGEQUAKE",
+        entity_type: "TECHNOLOGY",
+        description: "RAG framework",
+        score: 0.91,
+        degree: 5,
+        lineage: {
+          source_document_id: "doc-1",
+          source_file_path: "spec.md",
+          source_chunk_ids: ["chk-1"],
+        },
+      },
+    ],
+    relationships: [
+      {
+        id: "rel:EDGEQUAKE:IMPLEMENTS:LIGHT_RAG",
+        source: "EDGEQUAKE",
+        target: "LIGHT_RAG",
+        relation_type: "IMPLEMENTS",
+        description: "implements LightRAG",
+        score: 0.87,
+        lineage: {
+          source_document_id: "doc-1",
+          source_file_path: "spec.md",
+        },
+      },
+    ],
+  };
+
+  it("prefers subgraph entities over flat source parsing", () => {
+    const sources: SourceReference[] = [
+      {
+        source_type: "chunk",
+        id: "doc-1-chunk-0",
+        score: 0.9,
+        snippet: "chunk text",
+        document_id: "doc-1",
+      },
+      {
+        source_type: "entity",
+        id: "WRONG_FLAT_NAME",
+        score: 0.1,
+      },
+    ];
+
+    const result = buildQueryContextFromRetrieval(sources, subgraph);
+
+    expect(result.entities).toHaveLength(1);
+    expect(result.entities[0].label).toBe("EDGEQUAKE");
+    expect(result.entities[0].entity_type).toBe("TECHNOLOGY");
+    expect(result.entities[0].degree).toBe(5);
+    expect(result.relationships[0].type).toBe("IMPLEMENTS");
+    expect(result.relationships[0].target).toBe("LIGHT_RAG");
+  });
+
+  it("mapSubgraphToQueryContext preserves relation_type without snippet parsing", () => {
+    const graph = mapSubgraphToQueryContext(subgraph);
+    expect(graph.relationships[0].type).toBe("IMPLEMENTS");
+  });
+});
+
+describe("mapServerMessageContextToQueryContext", () => {
+  it("maps persisted message context with entity types", () => {
+    const result = mapServerMessageContextToQueryContext({
+      sources: [
+        {
+          id: "doc-uuid-chunk-3",
+          content: "chunk text",
+          score: 0.9,
+          source_type: "chunk",
+          title: "report.pdf",
+        },
+      ],
+      entities: [{ name: "ENTITY_A", entity_type: "PERSON", score: 1 }],
+      relationships: [
+        {
+          source: "A",
+          target: "B",
+          relation_type: "WORKS_AT",
+          score: 0.8,
+        },
+      ],
+    });
+
+    expect(result.chunks[0].document_id).toBe("doc-uuid");
+    expect(result.entities[0].entity_type).toBe("PERSON");
+    expect(result.relationships[0].type).toBe("WORKS_AT");
+  });
+});
+
+describe("buildQueryContextFromStreamChunk", () => {
+  it("prefers sources + subgraph over legacy nested context", () => {
+    const subgraph: SubgraphBundle = {
+      entities: [
+        {
+          id: "e1",
+          name: "FROM_SUBGRAPH",
+          entity_type: "ORG",
+          description: "",
+          score: 1,
+          degree: 2,
+        },
+      ],
+      relationships: [],
+    };
+
+    const result = buildQueryContextFromStreamChunk({
+      sources: [
+        {
+          source_type: "chunk",
+          id: "d1-chunk-0",
+          score: 0.5,
+          snippet: "text",
+          document_id: "d1",
+        },
+      ],
+      subgraph,
+      context: {
+        chunks: [],
+        entities: [{ id: "legacy", label: "LEGACY", relevance: 1 }],
+        relationships: [],
+      },
+    });
+
+    expect(result?.entities[0].label).toBe("FROM_SUBGRAPH");
+  });
+});
+
 describe("hasContextContent", () => {
   it("should return false for undefined context", () => {
     expect(hasContextContent(undefined)).toBe(false);
@@ -218,3 +358,75 @@ describe("hasContextContent", () => {
     ).toBe(true);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SPEC-033: Page attribution propagation
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("SPEC-033 page_start propagation through source-mapper", () => {
+  it("mapChunkSources propagates page_start/page_end from SourceReference", () => {
+    const sources: SourceReference[] = [
+      {
+        source_type: "chunk",
+        id: "doc-1-chunk-0",
+        score: 0.9,
+        snippet: "page 3 content",
+        document_id: "doc-1",
+        page_start: 3,
+        page_end: 3,
+      },
+      {
+        source_type: "chunk",
+        id: "doc-1-chunk-1",
+        score: 0.8,
+        snippet: "no page content",
+        document_id: "doc-1",
+        // no page_start — non-PDF chunk
+      },
+    ];
+
+    const ctx = buildQueryContextFromRetrieval(sources);
+    expect(ctx.chunks[0].page_start).toBe(3);
+    expect(ctx.chunks[0].page_end).toBe(3);
+    expect(ctx.chunks[1].page_start).toBeUndefined();
+    expect(ctx.chunks[1].page_end).toBeUndefined();
+  });
+
+  it("groupPassagesByPage: chunks with page_start group correctly", () => {
+    // The grouping logic is in source-citations.tsx (not exported), so we
+    // verify indirectly: chunks with page_start should produce non-null grouping.
+    const sources: SourceReference[] = [
+      { source_type: "chunk", id: "doc-1-chunk-0", score: 0.9, snippet: "c0", document_id: "doc-1", page_start: 1, page_end: 1 },
+      { source_type: "chunk", id: "doc-1-chunk-1", score: 0.8, snippet: "c1", document_id: "doc-1", page_start: 2, page_end: 2 },
+      { source_type: "chunk", id: "doc-1-chunk-2", score: 0.7, snippet: "c2", document_id: "doc-1", page_start: 2, page_end: 2 },
+    ];
+
+    const ctx = buildQueryContextFromRetrieval(sources);
+    const chunks = ctx.chunks;
+
+    // Group manually using the same logic as source-citations.tsx
+    const hasPages = chunks.some(c => c.page_start !== undefined);
+    expect(hasPages).toBe(true);
+
+    const groupedByPage = new Map<number | null, typeof chunks>();
+    for (const chunk of chunks) {
+      const key = chunk.page_start ?? null;
+      groupedByPage.set(key, [...(groupedByPage.get(key) ?? []), chunk]);
+    }
+
+    expect(groupedByPage.get(1)).toHaveLength(1);
+    expect(groupedByPage.get(2)).toHaveLength(2);
+    expect(groupedByPage.has(null)).toBe(false);
+  });
+
+  it("non-PDF chunks produce null grouping", () => {
+    const sources: SourceReference[] = [
+      { source_type: "chunk", id: "doc-2-chunk-0", score: 0.9, snippet: "c0", document_id: "doc-2" },
+      { source_type: "chunk", id: "doc-2-chunk-1", score: 0.8, snippet: "c1", document_id: "doc-2" },
+    ];
+    const ctx = buildQueryContextFromRetrieval(sources);
+    const hasPages = ctx.chunks.some(c => c.page_start !== undefined);
+    expect(hasPages).toBe(false);
+  });
+});
+

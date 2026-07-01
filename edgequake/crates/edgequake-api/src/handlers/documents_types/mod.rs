@@ -34,6 +34,8 @@ mod tests {
             enable_gleaning: true,
             max_gleaning: 1,
             use_llm_summarization: true,
+            chunk_strategy: None,
+            chunk_options: None,
         };
 
         assert!(!request.content.is_empty());
@@ -183,6 +185,7 @@ mod tests {
                 partial_failure: 0,
                 failed: 0,
                 cancelled: 0,
+                unknown: 0,
             },
         };
 
@@ -221,6 +224,8 @@ mod tests {
             lineage: None,
             metadata: None,
             pdf_id: None,
+            multimodal_summary: None,
+            multimodal_items: None,
         };
 
         let json = serde_json::to_string(&response).unwrap();
@@ -293,6 +298,7 @@ mod tests {
                 partial_failure: 0,
                 failed: 0,
                 cancelled: 0,
+                unknown: 0,
             },
             is_complete: true,
             latest_message: Some("All documents processed successfully".to_string()),

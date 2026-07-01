@@ -5,10 +5,11 @@ use chrono::Utc;
 use std::collections::HashMap;
 use uuid::Uuid;
 
-use crate::error::{ApiError, ApiResult};
+use crate::error::ApiResult;
+use crate::handlers::isolation::{load_node_for_tenant_context, stamp_tenant_context_properties};
 use crate::handlers::relationships_types::{CreateRelationshipRequest, CreateRelationshipResponse};
 use crate::middleware::TenantContext;
-use crate::state::AppState;
+use crate::state::StorageRuntime;
 use edgequake_storage::GraphEdge;
 
 use super::helpers::{edge_to_relationship_response, extract_relation_type, normalize_entity_name};
@@ -29,39 +30,17 @@ use super::helpers::{edge_to_relationship_response, extract_relation_type, norma
     )
 )]
 pub async fn create_relationship(
-    State(state): State<AppState>,
+    State(storage): State<StorageRuntime>,
     tenant_ctx: TenantContext,
     Json(req): Json<CreateRelationshipRequest>,
 ) -> ApiResult<Json<CreateRelationshipResponse>> {
     let src_id = normalize_entity_name(&req.src_id);
     let tgt_id = normalize_entity_name(&req.tgt_id);
 
-    // Verify both entities exist
-    if state
-        .storage
-        .graph_storage
-        .get_node(&src_id)
-        .await?
-        .is_none()
-    {
-        return Err(ApiError::NotFound(format!(
-            "Source entity '{}' not found",
-            src_id
-        )));
-    }
+    // Verify both entities exist in this tenant/workspace
+    load_node_for_tenant_context(storage.graph_storage.as_ref(), &src_id, &tenant_ctx).await?;
 
-    if state
-        .storage
-        .graph_storage
-        .get_node(&tgt_id)
-        .await?
-        .is_none()
-    {
-        return Err(ApiError::NotFound(format!(
-            "Target entity '{}' not found",
-            tgt_id
-        )));
-    }
+    load_node_for_tenant_context(storage.graph_storage.as_ref(), &tgt_id, &tenant_ctx).await?;
 
     // Generate relationship ID
     let rel_id = format!("rel-{}", Uuid::new_v4());
@@ -83,17 +62,10 @@ pub async fn create_relationship(
     properties.insert("is_manual".to_string(), true.into());
     properties.insert("metadata".to_string(), req.metadata.clone());
 
-    // WHY: Add tenant context to isolate relationship to the current tenant/workspace
-    if let Some(ref tenant_id) = tenant_ctx.tenant_id {
-        properties.insert("tenant_id".to_string(), tenant_id.clone().into());
-    }
-    if let Some(ref workspace_id) = tenant_ctx.workspace_id {
-        properties.insert("workspace_id".to_string(), workspace_id.clone().into());
-    }
+    stamp_tenant_context_properties(&mut properties, &tenant_ctx)?;
 
     // Create edge using upsert_edge
-    state
-        .storage
+    storage
         .graph_storage
         .upsert_edge(&src_id, &tgt_id, properties.clone())
         .await?;

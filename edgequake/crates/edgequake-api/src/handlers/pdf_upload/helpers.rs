@@ -45,6 +45,39 @@ pub(super) fn get_pdf_storage(_state: &AppState) -> ApiResult<Arc<dyn PdfDocumen
     ))
 }
 
+/// Reprocess intent carried into a PDF processing task.
+///
+/// WHY: Grouping the three reprocessing knobs into a single struct keeps
+/// `create_pdf_processing_task` under the clippy argument limit (SRP/DRY) and
+/// gives Replace (`force_reindex`) and Reprocess a shared vocabulary for
+/// "reuse the existing document id" + "re-run conversion from scratch".
+#[derive(Debug, Clone, Default)]
+pub(super) struct PdfReprocessIntent {
+    /// When `Some`, the worker reuses this document id (in-place reprocessing)
+    /// instead of minting a new UUID. Used by Replace (`force_reindex`) and
+    /// Reprocess.
+    pub existing_document_id: Option<String>,
+    /// When `true`, the worker ignores any cached `markdown_content` and
+    /// re-runs PDF -> markdown conversion. Used by Replace and Reprocess
+    /// `mode=full`.
+    pub restart_from_scratch: bool,
+    /// Explicit reprocess mode echoed into the task payload for observability.
+    pub reprocess_mode: Option<edgequake_tasks::ReprocessMode>,
+}
+
+impl PdfReprocessIntent {
+    /// Fresh upload: mint a new document id, no restart, no mode.
+    pub(super) fn fresh() -> Self {
+        Self::default()
+    }
+}
+
+/// Result of enqueueing (or reusing) a PDF processing task.
+pub(super) struct PdfProcessingEnqueueResult {
+    pub track_id: String,
+    pub document_id: String,
+}
+
 /// Create PDF processing background task.
 pub(super) async fn create_pdf_processing_task(
     state: &AppState,
@@ -52,7 +85,10 @@ pub(super) async fn create_pdf_processing_task(
     pdf_id: Uuid,
     options: &PdfUploadOptions,
     workspace: Option<&Workspace>,
-) -> ApiResult<String> {
+    intent: PdfReprocessIntent,
+    page_count: Option<i32>,
+    file_size_bytes: u64,
+) -> ApiResult<PdfProcessingEnqueueResult> {
     let workspace_id = context
         .workspace_id_uuid()
         .ok_or_else(|| ApiError::BadRequest("Workspace ID required".to_string()))?;
@@ -60,6 +96,48 @@ pub(super) async fn create_pdf_processing_task(
     let tenant_id = context
         .tenant_id_uuid()
         .ok_or_else(|| ApiError::BadRequest("Tenant ID required".to_string()))?;
+
+    if let Some(existing_track_id) = crate::services::admit_pdf_processing_enqueue(
+        state,
+        pdf_id,
+        workspace_id,
+        intent.restart_from_scratch,
+    )
+    .await
+    {
+        let document_id = crate::services::resolve_pdf_ingest_document_id(
+            state,
+            pdf_id,
+            intent.existing_document_id.clone(),
+            context,
+        )
+        .await;
+        return Ok(PdfProcessingEnqueueResult {
+            track_id: existing_track_id,
+            document_id,
+        });
+    }
+
+    let document_id = crate::services::resolve_pdf_ingest_document_id(
+        state,
+        pdf_id,
+        intent.existing_document_id.clone(),
+        context,
+    )
+    .await;
+
+    let resolved_backend = options.resolved_backend(workspace);
+    let backend_explicit = options.pdf_parser_backend.is_some()
+        || workspace
+            .and_then(|ws| ws.pdf_parser_backend)
+            .is_some()
+        || edgequake_pdf::PdfParserBackend::from_env().is_some();
+
+    let page_count_usize = page_count.unwrap_or(1).max(1) as usize;
+    let profile =
+        crate::services::LargeDocumentProfile::new(page_count_usize, file_size_bytes);
+    let processing_timeout_secs =
+        profile.task_timeout_secs(resolved_backend, &options.resolved_vision_provider());
 
     let task_data = PdfProcessingData {
         pdf_id,
@@ -69,19 +147,32 @@ pub(super) async fn create_pdf_processing_task(
         vision_provider: options.resolved_vision_provider(),
         // WHY: Use vision_model() method (not the raw field) so provider-specific
         // defaults are applied when no explicit model was set by the user.
-        vision_model: if options.resolved_backend(workspace)
-            == edgequake_pdf::PdfParserBackend::Vision
-        {
+        vision_model: if resolved_backend == edgequake_pdf::PdfParserBackend::Vision {
             Some(options.vision_model())
         } else {
             None
         },
-        existing_document_id: None, // Fresh upload — create new document
-        pdf_parser_backend: options.resolved_backend(workspace),
-        restart_from_scratch: false,
+        existing_document_id: Some(document_id.clone()),
+        pdf_parser_backend: resolved_backend,
+        pdf_parser_backend_explicit: backend_explicit,
+        restart_from_scratch: intent.restart_from_scratch,
+        reprocess_mode: intent.reprocess_mode,
+        multimodal_process_options: options.process_options.clone(),
     };
 
     let track_id = format!("pdf-{}", Uuid::new_v4());
+
+    if let Some(existing_track_id) =
+        state
+            .tasks
+            .pdf_admission
+            .try_register(workspace_id, pdf_id, &track_id)
+    {
+        return Ok(PdfProcessingEnqueueResult {
+            track_id: existing_track_id,
+            document_id,
+        });
+    }
 
     let task = Task {
         track_id: track_id.clone(),
@@ -101,19 +192,27 @@ pub(super) async fn create_pdf_processing_task(
         circuit_breaker_tripped: false,
         task_data: serde_json::to_value(&task_data)
             .map_err(|e| ApiError::Internal(format!("Failed to serialize task data: {}", e)))?,
-        metadata: None,
+        metadata: Some(serde_json::json!({
+            "processing_timeout_secs": processing_timeout_secs,
+        })),
         progress: None,
         result: None,
     };
 
-    state.enqueue_task(task).await?;
+    if let Err(e) = state.enqueue_task(task).await {
+        state.tasks.pdf_admission.release(workspace_id, pdf_id);
+        return Err(e);
+    }
 
     debug!(
-        "Created and queued PDF processing task: id={}, pdf_id={}",
-        track_id, pdf_id
+        "Created and queued PDF processing task: id={}, pdf_id={}, document_id={}",
+        track_id, pdf_id, document_id
     );
 
-    Ok(track_id)
+    Ok(PdfProcessingEnqueueResult {
+        track_id,
+        document_id,
+    })
 }
 
 /// Extract page count from PDF binary data.
@@ -160,16 +259,15 @@ pub(super) fn extract_page_count(pdf_data: &[u8]) -> Option<i32> {
 }
 
 /// Estimate processing time based on file size and page count.
-pub(super) fn estimate_processing_time(pdf_data: &[u8], page_count: Option<i32>) -> u64 {
-    let size_mb = (pdf_data.len() as f64) / 1_048_576.0;
-    let pages = page_count.unwrap_or(10) as f64;
-
-    // Rough estimate: 2-4 seconds per page with vision, 0.5s without
-    // Add overhead for large files
-    let base_time = pages * 3.0;
-    let size_penalty = size_mb * 0.5;
-
-    (base_time + size_penalty).ceil() as u64
+pub(super) fn estimate_processing_time(
+    file_size_bytes: u64,
+    page_count: Option<i32>,
+    backend: edgequake_pdf::PdfParserBackend,
+    provider: &str,
+) -> u64 {
+    let pages = page_count.unwrap_or(10).max(1) as usize;
+    let profile = crate::services::LargeDocumentProfile::new(pages, file_size_bytes);
+    profile.estimated_total_secs(backend, provider)
 }
 
 /// Clear derived data (graph/vector) for a document during re-indexing.
@@ -311,36 +409,45 @@ mod tests {
 
     #[test]
     fn test_estimate_time_small_pdf() {
-        // 1KB, 5 pages → ~15s base + ~0s overhead
-        let data = vec![0u8; 1024];
-        let time = estimate_processing_time(&data, Some(5));
-        assert!(time >= 15, "Expected >= 15s, got {time}");
+        let time = estimate_processing_time(
+            1024,
+            Some(5),
+            edgequake_pdf::PdfParserBackend::Vision,
+            "mock",
+        );
+        assert!(time >= 7200, "Expected scaled floor >= 7200s, got {time}");
     }
 
     #[test]
     fn test_estimate_time_unknown_page_count() {
-        // When page_count is None, defaults to 10 pages
-        let data = vec![0u8; 1024];
-        let time = estimate_processing_time(&data, None);
-        assert!(
-            time >= 30,
-            "Expected >= 30s for 10-page default, got {time}"
+        let time = estimate_processing_time(
+            1024,
+            None,
+            edgequake_pdf::PdfParserBackend::EdgeParse,
+            "mock",
         );
+        assert!(time >= 7200, "Expected >= 7200s floor, got {time}");
     }
 
     #[test]
     fn test_estimate_time_large_file() {
-        // 100MB, 500 pages
-        let data = vec![0u8; 100 * 1024 * 1024];
-        let time = estimate_processing_time(&data, Some(500));
-        assert!(time >= 1500, "Expected >= 1500s for 500 pages, got {time}");
+        let time = estimate_processing_time(
+            100 * 1024 * 1024,
+            Some(500),
+            edgequake_pdf::PdfParserBackend::Vision,
+            "openai",
+        );
+        assert!(time >= 7200, "Expected >= 7200s for 500 pages, got {time}");
     }
 
     #[test]
     fn test_estimate_time_zero_pages() {
-        let data = vec![0u8; 1024];
-        let time = estimate_processing_time(&data, Some(0));
-        // 0 pages → 0 base time + small size overhead
-        assert!(time <= 5, "Expected <= 5s for 0 pages, got {time}");
+        let time = estimate_processing_time(
+            1024,
+            Some(0),
+            edgequake_pdf::PdfParserBackend::EdgeParse,
+            "mock",
+        );
+        assert!(time >= 7200, "Expected floor timeout, got {time}");
     }
 }

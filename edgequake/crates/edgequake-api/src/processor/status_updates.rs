@@ -9,6 +9,12 @@ fn apply_status_notice_fields(
     if let Some(msg) = message {
         if is_terminal_failure_status(status) {
             metadata.insert("error_message".to_string(), json!(msg));
+            let failure = crate::services::classify_ingestion_failure(msg);
+            metadata.insert("failure_class".to_string(), json!(failure.as_str()));
+            metadata.insert(
+                "recommended_action".to_string(),
+                json!(failure.recommended_action()),
+            );
         } else {
             metadata.insert("warning_message".to_string(), json!(msg));
             // Scrub legacy informational errors that would render as Failed in the WebUI.
@@ -35,6 +41,16 @@ fn apply_status_notice_fields(
     }
 }
 
+async fn upsert_metadata_with_wsdoc_index(
+    kv: &std::sync::Arc<dyn edgequake_storage::traits::KVStorage>,
+    metadata_key: &str,
+    value: serde_json::Value,
+) -> Result<(), edgequake_tasks::TaskError> {
+    crate::services::upsert_metadata_kv_with_index(kv.as_ref(), metadata_key, value)
+        .await
+        .map_err(|e| edgequake_tasks::TaskError::Storage(e.to_string()))
+}
+
 impl DocumentTaskProcessor {
     /// Update document metadata status.
     ///
@@ -47,7 +63,8 @@ impl DocumentTaskProcessor {
         status: &str,
         error_message: Option<&str>,
     ) -> TaskResult<()> {
-        let metadata_key = format!("{}-metadata", document_id);
+        let metadata_key =
+            crate::services::resolve_document_metadata_key(document_id, &self.kv_storage).await;
 
         // SPEC-002: Map legacy status names to unified stage names
         let unified_stage = match status {
@@ -127,10 +144,7 @@ impl DocumentTaskProcessor {
             json!(new_metadata)
         };
 
-        self.kv_storage
-            .upsert(&[(metadata_key, updated_json)])
-            .await
-            .map_err(|e| edgequake_tasks::TaskError::Storage(e.to_string()))?;
+        upsert_metadata_with_wsdoc_index(&self.kv_storage, &metadata_key, updated_json).await?;
 
         Ok(())
     }
@@ -159,7 +173,8 @@ impl DocumentTaskProcessor {
         pdf_id: Option<&str>,
         track_id: Option<&str>,
     ) -> TaskResult<()> {
-        let metadata_key = format!("{}-metadata", document_id);
+        let metadata_key =
+            crate::services::resolve_document_metadata_key(document_id, &self.kv_storage).await;
 
         // Get existing metadata or create new
         let existing = self
@@ -277,10 +292,7 @@ impl DocumentTaskProcessor {
         };
 
         if let Some(json) = updated_json {
-            self.kv_storage
-                .upsert(&[(metadata_key, json)])
-                .await
-                .map_err(|e| edgequake_tasks::TaskError::Storage(e.to_string()))?;
+            upsert_metadata_with_wsdoc_index(&self.kv_storage, &metadata_key, json).await?;
         }
 
         Ok(())
@@ -296,7 +308,8 @@ impl DocumentTaskProcessor {
         status: &str,
         stats: &edgequake_pipeline::pipeline::ProcessingStats,
     ) -> TaskResult<()> {
-        let metadata_key = format!("{}-metadata", document_id);
+        let metadata_key =
+            crate::services::resolve_document_metadata_key(document_id, &self.kv_storage).await;
 
         // Get existing metadata
         if let Ok(Some(existing)) = self.kv_storage.get_by_id(&metadata_key).await {
@@ -398,13 +411,87 @@ impl DocumentTaskProcessor {
                     updated.remove("warning_message");
                 }
 
-                self.kv_storage
-                    .upsert(&[(metadata_key, json!(updated))])
-                    .await
-                    .map_err(|e| edgequake_tasks::TaskError::Storage(e.to_string()))?;
+                upsert_metadata_with_wsdoc_index(&self.kv_storage, &metadata_key, json!(updated))
+                    .await?;
+
+                // SPEC-021 P-A1: mirror the stats into the relational
+                // `documents` table so the P5-01 relational read-model
+                // fallback returns accurate per-doc counts (fixes the
+                // "Completed / 0 entities" screenshot, file 16 §3).
+                //
+                // Best-effort: a failure here MUST NOT fail ingestion — the
+                // KV metadata write above is the authoritative stats carrier.
+                // The relational write only needs to converge eventually.
+                self.refresh_relational_document_stats(document_id, status, stats)
+                    .await;
             }
         }
 
         Ok(())
+    }
+
+    /// Best-effort relational stats refresh (SPEC-021 P-A1).
+    ///
+    /// WHY: `ensure_document_record` only writes `title/content/status`; the
+    /// `chunk_count`/`entity_count`/cost columns of `documents` were never
+    /// refreshed, so the P5-01 relational read-model fallback returned stale
+    /// `0` values. This mirrors the KV stats write into the relational table
+    /// so the per-doc read model converges with the KV truth.
+    ///
+    /// Non-fatal: logs a warn on error and returns. The KV metadata write is
+    /// the authoritative stats carrier; the relational write only needs to
+    /// converge eventually. No-op when `pdf_storage` is absent (memory mode or
+    /// when the postgres feature is disabled).
+    #[cfg(feature = "postgres")]
+    async fn refresh_relational_document_stats(
+        &self,
+        document_id: &str,
+        status: &str,
+        stats: &edgequake_pipeline::pipeline::ProcessingStats,
+    ) {
+        let Some(ref pdf_storage) = self.pdf_storage else {
+            return;
+        };
+        let Ok(doc_uuid) = uuid::Uuid::parse_str(document_id) else {
+            tracing::warn!(
+                document_id = document_id,
+                "refresh_relational_document_stats: not a UUID — skipping relational stats write"
+            );
+            return;
+        };
+
+        let update = edgequake_storage::DocumentStatsUpdate {
+            document_id: doc_uuid,
+            status,
+            chunk_count: stats.chunk_count as i32,
+            entity_count: stats.entity_count as i32,
+            relationship_count: stats.relationship_count as i32,
+            // cost_usd is f64 (0.0 when the mock provider is used); only
+            // surface a non-zero value to the relational column to avoid
+            // overwriting a prior real cost with a mock 0.0 on re-runs.
+            cost_usd: (stats.cost_usd > 0.0).then_some(stats.cost_usd),
+            input_tokens: (stats.input_tokens > 0).then_some(stats.input_tokens as i64),
+            output_tokens: (stats.output_tokens > 0).then_some(stats.output_tokens as i64),
+            total_tokens: (stats.total_tokens > 0).then_some(stats.total_tokens as i64),
+            error_message: stats.error_details.as_deref(),
+        };
+
+        if let Err(e) = pdf_storage.update_document_stats(&update).await {
+            tracing::warn!(
+                document_id = document_id,
+                error = %e,
+                "SPEC-021 P-A1: relational document stats refresh failed (non-fatal)"
+            );
+        }
+    }
+
+    #[cfg(not(feature = "postgres"))]
+    async fn refresh_relational_document_stats(
+        &self,
+        _document_id: &str,
+        _status: &str,
+        _stats: &edgequake_pipeline::pipeline::ProcessingStats,
+    ) {
+        // No-op: postgres feature disabled → no relational `documents` table.
     }
 }

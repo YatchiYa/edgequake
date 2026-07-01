@@ -79,6 +79,10 @@ impl<'a> GraphReadView<'a> {
         self.inner.get_node_edges(node_id).await
     }
 
+    pub async fn get_incident_edges_batch(&self, node_ids: &[String]) -> Result<Vec<GraphEdge>> {
+        self.inner.get_incident_edges_batch(node_ids).await
+    }
+
     #[allow(deprecated)]
     pub async fn get_all_edges(&self) -> Result<Vec<GraphEdge>> {
         self.inner.get_all_edges().await
@@ -89,18 +93,35 @@ impl<'a> GraphReadView<'a> {
         start_node: &str,
         max_depth: usize,
         max_nodes: usize,
+        tenant_id: Option<&str>,
+        workspace_id: Option<&str>,
     ) -> Result<KnowledgeGraph> {
         self.inner
-            .get_knowledge_graph(start_node, max_depth, max_nodes)
+            .get_knowledge_graph(start_node, max_depth, max_nodes, tenant_id, workspace_id)
             .await
     }
 
-    pub async fn get_popular_labels(&self, limit: usize) -> Result<Vec<String>> {
-        self.inner.get_popular_labels(limit).await
+    pub async fn get_popular_labels(
+        &self,
+        limit: usize,
+        tenant_id: Option<&str>,
+        workspace_id: Option<&str>,
+    ) -> Result<Vec<String>> {
+        self.inner
+            .get_popular_labels(limit, tenant_id, workspace_id)
+            .await
     }
 
-    pub async fn search_labels(&self, query: &str, limit: usize) -> Result<Vec<String>> {
-        self.inner.search_labels(query, limit).await
+    pub async fn search_labels(
+        &self,
+        query: &str,
+        limit: usize,
+        tenant_id: Option<&str>,
+        workspace_id: Option<&str>,
+    ) -> Result<Vec<String>> {
+        self.inner
+            .search_labels(query, limit, tenant_id, workspace_id)
+            .await
     }
 
     pub async fn search_nodes(
@@ -116,8 +137,16 @@ impl<'a> GraphReadView<'a> {
             .await
     }
 
-    pub async fn get_neighbors(&self, node_id: &str, depth: usize) -> Result<Vec<GraphNode>> {
-        self.inner.get_neighbors(node_id, depth).await
+    pub async fn get_neighbors(
+        &self,
+        node_id: &str,
+        depth: usize,
+        tenant_id: Option<&str>,
+        workspace_id: Option<&str>,
+    ) -> Result<Vec<GraphNode>> {
+        self.inner
+            .get_neighbors(node_id, depth, tenant_id, workspace_id)
+            .await
     }
 
     pub async fn get_popular_nodes_with_degree(

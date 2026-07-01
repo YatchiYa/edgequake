@@ -18,25 +18,26 @@
 'use client';
 
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { deleteEntity } from '@/lib/api/edgequake';
+import { formatEntityLabel, formatEntityType, getEntityTypeColor } from '@/lib/graph/label-utils';
 import { cn } from '@/lib/utils';
 import { useGraphStore } from '@/stores/use-graph-store';
 import { useSelectedWorkspace } from '@/stores/use-tenant-store';
@@ -44,21 +45,21 @@ import type { GraphEdge, GraphNode } from '@/types';
 import { useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import {
-  ArrowLeft,
-  ArrowRight,
-  Calendar,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  Copy,
-  Edit,
-  ExternalLink,
-  GitMerge,
-  Hash,
-  Info,
-  Link2,
-  Sparkles,
-  Trash2
+    ArrowLeft,
+    ArrowRight,
+    Calendar,
+    Check,
+    ChevronDown,
+    ChevronRight,
+    Copy,
+    Edit,
+    ExternalLink,
+    GitMerge,
+    Hash,
+    Info,
+    Link2,
+    Sparkles,
+    Trash2
 } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
@@ -70,16 +71,6 @@ interface NodeDetailsProps {
 }
 
 // Color palette for entity types - matches graph-renderer.tsx
-const TYPE_COLORS: Record<string, string> = {
-  PERSON: '#3b82f6',
-  ORGANIZATION: '#10b981',
-  LOCATION: '#f59e0b',
-  EVENT: '#ef4444',
-  CONCEPT: '#8b5cf6',
-  DOCUMENT: '#6366f1',
-  DEFAULT: '#64748b',
-};
-
 // Expandable Property Value Component
 function PropertyValue({ 
   label, 
@@ -203,7 +194,7 @@ export function NodeDetails({ node }: NodeDetailsProps) {
     }
   };
 
-  const typeColor = TYPE_COLORS[node.node_type?.toUpperCase()] || TYPE_COLORS.DEFAULT;
+  const typeColor = getEntityTypeColor(node.node_type);
 
   return (
     <div className="space-y-2.5">
@@ -216,7 +207,7 @@ export function NodeDetails({ node }: NodeDetailsProps) {
               style={{ backgroundColor: typeColor }}
             />
             <h4 className="text-sm font-semibold truncate">
-              {node.label}
+              {formatEntityLabel(node.label)}
             </h4>
             <TooltipProvider>
               <Tooltip>
@@ -240,7 +231,7 @@ export function NodeDetails({ node }: NodeDetailsProps) {
             className="text-[10px] font-medium px-2 py-0.5"
             style={{ borderColor: typeColor, color: typeColor, backgroundColor: `${typeColor}10` }}
           >
-            {node.node_type || 'ENTITY'}
+            {formatEntityType(node.node_type || 'ENTITY')}
           </Badge>
         </div>
       </div>
@@ -376,7 +367,7 @@ export function NodeDetails({ node }: NodeDetailsProps) {
                       </p>
                     ) : (
                       relatedNodes.map(({ edge, isSource, nodeId, label, type }, index) => {
-                        const relationColor = TYPE_COLORS[type.toUpperCase()] || TYPE_COLORS.DEFAULT;
+                        const relationColor = getEntityTypeColor(type);
                         
                         return (
                           <div

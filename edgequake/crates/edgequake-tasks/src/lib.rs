@@ -72,6 +72,7 @@
 //! ```
 
 pub mod cancellation;
+pub mod delivery;
 pub mod error;
 pub mod memory;
 pub mod pipeline_state;
@@ -86,6 +87,11 @@ pub mod worker;
 
 // Re-export commonly used types
 pub use cancellation::CancellationRegistry;
+pub use delivery::{
+    delivery_mode_from_env, enqueue_with_delivery, parse_delivery_mode, BridgedTaskQueue,
+    ChannelTaskNotifier, NoopTaskNotifier, SharedTaskNotifier, StorageHydratingTaskQueue,
+    TaskDeliveryMode, TaskNotifier,
+};
 pub use error::{TaskError, TaskResult};
 pub use pipeline_state::{PipelineEvent, PipelineMessage, PipelineState, PipelineStatusSnapshot};
 pub use progress::{PdfUploadProgress, PhaseError, PhaseProgress, PhaseStatus, PipelinePhase};
@@ -96,7 +102,8 @@ pub use storage::{
 };
 pub use tenant_limiter::TenantConcurrencyLimiter;
 pub use types::{
-    ChunkProgress, DirectoryScanData, DocumentUploadData, PdfProcessingData, ReindexData, Task,
-    TaskFailureInfo, TaskProgress, TaskStatus, TaskType, TextInsertData,
+    ChunkProgress, DirectoryScanData, DocumentUploadData, KnowledgeInjectionData,
+    PdfProcessingData, ReindexData, ReprocessMode, Task, TaskFailureInfo, TaskProgress, TaskStatus,
+    TaskType, TextInsertData,
 };
 pub use worker::{SharedTaskProcessor, TaskProcessor, WorkerPool, WorkerPoolConfig};

@@ -1,4 +1,6 @@
-/** Query request/response and streaming types (backend QueryMode parity). */
+import type { SubgraphBundle } from "@/lib/utils/subgraph-types";
+
+export type { SubgraphBundle } from "@/lib/utils/subgraph-types";
 
 export type QueryMode =
   | "local"
@@ -35,6 +37,7 @@ export type QueryModeSelectorOption = (typeof QUERY_MODES_SELECTOR)[number];
 /**
  * Document filter criteria for narrowing query scope.
  * @implements SPEC-005: Document date and pattern filters
+ * @implements SPEC-031: Explicit document scope selection
  */
 export interface DocumentFilter {
   /** Start date (inclusive) in ISO 8601 format (e.g., "2025-01-01T00:00:00Z"). */
@@ -46,6 +49,25 @@ export interface DocumentFilter {
    * Comma-separated values are treated as OR conditions.
    */
   document_pattern?: string;
+  /**
+   * Explicit document IDs to restrict query scope.
+   * When set, only these documents contribute RAG context (OR-unioned with
+   * document_pattern; AND-combined with date filters).
+   * An empty array is treated as null (no filtering).
+   * @implements SPEC-031
+   */
+  document_ids?: string[];
+}
+
+/** Returns true when the filter has no active criteria. */
+export function isEmptyDocumentFilter(f?: DocumentFilter): boolean {
+  if (!f) return true;
+  return (
+    !f.date_from &&
+    !f.date_to &&
+    !f.document_pattern &&
+    (!f.document_ids || f.document_ids.length === 0)
+  );
 }
 
 export interface QueryRequest {
@@ -64,6 +86,8 @@ export interface QueryRequest {
   llm_provider?: string;
   /** LLM model override. @implements SPEC-006 + SPEC-032 */
   llm_model?: string;
+  /** Payload tier for source snippets. @implements SPEC-037 + SPEC-028 */
+  content_granularity?: 'citation' | 'agent' | 'debug';
 }
 
 export interface QueryContext {
@@ -77,6 +101,13 @@ export interface QueryContext {
     chunk_index?: number;
     /** Chunk UUID from storage. Used for deep-linking to document detail with selected chunk. */
     chunk_id?: string;
+    /** PDF page number (1-indexed) where this chunk starts.
+     * Present only when the source is a PDF processed with page-aware chunking.
+     * Enables deep links to the exact page: navigate to `/documents/{id}#page={page_start}`
+     */
+    page_start?: number;
+    /** PDF page number where this chunk ends. Always equals page_start. */
+    page_end?: number;
   }>;
   entities: Array<{
     id: string;
@@ -107,10 +138,15 @@ export interface QueryContext {
 
 export interface QueryResponse {
   answer: string;
-  context: QueryContext;
   mode: QueryMode;
-  tokens_used: number;
-  duration_ms: number;
+  sources?: import("@/lib/api/chat").SourceReference[];
+  /** Structured query-matched graph (SPEC-028). */
+  subgraph?: SubgraphBundle;
+  /** @deprecated Legacy nested context — prefer sources + subgraph */
+  context?: QueryContext;
+  stats?: QueryStreamStats;
+  conversation_id?: string;
+  reranked?: boolean;
 }
 
 export interface QueryStreamChunk {
@@ -126,6 +162,8 @@ export interface QueryStreamChunk {
   llm_model?: string;
   /** SPEC-006: Structured sources in context event */
   sources?: import("@/lib/api/chat").SourceReference[];
+  /** SPEC-028: Structured subgraph (entities + relationships) */
+  subgraph?: SubgraphBundle;
   /** SPEC-006: Query mode from context event */
   query_mode?: string;
   /** SPEC-006: Retrieval time from context event */

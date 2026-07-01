@@ -42,6 +42,7 @@ pub mod env;
 pub mod error;
 pub mod graph_mapping;
 pub mod keyword_extractor;
+pub mod llm_roles;
 #[cfg(feature = "pipeline")]
 pub mod orchestrator;
 pub mod resource;
@@ -53,6 +54,7 @@ pub mod types;
 pub mod utils;
 pub mod workspace_model_update;
 pub mod workspace_service;
+pub mod workspace_vector_resolve;
 
 // Production service implementations (feature-gated)
 #[cfg(feature = "postgres")]
@@ -76,6 +78,10 @@ pub type PostgresWorkspaceService = WorkspaceServiceImpl;
 
 // Re-export keyword extractor
 pub use keyword_extractor::{ExtractedKeywords, KeywordExtractor};
+pub use llm_roles::{
+    parse_llm_roles_map, resolve_role_llm, role_config_from_workspace, LlmRole, ResolvedRoleLlm,
+    RoleLlmConfig,
+};
 
 // Re-export tenant manager
 #[cfg(feature = "pipeline")]
@@ -84,6 +90,10 @@ pub use tenant_manager::{TenantConfig, TenantKBKey, TenantRAGManager, TenantServ
 // Re-export workspace service
 pub use workspace_service::{
     InMemoryWorkspaceService, UpdateTenantQuotaResult, WorkspaceService, WorkspaceServiceFactory,
+};
+pub use workspace_vector_resolve::{
+    default_workspace_uuid, resolve_workspace_uuid, resolve_workspace_vector_storage,
+    WorkspaceVectorResolveInput, WorkspaceVectorResolvePolicy,
 };
 
 // Re-export conversation service
@@ -94,9 +104,9 @@ pub use token_budget::{BudgetAllocation, BudgetSource, ContextSource, TokenBudge
 
 // SPEC-006: Resource safety SSOT
 pub use resource::{
-    AdmissionDecision, GraphMaterializationSemaphore, GraphOperation, ResourceBudgetConfig,
-    ResourceGuard, MAX_GRAPH_DEPTH, MAX_GRAPH_NODES, MAX_ORCHESTRATOR_CONTEXT_TOKENS,
-    MAX_UPLOAD_BYTES,
+    AdmissionDecision, GraphMaterializationSemaphore, GraphOperation, PdfVisionSemaphore,
+    ResourceBudgetConfig, ResourceGuard, MAX_GRAPH_DEPTH, MAX_GRAPH_NODES,
+    MAX_ORCHESTRATOR_CONTEXT_TOKENS, MAX_UPLOAD_BYTES,
 };
 
 // Re-export commonly used types

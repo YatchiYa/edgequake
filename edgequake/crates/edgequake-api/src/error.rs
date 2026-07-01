@@ -46,15 +46,17 @@
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use utoipa::ToSchema;
 
 use edgequake_observability::ErrorEvent;
 use serde_json::{json, Value};
 
 use crate::providers::ProviderResolutionError;
+
+mod problem_details;
 
 /// Result type for API operations.
 pub type ApiResult<T> = std::result::Result<T, ApiError>;
@@ -71,7 +73,7 @@ pub struct AuthFailureContext {
 }
 
 /// API error response.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ErrorResponse {
     /// Error code.
     pub code: String,
@@ -82,13 +84,29 @@ pub struct ErrorResponse {
     /// Additional details.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<serde_json::Value>,
+
+    /// RFC 7807 problem type URI (additive, SPEC-027 IMP-028).
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub problem_type: Option<String>,
+
+    /// RFC 7807 short title (additive).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+
+    /// RFC 7807 HTTP status echo (additive).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<u16>,
 }
 
 impl ErrorResponse {
     /// Create a new error response.
     pub fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
+        let code = code.into();
         Self {
-            code: code.into(),
+            problem_type: Some(problem_details::problem_type_for_code(&code)),
+            title: Some(problem_details::problem_title_for_code(&code).to_string()),
+            status: None,
+            code,
             message: message.into(),
             details: None,
         }
@@ -112,6 +130,10 @@ pub enum ApiError {
     #[error("Not found: {0}")]
     NotFound(String),
 
+    /// Resource existed but is no longer available (HTTP 410).
+    #[error("Gone: {0}")]
+    Gone(String),
+
     /// Unauthorized (optional auth context for explicit login/refresh diagnostics).
     #[error("Unauthorized")]
     Unauthorized(Option<AuthFailureContext>),
@@ -119,6 +141,10 @@ pub enum ApiError {
     /// Forbidden (optional reason, e.g. `account_inactive`).
     #[error("Forbidden")]
     Forbidden(Option<String>),
+
+    /// Account locked after too many failed logins (HTTP 423).
+    #[error("Account locked")]
+    AccountLocked,
 
     /// Conflict.
     #[error("Conflict: {0}")]
@@ -180,8 +206,10 @@ impl ApiError {
         match self {
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
             Self::NotFound(_) => StatusCode::NOT_FOUND,
+            Self::Gone(_) => StatusCode::GONE,
             Self::Unauthorized(_) => StatusCode::UNAUTHORIZED,
             Self::Forbidden(_) => StatusCode::FORBIDDEN,
+            Self::AccountLocked => StatusCode::LOCKED,
             Self::Conflict(_) => StatusCode::CONFLICT,
             Self::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::RateLimited => StatusCode::TOO_MANY_REQUESTS,
@@ -213,7 +241,7 @@ impl ApiError {
             Self::Storage(_) => "storage",
             Self::Llm(_) => "llm",
             Self::Pipeline(_) => "pipeline",
-            Self::Unauthorized(Some(_)) | Self::Forbidden(Some(_)) => "auth",
+            Self::Unauthorized(Some(_)) | Self::Forbidden(Some(_)) | Self::AccountLocked => "auth",
             _ => "api",
         }
     }
@@ -242,11 +270,17 @@ impl ApiError {
         Self::Forbidden(Some(reason.into()))
     }
 
+    /// HTTP 423 — account locked after failed login attempts (SPEC-027 SEC-011).
+    pub fn account_locked() -> Self {
+        Self::AccountLocked
+    }
+
     /// Variant-specific diagnostics (explicit, not only Display).
     pub fn diagnostic_details(&self) -> Value {
         match self {
             Self::BadRequest(msg) => json!({ "kind": "bad_request", "message": msg }),
             Self::NotFound(msg) => json!({ "kind": "not_found", "resource": msg }),
+            Self::Gone(msg) => json!({ "kind": "gone", "resource": msg }),
             Self::Unauthorized(ctx) => auth_failure_diagnostic("unauthorized", ctx.as_ref()),
             Self::Forbidden(reason) => {
                 let mut d = json!({ "kind": "forbidden" });
@@ -255,6 +289,7 @@ impl ApiError {
                 }
                 d
             }
+            Self::AccountLocked => json!({ "kind": "account_locked" }),
             Self::Conflict(msg) => json!({ "kind": "conflict", "message": msg }),
             Self::ValidationError(msg) => json!({ "kind": "validation", "message": msg }),
             Self::RateLimited => json!({ "kind": "rate_limited", "retryable": true }),
@@ -308,8 +343,10 @@ impl ApiError {
         match self {
             Self::BadRequest(_) => "BAD_REQUEST",
             Self::NotFound(_) => "NOT_FOUND",
+            Self::Gone(_) => "GONE",
             Self::Unauthorized(_) => "UNAUTHORIZED",
             Self::Forbidden(_) => "FORBIDDEN",
+            Self::AccountLocked => "ACCOUNT_LOCKED",
             Self::Conflict(_) => "CONFLICT",
             Self::ValidationError(_) => "VALIDATION_ERROR",
             Self::RateLimited => "RATE_LIMITED",
@@ -377,24 +414,24 @@ impl IntoResponse for ApiError {
         }
 
         let mut error = ErrorResponse::new(self.code(), self.to_string());
+        error.status = Some(status.as_u16());
         error.details = Some(event.into_api_details());
 
         if let Self::ServiceUnavailable {
             retry_after_secs, ..
         } = &self
         {
-            return (
+            return problem_details::into_problem_json_response(
                 status,
-                [(
-                    axum::http::header::RETRY_AFTER,
+                error,
+                &[(
+                    axum::http::header::RETRY_AFTER.as_str(),
                     retry_after_secs.to_string(),
                 )],
-                Json(error),
-            )
-                .into_response();
+            );
         }
 
-        (status, Json(error)).into_response()
+        problem_details::into_problem_json_response(status, error, &[])
     }
 }
 
@@ -424,6 +461,45 @@ impl ApiError {
             message: "Graph materialization capacity reached. Retry shortly.".into(),
             retry_after_secs: 5,
         }
+    }
+}
+
+/// SPEC-021 R2: single source of truth for the transient-congestion payload.
+///
+/// Both the HTTP 503 path (`ApiError::graph_materialization_busy`) and the
+/// SSE `error` event path (`graph_stream.rs`) describe the *same* condition.
+/// Without a shared struct, the SSE path re-typed the literal message string
+/// and silently dropped `retry_after_secs` — a DRY violation that made the
+/// streaming transport lossy vs the REST transport. This struct is the one
+/// place that defines the reason code + retry hint, so the two transports
+/// can never drift again.
+#[derive(Debug, Clone, Copy)]
+pub struct TransientCongestion {
+    /// Machine-readable reason code (e.g. `"transient_congestion"`).
+    pub reason: &'static str,
+    /// Seconds the client should wait before retrying.
+    pub retry_after_secs: u64,
+}
+
+impl TransientCongestion {
+    /// The transient-congestion payload for graph materialization capacity.
+    pub fn graph_materialization_busy() -> Self {
+        Self {
+            reason: "transient_congestion",
+            retry_after_secs: 5,
+        }
+    }
+
+    /// Build the SSE `error` event fields from this payload.
+    pub fn sse_error_fields(
+        self,
+        message: impl Into<String>,
+    ) -> (String, Option<String>, Option<u64>) {
+        (
+            message.into(),
+            Some(self.reason.to_string()),
+            Some(self.retry_after_secs),
+        )
     }
 }
 
@@ -468,6 +544,7 @@ fn storage_error_category(e: &edgequake_storage::error::StorageError) -> &'stati
         StorageError::AlreadyExists(_) => "already_exists",
         StorageError::Conflict(_) => "conflict",
         StorageError::InvalidQuery(_) => "invalid_query",
+        StorageError::InvalidInput(_) => "invalid_input",
         StorageError::Transaction(_) => "transaction",
         StorageError::Serialization(_) => "serialization",
         StorageError::Database(_) => "database",

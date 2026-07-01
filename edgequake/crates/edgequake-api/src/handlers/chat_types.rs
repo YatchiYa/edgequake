@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use crate::handlers::context_types::ContentGranularity;
 use crate::handlers::query::{QueryStats, SourceReference};
 use crate::handlers::query_types::DocumentFilter;
 
@@ -17,6 +18,10 @@ use crate::handlers::query_types::DocumentFilter;
 /// Default streaming mode for chat (true).
 pub fn chat_default_stream() -> bool {
     true
+}
+
+fn default_content_granularity() -> ContentGranularity {
+    ContentGranularity::Citation
 }
 
 // ============================================================================
@@ -100,6 +105,11 @@ pub struct ChatCompletionRequest {
     /// @implements Issue #203: Image upload support for vision queries
     #[serde(default)]
     pub images: Option<Vec<ImageAttachment>>,
+
+    /// Payload tier for source snippets in stream context events.
+    /// @implements SPEC-037 + SPEC-028
+    #[serde(default = "default_content_granularity")]
+    pub content_granularity: ContentGranularity,
 }
 
 /// Base64-encoded image attachment for vision-capable chat.
@@ -174,6 +184,7 @@ pub enum ChatStreamEvent {
 
     /// Context/sources retrieved.
     /// @implements SPEC-006: Enriched context event with query mode and timing
+    /// @implements SPEC-028 FP-028-09: Structured subgraph for WebUI/agents
     Context {
         sources: Vec<SourceReference>,
         /// Query mode used for retrieval (e.g., "hybrid", "local", "global").
@@ -182,6 +193,9 @@ pub enum ChatStreamEvent {
         /// Time taken for retrieval in milliseconds.
         #[serde(skip_serializing_if = "Option::is_none")]
         retrieval_time_ms: Option<u64>,
+        /// Query-matched knowledge graph (entities + relationships).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        subgraph: Option<crate::handlers::context_types::SubgraphBundle>,
     },
 
     /// Token generated during streaming.

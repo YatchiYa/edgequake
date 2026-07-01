@@ -12,10 +12,15 @@ use crate::error::{ApiError, ApiResult};
 use crate::handlers::documents_types::*;
 use crate::middleware::TenantContext;
 use crate::services::{
-    cascade_remove_document_sources, record_compliance_event, ContentHasher, DocumentSourceScope,
+    cascade_remove_document_sources, record_compliance_event, CascadeStats, ContentHasher,
+    DocumentSourceScope,
 };
 use crate::state::AppState;
 use edgequake_core::MetricsTriggerType;
+
+use crate::services::document_metadata_scan::{
+    document_id_from_metadata_key, load_all_document_metadata_entries, metadata_key_for_document,
+};
 
 use super::super::storage_helpers::{
     get_workspace_vector_storage_for_delete, metadata_matches_tenant_context,
@@ -31,26 +36,34 @@ use super::super::storage_helpers::{
 /// the real KV key prefix to delete all associated keys (chunks, content, metadata).
 ///
 /// Returns `(actual_key_prefix, metadata_key, has_metadata)`.
-async fn resolve_kv_key_prefix(
-    document_id: &str,
-    keys: &[String],
-    state: &AppState,
-) -> (String, String, bool) {
+///
+/// P-G7 (RC-12): the slow path uses `keys_with_suffix("-metadata")` (an
+/// index-friendly scan in Postgres) instead of requiring the caller to pass
+/// the full key list. The fast path is a direct O(1) `get_by_id` on the
+/// expected `{document_id}-metadata` key.
+async fn resolve_kv_key_prefix(document_id: &str, state: &AppState) -> (String, String, bool) {
     // Fast path: direct key lookup — key prefix == document_id
-    let direct_metadata_key = format!("{}-metadata", document_id);
-    if keys.contains(&direct_metadata_key) {
+    let direct_metadata_key = metadata_key_for_document(document_id);
+    if state
+        .storage
+        .kv_storage
+        .get_by_id(&direct_metadata_key)
+        .await
+        .ok()
+        .flatten()
+        .is_some()
+    {
         return (document_id.to_string(), direct_metadata_key, true);
     }
 
-    // Slow path: scan ALL metadata keys and check if any has a JSON `id` field
-    // that matches `document_id`. This handles key/id mismatch cases.
-    for key in keys.iter().filter(|k| k.ends_with("-metadata")) {
-        if let Ok(Some(val)) = state.storage.kv_storage.get_by_id(key).await {
+    // Slow path: batch metadata entries (index-friendly suffix scan).
+    if let Ok(entries) = load_all_document_metadata_entries(state.storage.kv_storage.as_ref()).await
+    {
+        for (key, val) in entries {
             if let Some(json_id) = val.get("id").and_then(|v| v.as_str()) {
                 if json_id == document_id {
-                    // Found it! Extract the real key prefix.
-                    let prefix = key.strip_suffix("-metadata").unwrap_or(key).to_string();
-                    return (prefix, key.clone(), true);
+                    let prefix = document_id_from_metadata_key(&key).unwrap_or_else(|| key.clone());
+                    return (prefix, key, true);
                 }
             }
         }
@@ -78,18 +91,12 @@ pub async fn delete_document(
     axum::extract::Path(document_id): axum::extract::Path<String>,
     tenant_ctx: TenantContext,
 ) -> ApiResult<Json<DeleteDocumentResponse>> {
-    let keys = state.storage.kv_storage.keys().await?;
-
-    // Resolve the actual KV key prefix for this document.
-    //
-    // WHY: The list endpoint shows documents by their JSON `id` field inside KV
-    // metadata values, but KV keys use the prefix `{early_doc_id}-metadata`.
-    // Historically these could diverge (e.g., during interrupted retries or
-    // backend restarts with older code versions). When they differ, the frontend
-    // sends the JSON `id` (from the list), but the KV key prefix is different.
-    // Without this fallback, the delete returns 404 and the document is undeletable.
+    // P-G7 (RC-12): no upfront O(W) full-key scan. The metadata key is resolved
+    // via `resolve_kv_key_prefix` (fast O(1) direct lookup, slow path uses an
+    // index-friendly suffix scan). Chunk/content keys are fetched with an
+    // index-friendly prefix scan scoped to the resolved document prefix.
     let (actual_key_prefix, metadata_key, has_metadata) =
-        resolve_kv_key_prefix(&document_id, &keys, &state).await;
+        resolve_kv_key_prefix(&document_id, &state).await;
     let key_id_mismatch = actual_key_prefix != document_id;
 
     if key_id_mismatch {
@@ -101,17 +108,25 @@ pub async fn delete_document(
         );
     }
 
-    // Find chunks belonging to this document (using resolved key prefix)
+    // Find chunks belonging to this document (index-friendly prefix scan).
     let chunk_prefix = format!("{}-chunk-", actual_key_prefix);
-    let chunk_ids: Vec<String> = keys
-        .iter()
-        .filter(|k| k.starts_with(&chunk_prefix))
-        .cloned()
-        .collect();
+    let chunk_ids: Vec<String> = state
+        .storage
+        .kv_storage
+        .keys_with_prefix(&chunk_prefix)
+        .await
+        .unwrap_or_default();
 
     // Also check for content key (using resolved key prefix)
     let content_key = format!("{}-content", actual_key_prefix);
-    let has_content = keys.contains(&content_key);
+    let has_content = state
+        .storage
+        .kv_storage
+        .get_by_id(&content_key)
+        .await
+        .ok()
+        .flatten()
+        .is_some();
 
     // Document must have either chunks, metadata, or content
     if chunk_ids.is_empty() && !has_metadata && !has_content {
@@ -260,13 +275,31 @@ pub async fn delete_document(
     // SPEC-006 P1: bounded document-scoped cascade (no get_all_nodes/edges)
     let scope =
         DocumentSourceScope::with_key_prefix(document_id.clone(), actual_key_prefix.clone());
-    let cascade_stats = cascade_remove_document_sources(
+    // WHY non-fatal: the graph cascade cleans up derivative entities/edges. A
+    // graph hiccup (AGE Cypher error, transient connection drop, lazy-label
+    // table not yet created) must NOT block the user from deleting their
+    // document or turn a successful deletion into a 500. KV/vector/relational
+    // cleanup below is the authoritative data removal; graph rows are best-effort
+    // and can be reconciled later. This fixes the "delete returns 500 even though
+    // the document is gone" symptom seen on large ingestions.
+    let cascade_stats = match cascade_remove_document_sources(
         &state.storage.graph_storage,
         Some(&workspace_vector_storage),
         Some(&tenant_ctx),
         &scope,
     )
-    .await?;
+    .await
+    {
+        Ok(stats) => stats,
+        Err(e) => {
+            tracing::error!(
+                document_id = %document_id,
+                error = %e,
+                "Graph cascade delete failed (non-fatal) — proceeding with KV/vector/relational cleanup"
+            );
+            CascadeStats::default()
+        }
+    };
     let entities_removed = cascade_stats.entities_removed;
     let entities_updated = cascade_stats.entities_updated;
     let relationships_removed = cascade_stats.relationships_removed;
@@ -277,6 +310,10 @@ pub async fn delete_document(
     let mut keys_to_delete = keys_to_delete_for_vectors;
     if has_metadata {
         keys_to_delete.push(metadata_key);
+        keys_to_delete.push(edgequake_storage::kv_keys::workspace_doc_index(
+            &workspace_id_for_storage,
+            &actual_key_prefix,
+        ));
     }
     if has_content {
         keys_to_delete.push(content_key);
@@ -284,12 +321,17 @@ pub async fn delete_document(
 
     // Collect any other KV keys with the document prefix that aren't already
     // in the list (e.g., `-lineage` keys). This ensures comprehensive cleanup.
-    let all_prefix_keys: Vec<String> = keys
-        .iter()
-        .filter(|k| {
-            k.starts_with(&format!("{}-", actual_key_prefix)) && !keys_to_delete.contains(k)
-        })
-        .cloned()
+    // P-G7 (RC-12): index-friendly prefix scan instead of filtering the full
+    // key set in-memory.
+    let actual_doc_prefix = format!("{}-", actual_key_prefix);
+    let all_prefix_keys: Vec<String> = state
+        .storage
+        .kv_storage
+        .keys_with_prefix(&actual_doc_prefix)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|k| !keys_to_delete.contains(k))
         .collect();
     if !all_prefix_keys.is_empty() {
         tracing::debug!(
@@ -302,10 +344,15 @@ pub async fn delete_document(
 
     // In mismatch cases, also collect keys under the JSON id prefix
     if key_id_mismatch {
-        let alt_prefix_keys: Vec<String> = keys
-            .iter()
-            .filter(|k| k.starts_with(&format!("{}-", document_id)) && !keys_to_delete.contains(k))
-            .cloned()
+        let json_doc_prefix = format!("{}-", document_id);
+        let alt_prefix_keys: Vec<String> = state
+            .storage
+            .kv_storage
+            .keys_with_prefix(&json_doc_prefix)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|k| !keys_to_delete.contains(k))
             .collect();
         if !alt_prefix_keys.is_empty() {
             tracing::debug!(
@@ -457,7 +504,7 @@ mod tests {
     async fn test_resolve_key_prefix_fast_path() {
         let state = AppState::test_state();
         let doc_id = "aaaa-bbbb-cccc-dddd";
-        let metadata_key = format!("{}-metadata", doc_id);
+        let metadata_key = metadata_key_for_document(doc_id);
 
         // Store metadata with matching key and id
         state
@@ -470,8 +517,7 @@ mod tests {
             .await
             .unwrap();
 
-        let keys = state.storage.kv_storage.keys().await.unwrap();
-        let (prefix, key, has_metadata) = resolve_kv_key_prefix(doc_id, &keys, &state).await;
+        let (prefix, key, has_metadata) = resolve_kv_key_prefix(doc_id, &state).await;
 
         assert_eq!(prefix, doc_id);
         assert_eq!(key, metadata_key);
@@ -484,7 +530,7 @@ mod tests {
         let state = AppState::test_state();
         let kv_prefix = "real-key-prefix-1111";
         let json_id = "mismatched-json-id-2222";
-        let metadata_key = format!("{}-metadata", kv_prefix);
+        let metadata_key = metadata_key_for_document(kv_prefix);
 
         // Store metadata with MISMATCHED key/id
         state
@@ -497,8 +543,7 @@ mod tests {
             .await
             .unwrap();
 
-        let keys = state.storage.kv_storage.keys().await.unwrap();
-        let (prefix, key, has_metadata) = resolve_kv_key_prefix(json_id, &keys, &state).await;
+        let (prefix, key, has_metadata) = resolve_kv_key_prefix(json_id, &state).await;
 
         // Should resolve to the KV key prefix, not the JSON id
         assert_eq!(prefix, kv_prefix);
@@ -512,11 +557,10 @@ mod tests {
         let state = AppState::test_state();
         let doc_id = "nonexistent-doc-9999";
 
-        let keys = state.storage.kv_storage.keys().await.unwrap();
-        let (prefix, key, has_metadata) = resolve_kv_key_prefix(doc_id, &keys, &state).await;
+        let (prefix, key, has_metadata) = resolve_kv_key_prefix(doc_id, &state).await;
 
         assert_eq!(prefix, doc_id);
-        assert_eq!(key, format!("{}-metadata", doc_id));
+        assert_eq!(key, metadata_key_for_document(doc_id));
         assert!(!has_metadata);
     }
 
@@ -532,7 +576,7 @@ mod tests {
 
         // Set up the mismatch scenario: metadata key uses kv_prefix,
         // but the JSON id field is json_id.
-        let metadata_key = format!("{}-metadata", kv_prefix);
+        let metadata_key = metadata_key_for_document(kv_prefix);
         let content_key = format!("{}-content", kv_prefix);
         let chunk_0_key = format!("{}-chunk-0", kv_prefix);
         let chunk_1_key = format!("{}-chunk-1", kv_prefix);
@@ -624,7 +668,7 @@ mod tests {
         let kv_prefix = "aaaa-0000-0000-0000-000000000001";
         let json_id = "bbbb-0000-0000-0000-000000000002";
 
-        let metadata_key = format!("{}-metadata", kv_prefix);
+        let metadata_key = metadata_key_for_document(kv_prefix);
         let lineage_key = format!("{}-lineage", kv_prefix);
         // A key under the JSON id prefix (e.g., lineage stored there)
         let alt_lineage_key = format!("{}-lineage", json_id);

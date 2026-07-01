@@ -35,10 +35,12 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
+import type { DocumentFilter } from '@/types/query';
 import {
     BookOpen,
     Brain,
     FileText,
+    Filter,
     Gauge,
     Info,
     Settings2,
@@ -48,6 +50,9 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { DocumentPickerPopover } from './document-picker-popover';
+import { ProviderModelSelector } from './provider-model-selector';
+import { QueryDocumentFilter } from './query-document-filter';
 
 interface QuerySettings {
   stream: boolean;
@@ -55,6 +60,7 @@ interface QuerySettings {
   temperature: number;
   maxTokens: number;
   systemPrompt?: string;
+  fullChunkContent?: boolean;
 }
 
 interface QuerySettingsSheetProps {
@@ -66,6 +72,15 @@ interface QuerySettingsSheetProps {
   disabled?: boolean;
   /** Optional trigger button */
   trigger?: ReactNode;
+  /** Provider+model selector — moved from main toolbar for density reduction */
+  providerModel?: string;
+  onProviderModelChange?: (value: string) => void;
+  /** Document filter — moved from main toolbar for density reduction */
+  documentFilter?: DocumentFilter | undefined;
+  onDocumentFilterChange?: (value: DocumentFilter | undefined) => void;
+  /** SPEC-031: Explicit document scope selection */
+  scopedDocumentIds?: string[];
+  onScopedDocumentIdsChange?: (ids: string[]) => void;
 }
 
 export function QuerySettingsSheet({
@@ -73,6 +88,12 @@ export function QuerySettingsSheet({
   onSettingsChange,
   disabled = false,
   trigger,
+  providerModel,
+  onProviderModelChange,
+  documentFilter,
+  onDocumentFilterChange,
+  scopedDocumentIds,
+  onScopedDocumentIdsChange,
 }: QuerySettingsSheetProps) {
   const { t } = useTranslation();
 
@@ -80,12 +101,15 @@ export function QuerySettingsSheet({
     <Sheet>
       <SheetTrigger asChild>
         {trigger || (
-          <Button variant="ghost" size="icon" disabled={disabled}>
+          <Button variant="ghost" size="icon" disabled={disabled} data-testid="query-settings-trigger">
             <Settings2 className="h-4 w-4" />
           </Button>
         )}
       </SheetTrigger>
-      <SheetContent className="w-[400px] sm:w-[480px] flex flex-col p-0">
+      <SheetContent
+        data-testid="query-settings-sheet"
+        className="w-[400px] sm:w-[480px] flex flex-col p-0 overflow-hidden"
+      >
         <SheetHeader className="px-6 py-4 border-b shrink-0">
           <SheetTitle className="flex items-center gap-2 text-base">
             <Sliders className="h-4 w-4 text-primary" />
@@ -96,9 +120,89 @@ export function QuerySettingsSheet({
           </SheetDescription>
         </SheetHeader>
         
-        <ScrollArea className="flex-1">
-          <div className="px-6 py-4 space-y-5">
-            {/* Response Mode Section */}
+        <ScrollArea className="flex-1 min-h-0" showShadows>
+          <div className="px-6 py-4 pb-6 space-y-5" data-testid="query-settings-scroll-body">
+
+            {/* Context Section — Provider & Document Filter (moved from main toolbar) */}
+            {(onProviderModelChange || onDocumentFilterChange) && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Filter className="h-3.5 w-3.5 text-blue-500" />
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    {t('query.settings.context', 'Context')}
+                  </h3>
+                </div>
+                <div className="rounded-lg border p-3 space-y-3 bg-muted/20">
+                  {onProviderModelChange && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">
+                        {t('query.settings.provider', 'AI Provider & Model')}
+                      </Label>
+                      <ProviderModelSelector
+                        value={providerModel ?? ''}
+                        onChange={onProviderModelChange}
+                        disabled={disabled}
+                      />
+                    </div>
+                  )}
+                  {onDocumentFilterChange && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">
+                        {t('query.settings.documentFilter', 'Document Filter')}
+                      </Label>
+                      <QueryDocumentFilter
+                        value={documentFilter}
+                        onChange={onDocumentFilterChange}
+                        disabled={disabled}
+                      />
+                    </div>
+                  )}
+                  {/* SPEC-031: Explicit document scope picker */}
+                  {onScopedDocumentIdsChange && (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-medium">
+                          {t('query.scope.sectionTitle', 'Document Scope')}
+                        </Label>
+                        {scopedDocumentIds && scopedDocumentIds.length > 0 && (
+                          <span className="text-xs text-muted-foreground">
+                            {t('query.scope.selectedCount', '{{count}} selected', {
+                              count: scopedDocumentIds.length,
+                            })}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">
+                        {t('query.scope.description',
+                          'Restrict queries to specific documents. Default is all workspace docs.'
+                        )}
+                      </p>
+                      <DocumentPickerPopover
+                        selectedIds={scopedDocumentIds ?? []}
+                        onSelectionChange={onScopedDocumentIdsChange}
+                        disabled={disabled}
+                        trigger={
+                          <button
+                            type="button"
+                            disabled={disabled}
+                            className="w-full flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+                          >
+                            <FileText className="h-3.5 w-3.5 shrink-0" />
+                            {scopedDocumentIds && scopedDocumentIds.length > 0
+                              ? t('query.scope.editSelection', 'Edit scope ({{count}} docs)', {
+                                  count: scopedDocumentIds.length,
+                                })
+                              : t('query.scope.addDocuments', 'Add documents to scope')
+                            }
+                          </button>
+                        }
+                      />
+                    </div>
+                  )}
+                </div>
+                <Separator />
+              </div>
+            )}
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Zap className="h-3.5 w-3.5 text-amber-500" />
@@ -120,8 +224,30 @@ export function QuerySettingsSheet({
                   </div>
                   <Switch
                     id="stream-toggle"
+                    data-testid="query-settings-stream-toggle"
                     checked={settings.stream}
                     onCheckedChange={(stream) => onSettingsChange({ stream })}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="full-chunk-toggle" className="text-sm font-medium cursor-pointer">
+                      {t('query.settings.fullPassageText', 'Full passage text')}
+                    </Label>
+                    <p className="text-[11px] text-muted-foreground leading-tight">
+                      {t(
+                        'query.settings.fullPassageTextDescription',
+                        'Show complete retrieved chunks in citations (uses more bandwidth)',
+                      )}
+                    </p>
+                  </div>
+                  <Switch
+                    id="full-chunk-toggle"
+                    data-testid="query-settings-full-chunk-toggle"
+                    checked={settings.fullChunkContent ?? false}
+                    onCheckedChange={(fullChunkContent) => onSettingsChange({ fullChunkContent })}
+                    disabled={disabled}
                   />
                 </div>
               </div>
@@ -302,6 +428,7 @@ export function QuerySettingsSheet({
                 </div>
                 <Textarea
                   id="system-prompt"
+                  data-testid="query-settings-system-prompt"
                   placeholder={t('query.settings.systemPromptPlaceholder', 'e.g. "Always respond in bullet points" or "Focus on security implications"')}
                   value={settings.systemPrompt ?? ''}
                   onChange={(e) => onSettingsChange({ systemPrompt: e.target.value || undefined })}

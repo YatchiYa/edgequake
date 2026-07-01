@@ -11,8 +11,8 @@ use std::sync::Arc;
 
 use edgequake_llm::{EmbeddingProvider, MockProvider};
 use edgequake_query::{
-    ExtractedKeywords, KeywordExtractor, Keywords, MockKeywordExtractor, QueryIntent, QueryMode,
-    QueryRequest, SOTAQueryConfig, SOTAQueryEngine,
+    ExtractedKeywords, KeywordExtractor, Keywords, MockKeywordExtractor, QueryEngine,
+    QueryEngineConfig, QueryIntent, QueryMode, QueryRequest,
 };
 use edgequake_storage::{
     GraphStorage, GraphStorageMutateOps, MemoryGraphStorage, MemoryVectorStorage, VectorStorage,
@@ -258,9 +258,9 @@ mod sota_config_tests {
 
     #[test]
     fn test_sota_config_default() {
-        let config = SOTAQueryConfig::default();
+        let config = QueryEngineConfig::default();
 
-        assert_eq!(config.default_mode, QueryMode::Hybrid);
+        assert_eq!(config.default_mode, QueryMode::Mix);
         assert!(config.use_keyword_extraction);
         assert!(config.use_adaptive_mode);
         assert!(config.max_entities > 0);
@@ -270,7 +270,7 @@ mod sota_config_tests {
 
     #[test]
     fn test_sota_config_custom() {
-        let config = SOTAQueryConfig {
+        let config = QueryEngineConfig {
             default_mode: QueryMode::Local,
             max_entities: 30,
             max_relationships: 30,
@@ -285,6 +285,7 @@ mod sota_config_tests {
             enable_rerank: true,
             min_rerank_score: 0.3,
             rerank_top_k: 10,
+            ..Default::default()
         };
 
         assert_eq!(config.default_mode, QueryMode::Local);
@@ -297,34 +298,34 @@ mod sota_config_tests {
 // SOTA Engine Creation Tests
 // =============================================================================
 
-mod sota_engine_creation_tests {
+mod engine_impl_creation_tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_sota_engine_creation() {
+    async fn test_engine_impl_creation() {
         let vector_storage = create_test_vector_storage().await;
         let graph_storage = create_test_graph_storage().await;
         let provider = create_mock_provider();
 
-        let engine = SOTAQueryEngine::new(
-            SOTAQueryConfig::default(),
+        let engine = QueryEngine::new(
+            QueryEngineConfig::default(),
             vector_storage,
             graph_storage,
             provider.clone(),
             provider,
         );
 
-        assert_eq!(engine.config().default_mode, QueryMode::Hybrid);
+        assert_eq!(engine.config().default_mode, QueryMode::Mix);
     }
 
     #[tokio::test]
-    async fn test_sota_engine_with_mock_keywords() {
+    async fn test_engine_impl_with_mock_keywords() {
         let vector_storage = create_test_vector_storage().await;
         let graph_storage = create_test_graph_storage().await;
         let provider = create_mock_provider();
 
-        let engine = SOTAQueryEngine::with_mock_keywords(
-            SOTAQueryConfig::default(),
+        let engine = QueryEngine::with_mock_keywords(
+            QueryEngineConfig::default(),
             vector_storage,
             graph_storage,
             provider.clone(),
@@ -348,8 +349,8 @@ mod query_mode_tests {
         let graph_storage = create_test_graph_storage().await;
         let provider = create_mock_provider();
 
-        let engine = SOTAQueryEngine::with_mock_keywords(
-            SOTAQueryConfig::default(),
+        let engine = QueryEngine::with_mock_keywords(
+            QueryEngineConfig::default(),
             vector_storage,
             graph_storage,
             provider.clone(),
@@ -373,8 +374,8 @@ mod query_mode_tests {
         let graph_storage = create_test_graph_storage().await;
         let provider = create_mock_provider();
 
-        let engine = SOTAQueryEngine::with_mock_keywords(
-            SOTAQueryConfig::default(),
+        let engine = QueryEngine::with_mock_keywords(
+            QueryEngineConfig::default(),
             vector_storage,
             graph_storage,
             provider.clone(),
@@ -397,8 +398,8 @@ mod query_mode_tests {
         let graph_storage = create_test_graph_storage().await;
         let provider = create_mock_provider();
 
-        let engine = SOTAQueryEngine::with_mock_keywords(
-            SOTAQueryConfig::default(),
+        let engine = QueryEngine::with_mock_keywords(
+            QueryEngineConfig::default(),
             vector_storage,
             graph_storage,
             provider.clone(),
@@ -421,8 +422,8 @@ mod query_mode_tests {
         let graph_storage = create_test_graph_storage().await;
         let provider = create_mock_provider();
 
-        let engine = SOTAQueryEngine::with_mock_keywords(
-            SOTAQueryConfig::default(),
+        let engine = QueryEngine::with_mock_keywords(
+            QueryEngineConfig::default(),
             vector_storage,
             graph_storage,
             provider.clone(),
@@ -445,8 +446,8 @@ mod query_mode_tests {
         let graph_storage = create_test_graph_storage().await;
         let provider = create_mock_provider();
 
-        let engine = SOTAQueryEngine::with_mock_keywords(
-            SOTAQueryConfig::default(),
+        let engine = QueryEngine::with_mock_keywords(
+            QueryEngineConfig::default(),
             vector_storage,
             graph_storage,
             provider.clone(),
@@ -477,13 +478,13 @@ mod adaptive_mode_tests {
         let graph_storage = create_test_graph_storage().await;
         let provider = create_mock_provider();
 
-        let config = SOTAQueryConfig {
+        let config = QueryEngineConfig {
             use_adaptive_mode: true,
             use_keyword_extraction: true,
             ..Default::default()
         };
 
-        let engine = SOTAQueryEngine::with_mock_keywords(
+        let engine = QueryEngine::with_mock_keywords(
             config,
             vector_storage,
             graph_storage,
@@ -510,12 +511,12 @@ mod adaptive_mode_tests {
         let graph_storage = create_test_graph_storage().await;
         let provider = create_mock_provider();
 
-        let config = SOTAQueryConfig {
+        let config = QueryEngineConfig {
             use_adaptive_mode: true,
             ..Default::default()
         };
 
-        let engine = SOTAQueryEngine::with_mock_keywords(
+        let engine = QueryEngine::with_mock_keywords(
             config,
             vector_storage,
             graph_storage,
@@ -549,13 +550,13 @@ mod adaptive_mode_tests {
         let graph_storage = create_test_graph_storage().await;
         let provider = create_mock_provider();
 
-        let config = SOTAQueryConfig {
+        let config = QueryEngineConfig {
             use_adaptive_mode: false,
             default_mode: QueryMode::Naive,
             ..Default::default()
         };
 
-        let engine = SOTAQueryEngine::with_mock_keywords(
+        let engine = QueryEngine::with_mock_keywords(
             config,
             vector_storage,
             graph_storage,
@@ -585,8 +586,8 @@ mod query_stats_tests {
         let graph_storage = create_test_graph_storage().await;
         let provider = create_mock_provider();
 
-        let engine = SOTAQueryEngine::with_mock_keywords(
-            SOTAQueryConfig::default(),
+        let engine = QueryEngine::with_mock_keywords(
+            QueryEngineConfig::default(),
             vector_storage,
             graph_storage,
             provider.clone(),
@@ -617,8 +618,8 @@ mod prompt_tests {
         let graph_storage = create_test_graph_storage().await;
         let provider = create_mock_provider();
 
-        let engine = SOTAQueryEngine::with_mock_keywords(
-            SOTAQueryConfig::default(),
+        let engine = QueryEngine::with_mock_keywords(
+            QueryEngineConfig::default(),
             vector_storage,
             graph_storage,
             provider.clone(),
@@ -649,8 +650,8 @@ mod tenant_tests {
         let graph_storage = create_test_graph_storage().await;
         let provider = create_mock_provider();
 
-        let engine = SOTAQueryEngine::with_mock_keywords(
-            SOTAQueryConfig::default(),
+        let engine = QueryEngine::with_mock_keywords(
+            QueryEngineConfig::default(),
             vector_storage,
             graph_storage,
             provider.clone(),
@@ -673,8 +674,8 @@ mod tenant_tests {
         let graph_storage = create_test_graph_storage().await;
         let provider = create_mock_provider();
 
-        let engine = SOTAQueryEngine::with_mock_keywords(
-            SOTAQueryConfig::default(),
+        let engine = QueryEngine::with_mock_keywords(
+            QueryEngineConfig::default(),
             vector_storage,
             graph_storage,
             provider.clone(),
@@ -714,14 +715,13 @@ mod keyword_intent_tests {
     #[test]
     fn test_query_intent_exploratory() {
         let intent = QueryIntent::Exploratory;
-        assert_eq!(intent.recommended_mode(), QueryMode::Hybrid);
+        assert_eq!(intent.recommended_mode(), QueryMode::Naive);
     }
 
     #[test]
     fn test_query_intent_comparative() {
         let intent = QueryIntent::Comparative;
-        // Comparative uses Hybrid mode (not Global) for parallel entity retrieval
-        assert_eq!(intent.recommended_mode(), QueryMode::Hybrid);
+        assert_eq!(intent.recommended_mode(), QueryMode::Local);
     }
 
     #[test]
@@ -861,7 +861,7 @@ mod reranker_integration_tests {
         let llm = create_mock_provider();
         let embedding = create_mock_embedding();
 
-        let config = SOTAQueryConfig {
+        let config = QueryEngineConfig {
             enable_rerank: true,
             min_rerank_score: 0.01, // Low threshold for test
             rerank_top_k: 10,
@@ -870,14 +870,9 @@ mod reranker_integration_tests {
 
         let reranker = Arc::new(BM25Reranker::new());
 
-        let engine = SOTAQueryEngine::with_mock_keywords(
-            config,
-            vector_storage,
-            graph_storage,
-            embedding,
-            llm,
-        )
-        .with_reranker(reranker);
+        let engine =
+            QueryEngine::with_mock_keywords(config, vector_storage, graph_storage, embedding, llm)
+                .with_reranker(reranker);
 
         let request = QueryRequest::new("EdgeQuake knowledge graph").with_mode(QueryMode::Naive);
 
@@ -1071,8 +1066,8 @@ mod chunk_ranking_and_hybrid_tests {
     ///
     /// Disables keyword extraction, adaptive mode, and reranking so that
     /// test assertions reflect pure cosine-similarity ranking.
-    fn base_config() -> SOTAQueryConfig {
-        SOTAQueryConfig {
+    fn base_config() -> QueryEngineConfig {
+        QueryEngineConfig {
             min_score: 0.0,
             enable_rerank: false,
             use_keyword_extraction: false,
@@ -1166,8 +1161,7 @@ mod chunk_ranking_and_hybrid_tests {
         enqueue_directional_embeddings(&provider).await;
 
         let config = base_config();
-        let engine =
-            SOTAQueryEngine::with_mock_keywords(config, vs, gs, provider.clone(), provider);
+        let engine = QueryEngine::with_mock_keywords(config, vs, gs, provider.clone(), provider);
 
         let request = QueryRequest::new("test query")
             .with_mode(QueryMode::Local)
@@ -1290,8 +1284,7 @@ mod chunk_ranking_and_hybrid_tests {
         enqueue_directional_embeddings(&provider).await;
 
         let config = base_config();
-        let engine =
-            SOTAQueryEngine::with_mock_keywords(config, vs, gs, provider.clone(), provider);
+        let engine = QueryEngine::with_mock_keywords(config, vs, gs, provider.clone(), provider);
 
         let request = QueryRequest::new("test query")
             .with_mode(QueryMode::Global)
@@ -1388,8 +1381,7 @@ mod chunk_ranking_and_hybrid_tests {
         let mut config = base_config();
         config.max_chunks = 1; // Only keep the single best chunk
 
-        let engine =
-            SOTAQueryEngine::with_mock_keywords(config, vs, gs, provider.clone(), provider);
+        let engine = QueryEngine::with_mock_keywords(config, vs, gs, provider.clone(), provider);
 
         let request = QueryRequest::new("test query")
             .with_mode(QueryMode::Local)
@@ -1476,8 +1468,7 @@ mod chunk_ranking_and_hybrid_tests {
         let mut config = base_config();
         config.max_chunks = 3; // Keep only top 3
 
-        let engine =
-            SOTAQueryEngine::with_mock_keywords(config, vs, gs, provider.clone(), provider);
+        let engine = QueryEngine::with_mock_keywords(config, vs, gs, provider.clone(), provider);
 
         let request = QueryRequest::new("test query")
             .with_mode(QueryMode::Local)
@@ -1595,8 +1586,7 @@ mod chunk_ranking_and_hybrid_tests {
         enqueue_directional_embeddings(&provider).await;
 
         let config = base_config();
-        let engine =
-            SOTAQueryEngine::with_mock_keywords(config, vs, gs, provider.clone(), provider);
+        let engine = QueryEngine::with_mock_keywords(config, vs, gs, provider.clone(), provider);
 
         let request = QueryRequest::new("hybrid test")
             .with_mode(QueryMode::Hybrid)
@@ -1699,8 +1689,7 @@ mod chunk_ranking_and_hybrid_tests {
         enqueue_directional_embeddings(&provider).await;
 
         let config = base_config();
-        let engine =
-            SOTAQueryEngine::with_mock_keywords(config, vs, gs, provider.clone(), provider);
+        let engine = QueryEngine::with_mock_keywords(config, vs, gs, provider.clone(), provider);
 
         let request = QueryRequest::new("dedup test")
             .with_mode(QueryMode::Hybrid)
@@ -1809,8 +1798,7 @@ mod chunk_ranking_and_hybrid_tests {
         enqueue_directional_embeddings(&provider).await;
 
         let config = base_config();
-        let engine =
-            SOTAQueryEngine::with_mock_keywords(config, vs, gs, provider.clone(), provider);
+        let engine = QueryEngine::with_mock_keywords(config, vs, gs, provider.clone(), provider);
 
         let request = QueryRequest::new("multi entity")
             .with_mode(QueryMode::Local)
@@ -1882,8 +1870,7 @@ mod chunk_ranking_and_hybrid_tests {
         enqueue_directional_embeddings(&provider).await;
 
         let config = base_config();
-        let engine =
-            SOTAQueryEngine::with_mock_keywords(config, vs, gs, provider.clone(), provider);
+        let engine = QueryEngine::with_mock_keywords(config, vs, gs, provider.clone(), provider);
 
         let request = QueryRequest::new("empty chunks test")
             .with_mode(QueryMode::Local)
@@ -1912,7 +1899,7 @@ mod chunk_ranking_and_hybrid_tests {
     /// Default config values must match LightRAG parity targets.
     #[test]
     fn test_config_lightrag_parity_defaults() {
-        let config = SOTAQueryConfig::default();
+        let config = QueryEngineConfig::default();
 
         assert_eq!(config.max_entities, 60, "LightRAG parity: max_entities=60");
         assert_eq!(
@@ -1930,7 +1917,7 @@ mod chunk_ranking_and_hybrid_tests {
         );
         assert_eq!(config.truncation.max_entity_tokens, 10000);
         assert_eq!(config.truncation.max_relation_tokens, 10000);
-        assert_eq!(config.default_mode, QueryMode::Hybrid);
+        assert_eq!(config.default_mode, QueryMode::Mix);
         assert!(config.use_keyword_extraction);
         assert!(config.use_adaptive_mode);
         assert!(config.enable_rerank);
@@ -2011,9 +1998,8 @@ mod chunk_ranking_and_hybrid_tests {
 
         let reranker: Arc<dyn Reranker> = Arc::new(BM25Reranker::new());
 
-        let engine =
-            SOTAQueryEngine::with_mock_keywords(config, vs, gs, provider.clone(), provider)
-                .with_reranker(reranker);
+        let engine = QueryEngine::with_mock_keywords(config, vs, gs, provider.clone(), provider)
+            .with_reranker(reranker);
 
         let request = QueryRequest::new("EdgeQuake knowledge graph")
             .with_mode(QueryMode::Local)

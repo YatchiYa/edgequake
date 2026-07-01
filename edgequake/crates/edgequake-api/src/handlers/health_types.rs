@@ -59,6 +59,151 @@ pub struct HealthResponse {
     /// When false, document uploads may fail silently.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pdf_storage_enabled: Option<bool>,
+
+    /// Operational signals for dashboards (SPEC-024 Phase 4.3).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operational: Option<OperationalHealth>,
+
+    /// Discoverable API surface links (SPEC-027 REST-008).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capabilities: Option<ApiCapabilities>,
+}
+
+/// Operator-facing API discovery hints (additive JSON on `/health`).
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ApiCapabilities {
+    /// OpenAPI document URL.
+    pub openapi_url: String,
+    /// Standalone AsyncAPI document URL (WebSocket channels).
+    pub asyncapi_url: String,
+    /// Swagger UI entry point.
+    pub swagger_ui_url: String,
+    /// Admin API path prefix.
+    pub admin_api_prefix: String,
+    /// Public shared-conversation path prefix.
+    pub shared_conversations_prefix: String,
+    /// v2 async jobs API path template (Level 4 — substitute `{workspace_id}`).
+    pub jobs_v2_prefix: String,
+    /// v2 job catalog path template.
+    pub jobs_v2_catalog: String,
+    /// Identity/auth SSOT backend label (`postgresql` or `in-memory`) — SPEC-027 phase 55.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth_identity_ssot: Option<String>,
+    /// Whether JWT/API-key auth is enforced on protected routes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth_enabled: Option<bool>,
+    /// Local dev opt-out (`EDGEQUAKE_DEV_MODE`) — auth disabled when true.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dev_mode: Option<bool>,
+    /// Whether `EDGEQUAKE_KV_IDENTITY_MIRROR` was set in env (may be ignored when PG pool exists).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kv_identity_mirror_configured: Option<bool>,
+    /// Effective KV mirror after policy resolution (`false` when PostgreSQL pool is SSOT).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kv_identity_mirror_effective: Option<bool>,
+    /// Built-in auth mechanisms (`jwt_password`, `api_key`) — SPEC-027 phase 49.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth_mechanisms: Option<Vec<String>>,
+    /// Whether OAuth2/OIDC login is implemented in-process (always `false` today).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oauth2_oidc_builtin: Option<bool>,
+    /// Whether in-memory auth harness is active (no PG pool — not KV).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth_kv_harness_active: Option<bool>,
+    /// Documented external SSO integration pattern when `oauth2_oidc_builtin` is false.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub external_sso_pattern: Option<String>,
+}
+
+/// Task queue + query engine operational snapshot (SPEC-024 Phase 4.3).
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct OperationalHealth {
+    pub task_queue: TaskQueueHealthSnapshot,
+    pub query_engine: QueryEngineHealthSnapshot,
+    /// Structured logging / OTLP runtime config (SPEC-024 Phase 4.5).
+    pub observability: ObservabilityHealthSnapshot,
+    /// KV ↔ relational document read-model reconciliation (SPEC-024 Phase 4.6).
+    pub read_model: ReadModelHealthSnapshot,
+    /// Migration bootstrap summary (SPEC-024 pass 10 — operator visibility).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub migration: Option<MigrationHealthSnapshot>,
+    /// Ingest execution model (SPEC-024 pass 12 — uniformity).
+    pub ingestion: IngestionHealthSnapshot,
+    /// Chunk storage layout (SPEC-024 pass 12 — storage efficiency).
+    pub storage: StorageHealthSnapshot,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct IngestionHealthSnapshot {
+    /// All API document uploads enqueue worker tasks (no sync HTTP persist).
+    pub execution_model: String,
+    /// Persist saga SSOT trait name for operators.
+    pub persist_ssot: String,
+    /// Duplicate uploads re-ingest when prior doc is not actively processing.
+    pub duplicate_reingest_enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct StorageHealthSnapshot {
+    /// Authoritative chunk text location.
+    pub chunk_text_ssot: String,
+    /// Vector row metadata references chunk id instead of inline body.
+    pub vector_metadata_ref: String,
+    /// Chunk KV writes happen inside IngestionPersister (not a second path).
+    pub chunk_kv_in_persister: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct MigrationHealthSnapshot {
+    pub latest_version: Option<i64>,
+    pub source_ids_indexes_ready: bool,
+    pub pgvector_iterative_scan_capable: bool,
+    pub ready_for_traffic: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct TaskQueueHealthSnapshot {
+    pub pending: u64,
+    pub processing: u64,
+    pub failed: u64,
+    /// Backpressure label: `normal`, `elevated`, or `critical`.
+    pub pressure: String,
+    pub pending_warn_threshold: u64,
+    pub pending_critical_threshold: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operator_action: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct QueryEngineHealthSnapshot {
+    /// Default query mode (e.g. `"mix"`, `"hybrid"`).
+    pub default_mode: String,
+    pub reranker_configured: bool,
+    pub community_refresh_debounce_secs: u64,
+    /// Hybrid mode chunk merge: `"round_robin"` (LightRAG) or `"rrf"`.
+    pub hybrid_fusion: String,
+    /// Mix mode chunk merge: `"rrf"` (default) or `"weighted"`.
+    pub mix_fusion: String,
+    /// Workspaces with debounced Louvain refresh scheduled (scale coalescing signal).
+    pub community_refresh_scheduled_workspaces: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ObservabilityHealthSnapshot {
+    /// Active log format: `"plain"` or `"json"` (`EDGEQUAKE_LOG_FORMAT`).
+    pub log_format: String,
+    /// Whether OTLP export is enabled at runtime.
+    pub otel_enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ReadModelHealthSnapshot {
+    /// Merge rule for document counts and list backfill.
+    pub merge_strategy: String,
+    /// Relational `documents` table backfill when KV metadata is missing.
+    pub relational_backfill_enabled: bool,
+    /// Per-document entity_count reconciled against AGE graph on list.
+    pub entity_count_graph_reconcile: bool,
 }
 
 /// Build metadata embedded at compile time.
@@ -204,6 +349,8 @@ mod tests {
             schema: None,
             providers: None,
             pdf_storage_enabled: None,
+            operational: None,
+            capabilities: None,
         };
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("\"status\":\"healthy\""));
@@ -240,6 +387,8 @@ mod tests {
             }),
             providers: None,
             pdf_storage_enabled: None,
+            operational: None,
+            capabilities: None,
         };
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("\"schema\""));
@@ -295,6 +444,8 @@ mod tests {
             schema: None,
             providers: None,
             pdf_storage_enabled: None,
+            operational: None,
+            capabilities: None,
         };
         let json = serde_json::to_string(&response).unwrap();
         // llm_provider_name should be skipped when None
@@ -365,6 +516,8 @@ mod tests {
                 },
             }),
             pdf_storage_enabled: Some(true),
+            operational: None,
+            capabilities: None,
         };
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("\"providers\""));

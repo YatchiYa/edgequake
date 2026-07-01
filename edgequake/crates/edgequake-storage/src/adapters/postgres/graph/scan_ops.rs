@@ -1,5 +1,6 @@
 //! Bounded graph scan — SPEC-006 postgres push-down.
 
+use super::helpers::EdgeTenantFilterMode;
 use super::PostgresAGEGraphStorage;
 use crate::error::{Result, StorageError};
 use crate::traits::{EdgeListFilter, GraphEdge, GraphNode, NodeListFilter, PagedGraphResult};
@@ -7,68 +8,11 @@ use sqlx::Row;
 
 impl PostgresAGEGraphStorage {
     fn build_node_where_clause(filter: &NodeListFilter) -> String {
-        let mut conditions = Vec::new();
-
-        if let Some(tid) = filter.tenant_id.as_deref() {
-            conditions.push(format!(
-                "ag_catalog.agtype_to_json(v.properties)->>'tenant_id' = '{}'",
-                Self::escape_sql_string(tid)
-            ));
-        }
-        if let Some(wid) = filter.workspace_id.as_deref() {
-            conditions.push(format!(
-                "ag_catalog.agtype_to_json(v.properties)->>'workspace_id' = '{}'",
-                Self::escape_sql_string(wid)
-            ));
-        }
-        if let Some(etype) = filter.entity_type.as_deref() {
-            conditions.push(format!(
-                "UPPER(ag_catalog.agtype_to_json(v.properties)->>'entity_type') = UPPER('{}')",
-                Self::escape_sql_string(etype)
-            ));
-        }
-        if let Some(search) = filter.search.as_deref() {
-            let q = Self::escape_sql_string(&search.to_lowercase());
-            conditions.push(format!(
-                "(LOWER(ag_catalog.agtype_to_json(v.properties)->>'node_id') LIKE '%{q}%' \
-                 OR LOWER(COALESCE(ag_catalog.agtype_to_json(v.properties)->>'description', '')) LIKE '%{q}%')"
-            ));
-        }
-
-        if conditions.is_empty() {
-            "TRUE".to_string()
-        } else {
-            conditions.join(" AND ")
-        }
+        Self::build_vertex_property_where("v", filter)
     }
 
     fn build_edge_where_clause(filter: &EdgeListFilter) -> String {
-        let mut conditions = Vec::new();
-
-        if let Some(tid) = filter.tenant_id.as_deref() {
-            conditions.push(format!(
-                "ag_catalog.agtype_to_json(e.properties)->>'tenant_id' = '{}'",
-                Self::escape_sql_string(tid)
-            ));
-        }
-        if let Some(wid) = filter.workspace_id.as_deref() {
-            conditions.push(format!(
-                "ag_catalog.agtype_to_json(e.properties)->>'workspace_id' = '{}'",
-                Self::escape_sql_string(wid)
-            ));
-        }
-        if let Some(rel) = filter.relationship_type.as_deref() {
-            conditions.push(format!(
-                "UPPER(ag_catalog.agtype_to_json(e.properties)->>'relation_type') = UPPER('{}')",
-                Self::escape_sql_string(rel)
-            ));
-        }
-
-        if conditions.is_empty() {
-            "TRUE".to_string()
-        } else {
-            conditions.join(" AND ")
-        }
+        Self::build_edge_property_where("e", filter, EdgeTenantFilterMode::Strict)
     }
 
     pub(super) async fn pg_list_nodes_filtered(
@@ -167,8 +111,8 @@ impl PostgresAGEGraphStorage {
                 ag_catalog.agtype_to_json(sv.properties)->>'node_id' AS source_id,
                 ag_catalog.agtype_to_json(tv.properties)->>'node_id' AS target_id
              FROM {graph}.\"_ag_label_edge\" e
-             JOIN {graph}.\"_ag_label_vertex\" sv ON e.start_id = sv.id
-             JOIN {graph}.\"_ag_label_vertex\" tv ON e.end_id = tv.id
+             JOIN {graph}.\"_ag_label_vertex\" sv ON e.start_id::text = sv.id::text
+             JOIN {graph}.\"_ag_label_vertex\" tv ON e.end_id::text = tv.id::text
              WHERE {where_clause}
              ORDER BY source_id, target_id
              OFFSET {offset} LIMIT {limit}",
@@ -311,8 +255,8 @@ impl PostgresAGEGraphStorage {
                 ag_catalog.agtype_to_json(sv.properties)->>'node_id' AS source_id,
                 ag_catalog.agtype_to_json(tv.properties)->>'node_id' AS target_id
              FROM {graph}.\"_ag_label_edge\" e
-             JOIN {graph}.\"_ag_label_vertex\" sv ON e.start_id = sv.id
-             JOIN {graph}.\"_ag_label_vertex\" tv ON e.end_id = tv.id
+             JOIN {graph}.\"_ag_label_vertex\" sv ON e.start_id::text = sv.id::text
+             JOIN {graph}.\"_ag_label_vertex\" tv ON e.end_id::text = tv.id::text
              WHERE {tenant_where} AND ({source_where})
              ORDER BY source_id, target_id",
             props = props_expr,
@@ -365,8 +309,8 @@ impl PostgresAGEGraphStorage {
                 ag_catalog.agtype_to_json(sv.properties)->>'node_id' AS source_id,
                 ag_catalog.agtype_to_json(tv.properties)->>'node_id' AS target_id
              FROM {graph}.\"_ag_label_edge\" e
-             JOIN {graph}.\"_ag_label_vertex\" sv ON e.start_id = sv.id
-             JOIN {graph}.\"_ag_label_vertex\" tv ON e.end_id = tv.id
+             JOIN {graph}.\"_ag_label_vertex\" sv ON e.start_id::text = sv.id::text
+             JOIN {graph}.\"_ag_label_vertex\" tv ON e.end_id::text = tv.id::text
              WHERE {tenant_where}
                AND (
                  {props}->>'id' = '{esc_id}'

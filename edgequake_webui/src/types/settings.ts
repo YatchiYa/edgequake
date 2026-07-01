@@ -52,6 +52,19 @@ export interface QuerySettings {
    * @implements SPEC-005: Document filters for queries
    */
   documentFilter?: DocumentFilter;
+  /**
+   * Explicitly selected document IDs for query scope restriction.
+   * Rendered as dismissible pills in the query bar.
+   * Merged into documentFilter.document_ids before API calls.
+   * Persisted across sessions — cleared only by explicit user action.
+   * @implements SPEC-031: Explicit document scope selection
+   */
+  scopedDocumentIds?: string[];
+  /**
+   * When true, stream context events request full chunk text (content_granularity: agent).
+   * @implements SPEC-037
+   */
+  fullChunkContent?: boolean;
 }
 
 export interface IngestionSettings {

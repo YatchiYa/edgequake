@@ -81,6 +81,7 @@
 //! 2. Headers (`X-Tenant-ID`, `X-Workspace-ID`)
 //! 3. Default tenant (for non-authenticated deployments)
 
+use axum::extract::DefaultBodyLimit;
 use axum::{
     middleware,
     routing::{delete, get, patch, post, put},
@@ -92,10 +93,32 @@ use crate::state::AppState;
 
 /// Create the API router.
 pub fn create_router(state: AppState) -> Router {
-    let api_v1 = api_v1_routes().route_layer(middleware::from_fn_with_state(
+    let api_v1 = api_v1_routes()
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::middleware::tenant_rate_limit_from_state,
+        ))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::middleware::protected_api_auth,
+        ));
+
+    let api_v2 = api_v2_routes()
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::middleware::tenant_rate_limit_from_state,
+        ))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::middleware::protected_api_auth,
+        ));
+
+    let ollama = ollama_api_routes().route_layer(middleware::from_fn_with_state(
         state.clone(),
-        crate::middleware::protected_api_auth,
+        crate::middleware::ollama_compat_gate,
     ));
+
+    let mcp = mcp_routes(state.clone());
 
     Router::new()
         // Health endpoints
@@ -112,10 +135,58 @@ pub fn create_router(state: AppState) -> Router {
             get(handlers::ws_progress_by_track_id),
         )
         // Ollama Emulation API (GAP-038)
-        .nest("/api", ollama_api_routes())
+        .nest("/api", ollama)
         // API v1 endpoints
         .nest("/api/v1", api_v1)
+        // API v2 endpoints (SPEC-027 IMP-025)
+        .nest("/api/v2", api_v2)
+        .merge(mcp)
         .with_state(state)
+}
+
+/// MCP Streamable HTTP + OAuth discovery (root-level for client ergonomics).
+fn mcp_routes(state: AppState) -> Router<AppState> {
+    use crate::mcp::gateway::body::MCP_MAX_BODY_BYTES;
+
+    let mcp_post = Router::new()
+        .route("/mcp", post(handlers::mcp_handler))
+        .layer(DefaultBodyLimit::max(MCP_MAX_BODY_BYTES))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::middleware::tenant_rate_limit_from_state,
+        ))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::mcp::auth::mcp_gateway_auth,
+        ));
+
+    Router::new()
+        .route(
+            "/.well-known/oauth-protected-resource",
+            get(handlers::mcp_oauth_protected_resource),
+        )
+        .route(
+            "/.well-known/mcp/server.json",
+            get(handlers::mcp_registry_server_json),
+        )
+        .merge(mcp_post)
+}
+
+/// API v2 routes — Level 4 workspace-scoped job resources (unpublished; no v1 break).
+fn api_v2_routes() -> Router<AppState> {
+    Router::new()
+        .route(
+            "/workspaces/{workspace_id}/jobs",
+            post(handlers::create_workspace_job).get(handlers::list_workspace_jobs),
+        )
+        .route(
+            "/workspaces/{workspace_id}/jobs/catalog",
+            get(handlers::list_workspace_job_catalog),
+        )
+        .route(
+            "/workspaces/{workspace_id}/jobs/{job_id}",
+            get(handlers::get_workspace_job).delete(handlers::cancel_workspace_job),
+        )
 }
 
 /// Ollama-compatible API routes.
@@ -139,6 +210,8 @@ fn api_v1_routes() -> Router<AppState> {
         .route("/auth/refresh", post(handlers::refresh_token))
         .route("/auth/logout", post(handlers::logout))
         .route("/auth/me", get(handlers::get_me))
+        .route("/auth/oidc/login", get(handlers::oidc_login))
+        .route("/auth/oidc/callback", get(handlers::oidc_callback))
         // Users (Phase 3)
         .route("/users", post(handlers::create_user))
         .route("/users", get(handlers::list_users))
@@ -164,6 +237,18 @@ fn api_v1_routes() -> Router<AppState> {
         .route(
             "/admin/config/defaults",
             patch(handlers::update_server_defaults),
+        )
+        // SPEC-021 P-D2: Storage health inspection + repair (admin-only)
+        .route("/admin/storage/inspect", get(handlers::storage_inspect))
+        .route("/admin/storage/repair", post(handlers::storage_repair))
+        // SPEC-021 P-G1b: legacy entity reconciliation (admin-gated, dry-run + confirm).
+        .route(
+            "/admin/entities/reconcile",
+            get(handlers::entity_reconcile_plan),
+        )
+        .route(
+            "/admin/entities/reconcile",
+            post(handlers::entity_reconcile_execute),
         )
         // Workspaces (Multi-tenancy)
         .route(
@@ -290,6 +375,9 @@ fn api_v1_routes() -> Router<AppState> {
         .route("/documents/pdf/{pdf_id}", delete(handlers::delete_pdf))
         // Document Scan API (GAP-014) - MUST come before /documents/{document_id}
         .route("/documents/scan", post(handlers::scan_directory))
+        // SPEC-031: Lightweight document title search for scope picker
+        // MUST come before /documents/{document_id} to avoid routing conflict
+        .route("/documents/search", get(handlers::search_documents))
         // Reprocess Failed Documents (GAP-039) - MUST come before /documents/{document_id}
         .route("/documents/reprocess", post(handlers::reprocess_failed))
         // Recover Stuck Processing Documents - MUST come before /documents/{document_id}
@@ -307,6 +395,11 @@ fn api_v1_routes() -> Router<AppState> {
         .route(
             "/documents/{document_id}/failed-chunks",
             get(handlers::list_failed_chunks),
+        )
+        // Phase 4h: multimodal re-analyze without re-parse (before /documents/{document_id})
+        .route(
+            "/documents/{document_id}/reanalyze",
+            post(handlers::reanalyze_multimodal),
         )
         // OODA-07: Full lineage and metadata endpoints
         .route(
@@ -331,6 +424,20 @@ fn api_v1_routes() -> Router<AppState> {
         // Query
         .route("/query", post(handlers::execute_query))
         .route("/query/stream", post(handlers::stream_query))
+        .route("/query/context", post(handlers::retrieve_query_context))
+        .route(
+            "/query/context/search",
+            post(handlers::search_query_context),
+        )
+        .route(
+            "/query/context/artifacts/{artifact_type}/{artifact_id}",
+            get(handlers::get_context_artifact),
+        )
+        .route(
+            "/query/context/{retrieval_id}",
+            get(handlers::fetch_query_context),
+        )
+        .route("/mcp", post(handlers::mcp_handler_v1))
         // Chat (Unified chat completions API - preferred for client applications)
         .route("/chat/completions", post(handlers::chat_completion))
         .route(

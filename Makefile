@@ -133,7 +133,8 @@ release: ## Bump all crate versions and tag release using cargo-release (uses VE
 .PHONY: help install dev dev-auth dev-bg dev-auth-bg dev-memory kill-app stop clean build test lint format \
         backend-dev backend-db backend-memory backend-bg backend-build backend-build-online backend-sqlx-prepare backend-test backend-run \
         frontend-dev frontend-bg frontend-build frontend-test frontend-lint \
-        db-start db-stop db-wait db-logs db-shell docker-network-diagnose stop-docker-services \
+        openapi-snapshot codegen-openapi codegen-openapi-refresh codegen-openapi-live \
+        db-start db-stop db-wait db-logs db-shell postgres-image-build docker-network-diagnose stop-docker-services \
         docker-build docker-up docker-prebuilt docker-prebuilt-down docker-prebuilt-logs docker-ps-prebuilt docker-api-only docker-down docker-logs \
         stack stack-down stack-logs stack-status stack-restart stack-pull \
         check-deps status \
@@ -207,8 +208,26 @@ export
 
 # Environment variables (can be overridden from shell)
 OPENAI_API_KEY ?= $(shell echo $$OPENAI_API_KEY)
+
+# P-G13: dev stability defaults — prevent OOM during heavy PDF ingestion.
+# Override from shell or .env when you need higher throughput.
+WORKER_THREADS ?= 4
+MAX_TASKS_PER_TENANT ?= 2
+EDGEQUAKE_PDF_CONCURRENCY ?= 2
+EDGEQUAKE_PDF_VISION_JOBS ?= 2
+export WORKER_THREADS MAX_TASKS_PER_TENANT EDGEQUAKE_PDF_CONCURRENCY EDGEQUAKE_PDF_VISION_JOBS
+
+# Shared exports appended to /tmp/edgequake-start.sh by backend-bg.
+define BACKEND_STABILITY_EXPORTS
+printf '%s\n' "export WORKER_THREADS=\"$(WORKER_THREADS)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export MAX_TASKS_PER_TENANT=\"$(MAX_TASKS_PER_TENANT)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_PDF_CONCURRENCY=\"$(EDGEQUAKE_PDF_CONCURRENCY)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_PDF_VISION_JOBS=\"$(EDGEQUAKE_PDF_VISION_JOBS)\"" >> /tmp/edgequake-start.sh;
+endef
 DEV_AUTH_ENABLED ?= false
 DEV_DISABLE_DEMO_LOGIN ?= false
+# SPEC-027 AC-4: frictionless local dev when DEV_AUTH_ENABLED=false (auth secure by default otherwise).
+DEV_EDGEQUAKE_DEV_MODE := $(if $(filter false,$(DEV_AUTH_ENABLED)),true,false)
 
 # OODA-09: Auto-configure providers based on OPENAI_API_KEY presence.
 # WHY: User sets OPENAI_API_KEY but system still uses Ollama defaults.
@@ -282,6 +301,8 @@ help: ## Show this help message
 	@echo "  $(GREEN)make frontend-dev$(RESET)  Start frontend dev server"
 	@echo "  $(GREEN)make frontend-build$(RESET) Build frontend for production"
 	@echo "  $(GREEN)make frontend-lint$(RESET) Lint frontend code"
+	@echo "  $(GREEN)make codegen-openapi-refresh$(RESET) Refresh OpenAPI snapshot + TypeScript types (offline)"
+	@echo "  $(GREEN)make codegen-openapi-live$(RESET) Fetch live OpenAPI from backend + regenerate types"
 	@echo ""
 	@echo "$(BOLD)$(BLUE)🗄️  Database$(RESET)"
 	@echo "  $(GREEN)make db-start$(RESET)     Start PostgreSQL container"
@@ -460,7 +481,9 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 			PORT="$(BACKEND_PORT)" \
 			DATABASE_URL="$$_EFF_DB_URL" \
 			OPENAI_API_KEY="$(OPENAI_API_KEY)" \
-			EDGEQUAKE_AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
+			EDGEQUAKE_DEV_MODE="$(DEV_EDGEQUAKE_DEV_MODE)" \
+			EDGEQUAKE_DEV_MODE="$(DEV_EDGEQUAKE_DEV_MODE)" \
+		EDGEQUAKE_AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
 			AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
 			cargo run 2>&1 | sed 's/^/[backend] /') & \
 		BACKEND_PID=$$!; \
@@ -468,7 +491,9 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 		(cd $(BACKEND_DIR) && \
 			PORT="$(BACKEND_PORT)" \
 			DATABASE_URL="$$_EFF_DB_URL" \
-			EDGEQUAKE_AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
+			EDGEQUAKE_DEV_MODE="$(DEV_EDGEQUAKE_DEV_MODE)" \
+			EDGEQUAKE_DEV_MODE="$(DEV_EDGEQUAKE_DEV_MODE)" \
+		EDGEQUAKE_AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
 			AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
 			OLLAMA_HOST="http://localhost:11434" \
 			OLLAMA_MODEL="gemma4:latest" \
@@ -477,7 +502,7 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 		BACKEND_PID=$$!; \
 	fi; \
 	echo "$(YELLOW)→ Starting frontend on port $(FRONTEND_PORT)...$(RESET)"; \
-	(sleep 2 && cd $(FRONTEND_DIR) && PORT="$(FRONTEND_PORT)" NEXT_PUBLIC_API_URL="$(BACKEND_URL)" NEXT_PUBLIC_AUTH_ENABLED="$(DEV_AUTH_ENABLED)" NEXT_PUBLIC_DISABLE_DEMO_LOGIN="$(DEV_DISABLE_DEMO_LOGIN)" sh -c '(pnpm run dev 2>/dev/null || bun run dev)' 2>&1 | sed 's/^/[frontend] /') & \
+	(sleep 2 && cd $(FRONTEND_DIR) && PORT="$(FRONTEND_PORT)" EDGEQUAKE_API_URL="$(BACKEND_URL)" NEXT_PUBLIC_API_URL="$(BACKEND_URL)" NEXT_PUBLIC_AUTH_ENABLED="$(DEV_AUTH_ENABLED)" NEXT_PUBLIC_DISABLE_DEMO_LOGIN="$(DEV_DISABLE_DEMO_LOGIN)" sh -c '(pnpm run dev 2>/dev/null || bun run dev)' 2>&1 | sed 's/^/[frontend] /') & \
 	FRONTEND_PID=$$!; \
 	echo "$(GREEN)✓ Startup in progress$(RESET)"; \
 	echo "$(YELLOW)Press Ctrl+C to stop only this session's app processes$(RESET)"; \
@@ -702,6 +727,7 @@ backend-dev: db-wait ## Run backend in development mode with PostgreSQL (uses .e
 		PORT="$(BACKEND_PORT)" \
 		DATABASE_URL="$$_EFF_DB_URL" \
 		OPENAI_API_KEY="$(OPENAI_API_KEY)" \
+		EDGEQUAKE_DEV_MODE="$(DEV_EDGEQUAKE_DEV_MODE)" \
 		EDGEQUAKE_AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
 		AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
 		EDGEQUAKE_DEFAULT_LLM_PROVIDER="$(EDGEQUAKE_DEFAULT_LLM_PROVIDER)" \
@@ -726,6 +752,7 @@ backend-db: db-wait ## Run backend with PostgreSQL storage (uses .env configurat
 		PORT="$(BACKEND_PORT)" \
 		DATABASE_URL="$$_EFF_DB_URL" \
 		OPENAI_API_KEY="$(OPENAI_API_KEY)" \
+		EDGEQUAKE_DEV_MODE="$(DEV_EDGEQUAKE_DEV_MODE)" \
 		EDGEQUAKE_AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
 		AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
 		EDGEQUAKE_DEFAULT_LLM_PROVIDER="$(EDGEQUAKE_DEFAULT_LLM_PROVIDER)" \
@@ -772,9 +799,11 @@ backend-bg: db-wait ## Run backend in background with PostgreSQL (respects MISTR
 		printf '%s\n' "#!/bin/bash" > /tmp/edgequake-start.sh; \
 		printf '%s\n' "export PORT=\"$(BACKEND_PORT)\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export DATABASE_URL=\"$$_EFF_DB_URL\"" >> /tmp/edgequake-start.sh; \
+		$(BACKEND_STABILITY_EXPORTS) \
 		printf '%s\n' "export MISTRAL_API_KEY=\"$$_MISTRAL_KEY\"" >> /tmp/edgequake-start.sh; \
 		[ -n "$(OPENAI_API_KEY)" ] && printf '%s\n' "export OPENAI_API_KEY=\"$(OPENAI_API_KEY)\"" >> /tmp/edgequake-start.sh; \
 		[ -n "$$ANTHROPIC_API_KEY" ] && printf '%s\n' "export ANTHROPIC_API_KEY=\"$$ANTHROPIC_API_KEY\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_DEV_MODE=\"$(DEV_EDGEQUAKE_DEV_MODE)\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_AUTH_ENABLED=\"$(DEV_AUTH_ENABLED)\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export AUTH_ENABLED=\"$(DEV_AUTH_ENABLED)\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_LLM_PROVIDER=\"mistral\"" >> /tmp/edgequake-start.sh; \
@@ -792,9 +821,11 @@ backend-bg: db-wait ## Run backend in background with PostgreSQL (respects MISTR
 		printf '%s\n' "#!/bin/bash" > /tmp/edgequake-start.sh; \
 		printf '%s\n' "export PORT=\"$(BACKEND_PORT)\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export DATABASE_URL=\"$$_EFF_DB_URL\"" >> /tmp/edgequake-start.sh; \
+		$(BACKEND_STABILITY_EXPORTS) \
 		printf '%s\n' "export OPENAI_API_KEY=\"$(OPENAI_API_KEY)\"" >> /tmp/edgequake-start.sh; \
 		[ -n "$$MISTRAL_API_KEY" ] && printf '%s\n' "export MISTRAL_API_KEY=\"$$MISTRAL_API_KEY\"" >> /tmp/edgequake-start.sh; \
 		[ -n "$$ANTHROPIC_API_KEY" ] && printf '%s\n' "export ANTHROPIC_API_KEY=\"$$ANTHROPIC_API_KEY\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_DEV_MODE=\"$(DEV_EDGEQUAKE_DEV_MODE)\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_AUTH_ENABLED=\"$(DEV_AUTH_ENABLED)\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export AUTH_ENABLED=\"$(DEV_AUTH_ENABLED)\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_LLM_PROVIDER=\"openai\"" >> /tmp/edgequake-start.sh; \
@@ -807,6 +838,8 @@ backend-bg: db-wait ## Run backend in background with PostgreSQL (respects MISTR
 		printf '%s\n' "#!/bin/bash" > /tmp/edgequake-start.sh; \
 		printf '%s\n' "export PORT=\"$(BACKEND_PORT)\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export DATABASE_URL=\"$$_EFF_DB_URL\"" >> /tmp/edgequake-start.sh; \
+		$(BACKEND_STABILITY_EXPORTS) \
+		printf '%s\n' "export EDGEQUAKE_DEV_MODE=\"$(DEV_EDGEQUAKE_DEV_MODE)\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_AUTH_ENABLED=\"$(DEV_AUTH_ENABLED)\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export AUTH_ENABLED=\"$(DEV_AUTH_ENABLED)\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_LLM_PROVIDER=\"ollama\"" >> /tmp/edgequake-start.sh; \
@@ -900,6 +933,33 @@ frontend-lint: ## Lint frontend code
 frontend-test: ## Run frontend tests
 	@echo "$(BLUE)Running frontend tests...$(RESET)"
 	@cd $(FRONTEND_DIR) && (pnpm test 2>/dev/null || bun test) || echo "$(YELLOW)No tests configured$(RESET)"
+
+# ============================================================================
+# OpenAPI / TypeScript codegen (SPEC-027 OAS-009)
+# ============================================================================
+
+openapi-snapshot: ## Regenerate committed OpenAPI snapshot from ApiDoc (offline, no backend)
+	@echo "$(BLUE)Refreshing OpenAPI snapshot from edgequake-api ApiDoc...$(RESET)"
+	@cd $(BACKEND_DIR) && cargo test -p edgequake-api spec027_write_openapi_snapshot \
+		--test spec027_api_contract -- --ignored --nocapture
+	@echo "$(GREEN)✓ Snapshot: $(FRONTEND_DIR)/openapi/openapi.snapshot.json$(RESET)"
+
+codegen-openapi: ## Generate TypeScript types from committed OpenAPI snapshot (offline)
+	@echo "$(BLUE)Generating TypeScript types from OpenAPI snapshot...$(RESET)"
+	@cd $(FRONTEND_DIR) && ./scripts/codegen-openapi.sh --offline
+	@echo "$(GREEN)✓ Types: $(FRONTEND_DIR)/openapi/schema.d.ts$(RESET)"
+
+codegen-openapi-refresh: openapi-snapshot codegen-openapi ## Refresh snapshot + regenerate schema.d.ts (offline)
+	@echo "$(GREEN)✓ OpenAPI codegen refresh complete$(RESET)"
+
+codegen-openapi-live: ## Fetch live OpenAPI from running backend + regenerate schema.d.ts
+	@echo "$(BLUE)Fetching OpenAPI from $(BACKEND_URL)/api-docs/openapi.json ...$(RESET)"
+	@curl -fsS "$(BACKEND_URL)/health" >/dev/null 2>&1 || { \
+		echo "$(RED)❌ Backend not reachable at $(BACKEND_URL). Run make backend-bg or make dev-bg first.$(RESET)"; \
+		exit 1; \
+	}
+	@cd $(FRONTEND_DIR) && OPENAPI_URL="$(BACKEND_URL)/api-docs/openapi.json" ./scripts/codegen-openapi.sh
+	@echo "$(GREEN)✓ Live OpenAPI snapshot + schema.d.ts updated$(RESET)"
 
 # ============================================================================
 # Database
@@ -1002,10 +1062,18 @@ db-start: ## Start PostgreSQL container
 	if command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' 2>/dev/null | grep -qx 'edgequake-postgres'; then \
 		for i in 1 2 3 4 5; do \
 			if pg_isready -h localhost -p "$$_DB_PORT" >/dev/null 2>&1; then \
-				echo "$(GREEN)✓ Existing edgequake-postgres container is already running and reachable$(RESET)"; \
-				_EFF_URL=$$(printf '%s' "$(DATABASE_URL)" | sed -E "s|(@[^:]+):[0-9]+/|\1:$$_DB_PORT/|"); \
-				printf '%s' "$$_EFF_URL" > /tmp/edgequake-db-url; \
-				exit 0; \
+				_PV_SHIP=$$(docker exec edgequake-postgres sed -n "s/default_version = '\([^']*\)'.*/\1/p" /usr/share/postgresql/16/extension/vector.control 2>/dev/null || true); \
+				case "$$_PV_SHIP" in \
+					0.8.*|0.9.*|[1-9]*) \
+						echo "$(GREEN)✓ Existing edgequake-postgres container is already running and reachable$(RESET)"; \
+						_EFF_URL=$$(printf '%s' "$(DATABASE_URL)" | sed -E "s|(@[^:]+):[0-9]+/|\1:$$_DB_PORT/|"); \
+						printf '%s' "$$_EFF_URL" > /tmp/edgequake-db-url; \
+						exit 0 ;; \
+					*) \
+						echo "$(YELLOW)→ edgequake-postgres ships pgvector $$_PV_SHIP (< 0.8); rebuilding container...$(RESET)"; \
+						docker rm -f edgequake-postgres >/dev/null 2>&1 || true; \
+						break ;; \
+				esac; \
 			fi; \
 			sleep 2; \
 		done; \
@@ -1017,10 +1085,18 @@ db-start: ## Start PostgreSQL container
 		docker start edgequake-postgres >/dev/null 2>&1 || true; \
 		for i in 1 2 3 4 5; do \
 			if pg_isready -h localhost -p "$$_DB_PORT" >/dev/null 2>&1; then \
-				echo "$(GREEN)✓ Existing edgequake-postgres container is ready$(RESET)"; \
-				_EFF_URL=$$(printf '%s' "$(DATABASE_URL)" | sed -E "s|(@[^:]+):[0-9]+/|\1:$$_DB_PORT/|"); \
-				printf '%s' "$$_EFF_URL" > /tmp/edgequake-db-url; \
-				exit 0; \
+				_PV_SHIP=$$(docker exec edgequake-postgres sed -n "s/default_version = '\([^']*\)'.*/\1/p" /usr/share/postgresql/16/extension/vector.control 2>/dev/null || true); \
+				case "$$_PV_SHIP" in \
+					0.8.*|0.9.*|[1-9]*) \
+						echo "$(GREEN)✓ Existing edgequake-postgres container is ready$(RESET)"; \
+						_EFF_URL=$$(printf '%s' "$(DATABASE_URL)" | sed -E "s|(@[^:]+):[0-9]+/|\1:$$_DB_PORT/|"); \
+						printf '%s' "$$_EFF_URL" > /tmp/edgequake-db-url; \
+						exit 0 ;; \
+					*) \
+						echo "$(YELLOW)→ edgequake-postgres ships pgvector $$_PV_SHIP (< 0.8); rebuilding container...$(RESET)"; \
+						docker rm -f edgequake-postgres >/dev/null 2>&1 || true; \
+						break ;; \
+				esac; \
 			fi; \
 			sleep 2; \
 		done; \
@@ -1040,7 +1116,7 @@ db-start: ## Start PostgreSQL container
 		exit 1; \
 	fi; \
 	TMP_LOG=$$(mktemp); \
-	if cd $(DOCKER_DIR) && POSTGRES_PORT="$$_DB_PORT" docker compose up -d postgres >"$$TMP_LOG" 2>&1; then \
+	if cd $(DOCKER_DIR) && POSTGRES_PORT="$$_DB_PORT" docker compose up -d --build postgres >"$$TMP_LOG" 2>&1; then \
 		cat "$$TMP_LOG"; \
 		rm -f "$$TMP_LOG"; \
 	else \
@@ -1062,9 +1138,23 @@ db-start: ## Start PostgreSQL container
 		echo "$(RED)✗ Database failed to start$(RESET)"; exit 1; \
 	fi; \
 	echo "$(GREEN)✓ Database is ready$(RESET)"; \
+	_PV_DB=$$(docker exec edgequake-postgres psql -U edgequake -d edgequake -tAc "SELECT extversion FROM pg_extension WHERE extname = 'vector'" 2>/dev/null | tr -d '[:space:]' || true); \
+	_PV_SHIP=$$(docker exec edgequake-postgres sed -n "s/default_version = '\([^']*\)'.*/\1/p" /usr/share/postgresql/16/extension/vector.control 2>/dev/null | tr -d '[:space:]' || true); \
+	if [ -n "$$_PV_DB" ] && [ -n "$$_PV_SHIP" ] && [ "$$_PV_DB" != "$$_PV_SHIP" ]; then \
+		echo "$(YELLOW)→ Upgrading pgvector catalog $$_PV_DB → $$_PV_SHIP (ALTER EXTENSION vector UPDATE)...$(RESET)"; \
+		docker exec edgequake-postgres psql -U edgequake -d edgequake -c "ALTER EXTENSION vector UPDATE;" >/dev/null 2>&1 || \
+			echo "$(YELLOW)  pgvector catalog upgrade deferred to backend migration 042$(RESET)"; \
+	fi; \
 	_EFF_URL=$$(printf '%s' "$(DATABASE_URL)" | sed -E "s|(@[^:]+):[0-9]+/|\1:$$_DB_PORT/|"); \
 	printf '%s' "$$_EFF_URL" > /tmp/edgequake-db-url; \
 	echo "$(GREEN)✓ Effective DATABASE_URL written to /tmp/edgequake-db-url$(RESET)"
+
+postgres-image-build: ## Build and verify edgequake-postgres Docker image (pgvector 0.8.3 + AGE 1.6.0)
+	@echo "$(BLUE)Building edgequake-postgres image...$(RESET)"
+	@cd $(DOCKER_DIR) && docker build -f Dockerfile.postgres -t edgequake-postgres:local .
+	@chmod +x $(DOCKER_DIR)/verify-postgres-extensions.sh
+	@bash $(DOCKER_DIR)/verify-postgres-extensions.sh edgequake-postgres:local
+	@echo "$(GREEN)✓ edgequake-postgres:local ready$(RESET)"
 
 db-stop: ## Stop PostgreSQL container
 	@echo "$(BLUE)Stopping PostgreSQL...$(RESET)"
@@ -1385,6 +1475,26 @@ test-count: ## Verify minimum test count (Target: >=2600)
 		exit 1; \
 	fi
 	@echo "$(GREEN)✓ Test count gate passed$(RESET)"
+
+test-spec021: ## SPEC-021 ingest resilience + P-G2 persister contracts (Rust + TS unit)
+	@echo "$(BLUE)Running SPEC-021 ingest resilience contracts...$(RESET)"
+	@cd edgequake && cargo test -p edgequake-api --test e2e_spec021_ingest_resilience -- --nocapture
+	@cd edgequake && cargo test -p edgequake-api --test e2e_spec021_ingestion_persister -- --nocapture
+	@cd edgequake && cargo test -p edgequake-api --test e2e_spec021_query_modes_http -- --nocapture
+	@cd edgequake && cargo test -p edgequake-pipeline --test contract_ingestion_persistence -- --nocapture
+	@cd edgequake && cargo test -p edgequake-query --test contract_query_modes -- --nocapture
+	@cd edgequake && cargo test -p edgequake-query --test contract_query_result_cache -- --nocapture
+	@cd edgequake && cargo test -p edgequake-pipeline --test contract_merger_graph_batch -- --nocapture
+	@cd edgequake && cargo test -p edgequake-api --test e2e_spec021_query_cache_invalidation -- --nocapture
+	@cd edgequake && cargo test -p edgequake-api --test e2e_spec021_worker_cache_invalidation -- --nocapture
+	@cd edgequake && cargo test -p edgequake-api --test spec021_test_provider_override_contract -- --nocapture
+	@cd edgequake && cargo test -p edgequake-api --test spec021_processor_cache_invalidator_contract -- --nocapture
+	@cd edgequake && cargo test -p edgequake-core --test spec021_orchestrator_cache_invalidation -- --nocapture
+	@cd edgequake && cargo test -p edgequake-api --lib ingest_admission -- --nocapture
+	@cd edgequake && cargo test -p edgequake-api --lib pdf_admission_registry -- --nocapture
+	@cd edgequake && cargo test -p edgequake-api --lib health_probes -- --nocapture
+	@cd $(FRONTEND_DIR) && bun test src/lib/api/__tests__/backend-readiness.test.ts
+	@echo "$(GREEN)✓ SPEC-021 contract tests passed$(RESET)"
 
 test-flaky: ## Run flaky test detection (3 iterations)
 	@echo "$(BLUE)Running flaky test detection...$(RESET)"
@@ -1903,6 +2013,25 @@ observability-proof: ## Run SPEC-018 observability proof suite (Rust + WebUI)
 
 observability-jaeger: ## Docker stack with Jaeger OTLP + JSON logs (SPEC-018)
 	@cd $(DOCKER_DIR) && docker compose -f docker-compose.yml -f docker-compose.observability.yml --profile observability up --build
+
+.PHONY: spec028-mcp-test mcp-registry-validate mcp-registry-publish
+
+spec028-mcp-test: ## Run SPEC-028 MCP E2E + registry contract tests
+	@cd edgequake && cargo test -p edgequake-api --features postgres \
+		--test spec028_mcp_e2e --test spec028_mcp_transport --test spec028_mcp_oauth_e2e \
+		--test spec028_mcp_registry --test spec028_api_contract
+
+mcp-registry-validate: spec028-mcp-test ## Validate MCP Registry server.json SSOT (code is law)
+	@command -v mcp-publisher >/dev/null || { \
+		curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$$(uname -s | tr '[:upper:]' '[:lower:]')_$$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" \
+			| tar xz mcp-publisher; \
+		mv mcp-publisher /tmp/mcp-publisher; \
+	}; \
+	cd specs/028-edgequake-query-service/mcp && /tmp/mcp-publisher validate || mcp-publisher validate
+
+mcp-registry-publish: mcp-registry-validate ## Publish EdgeQuake to official MCP Registry (requires: mcp-publisher login github)
+	@command -v mcp-publisher >/dev/null || { echo "$(RED)✗ Install mcp-publisher — see specs/028-edgequake-query-service/mcp/007-sota-implementation-roadmap.md$(RESET)"; exit 1; }
+	@cd specs/028-edgequake-query-service/mcp && mcp-publisher publish
 
 status: ## Show status of all services
 	@echo ""

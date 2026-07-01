@@ -51,14 +51,9 @@ impl PostgresAGEGraphStorage {
         Self::setup_age_session(&mut conn).await?;
 
         let index_queries = [
-            (
-                "idx_node_prop_node_id",
-                format!(
-                    r#"CREATE INDEX IF NOT EXISTS idx_node_prop_node_id 
-                       ON {}."Node" (ag_catalog.agtype_access_operator(properties, '"node_id"'::agtype))"#,
-                    self.graph_name
-                ),
-            ),
+            // ── "Node" label indexes (child table — contains all node rows) ──────────
+            // REMOVED: idx_node_prop_node_id (agtype_access_operator form, 0 scans)
+            //   → superseded by idx_node_prop_node_id_unique (UNIQUE btree, Migration 074)
             (
                 "idx_node_props_gin",
                 format!(
@@ -76,6 +71,29 @@ impl PostgresAGEGraphStorage {
                 ),
             ),
             (
+                "idx_node_tenant_id",
+                format!(
+                    r#"CREATE INDEX IF NOT EXISTS idx_node_tenant_id 
+                       ON {}."Node" (
+                         (ag_catalog.agtype_to_json(properties)->>'tenant_id')
+                       )"#,
+                    self.graph_name
+                ),
+            ),
+            (
+                "idx_node_workspace_id",
+                format!(
+                    r#"CREATE INDEX IF NOT EXISTS idx_node_workspace_id 
+                       ON {}."Node" (
+                         (ag_catalog.agtype_to_json(properties)->>'workspace_id')
+                       )"#,
+                    self.graph_name
+                ),
+            ),
+            // ── "EDGE" label indexes ────────────────────────────────────────────────
+            // REMOVED: idx_edge_start_end (composite, 0 scans — superseded by text-cast indexes)
+            // REMOVED: idx_edge_props_gin (GIN on edge properties, 0 scans)
+            (
                 "idx_edge_start_id",
                 format!(
                     r#"CREATE INDEX IF NOT EXISTS idx_edge_start_id 
@@ -92,53 +110,30 @@ impl PostgresAGEGraphStorage {
                 ),
             ),
             (
-                "idx_edge_start_end",
+                "idx_edge_source_id",
                 format!(
-                    r#"CREATE INDEX IF NOT EXISTS idx_edge_start_end 
-                       ON {}."EDGE" (start_id, end_id)"#,
+                    r#"CREATE INDEX IF NOT EXISTS idx_edge_source_id 
+                       ON {}."EDGE" (
+                         (ag_catalog.agtype_to_json(properties)->>'source_id')
+                       )"#,
                     self.graph_name
                 ),
             ),
             (
-                "idx_edge_props_gin",
+                "idx_edge_target_id",
                 format!(
-                    r#"CREATE INDEX IF NOT EXISTS idx_edge_props_gin 
-                       ON {}."EDGE" USING gin(properties)"#,
+                    r#"CREATE INDEX IF NOT EXISTS idx_edge_target_id 
+                       ON {}."EDGE" (
+                         (ag_catalog.agtype_to_json(properties)->>'target_id')
+                       )"#,
                     self.graph_name
                 ),
             ),
-            (
-                "idx_ag_vertex_props_gin",
-                format!(
-                    r#"CREATE INDEX IF NOT EXISTS idx_ag_vertex_props_gin 
-                       ON {}."_ag_label_vertex" USING gin(properties)"#,
-                    self.graph_name
-                ),
-            ),
-            (
-                "idx_ag_edge_start_id",
-                format!(
-                    r#"CREATE INDEX IF NOT EXISTS idx_ag_edge_start_id 
-                       ON {}."_ag_label_edge" (start_id)"#,
-                    self.graph_name
-                ),
-            ),
-            (
-                "idx_ag_edge_end_id",
-                format!(
-                    r#"CREATE INDEX IF NOT EXISTS idx_ag_edge_end_id 
-                       ON {}."_ag_label_edge" (end_id)"#,
-                    self.graph_name
-                ),
-            ),
-            (
-                "idx_ag_edge_start_end",
-                format!(
-                    r#"CREATE INDEX IF NOT EXISTS idx_ag_edge_start_end 
-                       ON {}."_ag_label_edge" (start_id, end_id)"#,
-                    self.graph_name
-                ),
-            ),
+            // REMOVED: All _ag_label_vertex and _ag_label_edge parent-table indexes.
+            // WHY: Those are AGE inheritance parent tables with 0 rows. All data lives
+            //      in the child label tables ("Node" and "EDGE"). Parent-table indexes
+            //      are never scanned and cause write amplification on every INSERT.
+            //      (SPEC-034 IMP-02, confirmed by pg_stat_user_indexes scan counts = 0)
         ];
 
         let mut indexes_created = 0;
@@ -184,5 +179,218 @@ impl PostgresAGEGraphStorage {
         }
 
         Ok(())
+    }
+
+    /// Bootstrap critical indexes CONCURRENTLY for existing databases (SPEC-032 W-01).
+    ///
+    /// # First Principle: Non-Blocking Index Creation
+    ///
+    /// `ensure_indexes()` uses `CREATE INDEX IF NOT EXISTS` which acquires a
+    /// `ShareLock` on the label table for the duration of the build. For a graph
+    /// with 100K+ nodes this blocks all concurrent writes for minutes.
+    ///
+    /// `CONCURRENTLY` builds the index without holding a table lock: reads and
+    /// writes continue normally while the index is built in the background
+    /// (PostgreSQL §CREATE INDEX §CONCURRENTLY).
+    ///
+    /// # Constraint
+    ///
+    /// `CREATE INDEX CONCURRENTLY` cannot run inside a transaction block.
+    /// This function acquires a pool connection and sends commands directly,
+    /// NOT inside a `BEGIN ... COMMIT` envelope.
+    ///
+    /// # When to Call
+    ///
+    /// Called ONCE at startup after `pg_initialize()` when the graph already
+    /// has rows (existing databases). The `concurrent_indexes_bootstrapped`
+    /// atomic flag prevents repeated runs.
+    ///
+    /// # Edge Cases Handled
+    ///
+    /// - Graph does not exist yet → returns Ok(()) silently (no label tables)
+    /// - Index already exists → `IF NOT EXISTS` is a no-op
+    /// - Index is INVALID (partial build interrupted) → detected via pg_index,
+    ///   dropped and rebuilt
+    /// - AGE not installed → returns Ok(()) silently
+    /// - Timeout during build → index is left INVALID, next startup retries
+    pub(in crate::adapters::postgres::graph) async fn bootstrap_concurrent_indexes(
+        &self,
+    ) -> Result<()> {
+        // Quick check: is AGE available?
+        let pool = self.pool.get().await?;
+
+        let age_available: bool =
+            sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'age')")
+                .fetch_one(&pool)
+                .await
+                .unwrap_or(false);
+
+        if !age_available {
+            tracing::debug!("AGE not installed — skipping concurrent index bootstrap");
+            return Ok(());
+        }
+
+        // Check if the Node label table exists (graph may not have been used yet)
+        let node_table_exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS (
+               SELECT 1 FROM pg_class c
+               JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = $1 AND c.relname = 'Node'
+             )",
+        )
+        .bind(&self.graph_name)
+        .fetch_one(&pool)
+        .await
+        .unwrap_or(false);
+
+        if !node_table_exists {
+            tracing::debug!(
+                graph = %self.graph_name,
+                "Node label table not yet created — skipping concurrent index bootstrap"
+            );
+            return Ok(());
+        }
+
+        // Check row count: if small, regular CREATE INDEX is fine; skip CONCURRENT
+        let node_count: i64 = sqlx::query_scalar(&format!(
+            r#"SELECT reltuples::bigint FROM pg_class c
+               JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = $1 AND c.relname = 'Node'"#
+        ))
+        .bind(&self.graph_name)
+        .fetch_one(&pool)
+        .await
+        .unwrap_or(0);
+
+        // Below 10K rows: regular CREATE INDEX is fast enough (< 1 second).
+        // Above 10K rows: use CONCURRENT to avoid blocking writes.
+        const CONCURRENT_THRESHOLD: i64 = 10_000;
+        let use_concurrent = node_count >= CONCURRENT_THRESHOLD;
+
+        tracing::info!(
+            graph = %self.graph_name,
+            node_count,
+            use_concurrent,
+            "AGE graph bootstrap: checking critical indexes"
+        );
+
+        // ── Critical unique index for MERGE/ON CONFLICT performance ────────────
+        // WHY UNIQUE: Migration 074 replaced the plain btree with a UNIQUE index so
+        // that pg_upsert_nodes_batch_native() can use ON CONFLICT DO UPDATE.
+        // A UNIQUE btree still serves all read queries that used the old plain btree.
+        let node_idx_name = "idx_node_prop_node_id_unique";
+        let node_idx_sql = format!(
+            r#"CREATE UNIQUE INDEX {concurrent} IF NOT EXISTS {name}
+               ON {graph}."Node"
+               ((ag_catalog.agtype_to_json(properties)->>'node_id'))"#,
+            concurrent = if use_concurrent { "CONCURRENTLY" } else { "" },
+            name = node_idx_name,
+            graph = self.graph_name,
+        );
+        self.ensure_critical_index_concurrent(&pool, node_idx_name, &node_idx_sql, use_concurrent)
+            .await;
+
+        // EDGE source_id + target_id composite index
+        let edge_table_exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS (
+               SELECT 1 FROM pg_class c
+               JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = $1 AND c.relname = 'EDGE'
+             )",
+        )
+        .bind(&self.graph_name)
+        .fetch_one(&pool)
+        .await
+        .unwrap_or(false);
+
+        if edge_table_exists {
+            // WHY UNIQUE: Migration 074 created idx_edge_source_target_unique so that
+            // pg_upsert_edges_batch_native() can use ON CONFLICT DO UPDATE.
+            self.ensure_critical_index_concurrent(
+                &pool,
+                "idx_edge_source_target_unique",
+                &format!(
+                    r#"CREATE UNIQUE INDEX {concurrent} IF NOT EXISTS idx_edge_source_target_unique
+                       ON {graph}."EDGE"
+                       (
+                         (ag_catalog.agtype_to_json(properties)->>'source_id'),
+                         (ag_catalog.agtype_to_json(properties)->>'target_id')
+                       )"#,
+                    concurrent = if use_concurrent { "CONCURRENTLY" } else { "" },
+                    graph = self.graph_name,
+                ),
+                use_concurrent,
+            )
+            .await;
+        }
+
+        Ok(())
+    }
+
+    /// Create or repair one critical index, handling INVALID state.
+    async fn ensure_critical_index_concurrent(
+        &self,
+        pool: &sqlx::PgPool,
+        index_name: &str,
+        create_sql: &str,
+        is_concurrent: bool,
+    ) {
+        // Check if index exists and is valid
+        let index_state: Option<bool> = sqlx::query_scalar(
+            "SELECT indisvalid FROM pg_index i
+             JOIN pg_class c ON c.oid = i.indexrelid
+             WHERE c.relname = $1",
+        )
+        .bind(index_name)
+        .fetch_optional(pool)
+        .await
+        .unwrap_or(None);
+
+        match index_state {
+            Some(true) => {
+                tracing::debug!(index = %index_name, "Bootstrap: index already valid, skip");
+                return;
+            }
+            Some(false) => {
+                // INVALID index: drop it so we can rebuild
+                tracing::warn!(
+                    index = %index_name,
+                    "Bootstrap: found INVALID index (interrupted build), dropping and rebuilding"
+                );
+                let drop_sql = format!("DROP INDEX CONCURRENTLY IF EXISTS {}", index_name);
+                if let Err(e) = sqlx::query(&drop_sql).execute(pool).await {
+                    tracing::warn!(
+                        index = %index_name,
+                        error = %e,
+                        "Bootstrap: failed to drop INVALID index"
+                    );
+                    return;
+                }
+            }
+            None => {
+                tracing::debug!(index = %index_name, "Bootstrap: index missing, creating");
+            }
+        }
+
+        // Run the CREATE INDEX [CONCURRENTLY] statement
+        // NOTE: CONCURRENTLY requires NOT being in a transaction block.
+        // We execute directly on the pool (not inside BEGIN/COMMIT).
+        match sqlx::query(create_sql).execute(pool).await {
+            Ok(_) => {
+                tracing::info!(
+                    index = %index_name,
+                    concurrent = is_concurrent,
+                    "Bootstrap: critical index created successfully"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    index = %index_name,
+                    error = %e,
+                    concurrent = is_concurrent,
+                    "Bootstrap: failed to create critical index (non-fatal, will retry next startup)"
+                );
+            }
+        }
     }
 }

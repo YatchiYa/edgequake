@@ -2,83 +2,203 @@
 
 use std::collections::HashMap;
 
-use edgequake_storage::{GraphEdge, GraphStorage, VectorStorage};
+use edgequake_storage::{EntityId, GraphEdge, GraphStorage, VectorStorage};
 
 use crate::error::Result;
 use crate::extractor::ExtractedRelationship;
 
-use super::{merge_descriptions, metadata, normalize_entity_name};
+use super::{merge_descriptions, metadata, MergeStats};
 
 impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphMerger<G, V> {
-    /// Merge a single relationship, returning true if it was newly created.
-    pub(super) async fn merge_relationship(&self, rel: ExtractedRelationship) -> Result<bool> {
-        let source_key = normalize_entity_name(&rel.source);
-        let target_key = normalize_entity_name(&rel.target);
-
-        // BR0006: Same-entity relationships forbidden (secondary defense)
-        // WHY: The parser should filter these, but defense-in-depth prevents
-        // self-loops from reaching the graph storage layer.
-        if source_key == target_key {
-            tracing::debug!(
-                source = %source_key,
-                "Merger: skipping self-referencing relationship (BR0006)"
-            );
-            return Ok(false);
-        }
-
-        // Skip relationships with empty normalized endpoints
-        if source_key.is_empty() || target_key.is_empty() {
-            tracing::debug!(
-                raw_source = %rel.source,
-                raw_target = %rel.target,
-                "Merger: skipping relationship with empty normalized endpoint"
-            );
-            return Ok(false);
-        }
-
-        // Store relationship embedding with type metadata (for Global query mode)
-        if let Some(embedding) = &rel.embedding {
+    /// Collect batched relationship vector upserts (P-G4-merger).
+    pub(super) fn collect_relationship_vector_batch(
+        &self,
+        relationships: &[ExtractedRelationship],
+    ) -> Vec<(String, Vec<f32>, serde_json::Value)> {
+        let mut batch = Vec::new();
+        for rel in relationships {
+            let source_id = EntityId::new(&rel.source);
+            let target_id = EntityId::new(&rel.target);
+            let source_key = source_id.as_graph_node_id();
+            let target_key = target_id.as_graph_node_id();
+            if source_key.is_empty() || target_key.is_empty() || source_key == target_key {
+                continue;
+            }
+            let Some(embedding) = rel.embedding.as_ref() else {
+                continue;
+            };
             let rel_id = format!("{}->{}:{}", source_key, target_key, rel.relation_type);
             let scope = metadata::TenantScope {
                 tenant_id: &self.tenant_id,
                 workspace_id: &self.workspace_id,
             };
             let metadata =
-                metadata::relationship_vector_metadata(&rel, &source_key, &target_key, scope);
+                metadata::relationship_vector_metadata(rel, source_key, target_key, scope);
+            batch.push((rel_id, embedding.clone(), metadata));
+        }
+        batch
+    }
 
-            self.vector_storage
-                .upsert(&[(rel_id, embedding.clone(), metadata)])
+    /// Merge relationships with batched graph reads/writes (P-G4-graph).
+    pub(super) async fn merge_relationships_batch(
+        &self,
+        relationships: Vec<ExtractedRelationship>,
+        stats: &mut MergeStats,
+    ) -> Result<()> {
+        if relationships.is_empty() {
+            return Ok(());
+        }
+
+        let mut valid = Vec::new();
+        let mut endpoint_keys = Vec::new();
+
+        for rel in relationships {
+            let source_id = EntityId::new(&rel.source);
+            let target_id = EntityId::new(&rel.target);
+            let source_key = source_id.as_graph_node_id().to_string();
+            let target_key = target_id.as_graph_node_id().to_string();
+
+            if source_key == target_key {
+                tracing::debug!(
+                    source = %source_key,
+                    "Merger: skipping self-referencing relationship (BR0006)"
+                );
+                continue;
+            }
+            if source_key.is_empty() || target_key.is_empty() {
+                tracing::debug!(
+                    raw_source = %rel.source,
+                    raw_target = %rel.target,
+                    "Merger: skipping relationship with empty normalized endpoint"
+                );
+                continue;
+            }
+
+            if !endpoint_keys.contains(&source_key) {
+                endpoint_keys.push(source_key.clone());
+            }
+            if !endpoint_keys.contains(&target_key) {
+                endpoint_keys.push(target_key.clone());
+            }
+            valid.push((rel, source_key, target_key));
+        }
+
+        if valid.is_empty() {
+            return Ok(());
+        }
+
+        let existing_nodes = self.graph_storage.get_nodes_batch(&endpoint_keys).await?;
+        let incident_edges = self
+            .graph_storage
+            .get_edges_for_nodes_batch(&endpoint_keys)
+            .await?;
+        let mut edge_map: HashMap<(String, String), GraphEdge> = HashMap::new();
+        for edge in incident_edges {
+            edge_map.insert((edge.source.clone(), edge.target.clone()), edge);
+        }
+
+        let mut placeholder_batch: Vec<(String, HashMap<String, serde_json::Value>)> = Vec::new();
+        let mut placeholders: HashMap<String, String> = HashMap::new();
+        for (rel, source_key, target_key) in &valid {
+            if !existing_nodes.contains_key(source_key) {
+                placeholders
+                    .entry(source_key.clone())
+                    .or_insert_with(|| rel.source.clone());
+            }
+            if !existing_nodes.contains_key(target_key) {
+                placeholders
+                    .entry(target_key.clone())
+                    .or_insert_with(|| rel.target.clone());
+            }
+        }
+        for (key, label) in placeholders {
+            placeholder_batch.push((key.clone(), self.placeholder_node_properties(&label)));
+            stats.artifacts.graph_nodes_created.push(key);
+        }
+
+        if !placeholder_batch.is_empty() {
+            self.graph_storage
+                .upsert_nodes_batch(&placeholder_batch)
                 .await?;
         }
 
-        // Check if edge exists
-        let existing = self
-            .graph_storage
-            .get_edge(&source_key, &target_key)
-            .await?;
+        let mut edge_batch: Vec<(String, String, HashMap<String, serde_json::Value>)> =
+            Vec::with_capacity(valid.len());
 
-        match existing {
-            Some(mut edge) => {
-                // Update existing relationship
-                self.update_relationship_edge(&mut edge, &rel).await?;
-                self.graph_storage
-                    .upsert_edge(&edge.source, &edge.target, edge.properties)
-                    .await?;
-                Ok(false)
+        let ws = self.workspace_id.as_deref().unwrap_or("default");
+
+        for (rel, source_key, target_key) in valid {
+            // SPEC-032 W-08: record lineage link for this chunk→relation pair
+            if let Some(ref chunk_id) = rel.source_chunk_id {
+                self.lineage_sink
+                    .record_relation_link(chunk_id, &source_key, &target_key, ws)
+                    .await
+                    .unwrap_or_else(|e| {
+                        tracing::warn!(
+                            source = %source_key, target = %target_key,
+                            error = %e, "Lineage sink record_relation_link failed (best-effort)"
+                        );
+                    });
             }
-            None => {
-                // Ensure both nodes exist
-                self.ensure_node_exists(&source_key, &rel.source).await?;
-                self.ensure_node_exists(&target_key, &rel.target).await?;
 
-                // Create new relationship
+            if let Some(existing) = edge_map.get(&(source_key.clone(), target_key.clone())) {
+                let mut edge = existing.clone();
+                self.update_relationship_edge(&mut edge, &rel).await?;
+                edge_batch.push((
+                    edge.source.clone(),
+                    edge.target.clone(),
+                    edge.properties.clone(),
+                ));
+                stats.relationships_updated += 1;
+            } else {
                 let edge = self.create_relationship_edge(&source_key, &target_key, &rel)?;
-                self.graph_storage
-                    .upsert_edge(&edge.source, &edge.target, edge.properties)
-                    .await?;
-                Ok(true)
+                if rel.embedding.is_some() {
+                    let rel_id = format!("{}->{}:{}", source_key, target_key, rel.relation_type);
+                    stats.artifacts.relationship_vector_ids.push(rel_id);
+                }
+                stats
+                    .artifacts
+                    .graph_edges_created
+                    .push((source_key.clone(), target_key.clone()));
+                edge_batch.push((edge.source, edge.target, edge.properties));
+                stats.relationships_created += 1;
             }
         }
+
+        if !edge_batch.is_empty() {
+            self.graph_storage.upsert_edges_batch(&edge_batch).await?;
+        }
+
+        Ok(())
+    }
+
+    fn placeholder_node_properties(&self, label: &str) -> HashMap<String, serde_json::Value> {
+        let mut properties = HashMap::new();
+        properties.insert(
+            "entity_type".to_string(),
+            serde_json::Value::String("UNKNOWN".to_string()),
+        );
+        properties.insert(
+            "description".to_string(),
+            serde_json::Value::String(String::new()),
+        );
+        properties.insert(
+            "label".to_string(),
+            serde_json::Value::String(label.to_string()),
+        );
+        if let Some(tenant_id) = &self.tenant_id {
+            properties.insert(
+                "tenant_id".to_string(),
+                serde_json::Value::String(tenant_id.clone()),
+            );
+        }
+        if let Some(workspace_id) = &self.workspace_id {
+            properties.insert(
+                "workspace_id".to_string(),
+                serde_json::Value::String(workspace_id.clone()),
+            );
+        }
+        properties
     }
 
     /// Update an existing relationship edge.
@@ -240,41 +360,5 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
             target: target_key.to_string(),
             properties,
         })
-    }
-
-    /// Ensure a node exists, creating a placeholder if needed.
-    async fn ensure_node_exists(&self, key: &str, label: &str) -> Result<()> {
-        if self.graph_storage.get_node(key).await?.is_none() {
-            let mut properties = HashMap::new();
-            properties.insert(
-                "entity_type".to_string(),
-                serde_json::Value::String("UNKNOWN".to_string()),
-            );
-            properties.insert(
-                "description".to_string(),
-                serde_json::Value::String(String::new()),
-            );
-            properties.insert(
-                "label".to_string(),
-                serde_json::Value::String(label.to_string()),
-            );
-
-            // Add tenant context
-            if let Some(tenant_id) = &self.tenant_id {
-                properties.insert(
-                    "tenant_id".to_string(),
-                    serde_json::Value::String(tenant_id.clone()),
-                );
-            }
-            if let Some(workspace_id) = &self.workspace_id {
-                properties.insert(
-                    "workspace_id".to_string(),
-                    serde_json::Value::String(workspace_id.clone()),
-                );
-            }
-
-            self.graph_storage.upsert_node(key, properties).await?;
-        }
-        Ok(())
     }
 }

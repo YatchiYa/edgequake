@@ -21,8 +21,8 @@
 //! | Method | Path | Handler | Description |
 //! |--------|------|---------|-------------|
 //! | GET | `/api/v1/graph` | [`get_graph`] | Get full graph (paginated) |
-//! | GET | `/api/v1/graph/stats` | [`get_graph_stats`] | Node/edge counts |
-//! | GET | `/api/v1/graph/stream` | SSE streaming graph updates |
+//! | GET | `/api/v1/graph/stream` | [`stream_graph`] | SSE streaming graph updates |
+//! | GET | `/api/v1/workspaces/{workspace_id}/stats` | workspace stats handler | Aggregated workspace metrics |
 //!
 //! # WHY: Separate Graph Visualization Layer
 //!
@@ -46,14 +46,17 @@ pub use crate::handlers::graph_types::*;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::extract::FromRef;
     use axum::extract::{Path, Query, State};
 
     use crate::middleware::TenantContext;
-    use crate::state::AppState;
+    use crate::state::{AppState, GraphQueryRuntime, StorageRuntime};
 
     #[tokio::test]
     async fn test_get_graph_empty() {
         let state = AppState::test_state();
+        let storage = StorageRuntime::from_ref(&state);
+        let graph = GraphQueryRuntime::from_ref(&state);
         let tenant_ctx = TenantContext::default();
         let params = GraphQueryParams {
             start_node: None,
@@ -61,7 +64,7 @@ mod tests {
             max_nodes: 100,
         };
 
-        let result = get_graph(State(state), tenant_ctx, Query(params)).await;
+        let result = get_graph(State(storage), State(graph), tenant_ctx, Query(params)).await;
         assert!(result.is_ok());
 
         let response = result.unwrap().0;
@@ -71,6 +74,8 @@ mod tests {
     #[tokio::test]
     async fn test_get_graph_with_depth() {
         let state = AppState::test_state();
+        let storage = StorageRuntime::from_ref(&state);
+        let graph = GraphQueryRuntime::from_ref(&state);
         let tenant_ctx = TenantContext::default();
         let params = GraphQueryParams {
             start_node: None,
@@ -78,15 +83,21 @@ mod tests {
             max_nodes: 50,
         };
 
-        let result = get_graph(State(state), tenant_ctx, Query(params)).await;
+        let result = get_graph(State(storage), State(graph), tenant_ctx, Query(params)).await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_get_node_not_found() {
         let state = AppState::test_state();
+        let storage = StorageRuntime::from_ref(&state);
 
-        let result = get_node(State(state), Path("nonexistent_node".to_string())).await;
+        let result = get_node(
+            State(storage),
+            TenantContext::default(),
+            Path("nonexistent_node".to_string()),
+        )
+        .await;
         // Should return not found or empty
         assert!(result.is_ok() || result.is_err());
     }
@@ -94,12 +105,13 @@ mod tests {
     #[tokio::test]
     async fn test_search_labels_empty() {
         let state = AppState::test_state();
+        let storage = StorageRuntime::from_ref(&state);
         let params = SearchLabelsQuery {
             q: "test".to_string(),
             limit: 10,
         };
 
-        let result = search_labels(State(state), Query(params)).await;
+        let result = search_labels(State(storage), TenantContext::default(), Query(params)).await;
         assert!(result.is_ok());
 
         let response = result.unwrap().0;
@@ -109,13 +121,21 @@ mod tests {
     #[tokio::test]
     async fn test_get_popular_labels() {
         let state = AppState::test_state();
+        let storage = StorageRuntime::from_ref(&state);
+        let graph = GraphQueryRuntime::from_ref(&state);
         let params = PopularLabelsQuery {
             limit: 20,
             min_degree: None,
             entity_type: None,
         };
 
-        let result = get_popular_labels(State(state), Query(params)).await;
+        let result = get_popular_labels(
+            State(storage),
+            State(graph),
+            TenantContext::default(),
+            Query(params),
+        )
+        .await;
         assert!(result.is_ok());
     }
 }

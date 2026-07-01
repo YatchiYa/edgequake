@@ -183,7 +183,7 @@ async fn test_memory_e2e_document_to_knowledge_graph() {
 
     // 7. Test graph traversal
     let neighbors = graph_storage
-        .get_neighbors("SARAH_CHEN", 1)
+        .get_neighbors("SARAH_CHEN", 1, None, None)
         .await
         .expect("Failed to get neighbors");
     println!("✓ Sarah Chen has {} neighbors", neighbors.len());
@@ -276,7 +276,7 @@ async fn test_memory_e2e_with_simulated_extraction() {
 
     // 7. Test graph traversal
     let neighbors = graph_storage
-        .get_neighbors("SARAH_CHEN", 1)
+        .get_neighbors("SARAH_CHEN", 1, None, None)
         .await
         .expect("Failed to get neighbors");
     println!("Sarah Chen neighbors: {}", neighbors.len());
@@ -284,7 +284,7 @@ async fn test_memory_e2e_with_simulated_extraction() {
 
     // 8. Get knowledge subgraph
     let kg = graph_storage
-        .get_knowledge_graph("SARAH_CHEN", 2, 50)
+        .get_knowledge_graph("SARAH_CHEN", 2, 50, None, None)
         .await
         .expect("Failed to get knowledge graph");
 
@@ -461,7 +461,7 @@ with graph capabilities, providing ACID guarantees and efficient graph traversal
 
     // 7. Check relationships between key entities
     let sarah_neighbors = graph_storage
-        .get_neighbors("SARAH_CHEN", 1)
+        .get_neighbors("SARAH_CHEN", 1, None, None)
         .await
         .expect("Failed to get neighbors");
     println!(
@@ -475,7 +475,7 @@ with graph capabilities, providing ACID guarantees and efficient graph traversal
 
     // 8. Test knowledge graph traversal
     let kg = graph_storage
-        .get_knowledge_graph("EDGEQUAKE", 2, 50)
+        .get_knowledge_graph("EDGEQUAKE", 2, 50, None, None)
         .await
         .expect("Failed to get knowledge graph");
     println!(

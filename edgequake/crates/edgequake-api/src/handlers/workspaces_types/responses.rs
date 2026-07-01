@@ -190,6 +190,8 @@ pub struct WorkspaceStatsResponse {
     pub embedding_count: usize,
     /// Storage used in bytes.
     pub storage_bytes: u64,
+    /// True when stats were served from cache because live fetch timed out under load.
+    pub stale: bool,
 }
 
 /// Single metrics snapshot for historical data.
