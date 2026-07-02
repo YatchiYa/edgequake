@@ -19,34 +19,34 @@ import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import {
-    Sheet,
-    SheetContent,
-    SheetDescription,
-    SheetHeader,
-    SheetTitle,
-    SheetTrigger,
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
 } from '@/components/ui/sheet';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import {
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from '@/components/ui/tooltip';
 import type { DocumentFilter } from '@/types/query';
 import {
-    BookOpen,
-    Brain,
-    FileText,
-    Filter,
-    Gauge,
-    Info,
-    Settings2,
-    Sliders,
-    Thermometer,
-    Zap,
+  BookOpen,
+  Brain,
+  FileText,
+  Filter,
+  Gauge,
+  Info,
+  Settings2,
+  Sliders,
+  Thermometer,
+  Zap,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -56,6 +56,7 @@ import { QueryDocumentFilter } from './query-document-filter';
 
 interface QuerySettings {
   stream: boolean;
+  retrievalOnly: boolean;
   topK: number;
   temperature: number;
   maxTokens: number;

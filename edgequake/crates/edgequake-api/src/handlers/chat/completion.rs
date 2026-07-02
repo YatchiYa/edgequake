@@ -158,6 +158,26 @@ pub async fn chat_completion(
         engine_request = engine_request.with_system_prompt(system_prompt);
     }
 
+    // Thread request-level top_k → cap on retrieved chunks.
+    if let Some(top_k) = request.top_k {
+        if top_k > 0 {
+            engine_request = engine_request.with_max_results(top_k);
+        }
+    }
+
+    // Retrieval-only mode: retrieve context but skip LLM answer generation.
+    // Both `context_only` and `prompt_only` skip the LLM (zero LLM calls):
+    //   - context_only → empty answer, full context in `sources`.
+    //   - prompt_only  → answer is the fully-assembled LLM-ready prompt, which
+    //     we surface in the response `prompt` field (with `include_prompt`).
+    if request.retrieval_only {
+        if request.include_prompt {
+            engine_request = engine_request.prompt_only();
+        } else {
+            engine_request = engine_request.context_only();
+        }
+    }
+
     let data_tenant_id = workspace
         .as_ref()
         .map(|ws| ws.tenant_id.to_string())
@@ -282,7 +302,7 @@ pub async fn chat_completion(
         .create_message(
             conversation_id,
             CreateMessageRequest {
-                content: result.answer.clone(),
+                content: response_content.clone(),
                 role: MessageRole::Assistant,
                 parent_id: Some(user_message.message_id),
                 stream: false,
@@ -324,8 +344,9 @@ pub async fn chat_completion(
             None
         };
 
-    // FEAT0505: Auto-generate conversation title for new conversations (fire-and-forget)
-    if is_new_conversation {
+    // FEAT0505: Auto-generate conversation title for new conversations (fire-and-forget).
+    // Skipped in retrieval-only mode to honour the "zero LLM calls" contract.
+    if is_new_conversation && !request.retrieval_only {
         let title_llm = llm_override.unwrap_or_else(|| state.query.llm_provider.clone());
         let title_conv_service = state.conversation_service.clone();
         let title_conv_id = conversation_id;
@@ -371,9 +392,10 @@ pub async fn chat_completion(
         conversation_id,
         user_message_id: user_message.message_id,
         assistant_message_id: assistant_message.message_id,
-        content: result.answer,
+        content: response_content,
         mode: result.mode.to_string(),
         sources,
+        prompt: assembled_prompt,
         stats: QueryStats {
             embedding_time_ms: result.stats.embedding_time_ms,
             retrieval_time_ms: result.stats.retrieval_time_ms,

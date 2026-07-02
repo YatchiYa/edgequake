@@ -148,6 +148,11 @@ pub struct QueryRequest {
     #[serde(default)]
     pub conversation_history: Option<Vec<ConversationMessage>>,
 
+    /// Conversation ID to persist this query/response.
+    /// If provided, loads history from database and saves new messages.
+    #[serde(default)]
+    pub conversation_id: Option<String>,
+
     /// Enable reranking of retrieved chunks for better relevance.
     #[serde(default = "default_enable_rerank")]
     pub enable_rerank: bool,
@@ -388,8 +393,15 @@ pub struct SourceReference {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rerank_score: Option<f32>,
 
-    /// Content snippet.
+    /// Content snippet (preview, truncated to ~200 chars).
     pub snippet: Option<String>,
+
+    /// Full source content. Populated only in retrieval-only / context-only mode
+    /// (chunk text, or full entity description) so that callers consuming the raw
+    /// context — e.g. an external agent — get the complete material rather than a
+    /// truncated preview. Omitted from normal LLM-answer responses to keep them small.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
 
     /// Reference ID for citation (1, 2, 3, ...).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -554,6 +566,7 @@ mod tests {
             score: 0.95,
             rerank_score: Some(0.98),
             snippet: Some("This is a test snippet".to_string()),
+            content: None,
             reference_id: Some(1),
             document_id: Some("doc_456".to_string()),
             file_path: Some("docs/test.md".to_string()),
@@ -581,6 +594,7 @@ mod tests {
             score: 0.8,
             rerank_score: None,
             snippet: None,
+            content: None,
             reference_id: None,
             document_id: None,
             file_path: None,

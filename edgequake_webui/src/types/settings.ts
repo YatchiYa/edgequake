@@ -27,6 +27,12 @@ export interface QuerySettings {
   maxTokens: number;
   temperature: number;
   stream: boolean;
+  /**
+   * Retrieval-only mode. When true, the backend returns the retrieved chunks
+   * directly without running the LLM to generate an answer. Useful when an
+   * external agent formulates the final answer from the raw context.
+   */
+  retrievalOnly: boolean;
   /** Enable reranking for improved retrieval precision */
   enableRerank: boolean;
   /** Top K results to keep after reranking */

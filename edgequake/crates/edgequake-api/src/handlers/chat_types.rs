@@ -45,6 +45,32 @@ pub struct ChatCompletionRequest {
     #[serde(default = "chat_default_stream")]
     pub stream: bool,
 
+    /// Retrieval-only mode. When `true`, the server retrieves the relevant
+    /// chunks/entities/relationships and returns them WITHOUT invoking the LLM
+    /// to generate an answer. The response `content` is empty and the retrieved
+    /// material is returned in `sources` (non-streaming) or via the `context`
+    /// SSE event (streaming). Intended for callers that want the raw context to
+    /// formulate the answer themselves (e.g. an external agent).
+    #[serde(default)]
+    pub retrieval_only: bool,
+
+    /// Restrict the returned `sources` (and the streaming `context` event) to
+    /// these source types: `"chunk"`, `"entity"`, `"relationship"`. When omitted
+    /// or empty, all types are returned. This ONLY affects what is surfaced to
+    /// the caller — the LLM answer is still generated from the full context.
+    /// Example: `["chunk"]` returns chunks only (no entities/relationships).
+    #[serde(default)]
+    pub source_types: Option<Vec<String>>,
+
+    /// Include the fully-assembled prompt (the EXACT text the LLM would receive:
+    /// role + instructions + formatted knowledge-graph context + document chunks
+    /// + the query) in the response. Returned in `prompt` (non-streaming) or in
+    /// the `context` SSE event's `prompt` field (streaming). Only honoured in
+    /// retrieval-only mode; lets an external agent inject the same context the
+    /// LLM would use, with zero LLM cost.
+    #[serde(default)]
+    pub include_prompt: bool,
+
     /// Maximum tokens for response.
     #[serde(default)]
     pub max_tokens: Option<usize>,
@@ -147,6 +173,11 @@ pub struct ChatCompletionResponse {
 
     /// Sources retrieved.
     pub sources: Vec<SourceReference>,
+
+    /// Fully-assembled prompt (the exact context the LLM would receive). Only
+    /// present when `include_prompt` was requested in retrieval-only mode.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
 
     /// Generation statistics.
     pub stats: QueryStats,
@@ -251,6 +282,20 @@ mod tests {
         assert!(req.stream); // default is true
         assert!(req.conversation_id.is_none());
         assert!(req.mode.is_none());
+    }
+
+    #[test]
+    fn test_chat_request_retrieval_only_defaults_false() {
+        let json = r#"{"message": "hi"}"#;
+        let req: ChatCompletionRequest = serde_json::from_str(json).unwrap();
+        assert!(!req.retrieval_only);
+    }
+
+    #[test]
+    fn test_chat_request_retrieval_only_true() {
+        let json = r#"{"message": "hi", "retrieval_only": true}"#;
+        let req: ChatCompletionRequest = serde_json::from_str(json).unwrap();
+        assert!(req.retrieval_only);
     }
 
     #[test]

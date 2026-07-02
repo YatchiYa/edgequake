@@ -13,7 +13,7 @@ use edgequake_audit::{AuditEvent, AuditEventType, AuditResult};
 use edgequake_observability::{
     record_llm_request, scope_llm_provider, PropagationHeaders, QueryOutcomeGuard, RequestContext,
 };
-use tracing::debug;
+use tracing::{debug, error};
 
 use crate::error::{ApiError, ApiResult};
 use crate::handlers::auth::OptionalAuth;
@@ -179,7 +179,7 @@ pub async fn execute_query(
     let conversation_id = if request.conversation_history.is_some() {
         Some(uuid::Uuid::new_v4().to_string())
     } else {
-        None
+        conversation_id_uuid.map(|id| id.to_string())
     };
 
     let (llm_provider, llm_model) =

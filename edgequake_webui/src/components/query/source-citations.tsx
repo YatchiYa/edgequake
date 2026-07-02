@@ -24,9 +24,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
-    HoverCard,
-    HoverCardContent,
-    HoverCardTrigger,
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
 } from '@/components/ui/hover-card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -34,14 +34,14 @@ import { buildDocumentPageUrl } from '@/lib/utils/document-url';
 import { useSettingsStore } from '@/stores/use-settings-store';
 import type { QueryContext } from '@/types';
 import {
-    BookOpen,
-    Brain,
-    ChevronDown,
-    ChevronUp,
-    ExternalLink,
-    FileText,
-    Network,
-    Sparkles
+  BookOpen,
+  Brain,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  FileText,
+  Network,
+  Sparkles
 } from 'lucide-react';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
@@ -444,6 +444,8 @@ const DocumentsTab = ({
 }) => {
   // Track which documents have their chunk list expanded beyond the default 3
   const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set());
+  // Track which individual passages are expanded to show their FULL content.
+  const [expandedPassages, setExpandedPassages] = useState<Set<string>>(new Set());
   const entries = Object.entries(chunksByDocument);
 
   // Normalized sum: score / max(1, globalMax) so each value stays in [0, 1].
@@ -456,6 +458,14 @@ const DocumentsTab = ({
     setExpandedDocs(prev => {
       const next = new Set(prev);
       if (next.has(docId)) next.delete(docId); else next.add(docId);
+      return next;
+    });
+  };
+
+  const togglePassageExpand = (key: string) => {
+    setExpandedPassages(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
   };

@@ -40,6 +40,19 @@ export interface ChatCompletionRequest {
   mode?: QueryMode;
   /** Whether to stream the response. */
   stream?: boolean;
+  /**
+   * Restrict returned sources (and the streaming `context` event) to these
+   * source types: "chunk", "entity", "relationship". Omit for all. The LLM
+   * answer still uses the full context.
+   */
+  source_types?: string[];
+  /**
+   * Retrieval-only mode. When true, the backend retrieves the relevant chunks
+   * and returns them WITHOUT invoking the LLM to generate an answer. The
+   * response `content` is empty; chunks arrive in `sources` (non-streaming) or
+   * via the `context` SSE event (streaming).
+   */
+  retrieval_only?: boolean;
   /** Maximum tokens for response. */
   max_tokens?: number;
   /** Temperature for generation (0.0-2.0). */
@@ -101,7 +114,10 @@ export interface SourceReference {
   id: string;
   score: number;
   rerank_score?: number;
+  /** Short preview (~200 chars) for citation display. */
   snippet?: string;
+  /** Full source content (chunk text / entity description). Present in retrieval-only mode. */
+  content?: string;
   reference_id?: number;
   document_id?: string;
   file_path?: string;
