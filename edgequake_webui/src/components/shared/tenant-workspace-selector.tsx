@@ -44,6 +44,7 @@ import {
     getWorkspaces,
 } from '@/lib/api/edgequake';
 import { useTenantStore } from '@/stores/use-tenant-store';
+import { useQueryUIStore } from '@/stores/use-query-ui-store';
 import type { Tenant, Workspace } from '@/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -260,6 +261,7 @@ export function TenantWorkspaceSelector({
   const handleTenantSelect = useCallback(
     (tenantId: string) => {
       if (tenantId === selectedTenantId) return;
+      useQueryUIStore.getState().setActiveConversation(null);
       selectTenant(tenantId);
       const tenant = tenants.find((t) => t.id === tenantId);
       if (tenant) {
@@ -276,6 +278,7 @@ export function TenantWorkspaceSelector({
   const handleWorkspaceSelect = useCallback(
     (workspaceId: string) => {
       if (workspaceId === selectedWorkspaceId) return;
+      useQueryUIStore.getState().setActiveConversation(null);
       selectWorkspace(workspaceId);
       // Invalidate workspace stats query to force refetch with new workspace
       queryClient.invalidateQueries({ queryKey: ['workspaceStats'] });

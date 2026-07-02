@@ -545,13 +545,24 @@ export function useFileUpload(
 
       // Close dialog immediately; async replace runs in the background.
       const doReplaceAll = async () => {
+        let replaceErrors = 0;
         for (const entry of replaceEntries) {
           const isPdf = isPdfUploadFile(entry.file);
           const isImage = isImageUploadFile(entry.file);
 
+          const failReplace = (err: unknown) => {
+            replaceErrors += 1;
+            const message =
+              err instanceof Error ? err.message : t("common.unknownError", "Unknown error");
+            toast.error(
+              t("documents.upload.replaceFailed", "Failed to replace {{name}}", {
+                name: entry.fileName,
+              }),
+              { description: message },
+            );
+          };
+
           if (isPdf) {
-            // PDF: re-upload with force_reindex=true so backend atomically
-            // clears old graph data and re-processes. No separate DELETE needed.
             try {
               const trackId = `upload_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
               await uploadPdfDocument(entry.file, {
@@ -560,13 +571,9 @@ export function useFileUpload(
                 track_id: trackId,
                 force_reindex: true,
               });
-              // Invalidate documents cache so list refreshes
               queryClient.invalidateQueries({ queryKey: ["documents"] });
             } catch (err) {
-              console.warn(
-                `[useFileUpload] force_reindex re-upload failed for ${entry.fileName}:`,
-                err,
-              );
+              failReplace(err);
             }
           } else if (isImage) {
             try {
@@ -575,24 +582,28 @@ export function useFileUpload(
               });
               queryClient.invalidateQueries({ queryKey: ["documents"] });
             } catch (err) {
-              console.warn(
-                `[useFileUpload] image re-upload failed for ${entry.fileName}:`,
-                err,
-              );
+              failReplace(err);
             }
           } else {
-            // Attempt a manual delete first for completeness but ignore failures.
             try {
               await deleteDocument(entry.existingDocId);
-            } catch (err) {
-              console.warn(
-                `[useFileUpload] Failed to delete ${entry.existingDocId}:`,
-                err,
-              );
+            } catch {
+              // Non-fatal — backend may recycle orphan hash keys.
             }
-            // Re-upload the original file as a brand-new document.
-            await handleFilesUpload([entry.file]);
+            try {
+              await handleFilesUpload([entry.file]);
+              queryClient.invalidateQueries({ queryKey: ["documents"] });
+            } catch (err) {
+              failReplace(err);
+            }
           }
+        }
+        if (replaceErrors === 0 && replaceEntries.length > 0) {
+          toast.success(
+            t("documents.upload.replaceStarted", "Re-upload started for {{count}} file(s)", {
+              count: replaceEntries.length,
+            }),
+          );
         }
       };
 

@@ -6,6 +6,25 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.13.2] — 2026-07-02
+
+Patch release closing SPEC-040 GitHub issues #250–#253, #259, and #262.
+
+### Fixed
+
+- **#262 Graph stats timeout** — Migration `078_age_child_workspace_stats.sql` repairs child `"Node"` / `"EDGE"` workspace + text-cast indexes and runs `ANALYZE`; `graph_lifecycle.rs` creates `idx_edge_start_id_text` / `idx_edge_end_id_text` on fresh installs. Production ops: `migrations/support/078/concurrent.sql` for large graphs.
+- **#253 Ghost duplicate upload** — `workspace_content_hash_dedup.rs` recycles orphan `doc:hash:*` KV keys when no visible metadata; integration test `orphan_content_hash_is_recycled_on_reupload`.
+- **#259 Conversation FK** — `conversation_guard.rs` pre-checks before assistant message save; UI clears conversation on tenant/workspace switch; `CONVERSATION_GONE` SSE code.
+- **#251 models.toml override** — `load_bundled_models_config()` honors runtime config (`EDGEQUAKE_MODELS_CONFIG` / cwd / home) before embedded catalog.
+- **#250 Version parity** — `release_gates.sh` fails when API and WebUI semver diverge; Docker frontend build injects `NEXT_PUBLIC_APP_VERSION` from release tag.
+
+### Added
+
+- Playwright `spec040-workspace-switch-conversation.spec.ts` — conversation cleared on workspace switch.
+- SPEC-040 spec pack under `specs/040-edgequake-issues/` with battle-tested implementation plan and cross-reference matrix.
+
+---
+
 ## [0.13.1] — 2026-07-02
 
 Patch release fixing fresh Docker installs where document ingestion and query failed on empty AGE graphs.

@@ -37,7 +37,10 @@ pub async fn load_document_body(
     if let Some(body) = load_kv_document_body(storage, document_id).await {
         return Some(body);
     }
-    load_pdf_markdown_body(storage, metadata).await
+    #[cfg(feature = "postgres")]
+    return load_pdf_markdown_body(storage, metadata).await;
+    #[cfg(not(feature = "postgres"))]
+    None
 }
 
 async fn load_kv_document_body(
@@ -60,6 +63,7 @@ async fn load_kv_document_body(
     })
 }
 
+#[cfg(feature = "postgres")]
 async fn load_pdf_markdown_body(
     storage: &StorageRuntime,
     metadata: &Value,

@@ -276,6 +276,13 @@ pub async fn chat_completion(
     resolve_chunk_file_paths(state.storage.kv_storage.as_ref(), &mut sources).await;
     let context = build_message_context_from_engine(&result.context, &sources);
 
+    if !super::conversation_guard::conversation_exists(&state, conversation_id).await? {
+        return Err(ApiError::NotFound(format!(
+            "Conversation {} no longer exists",
+            conversation_id
+        )));
+    }
+
     // 5. Save assistant message
     let assistant_message = state
         .conversation_service

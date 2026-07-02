@@ -112,7 +112,9 @@ pub async fn admit_document_for_processing(
     let hash_key = ContentHasher::workspace_hash_key(&workspace_id, &input.content_hash);
     let staging_hash_key = kv_keys::staging_workspace_hash(&workspace_id, &input.content_hash);
 
-    match resolve_workspace_duplicate_for_reingestion(state, &hash_key, &workspace_id).await? {
+    match resolve_workspace_duplicate_for_reingestion(state, tenant_ctx, &hash_key, &workspace_id)
+        .await?
+    {
         DuplicateReingestAction::NoDuplicate => {}
         DuplicateReingestAction::ClearedForReingestion { old_document_id } => {
             tracing::info!(

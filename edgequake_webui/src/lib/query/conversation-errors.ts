@@ -12,6 +12,22 @@ export function isConversationNotFoundError(error: unknown): boolean {
   return false;
 }
 
+/** SSE / API errors when the conversation row was deleted mid-stream. */
+export function isConversationGoneError(error: unknown): boolean {
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    return (
+      message.includes("conversation no longer exists") ||
+      message.includes("conversation expired")
+    );
+  }
+  return false;
+}
+
+export function isConversationGoneStreamCode(code: string | undefined): boolean {
+  return code === "CONVERSATION_GONE";
+}
+
 /** Optimistic/local messages are never persisted server-side. */
 export function isServerPersistedMessageId(id: string): boolean {
   return !id.startsWith("optimistic-");

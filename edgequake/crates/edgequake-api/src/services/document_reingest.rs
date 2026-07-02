@@ -1,8 +1,10 @@
 //! Duplicate content hash resolution and safe re-ingestion deletion (SPEC-024).
 
 use crate::error::ApiError;
+use crate::middleware::TenantContext;
 use crate::services::{
-    cleanup_document_graph_data, get_workspace_vector_storage_strict, CleanupStats,
+    cleanup_document_graph_data, get_workspace_vector_storage_strict,
+    recycle_orphan_workspace_hash, workspace_has_visible_document_for_hash, CleanupStats,
 };
 use crate::state::AppState;
 
@@ -17,6 +19,7 @@ pub enum DuplicateReingestAction {
 /// Resolve workspace duplicate content hash (ingestion uniformity SSOT).
 pub async fn resolve_workspace_duplicate_for_reingestion(
     state: &AppState,
+    tenant_ctx: &TenantContext,
     hash_key: &str,
     workspace_id: &str,
 ) -> Result<DuplicateReingestAction, ApiError> {
@@ -26,6 +29,11 @@ pub async fn resolve_workspace_duplicate_for_reingestion(
     let Some(doc_id_str) = existing_doc_id.as_str() else {
         return Ok(DuplicateReingestAction::NoDuplicate);
     };
+
+    if !workspace_has_visible_document_for_hash(state, doc_id_str, tenant_ctx).await? {
+        recycle_orphan_workspace_hash(state, hash_key, workspace_id, doc_id_str).await?;
+        return Ok(DuplicateReingestAction::NoDuplicate);
+    }
 
     match delete_document_for_reingestion(doc_id_str, state, workspace_id).await {
         Ok(true) => Ok(DuplicateReingestAction::ClearedForReingestion {

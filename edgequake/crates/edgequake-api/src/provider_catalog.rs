@@ -198,11 +198,11 @@ fn build_config_requirements(provider: &ProviderConfig) -> Vec<ConfigRequirement
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::bundled_models::load_bundled_models_config;
+    use crate::state::bundled_models::embedded_models_catalog;
 
     #[test]
     fn catalog_includes_vertexai_from_models_toml() {
-        let config = load_bundled_models_config();
+        let config = embedded_models_catalog();
         let response = build_available_providers_response(&config, "mock", "mock");
         let ids: Vec<_> = response
             .llm_providers
@@ -214,7 +214,7 @@ mod tests {
 
     #[test]
     fn catalog_uses_models_toml_defaults_for_lmstudio() {
-        let config = load_bundled_models_config();
+        let config = embedded_models_catalog();
         let response = build_available_providers_response(&config, "mock", "mock");
         let lmstudio = response
             .llm_providers
@@ -231,7 +231,7 @@ mod tests {
 
     #[test]
     fn mock_provider_always_available() {
-        let config = load_bundled_models_config();
+        let config = embedded_models_catalog();
         let response = build_available_providers_response(&config, "mock", "mock");
         let mock = response
             .llm_providers
@@ -244,7 +244,7 @@ mod tests {
 
     #[test]
     fn providers_sorted_by_priority() {
-        let config = load_bundled_models_config();
+        let config = embedded_models_catalog();
         let response = build_available_providers_response(&config, "mock", "mock");
         let openai_idx = response
             .llm_providers

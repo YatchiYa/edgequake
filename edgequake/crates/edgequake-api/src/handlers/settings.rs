@@ -477,6 +477,7 @@ pub async fn get_effective_config(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[tokio::test]
     async fn test_get_provider_status_structure() {
@@ -499,7 +500,13 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_list_available_providers() {
+        // Pin catalog to shipped models.toml so tests are stable when ~/.edgequake/models.toml exists.
+        let models_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../models.toml");
+        let key = "EDGEQUAKE_MODELS_CONFIG";
+        unsafe { std::env::set_var(key, models_path) };
+
         // Setup: Create AppState with mock provider
         let app_state = AppState::new_memory(None::<String>);
 
@@ -555,5 +562,7 @@ mod tests {
             "text-embedding-nomic-embed-text-v1.5"
         );
         assert_eq!(lmstudio.default_models.embedding_dimension, 768);
+
+        unsafe { std::env::remove_var(key) };
     }
 }

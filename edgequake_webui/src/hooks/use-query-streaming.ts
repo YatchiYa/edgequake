@@ -6,8 +6,10 @@ import { deleteMessage } from "@/lib/api/conversations";
 import { conversationKeys } from "@/lib/api/query-keys";
 import { isLlmProviderAuthFailure } from "@/lib/query-model-selection";
 import {
-    isConversationNotFoundError,
-    isServerPersistedMessageId,
+  isConversationGoneError,
+  isConversationGoneStreamCode,
+  isConversationNotFoundError,
+  isServerPersistedMessageId,
 } from "@/lib/query/conversation-errors";
 import type { QueryMessage, StreamingState } from "@/lib/query/query-interface-types";
 import {
@@ -186,6 +188,19 @@ export function useQueryStreaming({
               break;
 
             case "error":
+              if (isConversationGoneStreamCode(chunk.code)) {
+                store.setActiveConversation(null);
+                setPendingMessage(null);
+                setOptimisticUserMessage(null);
+                setStreamingState("idle");
+                toast.warning(t("query.conversationExpired", "Conversation expired"), {
+                  description: t(
+                    "query.startingNewConversation",
+                    "Starting a new conversation. Please submit your query again.",
+                  ),
+                });
+                return;
+              }
               throw new Error(chunk.message || "Streaming failed");
           }
         }
@@ -215,7 +230,10 @@ export function useQueryStreaming({
           return;
         }
 
-        if (isConversationNotFoundError(error) && conversationId) {
+        if (
+          (isConversationNotFoundError(error) || isConversationGoneError(error)) &&
+          conversationId
+        ) {
           store.setActiveConversation(null);
           setPendingMessage(null);
           setOptimisticUserMessage(null);
@@ -329,7 +347,10 @@ export function useQueryStreaming({
         setOptimisticUserMessage(null);
         setStreamingState("complete");
       } catch (error) {
-        if (isConversationNotFoundError(error) && conversationId) {
+        if (
+          (isConversationNotFoundError(error) || isConversationGoneError(error)) &&
+          conversationId
+        ) {
           store.setActiveConversation(null);
           setOptimisticUserMessage(null);
           toast.warning(t("query.conversationExpired", "Conversation expired"), {
