@@ -23,6 +23,8 @@ export function useQueryConversationLifecycle({
   const { t } = useTranslation();
   const hasInitializedRef = useRef(false);
   const hasResetUnavailableModelRef = useRef(false);
+  const prevTenantRef = useRef<string | null>(null);
+  const prevWorkspaceRef = useRef<string | null>(null);
 
   const { querySettings, setQuerySettings } = useSettingsStore();
   const { selectedTenantId, selectedWorkspaceId } = useTenantStore();
@@ -108,19 +110,37 @@ export function useQueryConversationLifecycle({
   }, [activeConversationId, conversationsData, store]);
 
   useEffect(() => {
-    const serverMessageCount = activeConversation?.messages?.length ?? 0;
-    if (activeConversationId && serverMessageCount > 0) {
-      store.setActiveConversation(null);
-      onTenantContextChange();
-      toast(t("query.conversationCleared", "New conversation started"), {
-        description: t(
-          "query.conversationClearedDesc",
-          "Context has changed. Starting a fresh conversation.",
-        ),
-      });
+    if (prevTenantRef.current === null && prevWorkspaceRef.current === null) {
+      prevTenantRef.current = selectedTenantId;
+      prevWorkspaceRef.current = selectedWorkspaceId;
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTenantId, selectedWorkspaceId]);
+    if (
+      prevTenantRef.current === selectedTenantId &&
+      prevWorkspaceRef.current === selectedWorkspaceId
+    ) {
+      return;
+    }
+    prevTenantRef.current = selectedTenantId;
+    prevWorkspaceRef.current = selectedWorkspaceId;
+
+    if (!activeConversationId) return;
+    store.setActiveConversation(null);
+    onTenantContextChange();
+    toast(t("query.conversationCleared", "New conversation started"), {
+      description: t(
+        "query.conversationClearedDesc",
+        "Context has changed. Starting a fresh conversation.",
+      ),
+    });
+  }, [
+    activeConversationId,
+    onTenantContextChange,
+    selectedTenantId,
+    selectedWorkspaceId,
+    store,
+    t,
+  ]);
 
   return {
     activeConversation,

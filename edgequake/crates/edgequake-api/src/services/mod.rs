@@ -62,6 +62,7 @@ pub mod v1_rpc_migration;
 pub mod vision_content;
 pub mod vlm_limits;
 pub mod vlm_provider_resolver;
+pub mod workspace_content_hash_dedup;
 pub mod workspace_document_index;
 
 pub use audit::{
@@ -169,6 +170,9 @@ pub use vision_content::{
 pub use vlm_provider_resolver::{
     resolve_extract_provider_for_workspace, resolve_vlm_provider,
     resolve_vlm_provider_for_workspace, resolve_workspace_vlm_config,
+};
+pub use workspace_content_hash_dedup::{
+    recycle_orphan_workspace_hash, workspace_has_visible_document_for_hash,
 };
 pub use workspace_document_index::{
     list_workspace_document_ids, list_workspace_metadata_keys, remove_workspace_document_index,

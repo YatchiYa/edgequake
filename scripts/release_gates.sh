@@ -62,4 +62,13 @@ echo "== WebUI typecheck (src only; e2e via Playwright) =="
 echo "== WebUI unit tests (observability + runtime-config) =="
 (cd "$WEBUI" && bun test src/lib/api/__tests__/observability-client.test.ts src/lib/__tests__/runtime-config.test.ts)
 
+echo "== Release version parity (API Cargo.toml vs WebUI package.json) =="
+API_VER=$(grep -E '^version = ' "$EQ/Cargo.toml" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+UI_VER=$(node -p "require('$WEBUI/package.json').version")
+if [[ "$API_VER" != "$UI_VER" ]]; then
+  echo "ERROR: version mismatch — edgequake/Cargo.toml=$API_VER edgequake_webui/package.json=$UI_VER"
+  exit 1
+fi
+echo "Release version parity OK: $API_VER"
+
 echo "✓ release gates passed"

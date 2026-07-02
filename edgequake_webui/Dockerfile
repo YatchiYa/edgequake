@@ -21,6 +21,7 @@ FROM node:20-alpine AS builder
 
 # Build args for Next.js public environment variables
 ARG NEXT_PUBLIC_API_URL=http://localhost:8080
+ARG NEXT_PUBLIC_APP_VERSION=0.13.2
 
 WORKDIR /app
 
@@ -50,6 +51,7 @@ COPY edgequake_webui/public ./public
 
 # Set Next.js public environment variables for build time
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_APP_VERSION=${NEXT_PUBLIC_APP_VERSION}
 
 # Build application directly with next build (bypass safe-build.sh for Docker)
 RUN npx next build

@@ -624,6 +624,7 @@ pub(crate) async fn delete_user_record(
 }
 
 /// Update KV email index when email changes (test harness only).
+#[cfg(feature = "postgres")]
 pub(crate) async fn reindex_user_email_kv(
     storage: &StorageRuntime,
     user_id: &str,

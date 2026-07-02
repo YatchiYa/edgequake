@@ -67,6 +67,7 @@ pub async fn retrieve_artifact(
             retrieve_figure_artifact(state, tenant_ctx, &document_id, artifact_id).await
         }
         ArtifactKind::Markdown => retrieve_markdown_artifact(state, tenant_ctx, artifact_id).await,
+        #[cfg(feature = "postgres")]
         ArtifactKind::Pdf => {
             retrieve_pdf_artifact(
                 state,
@@ -77,6 +78,11 @@ pub async fn retrieve_artifact(
             )
             .await
         }
+        #[cfg(not(feature = "postgres"))]
+        ArtifactKind::Pdf => Err(ApiError::ServiceUnavailable {
+            message: "PDF artifact retrieval requires postgres feature".into(),
+            retry_after_secs: 30,
+        }),
     }
 }
 
@@ -204,6 +210,7 @@ async fn retrieve_markdown_artifact(
     })
 }
 
+#[cfg(feature = "postgres")]
 async fn retrieve_pdf_artifact(
     state: &AppState,
     tenant_ctx: &TenantContext,

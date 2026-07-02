@@ -397,6 +397,7 @@ pub async fn update_user(
             }
         }
 
+        #[cfg(feature = "postgres")]
         if !policy.pg_primary {
             crate::services::identity_storage::reindex_user_email_kv(
                 &storage,

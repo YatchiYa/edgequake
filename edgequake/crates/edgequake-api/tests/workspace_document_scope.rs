@@ -71,3 +71,71 @@ async fn list_documents_shows_uuid_scoped_metadata_for_default_workspace_alias()
         json
     );
 }
+
+#[tokio::test]
+async fn orphan_content_hash_is_recycled_on_reupload() {
+    let state = AppState::test_state();
+    let workspace_id = default_workspace_uuid().to_string();
+    let tenant_ctx = edgequake_api::middleware::TenantContext {
+        tenant_id: Some("default".to_string()),
+        workspace_id: Some("default".to_string()),
+        user_id: None,
+    };
+
+    let content = "SPEC-040 orphan hash recycle proof content";
+    let content_hash = edgequake_api::services::ContentHasher::hash_str(content);
+    let hash_key =
+        edgequake_api::services::ContentHasher::workspace_hash_key(&workspace_id, &content_hash);
+    let ghost_doc_id = "ghost-doc-spec040";
+
+    state
+        .storage
+        .kv_storage
+        .upsert(&[(hash_key.clone(), serde_json::json!(ghost_doc_id))])
+        .await
+        .unwrap();
+
+    let app = create_test_app(state);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/documents")
+                .header("content-type", "application/json")
+                .header("X-Tenant-ID", "default")
+                .header("X-Workspace-ID", "default")
+                .body(Body::from(
+                    serde_json::json!({
+                        "content": content,
+                        "title": "orphan-recycle.md",
+                        "async_processing": true,
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::ACCEPTED,
+        "orphan hash must not block upload"
+    );
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(
+        json.get("duplicate_of").is_none(),
+        "expected fresh upload, got duplicate: {}",
+        json
+    );
+    assert_ne!(
+        json.get("document_id").and_then(|v| v.as_str()),
+        Some(ghost_doc_id),
+        "new document id must not reuse ghost mapping"
+    );
+
+    let _ = tenant_ctx;
+}

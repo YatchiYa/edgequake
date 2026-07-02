@@ -94,6 +94,7 @@ pub use crate::handlers::chat_types::*;
 // ============================================================================
 
 pub mod completion;
+pub mod conversation_guard;
 pub mod streaming;
 pub mod validation;
 

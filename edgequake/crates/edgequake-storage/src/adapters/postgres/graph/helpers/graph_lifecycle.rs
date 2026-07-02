@@ -215,6 +215,22 @@ impl PostgresAGEGraphStorage {
                     self.graph_name
                 ),
             ),
+            (
+                "idx_edge_start_id_text",
+                format!(
+                    r#"CREATE INDEX IF NOT EXISTS idx_edge_start_id_text 
+                       ON {}."EDGE" ((start_id::text))"#,
+                    self.graph_name
+                ),
+            ),
+            (
+                "idx_edge_end_id_text",
+                format!(
+                    r#"CREATE INDEX IF NOT EXISTS idx_edge_end_id_text 
+                       ON {}."EDGE" ((end_id::text))"#,
+                    self.graph_name
+                ),
+            ),
             // REMOVED: All _ag_label_vertex and _ag_label_edge parent-table indexes.
             // WHY: Those are AGE inheritance parent tables with 0 rows. All data lives
             //      in the child label tables ("Node" and "EDGE"). Parent-table indexes

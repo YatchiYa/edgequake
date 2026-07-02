@@ -64,13 +64,36 @@ export DATABASE_URL="postgres://edgequake:edgequake@localhost/edgequake"
 ./edgequake/scripts/migrations/apply_038.sh --verify
 ```
 
+## Migration 078 — Child Workspace Stats Indexes (SPEC-040 / #262)
+
+Repairs AGE child-table indexes for workspace-scoped graph stats (fixes 15s timeout / nested-loop plans on large graphs).
+
+| File | Role |
+|------|------|
+| `078_age_child_workspace_stats.sql` | sqlx migration — auto-applied on `make dev` / backend start |
+| `support/078/concurrent.sql` | Ops-only CONCURRENTLY build for graphs >100k nodes |
+| `specs/040-edgequake-issues/e2e/measure_graph_stats_perf.sh` | Performance proof |
+
+**Full guide:** [migrations/078-age-child-workspace-stats.md](migrations/078-age-child-workspace-stats.md)
+
+```bash
+# Verify auto-deploy (local)
+psql "$DATABASE_URL" -c "SELECT version, description FROM _sqlx_migrations WHERE version = 78;"
+
+# Measure performance post-M078
+./specs/040-edgequake-issues/e2e/measure_graph_stats_perf.sh
+
+# Production large graph (manual, outside transaction)
+psql "$DATABASE_URL" -f edgequake/migrations/support/078/concurrent.sql
+```
+
 ## Troubleshooting
 
 | Symptom | Fix |
 |---------|-----|
 | `migration N was previously applied but has been modified` | Restore canonical SQL or create new migration; never edit deployed files |
 | Backend fails on migrate | Check `DATABASE_URL`, PostgreSQL version, AGE extension |
-| Slow delete/lineage on large workspace | Apply migration 038; verify with `--verify` |
+| Slow stats / graph timeout on large workspace | Apply migration 078 (auto on upgrade); verify with `measure_graph_stats_perf.sh`; use `support/078/concurrent.sql` if >100k nodes |
 | OOM on list/delete (exit 137) | See [SPEC-006](../../specifications/006-ensure-perf/010-brutal-assessment.md); run `make resource-proof` |
 
 ## Related Docs

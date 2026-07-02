@@ -532,6 +532,20 @@ pub async fn chat_completion_stream(
         let tokens_used = accumulator.estimated_tokens();
         let full_content = accumulator.content().to_string();
 
+        // SPEC-040 #259: conversation may be deleted while the LLM stream runs.
+        if !super::conversation_guard::conversation_exists(&state_clone, conversation_id)
+            .await
+            .unwrap_or(false)
+        {
+            let _ = tx
+                .send(ChatStreamEvent::Error {
+                    message: "Conversation no longer exists".to_string(),
+                    code: "CONVERSATION_GONE".to_string(),
+                })
+                .await;
+            return;
+        }
+
         // 7. Save assistant message (AFTER streaming completes)
         match state_clone
             .conversation_service
@@ -641,23 +655,27 @@ pub async fn chat_completion_stream(
                 }
             }
             Err(e) => {
-                let msg = format!("Failed to save response: {e}");
+                let msg = if e.to_string().contains("messages_conversation_id_fkey") {
+                    "Conversation no longer exists".to_string()
+                } else {
+                    format!("Failed to save response: {e}")
+                };
+                let code = if msg.contains("Conversation no longer exists") {
+                    "CONVERSATION_GONE".to_string()
+                } else {
+                    "SAVE_FAILED".to_string()
+                };
                 ErrorEvent::log_stream_error(
                     &stream_request_id_spawn,
                     "chat_stream",
-                    "SAVE_FAILED",
+                    code.as_str(),
                     &msg,
                     json!({
                         "phase": "save_assistant_message",
                         "conversation_id": conversation_id.to_string(),
                     }),
                 );
-                let _ = tx
-                    .send(ChatStreamEvent::Error {
-                        message: msg,
-                        code: "SAVE_FAILED".to_string(),
-                    })
-                    .await;
+                let _ = tx.send(ChatStreamEvent::Error { message: msg, code }).await;
             }
         }
     });
