@@ -67,6 +67,7 @@ pub fn node_list_filter(tenant_ctx: Option<&TenantContext>) -> NodeListFilter {
             workspace_id: ctx.workspace_id.clone(),
             entity_type: None,
             search: None,
+            community_ids: None,
         },
         None => NodeListFilter::default(),
     }
@@ -86,7 +87,7 @@ pub fn edge_list_filter(tenant_ctx: Option<&TenantContext>) -> EdgeListFilter {
 pub fn source_belongs_to_document(source: &str, scope: &DocumentSourceScope) -> bool {
     scope.source_prefixes.iter().any(|p| {
         source.starts_with(p.as_str())
-            || source.starts_with(&format!("{}-chunk-", p))
+            || source.starts_with(&edgequake_storage::kv_keys::doc_chunk_prefix(p))
             || source == p.as_str()
     })
 }
@@ -269,6 +270,45 @@ pub async fn analyze_deletion_impact_stats(
     }
 
     Ok(stats)
+}
+
+/// Statistics from document graph data cleanup.
+#[derive(Debug, Default, Clone)]
+pub struct CleanupStats {
+    pub entities_removed: usize,
+    pub entities_updated: usize,
+    pub relationships_removed: usize,
+    pub relationships_updated: usize,
+    pub embeddings_deleted: usize,
+}
+
+/// Clean up graph data for a document without deleting KV entries.
+pub async fn cleanup_document_graph_data(
+    document_id: &str,
+    graph_storage: &Arc<dyn GraphStorage>,
+    vector_storage: Option<&Arc<dyn VectorStorage>>,
+) -> ApiResult<CleanupStats> {
+    let scope = DocumentSourceScope::from_document_id(document_id);
+    let cascade_stats =
+        cascade_remove_document_sources(graph_storage, vector_storage, None, &scope).await?;
+
+    tracing::info!(
+        document_id = %document_id,
+        entities_removed = cascade_stats.entities_removed,
+        entities_updated = cascade_stats.entities_updated,
+        relationships_removed = cascade_stats.relationships_removed,
+        relationships_updated = cascade_stats.relationships_updated,
+        embeddings_deleted = cascade_stats.embeddings_deleted,
+        "Document graph data cleanup completed"
+    );
+
+    Ok(CleanupStats {
+        entities_removed: cascade_stats.entities_removed,
+        entities_updated: cascade_stats.entities_updated,
+        relationships_removed: cascade_stats.relationships_removed,
+        relationships_updated: cascade_stats.relationships_updated,
+        embeddings_deleted: cascade_stats.embeddings_deleted,
+    })
 }
 
 #[cfg(test)]

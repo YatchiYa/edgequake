@@ -27,14 +27,18 @@
 //! - Detailed debugging via `/health` response
 
 use axum::{extract::State, http::StatusCode, Json};
+use std::sync::Arc;
 
 use crate::error::ApiResult;
 use crate::state::AppState;
 
 // Re-export DTOs from health_types for backwards compatibility
 pub use crate::handlers::health_types::{
-    BuildInfo, ComponentHealth, EmbeddingProviderHealth, HealthResponse, LlmProviderHealth,
-    ProvidersHealth, SchemaHealth, SourceIdsIndexHealth,
+    ApiCapabilities, BuildInfo, ComponentHealth, EmbeddingProviderHealth, HealthResponse,
+    IngestionHealthSnapshot, LlmProviderHealth, MigrationHealthSnapshot,
+    ObservabilityHealthSnapshot, OperationalHealth, ProvidersHealth, QueryEngineHealthSnapshot,
+    ReadModelHealthSnapshot, SchemaHealth, SourceIdsIndexHealth, StorageHealthSnapshot,
+    TaskQueueHealthSnapshot,
 };
 
 /// Deep health check with component status.
@@ -71,11 +75,17 @@ pub use crate::handlers::health_types::{
     )
 )]
 pub async fn health_check(State(state): State<AppState>) -> ApiResult<Json<HealthResponse>> {
+    // SPEC-021 P-G13: bounded pings — never block on pool acquire during ingestion bursts.
+    let (kv_ok, vector_ok, graph_ok) = super::health_probes::probe_storage_components(
+        Arc::clone(&state.storage.kv_storage),
+        Arc::clone(&state.storage.vector_storage),
+        Arc::clone(&state.storage.graph_storage),
+    )
+    .await;
     let components = ComponentHealth {
-        // SPEC-011: ping() is O(1); count() was O(N) full-table scan per health probe.
-        kv_storage: state.storage.kv_storage.ping().await.is_ok(),
-        vector_storage: state.storage.vector_storage.ping().await.is_ok(),
-        graph_storage: state.storage.graph_storage.ping().await.is_ok(),
+        kv_storage: kv_ok,
+        vector_storage: vector_ok,
+        graph_storage: graph_ok,
         llm_provider: true, // Assume available, actual check would require API call
     };
 
@@ -85,10 +95,19 @@ pub async fn health_check(State(state): State<AppState>) -> ApiResult<Json<Healt
     // Query schema health (PostgreSQL only)
     // WHY: OODA-14 - Mission requires schema version verification
     let schema = get_schema_health(&state).await;
+    let storage_degraded = !kv_ok || !vector_ok || !graph_ok;
+
+    let operational = build_operational_health(&state).await;
+    let queue_overloaded = operational.as_ref().is_some_and(|op| {
+        crate::task_queue_pressure::health_degraded_by_queue(op.task_queue.pending)
+    });
+
     let status = if schema
         .as_ref()
         .and_then(|s| s.source_ids_indexes.as_ref())
         .is_some_and(|m| !m.ready)
+        || storage_degraded
+        || queue_overloaded
     {
         "degraded"
     } else {
@@ -117,6 +136,15 @@ pub async fn health_check(State(state): State<AppState>) -> ApiResult<Json<Healt
     #[cfg(not(feature = "postgres"))]
     let pdf_storage_enabled: Option<bool> = None;
 
+    #[cfg(feature = "postgres")]
+    let identity_policy = crate::services::identity_storage::IdentityPolicy::resolve(
+        &state.security,
+        state.pg_pool.is_some(),
+    );
+    #[cfg(not(feature = "postgres"))]
+    let identity_policy =
+        crate::services::identity_storage::IdentityPolicy::resolve(&state.security, false);
+
     let response = HealthResponse {
         status: status.to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
@@ -133,9 +161,127 @@ pub async fn health_check(State(state): State<AppState>) -> ApiResult<Json<Healt
         schema,
         providers,
         pdf_storage_enabled,
+        operational,
+        capabilities: Some(ApiCapabilities {
+            openapi_url: "/api-docs/openapi.json".to_string(),
+            asyncapi_url: "/api-docs/asyncapi.json".to_string(),
+            swagger_ui_url: "/swagger-ui".to_string(),
+            admin_api_prefix: "/api/v1/admin".to_string(),
+            shared_conversations_prefix: "/api/v1/shared".to_string(),
+            jobs_v2_prefix: "/api/v2/workspaces/{workspace_id}/jobs".to_string(),
+            jobs_v2_catalog: "/api/v2/workspaces/{workspace_id}/jobs/catalog".to_string(),
+            auth_identity_ssot: Some(identity_policy.identity_backend_label().to_string()),
+            auth_enabled: Some(state.auth.config.auth_enabled),
+            dev_mode: Some(state.auth.config.dev_mode),
+            kv_identity_mirror_configured: Some(state.security.kv_identity_mirror),
+            kv_identity_mirror_effective: Some(identity_policy.kv_mirror),
+            auth_mechanisms: Some(state.auth.oidc_config.resolved_auth_mechanisms()),
+            oauth2_oidc_builtin: Some(state.auth.oidc_config.is_runtime_builtin()),
+            auth_kv_harness_active: Some(!identity_policy.pg_primary),
+            external_sso_pattern: if state.auth.oidc_config.is_runtime_builtin() {
+                Some("builtin-oidc".to_string())
+            } else {
+                Some(edgequake_auth::EXTERNAL_SSO_PATTERN.to_string())
+            },
+        }),
     };
 
     Ok(Json(response))
+}
+
+async fn build_operational_health(state: &AppState) -> Option<OperationalHealth> {
+    use crate::task_queue_pressure::{assess_queue_pressure, publish_queue_observability};
+    use edgequake_observability::{log_format_label, ObservabilityConfig};
+    use edgequake_query::{
+        fusion::{mix_fusion_mode_from_env, mix_fusion_mode_label},
+        hybrid_merge::{hybrid_fusion_mode_from_env, hybrid_fusion_mode_label},
+    };
+    use edgequake_storage::{
+        community_refresh_debounce_secs, pending_community_refresh_workspaces,
+    };
+
+    let task_stats = state
+        .tasks
+        .storage
+        .get_statistics(edgequake_tasks::storage::TaskFilter::default())
+        .await
+        .ok()?;
+
+    let obs_cfg = ObservabilityConfig::from_env();
+    let engine = &state.query.engine_impl;
+
+    #[cfg(feature = "postgres")]
+    let relational_backfill_enabled = state.pg_pool.is_some();
+    #[cfg(not(feature = "postgres"))]
+    let relational_backfill_enabled = false;
+
+    let pressure = assess_queue_pressure(task_stats.pending);
+    publish_queue_observability(
+        task_stats.pending,
+        task_stats.processing,
+        task_stats.failed,
+        &pressure,
+    );
+
+    let community_scheduled = pending_community_refresh_workspaces().await as u64;
+
+    Some(OperationalHealth {
+        task_queue: TaskQueueHealthSnapshot {
+            pending: task_stats.pending,
+            processing: task_stats.processing,
+            failed: task_stats.failed,
+            pressure: pressure.level.as_str().to_string(),
+            pending_warn_threshold: pressure.pending_warn_threshold,
+            pending_critical_threshold: pressure.pending_critical_threshold,
+            operator_action: pressure.operator_action.clone(),
+        },
+        query_engine: QueryEngineHealthSnapshot {
+            default_mode: engine.config().default_mode.to_string(),
+            reranker_configured: engine.has_reranker(),
+            community_refresh_debounce_secs: community_refresh_debounce_secs(),
+            hybrid_fusion: hybrid_fusion_mode_label(hybrid_fusion_mode_from_env()).to_string(),
+            mix_fusion: mix_fusion_mode_label(mix_fusion_mode_from_env()).to_string(),
+            community_refresh_scheduled_workspaces: community_scheduled,
+        },
+        observability: ObservabilityHealthSnapshot {
+            log_format: log_format_label(obs_cfg.log_format).to_string(),
+            otel_enabled: obs_cfg.otel_enabled,
+        },
+        read_model: ReadModelHealthSnapshot {
+            merge_strategy: crate::document_read_model::MERGE_STRATEGY.to_string(),
+            relational_backfill_enabled,
+            entity_count_graph_reconcile: true,
+        },
+        migration: build_migration_health_snapshot(state),
+        ingestion: IngestionHealthSnapshot {
+            execution_model: "worker_queue".to_string(),
+            persist_ssot: "IngestionPersister".to_string(),
+            duplicate_reingest_enabled: true,
+        },
+        storage: StorageHealthSnapshot {
+            chunk_text_ssot: "kv".to_string(),
+            vector_metadata_ref: "content_ref".to_string(),
+            chunk_kv_in_persister: true,
+        },
+    })
+}
+
+#[cfg(feature = "postgres")]
+fn build_migration_health_snapshot(state: &AppState) -> Option<MigrationHealthSnapshot> {
+    let report = state.migration_bootstrap.as_ref()?;
+    Some(MigrationHealthSnapshot {
+        latest_version: report.latest_version,
+        source_ids_indexes_ready: report.migration_038.indexes_ready,
+        pgvector_iterative_scan_capable: report.migration_042.iterative_scan_capable,
+        ready_for_traffic: crate::state::migration_bootstrap::is_ready_for_traffic(
+            &state.migration_bootstrap,
+        ),
+    })
+}
+
+#[cfg(not(feature = "postgres"))]
+fn build_migration_health_snapshot(_state: &AppState) -> Option<MigrationHealthSnapshot> {
+    None
 }
 
 /// Query database schema health from _sqlx_migrations table.
@@ -147,28 +293,9 @@ async fn get_schema_health(state: &AppState) -> Option<SchemaHealth> {
     {
         let pool = state.pg_pool.as_ref()?;
 
-        // WHY scalar subqueries: Single round-trip, handles empty table gracefully
-        #[derive(sqlx::FromRow)]
-        struct MigrationStats {
-            applied_count: i64,
-            latest_version: Option<i64>,
-            last_applied_at: Option<chrono::DateTime<chrono::Utc>>,
-        }
+        // WHY: Global ops table — see `services/health_schema.rs` (no tenant RLS).
+        let stats = crate::services::health_schema::fetch_sqlx_migration_stats(pool).await?;
 
-        let stats: Option<MigrationStats> = sqlx::query_as(
-            r#"
-            SELECT 
-                COUNT(*) FILTER (WHERE success = true) as applied_count,
-                MAX(version) FILTER (WHERE success = true) as latest_version,
-                MAX(installed_on) FILTER (WHERE success = true) as last_applied_at
-            FROM _sqlx_migrations
-            "#,
-        )
-        .fetch_optional(pool)
-        .await
-        .ok()?;
-
-        let stats = stats?;
         let source_ids_indexes = state.migration_bootstrap.as_ref().map(|report| {
             let m = &report.migration_038;
             crate::handlers::health_types::SourceIdsIndexHealth {

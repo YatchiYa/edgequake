@@ -62,6 +62,37 @@ impl DocumentTaskProcessor {
             .unwrap_or_else(|_| Arc::clone(&self.pipeline))
     }
 
+    /// Document-scoped pipeline with adaptive chunking and gleaning (SPEC-025 5.2/5.3).
+    pub(super) async fn get_workspace_pipeline_for_ingestion(
+        &self,
+        workspace_id: Option<&str>,
+        options: edgequake_pipeline::IngestionPipelineOptions,
+        policy: crate::workspace_pipeline_factory::PipelineFallbackPolicy,
+    ) -> Result<Arc<Pipeline>, String> {
+        let (workspace_service, _models_config): (&SharedWorkspaceService, &Arc<ModelsConfig>) =
+            match (&self.workspace_service, &self.models_config) {
+                (Some(ws), Some(mc)) => (ws, mc),
+                _ => {
+                    return Err("OODA-16: No workspace support configured on processor".to_string());
+                }
+            };
+
+        let Some(workspace_id) = workspace_id.map(str::trim).filter(|id| !id.is_empty()) else {
+            return Err(format!(
+                "OODA-16: Invalid workspace_id '{:?}' - must provide valid workspace ID in strict mode",
+                workspace_id
+            ));
+        };
+
+        let factory = crate::workspace_pipeline_factory::WorkspacePipelineFactory::new(
+            Arc::clone(workspace_service),
+            Arc::clone(&self.pipeline),
+        );
+        factory
+            .resolve_for_ingestion(workspace_id, policy, options)
+            .await
+    }
+
     /// OODA-16: Strict variant that returns error instead of falling back.
     pub(super) async fn get_workspace_pipeline_strict(
         &self,
@@ -121,160 +152,29 @@ impl DocumentTaskProcessor {
         &self,
         workspace_id: &str,
     ) -> Result<Arc<dyn VectorStorage>, String> {
-        use edgequake_storage::traits::WorkspaceVectorConfig;
-
-        // OODA-223: Check if we should allow fallback
-        let allow_fallback = !self.strict_workspace_mode;
-
-        let workspace_id = workspace_id.trim();
-        if workspace_id.is_empty() {
-            if allow_fallback {
-                warn!(
-                    workspace_id = %workspace_id,
-                    strict_mode = self.strict_workspace_mode,
-                    "Empty workspace ID - using default storage (non-strict mode)"
-                );
-                return Ok(Arc::clone(&self.vector_storage));
-            }
-            error!(
-                workspace_id = %workspace_id,
-                "CRITICAL INGESTION ERROR: Cannot ingest documents without a workspace ID"
-            );
-            return Err("Cannot ingest documents without a valid workspace ID. \
-                 Please ensure workspace context is properly set."
-                .to_string());
-        }
-
-        // Parse workspace UUID, preserving the legacy `default` alias.
-        let workspace_uuid = match crate::middleware::resolve_workspace_uuid(Some(workspace_id)) {
-            Some(uuid) => uuid,
-            None => {
-                if allow_fallback {
-                    warn!(
-                        workspace_id = %workspace_id,
-                        strict_mode = self.strict_workspace_mode,
-                        "Invalid workspace ID format - using default storage (non-strict mode)"
-                    );
-                    return Ok(Arc::clone(&self.vector_storage));
-                }
-                error!(
-                    workspace_id = %workspace_id,
-                    "CRITICAL INGESTION ERROR: Invalid workspace ID format"
-                );
-                return Err(format!(
-                    "Invalid workspace ID format '{}': could not resolve to a UUID",
-                    workspace_id
-                ));
-            }
+        use edgequake_core::{
+            resolve_workspace_vector_storage, WorkspaceVectorResolveInput,
+            WorkspaceVectorResolvePolicy,
         };
 
-        // Check if we already have this workspace's vector storage cached
-        if let Some(storage) = self.vector_registry.get(&workspace_uuid).await {
-            return Ok(storage);
-        }
-
-        // Look up workspace to get embedding dimension
-        let workspace_service = match &self.workspace_service {
-            Some(ws) => ws,
-            None => {
-                if allow_fallback {
-                    warn!(
-                        workspace_id = %workspace_id,
-                        strict_mode = self.strict_workspace_mode,
-                        "No workspace service - using default storage (non-strict mode)"
-                    );
-                    return Ok(Arc::clone(&self.vector_storage));
-                }
-                error!(
-                    workspace_id = %workspace_id,
-                    "CRITICAL INGESTION ERROR: No workspace service available"
-                );
-                return Err(
-                    "Workspace service not configured. Cannot verify workspace exists.".to_string(),
-                );
-            }
+        let policy = if self.strict_workspace_mode {
+            WorkspaceVectorResolvePolicy::Strict
+        } else {
+            WorkspaceVectorResolvePolicy::AllowDefaultFallback
         };
 
-        match workspace_service.get_workspace(workspace_uuid).await {
-            Ok(Some(ws)) => {
-                // Create workspace-specific vector storage with correct dimension
-                let config = WorkspaceVectorConfig {
-                    workspace_id: workspace_uuid,
-                    dimension: ws.embedding_dimension,
-                    namespace: "default".to_string(),
-                };
+        let fallback_dim = self.vector_storage.dimension();
 
-                match self.vector_registry.get_or_create(config).await {
-                    Ok(storage) => {
-                        info!(
-                            workspace_id = %workspace_id,
-                            dimension = ws.embedding_dimension,
-                            strict_mode = self.strict_workspace_mode,
-                            "Using workspace-specific vector storage"
-                        );
-                        Ok(storage)
-                    }
-                    Err(e) => {
-                        if allow_fallback {
-                            warn!(
-                                workspace_id = %workspace_id,
-                                error = %e,
-                                strict_mode = self.strict_workspace_mode,
-                                "Failed to create workspace storage - using default (non-strict mode)"
-                            );
-                            return Ok(Arc::clone(&self.vector_storage));
-                        }
-                        error!(
-                            workspace_id = %workspace_id,
-                            error = %e,
-                            "CRITICAL INGESTION ERROR: Failed to create workspace vector storage"
-                        );
-                        Err(format!(
-                            "Failed to create vector storage for workspace '{}': {}",
-                            workspace_id, e
-                        ))
-                    }
-                }
-            }
-            Ok(None) => {
-                if allow_fallback {
-                    warn!(
-                        workspace_id = %workspace_id,
-                        strict_mode = self.strict_workspace_mode,
-                        "Workspace not found - using default storage (non-strict mode)"
-                    );
-                    return Ok(Arc::clone(&self.vector_storage));
-                }
-                error!(
-                    workspace_id = %workspace_id,
-                    "CRITICAL INGESTION ERROR: Workspace not found"
-                );
-                Err(format!(
-                    "Workspace '{}' not found. Cannot ingest documents into non-existent workspace.",
-                    workspace_id
-                ))
-            }
-            Err(e) => {
-                if allow_fallback {
-                    warn!(
-                        workspace_id = %workspace_id,
-                        error = %e,
-                        strict_mode = self.strict_workspace_mode,
-                        "Failed to lookup workspace - using default storage (non-strict mode)"
-                    );
-                    return Ok(Arc::clone(&self.vector_storage));
-                }
-                error!(
-                    workspace_id = %workspace_id,
-                    error = %e,
-                    "CRITICAL INGESTION ERROR: Failed to lookup workspace"
-                );
-                Err(format!(
-                    "Failed to lookup workspace '{}': {}",
-                    workspace_id, e
-                ))
-            }
-        }
+        resolve_workspace_vector_storage(
+            self.vector_registry.as_ref(),
+            Arc::clone(&self.vector_storage),
+            self.workspace_service.as_deref(),
+            fallback_dim,
+            WorkspaceVectorResolveInput::new(Some(workspace_id), "default"),
+            policy,
+        )
+        .await
+        .map_err(|e| e.to_string())
     }
 
     /// SPEC-032/OODA-198: Get provider lineage for a workspace.

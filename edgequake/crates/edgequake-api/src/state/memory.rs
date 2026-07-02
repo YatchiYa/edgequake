@@ -14,7 +14,7 @@ use edgequake_core::InMemoryConversationService;
 use edgequake_core::InMemoryWorkspaceService;
 use edgequake_llm::ModelsConfig;
 use edgequake_pipeline::Pipeline;
-use edgequake_query::{QueryEngine, QueryEngineConfig, SOTAQueryConfig, SOTAQueryEngine};
+use edgequake_query::{QueryEngine, QueryEngineConfig};
 use edgequake_rate_limiter::{RateLimitConfig as TokenBucketConfig, RateLimiter};
 #[cfg(feature = "postgres")]
 use edgequake_storage::adapters::memory::{MemoryConversationStorage, MemoryPdfStorage};
@@ -25,9 +25,7 @@ use edgequake_storage::adapters::memory::{
 use edgequake_storage::ConversationStorage;
 
 use super::config::{AppConfig, SharedConversationService, SharedWorkspaceService, StorageMode};
-use super::{
-    create_bm25_reranker, AppState, AuthRuntime, QueryRuntime, StorageRuntime, TaskRuntime,
-};
+use super::{ApiSecurityConfig, AppState, AuthRuntime, QueryRuntime, StorageRuntime, TaskRuntime};
 use crate::cache_manager::CacheManager;
 
 #[cfg(feature = "postgres")]
@@ -63,15 +61,15 @@ impl AppState {
         graph_storage: Arc<dyn edgequake_storage::traits::GraphStorage>,
         llm_provider: Arc<dyn edgequake_llm::traits::LLMProvider>,
         embedding_provider: Arc<dyn edgequake_llm::traits::EmbeddingProvider>,
-        query_engine: Arc<QueryEngine>,
-        sota_engine: Arc<SOTAQueryEngine>,
+        engine_impl: Arc<QueryEngine>,
         pipeline: Arc<Pipeline>,
         task_storage: edgequake_tasks::SharedTaskStorage,
         task_queue: edgequake_tasks::SharedTaskQueue,
         workspace_service: SharedWorkspaceService,
     ) -> Self {
         let conversation_service = memory_conversation_service();
-        let (resource_guard, graph_materialize) = super::resource_runtime::build_resource_runtime();
+        let (resource_guard, graph_materialize, pdf_vision) =
+            super::resource_runtime::build_resource_runtime();
 
         Self {
             storage: StorageRuntime {
@@ -79,6 +77,7 @@ impl AppState {
                 vector_storage,
                 vector_registry,
                 graph_storage,
+                auth_memory: Arc::new(crate::services::auth_memory_store::AuthMemoryStore::new()),
                 #[cfg(feature = "postgres")]
                 pdf_storage: memory_pdf_storage(),
                 mode: StorageMode::Memory,
@@ -87,8 +86,7 @@ impl AppState {
                 llm_provider,
                 vision_llm_provider: None,
                 embedding_provider,
-                query_engine,
-                sota_engine,
+                engine_impl,
                 pipeline,
                 models_config: super::bundled_models::bundled_models_config(),
             },
@@ -106,8 +104,10 @@ impl AppState {
             audit_logger: None,
             resource_guard,
             graph_materialize,
+            pdf_vision,
             #[cfg(feature = "postgres")]
             migration_bootstrap: None,
+            security: ApiSecurityConfig::from_env(),
         }
     }
 
@@ -179,13 +179,12 @@ impl AppState {
         let task_storage = Arc::new(edgequake_tasks::memory::MemoryTaskStorage::new());
         let task_queue = Arc::new(edgequake_tasks::queue::ChannelTaskQueue::new(100));
 
-        let reranker = create_bm25_reranker();
-        let (query_engine, sota_engine) = super::query_bootstrap::build_production_query_engines(
+        let engine_impl = super::query_bootstrap::build_production_query_engine(
             Arc::clone(&vector_storage) as Arc<dyn edgequake_storage::traits::VectorStorage>,
             Arc::clone(&graph_storage) as Arc<dyn edgequake_storage::traits::GraphStorage>,
             Arc::clone(&embedding_provider),
             Arc::clone(&llm_provider),
-            reranker,
+            Arc::clone(&kv_storage) as Arc<dyn edgequake_storage::traits::KVStorage>,
         );
 
         // Create workspace vector registry for per-workspace dimensions
@@ -196,7 +195,8 @@ impl AppState {
 
         // Create auth services
         let auth = AuthRuntime::from_env();
-        let (resource_guard, graph_materialize) = super::resource_runtime::build_resource_runtime();
+        let (resource_guard, graph_materialize, pdf_vision) =
+            super::resource_runtime::build_resource_runtime();
 
         Self {
             storage: StorageRuntime {
@@ -207,6 +207,7 @@ impl AppState {
                 vector_registry,
                 graph_storage: Arc::clone(&graph_storage)
                     as Arc<dyn edgequake_storage::traits::GraphStorage>,
+                auth_memory: Arc::new(crate::services::auth_memory_store::AuthMemoryStore::new()),
                 #[cfg(feature = "postgres")]
                 pdf_storage: memory_pdf_storage(),
                 mode: StorageMode::Memory,
@@ -215,8 +216,7 @@ impl AppState {
                 llm_provider: Arc::clone(&llm_provider),
                 vision_llm_provider: None,
                 embedding_provider: Arc::clone(&embedding_provider),
-                query_engine,
-                sota_engine,
+                engine_impl,
                 pipeline,
                 models_config: super::bundled_models::bundled_models_config(),
             },
@@ -237,8 +237,10 @@ impl AppState {
             audit_logger: None,
             resource_guard,
             graph_materialize,
+            pdf_vision,
             #[cfg(feature = "postgres")]
             migration_bootstrap: None,
+            security: ApiSecurityConfig::default(),
         }
     }
 
@@ -246,11 +248,18 @@ impl AppState {
     pub fn test_state() -> Self {
         use edgequake_llm::MockProvider;
 
-        let mock_provider = Arc::new(MockProvider::new());
+        Self::build_test_state(Arc::new(MockProvider::new()))
+    }
+
+    /// Build test state from a pre-configured mock (DRY — worker E2E seeds extraction JSON).
+    pub fn build_test_state(mock_provider: Arc<edgequake_llm::MockProvider>) -> Self {
         let kv_storage = Arc::new(MemoryKVStorage::new("test"));
         let vector_storage = Arc::new(MemoryVectorStorage::new("test", 1536)); // Match MockProvider dimension
         let graph_storage = Arc::new(MemoryGraphStorage::new("test"));
-        let pipeline = Arc::new(Pipeline::default_pipeline());
+        let pipeline = super::query_bootstrap::build_ingestion_pipeline(
+            Arc::clone(&mock_provider) as Arc<dyn edgequake_llm::traits::LLMProvider>,
+            Arc::clone(&mock_provider) as Arc<dyn edgequake_llm::traits::EmbeddingProvider>,
+        );
 
         // Create workspace service
         let workspace_service: SharedWorkspaceService = Arc::new(InMemoryWorkspaceService::new());
@@ -262,24 +271,21 @@ impl AppState {
         let task_storage = Arc::new(edgequake_tasks::memory::MemoryTaskStorage::new());
         let task_queue = Arc::new(edgequake_tasks::queue::ChannelTaskQueue::new(100));
 
-        // Create legacy query engine (for backward compatibility)
-        let query_config = QueryEngineConfig::default();
-        let query_engine = Arc::new(QueryEngine::new(
-            query_config,
-            Arc::clone(&vector_storage) as Arc<dyn edgequake_storage::traits::VectorStorage>,
-            Arc::clone(&graph_storage) as Arc<dyn edgequake_storage::traits::GraphStorage>,
-            Arc::clone(&mock_provider) as Arc<dyn edgequake_llm::traits::EmbeddingProvider>,
-            Arc::clone(&mock_provider) as Arc<dyn edgequake_llm::traits::LLMProvider>,
-        ));
-
         // Create SOTA query engine with mock keywords for testing
-        let sota_engine = Arc::new(SOTAQueryEngine::with_mock_keywords(
-            SOTAQueryConfig::default(),
-            Arc::clone(&vector_storage) as Arc<dyn edgequake_storage::traits::VectorStorage>,
-            Arc::clone(&graph_storage) as Arc<dyn edgequake_storage::traits::GraphStorage>,
-            Arc::clone(&mock_provider) as Arc<dyn edgequake_llm::traits::EmbeddingProvider>,
-            Arc::clone(&mock_provider) as Arc<dyn edgequake_llm::traits::LLMProvider>,
-        ));
+        let engine_impl = Arc::new(
+            QueryEngine::with_mock_keywords(
+                QueryEngineConfig::default(),
+                Arc::clone(&vector_storage) as Arc<dyn edgequake_storage::traits::VectorStorage>,
+                Arc::clone(&graph_storage) as Arc<dyn edgequake_storage::traits::GraphStorage>,
+                Arc::clone(&mock_provider) as Arc<dyn edgequake_llm::traits::EmbeddingProvider>,
+                Arc::clone(&mock_provider) as Arc<dyn edgequake_llm::traits::LLMProvider>,
+            )
+            .with_kv_storage(
+                Arc::clone(&kv_storage) as Arc<dyn edgequake_storage::traits::KVStorage>
+            )
+            .with_embedding_cache()
+            .with_result_cache(),
+        );
 
         // Create workspace vector registry for per-workspace dimensions
         let vector_registry: Arc<dyn edgequake_storage::traits::WorkspaceVectorRegistry> =
@@ -287,9 +293,14 @@ impl AppState {
                 Arc::clone(&vector_storage) as Arc<dyn edgequake_storage::traits::VectorStorage>,
             ));
 
-        // Create auth services with test configuration
-        let auth = AuthRuntime::new(AuthConfig::default());
-        let (resource_guard, graph_materialize) = super::resource_runtime::build_resource_runtime();
+        // Test harness: simulate EDGEQUAKE_DEV_MODE (open API without auth middleware).
+        let auth = AuthRuntime::new(AuthConfig {
+            auth_enabled: false,
+            dev_mode: true,
+            ..AuthConfig::default()
+        });
+        let (resource_guard, graph_materialize, pdf_vision) =
+            super::resource_runtime::build_resource_runtime();
 
         Self {
             storage: StorageRuntime {
@@ -300,6 +311,7 @@ impl AppState {
                 vector_registry,
                 graph_storage: Arc::clone(&graph_storage)
                     as Arc<dyn edgequake_storage::traits::GraphStorage>,
+                auth_memory: Arc::new(crate::services::auth_memory_store::AuthMemoryStore::new()),
                 #[cfg(feature = "postgres")]
                 pdf_storage: memory_pdf_storage(),
                 mode: StorageMode::Memory,
@@ -310,8 +322,7 @@ impl AppState {
                 vision_llm_provider: None,
                 embedding_provider: Arc::clone(&mock_provider)
                     as Arc<dyn edgequake_llm::traits::EmbeddingProvider>,
-                query_engine,
-                sota_engine,
+                engine_impl,
                 pipeline,
                 models_config: Arc::new(ModelsConfig::builtin_defaults()),
             },
@@ -332,8 +343,18 @@ impl AppState {
             audit_logger: None,
             resource_guard,
             graph_materialize,
+            pdf_vision,
             #[cfg(feature = "postgres")]
             migration_bootstrap: None,
+            security: ApiSecurityConfig::default(),
         }
+    }
+
+    /// Test state with PostgreSQL pool — auth/session use PG SSOT (SPEC-027 phase 41).
+    #[cfg(feature = "postgres")]
+    pub fn test_state_with_pg_pool(pool: sqlx::PgPool) -> Self {
+        let mut state = Self::test_state();
+        state.pg_pool = Some(pool);
+        state
     }
 }

@@ -13,6 +13,7 @@ use super::helpers::{
 use crate::error::ApiError;
 use crate::handlers::workspaces_types::*;
 use crate::middleware::TenantContext;
+use crate::services::document_metadata_scan::load_workspace_metadata_values;
 use crate::state::AppState;
 use edgequake_core::MetricsTriggerType;
 
@@ -43,12 +44,13 @@ pub async fn get_workspace_stats(
 
     // HYBRID APPROACH WITH CACHING: 4-tier performance optimization
     // See: logs/2026-01-26-18-00-storage-architecture-analysis.md
+    // See: specs/021-storage-study/06-first-principles/11-ux-zero-documents-root-cause-assessment.md
     //
     // Performance tiers:
     // 0. Cache (<1ms) - FASTEST, 60s TTL
-    // 1. PostgreSQL documents table (1-5ms) - Fast but currently empty
-    // 2. KV storage aggregation (15ms) - Moderate, current data source
-    // 3. AGE graph queries (50-200ms) - Slowest, last resort
+    // 1. PostgreSQL documents table (1-5ms) - primary for document_count (SPEC-021 P5-01)
+    // 2. KV storage aggregation (15ms) - fallback for legacy uploads + chunk metrics
+    // 3. AGE graph queries (50-200ms) - authoritative for entity/relationship counts
 
     use std::time::Instant;
     let start = Instant::now();
@@ -71,8 +73,51 @@ pub async fn get_workspace_stats(
         }
     }
 
-    // Cache miss - fetch from storage
-    let stats = fetch_workspace_stats_uncached(&state, workspace_id, start).await?;
+    // SPEC-021 P-G13: stale-if-error — under ingestion load, prefer last-known
+    // stats over timing out (which makes the UI show 0 and triggers false
+    // "backend unreachable" banners via React Query transport failures).
+    let stale_fallback = {
+        let cache = WORKSPACE_STATS_CACHE.read().await;
+        cache.get(&workspace_id).map(|c| c.stats.clone())
+    };
+
+    const STATS_FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(4);
+
+    let fetch_result = tokio::time::timeout(
+        STATS_FETCH_TIMEOUT,
+        fetch_workspace_stats_uncached(&state, workspace_id, start),
+    )
+    .await;
+
+    let stats = match fetch_result {
+        Ok(Ok(stats)) => stats,
+        Ok(Err(e)) => {
+            if let Some(mut stale) = stale_fallback {
+                stale.stale = true;
+                tracing::warn!(
+                    workspace_id = %workspace_id,
+                    error = %e,
+                    "Workspace stats fetch failed — serving stale cache (P-G13)"
+                );
+                return Ok(Json(stale));
+            }
+            return Err(e);
+        }
+        Err(_) => {
+            if let Some(mut stale) = stale_fallback {
+                stale.stale = true;
+                tracing::warn!(
+                    workspace_id = %workspace_id,
+                    timeout_secs = STATS_FETCH_TIMEOUT.as_secs(),
+                    "Workspace stats fetch timed out under load — serving stale cache (P-G13)"
+                );
+                return Ok(Json(stale));
+            }
+            return Err(ApiError::Internal(
+                "Workspace stats temporarily unavailable — retry shortly".to_string(),
+            ));
+        }
+    };
 
     // Update cache for next request
     {
@@ -91,65 +136,55 @@ pub async fn get_workspace_stats(
 
 /// Fetch workspace stats from storage backends (uncached).
 ///
-/// FIX-ISSUE-81: Always use KV storage + Apache AGE graph as the single
-/// source of truth. The previous PostgreSQL-first fallback short-circuited
-/// when `document_count > 0` (e.g. 1 PDF in PostgreSQL), returning stale
-/// entity/relationship counts (0) from empty PostgreSQL tables while the
-/// accurate data lived in KV + AGE.
-///
-/// KV storage holds ALL documents (text, markdown, file, PDF), and AGE
-/// graph holds ALL entities and relationships — making them authoritative.
+/// SPEC-021 P5-01 (fixes UX "0 documents" when relational rows exist):
+/// - **document_count / storage_bytes**: `max(postgresql, kv)` — relational primary,
+///   KV fallback for legacy uploads that never dual-wrote.
+/// - **entity_count / relationship_count / entity_type_count**: AGE graph (always).
+/// - **chunk_count / embedding_count**: KV chunk keys for workspace documents.
 async fn fetch_workspace_stats_uncached(
     state: &AppState,
     workspace_id: Uuid,
     start: Instant,
 ) -> Result<WorkspaceStatsResponse, ApiError> {
-    // ALWAYS use KV storage for document count (source of truth for ALL doc types)
-    // ALWAYS use AGE graph for entity/relationship counts (source of truth)
-    // This eliminates the PostgreSQL fallback that caused the KPI mismatch (Issue #81)
-    let stats = try_kv_storage_stats(state, workspace_id).await?;
+    let mut stats = try_kv_storage_stats(state, workspace_id).await?;
+    let kv_document_count = stats.document_count;
+    let kv_storage_bytes = stats.storage_bytes;
+
+    let mut method = "kv_storage";
+
+    if let Some((pg_docs, pg_bytes)) =
+        crate::document_read_model::postgres_document_metrics(state, workspace_id).await
+    {
+        stats.document_count =
+            crate::document_read_model::merge_document_count(pg_docs, kv_document_count);
+        stats.storage_bytes =
+            crate::document_read_model::merge_storage_bytes(pg_bytes, kv_storage_bytes);
+        method = if pg_docs >= kv_document_count {
+            "postgresql+kv"
+        } else {
+            "kv+postgresql"
+        };
+
+        if pg_docs > 0 && kv_document_count == 0 {
+            tracing::info!(
+                workspace_id = %workspace_id,
+                pg_document_count = pg_docs,
+                "SPEC-021: relational documents present but KV metadata missing for workspace"
+            );
+        }
+    }
+
     let elapsed = start.elapsed();
     tracing::info!(
         workspace_id = %workspace_id,
         duration_ms = elapsed.as_millis(),
-        method = "kv_storage",
+        method = method,
         document_count = stats.document_count,
         entity_count = stats.entity_count,
         relationship_count = stats.relationship_count,
-        "FIX-ISSUE-81: Workspace stats from KV+AGE (authoritative source)"
+        "Workspace stats from hybrid read model (SPEC-021 P5-01)"
     );
     Ok(stats)
-}
-
-/// Try to get stats from PostgreSQL documents table.
-///
-/// NOTE (FIX-ISSUE-81): This function is no longer called in the hot path.
-/// It is retained for future use when Phase 2 dual-write is fully complete
-/// and all upload paths populate the PostgreSQL `documents` table.
-/// At that point, it can be re-enabled as an optimization layer.
-#[allow(dead_code)]
-async fn try_postgres_stats(
-    state: &AppState,
-    workspace_id: Uuid,
-) -> Result<WorkspaceStatsResponse, ApiError> {
-    // WHY: Call workspace_service which has access to PgPool
-    // This uses the existing service layer with optimized SQL queries
-    let stats = state
-        .workspace_service
-        .get_workspace_stats(workspace_id)
-        .await
-        .map_err(|e| ApiError::Internal(format!("PostgreSQL stats query failed: {}", e)))?;
-
-    Ok(WorkspaceStatsResponse {
-        workspace_id: stats.workspace_id,
-        document_count: stats.document_count,
-        entity_count: stats.entity_count,
-        relationship_count: stats.relationship_count,
-        entity_type_count: 0, // PostgreSQL path doesn't have this yet; will be overridden by graph query
-        chunk_count: stats.chunk_count,
-        embedding_count: stats.embedding_count,
-        storage_bytes: stats.storage_bytes as u64,
-    })
 }
 
 /// Get stats from KV storage (moderate speed, current source of truth).
@@ -161,57 +196,38 @@ async fn try_kv_storage_stats(
     state: &AppState,
     workspace_id: Uuid,
 ) -> Result<WorkspaceStatsResponse, ApiError> {
-    // SPEC-011 iter 02 Fix C: `keys_with_suffix("-metadata")` uses the reverse-key
-    // expression index (`eq_{prefix}_kv_reverse_key_idx`) for an O(log N + K)
-    // prefix scan — replaces the previous `keys_like("%-metadata")` full scan.
-    let metadata_keys = state
-        .storage
-        .kv_storage
-        .keys_with_suffix("-metadata")
-        .await
-        .map_err(|e| ApiError::Internal(format!("Failed to get KV metadata keys: {}", e)))?;
-    // `"%-chunk-%"` is an interior wildcard, not a suffix — still uses the slow
-    // path. Documented as a known gap in SPEC-011 ITERATION_02_AUDIT.md §8.
-    let chunk_keys = state
-        .storage
-        .kv_storage
-        .keys_like("%-chunk-%")
-        .await
-        .map_err(|e| ApiError::Internal(format!("Failed to get KV chunk keys: {}", e)))?;
-
-    // Get all metadata values
-    let metadata_values = state
-        .storage
-        .kv_storage
-        .get_by_ids(&metadata_keys)
-        .await
-        .map_err(|e| ApiError::Internal(format!("Failed to get document metadata: {}", e)))?;
+    // SPEC-027 phase 10: wsdoc index prefix scan with suffix-scan fallback.
+    let metadata_values = load_workspace_metadata_values(
+        state.storage.kv_storage.as_ref(),
+        &workspace_id.to_string(),
+    )
+    .await
+    .map_err(|e| ApiError::Internal(format!("Failed to get document metadata: {}", e)))?;
 
     // Aggregate stats from documents belonging to this workspace
     let mut document_count = 0;
     let mut storage_bytes: u64 = 0;
     let mut workspace_doc_ids = Vec::new();
+    let mut chunk_count_from_metadata = 0usize;
 
     for value in metadata_values {
         if let Some(obj) = value.as_object() {
-            // Check if document belongs to this workspace
-            let doc_workspace_id = obj
-                .get("workspace_id")
-                .and_then(|v| v.as_str())
-                .and_then(|s| Uuid::parse_str(s).ok());
+            document_count += 1;
 
-            if doc_workspace_id == Some(workspace_id) {
-                document_count += 1;
+            // Collect document ID for per-doc chunk prefix scan
+            if let Some(id) = obj.get("id").and_then(|v| v.as_str()) {
+                workspace_doc_ids.push(id.to_string());
+            }
 
-                // Collect document ID for chunk counting
-                if let Some(id) = obj.get("id").and_then(|v| v.as_str()) {
-                    workspace_doc_ids.push(id.to_string());
-                }
+            chunk_count_from_metadata += obj
+                .get("chunk_count")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as usize)
+                .unwrap_or(0);
 
-                // Sum storage bytes
-                if let Some(bytes) = obj.get("file_size_bytes").and_then(|v| v.as_u64()) {
-                    storage_bytes += bytes;
-                }
+            // Sum storage bytes
+            if let Some(bytes) = obj.get("file_size_bytes").and_then(|v| v.as_u64()) {
+                storage_bytes += bytes;
             }
         }
     }
@@ -234,21 +250,19 @@ async fn try_kv_storage_stats(
         .await
         .unwrap_or(0);
 
-    // Count chunks and embeddings for this workspace's documents
-    let mut chunk_count = 0;
+    // Embedding count requires chunk payloads; use per-doc prefix scan (no global keys_like).
+    let chunk_count = chunk_count_from_metadata;
     let mut embedding_count = 0;
 
     for doc_id in &workspace_doc_ids {
-        // Count chunk keys for this document (from pre-filtered chunk key list)
-        let doc_chunk_keys: Vec<String> = chunk_keys
-            .iter()
-            .filter(|k| k.starts_with(&format!("{}-chunk-", doc_id)))
-            .cloned()
-            .collect();
+        let prefix = format!("{doc_id}-chunk-");
+        let doc_chunk_keys = state
+            .storage
+            .kv_storage
+            .keys_with_prefix(&prefix)
+            .await
+            .map_err(|e| ApiError::Internal(format!("Failed to list chunk keys: {}", e)))?;
 
-        chunk_count += doc_chunk_keys.len();
-
-        // Get chunk data to check for embeddings
         if !doc_chunk_keys.is_empty() {
             let chunk_values = state
                 .storage
@@ -257,7 +271,6 @@ async fn try_kv_storage_stats(
                 .await
                 .map_err(|e| ApiError::Internal(format!("Failed to get chunk data: {}", e)))?;
 
-            // Count chunks that have embeddings
             for chunk_value in chunk_values {
                 if let Some(obj) = chunk_value.as_object() {
                     if obj.get("embedding").is_some() {
@@ -288,6 +301,7 @@ async fn try_kv_storage_stats(
         chunk_count,
         embedding_count,
         storage_bytes,
+        stale: false,
     })
 }
 

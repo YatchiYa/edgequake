@@ -9,9 +9,31 @@ use tracing::warn;
 
 use crate::error::{ApiError, ApiResult};
 use crate::middleware::TenantContext;
+use crate::services::document_metadata_scan::load_scoped_document_metadata;
 use crate::state::AppState;
 use crate::workspace_scope::metadata_matches_tenant_context;
+use edgequake_storage::traits::KVStorage;
 use edgequake_storage::{PdfDocument, PdfDocumentStorage};
+
+/// Find a workspace-visible KV document id linked to `pdf_id`, if any.
+pub async fn find_kv_document_id_for_pdf(
+    kv_storage: &dyn KVStorage,
+    pdf_id: &str,
+    tenant_ctx: &TenantContext,
+) -> Option<String> {
+    let scoped = load_scoped_document_metadata(kv_storage, tenant_ctx)
+        .await
+        .ok()?;
+
+    for meta in scoped {
+        let linked_pdf = meta.get("pdf_id").and_then(|v| v.as_str());
+        if linked_pdf == Some(pdf_id) {
+            return meta.get("id").and_then(|v| v.as_str()).map(str::to_string);
+        }
+    }
+
+    None
+}
 
 /// Returns true when a workspace-visible KV document still backs this PDF row.
 pub async fn workspace_has_visible_document_for_pdf(
@@ -20,7 +42,8 @@ pub async fn workspace_has_visible_document_for_pdf(
     pdf: &PdfDocument,
 ) -> ApiResult<bool> {
     if let Some(document_id) = pdf.document_id {
-        let metadata_key = format!("{}-metadata", document_id);
+        let doc_id_str = document_id.to_string();
+        let metadata_key = edgequake_storage::kv_keys::doc_metadata(&doc_id_str);
         if let Ok(Some(meta)) = state.storage.kv_storage.get_by_id(&metadata_key).await {
             if metadata_matches_tenant_context(&meta, tenant_ctx) {
                 return Ok(true);
@@ -29,26 +52,11 @@ pub async fn workspace_has_visible_document_for_pdf(
     }
 
     let pdf_id_str = pdf.pdf_id.to_string();
-    let metadata_keys = state
-        .storage
-        .kv_storage
-        .keys_with_suffix("-metadata")
-        .await
-        .map_err(|e| ApiError::Internal(format!("Failed to scan document metadata: {}", e)))?;
-
-    for metadata_key in metadata_keys {
-        let Ok(Some(meta)) = state.storage.kv_storage.get_by_id(&metadata_key).await else {
-            continue;
-        };
-        let linked_pdf = meta.get("pdf_id").and_then(|v| v.as_str());
-        if linked_pdf == Some(pdf_id_str.as_str())
-            && metadata_matches_tenant_context(&meta, tenant_ctx)
-        {
-            return Ok(true);
-        }
-    }
-
-    Ok(false)
+    Ok(
+        find_kv_document_id_for_pdf(state.storage.kv_storage.as_ref(), &pdf_id_str, tenant_ctx)
+            .await
+            .is_some(),
+    )
 }
 
 /// Remove a PDF row that no longer has a visible workspace document.
@@ -72,7 +80,7 @@ pub async fn recycle_orphan_workspace_pdf(
 mod tests {
     use super::*;
     use crate::middleware::{default_workspace_uuid, TenantContext};
-    use edgequake_storage::{CreatePdfRequest, PdfDocumentStorage};
+    use edgequake_storage::CreatePdfRequest;
 
     fn test_tenant_ctx() -> TenantContext {
         TenantContext {

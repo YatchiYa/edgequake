@@ -21,10 +21,14 @@
 //! - **BR0573**: Username and email must be unique
 
 mod api_keys;
+mod extractors;
+mod oidc;
 mod session;
 mod user_management;
 
 pub use api_keys::*;
+pub use extractors::*;
+pub use oidc::*;
 pub use session::*;
 pub use user_management::*;
 
@@ -36,18 +40,12 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
 use crate::error::ApiError;
-use crate::state::AppState;
+use crate::state::{AppState, StorageRuntime};
 use edgequake_auth::{Role, User};
 
 // ============================================================================
-// Constants (shared across sub-modules)
+// Constants (shared across sub-modules — identity SSOT: services/identity_storage.rs)
 // ============================================================================
-
-pub(super) const USER_KEY_PREFIX: &str = "auth:user:";
-pub(super) const USER_BY_USERNAME_PREFIX: &str = "auth:user_by_username:";
-pub(super) const USER_BY_EMAIL_PREFIX: &str = "auth:user_by_email:";
-pub(super) const REFRESH_TOKEN_PREFIX: &str = "auth:refresh_token:";
-pub(super) const API_KEY_PREFIX: &str = "auth:api_key:";
 
 // ============================================================================
 // Internal Storage Record Types (shared across sub-modules)
@@ -56,7 +54,7 @@ pub(super) const API_KEY_PREFIX: &str = "auth:api_key:";
 /// Internal user record for storage.
 /// Unlike the auth crate's User struct, this includes password_hash for persistence.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(super) struct UserRecord {
+pub(crate) struct UserRecord {
     pub user_id: String,
     pub username: String,
     pub email: String,
@@ -66,6 +64,12 @@ pub(super) struct UserRecord {
     pub created_at: chrono::DateTime<Utc>,
     pub updated_at: chrono::DateTime<Utc>,
     pub last_login_at: Option<chrono::DateTime<Utc>>,
+    /// Failed password attempts since last successful login (SPEC-027 SEC-011).
+    #[serde(default)]
+    pub failed_login_attempts: u32,
+    /// Account locked until this time after too many failed logins.
+    #[serde(default)]
+    pub locked_until: Option<chrono::DateTime<Utc>>,
     #[serde(default)]
     pub metadata: std::collections::HashMap<String, serde_json::Value>,
 }
@@ -82,6 +86,8 @@ impl From<&User> for UserRecord {
             created_at: user.created_at,
             updated_at: user.updated_at,
             last_login_at: user.last_login_at,
+            failed_login_attempts: 0,
+            locked_until: None,
             metadata: user.metadata.clone(),
         }
     }
@@ -107,7 +113,7 @@ impl UserRecord {
 
 /// Stored refresh token record.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(super) struct RefreshTokenRecord {
+pub(crate) struct RefreshTokenRecord {
     pub token: String,
     pub user_id: String,
     pub created_at: chrono::DateTime<Utc>,
@@ -117,7 +123,7 @@ pub(super) struct RefreshTokenRecord {
 
 /// Stored API key record.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(super) struct ApiKeyRecord {
+pub(crate) struct ApiKeyRecord {
     pub key_id: String,
     pub user_id: String,
     pub key_hash: String,
@@ -132,71 +138,84 @@ pub(super) struct ApiKeyRecord {
 }
 
 // ============================================================================
-// Shared Helper Functions
+// Shared Helper Functions — SSOT: services/identity_storage.rs (SPEC-027 phase 51)
 // ============================================================================
 
-/// Find user by username or email.
+/// Find user by username or email (identity SSOT routing).
 pub(super) async fn find_user_by_login(
-    state: &AppState,
+    storage: &StorageRuntime,
+    pg_runtime: Option<&crate::state::PostgresRuntime>,
+    security: &crate::state::ApiSecurityConfig,
     login: &str,
 ) -> Result<Option<User>, ApiError> {
-    // Try username first
-    let username_key = format!("{}{}", USER_BY_USERNAME_PREFIX, login.to_lowercase());
-    if let Some(user_id_value) = state
-        .storage
-        .kv_storage
-        .get_by_id(&username_key)
-        .await
-        .map_err(|e| ApiError::Internal(format!("Storage error: {}", e)))?
+    #[cfg(feature = "postgres")]
     {
-        if let Some(user_id) = user_id_value.as_str() {
-            return get_user_by_id(state, user_id).await;
-        }
+        return Ok(
+            crate::services::identity_storage::find_user_record_by_login(
+                storage, pg_runtime, security, login,
+            )
+            .await?
+            .map(|r| r.to_user()),
+        );
     }
-
-    // Try email
-    let email_key = format!("{}{}", USER_BY_EMAIL_PREFIX, login.to_lowercase());
-    if let Some(user_id_value) = state
-        .storage
-        .kv_storage
-        .get_by_id(&email_key)
-        .await
-        .map_err(|e| ApiError::Internal(format!("Storage error: {}", e)))?
+    #[cfg(not(feature = "postgres"))]
     {
-        if let Some(user_id) = user_id_value.as_str() {
-            return get_user_by_id(state, user_id).await;
-        }
+        let _ = (pg_runtime, security);
+        Ok(None)
     }
-
-    Ok(None)
 }
 
-/// Get user by ID from KV storage.
+/// Get user by ID (identity SSOT routing).
 pub(super) async fn get_user_by_id(
-    state: &AppState,
+    storage: &StorageRuntime,
+    pg_runtime: Option<&crate::state::PostgresRuntime>,
+    security: &crate::state::ApiSecurityConfig,
     user_id: &str,
 ) -> Result<Option<User>, ApiError> {
-    Ok(get_record_by_id(state, user_id).await?.map(|r| r.to_user()))
+    Ok(get_record_by_id(storage, pg_runtime, security, user_id)
+        .await?
+        .map(|r| r.to_user()))
 }
 
-/// Get the raw [`UserRecord`] by user ID (preserves all stored fields).
-///
-/// Prefer this over [`get_user_by_id`] when the full record is needed
-/// (e.g., to build a [`crate::handlers::auth_types::UserInfo`] with
-/// `is_active`, `created_at`, `updated_at`, `last_login_at`).
+/// Get user record with identity SSOT routing.
 pub(super) async fn get_record_by_id(
-    state: &AppState,
+    storage: &StorageRuntime,
+    pg_runtime: Option<&crate::state::PostgresRuntime>,
+    security: &crate::state::ApiSecurityConfig,
     user_id: &str,
 ) -> Result<Option<UserRecord>, ApiError> {
-    let key = format!("{}{}", USER_KEY_PREFIX, user_id);
-    match state.storage.kv_storage.get_by_id(&key).await {
-        Ok(Some(value)) => {
-            let record: UserRecord = serde_json::from_value(value)
-                .map_err(|e| ApiError::Internal(format!("Deserialization error: {}", e)))?;
-            Ok(Some(record))
-        }
-        Ok(None) => Ok(None),
-        Err(e) => Err(ApiError::Internal(format!("Storage error: {}", e))),
+    #[cfg(feature = "postgres")]
+    {
+        return crate::services::identity_storage::load_user_record(
+            storage, pg_runtime, security, user_id,
+        )
+        .await;
+    }
+    #[cfg(not(feature = "postgres"))]
+    {
+        let _ = (pg_runtime, security, user_id);
+        Ok(None)
+    }
+}
+
+/// Persist a user record (PG SSOT when pool; KV test harness without pool).
+pub(crate) async fn persist_user_record(
+    storage: &StorageRuntime,
+    pg_runtime: Option<&crate::state::PostgresRuntime>,
+    security: &crate::state::ApiSecurityConfig,
+    record: &UserRecord,
+) -> Result<(), ApiError> {
+    #[cfg(feature = "postgres")]
+    {
+        return crate::services::identity_storage::persist_user_record(
+            storage, pg_runtime, security, record,
+        )
+        .await;
+    }
+    #[cfg(not(feature = "postgres"))]
+    {
+        let _ = (storage, pg_runtime, security, record);
+        Ok(())
     }
 }
 
@@ -216,63 +235,40 @@ impl From<&UserRecord> for crate::handlers::auth_types::UserInfo {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct RequestAuthContext {
+pub struct RequestAuthContext {
     pub user_id: String,
     pub role: Role,
 }
 
-pub(super) fn authenticate_request(
+/// Async authentication including KV-stored API keys (SPEC-027 IMP-002).
+pub(crate) async fn authenticate_request_async(
     headers: &HeaderMap,
     state: &AppState,
 ) -> Result<Option<RequestAuthContext>, ApiError> {
-    if let Some(api_key) = extract_api_key(headers) {
-        if state
-            .auth
-            .config
-            .api_keys
-            .iter()
-            .any(|configured| configured == &api_key)
-        {
-            return Ok(Some(RequestAuthContext {
-                user_id: "master-api-key".to_string(),
-                role: Role::Admin,
-            }));
+    let x_api_key = extract_api_key(headers);
+    let bearer = extract_bearer_token(headers);
+    let token = match (bearer.as_ref(), x_api_key.as_ref()) {
+        (Some(b), Some(_)) => {
+            tracing::warn!(
+                "Both Authorization Bearer and X-API-Key sent; preferring Bearer (EC-MCP-14)"
+            );
+            Some(b.as_str())
         }
-    }
+        (Some(b), None) => Some(b.as_str()),
+        (None, Some(k)) => Some(k.as_str()),
+        (None, None) => None,
+    };
 
-    let Some(token) = extract_bearer_token(headers) else {
+    let Some(token) = token else {
         return Ok(None);
     };
 
-    if state
-        .auth
-        .config
-        .api_keys
-        .iter()
-        .any(|configured| configured == &token)
-    {
-        return Ok(Some(RequestAuthContext {
-            user_id: "master-api-key".to_string(),
-            role: Role::Admin,
-        }));
-    }
-
-    let claims = state
-        .auth
-        .jwt
-        .verify_token(&token)
-        .map_err(|_| ApiError::unauthorized())?;
-
-    Ok(Some(RequestAuthContext {
-        user_id: claims
-            .user_id()
-            .map_err(|_| ApiError::unauthorized())?
-            .to_string(),
-        role: claims.role(),
-    }))
+    crate::services::auth_validation::validate_presented_token(state, token)
+        .await
+        .map(|result| result.map(|authenticated| authenticated.auth))
 }
 
-pub(super) fn require_authenticated_request(
+pub(super) async fn require_authenticated_request(
     headers: &HeaderMap,
     state: &AppState,
 ) -> Result<RequestAuthContext, ApiError> {
@@ -283,10 +279,12 @@ pub(super) fn require_authenticated_request(
         });
     }
 
-    authenticate_request(headers, state)?.ok_or(ApiError::unauthorized())
+    authenticate_request_async(headers, state)
+        .await?
+        .ok_or(ApiError::unauthorized())
 }
 
-pub(super) fn require_admin_request(
+pub(crate) async fn require_admin_request(
     headers: &HeaderMap,
     state: &AppState,
 ) -> Result<RequestAuthContext, ApiError> {
@@ -297,10 +295,12 @@ pub(super) fn require_admin_request(
         });
     }
 
-    let auth = require_authenticated_request(headers, state)?;
-    if auth.role != Role::Admin {
-        return Err(ApiError::forbidden());
-    }
+    let auth = require_authenticated_request(headers, state).await?;
+    state
+        .auth
+        .rbac
+        .require_role(&auth.role, &Role::Admin)
+        .map_err(|_| ApiError::forbidden())?;
     Ok(auth)
 }
 

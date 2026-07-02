@@ -4,16 +4,128 @@ use axum::extract::{Path, State};
 use axum::Json;
 
 use super::cache::cached_kv_get;
-use edgequake_storage::traits::collect_source_references;
+use edgequake_storage::traits::{collect_source_references, KVStorage};
 
 use crate::error::{ApiError, ApiResult};
-use crate::handlers::isolation::{properties_match_tenant_context, verify_document_access};
+use crate::handlers::isolation::verify_document_access;
 use crate::handlers::lineage_types::*;
 use crate::middleware::TenantContext;
 use crate::services::{
     find_document_edges, find_document_nodes, sources_for_document, DocumentSourceScope,
 };
-use crate::state::AppState;
+use crate::state::StorageRuntime;
+
+// ============================================================================
+// SPEC-033: Read-path page-lineage enrichment
+// ============================================================================
+
+/// Enrich the `lineage.chunks` array with `page_start` / `page_end` sourced
+/// from the authoritative chunk KV records, when the persisted lineage was
+/// created before SPEC-033 and therefore lacks page attribution.
+///
+/// # First-Principles rationale
+///
+/// - **SSOT**: `page_start` is canonical in chunk KV (written by `chunk_kv_value()`
+///   at ingestion time).  The lineage record is a denormalised snapshot.
+///   When that snapshot is stale the right answer is to derive from the SSOT.
+///
+/// - **Zero mutation risk**: This function is a pure read-path transformation.
+///   It never writes to storage, so no existing document or consumer can break.
+///
+/// - **Graceful degradation**: If the chunk KV lacks `page_start` (documents
+///   ingested before SPEC-032) the function is a no-op and the response is
+///   identical to the original.
+///
+/// - **Idempotency**: If every chunk already carries `page_start` in the
+///   lineage, the function returns `None` (early exit, O(1)).
+///
+/// # Returns
+///
+/// `Some(enriched_lineage)` when at least one chunk was enriched.
+/// `None` when nothing needed enriching (caller uses original value).
+async fn enrich_lineage_page_data(
+    kv: &dyn KVStorage,
+    lineage_data: &serde_json::Value,
+) -> Option<serde_json::Value> {
+    // Fast path: check whether any chunk is missing page_start before doing
+    // any KV lookups.
+    let chunks_arr = lineage_data.get("chunks")?.as_array()?;
+
+    let needs_enrichment = chunks_arr.iter().any(|c| c.get("page_start").is_none());
+
+    if !needs_enrichment {
+        return None; // already complete — O(1) early exit
+    }
+
+    // Collect all chunk IDs in one pass.
+    let chunk_ids: Vec<&str> = chunks_arr
+        .iter()
+        .filter_map(|c| c.get("chunk_id")?.as_str())
+        .collect();
+
+    if chunk_ids.is_empty() {
+        return None;
+    }
+
+    // Batch-fetch chunk KV records to read page attribution.
+    // We build a map: chunk_id → page_start (u32).
+    let mut page_map: std::collections::HashMap<String, u32> =
+        std::collections::HashMap::with_capacity(chunk_ids.len());
+
+    for id in &chunk_ids {
+        if let Ok(Some(record)) = kv.get_by_id(id).await {
+            if let Some(page) = record.get("page_start").and_then(|v| v.as_u64()) {
+                page_map.insert((*id).to_string(), page as u32);
+            }
+        }
+    }
+
+    if page_map.is_empty() {
+        return None; // no page data in KV — pre-SPEC-032 document
+    }
+
+    // Rebuild the chunks array, merging page_start/page_end where missing.
+    let enriched_chunks: Vec<serde_json::Value> = chunks_arr
+        .iter()
+        .map(|chunk| {
+            // If this chunk already has page_start, leave it unchanged.
+            if chunk.get("page_start").is_some() {
+                return chunk.clone();
+            }
+            let chunk_id = match chunk.get("chunk_id").and_then(|v| v.as_str()) {
+                Some(id) => id,
+                None => return chunk.clone(),
+            };
+            match page_map.get(chunk_id) {
+                Some(&page) => {
+                    let mut enriched = chunk.clone();
+                    if let Some(obj) = enriched.as_object_mut() {
+                        obj.insert(
+                            "page_start".to_string(),
+                            serde_json::Value::Number(page.into()),
+                        );
+                        obj.insert(
+                            "page_end".to_string(),
+                            serde_json::Value::Number(page.into()),
+                        );
+                    }
+                    enriched
+                }
+                None => chunk.clone(),
+            }
+        })
+        .collect();
+
+    // Return a new lineage value with the enriched chunks array.
+    let mut enriched_lineage = lineage_data.clone();
+    if let Some(obj) = enriched_lineage.as_object_mut() {
+        obj.insert(
+            "chunks".to_string(),
+            serde_json::Value::Array(enriched_chunks),
+        );
+    }
+    Some(enriched_lineage)
+}
 
 /// Get lineage for an entity (all source documents).
 #[utoipa::path(
@@ -21,7 +133,7 @@ use crate::state::AppState;
     path = "/api/v1/lineage/entities/{entity_name}",
     tag = "Lineage",
     params(
-        ("entity_name" = String, Path, description = "Entity name to query")
+        ("entity_name" = String, Path, description = "Entity name (normalized) or graph node id")
     ),
     responses(
         (status = 200, description = "Entity lineage", body = EntityLineageResponse),
@@ -29,34 +141,18 @@ use crate::state::AppState;
     )
 )]
 pub async fn get_entity_lineage(
-    State(state): State<AppState>,
+    State(storage): State<StorageRuntime>,
     tenant_ctx: TenantContext,
     Path(entity_name): Path<String>,
 ) -> ApiResult<Json<EntityLineageResponse>> {
-    // WHY: Same normalization rule as get_entity_provenance — see comment there.
-    let normalized_name = entity_name.to_uppercase().replace(' ', "_");
+    let node = crate::services::lookup_entity_node_for_context(
+        storage.graph_storage.as_ref(),
+        &entity_name,
+        &tenant_ctx,
+    )
+    .await?;
 
-    // Look up entity in graph storage
-    let node = state
-        .storage
-        .graph_storage
-        .get_node(&normalized_name)
-        .await?
-        .ok_or_else(|| {
-            ApiError::NotFound(format!(
-                "Entity '{}' not found (normalized: '{}'). \
-                 Entity names are stored as UPPERCASE_WITH_UNDERSCORES.",
-                entity_name, normalized_name
-            ))
-        })?;
-
-    // SECURITY: Verify the entity belongs to the requesting tenant/workspace.
-    if !properties_match_tenant_context(&node.properties, &tenant_ctx) {
-        return Err(ApiError::NotFound(format!(
-            "Entity '{}' not found",
-            entity_name
-        )));
-    }
+    let normalized_name = node.id.clone();
 
     // Parse source_id to extract document and chunk information
     let source_id = node
@@ -123,30 +219,20 @@ pub async fn get_entity_lineage(
     )
 )]
 pub async fn get_document_lineage(
-    State(state): State<AppState>,
+    State(storage): State<StorageRuntime>,
     tenant_ctx: TenantContext,
     Path(document_id): Path<String>,
 ) -> ApiResult<Json<DocumentGraphLineageResponse>> {
     // SECURITY: Verify the document belongs to the requesting tenant/workspace first.
-    verify_document_access(state.storage.kv_storage.as_ref(), &document_id, &tenant_ctx).await?;
+    verify_document_access(storage.kv_storage.as_ref(), &document_id, &tenant_ctx).await?;
 
     // SPEC-011: prefix scan for document chunks; point lookup for metadata
     let chunk_prefix = format!("{}-chunk-", document_id);
-    let chunk_ids = state
-        .storage
-        .kv_storage
-        .keys_with_prefix(&chunk_prefix)
-        .await?;
+    let chunk_ids = storage.kv_storage.keys_with_prefix(&chunk_prefix).await?;
 
-    let metadata_key = format!("{}-metadata", document_id);
-    if chunk_ids.is_empty()
-        && state
-            .storage
-            .kv_storage
-            .get_by_id(&metadata_key)
-            .await?
-            .is_none()
-    {
+    let metadata_key =
+        crate::services::document_metadata_scan::metadata_key_for_document(&document_id);
+    if chunk_ids.is_empty() && storage.kv_storage.get_by_id(&metadata_key).await?.is_none() {
         return Err(ApiError::NotFound(format!(
             "Document '{}' not found",
             document_id
@@ -157,8 +243,7 @@ pub async fn get_document_lineage(
     let scope = DocumentSourceScope::from_document_id(document_id.clone());
     let mut entities: Vec<EntitySummaryResponse> = Vec::new();
 
-    for node in find_document_nodes(&state.storage.graph_storage, Some(&tenant_ctx), &scope).await?
-    {
+    for node in find_document_nodes(&storage.graph_storage, Some(&tenant_ctx), &scope).await? {
         let doc_sources = sources_for_document(&node.properties, &scope);
         if doc_sources.is_empty() {
             continue;
@@ -179,8 +264,7 @@ pub async fn get_document_lineage(
     }
 
     let mut relationships: Vec<RelationshipSummaryResponse> = Vec::new();
-    for edge in find_document_edges(&state.storage.graph_storage, Some(&tenant_ctx), &scope).await?
-    {
+    for edge in find_document_edges(&storage.graph_storage, Some(&tenant_ctx), &scope).await? {
         let doc_sources = sources_for_document(&edge.properties, &scope);
         if doc_sources.is_empty() {
             continue;
@@ -238,13 +322,12 @@ pub async fn get_document_lineage(
     )
 )]
 pub async fn get_chunk_lineage(
-    State(state): State<AppState>,
+    State(storage): State<StorageRuntime>,
     tenant_ctx: TenantContext,
     Path(chunk_id): Path<String>,
 ) -> ApiResult<Json<ChunkLineageResponse>> {
     // Look up chunk in KV storage
-    let chunk_data = state
-        .storage
+    let chunk_data = storage
         .kv_storage
         .get_by_id(&chunk_id)
         .await?
@@ -313,8 +396,7 @@ pub async fn get_chunk_lineage(
 
     // SECURITY: Verify the parent document belongs to the requesting tenant/workspace.
     let doc_metadata =
-        verify_document_access(state.storage.kv_storage.as_ref(), &document_id, &tenant_ctx)
-            .await?;
+        verify_document_access(storage.kv_storage.as_ref(), &document_id, &tenant_ctx).await?;
 
     let document_name = doc_metadata
         .get("title")
@@ -328,19 +410,11 @@ pub async fn get_chunk_lineage(
 
     // SPEC-006 P1: chunk-scoped prefix query (bounded)
     let chunk_scope = DocumentSourceScope::from_document_id(chunk_id.clone());
-    let chunk_nodes = find_document_nodes(
-        &state.storage.graph_storage,
-        Some(&tenant_ctx),
-        &chunk_scope,
-    )
-    .await?;
+    let chunk_nodes =
+        find_document_nodes(&storage.graph_storage, Some(&tenant_ctx), &chunk_scope).await?;
     let entity_names: Vec<String> = chunk_nodes.iter().map(|n| n.id.clone()).collect();
-    let chunk_edges = find_document_edges(
-        &state.storage.graph_storage,
-        Some(&tenant_ctx),
-        &chunk_scope,
-    )
-    .await?;
+    let chunk_edges =
+        find_document_edges(&storage.graph_storage, Some(&tenant_ctx), &chunk_scope).await?;
     let entity_count = entity_names.len();
     let relationship_count = chunk_edges.len();
 
@@ -387,16 +461,16 @@ pub async fn get_chunk_lineage(
     )
 )]
 pub async fn get_document_full_lineage(
-    State(state): State<AppState>,
+    State(storage): State<StorageRuntime>,
     tenant_ctx: TenantContext,
     Path(document_id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
     // SECURITY: Verify the document belongs to the requesting tenant/workspace.
-    verify_document_access(state.storage.kv_storage.as_ref(), &document_id, &tenant_ctx).await?;
+    verify_document_access(storage.kv_storage.as_ref(), &document_id, &tenant_ctx).await?;
 
     // OADA-23: Use cached KV lookup for sub-millisecond cache hits
     let lineage_key = format!("{}-lineage", document_id);
-    let lineage_data = cached_kv_get(state.storage.kv_storage.as_ref(), &lineage_key)
+    let lineage_data = cached_kv_get(storage.kv_storage.as_ref(), &lineage_key)
         .await?
         .ok_or_else(|| {
             ApiError::NotFound(format!(
@@ -405,11 +479,22 @@ pub async fn get_document_full_lineage(
             ))
         })?;
 
+    // SPEC-033: On-the-fly page-lineage enrichment (read-only, zero mutation risk).
+    // If the persisted lineage was created before SPEC-033, its chunks lack
+    // page_start / page_end. We derive those fields from the authoritative chunk
+    // KV records and merge them into the response without touching the database.
+    let lineage_data =
+        match enrich_lineage_page_data(storage.kv_storage.as_ref(), &lineage_data).await {
+            Some(enriched) => enriched,
+            None => lineage_data,
+        };
+
     // WHY: Combine lineage tree + document metadata in one response so the UI
     // can render both the hierarchy and document context without a second API call.
     // This satisfies F5: "Single API call retrieves complete document lineage tree."
-    let metadata_key = format!("{}-metadata", document_id);
-    let metadata = cached_kv_get(state.storage.kv_storage.as_ref(), &metadata_key)
+    let metadata_key =
+        crate::services::document_metadata_scan::metadata_key_for_document(&document_id);
+    let metadata = cached_kv_get(storage.kv_storage.as_ref(), &metadata_key)
         .await?
         .unwrap_or(serde_json::json!({"id": document_id, "status": "unknown"}));
     Ok(Json(serde_json::json!({
@@ -437,15 +522,14 @@ pub async fn get_document_full_lineage(
     )
 )]
 pub async fn get_document_metadata(
-    State(state): State<AppState>,
+    State(storage): State<StorageRuntime>,
     tenant_ctx: TenantContext,
     Path(document_id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
     // SECURITY: verify_document_access already fetches and checks metadata,
     // so we reuse its return value directly.
     let metadata =
-        verify_document_access(state.storage.kv_storage.as_ref(), &document_id, &tenant_ctx)
-            .await?;
+        verify_document_access(storage.kv_storage.as_ref(), &document_id, &tenant_ctx).await?;
 
     Ok(Json(metadata))
 }
@@ -453,3 +537,175 @@ pub async fn get_document_metadata(
 // ============================================================================
 // Lineage Export Endpoint (OODA-22)
 // ============================================================================
+
+// ============================================================================
+// Unit tests for enrich_lineage_page_data (SPEC-033)
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use edgequake_storage::{KVStorage, MemoryKVStorage};
+    use serde_json::json;
+
+    use super::enrich_lineage_page_data;
+
+    /// Build a lineage JSON with N chunks, optionally including page_start.
+    fn make_lineage(chunks: Vec<serde_json::Value>) -> serde_json::Value {
+        json!({ "document_id": "doc-1", "chunks": chunks })
+    }
+
+    /// Build a chunk entry for the lineage array.
+    fn lineage_chunk(id: &str, index: usize, page_start: Option<u32>) -> serde_json::Value {
+        let mut v = json!({ "chunk_id": id, "chunk_index": index });
+        if let Some(p) = page_start {
+            v["page_start"] = json!(p);
+            v["page_end"] = json!(p);
+        }
+        v
+    }
+
+    /// Populate an in-memory KV store with chunk records (matching chunk KV format).
+    async fn kv_with_chunks(entries: &[(&str, u32)]) -> MemoryKVStorage {
+        let kv = MemoryKVStorage::new("test-enrichment");
+        let records: Vec<(String, serde_json::Value)> = entries
+            .iter()
+            .map(|(id, page)| {
+                (
+                    (*id).to_string(),
+                    json!({
+                        "content": "test",
+                        "page_start": page,
+                        "page_end": page,
+                    }),
+                )
+            })
+            .collect();
+        kv.upsert(&records).await.unwrap();
+        kv
+    }
+
+    // ── Happy path ────────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn enriches_chunks_missing_page_start() {
+        let kv = kv_with_chunks(&[("doc-1-chunk-0", 1), ("doc-1-chunk-1", 2)]).await;
+        let lineage = make_lineage(vec![
+            lineage_chunk("doc-1-chunk-0", 0, None),
+            lineage_chunk("doc-1-chunk-1", 1, None),
+        ]);
+
+        let result = enrich_lineage_page_data(&kv, &lineage)
+            .await
+            .expect("should enrich");
+
+        let chunks = result["chunks"].as_array().unwrap();
+        assert_eq!(chunks[0]["page_start"], json!(1));
+        assert_eq!(chunks[0]["page_end"], json!(1));
+        assert_eq!(chunks[1]["page_start"], json!(2));
+        assert_eq!(chunks[1]["page_end"], json!(2));
+    }
+
+    // ── Idempotency (early exit) ───────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn returns_none_when_all_chunks_already_have_page_start() {
+        let kv = MemoryKVStorage::new("test-enrichment-noop");
+        let lineage = make_lineage(vec![
+            lineage_chunk("doc-1-chunk-0", 0, Some(1)),
+            lineage_chunk("doc-1-chunk-1", 1, Some(2)),
+        ]);
+
+        let result = enrich_lineage_page_data(&kv, &lineage).await;
+        assert!(
+            result.is_none(),
+            "should be a no-op when page_start already present"
+        );
+    }
+
+    // ── Graceful degradation — pre-SPEC-032 docs ──────────────────────────────
+
+    #[tokio::test]
+    async fn returns_none_when_kv_has_no_page_data() {
+        // Chunk KV records exist but without page_start (pre-SPEC-032)
+        let kv = MemoryKVStorage::new("test-enrichment-no-page");
+        kv.upsert(&[(
+            "doc-1-chunk-0".to_string(),
+            json!({ "content": "hello", "index": 0 }),
+        )])
+        .await
+        .unwrap();
+
+        let lineage = make_lineage(vec![lineage_chunk("doc-1-chunk-0", 0, None)]);
+        let result = enrich_lineage_page_data(&kv, &lineage).await;
+        assert!(
+            result.is_none(),
+            "should be a no-op when KV has no page data"
+        );
+    }
+
+    // ── Partial enrichment — some chunks have page, some don't ───────────────
+
+    #[tokio::test]
+    async fn enriches_only_missing_chunks_leaves_others_intact() {
+        // chunk-0 already has page_start; chunk-1 is missing it
+        let kv = kv_with_chunks(&[("doc-1-chunk-1", 5)]).await;
+        let lineage = make_lineage(vec![
+            lineage_chunk("doc-1-chunk-0", 0, Some(4)), // already set
+            lineage_chunk("doc-1-chunk-1", 1, None),    // needs enrichment
+        ]);
+
+        let result = enrich_lineage_page_data(&kv, &lineage)
+            .await
+            .expect("should enrich chunk-1");
+
+        let chunks = result["chunks"].as_array().unwrap();
+        // chunk-0 unchanged
+        assert_eq!(chunks[0]["page_start"], json!(4));
+        // chunk-1 enriched
+        assert_eq!(chunks[1]["page_start"], json!(5));
+        assert_eq!(chunks[1]["page_end"], json!(5));
+    }
+
+    // ── Edge: empty chunks array ───────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn returns_none_for_empty_chunks_array() {
+        let kv = MemoryKVStorage::new("test-enrichment-empty");
+        let lineage = make_lineage(vec![]);
+        let result = enrich_lineage_page_data(&kv, &lineage).await;
+        assert!(result.is_none());
+    }
+
+    // ── Edge: lineage has no chunks key ───────────────────────────────────────
+
+    #[tokio::test]
+    async fn returns_none_when_lineage_has_no_chunks_key() {
+        let kv = MemoryKVStorage::new("test-enrichment-missing-key");
+        let lineage = json!({ "document_id": "doc-1" }); // no "chunks"
+        let result = enrich_lineage_page_data(&kv, &lineage).await;
+        assert!(result.is_none());
+    }
+
+    // ── Non-PDF: chunk has no page_start in KV, lineage also missing ──────────
+
+    #[tokio::test]
+    async fn returns_none_for_non_pdf_document() {
+        // Markdown document — KV has no page_start, lineage has no page_start
+        let kv = MemoryKVStorage::new("test-enrichment-markdown");
+        kv.upsert(&[(
+            "md-doc-chunk-0".to_string(),
+            json!({ "content": "# heading", "index": 0, "start_line": 1 }),
+        )])
+        .await
+        .unwrap();
+
+        let lineage = make_lineage(vec![json!({
+            "chunk_id": "md-doc-chunk-0",
+            "chunk_index": 0,
+            "start_line": 1,
+        })]);
+
+        let result = enrich_lineage_page_data(&kv, &lineage).await;
+        assert!(result.is_none(), "markdown docs should remain unchanged");
+    }
+}

@@ -97,16 +97,18 @@ use edgequake_llm::traits::{EmbeddingProvider, LLMProvider};
 use edgequake_pipeline::{
     GleaningConfig, GleaningExtractor, LLMExtractor, Pipeline, PipelineConfig,
 };
-use edgequake_storage::traits::{GraphStorage, KVStorage, VectorStorage};
+use edgequake_storage::traits::{GraphStorage, KVStorage, VectorStorage, WorkspaceVectorRegistry};
 use serde::{Deserialize, Serialize};
 // Use query crate types
 // edgequake-query is intentionally not linked here to avoid workspace cycles.
 
 use crate::error::{Error, Result};
+use crate::workspace_service::WorkspaceService;
 
 mod deletion;
 mod ingestion;
 mod query_ops;
+mod workspace_vector;
 
 /// EdgeQuake instance configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -348,7 +350,20 @@ pub struct EdgeQuake {
     pipeline: Option<Arc<Pipeline>>,
 
     /// Query engine.
-    query_engine: Option<Arc<edgequake_query::SOTAQueryEngine>>,
+    query_engine: Option<Arc<edgequake_query::QueryEngine>>,
+
+    /// CQRS relational entity sink (SPEC-021 P3-01/P3-02).
+    /// Defaults to NoopEntitySink — set via `with_relational_sink()` to enable dual-write.
+    relational_sink: Arc<dyn edgequake_pipeline::RelationalEntitySink>,
+
+    /// Per-workspace vector registry (W7 / SPEC-024 pass 14).
+    vector_registry: Option<Arc<dyn WorkspaceVectorRegistry>>,
+
+    /// Workspace metadata lookup for embedding dimension (paired with registry).
+    workspace_service: Option<Arc<dyn WorkspaceService>>,
+
+    /// When true, ingestion refuses default-storage fallback (production).
+    strict_workspace_vectors: bool,
 }
 
 impl EdgeQuake {
@@ -364,6 +379,10 @@ impl EdgeQuake {
             embedding_provider: None,
             pipeline: None,
             query_engine: None,
+            relational_sink: Arc::new(edgequake_pipeline::NoopEntitySink),
+            vector_registry: None,
+            workspace_service: None,
+            strict_workspace_vectors: false,
         }
     }
 
@@ -382,6 +401,19 @@ impl EdgeQuake {
         self.kv_storage = Some(kv);
         self.vector_storage = Some(vector);
         self.graph_storage = Some(graph);
+        self
+    }
+
+    /// Wire a relational CQRS sink for dual-write (SPEC-021 P3-01/P3-02).
+    ///
+    /// When set, the orchestrator writes entity data to both the AGE graph
+    /// AND the relational `entities` table on every merge/delete.
+    /// Default: `NoopEntitySink` (no relational writes).
+    pub fn with_relational_sink(
+        mut self,
+        sink: Arc<dyn edgequake_pipeline::RelationalEntitySink>,
+    ) -> Self {
+        self.relational_sink = sink;
         self
     }
 
@@ -416,6 +448,14 @@ impl EdgeQuake {
     ) {
         self.llm_provider = Some(llm);
         self.embedding_provider = Some(embedding);
+    }
+
+    /// Pre-wire a query engine (optional). When set before [`Self::initialize`], that
+    /// engine is used instead of constructing a default one — enables result-cache
+    /// wiring in library/tests (SPEC-021 P-G9).
+    pub fn with_query_engine(mut self, engine: Arc<edgequake_query::QueryEngine>) -> Self {
+        self.query_engine = Some(engine);
+        self
     }
 
     /// Initialize the EdgeQuake instance.
@@ -476,7 +516,7 @@ impl EdgeQuake {
 
         self.pipeline = Some(Arc::new(pipeline));
 
-        // Set up query engine
+        // Set up query engine (respect pre-wired engine from `with_query_engine`)
         let graph_storage = self
             .graph_storage
             .as_ref()
@@ -486,17 +526,19 @@ impl EdgeQuake {
             .as_ref()
             .ok_or_else(|| Error::config("Vector storage not set"))?;
 
-        // Initialize SOTA query engine from edgequake-query (SPEC-017 unified path)
-        use edgequake_query::SOTAQueryConfig;
-        let sota_engine = edgequake_query::SOTAQueryEngine::new(
-            SOTAQueryConfig::default(),
-            vector_storage.clone(),
-            graph_storage.clone(),
-            embedding.clone(),
-            llm.clone(),
-        );
+        let engine_impl = if let Some(engine) = self.query_engine.take() {
+            engine
+        } else {
+            edgequake_query::build_production_query_engine(
+                vector_storage.clone(),
+                graph_storage.clone(),
+                embedding.clone(),
+                llm.clone(),
+                self.kv_storage.clone(),
+            )
+        };
 
-        self.query_engine = Some(Arc::new(sota_engine));
+        self.query_engine = Some(engine_impl);
 
         self.initialized = true;
         tracing::info!("EdgeQuake initialized successfully");
@@ -513,6 +555,11 @@ impl EdgeQuake {
     /// Get the configuration.
     pub fn config(&self) -> &EdgeQuakeConfig {
         &self.config
+    }
+
+    /// Query engine wired at initialize (or via [`Self::with_query_engine`]).
+    pub fn query_engine(&self) -> Option<&Arc<edgequake_query::QueryEngine>> {
+        self.query_engine.as_ref()
     }
 
     /// Get the namespace.

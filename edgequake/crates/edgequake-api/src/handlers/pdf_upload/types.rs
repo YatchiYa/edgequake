@@ -3,6 +3,11 @@ use edgequake_pdf::PdfParserBackend;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+/// Re-export progress DTOs from edgequake-tasks (SSOT for PDF pipeline progress).
+pub use edgequake_tasks::{
+    PdfUploadProgress, PhaseError, PhaseProgress, PhaseStatus, PipelinePhase,
+};
+
 /// PDF upload options.
 #[derive(Debug, Clone, Default)]
 pub struct PdfUploadOptions {
@@ -26,6 +31,8 @@ pub struct PdfUploadOptions {
     pub force_reindex: bool,
     /// Explicit parser backend override for this upload.
     pub pdf_parser_backend: Option<PdfParserBackend>,
+    /// Multimodal process options (LightRAG `i`/`t`/`e` flags), e.g. `"i"` or `"ite"`.
+    pub process_options: Option<String>,
 }
 
 impl PdfUploadOptions {
@@ -38,26 +45,22 @@ impl PdfUploadOptions {
     ///   4. EDGEQUAKE_LLM_PROVIDER env (legacy alias)
     ///   5. Hardcoded fallback: "ollama"
     pub fn resolved_vision_provider(&self) -> String {
-        // WHY filter empty strings: Docker Compose ${VAR:-} → "" issue.
         self.vision_provider
             .clone()
             .filter(|s| !s.is_empty())
-            .or_else(|| non_empty_env("EDGEQUAKE_VISION_PROVIDER"))
-            .or_else(|| non_empty_env("EDGEQUAKE_VISION_LLM_PROVIDER"))
-            .or_else(|| non_empty_env("EDGEQUAKE_DEFAULT_LLM_PROVIDER"))
-            .or_else(|| non_empty_env("EDGEQUAKE_LLM_PROVIDER"))
-            .unwrap_or_else(|| "ollama".to_string())
+            .unwrap_or_else(crate::vision_env::resolved_vision_provider_from_env)
     }
 
     /// Get the vision model to use (with fallback from provider).
-    ///
-    /// WHY filter empty strings: if workspace stored an empty model string,
-    /// treat it the same as "not configured" and fall back to the provider default.
     pub fn vision_model(&self) -> String {
         self.vision_model
             .clone()
-            .filter(|s| !s.is_empty()) // treat "" same as None
-            .unwrap_or_else(|| default_vision_model_for_provider(&self.resolved_vision_provider()))
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| {
+                crate::vision_env::default_vision_model_for_provider(
+                    &self.resolved_vision_provider(),
+                )
+            })
     }
 
     /// Resolve the effective PDF parser backend.
@@ -66,58 +69,6 @@ impl PdfUploadOptions {
             .or_else(|| workspace.and_then(|ws| ws.pdf_parser_backend))
             .or_else(PdfParserBackend::from_env)
             .unwrap_or_default()
-    }
-}
-
-/// Read an env var, treating empty strings as None.
-/// WHY: Docker Compose `${VAR:-}` maps unset host vars to "" inside containers.
-fn non_empty_env(key: &str) -> Option<String> {
-    std::env::var(key).ok().filter(|s| !s.is_empty())
-}
-
-/// Return a sensible default vision model for the given provider.
-///
-/// WHY (First Principle): The model MUST be compatible with the resolved provider.
-/// Previous code returned `EDGEQUAKE_VISION_MODEL` for ALL providers, which caused
-/// gpt-4.1-nano to be sent to Ollama when a stale env var leaked in.
-///
-/// Resolution chain (same priority for all providers):
-///   1. EDGEQUAKE_VISION_MODEL env (only if compatible with provider)
-///   2. EDGEQUAKE_VISION_LLM_MODEL env (only if compatible with provider)
-///   3. EDGEQUAKE_DEFAULT_LLM_MODEL env (only if compatible with provider)
-///   4. EDGEQUAKE_LLM_MODEL env (legacy alias, only if compatible)
-///   5. Provider-specific hardcoded default
-pub(crate) fn default_vision_model_for_provider(provider: &str) -> String {
-    use crate::safety_limits::is_model_provider_mismatch;
-
-    let candidates = [
-        non_empty_env("EDGEQUAKE_VISION_MODEL"),
-        non_empty_env("EDGEQUAKE_VISION_LLM_MODEL"),
-        non_empty_env("EDGEQUAKE_DEFAULT_LLM_MODEL"),
-        non_empty_env("EDGEQUAKE_LLM_MODEL"),
-    ];
-
-    // Pick the first candidate that is compatible with the provider.
-    for candidate in candidates.into_iter().flatten() {
-        if !is_model_provider_mismatch(provider, &candidate) {
-            return candidate;
-        }
-        tracing::warn!(
-            provider,
-            model = %candidate,
-            "Skipping incompatible vision model from env — model '{}' cannot run on provider '{}'",
-            candidate,
-            provider,
-        );
-    }
-
-    // Hardcoded provider-specific defaults (always compatible).
-    match provider {
-        "openai" => "gpt-4.1-nano".to_string(),
-        "anthropic" => "claude-sonnet-4-20250514".to_string(),
-        // Pixtral Large is Mistral's flagship vision model for PDF ingestion.
-        "mistral" => "pixtral-large-latest".to_string(),
-        _ => "gemma4:latest".to_string(),
     }
 }
 
@@ -144,6 +95,10 @@ pub struct PdfUploadResponse {
 
     /// Estimated processing time in seconds.
     pub estimated_time_seconds: u64,
+
+    /// SPEC-038: Detailed ingestion time breakdown.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ingestion_estimate: Option<crate::services::IngestionEstimate>,
 
     /// PDF metadata.
     pub metadata: PdfMetadata,

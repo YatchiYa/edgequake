@@ -20,11 +20,10 @@ import { useTranslation } from "react-i18next";
 import { ChatMessage } from "./chat-message";
 import { ConversationHistoryPanelV2 } from "./conversation-history-panel-v2";
 import { MobileHistoryPanel } from "./mobile-history-panel";
-import { ProviderModelSelector } from "./provider-model-selector";
-import { QueryDocumentFilter } from "./query-document-filter";
 import { QueryEmptyState } from "./query-empty-state";
 import { LoadingMessage, NonStreamingLoadingIndicator } from "./query-loading-indicators";
 import { QueryModeSelector } from "./query-mode-selector";
+import { QueryScopeBar } from "./query-scope-bar";
 import { QuerySettingsSheet } from "./query-settings-sheet";
 
 export function QueryInterface() {
@@ -72,7 +71,7 @@ export function QueryInterface() {
               {t("query.subtitle", "Ask questions about your knowledge graph")}
             </span>
           </div>
-          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <Button
               variant="outline"
               size="sm"
@@ -81,16 +80,34 @@ export function QueryInterface() {
               className="gap-1"
             >
               <Plus className="h-4 w-4" />
-              {t("query.newConversation", "New")}
+              <span className="hidden sm:inline">{t("query.newConversation", "New")}</span>
             </Button>
 
-            <ProviderModelSelector
-              value={
+            {/* Mode selector stays in header — most-changed query setting */}
+            <QueryModeSelector
+              value={querySettings.mode}
+              onChange={(mode) => setQuerySettings({ mode })}
+              disabled={isLoading}
+            />
+
+            {/* Provider, document filter, and advanced options moved into settings sheet */}
+            <QuerySettingsSheet
+              settings={{
+                stream: querySettings.stream,
+                topK: querySettings.topK,
+                temperature: querySettings.temperature,
+                maxTokens: querySettings.maxTokens,
+                systemPrompt: querySettings.systemPrompt,
+                fullChunkContent: querySettings.fullChunkContent,
+              }}
+              onSettingsChange={(updates) => setQuerySettings(updates)}
+              disabled={isLoading}
+              providerModel={
                 querySettings.provider && querySettings.model
                   ? `${querySettings.provider}/${querySettings.model}`
                   : ""
               }
-              onChange={(fullModelId) => {
+              onProviderModelChange={(fullModelId) => {
                 if (!fullModelId) {
                   setQuerySettings({ provider: undefined, model: undefined });
                 } else {
@@ -100,32 +117,10 @@ export function QueryInterface() {
                   setQuerySettings({ provider, model });
                 }
               }}
-              disabled={isLoading}
-            />
-
-            <QueryModeSelector
-              value={querySettings.mode}
-              onChange={(mode) => setQuerySettings({ mode })}
-              disabled={isLoading}
-            />
-
-            <QueryDocumentFilter
-              value={querySettings.documentFilter}
-              onChange={(documentFilter) => setQuerySettings({ documentFilter })}
-              disabled={isLoading}
-            />
-
-            <QuerySettingsSheet
-              settings={{
-                stream: querySettings.stream,
-                retrievalOnly: querySettings.retrievalOnly,
-                topK: querySettings.topK,
-                temperature: querySettings.temperature,
-                maxTokens: querySettings.maxTokens,
-                systemPrompt: querySettings.systemPrompt,
-              }}
-              onSettingsChange={(updates) => setQuerySettings(updates)}
-              disabled={isLoading}
+              documentFilter={querySettings.documentFilter}
+              onDocumentFilterChange={(documentFilter) => setQuerySettings({ documentFilter })}
+              scopedDocumentIds={querySettings.scopedDocumentIds ?? []}
+              onScopedDocumentIdsChange={(ids) => setQuerySettings({ scopedDocumentIds: ids })}
             />
           </div>
         </header>
@@ -171,11 +166,19 @@ export function QueryInterface() {
         </div>
 
         <div
-          className="border-t px-4 sm:px-6 py-4 bg-background shrink-0"
+          className="border-t px-4 sm:px-6 py-3 bg-background shrink-0 relative z-10"
           role="form"
           aria-label={t("query.form", "Query form")}
         >
           <form onSubmit={handleSubmit} className="max-w-4xl lg:max-w-5xl mx-auto">
+            {/* SPEC-031: Always-visible scope toolbar — shows "All docs ▾" when
+                no scope set, pills when docs selected. Enables feature discovery
+                without requiring users to open Settings. */}
+            <QueryScopeBar
+              selectedIds={querySettings.scopedDocumentIds ?? []}
+              onSelectionChange={(ids) => setQuerySettings({ scopedDocumentIds: ids })}
+              disabled={isLoading}
+            />
             <input
               ref={imageInputRef}
               type="file"

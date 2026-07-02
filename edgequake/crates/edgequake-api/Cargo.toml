@@ -11,6 +11,9 @@ description = "REST API server for EdgeQuake"
 default = []
 otel = ["edgequake-observability/otel"]
 postgres = ["edgequake-storage/postgres", "edgequake-core/postgres", "dep:sqlx"]
+# SPEC-021 P-E3: enables the EdgeQuake orchestrator for contract tests.
+# Forwarded to edgequake-core so `#[cfg(feature = "pipeline")]` test gates work.
+pipeline = ["edgequake-core/pipeline"]
 # Vision mode for PDF extraction using edgequake-pdf2md (bundled pdfium, no system deps)
 vision = []
 
@@ -21,13 +24,13 @@ edgequake-storage = { path = "../edgequake-storage" }
 edgequake-llm = { workspace = true }
 edgequake-pipeline = { path = "../edgequake-pipeline" }
 edgequake-query = { path = "../edgequake-query" }
-edgequake-tasks = { path = "../edgequake-tasks", features = ["postgres"] }
+edgequake-tasks = { path = "../edgequake-tasks", features = ["postgres", "openapi"] }
 edgequake-auth = { path = "../edgequake-auth" }
 edgequake-rate-limiter = { path = "../edgequake-rate-limiter" }
 edgequake-audit = { path = "../edgequake-audit" }
 edgequake-observability = { path = "../edgequake-observability", features = ["metrics"] }
 # Direct dependency kept because the API crate implements the progress callback type.
-edgequake-pdf2md = "=0.9.2"
+edgequake-pdf2md = { workspace = true }
 
 axum.workspace = true
 axum-extra = { version = "0.10", features = ["multipart"] }
@@ -51,9 +54,12 @@ uuid.workspace = true
 futures.workspace = true
 chrono = { version = "0.4", features = ["serde"] }
 base64 = "0.22"
+md5 = { workspace = true }
+regex = "1"
 async-trait.workspace = true
 sqlx = { workspace = true, optional = true }
 reqwest = { version = "0.12", features = ["blocking", "json"] }
+openidconnect = { version = "4.0", default-features = false, features = ["reqwest"] }
 url = "2.5"
 lazy_static = "1.5"
 
@@ -68,6 +74,10 @@ async-stream = "0.3"
 
 [dev-dependencies]
 edgequake-tasks = { path = "../edgequake-tasks", features = ["postgres"] }
+# SPEC-021 P-E3: enable the orchestrator (pipeline) for the ingest→delete
+# contract test. The `pipeline` feature is also added to the api crate so
+# `#[cfg(feature = "pipeline")]` gates in tests activate during `cargo test`.
+edgequake-core = { path = "../edgequake-core", features = ["pipeline"] }
 tokio = { workspace = true, features = ["full", "macros", "rt-multi-thread"] }
 tower = { version = "0.5", features = ["util"] }
 sqlx = { workspace = true, features = [
@@ -79,3 +89,5 @@ sqlx = { workspace = true, features = [
 serial_test = "3.2"
 tempfile = "3"
 urlencoding = "2.1"
+wiremock = "0.6"
+jsonwebtoken = "9.3"

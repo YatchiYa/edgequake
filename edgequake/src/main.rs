@@ -4,6 +4,9 @@
 
 use anyhow::{Context, Result};
 use chrono::{Duration, Utc};
+use edgequake_api::startup_security::{enforce_startup_security, validate_startup_security};
+#[cfg(feature = "postgres")]
+use edgequake_api::PostgresEntitySink;
 use edgequake_api::{AppState, DocumentTaskProcessor, Server, ServerConfig, StorageMode};
 use edgequake_observability::{
     init_observability, record_db_pool_stats, ErrorEvent, ObservabilityConfig,
@@ -579,7 +582,35 @@ async fn main() -> Result<()> {
         Arc::clone(&state.workspace_service),
         Arc::clone(&state.query.models_config),
     )
-    .with_progress_broadcaster(state.tasks.progress_broadcaster.clone());
+    .with_progress_broadcaster(state.tasks.progress_broadcaster.clone())
+    .with_task_storage(Arc::clone(&state.tasks.storage) as edgequake_tasks::SharedTaskStorage)
+    .with_pdf_vision_semaphore(Arc::clone(&state.pdf_vision))
+    .with_query_engine(Arc::clone(&state.query.engine_impl));
+
+    info!(
+        pdf_vision_jobs = state.pdf_vision.max_concurrent(),
+        "Vision PDF admission control enabled"
+    );
+
+    // SPEC-021 P3-01c: Wire CQRS entity dual-write sink when postgres feature is active.
+    // create_if_enabled() checks entity_sync_mode in server_config; returns NoopEntitySink
+    // when mode is "disabled" (default), so this is always safe to call.
+    #[cfg(feature = "postgres")]
+    if let Some(ref pool) = state.pg_pool {
+        let entity_sink = PostgresEntitySink::create_if_enabled(Arc::new(pool.clone())).await;
+        processor = processor.with_relational_sink(entity_sink);
+
+        // SPEC-032 W-08: Wire lineage sink when migration 066 has been applied.
+        // create_if_migration_applied() checks if chunk_entity_links table exists;
+        // returns NoopLineageSink if not (zero-downtime rollout).
+        let lineage_sink =
+            edgequake_api::postgres_lineage_sink::PostgresLineageSink::create_if_migration_applied(
+                Arc::new(pool.clone()),
+            )
+            .await;
+        processor = processor.with_lineage_sink(lineage_sink);
+        info!("🔗 Lineage sink wired (SPEC-032 W-08)");
+    }
 
     // CRITICAL: Attach PDF storage for PDF processing tasks
     if let Some(ref pdf_storage) = state.storage.pdf_storage {
@@ -752,6 +783,13 @@ async fn main() -> Result<()> {
         &config.host,
         config.port,
     );
+
+    // SPEC-027 IMP-001: warn or exit on insecure production configuration
+    enforce_startup_security(validate_startup_security(
+        std::env::var("DATABASE_URL").ok().as_deref(),
+        &state.auth.config,
+        &state.security,
+    ));
 
     // Run server (this blocks until shutdown)
     let server = Server::new(config, state);

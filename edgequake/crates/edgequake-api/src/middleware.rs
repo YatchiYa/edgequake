@@ -136,7 +136,9 @@ impl AuthConfig {
 
     /// Validate an API key.
     pub fn validate_api_key(&self, key: &str) -> bool {
-        self.api_keys.iter().any(|k| k == key)
+        self.api_keys
+            .iter()
+            .any(|k| crate::services::identity_storage::constant_time_str_eq(k, key))
     }
 }
 
@@ -225,7 +227,7 @@ pub async fn api_key_auth(
 /// Extract API key from request headers.
 pub async fn protected_api_auth(
     axum::extract::State(state): axum::extract::State<crate::state::AppState>,
-    request: Request,
+    mut request: Request,
     next: Next,
 ) -> Response {
     if !state.auth.config.auth_enabled {
@@ -240,18 +242,209 @@ pub async fn protected_api_auth(
     }
 
     if let Some(token) = extract_api_key(&request) {
-        if state
-            .auth
-            .config
-            .api_keys
-            .iter()
-            .any(|configured| configured == &token)
-            || state.auth.jwt.verify_token(&token).is_ok()
-        {
-            return next.run(request).await;
+        match crate::services::auth_validation::validate_presented_token(&state, &token).await {
+            Ok(Some(authenticated)) => {
+                if let Some(response) =
+                    apply_authenticated_context(&state, &mut request, authenticated)
+                {
+                    return response;
+                }
+                #[cfg(feature = "postgres")]
+                {
+                    if state.security.strict_tenant_bind {
+                        if let Some(scope) = membership_bind_scope(&state, &request) {
+                            if let Some(response) = enforce_membership_bind(scope).await {
+                                return response;
+                            }
+                        }
+                    }
+                }
+                return next.run(request).await;
+            }
+            Ok(None) => {}
+            Err(e) => {
+                return e.into_response();
+            }
         }
     }
 
+    unauthorized_response(&method, path)
+}
+
+/// Gate Ollama-compatible routes when disabled — SPEC-027 IMP-005.
+pub async fn ollama_compat_gate(
+    axum::extract::State(state): axum::extract::State<crate::state::AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    if state.security.enable_ollama_compat {
+        return next.run(request).await;
+    }
+
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(serde_json::json!({
+            "code": "SERVICE_UNAVAILABLE",
+            "message": "Ollama compatibility API is disabled (set EDGEQUAKE_OLLAMA_COMPAT_ENABLED=true)"
+        })),
+    )
+        .into_response()
+}
+
+/// Rate limiting wrapper reading AppState security flag — SPEC-027 IMP-008.
+pub async fn tenant_rate_limit_from_state(
+    axum::extract::State(state): axum::extract::State<crate::state::AppState>,
+    request: Request<Body>,
+    next: Next,
+) -> Response {
+    let rate_state = RateLimitState::new(
+        state.rate_limiter.clone(),
+        state.security.rate_limit_enabled,
+    );
+    tenant_rate_limit(axum::extract::State(rate_state), request, next).await
+}
+
+pub(crate) fn apply_authenticated_context(
+    state: &crate::state::AppState,
+    request: &mut Request,
+    authenticated: crate::services::auth_validation::AuthenticatedRequest,
+) -> Option<Response> {
+    let mut tenant_ctx = TenantContext::from_headers(request.headers());
+
+    if let Some(jwt_tid) = &authenticated.jwt_tenant_id {
+        if let Some(response) =
+            merge_claim_into_context(state, &mut tenant_ctx.tenant_id, jwt_tid, "tenant_id")
+        {
+            return Some(response);
+        }
+    }
+    if let Some(jwt_wid) = &authenticated.jwt_workspace_id {
+        if let Some(response) =
+            merge_claim_into_context(state, &mut tenant_ctx.workspace_id, jwt_wid, "workspace_id")
+        {
+            return Some(response);
+        }
+    }
+
+    crate::services::tenant_isolation::attach_pg_isolation_scope(
+        request,
+        &tenant_ctx,
+        Some(&authenticated.auth.user_id),
+    );
+    request.extensions_mut().insert(authenticated.auth);
+    request.extensions_mut().insert(tenant_ctx);
+    None
+}
+
+/// Resolved tenant/workspace membership scope for strict bind (SPEC-027 phase 34).
+#[cfg(feature = "postgres")]
+struct MembershipBindScope {
+    pool: sqlx::PgPool,
+    security: crate::state::ApiSecurityConfig,
+    user_id: uuid::Uuid,
+    tenant_id: uuid::Uuid,
+    workspace_id: uuid::Uuid,
+}
+
+/// Extract membership scope synchronously — no request borrow across await.
+#[cfg(feature = "postgres")]
+fn membership_bind_scope(
+    state: &crate::state::AppState,
+    request: &Request,
+) -> Option<MembershipBindScope> {
+    let pool = state.pg_pool.clone()?;
+    let auth = request
+        .extensions()
+        .get::<crate::handlers::auth::RequestAuthContext>();
+    let tenant_ctx = request.extensions().get::<TenantContext>();
+
+    match (auth, tenant_ctx) {
+        (Some(auth), Some(ctx)) if auth.user_id != "master-api-key" => {
+            let tenant_id = resolve_tenant_uuid(ctx.tenant_id.as_deref());
+            let workspace_id = resolve_workspace_uuid(ctx.workspace_id.as_deref());
+            let user_id = uuid::Uuid::parse_str(&auth.user_id).ok();
+            match (tenant_id, workspace_id, user_id) {
+                (Some(tenant_id), Some(workspace_id), Some(user_id)) => Some(MembershipBindScope {
+                    pool,
+                    security: state.security.clone(),
+                    user_id,
+                    tenant_id,
+                    workspace_id,
+                }),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Verify membership asynchronously (owns scope — no request borrow).
+#[cfg(feature = "postgres")]
+async fn enforce_membership_bind(scope: MembershipBindScope) -> Option<Response> {
+    match crate::services::identity_storage::verify_membership_active(
+        &scope.pool,
+        &scope.security,
+        scope.user_id,
+        scope.tenant_id,
+        scope.workspace_id,
+    )
+    .await
+    {
+        Ok(true) => None,
+        Ok(false) => Some(
+            (
+                StatusCode::FORBIDDEN,
+                Json(AuthError {
+                    error: "forbidden".to_string(),
+                    message: "No active membership for tenant/workspace scope".to_string(),
+                    request_id: edgequake_observability::current_request_id(),
+                }),
+            )
+                .into_response(),
+        ),
+        Err(e) => Some(e.into_response()),
+    }
+}
+
+fn merge_claim_into_context(
+    state: &crate::state::AppState,
+    header_value: &mut Option<String>,
+    claim_value: &str,
+    field: &str,
+) -> Option<Response> {
+    match header_value.as_deref() {
+        None | Some("") => {
+            *header_value = Some(claim_value.to_string());
+        }
+        Some(existing) if existing == claim_value => {}
+        Some(existing) => {
+            tracing::warn!(
+                field = field,
+                header = existing,
+                claim = claim_value,
+                "JWT tenant claim differs from request header (SPEC-027 IMP-004)"
+            );
+            if state.security.strict_tenant_bind {
+                return Some(
+                    (
+                        StatusCode::FORBIDDEN,
+                        Json(AuthError {
+                            error: "forbidden".to_string(),
+                            message: format!(
+                                "Header {field} does not match authenticated token claims"
+                            ),
+                            request_id: edgequake_observability::current_request_id(),
+                        }),
+                    )
+                        .into_response(),
+                );
+            }
+        }
+    }
+    None
+}
+
+fn unauthorized_response(method: &Method, path: &str) -> Response {
     let request_id =
         edgequake_observability::current_request_id().unwrap_or_else(|| "unknown".to_string());
     tracing::warn!(
@@ -275,24 +468,49 @@ pub async fn protected_api_auth(
         .into_response()
 }
 
+pub async fn ws_validate_token(state: &crate::state::AppState, token: Option<&str>) -> bool {
+    if !state.auth.config.auth_enabled {
+        return true;
+    }
+    let Some(token) = token.filter(|value| !value.is_empty()) else {
+        return false;
+    };
+    matches!(
+        crate::services::auth_validation::validate_presented_token(state, token).await,
+        Ok(Some(_))
+    )
+}
+
 fn is_public_request(state: &crate::state::AppState, method: &Method, path: &str) -> bool {
     let normalized_path = path.strip_prefix("/api/v1").unwrap_or(path);
+
+    if is_public_documentation_path(normalized_path) {
+        return true;
+    }
 
     matches!(
         normalized_path,
         "/health"
             | "/ready"
             | "/live"
-            | "/swagger-ui"
-            | "/api-docs"
             | "/auth/login"
             | "/auth/refresh"
+            | "/auth/oidc/login"
+            | "/auth/oidc/callback"
     ) || (*method == Method::POST
         && normalized_path == "/users"
         && state.auth.config.allow_registration)
 }
 
-fn extract_api_key(request: &Request) -> Option<String> {
+/// OpenAPI / Swagger documentation paths (including static assets under subpaths).
+pub(crate) fn is_public_documentation_path(path: &str) -> bool {
+    path == "/swagger-ui"
+        || path.starts_with("/swagger-ui/")
+        || path == "/api-docs"
+        || path.starts_with("/api-docs/")
+}
+
+pub(crate) fn extract_api_key(request: &Request) -> Option<String> {
     // Try Authorization header first (Bearer token)
     if let Some(auth_header) = request.headers().get("authorization") {
         if let Ok(auth_str) = auth_header.to_str() {
@@ -465,7 +683,7 @@ pub fn default_tenant_uuid() -> uuid::Uuid {
 
 /// Stable UUID used for the built-in default workspace in non-authenticated flows.
 pub fn default_workspace_uuid() -> uuid::Uuid {
-    uuid::Uuid::from_u128(3)
+    edgequake_core::default_workspace_uuid()
 }
 
 fn resolve_context_uuid(
@@ -595,6 +813,9 @@ where
         parts: &mut axum::http::request::Parts,
         _state: &S,
     ) -> Result<Self, Self::Rejection> {
+        if let Some(ctx) = parts.extensions.get::<TenantContext>() {
+            return Ok(ctx.clone());
+        }
         Ok(TenantContext::from_headers(&parts.headers))
     }
 }
@@ -772,6 +993,20 @@ mod tests {
         assert!(!config.is_public_path("/api/v1/graph"));
         assert!(!config.is_public_path("/admin"));
         assert!(!config.is_public_path("/rapidoc")); // Not in default public paths
+    }
+
+    #[test]
+    fn test_public_documentation_subpaths_for_jwt_middleware() {
+        assert!(super::is_public_documentation_path("/swagger-ui"));
+        assert!(super::is_public_documentation_path("/swagger-ui/"));
+        assert!(super::is_public_documentation_path(
+            "/swagger-ui/index.html"
+        ));
+        assert!(super::is_public_documentation_path("/api-docs"));
+        assert!(super::is_public_documentation_path(
+            "/api-docs/openapi.json"
+        ));
+        assert!(!super::is_public_documentation_path("/api/v1/documents"));
     }
 
     #[test]

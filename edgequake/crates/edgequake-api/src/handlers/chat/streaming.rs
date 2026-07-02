@@ -15,11 +15,14 @@ use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::error::{ApiError, ApiResult};
+use crate::handlers::auth::OptionalAuth;
 use crate::handlers::query::{resolve_chunk_file_paths, resolve_query_workspace};
 use crate::middleware::TenantContext;
 use crate::providers::{LlmResolutionRequest, WorkspaceProviderResolver};
 use crate::services::{
-    execute_sota_query_stream_with_auth_fallback, execute_sota_query_with_auth_fallback,
+    build_message_context_from_engine,
+    context_bundle_mapper::{map_query_context_to_subgraph, MappingOptions},
+    ensure_debug_granularity_allowed, execute_sota_query_stream_with_auth_fallback,
     resolve_workspace_query_resources,
 };
 use crate::state::AppState;
@@ -32,9 +35,8 @@ use edgequake_observability::RequestContext;
 use edgequake_query::QueryRequest as EngineQueryRequest;
 
 use super::{
-    build_sources, build_sources_with_content, enrich_query_with_language, filter_sources_by_type,
-    parse_mode, parse_query_mode, resolve_source_types, sources_to_message_context,
-    ChatCompletionRequest, ChatStreamEvent,
+    build_sources, enrich_query_with_language, parse_mode, parse_query_mode, ChatCompletionRequest,
+    ChatStreamEvent,
 };
 
 /// Execute a streaming chat completion.
@@ -47,7 +49,11 @@ use super::{
     tag = "Chat",
     request_body = ChatCompletionRequest,
     responses(
-        (status = 200, description = "Streaming chat completion started"),
+        (status = 200, description = "Streaming chat SSE (ChatStreamEvent payloads)",
+            content(
+                (ChatStreamEvent = "text/event-stream")
+            )
+        ),
         (status = 400, description = "Invalid request"),
         (status = 401, description = "Unauthorized"),
         (status = 500, description = "Internal server error")
@@ -65,6 +71,7 @@ use super::{
 pub async fn chat_completion_stream(
     State(state): State<AppState>,
     tenant_ctx: TenantContext,
+    OptionalAuth(auth_user): OptionalAuth,
     Extension(req_ctx): Extension<RequestContext>,
     Json(request): Json<ChatCompletionRequest>,
 ) -> ApiResult<Sse<impl futures::Stream<Item = Result<Event, Infallible>>>> {
@@ -79,6 +86,10 @@ pub async fn chat_completion_stream(
     if let Some(ref images) = request.images {
         super::validation::validate_image_attachments(images)?;
     }
+    ensure_debug_granularity_allowed(
+        request.content_granularity,
+        auth_user.as_ref().map(|u| u.role.clone()),
+    )?;
 
     let tenant_id = tenant_ctx
         .tenant_id
@@ -179,6 +190,7 @@ pub async fn chat_completion_stream(
     // FEAT0505: Clone for auto-title generation
     let first_message_for_title = request.message.clone();
     let stream_request_id = req_ctx.request_id.clone();
+    let stream_content_granularity = request.content_granularity;
 
     // 5. Send initial conversation event
     let initial_event = ChatStreamEvent::Conversation {
@@ -284,7 +296,7 @@ pub async fn chat_completion_stream(
         // Priority order:
         //   1. Request-specified provider/model (explicit user selection)
         //   2. Workspace-configured provider/model (workspace settings)
-        //   3. Server default (sota_engine's default provider)
+        //   3. Server default (engine_impl's default provider)
         // Supports both formats:
         //   - Legacy format: provider="provider/model" (e.g., "ollama/gemma3:12b")
         //   - New format: provider="provider", model="model_name"
@@ -503,7 +515,7 @@ pub async fn chat_completion_stream(
         match stream_result {
             Ok((context, used_mode, mut stream)) => {
                 // Send context event BEFORE streaming tokens (for source citations)
-                let mut sources = build_sources(&context);
+                let mut sources = build_sources(&context, stream_content_granularity);
 
                 // Resolve document names for chunk sources
                 resolve_chunk_file_paths(state_clone.storage.kv_storage.as_ref(), &mut sources)
@@ -515,16 +527,28 @@ pub async fn chat_completion_stream(
                     filter_sources_by_type(sources, &resolve_source_types(&request.source_types));
 
                 // Save message context for later persistence
-                saved_message_context = Some(sources_to_message_context(&sources));
+                saved_message_context = Some(build_message_context_from_engine(&context, &sources));
 
                 let retrieval_elapsed_ms = retrieval_start.elapsed().as_millis() as u64;
 
                 if !sources.is_empty() {
+                    let subgraph = Some(map_query_context_to_subgraph(
+                        &context,
+                        &MappingOptions {
+                            granularity: stream_content_granularity,
+                            include_lineage: true,
+                            include_documents: false,
+                            include_agent_hints: false,
+                            include_subgraph: true,
+                            rerank_top_k: None,
+                            reranked: false,
+                        },
+                    ));
                     let context_event = ChatStreamEvent::Context {
                         sources: sources.clone(),
                         query_mode: Some(used_mode.to_string()),
                         retrieval_time_ms: Some(retrieval_elapsed_ms),
-                        prompt: None,
+                        subgraph,
                     };
                     if tx.send(context_event).await.is_err() {
                         ErrorEvent::log_stream_disconnect(

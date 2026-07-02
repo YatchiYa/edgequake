@@ -19,8 +19,10 @@
  * - Single API call for complete chat flow
  */
 
+import { buildQueryContextFromRetrieval } from "@/lib/utils/source-mapper";
+import type { SubgraphBundle } from "@/lib/utils/subgraph-types";
+import type { DocumentFilter, QueryContext, QueryMode } from "@/types";
 import { apiClient, streamClient } from "./client";
-import type { DocumentFilter, QueryMode } from "@/types";
 
 // ============================================================================
 // Types
@@ -96,6 +98,11 @@ export interface ChatCompletionRequest {
    * @implements Issue #203: Image upload support
    */
   images?: Array<{ data: string; mime_type: string }>;
+  /**
+   * Payload tier for source snippets: citation (200 chars) | agent (full chunk).
+   * @implements SPEC-037 + SPEC-028
+   */
+  content_granularity?: 'citation' | 'agent' | 'debug';
 }
 
 /**
@@ -114,12 +121,20 @@ export interface SourceReference {
   reference_id?: number;
   document_id?: string;
   file_path?: string;
-  /** Start line of the chunk in the source document. */
+  /** Source line range start (for line-level citation). */
   start_line?: number;
-  /** End line of the chunk in the source document. */
+  /** Source line range end (for line-level citation). */
   end_line?: number;
-  /** Chunk index within the document. */
+  /** Chunk position index within the document. */
   chunk_index?: number;
+  /**
+   * PDF page number (1-indexed) where this chunk starts.
+   * Present only for PDFs processed with page-aware chunking (SPEC-033).
+   * Enables deep links to the exact PDF page.
+   */
+  page_start?: number;
+  /** PDF page number (1-indexed) where this chunk ends. Always equals page_start. */
+  page_end?: number;
   /** Entity type (e.g., "PERSON", "ORGANIZATION"). @implements SPEC-006 */
   entity_type?: string;
   /** Entity degree (number of relationships). @implements SPEC-006 */
@@ -180,6 +195,8 @@ export type ChatStreamEvent =
   | {
       type: "context";
       sources: SourceReference[];
+      /** Structured query-matched graph (SPEC-028). */
+      subgraph?: SubgraphBundle;
       /** Query mode used for retrieval. @implements SPEC-006 */
       query_mode?: string;
       /** Retrieval time in milliseconds. @implements SPEC-006 */
@@ -290,6 +307,10 @@ export interface StreamingState {
   assistantMessageId?: string;
   /** Context sources (if received) */
   sources?: SourceReference[];
+  /** Structured subgraph from context event (SPEC-028). */
+  subgraph?: SubgraphBundle;
+  /** UI-ready context built from sources + subgraph. */
+  queryContext?: QueryContext;
   /** Query mode used for retrieval. @implements SPEC-006 */
   queryMode?: string;
   /** Retrieval time in ms. @implements SPEC-006 */
@@ -326,6 +347,11 @@ export function reduceStreamingEvent(
       return {
         ...currentState,
         sources: event.sources,
+        subgraph: event.subgraph,
+        queryContext: buildQueryContextFromRetrieval(
+          event.sources,
+          event.subgraph,
+        ),
         queryMode: event.query_mode,
         retrievalTimeMs: event.retrieval_time_ms,
       };

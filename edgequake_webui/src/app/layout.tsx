@@ -9,6 +9,7 @@
  * @enforces BR0800 - Theme persisted in localStorage
  */
 import { getRuntimeConfig } from '@/lib/runtime-config';
+import { resolveRuntimeApiUrlForInjection } from '@/lib/server/resolve-runtime-api-url';
 import { AppProviders } from '@/providers';
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
@@ -36,7 +37,11 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const runtimeConfig = getRuntimeConfig();
+  const runtimeConfig = {
+    ...getRuntimeConfig(),
+    // P-G13: dev uses same-origin rewrites; prod/docker inject absolute apiUrl.
+    apiUrl: resolveRuntimeApiUrlForInjection() || getRuntimeConfig().apiUrl,
+  };
 
   return (
     <html lang="en" suppressHydrationWarning>

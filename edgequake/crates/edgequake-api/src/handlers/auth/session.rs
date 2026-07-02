@@ -10,14 +10,17 @@ use tracing::info;
 use uuid::Uuid;
 
 use edgequake_audit::{AuditEventType, AuditResult};
+use edgequake_auth::Role;
 
 use crate::error::ApiError;
-use crate::services::record_compliance_event;
-use crate::state::AppState;
+use crate::handlers::auth::ApiAuthenticated;
+use crate::services::record_compliance_event_runtime;
+use crate::state::{
+    ApiSecurityConfig, AuthRuntime, ComplianceRuntime, PostgresRuntime, StorageRuntime,
+};
 
 use super::{
-    find_user_by_login, get_user_by_id, RefreshTokenRecord, UserRecord, REFRESH_TOKEN_PREFIX,
-    USER_KEY_PREFIX,
+    find_user_by_login, get_record_by_id, get_user_by_id, RefreshTokenRecord, RequestAuthContext,
 };
 pub use crate::handlers::auth_types::{
     GetMeResponse, LoginRequest, LoginResponse, RefreshTokenRequest, RefreshTokenResponse, UserInfo,
@@ -38,19 +41,23 @@ pub use crate::handlers::auth_types::{
     )
 )]
 pub async fn login(
-    State(state): State<AppState>,
+    State(auth): State<AuthRuntime>,
+    State(storage): State<StorageRuntime>,
+    State(pg_runtime): State<PostgresRuntime>,
+    State(security): State<ApiSecurityConfig>,
+    State(compliance): State<ComplianceRuntime>,
     Json(request): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, ApiError> {
     info!("Login attempt for user: {}", request.username);
 
-    // Try to find user by username first, then by email
-    let user = find_user_by_login(&state, &request.username).await?;
+    let user =
+        find_user_by_login(&storage, Some(&pg_runtime), &security, &request.username).await?;
 
     let user = match user {
         Some(u) => u,
         None => {
-            record_compliance_event(
-                &state,
+            record_compliance_event_runtime(
+                &compliance,
                 "default",
                 AuditEventType::Authentication,
                 "login",
@@ -67,29 +74,40 @@ pub async fn login(
         }
     };
 
-    // Check if account is active
-    if !user.is_active {
+    let mut record = get_record_by_id(&storage, Some(&pg_runtime), &security, &user.user_id)
+        .await?
+        .ok_or_else(|| ApiError::Internal("User record missing after lookup".into()))?;
+
+    crate::services::login_lockout::ensure_login_allowed(&record)?;
+
+    if !record.is_active {
         return Err(ApiError::forbidden_reason("account_inactive"));
     }
 
-    // Verify password
-    let password_valid = state
-        .auth
+    let password_valid = auth
         .password
-        .verify_password(&request.password, &user.password_hash)
+        .verify_password(&request.password, &record.password_hash)
         .map_err(|e| ApiError::Internal(format!("password_verify failed: {e}")))?;
 
     if !password_valid {
-        record_compliance_event(
-            &state,
+        record_compliance_event_runtime(
+            &compliance,
             "default",
             AuditEventType::Authentication,
             "login",
             AuditResult::Failure,
             None,
-            Some(user.user_id.clone()),
+            Some(record.user_id.clone()),
             None,
         );
+        crate::services::login_lockout::record_failed_login(
+            &storage,
+            Some(&pg_runtime),
+            &security,
+            &auth.config,
+            &mut record,
+        )
+        .await?;
         return Err(ApiError::auth_unauthorized(
             "login",
             "invalid_password",
@@ -97,52 +115,59 @@ pub async fn login(
         ));
     }
 
-    // Generate JWT access token
-    let user_uuid = Uuid::parse_str(&user.user_id)
+    crate::services::login_lockout::record_successful_login(
+        &storage,
+        Some(&pg_runtime),
+        &security,
+        &mut record,
+    )
+    .await?;
+
+    let user_uuid = Uuid::parse_str(&record.user_id)
         .map_err(|_| ApiError::Internal("Invalid user ID format".to_string()))?;
 
-    let access_token = state
-        .auth
+    let expiry_seconds = auth.jwt.expiry_duration().as_secs() as i64;
+    let claims = crate::services::identity_storage::access_token_claims(
+        user_uuid,
+        Role::parse(&record.role),
+        expiry_seconds,
+    );
+    let access_token = auth
         .jwt
-        .generate_token(user_uuid, user.role.clone())
+        .generate_token_with_claims(claims)
         .map_err(|e| ApiError::Internal(format!("token_generation failed: {e}")))?;
 
-    // Generate refresh token
     let refresh_token = Uuid::new_v4().to_string();
     let refresh_expiry = Utc::now() + Duration::days(30);
 
-    // Store refresh token
     let refresh_record = RefreshTokenRecord {
         token: refresh_token.clone(),
-        user_id: user.user_id.clone(),
+        user_id: record.user_id.clone(),
         created_at: Utc::now(),
         expires_at: refresh_expiry,
         revoked: false,
     };
 
-    let key = format!("{}{}", REFRESH_TOKEN_PREFIX, refresh_token);
-    let value = serde_json::to_value(&refresh_record)
-        .map_err(|e| ApiError::Internal(format!("Serialization error: {}", e)))?;
+    crate::services::session_storage::persist_refresh_token(
+        &storage,
+        Some(&pg_runtime),
+        &security,
+        &refresh_record,
+    )
+    .await?;
 
-    state
-        .storage
-        .kv_storage
-        .upsert(&[(key, value)])
-        .await
-        .map_err(|e| ApiError::Internal(format!("Storage error: {}", e)))?;
+    info!("Login successful for user: {}", record.username);
 
-    let expires_in = state.auth.jwt.expiry_duration().as_secs() as i64;
+    let expires_in = expiry_seconds;
 
-    info!("Login successful for user: {}", user.username);
-
-    record_compliance_event(
-        &state,
+    record_compliance_event_runtime(
+        &compliance,
         "default",
         AuditEventType::Authentication,
         "login",
         AuditResult::Success,
         None,
-        Some(user.user_id.clone()),
+        Some(record.user_id.clone()),
         None,
     );
 
@@ -151,7 +176,7 @@ pub async fn login(
         token_type: "Bearer".to_string(),
         expires_in,
         refresh_token,
-        user: UserInfo::from(&user),
+        user: UserInfo::from(&record),
     }))
 }
 
@@ -169,28 +194,21 @@ pub async fn login(
     )
 )]
 pub async fn refresh_token(
-    State(state): State<AppState>,
+    State(auth): State<AuthRuntime>,
+    State(storage): State<StorageRuntime>,
+    State(pg_runtime): State<PostgresRuntime>,
+    State(security): State<ApiSecurityConfig>,
     Json(request): Json<RefreshTokenRequest>,
 ) -> Result<Json<RefreshTokenResponse>, ApiError> {
-    let key = format!("{}{}", REFRESH_TOKEN_PREFIX, request.refresh_token);
+    let record = crate::services::session_storage::load_refresh_token(
+        &storage,
+        Some(&pg_runtime),
+        &security,
+        &request.refresh_token,
+    )
+    .await?
+    .ok_or_else(|| ApiError::auth_unauthorized("refresh", "token_not_found", None))?;
 
-    // Look up refresh token
-    let record = match state.storage.kv_storage.get_by_id(&key).await {
-        Ok(Some(value)) => serde_json::from_value::<RefreshTokenRecord>(value)
-            .map_err(|e| ApiError::Internal(format!("Deserialization error: {}", e)))?,
-        Ok(None) => {
-            return Err(ApiError::auth_unauthorized(
-                "refresh",
-                "token_not_found",
-                None,
-            ));
-        }
-        Err(e) => {
-            return Err(ApiError::Internal(format!("Storage error: {}", e)));
-        }
-    };
-
-    // Check if token is revoked
     if record.revoked {
         return Err(ApiError::auth_unauthorized(
             "refresh",
@@ -199,7 +217,6 @@ pub async fn refresh_token(
         ));
     }
 
-    // Check if token is expired
     if record.expires_at < Utc::now() {
         return Err(ApiError::auth_unauthorized(
             "refresh",
@@ -208,27 +225,24 @@ pub async fn refresh_token(
         ));
     }
 
-    // Get user
-    let user =
-        get_user_by_id(&state, &record.user_id)
-            .await?
-            .ok_or(ApiError::auth_unauthorized(
-                "refresh",
-                "user_not_found",
-                None,
-            ))?;
+    let user = get_user_by_id(&storage, Some(&pg_runtime), &security, &record.user_id)
+        .await?
+        .ok_or(ApiError::auth_unauthorized(
+            "refresh",
+            "user_not_found",
+            None,
+        ))?;
 
-    // Generate new access token
     let user_uuid = Uuid::parse_str(&user.user_id)
         .map_err(|_| ApiError::Internal("Invalid user ID format".to_string()))?;
 
-    let access_token = state
-        .auth
+    let expires_in = auth.jwt.expiry_duration().as_secs() as i64;
+    let claims =
+        crate::services::identity_storage::access_token_claims(user_uuid, user.role, expires_in);
+    let access_token = auth
         .jwt
-        .generate_token(user_uuid, user.role)
+        .generate_token_with_claims(claims)
         .map_err(|e| ApiError::Internal(format!("Token generation error: {}", e)))?;
-
-    let expires_in = state.auth.jwt.expiry_duration().as_secs() as i64;
 
     Ok(Json(RefreshTokenResponse {
         access_token,
@@ -251,39 +265,31 @@ pub async fn refresh_token(
     )
 )]
 pub async fn logout(
-    State(state): State<AppState>,
+    State(storage): State<StorageRuntime>,
+    State(pg_runtime): State<PostgresRuntime>,
+    State(security): State<ApiSecurityConfig>,
+    State(compliance): State<ComplianceRuntime>,
     Json(request): Json<RefreshTokenRequest>,
 ) -> Result<StatusCode, ApiError> {
-    let key = format!("{}{}", REFRESH_TOKEN_PREFIX, request.refresh_token);
-    let mut user_id: Option<String> = None;
+    let user_id = crate::services::session_storage::load_refresh_token(
+        &storage,
+        Some(&pg_runtime),
+        &security,
+        &request.refresh_token,
+    )
+    .await?
+    .map(|record| record.user_id);
 
-    // Look up and revoke the refresh token
-    if let Some(value) = state
-        .storage
-        .kv_storage
-        .get_by_id(&key)
-        .await
-        .map_err(|e| ApiError::Internal(format!("Storage error: {}", e)))?
-    {
-        let mut record: RefreshTokenRecord = serde_json::from_value(value)
-            .map_err(|e| ApiError::Internal(format!("Deserialization error: {}", e)))?;
+    let _ = crate::services::session_storage::revoke_refresh_token(
+        &storage,
+        Some(&pg_runtime),
+        &security,
+        &request.refresh_token,
+    )
+    .await?;
 
-        user_id = Some(record.user_id.clone());
-        record.revoked = true;
-
-        let new_value = serde_json::to_value(&record)
-            .map_err(|e| ApiError::Internal(format!("Serialization error: {}", e)))?;
-
-        state
-            .storage
-            .kv_storage
-            .upsert(&[(key, new_value)])
-            .await
-            .map_err(|e| ApiError::Internal(format!("Storage error: {}", e)))?;
-    }
-
-    record_compliance_event(
-        &state,
+    record_compliance_event_runtime(
+        &compliance,
         "default",
         AuditEventType::Authentication,
         "logout",
@@ -310,49 +316,15 @@ pub async fn logout(
     )
 )]
 pub async fn get_me(
-    State(state): State<AppState>,
-    headers: axum::http::HeaderMap,
+    State(storage): State<StorageRuntime>,
+    State(pg_runtime): State<PostgresRuntime>,
+    State(security): State<ApiSecurityConfig>,
+    ApiAuthenticated(RequestAuthContext { user_id, .. }): ApiAuthenticated,
 ) -> Result<Json<GetMeResponse>, ApiError> {
-    // Extract the Authorization header
-    let auth_header = headers
-        .get(axum::http::header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .ok_or(ApiError::unauthorized())?;
-
-    // Parse the Bearer token
-    let token = auth_header
-        .strip_prefix("Bearer ")
-        .ok_or(ApiError::BadRequest(
-            "Invalid Authorization header format. Expected 'Bearer <token>'".to_string(),
-        ))?;
-
-    // Verify the JWT and extract claims
-    let claims = state
-        .auth
-        .jwt
-        .verify_token(token)
-        .map_err(|e| ApiError::BadRequest(format!("Invalid token: {}", e)))?;
-
-    // Get the user ID from claims
-    let user_id = claims
-        .user_id()
-        .map_err(|e| ApiError::BadRequest(format!("Invalid user ID in token: {}", e)))?;
-
-    // Fetch user from storage
-    let user_key = format!("{}{}", USER_KEY_PREFIX, user_id);
-
-    let user_value = state
-        .storage
-        .kv_storage
-        .get_by_id(&user_key)
-        .await
-        .map_err(|e| ApiError::Internal(format!("Storage error: {}", e)))?
+    let user_record = get_record_by_id(&storage, Some(&pg_runtime), &security, &user_id)
+        .await?
         .ok_or_else(|| ApiError::NotFound(format!("User {} not found", user_id)))?;
 
-    let user_record: UserRecord = serde_json::from_value(user_value)
-        .map_err(|e| ApiError::Internal(format!("Deserialization error: {}", e)))?;
-
-    // Check if user is active
     if !user_record.is_active {
         return Err(ApiError::forbidden_reason("account_inactive"));
     }

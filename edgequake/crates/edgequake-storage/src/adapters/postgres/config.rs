@@ -93,7 +93,7 @@ impl Default for PostgresConfig {
             ssl_mode: SslMode::Prefer,
             vector_index_type: VectorIndexType::HNSW,
             hnsw_m: 16,
-            hnsw_ef_construction: 64,
+            hnsw_ef_construction: 32, // SPEC-034 IMP-04: reduced from 64 → ~35% smaller index, <2% recall loss
             ivfflat_lists: 100,
         }
     }
@@ -165,6 +165,35 @@ impl PostgresConfig {
             .collect();
         format!("eq_{}", sanitized)
     }
+
+    /// Qualified KV table for this namespace (`public.eq_{prefix}_kv`).
+    pub fn qualified_kv_table(&self) -> String {
+        qualified_kv_table_name(&self.table_prefix())
+    }
+}
+
+/// Split `schema.table` or return `(public, table)`.
+pub(crate) fn split_qualified_table_name(qualified_name: &str) -> (&str, &str) {
+    qualified_name
+        .split_once('.')
+        .map_or(("public", qualified_name), |(schema, table)| {
+            (schema, table)
+        })
+}
+
+/// Qualified KV table (`public.eq_{prefix}_kv`).
+pub(crate) fn qualified_kv_table_name(prefix: &str) -> String {
+    format!("public.eq_{prefix}_kv")
+}
+
+/// Qualified vectors table (`public.eq_{prefix}_vectors`).
+pub(crate) fn qualified_vectors_table_name(prefix: &str) -> String {
+    format!("public.eq_{prefix}_vectors")
+}
+
+/// Qualified vectors stats table (`public.eq_{prefix}_vectors_stats`).
+pub(crate) fn qualified_vectors_stats_table_name(prefix: &str) -> String {
+    format!("public.eq_{prefix}_vectors_stats")
 }
 
 /// SSL connection mode.

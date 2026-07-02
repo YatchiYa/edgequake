@@ -3,7 +3,8 @@
 //! Finds documents that have been processing longer than a configurable
 //! threshold and requeues them, cleaning up partial graph data first.
 
-use axum::{extract::State, Json};
+use axum::response::Response;
+use axum::{extract::State, response::IntoResponse, Json};
 use chrono::Utc;
 use tracing::debug;
 use uuid::Uuid;
@@ -11,9 +12,10 @@ use uuid::Uuid;
 use crate::error::{ApiError, ApiResult};
 use crate::handlers::documents_types::*;
 use crate::middleware::TenantContext;
+use crate::services::document_metadata_scan::load_scoped_document_metadata;
 use crate::state::AppState;
 
-use super::super::storage_helpers::{cleanup_document_graph_data, metadata_matches_tenant_context};
+use super::super::storage_helpers::cleanup_document_graph_data;
 
 /// Recover documents stuck in "processing" status.
 ///
@@ -26,7 +28,8 @@ use super::super::storage_helpers::{cleanup_document_graph_data, metadata_matche
     tag = "Documents",
     request_body = RecoverStuckRequest,
     responses(
-        (status = 200, description = "Stuck documents recovered", body = RecoverStuckResponse),
+        (status = 200, description = "Stuck documents recovered (legacy default)", body = RecoverStuckResponse),
+        (status = 202, description = "Recovery accepted when REST-025 opt-in or strict startup", body = RecoverStuckResponse),
         (status = 400, description = "Invalid request")
     )
 )]
@@ -34,7 +37,27 @@ pub async fn recover_stuck(
     State(state): State<AppState>,
     tenant_ctx: TenantContext,
     Json(request): Json<RecoverStuckRequest>,
-) -> ApiResult<Json<RecoverStuckResponse>> {
+) -> ApiResult<Response> {
+    let workspace_id = tenant_ctx.workspace_id.clone();
+    let return_202 = state.security.v1_rpc_return_202;
+    let response = run_recover_stuck(state, tenant_ctx, request).await?;
+    if let Some(ws) = workspace_id.as_deref() {
+        let track_id = response.track_id.clone();
+        return crate::services::v1_rpc_migration::respond_v1_async_rpc(
+            ws,
+            Some(track_id.as_str()),
+            return_202,
+            response,
+        );
+    }
+    Ok(Json(response).into_response())
+}
+
+pub(crate) async fn run_recover_stuck(
+    state: AppState,
+    tenant_ctx: TenantContext,
+    request: RecoverStuckRequest,
+) -> ApiResult<RecoverStuckResponse> {
     use chrono::Duration;
 
     debug!(
@@ -52,58 +75,52 @@ pub async fn recover_stuck(
     let threshold = Duration::minutes(request.stuck_threshold_minutes as i64);
     let cutoff_time = Utc::now() - threshold;
 
-    // Get all metadata keys
-    let all_keys: Vec<String> = state.storage.kv_storage.keys().await?;
+    // P-G7 + SPEC-027: batch scoped metadata (suffix index + tenant filter).
+    let scoped_metadata =
+        load_scoped_document_metadata(state.storage.kv_storage.as_ref(), &tenant_ctx).await?;
 
     let mut stuck_docs = Vec::new();
     let mut requeued_ids = Vec::new();
     let mut requeued_titles = Vec::new();
 
-    // Find stuck processing documents
-    for key in all_keys.iter().filter(|k| k.ends_with("-metadata")) {
+    for value in scoped_metadata {
         if stuck_docs.len() >= request.max_documents {
             break;
         }
 
-        if let Some(value) = state.storage.kv_storage.get_by_id(key).await? {
-            if !metadata_matches_tenant_context(&value, &tenant_ctx) {
-                continue;
-            }
+        if let Some(obj) = value.as_object() {
+            let status = obj.get("status").and_then(|v| v.as_str());
+            let doc_id = obj.get("id").and_then(|v| v.as_str());
+            let title = obj.get("title").and_then(|v| v.as_str());
+            let updated_at = obj.get("updated_at").and_then(|v| v.as_str());
 
-            if let Some(obj) = value.as_object() {
-                let status = obj.get("status").and_then(|v| v.as_str());
-                let doc_id = obj.get("id").and_then(|v| v.as_str());
-                let title = obj.get("title").and_then(|v| v.as_str());
-                let updated_at = obj.get("updated_at").and_then(|v| v.as_str());
-
-                // Check if document is stuck in processing
-                if status == Some("processing") {
-                    // If specific document IDs provided, check if this one is in the list
-                    if let Some(ref filter_ids) = request.document_ids {
-                        if let Some(id) = doc_id {
-                            if !filter_ids.contains(&id.to_string()) {
-                                continue;
-                            }
+            // Check if document is stuck in processing
+            if status == Some("processing") {
+                // If specific document IDs provided, check if this one is in the list
+                if let Some(ref filter_ids) = request.document_ids {
+                    if let Some(id) = doc_id {
+                        if !filter_ids.contains(&id.to_string()) {
+                            continue;
                         }
                     }
+                }
 
-                    // Check if document is older than threshold
-                    let is_stuck = if let Some(updated) = updated_at {
-                        if let Ok(updated_time) = chrono::DateTime::parse_from_rfc3339(updated) {
-                            updated_time.with_timezone(&chrono::Utc) < cutoff_time
-                        } else {
-                            // If we can't parse the time, assume it's stuck
-                            true
-                        }
+                // Check if document is older than threshold
+                let is_stuck = if let Some(updated) = updated_at {
+                    if let Ok(updated_time) = chrono::DateTime::parse_from_rfc3339(updated) {
+                        updated_time.with_timezone(&chrono::Utc) < cutoff_time
                     } else {
-                        // No updated_at, assume it's stuck
+                        // If we can't parse the time, assume it's stuck
                         true
-                    };
+                    }
+                } else {
+                    // No updated_at, assume it's stuck
+                    true
+                };
 
-                    if is_stuck {
-                        if let Some(id) = doc_id {
-                            stuck_docs.push((id.to_string(), title.unwrap_or(id).to_string()));
-                        }
+                if is_stuck {
+                    if let Some(id) = doc_id {
+                        stuck_docs.push((id.to_string(), title.unwrap_or(id).to_string()));
                     }
                 }
             }
@@ -141,7 +158,8 @@ pub async fn recover_stuck(
         if let Some(content_value) = state.storage.kv_storage.get_by_id(&content_key).await? {
             if let Some(content) = content_value.get("content").and_then(|v| v.as_str()) {
                 // Update status back to pending
-                let metadata_key = format!("{}-metadata", doc_id);
+                let metadata_key =
+                    crate::services::document_metadata_scan::metadata_key_for_document(doc_id);
                 if let Some(mut metadata) =
                     state.storage.kv_storage.get_by_id(&metadata_key).await?
                 {
@@ -157,11 +175,12 @@ pub async fn recover_stuck(
                             serde_json::json!("stuck_in_processing"),
                         );
 
-                        state
-                            .storage
-                            .kv_storage
-                            .upsert(&[(metadata_key, metadata)])
-                            .await?;
+                        crate::services::upsert_metadata_kv_with_index(
+                            state.storage.kv_storage.as_ref(),
+                            &metadata_key,
+                            metadata,
+                        )
+                        .await?;
                     }
                 }
 
@@ -212,11 +231,16 @@ pub async fn recover_stuck(
         }
     }
 
-    Ok(Json(RecoverStuckResponse {
+    let response = RecoverStuckResponse {
         track_id: new_track_id,
+        v2_migration: tenant_ctx
+            .workspace_id
+            .as_ref()
+            .map(|ws| crate::services::job_registry::v2_migration_hint("recover_stuck", ws)),
         stuck_found: stuck_docs.len(),
         requeued: requeued_ids.len(),
         document_ids: requeued_ids,
         document_titles: requeued_titles,
-    }))
+    };
+    Ok(response)
 }

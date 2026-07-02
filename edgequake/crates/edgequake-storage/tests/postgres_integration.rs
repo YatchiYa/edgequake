@@ -387,7 +387,7 @@ async fn test_postgres_age_basic_operations() {
 
     // Get neighbors
     let neighbors = graph_storage
-        .get_neighbors("edgequake", 1)
+        .get_neighbors("edgequake", 1, None, None)
         .await
         .expect("Failed to get neighbors");
     assert!(!neighbors.is_empty());
@@ -477,14 +477,14 @@ async fn test_postgres_age_graph_traversal() {
 
     // Get neighbors at depth 1
     let neighbors = graph_storage
-        .get_neighbors("edgequake", 1)
+        .get_neighbors("edgequake", 1, None, None)
         .await
         .expect("Failed to get neighbors");
     assert!(neighbors.len() >= 2); // rust, lightrag, sarah
 
     // Get knowledge graph
     let kg = graph_storage
-        .get_knowledge_graph("edgequake", 2, 100)
+        .get_knowledge_graph("edgequake", 2, 100, None, None)
         .await
         .expect("Failed to get KG");
     assert!(!kg.nodes.is_empty());
@@ -622,14 +622,14 @@ async fn test_postgres_full_e2e_pipeline() {
 
     // Graph traversal
     let neighbors = graph_storage
-        .get_neighbors("EDGEQUAKE", 1)
+        .get_neighbors("EDGEQUAKE", 1, None, None)
         .await
         .expect("Failed to get neighbors");
     assert!(!neighbors.is_empty());
 
     // Knowledge graph extraction
     let kg = graph_storage
-        .get_knowledge_graph("EDGEQUAKE", 2, 50)
+        .get_knowledge_graph("EDGEQUAKE", 2, 50, None, None)
         .await
         .expect("Failed to get KG");
     assert!(kg.node_count() >= 2);
@@ -681,7 +681,7 @@ async fn test_age_cypher_variable_length_paths() {
 
     // Test depth 1: A should see B
     let neighbors_1 = graph_storage
-        .get_neighbors("A", 1)
+        .get_neighbors("A", 1, None, None)
         .await
         .expect("Failed to get neighbors at depth 1");
     assert_eq!(neighbors_1.len(), 1, "Depth 1 should find 1 neighbor");
@@ -689,14 +689,14 @@ async fn test_age_cypher_variable_length_paths() {
 
     // Test depth 2: A should see B, C
     let neighbors_2 = graph_storage
-        .get_neighbors("A", 2)
+        .get_neighbors("A", 2, None, None)
         .await
         .expect("Failed to get neighbors at depth 2");
     assert_eq!(neighbors_2.len(), 2, "Depth 2 should find 2 neighbors");
 
     // Test depth 3: A should see B, C, D (max safe depth per QW4)
     let neighbors_3 = graph_storage
-        .get_neighbors("A", 3)
+        .get_neighbors("A", 3, None, None)
         .await
         .expect("Failed to get neighbors at depth 3");
     assert_eq!(neighbors_3.len(), 3, "Depth 3 should find 3 neighbors");
@@ -705,7 +705,7 @@ async fn test_age_cypher_variable_length_paths() {
 
     // QW4: traversal depth is clamped to 3 hops — depth 10 must not reach E (4 hops away)
     let neighbors_capped = graph_storage
-        .get_neighbors("A", 10)
+        .get_neighbors("A", 10, None, None)
         .await
         .expect("Failed to get capped neighbors");
     assert_eq!(
@@ -779,7 +779,7 @@ async fn test_age_cypher_knowledge_graph_extraction() {
 
     // Extract knowledge graph from center
     let kg = graph_storage
-        .get_knowledge_graph(center, 1, 100)
+        .get_knowledge_graph(center, 1, 100, None, None)
         .await
         .expect("Failed to get KG");
 
@@ -791,7 +791,7 @@ async fn test_age_cypher_knowledge_graph_extraction() {
 
     // Extract KG with depth 2 to include satellite-to-satellite edges
     let kg_deep = graph_storage
-        .get_knowledge_graph(center, 2, 100)
+        .get_knowledge_graph(center, 2, 100, None, None)
         .await
         .expect("Failed to get deep KG");
 
@@ -800,7 +800,7 @@ async fn test_age_cypher_knowledge_graph_extraction() {
 
     // Test truncation
     let kg_limited = graph_storage
-        .get_knowledge_graph(center, 2, 3)
+        .get_knowledge_graph(center, 2, 3, None, None)
         .await
         .expect("Failed to get limited KG");
 
@@ -900,28 +900,28 @@ async fn test_age_cypher_search_labels() {
 
     // Search for "EDGEQUAKE" should find 3 nodes
     let edge_results = graph_storage
-        .search_labels("edgequake", 10)
+        .search_labels("edgequake", 10, None, None)
         .await
         .expect("Failed to search");
     assert_eq!(edge_results.len(), 3, "Should find 3 EDGEQUAKE nodes");
 
     // Search for "API" should find 2 nodes
     let api_results = graph_storage
-        .search_labels("api", 10)
+        .search_labels("api", 10, None, None)
         .await
         .expect("Failed to search");
     assert_eq!(api_results.len(), 2, "Should find 2 API nodes");
 
     // Search for "RUST" should find 1 node
     let rust_results = graph_storage
-        .search_labels("rust", 10)
+        .search_labels("rust", 10, None, None)
         .await
         .expect("Failed to search");
     assert_eq!(rust_results.len(), 1, "Should find 1 RUST node");
 
     // Test limit
     let limited = graph_storage
-        .search_labels("EDGE", 2)
+        .search_labels("EDGE", 2, None, None)
         .await
         .expect("Failed to search");
     assert_eq!(limited.len(), 2, "Should be limited to 2 results");
@@ -988,7 +988,7 @@ async fn test_age_cypher_popular_labels() {
 
     // Get popular labels (by degree)
     let popular = graph_storage
-        .get_popular_labels(3)
+        .get_popular_labels(3, None, None)
         .await
         .expect("Failed to get popular");
 

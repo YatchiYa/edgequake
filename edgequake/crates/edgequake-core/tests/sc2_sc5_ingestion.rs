@@ -35,15 +35,7 @@ const EMBED_DIM: usize = 1536;
 
 /// Extraction response shared by all successful inserts. Any valid response
 /// works, so identical responses make concurrency ordering irrelevant.
-const EXTRACTION_JSON: &str = r#"{
-  "entities": [
-    {"name": "Sarah Chen", "type": "PERSON", "description": "Chief architect"},
-    {"name": "EdgeQuake", "type": "SYSTEM", "description": "RAG system in Rust"}
-  ],
-  "relationships": [
-    {"source": "Sarah Chen", "target": "EdgeQuake", "type": "LEADS", "description": "Sarah leads EdgeQuake"}
-  ]
-}"#;
+const EXTRACTION_JSON: &str = edgequake_pipeline::SPEC021_SARAH_CHEN_EXTRACTION_JSON;
 
 const SMALL_DOCUMENT: &str =
     "Sarah Chen leads the EdgeQuake project. EdgeQuake is a RAG system written in Rust.";
@@ -154,11 +146,18 @@ impl GraphStorageReadOps for FailingGraphStorage {
         _start_node: &str,
         _max_depth: usize,
         _max_nodes: usize,
+        _tenant_id: Option<&str>,
+        _workspace_id: Option<&str>,
     ) -> Result<KnowledgeGraph, StorageError> {
         Ok(KnowledgeGraph::new())
     }
 
-    async fn get_popular_labels(&self, _limit: usize) -> Result<Vec<String>, StorageError> {
+    async fn get_popular_labels(
+        &self,
+        _limit: usize,
+        _tenant_id: Option<&str>,
+        _workspace_id: Option<&str>,
+    ) -> Result<Vec<String>, StorageError> {
         Ok(vec![])
     }
 
@@ -166,6 +165,8 @@ impl GraphStorageReadOps for FailingGraphStorage {
         &self,
         _query: &str,
         _limit: usize,
+        _tenant_id: Option<&str>,
+        _workspace_id: Option<&str>,
     ) -> Result<Vec<String>, StorageError> {
         Ok(vec![])
     }
@@ -185,6 +186,8 @@ impl GraphStorageReadOps for FailingGraphStorage {
         &self,
         _node_id: &str,
         _depth: usize,
+        _tenant_id: Option<&str>,
+        _workspace_id: Option<&str>,
     ) -> Result<Vec<GraphNode>, StorageError> {
         Ok(vec![])
     }
@@ -204,8 +207,34 @@ impl GraphStorageMutateOps for FailingGraphStorage {
         ))
     }
 
+    /// P-G10: batch is now required. The processor persists via the batch path,
+    /// so the injected failure must live here (mirrors `upsert_node`).
+    async fn upsert_nodes_batch(
+        &self,
+        nodes: &[(String, HashMap<String, serde_json::Value>)],
+    ) -> Result<(), StorageError> {
+        // Record the chunk-vector count at the moment the graph merge is
+        // attempted, then fail exactly like the per-node path.
+        let seen = count_chunk_vectors(self.vector_store.as_ref()).await;
+        self.chunk_vectors_at_merge.store(seen, Ordering::SeqCst);
+        // Surface how many nodes were attempted for diagnostics.
+        Err(StorageError::Transaction(format!(
+            "injected graph merge failure (batch of {} nodes)",
+            nodes.len()
+        )))
+    }
+
     async fn delete_node(&self, _node_id: &str) -> Result<(), StorageError> {
         Ok(())
+    }
+
+    async fn delete_node_scoped(
+        &self,
+        _node_id: &str,
+        _tenant_id: &str,
+        _workspace_id: &str,
+    ) -> Result<bool, StorageError> {
+        Ok(false)
     }
 
     async fn upsert_edge(
@@ -217,8 +246,27 @@ impl GraphStorageMutateOps for FailingGraphStorage {
         Ok(())
     }
 
+    async fn upsert_edges_batch(
+        &self,
+        edges: &[(String, String, HashMap<String, serde_json::Value>)],
+    ) -> Result<(), StorageError> {
+        // Edges succeed in this fixture (the failure is injected at node batch).
+        let _ = edges;
+        Ok(())
+    }
+
     async fn delete_edge(&self, _source: &str, _target: &str) -> Result<(), StorageError> {
         Ok(())
+    }
+
+    async fn delete_edge_scoped(
+        &self,
+        _source: &str,
+        _target: &str,
+        _tenant_id: &str,
+        _workspace_id: &str,
+    ) -> Result<bool, StorageError> {
+        Ok(false)
     }
 
     async fn clear(&self) -> Result<(), StorageError> {
@@ -278,6 +326,23 @@ impl GraphStorageAnalyticsOps for FailingGraphStorage {
     }
 
     async fn edge_count(&self) -> Result<usize, StorageError> {
+        Ok(0)
+    }
+
+    // P-G12: required workspace-scoped counts. This fixture stores nothing,
+    // so every workspace (including the empty one) returns 0 — never the global
+    // count.
+    async fn node_count_by_workspace(
+        &self,
+        _workspace_id: &uuid::Uuid,
+    ) -> Result<usize, StorageError> {
+        Ok(0)
+    }
+
+    async fn edge_count_by_workspace(
+        &self,
+        _workspace_id: &uuid::Uuid,
+    ) -> Result<usize, StorageError> {
         Ok(0)
     }
 }
