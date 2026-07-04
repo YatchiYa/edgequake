@@ -167,9 +167,9 @@ EdgeQuake implements the [LightRAG algorithm](https://arxiv.org/abs/2410.05779) 
               ▼                                 ▼
 ┌──────────────────────────┐   ┌────────────────────────────────────┐
 │  LLM Providers           │   │  Storage                           │
-│  OpenAI · Anthropic      │   │  PostgreSQL 16 / 17 / 18          │
+│  OpenAI · Anthropic      │   │  PostgreSQL 16 / 17 / 18           │ 
 │  Gemini · Mistral        │   │  ├─ pgvector (embeddings)          │
-│  Ollama · LM Studio      │   │  └─ Apache AGE (knowledge graph)  │
+│  Ollama · LM Studio      │   │  └─ Apache AGE (knowledge graph)   │
 │  xAI · Azure · VertexAI  │   │                                    │
 └──────────────────────────┘   └────────────────────────────────────┘
 ```
