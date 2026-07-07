@@ -12,8 +12,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use edgequake_llm::{
-    ChatMessage, CompletionOptions, EmbeddingProvider, LLMProvider, LLMResponse, LlmError,
-    ProviderFactory, Result,
+    ApplicationContext, ChatMessage, CompletionOptions, EmbeddingProvider, LLMProvider,
+    LLMResponse, LlmError, ProviderFactory, Result,
 };
 use futures::stream::BoxStream;
 
@@ -426,6 +426,16 @@ impl EmbeddingProvider for SafetyLimitedEmbeddingProviderWrapper {
 /// Validate that the required API key environment variable is set and non-empty for the
 /// given provider, returning a clear `ConfigError` before attempting to build the client.
 fn check_api_key(provider_name: &str) -> Result<()> {
+    let provider = provider_name.to_ascii_lowercase();
+    if provider == "vertexai" || provider == "vertex" {
+        if !crate::providers::credentials::vertex_auth_configured_sync() {
+            return Err(LlmError::ConfigError(
+                crate::providers::credentials::vertex_auth_health_error(),
+            ));
+        }
+        return Ok(());
+    }
+
     let (env_var, display_name) = match provider_name {
         "openai" => ("OPENAI_API_KEY", "OpenAI"),
         "anthropic" => ("ANTHROPIC_API_KEY", "Anthropic"),
@@ -433,6 +443,10 @@ fn check_api_key(provider_name: &str) -> Result<()> {
         "mistral" => ("MISTRAL_API_KEY", "Mistral"),
         "xai" => ("XAI_API_KEY", "xAI"),
         "openrouter" => ("OPENROUTER_API_KEY", "OpenRouter"),
+        "nvidia" => ("NVIDIA_API_KEY", "NVIDIA NIM"),
+        "cohere" => ("COHERE_API_KEY", "Cohere"),
+        "jina" => ("JINA_API_KEY", "Jina AI"),
+        "huggingface" | "hf" => ("HF_TOKEN", "HuggingFace"),
         _ => return Ok(()), // Local / key-less providers (ollama, lmstudio, mock, etc.)
     };
     let key_present = std::env::var(env_var)
@@ -446,6 +460,43 @@ fn check_api_key(provider_name: &str) -> Result<()> {
         )));
     }
     Ok(())
+}
+
+/// Create an LLM provider, using Vertex ADC path when applicable (SPEC-043 §011).
+fn create_inner_llm_provider(
+    provider_name: &str,
+    model: &str,
+    ctx: Option<ApplicationContext>,
+) -> Result<Arc<dyn LLMProvider>> {
+    let provider = provider_name.to_ascii_lowercase();
+    if provider == "vertexai" || provider == "vertex" {
+        return create_vertex_llm_via_adc(model, ctx);
+    }
+    match ctx {
+        Some(ctx) => ProviderFactory::create_llm_provider_with_context(provider_name, model, ctx),
+        None => ProviderFactory::create_llm_provider(provider_name, model),
+    }
+}
+
+fn create_vertex_llm_via_adc(
+    model: &str,
+    ctx: Option<ApplicationContext>,
+) -> Result<Arc<dyn LLMProvider>> {
+    use edgequake_llm::GeminiProvider;
+
+    let actual = model.strip_prefix("vertexai:").unwrap_or(model);
+    let handle = tokio::runtime::Handle::try_current().map_err(|_| {
+        LlmError::ConfigError(
+            "Vertex AI requires a Tokio runtime for Application Default Credentials".to_string(),
+        )
+    })?;
+    let mut provider =
+        tokio::task::block_in_place(|| handle.block_on(GeminiProvider::from_env_vertex_ai_adc()))?;
+    provider = provider.with_model(actual);
+    if let Some(ctx) = ctx {
+        provider = provider.with_application_context(ctx);
+    }
+    Ok(Arc::new(provider))
 }
 
 /// Create a safety-limited LLM provider from workspace configuration.
@@ -471,7 +522,7 @@ pub fn create_safe_llm_provider(provider_name: &str, model: &str) -> Result<Arc<
         model
     };
 
-    let inner = ProviderFactory::create_llm_provider(provider_name, effective_model)?;
+    let inner = create_inner_llm_provider(provider_name, effective_model, None)?;
     let config = SafetyLimitsConfig::from_env();
 
     tracing::info!(
@@ -481,6 +532,37 @@ pub fn create_safe_llm_provider(provider_name: &str, model: &str) -> Result<Arc<
         timeout_secs = config.timeout.as_secs(),
         "Creating safety-limited LLM provider"
     );
+
+    Ok(Arc::new(SafetyLimitedProviderWrapper::new(inner, config)))
+}
+
+/// Create a safety-limited LLM provider with full application attribution context.
+pub fn create_safe_llm_provider_with_context(
+    provider_name: &str,
+    model: &str,
+    ctx: ApplicationContext,
+) -> Result<Arc<dyn LLMProvider>> {
+    if let Some((llm, _)) = test_provider_override() {
+        return Ok(llm);
+    }
+
+    check_api_key(provider_name)?;
+
+    let effective_model = if is_model_provider_mismatch(provider_name, model) {
+        let corrected = default_model_for_provider(provider_name);
+        tracing::warn!(
+            provider = provider_name,
+            requested_model = model,
+            corrected_model = corrected,
+            "COMPAT-GUARD: LLM model/provider mismatch — auto-correcting to provider default."
+        );
+        corrected
+    } else {
+        model
+    };
+
+    let inner = create_inner_llm_provider(provider_name, effective_model, Some(ctx))?;
+    let config = SafetyLimitsConfig::from_env();
 
     Ok(Arc::new(SafetyLimitedProviderWrapper::new(inner, config)))
 }
@@ -516,8 +598,10 @@ pub fn create_safe_llm_provider_with_headers(
     let headers = extra_headers.unwrap_or_default();
     let header_count = headers.len();
 
-    let inner =
-        ProviderFactory::create_llm_provider_with_headers(provider_name, effective_model, headers)?;
+    let mut ctx = crate::attribution::baseline_application_context();
+    ctx.extra_headers.extend(headers);
+
+    let inner = create_inner_llm_provider(provider_name, effective_model, Some(ctx))?;
 
     let config = SafetyLimitsConfig::from_env();
 
@@ -700,6 +784,20 @@ pub fn vision_page_timeout_secs(provider_name: &str) -> u64 {
     }
 }
 
+/// Validate vision provider credentials before pdf2md factory resolution (SPEC-043).
+pub fn check_vision_provider_available(provider_name: &str, model: &str) -> Result<()> {
+    check_api_key(provider_name)?;
+    if is_model_provider_mismatch(provider_name, model) {
+        tracing::warn!(
+            provider = provider_name,
+            requested_model = model,
+            corrected_model = default_model_for_provider(provider_name),
+            "COMPAT-GUARD: Vision model/provider mismatch — pdf2md will use provider default."
+        );
+    }
+    Ok(())
+}
+
 /// Create a safety-limited LLM provider suitable for **vision/PDF OCR** calls.
 ///
 /// Unlike [`create_safe_llm_provider`] (which caps timeouts at `MAXIMUM_TIMEOUT_SECS`),
@@ -744,7 +842,7 @@ pub fn create_safe_vision_provider(
         model
     };
 
-    let inner = ProviderFactory::create_llm_provider(provider_name, effective_model)?;
+    let inner = create_inner_llm_provider(provider_name, effective_model, None)?;
 
     let timeout_secs = vision_page_timeout_secs(provider_name);
     let config = SafetyLimitsConfig {

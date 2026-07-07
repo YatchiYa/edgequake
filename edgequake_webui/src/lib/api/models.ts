@@ -56,6 +56,10 @@ export interface ModelResponse {
   capabilities: ModelCapabilities;
   cost?: ModelCost;
   tags: string[];
+  /** How the model was discovered: dynamic_api, static_registry, hybrid, user_config */
+  discovery_source?: string;
+  /** Whether the model is currently available from the provider (live discovery). */
+  available?: boolean;
 }
 
 /**
@@ -71,6 +75,16 @@ export interface ProviderHealthResponse {
 /**
  * Provider configuration with models.
  */
+export interface ConfigRequirement {
+  env_var: string;
+  required: boolean;
+  description: string;
+  satisfied: boolean;
+}
+
+/**
+ * Provider configuration with models.
+ */
 export interface ProviderResponse {
   name: string;
   display_name: string;
@@ -80,6 +94,9 @@ export interface ProviderResponse {
   description: string;
   models: ModelResponse[];
   health?: ProviderHealthResponse;
+  /** Authentication model: api_key, oauth2_identity, local, … */
+  auth_kind?: string;
+  config_requirements?: ConfigRequirement[];
 }
 
 /**
@@ -108,6 +125,8 @@ export interface LlmModelItem {
   capabilities: ModelCapabilities;
   cost: ModelCost;
   tags: string[];
+  discovery_source?: string;
+  available?: boolean;
 }
 
 /**
@@ -135,6 +154,8 @@ export interface EmbeddingModelItem {
   capabilities: ModelCapabilities;
   cost: ModelCost;
   tags: string[];
+  discovery_source?: string;
+  available?: boolean;
 }
 
 /**
@@ -213,9 +234,14 @@ export async function fetchProvidersHealth(): Promise<ProviderResponse[]> {
   return apiClient<ProviderResponse[]>("/models/health", { silent: true });
 }
 
-// ============================================================================
-// Utility Functions
-// ============================================================================
+/**
+ * Invalidate backend discovery cache and refetch live provider catalogs.
+ */
+export async function refreshModelDiscovery(): Promise<{ status: string; message: string }> {
+  return apiClient<{ status: string; message: string }>("/models/discover/refresh", {
+    method: "POST",
+  });
+}
 
 /**
  * Format model cost for display.

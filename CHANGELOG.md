@@ -6,6 +6,42 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.15.0] — 2026-07-06
+
+SPEC-043 unified LLM model picker & provider attribution; SPEC-044 post-upgrade Cypher compensation fix (PG16/PG17/PG18 battle-tested).
+
+### Added — SPEC-043 LLM model picker & server config
+
+- **Unified model picker** — Shared `ModelPickerPanel` across workspace, query, and settings; server-side search (`/api/v1/models/search`), capability tags, keyboard scroll containment.
+- **Provider Status Hub** — Settings card shows per-provider health, `auth_kind` (`api_key` vs `oauth2_identity`), and structured `config_requirements` with remediation hints.
+- **Server LLM config overrides** — Persisted server defaults (provider/model) via settings API; config explainability panel for effective resolution chain.
+- **Application attribution API** — Runtime attribution headers and settings UI for downstream LLM request labeling (SPEC-043 §004).
+- **Expanded model catalog** — Bundled `models.toml` embedded at compile time; runtime override via `EDGEQUAKE_MODELS_CONFIG`, `./models.toml`, or `~/.edgequake/models.toml`.
+- **Vertex AI identity auth (§011)** — `vertexai` classified as `OAuth2Identity`, not API key. Auth ladder: `GOOGLE_ACCESS_TOKEN` → GCE metadata/ADC → service account JSON → gcloud ADC.
+- **E2E** — `spec043-llm-model-picker.spec.ts`; battle-tested screenshots under `specs/043-update-edgequake-llm/e2e/`.
+
+### Added — SPEC-044 Cypher parameter binding (post-upgrade ingest)
+
+- **`PgAgtype` sqlx bind** — Bare `$1` third argument per [AGE prepared statements](https://age.apache.org/age-manual/master/advanced/prepared_statements.html); binary wire format (version byte + JSON).
+- **Triple-track battle test** — `make spec044-battle-test-all` proves pg16 (AGE 1.6.0), pg17/pg18 (AGE 1.7.0): SQL probes + spec022 + spec044 compensation + graph CRUD.
+- **CI** — `postgres-integration.yml` SPEC-044 step; storage backend contracts no longer `continue-on-error`.
+
+### Fixed — SPEC-044 ([#ingest compensation](specs/044-upgrate-issue-study/000-index.md))
+
+- **v0.14.0 regression** — `cypher_execute_bound` inlined `'…'::agtype` and used `raw_sql`, breaking `delete_node` / `has_node` / `get_node` / edge ops; merge-failure compensation logged `third argument of cypher function must be a parameter` and left orphan graph nodes.
+- **Saga compensation** — `compensate_orphan_graph_writes` → `delete_node` works again on live PostgreSQL + AGE.
+
+### Changed
+
+- **`/api/v1/providers`** — Responses include `auth_kind` and `config_requirements`; Vertex health probes live token when configured.
+- **Provider catalog DRY** — Config requirements delegated to `credentials::provider_config_requirements()`.
+
+### Documentation
+
+- README, `docs/operations/configuration.md`, SPEC-044 study (`specs/044-upgrate-issue-study/`).
+
+---
+
 ## [0.14.1] — 2026-07-04
 
 ### Fixed

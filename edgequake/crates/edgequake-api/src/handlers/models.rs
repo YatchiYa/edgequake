@@ -30,9 +30,11 @@
 //! capability tooltips and cost estimates.
 
 use axum::{extract::State, Json};
-use edgequake_llm::model_config::{ModelType, ProviderType};
+use edgequake_llm::model_config::ProviderType;
 
 use crate::error::{ApiError, ApiResult};
+use crate::model_catalog::{active_provider_names, model_card_to_response};
+use crate::provider_visibility::filter_ui_providers;
 use crate::state::AppState;
 
 // Re-export DTOs from models_types
@@ -42,84 +44,10 @@ pub use crate::handlers::models_types::{
     ProviderHealthResponse, ProviderResponse,
 };
 
-/// Convert a ModelCard to a ModelResponse DTO.
-fn model_card_to_response(card: &edgequake_llm::ModelCard) -> ModelResponse {
-    ModelResponse {
-        name: card.name.clone(),
-        display_name: card.display_name.clone(),
-        model_type: card.model_type.to_string(),
-        description: card.description.clone(),
-        deprecated: card.deprecated,
-        replacement: card.replacement.clone(),
-        capabilities: ModelCapabilitiesResponse {
-            context_length: card.capabilities.context_length,
-            max_output_tokens: card.capabilities.max_output_tokens,
-            supports_vision: card.capabilities.supports_vision,
-            supports_function_calling: card.capabilities.supports_function_calling,
-            supports_json_mode: card.capabilities.supports_json_mode,
-            supports_streaming: card.capabilities.supports_streaming,
-            supports_system_message: card.capabilities.supports_system_message,
-            embedding_dimension: card.capabilities.embedding_dimension,
-        },
-        cost: ModelCostResponse {
-            input_per_1k: card.cost.input_per_1k,
-            output_per_1k: card.cost.output_per_1k,
-            embedding_per_1k: card.cost.embedding_per_1k,
-            image_per_unit: card.cost.image_per_unit,
-        },
-        tags: card.tags.clone(),
-    }
-}
-
-/// Determine which provider names are visible in the current deployment.
-///
-/// # WHY: Model Visibility in Workspace/Tenant Creation
-///
-/// All providers with `enabled = true` in models.toml are intentionally
-/// configured and should be selectable when creating workspaces/tenants.
-/// The `enabled` flag in the TOML is the correct gate for visibility.
-///
-/// `EDGEQUAKE_ALLOWED_PROVIDERS` is an explicit opt-in restriction for
-/// deployments that want to expose only a subset of configured providers.
-///
-/// Priority order:
-/// 1. Not set / `*`               → return all enabled providers (default)
-/// 2. `EDGEQUAKE_ALLOWED_PROVIDERS=a,b,c` → restrict to listed providers only
-fn active_provider_names(
-    _active_llm: &str,
-    _active_embedding: &str,
-) -> Option<std::collections::HashSet<String>> {
-    let env_val = std::env::var("EDGEQUAKE_ALLOWED_PROVIDERS").unwrap_or_default();
-    match env_val.trim() {
-        // Not set or wildcard → show all enabled providers from models.toml
-        "" | "*" => None,
-        list => {
-            // Explicit allowlist → restrict to named providers only
-            let names: std::collections::HashSet<String> =
-                list.split(',').map(|s| s.trim().to_lowercase()).collect();
-            Some(names)
-        }
-    }
-}
-
-/// Filter a provider list to only those in the allowed set.
-///
-/// If `allowed` is `None`, all providers are returned.
-fn filter_providers<'a>(
-    providers: &'a [edgequake_llm::ProviderConfig],
-    allowed: &Option<std::collections::HashSet<String>>,
-) -> Vec<&'a edgequake_llm::ProviderConfig> {
-    match allowed {
-        None => providers.iter().filter(|p| p.enabled).collect(),
-        Some(names) => providers
-            .iter()
-            .filter(|p| p.enabled && names.contains(&p.name.to_lowercase()))
-            .collect(),
-    }
-}
-
 /// Convert a ProviderConfig to a ProviderResponse DTO.
 fn provider_to_response(provider: &edgequake_llm::ProviderConfig) -> ProviderResponse {
+    use crate::providers::credentials::{credential_kind_for, provider_config_requirements};
+
     ProviderResponse {
         name: provider.name.clone(),
         display_name: provider.display_name.clone(),
@@ -128,7 +56,9 @@ fn provider_to_response(provider: &edgequake_llm::ProviderConfig) -> ProviderRes
         priority: provider.priority,
         description: provider.description.clone(),
         models: provider.models.iter().map(model_card_to_response).collect(),
-        health: None, // Set separately during health check
+        health: None,
+        auth_kind: Some(credential_kind_for(&provider.name).as_str().to_string()),
+        config_requirements: Some(provider_config_requirements(provider)),
     }
 }
 
@@ -163,11 +93,8 @@ pub async fn list_models(State(state): State<AppState>) -> ApiResult<Json<Models
     // WHY: Show all enabled providers from models.toml by default so every
     // model is selectable when creating workspaces/tenants. Restrict with
     // EDGEQUAKE_ALLOWED_PROVIDERS=a,b,c for single-provider deployments.
-    let allowed = active_provider_names(
-        &state.query.llm_provider.name().to_lowercase(),
-        &config.defaults.embedding_provider.to_lowercase(),
-    );
-    let providers: Vec<ProviderResponse> = filter_providers(&config.providers, &allowed)
+    let allowed = active_provider_names();
+    let providers: Vec<ProviderResponse> = filter_ui_providers(&config.providers, &allowed)
         .into_iter()
         .map(provider_to_response)
         .collect();
@@ -206,24 +133,13 @@ pub async fn list_llm_models(State(state): State<AppState>) -> ApiResult<Json<Ll
 
     // WHY: Show all enabled providers from models.toml by default.
     // Use EDGEQUAKE_ALLOWED_PROVIDERS=a,b,c to restrict to a subset.
-    let allowed = active_provider_names(
-        &state.query.llm_provider.name().to_lowercase(),
-        &config.defaults.embedding_provider.to_lowercase(),
-    );
+    let allowed = active_provider_names();
 
-    let models: Vec<LlmModelItem> = config
-        .all_llm_models()
-        .into_iter()
-        .filter(|(provider, _)| match &allowed {
-            None => provider.enabled,
-            Some(names) => provider.enabled && names.contains(&provider.name.to_lowercase()),
-        })
-        .map(|(provider, model)| LlmModelItem {
-            provider: provider.name.clone(),
-            provider_display_name: provider.display_name.clone(),
-            model: model_card_to_response(model),
-        })
-        .collect();
+    let models = state
+        .query
+        .model_catalog
+        .list_llm_models(config, &allowed)
+        .await;
 
     // WHY: Return the runtime-active provider/model, not static models.toml defaults.
     // The runtime provider is wired via ProviderFactory::from_env(); using config
@@ -257,23 +173,13 @@ pub async fn list_embedding_models(
 ) -> ApiResult<Json<EmbeddingModelsResponse>> {
     let config = &*state.query.models_config;
 
-    // WHY: `all_embedding_models()` in published edgequake-llm <=0.6.1 incorrectly
-    // includes ModelType::Multimodal models (e.g. gemma4, gemma3, llama3.2-vision).
-    // We apply an authoritative, deterministic filter here:
-    // ONLY models with ModelType::Embedding are true vector-embedding models.
-    // This is the single source of truth — no multimodal/LLM model must ever
-    // appear in the embedding selector. (First Principle, explicit, no hidden config)
-    let models: Vec<EmbeddingModelItem> = config
-        .all_embedding_models()
-        .into_iter()
-        .filter(|(_, model)| matches!(model.model_type, ModelType::Embedding))
-        .map(|(provider, model)| EmbeddingModelItem {
-            provider: provider.name.clone(),
-            provider_display_name: provider.display_name.clone(),
-            dimension: model.capabilities.embedding_dimension,
-            model: model_card_to_response(model),
-        })
-        .collect();
+    let allowed = active_provider_names();
+
+    let models = state
+        .query
+        .model_catalog
+        .list_embedding_models(config, &allowed)
+        .await;
 
     Ok(Json(EmbeddingModelsResponse {
         models,
@@ -396,11 +302,7 @@ pub async fn check_providers_health(
 
     let mut providers: Vec<ProviderResponse> = Vec::new();
 
-    for provider_config in &config.providers {
-        if !provider_config.enabled {
-            continue;
-        }
-
+    for provider_config in filter_ui_providers(&config.providers, &None) {
         let mut provider_response = provider_to_response(provider_config);
 
         // Perform health check based on provider type
@@ -492,14 +394,31 @@ async fn check_provider_health(
             }
         }
         _ => {
-            use crate::providers::credentials::provider_credentials_configured;
+            use crate::providers::credentials::{
+                probe_vertex_auth_live, provider_credentials_configured,
+                provider_credentials_health_error,
+            };
+
+            if provider.name == "vertexai" {
+                let start = Instant::now();
+                let configured = provider_credentials_configured(provider);
+                let (available, error) = if !configured {
+                    (false, Some(provider_credentials_health_error(provider)))
+                } else {
+                    match probe_vertex_auth_live().await {
+                        Ok(()) => (true, None),
+                        Err(msg) => (false, Some(msg)),
+                    }
+                };
+                return ProviderHealthResponse {
+                    available,
+                    latency_ms: start.elapsed().as_millis() as u64,
+                    error,
+                    checked_at: checked_at.to_string(),
+                };
+            }
 
             let credentials_ok = provider_credentials_configured(provider);
-            let env_hint = provider
-                .api_key_env
-                .as_deref()
-                .filter(|s| !s.is_empty())
-                .unwrap_or("API key");
 
             ProviderHealthResponse {
                 available: credentials_ok,
@@ -507,7 +426,7 @@ async fn check_provider_health(
                 error: if credentials_ok {
                     None
                 } else {
-                    Some(format!("{} not configured", env_hint))
+                    Some(provider_credentials_health_error(provider))
                 },
                 checked_at: checked_at.to_string(),
             }
@@ -555,9 +474,8 @@ mod tests {
     #[test]
     #[serial_test::serial]
     fn test_active_provider_names_no_env_returns_all() {
-        // Unset → show all enabled providers (None means no restriction)
         std::env::remove_var("EDGEQUAKE_ALLOWED_PROVIDERS");
-        let result = active_provider_names("openai", "ollama");
+        let result = active_provider_names();
         assert!(
             result.is_none(),
             "empty env should return None (all providers)"
@@ -568,7 +486,7 @@ mod tests {
     #[serial_test::serial]
     fn test_active_provider_names_star_returns_none() {
         std::env::set_var("EDGEQUAKE_ALLOWED_PROVIDERS", "*");
-        let result = active_provider_names("openai", "ollama");
+        let result = active_provider_names();
         assert!(result.is_none(), "* should return None (all providers)");
         std::env::remove_var("EDGEQUAKE_ALLOWED_PROVIDERS");
     }
@@ -577,7 +495,7 @@ mod tests {
     #[serial_test::serial]
     fn test_active_provider_names_explicit_list() {
         std::env::set_var("EDGEQUAKE_ALLOWED_PROVIDERS", "openai,lmstudio");
-        let result = active_provider_names("ollama", "ollama");
+        let result = active_provider_names();
         let names = result.expect("should be Some for explicit list");
         assert!(names.contains("openai"));
         assert!(names.contains("lmstudio"));
@@ -587,6 +505,7 @@ mod tests {
 
     #[test]
     fn test_filter_providers_with_allowed_set() {
+        use crate::model_catalog::filter_providers;
         use edgequake_llm::ProviderConfig;
         let make_provider = |name: &str| ProviderConfig {
             name: name.to_string(),
@@ -608,6 +527,7 @@ mod tests {
 
     #[test]
     fn test_filter_providers_with_none_returns_all_enabled() {
+        use crate::model_catalog::filter_providers;
         use edgequake_llm::ProviderConfig;
         let providers = vec![
             ProviderConfig {
@@ -626,5 +546,72 @@ mod tests {
         let filtered = filter_providers(&providers, &None);
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].name, "openai");
+    }
+
+    #[test]
+    fn test_ui_providers_exclude_mock() {
+        use edgequake_llm::ProviderConfig;
+        let providers = vec![
+            ProviderConfig {
+                name: "openai".into(),
+                enabled: true,
+                ..ProviderConfig::default()
+            },
+            ProviderConfig {
+                name: "mock".into(),
+                enabled: true,
+                ..ProviderConfig::default()
+            },
+        ];
+        let filtered = filter_ui_providers(&providers, &None);
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].name, "openai");
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn vertex_health_never_reports_api_key_error() {
+        let prev_project = std::env::var("GOOGLE_CLOUD_PROJECT").ok();
+        let prev_token = std::env::var("GOOGLE_ACCESS_TOKEN").ok();
+        std::env::remove_var("GOOGLE_CLOUD_PROJECT");
+        std::env::remove_var("GOOGLE_ACCESS_TOKEN");
+
+        let provider = edgequake_llm::ProviderConfig {
+            name: "vertexai".to_string(),
+            display_name: "Google Vertex AI".to_string(),
+            provider_type: ProviderType::OpenAICompatible,
+            enabled: true,
+            ..Default::default()
+        };
+
+        let health = check_provider_health(&provider, "2026-07-06T00:00:00Z").await;
+        assert!(!health.available);
+        let err = health.error.unwrap_or_default();
+        assert!(!err.to_ascii_lowercase().contains("api key"));
+        assert!(err.contains("GOOGLE_CLOUD_PROJECT"));
+
+        if let Some(v) = prev_project {
+            std::env::set_var("GOOGLE_CLOUD_PROJECT", v);
+        }
+        if let Some(v) = prev_token {
+            std::env::set_var("GOOGLE_ACCESS_TOKEN", v);
+        }
+    }
+
+    #[test]
+    fn vertex_provider_response_includes_oauth2_auth_kind() {
+        let provider = edgequake_llm::ProviderConfig {
+            name: "vertexai".to_string(),
+            display_name: "Google Vertex AI".to_string(),
+            provider_type: ProviderType::OpenAICompatible,
+            enabled: true,
+            ..Default::default()
+        };
+        let response = provider_to_response(&provider);
+        assert_eq!(response.auth_kind.as_deref(), Some("oauth2_identity"));
+        assert!(response
+            .config_requirements
+            .as_ref()
+            .is_some_and(|r| !r.is_empty()));
     }
 }
