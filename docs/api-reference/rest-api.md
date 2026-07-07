@@ -98,6 +98,11 @@ Deep health check with component status for monitoring dashboards.
     "llm_provider": true
   },
   "llm_provider_name": "ollama",
+  "attribution": {
+    "app_id": "edgequake",
+    "app_name": "EdgeQuake",
+    "active": true
+  },
   "schema": {
     "latest_version": 20240115001,
     "migrations_applied": 12,
@@ -372,7 +377,7 @@ All filter fields are optional and AND-ed together. Omit `document_filter` entir
     "tokens_used": 256,
     "tokens_per_second": 287.6,
     "llm_provider": "ollama",
-    "llm_model": "gemma3:12b"
+    "llm_model": "gemma4:latest"
   },
   "reranked": true
 }
@@ -400,7 +405,7 @@ curl -X POST http://localhost:8080/api/v1/query/stream \
 | `system_prompt`   | string | no       | System prompt extension                                  |
 | `document_filter` | object | no       | Document filter to scope RAG context (SPEC-005)          |
 | `llm_provider`    | string | no       | LLM provider override (e.g., `openai`, `ollama`)         |
-| `llm_model`       | string | no       | LLM model override (e.g., `gpt-5-nano`)                  |
+| `llm_model`       | string | no       | LLM model override (e.g., `gpt-4.1-nano`)                  |
 | `stream_format`   | string | no       | `v1` for raw text (backward compat), `v2` for structured |
 
 **SSE Events (v2 format — default)**:
@@ -414,7 +419,7 @@ data: {"type":"token","content":" key"}
 
 data: {"type":"token","content":" findings"}
 
-data: {"type":"done","stats":{"retrieval_time_ms":120,"generation_time_ms":800,"total_time_ms":920,"sources_retrieved":8,"tokens_used":256,"tokens_per_second":320.0,"query_mode":"hybrid"},"llm_provider":"ollama","llm_model":"gemma3:latest"}
+data: {"type":"done","stats":{"retrieval_time_ms":120,"generation_time_ms":800,"total_time_ms":920,"sources_retrieved":8,"tokens_used":256,"tokens_per_second":320.0,"query_mode":"hybrid"},"llm_provider":"ollama","llm_model":"gemma4:latest"}
 ```
 
 **SSE Events (v1 format — `stream_format: "v1"`)**:
@@ -493,7 +498,7 @@ data: {"type":"token","content":"The"}
 
 data: {"type":"token","content":" relationship"}
 
-data: {"type":"done","assistant_message_id":"asst-uuid","tokens_used":128,"duration_ms":920,"llm_provider":"ollama","llm_model":"gemma3:latest"}
+data: {"type":"done","assistant_message_id":"asst-uuid","tokens_used":128,"duration_ms":920,"llm_provider":"ollama","llm_model":"gemma4:latest"}
 ```
 
 ---
@@ -636,7 +641,7 @@ curl -X POST http://localhost:8080/api/v1/workspaces \
     "description": "Workspace for research documents",
     "embedding_model": "text-embedding-3-small",
     "embedding_dimension": 1536,
-    "llm_model": "gpt-5-nano"
+    "llm_model": "gpt-4.1-nano"
   }'
 ```
 
@@ -648,7 +653,7 @@ List all workspaces.
 
 Get workspace details.
 
-### PATCH /api/v1/workspaces/:id
+### PUT /api/v1/workspaces/:id
 
 Update workspace settings.
 
@@ -694,36 +699,177 @@ List available LLM models.
 curl http://localhost:8080/api/v1/models
 ```
 
+**Response** (`ModelsListResponse`):
+
+```json
+{
+  "providers": [
+    {
+      "name": "openai",
+      "display_name": "OpenAI",
+      "provider_type": "openai",
+      "enabled": true,
+      "priority": 10,
+      "description": "OpenAI GPT models",
+      "models": [
+        {
+          "name": "gpt-4.1-mini",
+          "display_name": "GPT-4.1 Mini",
+          "model_type": "llm",
+          "deprecated": false,
+          "capabilities": {
+            "context_length": 1047576,
+            "max_output_tokens": 32768,
+            "supports_vision": true,
+            "supports_streaming": true,
+            "embedding_dimension": 0
+          }
+        }
+      ],
+      "auth_kind": "api_key"
+    },
+    {
+      "name": "ollama",
+      "display_name": "Ollama",
+      "provider_type": "ollama",
+      "enabled": true,
+      "models": [
+        {
+          "name": "gemma4:latest",
+          "display_name": "Gemma 4 Latest",
+          "model_type": "llm"
+        }
+      ],
+      "auth_kind": "local"
+    }
+  ],
+  "default_llm_provider": "openai",
+  "default_llm_model": "gpt-4.1-mini",
+  "default_embedding_provider": "openai",
+  "default_embedding_model": "text-embedding-3-small"
+}
+```
+
+> Runtime `default_llm_*` fields reflect the active provider from env/server config, not only `models.toml` static defaults.
+
+### GET /api/v1/models/{provider}
+
+Get models for a specific provider (e.g. `/api/v1/models/openai`).
+
+### GET /api/v1/settings/llm-defaults
+
+Get server-level LLM/embedding defaults (Settings UI).
+
+### GET /api/v1/settings/providers
+
+List available providers with credential requirements and default models.
+
+### GET /api/v1/settings/attribution
+
+Returns the effective application attribution context and a **provider header catalog** describing what EdgeQuake sends upstream to each LLM provider (OpenRouter referer, OpenAI client ID, Anthropic application ID, etc.).
+
+**Auth:** Bearer token or API key (same as other `/api/v1/settings/*` routes).
+
+```bash
+curl http://localhost:8080/api/v1/settings/attribution \
+  -H "Authorization: Bearer $TOKEN"
+```
+
 **Response**:
 
 ```json
 {
-  "models": [
+  "effective_context": {
+    "app_id": "edgequake",
+    "app_name": "EdgeQuake",
+    "app_url": "http://localhost:3000",
+    "tenant_id": null,
+    "request_id": null,
+    "end_user_id": null,
+    "active": true,
+    "sources": ["env:EDGEQUAKE_APP_ID", "env:EDGEQUAKE_APP_NAME"]
+  },
+  "providers": [
     {
-      "id": "gpt-5-nano",
-      "name": "GPT-4o Mini",
-      "provider": "openai",
-      "context_length": 128000,
-      "capabilities": ["chat", "embeddings"]
+      "id": "openai",
+      "display_name": "OpenAI",
+      "attribution_support": "full",
+      "headers": ["X-Client-Request-Id"],
+      "body_fields": ["user"]
     },
     {
-      "id": "gemma3:12b",
-      "name": "Gemma 3 12B",
-      "provider": "ollama",
-      "context_length": 8192,
-      "capabilities": ["chat"]
+      "id": "anthropic",
+      "display_name": "Anthropic",
+      "attribution_support": "full",
+      "headers": ["x-application-id", "x-request-id"],
+      "body_fields": []
+    },
+    {
+      "id": "openrouter",
+      "display_name": "OpenRouter",
+      "attribution_support": "full",
+      "headers": ["HTTP-Referer", "X-OpenRouter-Title", "X-Title"],
+      "body_fields": []
     }
+  ],
+  "ingress_headers": [
+    "x-edgequake-app-id",
+    "x-edgequake-app-name",
+    "x-edgequake-app-url",
+    "x-edgequake-tenant-id",
+    "x-edgequake-request-id"
+  ],
+  "environment_variables": [
+    "EDGEQUAKE_APP_ID",
+    "EDGEQUAKE_APP_NAME",
+    "EDGEQUAKE_APP_URL",
+    "EDGEQUAKE_TENANT_ID"
   ]
 }
 ```
 
-### GET /api/v1/settings
+| Field | Description |
+| ----- | ----------- |
+| `effective_context.active` | `true` when at least one of `app_id`, `app_name`, or `app_url` is set |
+| `providers[].attribution_support` | `full`, `passthrough`, `observability_only`, or `none` (from edgequake-llm catalog) |
+| `providers[].headers` | HTTP headers injected on upstream LLM requests for that provider |
+| `providers[].body_fields` | JSON body fields set for attribution (e.g. OpenAI `user`) |
+| `ingress_headers` | Request headers clients may send to override attribution per call |
+| `environment_variables` | Env vars that populate `ApplicationContext` at process start |
 
-Get current settings.
+### GET /api/v1/settings/app-attribution
 
-### PATCH /api/v1/settings
+Same response as `GET /settings/attribution`. Used by the Settings UI **Application Attribution** card.
 
-Update settings.
+### PATCH /api/v1/settings/app-attribution
+
+Persist application attribution to PostgreSQL `server_config` (admin role required). Does **not** store API keys — only `app_id`, `app_name`, and `app_url`.
+
+```bash
+curl -X PATCH http://localhost:8080/api/v1/settings/app-attribution \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "app_id": "edgequake",
+    "app_name": "EdgeQuake",
+    "app_url": "http://localhost:3000"
+  }'
+```
+
+**Response**:
+
+```json
+{
+  "saved": true,
+  "note": "Saved to server_config and applied immediately. Env vars (EDGEQUAKE_APP_*) still override on conflict."
+}
+```
+
+> **Note:** Env vars (`EDGEQUAKE_APP_*`) override `server_config` values on conflict. PATCH applies immediately without restart.
+
+### GET /api/v1/config/effective
+
+Get the effective configuration resolution chain (env → server config → compiled defaults).
 
 ---
 
@@ -806,7 +952,7 @@ Chat completions (OpenAI format, Ollama compatible).
 curl -X POST http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "gemma3:12b",
+    "model": "gemma4:latest",
     "messages": [
       {"role": "user", "content": "Hello!"}
     ],
@@ -907,7 +1053,7 @@ X-Workspace-ID: {workspace_id}
 ### Upload Injection File
 
 ```http
-POST /api/v1/workspaces/{workspace_id}/injection/upload
+PUT /api/v1/workspaces/{workspace_id}/injection/file
 Content-Type: multipart/form-data
 X-Workspace-ID: {workspace_id}
 
@@ -944,7 +1090,7 @@ X-Workspace-ID: {workspace_id}
 ### Update Injection
 
 ```http
-PATCH /api/v1/workspaces/{workspace_id}/injection/{injection_id}
+PATCH /api/v1/workspaces/{workspace_id}/injections/{injection_id}
 Content-Type: application/json
 X-Workspace-ID: {workspace_id}
 
