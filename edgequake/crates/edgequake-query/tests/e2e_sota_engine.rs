@@ -492,7 +492,7 @@ mod adaptive_mode_tests {
             provider,
         );
 
-        // Factual questions (what, when, who) should use Local mode
+        // Factual questions (what, when, who) should use Naive mode (SPEC-046 / GraphRAG-Bench L1)
         let request = QueryRequest::new("What is EdgeQuake?").context_only();
 
         let response = engine.query(request).await.unwrap();
@@ -703,25 +703,25 @@ mod keyword_intent_tests {
     #[test]
     fn test_query_intent_factual() {
         let intent = QueryIntent::Factual;
-        assert_eq!(intent.recommended_mode(), QueryMode::Local);
+        assert_eq!(intent.recommended_mode(), QueryMode::Naive);
     }
 
     #[test]
     fn test_query_intent_relational() {
         let intent = QueryIntent::Relational;
-        assert_eq!(intent.recommended_mode(), QueryMode::Global);
+        assert_eq!(intent.recommended_mode(), QueryMode::Hybrid);
     }
 
     #[test]
     fn test_query_intent_exploratory() {
         let intent = QueryIntent::Exploratory;
-        assert_eq!(intent.recommended_mode(), QueryMode::Naive);
+        assert_eq!(intent.recommended_mode(), QueryMode::Global);
     }
 
     #[test]
     fn test_query_intent_comparative() {
         let intent = QueryIntent::Comparative;
-        assert_eq!(intent.recommended_mode(), QueryMode::Local);
+        assert_eq!(intent.recommended_mode(), QueryMode::Mix);
     }
 
     #[test]

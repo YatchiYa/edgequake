@@ -16,6 +16,8 @@ pub enum VectorType {
     Entity,
     /// Relationship vector (keywords + src + tgt + description).
     Relationship,
+    /// Community report summary (SPEC-046 EQ-046-11 / L3 thematic).
+    CommunityReport,
 }
 
 impl VectorType {
@@ -25,6 +27,7 @@ impl VectorType {
             VectorType::Chunk => "chunk",
             VectorType::Entity => "entity",
             VectorType::Relationship => "relationship",
+            VectorType::CommunityReport => "community_report",
         }
     }
 }

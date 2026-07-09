@@ -6,7 +6,9 @@ use edgequake_storage::traits::{GraphStorage, KVStorage, VectorStorage};
 use std::sync::Arc;
 use tracing::info;
 
-use super::{persist_with_providers, tag_injection_sources, PersistIngestionParams};
+use super::{
+    persist_with_providers_progress_and_embedder, tag_injection_sources, PersistIngestionParams,
+};
 
 /// KV metadata key for an injection entry.
 pub fn injection_meta_key(workspace_id: &str, injection_id: &str) -> String {
@@ -114,6 +116,8 @@ pub async fn run_injection_pipeline(
     vector_storage: Arc<dyn VectorStorage>,
     kv_storage: Arc<dyn KVStorage>,
     relational_sink: Arc<dyn edgequake_pipeline::RelationalEntitySink>,
+    lineage_sink: Arc<dyn edgequake_pipeline::LineageSink>,
+    text_embedder: Option<Arc<dyn edgequake_storage::TextEmbedder>>,
     doc_id: &str,
     content: &str,
     workspace_id: &str,
@@ -126,13 +130,15 @@ pub async fn run_injection_pipeline(
 
     tag_injection_sources(&mut result, doc_id);
 
-    let persist_out = persist_with_providers(
+    let persist_out = persist_with_providers_progress_and_embedder(
         llm_provider,
         cache_invalidator,
         graph_storage,
         vector_storage,
         kv_storage,
         relational_sink,
+        lineage_sink,
+        text_embedder,
         PersistIngestionParams {
             document_id: doc_id,
             tenant_id,
@@ -142,6 +148,7 @@ pub async fn run_injection_pipeline(
             source_type: Some("injection"),
             source_file_path: Some("injection"),
         },
+        None,
     )
     .await
     .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })?;

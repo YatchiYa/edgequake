@@ -170,9 +170,11 @@ pub async fn cascade_remove_document_sources(
             stats.entities_removed += 1;
         } else if remaining.len() < sources.len() {
             let mut updated_props = node.properties.clone();
-            updated_props.insert("source_ids".to_string(), serde_json::json!(remaining));
-            // Legacy pipe-separated source_id must not shadow updated source_ids.
-            updated_props.remove("source_id");
+            // SPEC-046 EQ-046-12: rebuild description + align source_ids
+            crate::services::knowledge_rebuild::apply_rebuild_to_properties(
+                &mut updated_props,
+                &remaining,
+            );
             graph
                 .upsert_node(&node.id, updated_props)
                 .await
@@ -222,8 +224,10 @@ pub async fn cascade_remove_document_sources(
             stats.relationships_removed += 1;
         } else if remaining.len() < sources.len() {
             let mut updated_props = edge.properties.clone();
-            updated_props.insert("source_ids".to_string(), serde_json::json!(remaining));
-            updated_props.remove("source_id");
+            crate::services::knowledge_rebuild::apply_rebuild_to_properties(
+                &mut updated_props,
+                &remaining,
+            );
             graph
                 .upsert_edge(&edge.source, &edge.target, updated_props)
                 .await

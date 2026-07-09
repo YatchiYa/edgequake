@@ -77,6 +77,7 @@ pub mod stage_bridge;
 pub mod summarizer;
 pub mod table_preprocessor;
 pub mod test_fixtures;
+pub mod text_embedder;
 pub mod validation;
 
 pub use adaptive_chunking::{adaptive_chunk_overlap, calculate_adaptive_chunk_size};
@@ -170,6 +171,7 @@ pub use table_preprocessor::{
     preprocess_tabular_content, PreprocessResult, TablePreprocessorConfig,
 };
 pub use test_fixtures::SPEC021_SARAH_CHEN_EXTRACTION_JSON;
+pub use text_embedder::LlmTextEmbedder;
 pub use validation::{
     validate_document_content, validate_document_filename, DocumentValidator, ValidationCode,
     ValidationConfig, ValidationIssue, ValidationResult,

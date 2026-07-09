@@ -16,7 +16,7 @@ use crate::handlers::context_types::{
 use crate::middleware::TenantContext;
 use crate::services::artifact_retrieval::{retrieve_artifact, ArtifactRetrievalOptions};
 use crate::services::query_context::{
-    fetch_context_by_id, resolve_keyword_llm_override, retrieve_context, search_context,
+    fetch_context_by_id, resolve_query_llm_override, retrieve_context, search_context,
     FetchContextOptions,
 };
 use crate::state::AppState;
@@ -64,7 +64,7 @@ pub async fn retrieve_query_context(
         crate::handlers::query::resolve_query_workspace(&state, tenant_ctx.workspace_id.as_deref())
             .await?;
     let llm_override =
-        resolve_keyword_llm_override(&state, workspace.as_ref(), &propagation, None, None)?;
+        resolve_query_llm_override(&state, workspace.as_ref(), &propagation, None, None)?;
 
     let response = retrieve_context(&state, &tenant_ctx, request, llm_override).await?;
 
@@ -98,7 +98,7 @@ pub async fn search_query_context(
         crate::handlers::query::resolve_query_workspace(&state, tenant_ctx.workspace_id.as_deref())
             .await?;
     let llm_override =
-        resolve_keyword_llm_override(&state, workspace.as_ref(), &propagation, None, None)?;
+        resolve_query_llm_override(&state, workspace.as_ref(), &propagation, None, None)?;
 
     Ok(Json(
         search_context(&state, &tenant_ctx, request, llm_override).await?,

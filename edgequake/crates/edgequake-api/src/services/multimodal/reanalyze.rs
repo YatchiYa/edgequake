@@ -20,6 +20,10 @@ use crate::state::AppState;
 use super::item_record::MultimodalSummary;
 use super::metadata::{apply_process_options_to_metadata, resolve_process_options_from_metadata};
 use super::stage::run_multimodal_analyze_stage_outcome;
+use crate::services::process_fingerprint::{
+    apply_fingerprint_to_metadata, resolve_fingerprint_from_metadata, should_purge_on_reanalyze,
+    ProcessFingerprintInput,
+};
 
 /// Parameters for multimodal re-analyze (no PDF re-convert).
 #[derive(Debug, Clone)]
@@ -72,7 +76,7 @@ pub async fn reanalyze_document_multimodal(
         .as_deref()
         .filter(|s| !s.is_empty())
         .map(str::to_string)
-        .or(stored_opts);
+        .or_else(|| stored_opts.clone());
 
     let filename = metadata
         .get("title")
@@ -127,10 +131,42 @@ pub async fn reanalyze_document_multimodal(
         .await;
     }
 
+    // SPEC-046 EQ-046-14: fingerprint multimodal options; force purge when stale
+    // (LightRAG `_purge_stale_extraction_if_resuming` parity).
+    let mut fp_input = ProcessFingerprintInput::from_document_metadata(&metadata);
+    if let Some(ref opts) = process_options {
+        fp_input.multimodal_process_options = opts.clone();
+    }
+    let new_fp = fp_input.digest();
+    let stored_fp = resolve_fingerprint_from_metadata(&metadata);
+    let explicit_options_change = params
+        .process_options
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .is_some_and(|new| stored_opts.as_deref() != Some(new));
+    let options_stale =
+        should_purge_on_reanalyze(stored_fp.as_deref(), &fp_input, explicit_options_change);
+
+    let _ = crate::services::text_insert_content::patch_document_metadata(
+        &kv,
+        &params.document_id,
+        |obj| apply_fingerprint_to_metadata(obj, &new_fp),
+    )
+    .await;
+
     let mut track_id = None;
     let mut requeued = false;
 
-    if params.reindex {
+    // Reindex when requested OR when process_options fingerprint changed
+    let should_reindex = params.reindex || options_stale;
+    if options_stale && !params.reindex {
+        info!(
+            document_id = %params.document_id,
+            "SPEC-046: process_options fingerprint stale — forcing graph purge + reindex"
+        );
+    }
+
+    if should_reindex {
         let new_track_id = format!(
             "reanalyze_{}_{}",
             Utc::now().format("%Y%m%d_%H%M%S"),

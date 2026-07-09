@@ -131,10 +131,9 @@ impl DocumentTaskProcessor {
         // SPEC-021 P-G2: single persist path — KV chunks + chunk vectors + KnowledgeGraphMerger
         let mut storage_errors: Vec<String> = Vec::new();
 
-        // Merger LLM summarization must use the same extraction provider as the pipeline
-        // (SPEC-032). Using the global default (often Ollama) caused 1000+ WARN spam when
-        // workspace extraction runs on Mistral/OpenAI while Ollama is unreachable.
-        let persist_llm = match crate::safety_limits::create_safe_llm_provider(
+        // Merger LLM summarization: prefer Summary role when configured (SPEC-046),
+        // else Extract role from lineage (same provider as pipeline extraction).
+        let extract_fallback = match crate::safety_limits::create_safe_llm_provider(
             &provider_lineage.extraction_provider,
             &provider_lineage.extraction_model,
         ) {
@@ -150,6 +149,23 @@ impl DocumentTaskProcessor {
                 self.llm_provider.clone()
             }
         };
+
+        let summary_ws = async {
+            let uuid =
+                crate::middleware::resolve_workspace_uuid(Some(workspace_id_meta.as_str()))?;
+            let ws_svc = self.workspace_service.as_ref()?;
+            ws_svc.get_workspace(uuid).await.ok().flatten()
+        }
+        .await;
+
+        let persist_llm = crate::services::resolve_summary_llm_or_fallback(
+            summary_ws.as_ref(),
+            extract_fallback,
+            |provider, model| {
+                crate::safety_limits::create_safe_llm_provider(provider, model)
+                    .map_err(|e| e.to_string())
+            },
+        );
 
         // SPEC-032 W-04: Broadcast merge progress for any tracked task (PDF + reprocess).
         let has_track = !track_id.is_empty();
@@ -193,7 +209,25 @@ impl DocumentTaskProcessor {
             None
         };
 
-        let chunk_embeddings_stored = match crate::services::persist_with_providers_and_progress(
+        // SPEC-032/OODA-198: Augment stats with provider lineage before storing
+        // SPEC-046: resolve workspace embedding for community_report indexing (DIP).
+        let text_embedder = match crate::safety_limits::create_safe_embedding_provider(
+            &provider_lineage.embedding_provider,
+            &provider_lineage.embedding_model,
+            provider_lineage.embedding_dimension,
+        ) {
+            Ok(emb) => Some(crate::services::LlmTextEmbedder::arc(emb)),
+            Err(e) => {
+                warn!(
+                    document_id = %document_id,
+                    error = %e,
+                    "SPEC-046: embedding provider unavailable for community reports — props only"
+                );
+                None
+            }
+        };
+
+        let chunk_embeddings_stored = match crate::services::persist_with_providers_progress_and_embedder(
             persist_llm,
             self.query_cache_invalidator
                 .as_ref()
@@ -204,6 +238,7 @@ impl DocumentTaskProcessor {
             self.relational_sink.clone(),
             // SPEC-032 W-08: lineage sink — resolved from shared AppState pg_pool
             self.resolve_lineage_sink().await,
+            text_embedder,
             crate::services::PersistIngestionParams::for_document(
                 &document_id,
                 tenant_id.clone(),

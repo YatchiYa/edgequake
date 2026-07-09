@@ -42,6 +42,7 @@ mod markdown_chunking;
 mod page_aware;
 mod recursive;
 pub mod registry;
+mod semantic;
 mod strategies;
 pub mod text_utils;
 mod types;
@@ -51,7 +52,7 @@ use std::sync::Arc;
 use crate::error::Result;
 
 // Re-export types
-pub use registry::{resolve_chunker, ChunkOptions, ChunkStrategy};
+pub use registry::{resolve_chunker, resolve_chunker_with_embedder, ChunkOptions, ChunkStrategy};
 pub use types::{
     make_page_marker, parse_page_marker, ChunkResult, ChunkerConfig, ChunkingStrategy,
     SectionMetadata, TextChunk, PAGE_MARKER_PREFIX, PAGE_MARKER_SUFFIX,
@@ -64,6 +65,10 @@ pub use text_utils::calculate_line_numbers;
 pub use markdown_chunking::MarkdownChunking;
 pub use page_aware::{split_into_page_segments, PageAwareChunking};
 pub use recursive::{default_recursive_separators, RecursiveCharacterChunking};
+pub use semantic::{
+    breakpoint_threshold, buffered_windows, cosine_distance, group_by_breakpoints,
+    BreakpointThreshold, SemanticChunkConfig, SemanticChunking,
+};
 pub use strategies::{
     CharacterBasedChunking, ParagraphBoundaryChunking, SentenceBoundaryChunking, TokenBasedChunking,
 };

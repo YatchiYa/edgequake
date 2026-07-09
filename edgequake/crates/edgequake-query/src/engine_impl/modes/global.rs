@@ -53,6 +53,20 @@ impl QueryEngine {
 
         let relationship_vectors = filter_by_type(vector_results.clone(), VectorType::Relationship);
 
+        // SPEC-046 EQ-046-11: optional community_report vectors for L3 thematic context
+        if edgequake_storage::community_reports_enabled() {
+            let report_hits = filter_by_type(vector_results.clone(), VectorType::CommunityReport);
+            let report_hits: Vec<_> = report_hits
+                .into_iter()
+                .filter(|r| r.score >= self.config.min_score)
+                .collect();
+            crate::community_global::append_community_report_vector_chunks(
+                &mut context,
+                &report_hits,
+                self.config.max_chunks.min(8),
+            );
+        }
+
         for result in relationship_vectors
             .iter()
             .filter(|r| r.score >= self.config.min_score)
@@ -144,11 +158,12 @@ impl QueryEngine {
             }
 
             if !entity_ids.is_empty() {
-                let edges = crate::graph_hops::edges_within_depth(
+                let edges = crate::graph_expand::expand_neighborhood_edges(
                     &graph,
                     &entity_ids,
                     self.config.graph_depth,
                     self.config.max_relationships,
+                    self.config.graph_walk,
                 )
                 .await?;
                 for edge in edges {

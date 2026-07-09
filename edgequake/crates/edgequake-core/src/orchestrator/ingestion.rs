@@ -249,14 +249,21 @@ impl EdgeQuake {
             .ok_or_else(|| Error::not_initialized("KV storage not initialized"))?
             .clone();
 
-        let persister = DefaultIngestionPersister::from_settings(
-            graph_storage.clone(),
-            vector_storage,
-            persist_config,
-            self.relational_sink.clone(),
-            Some(llm.clone()),
-            Some(kv_storage),
-        );
+        let persister = {
+            let mut p = DefaultIngestionPersister::from_settings(
+                graph_storage.clone(),
+                vector_storage,
+                persist_config,
+                self.relational_sink.clone(),
+                Some(llm.clone()),
+                Some(kv_storage),
+            );
+            // SPEC-046: community_report auto-embed when embedding provider is set (DIP).
+            if let Some(emb) = self.embedding_provider.clone() {
+                p = p.with_text_embedder(edgequake_pipeline::LlmTextEmbedder::arc(emb));
+            }
+            p
+        };
 
         let persist_out = persister
             .persist(

@@ -1,6 +1,28 @@
-//! LLM role resolution for workspace-scoped provider selection (SPEC-026 Phase 2 P-08).
+//! LLM role resolution for workspace-scoped provider selection (SPEC-026 Phase 2 P-08 /
+//! SPEC-046 EQ-046-13).
 //!
 //! Mirrors LightRAG `llm_roles.py` fallback: role config → workspace default.
+//!
+//! # Recommended default matrix (First Principles)
+//!
+//! | Role | Capability need | Typical model class |
+//! |------|-----------------|---------------------|
+//! | **Extract** | Structured NER/RE, schema adherence | Stronger / slower |
+//! | **Query** | Long noisy context → faithful answer | Long-context strong |
+//! | **Summary** | Merge entity/relation descriptions | Mid / cheap |
+//! | **Vlm** | Image/table/equation understanding | Vision model |
+//! | **Keyword** | Dual-level hl/ll keywords (optional) | Small / fast |
+//!
+//! Configure via workspace metadata:
+//! ```json
+//! { "llm_roles": {
+//!     "extract": { "provider": "openai", "model": "gpt-5-nano" },
+//!     "query":   { "provider": "openai", "model": "gpt-5-nano" },
+//!     "summary": { "provider": "ollama", "model": "gemma3:latest" },
+//!     "vlm":     { "provider": "ollama", "model": "llava" },
+//!     "keyword": { "provider": "ollama", "model": "gemma3:latest" }
+//! }}
+//! ```
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -16,6 +38,8 @@ pub enum LlmRole {
     Summary,
     /// Vision / multimodal analysis (LightRAG `vlm` role).
     Vlm,
+    /// Dual-level keyword extraction at query time (SPEC-046 / LightRAG keyword role).
+    Keyword,
 }
 
 impl LlmRole {
@@ -25,7 +49,19 @@ impl LlmRole {
             Self::Query => "query",
             Self::Summary => "summary",
             Self::Vlm => "vlm",
+            Self::Keyword => "keyword",
         }
+    }
+
+    /// All roles for docs / iteration.
+    pub fn all() -> &'static [LlmRole] {
+        &[
+            Self::Extract,
+            Self::Query,
+            Self::Summary,
+            Self::Vlm,
+            Self::Keyword,
+        ]
     }
 }
 
@@ -76,7 +112,10 @@ fn default_provider_for_role(ws: &Workspace, role: LlmRole) -> String {
             .clone()
             .filter(|p| !p.is_empty())
             .unwrap_or_else(|| ws.llm_provider.clone()),
-        _ => ws.llm_provider.clone(),
+        // Keyword/Summary default to workspace LLM provider (cheap local OK)
+        LlmRole::Keyword | LlmRole::Summary | LlmRole::Extract | LlmRole::Query => {
+            ws.llm_provider.clone()
+        }
     }
 }
 
@@ -87,7 +126,20 @@ fn default_model_for_role(ws: &Workspace, role: LlmRole) -> String {
             .clone()
             .filter(|m| !m.is_empty())
             .unwrap_or_else(|| ws.llm_model.clone()),
-        _ => ws.llm_model.clone(),
+        LlmRole::Keyword | LlmRole::Summary | LlmRole::Extract | LlmRole::Query => {
+            ws.llm_model.clone()
+        }
+    }
+}
+
+/// Human-readable capability hint for ops / docs (SPEC-046 EQ-046-13).
+pub fn role_capability_hint(role: LlmRole) -> &'static str {
+    match role {
+        LlmRole::Extract => "strong structured extraction (NER/RE)",
+        LlmRole::Query => "long-context faithful generation",
+        LlmRole::Summary => "cheap merge/summarization of entity descriptions",
+        LlmRole::Vlm => "vision / table / equation understanding",
+        LlmRole::Keyword => "fast dual-level keyword extraction",
     }
 }
 
@@ -184,5 +236,24 @@ mod tests {
         let resolved = resolve_role_llm(&ws, LlmRole::Vlm);
         assert_eq!(resolved.provider, "mock");
         assert_eq!(resolved.model, "mock-vlm");
+    }
+
+    #[test]
+    fn keyword_and_summary_roles_resolve_and_have_hints() {
+        let mut meta = HashMap::new();
+        meta.insert(
+            "llm_roles".into(),
+            serde_json::json!({
+                "keyword": { "provider": "ollama", "model": "gemma3:latest" },
+                "summary": { "provider": "mock", "model": "mock-summary" }
+            }),
+        );
+        let ws = sample_workspace(meta);
+        let kw = resolve_role_llm(&ws, LlmRole::Keyword);
+        assert_eq!(kw.model, "gemma3:latest");
+        let sum = resolve_role_llm(&ws, LlmRole::Summary);
+        assert_eq!(sum.provider, "mock");
+        assert!(!role_capability_hint(LlmRole::Keyword).is_empty());
+        assert_eq!(LlmRole::all().len(), 5);
     }
 }

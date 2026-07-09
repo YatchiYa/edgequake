@@ -1,54 +1,56 @@
-//! Query intent classification for adaptive retrieval strategy.
+//! Query intent classification for adaptive retrieval strategy (SPEC-046).
 //!
-//! Query intent determines which retrieval strategy to use:
-//! - Factual: Entity-focused (Local mode preferred)
-//! - Relational: Relationship-focused (Global mode preferred)  
-//! - Exploratory: Broad coverage (Naive vector search — cheap single arm)
-//! - Comparative: Multi-entity (Local entity retrieval)
-//! - Procedural: Step-by-step (Mix — chunks + graph fusion)
+//! Evidence-aligned routing (GraphRAG-Bench ICLR 2026 / SPEC-046 P0.1):
+//! - Factual (L1): Naive — graphs add tax on simple facts
+//! - Relational (L2): Hybrid — local entities + global relations
+//! - Exploratory (L3): Global — thematic / relationship-centric
+//! - Comparative: Mix — multi-entity needs fused arms
+//! - Procedural: Mix — chunks + graph fusion for procedures
+//!
+//! Explicit `QueryRequest.mode` always wins; adaptive mode only applies when
+//! mode is omitted and `QueryEngineConfig.use_adaptive_mode` is true.
 
 use serde::{Deserialize, Serialize};
 
 /// Query intent classification for adaptive retrieval.
 ///
-/// This is a SOTA innovation beyond LightRAG - we classify
-/// the query intent to select the optimal retrieval strategy.
+/// Beyond LightRAG: classify intent to select the optimal retrieval strategy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum QueryIntent {
-    /// "What is X?" - Facts about a single entity
-    /// Preferred mode: Local (entity-centric)
+    /// "What is X?" — Level-1 fact lookup.
+    /// Preferred mode: Naive (avoid graph tax; GraphRAG-Bench).
     Factual,
 
-    /// "How does X relate to Y?" - Connections between entities
-    /// Preferred mode: Global (relationship-centric)
+    /// "How does X relate to Y?" — multi-hop / relational.
+    /// Preferred mode: Hybrid (local + global; EQ Hybrid includes naive).
     Relational,
 
-    /// "Tell me about X" - Broad exploration
-    /// Preferred mode: Naive (vector-only, avoids triple-arm Hybrid/Mix)
+    /// "Tell me about X" / overview — thematic synthesis.
+    /// Preferred mode: Global (relationship-centric / community expand).
     #[default]
     Exploratory,
 
-    /// "Compare X and Y" - Multiple entities in parallel
-    /// Preferred mode: Local (entity-centric per comparison target)
+    /// "Compare X and Y" — multi-entity parallel.
+    /// Preferred mode: Mix (weighted/RRF fusion of all arms).
     Comparative,
 
-    /// "How to do X?" - Step-by-step instructions
-    /// Preferred mode: Mix (chunks + graph fusion for procedures)
+    /// "How to do X?" — step-by-step instructions.
+    /// Preferred mode: Mix (chunks + graph fusion).
     Procedural,
 }
 
 impl QueryIntent {
-    /// Get the recommended query mode for this intent.
+    /// Recommended query mode for this intent (SPEC-046 P0.1).
     ///
-    /// SPEC-025 6.4: reserve expensive Mix/Hybrid for procedural queries only;
-    /// exploratory and comparative paths use single-arm modes.
+    /// Aligns with GraphRAG-Bench: skip graphs on L1 facts; use graph arms on
+    /// L2/L3; reserve Mix for comparative/procedural workloads.
     pub fn recommended_mode(&self) -> crate::modes::QueryMode {
         match self {
-            QueryIntent::Factual => crate::modes::QueryMode::Local,
-            QueryIntent::Relational => crate::modes::QueryMode::Global,
-            QueryIntent::Exploratory => crate::modes::QueryMode::Naive,
-            QueryIntent::Comparative => crate::modes::QueryMode::Local,
+            QueryIntent::Factual => crate::modes::QueryMode::Naive,
+            QueryIntent::Relational => crate::modes::QueryMode::Hybrid,
+            QueryIntent::Exploratory => crate::modes::QueryMode::Global,
+            QueryIntent::Comparative => crate::modes::QueryMode::Mix,
             QueryIntent::Procedural => crate::modes::QueryMode::Mix,
         }
     }
@@ -61,70 +63,85 @@ impl QueryIntent {
             "exploratory" => QueryIntent::Exploratory,
             "comparative" => QueryIntent::Comparative,
             "procedural" => QueryIntent::Procedural,
-            _ => QueryIntent::Exploratory, // Default fallback
+            _ => QueryIntent::Exploratory,
         }
     }
 
     /// Heuristic classification based on query text patterns.
     ///
-    /// This is a fast fallback when LLM classification is unavailable.
+    /// Fast fallback when LLM classification is unavailable.
+    /// Order matters: procedural before relational (`how to` vs `how does`).
     pub fn classify_heuristic(query: &str) -> Self {
         let lower = query.to_lowercase();
+        let trimmed = lower.trim();
 
-        // Procedural indicators
-        if lower.starts_with("how to ")
-            || lower.starts_with("how do ")
-            || lower.contains("step by step")
-            || lower.contains("instructions")
-            || lower.contains("guide")
+        if trimmed.is_empty() {
+            return QueryIntent::Exploratory;
+        }
+
+        // Procedural indicators (before relational: "how to" vs "how does")
+        if trimmed.starts_with("how to ")
+            || trimmed.starts_with("how do i ")
+            || trimmed.starts_with("how do you ")
+            || trimmed.contains("step by step")
+            || trimmed.contains("instructions")
+            || (trimmed.contains("guide") && !trimmed.starts_with("what "))
         {
             return QueryIntent::Procedural;
         }
 
         // Comparative indicators
-        if lower.contains(" vs ")
-            || lower.contains(" versus ")
-            || lower.contains("compare ")
-            || lower.contains("difference between")
-            || lower.contains("similarities between")
+        if trimmed.contains(" vs ")
+            || trimmed.contains(" versus ")
+            || trimmed.contains("compare ")
+            || trimmed.contains("difference between")
+            || trimmed.contains("differences between")
+            || trimmed.contains("similarities between")
         {
             return QueryIntent::Comparative;
         }
 
         // Relational indicators
-        if lower.contains(" relate ")
-            || lower.contains("relationship between")
-            || lower.contains("connection between")
-            || lower.contains("linked to")
-            || lower.contains("associated with")
-            || lower.starts_with("how does ")
-            || lower.starts_with("how are ")
+        if trimmed.contains(" relate ")
+            || trimmed.contains("relationship between")
+            || trimmed.contains("connection between")
+            || trimmed.contains("linked to")
+            || trimmed.contains("associated with")
+            || trimmed.starts_with("how does ")
+            || trimmed.starts_with("how are ")
+            || trimmed.starts_with("how is ")
         {
             return QueryIntent::Relational;
         }
 
-        // Factual indicators
-        if lower.starts_with("what is ")
-            || lower.starts_with("what are ")
-            || lower.starts_with("who is ")
-            || lower.starts_with("who are ")
-            || lower.starts_with("when ")
-            || lower.starts_with("where ")
-            || lower.starts_with("define ")
-        {
-            return QueryIntent::Factual;
-        }
-
-        // Exploratory indicators (default)
-        if lower.starts_with("tell me about")
-            || lower.starts_with("explain ")
-            || lower.starts_with("describe ")
-            || lower.contains("overview")
+        // Exploratory / thematic (L3) — before factual so
+        // "What are the main themes?" is not misclassified as L1.
+        if trimmed.starts_with("tell me about")
+            || trimmed.starts_with("explain ")
+            || trimmed.starts_with("describe ")
+            || trimmed.contains("overview")
+            || trimmed.contains("summary of")
+            || trimmed.contains("main themes")
+            || trimmed.contains("key themes")
+            || trimmed.contains("broader")
         {
             return QueryIntent::Exploratory;
         }
 
-        // Default to exploratory for unknown patterns
+        // Factual indicators (L1)
+        if trimmed.starts_with("what is ")
+            || trimmed.starts_with("what are ")
+            || trimmed.starts_with("who is ")
+            || trimmed.starts_with("who are ")
+            || trimmed.starts_with("when ")
+            || trimmed.starts_with("where ")
+            || trimmed.starts_with("define ")
+            || trimmed.starts_with("what's ")
+            || trimmed.starts_with("whats ")
+        {
+            return QueryIntent::Factual;
+        }
+
         QueryIntent::Exploratory
     }
 }
@@ -153,6 +170,10 @@ mod tests {
         );
         assert_eq!(
             QueryIntent::classify_heuristic("Who is Sarah Chen?"),
+            QueryIntent::Factual
+        );
+        assert_eq!(
+            QueryIntent::classify_heuristic("What's Rust?"),
             QueryIntent::Factual
         );
     }
@@ -203,10 +224,22 @@ mod tests {
             QueryIntent::classify_heuristic("Explain quantum computing"),
             QueryIntent::Exploratory
         );
+        assert_eq!(
+            QueryIntent::classify_heuristic("What are the main themes?"),
+            QueryIntent::Exploratory
+        );
     }
 
     #[test]
-    fn test_default_to_exploratory() {
+    fn test_empty_and_default() {
+        assert_eq!(
+            QueryIntent::classify_heuristic(""),
+            QueryIntent::Exploratory
+        );
+        assert_eq!(
+            QueryIntent::classify_heuristic("   "),
+            QueryIntent::Exploratory
+        );
         assert_eq!(
             QueryIntent::classify_heuristic("Random query without clear intent"),
             QueryIntent::Exploratory
@@ -214,26 +247,33 @@ mod tests {
     }
 
     #[test]
-    fn test_recommended_modes() {
+    fn test_recommended_modes_spec046() {
         assert_eq!(
             QueryIntent::Factual.recommended_mode(),
-            crate::modes::QueryMode::Local
-        );
-        assert_eq!(
-            QueryIntent::Relational.recommended_mode(),
-            crate::modes::QueryMode::Global
-        );
-        assert_eq!(
-            QueryIntent::Exploratory.recommended_mode(),
             crate::modes::QueryMode::Naive
         );
         assert_eq!(
+            QueryIntent::Relational.recommended_mode(),
+            crate::modes::QueryMode::Hybrid
+        );
+        assert_eq!(
+            QueryIntent::Exploratory.recommended_mode(),
+            crate::modes::QueryMode::Global
+        );
+        assert_eq!(
             QueryIntent::Comparative.recommended_mode(),
-            crate::modes::QueryMode::Local
+            crate::modes::QueryMode::Mix
         );
         assert_eq!(
             QueryIntent::Procedural.recommended_mode(),
             crate::modes::QueryMode::Mix
         );
+    }
+
+    #[test]
+    fn contract_what_is_x_routes_to_naive() {
+        let intent = QueryIntent::classify_heuristic("What is X?");
+        assert_eq!(intent, QueryIntent::Factual);
+        assert_eq!(intent.recommended_mode(), crate::modes::QueryMode::Naive);
     }
 }

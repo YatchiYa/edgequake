@@ -132,10 +132,25 @@ impl QueryEngine {
     }
 
     /// Post-retrieval enrichment: filter, rerank, sort, truncate (no LLM generation).
+    ///
+    /// DRY: shared by streaming (`enrich_retrieved_context`) and non-stream finalize.
     pub(crate) async fn enrich_retrieved_context(
         &self,
         request: &QueryRequest,
+        context: QueryContext,
+    ) -> QueryContext {
+        self.postprocess_retrieved_context(request, context, None)
+            .await
+    }
+
+    /// Single post-retrieval pipeline (SPEC-046 / SOLID — one place for prune+balance).
+    ///
+    /// When `stats` is `Some`, records `rerank_time_ms`.
+    pub(crate) async fn postprocess_retrieved_context(
+        &self,
+        request: &QueryRequest,
         mut context: QueryContext,
+        mut stats: Option<&mut QueryStats>,
     ) -> QueryContext {
         crate::context_filter::filter_context_by_document_ids(
             &mut context,
@@ -144,6 +159,7 @@ impl QueryEngine {
 
         let should_rerank = request.enable_rerank.unwrap_or(self.config.enable_rerank);
         if should_rerank && self.reranker.is_some() {
+            let rerank_start = Instant::now();
             let reranked_chunks = self
                 .rerank_chunks(
                     &request.query,
@@ -153,9 +169,19 @@ impl QueryEngine {
                 )
                 .await;
             context.chunks = reranked_chunks;
+            if let Some(s) = stats.as_mut() {
+                s.rerank_time_ms = Some(rerank_start.elapsed().as_millis() as u64);
+            }
         }
 
         self.sort_entities_by_degree(&mut context.entities);
+
+        if self.config.path_prune.enabled() {
+            context.relationships = crate::path_prune::prune_relationships(
+                std::mem::take(&mut context.relationships),
+                &self.config.path_prune,
+            );
+        }
 
         let (truncated_entities, truncated_relationships, truncated_chunks) = balance_context(
             context.entities.clone(),
@@ -391,46 +417,15 @@ impl QueryEngine {
     async fn pipeline_finalize(
         &self,
         request: QueryRequest,
-        mut context: QueryContext,
+        context: QueryContext,
         mode: QueryMode,
         stats: &mut QueryStats,
         providers: &QueryProviders<'_>,
         pipeline_start: Instant,
     ) -> Result<QueryResponse> {
-        crate::context_filter::filter_context_by_document_ids(
-            &mut context,
-            request.allowed_document_ids.as_deref(),
-        );
-
-        let should_rerank = request.enable_rerank.unwrap_or(self.config.enable_rerank);
-        if should_rerank && self.reranker.is_some() {
-            let rerank_start = Instant::now();
-            let reranked_chunks = self
-                .rerank_chunks(
-                    &request.query,
-                    context.chunks,
-                    request.enable_rerank,
-                    request.rerank_top_k,
-                )
-                .await;
-            context.chunks = reranked_chunks;
-            stats.rerank_time_ms = Some(rerank_start.elapsed().as_millis() as u64);
-        }
-
-        self.sort_entities_by_degree(&mut context.entities);
-
-        let (truncated_entities, truncated_relationships, truncated_chunks) = balance_context(
-            context.entities.clone(),
-            context.relationships.clone(),
-            context.chunks.clone(),
-            &self.config.truncation,
-            self.tokenizer.as_ref(),
-        );
-
-        let mut final_context = context;
-        final_context.entities = truncated_entities;
-        final_context.relationships = truncated_relationships;
-        final_context.chunks = truncated_chunks;
+        let final_context = self
+            .postprocess_retrieved_context(&request, context, Some(stats))
+            .await;
 
         let (answer, generated_tokens) = if request.context_only {
             (String::new(), 0)

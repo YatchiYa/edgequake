@@ -21,23 +21,18 @@
 //! 2. **Truncation by API**: Important context silently dropped
 //! 3. **Quality degradation**: Too much context dilutes attention
 //!
-//! ## The Token Budget Strategy
-//!
-//! We allocate tokens across context types (BR0102):
+//! ## The Token Budget Strategy (SPEC-046 P0.4 / LightRAG dynamic remainder)
 //!
 //! ```text
 //! Total Budget: 30,000 tokens (default, matching LightRAG)
-//! ├── Entities:      10,000 tokens (33%)  ← Graph context (priority)
-//! ├── Relationships: 10,000 tokens (33%)  ← Graph context (priority)
-//! └── Chunks:        10,000 tokens (33%)  ← Primary evidence source
-//! └── System prompt: ~500 tokens (separate)
+//! ├── Entities:      ≤ max_entity_tokens (cap, then actual)
+//! ├── Relationships: ≤ max_relation_tokens (cap, then actual)
+//! ├── Buffer:        truncation_buffer_tokens (sys/query safety)
+//! └── Chunks:        remainder = total - entity_actual - rel_actual - buffer
 //! ```
 //!
-//! ## WHY Entities and Relationships Get Equal Budget
-//!
-//! Entity descriptions provide factual grounding ("Sarah Chen is a PhD student").
-//! Relationship descriptions provide connections ("Sarah works with Michael").
-//! Both are equally important for comprehensive answers.
+//! Graph context is truncated first (BR0102); chunks fill the dynamic remainder
+//! so we never reserve empty entity/rel budget that starves evidence chunks.
 //!
 //! ## Order Matters
 //!
@@ -60,16 +55,26 @@ pub struct TruncationConfig {
 
     /// Maximum total tokens for all context.
     pub max_total_tokens: usize,
+
+    /// Reserved for system prompt + query + safety (LightRAG buffer ≈ 200).
+    /// Chunk budget = total − actual_entity − actual_relation − buffer.
+    #[serde(default = "default_truncation_buffer")]
+    pub buffer_tokens: usize,
+}
+
+fn default_truncation_buffer() -> usize {
+    200
 }
 
 impl Default for TruncationConfig {
     fn default() -> Self {
-        // WHY 30000: LightRAG uses max_total_tokens=30000. Entity and relationship
-        // budgets are 1/3 each, leaving 1/3 for chunks (the primary evidence source).
+        // WHY 30000: LightRAG uses max_total_tokens=30000. Entity/relation caps
+        // are soft ceilings; chunks get the dynamic remainder (SPEC-046 P0.4).
         Self {
             max_entity_tokens: 10000,
             max_relation_tokens: 10000,
             max_total_tokens: 30000,
+            buffer_tokens: default_truncation_buffer(),
         }
     }
 }
@@ -154,8 +159,27 @@ pub fn truncate_chunks(
     result
 }
 
+/// Count tokens for an entity as formatted in context.
+fn entity_format_tokens(entity: &RetrievedEntity, tokenizer: &dyn Tokenizer) -> usize {
+    tokenizer.count_tokens(&format!(
+        "Entity: {} ({})\n{}\n",
+        entity.name, entity.entity_type, entity.description
+    ))
+}
+
+/// Count tokens for a relationship as formatted in context.
+fn relationship_format_tokens(rel: &RetrievedRelationship, tokenizer: &dyn Tokenizer) -> usize {
+    tokenizer.count_tokens(&format!(
+        "Relationship: {} -> {} ({})\n",
+        rel.source, rel.target, rel.relation_type
+    ))
+}
+
 /// Balance context to fit within total token limit.
-/// Proportionally reduces entities, relationships, and chunks.
+///
+/// SPEC-046 P0.4: truncate entities/relations to caps first, then give chunks
+/// the **dynamic remainder** (`total − actual_entity − actual_rel − buffer`),
+/// matching LightRAG `_build_context_str`.
 pub fn balance_context(
     entities: Vec<RetrievedEntity>,
     relationships: Vec<RetrievedRelationship>,
@@ -171,17 +195,27 @@ pub fn balance_context(
     let input_rel_count = relationships.len();
     let input_chunk_count = chunks.len();
 
-    // First pass: apply individual limits
+    // Pass 1: hard caps on graph context
     let mut entities = truncate_entities(entities, config.max_entity_tokens, tokenizer);
     let mut relationships =
         truncate_relationships(relationships, config.max_relation_tokens, tokenizer);
-    // WHY: Chunk budget = total - entity - relationship (the remainder).
-    // Previously used max_entity_tokens by mistake, which was correct by coincidence
-    // when all 3 budgets are equal (10K each), but wrong in general.
+
+    let entity_tokens: usize = entities
+        .iter()
+        .map(|e| entity_format_tokens(e, tokenizer))
+        .sum();
+    let rel_tokens: usize = relationships
+        .iter()
+        .map(|r| relationship_format_tokens(r, tokenizer))
+        .sum();
+
+    // Dynamic chunk remainder (LightRAG-style)
     let max_chunk_tokens = config
         .max_total_tokens
-        .saturating_sub(config.max_entity_tokens)
-        .saturating_sub(config.max_relation_tokens);
+        .saturating_sub(entity_tokens)
+        .saturating_sub(rel_tokens)
+        .saturating_sub(config.buffer_tokens);
+
     let mut chunks = truncate_chunks(chunks, max_chunk_tokens, tokenizer);
 
     tracing::debug!(
@@ -191,73 +225,32 @@ pub fn balance_context(
         after_truncate_entities = entities.len(),
         after_truncate_rels = relationships.len(),
         after_truncate_chunks = chunks.len(),
-        max_entity_tokens = config.max_entity_tokens,
-        max_relation_tokens = config.max_relation_tokens,
-        "OODA-231: balance_context first pass (individual limits)"
+        entity_tokens,
+        rel_tokens,
+        max_chunk_tokens,
+        buffer_tokens = config.buffer_tokens,
+        "OODA-231: balance_context dynamic remainder (SPEC-046)"
     );
 
-    // Calculate current total
-    let entity_tokens: usize = entities
-        .iter()
-        .map(|e| tokenizer.count_tokens(&format!("{} {}", e.name, e.description)))
-        .sum();
-    let rel_tokens: usize = relationships
-        .iter()
-        .map(|r| tokenizer.count_tokens(&format!("{} -> {}", r.source, r.target)))
-        .sum();
     let chunk_tokens: usize = chunks
         .iter()
         .map(|c| tokenizer.count_tokens(&c.content))
         .sum();
-
     let total = entity_tokens + rel_tokens + chunk_tokens;
 
-    tracing::debug!(
-        entity_tokens = entity_tokens,
-        rel_tokens = rel_tokens,
-        chunk_tokens = chunk_tokens,
-        total_tokens = total,
-        max_total_tokens = config.max_total_tokens,
-        "OODA-231: balance_context token counts"
-    );
-
-    // If within limit, return as-is
     if total <= config.max_total_tokens {
-        tracing::debug!(
-            final_entities = entities.len(),
-            final_rels = relationships.len(),
-            final_chunks = chunks.len(),
-            "OODA-231: balance_context within limit, no reduction needed"
-        );
         return (entities, relationships, chunks);
     }
 
-    // Need to reduce: calculate proportional reduction
+    // Safety: still over budget (e.g. buffer underestimated) — proportional cut
     let reduction_ratio = config.max_total_tokens as f32 / total as f32;
-
-    // Apply reduction proportionally
     let new_entity_count = (entities.len() as f32 * reduction_ratio).ceil() as usize;
     let new_rel_count = (relationships.len() as f32 * reduction_ratio).ceil() as usize;
     let new_chunk_count = (chunks.len() as f32 * reduction_ratio).ceil() as usize;
 
-    tracing::debug!(
-        reduction_ratio = reduction_ratio,
-        new_entity_count = new_entity_count,
-        new_rel_count = new_rel_count,
-        new_chunk_count = new_chunk_count,
-        "OODA-231: balance_context proportional reduction"
-    );
-
     entities.truncate(new_entity_count.max(1));
     relationships.truncate(new_rel_count);
     chunks.truncate(new_chunk_count);
-
-    tracing::debug!(
-        final_entities = entities.len(),
-        final_rels = relationships.len(),
-        final_chunks = chunks.len(),
-        "OODA-231: balance_context after truncation"
-    );
 
     (entities, relationships, chunks)
 }
@@ -355,6 +348,7 @@ mod tests {
             max_entity_tokens: 100,
             max_relation_tokens: 100,
             max_total_tokens: 10, // Very tight limit to force reduction
+            buffer_tokens: 0,
         };
 
         let entities = vec![
@@ -396,6 +390,7 @@ mod tests {
             max_entity_tokens: 1000,
             max_relation_tokens: 1000,
             max_total_tokens: 10000, // Large limit
+            buffer_tokens: 0,
         };
 
         let entities = vec![create_test_entity("E1", "Desc")];

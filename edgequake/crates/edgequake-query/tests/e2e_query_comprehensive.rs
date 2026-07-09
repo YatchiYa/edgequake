@@ -97,6 +97,7 @@ mod config_tests {
         let config = TruncationConfig {
             max_entity_tokens: 4000,
             max_relation_tokens: 4000,
+            buffer_tokens: 200,
             max_total_tokens: 8000,
         };
 

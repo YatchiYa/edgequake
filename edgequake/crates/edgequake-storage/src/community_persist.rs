@@ -44,12 +44,29 @@ pub async fn persist_community_labels(
     let existing = graph.get_nodes_batch(&ids).await?;
     let mut batch = Vec::with_capacity(existing.len());
 
+    // SPEC-046 EQ-046-11: optional extractive community reports on node props
+    let reports_on = crate::community_reports::community_reports_enabled();
+    let report_by_cid: std::collections::HashMap<usize, String> = if reports_on {
+        crate::community_reports::build_community_report_records(result, 24, None, None)
+            .into_iter()
+            .filter_map(|(_id, text, meta)| {
+                let cid = meta.get("community_id")?.as_u64()? as usize;
+                Some((cid, text))
+            })
+            .collect()
+    } else {
+        std::collections::HashMap::new()
+    };
+
     for (node_id, community_id) in &result.node_to_community {
         let Some(node) = existing.get(node_id) else {
             continue;
         };
         let mut props = node.properties.clone();
         props.insert("community_id".to_string(), json!(community_id));
+        if let Some(report) = report_by_cid.get(community_id) {
+            props.insert("community_report".to_string(), json!(report));
+        }
         batch.push((node_id.clone(), props));
     }
 

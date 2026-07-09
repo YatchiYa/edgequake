@@ -24,6 +24,8 @@ type StreamQueryResult =
 pub struct WorkspaceQueryResources {
     pub embedding: Option<Arc<dyn EmbeddingProvider>>,
     pub vector_storage: Option<Arc<dyn VectorStorage>>,
+    /// LightRAG KEYWORD role LLM (SPEC-046 EQ-046-13); falls back to answer LLM.
+    pub keyword_llm: Option<Arc<dyn LLMProvider>>,
 }
 
 /// Resolve workspace-scoped embedding/vector providers (SPEC-017 P2-02).
@@ -40,10 +42,62 @@ pub async fn resolve_workspace_query_resources(
 
     let embedding = get_workspace_embedding_provider(state, workspace_id).await?;
     let vector_storage = get_workspace_vector_storage(state, workspace_id).await?;
+    let keyword_llm = resolve_workspace_keyword_llm(state, workspace_id).await;
     Ok(WorkspaceQueryResources {
         embedding,
         vector_storage,
+        keyword_llm,
     })
+}
+
+/// Resolve KEYWORD-role LLM for a workspace (non-fatal — None falls back to Query).
+async fn resolve_workspace_keyword_llm(
+    state: &AppState,
+    workspace_id: &str,
+) -> Option<Arc<dyn LLMProvider>> {
+    let ws_uuid = crate::middleware::resolve_workspace_uuid(Some(workspace_id))?;
+    let ws = state
+        .workspace_service
+        .get_workspace(ws_uuid)
+        .await
+        .ok()
+        .flatten()?;
+    // Only override when workspace metadata explicitly configures keyword role
+    // (avoid doubling Query LLM when roles are unset).
+    let _cfg = edgequake_core::role_config_from_workspace(&ws, edgequake_core::LlmRole::Keyword)?;
+    let role = edgequake_core::resolve_role_llm(&ws, edgequake_core::LlmRole::Keyword);
+    crate::safety_limits::create_safe_llm_provider(&role.provider, &role.model).ok()
+}
+
+/// Resolve Keyword / Query role LLMs for a SOTA dispatch (DRY sync+stream).
+fn resolve_role_llms_for_dispatch(
+    resources: &WorkspaceQueryResources,
+    llm_override: Option<Arc<dyn LLMProvider>>,
+) -> (Option<Arc<dyn LLMProvider>>, Option<Arc<dyn LLMProvider>>) {
+    let keyword_llm = resources
+        .keyword_llm
+        .clone()
+        .or_else(|| llm_override.clone());
+    (keyword_llm, llm_override)
+}
+
+/// Resolve embedding + vector storage for the workspace matrix (SPEC-017 / SPEC-046 DRY).
+fn resolve_sota_providers(
+    state: &AppState,
+    resources: WorkspaceQueryResources,
+) -> (
+    Arc<dyn EmbeddingProvider>,
+    Arc<dyn VectorStorage>,
+    bool, // used_defaults_only
+) {
+    let used_defaults = resources.embedding.is_none() && resources.vector_storage.is_none();
+    let embedding = resources
+        .embedding
+        .unwrap_or_else(|| state.query.engine_impl.default_embedding_provider());
+    let vector_storage = resources
+        .vector_storage
+        .unwrap_or_else(|| state.query.engine_impl.default_vector_storage());
+    (embedding, vector_storage, used_defaults)
 }
 
 /// Execute a SOTA query using the standard workspace routing matrix.
@@ -54,59 +108,30 @@ pub async fn execute_sota_query(
     llm_override: Option<Arc<dyn LLMProvider>>,
 ) -> ApiResult<QueryResponse> {
     let has_llm_override = llm_override.is_some();
-    let result = match (resources.embedding, resources.vector_storage) {
-        (Some(embedding), Some(vector_storage)) => {
-            debug!(has_llm_override, "SOTA query: workspace embedding + vector");
-            state
-                .query
-                .engine_impl
-                .query_with_full_config(request, embedding, vector_storage, llm_override)
-                .await
-        }
-        (Some(embedding), None) => {
-            debug!(
-                has_llm_override,
-                "SOTA query: workspace embedding + default vector"
-            );
-            state
-                .query
-                .engine_impl
-                .query_with_full_config(
-                    request,
-                    embedding,
-                    state.query.engine_impl.default_vector_storage(),
-                    llm_override,
-                )
-                .await
-        }
-        (None, Some(vector_storage)) => {
-            debug!(
-                has_llm_override,
-                "SOTA query: default embedding + workspace vector"
-            );
-            state
-                .query
-                .engine_impl
-                .query_with_full_config(
-                    request,
-                    state.query.engine_impl.default_embedding_provider(),
-                    vector_storage,
-                    llm_override,
-                )
-                .await
-        }
-        (None, None) => {
-            debug!(has_llm_override, "SOTA query: default providers");
-            if let Some(llm) = llm_override {
-                state
-                    .query
-                    .engine_impl
-                    .query_with_llm_provider(request, llm)
-                    .await
-            } else {
-                state.query.engine_impl.query(request).await
-            }
-        }
+    let (keyword_llm, answer_llm) = resolve_role_llms_for_dispatch(&resources, llm_override);
+    let (embedding, vector_storage, used_defaults) =
+        resolve_sota_providers(state, resources);
+
+    debug!(
+        has_llm_override,
+        used_defaults,
+        "SOTA query: workspace routing matrix"
+    );
+
+    let result = if used_defaults && answer_llm.is_none() && keyword_llm.is_none() {
+        state.query.engine_impl.query(request).await
+    } else {
+        state
+            .query
+            .engine_impl
+            .query_with_role_llms(
+                request,
+                embedding,
+                vector_storage,
+                keyword_llm,
+                answer_llm,
+            )
+            .await
     };
 
     result.map_err(ApiError::from)
@@ -151,66 +176,33 @@ pub async fn execute_sota_query_stream(
     llm_override: Option<Arc<dyn LLMProvider>>,
 ) -> StreamQueryResult {
     let has_llm_override = llm_override.is_some();
-    match (resources.embedding, resources.vector_storage) {
-        (Some(embedding), Some(vector_storage)) => {
-            debug!(
-                has_llm_override,
-                "SOTA stream: workspace embedding + vector"
-            );
-            state
-                .query
-                .engine_impl
-                .query_stream_with_full_config(request, embedding, vector_storage, llm_override)
-                .await
-        }
-        (Some(embedding), None) => {
-            debug!(
-                has_llm_override,
-                "SOTA stream: workspace embedding + default vector"
-            );
-            state
-                .query
-                .engine_impl
-                .query_stream_with_full_config(
-                    request,
-                    embedding,
-                    state.query.engine_impl.default_vector_storage(),
-                    llm_override,
-                )
-                .await
-        }
-        (None, Some(vector_storage)) => {
-            debug!(
-                has_llm_override,
-                "SOTA stream: default embedding + workspace vector"
-            );
-            state
-                .query
-                .engine_impl
-                .query_stream_with_full_config(
-                    request,
-                    state.query.engine_impl.default_embedding_provider(),
-                    vector_storage,
-                    llm_override,
-                )
-                .await
-        }
-        (None, None) => {
-            debug!(has_llm_override, "SOTA stream: default providers");
-            if let Some(llm) = llm_override {
-                state
-                    .query
-                    .engine_impl
-                    .query_stream_with_context_and_llm(request, llm)
-                    .await
-            } else {
-                state
-                    .query
-                    .engine_impl
-                    .query_stream_with_context(request)
-                    .await
-            }
-        }
+    let (keyword_llm, answer_llm) = resolve_role_llms_for_dispatch(&resources, llm_override);
+    let (embedding, vector_storage, used_defaults) = resolve_sota_providers(state, resources);
+
+    debug!(
+        has_llm_override,
+        used_defaults,
+        "SOTA stream: workspace routing matrix"
+    );
+
+    if used_defaults && answer_llm.is_none() && keyword_llm.is_none() {
+        state
+            .query
+            .engine_impl
+            .query_stream_with_context(request)
+            .await
+    } else {
+        state
+            .query
+            .engine_impl
+            .query_stream_with_role_llms(
+                request,
+                embedding,
+                vector_storage,
+                keyword_llm,
+                answer_llm,
+            )
+            .await
     }
 }
 

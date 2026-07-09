@@ -105,11 +105,12 @@ impl QueryEngine {
             }
 
             if !fallback_entity_ids.is_empty() {
-                let edges = crate::graph_hops::edges_within_depth(
+                let edges = crate::graph_expand::expand_neighborhood_edges(
                     &graph,
                     &fallback_entity_ids,
                     self.config.graph_depth,
                     self.config.max_relationships,
+                    self.config.graph_walk,
                 )
                 .await?;
                 for edge in edges {
@@ -137,11 +138,12 @@ impl QueryEngine {
                 }
             }
 
-            let edges = crate::graph_hops::edges_within_depth(
+            let edges = crate::graph_expand::expand_neighborhood_edges(
                 &graph,
                 &entity_ids,
                 self.config.graph_depth,
                 self.config.max_relationships,
+                self.config.graph_walk,
             )
             .await?;
 

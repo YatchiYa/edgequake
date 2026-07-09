@@ -1,6 +1,8 @@
 //! Shared chunk retrieval for local/global query modes.
+//!
+//! SPEC-046 P0.3: supports LightRAG-style `related_chunk_number` and
+//! `kg_chunk_pick_method` (vector | weight).
 
-use std::collections::HashSet;
 use std::sync::Arc;
 
 use edgequake_storage::traits::{MetadataFilter, VectorStorage};
@@ -9,6 +11,10 @@ use crate::context::{QueryContext, RetrievedChunk};
 use crate::engine_impl::{QueryEngine, QueryEngineConfig};
 use crate::error::Result;
 use crate::helpers::build_chunk_from_result;
+use crate::kg_chunk_pick::{
+    collect_kg_chunk_ids, pick_chunks_by_entity_ppr, pick_chunks_by_weight, KgChunkPickMethod,
+};
+use crate::graph_ppr::GraphWalkMode;
 
 #[allow(clippy::too_many_arguments)] // retrieval pipeline mirrors QueryEngine workspace arity
 pub(super) async fn append_score_ranked_chunks(
@@ -23,55 +29,81 @@ pub(super) async fn append_score_ranked_chunks(
     workspace_mf: Option<&MetadataFilter>,
     log_label: &str,
 ) -> Result<Vec<RetrievedChunk>> {
-    let mut chunk_ids = HashSet::new();
+    let related_n = retrieval_config.related_chunk_number;
 
-    for entity in &context.entities {
-        for chunk_id in &entity.source_chunk_ids {
-            chunk_ids.insert(chunk_id.clone());
+    // Dual-node lite: when PPR walk is active, prefer entity-score → chunk mapping
+    // over plain vector/weight pick (SPEC-046 EQ-046-07).
+    let chunk_ids_vec = if retrieval_config.graph_walk == GraphWalkMode::Ppr {
+        let ranked = pick_chunks_by_entity_ppr(context, retrieval_config.max_chunks);
+        if ranked.is_empty() {
+            collect_kg_chunk_ids(context, related_n)
+        } else {
+            ranked
         }
-    }
-
-    for rel in &context.relationships {
-        if let Some(chunk_id) = &rel.source_chunk_id {
-            chunk_ids.insert(chunk_id.clone());
+    } else {
+        match retrieval_config.kg_chunk_pick_method {
+            KgChunkPickMethod::Weight => {
+                let weighted = pick_chunks_by_weight(context, retrieval_config.max_chunks);
+                if weighted.is_empty() {
+                    collect_kg_chunk_ids(context, related_n)
+                } else {
+                    weighted
+                }
+            }
+            KgChunkPickMethod::Vector => collect_kg_chunk_ids(context, related_n),
         }
-    }
+    };
 
     tracing::info!(
-        total_chunk_ids = chunk_ids.len(),
+        total_chunk_ids = chunk_ids_vec.len(),
         entity_count = context.entities.len(),
         relationship_count = context.relationships.len(),
+        pick_method = retrieval_config.kg_chunk_pick_method.as_str(),
+        graph_walk = ?retrieval_config.graph_walk,
+        related_chunk_number = related_n,
         log_label,
         "OODA-230: chunk collection (workspace)"
     );
 
-    if chunk_ids.is_empty() {
+    if chunk_ids_vec.is_empty() {
         return Ok(Vec::new());
     }
 
-    let chunk_ids_vec: Vec<String> = chunk_ids.into_iter().collect();
+    // Preserve ranked order for Weight and PPR dual-node picks; Vector uses score filter.
+    let preserve_order = retrieval_config.kg_chunk_pick_method == KgChunkPickMethod::Weight
+        || retrieval_config.graph_walk == GraphWalkMode::Ppr;
 
-    tracing::debug!(
-        chunk_ids_count = chunk_ids_vec.len(),
-        max_chunks = retrieval_config.max_chunks,
-        log_label,
-        "OODA-231: Requesting chunks by ID from vector storage (score-ranked)"
-    );
-
-    let results = vector_storage
-        .query_filtered(
-            query_embedding,
-            retrieval_config.max_chunks,
-            Some(&chunk_ids_vec),
-            workspace_mf,
-        )
-        .await?;
+    let results = if preserve_order {
+        let unordered = vector_storage
+            .query_filtered(
+                query_embedding,
+                chunk_ids_vec.len().max(retrieval_config.max_chunks),
+                Some(&chunk_ids_vec),
+                workspace_mf,
+            )
+            .await?;
+        let mut by_id: std::collections::HashMap<String, _> =
+            unordered.into_iter().map(|r| (r.id.clone(), r)).collect();
+        chunk_ids_vec
+            .iter()
+            .filter_map(|id| by_id.remove(id))
+            .collect::<Vec<_>>()
+    } else {
+        vector_storage
+            .query_filtered(
+                query_embedding,
+                retrieval_config.max_chunks,
+                Some(&chunk_ids_vec),
+                workspace_mf,
+            )
+            .await?
+    };
 
     tracing::debug!(
         candidates = chunk_ids_vec.len(),
         returned = results.len(),
         log_label,
-        "OODA-231: Chunk retrieval result (top-k by cosine similarity)"
+        "OODA-231: Chunk retrieval result"
     );
 
     let mf_chunk = MetadataFilter::from_tenant_workspace_type(tenant_id, workspace_id, "chunk");
@@ -90,7 +122,9 @@ pub(super) async fn append_score_ranked_chunks(
     } else {
         results
             .iter()
-            .filter(|r| r.score >= retrieval_config.min_score)
+            .filter(|r| {
+                preserve_order || r.score >= retrieval_config.min_score
+            })
             .take(retrieval_config.max_chunks)
             .map(build_chunk_from_result)
             .collect()
