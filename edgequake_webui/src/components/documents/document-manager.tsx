@@ -298,6 +298,7 @@ export function DocumentManager() {
             onRefresh={refetch}
             tenantId={selectedTenantId ?? undefined}
             workspaceId={selectedWorkspaceId ?? undefined}
+            documents={documents}
           />
 
           {/* OODA-30: Toolbar section extracted to DocumentToolbarSection */}

@@ -19,6 +19,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import type { Document } from '@/types';
 import { ClearDocumentsDialog } from './clear-documents-dialog';
 import { ConnectionBanner } from './connection-banner';
 import { ConnectionStatus } from './connection-status';
@@ -45,6 +46,8 @@ export interface DocumentHeaderProps {
   tenantId?: string;
   /** Workspace ID for pipeline dialog */
   workspaceId?: string;
+  /** Documents for pipeline waiting-state details */
+  documents?: Document[];
 }
 
 /**
@@ -59,6 +62,7 @@ export function DocumentHeader({
   onRefresh,
   tenantId,
   workspaceId,
+  documents,
 }: DocumentHeaderProps) {
   const { t } = useTranslation();
 
@@ -103,6 +107,7 @@ export function DocumentHeader({
             onOpenChange={onPipelineDialogChange}
             tenantId={tenantId}
             workspaceId={workspaceId}
+            documents={documents}
           />
           
           {/* Reprocess Failed Button (GAP-UI-002) */}
