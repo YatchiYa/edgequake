@@ -144,6 +144,8 @@ use crate::handlers;
         handlers::retry_pdf_processing,
         handlers::cancel_pdf_processing,
         handlers::download_pdf,
+        handlers::download_document_original,
+        handlers::download_document_markdown,
         handlers::get_pdf_progress_stream,
         handlers::search_nodes,
         handlers::get_popular_labels,

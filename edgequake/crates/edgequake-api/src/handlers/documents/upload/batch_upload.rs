@@ -10,6 +10,8 @@ use crate::handlers::documents::upload::{
 };
 use crate::handlers::documents_types::*;
 use crate::middleware::TenantContext;
+#[cfg(feature = "postgres")]
+use crate::services::persist_uploaded_original;
 use crate::services::{resolve_upload_content, ContentHasher};
 use crate::state::AppState;
 use axum_extra::extract::Multipart;
@@ -140,6 +142,8 @@ async fn enqueue_single_file(
     let resolved =
         resolve_upload_content(state, tenant_ctx.workspace_id_uuid(), filename, content).await?;
     let content_hash = ContentHasher::hash_bytes(content);
+    let mime_type = resolved.mime_type.clone();
+    let source_type = resolved.meta.source_type;
 
     let outcome = admit_document_for_processing(
         state,
@@ -167,6 +171,26 @@ async fn enqueue_single_file(
 
     match outcome {
         DocumentAdmissionOutcome::DuplicateProcessing(dup) => Ok((dup.document_id, true)),
-        DocumentAdmissionOutcome::Accepted(accepted) => Ok((accepted.document_id, false)),
+        DocumentAdmissionOutcome::Accepted(accepted) => {
+            #[cfg(feature = "postgres")]
+            if let Err(e) = persist_uploaded_original(
+                state,
+                tenant_ctx,
+                &accepted.document_id,
+                filename,
+                &mime_type,
+                source_type,
+                content,
+            )
+            .await
+            {
+                tracing::warn!(
+                    document_id = %accepted.document_id,
+                    error = %e,
+                    "Failed to persist uploaded original bytes (batch)"
+                );
+            }
+            Ok((accepted.document_id, false))
+        }
     }
 }

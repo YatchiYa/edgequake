@@ -21,8 +21,9 @@ import {
     VirtualizedMarkdownContent,
 } from '@/components/query/markdown/VirtualizedMarkdownContent';
 import { Button } from '@/components/ui/button';
+import { downloadFile, sanitizeFilename } from '@/lib/export-conversation';
 import { cn } from '@/lib/utils';
-import { Check, Copy, FileText } from 'lucide-react';
+import { Check, Copy, Download, FileText } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -71,6 +72,17 @@ export function MarkdownViewer({
     }
   }, [content, t]);
 
+  const handleDownload = useCallback(() => {
+    if (!content) return;
+    try {
+      const filename = `${sanitizeFilename(title)}.md`;
+      downloadFile(content, filename, 'text/markdown;charset=utf-8');
+      toast.success(t('documents.download.markdownStarted', 'Markdown download started'));
+    } catch {
+      toast.error(t('documents.download.markdownFailed', 'Failed to download markdown'));
+    }
+  }, [content, title, t]);
+
   if (!content) {
     return (
       <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
@@ -92,13 +104,26 @@ export function MarkdownViewer({
             <FileText className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm font-medium">{title}</span>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8"
-            onClick={handleCopy}
-            title={t('common.copy', 'Copy to clipboard')}
-          >
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8"
+              onClick={handleDownload}
+              title={t('documents.download.markdown', 'Download markdown')}
+            >
+              <Download className="h-4 w-4" />
+              <span className="ml-1.5 hidden sm:inline">
+                {t('documents.download.markdown', 'Download markdown')}
+              </span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8"
+              onClick={handleCopy}
+              title={t('common.copy', 'Copy to clipboard')}
+            >
             {copied ? (
               <Check className="h-4 w-4 text-green-500" />
             ) : (
@@ -108,6 +133,7 @@ export function MarkdownViewer({
               {copied ? t('common.copied', 'Copied') : t('common.copy', 'Copy')}
             </span>
           </Button>
+          </div>
         </div>
       )}
 
