@@ -58,6 +58,7 @@ pub mod session_storage;
 pub mod source_reference_builder;
 pub mod staging_admission;
 pub mod task_scope;
+pub mod task_document_sync;
 pub mod tenant_guard;
 pub mod tenant_isolation;
 pub mod text_insert_content;
@@ -163,6 +164,9 @@ pub use query_request_builder::{build_engine_request, QueryExecutionParams};
 pub use retrieval_id_cache::{global_retrieval_cache, new_retrieval_id, RetrievalIdCache};
 pub use source_reference_builder::{build_sources_from_context, is_injection_source};
 pub use staging_admission::{promote_staging_to_final, rollback_staging};
+pub use task_document_sync::{
+    extract_document_id_from_task, sync_document_failed_on_orphan_heartbeat,
+};
 pub use text_insert_content::{
     patch_document_metadata, resolve_document_metadata_key, resolve_text_insert_content,
 };

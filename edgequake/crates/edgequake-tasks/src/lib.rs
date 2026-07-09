@@ -74,6 +74,7 @@
 pub mod cancellation;
 pub mod delivery;
 pub mod error;
+pub mod ingestion_reliability;
 pub mod memory;
 pub mod pipeline_state;
 #[cfg(feature = "postgres")]
@@ -93,6 +94,10 @@ pub use delivery::{
     TaskDeliveryMode, TaskNotifier,
 };
 pub use error::{TaskError, TaskResult};
+pub use ingestion_reliability::{
+    classify_ingestion_failure, failure_step, is_permanent_ingestion_failure,
+    IngestionFailureClass,
+};
 pub use pipeline_state::{PipelineEvent, PipelineMessage, PipelineState, PipelineStatusSnapshot};
 pub use progress::{PdfUploadProgress, PhaseError, PhaseProgress, PhaseStatus, PipelinePhase};
 pub use queue::{ChannelTaskQueue, SharedTaskQueue, TaskQueue, UnboundedChannelTaskQueue};

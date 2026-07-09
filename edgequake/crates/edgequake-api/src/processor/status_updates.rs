@@ -15,6 +15,11 @@ fn apply_status_notice_fields(
                 "recommended_action".to_string(),
                 json!(failure.recommended_action()),
             );
+            let workspace = metadata
+                .get("workspace_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+            edgequake_observability::record_ingestion_failure(failure.as_str(), workspace);
         } else {
             metadata.insert("warning_message".to_string(), json!(msg));
             // Scrub legacy informational errors that would render as Failed in the WebUI.

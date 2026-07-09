@@ -120,6 +120,46 @@ fn guard_for_embedding(texts: &[String], max_chars: usize) -> Vec<String> {
 ///
 /// When `provider.max_tokens()` returns 0 (limit unknown) we fall back to
 /// `embed_batched` directly because there is no budget to split against.
+/// Embed a batch with exponential backoff on transient provider limits (SPEC-045 EC-045-09).
+async fn embed_batched_with_retry(
+    provider: &Arc<dyn edgequake_llm::traits::EmbeddingProvider>,
+    batch: &[String],
+) -> crate::error::Result<Vec<Vec<f32>>> {
+    const MAX_ATTEMPTS: u32 = 3;
+    let mut attempt = 0u32;
+    loop {
+        match provider.embed_batched(batch).await {
+            Ok(embeddings) => return Ok(embeddings),
+            Err(e) => {
+                let msg = e.to_string();
+                attempt += 1;
+                if is_transient_embedding_error(&msg) && attempt < MAX_ATTEMPTS {
+                    let delay_ms = 500u64.saturating_mul(1u64 << (attempt - 1).min(4));
+                    tracing::warn!(
+                        attempt,
+                        delay_ms,
+                        error = %msg,
+                        batch_size = batch.len(),
+                        "Transient embedding provider error — retrying with backoff"
+                    );
+                    tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
+                    continue;
+                }
+                return Err(crate::error::PipelineError::EmbeddingError(msg));
+            }
+        }
+    }
+}
+
+fn is_transient_embedding_error(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    lower.contains("429")
+        || lower.contains("rate limit")
+        || lower.contains("503")
+        || lower.contains("service unavailable")
+        || lower.contains("temporarily unavailable")
+}
+
 async fn embed_with_token_budget(
     provider: &Arc<dyn edgequake_llm::traits::EmbeddingProvider>,
     texts: &[String],
@@ -131,10 +171,7 @@ async fn embed_with_token_budget(
     let max_tokens = provider.max_tokens();
     if max_tokens == 0 {
         // Limit unknown — standard count-based batching
-        return provider
-            .embed_batched(texts)
-            .await
-            .map_err(|e| crate::error::PipelineError::EmbeddingError(e.to_string()));
+        return embed_batched_with_retry(provider, texts).await;
     }
 
     // Effective token budget per sub-batch (apply safety headroom)
@@ -185,10 +222,7 @@ async fn embed_with_token_budget(
                 reason = flush_reason,
                 "Flushing embedding sub-batch"
             );
-            let batch_result = provider
-                .embed_batched(&texts[batch_start..i])
-                .await
-                .map_err(|e| crate::error::PipelineError::EmbeddingError(e.to_string()))?;
+            let batch_result = embed_batched_with_retry(provider, &texts[batch_start..i]).await?;
             all_embeddings.extend(batch_result);
             batch_start = i;
             batch_tokens = 0;
@@ -198,10 +232,7 @@ async fn embed_with_token_budget(
 
     // Flush the final sub-batch
     if batch_start < texts.len() {
-        let batch_result = provider
-            .embed_batched(&texts[batch_start..])
-            .await
-            .map_err(|e| crate::error::PipelineError::EmbeddingError(e.to_string()))?;
+        let batch_result = embed_batched_with_retry(provider, &texts[batch_start..]).await?;
         all_embeddings.extend(batch_result);
     }
 
@@ -760,5 +791,16 @@ mod tests {
         );
         let total: usize = sizes.iter().sum();
         assert_eq!(total, 5);
+    }
+
+    #[test]
+    fn spec045_transient_embedding_error_detects_429_and_503() {
+        assert!(super::is_transient_embedding_error(
+            "Mistral embeddings API error (429 Too Many Requests)"
+        ));
+        assert!(super::is_transient_embedding_error("service unavailable 503"));
+        assert!(!super::is_transient_embedding_error(
+            "Too many inputs in request (400)"
+        ));
     }
 }

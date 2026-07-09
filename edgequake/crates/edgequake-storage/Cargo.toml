@@ -10,6 +10,7 @@ repository.workspace = true
 
 [features]
 default = []
+observability = ["dep:edgequake-observability"]
 postgres = ["dep:sqlx"]
 # Enable all storage backends
 full = ["postgres"]
@@ -27,6 +28,8 @@ sha2 = "0.10"
 # Optional PostgreSQL dependencies
 sqlx = { workspace = true, optional = true }
 chrono = { workspace = true }
+
+edgequake-observability = { path = "../edgequake-observability", optional = true, features = ["metrics"] }
 
 [dev-dependencies]
 tokio-test = { workspace = true }
