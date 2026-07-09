@@ -68,6 +68,7 @@ pub mod document_metadata_integrity;
 pub mod entity_id;
 pub mod entity_reconcile;
 pub mod error;
+pub mod graph_batch_dedupe;
 pub mod graph_metrics;
 pub mod kv_key_schema;
 pub mod metadata_filter_sql;
@@ -96,6 +97,7 @@ pub use community_reports::{
     index_community_reports_with_embedder, pack_community_report_vectors,
     upsert_community_report_vectors, COMMUNITY_REPORT_VECTOR_TYPE,
 };
+pub use graph_batch_dedupe::{dedupe_edges_by_endpoints, dedupe_nodes_by_id};
 pub use graph_metrics::{
     collect_graph_quality_metrics, log_graph_quality, metrics_from_merge_delta, GraphQualityMetrics,
 };

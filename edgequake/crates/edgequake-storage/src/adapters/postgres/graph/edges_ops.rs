@@ -98,6 +98,11 @@ impl PostgresAGEGraphStorage {
             return Ok(());
         }
 
+        // First Principles: ON CONFLICT / Cypher MERGE keys are (source_id, target_id).
+        // Collapse duplicates here so every write path (native + Cypher) is safe.
+        let edges = crate::graph_batch_dedupe::dedupe_edges_by_endpoints(edges);
+        let edges = edges.as_slice();
+
         // SPEC-034 IMP-01: Use native SQL path when feature flag is enabled.
         if super::native_graph_writes_enabled() {
             return self.pg_upsert_edges_batch_native(edges).await;
@@ -330,6 +335,9 @@ impl PostgresAGEGraphStorage {
         if edges.is_empty() {
             return Ok(());
         }
+        // Defense in depth: callers may skip the Cypher-path dedupe entrypoint.
+        let edges = crate::graph_batch_dedupe::dedupe_edges_by_endpoints(edges);
+        let edges = edges.as_slice();
         let start = std::time::Instant::now();
         let chunk_size = Self::adaptive_edge_chunk_size(edges);
         let mut inserted_or_updated = 0u64;
@@ -396,6 +404,9 @@ impl PostgresAGEGraphStorage {
         }
 
         // Conflict target matches idx_edge_source_target_unique (Migration 074/083).
+        // DISTINCT ON is a SQL safety net if a caller bypasses Rust dedupe
+        // (Postgres forbids ON CONFLICT DO UPDATE affecting a row twice).
+        // ORDER BY … ord DESC → last-write-wins, matching Rust policy.
         let sql = format!(
             r#"
             INSERT INTO {graph}."EDGE" (id, start_id, end_id, properties)
@@ -403,13 +414,20 @@ impl PostgresAGEGraphStorage {
                 eq_next_edge_id('{graph}'),
                 sn.id      AS start_id,
                 tn.id      AS end_id,
-                p.props_text::ag_catalog.agtype
-            FROM unnest($1::text[], $2::text[], $3::text[])
-                   AS p(source_id_val, target_id_val, props_text)
+                d.props_text::ag_catalog.agtype
+            FROM (
+                SELECT DISTINCT ON (source_id_val, target_id_val)
+                    source_id_val,
+                    target_id_val,
+                    props_text
+                FROM unnest($1::text[], $2::text[], $3::text[])
+                       WITH ORDINALITY AS p(source_id_val, target_id_val, props_text, ord)
+                ORDER BY source_id_val, target_id_val, ord DESC
+            ) AS d
             JOIN {graph}."Node" sn
-              ON ag_catalog.agtype_to_json(sn.properties)->>'node_id' = p.source_id_val
+              ON ag_catalog.agtype_to_json(sn.properties)->>'node_id' = d.source_id_val
             JOIN {graph}."Node" tn
-              ON ag_catalog.agtype_to_json(tn.properties)->>'node_id' = p.target_id_val
+              ON ag_catalog.agtype_to_json(tn.properties)->>'node_id' = d.target_id_val
             ON CONFLICT (
                 (ag_catalog.agtype_to_json(properties)->>'source_id'),
                 (ag_catalog.agtype_to_json(properties)->>'target_id')

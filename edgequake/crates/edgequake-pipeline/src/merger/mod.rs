@@ -696,6 +696,7 @@ fn truncate_description(text: &str, max_length: usize) -> String {
 mod tests {
     use super::*;
     use crate::extractor::{ExtractedEntity, ExtractedRelationship};
+    use edgequake_storage::GraphStorageReadOps;
 
     #[test]
     fn test_normalize_entity_name() {
@@ -1185,6 +1186,76 @@ mod tests {
                 && config.description_similarity_threshold <= 1.0,
             "Similarity threshold must be in [0,1], got {}",
             config.description_similarity_threshold
+        );
+    }
+
+    /// Duplicate (source,target) across chunks / relation types must collapse to
+    /// one edge — AGE unique index is endpoint-only (ultrag.pdf native-write RCA).
+    #[tokio::test]
+    async fn test_relationship_endpoint_dedup_across_chunks() {
+        let graph = Arc::new(edgequake_storage::MemoryGraphStorage::new("rel-dedupe"));
+        let vector = Arc::new(edgequake_storage::MemoryVectorStorage::new("rel-dedupe", 4));
+        graph.initialize().await.unwrap();
+        vector.initialize().await.unwrap();
+
+        let merger = KnowledgeGraphMerger::new(MergerConfig::default(), graph.clone(), vector);
+
+        let mut r0 = crate::extractor::ExtractionResult::new("chunk-0");
+        r0.entities.push(ExtractedEntity {
+            name: "Alice".to_string(),
+            entity_type: "PERSON".to_string(),
+            description: "Alice".to_string(),
+            importance: 0.8,
+            source_spans: vec![],
+            source_chunk_ids: vec!["chunk-0".to_string()],
+            embedding: None,
+            source_document_id: None,
+            source_file_path: None,
+        });
+        r0.entities.push(ExtractedEntity {
+            name: "Bob".to_string(),
+            entity_type: "PERSON".to_string(),
+            description: "Bob".to_string(),
+            importance: 0.8,
+            source_spans: vec![],
+            source_chunk_ids: vec!["chunk-0".to_string()],
+            embedding: None,
+            source_document_id: None,
+            source_file_path: None,
+        });
+        r0.relationships.push(
+            ExtractedRelationship::new("Alice", "Bob", "KNOWS")
+                .with_description("knows")
+                .with_source_chunk_id("chunk-0"),
+        );
+
+        let mut r1 = crate::extractor::ExtractionResult::new("chunk-1");
+        r1.relationships.push(
+            ExtractedRelationship::new("Alice", "Bob", "WORKS_WITH")
+                .with_description("works with Alice and Bob — longer")
+                .with_weight(0.9)
+                .with_source_chunk_id("chunk-1"),
+        );
+
+        let stats = merger.merge(vec![r0, r1]).await.expect("merge must succeed");
+        assert_eq!(stats.errors, 0, "duplicate endpoints must not count as merge errors");
+        assert_eq!(
+            stats.relationships_created, 1,
+            "expected one edge after endpoint dedup, got {}",
+            stats.relationships_created
+        );
+
+        let edge = graph
+            .get_edge("ALICE", "BOB")
+            .await
+            .unwrap()
+            .expect("edge ALICE->BOB");
+        assert_eq!(
+            edge.properties
+                .get("relation_type")
+                .and_then(|v| v.as_str()),
+            Some("WORKS_WITH"),
+            "last-write-wins relation_type"
         );
     }
 }

@@ -27,6 +27,20 @@ SPEC-043 unified LLM model picker, server config, provider attribution, and Vert
 
 ---
 
+## [0.15.2] — 2026-07-10
+
+### Fixed
+
+- **Native AGE edge upsert cardinality crash** — With `EDGEQUAKE_NATIVE_GRAPH_WRITES=1`, ingesting documents that extract multiple relationships for the same `(source, target)` pair (cross-chunk / multi-type) failed with Postgres `ON CONFLICT DO UPDATE command cannot affect row a second time`, surfaced as `1 knowledge-graph merge error(s) during persist` (e.g. `ultrag.pdf`). Root cause: unique index `idx_edge_source_target_unique` is endpoint-only; relationship merge lacked entity-style within-batch dedup.
+
+### Changed
+
+- **Defense in depth (DRY / First Principles)** — Shared `graph_batch_dedupe` (last-write-wins) used by Postgres node/edge upserts; relationship merger collapses by endpoints before graph write; native SQL adds `DISTINCT ON` safety net.
+- **E2E** — Memory + Postgres native contracts for duplicate-endpoint batches; merger unit test for cross-chunk relationship dedup.
+- **Version parity** — `VERSION`, workspace `Cargo.toml`, `package.json`, README badge, and OpenAPI snapshot aligned to **0.15.2**.
+
+---
+
 ## [0.15.1] — 2026-07-09
 
 ### Fixed

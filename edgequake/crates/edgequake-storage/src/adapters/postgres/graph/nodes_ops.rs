@@ -123,6 +123,9 @@ impl PostgresAGEGraphStorage {
         // SPEC-034 IMP-01: Use native SQL path when feature flag is enabled.
         // WHY: Native SQL INSERT ON CONFLICT DO UPDATE with btree index is
         // O(log G) vs Cypher MERGE GIN scan which is O(G) — ~69× faster.
+        // First Principles: arbiter key is node_id — collapse duplicates first.
+        let nodes = crate::graph_batch_dedupe::dedupe_nodes_by_id(nodes);
+        let nodes = nodes.as_slice();
         if super::native_graph_writes_enabled() {
             return self.pg_upsert_nodes_batch_native(nodes).await;
         }
@@ -662,6 +665,9 @@ impl PostgresAGEGraphStorage {
         if nodes.is_empty() {
             return Ok(());
         }
+        // First Principles: arbiter key is node_id — collapse duplicates first.
+        let nodes = crate::graph_batch_dedupe::dedupe_nodes_by_id(nodes);
+        let nodes = nodes.as_slice();
         let start = std::time::Instant::now();
         // Mirror Cypher adaptive chunking — large unnest() statements lock longer
         // and risk statement-size / planner blowups on multi-thousand entity docs.
@@ -715,13 +721,21 @@ impl PostgresAGEGraphStorage {
         }
 
         // Conflict target matches idx_node_prop_node_id_unique (Migration 074/083).
+        // DISTINCT ON is a SQL safety net (same policy as edge native upsert).
         let sql = format!(
             r#"
             INSERT INTO {graph}."Node" (id, properties)
             SELECT
                 eq_next_node_id('{graph}'),
-                p.props_text::ag_catalog.agtype
-            FROM unnest($1::text[], $2::text[]) AS p(node_id_val, props_text)
+                d.props_text::ag_catalog.agtype
+            FROM (
+                SELECT DISTINCT ON (node_id_val)
+                    node_id_val,
+                    props_text
+                FROM unnest($1::text[], $2::text[])
+                       WITH ORDINALITY AS p(node_id_val, props_text, ord)
+                ORDER BY node_id_val, ord DESC
+            ) AS d
             ON CONFLICT (
                 (ag_catalog.agtype_to_json(properties)->>'node_id')
             )

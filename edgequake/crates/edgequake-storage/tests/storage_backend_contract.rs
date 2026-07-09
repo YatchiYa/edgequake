@@ -22,6 +22,13 @@ async fn memory_backend_graph_batch_upsert_contract() {
     graph_batch_contract::assert_graph_batch_upsert(&storage).await;
 }
 
+#[tokio::test]
+async fn memory_backend_graph_batch_upsert_dedupes_duplicate_endpoints() {
+    let storage = MemoryGraphStorage::new("contract-memory-dedupe");
+    storage.initialize().await.expect("initialize graph");
+    graph_batch_contract::assert_graph_batch_upsert_dedupes_duplicate_endpoints(&storage).await;
+}
+
 #[cfg(feature = "postgres")]
 #[path = "support/postgres_test_config.rs"]
 mod postgres_test_config;
@@ -59,5 +66,27 @@ mod postgres_contract {
         let storage = init_graph(config);
         storage.initialize().await.expect("initialize graph");
         graph_batch_contract::assert_graph_batch_upsert(&storage).await;
+    }
+
+    /// Reproduces ultrag.pdf failure mode: duplicate (source,target) in one
+    /// native ON CONFLICT batch must not raise cardinality_violation.
+    #[tokio::test]
+    async fn postgres_native_graph_batch_upsert_dedupes_duplicate_endpoints() {
+        let Some(config) = postgres_test_config::contract_postgres_config("graph_dedupe") else {
+            eprintln!("Skipping postgres native dedupe contract: DATABASE_URL/POSTGRES_PASSWORD not set");
+            return;
+        };
+
+        let original = std::env::var("EDGEQUAKE_NATIVE_GRAPH_WRITES").ok();
+        std::env::set_var("EDGEQUAKE_NATIVE_GRAPH_WRITES", "1");
+
+        let storage = init_graph(config);
+        storage.initialize().await.expect("initialize graph");
+        graph_batch_contract::assert_graph_batch_upsert_dedupes_duplicate_endpoints(&storage).await;
+
+        match original {
+            Some(v) => std::env::set_var("EDGEQUAKE_NATIVE_GRAPH_WRITES", v),
+            None => std::env::remove_var("EDGEQUAKE_NATIVE_GRAPH_WRITES"),
+        }
     }
 }
