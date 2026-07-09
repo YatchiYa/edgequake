@@ -76,6 +76,9 @@ pub async fn resolve_document_metadata_key(document_id: &str, kv: &Arc<dyn KVSto
 }
 
 /// Patch document metadata at the staging-first key (no-op when absent).
+///
+/// Reliability: refuses to mutate documents already in a terminal status so
+/// fire-and-forget progress callbacks cannot clobber `completed`/`failed`.
 pub async fn patch_document_metadata(
     kv: &Arc<dyn KVStorage>,
     document_id: &str,
@@ -92,6 +95,18 @@ pub async fn patch_document_metadata(
     let Some(mut obj) = existing.as_object().cloned() else {
         return Ok(());
     };
+    if obj
+        .get("status")
+        .and_then(|v| v.as_str())
+        .is_some_and(crate::document_metadata::is_terminal_document_status)
+    {
+        tracing::debug!(
+            document_id = %document_id,
+            status = obj.get("status").and_then(|v| v.as_str()).unwrap_or(""),
+            "Skipping metadata progress patch — document already terminal"
+        );
+        return Ok(());
+    }
     mutator(&mut obj);
     let updated = serde_json::Value::Object(obj);
     let write_key = key.clone();
@@ -170,6 +185,38 @@ mod tests {
             .await
             .unwrap()
             .is_none());
+    }
+
+    #[tokio::test]
+    async fn patch_skips_terminal_document() {
+        let kv: Arc<dyn KVStorage> = Arc::new(MemoryKVStorage::new("test"));
+        let doc_id = "doc-terminal-patch";
+        kv.upsert(&[(
+            kv_keys::doc_metadata(doc_id),
+            json!({
+                "id": doc_id,
+                "status": "completed",
+                "current_stage": "completed",
+                "stage_message": "done"
+            }),
+        )])
+        .await
+        .unwrap();
+
+        patch_document_metadata(&kv, doc_id, |updated| {
+            updated.insert("status".to_string(), json!("indexing"));
+            updated.insert("current_stage".to_string(), json!("storing"));
+        })
+        .await
+        .unwrap();
+
+        let meta = kv
+            .get_by_id(&kv_keys::doc_metadata(doc_id))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(meta["status"], "completed");
+        assert_eq!(meta["current_stage"], "completed");
     }
 
     #[tokio::test]

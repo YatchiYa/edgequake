@@ -9,6 +9,7 @@ use chrono::Utc;
 use tracing::debug;
 use uuid::Uuid;
 
+use crate::document_metadata::is_active_processing_status;
 use crate::error::{ApiError, ApiResult};
 use crate::handlers::documents_types::*;
 use crate::middleware::TenantContext;
@@ -17,11 +18,11 @@ use crate::state::AppState;
 
 use super::super::storage_helpers::cleanup_document_graph_data;
 
-/// Recover documents stuck in "processing" status.
+/// Recover documents stuck in active processing statuses.
 ///
-/// This endpoint finds documents that have been in "processing" status for longer
-/// than the specified threshold and requeues them for processing. This is useful
-/// for recovering from server restarts or crashes that left tasks in an incomplete state.
+/// Finds documents in any in-flight stage (`processing`, `indexing`, `storing`,
+/// `chunking`, …) older than the threshold and requeues them. Useful after
+/// server restarts or crashes that left tasks incomplete.
 #[utoipa::path(
     post,
     path = "/api/v1/documents/recover-stuck",
@@ -94,8 +95,13 @@ pub(crate) async fn run_recover_stuck(
             let title = obj.get("title").and_then(|v| v.as_str());
             let updated_at = obj.get("updated_at").and_then(|v| v.as_str());
 
-            // Check if document is stuck in processing
-            if status == Some("processing") {
+            // Any active pipeline stage can get stuck (not only legacy "processing").
+            if status.is_some_and(is_active_processing_status)
+                || obj
+                    .get("current_stage")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(is_active_processing_status)
+            {
                 // If specific document IDs provided, check if this one is in the list
                 if let Some(ref filter_ids) = request.document_ids {
                     if let Some(id) = doc_id {

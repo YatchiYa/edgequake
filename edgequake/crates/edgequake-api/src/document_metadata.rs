@@ -31,6 +31,23 @@ pub fn is_active_processing_status(status: &str) -> bool {
     )
 }
 
+/// Successful terminal statuses — progress patches must not overwrite these.
+///
+/// WHY: Graph-merge / chunk / embed progress is fire-and-forget (`tokio::spawn`).
+/// A late patch can land after `update_document_status_with_stats` wrote
+/// `completed`, forcing the document back to an in-flight stage forever.
+pub fn is_terminal_success_status(status: &str) -> bool {
+    matches!(
+        status.to_lowercase().as_str(),
+        "completed" | "indexed" | "partial_success"
+    )
+}
+
+/// Any terminal status (success or failure) that progress patches must not clobber.
+pub fn is_terminal_document_status(status: &str) -> bool {
+    is_terminal_success_status(status) || is_terminal_failure_status(status)
+}
+
 /// Prefer the fresher of two metadata snapshots when KV returns duplicates
 /// (e.g. staging + legacy final shell during in-flight ingestion).
 pub fn should_prefer_incoming_document_metadata(
@@ -195,5 +212,26 @@ mod tests {
             Some("pending"),
             Some("uploading"),
         ));
+    }
+
+    #[test]
+    fn terminal_success_statuses_are_recognized() {
+        assert!(is_terminal_success_status("completed"));
+        assert!(is_terminal_success_status("indexed"));
+        assert!(is_terminal_success_status("partial_success"));
+        assert!(is_terminal_success_status("COMPLETED"));
+        assert!(!is_terminal_success_status("indexing"));
+        assert!(!is_terminal_success_status("failed"));
+    }
+
+    #[test]
+    fn terminal_document_status_covers_success_and_failure() {
+        assert!(is_terminal_document_status("completed"));
+        assert!(is_terminal_document_status("indexed"));
+        assert!(is_terminal_document_status("failed"));
+        assert!(is_terminal_document_status("partial_failure"));
+        assert!(is_terminal_document_status("cancelled"));
+        assert!(!is_terminal_document_status("indexing"));
+        assert!(!is_terminal_document_status("storing"));
     }
 }

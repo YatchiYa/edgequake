@@ -406,9 +406,15 @@ impl PostgresAGEGraphStorage {
         );
 
         // ── Critical unique index for MERGE/ON CONFLICT performance ────────────
-        // WHY UNIQUE: Migration 074 replaced the plain btree with a UNIQUE index so
-        // that pg_upsert_nodes_batch_native() can use ON CONFLICT DO UPDATE.
-        // A UNIQUE btree still serves all read queries that used the old plain btree.
+        // WHY UNIQUE: Migration 074/083. Dedup first — CREATE UNIQUE fails on
+        // duplicates and leaves the graph without ON CONFLICT support (edge #3).
+        if let Err(e) = self.dedup_nodes_for_unique_index(&pool).await {
+            tracing::warn!(
+                graph = %self.graph_name,
+                error = %e,
+                "Bootstrap: node dedup before UNIQUE index failed (non-fatal)"
+            );
+        }
         let node_idx_name = "idx_node_prop_node_id_unique";
         let node_idx_sql = format!(
             r#"CREATE UNIQUE INDEX {concurrent} IF NOT EXISTS {name}
@@ -435,8 +441,14 @@ impl PostgresAGEGraphStorage {
         .unwrap_or(false);
 
         if edge_table_exists {
-            // WHY UNIQUE: Migration 074 created idx_edge_source_target_unique so that
-            // pg_upsert_edges_batch_native() can use ON CONFLICT DO UPDATE.
+            if let Err(e) = self.dedup_edges_for_unique_index(&pool).await {
+                tracing::warn!(
+                    graph = %self.graph_name,
+                    error = %e,
+                    "Bootstrap: edge dedup before UNIQUE index failed (non-fatal)"
+                );
+            }
+            // WHY UNIQUE: Migration 074/083 for pg_upsert_edges_batch_native ON CONFLICT.
             self.ensure_critical_index_concurrent(
                 &pool,
                 "idx_edge_source_target_unique",
@@ -458,6 +470,46 @@ impl PostgresAGEGraphStorage {
         Ok(())
     }
 
+    /// Dedup Node rows by node_id (keep max ctid) + drop NULL/empty node_id.
+    async fn dedup_nodes_for_unique_index(&self, pool: &sqlx::PgPool) -> Result<()> {
+        let graph = &self.graph_name;
+        let delete_null = format!(
+            r#"DELETE FROM {graph}."Node"
+               WHERE COALESCE(ag_catalog.agtype_to_json(properties)->>'node_id', '') = ''"#
+        );
+        sqlx::query(&delete_null).execute(pool).await.map_err(|e| {
+            StorageError::Database(format!("node null-id cleanup failed: {e}"))
+        })?;
+        let dedup = format!(
+            r#"DELETE FROM {graph}."Node"
+               WHERE ctid NOT IN (
+                 SELECT max(ctid) FROM {graph}."Node"
+                 GROUP BY ag_catalog.agtype_to_json(properties)->>'node_id'
+               )"#
+        );
+        sqlx::query(&dedup).execute(pool).await.map_err(|e| {
+            StorageError::Database(format!("node dedup failed: {e}"))
+        })?;
+        Ok(())
+    }
+
+    /// Dedup EDGE rows by (source_id, target_id), keep max ctid.
+    async fn dedup_edges_for_unique_index(&self, pool: &sqlx::PgPool) -> Result<()> {
+        let graph = &self.graph_name;
+        let dedup = format!(
+            r#"DELETE FROM {graph}."EDGE"
+               WHERE ctid NOT IN (
+                 SELECT max(ctid) FROM {graph}."EDGE"
+                 GROUP BY (ag_catalog.agtype_to_json(properties)->>'source_id'),
+                          (ag_catalog.agtype_to_json(properties)->>'target_id')
+               )"#
+        );
+        sqlx::query(&dedup).execute(pool).await.map_err(|e| {
+            StorageError::Database(format!("edge dedup failed: {e}"))
+        })?;
+        Ok(())
+    }
+
     /// Create or repair one critical index, handling INVALID state.
     async fn ensure_critical_index_concurrent(
         &self,
@@ -466,13 +518,16 @@ impl PostgresAGEGraphStorage {
         create_sql: &str,
         is_concurrent: bool,
     ) {
-        // Check if index exists and is valid
+        // Scope to this graph's schema — unqualified DROP can hit the wrong index
+        // when multiple AGE graphs share the same index name (edge case #15).
         let index_state: Option<bool> = sqlx::query_scalar(
-            "SELECT indisvalid FROM pg_index i
+            "SELECT i.indisvalid FROM pg_index i
              JOIN pg_class c ON c.oid = i.indexrelid
-             WHERE c.relname = $1",
+             JOIN pg_namespace n ON n.oid = c.relnamespace
+             WHERE c.relname = $1 AND n.nspname = $2",
         )
         .bind(index_name)
+        .bind(&self.graph_name)
         .fetch_optional(pool)
         .await
         .unwrap_or(None);
@@ -483,12 +538,15 @@ impl PostgresAGEGraphStorage {
                 return;
             }
             Some(false) => {
-                // INVALID index: drop it so we can rebuild
                 tracing::warn!(
                     index = %index_name,
+                    graph = %self.graph_name,
                     "Bootstrap: found INVALID index (interrupted build), dropping and rebuilding"
                 );
-                let drop_sql = format!("DROP INDEX CONCURRENTLY IF EXISTS {}", index_name);
+                let drop_sql = format!(
+                    r#"DROP INDEX CONCURRENTLY IF EXISTS "{}"."{}""#,
+                    self.graph_name, index_name
+                );
                 if let Err(e) = sqlx::query(&drop_sql).execute(pool).await {
                     tracing::warn!(
                         index = %index_name,
@@ -503,9 +561,6 @@ impl PostgresAGEGraphStorage {
             }
         }
 
-        // Run the CREATE INDEX [CONCURRENTLY] statement
-        // NOTE: CONCURRENTLY requires NOT being in a transaction block.
-        // We execute directly on the pool (not inside BEGIN/COMMIT).
         match sqlx::query(create_sql).execute(pool).await {
             Ok(_) => {
                 tracing::info!(

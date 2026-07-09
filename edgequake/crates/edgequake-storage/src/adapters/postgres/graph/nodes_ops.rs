@@ -659,13 +659,51 @@ impl PostgresAGEGraphStorage {
         &self,
         nodes: &[(String, HashMap<String, serde_json::Value>)],
     ) -> Result<()> {
+        if nodes.is_empty() {
+            return Ok(());
+        }
         let start = std::time::Instant::now();
+        // Mirror Cypher adaptive chunking — large unnest() statements lock longer
+        // and risk statement-size / planner blowups on multi-thousand entity docs.
+        let chunk_size = Self::adaptive_unwind_chunk_size(nodes);
 
+        for chunk in nodes.chunks(chunk_size) {
+            self.pg_upsert_nodes_batch_native_chunk(chunk).await?;
+        }
+
+        // Lazily create indexes (mirrors the Cypher path).
+        if !self.indexes_verified.load(Ordering::Relaxed) {
+            self.ensure_indexes().await?;
+            self.indexes_verified.store(true, Ordering::Relaxed);
+            tracing::info!("Created AGE indexes after first native node batch");
+        }
+
+        let elapsed = start.elapsed();
+        if elapsed.as_millis() > 500 {
+            tracing::warn!(
+                batch_size = nodes.len(),
+                chunk_size,
+                elapsed_ms = elapsed.as_millis(),
+                "SPEC-034 IMP-01: Native node batch upsert exceeded 500ms threshold"
+            );
+        }
+        tracing::debug!(
+            batch_size = nodes.len(),
+            chunk_size,
+            elapsed_ms = elapsed.as_millis(),
+            "SPEC-034 IMP-01: Native node batch upsert completed"
+        );
+
+        Ok(())
+    }
+
+    async fn pg_upsert_nodes_batch_native_chunk(
+        &self,
+        nodes: &[(String, HashMap<String, serde_json::Value>)],
+    ) -> Result<()> {
         let pool = self.pool.get().await?;
         let graph = &self.graph_name;
 
-        // Build parallel arrays: node_ids and serialised JSON property objects.
-        // node_id is injected into the property map so the agtype row is complete.
         let mut node_ids: Vec<String> = Vec::with_capacity(nodes.len());
         let mut props_json: Vec<String> = Vec::with_capacity(nodes.len());
 
@@ -676,17 +714,7 @@ impl PostgresAGEGraphStorage {
             props_json.push(serde_json::to_string(&full).unwrap_or_else(|_| "{}".to_string()));
         }
 
-        // unnest($1, $2) expands two parallel arrays into rows.
-        // eq_next_node_id generates a valid AGE graphid only for NEW rows;
-        // ON CONFLICT rows use the EXCLUDED alias (no new graphid consumed).
-        //
-        // WHY ::ag_catalog.agtype cast (not ::jsonb::agtype):
-        // AGE does not register a jsonb→agtype cast. The correct path is
-        // text→agtype via the agtype type's input function (agtype_in),
-        // accessible as `::ag_catalog.agtype`. Verified on AGE 1.6.0.
-        //
-        // The conflict target matches idx_node_prop_node_id_unique (Migration 074):
-        //   CREATE UNIQUE INDEX ... ON "Node" ((agtype_to_json(properties)->>'node_id'))
+        // Conflict target matches idx_node_prop_node_id_unique (Migration 074/083).
         let sql = format!(
             r#"
             INSERT INTO {graph}."Node" (id, properties)
@@ -711,27 +739,6 @@ impl PostgresAGEGraphStorage {
             .map_err(|e| {
                 StorageError::Database(format!("Native SQL node batch upsert failed: {e}"))
             })?;
-
-        // Lazily create indexes (mirrors the Cypher path).
-        if !self.indexes_verified.load(Ordering::Relaxed) {
-            self.ensure_indexes().await?;
-            self.indexes_verified.store(true, Ordering::Relaxed);
-            tracing::info!("Created AGE indexes after first native node batch");
-        }
-
-        let elapsed = start.elapsed();
-        if elapsed.as_millis() > 500 {
-            tracing::warn!(
-                batch_size = nodes.len(),
-                elapsed_ms = elapsed.as_millis(),
-                "SPEC-034 IMP-01: Native node batch upsert exceeded 500ms threshold"
-            );
-        }
-        tracing::debug!(
-            batch_size = nodes.len(),
-            elapsed_ms = elapsed.as_millis(),
-            "SPEC-034 IMP-01: Native node batch upsert completed"
-        );
 
         Ok(())
     }

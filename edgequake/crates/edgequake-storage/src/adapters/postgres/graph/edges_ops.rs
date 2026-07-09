@@ -327,12 +327,55 @@ impl PostgresAGEGraphStorage {
         &self,
         edges: &[(String, String, HashMap<String, serde_json::Value>)],
     ) -> Result<()> {
+        if edges.is_empty() {
+            return Ok(());
+        }
         let start = std::time::Instant::now();
+        let chunk_size = Self::adaptive_edge_chunk_size(edges);
+        let mut inserted_or_updated = 0u64;
+        let expected = edges.len() as u64;
 
+        for chunk in edges.chunks(chunk_size) {
+            inserted_or_updated += self.pg_upsert_edges_batch_native_chunk(chunk).await?;
+        }
+
+        // INNER JOIN drops edges whose endpoints are missing — surface that loudly.
+        if inserted_or_updated < expected {
+            tracing::warn!(
+                expected,
+                applied = inserted_or_updated,
+                dropped = expected.saturating_sub(inserted_or_updated),
+                "SPEC-034 IMP-01: Native edge upsert applied fewer rows than input — missing endpoint nodes?"
+            );
+        }
+
+        let elapsed = start.elapsed();
+        if elapsed.as_millis() > 800 {
+            tracing::warn!(
+                batch_size = edges.len(),
+                chunk_size,
+                elapsed_ms = elapsed.as_millis(),
+                "SPEC-034 IMP-01: Native edge batch upsert exceeded 800ms threshold"
+            );
+        }
+        tracing::debug!(
+            batch_size = edges.len(),
+            chunk_size,
+            applied = inserted_or_updated,
+            elapsed_ms = elapsed.as_millis(),
+            "SPEC-034 IMP-01: Native edge batch upsert completed"
+        );
+
+        Ok(())
+    }
+
+    async fn pg_upsert_edges_batch_native_chunk(
+        &self,
+        edges: &[(String, String, HashMap<String, serde_json::Value>)],
+    ) -> Result<u64> {
         let pool = self.pool.get().await?;
         let graph = &self.graph_name;
 
-        // Build parallel arrays: source_ids, target_ids, serialised JSON props.
         let mut source_ids: Vec<String> = Vec::with_capacity(edges.len());
         let mut target_ids: Vec<String> = Vec::with_capacity(edges.len());
         let mut props_json: Vec<String> = Vec::with_capacity(edges.len());
@@ -352,15 +395,7 @@ impl PostgresAGEGraphStorage {
             props_json.push(serde_json::to_string(&full).unwrap_or_else(|_| "{}".to_string()));
         }
 
-        // WHY ::ag_catalog.agtype (not ::jsonb::agtype):
-        // AGE has no registered jsonb→agtype cast. The correct path is
-        // text→agtype via agtype's input function (agtype_in).
-        // Verified: text::ag_catalog.agtype works in AGE 1.6.0.
-        //
-        // The conflict target matches idx_edge_source_target_unique (Migration 074):
-        //   CREATE UNIQUE INDEX ... ON "EDGE" (
-        //     (agtype_to_json(properties)->>'source_id'),
-        //     (agtype_to_json(properties)->>'target_id'))
+        // Conflict target matches idx_edge_source_target_unique (Migration 074/083).
         let sql = format!(
             r#"
             INSERT INTO {graph}."EDGE" (id, start_id, end_id, properties)
@@ -385,7 +420,7 @@ impl PostgresAGEGraphStorage {
             graph = graph
         );
 
-        sqlx::query(&sql)
+        let result = sqlx::query(&sql)
             .bind(&source_ids)
             .bind(&target_ids)
             .bind(&props_json)
@@ -395,20 +430,6 @@ impl PostgresAGEGraphStorage {
                 StorageError::Database(format!("Native SQL edge batch upsert failed: {e}"))
             })?;
 
-        let elapsed = start.elapsed();
-        if elapsed.as_millis() > 800 {
-            tracing::warn!(
-                batch_size = edges.len(),
-                elapsed_ms = elapsed.as_millis(),
-                "SPEC-034 IMP-01: Native edge batch upsert exceeded 800ms threshold"
-            );
-        }
-        tracing::debug!(
-            batch_size = edges.len(),
-            elapsed_ms = elapsed.as_millis(),
-            "SPEC-034 IMP-01: Native edge batch upsert completed"
-        );
-
-        Ok(())
+        Ok(result.rows_affected())
     }
 }

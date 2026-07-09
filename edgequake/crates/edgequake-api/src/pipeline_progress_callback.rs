@@ -197,53 +197,32 @@ impl PipelineProgressCallback {
             let handle = self.runtime_handle.clone();
 
             handle.spawn(async move {
-                let metadata_key =
-                    crate::services::document_metadata_scan::metadata_key_for_document(&doc_id);
-                match kv.get_by_id(&metadata_key).await {
-                    Ok(Some(existing)) => {
-                        if let Some(mut obj) = existing.as_object().cloned() {
-                            obj.insert(
-                                "stage_message".to_string(),
-                                serde_json::json!(stage_message),
-                            );
-                            obj.insert(
-                                "stage_progress".to_string(),
-                                serde_json::json!(stage_progress),
-                            );
-                            obj.insert(
-                                "updated_at".to_string(),
-                                serde_json::json!(chrono::Utc::now().to_rfc3339()),
-                            );
-
-                            let payload = serde_json::json!(obj);
-                            if let Err(e) = crate::services::upsert_metadata_kv_with_index(
-                                kv.as_ref(),
-                                &metadata_key,
-                                payload,
-                            )
-                            .await
-                            {
-                                tracing::warn!(
-                                    doc_id = %doc_id,
-                                    error = %e,
-                                    "Failed to upsert document metadata"
-                                );
-                            }
-                        }
-                    }
-                    Ok(None) => {
-                        tracing::warn!(
-                            doc_id = %doc_id,
-                            "Document metadata not found in KV for progress update"
+                // Staging-aware + terminal-status guard (DRY with text_insert_content).
+                if let Err(e) = crate::services::patch_document_metadata(
+                    &kv,
+                    &doc_id,
+                    |obj| {
+                        obj.insert(
+                            "stage_message".to_string(),
+                            serde_json::json!(stage_message),
                         );
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            doc_id = %doc_id,
-                            error = %e,
-                            "Failed to read document metadata from KV"
+                        obj.insert(
+                            "stage_progress".to_string(),
+                            serde_json::json!(stage_progress),
                         );
-                    }
+                        obj.insert(
+                            "updated_at".to_string(),
+                            serde_json::json!(chrono::Utc::now().to_rfc3339()),
+                        );
+                    },
+                )
+                .await
+                {
+                    tracing::warn!(
+                        doc_id = %doc_id,
+                        error = %e,
+                        "Failed to upsert document metadata progress"
+                    );
                 }
             });
         }

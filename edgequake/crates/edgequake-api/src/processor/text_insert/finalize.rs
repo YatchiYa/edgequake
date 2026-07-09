@@ -59,12 +59,9 @@ impl DocumentTaskProcessor {
         self.check_cancelled(&cancel_token, "pre-lineage", &document_id)
             .await?;
 
-        self.update_document_status_with_stats(&document_id, &final_status, &stats_with_lineage)
-            .await?;
-
-        // FIX-ISSUE-81 Phase 2: Dual-write document record to PostgreSQL (async path)
-        // WHY: Without this, async text/markdown uploads only write to KV storage.
-        // The PostgreSQL `documents` table stays incomplete, causing Dashboard KPI mismatch.
+        // FIX-ISSUE-81 / reliability: ensure the relational row exists BEFORE
+        // update_document_status_with_stats → refresh_relational_document_stats,
+        // otherwise the stats UPDATE affects 0 rows and relationship_count stays 0.
         #[cfg(feature = "postgres")]
         if let Some(ref pdf_storage) = self.pdf_storage {
             let text_content = persisted.prepared.text_content.clone();
@@ -86,7 +83,6 @@ impl DocumentTaskProcessor {
                         .and_then(|m| m.get("title"))
                         .and_then(|v| v.as_str())
                         .unwrap_or(&data.file_source);
-                    // Truncate content for summary field (first 500 chars)
                     let content_summary: String = text_content.chars().take(500).collect();
                     if let Err(e) = pdf_storage
                         .ensure_document_record(
@@ -113,6 +109,9 @@ impl DocumentTaskProcessor {
                 }
             }
         }
+
+        self.update_document_status_with_stats(&document_id, &final_status, &stats_with_lineage)
+            .await?;
 
         // OODA-06: Persist DocumentLineage to KV storage for lineage API queries
         // WHY: Without persistence, lineage data only exists in memory during processing
@@ -172,25 +171,37 @@ impl DocumentTaskProcessor {
             crate::handlers::workspaces::invalidate_workspace_stats_cache(workspace_uuid).await;
         }
 
-        // CHECKPOINT-CLEAR: All storage stages completed successfully.
-        // Remove the checkpoint so it won't be reloaded on next run.
-        // WHY: If we reach here, every piece of data is safely persisted.
-        // Keeping the checkpoint would waste storage and risk stale reloads.
-        super::pipeline_checkpoint::clear_pipeline_checkpoint(&self.kv_storage, &document_id).await;
+        // CHECKPOINT-CLEAR: only on successful terminal outcomes.
+        // WHY: Clearing on `failed` drops resume state before the user reprocesses.
+        if final_status == "completed" || final_status == "partial_failure" {
+            super::pipeline_checkpoint::clear_pipeline_checkpoint(
+                &self.kv_storage,
+                &document_id,
+            )
+            .await;
+        }
 
         // Log success
         self.pipeline_state
             .document_processed(&document_id, result.stats.entity_count)
             .await;
 
-        info!(
-            document_id = %document_id,
-            chunk_count = result.stats.chunk_count,
-            entity_count = result.stats.entity_count,
-            relationship_count = result.stats.relationship_count,
-            failed_chunks = result.stats.failed_chunks,
-            "Document processed successfully"
-        );
+        if final_status == "failed" {
+            warn!(
+                document_id = %document_id,
+                storage_error_count = persisted.storage_errors.len(),
+                "Document finalize completed with failed status"
+            );
+        } else {
+            info!(
+                document_id = %document_id,
+                chunk_count = result.stats.chunk_count,
+                entity_count = result.stats.entity_count,
+                relationship_count = result.stats.relationship_count,
+                failed_chunks = result.stats.failed_chunks,
+                "Document processed successfully"
+            );
+        }
 
         let outcome = if result.stats.failed_chunks > 0 {
             "partial"

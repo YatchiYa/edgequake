@@ -1,0 +1,143 @@
+-- ============================================================================
+-- Migration 083: Reconcile UNIQUE indexes for native graph writes (all AGE graphs)
+-- Version: 1.1.0 — 2026-07-09
+--
+-- SSOT body also at migrations/support/083/apply.sql (bootstrap every boot).
+-- ============================================================================
+
+-- ============================================================================
+-- SSOT: Native UNIQUE index reconcile for all AGE graphs (M074/M083).
+-- Invoked by:
+--   * migrations/083_age_native_unique_index_reconcile.sql (sqlx once)
+--   * migration_bootstrap::reconcile_migration_083 (every boot — new graphs)
+--
+-- Idempotent. Dedups before CREATE UNIQUE. Skips graphs without Node/EDGE.
+-- Also deletes Node rows with NULL/empty node_id (cannot participate in ON CONFLICT).
+-- ============================================================================
+
+DO $$
+DECLARE
+  v_graph      text;
+  v_dup_count  bigint;
+  v_null_count bigint;
+  v_node_uniq  text := 'idx_node_prop_node_id_unique';
+  v_old_btree  text := 'idx_node_prop_node_id_btree';
+  v_edge_uniq  text := 'idx_edge_source_target_unique';
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'age') THEN
+    RAISE NOTICE 'M083 reconcile: AGE not installed — skipping';
+    RETURN;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = 'ag_catalog') THEN
+    RAISE NOTICE 'M083 reconcile: ag_catalog missing — skipping';
+    RETURN;
+  END IF;
+
+  FOR v_graph IN
+    SELECT name FROM ag_catalog.ag_graph ORDER BY name
+  LOOP
+    RAISE NOTICE 'M083 reconcile: Processing graph: %', v_graph;
+
+    IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = v_graph AND tablename = 'Node') THEN
+      -- Drop unusable rows (NULL/empty node_id) — UNIQUE allows multiple NULLs
+      -- which breaks native ON CONFLICT semantics.
+      EXECUTE format(
+        'SELECT count(*) FROM %I."Node"'
+        ' WHERE COALESCE(ag_catalog.agtype_to_json(properties)->>''node_id'', '''') = ''''',
+        v_graph
+      ) INTO v_null_count;
+      IF v_null_count > 0 THEN
+        RAISE WARNING 'M083 reconcile: deleting % Node rows with NULL/empty node_id in %',
+                      v_null_count, v_graph;
+        EXECUTE format(
+          'DELETE FROM %I."Node"'
+          ' WHERE COALESCE(ag_catalog.agtype_to_json(properties)->>''node_id'', '''') = ''''',
+          v_graph
+        );
+      END IF;
+
+      EXECUTE format(
+        'SELECT count(*) FROM ('
+        '  SELECT 1 FROM %I."Node"'
+        '  GROUP BY ag_catalog.agtype_to_json(properties)->>''node_id'''
+        '  HAVING count(*) > 1'
+        ') t',
+        v_graph
+      ) INTO v_dup_count;
+
+      IF v_dup_count > 0 THEN
+        RAISE WARNING 'M083 reconcile: % duplicate node_id groups in %."Node" — deduplicating',
+                      v_dup_count, v_graph;
+        EXECUTE format(
+          'DELETE FROM %I."Node"'
+          ' WHERE ctid NOT IN ('
+          '   SELECT max(ctid) FROM %I."Node"'
+          '   GROUP BY ag_catalog.agtype_to_json(properties)->>''node_id'''
+          ' )',
+          v_graph, v_graph
+        );
+      END IF;
+
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_indexes WHERE schemaname = v_graph AND indexname = v_node_uniq
+      ) THEN
+        IF EXISTS (
+          SELECT 1 FROM pg_indexes WHERE schemaname = v_graph AND indexname = v_old_btree
+        ) THEN
+          EXECUTE format('DROP INDEX IF EXISTS %I.%I', v_graph, v_old_btree);
+        END IF;
+        EXECUTE format(
+          'CREATE UNIQUE INDEX %I ON %I."Node"'
+          ' ((ag_catalog.agtype_to_json(properties)->>''node_id''))',
+          v_node_uniq, v_graph
+        );
+        RAISE NOTICE 'M083 reconcile: Created % on %."Node"', v_node_uniq, v_graph;
+      END IF;
+
+      EXECUTE format('ANALYZE %I."Node"', v_graph);
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = v_graph AND tablename = 'EDGE') THEN
+      EXECUTE format(
+        'SELECT count(*) FROM ('
+        '  SELECT 1 FROM %I."EDGE"'
+        '  GROUP BY (ag_catalog.agtype_to_json(properties)->>''source_id''),'
+        '           (ag_catalog.agtype_to_json(properties)->>''target_id'')'
+        '  HAVING count(*) > 1'
+        ') t',
+        v_graph
+      ) INTO v_dup_count;
+
+      IF v_dup_count > 0 THEN
+        RAISE WARNING 'M083 reconcile: % duplicate edge groups in %."EDGE" — deduplicating',
+                      v_dup_count, v_graph;
+        EXECUTE format(
+          'DELETE FROM %I."EDGE"'
+          ' WHERE ctid NOT IN ('
+          '   SELECT max(ctid) FROM %I."EDGE"'
+          '   GROUP BY (ag_catalog.agtype_to_json(properties)->>''source_id''),'
+          '            (ag_catalog.agtype_to_json(properties)->>''target_id'')'
+          ' )',
+          v_graph, v_graph
+        );
+      END IF;
+
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_indexes WHERE schemaname = v_graph AND indexname = v_edge_uniq
+      ) THEN
+        EXECUTE format(
+          'CREATE UNIQUE INDEX %I ON %I."EDGE" ('
+          '  (ag_catalog.agtype_to_json(properties)->>''source_id''),'
+          '  (ag_catalog.agtype_to_json(properties)->>''target_id'')'
+          ')',
+          v_edge_uniq, v_graph
+        );
+        RAISE NOTICE 'M083 reconcile: Created % on %."EDGE"', v_edge_uniq, v_graph;
+      END IF;
+
+      EXECUTE format('ANALYZE %I."EDGE"', v_graph);
+    END IF;
+  END LOOP;
+
+  RAISE NOTICE 'M083 reconcile: COMPLETE';
+END $$;
