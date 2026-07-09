@@ -283,6 +283,41 @@ export interface DocumentImpactResponse {
 }
 
 // ============================================================================
+// Document graph lineage (GET /lineage/documents/:id)
+// ============================================================================
+
+export interface EntitySummaryResponse {
+  name: string;
+  entity_type: string;
+  source_chunks: string[];
+  is_shared: boolean;
+}
+
+export interface RelationshipSummaryResponse {
+  source: string;
+  target: string;
+  keywords: string;
+  source_chunks: string[];
+}
+
+export interface ExtractionStatsResponse {
+  total_entities: number;
+  unique_entities: number;
+  total_relationships: number;
+  unique_relationships: number;
+  processing_time_ms?: number | null;
+}
+
+/** Graph lineage summary for a single document (AGE-scoped entities/edges). */
+export interface DocumentGraphLineageResponse {
+  document_id: string;
+  chunk_count: number;
+  entities: EntitySummaryResponse[];
+  relationships: RelationshipSummaryResponse[];
+  extraction_stats: ExtractionStatsResponse;
+}
+
+// ============================================================================
 // Graph Visualization Types
 // ============================================================================
 

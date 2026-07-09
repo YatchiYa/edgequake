@@ -15,7 +15,7 @@ import { useCallback } from "react";
  * - handleDocumentDoubleClick: Navigate to document detail page
  * - handleViewDetails: Navigate to document detail page (button action)
  * - handlePreviewClose: Close preview panel and clear selection
- * - handleViewInGraph: Navigate to graph view with entity filter
+ * - handleViewInGraph: Navigate to graph view scoped to document entities
  * - handleViewPdf: Open PDF viewer dialog or fallback to detail page
  */
 
@@ -39,7 +39,7 @@ export interface UseDocumentHandlersReturn {
   handleViewDetails: (doc: Document) => void;
   /** Close preview panel and clear selection */
   handlePreviewClose: () => void;
-  /** Navigate to graph view with entity filter */
+  /** Navigate to graph view scoped to this document's entities */
   handleViewInGraph: (doc: Document) => void;
   /** Open PDF viewer dialog or fallback to detail page */
   handleViewPdf: (doc: Document) => void;
@@ -91,10 +91,10 @@ export function useDocumentHandlers({
     setPreviewPanelOpen(false);
   }, [setSelectedDocument, setPreviewPanelOpen]);
 
-  /** Navigate to graph view with entity filter */
+  /** Navigate to graph view scoped to this document's entities */
   const handleViewInGraph = useCallback(
     (doc: Document) => {
-      router.push(`/graph?entity=${encodeURIComponent(doc.id)}`);
+      router.push(`/graph?document=${encodeURIComponent(doc.id)}`);
     },
     [router],
   );

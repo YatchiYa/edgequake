@@ -424,6 +424,7 @@ mod tests {
                 migrations_applied: 15,
                 last_applied_at: Some("2025-01-26T10:00:00Z".to_string()),
                 source_ids_indexes: None,
+                halfvec_conversion_applied: None,
             }),
             providers: None,
             pdf_storage_enabled: None,
@@ -444,6 +445,7 @@ mod tests {
             migrations_applied: 14,
             last_applied_at: None,
             source_ids_indexes: None,
+            halfvec_conversion_applied: None,
         };
         let json = serde_json::to_string(&schema).unwrap();
         assert!(json.contains("\"latest_version\":14"));

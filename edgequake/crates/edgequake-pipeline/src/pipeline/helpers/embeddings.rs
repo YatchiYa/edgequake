@@ -798,7 +798,9 @@ mod tests {
         assert!(super::is_transient_embedding_error(
             "Mistral embeddings API error (429 Too Many Requests)"
         ));
-        assert!(super::is_transient_embedding_error("service unavailable 503"));
+        assert!(super::is_transient_embedding_error(
+            "service unavailable 503"
+        ));
         assert!(!super::is_transient_embedding_error(
             "Too many inputs in request (400)"
         ));

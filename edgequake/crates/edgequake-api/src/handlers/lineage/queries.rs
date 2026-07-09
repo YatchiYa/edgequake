@@ -220,6 +220,7 @@ pub async fn get_entity_lineage(
 )]
 pub async fn get_document_lineage(
     State(storage): State<StorageRuntime>,
+    #[cfg(feature = "postgres")] State(pg_runtime): State<crate::state::PostgresRuntime>,
     tenant_ctx: TenantContext,
     Path(document_id): Path<String>,
 ) -> ApiResult<Json<DocumentGraphLineageResponse>> {
@@ -281,6 +282,33 @@ pub async fn get_document_lineage(
             keywords,
             source_chunks: doc_sources,
         });
+    }
+
+    #[cfg(feature = "postgres")]
+    if entities.is_empty() {
+        if let Some(pool) = pg_runtime.pool.as_ref() {
+            match crate::services::postgres_chunk_lineage::load_document_lineage_from_chunk_links(
+                pool,
+                &tenant_ctx,
+                &document_id,
+                storage.graph_storage.as_ref(),
+            )
+            .await
+            {
+                Ok((link_entities, link_relationships)) if !link_entities.is_empty() => {
+                    entities = link_entities;
+                    relationships = link_relationships;
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::warn!(
+                        document_id = %document_id,
+                        error = %e,
+                        "chunk link lineage fallback failed"
+                    );
+                }
+            }
+        }
     }
 
     Ok(Json(DocumentGraphLineageResponse {

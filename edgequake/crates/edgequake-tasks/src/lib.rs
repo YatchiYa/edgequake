@@ -95,8 +95,7 @@ pub use delivery::{
 };
 pub use error::{TaskError, TaskResult};
 pub use ingestion_reliability::{
-    classify_ingestion_failure, failure_step, is_permanent_ingestion_failure,
-    IngestionFailureClass,
+    classify_ingestion_failure, failure_step, is_permanent_ingestion_failure, IngestionFailureClass,
 };
 pub use pipeline_state::{PipelineEvent, PipelineMessage, PipelineState, PipelineStatusSnapshot};
 pub use progress::{PdfUploadProgress, PhaseError, PhaseProgress, PhaseStatus, PipelinePhase};

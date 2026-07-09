@@ -35,8 +35,7 @@ pub async fn sync_document_failed_on_orphan_heartbeat(
         return Ok(());
     };
 
-    let metadata_key =
-        crate::services::resolve_document_metadata_key(&document_id, &kv).await;
+    let metadata_key = crate::services::resolve_document_metadata_key(&document_id, &kv).await;
 
     let existing = kv
         .get_by_id(&metadata_key)
@@ -47,10 +46,7 @@ pub async fn sync_document_failed_on_orphan_heartbeat(
         return Ok(());
     };
 
-    let status = obj
-        .get("status")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let status = obj.get("status").and_then(|v| v.as_str()).unwrap_or("");
     if is_terminal_failure_status(status) {
         return Ok(());
     }

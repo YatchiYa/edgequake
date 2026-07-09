@@ -647,14 +647,14 @@ pub fn readiness_blockers(report: &Option<MigrationBootstrapReport>) -> Vec<Stri
 pub fn readiness_operator_action(report: &Option<MigrationBootstrapReport>) -> Option<String> {
     let r = report.as_ref()?;
     if r.migration_038.is_degraded() {
-        return r.migration_038.operator_action.clone().or_else(|| {
-            Some("apply_038.sh --concurrent for large graphs".to_string())
-        });
+        return r
+            .migration_038
+            .operator_action
+            .clone()
+            .or_else(|| Some("apply_038.sh --concurrent for large graphs".to_string()));
     }
     if r.migration_042.is_degraded() {
-        return Some(
-            "Upgrade pgvector to >= 0.8 and restart backend (make db-start)".to_string(),
-        );
+        return Some("Upgrade pgvector to >= 0.8 and restart backend (make db-start)".to_string());
     }
     None
 }

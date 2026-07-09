@@ -48,10 +48,7 @@ impl IngestionFailureClass {
     pub fn is_permanent(self) -> bool {
         matches!(
             self,
-            Self::CircuitBreaker
-                | Self::DocumentTooLarge
-                | Self::EmbeddingLimit
-                | Self::GraphMerge
+            Self::CircuitBreaker | Self::DocumentTooLarge | Self::EmbeddingLimit | Self::GraphMerge
         )
     }
 }
@@ -102,7 +99,9 @@ pub fn classify_ingestion_failure(error_msg: &str) -> IngestionFailureClass {
 /// True when the error will not resolve by retrying the same request.
 pub fn is_permanent_ingestion_failure(error_msg: &str) -> bool {
     classify_ingestion_failure(error_msg).is_permanent()
-        || error_msg.to_ascii_lowercase().contains("invalid_request_prompt")
+        || error_msg
+            .to_ascii_lowercase()
+            .contains("invalid_request_prompt")
 }
 
 /// Map failure class to task pipeline step for structured errors.

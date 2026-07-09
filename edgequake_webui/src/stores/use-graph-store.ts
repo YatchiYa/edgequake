@@ -135,6 +135,9 @@ interface GraphState {
   depth: number; // Traversal depth (default: 2)
   startNode: string | null; // Focus on specific node neighborhood
 
+  /** When set, graph loads document-scoped subgraph via /lineage/documents/:id */
+  documentFilterId: string | null;
+
   // Truncation info from server
   isTruncated: boolean;
   totalNodesInStorage: number;
@@ -209,6 +212,7 @@ interface GraphActions {
   setMaxNodes: (maxNodes: number) => void;
   setDepth: (depth: number) => void;
   setStartNode: (nodeId: string | null) => void;
+  setDocumentFilterId: (documentId: string | null) => void;
   setTruncationInfo: (
     isTruncated: boolean,
     totalNodes: number,
@@ -260,6 +264,7 @@ const initialState: GraphState = {
   maxNodes: 200, // Reduced from 500 for faster initial load
   depth: 2,
   startNode: null,
+  documentFilterId: null,
   isTruncated: false,
   totalNodesInStorage: 0,
   totalEdgesInStorage: 0,
@@ -891,6 +896,10 @@ export const useGraphStore = create<GraphStore>()((set, get) => ({
 
   setStartNode: (nodeId: string | null) => {
     set({ startNode: nodeId });
+  },
+
+  setDocumentFilterId: (documentId: string | null) => {
+    set({ documentFilterId: documentId });
   },
 
   setTruncationInfo: (

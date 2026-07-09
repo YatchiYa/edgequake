@@ -94,9 +94,7 @@ pub use keywords::{
 };
 pub use mix_weights::MixWeightOverride;
 pub use modes::QueryMode;
-pub use query_reliability::{
-    classify_query_failure, query_failure_diagnostic, QueryFailureClass,
-};
+pub use query_reliability::{classify_query_failure, query_failure_diagnostic, QueryFailureClass};
 pub use tokenizer::{MockTokenizer, SimpleTokenizer, Tokenizer};
 pub use truncation::{
     balance_context, truncate_chunks, truncate_entities, truncate_relationships, TruncationConfig,
