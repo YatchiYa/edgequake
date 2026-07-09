@@ -56,6 +56,53 @@ async fn upsert_metadata_with_wsdoc_index(
         .map_err(|e| edgequake_tasks::TaskError::Storage(e.to_string()))
 }
 
+pub(crate) fn graph_merge_progress_message(
+    sub_phase_label: &str,
+    entities_processed: usize,
+    entities_total: usize,
+    relationships_processed: usize,
+    relationships_total: usize,
+) -> String {
+    if entities_total > 0 || relationships_total > 0 {
+        format!(
+            "Storing in knowledge graph — {} ({}/{} entities, {}/{} relationships)",
+            sub_phase_label,
+            entities_processed,
+            entities_total,
+            relationships_processed,
+            relationships_total
+        )
+    } else {
+        format!("Storing in knowledge graph — {}...", sub_phase_label)
+    }
+}
+
+/// Fire-and-forget KV stage_message update during graph merge (reprocess + PDF).
+pub(crate) async fn patch_document_indexing_progress(
+    kv: std::sync::Arc<dyn edgequake_storage::traits::KVStorage>,
+    document_id: &str,
+    stage_message: &str,
+) {
+    let metadata_key =
+        crate::services::resolve_document_metadata_key(document_id, &kv).await;
+    let Ok(Some(existing)) = kv.get_by_id(&metadata_key).await else {
+        return;
+    };
+    let Some(obj) = existing.as_object() else {
+        return;
+    };
+    let mut updated = obj.clone();
+    updated.insert("status".to_string(), json!("indexing"));
+    updated.insert("current_stage".to_string(), json!("storing"));
+    updated.insert("stage_message".to_string(), json!(stage_message));
+    updated.insert(
+        "updated_at".to_string(),
+        json!(chrono::Utc::now().to_rfc3339()),
+    );
+    apply_status_notice_fields(&mut updated, "indexing", Some(stage_message));
+    let _ = upsert_metadata_with_wsdoc_index(&kv, &metadata_key, json!(updated)).await;
+}
+
 impl DocumentTaskProcessor {
     /// Update document metadata status.
     ///

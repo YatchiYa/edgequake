@@ -47,6 +47,7 @@ export function ProcessingStatusSummary({
   const extraQueuedTasks = orphanQueuedTaskCount(
     pipelineStatus.queued_tasks,
     waitingCount,
+    activeCount,
   );
   const totalWaiting = waitingCount + extraQueuedTasks;
 
