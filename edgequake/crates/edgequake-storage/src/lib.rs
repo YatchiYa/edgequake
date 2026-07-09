@@ -69,6 +69,7 @@ pub mod entity_reconcile;
 pub mod error;
 pub mod kv_key_schema;
 pub mod metadata_filter_sql;
+pub mod original_storage;
 pub mod pdf_storage;
 pub mod traits;
 pub mod vector_id;
@@ -96,6 +97,9 @@ pub use document_metadata_integrity::{
 };
 
 // Re-export PDF storage types
+pub use original_storage::{
+    validate_original_data, DocumentOriginal, DocumentOriginalStorage, StoreOriginalRequest,
+};
 pub use pdf_storage::{
     calculate_pdf_checksum, validate_pdf_data, CreatePdfRequest, DocumentStatsUpdate,
     ExtractionMethod, ListPdfFilter, PdfDocument, PdfDocumentStorage, PdfList, PdfProcessingStatus,
@@ -116,15 +120,16 @@ pub use traits::{
 
 // Re-export adapters
 pub use adapters::memory::{
-    MemoryConversationStorage, MemoryGraphStorage, MemoryKVStorage, MemoryPdfStorage,
-    MemoryVectorStorage, MemoryWorkspaceVectorRegistry,
+    MemoryConversationStorage, MemoryGraphStorage, MemoryKVStorage, MemoryOriginalStorage,
+    MemoryPdfStorage, MemoryVectorStorage, MemoryWorkspaceVectorRegistry,
 };
 
 // Conditionally export PostgreSQL adapters
 #[cfg(feature = "postgres")]
 pub use adapters::postgres::{
     PgVectorStorage, PgWorkspaceVectorRegistry, PostgresAGEGraphStorage, PostgresConfig,
-    PostgresConversationStorage, PostgresKVStorage, PostgresPdfStorage, PostgresPool,
+    PostgresConversationStorage, PostgresKVStorage, PostgresOriginalStorage, PostgresPdfStorage,
+    PostgresPool,
 };
 
 // Re-export KV key schema for use across all crates

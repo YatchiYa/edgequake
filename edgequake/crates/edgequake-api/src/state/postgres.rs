@@ -361,6 +361,9 @@ impl AppState {
         // Create PDF storage (SPEC-007) - uses the connection pool
         let pdf_storage: Arc<dyn edgequake_storage::PdfDocumentStorage> =
             Arc::new(edgequake_storage::PostgresPdfStorage::new(pool.clone()));
+        let original_storage: Arc<dyn edgequake_storage::DocumentOriginalStorage> = Arc::new(
+            edgequake_storage::PostgresOriginalStorage::new(pool.clone()),
+        );
 
         let storage = StorageRuntime {
             kv_storage: Arc::clone(&kv_storage) as Arc<dyn edgequake_storage::traits::KVStorage>,
@@ -371,6 +374,7 @@ impl AppState {
                 as Arc<dyn edgequake_storage::traits::GraphStorage>,
             auth_memory: Arc::new(crate::services::auth_memory_store::AuthMemoryStore::new()),
             pdf_storage: Some(pdf_storage),
+            original_storage: Some(original_storage),
             mode: StorageMode::PostgreSQL,
         };
         storage.validate_postgres_adapters()?;

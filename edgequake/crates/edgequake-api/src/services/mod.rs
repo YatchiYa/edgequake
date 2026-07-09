@@ -18,6 +18,8 @@ pub mod document_graph_cascade;
 pub mod document_graph_lineage;
 pub mod document_metadata_repair;
 pub mod document_metadata_scan;
+#[cfg(feature = "postgres")]
+pub mod document_original_persist;
 pub mod document_reingest;
 pub mod document_task_cleanup;
 pub mod document_vector_storage;
@@ -95,6 +97,8 @@ pub use document_graph_lineage::{
     build_document_graph_lineage, entity_summary_from_node, relationship_summary_from_edge,
     DocumentGraphLineageBuild,
 };
+#[cfg(feature = "postgres")]
+pub use document_original_persist::{persist_uploaded_original, should_store_original};
 pub use document_reingest::{
     delete_document_for_reingestion, resolve_workspace_duplicate_for_reingestion,
     DuplicateReingestAction,

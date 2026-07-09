@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { ResizablePanel } from '@/components/ui/resizable-panel';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { DocumentDownloadMenu } from '@/components/documents/document-download-menu';
 import { getDocument, getPdfContent, getPdfDownloadUrl } from '@/lib/api/edgequake';
 import { getEffectiveErrorMessage } from '@/lib/utils/document-status';
 import { useTenantStore } from '@/stores/use-tenant-store';
@@ -18,7 +19,6 @@ import {
     ArrowLeft,
     ChevronLeft,
     ChevronRight,
-    Download,
     Loader2,
     Network,
     RefreshCw,
@@ -316,13 +316,11 @@ export default function DocumentViewPage() {
                 Cancelled
               </Badge>
             )}
-            {isPdfDocument && pdfIdForViewer && (
-              <Button variant="ghost" size="sm" className="h-8" asChild>
-                <a href={getPdfDownloadUrl(pdfIdForViewer)} target="_blank" rel="noopener noreferrer">
-                  <Download className="h-3.5 w-3.5" />
-                </a>
-              </Button>
-            )}
+            <DocumentDownloadMenu
+              document={documentWithContent}
+              markdownContent={documentWithContent.content}
+              variant="icon"
+            />
             <Button variant="ghost" size="sm" className="h-8" onClick={handleViewInGraph}>
               <Network className="h-3.5 w-3.5" />
             </Button>

@@ -165,7 +165,20 @@
       "reprocess": "重新处理",
       "delete": "删除",
       "viewInGraph": "在图谱中查看",
-      "cancel": "取消提取"
+      "cancel": "取消提取",
+      "copyId": "复制 ID",
+      "viewPdf": "查看 PDF"
+    },
+    "download": {
+      "title": "下载",
+      "original": "下载原始文件",
+      "markdown": "下载 Markdown",
+      "originalStarted": "原始文件下载已开始",
+      "markdownStarted": "Markdown 下载已开始",
+      "originalFailed": "原始文件下载失败",
+      "markdownFailed": "Markdown 下载失败",
+      "originalUnavailable": "此文档类型未存储原始文件",
+      "markdownUnavailable": "Markdown 内容尚不可用"
     },
     "cancel": {
       "success": "文档处理已取消",

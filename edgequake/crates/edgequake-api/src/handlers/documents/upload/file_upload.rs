@@ -16,6 +16,8 @@ use crate::handlers::documents::upload::{
     GleaningAdmissionOptions, MultipartUploadFields, ADMISSION_ACCEPTED_STATUS,
 };
 use crate::handlers::documents_types::*;
+#[cfg(feature = "postgres")]
+use crate::services::persist_uploaded_original;
 use crate::services::resolve_upload_content;
 use axum_extra::extract::Multipart;
 
@@ -88,7 +90,7 @@ pub async fn upload_file(
     let resolved =
         resolve_upload_content(&state, tenant_ctx.workspace_id_uuid(), &filename, &content).await?;
     let text_content = resolved.text_content;
-    let mime_type = resolved.mime_type;
+    let mime_type = resolved.mime_type.clone();
     let upload_meta = resolved.meta;
 
     let content_hash = ContentHasher::hash_bytes(&content);
@@ -101,7 +103,7 @@ pub async fn upload_file(
             text_content,
             title: filename.clone(),
             source_type: upload_meta.source_type,
-            mime_type: Some(mime_type),
+            mime_type: Some(resolved.mime_type),
             raw_byte_size: content.len(),
             content_hash: content_hash.clone(),
             custom_metadata: metadata,
@@ -136,6 +138,25 @@ pub async fn upload_file(
             }),
         )),
         DocumentAdmissionOutcome::Accepted(accepted) => {
+            #[cfg(feature = "postgres")]
+            if let Err(e) = persist_uploaded_original(
+                &state,
+                &tenant_ctx,
+                &accepted.document_id,
+                &filename,
+                &mime_type,
+                upload_meta.source_type,
+                &content,
+            )
+            .await
+            {
+                tracing::warn!(
+                    document_id = %accepted.document_id,
+                    error = %e,
+                    "Failed to persist uploaded original bytes"
+                );
+            }
+
             let tenant_for_audit = tenant_ctx
                 .tenant_id
                 .clone()

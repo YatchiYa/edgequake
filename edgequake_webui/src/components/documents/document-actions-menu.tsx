@@ -7,6 +7,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { DocumentDownloadMenu } from './document-download-menu';
 import type { Document } from '@/types';
 import { Copy, Eye, MoreVertical, RefreshCw, StopCircle, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -92,6 +93,8 @@ export function DocumentActionsMenu({
             {t('documents.actions.viewPdf', 'View PDF')}
           </DropdownMenuItem>
         )}
+
+        <DocumentDownloadMenu document={doc} variant="submenu" />
 
         {/* Reset status option for failed documents */}
         {showReset && (
