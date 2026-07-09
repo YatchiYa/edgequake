@@ -15,6 +15,11 @@ fn apply_status_notice_fields(
                 "recommended_action".to_string(),
                 json!(failure.recommended_action()),
             );
+            let workspace = metadata
+                .get("workspace_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+            edgequake_observability::record_ingestion_failure(failure.as_str(), workspace);
         } else {
             metadata.insert("warning_message".to_string(), json!(msg));
             // Scrub legacy informational errors that would render as Failed in the WebUI.
@@ -49,6 +54,102 @@ async fn upsert_metadata_with_wsdoc_index(
     crate::services::upsert_metadata_kv_with_index(kv.as_ref(), metadata_key, value)
         .await
         .map_err(|e| edgequake_tasks::TaskError::Storage(e.to_string()))
+}
+
+pub(crate) fn graph_merge_progress_message(
+    sub_phase_label: &str,
+    entities_processed: usize,
+    entities_total: usize,
+    relationships_processed: usize,
+    relationships_total: usize,
+) -> String {
+    if entities_total > 0 || relationships_total > 0 {
+        format!(
+            "Storing in knowledge graph — {} ({}, {})",
+            sub_phase_label,
+            format_merge_counter("entities", entities_processed, entities_total),
+            format_merge_counter(
+                "relationships",
+                relationships_processed,
+                relationships_total
+            ),
+        )
+    } else {
+        format!("Storing in knowledge graph — {}...", sub_phase_label)
+    }
+}
+
+/// Fraction of graph-merge work complete (entities + relationships weighted equally).
+pub(crate) fn graph_merge_progress_fraction(
+    entities_processed: usize,
+    entities_total: usize,
+    relationships_processed: usize,
+    relationships_total: usize,
+) -> f32 {
+    let total = entities_total.saturating_add(relationships_total);
+    if total == 0 {
+        return 0.0;
+    }
+    let done = entities_processed.saturating_add(relationships_processed);
+    (done as f32 / total as f32).clamp(0.0, 1.0)
+}
+
+fn format_merge_counter(label: &str, processed: usize, total: usize) -> String {
+    if total == 0 {
+        return format!("{label}: —");
+    }
+    let pct = processed.saturating_mul(100) / total.max(1);
+    format!("{processed}/{total} {label} ({pct}%)")
+}
+
+/// Patch document KV with merge progress message + fractional stage_progress.
+pub(crate) async fn patch_document_graph_merge_progress(
+    kv: std::sync::Arc<dyn edgequake_storage::traits::KVStorage>,
+    document_id: &str,
+    progress: &edgequake_pipeline::MergeProgress,
+) {
+    let msg = graph_merge_progress_message(
+        progress.phase.label(),
+        progress.entities_processed,
+        progress.entities_total,
+        progress.relationships_processed,
+        progress.relationships_total,
+    );
+    let fraction = graph_merge_progress_fraction(
+        progress.entities_processed,
+        progress.entities_total,
+        progress.relationships_processed,
+        progress.relationships_total,
+    );
+    patch_document_indexing_progress_with_fraction(kv, document_id, &msg, Some(fraction)).await;
+}
+
+async fn patch_document_indexing_progress_with_fraction(
+    kv: std::sync::Arc<dyn edgequake_storage::traits::KVStorage>,
+    document_id: &str,
+    stage_message: &str,
+    stage_progress: Option<f32>,
+) {
+    let metadata_key = crate::services::resolve_document_metadata_key(document_id, &kv).await;
+    let Ok(Some(existing)) = kv.get_by_id(&metadata_key).await else {
+        return;
+    };
+    let Some(obj) = existing.as_object() else {
+        return;
+    };
+    let mut updated = obj.clone();
+    updated.insert("status".to_string(), json!("indexing"));
+    updated.insert("current_stage".to_string(), json!("storing"));
+    updated.insert("stage_message".to_string(), json!(stage_message));
+    if let Some(progress) = stage_progress {
+        updated.insert("stage_progress".to_string(), json!(progress));
+    }
+    updated.insert(
+        "updated_at".to_string(),
+        json!(chrono::Utc::now().to_rfc3339()),
+    );
+    apply_status_notice_fields(&mut updated, "indexing", Some(stage_message));
+    let _ = upsert_metadata_with_wsdoc_index(&kv, &metadata_key, json!(updated)).await;
 }
 
 impl DocumentTaskProcessor {

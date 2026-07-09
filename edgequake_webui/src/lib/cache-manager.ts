@@ -20,6 +20,7 @@
 "use client";
 
 import type { QueryClient } from "@tanstack/react-query";
+import { useGraphStore } from "@/stores/use-graph-store";
 
 const CACHE_VERSION_KEY = "edgequake-cache-version";
 const CACHE_VERSION = "v1.0.0"; // Increment this to force cache clear
@@ -188,4 +189,18 @@ export function forceCacheClear(queryClient: QueryClient): void {
   if (typeof window !== "undefined") {
     localStorage.removeItem(CACHE_VERSION_KEY);
   }
+}
+
+/**
+ * Invalidate graph queries and reset the Zustand visualization store.
+ * WHY: Document delete clears backend graph data but the graph page keeps
+ * stale nodes in memory until workspace changes or stream restarts.
+ */
+export function invalidateKnowledgeGraph(queryClient: QueryClient): void {
+  const store = useGraphStore.getState();
+  store.clearGraphForStreaming();
+  store.bumpGraphResetToken();
+  queryClient.invalidateQueries({ queryKey: ["graph"] });
+  queryClient.invalidateQueries({ queryKey: ["entities"] });
+  queryClient.invalidateQueries({ queryKey: ["knowledge-graph"] });
 }

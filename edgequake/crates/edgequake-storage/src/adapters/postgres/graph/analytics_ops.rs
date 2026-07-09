@@ -163,29 +163,13 @@ impl PostgresAGEGraphStorage {
             StorageError::Connection(format!("Failed to acquire connection: {}", e))
         })?;
 
-        let escaped = Self::escape_sql_string(prefix);
-        let chunk = Self::escape_sql_string(&format!("{prefix}-chunk-"));
-        let props = "ag_catalog.agtype_to_json(v.properties)";
+        let props = format!("({})::jsonb", "ag_catalog.agtype_to_json(v.properties)");
+        let match_clause = super::helpers::jsonb_matches_doc_source_prefix(&props, prefix);
         let sql = format!(
             "SELECT count(*)::BIGINT FROM {graph}.\"_ag_label_vertex\" v \
-             WHERE ({props}::jsonb)->>'source_id' LIKE '{esc}%' \
-                OR ({props}::jsonb)->>'source_id' LIKE '%|{esc}%' \
-                OR ({props}::jsonb)->>'source_id' LIKE '{chunk}%' \
-                OR ({props}::jsonb)->>'source_id' LIKE '%|{chunk}%' \
-                OR EXISTS ( \
-                    SELECT 1 FROM jsonb_array_elements_text( \
-                        CASE \
-                            WHEN jsonb_typeof({props}::jsonb->'source_ids') = 'array' \
-                            THEN {props}::jsonb->'source_ids' \
-                            ELSE '[]'::jsonb \
-                        END \
-                    ) src \
-                    WHERE src LIKE '{esc}%' OR src LIKE '{chunk}%' OR src = '{esc}' \
-                )",
+             WHERE {match_clause}",
             graph = self.graph_name,
-            props = props,
-            esc = escaped,
-            chunk = chunk
+            match_clause = match_clause,
         );
 
         let count: i64 = sqlx::query_scalar(&sql)

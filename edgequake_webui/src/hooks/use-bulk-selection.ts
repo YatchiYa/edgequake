@@ -25,7 +25,7 @@ import type { Document } from "@/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
+import { invalidateKnowledgeGraph } from "@/lib/cache-manager";
 
 /**
  * Options for useBulkSelection hook.
@@ -198,16 +198,37 @@ export function useBulkSelection({
     setIsBulkDeleting(true);
     let successCount = 0;
     let errorCount = 0;
+    let lastError: string | undefined;
+
+    const toastId = toast.loading(
+      t("documents.bulk.deleting", "Deleting {{count}} document(s)…", {
+        count: idsToDelete.length,
+      }),
+    );
 
     try {
-      for (const id of idsToDelete) {
+      for (let i = 0; i < idsToDelete.length; i++) {
+        const id = idsToDelete[i];
+        toast.loading(
+          t("documents.bulk.deleteProgress", "Deleting {{current}} of {{total}}…", {
+            current: i + 1,
+            total: idsToDelete.length,
+          }),
+          { id: toastId },
+        );
         try {
           await deleteDocument(id);
           successCount++;
-        } catch {
+        } catch (err) {
           errorCount++;
+          lastError =
+            err instanceof Error
+              ? err.message
+              : t("common.unknownError", "Unknown error");
         }
       }
+
+      toast.dismiss(toastId);
 
       if (successCount > 0) {
         toast.success(
@@ -215,11 +236,15 @@ export function useBulkSelection({
             `Deleted ${successCount} document(s)`,
         );
         queryClient.invalidateQueries({ queryKey: ["documents"] });
+        invalidateKnowledgeGraph(queryClient);
       }
       if (errorCount > 0) {
         toast.error(
           t("documents.bulk.deleteFailed", { count: errorCount }) ||
             `Failed to delete ${errorCount} document(s)`,
+          {
+            description: lastError,
+          },
         );
       }
     } finally {

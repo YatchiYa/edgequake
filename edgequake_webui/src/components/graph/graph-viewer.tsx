@@ -31,6 +31,8 @@ import {
     SheetTitle,
 } from '@/components/ui/sheet';
 import { useGraphExpansion } from '@/hooks/use-graph-expansion';
+import { useGraphDocumentScope } from '@/hooks/use-graph-document-scope';
+import { useGraphDocumentFilterUrl } from '@/hooks/use-graph-document-filter';
 import { useGraphKeyboardNavigation } from '@/hooks/use-graph-keyboard-navigation';
 import { useGraphStream } from '@/hooks/use-graph-stream';
 import { useMediaQuery } from '@/hooks/use-media-query';
@@ -50,6 +52,7 @@ import { BookmarksPanel } from './bookmarks-panel';
 import { EntityBrowserPanel } from './entity-browser-panel';
 import { GraphAccessibilityAnnouncer } from './graph-accessibility-announcer';
 import { GraphControls } from './graph-controls';
+import { GraphDocumentFilterBar } from './graph-document-filter-bar';
 import { GraphExport } from './graph-export';
 import { GraphFilters } from './graph-filters';
 import { GraphLegend } from './graph-legend';
@@ -69,6 +72,18 @@ import { TruncationBanner, TruncationIndicator } from './truncation-banner';
 import { ZoomControls } from './zoom-controls';
 
 export function GraphViewer() {
+  const { documentFilterId, setDocumentFilter } = useGraphDocumentFilterUrl();
+  const isDocumentScopedRef = useRef(!!documentFilterId);
+  isDocumentScopedRef.current = !!documentFilterId;
+
+  const {
+    isDocumentScoped,
+    isLoading: isLineageLoading,
+    isError: isLineageError,
+    error: lineageError,
+    refetch: refetchLineage,
+  } = useGraphDocumentScope(documentFilterId);
+
   // Responsive breakpoints
   const isMobile = useMediaQuery('(max-width: 640px)');
   const isTablet = useMediaQuery('(min-width: 641px) and (max-width: 1024px)');
@@ -156,6 +171,7 @@ export function GraphViewer() {
   const setUseStreaming = useGraphStore((s) => s.setUseStreaming);
   const addNodesToGraph = useGraphStore((s) => s.addNodesToGraph);
   const clearGraphForStreaming = useGraphStore((s) => s.clearGraphForStreaming);
+  const graphResetToken = useGraphStore((s) => s.graphResetToken);
   const setStreamingProgress = useGraphStore((s) => s.setStreamingProgress);
   const resetStreamingProgress = useGraphStore((s) => s.resetStreamingProgress);
 
@@ -172,8 +188,14 @@ export function GraphViewer() {
 
     if (streamMode === '1' || streamMode === 'true') {
       setUseStreaming(true);
+      return;
     }
-  }, [searchParams, setUseStreaming]);
+
+    // Document scope always uses lineage subgraph — never stream the full graph.
+    if (isDocumentScoped) {
+      setUseStreaming(false);
+    }
+  }, [searchParams, setUseStreaming, isDocumentScoped]);
   
   // Streaming hook for progressive graph loading
   const {
@@ -188,6 +210,7 @@ export function GraphViewer() {
     maxNodes,
     startNode: startNode || undefined,
     onMetadata: (metadata) => {
+      if (isDocumentScopedRef.current) return;
       // Clear existing graph when new streaming starts
       clearGraphForStreaming();
       setStreamingProgress({
@@ -197,6 +220,7 @@ export function GraphViewer() {
       });
     },
     onNodesBatch: (nodes, batchNumber, totalBatches) => {
+      if (isDocumentScopedRef.current) return;
       // Progressively add nodes to graph
       addNodesToGraph(nodes, []);
       setStreamingProgress({
@@ -207,6 +231,7 @@ export function GraphViewer() {
       });
     },
     onEdges: (edges) => {
+      if (isDocumentScopedRef.current) return;
       // Add all edges at once
       addNodesToGraph([], edges);
       setStreamingProgress({
@@ -215,6 +240,7 @@ export function GraphViewer() {
       });
     },
     onComplete: (stats) => {
+      if (isDocumentScopedRef.current) return;
       setStreamingProgress({
         phase: 'complete',
         durationMs: stats.duration_ms,
@@ -247,7 +273,6 @@ export function GraphViewer() {
     },
   });
 
-  // Standard query for non-streaming mode (fallback)
   const { data, isLoading: isQueryLoading, isError, error, refetch } = useQuery({
     queryKey: ['graph', selectedTenantId, selectedWorkspaceId, maxNodes, depth, startNode],
     queryFn: () => getGraph({ 
@@ -257,11 +282,15 @@ export function GraphViewer() {
     }),
     staleTime: 5 * 60 * 1000, // 5 minutes - longer cache for better perf
     refetchOnWindowFocus: false, // Disable auto-refetch for better performance
-    enabled: !useStreaming, // Disable when streaming is enabled
+    enabled: !useStreaming && !isDocumentScoped, // Full graph only when not document-scoped
   });
 
   // Combined loading state
-  const isLoading = useStreaming ? isStreaming : isQueryLoading;
+  const isLoading = isDocumentScoped
+    ? isLineageLoading
+    : useStreaming
+      ? isStreaming
+      : isQueryLoading;
   
   // WHY: When streaming is enabled but the useEffect hasn't fired yet to call
   // startStream(), isStreaming is false and allNodes is empty. Without this check,
@@ -270,7 +299,7 @@ export function GraphViewer() {
   // GraphViewer just mounted but streaming hasn't initialized.
   // The !selectedTenantId || !selectedWorkspaceId check covers the race condition
   // where the first stream call happens before tenant/workspace context is available.
-  const isStreamingInitializing = useStreaming && !isStreaming && allNodes.length === 0 
+  const isStreamingInitializing = useStreaming && !isDocumentScoped && !isStreaming && allNodes.length === 0 
     && !isError && (
       !selectedTenantId || !selectedWorkspaceId 
       || streamingProgress.phase === 'idle' 
@@ -289,6 +318,7 @@ export function GraphViewer() {
   // WHY: Ref to prevent React StrictMode double-render from causing duplicate stream starts
   const streamingInitializedRef = useRef(false);
   const lastStreamParamsRef = useRef<string>("");
+  const lastStreamScopeRef = useRef<string>("");
   
   // WHY: Track previous workspace/tenant to detect changes.
   // When workspace changes, the Zustand store still holds old nodes/edges from
@@ -300,6 +330,7 @@ export function GraphViewer() {
     const currentKey = `${selectedTenantId ?? ""}-${selectedWorkspaceId ?? ""}`;
     if (prevWorkspaceKeyRef.current !== "" && prevWorkspaceKeyRef.current !== currentKey) {
       clearGraphForStreaming();
+      setDocumentFilter(null);
       // WHY: Show loading overlay immediately with contextual message.
       // The 800ms minimum guarantees users see feedback even for fast/empty workspaces.
       setIsWorkspaceTransitioning(true);
@@ -312,33 +343,44 @@ export function GraphViewer() {
     }
     prevWorkspaceKeyRef.current = currentKey;
     return () => { if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current); };
-  }, [selectedTenantId, selectedWorkspaceId, clearGraphForStreaming]);
+  }, [selectedTenantId, selectedWorkspaceId, clearGraphForStreaming, setDocumentFilter]);
 
   // Start streaming when in streaming mode
   useEffect(() => {
+    if (isDocumentScoped || documentFilterId) {
+      streamingInitializedRef.current = false;
+      if (isStreaming) {
+        cancelStream();
+      }
+      return;
+    }
+
     if (!useStreaming) {
       streamingInitializedRef.current = false;
       return;
     }
     
     // WHY: Create param key to detect if we need to restart stream
-    const paramKey = `${selectedTenantId}-${selectedWorkspaceId}-${maxNodes}-${startNode || ""}`;
+    const streamScopeKey = `${selectedTenantId}-${selectedWorkspaceId}-${maxNodes}-${startNode || ""}`;
+    const paramKey = `${streamScopeKey}-${graphResetToken}`;
     
     // WHY: Skip if already initialized with same params (prevents duplicate calls)
     if (streamingInitializedRef.current && lastStreamParamsRef.current === paramKey) {
       return;
     }
     
-    // WHY: Clear stale graph data IMMEDIATELY when params change.
-    // Without this, nodes/edges from a previous workspace or query remain visible
-    // until the new stream's onMetadata callback fires (which can take seconds).
-    // This is the root cause of "stale data from previous execution" bug.
-    if (lastStreamParamsRef.current !== "" && lastStreamParamsRef.current !== paramKey) {
+    // WHY: Clear stale graph data when workspace/query scope changes — not when only
+    // graphResetToken bumps (document delete already cleared via invalidateKnowledgeGraph).
+    if (
+      lastStreamScopeRef.current !== "" &&
+      lastStreamScopeRef.current !== streamScopeKey
+    ) {
       clearGraphForStreaming();
     }
     
     streamingInitializedRef.current = true;
     lastStreamParamsRef.current = paramKey;
+    lastStreamScopeRef.current = streamScopeKey;
     resetStreamingProgress();
     startStream();
     
@@ -351,10 +393,15 @@ export function GraphViewer() {
     };
     // Only re-run when these key params change
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [useStreaming, selectedTenantId, selectedWorkspaceId, maxNodes, startNode]);
+  }, [useStreaming, isDocumentScoped, documentFilterId, selectedTenantId, selectedWorkspaceId, maxNodes, startNode, graphResetToken]);
 
   // Handle refetch for both modes
   const handleRefetch = useCallback(() => {
+    if (isDocumentScoped) {
+      clearGraphForStreaming();
+      refetchLineage();
+      return;
+    }
     if (useStreaming) {
       cancelStream();
       resetStreamingProgress();
@@ -363,11 +410,11 @@ export function GraphViewer() {
     } else {
       refetch();
     }
-  }, [useStreaming, cancelStream, resetStreamingProgress, clearGraphForStreaming, startStream, refetch]);
+  }, [isDocumentScoped, useStreaming, cancelStream, resetStreamingProgress, clearGraphForStreaming, startStream, refetch, refetchLineage]);
 
   // Set graph data from non-streaming query (when streaming is disabled)
   useEffect(() => {
-    if (data && !useStreaming) {
+    if (data && !useStreaming && !isDocumentScoped) {
       setGraph(data);
       // Update truncation info from server response
       setTruncationInfo(
@@ -376,17 +423,20 @@ export function GraphViewer() {
         data.total_edges ?? data.edges.length
       );
     }
-  }, [data, setGraph, setTruncationInfo, useStreaming]);
+  }, [data, setGraph, setTruncationInfo, useStreaming, isDocumentScoped]);
 
   useEffect(() => {
     setLoading(effectiveIsLoading);
   }, [effectiveIsLoading, setLoading]);
 
   useEffect(() => {
-    if (error) {
-      setError(error instanceof Error ? error.message : 'Failed to load graph');
+    const activeError = isDocumentScoped ? lineageError : error;
+    if (activeError) {
+      setError(activeError instanceof Error ? activeError.message : 'Failed to load graph');
+    } else if (!isDocumentScoped && !error) {
+      setError(null);
     }
-  }, [error, setError]);
+  }, [error, lineageError, isDocumentScoped, setError]);
 
   const handleZoomIn = () => {
     if (sigmaInstance) {
@@ -496,12 +546,25 @@ export function GraphViewer() {
   }, [queryClient]);
 
   const selectedNode = allNodes.find((n) => n.id === selectedNodeId);
+  const graphMetadata = useGraphStore((s) => s.graph?.metadata);
+  const headerNodeCount = isDocumentScoped
+    ? allNodes.length
+    : (graphMetadata?.node_count ?? data?.metadata?.node_count ?? allNodes.length);
+  const headerEdgeCount = isDocumentScoped
+    ? allEdges.length
+    : (graphMetadata?.edge_count ?? data?.metadata?.edge_count ?? allEdges.length);
 
-  // Combine error states from both streaming and non-streaming modes
-  const hasError = isError || (streamingError && !isStreaming);
-  const errorMessage = error instanceof Error 
-    ? error.message 
-    : streamingError?.message || 'Failed to load knowledge graph';
+  // Combine error states from streaming, full-graph, and document-scoped modes
+  const hasError = isDocumentScoped
+    ? isLineageError
+    : isError || (streamingError && !isStreaming);
+  const errorMessage = isDocumentScoped
+    ? (lineageError instanceof Error
+        ? lineageError.message
+        : 'Failed to load document graph')
+    : (error instanceof Error
+        ? error.message
+        : streamingError?.message || 'Failed to load knowledge graph');
 
   if (hasError && allNodes.length === 0) {
     return (
@@ -549,9 +612,9 @@ export function GraphViewer() {
               {isMobile ? 'Graph' : 'Knowledge Graph'}
             </h2>
             {effectiveIsLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
-            {data?.metadata && !isMobile && (
+            {!isMobile && (headerNodeCount > 0 || headerEdgeCount > 0 || !isDocumentScoped) && (
               <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-md">
-                {data.metadata.node_count.toLocaleString()} nodes · {data.metadata.edge_count.toLocaleString()} edges
+                {headerNodeCount.toLocaleString()} nodes · {headerEdgeCount.toLocaleString()} edges
               </span>
             )}
           </div>
@@ -606,6 +669,12 @@ export function GraphViewer() {
           </div>
         </header>
 
+        <GraphDocumentFilterBar
+          documentId={documentFilterId}
+          onDocumentChange={setDocumentFilter}
+          disabled={effectiveIsLoading}
+        />
+
         {/* Graph Canvas - bg-background ensures proper theme in fullscreen */}
         {/* WHY: role="application" tells screen readers this is an interactive app */}
         <div 
@@ -626,16 +695,30 @@ export function GraphViewer() {
                 <div className="w-48 h-40 mx-auto mb-6">
                   <GraphEmptyIllustration animate={true} />
                 </div>
-                <h3 className="text-lg font-medium">No knowledge graph yet</h3>
-                <p className="text-sm text-muted-foreground mt-2 mb-6">
-                  Your knowledge graph is empty. Upload documents to automatically extract entities and relationships.
-                </p>
-                <Button
-                  onClick={() => window.location.href = '/documents'}
-                >
-                  <Upload className="h-4 w-4 mr-2" />
-                  Upload Documents
-                </Button>
+                {isDocumentScoped ? (
+                  <>
+                    <h3 className="text-lg font-medium">No entities from this document</h3>
+                    <p className="text-sm text-muted-foreground mt-2 mb-6">
+                      This document has no extracted entities yet. Processing may still be in progress, or extraction produced no graph data.
+                    </p>
+                    <Button variant="outline" onClick={() => setDocumentFilter(null)}>
+                      Show full graph
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="text-lg font-medium">No knowledge graph yet</h3>
+                    <p className="text-sm text-muted-foreground mt-2 mb-6">
+                      Your knowledge graph is empty. Upload documents to automatically extract entities and relationships.
+                    </p>
+                    <Button
+                      onClick={() => window.location.href = '/documents'}
+                    >
+                      <Upload className="h-4 w-4 mr-2" />
+                      Upload Documents
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
           ) : filteredNodes.length === 0 ? (
@@ -646,7 +729,7 @@ export function GraphViewer() {
                 </div>
                 <h3 className="text-lg font-medium">No visible nodes</h3>
                 <p className="text-sm text-muted-foreground mt-2">
-                  All node types are hidden. Use the legend below to show node categories.
+                  All entity types are hidden. Use <strong>Show All</strong> in the filters panel or click a type to show it again.
                 </p>
               </div>
             </div>
@@ -813,47 +896,45 @@ export function GraphViewer() {
                 </Button>
               </div>
 
-              {/* Panel Content - Full height scroll */}
-              <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:block!" showShadows>
-                <div className="px-4 py-4 space-y-5 overflow-hidden">
-                  {/* Node Details - Primary content when selected */}
-                  {selectedNode && showNodeDetails && (
-                    <NodeDetails node={selectedNode} />
-                  )}
+              {/* Node details (scrollable when tall) + filters that fill remaining height */}
+              <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+                <div className="shrink-0 max-h-[40%] overflow-y-auto border-b border-border/40">
+                  <div className="px-4 py-4 space-y-3">
+                    {selectedNode && showNodeDetails && (
+                      <NodeDetails node={selectedNode} />
+                    )}
 
-                  {/* Show details button when panel is hidden but node is selected */}
-                  {selectedNode && !showNodeDetails && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full h-8 text-xs"
-                      onClick={toggleNodeDetails}
-                    >
-                      Show Node Details
-                    </Button>
-                  )}
+                    {selectedNode && !showNodeDetails && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full h-8 text-xs"
+                        onClick={toggleNodeDetails}
+                      >
+                        Show Node Details
+                      </Button>
+                    )}
 
-                  {/* Empty state when no node selected */}
-                  {!selectedNode && (
-                    <div className="py-8 text-center px-4">
-                      <div className="w-10 h-10 mx-auto mb-3 rounded-full bg-muted/50 flex items-center justify-center">
-                        <Network className="h-5 w-5 text-muted-foreground/40" />
+                    {!selectedNode && (
+                      <div className="py-4 text-center px-2">
+                        <div className="w-9 h-9 mx-auto mb-2 rounded-full bg-muted/50 flex items-center justify-center">
+                          <Network className="h-4 w-4 text-muted-foreground/40" />
+                        </div>
+                        <p className="text-xs font-medium text-muted-foreground mb-1">
+                          Select a node
+                        </p>
+                        <p className="text-[11px] text-muted-foreground/70 leading-relaxed">
+                          Click any node to explore its connections and sources
+                        </p>
                       </div>
-                      <p className="text-xs font-medium text-muted-foreground mb-1">
-                        Select a node
-                      </p>
-                      <p className="text-[11px] text-muted-foreground/70 leading-relaxed">
-                        Click any node to explore its connections, relationships, and source documents
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Filters Section */}
-                  <div className="pt-4 border-t">
-                    <GraphFilters />
+                    )}
                   </div>
                 </div>
-              </ScrollArea>
+
+                <div className="flex-1 min-h-0 px-4 py-3">
+                  <GraphFilters fillHeight />
+                </div>
+              </div>
             </div>
           </ResizablePanel>
         )
@@ -904,9 +985,9 @@ export function GraphViewer() {
                 </div>
               )}
 
-              {/* Filters Section */}
-              <div className="pt-3 border-t">
-                <GraphFilters />
+              {/* Filters Section — fill remaining drawer height */}
+              <div className="pt-3 border-t min-h-[50vh]">
+                <GraphFilters fillHeight />
               </div>
             </div>
           </ScrollArea>

@@ -31,7 +31,7 @@ export function EntityRelationStats({
   const router = useRouter();
 
   const handleViewInGraph = () => {
-    router.push(`/graph?highlight=${documentId}`);
+    router.push(`/graph?document=${encodeURIComponent(documentId)}`);
   };
 
   return (

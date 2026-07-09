@@ -6,6 +6,7 @@
 
 use axum::extract::State;
 use axum::http::StatusCode;
+use axum::response::IntoResponse;
 use edgequake_api::handlers::health::readiness_check;
 use edgequake_api::state::migration_bootstrap::{
     Migration038Report, Migration042Report, Migration043Report, Migration044Report,
@@ -14,7 +15,7 @@ use edgequake_api::state::migration_bootstrap::{
     Migration053Report, Migration054Report, Migration055Report, Migration056Report,
     Migration057Report, Migration058Report, Migration059Report, Migration060Report,
     Migration061Report, Migration062Report, Migration063Report, Migration064Report,
-    Migration065Report, MigrationBootstrapReport,
+    Migration065Report, Migration080Report, Migration081Report, MigrationBootstrapReport,
 };
 use edgequake_api::AppState;
 
@@ -140,23 +141,31 @@ fn degraded_bootstrap_report() -> MigrationBootstrapReport {
             marker_present: true,
             apply_executed: false,
         },
+        migration_080: Migration080Report {
+            halfvec_conversion_applied: false,
+            apply_executed: false,
+        },
+        migration_081: Migration081Report {
+            age_rls_applied: false,
+            apply_executed: false,
+            skipped_age_version: false,
+        },
     }
 }
 
 #[tokio::test]
 async fn migration_readiness_proof_ok_when_no_postgres_bootstrap() {
     let state = AppState::test_state();
-    assert_eq!(readiness_check(State(state)).await, StatusCode::OK);
+    let response = readiness_check(State(state)).await.into_response();
+    assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[tokio::test]
 async fn migration_readiness_proof_503_when_migration_038_degraded() {
     let mut state = AppState::test_state();
     state.migration_bootstrap = Some(degraded_bootstrap_report());
-    assert_eq!(
-        readiness_check(State(state)).await,
-        StatusCode::SERVICE_UNAVAILABLE
-    );
+    let response = readiness_check(State(state)).await.into_response();
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
 }
 
 #[tokio::test]
@@ -168,5 +177,6 @@ async fn migration_readiness_proof_ok_when_indexes_ready() {
     report.migration_038.deferred_large_graphs.clear();
     report.migration_038.operator_action = None;
     state.migration_bootstrap = Some(report);
-    assert_eq!(readiness_check(State(state)).await, StatusCode::OK);
+    let response = readiness_check(State(state)).await.into_response();
+    assert_eq!(response.status(), StatusCode::OK);
 }

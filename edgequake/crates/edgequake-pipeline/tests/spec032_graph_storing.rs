@@ -277,6 +277,84 @@ async fn w04_progress_reports_correct_entity_totals() {
     assert!(finalizing.is_some(), "Finalizing phase must be emitted");
 }
 
+/// SPEC-045: Relationship merge emits incremental progress (not frozen at 0/N).
+#[tokio::test]
+async fn w04_progress_increments_during_relationship_merge() {
+    let graph = Arc::new(MemoryGraphStorage::new("spec032-rel-progress"));
+    let vector = Arc::new(MemoryVectorStorage::new("spec032-rel-progress", EMBED_DIM));
+    graph.initialize().await.unwrap();
+    vector.initialize().await.unwrap();
+
+    let mut config = MergerConfig::default();
+    config.use_llm_summarization = false;
+
+    let merger = KnowledgeGraphMerger::new(config, graph.clone(), vector.clone());
+
+    const N_REL: usize = 130;
+    let progress_snapshots: Arc<Mutex<Vec<MergeProgress>>> = Arc::new(Mutex::new(Vec::new()));
+    let snapshots_clone = Arc::clone(&progress_snapshots);
+
+    let cb: MergeProgressCallback = Box::new(move |p: MergeProgress| {
+        snapshots_clone.lock().unwrap().push(p.clone());
+    });
+
+    let mut result = ExtractionResult::new("c-0");
+    result.entities.push(make_entity("Anchor", "c-0"));
+    for i in 0..N_REL {
+        result.relationships.push(make_relation(
+            &format!("Anchor"),
+            &format!("Target{i}"),
+            "c-0",
+        ));
+    }
+
+    merger
+        .merge_with_progress(vec![result], Some(&cb))
+        .await
+        .unwrap();
+
+    let rel_snaps: Vec<MergeProgress> = progress_snapshots
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|s| s.phase == MergePhase::RelationshipGraph)
+        .cloned()
+        .collect();
+
+    assert!(
+        rel_snaps.len() >= 3,
+        "Expected chunked relationship progress emissions, got {}",
+        rel_snaps.len()
+    );
+
+    let max_processed = rel_snaps
+        .iter()
+        .map(|s| s.relationships_processed)
+        .max()
+        .unwrap_or(0);
+    assert_eq!(
+        max_processed, N_REL,
+        "relationships_processed should reach total"
+    );
+
+    let mut prev = 0usize;
+    for snap in &rel_snaps {
+        assert!(
+            snap.relationships_processed >= prev,
+            "relationship progress must be monotonic"
+        );
+        prev = snap.relationships_processed;
+    }
+
+    let mid = rel_snaps
+        .iter()
+        .find(|s| s.relationships_processed > 0 && s.relationships_processed < N_REL);
+    assert!(
+        mid.is_some(),
+        "Expected at least one mid-merge snapshot between 0 and {N_REL}"
+    );
+}
+
 /// SPEC-032 W-04: merge() (no callback) still works correctly after refactor.
 #[tokio::test]
 async fn w04_merge_without_callback_still_works() {

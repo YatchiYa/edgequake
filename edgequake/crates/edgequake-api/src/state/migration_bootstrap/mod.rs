@@ -254,6 +254,8 @@ pub struct MigrationBootstrapReport {
     pub migration_063: Migration063Report,
     pub migration_064: Migration064Report,
     pub migration_065: Migration065Report,
+    pub migration_080: Migration080Report,
+    pub migration_081: Migration081Report,
 }
 
 /// Post-sqlx status for migration 038 indexes.
@@ -599,6 +601,64 @@ impl Migration065Report {
     }
 }
 
+/// Post-sqlx status for migration 080 halfvec conversion (SPEC-042-E).
+#[derive(Debug, Clone)]
+pub struct Migration080Report {
+    pub halfvec_conversion_applied: bool,
+    pub apply_executed: bool,
+}
+
+impl Migration080Report {
+    pub fn is_degraded(&self) -> bool {
+        false
+    }
+}
+
+/// Post-sqlx status for migration 081 AGE graph RLS (SPEC-042-E).
+#[derive(Debug, Clone)]
+pub struct Migration081Report {
+    pub age_rls_applied: bool,
+    pub apply_executed: bool,
+    pub skipped_age_version: bool,
+}
+
+impl Migration081Report {
+    pub fn is_degraded(&self) -> bool {
+        false
+    }
+}
+
+/// Collect readiness blocker IDs for `/ready` JSON (SPEC-045 SRE-M03).
+pub fn readiness_blockers(report: &Option<MigrationBootstrapReport>) -> Vec<String> {
+    let Some(r) = report else {
+        return Vec::new();
+    };
+    let mut blockers = Vec::new();
+    if r.migration_038.is_degraded() {
+        blockers.push("migration_038".to_string());
+    }
+    if r.migration_042.is_degraded() {
+        blockers.push("migration_042".to_string());
+    }
+    blockers
+}
+
+/// Operator-facing remediation hint for the first readiness blocker.
+pub fn readiness_operator_action(report: &Option<MigrationBootstrapReport>) -> Option<String> {
+    let r = report.as_ref()?;
+    if r.migration_038.is_degraded() {
+        return r
+            .migration_038
+            .operator_action
+            .clone()
+            .or_else(|| Some("apply_038.sh --concurrent for large graphs".to_string()));
+    }
+    if r.migration_042.is_degraded() {
+        return Some("Upgrade pgvector to >= 0.8 and restart backend (make db-start)".to_string());
+    }
+    None
+}
+
 /// True when the process may receive traffic (readiness probe).
 pub fn is_ready_for_traffic(report: &Option<MigrationBootstrapReport>) -> bool {
     match report {
@@ -744,15 +804,20 @@ pub async fn run_postgres_migrations(
         );
     }
 
-    if reconcile::reconcile_migration_080(pool, &applied_after, &applied_this_run).await? {
+    let migration_080_applied =
+        reconcile::reconcile_migration_080(pool, &applied_after, &applied_this_run).await?;
+    if migration_080_applied {
         info!(
             target: "edgequake.migration",
             step = "migration_080_ok",
-            "Migration 080 halfvec conversion reconciled"
+            operator_action = "verify_embeddings_after_halfvec_conversion",
+            "Migration 080 halfvec conversion reconciled — vector registry cache should be cleared"
         );
     }
 
-    if reconcile::reconcile_migration_081(pool, &applied_after, &applied_this_run).await? {
+    let migration_081_applied =
+        reconcile::reconcile_migration_081(pool, &applied_after, &applied_this_run).await?;
+    if migration_081_applied {
         info!(
             target: "edgequake.migration",
             step = "migration_081_ok",
@@ -1139,6 +1204,15 @@ pub async fn run_postgres_migrations(
         migration_063,
         migration_064,
         migration_065,
+        migration_080: Migration080Report {
+            halfvec_conversion_applied: migration_080_applied,
+            apply_executed: migration_080_applied,
+        },
+        migration_081: Migration081Report {
+            age_rls_applied: migration_081_applied,
+            apply_executed: migration_081_applied,
+            skipped_age_version: false,
+        },
     })
 }
 
@@ -1342,6 +1416,21 @@ mod tests {
         }
     }
 
+    fn noop_migration_080() -> Migration080Report {
+        Migration080Report {
+            halfvec_conversion_applied: false,
+            apply_executed: false,
+        }
+    }
+
+    fn noop_migration_081() -> Migration081Report {
+        Migration081Report {
+            age_rls_applied: false,
+            apply_executed: false,
+            skipped_age_version: false,
+        }
+    }
+
     #[test]
     fn migration_041_apply_sql_embedded() {
         assert!(SQL_041_APPLY.contains("cost_usd"));
@@ -1353,6 +1442,14 @@ mod tests {
         assert!(SQL_038_APPLY.contains("source_ids_gin"));
         assert!(SQL_038_APPLY.contains("CREATE INDEX IF NOT EXISTS"));
         assert!(SQL_038_APPLY.contains("migration_large_graph_threshold"));
+        assert!(
+            SQL_038_APPLY.contains("\"Node\"") && SQL_038_APPLY.contains("\"EDGE\""),
+            "M038 must target AGE child label tables (SPEC-034), not _ag_label_* parents"
+        );
+        assert!(
+            SQL_038_APPLY.contains("idx_node_source_ids_gin"),
+            "index names must be NAMEDATALEN-safe (≤63 bytes)"
+        );
         assert!(
             SQL_038_APPLY.contains("::jsonb") && SQL_038_APPLY.contains("jsonb_ops"),
             "GIN indexes must cast agtype to jsonb (json has no GIN opclass)"
@@ -1367,7 +1464,7 @@ mod tests {
             indexes_ready: false,
             indexes_repaired_inline: false,
             deferred_large_graphs: vec!["g (600000 vertices)".into()],
-            missing_indexes: vec!["g.idx_g_vertex_source_ids_gin".into()],
+            missing_indexes: vec!["g.idx_node_source_ids_gin".into()],
             operator_action: Some("apply concurrent".into()),
         };
         assert!(report.is_degraded());
@@ -1400,6 +1497,8 @@ mod tests {
             migration_063: noop_migration_063(),
             migration_064: noop_migration_064(),
             migration_065: noop_migration_065(),
+            migration_080: noop_migration_080(),
+            migration_081: noop_migration_081(),
         })));
     }
 
@@ -1503,6 +1602,8 @@ mod tests {
             migration_063: noop_migration_063(),
             migration_064: noop_migration_064(),
             migration_065: noop_migration_065(),
+            migration_080: noop_migration_080(),
+            migration_081: noop_migration_081(),
         })));
     }
 
@@ -1555,6 +1656,8 @@ mod tests {
             migration_063: noop_migration_063(),
             migration_064: noop_migration_064(),
             migration_065: noop_migration_065(),
+            migration_080: noop_migration_080(),
+            migration_081: noop_migration_081(),
         })));
     }
 
@@ -1599,6 +1702,8 @@ mod tests {
             migration_063: noop_migration_063(),
             migration_064: noop_migration_064(),
             migration_065: noop_migration_065(),
+            migration_080: noop_migration_080(),
+            migration_081: noop_migration_081(),
         })));
     }
 }

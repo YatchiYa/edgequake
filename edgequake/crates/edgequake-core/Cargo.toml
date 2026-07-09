@@ -37,5 +37,6 @@ sqlx = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["full", "macros", "rt-multi-thread"] }
 tokio-test = { workspace = true }
 edgequake-query = { path = "../edgequake-query" }
+edgequake-storage = { path = "../edgequake-storage" }
 tempfile = "3.10"
 serial_test = "3"

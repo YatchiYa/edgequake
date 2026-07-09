@@ -97,6 +97,15 @@ impl PipelineState {
         inner.pdf_progress.values().cloned().collect()
     }
 
+    /// Start graph-storage ETA timer for any tracked task (PDF upload or reprocess).
+    pub async fn ensure_graph_storage_timer(&self, track_id: &str) {
+        let mut inner = self.inner.write().await;
+        inner
+            .graph_storage_start
+            .entry(track_id.to_string())
+            .or_insert_with(Instant::now);
+    }
+
     /// Broadcast a knowledge-graph merge sub-phase progress event (SPEC-032 W-04).
     ///
     /// This method is called from the `MergeProgressCallback` wired into

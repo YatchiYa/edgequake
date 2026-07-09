@@ -36,6 +36,8 @@ export interface DocumentToolbarSectionProps {
   pipelineStatus: PipelineStatus | undefined;
   documents: Document[];
   onOpenPipelineDetails: () => void;
+  onReprocessStuckDocuments?: (documents: Document[]) => void;
+  isReprocessingStuck?: boolean;
   
   // Dropzone
   getRootProps: DocumentDropzoneProps['getRootProps'];
@@ -72,6 +74,8 @@ export function DocumentToolbarSection({
   pipelineStatus,
   documents,
   onOpenPipelineDetails,
+  onReprocessStuckDocuments,
+  isReprocessingStuck,
   getRootProps,
   getInputProps,
   isDragActive,
@@ -113,6 +117,8 @@ export function DocumentToolbarSection({
           pipelineStatus={pipelineStatus}
           documents={documents}
           onOpenDetails={onOpenPipelineDetails}
+          onReprocessStuck={onReprocessStuckDocuments}
+          isReprocessing={isReprocessingStuck}
         />
       )}
 

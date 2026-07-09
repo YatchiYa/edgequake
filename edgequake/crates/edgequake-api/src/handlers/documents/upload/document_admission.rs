@@ -285,6 +285,12 @@ pub async fn admit_document_for_processing(
         serde_json::to_value(task_data).unwrap(),
     );
     let task_id = task.track_id.clone();
+
+    // SPEC-045 SRE-I03: wire processing timeout for text ingest (parity with PDF metadata).
+    let processing_timeout_secs = resolve_text_ingest_timeout_secs(state, &workspace_id).await;
+    let mut task = task;
+    task.metadata = Some(json!({ "processing_timeout_secs": processing_timeout_secs }));
+
     state.enqueue_task(task).await?;
 
     Ok(DocumentAdmissionOutcome::Accepted(
@@ -299,6 +305,23 @@ pub async fn admit_document_for_processing(
 
 /// HTTP status for accepted async upload.
 pub const ADMISSION_ACCEPTED_STATUS: StatusCode = StatusCode::ACCEPTED;
+
+/// Worker timeout for text ingest tasks (SPEC-045 SRE-I03).
+async fn resolve_text_ingest_timeout_secs(state: &AppState, workspace_id: &str) -> u64 {
+    let default = crate::services::large_document_profile::TASK_TIMEOUT_FLOOR_SECS;
+    let Ok(ws_uuid) = Uuid::parse_str(workspace_id) else {
+        return default;
+    };
+    let Ok(Some(workspace)) = state.workspace_service.get_workspace(ws_uuid).await else {
+        return default;
+    };
+    let provider = if workspace.llm_provider.is_empty() {
+        "mock"
+    } else {
+        workspace.llm_provider.as_str()
+    };
+    crate::safety_limits::sync_processing_timeout_secs(provider)
+}
 
 /// Parse chunk strategy + options from JSON upload fields (SSOT for all upload paths).
 pub fn parse_upload_chunk_fields(

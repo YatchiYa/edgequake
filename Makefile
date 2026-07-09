@@ -130,7 +130,7 @@ release: ## Bump all crate versions and tag release using cargo-release (uses VE
 	cd edgequake && cargo release $$VERSION --workspace --no-publish --execute
 
 
-.PHONY: help install dev dev-auth dev-bg dev-auth-bg dev-memory kill-app stop clean build test lint format \
+.PHONY: help install dev dev-auth dev-bg dev-auth-bg dev-memory kill-app stop clean build test lint format sync-dev-ports \
         dev-pg16 dev-pg17 dev-pg18 dev-bg-pg16 dev-bg-pg17 dev-bg-pg18 \
         backend-dev backend-db backend-memory backend-bg backend-build backend-build-online backend-sqlx-prepare backend-test backend-run \
         frontend-dev frontend-bg frontend-build frontend-test frontend-lint \
@@ -190,13 +190,20 @@ EQ_POSTGRES_PROFILE ?= pg18
 export EQ_POSTGRES_PROFILE
 PG_PROFILES := pg16 pg17 pg18
 
-# Local development ports.
-# WHY: Local EdgeQuake and the published Docker stack both document the Web UI
-# on localhost:3000. Keep that as the primary development default, then shift to
-# the next safe free port only when 3000 is already occupied.
-DEFAULT_BACKEND_PORT ?= 8080
-DEFAULT_FRONTEND_PORT ?= 3000
+# Local development ports (SSOT: scripts/sync_dev_ports.py + .edgequake-dev-ports.env).
+# WHY: 8080/3000 collide with gps-backend, Docker quickstart, and other local stacks.
+# EdgeQuake scans upward from 8090/3010 only when those are taken.
+DEFAULT_BACKEND_PORT ?= 8090
+DEFAULT_FRONTEND_PORT ?= 3010
 PORT_SCAN_WINDOW ?= 20
+DEV_PORTS_ENV := $(ROOT_DIR)/.edgequake-dev-ports.env
+
+# User secrets / LLM keys — loaded first.
+-include $(ROOT_DIR)/.env
+
+# Generated ports override .env PORT/BACKEND_PORT (written by `make sync-dev-ports`).
+-include $(DEV_PORTS_ENV)
+
 ifndef BACKEND_PORT
 BACKEND_PORT := $(shell python3 $(ROOT_DIR)/scripts/select_edgequake_port.py backend $(DEFAULT_BACKEND_PORT) $(PORT_SCAN_WINDOW))
 endif
@@ -208,12 +215,9 @@ FRONTEND_URL := http://localhost:$(FRONTEND_PORT)
 
 # WHY: A fixed Compose project name keeps the local Docker network/container
 # namespace stable across repeated invocations and different working directories.
-# This reduces needless network churn and makes startup behavior more deterministic.
 COMPOSE_PROJECT_NAME ?= edgequake-dev
 export COMPOSE_PROJECT_NAME
 
-# Load environment variables from .env file if it exists
--include $(ROOT_DIR)/.env
 export
 
 # Environment variables (can be overridden from shell)
@@ -409,36 +413,42 @@ check-deps: ## Check that required dependencies are installed
 	@command -v docker >/dev/null 2>&1 || { echo "$(YELLOW)⚠️  docker not found. Some features require Docker$(RESET)"; }
 	@echo "$(GREEN)✓ All required dependencies found$(RESET)"
 
-check-ports: ## Validate configured ports without killing unrelated processes
-	@echo "$(BLUE)Checking selected ports $(BACKEND_PORT) and $(FRONTEND_PORT)...$(RESET)"
-	@if [ "$(BACKEND_PORT)" != "$(DEFAULT_BACKEND_PORT)" ]; then \
-		echo "$(YELLOW)→ Preferred backend port $(DEFAULT_BACKEND_PORT) is busy; using $(BACKEND_PORT) to avoid interference$(RESET)"; \
-	fi
-	@if [ "$(FRONTEND_PORT)" != "$(DEFAULT_FRONTEND_PORT)" ]; then \
-		echo "$(YELLOW)→ Preferred frontend port $(DEFAULT_FRONTEND_PORT) is busy; using $(FRONTEND_PORT) instead$(RESET)"; \
-		echo "$(YELLOW)  Open $(FRONTEND_URL) in your browser for this session$(RESET)"; \
-	fi
-	@for port in $(BACKEND_PORT) $(FRONTEND_PORT); do \
+check-ports: sync-dev-ports ## Validate configured ports without killing unrelated processes
+	@echo "$(BLUE)Checking selected ports from $(DEV_PORTS_ENV)...$(RESET)"
+	@set -a && . $(DEV_PORTS_ENV) && set +a; \
+	if [ "$$BACKEND_PORT" != "$(DEFAULT_BACKEND_PORT)" ]; then \
+		echo "$(YELLOW)→ Preferred backend port $(DEFAULT_BACKEND_PORT) is busy; using $$BACKEND_PORT to avoid interference$(RESET)"; \
+	fi; \
+	if [ "$$FRONTEND_PORT" != "$(DEFAULT_FRONTEND_PORT)" ]; then \
+		echo "$(YELLOW)→ Preferred frontend port $(DEFAULT_FRONTEND_PORT) is busy; using $$FRONTEND_PORT instead$(RESET)"; \
+		echo "$(YELLOW)  Open $$FRONTEND_URL in your browser for this session$(RESET)"; \
+	fi; \
+	for port in $$BACKEND_PORT $$FRONTEND_PORT; do \
 		PID=$$(lsof -nP -iTCP:$$port -sTCP:LISTEN -t 2>/dev/null | head -n 1 || true); \
 		if [ -z "$$PID" ]; then \
 			continue; \
 		fi; \
 		CMD=$$(ps -p "$$PID" -o command= 2>/dev/null || true); \
-		if [ "$$port" = "$(BACKEND_PORT)" ] && curl -fsS "$(BACKEND_URL)/health" 2>/dev/null | grep -q '"status"'; then \
-			echo "$(YELLOW)→ Port $(BACKEND_PORT) is already serving EdgeQuake; reusing it$(RESET)"; \
+		if [ "$$port" = "$$BACKEND_PORT" ] && python3 -c "import sys; sys.path.insert(0,'$(ROOT_DIR)/scripts'); from select_edgequake_port import is_edgequake; raise SystemExit(0 if is_edgequake('backend', int(sys.argv[1])) else 1)" "$$port" 2>/dev/null; then \
+			echo "$(YELLOW)→ Port $$BACKEND_PORT is already serving EdgeQuake; reusing it$(RESET)"; \
 			continue; \
 		fi; \
-		if [ "$$port" = "$(FRONTEND_PORT)" ] && curl -fsS "$(FRONTEND_URL)" 2>/dev/null | grep -qi 'EdgeQuake'; then \
-			echo "$(YELLOW)→ Port $(FRONTEND_PORT) is already serving the EdgeQuake UI; reusing it$(RESET)"; \
+		if [ "$$port" = "$$FRONTEND_PORT" ] && curl -fsS "$$FRONTEND_URL" 2>/dev/null | grep -qi 'EdgeQuake'; then \
+			echo "$(YELLOW)→ Port $$FRONTEND_PORT is already serving the EdgeQuake UI; reusing it$(RESET)"; \
 			continue; \
 		fi; \
 		echo "$(RED)✗ Selected port $$port is already bound by another application$(RESET)"; \
 		echo "  PID: $$PID"; \
 		echo "  CMD: $$CMD"; \
-		echo "  Hint: EdgeQuake auto-selects safe ports, but you can also override BACKEND_PORT or FRONTEND_PORT explicitly."; \
+		echo "  Hint: run $(GREEN)make sync-dev-ports$(RESET) or set BACKEND_PORT/FRONTEND_PORT explicitly."; \
 		exit 1; \
 	done
 	@echo "$(GREEN)✓ Port check complete$(RESET)"
+
+sync-dev-ports: ## Regenerate collision-safe dev ports (.edgequake-dev-ports.env)
+	@python3 $(ROOT_DIR)/scripts/sync_dev_ports.py $(DEFAULT_BACKEND_PORT) $(DEFAULT_FRONTEND_PORT) $(PORT_SCAN_WINDOW) >/dev/null
+	@echo "$(GREEN)✓ Dev ports:$(RESET) backend $$(grep '^BACKEND_PORT=' $(DEV_PORTS_ENV) | cut -d= -f2) · frontend $$(grep '^FRONTEND_PORT=' $(DEV_PORTS_ENV) | cut -d= -f2)"
+	@echo "  UI: $$(grep '^FRONTEND_URL=' $(DEV_PORTS_ENV) | cut -d= -f2) · API: $$(grep '^BACKEND_URL=' $(DEV_PORTS_ENV) | cut -d= -f2)"
 
 # ============================================================================
 # Installation
@@ -493,13 +503,14 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 	fi
 	@echo ""
 	@trap 'echo ""; echo "$(YELLOW)Stopping only the processes started by this make dev session...$(RESET)"; [ -n "$$BACKEND_PID" ] && kill "$$BACKEND_PID" 2>/dev/null || true; [ -n "$$FRONTEND_PID" ] && kill "$$FRONTEND_PID" 2>/dev/null || true; echo "$(GREEN)✓ App processes stopped. PostgreSQL is left running for faster restarts.$(RESET)"; exit 0' INT; \
+	set -a && . $(DEV_PORTS_ENV) && set +a; \
 	BACKEND_PID=""; \
 	FRONTEND_PID=""; \
 	$(LOAD_EFF_DB_URL); \
-	echo "$(YELLOW)→ Starting backend (DATABASE_URL port: $$(printf '%s' $$_EFF_DB_URL | sed -E 's|.*:([0-9]+)/.*|\1|'))...$(RESET)"; \
+	echo "$(YELLOW)→ Starting backend on port $$BACKEND_PORT (DATABASE_URL port: $$(printf '%s' $$_EFF_DB_URL | sed -E 's|.*:([0-9]+)/.*|\1|'))...$(RESET)"; \
 	if [ -n "$(OPENAI_API_KEY)" ]; then \
 		(cd $(BACKEND_DIR) && \
-			PORT="$(BACKEND_PORT)" \
+			PORT="$$BACKEND_PORT" \
 			DATABASE_URL="$$_EFF_DB_URL" \
 			OPENAI_API_KEY="$(OPENAI_API_KEY)" \
 			EDGEQUAKE_DEV_MODE="$(DEV_EDGEQUAKE_DEV_MODE)" \
@@ -510,7 +521,7 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 		BACKEND_PID=$$!; \
 	else \
 		(cd $(BACKEND_DIR) && \
-			PORT="$(BACKEND_PORT)" \
+			PORT="$$BACKEND_PORT" \
 			DATABASE_URL="$$_EFF_DB_URL" \
 			EDGEQUAKE_DEV_MODE="$(DEV_EDGEQUAKE_DEV_MODE)" \
 			EDGEQUAKE_DEV_MODE="$(DEV_EDGEQUAKE_DEV_MODE)" \
@@ -522,8 +533,8 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 			cargo run 2>&1 | sed 's/^/[backend] /') & \
 		BACKEND_PID=$$!; \
 	fi; \
-	echo "$(YELLOW)→ Starting frontend on port $(FRONTEND_PORT)...$(RESET)"; \
-	(sleep 2 && cd $(FRONTEND_DIR) && PORT="$(FRONTEND_PORT)" EDGEQUAKE_API_URL="$(BACKEND_URL)" NEXT_PUBLIC_API_URL="$(BACKEND_URL)" NEXT_PUBLIC_AUTH_ENABLED="$(DEV_AUTH_ENABLED)" NEXT_PUBLIC_DISABLE_DEMO_LOGIN="$(DEV_DISABLE_DEMO_LOGIN)" sh -c '(pnpm run dev 2>/dev/null || bun run dev)' 2>&1 | sed 's/^/[frontend] /') & \
+	echo "$(YELLOW)→ Starting frontend on port $$FRONTEND_PORT...$(RESET)"; \
+	(bash $(FRONTEND_DIR)/scripts/ensure-dev-cache.sh && sleep 2 && cd $(FRONTEND_DIR) && PORT="$$FRONTEND_PORT" EDGEQUAKE_API_URL="$$EDGEQUAKE_API_URL" NEXT_PUBLIC_API_URL="$$NEXT_PUBLIC_API_URL" NEXT_PUBLIC_AUTH_ENABLED="$(DEV_AUTH_ENABLED)" NEXT_PUBLIC_DISABLE_DEMO_LOGIN="$(DEV_DISABLE_DEMO_LOGIN)" sh -c '(pnpm run dev 2>/dev/null || bun run dev)' 2>&1 | sed 's/^/[frontend] /') & \
 	FRONTEND_PID=$$!; \
 	echo "$(GREEN)✓ Startup in progress$(RESET)"; \
 	echo "$(YELLOW)Press Ctrl+C to stop only this session's app processes$(RESET)"; \
@@ -823,7 +834,7 @@ backend-memory: ## DEPRECATED - In-memory storage removed, use backend-dev with 
 	@echo "$(RED)╚══════════════════════════════════════════════════════════════════╝$(RESET)"
 	@exit 1
 
-backend-bg: db-wait ## Run backend in background with PostgreSQL (respects MISTRAL_API_KEY, OPENAI_API_KEY if set)
+backend-bg: sync-dev-ports db-wait ## Run backend in background with PostgreSQL (respects MISTRAL_API_KEY, OPENAI_API_KEY if set)
 	@if curl -fsS "$(BACKEND_URL)/health" >/dev/null 2>&1; then \
 		_llm_code=$$(curl -s -o /dev/null -w '%{http_code}' "$(BACKEND_URL)/api/v1/settings/llm-defaults" 2>/dev/null || echo 000); \
 		if [ "$$_llm_code" = "200" ] || [ "$$_llm_code" = "401" ]; then \
@@ -847,7 +858,7 @@ backend-bg: db-wait ## Run backend in background with PostgreSQL (respects MISTR
 		_MISTRAL_KEY="$${MISTRAL_API_KEY:-$(MISTRAL_API_KEY)}"; \
 		echo "$(YELLOW)→ MISTRAL_API_KEY detected - using Mistral as default provider$(RESET)"; \
 		printf '%s\n' "#!/bin/bash" > /tmp/edgequake-start.sh; \
-		printf '%s\n' "export PORT=\"$(BACKEND_PORT)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "set -a && . \"$(DEV_PORTS_ENV)\" && set +a" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export DATABASE_URL=\"$$_EFF_DB_URL\"" >> /tmp/edgequake-start.sh; \
 		$(BACKEND_STABILITY_EXPORTS) \
 		printf '%s\n' "export MISTRAL_API_KEY=\"$$_MISTRAL_KEY\"" >> /tmp/edgequake-start.sh; \
@@ -869,7 +880,7 @@ backend-bg: db-wait ## Run backend in background with PostgreSQL (respects MISTR
 	elif [ -n "$(OPENAI_API_KEY)" ]; then \
 		echo "$(YELLOW)→ OPENAI_API_KEY detected - using OpenAI as default provider$(RESET)"; \
 		printf '%s\n' "#!/bin/bash" > /tmp/edgequake-start.sh; \
-		printf '%s\n' "export PORT=\"$(BACKEND_PORT)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "set -a && . \"$(DEV_PORTS_ENV)\" && set +a" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export DATABASE_URL=\"$$_EFF_DB_URL\"" >> /tmp/edgequake-start.sh; \
 		$(BACKEND_STABILITY_EXPORTS) \
 		printf '%s\n' "export OPENAI_API_KEY=\"$(OPENAI_API_KEY)\"" >> /tmp/edgequake-start.sh; \
@@ -886,7 +897,7 @@ backend-bg: db-wait ## Run backend in background with PostgreSQL (respects MISTR
 	else \
 		echo "$(YELLOW)→ No API key detected, using Ollama provider$(RESET)"; \
 		printf '%s\n' "#!/bin/bash" > /tmp/edgequake-start.sh; \
-		printf '%s\n' "export PORT=\"$(BACKEND_PORT)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "set -a && . \"$(DEV_PORTS_ENV)\" && set +a" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export DATABASE_URL=\"$$_EFF_DB_URL\"" >> /tmp/edgequake-start.sh; \
 		$(BACKEND_STABILITY_EXPORTS) \
 		printf '%s\n' "export EDGEQUAKE_DEV_MODE=\"$(DEV_EDGEQUAKE_DEV_MODE)\"" >> /tmp/edgequake-start.sh; \
@@ -953,19 +964,20 @@ backend-fmt: ## Format backend code
 
 frontend-dev: ## Start frontend development server
 	@echo "$(BLUE)Starting frontend development server on port $(FRONTEND_PORT)...$(RESET)"
+	@bash $(FRONTEND_DIR)/scripts/ensure-dev-cache.sh
 	@cd $(FRONTEND_DIR) && PORT="$(FRONTEND_PORT)" EDGEQUAKE_API_URL="$(BACKEND_URL)" NEXT_PUBLIC_API_URL="$(BACKEND_URL)" NEXT_PUBLIC_AUTH_ENABLED="$(DEV_AUTH_ENABLED)" NEXT_PUBLIC_DISABLE_DEMO_LOGIN="$(DEV_DISABLE_DEMO_LOGIN)" sh -c '(pnpm run dev 2>/dev/null || bun run dev)'
 
-frontend-bg: ## Start frontend development server in background
+frontend-bg: sync-dev-ports ## Start frontend development server in background
 	@if curl -fsS "$(FRONTEND_URL)" 2>/dev/null | grep -qi 'EdgeQuake'; then \
 		echo "$(GREEN)✓ Frontend already reachable on port $(FRONTEND_PORT)$(RESET)"; \
 		exit 0; \
 	fi
 	@echo "$(BLUE)Starting frontend in background...$(RESET)"
+	@bash $(FRONTEND_DIR)/scripts/ensure-dev-cache.sh
 	@printf '%s\n' "#!/bin/bash" > /tmp/edgequake-frontend-start.sh
+	@printf '%s\n' "set -a && . \"$(DEV_PORTS_ENV)\" && set +a" >> /tmp/edgequake-frontend-start.sh
 	@printf '%s\n' "cd $(FRONTEND_DIR)" >> /tmp/edgequake-frontend-start.sh
-	@printf '%s\n' "export PORT=\"$(FRONTEND_PORT)\"" >> /tmp/edgequake-frontend-start.sh
-	@printf '%s\n' "export EDGEQUAKE_API_URL=\"$(BACKEND_URL)\"" >> /tmp/edgequake-frontend-start.sh
-	@printf '%s\n' "export NEXT_PUBLIC_API_URL=\"$(BACKEND_URL)\"" >> /tmp/edgequake-frontend-start.sh
+	@printf '%s\n' "if [ -f .env.local.ports ]; then set -a && . ./.env.local.ports && set +a; fi" >> /tmp/edgequake-frontend-start.sh
 	@printf '%s\n' "export NEXT_PUBLIC_AUTH_ENABLED=\"$(DEV_AUTH_ENABLED)\"" >> /tmp/edgequake-frontend-start.sh
 	@printf '%s\n' "export NEXT_PUBLIC_DISABLE_DEMO_LOGIN=\"$(DEV_DISABLE_DEMO_LOGIN)\"" >> /tmp/edgequake-frontend-start.sh
 	@printf '%s\n' "if command -v pnpm >/dev/null 2>&1; then" >> /tmp/edgequake-frontend-start.sh
@@ -1361,6 +1373,10 @@ spec042-battle-test-all: ## Run full SPEC-042 battle suite (pins + version + Pha
 spec044-battle-test-all: ## SPEC-044 triple-track Cypher bind battle test (pg16 + pg17 + pg18)
 	@chmod +x specs/044-upgrate-issue-study/e2e/run_triple_track_cypher_proof.sh
 	@./specs/044-upgrate-issue-study/e2e/run_triple_track_cypher_proof.sh all
+
+spec045-battle-test-all: ## SPEC-045 ingestion reliability battle test (edge cases + health SQL)
+	@chmod +x specs/045-fix-ingestion-errors/e2e/run_ingestion_health_proof.sh
+	@./specs/045-fix-ingestion-errors/e2e/run_ingestion_health_proof.sh
 
 phase-e-battle-test: ## Run SPEC-042-E Phase E acceptance probes (pg17 + pg18)
 	@chmod +x specs/042-update-age-pgvector/e2e/run_phase_e_battle_test.sh

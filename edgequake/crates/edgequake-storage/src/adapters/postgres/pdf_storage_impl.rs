@@ -23,6 +23,89 @@ impl PostgresPdfStorage {
     }
 }
 
+impl PostgresPdfStorage {
+    /// PostgreSQL `undefined_column` (42703) — migration 041 not applied yet.
+    fn is_missing_column_error(err: &sqlx::Error) -> bool {
+        match err {
+            sqlx::Error::Database(db) => {
+                db.code().as_deref() == Some("42703")
+                    || db.message().to_ascii_lowercase().contains("does not exist")
+            }
+            _ => false,
+        }
+    }
+
+    fn stats_metadata_patch(stats: &DocumentStatsUpdate<'_>) -> serde_json::Value {
+        let mut patch = serde_json::Map::new();
+        if let Some(cost) = stats.cost_usd {
+            patch.insert("cost_usd".into(), serde_json::json!(cost));
+        }
+        if let Some(v) = stats.input_tokens {
+            patch.insert("input_tokens".into(), serde_json::json!(v));
+        }
+        if let Some(v) = stats.output_tokens {
+            patch.insert("output_tokens".into(), serde_json::json!(v));
+        }
+        if let Some(v) = stats.total_tokens {
+            patch.insert("total_tokens".into(), serde_json::json!(v));
+        }
+        patch.insert(
+            "relationship_count".into(),
+            serde_json::json!(stats.relationship_count.max(0)),
+        );
+        if let Some(msg) = stats.error_message {
+            patch.insert("error_message".into(), serde_json::json!(msg));
+        }
+        serde_json::Value::Object(patch)
+    }
+
+    async fn update_document_stats_legacy(
+        &self,
+        stats: &DocumentStatsUpdate<'_>,
+        metadata_patch: serde_json::Value,
+    ) -> Result<()> {
+        let chunk_count = stats.chunk_count.max(0);
+        let entity_count = stats.entity_count.max(0);
+
+        let result = sqlx::query(
+            r#"
+            UPDATE documents SET
+                chunk_count = $2,
+                entity_count  = $3,
+                status        = $4,
+                updated_at    = NOW(),
+                metadata      = COALESCE(metadata, '{}'::jsonb) || $5::jsonb
+            WHERE id = $1
+            "#,
+        )
+        .bind(stats.document_id)
+        .bind(chunk_count)
+        .bind(entity_count)
+        .bind(stats.status)
+        .bind(metadata_patch)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| StorageError::Database(format!("Failed to update document stats: {}", e)))?;
+
+        if result.rows_affected() == 0 {
+            warn!(
+                document_id = %stats.document_id,
+                "update_document_stats (legacy): documents row not found — stats in metadata only until row exists"
+            );
+        } else {
+            debug!(
+                document_id = %stats.document_id,
+                chunk_count = chunk_count,
+                entity_count = entity_count,
+                status = stats.status,
+                "Updated document stats via metadata fallback (migration 041 columns absent)"
+            );
+        }
+
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl PdfDocumentStorage for PostgresPdfStorage {
     async fn create_pdf(&self, request: CreatePdfRequest) -> Result<Uuid> {
@@ -504,8 +587,26 @@ impl PdfDocumentStorage for PostgresPdfStorage {
         .bind(stats.error_message)
         .bind(stats.status)
         .execute(&self.pool)
-        .await
-        .map_err(|e| StorageError::Database(format!("Failed to update document stats: {}", e)))?;
+        .await;
+
+        let result = match result {
+            Ok(r) => r,
+            Err(e) if Self::is_missing_column_error(&e) => {
+                warn!(
+                    document_id = %stats.document_id,
+                    "documents M041 stat columns missing — falling back to metadata JSONB patch"
+                );
+                return self
+                    .update_document_stats_legacy(stats, Self::stats_metadata_patch(stats))
+                    .await;
+            }
+            Err(e) => {
+                return Err(StorageError::Database(format!(
+                    "Failed to update document stats: {}",
+                    e
+                )));
+            }
+        };
 
         if result.rows_affected() == 0 {
             warn!(

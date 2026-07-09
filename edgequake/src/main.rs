@@ -192,7 +192,7 @@ async fn recover_orphaned_documents(
         return Ok(());
     }
 
-    let metadata_values = kv_storage.get_by_ids(&metadata_keys).await?;
+    let metadata_values = kv_storage.get_by_ids_ordered(&metadata_keys).await?;
     let now = Utc::now();
 
     // Stages where no meaningful work has been done yet — source content
@@ -233,7 +233,10 @@ async fn recover_orphaned_documents(
     let mut auto_recovered_count = 0;
     let mut needs_reupload_count = 0;
 
-    for (key, value) in metadata_keys.iter().zip(metadata_values.iter()) {
+    for (key, maybe_value) in metadata_keys.iter().zip(metadata_values.iter()) {
+        let Some(value) = maybe_value else {
+            continue;
+        };
         if let Some(obj) = value.as_object() {
             // Check both `status` and `current_stage` for stuck states
             let status = obj.get("status").and_then(|v| v.as_str()).unwrap_or("");
@@ -262,58 +265,59 @@ async fn recover_orphaned_documents(
 
             let is_early_stage = needs_reupload_stages.contains(&stuck_stage);
 
-            let mut updated = obj.clone();
+            let mut updated = serde_json::Value::Object(obj.clone());
 
             if is_early_stage {
-                // Early stage: source content may be lost — mark failed but with
-                // a clear message so users know to re-upload
-                updated.insert("status".to_string(), serde_json::json!("failed"));
-                updated.insert("current_stage".to_string(), serde_json::json!("failed"));
-                updated.insert(
-                    "stage_message".to_string(),
-                    serde_json::json!(format!(
-                        "Server restarted during '{}' stage. Source content may be incomplete. \
-                         Please re-upload the document.",
-                        stuck_stage
-                    )),
-                );
-                updated.insert(
-                    "error_message".to_string(),
-                    serde_json::json!(
-                        "Server restarted during early processing — please re-upload"
-                    ),
-                );
+                if let Some(obj) = updated.as_object_mut() {
+                    // Early stage: source content may be lost — mark failed but with
+                    // a clear message so users know to re-upload
+                    obj.insert("status".to_string(), serde_json::json!("failed"));
+                    obj.insert("current_stage".to_string(), serde_json::json!("failed"));
+                    obj.insert(
+                        "stage_message".to_string(),
+                        serde_json::json!(format!(
+                            "Server restarted during '{}' stage. Source content may be incomplete. \
+                             Please re-upload the document.",
+                            stuck_stage
+                        )),
+                    );
+                    obj.insert(
+                        "error_message".to_string(),
+                        serde_json::json!(
+                            "Server restarted during early processing — please re-upload"
+                        ),
+                    );
+                }
                 needs_reupload_count += 1;
             } else {
-                // Later stage: pipeline checkpoint likely exists, auto-retry.
-                // WHY "pending": The task recovery already requeued the task as
-                // pending, and the checkpoint system will skip expensive LLM
-                // extraction. Setting document to "pending" keeps the UI
-                // showing progress instead of an error.
-                updated.insert("status".to_string(), serde_json::json!("pending"));
-                updated.insert("current_stage".to_string(), serde_json::json!("pending"));
-                updated.insert(
-                    "stage_message".to_string(),
-                    serde_json::json!(format!(
-                        "Auto-recovered after server restart (was in '{}' stage). \
-                         Resuming from checkpoint...",
-                        stuck_stage
-                    )),
-                );
-                // Clear any previous error message since we're retrying
-                updated.remove("error_message");
+                if let Some(obj) = updated.as_object_mut() {
+                    // Later stage: pipeline checkpoint likely exists, auto-retry.
+                    obj.insert("status".to_string(), serde_json::json!("pending"));
+                    obj.insert("current_stage".to_string(), serde_json::json!("pending"));
+                    obj.insert(
+                        "stage_message".to_string(),
+                        serde_json::json!(format!(
+                            "Auto-recovered after server restart (was in '{}' stage). \
+                             Resuming from checkpoint...",
+                            stuck_stage
+                        )),
+                    );
+                    obj.remove("error_message");
+                }
                 auto_recovered_count += 1;
             }
 
-            updated.insert(
-                "updated_at".to_string(),
-                serde_json::json!(now.to_rfc3339()),
-            );
+            if let Some(obj) = updated.as_object_mut() {
+                obj.insert(
+                    "updated_at".to_string(),
+                    serde_json::json!(now.to_rfc3339()),
+                );
+            }
 
-            match kv_storage
-                .upsert(&[(key.clone(), serde_json::json!(updated))])
-                .await
-            {
+            // SPEC-045: metadata key is authoritative — repair misaligned JSON `id`.
+            edgequake_storage::repair_document_metadata_in_place(key, &mut updated);
+
+            match kv_storage.upsert(&[(key.clone(), updated)]).await {
                 Ok(_) => {
                     if is_early_stage {
                         info!(
@@ -359,48 +363,58 @@ async fn requeue_pending_tasks(
 ) -> Result<()> {
     info!("🔄 Checking for pending tasks to requeue from database...");
 
-    // Query all pending tasks
     let filter = TaskFilter {
         status: Some(TaskStatus::Pending),
         ..Default::default()
     };
-    let pagination = Pagination {
-        page_size: 1000, // WHY 1000: Most deployments won't have >1000 pending tasks at once
-        ..Default::default()
-    };
-
-    let task_list = task_storage.list_tasks(filter, pagination).await?;
-    let pending_count = task_list.tasks.len();
-
-    if pending_count == 0 {
-        info!("✅ No pending tasks to requeue");
-        return Ok(());
-    }
-
-    info!(
-        "📋 Found {} pending task(s) in database, requeueing to worker pool...",
-        pending_count
-    );
 
     let mut requeued_count = 0;
     let mut failed_count = 0;
+    let mut page = 1;
+    let page_size = 500;
 
-    for task in task_list.tasks {
-        match task_queue.send(task.clone()).await {
-            Ok(_) => {
-                info!("✅ Requeued task: {}", task.track_id);
-                requeued_count += 1;
-            }
-            Err(e) => {
-                ErrorEvent::log_domain_warn(
-                    "startup",
-                    "requeue_pending_task",
-                    &e.to_string(),
-                    json!({ "task_id": task.track_id, "non_fatal": true }),
-                );
-                failed_count += 1;
+    // SPEC-045 SRE-I02: paginate — startup may have >1000 pending after outage.
+    loop {
+        let pagination = Pagination {
+            page,
+            page_size,
+            ..Default::default()
+        };
+
+        let task_list = task_storage.list_tasks(filter.clone(), pagination).await?;
+        let batch_len = task_list.tasks.len();
+
+        if batch_len == 0 && page == 1 {
+            info!("✅ No pending tasks to requeue");
+            return Ok(());
+        }
+
+        if page == 1 && batch_len > 0 {
+            info!("📋 Found pending task(s) in database, requeueing to worker pool...");
+        }
+
+        for task in task_list.tasks {
+            match task_queue.send(task.clone()).await {
+                Ok(_) => {
+                    info!("✅ Requeued task: {}", task.track_id);
+                    requeued_count += 1;
+                }
+                Err(e) => {
+                    ErrorEvent::log_domain_warn(
+                        "startup",
+                        "requeue_pending_task",
+                        &e.to_string(),
+                        json!({ "task_id": task.track_id, "non_fatal": true }),
+                    );
+                    failed_count += 1;
+                }
             }
         }
+
+        if batch_len < page_size as usize {
+            break;
+        }
+        page += 1;
     }
 
     info!(
@@ -412,7 +426,10 @@ async fn requeue_pending_tasks(
 }
 
 /// Mark processing tasks as failed if their heartbeat has been dead for too long.
-async fn periodic_orphan_check(task_storage: Arc<dyn TaskStorage>) -> Result<()> {
+async fn periodic_orphan_check(
+    task_storage: Arc<dyn TaskStorage>,
+    kv_storage: Arc<dyn edgequake_storage::traits::KVStorage>,
+) -> Result<()> {
     let filter = TaskFilter {
         status: Some(TaskStatus::Processing),
         ..Default::default()
@@ -441,13 +458,14 @@ async fn periodic_orphan_check(task_storage: Arc<dyn TaskStorage>) -> Result<()>
             let age = now.signed_duration_since(task.updated_at);
 
             if age > orphan_threshold {
-                // Heartbeat died — mark as failed so the user can see and retry
-                task.status = TaskStatus::Failed;
-                task.error_message = Some(format!(
+                let error_msg = format!(
                     "Task heartbeat lost (no update for {} minutes). \
                      The worker may have crashed. Please retry.",
                     age.num_minutes()
-                ));
+                );
+                // Heartbeat died — mark as failed so the user can see and retry
+                task.status = TaskStatus::Failed;
+                task.error_message = Some(error_msg.clone());
                 task.updated_at = now;
 
                 match task_storage.update_task(&task).await {
@@ -457,6 +475,21 @@ async fn periodic_orphan_check(task_storage: Arc<dyn TaskStorage>) -> Result<()>
                             task.track_id,
                             humanize_duration(age)
                         );
+                        // SPEC-045 SRE-I01: sync document KV so UI does not show processing
+                        if let Err(e) =
+                            edgequake_api::services::sync_document_failed_on_orphan_heartbeat(
+                                Arc::clone(&kv_storage),
+                                &task,
+                                &error_msg,
+                            )
+                            .await
+                        {
+                            warn!(
+                                task_id = %task.track_id,
+                                error = %e,
+                                "Failed to sync document metadata after orphan heartbeat"
+                            );
+                        }
                         recovered_count += 1;
                     }
                     Err(e) => {
@@ -699,6 +732,22 @@ async fn main() -> Result<()> {
 
     // Recover orphaned documents stuck in non-terminal states (uploading, pending, etc.)
     // MUST run BEFORE starting workers to avoid race with new uploads
+
+    // SPEC-045: repair metadata KV integrity BEFORE orphan recovery (prevents re-corruption).
+    if let Err(e) = edgequake_api::services::document_metadata_repair::repair_all_document_metadata(
+        Arc::clone(&state.storage.kv_storage) as Arc<dyn edgequake_storage::traits::KVStorage>,
+        state.pg_pool.as_ref(),
+    )
+    .await
+    {
+        ErrorEvent::log_domain_warn(
+            "startup",
+            "repair_document_metadata",
+            &e.to_string(),
+            json!({ "non_fatal": true }),
+        );
+    }
+
     if let Err(e) = recover_orphaned_documents(
         Arc::clone(&state.storage.kv_storage) as Arc<dyn edgequake_storage::traits::KVStorage>
     )
@@ -763,6 +812,8 @@ async fn main() -> Result<()> {
     // updating every 60s. This complements startup recovery (which is unconditional)
     // and the processing timeout (which catches hung tasks with active heartbeats).
     let periodic_task_storage = Arc::clone(&state.tasks.storage) as Arc<dyn TaskStorage>;
+    let periodic_kv_storage =
+        Arc::clone(&state.storage.kv_storage) as Arc<dyn edgequake_storage::traits::KVStorage>;
     tokio::spawn(async move {
         // WHY 5 minutes: Frequent enough to catch dead-heartbeat tasks within
         // ~15 minutes (10 min threshold + up to 5 min wait for the next check).
@@ -770,7 +821,12 @@ async fn main() -> Result<()> {
         interval.tick().await; // Skip first immediate tick (startup recovery already ran)
         loop {
             interval.tick().await;
-            if let Err(e) = periodic_orphan_check(Arc::clone(&periodic_task_storage)).await {
+            if let Err(e) = periodic_orphan_check(
+                Arc::clone(&periodic_task_storage),
+                Arc::clone(&periodic_kv_storage),
+            )
+            .await
+            {
                 ErrorEvent::log_domain_warn(
                     "startup",
                     "periodic_orphan_check",
@@ -780,6 +836,38 @@ async fn main() -> Result<()> {
             }
         }
     });
+
+    // PERIODIC DOCUMENT ORPHAN RECOVERY (SPEC-045): Re-normalize KV metadata for docs
+    // stuck in non-terminal states after long-running processing (complements task-level
+    // periodic_orphan_check). Disabled unless EDGEQUAKE_AUTO_ORPHAN_DOCUMENT_RECOVER_MINUTES>0.
+    if let Some(interval_mins) = std::env::var("EDGEQUAKE_AUTO_ORPHAN_DOCUMENT_RECOVER_MINUTES")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .filter(|&m| m > 0)
+    {
+        let kv =
+            Arc::clone(&state.storage.kv_storage) as Arc<dyn edgequake_storage::traits::KVStorage>;
+        tokio::spawn(async move {
+            let mut interval =
+                tokio::time::interval(tokio::time::Duration::from_secs(interval_mins * 60));
+            interval.tick().await;
+            loop {
+                interval.tick().await;
+                if let Err(e) = recover_orphaned_documents(Arc::clone(&kv)).await {
+                    ErrorEvent::log_domain_warn(
+                        "startup",
+                        "periodic_recover_orphaned_documents",
+                        &e.to_string(),
+                        json!({ "non_fatal": true }),
+                    );
+                }
+            }
+        });
+        info!(
+            "Periodic document orphan recovery enabled (every {} min)",
+            interval_mins
+        );
+    }
 
     // Configure server
     let config = ServerConfig {
