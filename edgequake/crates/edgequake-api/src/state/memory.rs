@@ -17,7 +17,9 @@ use edgequake_pipeline::Pipeline;
 use edgequake_query::{QueryEngine, QueryEngineConfig};
 use edgequake_rate_limiter::{RateLimitConfig as TokenBucketConfig, RateLimiter};
 #[cfg(feature = "postgres")]
-use edgequake_storage::adapters::memory::{MemoryConversationStorage, MemoryPdfStorage};
+use edgequake_storage::adapters::memory::{
+    MemoryConversationStorage, MemoryOriginalStorage, MemoryPdfStorage,
+};
 use edgequake_storage::adapters::memory::{
     MemoryGraphStorage, MemoryKVStorage, MemoryVectorStorage, MemoryWorkspaceVectorRegistry,
 };
@@ -31,6 +33,11 @@ use crate::cache_manager::CacheManager;
 #[cfg(feature = "postgres")]
 fn memory_pdf_storage() -> Option<Arc<dyn edgequake_storage::PdfDocumentStorage>> {
     Some(Arc::new(MemoryPdfStorage::new()))
+}
+
+#[cfg(feature = "postgres")]
+fn memory_original_storage() -> Option<Arc<dyn edgequake_storage::DocumentOriginalStorage>> {
+    Some(Arc::new(MemoryOriginalStorage::new()))
 }
 
 /// Memory-mode conversation service: storage trait adapter when postgres feature is enabled.
@@ -80,6 +87,8 @@ impl AppState {
                 auth_memory: Arc::new(crate::services::auth_memory_store::AuthMemoryStore::new()),
                 #[cfg(feature = "postgres")]
                 pdf_storage: memory_pdf_storage(),
+                #[cfg(feature = "postgres")]
+                original_storage: memory_original_storage(),
                 mode: StorageMode::Memory,
             },
             query: QueryRuntime {
@@ -214,6 +223,8 @@ impl AppState {
                 auth_memory: Arc::new(crate::services::auth_memory_store::AuthMemoryStore::new()),
                 #[cfg(feature = "postgres")]
                 pdf_storage: memory_pdf_storage(),
+                #[cfg(feature = "postgres")]
+                original_storage: memory_original_storage(),
                 mode: StorageMode::Memory,
             },
             query: QueryRuntime {
@@ -322,6 +333,8 @@ impl AppState {
                 auth_memory: Arc::new(crate::services::auth_memory_store::AuthMemoryStore::new()),
                 #[cfg(feature = "postgres")]
                 pdf_storage: memory_pdf_storage(),
+                #[cfg(feature = "postgres")]
+                original_storage: memory_original_storage(),
                 mode: StorageMode::Memory,
             },
             query: QueryRuntime {

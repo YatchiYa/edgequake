@@ -415,6 +415,14 @@ fn api_v1_routes() -> Router<AppState> {
             "/documents/{document_id}/lineage/export",
             get(handlers::export_document_lineage),
         )
+        .route(
+            "/documents/{document_id}/download/original",
+            get(handlers::download_document_original),
+        )
+        .route(
+            "/documents/{document_id}/download/markdown",
+            get(handlers::download_document_markdown),
+        )
         // Document by ID - comes last because {document_id} matches any path segment
         .route("/documents/{document_id}", get(handlers::get_document))
         .route(

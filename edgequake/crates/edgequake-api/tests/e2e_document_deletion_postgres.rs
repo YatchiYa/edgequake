@@ -185,6 +185,7 @@ async fn create_postgres_test_state(pool: &PgPool) -> AppState {
                 edgequake_api::services::auth_memory_store::AuthMemoryStore::new(),
             ),
             pdf_storage: None,
+            original_storage: None,
             mode: StorageMode::Memory,
         },
         query: edgequake_api::state::QueryRuntime {

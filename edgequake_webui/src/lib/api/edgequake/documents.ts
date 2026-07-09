@@ -300,6 +300,26 @@ export function getPdfDownloadUrl(pdfId: string): string {
   return `${baseUrl}/api/v1/documents/pdf/${pdfId}/download`;
 }
 
+/**
+ * Get the URL for downloading a non-PDF original file.
+ *
+ * @implements SPEC-002 - Document original download
+ */
+export function getDocumentOriginalDownloadUrl(documentId: string): string {
+  const baseUrl = getRuntimeServerBaseUrl();
+  return `${baseUrl}/api/v1/documents/${documentId}/download/original`;
+}
+
+/**
+ * Get the URL for downloading document markdown from the server.
+ *
+ * @implements SPEC-002 - Document markdown download
+ */
+export function getDocumentMarkdownDownloadUrl(documentId: string): string {
+  const baseUrl = getRuntimeServerBaseUrl();
+  return `${baseUrl}/api/v1/documents/${documentId}/download/markdown`;
+}
+
 export async function deleteDocument(documentId: string): Promise<void> {
   return api.delete<void>(`/documents/${documentId}`);
 }

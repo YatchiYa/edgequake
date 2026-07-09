@@ -31,6 +31,7 @@ export { UploadHistory } from "./upload-history";
 // Dialogs
 export { ClearDocumentsDialog } from "./clear-documents-dialog";
 export { DocumentDetailDialog } from "./document-detail-dialog";
+export { DocumentDownloadMenu } from "./document-download-menu";
 export { DocumentPreviewPanel } from "./document-preview-panel";
 export { DocumentViewerDialog } from "./document-viewer-dialog";
 export { PipelineStatusDialog } from "./pipeline-status-dialog";

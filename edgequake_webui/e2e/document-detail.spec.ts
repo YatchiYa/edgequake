@@ -132,6 +132,22 @@ test.describe("Document Detail Page", () => {
     await expect(page).toHaveURL(/\/graph/);
   });
 
+  test("download menu exposes original and markdown options", async ({ page }) => {
+    await page.getByRole("link", { name: /view/i }).first().click();
+    await waitForAppReady(page);
+
+    const downloadTrigger = page.getByRole("button", { name: /^download$/i }).first();
+    await expect(downloadTrigger).toBeVisible();
+    await downloadTrigger.click();
+
+    await expect(
+      page.getByRole("menuitem", { name: /download original/i }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("menuitem", { name: /download markdown/i }),
+    ).toBeVisible();
+  });
+
   test("handles failed document status", async ({ page }) => {
     // beforeEach already navigated and verified documents exist
     // Try to view first document

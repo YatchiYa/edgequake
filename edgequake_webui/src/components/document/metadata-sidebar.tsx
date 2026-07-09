@@ -17,6 +17,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import type { Document } from '@/types';
 import { Brain, Database, Download, FileText, GitBranch, Network, Settings } from 'lucide-react';
+import { DocumentDownloadMenu } from '@/components/documents/document-download-menu';
 import { CollapsibleSection } from './collapsible-section';
 import { DocumentHierarchyTree } from './document-hierarchy-tree';
 import { EnhancedMetadata } from './enhanced-metadata';
@@ -120,6 +121,15 @@ export function MetadataSidebar({ document, onChunkSelect, onChunkResolved, sele
             icon={<Database className="h-4 w-4" />}
           >
             <EnhancedMetadata documentId={document.id} />
+          </CollapsibleSection>
+
+          {/* Document Export: original + markdown */}
+          <CollapsibleSection
+            title="Export Document"
+            icon={<Download className="h-4 w-4" />}
+            defaultOpen
+          >
+            <DocumentDownloadMenu document={document} variant="button" className="w-full" />
           </CollapsibleSection>
 
           {/* Lineage Export (OODA-24): Download lineage as JSON/CSV */}
