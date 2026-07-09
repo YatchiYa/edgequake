@@ -68,13 +68,32 @@ impl QueryEngine {
         vector_storage: Arc<dyn VectorStorage>,
         llm_provider: Option<Arc<dyn crate::LLMProvider>>,
     ) -> Result<(QueryContext, QueryMode, TokenStream)> {
+        self.query_stream_with_role_llms(
+            request,
+            embedding_provider,
+            vector_storage,
+            llm_provider.clone(),
+            llm_provider,
+        )
+        .await
+    }
+
+    /// Streaming with separate Keyword vs Query role LLMs (SPEC-046 EQ-046-13).
+    pub async fn query_stream_with_role_llms(
+        &self,
+        request: crate::types::QueryRequest,
+        embedding_provider: Arc<dyn crate::EmbeddingProvider>,
+        vector_storage: Arc<dyn VectorStorage>,
+        keyword_llm: Option<Arc<dyn crate::LLMProvider>>,
+        answer_llm: Option<Arc<dyn crate::LLMProvider>>,
+    ) -> Result<(QueryContext, QueryMode, TokenStream)> {
         self.stream_with_providers(
             request,
             QueryProviders {
                 embedding: embedding_provider.as_ref(),
                 vector_storage: Some(&vector_storage),
-                keyword_llm: llm_provider.clone(),
-                answer_llm: llm_provider,
+                keyword_llm,
+                answer_llm,
             },
         )
         .await

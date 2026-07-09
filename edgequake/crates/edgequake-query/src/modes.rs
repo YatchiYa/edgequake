@@ -5,8 +5,8 @@
 //! - **FEAT0101**: Naive Mode - Vector similarity only
 //! - **FEAT0102**: Local Mode - Entity-centric graph
 //! - **FEAT0103**: Global Mode - Relationship-vector global search
-//! - **FEAT0104**: Hybrid Mode - Local + Global combined
-//! - **FEAT0105**: Mix Mode - Weighted naive + graph
+//! - **FEAT0104**: Hybrid Mode - Local + Global + Naive (EQ) combined
+//! - **FEAT0105**: Mix Mode - Weighted/RRF naive + graph
 //! - **FEAT0106**: Bypass Mode - Direct LLM (no RAG)
 //!
 //! # Enforces
@@ -17,21 +17,30 @@
 //!
 //! Different questions require different retrieval strategies. Consider:
 //!
-//! - "What is machine learning?" → **Naive** (simple concept lookup)
-//! - "How does Alice work with Bob?" → **Local** (entity relationships)
-//! - "What are the main themes in this document?" → **Global** (relationship vectors + degree fallback)
-//! - "Tell me about Project X and its impact" → **Hybrid** (entities + context)
+//! - "What is machine learning?" → **Naive** (L1 fact; GraphRAG-Bench — avoid graph tax)
+//! - "How does Alice work with Bob?" → **Hybrid** (entity + relation arms)
+//! - "What are the main themes?" → **Global** (relationship vectors + community expand)
+//! - "Compare X and Y" → **Mix** (RRF fusion of all arms)
 //!
 //! ## Mode Selection Guidelines
 //!
 //! | Question Type | Best Mode | FEAT | Why |
 //! |--------------|-----------|------|-----|
-//! | Factual/specific | Naive | FEAT0101 | Direct vector match, fast |
+//! | Factual/specific (L1) | Naive | FEAT0101 | Direct vector match; avoid graph tax |
 //! | Entity relationships | Local | FEAT0102 | Explores entity neighborhood |
-//! | Broad/thematic | Global | FEAT0103 | Relationship-vector search; not GraphRAG community reports |
-//! | Complex/multi-faceted | Hybrid | FEAT0104 | Both approaches combined |
-//! | Custom weights needed | Mix | FEAT0105 | Configurable blend |
+//! | Broad/thematic (L3) | Global | FEAT0103 | Relationship-vector search; not MS GraphRAG reports (optional extractive `community_report` via `EDGEQUAKE_COMMUNITY_REPORTS`) |
+//! | Complex/multi-faceted | Hybrid | FEAT0104 | Local + Global + Naive (see naming note) |
+//! | Custom weights / RRF | Mix | FEAT0105 | Configurable blend (production default) |
 //! | Testing/debugging | Bypass | FEAT0106 | Skip RAG entirely |
+//!
+//! ## Naming divergence vs LightRAG (SPEC-046 P0.5)
+//!
+//! | Mode | EdgeQuake | LightRAG |
+//! |------|-----------|----------|
+//! | **hybrid** | Local ∥ Global ∥ **Naive** (round-robin) | Local ∥ Global only |
+//! | **mix** | Local ∥ Global ∥ Naive → **RRF / weighted** | Local ∥ Global ∥ Naive → round-robin |
+//!
+//! Always prefer explicit `mode=` in APIs when comparing systems.
 //!
 //! ## Performance vs Accuracy Trade-offs
 //!
@@ -41,11 +50,12 @@
 //! Naive   | Fast  | Good     | Small (chunks only)
 //! Local   | Med   | High     | Medium (entity + neighbors)
 //! Global  | Med   | High     | Medium (relationship vectors + graph context)
-//! Hybrid  | Slow  | Best     | Large (both approaches)
+//! Hybrid  | Slow  | Best     | Large (local+global+naive)
+//! Mix     | Slow  | Best     | Large (RRF fusion; production default)
 //! ```
 //!
-//! Mix is the production default (runtime + serde). Hybrid remains the LightRAG
-//! round-robin interleave mode for explicit API requests.
+//! Mix is the production default (runtime + serde). Hybrid remains round-robin
+//! interleave but **includes naive** in EdgeQuake (unlike upstream LightRAG).
 
 use serde::{Deserialize, Serialize};
 
@@ -63,7 +73,9 @@ pub enum QueryMode {
 
     /// Relationship-centric global search using high-level embeddings over
     /// relationship vectors, with degree-based fallback when no relationship
-    /// vectors match. **Not** GraphRAG hierarchical community reports (SPEC-023 I2).
+    /// vectors match. **Not** MS GraphRAG hierarchical community reports
+    /// (SPEC-023 I2). Optional extractive `community_report` props may be
+    /// injected when `EDGEQUAKE_COMMUNITY_REPORTS=true` (SPEC-046 EQ-046-11).
     Global,
 
     /// Weighted combination of naive and graph-based retrieval (FEAT0105 / P-G8).
@@ -78,8 +90,10 @@ pub enum QueryMode {
     #[default]
     Mix,
 
-    /// Combines local and global approaches via round-robin interleave (LightRAG Hybrid).
-    /// Balances specificity and coverage.
+    /// Combines local, global, **and naive** via round-robin interleave.
+    ///
+    /// **SPEC-046 P0.5:** Unlike LightRAG `hybrid` (local+global only), EdgeQuake
+    /// Hybrid also pulls the Naive chunk arm. Use Mix for RRF fusion.
     Hybrid,
 
     /// Direct LLM query without RAG retrieval (FEAT0106).

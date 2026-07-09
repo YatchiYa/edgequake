@@ -1,6 +1,6 @@
 # SPEC-046 — GraphRAG / Hybrid RAG Deep Assessment
 
-**Status:** Assessment complete (2026-07-09)  
+**Status:** Assessment complete; implementation lite/parity shipped (2026-07-09)  
 **Scope:** EdgeQuake ingestion + query pipelines vs LightRAG (paper + latest code) + July 2026 Hybrid RAG state of the art  
 **Law:** Code is law — every claim below is grounded in file paths / function names
 
@@ -31,26 +31,24 @@
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  VERDICT 2026-07-09                                                       │
+│  VERDICT 2026-07-09 (updated after EQ-046 lite/parity)                    │
 ├──────────────────────────────────────────────────────────────────────────┤
 │  EdgeQuake is a strong LightRAG-class Hybrid RAG in Rust with real        │
 │  production extras (Mix/RRF, BM25, workspaces, AGE+pgvector, PDF).        │
 │                                                                          │
 │  It is NOT yet the best Hybrid RAG on the market.                         │
 │                                                                          │
-│  Why not:                                                                 │
-│   1. Graph retrieval is still "vector-over-entities/relations + BFS"      │
-│      — missing HippoRAG2-class Personalized PageRank / dual-node memory │
-│   2. Global mode ≠ community reports; density/quality of graph is         │
-│      under-instrumented (GraphRAG-Bench lesson)                           │
-│   3. Intent router is cost-optimized but partially inverted vs evidence   │
-│      (Factual→Local can add graph tax on Level-1 facts)                   │
-│   4. LightRAG latest pulled ahead on: semantic chunking (V), KG chunk     │
-│      pick VECTOR, role-LLM defaults, parse→VLM→extract staging maturity   │
-│   5. No GraphRAG-Bench / HippoRAG-style eval harness in-repo              │
+│  Shipped (lite): intent→Naive for L1, PPR arm (env), path prune,          │
+│  semantic V, dual-node chunk pick via source_chunk_ids, role LLMs,        │
+│  community_report opt-in + auto-embed, graph metrics, synthetic bench.    │
 │                                                                          │
-│  Path to #1: keep Mix+RRF+BM25 spine; add PPR dual-node arm; fix router;  │
-│  close LightRAG parity gaps; measure graph quality → retrieval → gen.     │
+│  Still missing for #1:                                                    │
+│   1. Real GraphRAG-Bench ACC / CI gate (PPR default blocked on this)      │
+│   2. Measured ≥30% token prune without ACC loss                           │
+│   3. Cross-encoder rerank; density YAML; full LLM cache-replay rebuild    │
+│                                                                          │
+│  Path to #1: keep Mix+RRF+BM25 spine; ACC-gate PPR; measure prune;        │
+│  import GraphRAG-Bench subset; optional cross-encoder.                    │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 

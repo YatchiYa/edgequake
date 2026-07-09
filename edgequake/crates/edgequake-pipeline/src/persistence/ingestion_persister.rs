@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use edgequake_llm::LLMProvider;
-use edgequake_storage::{compensation, traits::KVStorage, GraphStorage, VectorStorage};
+use edgequake_storage::{compensation, traits::KVStorage, GraphStorage, TextEmbedder, VectorStorage};
 
 use crate::merger::{
     KnowledgeGraphMerger, MergeProgressCallback, MergeStats, MergerConfig, RelationalEntitySink,
@@ -64,6 +64,12 @@ impl DefaultIngestionPersister {
             IngestionPersistConfig::from_settings(settings, relational_sink, llm_provider)
                 .with_kv_storage(kv_storage),
         )
+    }
+
+    /// Attach embedder for optional community_report vector indexing (SPEC-046).
+    pub fn with_text_embedder(mut self, embedder: Arc<dyn TextEmbedder>) -> Self {
+        self.config.text_embedder = Some(embedder);
+        self
     }
 
     /// Attach a merge progress callback (SPEC-032 W-04).
@@ -183,6 +189,8 @@ pub struct IngestionPersistConfig {
     pub merge_progress: Option<std::sync::Arc<MergeProgressCallback>>,
     /// Optional lineage sink (SPEC-032 W-08).
     pub lineage_sink: Option<Arc<dyn crate::merger::LineageSink>>,
+    /// Optional text embedder for community_report vectors (SPEC-046 EQ-046-11).
+    pub text_embedder: Option<Arc<dyn TextEmbedder>>,
 }
 
 impl IngestionPersistConfig {
@@ -202,6 +210,7 @@ impl IngestionPersistConfig {
             kv_storage: None,
             merge_progress: None,
             lineage_sink: None,
+            text_embedder: None,
         }
     }
 
@@ -213,6 +222,11 @@ impl IngestionPersistConfig {
     /// Wire a merge progress callback. The callback is cloned for each persist call.
     pub fn with_merge_progress(mut self, cb: MergeProgressCallback) -> Self {
         self.merge_progress = Some(std::sync::Arc::new(cb));
+        self
+    }
+
+    pub fn with_text_embedder(mut self, embedder: Arc<dyn TextEmbedder>) -> Self {
+        self.text_embedder = Some(embedder);
         self
     }
 }
@@ -321,6 +335,16 @@ async fn persist_processing_result_impl(
 
     match merge_result {
         Ok(stats) if stats.errors == 0 => {
+            // SPEC-046 P0.2: emit graph quality from merge delta (cheap, sync).
+            let delta_metrics = edgequake_storage::metrics_from_merge_delta(
+                &stats.artifacts.graph_nodes_created,
+                &stats.artifacts.graph_edges_created,
+            );
+            edgequake_storage::log_graph_quality(
+                &delta_metrics,
+                Some(ctx.document_id.as_str()),
+            );
+
             // SPEC-034 IMP-06: Fire community index refresh as a background task.
             //
             // WHY: Community index refresh is a read-model rebuild that does not
@@ -328,11 +352,46 @@ async fn persist_processing_result_impl(
             // the persist hot-path on it adds latency spikes with no caller
             // benefit. Errors are logged but cannot surface to the caller (the
             // community index is regenerable from graph data at any time).
+            //
+            // SPEC-046: also collect full-graph quality metrics in the same
+            // background task (non-blocking).
             {
                 let gs = graph_storage.clone();
+                let vs = vector_storage.clone();
                 let ws = ctx.workspace_id.clone();
+                let tenant = ctx.tenant_id.clone();
+                let doc_id = ctx.document_id.clone();
+                let embedder = config.text_embedder.clone();
                 tokio::spawn(async move {
-                    edgequake_storage::schedule_community_index_refresh(gs, ws).await;
+                    let ws_uuid = ws.as_deref().and_then(|s| uuid::Uuid::parse_str(s).ok());
+                    match edgequake_storage::collect_graph_quality_metrics(
+                        gs.as_ref(),
+                        ws_uuid.as_ref(),
+                        500,
+                    )
+                    .await
+                    {
+                        Ok(mut m) => {
+                            m.workspace_id = ws.clone();
+                            edgequake_storage::log_graph_quality(&m, Some(doc_id.as_str()));
+                        }
+                        Err(e) => {
+                            tracing::debug!(
+                                error = %e,
+                                "SPEC-046: full graph quality collect skipped"
+                            );
+                        }
+                    }
+                    let extras = match embedder {
+                        Some(e) => edgequake_storage::CommunityRefreshExtras::with_report_indexing(
+                            vs, e,
+                        )
+                        .with_tenant_id(tenant),
+                        None => edgequake_storage::CommunityRefreshExtras::default()
+                            .with_tenant_id(tenant),
+                    };
+                    edgequake_storage::schedule_community_index_refresh_with_extras(gs, ws, extras)
+                        .await;
                 });
             }
             Ok(IngestionPersistOutput {

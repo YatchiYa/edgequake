@@ -65,6 +65,7 @@ impl WorkspacePipelineFactory {
                 return self.handle_failure(
                     policy,
                     format!("Invalid workspace ID format '{}'", workspace_id),
+                    &options,
                 );
             }
         };
@@ -72,13 +73,17 @@ impl WorkspacePipelineFactory {
         let ws = match self.workspace_service.get_workspace(workspace_uuid).await {
             Ok(Some(ws)) => ws,
             Ok(None) => {
-                return self
-                    .handle_failure(policy, format!("Workspace '{}' not found", workspace_id));
+                return self.handle_failure(
+                    policy,
+                    format!("Workspace '{}' not found", workspace_id),
+                    &options,
+                );
             }
             Err(e) => {
                 return self.handle_failure(
                     policy,
                     format!("Failed to lookup workspace '{}': {}", workspace_id, e),
+                    &options,
                 );
             }
         };
@@ -123,6 +128,7 @@ impl WorkspacePipelineFactory {
                         "Failed to create LLM provider '{}' / '{}': {}",
                         ws.llm_provider, ws.llm_model, llm_err
                     ),
+                    &options,
                 )
             }
             (Ok(_), Err(embed_err)) => {
@@ -137,6 +143,7 @@ impl WorkspacePipelineFactory {
                         "Failed to create embedding provider '{}' / '{}': {}",
                         ws.embedding_provider, ws.embedding_model, embed_err
                     ),
+                    &options,
                 )
             }
             (Err(llm_err), Err(embed_err)) => {
@@ -152,6 +159,7 @@ impl WorkspacePipelineFactory {
                         "Failed to create LLM ({}) and embedding ({}) providers",
                         llm_err, embed_err
                     ),
+                    &options,
                 )
             }
         }
@@ -161,12 +169,21 @@ impl WorkspacePipelineFactory {
         &self,
         policy: PipelineFallbackPolicy,
         message: String,
+        options: &IngestionPipelineOptions,
     ) -> Result<Arc<Pipeline>, String> {
         match policy {
             PipelineFallbackPolicy::Strict => Err(message),
             PipelineFallbackPolicy::LenientGlobal => {
+                // SPEC-046: Semantic (V) chunking needs an embedder — refuse silent
+                // Recursive fallback that would drop the caller's strategy.
+                if options.chunk_strategy.requires_embeddings() {
+                    return Err(format!(
+                        "{message}; semantic chunking cannot use global fallback without workspace embedder"
+                    ));
+                }
                 warn!(
                     error = %message,
+                    chunk_strategy = options.chunk_strategy.as_str(),
                     "Using global default pipeline (lenient fallback policy)"
                 );
                 Ok(Arc::clone(&self.global_pipeline))
@@ -209,6 +226,27 @@ mod tests {
             .await
             .unwrap();
         assert!(Arc::ptr_eq(&pipeline, &global));
+    }
+
+    #[tokio::test]
+    async fn lenient_semantic_refuses_fallback_without_embedder() {
+        let (factory, _) = test_factory();
+        let opts = IngestionPipelineOptions::from_document_size(1000)
+            .with_chunk_strategy(edgequake_pipeline::ChunkStrategy::Semantic);
+        match factory
+            .resolve_for_ingestion(
+                "not-a-valid-uuid",
+                PipelineFallbackPolicy::LenientGlobal,
+                opts,
+            )
+            .await
+        {
+            Ok(_) => panic!("semantic must not fall back to Recursive"),
+            Err(err) => assert!(
+                err.to_ascii_lowercase().contains("semantic"),
+                "unexpected error: {err}"
+            ),
+        }
     }
 
     #[tokio::test]

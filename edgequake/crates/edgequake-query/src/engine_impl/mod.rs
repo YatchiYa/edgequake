@@ -150,6 +150,21 @@ pub struct QueryEngineConfig {
 
     /// Vector candidate pool multiplier for BM25 fusion in naive mode.
     pub bm25_candidate_multiplier: usize,
+
+    /// Max chunks contributed per entity/relation source (LightRAG
+    /// `related_chunk_number`). `0` = unlimited. SPEC-046 P0.3.
+    pub related_chunk_number: usize,
+
+    /// KG→chunk pick strategy (`vector` | `weight`). SPEC-046 P0.3.
+    pub kg_chunk_pick_method: crate::kg_chunk_pick::KgChunkPickMethod,
+
+    /// Neighborhood expansion: BFS or Personalized PageRank. SPEC-046 P1.1.
+    #[serde(skip)]
+    pub graph_walk: crate::graph_ppr::GraphWalkMode,
+
+    /// PathRAG-style relation prune before truncation. SPEC-046 P1.3.
+    #[serde(skip)]
+    pub path_prune: crate::path_prune::PathPruneConfig,
 }
 
 impl Default for QueryEngineConfig {
@@ -187,6 +202,11 @@ impl Default for QueryEngineConfig {
                 max_entity_tokens: 10000,
                 max_relation_tokens: 10000,
                 max_total_tokens: 30000,
+                buffer_tokens: std::env::var("EDGEQUAKE_TRUNCATION_BUFFER_TOKENS")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(200)
+                    .clamp(0, 5_000),
             },
             keyword_cache_ttl_secs: 24 * 60 * 60, // 24 hours
             enable_rerank: true,                  // Enable by default for retrieval quality
@@ -210,6 +230,14 @@ impl Default for QueryEngineConfig {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(5)
                 .clamp(2, 20),
+            related_chunk_number: std::env::var("EDGEQUAKE_RELATED_CHUNK_NUMBER")
+                .or_else(|_| std::env::var("RELATED_CHUNK_NUMBER"))
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(5),
+            kg_chunk_pick_method: crate::kg_chunk_pick::KgChunkPickMethod::from_env(),
+            graph_walk: crate::graph_ppr::GraphWalkMode::from_env(),
+            path_prune: crate::path_prune::PathPruneConfig::from_env(),
         }
     }
 }

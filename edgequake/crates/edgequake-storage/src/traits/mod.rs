@@ -22,6 +22,7 @@
 //! - **Flexibility**: Multiple backend support (Postgres, Memory, SurrealDB)
 //! - **Modularity**: Storage can be swapped without changing business logic
 
+mod embedder;
 mod graph;
 mod graph_analytics_ops;
 mod graph_isp;
@@ -33,6 +34,7 @@ mod kv;
 mod vector;
 mod workspace_vector;
 
+pub use embedder::TextEmbedder;
 pub use graph::{GraphEdge, GraphNode, GraphStorage, KnowledgeGraph};
 pub use graph_analytics_ops::GraphStorageAnalyticsOps;
 pub use graph_isp::{GraphStorageAnalyticsCap, GraphStorageMutator, GraphStorageReader};

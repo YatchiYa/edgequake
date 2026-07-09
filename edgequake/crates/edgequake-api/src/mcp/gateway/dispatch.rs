@@ -14,7 +14,7 @@ use crate::handlers::context_types::{
 };
 use crate::middleware::TenantContext;
 use crate::services::query_context::{
-    fetch_context_by_id, resolve_keyword_llm_override, retrieve_context, search_context,
+    fetch_context_by_id, resolve_query_llm_override, retrieve_context, search_context,
     FetchContextOptions,
 };
 use crate::state::AppState;
@@ -173,7 +173,7 @@ async fn execute_tool(
 
     let propagation = propagation.clone();
     let llm_override: Option<Arc<dyn LLMProvider>> =
-        resolve_keyword_llm_override(state, workspace.as_ref(), &propagation, None, None)?;
+        resolve_query_llm_override(state, workspace.as_ref(), &propagation, None, None)?;
 
     match name {
         "edgequake_search" => {

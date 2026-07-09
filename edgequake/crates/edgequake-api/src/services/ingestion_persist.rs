@@ -139,6 +139,35 @@ pub async fn persist_with_providers_and_progress(
     params: PersistIngestionParams<'_>,
     merge_progress: Option<MergeProgressCallback>,
 ) -> Result<IngestionPersistOutput, edgequake_pipeline::error::PipelineError> {
+    persist_with_providers_progress_and_embedder(
+        llm_provider,
+        cache_invalidator,
+        graph_storage,
+        vector_storage,
+        kv_storage,
+        relational_sink,
+        lineage_sink,
+        None,
+        params,
+        merge_progress,
+    )
+    .await
+}
+
+/// Persist with optional text embedder for community_report vectors (SPEC-046).
+#[allow(clippy::too_many_arguments)]
+pub async fn persist_with_providers_progress_and_embedder(
+    llm_provider: Arc<dyn LLMProvider>,
+    cache_invalidator: Option<&dyn QueryResultCacheInvalidator>,
+    graph_storage: Arc<dyn GraphStorage>,
+    vector_storage: Arc<dyn VectorStorage>,
+    kv_storage: Arc<dyn KVStorage>,
+    relational_sink: Arc<dyn RelationalEntitySink>,
+    lineage_sink: Arc<dyn LineageSink>,
+    text_embedder: Option<Arc<dyn edgequake_storage::TextEmbedder>>,
+    params: PersistIngestionParams<'_>,
+    merge_progress: Option<MergeProgressCallback>,
+) -> Result<IngestionPersistOutput, edgequake_pipeline::error::PipelineError> {
     let workspace_id = params.workspace_id.clone();
     let ctx = IngestionPersistContext::new(
         params.document_id,
@@ -159,6 +188,10 @@ pub async fn persist_with_providers_and_progress(
         Some(kv_storage),
     )
     .with_lineage_sink(lineage_sink);
+
+    if let Some(embedder) = text_embedder {
+        persister = persister.with_text_embedder(embedder);
+    }
 
     if let Some(cb) = merge_progress {
         persister = persister.with_merge_progress(cb);

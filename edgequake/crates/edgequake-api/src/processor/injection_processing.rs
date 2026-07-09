@@ -47,8 +47,36 @@ impl DocumentTaskProcessor {
 
         task.update_progress("extracting".to_string(), 3, 40);
 
-        match run_injection_pipeline(
+        let lineage = self
+            .get_workspace_provider_lineage(Some(data.workspace_id.as_str()))
+            .await;
+        let text_embedder = crate::safety_limits::create_safe_embedding_provider(
+            &lineage.embedding_provider,
+            &lineage.embedding_model,
+            lineage.embedding_dimension,
+        )
+        .ok()
+        .map(crate::services::LlmTextEmbedder::arc);
+
+        // SPEC-046: Summary role for merge summarizer when configured.
+        let summary_ws = async {
+            let uuid =
+                crate::middleware::resolve_workspace_uuid(Some(data.workspace_id.as_str()))?;
+            let ws_svc = self.workspace_service.as_ref()?;
+            ws_svc.get_workspace(uuid).await.ok().flatten()
+        }
+        .await;
+        let persist_llm = crate::services::resolve_summary_llm_or_fallback(
+            summary_ws.as_ref(),
             self.llm_provider.clone(),
+            |provider, model| {
+                crate::safety_limits::create_safe_llm_provider(provider, model)
+                    .map_err(|e| e.to_string())
+            },
+        );
+
+        match run_injection_pipeline(
+            persist_llm,
             self.query_cache_invalidator
                 .as_ref()
                 .map(|e| e.as_ref() as &dyn edgequake_query::QueryResultCacheInvalidator),
@@ -57,6 +85,8 @@ impl DocumentTaskProcessor {
             vector_storage,
             self.kv_storage.clone(),
             self.relational_sink.clone(),
+            self.resolve_lineage_sink().await,
+            text_embedder,
             &data.doc_id,
             &data.content,
             &data.workspace_id,

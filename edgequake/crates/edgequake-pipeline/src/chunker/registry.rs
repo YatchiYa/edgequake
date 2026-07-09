@@ -1,17 +1,22 @@
 //! Chunk strategy registry (SPEC-026 Phase 2 — Open/Closed selection SSOT).
+//!
+//! SPEC-046 EQ-046-09: `Semantic` (LightRAG `V`) is opt-in and requires an
+//! embedding provider; without one it falls back to Recursive at chunk time.
 
 use std::sync::Arc;
 
+use edgequake_llm::traits::EmbeddingProvider;
 use serde::{Deserialize, Serialize};
 
 use super::markdown_chunking::MarkdownChunking;
 use super::page_aware::PageAwareChunking;
 use super::recursive::RecursiveCharacterChunking;
+use super::semantic::SemanticChunking;
 use super::strategies::TokenBasedChunking;
 use super::types::{ChunkerConfig, ChunkingStrategy};
 use super::Chunker;
 
-/// Ingestion chunk strategy (LightRAG F/R/P subset — no semantic vector).
+/// Ingestion chunk strategy (LightRAG F/R/V/P + PDF).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ChunkStrategy {
@@ -27,6 +32,10 @@ pub enum ChunkStrategy {
     /// Wraps the Recursive strategy but treats `<!-- edgequake-page:N -->`
     /// markers as hard split points so **no chunk ever crosses a page boundary**.
     Pdf,
+    /// Semantic vector breakpoints (LightRAG `V` / SPEC-046 EQ-046-09).
+    ///
+    /// Requires an embedding provider via [`resolve_chunker_with_embedder`].
+    Semantic,
 }
 
 impl ChunkStrategy {
@@ -37,6 +46,7 @@ impl ChunkStrategy {
             "recursive" | "r" => Some(Self::Recursive),
             "markdown" | "md" | "p" => Some(Self::Markdown),
             "pdf" => Some(Self::Pdf),
+            "semantic" | "v" | "semantic_vector" => Some(Self::Semantic),
             _ => None,
         }
     }
@@ -47,7 +57,13 @@ impl ChunkStrategy {
             Self::Recursive => "recursive",
             Self::Markdown => "markdown",
             Self::Pdf => "pdf",
+            Self::Semantic => "semantic",
         }
+    }
+
+    /// True when this strategy needs an embedding provider for best quality.
+    pub fn requires_embeddings(self) -> bool {
+        matches!(self, Self::Semantic)
     }
 
     /// Auto-select the best strategy for an uploaded file.
@@ -114,8 +130,20 @@ impl ChunkOptions {
     }
 }
 
-/// Resolve a [`Chunker`] for the given strategy and base config.
+/// Resolve a [`Chunker`] for the given strategy and base config (no embedder).
+///
+/// For [`ChunkStrategy::Semantic`], falls back to recursive-at-runtime unless
+/// you use [`resolve_chunker_with_embedder`].
 pub fn resolve_chunker(strategy: ChunkStrategy, config: ChunkerConfig) -> Chunker {
+    resolve_chunker_with_embedder(strategy, config, None)
+}
+
+/// Resolve a [`Chunker`], wiring an embedding provider for semantic strategy.
+pub fn resolve_chunker_with_embedder(
+    strategy: ChunkStrategy,
+    config: ChunkerConfig,
+    embedder: Option<Arc<dyn EmbeddingProvider>>,
+) -> Chunker {
     let strategy_impl: Arc<dyn ChunkingStrategy> = match strategy {
         ChunkStrategy::Fixed => Arc::new(TokenBasedChunking),
         ChunkStrategy::Recursive => Arc::new(RecursiveCharacterChunking),
@@ -123,6 +151,7 @@ pub fn resolve_chunker(strategy: ChunkStrategy, config: ChunkerConfig) -> Chunke
         // Pdf wraps Recursive: splits at page markers first, then applies
         // the same recursive token-based strategy within each page.
         ChunkStrategy::Pdf => Arc::new(PageAwareChunking::default()),
+        ChunkStrategy::Semantic => Arc::new(SemanticChunking::new(embedder)),
     };
     Chunker::with_strategy(config, strategy_impl)
 }
@@ -171,5 +200,18 @@ mod tests {
             ChunkStrategy::resolve_for_upload(None, None, "doc.txt"),
             ChunkStrategy::default()
         );
+    }
+
+    #[test]
+    fn parses_semantic_aliases() {
+        assert_eq!(ChunkStrategy::parse("semantic"), Some(ChunkStrategy::Semantic));
+        assert_eq!(ChunkStrategy::parse("V"), Some(ChunkStrategy::Semantic));
+        assert!(ChunkStrategy::Semantic.requires_embeddings());
+    }
+
+    #[test]
+    fn semantic_without_embedder_still_resolves() {
+        let chunker = resolve_chunker(ChunkStrategy::Semantic, ChunkerConfig::default());
+        assert_eq!(chunker.strategy_name(), "semantic_vector");
     }
 }

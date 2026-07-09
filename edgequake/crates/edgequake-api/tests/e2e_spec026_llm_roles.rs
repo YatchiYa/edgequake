@@ -14,7 +14,9 @@ fn workspace_with_roles() -> Workspace {
         "llm_roles".into(),
         serde_json::json!({
             "extract": { "provider": "mock", "model": "mock-extract" },
-            "query": { "provider": "mock", "model": "mock-query" }
+            "query": { "provider": "mock", "model": "mock-query" },
+            "keyword": { "provider": "mock", "model": "mock-keyword" },
+            "summary": { "provider": "mock", "model": "mock-summary" }
         }),
     );
     Workspace {
@@ -80,4 +82,21 @@ async fn workspace_query_role_used_in_query_resolution() {
 
     assert_eq!(resolved.provider_name, "mock");
     assert_eq!(resolved.model_name, "mock-query");
+}
+
+#[test]
+fn workspace_keyword_and_summary_roles_resolve() {
+    use edgequake_core::role_config_from_workspace;
+
+    let ws = workspace_with_roles();
+    assert!(role_config_from_workspace(&ws, LlmRole::Keyword).is_some());
+    assert!(role_config_from_workspace(&ws, LlmRole::Summary).is_some());
+
+    let keyword = resolve_role_llm(&ws, LlmRole::Keyword);
+    assert_eq!(keyword.provider, "mock");
+    assert_eq!(keyword.model, "mock-keyword");
+
+    let summary = resolve_role_llm(&ws, LlmRole::Summary);
+    assert_eq!(summary.provider, "mock");
+    assert_eq!(summary.model, "mock-summary");
 }

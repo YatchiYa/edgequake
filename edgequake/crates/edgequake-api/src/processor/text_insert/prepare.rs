@@ -180,11 +180,16 @@ impl DocumentTaskProcessor {
             .and_then(edgequake_pipeline::ChunkStrategy::parse)
             .unwrap_or_default();
 
-        let chunk_options = data
+        let chunk_options: Option<edgequake_pipeline::ChunkOptions> = data
             .metadata
             .as_ref()
             .and_then(|m| m.get("chunk_options"))
             .and_then(|v| serde_json::from_value(v.clone()).ok());
+        // Keep sizes for SPEC-046 fingerprint before options are moved into pipeline.
+        let chunk_token_size_fp = chunk_options.as_ref().and_then(|o| o.chunk_token_size);
+        let chunk_overlap_fp = chunk_options
+            .as_ref()
+            .and_then(|o| o.chunk_overlap_token_size);
 
         let ingestion_options =
             edgequake_pipeline::IngestionPipelineOptions::from_document_size(text_content.len())
@@ -212,7 +217,7 @@ impl DocumentTaskProcessor {
             match self
                 .get_workspace_pipeline_for_ingestion(
                     workspace_id,
-                    ingestion_options,
+                    ingestion_options.clone(),
                     crate::workspace_pipeline_factory::PipelineFallbackPolicy::Strict,
                 )
                 .await
@@ -243,13 +248,38 @@ impl DocumentTaskProcessor {
             match self
                 .get_workspace_pipeline_for_ingestion(
                     workspace_id,
-                    ingestion_options,
+                    ingestion_options.clone(),
                     crate::workspace_pipeline_factory::PipelineFallbackPolicy::LenientGlobal,
                 )
                 .await
             {
                 Ok(p) => p,
-                Err(_) => self.get_workspace_pipeline(workspace_id).await,
+                Err(e) => {
+                    // SPEC-046: never silently drop Semantic (V) onto Recursive.
+                    if ingestion_options.chunk_strategy.requires_embeddings() {
+                        error!(
+                            document_id = %document_id,
+                            error = %e,
+                            "Semantic chunking requires workspace embedder; refusing lenient fallback"
+                        );
+                        let _ = self
+                            .update_document_status(
+                                &document_id,
+                                "failed",
+                                Some(&format!("Semantic chunking unavailable: {e}")),
+                            )
+                            .await;
+                        return Err(TaskError::Process(format!(
+                            "Semantic chunking unavailable: {e}"
+                        )));
+                    }
+                    warn!(
+                        document_id = %document_id,
+                        error = %e,
+                        "Lenient fallback to global pipeline"
+                    );
+                    self.get_workspace_pipeline(workspace_id).await
+                }
             }
         };
 
@@ -397,6 +427,97 @@ impl DocumentTaskProcessor {
                 .await
                 .ok()
                 .flatten();
+
+            // SPEC-046 EQ-046-14: stamp / refresh process fingerprint; purge KG when
+            // chunking or multimodal options changed vs last successful ingest
+            // (LightRAG `_purge_stale_extraction_if_resuming` parity).
+            {
+                use crate::services::process_fingerprint::{
+                    apply_fingerprint_to_metadata, resolve_fingerprint_from_metadata,
+                    should_purge_stale_extraction, ProcessFingerprintInput,
+                };
+
+                let mm_opts = data
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| m.get("multimodal_process_options"))
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+                    .or_else(|| {
+                        doc_metadata
+                            .as_ref()
+                            .and_then(crate::services::resolve_process_options_from_metadata)
+                    });
+                let token_size = chunk_token_size_fp.or_else(|| {
+                    doc_metadata.as_ref().and_then(|m| {
+                        m.get("chunk_options")
+                            .and_then(|o| o.get("chunk_token_size"))
+                            .and_then(|v| v.as_u64())
+                            .map(|n| n as usize)
+                    })
+                });
+                let overlap = chunk_overlap_fp.or_else(|| {
+                    doc_metadata.as_ref().and_then(|m| {
+                        m.get("chunk_options")
+                            .and_then(|o| o.get("chunk_overlap_token_size"))
+                            .and_then(|v| v.as_u64())
+                            .map(|n| n as usize)
+                    })
+                });
+                let fp_input = ProcessFingerprintInput::from_ingest_fields(
+                    chunk_strategy.as_str(),
+                    token_size,
+                    overlap,
+                    mm_opts.as_deref(),
+                );
+                let new_fp = fp_input.digest();
+                let stored_fp = doc_metadata
+                    .as_ref()
+                    .and_then(resolve_fingerprint_from_metadata);
+                let is_retry = data
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| m.get("is_retry").or_else(|| m.get("reanalyze")))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let should_purge =
+                    is_retry && should_purge_stale_extraction(stored_fp.as_deref(), &fp_input);
+
+                if should_purge {
+                    info!(
+                        document_id = %document_id,
+                        "SPEC-046: stale process fingerprint on retry — purging graph artifacts"
+                    );
+                    if let Err(e) =
+                        crate::handlers::documents::storage_helpers::cleanup_document_graph_data(
+                            &document_id,
+                            &self.graph_storage,
+                            None,
+                        )
+                        .await
+                    {
+                        warn!(
+                            document_id = %document_id,
+                            error = %e,
+                            "SPEC-046: graph purge on stale fingerprint failed; continuing"
+                        );
+                    }
+                }
+
+                let _ = crate::services::text_insert_content::patch_document_metadata(
+                    &self.kv_storage,
+                    &document_id,
+                    |obj| {
+                        apply_fingerprint_to_metadata(obj, &new_fp);
+                        obj.insert(
+                            "chunking_strategy".to_string(),
+                            json!(chunk_strategy.as_str()),
+                        );
+                    },
+                )
+                .await;
+            }
+
             crate::services::enrich_processed_text_with_mm_chunks(
                 self.kv_storage.as_ref(),
                 &document_id,

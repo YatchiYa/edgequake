@@ -63,12 +63,16 @@ pub mod engine_impl;
 pub mod error;
 pub mod eval;
 pub mod fusion;
+pub mod graph_expand;
 pub mod graph_hops;
+pub mod graph_ppr;
 pub mod helpers;
 pub mod hybrid_merge;
 pub mod keywords;
+pub mod kg_chunk_pick;
 pub mod mix_weights;
 pub mod modes;
+pub mod path_prune;
 pub mod query_reliability;
 pub mod sparse_retrieval;
 pub mod tokenizer;
@@ -94,6 +98,9 @@ pub use keywords::{
 };
 pub use mix_weights::MixWeightOverride;
 pub use modes::QueryMode;
+pub use graph_ppr::{GraphWalkMode, PprConfig};
+pub use kg_chunk_pick::KgChunkPickMethod;
+pub use path_prune::PathPruneConfig;
 pub use query_reliability::{classify_query_failure, query_failure_diagnostic, QueryFailureClass};
 pub use tokenizer::{MockTokenizer, SimpleTokenizer, Tokenizer};
 pub use truncation::{

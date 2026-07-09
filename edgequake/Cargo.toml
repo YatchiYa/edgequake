@@ -71,6 +71,22 @@ chrono = { workspace = true }
 criterion = { workspace = true }
 tokio-test = { workspace = true }
 
+[[bench]]
+name = "chunking_bench"
+harness = false
+
+[[bench]]
+name = "storage_bench"
+harness = false
+
+[[bench]]
+name = "graph_performance"
+harness = false
+
+[[bench]]
+name = "graphrag_bench"
+harness = false
+
 [workspace.package]
 version = "0.15.1"
 edition = "2021"

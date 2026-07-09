@@ -65,8 +65,11 @@ fn chunk_matches_mm(chunk_content: &str, mm: &MmChunkSidecarMeta) -> bool {
 }
 
 /// Augment extractions with mm entity + association edges (LightRAG operate L3622+).
+///
+/// SPEC-046 EQ-046-15: also creates a synthetic extraction for mm chunks that
+/// never received an LLM extraction slot (orphan guarantee — entity always lands).
 pub fn inject_modality_relations(
-    extractions: &mut [ExtractionResult],
+    extractions: &mut Vec<ExtractionResult>,
     chunks: &[TextChunk],
     mm_chunks: &[MmChunkSidecarMeta],
     file_path: &str,
@@ -74,6 +77,9 @@ pub fn inject_modality_relations(
     if mm_chunks.is_empty() {
         return;
     }
+
+    let mut covered_mm_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+
     for extraction in extractions.iter_mut() {
         let Some(chunk) = chunks.iter().find(|c| c.id == extraction.source_chunk_id) else {
             continue;
@@ -84,7 +90,38 @@ pub fn inject_modality_relations(
         else {
             continue;
         };
+        covered_mm_ids.insert(mm.sidecar.id.clone());
         inject_into_extraction(extraction, mm, &chunk.content, file_path, &chunk.id);
+    }
+
+    // Orphan mm chunks: no extraction row matched — synthesize one so the
+    // drawing/table/equation entity is never dropped from the KG.
+    for mm in mm_chunks {
+        if covered_mm_ids.contains(&mm.sidecar.id) {
+            continue;
+        }
+        if !matches!(
+            mm.sidecar.sidecar_type.as_str(),
+            "drawing" | "table" | "equation"
+        ) {
+            continue;
+        }
+        let Some(chunk) = chunks.iter().find(|c| chunk_matches_mm(&c.content, mm)) else {
+            // Chunk text may not be in the pipeline chunk list (e.g. appended
+            // after chunking). Still inject with a synthetic chunk id.
+            let synth_id = format!("mm-orphan-{}", mm.item_id);
+            let mut extraction = ExtractionResult::new(synth_id.clone());
+            inject_into_extraction(&mut extraction, mm, &mm.text, file_path, &synth_id);
+            if !extraction.entities.is_empty() {
+                extractions.push(extraction);
+            }
+            continue;
+        };
+        let mut extraction = ExtractionResult::new(chunk.id.clone());
+        inject_into_extraction(&mut extraction, mm, &chunk.content, file_path, &chunk.id);
+        if !extraction.entities.is_empty() {
+            extractions.push(extraction);
+        }
     }
 }
 
@@ -218,5 +255,41 @@ mod tests {
         assert!(extractions[0].relationships[0]
             .description
             .contains("系统架构图"));
+    }
+
+    #[test]
+    fn inject_creates_orphan_extraction_when_no_llm_slot() {
+        let mm = MmChunkSidecarMeta {
+            item_id: "t1".into(),
+            modality: "table".into(),
+            text: "[Table Name]Perf\n\nrows".into(),
+            sidecar: MmSidecarBlock {
+                sidecar_type: "table".into(),
+                id: "t1".into(),
+                refs: vec![],
+            },
+            heading: None,
+            llm_cache_list: vec![],
+        };
+        let chunks = vec![TextChunk {
+            id: "doc-mm-table".into(),
+            content: mm.text.clone(),
+            index: 0,
+            start_offset: 0,
+            end_offset: 0,
+            start_line: 1,
+            end_line: 1,
+            token_count: 5,
+            embedding: None,
+            section: None,
+            page_start: None,
+            page_end: None,
+        }];
+        // Empty extractions — LLM never saw this chunk
+        let mut extractions = Vec::new();
+        inject_modality_relations(&mut extractions, &chunks, &[mm], "demo.pdf");
+        assert_eq!(extractions.len(), 1);
+        assert!(extractions[0].entities.iter().any(|e| e.name == "t1"));
+        assert_eq!(extractions[0].entities[0].entity_type, "table");
     }
 }

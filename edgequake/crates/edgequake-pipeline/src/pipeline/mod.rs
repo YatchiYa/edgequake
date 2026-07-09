@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use edgequake_llm::traits::EmbeddingProvider;
 
-use crate::chunker::{resolve_chunker, Chunker};
+use crate::chunker::{resolve_chunker, resolve_chunker_with_embedder, Chunker};
 use crate::extractor::EntityExtractor;
 
 pub use config::{
@@ -71,6 +71,9 @@ impl Pipeline {
     }
 
     /// Set the embedding provider (caps chunk_size to fit model context when needed).
+    ///
+    /// SPEC-046: when `chunk_strategy` is Semantic, re-resolves the chunker with
+    /// this provider so V-mode breakpoints use real embeddings (DIP).
     pub fn with_embedding_provider(mut self, provider: Arc<dyn EmbeddingProvider>) -> Self {
         let max_tokens = provider.max_tokens();
         if max_tokens > 0 {
@@ -83,11 +86,17 @@ impl Pipeline {
                     "Reducing chunk_size to fit embedding model context (2x safety margin)"
                 );
                 self.config.chunker.chunk_size = max_safe;
-                self.chunker =
-                    resolve_chunker(self.config.chunk_strategy, self.config.chunker.clone());
             }
         }
-        self.embedding_provider = Some(provider);
+        self.embedding_provider = Some(provider.clone());
+        // Always re-bind chunker when Semantic so embedder is not lost after size cap.
+        if self.config.chunk_strategy.requires_embeddings() || max_tokens > 0 {
+            self.chunker = resolve_chunker_with_embedder(
+                self.config.chunk_strategy,
+                self.config.chunker.clone(),
+                Some(provider),
+            );
+        }
         self
     }
 

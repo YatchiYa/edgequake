@@ -217,13 +217,18 @@ impl DocumentTaskProcessor {
         };
 
         match workspace_service.get_workspace(workspace_uuid).await {
-            Ok(Some(ws)) => ProviderLineage {
-                extraction_provider: ws.llm_provider.clone(),
-                extraction_model: ws.llm_model.clone(),
-                embedding_provider: ws.embedding_provider.clone(),
-                embedding_model: ws.embedding_model.clone(),
-                embedding_dimension: ws.embedding_dimension,
-            },
+            Ok(Some(ws)) => {
+                // SPEC-046 EQ-046-13: lineage tracks Extract role (NER/RE), not Summary.
+                let extract =
+                    edgequake_core::resolve_role_llm(&ws, edgequake_core::LlmRole::Extract);
+                ProviderLineage {
+                    extraction_provider: extract.provider,
+                    extraction_model: extract.model,
+                    embedding_provider: ws.embedding_provider.clone(),
+                    embedding_model: ws.embedding_model.clone(),
+                    embedding_dimension: ws.embedding_dimension,
+                }
+            }
             _ => default_lineage,
         }
     }

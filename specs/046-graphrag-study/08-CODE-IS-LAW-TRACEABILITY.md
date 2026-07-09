@@ -21,13 +21,24 @@ Every assessment claim maps to a concrete symbol. Use this when challenging the 
 | E-I11 | Rel merge | `edgequake-pipeline/src/merger/relationship.rs` | `merge_relationships_batch` |
 | E-I12 | Summarizer | `edgequake-pipeline/src/summarizer.rs` | `LLMSummarizer` |
 | E-I13 | Persist saga | `edgequake-pipeline/src/persistence/ingestion_persister.rs` | `persist_processing_result_impl` |
-| E-I14 | Chunk strategies | `edgequake-pipeline/src/chunker/registry.rs` | `ChunkStrategy` |
+| E-I14 | Chunk strategies (+ Semantic V) | `edgequake-pipeline/src/chunker/registry.rs` | `ChunkStrategy::Semantic` |
 | E-I15 | Adaptive size | `edgequake-pipeline/src/adaptive_chunking.rs` | `calculate_adaptive_chunk_size` |
 | E-I16 | API upload | `edgequake-api/src/handlers/documents/upload/file_upload.rs` | `upload_file` |
 | E-I17 | Async worker | `edgequake-api/src/processor/text_insert/mod.rs` | `process_text_insert` |
 | E-I18 | Community persist | `edgequake-storage/src/community_persist.rs` | `detect_and_persist_communities` |
 | E-I19 | AGE graph | `edgequake-storage/src/adapters/postgres/graph/mod.rs` | `PostgresAGEGraphStorage` |
 | E-I20 | pgvector | `edgequake-storage/src/adapters/postgres/vector/mod.rs` | `PgVectorStorage` |
+| E-I21 | Graph quality metrics | `edgequake-storage/src/graph_metrics.rs` | `collect_graph_quality_metrics` |
+| E-I22 | Process fingerprint | `edgequake-api/src/services/process_fingerprint.rs` | `ProcessFingerprintInput` |
+| E-I23 | Delete rebuild lite | `edgequake-api/src/services/knowledge_rebuild.rs` | `apply_rebuild_to_properties` |
+| E-I24 | MM orphan inject | `edgequake-pipeline/src/multimodal/injection.rs` | `inject_modality_relations` |
+| E-I25 | Community report index | `edgequake-storage/src/community_reports.rs` | `index_community_reports_with_embedder` |
+| E-I26 | TextEmbedder port | `edgequake-storage/src/traits/embedder.rs` | `TextEmbedder` |
+| E-I27 | Role LLM matrix | `edgequake-core/src/llm_roles.rs` | `LlmRole`, `resolve_role_llm` |
+| E-I28 | Community refresh extras | `community_index_service.rs` | `CommunityRefreshExtras`, `schedule_community_index_refresh_with_extras` |
+| E-I29 | LlmTextEmbedder adapter | `edgequake-pipeline/.../text_embedder.rs` | `LlmTextEmbedder` |
+| E-I30 | Summary role on merge | `summary_role.rs` + `text_insert/persist.rs` | `resolve_summary_llm_or_fallback` |
+| E-I31 | Core ingest auto-embed | `edgequake-core/.../ingestion.rs` | `with_text_embedder(LlmTextEmbedder)` |
 
 ---
 
@@ -47,15 +58,24 @@ Every assessment claim maps to a concrete symbol. Use this when challenging the 
 | E-Q10 | Hybrid merge RR | `hybrid_merge.rs` | `merge_hybrid_contexts` |
 | E-Q11 | RRF | `fusion.rs` | `reciprocal_rank_fusion`, `RRF_K` |
 | E-Q12 | BM25 fuse | `sparse_retrieval.rs` | `fuse_vector_and_bm25_chunks` |
-| E-Q13 | Chunk pick | `engine_impl/modes/chunk_retrieval.rs` | `append_score_ranked_chunks` |
-| E-Q14 | BFS hops | `graph_hops.rs` | `edges_within_depth` |
-| E-Q15 | Community expand | `community_global.rs` | `expand_global_context_with_communities` |
+| E-Q13 | Chunk pick | `engine_impl/modes/chunk_retrieval.rs` + `kg_chunk_pick.rs` | `append_score_ranked_chunks`, `KgChunkPickMethod` |
+| E-Q14 | BFS / PPR hops | `graph_expand.rs`, `graph_ppr.rs` | `expand_neighborhood_edges`, `GraphWalkMode` |
+| E-Q15 | Community expand + reports | `community_global.rs` | `expand_global_context_with_communities`, `append_community_report_vector_chunks` |
 | E-Q16 | Keywords | `keywords/llm_extractor.rs` | `LLMKeywordExtractor` |
-| E-Q17 | Intent router | `keywords/intent.rs` | `QueryIntent::recommended_mode` |
-| E-Q18 | Truncation | `truncation.rs` | `balance_context` |
+| E-Q17 | Intent router (evidence-aligned) | `keywords/intent.rs` | `QueryIntent::recommended_mode` |
+| E-Q18 | Truncation (dynamic remainder) | `truncation.rs` | `balance_context` |
 | E-Q19 | Prompt | `engine_impl/prompt.rs` | `build_prompt` |
 | E-Q20 | Bootstrap | `bootstrap.rs` | `build_production_query_engine` |
 | E-Q21 | API query | `edgequake-api/src/handlers/query/query_execute.rs` | `execute_query` |
+| E-Q22 | Path prune | `path_prune.rs` | `prune_relationships` |
+| E-Q23 | GraphRAG-Bench harness | `eval/graphrag_levels.rs` | `run_spec046_bench_report` |
+| E-Q24 | Role LLM query entry | `query_entry/query_workspace.rs` | `query_with_role_llms` |
+| E-Q25 | Role LLM stream entry | `query_entry/query_stream.rs` | `query_stream_with_role_llms` |
+| E-Q26 | Keyword role resolve (API) | `edgequake-api/.../query_execution.rs` | `resolve_workspace_keyword_llm` |
+| E-Q27 | Dual-node PPR chunk pick | `kg_chunk_pick.rs` + `chunk_retrieval.rs` | `pick_chunks_by_entity_ppr` |
+| E-Q28 | Postprocess DRY | `query_pipeline.rs` | `postprocess_retrieved_context` |
+| E-Q29 | SOTA provider DRY | `query_execution.rs` | `resolve_sota_providers` |
+| E-Q30 | Query LLM override (renamed) | `query_context.rs` | `resolve_query_llm_override` |
 
 ---
 
@@ -114,10 +134,12 @@ Every assessment claim maps to a concrete symbol. Use this when challenging the 
 |----------------------|--------------|
 | EQ is LightRAG-class | E-Q01–09, L-Q01–08, X03 |
 | Mix+RRF+BM25 is EQ advantage | E-Q11, E-Q12, X04 |
-| Global ≠ community reports | E-Q02, X03 |
-| Intent router misaligned | E-Q17, X01 |
-| No PPR | E-Q14 vs X02 |
-| Missing semantic chunk V | E-I14 vs L-I05 |
+| Global ≠ MS GraphRAG reports (optional extractive) | E-Q02, E-Q15, E-I25, X03 |
+| Intent router evidence-aligned | E-Q17, X01 |
+| PPR available (default BFS) | E-Q14, X02 |
+| Semantic chunk V opt-in | E-I14, L-I05 |
 | Strong enterprise substrate | E-I19, E-I20, workspaces/RLS |
+| Process fingerprint stale purge | E-I22, L-I02 |
+| Role-LLM Keyword/Summary/Extract/Query/Vlm | E-I27, E-Q24 |
 | Plan P0.1 rewire intent | E-Q17, X01 |
 | Plan P1.1 PPR arm | X02, E-Q14 |

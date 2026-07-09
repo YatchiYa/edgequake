@@ -206,22 +206,24 @@ Ensure VLM table/drawing/equation chunks create entities + edges (LR `operate.py
 ## Ticket-Sized Backlog (copy into tracker)
 
 ```text
-[ ] EQ-046-01  Rewire QueryIntent::recommended_mode + tests
-[ ] EQ-046-02  Graph metrics module + ingest emit + API field
-[ ] EQ-046-03  related_chunk_number + kg_chunk_pick_method
-[ ] EQ-046-04  Dynamic token remainder in truncation.rs
-[ ] EQ-046-05  Docs: hybrid mode naming vs LightRAG
-[ ] EQ-046-06  PPR walk behind EDGEQUAKE_GRAPH_WALK
-[ ] EQ-046-07  Bipartite entity–chunk edges for dual-node lite
-[ ] EQ-046-08  path_prune.rs before balance_context
-[ ] EQ-046-09  ChunkStrategy::Semantic
-[ ] EQ-046-10  GraphRAG-Bench subset harness
-[ ] EQ-046-11  Optional community_report vectors (L3)
-[ ] EQ-046-12  rebuild_knowledge_from_chunks on delete
-[ ] EQ-046-13  Role-LLM default matrix in docs + config
-[ ] EQ-046-14  Stale purge on process_options change
-[ ] EQ-046-15  Multimodal entity injection audit
+[x] EQ-046-01  Rewire QueryIntent::recommended_mode + tests
+[x] EQ-046-02  Graph metrics module + ingest emit + API field
+[x] EQ-046-03  related_chunk_number + kg_chunk_pick_method
+[x] EQ-046-04  Dynamic token remainder in truncation.rs
+[x] EQ-046-05  Docs: hybrid mode naming vs LightRAG
+[x] EQ-046-06  PPR walk behind EDGEQUAKE_GRAPH_WALK
+[x] EQ-046-07  Bipartite entity–chunk edges for dual-node lite
+[x] EQ-046-08  path_prune.rs before balance_context
+[x] EQ-046-09  ChunkStrategy::Semantic
+[x] EQ-046-10  GraphRAG-Bench subset harness
+[x] EQ-046-11  Optional community_report props + vector pack/upsert + global inject (L3)
+[x] EQ-046-12  rebuild_knowledge_from_chunks on delete (LLM-free lite)
+[x] EQ-046-13  Role-LLM default matrix in docs + Keyword role
+[x] EQ-046-14  Stale purge on process_options change (fingerprint)
+[x] EQ-046-15  Multimodal entity injection audit (orphan guarantee)
 ```
+
+**Implementation status (2026-07-09):** P0–P3 backlog tickets EQ-046-01…15 complete at lite/parity level. Wired end-to-end: community report auto-embed (`LlmTextEmbedder` in pipeline, used by API + core orchestrator), Keyword/Summary roles (sync+stream + merge via `resolve_summary_llm_or_fallback`), dual-node PPR→chunk pick via `source_chunk_ids`, DRY postprocess + SOTA provider resolve, injection persist with Summary+embedder+lineage, semantic chunking refuses silent Recursive fallback, Query LLM override renamed (`resolve_query_llm_override`). Criterion: `cargo bench --bench graphrag_bench`. Deferred: full LightRAG LLM cache-replay rebuild; real GraphRAG-Bench HF corpus / ACC CI; PPR default after ACC gate; cross-encoder rerank; density YAML.
 
 ---
 

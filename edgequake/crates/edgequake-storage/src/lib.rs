@@ -60,6 +60,7 @@ pub mod chunk_content;
 pub mod community;
 pub mod community_index_service;
 pub mod community_persist;
+pub mod community_reports;
 pub mod compensation;
 pub mod conversation_storage;
 pub mod conversation_types;
@@ -67,6 +68,7 @@ pub mod document_metadata_integrity;
 pub mod entity_id;
 pub mod entity_reconcile;
 pub mod error;
+pub mod graph_metrics;
 pub mod kv_key_schema;
 pub mod metadata_filter_sql;
 pub mod original_storage;
@@ -80,12 +82,23 @@ pub use entity_id::{normalize_entity_name, EntityId};
 // Re-export community detection
 pub use crate::community_index_service::{
     community_refresh_debounce_secs, pending_community_refresh_workspaces,
-    refresh_community_index_now, schedule_community_index_refresh,
+    refresh_community_index_now, refresh_community_index_now_with_extras,
+    schedule_community_index_refresh, schedule_community_index_refresh_with_extras,
+    CommunityRefreshExtras,
 };
 pub use chunk_content::{
     batch_fetch_chunk_contents, content_from_kv_value, content_from_metadata_or_kv,
 };
 pub use community::{Community, CommunityAlgorithm, CommunityConfig, CommunityDetectionResult};
+pub use community_reports::{
+    build_community_report_records, build_extractive_community_report, community_report_vector_id,
+    community_report_vector_metadata, community_reports_enabled,
+    index_community_reports_with_embedder, pack_community_report_vectors,
+    upsert_community_report_vectors, COMMUNITY_REPORT_VECTOR_TYPE,
+};
+pub use graph_metrics::{
+    collect_graph_quality_metrics, log_graph_quality, metrics_from_merge_delta, GraphQualityMetrics,
+};
 pub use community_persist::{
     backfill_communities_if_needed, community_features_enabled, detect_and_persist_communities,
     needs_community_backfill, persist_community_labels, refresh_community_index,
@@ -114,8 +127,8 @@ pub use error::StorageError;
 pub use traits::{
     kv_key_matches_like, GraphEdge, GraphNode, GraphReadView, GraphStorage,
     GraphStorageAnalyticsOps, GraphStorageMutateOps, GraphStorageReadOps, KVStorage,
-    KnowledgeGraph, MetadataFilter, VectorSearchResult, VectorStorage, WorkspaceVectorConfig,
-    WorkspaceVectorRegistry,
+    KnowledgeGraph, MetadataFilter, TextEmbedder, VectorSearchResult, VectorStorage,
+    WorkspaceVectorConfig, WorkspaceVectorRegistry,
 };
 
 // Re-export adapters

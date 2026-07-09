@@ -40,6 +40,7 @@ pub mod isolation_context;
 pub mod job_registry;
 pub mod large_document_profile;
 pub mod list_pagination;
+pub mod llm_text_embedder;
 pub mod login_lockout;
 pub mod message_context_mapper;
 pub mod multimodal;
@@ -52,6 +53,8 @@ pub mod pdf_admission_registry;
 pub mod pdf_auto_routing;
 pub mod pdf_lineage;
 pub mod pdf_workspace_dedup;
+pub mod process_fingerprint;
+pub mod knowledge_rebuild;
 #[cfg(feature = "postgres")]
 pub mod postgres_chunk_lineage;
 pub mod query_context;
@@ -63,6 +66,7 @@ pub mod route_registry;
 pub mod session_storage;
 pub mod source_reference_builder;
 pub mod staging_admission;
+pub mod summary_role;
 pub mod task_document_sync;
 pub mod task_scope;
 pub mod tenant_guard;
@@ -120,8 +124,8 @@ pub use ingest_admission::{
 };
 pub use ingestion_persist::{
     build_chunk_kv_records, persist_ingestion_result, persist_with_providers,
-    persist_with_providers_and_progress, resolve_relational_sink, tag_injection_sources,
-    PersistIngestionParams,
+    persist_with_providers_and_progress, persist_with_providers_progress_and_embedder,
+    resolve_relational_sink, tag_injection_sources, PersistIngestionParams,
 };
 pub use injection_list::{
     list_injections_paged, summary_from_meta, InjectionListPage, DEFAULT_INJECTION_LIST_LIMIT,
@@ -134,6 +138,7 @@ pub use injection_process::{
 pub use large_document_profile::{
     classify_ingestion_failure, IngestionEstimate, IngestionFailureClass, LargeDocumentProfile,
 };
+pub use llm_text_embedder::LlmTextEmbedder;
 pub use message_context_mapper::{
     build_message_context_from_engine, message_context_from_subgraph,
 };
@@ -163,8 +168,8 @@ pub use pdf_workspace_dedup::{
     workspace_has_visible_document_for_pdf,
 };
 pub use query_context::{
-    build_legacy_query_response, build_legacy_query_sources, fetch_context_by_id, retrieve_context,
-    search_context, FetchContextOptions,
+    build_legacy_query_response, build_legacy_query_sources, fetch_context_by_id,
+    resolve_query_llm_override, retrieve_context, search_context, FetchContextOptions,
 };
 pub use query_execution::{
     execute_sota_query, execute_sota_query_stream, execute_sota_query_stream_with_auth_fallback,
@@ -176,6 +181,7 @@ pub use query_request_builder::{build_engine_request, QueryExecutionParams};
 pub use retrieval_id_cache::{global_retrieval_cache, new_retrieval_id, RetrievalIdCache};
 pub use source_reference_builder::{build_sources_from_context, is_injection_source};
 pub use staging_admission::{promote_staging_to_final, rollback_staging};
+pub use summary_role::resolve_summary_llm_or_fallback;
 pub use task_document_sync::{
     extract_document_id_from_task, sync_document_failed_on_orphan_heartbeat,
 };
