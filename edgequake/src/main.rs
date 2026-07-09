@@ -192,7 +192,7 @@ async fn recover_orphaned_documents(
         return Ok(());
     }
 
-    let metadata_values = kv_storage.get_by_ids(&metadata_keys).await?;
+    let metadata_values = kv_storage.get_by_ids_ordered(&metadata_keys).await?;
     let now = Utc::now();
 
     // Stages where no meaningful work has been done yet — source content
@@ -233,7 +233,10 @@ async fn recover_orphaned_documents(
     let mut auto_recovered_count = 0;
     let mut needs_reupload_count = 0;
 
-    for (key, value) in metadata_keys.iter().zip(metadata_values.iter()) {
+    for (key, maybe_value) in metadata_keys.iter().zip(metadata_values.iter()) {
+        let Some(value) = maybe_value else {
+            continue;
+        };
         if let Some(obj) = value.as_object() {
             // Check both `status` and `current_stage` for stuck states
             let status = obj.get("status").and_then(|v| v.as_str()).unwrap_or("");
@@ -262,58 +265,59 @@ async fn recover_orphaned_documents(
 
             let is_early_stage = needs_reupload_stages.contains(&stuck_stage);
 
-            let mut updated = obj.clone();
+            let mut updated = serde_json::Value::Object(obj.clone());
 
             if is_early_stage {
-                // Early stage: source content may be lost — mark failed but with
-                // a clear message so users know to re-upload
-                updated.insert("status".to_string(), serde_json::json!("failed"));
-                updated.insert("current_stage".to_string(), serde_json::json!("failed"));
-                updated.insert(
-                    "stage_message".to_string(),
-                    serde_json::json!(format!(
-                        "Server restarted during '{}' stage. Source content may be incomplete. \
-                         Please re-upload the document.",
-                        stuck_stage
-                    )),
-                );
-                updated.insert(
-                    "error_message".to_string(),
-                    serde_json::json!(
-                        "Server restarted during early processing — please re-upload"
-                    ),
-                );
+                if let Some(obj) = updated.as_object_mut() {
+                    // Early stage: source content may be lost — mark failed but with
+                    // a clear message so users know to re-upload
+                    obj.insert("status".to_string(), serde_json::json!("failed"));
+                    obj.insert("current_stage".to_string(), serde_json::json!("failed"));
+                    obj.insert(
+                        "stage_message".to_string(),
+                        serde_json::json!(format!(
+                            "Server restarted during '{}' stage. Source content may be incomplete. \
+                             Please re-upload the document.",
+                            stuck_stage
+                        )),
+                    );
+                    obj.insert(
+                        "error_message".to_string(),
+                        serde_json::json!(
+                            "Server restarted during early processing — please re-upload"
+                        ),
+                    );
+                }
                 needs_reupload_count += 1;
             } else {
-                // Later stage: pipeline checkpoint likely exists, auto-retry.
-                // WHY "pending": The task recovery already requeued the task as
-                // pending, and the checkpoint system will skip expensive LLM
-                // extraction. Setting document to "pending" keeps the UI
-                // showing progress instead of an error.
-                updated.insert("status".to_string(), serde_json::json!("pending"));
-                updated.insert("current_stage".to_string(), serde_json::json!("pending"));
-                updated.insert(
-                    "stage_message".to_string(),
-                    serde_json::json!(format!(
-                        "Auto-recovered after server restart (was in '{}' stage). \
-                         Resuming from checkpoint...",
-                        stuck_stage
-                    )),
-                );
-                // Clear any previous error message since we're retrying
-                updated.remove("error_message");
+                if let Some(obj) = updated.as_object_mut() {
+                    // Later stage: pipeline checkpoint likely exists, auto-retry.
+                    obj.insert("status".to_string(), serde_json::json!("pending"));
+                    obj.insert("current_stage".to_string(), serde_json::json!("pending"));
+                    obj.insert(
+                        "stage_message".to_string(),
+                        serde_json::json!(format!(
+                            "Auto-recovered after server restart (was in '{}' stage). \
+                             Resuming from checkpoint...",
+                            stuck_stage
+                        )),
+                    );
+                    obj.remove("error_message");
+                }
                 auto_recovered_count += 1;
             }
 
-            updated.insert(
-                "updated_at".to_string(),
-                serde_json::json!(now.to_rfc3339()),
-            );
+            if let Some(obj) = updated.as_object_mut() {
+                obj.insert(
+                    "updated_at".to_string(),
+                    serde_json::json!(now.to_rfc3339()),
+                );
+            }
 
-            match kv_storage
-                .upsert(&[(key.clone(), serde_json::json!(updated))])
-                .await
-            {
+            // SPEC-045: metadata key is authoritative — repair misaligned JSON `id`.
+            edgequake_storage::repair_document_metadata_in_place(key, &mut updated);
+
+            match kv_storage.upsert(&[(key.clone(), updated)]).await {
                 Ok(_) => {
                     if is_early_stage {
                         info!(
@@ -728,6 +732,22 @@ async fn main() -> Result<()> {
 
     // Recover orphaned documents stuck in non-terminal states (uploading, pending, etc.)
     // MUST run BEFORE starting workers to avoid race with new uploads
+
+    // SPEC-045: repair metadata KV integrity BEFORE orphan recovery (prevents re-corruption).
+    if let Err(e) = edgequake_api::services::document_metadata_repair::repair_all_document_metadata(
+        Arc::clone(&state.storage.kv_storage) as Arc<dyn edgequake_storage::traits::KVStorage>,
+        state.pg_pool.as_ref(),
+    )
+    .await
+    {
+        ErrorEvent::log_domain_warn(
+            "startup",
+            "repair_document_metadata",
+            &e.to_string(),
+            json!({ "non_fatal": true }),
+        );
+    }
+
     if let Err(e) = recover_orphaned_documents(
         Arc::clone(&state.storage.kv_storage) as Arc<dyn edgequake_storage::traits::KVStorage>
     )

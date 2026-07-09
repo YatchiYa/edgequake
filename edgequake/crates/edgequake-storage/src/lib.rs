@@ -63,6 +63,7 @@ pub mod community_persist;
 pub mod compensation;
 pub mod conversation_storage;
 pub mod conversation_types;
+pub mod document_metadata_integrity;
 pub mod entity_id;
 pub mod entity_reconcile;
 pub mod error;
@@ -88,6 +89,10 @@ pub use community_persist::{
     backfill_communities_if_needed, community_features_enabled, detect_and_persist_communities,
     needs_community_backfill, persist_community_labels, refresh_community_index,
     spawn_community_backfill_if_needed,
+};
+pub use document_metadata_integrity::{
+    canonical_document_id, document_id_from_metadata_key, metadata_id_drift,
+    repair_document_metadata_in_place, DOCUMENT_METADATA_SUFFIX,
 };
 
 // Re-export PDF storage types

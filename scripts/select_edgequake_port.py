@@ -31,10 +31,20 @@ def is_edgequake(kind: str, port: int) -> bool:
         with urllib.request.urlopen(url, timeout=0.5) as response:
             body = response.read(4096).decode("utf-8", errors="ignore")
         if kind == "backend":
-            return '"status"' in body and "healthy" in body.lower()
+            return '"status"' in body and (
+                '"status":"healthy"' in body.lower()
+                or '"status": "healthy"' in body.lower()
+                or '"status":"degraded"' in body.lower()
+                or '"status": "degraded"' in body.lower()
+            )
         return "EdgeQuake" in body
     except (urllib.error.URLError, TimeoutError, ValueError):
         return False
+
+
+def is_foreign_backend(port: int) -> bool:
+    """True when something listens on `port` but it is not EdgeQuake."""
+    return is_listening(port) and not is_edgequake("backend", port)
 
 
 def choose_port(kind: str, preferred_port: int, scan_window: int) -> int:
@@ -45,14 +55,16 @@ def choose_port(kind: str, preferred_port: int, scan_window: int) -> int:
             return port
 
     for port in candidate_ports:
+        if kind == "backend" and is_foreign_backend(port):
+            continue
+        if kind == "frontend" and is_listening(port) and not is_edgequake(kind, port):
+            continue
         if not is_listening(port):
             return port
 
-    # Saturated window: never return preferred_port when a non-EdgeQuake app owns it.
-    if not is_listening(preferred_port) or is_edgequake(kind, preferred_port):
-        return preferred_port
-
-    return candidate_ports[-1]
+    raise RuntimeError(
+        f"No free {kind} port in range {preferred_port}-{preferred_port + scan_window}"
+    )
 
 
 def main() -> int:

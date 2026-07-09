@@ -90,8 +90,21 @@ pub trait KVStorage: Send + Sync {
     ///
     /// # Returns
     ///
-    /// Vector of found records. Missing records are silently omitted.
+    /// Vector of found records in **input order**. Missing records are omitted
+    /// (length may be less than `ids.len()`).
     async fn get_by_ids(&self, ids: &[String]) -> Result<Vec<serde_json::Value>>;
+
+    /// Like [`Self::get_by_id`] batched: one slot per input id (`None` when absent).
+    ///
+    /// WHY: Callers that zip keys with values (orphan recovery, wsdoc index) must
+    /// not rely on PostgreSQL `ANY($1)` result order (SPEC-045 metadata corruption).
+    async fn get_by_ids_ordered(&self, ids: &[String]) -> Result<Vec<Option<serde_json::Value>>> {
+        let mut out = Vec::with_capacity(ids.len());
+        for id in ids {
+            out.push(self.get_by_id(id).await?);
+        }
+        Ok(out)
+    }
 
     /// Filter keys to find which do NOT exist in storage.
     ///

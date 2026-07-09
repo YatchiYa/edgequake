@@ -16,14 +16,18 @@ interface UseDocumentWebSocketOptions {
   enabled?: boolean;
 }
 
-/** Status values that indicate a document is currently being processed */
-const PROCESSING_STATUSES = [
-  "processing",
-  "chunking",
-  "extracting",
-  "embedding",
-  "indexing",
-] as const;
+/** Status values that indicate a document is still ingesting */
+const TERMINAL_DOCUMENT_STATUSES = new Set([
+  "completed",
+  "failed",
+  "cancelled",
+]);
+
+function isActiveIngestionDocument(doc: Document): boolean {
+  if (!doc.track_id) return false;
+  const status = doc.status?.toLowerCase() ?? "";
+  return !TERMINAL_DOCUMENT_STATUSES.has(status);
+}
 
 /**
  * Hook for real-time document status updates via WebSocket.
@@ -56,14 +60,7 @@ export function useDocumentWebSocket(
   const processingTrackIds = useMemo(() => {
     if (!documents) return [];
     return documents
-      .filter(
-        (doc: Document) =>
-          doc.track_id &&
-          doc.status &&
-          PROCESSING_STATUSES.includes(
-            doc.status as (typeof PROCESSING_STATUSES)[number],
-          ),
-      )
+      .filter((doc: Document) => isActiveIngestionDocument(doc))
       .map((doc: Document) => doc.track_id as string)
       .sort(); // sort for stable comparison
   }, [documents]);

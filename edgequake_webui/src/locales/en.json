@@ -142,7 +142,8 @@
     "delete": {
       "success": "Document deleted",
       "successDesc": "The document has been permanently removed.",
-      "failed": "Delete failed"
+      "failed": "Delete failed",
+      "inProgress": "Deleting document…"
     },
     "deleteAll": {
       "success": "Deleted {{count}} documents",
@@ -214,6 +215,8 @@
       "clear": "Clear",
       "deleteSuccess": "Deleted {{count}} document(s)",
       "deleteFailed": "Failed to delete {{count}} document(s)",
+      "deleting": "Deleting {{count}} document(s)…",
+      "deleteProgress": "Deleting {{current}} of {{total}}…",
       "reprocessSuccess": "Queued {{count}} document(s) for reprocessing",
       "reprocessFailed": "Failed to queue {{count}} document(s)"
     },
@@ -374,15 +377,26 @@
     "filters": {
       "title": "Filters",
       "nodeTypes": "Node Types",
-      "connectionRange": "Connection Range"
+      "connectionRange": "Connection Range",
+      "entityTypes": "Entity types",
+      "typeCount": "{{count}} types",
+      "searchPlaceholder": "Search entities or types…",
+      "clearSearch": "Clear search",
+      "visibleSummary": "{{visible}} of {{total}} nodes visible",
+      "hideAll": "Hide all",
+      "allHiddenHint": "All types are hidden. Show at least one category to see the graph.",
+      "noTypes": "No entity types in the current graph.",
+      "noMatchingTypes": "No matching types",
+      "documentScoped": "Document view"
     },
     "legend": {
-      "title": "Legend",
-      "person": "Person",
-      "organization": "Organization",
-      "technology": "Technology",
-      "location": "Location",
-      "other": "Other"
+      "title": "Entity Types",
+      "showLegend": "Show entity type legend",
+      "collapse": "Collapse legend",
+      "typeList": "Entity type visibility controls",
+      "entities": "entities",
+      "clickToHide": "Click to hide",
+      "clickToShow": "Click to show"
     },
     "nodeTypes": {
       "person": "Person",
@@ -391,6 +405,7 @@
       "event": "Event",
       "concept": "Concept",
       "document": "Document",
+      "technology": "Technology",
       "default": "Other"
     },
     "showAll": "Show All",
@@ -460,6 +475,11 @@
     "idle": "Pipeline is idle",
     "busy": "Pipeline Busy",
     "waitingToStart": "{{count}} document(s) waiting to start",
+    "stuckHeadline": "{{count}} document(s) need attention",
+    "stuckHint": "No worker is processing these documents. Reprocess to create a new task.",
+    "stuckBadge": "Needs attention",
+    "stuckDocuments": "Stuck documents",
+    "reprocessStuck": "Reprocess",
     "processingAndWaiting": "{{processing}} processing · {{waiting}} waiting",
     "waitingHint": "Workers are idle but documents are queued. Processing will resume automatically.",
     "waitingDocuments": "Waiting documents",

@@ -12,7 +12,7 @@ import path from "node:path";
 const REPO_ROOT = path.join(__dirname, "..", "..", "..", "..");
 const PORT_SCRIPT = path.join(REPO_ROOT, "scripts", "select_edgequake_port.py");
 
-/** Returns true when `baseUrl/health` responds with an EdgeQuake healthy payload. */
+/** Returns true when `baseUrl/health` responds with an EdgeQuake payload. */
 export function probeEdgequakeHealth(baseUrl: string): boolean {
   const normalized = baseUrl.replace(/\/$/, "");
   try {
@@ -20,7 +20,15 @@ export function probeEdgequakeHealth(baseUrl: string): boolean {
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
     });
-    return body.includes('"status"') && body.toLowerCase().includes("healthy");
+    const lower = body.toLowerCase();
+    // Accept healthy or degraded — both prove EdgeQuake owns the port (not a foreign :8080 app).
+    return (
+      body.includes('"status"') &&
+      (lower.includes('"status":"healthy"') ||
+        lower.includes('"status": "healthy"') ||
+        lower.includes('"status":"degraded"') ||
+        lower.includes('"status": "degraded"'))
+    );
   } catch {
     return false;
   }
@@ -28,7 +36,7 @@ export function probeEdgequakeHealth(baseUrl: string): boolean {
 
 /** Discover backend port via shared Makefile port selector (DRY). */
 export function discoverBackendUrl(
-  preferredPort = 8080,
+  preferredPort = 8090,
   scanWindow = 20,
 ): string {
   const port = execSync(

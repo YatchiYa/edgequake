@@ -272,6 +272,45 @@ pub async fn analyze_deletion_impact_stats(
     Ok(stats)
 }
 
+/// Collect graph edges attributable to a document for lineage visualization.
+///
+/// First principle: if both endpoints belong to the document's entity set, the
+/// relationship is document-scoped — even when edge properties lack `source_ids`
+/// after graph merge (nodes retain provenance; edges often do not).
+pub async fn find_relationships_for_document_lineage(
+    graph: &Arc<dyn GraphStorage>,
+    tenant_ctx: Option<&TenantContext>,
+    scope: &DocumentSourceScope,
+    document_entity_ids: &[String],
+) -> ApiResult<Vec<GraphEdge>> {
+    if document_entity_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let entity_set: HashSet<&str> = document_entity_ids.iter().map(String::as_str).collect();
+    let mut edges: HashMap<(String, String), GraphEdge> = HashMap::new();
+
+    for edge in graph
+        .get_edges_for_nodes_batch(document_entity_ids)
+        .await
+        .map_err(ApiError::from)?
+    {
+        if entity_set.contains(edge.source.as_str()) && entity_set.contains(edge.target.as_str()) {
+            edges.insert(edge_key(&edge), edge);
+        }
+    }
+
+    // Merge source-prefix hits (may carry richer chunk provenance on edge props).
+    for edge in find_document_edges(graph, tenant_ctx, scope).await? {
+        if sources_for_document(&edge.properties, scope).is_empty() {
+            continue;
+        }
+        edges.entry(edge_key(&edge)).or_insert(edge);
+    }
+
+    Ok(edges.into_values().collect())
+}
+
 /// Statistics from document graph data cleanup.
 #[derive(Debug, Default, Clone)]
 pub struct CleanupStats {
@@ -356,5 +395,53 @@ mod tests {
         assert_eq!(scope.source_prefixes.len(), 2);
         assert!(source_belongs_to_document("kv-key-prefix-chunk-0", &scope));
         assert!(source_belongs_to_document("doc-uuid-chunk-1", &scope));
+    }
+
+    #[tokio::test]
+    async fn lineage_relationships_include_entity_adjacency_without_edge_source_ids() {
+        use edgequake_storage::traits::GraphStorageMutateOps;
+        use edgequake_storage::MemoryGraphStorage;
+
+        let graph: Arc<dyn GraphStorage> = Arc::new(MemoryGraphStorage::new("lineage-test"));
+        let doc_id = "doc-lightrag";
+        let scope = DocumentSourceScope::from_document_id(doc_id);
+
+        let mut alice_props = HashMap::new();
+        alice_props.insert(
+            "source_ids".to_string(),
+            serde_json::json!([format!("{doc_id}-chunk-0")]),
+        );
+        alice_props.insert("entity_type".to_string(), serde_json::json!("concept"));
+        graph
+            .upsert_node("LIGHTRAG", alice_props)
+            .await
+            .expect("alice");
+
+        let mut bob_props = HashMap::new();
+        bob_props.insert(
+            "source_ids".to_string(),
+            serde_json::json!([format!("{doc_id}-chunk-0")]),
+        );
+        bob_props.insert("entity_type".to_string(), serde_json::json!("technology"));
+        graph
+            .upsert_node("RETRIEVAL", bob_props)
+            .await
+            .expect("bob");
+
+        let mut edge_props = HashMap::new();
+        edge_props.insert("keywords".to_string(), serde_json::json!("uses"));
+        graph
+            .upsert_edge("LIGHTRAG", "RETRIEVAL", edge_props)
+            .await
+            .expect("edge");
+
+        let entity_ids = vec!["LIGHTRAG".to_string(), "RETRIEVAL".to_string()];
+        let edges = find_relationships_for_document_lineage(&graph, None, &scope, &entity_ids)
+            .await
+            .expect("lineage edges");
+
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0].source, "LIGHTRAG");
+        assert_eq!(edges[0].target, "RETRIEVAL");
     }
 }

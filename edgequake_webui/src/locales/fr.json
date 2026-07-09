@@ -242,7 +242,8 @@
     "delete": {
       "failed": "Échec de la suppression",
       "success": "Document supprimé",
-      "successDesc": "Le document a été définitivement supprimé."
+      "successDesc": "Le document a été définitivement supprimé.",
+      "inProgress": "Suppression du document…"
     },
     "deleteAll": {
       "failed": "Échec de la suppression globale",
@@ -313,6 +314,8 @@
       "clear": "Désélectionner",
       "deleteSuccess": "{{count}} document(s) supprimé(s)",
       "deleteFailed": "Échec de la suppression de {{count}} document(s)",
+      "deleting": "Suppression de {{count}} document(s)…",
+      "deleteProgress": "Suppression {{current}} sur {{total}}…",
       "reprocessSuccess": "{{count}} document(s) mis en file d'attente",
       "reprocessFailed": "Échec du retraitement de {{count}} document(s)"
     },
@@ -364,15 +367,26 @@
     "filters": {
       "title": "Filtres",
       "nodeTypes": "Types de nœuds",
-      "connectionRange": "Plage de connexions"
+      "connectionRange": "Plage de connexions",
+      "entityTypes": "Types d'entités",
+      "typeCount": "{{count}} types",
+      "searchPlaceholder": "Rechercher entités ou types…",
+      "clearSearch": "Effacer la recherche",
+      "visibleSummary": "{{visible}} sur {{total}} nœuds visibles",
+      "hideAll": "Tout masquer",
+      "allHiddenHint": "Tous les types sont masqués. Affichez au moins une catégorie.",
+      "noTypes": "Aucun type d'entité dans le graphe actuel.",
+      "noMatchingTypes": "Aucun type correspondant",
+      "documentScoped": "Vue document"
     },
     "legend": {
-      "title": "Légende",
-      "person": "Personne",
-      "organization": "Organisation",
-      "technology": "Technologie",
-      "location": "Lieu",
-      "other": "Autre"
+      "title": "Types d'entités",
+      "showLegend": "Afficher la légende",
+      "collapse": "Réduire la légende",
+      "typeList": "Contrôles de visibilité par type",
+      "entities": "entités",
+      "clickToHide": "Cliquer pour masquer",
+      "clickToShow": "Cliquer pour afficher"
     },
     "export": {
       "title": "Exporter le graphe",

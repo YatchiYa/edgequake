@@ -11,6 +11,7 @@ import {
   type DocumentStatus,
 } from "@/components/documents/status-badge";
 import type { Document } from "@/types";
+import { formatGraphMergeStageMessage } from "@/lib/pipeline/graph-merge-progress";
 
 const TERMINAL_FAILURE_STATUSES = new Set([
   "failed",
@@ -233,6 +234,10 @@ export function resolveDocumentProgressMessage(
   }
 
   if (doc.stage_message) {
+    const graphMerge = formatGraphMergeStageMessage(doc.stage_message);
+    if (graphMerge) {
+      return graphMerge;
+    }
     return doc.stage_message;
   }
 

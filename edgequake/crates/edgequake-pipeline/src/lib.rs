@@ -120,7 +120,7 @@ pub use lineage::{
 pub use merger::{
     description_similarity, KnowledgeGraphMerger, LineageSink, MergeArtifacts, MergePhase,
     MergeProgress, MergeProgressCallback, MergeStats, MergerConfig, NoopEntitySink,
-    NoopLineageSink, RelationalEntitySink,
+    NoopLineageSink, RelationLineageLink, RelationalEntitySink,
 };
 pub use multimodal::{
     inject_modality_relations, parse_mm_display_name, MmChunkSidecarMeta, MmHeadingBlock,

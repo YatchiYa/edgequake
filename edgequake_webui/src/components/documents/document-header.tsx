@@ -17,7 +17,7 @@
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Clock, Loader2, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { Document } from '@/types';
 import { ClearDocumentsDialog } from './clear-documents-dialog';
@@ -34,8 +34,12 @@ export interface DocumentHeaderProps {
   totalCount: number;
   /** Number of failed documents */
   failedCount: number;
-  /** Whether pipeline is busy */
-  pipelineIsBusy: boolean;
+  /** Show pipeline status shortcut in header */
+  showPipelineIndicator: boolean;
+  /** Ingestion alert mode for header shortcut styling */
+  pipelineAlertMode?: 'working' | 'queued' | 'stuck' | 'mixed';
+  /** @deprecated Use pipelineAlertMode */
+  pipelineWaitingOnly: boolean;
   /** Whether pipeline dialog is open */
   pipelineDialogOpen: boolean;
   /** Handler to set pipeline dialog state */
@@ -56,7 +60,9 @@ export interface DocumentHeaderProps {
 export function DocumentHeader({
   totalCount,
   failedCount,
-  pipelineIsBusy,
+  showPipelineIndicator,
+  pipelineAlertMode,
+  pipelineWaitingOnly,
   pipelineDialogOpen,
   onPipelineDialogChange,
   onRefresh,
@@ -65,6 +71,21 @@ export function DocumentHeader({
   documents,
 }: DocumentHeaderProps) {
   const { t } = useTranslation();
+  const alertMode = pipelineAlertMode ?? (pipelineWaitingOnly ? 'queued' : 'working');
+
+  const pipelineButtonClass =
+    alertMode === 'stuck'
+      ? 'gap-1 text-rose-600 border-rose-300'
+      : alertMode === 'queued'
+        ? 'gap-1 text-amber-600 border-amber-300'
+        : 'gap-1 text-orange-500';
+
+  const pipelineButtonLabel =
+    alertMode === 'stuck'
+      ? t('pipeline.stuckBadge', 'Needs attention')
+      : alertMode === 'queued'
+        ? t('pipeline.queuedBadge', 'Queued')
+        : t('pipeline.busy');
 
   return (
     <>
@@ -91,15 +112,22 @@ export function DocumentHeader({
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {/* Pipeline Status */}
-          {pipelineIsBusy && (
+          {showPipelineIndicator && (
             <Button
               variant="outline"
               size="sm"
               onClick={() => onPipelineDialogChange(true)}
-              className="gap-1 text-orange-500"
+              className={pipelineButtonClass}
+              data-testid="pipeline-header-button"
             >
-              <Loader2 className="h-4 w-4 animate-spin" />
-              {t('pipeline.busy')}
+              {alertMode === 'stuck' ? (
+                <AlertTriangle className="h-4 w-4" />
+              ) : alertMode === 'queued' ? (
+                <Clock className="h-4 w-4" />
+              ) : (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              )}
+              {pipelineButtonLabel}
             </Button>
           )}
           <PipelineStatusDialog

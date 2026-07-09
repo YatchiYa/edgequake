@@ -30,6 +30,8 @@ sdks/**/.swiftpm/
 
 # Environment files
 .env
+.edgequake-dev-ports.env
+edgequake_webui/.env.local.ports
 target/
 edgequake/target/
 edgequake/crates/*/target/

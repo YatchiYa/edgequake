@@ -19,13 +19,20 @@ BEGIN
         graph_schema := graph_name;
         idx_prefix := replace(graph_name, '.', '_');
 
-        IF to_regclass(format('%I._ag_label_vertex', graph_schema)) IS NULL THEN
-            RAISE NOTICE 'Skip graph % — vertex table missing', graph_name;
-            CONTINUE;
+        IF to_regclass(format('%I."Node"', graph_schema)) IS NOT NULL THEN
+            EXECUTE format('DROP INDEX IF EXISTS %I.idx_node_source_id_expr', graph_schema);
+            EXECUTE format('DROP INDEX IF EXISTS %I.idx_node_source_ids_gin', graph_schema);
         END IF;
 
-        EXECUTE format('DROP INDEX IF EXISTS %I.idx_%s_vertex_source_id', graph_schema, idx_prefix);
-        EXECUTE format('DROP INDEX IF EXISTS %I.idx_%s_vertex_source_ids_gin', graph_schema, idx_prefix);
+        IF to_regclass(format('%I."EDGE"', graph_schema)) IS NOT NULL THEN
+            EXECUTE format('DROP INDEX IF EXISTS %I.idx_edge_source_ids_gin', graph_schema);
+        END IF;
+
+        -- Legacy parent-table indexes (pre-038 v2, may have NAMEDATALEN-truncated names)
+        IF to_regclass(format('%I._ag_label_vertex', graph_schema)) IS NOT NULL THEN
+            EXECUTE format('DROP INDEX IF EXISTS %I.idx_%s_vertex_source_id', graph_schema, idx_prefix);
+            EXECUTE format('DROP INDEX IF EXISTS %I.idx_%s_vertex_source_ids_gin', graph_schema, idx_prefix);
+        END IF;
 
         IF to_regclass(format('%I._ag_label_edge', graph_schema)) IS NOT NULL THEN
             EXECUTE format('DROP INDEX IF EXISTS %I.idx_%s_edge_source_ids_gin', graph_schema, idx_prefix);

@@ -25,8 +25,10 @@ import { useSelectedWorkspace, useTenantStore } from '@/stores/use-tenant-store'
 import type { Document } from '@/types';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+
+import { resolvePipelineUiState } from '@/lib/pipeline/pipeline-document-state';
 
 import { useBulkSelection } from '@/hooks/use-bulk-selection';
 import { useDocumentDropzone } from '@/hooks/use-document-dropzone';
@@ -55,7 +57,6 @@ import {
   type LargePdfAdmissionPreview,
   type PdfParserChoice,
 } from '@/lib/pdf/large-pdf-admission';
-import { useCallback, useMemo } from 'react';
 import type { PdfParserResolutionContext } from '@/lib/pdf/large-pdf-admission';
 
 export function DocumentManager() {
@@ -220,6 +221,11 @@ export function DocumentManager() {
     serverStatusCounts: data?.status_counts,
   });
 
+  const pipelineUi = useMemo(
+    () => resolvePipelineUiState(documents, pipelineStatus),
+    [documents, pipelineStatus],
+  );
+
   // OODA-16: Bulk selection extracted to useBulkSelection hook
   const {
     selectedIds,
@@ -292,7 +298,9 @@ export function DocumentManager() {
           <DocumentHeader
             totalCount={totalCount}
             failedCount={statusCounts.failed + statusCounts.cancelled}
-            pipelineIsBusy={!!pipelineStatus?.is_busy}
+            showPipelineIndicator={pipelineUi.showPipelineIndicator}
+            pipelineAlertMode={pipelineUi.alertMode}
+            pipelineWaitingOnly={pipelineUi.isQueuedOnly}
             pipelineDialogOpen={pipelineDialogOpen}
             onPipelineDialogChange={setPipelineDialogOpen}
             onRefresh={refetch}
@@ -315,6 +323,12 @@ export function DocumentManager() {
             pipelineStatus={pipelineStatus}
             documents={documents}
             onOpenPipelineDetails={() => setPipelineDialogOpen(true)}
+            onReprocessStuckDocuments={(stuckDocs) => {
+              for (const doc of stuckDocs) {
+                reprocessMutation.mutate({ id: doc.id, mode: 'full' });
+              }
+            }}
+            isReprocessingStuck={reprocessMutation.isPending}
             getRootProps={getRootProps}
             getInputProps={getInputProps}
             isDragActive={isDragActive}

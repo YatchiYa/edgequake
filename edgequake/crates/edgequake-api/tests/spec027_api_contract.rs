@@ -176,7 +176,7 @@ fn spec027_neighborhood_uses_batch_incident_edges() {
 fn spec027_tenant_guard_wired_in_handlers() {
     let list = read_crate_src("src/handlers/documents/query/list.rs");
     assert!(list.contains("tenant_guard"));
-    assert!(list.contains("load_scoped_document_metadata"));
+    assert!(list.contains("load_scoped_document_metadata_entries"));
     let traversal = read_crate_src("src/handlers/graph/graph_query/traversal.rs");
     assert!(traversal.contains("empty_graph_response"));
     let costs = read_crate_src("src/handlers/costs.rs");
@@ -184,9 +184,21 @@ fn spec027_tenant_guard_wired_in_handlers() {
 }
 
 #[test]
+fn spec045_startup_repairs_metadata_before_orphan_recovery() {
+    let main_rs = read_crate_src("../../src/main.rs");
+    assert!(main_rs.contains("repair_all_document_metadata"));
+    let repair = read_crate_src("src/services/document_metadata_repair.rs");
+    assert!(repair.contains("get_by_ids_ordered"));
+    let integrity =
+        read_crate_src("../../crates/edgequake-storage/src/document_metadata_integrity.rs");
+    assert!(integrity.contains("repair_document_metadata_in_place"));
+}
+
+#[test]
 fn spec027_document_list_uses_metadata_scan_ssot() {
     let list = read_crate_src("src/handlers/documents/query/list.rs");
-    assert!(list.contains("load_scoped_document_metadata"));
+    assert!(list.contains("load_scoped_document_metadata_entries"));
+    assert!(list.contains("canonical_document_id"));
     let stuck = read_crate_src("src/handlers/documents/recovery/stuck.rs");
     assert!(stuck.contains("load_scoped_document_metadata"));
     let reprocess = read_crate_src("src/handlers/documents/recovery/reprocess.rs");
@@ -2048,6 +2060,18 @@ fn spec027_openapi_snapshot_committed_for_codegen() {
 
 /// Run with `cargo test -p edgequake-api spec027_write_openapi_snapshot -- --ignored --nocapture`
 /// to refresh `edgequake_webui/openapi/openapi.snapshot.json`.
+#[test]
+fn spec045_document_graph_lineage_ssot() {
+    let lineage = read_crate_src("src/services/document_graph_lineage.rs");
+    assert!(lineage.contains("build_document_graph_lineage"));
+    assert!(lineage.contains("find_relationships_for_document_lineage"));
+    assert!(lineage.contains("entity_summary_from_node"));
+    let cascade = read_crate_src("src/services/document_graph_cascade.rs");
+    assert!(cascade.contains("find_relationships_for_document_lineage"));
+    let queries = read_crate_src("src/handlers/lineage/queries.rs");
+    assert!(queries.contains("build_document_graph_lineage"));
+}
+
 #[test]
 #[ignore = "manual snapshot refresh for OAS-009"]
 fn spec027_write_openapi_snapshot() {

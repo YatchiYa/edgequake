@@ -356,7 +356,7 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         node.properties
             .insert("sources".to_string(), serde_json::json!(sources));
 
-        // Merge source chunk IDs (for citation tracking)
+        // Merge source chunk IDs (for citation tracking + analytics reconcile)
         let mut source_chunk_ids: Vec<String> = node
             .properties
             .get("source_chunk_ids")
@@ -369,10 +369,7 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
             }
         }
 
-        node.properties.insert(
-            "source_chunk_ids".to_string(),
-            serde_json::json!(source_chunk_ids),
-        );
+        super::lineage::insert_chunk_lineage_properties(&mut node.properties, &source_chunk_ids);
 
         // Update source document ID and file path if not already set
         if !node.properties.contains_key("source_document_id") {
@@ -424,11 +421,8 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
             serde_json::Value::String(entity.name.clone()),
         );
 
-        // Source tracking for citations (LightRAG parity)
-        properties.insert(
-            "source_chunk_ids".to_string(),
-            serde_json::json!(entity.source_chunk_ids),
-        );
+        // Source tracking for citations (LightRAG parity) + analytics reconcile
+        super::lineage::insert_chunk_lineage_properties(&mut properties, &entity.source_chunk_ids);
         if let Some(ref doc_id) = entity.source_document_id {
             properties.insert(
                 "source_document_id".to_string(),
