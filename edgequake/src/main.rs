@@ -88,7 +88,14 @@ fn redact_database_url(url: &str) -> String {
 ///
 /// Startup is a safe recovery point because no workers are active yet, so every
 /// processing task is orphaned by definition and can be returned to pending.
-async fn recover_orphaned_tasks(task_storage: Arc<dyn TaskStorage>) -> Result<()> {
+///
+/// Edge case #8: if the linked document KV is already terminal-success
+/// (`completed`/`indexed`), mark the task `indexed` instead of re-queuing —
+/// otherwise we reprocess a finished document after every restart.
+async fn recover_orphaned_tasks(
+    task_storage: Arc<dyn TaskStorage>,
+    kv_storage: Arc<dyn edgequake_storage::traits::KVStorage>,
+) -> Result<()> {
     info!("🔍 Checking for orphaned tasks from previous backend session...");
 
     let filter = TaskFilter {
@@ -98,6 +105,7 @@ async fn recover_orphaned_tasks(task_storage: Arc<dyn TaskStorage>) -> Result<()
 
     let now = Utc::now();
     let mut recovered_count = 0;
+    let mut completed_count = 0;
     let mut page = 1;
     let page_size = 500;
 
@@ -121,6 +129,43 @@ async fn recover_orphaned_tasks(task_storage: Arc<dyn TaskStorage>) -> Result<()
         // both correct and safe (idempotent processing + checkpoint system).
         for mut task in task_list.tasks {
             let age = now.signed_duration_since(task.updated_at);
+
+            // Split-brain: task=processing but document already completed.
+            if let Some(doc_id) =
+                edgequake_api::services::extract_document_id_from_task(&task)
+            {
+                let meta_key =
+                    edgequake_api::services::resolve_document_metadata_key(&doc_id, &kv_storage)
+                        .await;
+                if let Ok(Some(meta)) = kv_storage.get_by_id(&meta_key).await {
+                    let status = meta.get("status").and_then(|v| v.as_str()).unwrap_or("");
+                    if edgequake_api::document_metadata::is_terminal_success_status(status) {
+                        task.status = TaskStatus::Indexed;
+                        task.error_message = Some(format!(
+                            "Auto-closed after restart: document already terminal ({status}); \
+                             task was still processing (age {} minutes).",
+                            age.num_minutes()
+                        ));
+                        task.updated_at = now;
+                        match task_storage.update_task(&task).await {
+                            Ok(_) => {
+                                info!(
+                                    "✅ Closed orphaned task against completed doc: {} → indexed",
+                                    task.track_id
+                                );
+                                completed_count += 1;
+                            }
+                            Err(e) => {
+                                warn!(
+                                    "⚠️ Failed to close orphaned task {}: {}",
+                                    task.track_id, e
+                                );
+                            }
+                        }
+                        continue;
+                    }
+                }
+            }
 
             // Reset to pending for automatic retry via checkpoint system.
             // WHY pending (not failed): The checkpoint system will resume from
@@ -159,10 +204,10 @@ async fn recover_orphaned_tasks(task_storage: Arc<dyn TaskStorage>) -> Result<()
         page += 1;
     }
 
-    if recovered_count > 0 {
+    if recovered_count > 0 || completed_count > 0 {
         info!(
-            "🔧 Orphaned task recovery complete: {} recovered",
-            recovered_count
+            "🔧 Orphaned task recovery complete: {} requeued, {} closed (doc already terminal)",
+            recovered_count, completed_count
         );
     } else {
         info!("✅ No orphaned tasks found - clean startup");
@@ -175,17 +220,28 @@ async fn recover_orphaned_tasks(task_storage: Arc<dyn TaskStorage>) -> Result<()
 ///
 /// Early upload stages are marked for re-upload, while later stages are reset to
 /// pending so checkpoint-aware processing can resume automatically.
+///
+/// `min_age`: when `Some`, only documents whose `updated_at` is older than this
+/// duration are recovered. Use `None` at startup (zero workers → all non-terminal
+/// docs are orphans). Periodic recovery MUST pass a positive age to avoid
+/// resetting documents that are actively being processed.
 async fn recover_orphaned_documents(
     kv_storage: Arc<dyn edgequake_storage::traits::KVStorage>,
+    min_age: Option<Duration>,
 ) -> Result<()> {
     info!("🔍 Checking for orphaned documents from previous backend session...");
 
-    let all_keys = kv_storage.keys().await?;
-    let metadata_keys: Vec<String> = all_keys
-        .iter()
-        .filter(|k| k.ends_with("-metadata"))
-        .cloned()
-        .collect();
+    // Prefer suffix scan — full keys() is O(all KV) and slows large-tenant boot.
+    let metadata_keys = match kv_storage.keys_with_suffix("-metadata").await {
+        Ok(keys) => keys,
+        Err(_) => {
+            let all_keys = kv_storage.keys().await?;
+            all_keys
+                .into_iter()
+                .filter(|k| k.ends_with("-metadata"))
+                .collect()
+        }
+    };
 
     if metadata_keys.is_empty() {
         info!("✅ No documents found - clean startup");
@@ -234,6 +290,10 @@ async fn recover_orphaned_documents(
     let mut needs_reupload_count = 0;
 
     for (key, maybe_value) in metadata_keys.iter().zip(metadata_values.iter()) {
+        // Never touch staging admission shells — mid-upload race (edge case #5).
+        if key.starts_with("staging:") {
+            continue;
+        }
         let Some(value) = maybe_value else {
             continue;
         };
@@ -252,9 +312,24 @@ async fn recover_orphaned_documents(
                 continue;
             }
 
-            // WHY no age threshold: At startup, ZERO workers are running.
+            // Periodic path: skip docs still receiving heartbeats / progress.
+            // Missing updated_at + non-terminal = treat as orphan (edge case #14) —
+            // HTTP recover_stuck already does this; keep policies aligned.
+            if let Some(age) = min_age {
+                let updated_at = obj
+                    .get("updated_at")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                    .map(|dt| dt.with_timezone(&Utc));
+                if let Some(ts) = updated_at {
+                    if now.signed_duration_since(ts) < age {
+                        continue;
+                    }
+                }
+            }
+
+            // WHY no age threshold at startup: ZERO workers are running.
             // Any document in a non-terminal state is orphaned by definition.
-            // The heartbeat mechanism defeated the previous age-based threshold.
 
             // Determine recovery strategy based on the stuck stage
             let stuck_stage = if !current_stage.is_empty() {
@@ -317,7 +392,14 @@ async fn recover_orphaned_documents(
             // SPEC-045: metadata key is authoritative — repair misaligned JSON `id`.
             edgequake_storage::repair_document_metadata_in_place(key, &mut updated);
 
-            match kv_storage.upsert(&[(key.clone(), updated)]).await {
+            // Keep wsdoc:{workspace}:{doc} index in sync (list/filter depends on it).
+            match edgequake_api::services::upsert_metadata_kv_with_index(
+                kv_storage.as_ref(),
+                key,
+                updated,
+            )
+            .await
+            {
                 Ok(_) => {
                     if is_early_stage {
                         info!(
@@ -719,8 +801,11 @@ async fn main() -> Result<()> {
 
     // Recover orphaned tasks from previous backend session (PRODUCTION_BUG_FIX)
     // MUST run BEFORE starting workers to prevent race conditions
-    if let Err(e) =
-        recover_orphaned_tasks(Arc::clone(&state.tasks.storage) as Arc<dyn TaskStorage>).await
+    if let Err(e) = recover_orphaned_tasks(
+        Arc::clone(&state.tasks.storage) as Arc<dyn TaskStorage>,
+        Arc::clone(&state.storage.kv_storage) as Arc<dyn edgequake_storage::traits::KVStorage>,
+    )
+    .await
     {
         ErrorEvent::log_domain_warn(
             "startup",
@@ -749,7 +834,8 @@ async fn main() -> Result<()> {
     }
 
     if let Err(e) = recover_orphaned_documents(
-        Arc::clone(&state.storage.kv_storage) as Arc<dyn edgequake_storage::traits::KVStorage>
+        Arc::clone(&state.storage.kv_storage) as Arc<dyn edgequake_storage::traits::KVStorage>,
+        None, // startup: all non-terminal docs are orphans (no workers yet)
     )
     .await
     {
@@ -847,13 +933,16 @@ async fn main() -> Result<()> {
     {
         let kv =
             Arc::clone(&state.storage.kv_storage) as Arc<dyn edgequake_storage::traits::KVStorage>;
+        // Only recover docs stale longer than the interval itself (active workers
+        // keep updating `updated_at` via progress patches).
+        let min_age = Duration::minutes(interval_mins as i64);
         tokio::spawn(async move {
             let mut interval =
                 tokio::time::interval(tokio::time::Duration::from_secs(interval_mins * 60));
             interval.tick().await;
             loop {
                 interval.tick().await;
-                if let Err(e) = recover_orphaned_documents(Arc::clone(&kv)).await {
+                if let Err(e) = recover_orphaned_documents(Arc::clone(&kv), Some(min_age)).await {
                     ErrorEvent::log_domain_warn(
                         "startup",
                         "periodic_recover_orphaned_documents",
@@ -864,8 +953,8 @@ async fn main() -> Result<()> {
             }
         });
         info!(
-            "Periodic document orphan recovery enabled (every {} min)",
-            interval_mins
+            "Periodic document orphan recovery enabled (every {} min, min_age={} min)",
+            interval_mins, interval_mins
         );
     }
 

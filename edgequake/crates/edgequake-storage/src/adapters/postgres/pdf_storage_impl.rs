@@ -25,11 +25,18 @@ impl PostgresPdfStorage {
 
 impl PostgresPdfStorage {
     /// PostgreSQL `undefined_column` (42703) — migration 041 not applied yet.
+    ///
+    /// WHY: Do NOT match bare "does not exist" — that also matches missing
+    /// relations/functions and falsely routes to the legacy path, which used to
+    /// leave `documents.relationship_count` at 0 while only patching JSONB.
     fn is_missing_column_error(err: &sqlx::Error) -> bool {
         match err {
             sqlx::Error::Database(db) => {
-                db.code().as_deref() == Some("42703")
-                    || db.message().to_ascii_lowercase().contains("does not exist")
+                if db.code().as_deref() == Some("42703") {
+                    return true;
+                }
+                let msg = db.message().to_ascii_lowercase();
+                msg.contains("column") && msg.contains("does not exist")
             }
             _ => false,
         }
@@ -66,26 +73,64 @@ impl PostgresPdfStorage {
     ) -> Result<()> {
         let chunk_count = stats.chunk_count.max(0);
         let entity_count = stats.entity_count.max(0);
+        let relationship_count = stats.relationship_count.max(0);
 
+        // Prefer writing relationship_count into the column when present (M041+).
+        // Fall back to metadata-only if that column is still missing on older DBs.
         let result = sqlx::query(
             r#"
             UPDATE documents SET
-                chunk_count = $2,
-                entity_count  = $3,
-                status        = $4,
-                updated_at    = NOW(),
-                metadata      = COALESCE(metadata, '{}'::jsonb) || $5::jsonb
+                chunk_count        = $2,
+                entity_count       = $3,
+                relationship_count = $4,
+                status             = $5,
+                updated_at         = NOW(),
+                metadata           = COALESCE(metadata, '{}'::jsonb) || $6::jsonb
             WHERE id = $1
             "#,
         )
         .bind(stats.document_id)
         .bind(chunk_count)
         .bind(entity_count)
+        .bind(relationship_count)
         .bind(stats.status)
-        .bind(metadata_patch)
+        .bind(metadata_patch.clone())
         .execute(&self.pool)
-        .await
-        .map_err(|e| StorageError::Database(format!("Failed to update document stats: {}", e)))?;
+        .await;
+
+        let result = match result {
+            Ok(r) => r,
+            Err(e) if Self::is_missing_column_error(&e) => {
+                // Pre-M041 schema: no relationship_count column — metadata JSONB only.
+                sqlx::query(
+                    r#"
+                    UPDATE documents SET
+                        chunk_count = $2,
+                        entity_count  = $3,
+                        status        = $4,
+                        updated_at    = NOW(),
+                        metadata      = COALESCE(metadata, '{}'::jsonb) || $5::jsonb
+                    WHERE id = $1
+                    "#,
+                )
+                .bind(stats.document_id)
+                .bind(chunk_count)
+                .bind(entity_count)
+                .bind(stats.status)
+                .bind(metadata_patch)
+                .execute(&self.pool)
+                .await
+                .map_err(|e| {
+                    StorageError::Database(format!("Failed to update document stats: {}", e))
+                })?
+            }
+            Err(e) => {
+                return Err(StorageError::Database(format!(
+                    "Failed to update document stats: {}",
+                    e
+                )));
+            }
+        };
 
         if result.rows_affected() == 0 {
             warn!(
@@ -97,8 +142,9 @@ impl PostgresPdfStorage {
                 document_id = %stats.document_id,
                 chunk_count = chunk_count,
                 entity_count = entity_count,
+                relationship_count = relationship_count,
                 status = stats.status,
-                "Updated document stats via metadata fallback (migration 041 columns absent)"
+                "Updated document stats via legacy/metadata fallback"
             );
         }
 

@@ -76,6 +76,11 @@ pub async fn repair_all_document_metadata(
     let mut upserts: Vec<(String, serde_json::Value)> = Vec::new();
 
     for (key, maybe_value) in keys.iter().zip(values.iter()) {
+        // Skip staging admission shells — resetting them mid-upload races the
+        // HTTP admission saga (edge case #5).
+        if key.starts_with("staging:") {
+            continue;
+        }
         let Some(mut value) = maybe_value.clone() else {
             continue;
         };
@@ -104,9 +109,15 @@ pub async fn repair_all_document_metadata(
     }
 
     if !upserts.is_empty() {
-        kv.upsert(&upserts).await.map_err(|e| {
-            crate::error::ApiError::Internal(format!("metadata repair upsert: {e}"))
-        })?;
+        // Keep wsdoc:{workspace}:{doc} index in sync — raw kv.upsert would leave
+        // list/filter blind after id/title repair (edge case #11).
+        for (key, value) in upserts {
+            crate::services::upsert_metadata_kv_with_index(kv.as_ref(), &key, value)
+                .await
+                .map_err(|e| {
+                    crate::error::ApiError::Internal(format!("metadata repair upsert: {e}"))
+                })?;
+        }
         info!(
             scanned = report.scanned,
             repaired = report.repaired,
@@ -159,5 +170,70 @@ mod tests {
         let b = kv.get_by_id("doc-b-metadata").await.unwrap().unwrap();
         assert_eq!(a["id"], "doc-a");
         assert_eq!(b["id"], "doc-b");
+    }
+
+    #[tokio::test]
+    async fn skips_staging_metadata_keys() {
+        let kv = Arc::new(MemoryKVStorage::new("spec045-staging-skip"));
+        kv.initialize().await.unwrap();
+
+        kv.upsert(&[(
+            "staging:doc-x-metadata".into(),
+            json!({ "id": "wrong", "title": "upload.pdf", "status": "pending" }),
+        )])
+        .await
+        .unwrap();
+
+        let report = repair_all_document_metadata(
+            kv.clone(),
+            #[cfg(feature = "postgres")]
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(report.repaired, 0);
+        let staging = kv
+            .get_by_id("staging:doc-x-metadata")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(staging["id"], "wrong", "staging shells must not be rewritten");
+    }
+
+    #[tokio::test]
+    async fn repair_writes_wsdoc_index_when_workspace_present() {
+        let kv = Arc::new(MemoryKVStorage::new("spec045-wsdoc"));
+        kv.initialize().await.unwrap();
+        let ws = "00000000-0000-0000-0000-000000000003";
+        let doc = "doc-wsdoc";
+        kv.upsert(&[(
+            format!("{doc}-metadata"),
+            json!({
+                "id": "drifted-id",
+                "title": "invoice.pdf",
+                "status": "completed",
+                "workspace_id": ws,
+                "tenant_id": "00000000-0000-0000-0000-000000000002"
+            }),
+        )])
+        .await
+        .unwrap();
+
+        let report = repair_all_document_metadata(
+            kv.clone(),
+            #[cfg(feature = "postgres")]
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(report.id_drift_fixed, 1);
+
+        let wsdoc_key = format!("wsdoc:{ws}:{doc}");
+        let pointer = kv.get_by_id(&wsdoc_key).await.unwrap();
+        assert!(
+            pointer.is_some(),
+            "repair must sync wsdoc index via upsert_metadata_kv_with_index"
+        );
     }
 }

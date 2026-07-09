@@ -221,6 +221,17 @@ pub const MIGRATION_080_VERSION: i64 = 80;
 /// sqlx migration version for AGE graph RLS (SPEC-042-E E-02).
 pub const MIGRATION_081_VERSION: i64 = 81;
 
+/// sqlx migration version for native UNIQUE index reconcile (all AGE graphs).
+pub const MIGRATION_083_VERSION: i64 = 83;
+
+/// Native UNIQUE index reconcile — SSOT: `migrations/support/083/apply.sql`
+pub const SQL_083_APPLY: &str =
+    include_str!("../../../../../migrations/support/083/apply.sql");
+
+/// JSONB→column stats backfill — SSOT: `migrations/support/083/stats_backfill.sql`
+pub const SQL_083_STATS_BACKFILL: &str =
+    include_str!("../../../../../migrations/support/083/stats_backfill.sql");
+
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../../migrations");
 
 /// Outcome of bootstrap migration run (surfaced in `/health` and `/ready`).
@@ -801,6 +812,15 @@ pub async fn run_postgres_migrations(
             target: "edgequake.migration",
             step = "migration_078_ok",
             "Migration 078/079 child Node indexes reconciled"
+        );
+    }
+
+    // M083: every boot — graphs created after sqlx migrate still need UNIQUE indexes.
+    if reconcile::reconcile_migration_083(pool).await? {
+        info!(
+            target: "edgequake.migration",
+            step = "migration_083_ok",
+            "Migration 083 native UNIQUE indexes + stats backfill reconciled"
         );
     }
 
@@ -1705,5 +1725,15 @@ mod tests {
             migration_080: noop_migration_080(),
             migration_081: noop_migration_081(),
         })));
+    }
+
+    #[test]
+    fn m083_apply_sql_is_idempotent_ssot() {
+        assert!(SQL_083_APPLY.contains("idx_node_prop_node_id_unique"));
+        assert!(SQL_083_APPLY.contains("idx_edge_source_target_unique"));
+        assert!(SQL_083_APPLY.contains("IF NOT EXISTS"));
+        assert!(SQL_083_APPLY.contains("node_id"));
+        assert!(SQL_083_STATS_BACKFILL.contains("relationship_count"));
+        assert!(SQL_083_STATS_BACKFILL.contains("metadata->>'relationship_count'"));
     }
 }

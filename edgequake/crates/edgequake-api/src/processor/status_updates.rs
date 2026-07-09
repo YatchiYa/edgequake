@@ -1,5 +1,8 @@
 use super::*;
-use crate::document_metadata::{is_informational_notice, is_terminal_failure_status};
+use crate::document_metadata::{
+    is_informational_notice, is_terminal_document_status, is_terminal_failure_status,
+    is_terminal_success_status,
+};
 
 fn apply_status_notice_fields(
     metadata: &mut serde_json::Map<String, serde_json::Value>,
@@ -130,13 +133,52 @@ async fn patch_document_indexing_progress_with_fraction(
     stage_message: &str,
     stage_progress: Option<f32>,
 ) {
-    let metadata_key = crate::services::resolve_document_metadata_key(document_id, &kv).await;
+    // Prefer the key that already exists; never recreate staging after promote.
+    // A late spawn that resolved staging before promote can otherwise resurrect
+    // `staging:…-metadata` and leave final metadata stuck at `indexing`.
+    let final_key = edgequake_storage::kv_keys::doc_metadata(document_id);
+    let staging_key = edgequake_storage::kv_keys::staging_doc_metadata(document_id);
+    let metadata_key = if kv.get_by_id(&staging_key).await.ok().flatten().is_some() {
+        // If final is already terminal, ignore staging (stale race) and skip.
+        if let Ok(Some(final_meta)) = kv.get_by_id(&final_key).await {
+            if final_meta
+                .get("status")
+                .and_then(|v| v.as_str())
+                .is_some_and(is_terminal_document_status)
+            {
+                tracing::debug!(
+                    document_id = %document_id,
+                    "Skipping merge-progress patch — final metadata already terminal"
+                );
+                return;
+            }
+        }
+        staging_key
+    } else {
+        final_key
+    };
+
     let Ok(Some(existing)) = kv.get_by_id(&metadata_key).await else {
         return;
     };
     let Some(obj) = existing.as_object() else {
         return;
     };
+    // Guard: never clobber a terminal status with a stale fire-and-forget merge patch.
+    // Evidence: invoice 019f475d… finished (task=indexed, SQL=indexed) while KV stayed
+    // `indexing`/`storing` at 100% merge because a late progress spawn rewrote status.
+    if obj
+        .get("status")
+        .and_then(|v| v.as_str())
+        .is_some_and(is_terminal_document_status)
+    {
+        tracing::debug!(
+            document_id = %document_id,
+            status = obj.get("status").and_then(|v| v.as_str()).unwrap_or(""),
+            "Skipping merge-progress KV patch — document already terminal"
+        );
+        return;
+    }
     let mut updated = obj.clone();
     updated.insert("status".to_string(), json!("indexing"));
     updated.insert("current_stage".to_string(), json!("storing"));
@@ -207,6 +249,21 @@ impl DocumentTaskProcessor {
 
         let updated_json = if let Some(existing_val) = existing {
             if let Some(obj) = existing_val.as_object() {
+                // Reliability: do not let a late in-flight stage overwrite a
+                // terminal status (same class of bug as merge-progress race).
+                // Terminal→terminal (e.g. completed→failed/cancelled) is allowed.
+                let existing_status = obj.get("status").and_then(|v| v.as_str()).unwrap_or("");
+                if is_terminal_document_status(existing_status)
+                    && !is_terminal_document_status(status)
+                {
+                    tracing::debug!(
+                        document_id = %document_id,
+                        existing_status,
+                        requested_status = status,
+                        "Skipping status update — document already terminal"
+                    );
+                    return Ok(());
+                }
                 let mut updated = obj.clone();
                 updated.insert("status".to_string(), json!(status));
                 updated.insert(
@@ -415,6 +472,20 @@ impl DocumentTaskProcessor {
         // Get existing metadata
         if let Ok(Some(existing)) = self.kv_storage.get_by_id(&metadata_key).await {
             if let Some(obj) = existing.as_object() {
+                // Never downgrade terminal-success with a non-terminal stats write
+                // (edge case #6 — late finalize race / double-call).
+                let existing_status = obj.get("status").and_then(|v| v.as_str()).unwrap_or("");
+                if is_terminal_success_status(existing_status)
+                    && !is_terminal_document_status(status)
+                {
+                    tracing::debug!(
+                        document_id = %document_id,
+                        existing_status,
+                        requested_status = status,
+                        "Skipping stats status update — document already terminal-success"
+                    );
+                    return Ok(());
+                }
                 let mut updated = obj.clone();
                 updated.insert("status".to_string(), json!(status));
                 updated.insert(
@@ -561,9 +632,16 @@ impl DocumentTaskProcessor {
             return;
         };
 
+        // WHY: KV uses `completed`; relational CHECK + UI prefer `indexed`.
+        let pg_status = if status == "completed" {
+            "indexed"
+        } else {
+            status
+        };
+
         let update = edgequake_storage::DocumentStatsUpdate {
             document_id: doc_uuid,
-            status,
+            status: pg_status,
             chunk_count: stats.chunk_count as i32,
             entity_count: stats.entity_count as i32,
             relationship_count: stats.relationship_count as i32,
@@ -594,5 +672,108 @@ impl DocumentTaskProcessor {
         _stats: &edgequake_pipeline::pipeline::ProcessingStats,
     ) {
         // No-op: postgres feature disabled → no relational `documents` table.
+    }
+}
+
+#[cfg(test)]
+mod merge_progress_patch_tests {
+    use std::sync::Arc;
+
+    use edgequake_pipeline::{MergePhase, MergeProgress};
+    use edgequake_storage::adapters::memory::MemoryKVStorage;
+    use edgequake_storage::traits::KVStorage;
+    use serde_json::json;
+
+    use super::patch_document_graph_merge_progress;
+
+    #[tokio::test]
+    async fn late_merge_progress_does_not_clobber_completed_status() {
+        let kv: Arc<dyn KVStorage> = Arc::new(MemoryKVStorage::new("merge-progress-guard"));
+        let doc_id = "doc-terminal";
+        let key = format!("{doc_id}-metadata");
+        kv.upsert(&[(
+            key.clone(),
+            json!({
+                "id": doc_id,
+                "status": "completed",
+                "current_stage": "completed",
+                "stage_message": "Processed 1 chunks, extracted 12 entities and 9 relationships",
+                "stage_progress": 1.0,
+                "entity_count": 12,
+                "relationship_count": 9,
+            }),
+        )])
+        .await
+        .unwrap();
+
+        let progress = MergeProgress {
+            phase: MergePhase::RelationshipGraph,
+            entities_processed: 12,
+            entities_total: 12,
+            relationships_processed: 9,
+            relationships_total: 9,
+            entities_created: 12,
+            entities_updated: 0,
+            relationships_created: 9,
+            relationships_updated: 0,
+        };
+        patch_document_graph_merge_progress(kv.clone(), doc_id, &progress).await;
+
+        let meta = kv.get_by_id(&key).await.unwrap().unwrap();
+        assert_eq!(meta["status"], "completed");
+        assert_eq!(meta["current_stage"], "completed");
+        assert!(
+            meta["stage_message"]
+                .as_str()
+                .unwrap()
+                .starts_with("Processed"),
+            "stage_message must stay terminal, got {:?}",
+            meta["stage_message"]
+        );
+    }
+
+    #[tokio::test]
+    async fn merge_progress_still_updates_while_indexing() {
+        let kv: Arc<dyn KVStorage> = Arc::new(MemoryKVStorage::new("merge-progress-active"));
+        let doc_id = "doc-active";
+        let key = format!("{doc_id}-metadata");
+        kv.upsert(&[(
+            key.clone(),
+            json!({
+                "id": doc_id,
+                "status": "indexing",
+                "current_stage": "storing",
+                "stage_message": "Storing...",
+                "stage_progress": 0.1,
+            }),
+        )])
+        .await
+        .unwrap();
+
+        let progress = MergeProgress {
+            phase: MergePhase::RelationshipGraph,
+            entities_processed: 12,
+            entities_total: 12,
+            relationships_processed: 9,
+            relationships_total: 9,
+            entities_created: 12,
+            entities_updated: 0,
+            relationships_created: 9,
+            relationships_updated: 0,
+        };
+        patch_document_graph_merge_progress(kv.clone(), doc_id, &progress).await;
+
+        let meta = kv.get_by_id(&key).await.unwrap().unwrap();
+        assert_eq!(meta["status"], "indexing");
+        assert_eq!(meta["current_stage"], "storing");
+        assert!(
+            meta["stage_message"]
+                .as_str()
+                .unwrap()
+                .contains("Merging relationships"),
+            "expected merge progress message, got {:?}",
+            meta["stage_message"]
+        );
+        assert_eq!(meta["stage_progress"].as_f64().unwrap(), 1.0);
     }
 }

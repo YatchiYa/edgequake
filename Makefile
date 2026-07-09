@@ -229,14 +229,18 @@ WORKER_THREADS ?= 4
 MAX_TASKS_PER_TENANT ?= 2
 EDGEQUAKE_PDF_CONCURRENCY ?= 2
 EDGEQUAKE_PDF_VISION_JOBS ?= 2
-export WORKER_THREADS MAX_TASKS_PER_TENANT EDGEQUAKE_PDF_CONCURRENCY EDGEQUAKE_PDF_VISION_JOBS
+# SPEC-034: native SQL AGE upserts (~69× faster than Cypher MERGE). Requires
+# migrations 067/074–076/083 UNIQUE indexes. Override with =0 to force Cypher.
+EDGEQUAKE_NATIVE_GRAPH_WRITES ?= 1
+export WORKER_THREADS MAX_TASKS_PER_TENANT EDGEQUAKE_PDF_CONCURRENCY EDGEQUAKE_PDF_VISION_JOBS EDGEQUAKE_NATIVE_GRAPH_WRITES
 
 # Shared exports appended to /tmp/edgequake-start.sh by backend-bg.
 define BACKEND_STABILITY_EXPORTS
 printf '%s\n' "export WORKER_THREADS=\"$(WORKER_THREADS)\"" >> /tmp/edgequake-start.sh; \
 printf '%s\n' "export MAX_TASKS_PER_TENANT=\"$(MAX_TASKS_PER_TENANT)\"" >> /tmp/edgequake-start.sh; \
 printf '%s\n' "export EDGEQUAKE_PDF_CONCURRENCY=\"$(EDGEQUAKE_PDF_CONCURRENCY)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_PDF_VISION_JOBS=\"$(EDGEQUAKE_PDF_VISION_JOBS)\"" >> /tmp/edgequake-start.sh;
+printf '%s\n' "export EDGEQUAKE_PDF_VISION_JOBS=\"$(EDGEQUAKE_PDF_VISION_JOBS)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_NATIVE_GRAPH_WRITES=\"$(EDGEQUAKE_NATIVE_GRAPH_WRITES)\"" >> /tmp/edgequake-start.sh;
 endef
 DEV_AUTH_ENABLED ?= false
 DEV_DISABLE_DEMO_LOGIN ?= false
@@ -517,6 +521,7 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 			EDGEQUAKE_DEV_MODE="$(DEV_EDGEQUAKE_DEV_MODE)" \
 		EDGEQUAKE_AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
 			AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
+			EDGEQUAKE_NATIVE_GRAPH_WRITES="$(EDGEQUAKE_NATIVE_GRAPH_WRITES)" \
 			cargo run 2>&1 | sed 's/^/[backend] /') & \
 		BACKEND_PID=$$!; \
 	else \
@@ -527,6 +532,7 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 			EDGEQUAKE_DEV_MODE="$(DEV_EDGEQUAKE_DEV_MODE)" \
 		EDGEQUAKE_AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
 			AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
+			EDGEQUAKE_NATIVE_GRAPH_WRITES="$(EDGEQUAKE_NATIVE_GRAPH_WRITES)" \
 			OLLAMA_HOST="http://localhost:11434" \
 			OLLAMA_MODEL="gemma4:latest" \
 			OLLAMA_EMBEDDING_MODEL="embeddinggemma:latest" \
