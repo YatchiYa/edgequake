@@ -25,6 +25,8 @@ const TASK_QUEUE_PROCESSING: &str = "edgequake_task_queue_processing";
 const TASK_QUEUE_FAILED: &str = "edgequake_task_queue_failed";
 const INGESTION_CHUNK_STRATEGY: &str = "edgequake_ingestion_chunk_strategy_total";
 const INGESTION_SECTION_CONTEXT: &str = "edgequake_ingestion_section_context_total";
+const INGESTION_FAILURES: &str = "edgequake_ingestion_failures_total";
+const COMPENSATION_QUARANTINE: &str = "edgequake_compensation_quarantine_total";
 
 /// Pre-register metric metadata so `/metrics` is never an empty body before first request.
 fn describe_http_metrics() {
@@ -86,6 +88,14 @@ fn describe_http_metrics() {
     describe_counter!(
         INGESTION_SECTION_CONTEXT,
         "Document ingest completions where section context was applied to chunks"
+    );
+    describe_counter!(
+        INGESTION_FAILURES,
+        "Document ingestion terminal failures by failure_class and workspace"
+    );
+    describe_counter!(
+        COMPENSATION_QUARANTINE,
+        "Saga compensation cleanup failures requiring operator quarantine"
     );
 }
 
@@ -164,6 +174,17 @@ pub fn init_metrics() {
             INGESTION_SECTION_CONTEXT,
             "used" => "false",
             "outcome" => "success"
+        )
+        .increment(0);
+        counter!(
+            INGESTION_FAILURES,
+            "failure_class" => "bootstrap",
+            "workspace" => "bootstrap"
+        )
+        .increment(0);
+        counter!(
+            COMPENSATION_QUARANTINE,
+            "kind" => "bootstrap"
         )
         .increment(0);
         handle
@@ -281,6 +302,23 @@ pub fn record_llm_request(provider: &str, operation: &str, outcome: &str, durati
 pub fn record_rate_limit_exceeded(scope: &str) {
     init_metrics();
     counter!(RATE_LIMIT_EXCEEDED, "scope" => scope.to_string()).increment(1);
+}
+
+/// Record a terminal ingestion failure by taxonomy (SPEC-045 SRE-I06).
+pub fn record_ingestion_failure(failure_class: &str, workspace: &str) {
+    init_metrics();
+    counter!(
+        INGESTION_FAILURES,
+        "failure_class" => failure_class.to_string(),
+        "workspace" => workspace.to_string()
+    )
+    .increment(1);
+}
+
+/// Record saga compensation quarantine (SPEC-045 SRE-I07).
+pub fn record_compensation_quarantine(kind: &str) {
+    init_metrics();
+    counter!(COMPENSATION_QUARANTINE, "kind" => kind.to_string()).increment(1);
 }
 
 /// Record a completed RAG query (API handler).

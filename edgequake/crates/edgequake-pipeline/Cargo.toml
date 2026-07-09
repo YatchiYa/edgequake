@@ -8,7 +8,7 @@ repository.workspace = true
 description = "Document processing pipeline for EdgeQuake"
 
 [dependencies]
-edgequake-storage = { path = "../edgequake-storage" }
+edgequake-storage = { path = "../edgequake-storage", features = ["observability"] }
 edgequake-llm = { workspace = true }
 
 async-trait.workspace = true

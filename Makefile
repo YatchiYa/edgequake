@@ -1362,6 +1362,10 @@ spec044-battle-test-all: ## SPEC-044 triple-track Cypher bind battle test (pg16 
 	@chmod +x specs/044-upgrate-issue-study/e2e/run_triple_track_cypher_proof.sh
 	@./specs/044-upgrate-issue-study/e2e/run_triple_track_cypher_proof.sh all
 
+spec045-battle-test-all: ## SPEC-045 ingestion reliability battle test (edge cases + health SQL)
+	@chmod +x specs/045-fix-ingestion-errors/e2e/run_ingestion_health_proof.sh
+	@./specs/045-fix-ingestion-errors/e2e/run_ingestion_health_proof.sh
+
 phase-e-battle-test: ## Run SPEC-042-E Phase E acceptance probes (pg17 + pg18)
 	@chmod +x specs/042-update-age-pgvector/e2e/run_phase_e_battle_test.sh
 	@./specs/042-update-age-pgvector/e2e/run_phase_e_battle_test.sh all

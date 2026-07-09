@@ -51,6 +51,11 @@ impl<'a> WorkspaceVectorResolveInput<'a> {
     }
 }
 
+/// True when a registry error indicates stale cached dimension (OODA-225 / SPEC-045 SRE-Q02).
+pub fn is_dimension_mismatch_error(error_msg: &str) -> bool {
+    error_msg.contains("Dimension mismatch") || error_msg.contains("cached=")
+}
+
 /// Resolve workspace-specific vector storage for ingestion writes.
 ///
 /// When [`WorkspaceVectorResolvePolicy::AllowDefaultFallback`] is active and resolution
@@ -93,10 +98,6 @@ pub async fn resolve_workspace_vector_storage(
             )));
         }
     };
-
-    if let Some(storage) = registry.get(&workspace_uuid).await {
-        return Ok(storage);
-    }
 
     let workspace_service = match workspace_service {
         Some(ws) => ws,
@@ -151,6 +152,22 @@ pub async fn resolve_workspace_vector_storage(
         fallback_embedding_dimension
     };
 
+    // SPEC-045 SRE-Q02: validate cache hit dimension (parity with query path OODA-225).
+    if let Some(storage) = registry.get(&workspace_uuid).await {
+        let cached_dim = storage.dimension();
+        if cached_dim != dimension {
+            tracing::warn!(
+                workspace_id = %workspace_id_raw,
+                cached_dim = cached_dim,
+                requested_dim = dimension,
+                "Ingestion dimension mismatch on cache hit — evicting and re-resolving"
+            );
+            registry.evict(&workspace_uuid).await;
+        } else {
+            return Ok(storage);
+        }
+    }
+
     let config = WorkspaceVectorConfig {
         workspace_id: workspace_uuid,
         dimension,
@@ -164,23 +181,60 @@ pub async fn resolve_workspace_vector_storage(
         "Using workspace-specific vector storage for ingestion"
     );
 
-    match registry.get_or_create(config).await {
+    match registry.get_or_create(config.clone()).await {
         Ok(storage) => Ok(storage),
         Err(e) => {
+            let error_msg = e.to_string();
+            if is_dimension_mismatch_error(&error_msg) {
+                tracing::warn!(
+                    workspace_id = %workspace_id_raw,
+                    error = %error_msg,
+                    "Ingestion dimension mismatch on get_or_create — evicting cache and retrying"
+                );
+                registry.evict(&workspace_uuid).await;
+                return match registry.get_or_create(config).await {
+                    Ok(storage) => Ok(storage),
+                    Err(e2) if allow_fallback => {
+                        tracing::warn!(
+                            workspace_id = %workspace_id_raw,
+                            error = %e2,
+                            "Retry after eviction failed — using default (non-strict mode)"
+                        );
+                        Ok(default_storage)
+                    }
+                    Err(e2) => Err(Error::internal(format!(
+                        "Failed to create vector storage for workspace '{}' after cache eviction: {}",
+                        workspace_id_raw, e2
+                    ))),
+                };
+            }
             if allow_fallback {
                 tracing::warn!(
                     workspace_id = %workspace_id_raw,
                     dimension = dimension,
-                    error = %e,
+                    error = %error_msg,
                     "Failed to create workspace vector storage — using default (non-strict mode)"
                 );
                 Ok(default_storage)
             } else {
                 Err(Error::internal(format!(
                     "Failed to create vector storage for workspace '{}' (dimension {}): {}",
-                    workspace_id_raw, dimension, e
+                    workspace_id_raw, dimension, error_msg
                 )))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn spec045_dimension_mismatch_detector_matches_registry_error() {
+        let msg = "Dimension mismatch for workspace abc: cached=768, requested=1536. Clear cache";
+        assert!(is_dimension_mismatch_error(msg));
+        assert!(is_dimension_mismatch_error("cached=768"));
+        assert!(!is_dimension_mismatch_error("connection refused"));
     }
 }

@@ -179,6 +179,21 @@ pub struct MigrationHealthSnapshot {
     pub age_extversion: Option<String>,
     pub age_shipped_version: Option<String>,
     pub ready_for_traffic: bool,
+    /// SPEC-045 SRE-M02: M080 halfvec conversion applied this bootstrap.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub halfvec_conversion_applied: bool,
+    /// SPEC-045 SRE-M02: M081 AGE graph RLS applied this bootstrap.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub age_rls_applied: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ReadinessResponse {
+    pub ready: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub blockers: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operator_action: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -264,6 +279,10 @@ pub struct SchemaHealth {
     /// Migration 038 source_ids index readiness (PostgreSQL + AGE only).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_ids_indexes: Option<SourceIdsIndexHealth>,
+
+    /// SPEC-045: M080 halfvec conversion applied at last bootstrap.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub halfvec_conversion_applied: Option<bool>,
 }
 
 /// Migration 038 index health surfaced at bootstrap.

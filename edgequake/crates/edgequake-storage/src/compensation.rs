@@ -16,6 +16,15 @@
 
 use crate::traits::{GraphStorage, VectorStorage};
 
+/// Record quarantine metric when observability feature is enabled (SPEC-045 SRE-I07).
+#[cfg(feature = "observability")]
+fn record_compensation_quarantine_metric(kind: &str) {
+    edgequake_observability::record_compensation_quarantine(kind);
+}
+
+#[cfg(not(feature = "observability"))]
+fn record_compensation_quarantine_metric(_kind: &str) {}
+
 /// Roll back chunk vectors (and optionally entity vectors) written earlier in
 /// the ingestion saga after the graph merge failed.
 ///
@@ -57,6 +66,7 @@ pub async fn compensate_orphan_vectors(
             );
         }
         Err(cleanup_err) => {
+            record_compensation_quarantine_metric("vector");
             tracing::error!(
                 document_id = %doc_id,
                 orphan_chunk_vectors = chunk_n,
@@ -83,6 +93,7 @@ pub async fn compensate_orphan_graph_writes(
 ) {
     for (source, target) in edges_created {
         if let Err(e) = graph_storage.delete_edge(source, target).await {
+            record_compensation_quarantine_metric("edge");
             tracing::error!(
                 document_id = %doc_id,
                 source = %source,
@@ -96,6 +107,7 @@ pub async fn compensate_orphan_graph_writes(
 
     for node_id in nodes_created {
         if let Err(e) = graph_storage.delete_node(node_id).await {
+            record_compensation_quarantine_metric("node");
             tracing::error!(
                 document_id = %doc_id,
                 node_id = %node_id,

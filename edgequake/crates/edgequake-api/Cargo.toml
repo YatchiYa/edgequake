@@ -20,7 +20,7 @@ vision = []
 [dependencies]
 edgequake-core = { path = "../edgequake-core" }
 edgequake-pdf = { workspace = true }
-edgequake-storage = { path = "../edgequake-storage" }
+edgequake-storage = { path = "../edgequake-storage", features = ["observability"] }
 edgequake-llm = { workspace = true }
 edgequake-pipeline = { path = "../edgequake-pipeline" }
 edgequake-query = { path = "../edgequake-query" }

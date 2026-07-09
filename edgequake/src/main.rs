@@ -359,48 +359,60 @@ async fn requeue_pending_tasks(
 ) -> Result<()> {
     info!("🔄 Checking for pending tasks to requeue from database...");
 
-    // Query all pending tasks
     let filter = TaskFilter {
         status: Some(TaskStatus::Pending),
         ..Default::default()
     };
-    let pagination = Pagination {
-        page_size: 1000, // WHY 1000: Most deployments won't have >1000 pending tasks at once
-        ..Default::default()
-    };
-
-    let task_list = task_storage.list_tasks(filter, pagination).await?;
-    let pending_count = task_list.tasks.len();
-
-    if pending_count == 0 {
-        info!("✅ No pending tasks to requeue");
-        return Ok(());
-    }
-
-    info!(
-        "📋 Found {} pending task(s) in database, requeueing to worker pool...",
-        pending_count
-    );
 
     let mut requeued_count = 0;
     let mut failed_count = 0;
+    let mut page = 1;
+    let page_size = 500;
 
-    for task in task_list.tasks {
-        match task_queue.send(task.clone()).await {
-            Ok(_) => {
-                info!("✅ Requeued task: {}", task.track_id);
-                requeued_count += 1;
-            }
-            Err(e) => {
-                ErrorEvent::log_domain_warn(
-                    "startup",
-                    "requeue_pending_task",
-                    &e.to_string(),
-                    json!({ "task_id": task.track_id, "non_fatal": true }),
-                );
-                failed_count += 1;
+    // SPEC-045 SRE-I02: paginate — startup may have >1000 pending after outage.
+    loop {
+        let pagination = Pagination {
+            page,
+            page_size,
+            ..Default::default()
+        };
+
+        let task_list = task_storage.list_tasks(filter.clone(), pagination).await?;
+        let batch_len = task_list.tasks.len();
+
+        if batch_len == 0 && page == 1 {
+            info!("✅ No pending tasks to requeue");
+            return Ok(());
+        }
+
+        if page == 1 && batch_len > 0 {
+            info!(
+                "📋 Found pending task(s) in database, requeueing to worker pool..."
+            );
+        }
+
+        for task in task_list.tasks {
+            match task_queue.send(task.clone()).await {
+                Ok(_) => {
+                    info!("✅ Requeued task: {}", task.track_id);
+                    requeued_count += 1;
+                }
+                Err(e) => {
+                    ErrorEvent::log_domain_warn(
+                        "startup",
+                        "requeue_pending_task",
+                        &e.to_string(),
+                        json!({ "task_id": task.track_id, "non_fatal": true }),
+                    );
+                    failed_count += 1;
+                }
             }
         }
+
+        if batch_len < page_size as usize {
+            break;
+        }
+        page += 1;
     }
 
     info!(
@@ -412,7 +424,10 @@ async fn requeue_pending_tasks(
 }
 
 /// Mark processing tasks as failed if their heartbeat has been dead for too long.
-async fn periodic_orphan_check(task_storage: Arc<dyn TaskStorage>) -> Result<()> {
+async fn periodic_orphan_check(
+    task_storage: Arc<dyn TaskStorage>,
+    kv_storage: Arc<dyn edgequake_storage::traits::KVStorage>,
+) -> Result<()> {
     let filter = TaskFilter {
         status: Some(TaskStatus::Processing),
         ..Default::default()
@@ -441,13 +456,14 @@ async fn periodic_orphan_check(task_storage: Arc<dyn TaskStorage>) -> Result<()>
             let age = now.signed_duration_since(task.updated_at);
 
             if age > orphan_threshold {
-                // Heartbeat died — mark as failed so the user can see and retry
-                task.status = TaskStatus::Failed;
-                task.error_message = Some(format!(
+                let error_msg = format!(
                     "Task heartbeat lost (no update for {} minutes). \
                      The worker may have crashed. Please retry.",
                     age.num_minutes()
-                ));
+                );
+                // Heartbeat died — mark as failed so the user can see and retry
+                task.status = TaskStatus::Failed;
+                task.error_message = Some(error_msg.clone());
                 task.updated_at = now;
 
                 match task_storage.update_task(&task).await {
@@ -457,6 +473,20 @@ async fn periodic_orphan_check(task_storage: Arc<dyn TaskStorage>) -> Result<()>
                             task.track_id,
                             humanize_duration(age)
                         );
+                        // SPEC-045 SRE-I01: sync document KV so UI does not show processing
+                        if let Err(e) = edgequake_api::services::sync_document_failed_on_orphan_heartbeat(
+                            Arc::clone(&kv_storage),
+                            &task,
+                            &error_msg,
+                        )
+                        .await
+                        {
+                            warn!(
+                                task_id = %task.track_id,
+                                error = %e,
+                                "Failed to sync document metadata after orphan heartbeat"
+                            );
+                        }
                         recovered_count += 1;
                     }
                     Err(e) => {
@@ -763,6 +793,8 @@ async fn main() -> Result<()> {
     // updating every 60s. This complements startup recovery (which is unconditional)
     // and the processing timeout (which catches hung tasks with active heartbeats).
     let periodic_task_storage = Arc::clone(&state.tasks.storage) as Arc<dyn TaskStorage>;
+    let periodic_kv_storage = Arc::clone(&state.storage.kv_storage)
+        as Arc<dyn edgequake_storage::traits::KVStorage>;
     tokio::spawn(async move {
         // WHY 5 minutes: Frequent enough to catch dead-heartbeat tasks within
         // ~15 minutes (10 min threshold + up to 5 min wait for the next check).
@@ -770,7 +802,12 @@ async fn main() -> Result<()> {
         interval.tick().await; // Skip first immediate tick (startup recovery already ran)
         loop {
             interval.tick().await;
-            if let Err(e) = periodic_orphan_check(Arc::clone(&periodic_task_storage)).await {
+            if let Err(e) = periodic_orphan_check(
+                Arc::clone(&periodic_task_storage),
+                Arc::clone(&periodic_kv_storage),
+            )
+            .await
+            {
                 ErrorEvent::log_domain_warn(
                     "startup",
                     "periodic_orphan_check",
@@ -780,6 +817,38 @@ async fn main() -> Result<()> {
             }
         }
     });
+
+    // PERIODIC DOCUMENT ORPHAN RECOVERY (SPEC-045): Re-normalize KV metadata for docs
+    // stuck in non-terminal states after long-running processing (complements task-level
+    // periodic_orphan_check). Disabled unless EDGEQUAKE_AUTO_ORPHAN_DOCUMENT_RECOVER_MINUTES>0.
+    if let Some(interval_mins) = std::env::var("EDGEQUAKE_AUTO_ORPHAN_DOCUMENT_RECOVER_MINUTES")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .filter(|&m| m > 0)
+    {
+        let kv = Arc::clone(&state.storage.kv_storage)
+            as Arc<dyn edgequake_storage::traits::KVStorage>;
+        tokio::spawn(async move {
+            let mut interval =
+                tokio::time::interval(tokio::time::Duration::from_secs(interval_mins * 60));
+            interval.tick().await;
+            loop {
+                interval.tick().await;
+                if let Err(e) = recover_orphaned_documents(Arc::clone(&kv)).await {
+                    ErrorEvent::log_domain_warn(
+                        "startup",
+                        "periodic_recover_orphaned_documents",
+                        &e.to_string(),
+                        json!({ "non_fatal": true }),
+                    );
+                }
+            }
+        });
+        info!(
+            "Periodic document orphan recovery enabled (every {} min)",
+            interval_mins
+        );
+    }
 
     // Configure server
     let config = ServerConfig {

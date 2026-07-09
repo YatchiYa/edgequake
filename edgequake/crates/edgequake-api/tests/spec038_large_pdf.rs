@@ -27,6 +27,16 @@ fn spec038_classify_document_too_large() {
 }
 
 #[test]
+fn spec045_classify_graph_merge_failure() {
+    let class = classify_ingestion_failure(
+        "Pipeline processing failed: 1 knowledge-graph merge error(s) during persist",
+    );
+    assert_eq!(class, IngestionFailureClass::GraphMerge);
+    assert_eq!(class.as_str(), "graph_merge");
+    assert_eq!(class.recommended_action(), "reprocess_full");
+}
+
+#[test]
 fn spec038_profile_reproducer_603_edgeparse_eta() {
     let profile = LargeDocumentProfile::new(603, 11_043_120);
     let est = profile.ingestion_estimate(PdfParserBackend::EdgeParse, "mock");

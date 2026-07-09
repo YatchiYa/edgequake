@@ -719,18 +719,42 @@ impl From<ProviderResolutionError> for ApiError {
 impl From<edgequake_query::error::QueryError> for ApiError {
     fn from(e: edgequake_query::error::QueryError) -> Self {
         use edgequake_query::error::QueryError;
+        use edgequake_query::query_reliability::QueryFailureClass;
+        let class = QueryFailureClass::from_query_error(&e);
+        let diag = edgequake_query::query_reliability::query_failure_diagnostic(&e.to_string());
         match e {
-            QueryError::InvalidQuery(msg) => ApiError::BadRequest(msg),
-            QueryError::NoResults => ApiError::NotFound("No results found for query".to_string()),
+            QueryError::InvalidQuery(msg) => ApiError::BadRequest(format!(
+                "{} [failure_class={}]",
+                msg,
+                class.as_str()
+            )),
+            QueryError::NoResults => ApiError::NotFound(format!(
+                "No results found for query [failure_class={}]",
+                class.as_str()
+            )),
             QueryError::ContextLimitExceeded { max, got } => ApiError::BadRequest(format!(
-                "Context limit exceeded: max {} tokens, got {}",
-                max, got
+                "Context limit exceeded: max {} tokens, got {} [failure_class={}]",
+                max,
+                got,
+                class.as_str()
             )),
             QueryError::StorageError(se) => ApiError::Storage(se),
             QueryError::LlmError(le) => ApiError::Llm(le),
-            QueryError::ConfigError(msg) => ApiError::ConfigError(msg),
-            QueryError::Timeout(ms) => ApiError::Timeout(format!("Query timed out after {}ms", ms)),
-            QueryError::Internal(msg) => ApiError::Internal(msg),
+            QueryError::ConfigError(msg) => ApiError::ConfigError(format!(
+                "{} | diagnostic={}",
+                msg,
+                diag
+            )),
+            QueryError::Timeout(ms) => ApiError::Timeout(format!(
+                "Query timed out after {}ms [failure_class={}]",
+                ms,
+                class.as_str()
+            )),
+            QueryError::Internal(msg) => ApiError::Internal(format!(
+                "{} | diagnostic={}",
+                msg,
+                diag
+            )),
         }
     }
 }

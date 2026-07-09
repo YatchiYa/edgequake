@@ -96,8 +96,8 @@ pub use workspace_service::{
     InMemoryWorkspaceService, UpdateTenantQuotaResult, WorkspaceService, WorkspaceServiceFactory,
 };
 pub use workspace_vector_resolve::{
-    default_workspace_uuid, resolve_workspace_uuid, resolve_workspace_vector_storage,
-    WorkspaceVectorResolveInput, WorkspaceVectorResolvePolicy,
+    default_workspace_uuid, is_dimension_mismatch_error, resolve_workspace_uuid,
+    resolve_workspace_vector_storage, WorkspaceVectorResolveInput, WorkspaceVectorResolvePolicy,
 };
 
 // Re-export conversation service

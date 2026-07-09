@@ -119,4 +119,25 @@ impl TaskFailureInfo {
             true,
         )
     }
+
+    /// Build structured failure from a raw processing error (SPEC-045 SSOT).
+    pub fn from_processing_error(message: impl Into<String>) -> Self {
+        use crate::ingestion_reliability::{
+            classify_ingestion_failure, failure_step, is_permanent_ingestion_failure,
+        };
+
+        let message = message.into();
+        let class = classify_ingestion_failure(&message);
+        let step = failure_step(class);
+        let retryable = !is_permanent_ingestion_failure(&message);
+        let suggestion = class.recommended_action();
+
+        Self::new(
+            message.clone(),
+            step,
+            message,
+            suggestion,
+            retryable,
+        )
+    }
 }
