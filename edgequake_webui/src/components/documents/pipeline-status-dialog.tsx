@@ -24,7 +24,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useChunkProgress } from '@/hooks';
 import { useCurrentTime } from '@/hooks/use-current-time';
 import { getEnhancedPipelineStatus, requestPipelineCancellation } from '@/lib/api/edgequake';
-import type { PipelineMessage } from '@/types';
+import { summarizePipelineDocuments } from '@/lib/pipeline/pipeline-document-state';
+import type { Document, PipelineMessage } from '@/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import { Activity, AlertTriangle, Check, CheckCircle, Clock, Database, DollarSign, Eraser, FileText, Info, Layers, Loader2, Sparkles, Timer, XCircle, Zap } from 'lucide-react';
@@ -59,6 +60,8 @@ interface PipelineStatusDialogProps {
   tenantId?: string;
   /** CRITICAL: Workspace ID for multi-tenancy isolation */
   workspaceId?: string;
+  /** Documents for waiting-state details when workers are idle but work is queued */
+  documents?: Document[];
 }
 
 const levelConfig = {
@@ -434,11 +437,17 @@ export function PipelineStatusDialog({
   clearStats,
   tenantId,
   workspaceId,
+  documents,
 }: PipelineStatusDialogProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const now = useCurrentTime(1000);
+
+  const documentSummary = useMemo(
+    () => summarizePipelineDocuments(documents),
+    [documents],
+  );
 
   // Use enhanced pipeline status with history messages (Phase 3)
   // CRITICAL: Include tenantId and workspaceId for multi-tenancy isolation
@@ -525,6 +534,10 @@ export function PipelineStatusDialog({
   // Use custom title or default
   const dialogTitle = title || t('pipeline.title', 'Pipeline Status');
 
+  const pendingTaskCount = data?.pending_tasks ?? 0;
+  const waitingCount = Math.max(documentSummary.waitingCount, pendingTaskCount);
+  const hasQueuedWork = !data?.is_busy && waitingCount > 0;
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -537,6 +550,12 @@ export function PipelineStatusDialog({
                 <Badge variant="outline" className="ml-2 text-orange-500 border-orange-500">
                   <Loader2 className="h-3 w-3 mr-1 animate-spin" />
                   {t('pipeline.active', 'Active')}
+                </Badge>
+              )}
+              {hasQueuedWork && (
+                <Badge variant="outline" className="ml-2 text-amber-600 border-amber-500">
+                  <Clock className="h-3 w-3 mr-1" />
+                  {t('pipeline.queuedBadge', 'Queued')}
                 </Badge>
               )}
               {data?.cancellation_requested && (
@@ -553,6 +572,70 @@ export function PipelineStatusDialog({
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : hasQueuedWork ? (
+            <div className="space-y-4">
+              <div className="py-4 text-center space-y-2">
+                <div className="flex justify-center">
+                  <Clock className="h-12 w-12 text-amber-500" />
+                </div>
+                <p className="font-medium text-foreground">
+                  {t('pipeline.waitingToStart', '{{count}} document(s) waiting to start', {
+                    count: waitingCount,
+                  })}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {t(
+                    'pipeline.waitingHint',
+                    'Workers are idle but documents are queued. Processing will resume automatically.',
+                  )}
+                </p>
+              </div>
+
+              {documentSummary.waitingDocs.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">{t('pipeline.waitingDocuments', 'Waiting documents')}</p>
+                  <ScrollArea className="max-h-40 rounded-md border">
+                    <div className="p-2 space-y-1">
+                      {documentSummary.waitingDocs.slice(0, 8).map((doc) => (
+                        <div
+                          key={doc.id}
+                          className="rounded bg-amber-50 dark:bg-amber-950/30 px-2 py-1.5 text-xs"
+                        >
+                          <p className="font-medium truncate">
+                            {doc.title || doc.file_name || doc.id}
+                          </p>
+                          <p className="text-muted-foreground truncate">
+                            {doc.stage_message ||
+                              t('pipeline.waitingForSlot', 'Waiting for a processing slot')}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </div>
+              )}
+
+              {data && (
+                <div className="grid grid-cols-3 gap-2 text-sm">
+                  <div className="p-2 bg-amber-50 dark:bg-amber-950 rounded text-center">
+                    <p className="text-xs text-muted-foreground">{t('pipeline.pendingLabel', 'Pending')}</p>
+                    <p className="text-lg font-bold text-amber-600">{pendingTaskCount}</p>
+                  </div>
+                  <div className="p-2 bg-green-50 dark:bg-green-950 rounded text-center">
+                    <p className="text-xs text-muted-foreground">{t('pipeline.completedLabel', 'Completed')}</p>
+                    <p className="text-lg font-bold text-green-600">{data.completed_tasks}</p>
+                  </div>
+                  <div className="p-2 bg-red-50 dark:bg-red-950 rounded text-center">
+                    <p className="text-xs text-muted-foreground">{t('pipeline.failedLabel', 'Failed')}</p>
+                    <p className="text-lg font-bold text-red-600">{data.failed_tasks}</p>
+                  </div>
+                </div>
+              )}
+
+              <Button variant="default" onClick={() => onOpenChange(false)} className="w-full" autoFocus>
+                {t('common.close', 'Close')}
+              </Button>
             </div>
           ) : data?.is_busy ? (
             <div className="space-y-4">

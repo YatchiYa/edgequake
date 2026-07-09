@@ -8,10 +8,14 @@
  */
 'use client';
 
+import {
+  orphanQueuedTaskCount,
+  summarizePipelineDocuments,
+} from '@/lib/pipeline/pipeline-document-state';
 import type { Document, PipelineStatus } from '@/types';
 import { CheckCircle, Clock, Loader2 } from 'lucide-react';
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { isProcessingStatus, getDocumentDisplayStatus } from './status-badge';
 
 export interface ProcessingStatusSummaryProps {
   /** Pipeline status from API query */
@@ -25,13 +29,8 @@ export interface ProcessingStatusSummaryProps {
 /**
  * ProcessingStatusSummary - Compact processing status display
  *
- * Shows:
- * - Running/queued task count with spinner
- * - Processing stage details for active documents
- * - Completed task count
- * - Click CTA to open pipeline dialog
- *
- * Only renders when there are running or queued tasks.
+ * Distinguishes active worker stages from waiting/queued documents so the
+ * banner does not say "Processing" when the pipeline worker is idle.
  */
 export function ProcessingStatusSummary({
   pipelineStatus,
@@ -40,95 +39,83 @@ export function ProcessingStatusSummary({
 }: ProcessingStatusSummaryProps) {
   const { t } = useTranslation();
 
-  // WHY: Count documents actually in processing state (not task count)
-  // Tasks can be "processing" even when their documents are failed/completed
-  // (e.g., after server restart: orphan recovery fails docs but tasks keep running)
-  const processingDocCount = documents?.filter(
-    (d) => isProcessingStatus(getDocumentDisplayStatus(d))
-  ).length ?? 0;
-
-  const queuedDocCount = documents?.filter(
-    (d) => getDocumentDisplayStatus(d) === 'queued'
-  ).length ?? 0;
-
-  const activeDocCount = processingDocCount;
-
-  // Filter documents with stage details (for progress detail display)
-  const processingDocs = documents?.filter((d) => {
-    const display = getDocumentDisplayStatus(d);
-    return (
-      d.current_stage &&
-      isProcessingStatus(display) &&
-      display !== 'queued'
-    );
-  }) ?? [];
-
-  const queuedDocs = documents?.filter(
-    (d) => getDocumentDisplayStatus(d) === 'queued'
-  ) ?? [];
-
-  const pipelineQueuedTasks = Math.max(
-    0,
-    pipelineStatus.queued_tasks - queuedDocCount,
+  const { activeCount, waitingCount, activeDocs, waitingDocs } = useMemo(
+    () => summarizePipelineDocuments(documents),
+    [documents],
   );
 
-  // Show banner when documents are actively processing or queued tasks await processing
+  const extraQueuedTasks = orphanQueuedTaskCount(
+    pipelineStatus.queued_tasks,
+    waitingCount,
+  );
+  const totalWaiting = waitingCount + extraQueuedTasks;
+
   const shouldShow =
-    activeDocCount > 0 ||
-    queuedDocCount > 0 ||
-    pipelineStatus.queued_tasks > 0;
+    activeCount > 0 || totalWaiting > 0 || pipelineStatus.queued_tasks > 0;
   if (!shouldShow) return null;
+
+  const waitingOnly = activeCount === 0 && totalWaiting > 0;
+  const headline =
+    activeCount > 0 && totalWaiting > 0
+      ? t(
+          'pipeline.processingAndWaiting',
+          '{{processing}} processing · {{waiting}} waiting',
+          { processing: activeCount, waiting: totalWaiting },
+        )
+      : activeCount > 0
+        ? t('pipeline.processing', 'Processing {{count}} document(s)', {
+            count: activeCount,
+          })
+        : t('pipeline.waitingToStart', '{{count}} document(s) waiting to start', {
+            count: totalWaiting,
+          });
+
+  const containerClass = waitingOnly
+    ? 'flex flex-col gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-950/50 transition-colors'
+    : 'flex flex-col gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-950/50 transition-colors';
+
+  const titleClass = waitingOnly
+    ? 'text-sm font-medium text-amber-800 dark:text-amber-300'
+    : 'text-sm font-medium text-blue-700 dark:text-blue-300';
+
+  const detailClass = waitingOnly
+    ? 'text-xs text-amber-700 dark:text-amber-400 truncate'
+    : 'text-xs text-blue-600 dark:text-blue-400 truncate';
+
+  const sideClass = waitingOnly
+    ? 'flex items-center gap-3 text-xs text-amber-700 dark:text-amber-400'
+    : 'flex items-center gap-3 text-xs text-blue-600 dark:text-blue-400';
 
   return (
     <div
-      className="flex flex-col gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-950/50 transition-colors"
+      className={containerClass}
       onClick={onOpenDetails}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => e.key === 'Enter' && onOpenDetails()}
     >
       <div className="flex items-center gap-4">
-        <Loader2 className="h-4 w-4 text-blue-600 dark:text-blue-400 animate-spin shrink-0" />
+        {waitingOnly ? (
+          <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+        ) : (
+          <Loader2 className="h-4 w-4 text-blue-600 dark:text-blue-400 animate-spin shrink-0" />
+        )}
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-blue-700 dark:text-blue-300">
-            {processingDocCount > 0 && (queuedDocCount > 0 || pipelineQueuedTasks > 0)
-              ? t(
-                  'pipeline.processingAndQueued',
-                  '{{processing}} processing · {{queued}} queued',
-                  {
-                    processing: processingDocCount - queuedDocCount,
-                    queued: queuedDocCount + pipelineQueuedTasks,
-                  },
-                )
-              : processingDocCount > 0
-                ? t('pipeline.processing', 'Processing {{count}} document(s)', {
-                    count: processingDocCount,
-                  })
-                : t('pipeline.queued', '{{count}} document(s) queued', {
-                    count: queuedDocCount + pipelineQueuedTasks,
-                  })}
-          </p>
-          {/* Show detailed stage messages for processing documents */}
-          {processingDocs.length > 0 && (
+          <p className={titleClass}>{headline}</p>
+          {activeDocs.length > 0 && (
             <div className="mt-1 space-y-0.5">
-              {processingDocs.slice(0, 2).map((doc) => (
-                <p
-                  key={doc.id}
-                  className="text-xs text-blue-600 dark:text-blue-400 truncate"
-                >
+              {activeDocs.slice(0, 2).map((doc) => (
+                <p key={doc.id} className={detailClass}>
                   {doc.title || doc.file_name || 'Document'}:{' '}
                   {doc.stage_message || doc.current_stage || 'Processing...'}
                 </p>
               ))}
             </div>
           )}
-          {queuedDocs.length > 0 && (
+          {waitingDocs.length > 0 && (
             <div className="mt-1 space-y-0.5">
-              {queuedDocs.slice(0, 2).map((doc) => (
-                <p
-                  key={doc.id}
-                  className="text-xs text-amber-700 dark:text-amber-400 truncate"
-                >
+              {waitingDocs.slice(0, 2).map((doc) => (
+                <p key={doc.id} className={detailClass}>
                   {doc.title || doc.file_name || 'Document'}:{' '}
                   {doc.stage_message ||
                     t(
@@ -140,21 +127,22 @@ export function ProcessingStatusSummary({
             </div>
           )}
         </div>
-        <div className="flex items-center gap-3 text-xs text-blue-600 dark:text-blue-400">
-          {(queuedDocCount > 0 || pipelineQueuedTasks > 0) &&
-            processingDocCount > queuedDocCount && (
-              <span className="flex items-center gap-1">
-                <Clock className="h-3 w-3" />
-                {queuedDocCount + pipelineQueuedTasks} queued
-              </span>
-            )}
+        <div className={sideClass}>
+          {totalWaiting > 0 && activeCount > 0 && (
+            <span className="flex items-center gap-1">
+              <Clock className="h-3 w-3" />
+              {totalWaiting} waiting
+            </span>
+          )}
           {pipelineStatus.completed_tasks > 0 && (
             <span className="flex items-center gap-1">
               <CheckCircle className="h-3 w-3 text-green-600" />
               {pipelineStatus.completed_tasks} done
             </span>
           )}
-          <span className="text-blue-500">Click for details →</span>
+          <span className={waitingOnly ? 'text-amber-600' : 'text-blue-500'}>
+            Click for details →
+          </span>
         </div>
       </div>
     </div>
