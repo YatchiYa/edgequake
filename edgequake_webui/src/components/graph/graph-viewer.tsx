@@ -31,14 +31,13 @@ import {
     SheetTitle,
 } from '@/components/ui/sheet';
 import { useGraphExpansion } from '@/hooks/use-graph-expansion';
+import { useGraphDocumentScope } from '@/hooks/use-graph-document-scope';
 import { useGraphDocumentFilterUrl } from '@/hooks/use-graph-document-filter';
 import { useGraphKeyboardNavigation } from '@/hooks/use-graph-keyboard-navigation';
 import { useGraphStream } from '@/hooks/use-graph-stream';
-import { useDocumentLineage } from '@/hooks/use-lineage';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { deleteEntity, getGraph } from '@/lib/api/edgequake';
 import { focusCameraOnNode } from '@/lib/graph/camera-utils';
-import { documentLineageToKnowledgeGraph } from '@/lib/graph/document-lineage-to-graph';
 import { formatEntityLabel } from '@/lib/graph/label-utils';
 import { useGraphStore } from '@/stores/use-graph-store';
 import { useTenantStore } from '@/stores/use-tenant-store';
@@ -74,9 +73,16 @@ import { ZoomControls } from './zoom-controls';
 
 export function GraphViewer() {
   const { documentFilterId, setDocumentFilter } = useGraphDocumentFilterUrl();
-  const isDocumentScoped = !!documentFilterId;
-  const isDocumentScopedRef = useRef(isDocumentScoped);
-  isDocumentScopedRef.current = isDocumentScoped;
+  const isDocumentScopedRef = useRef(!!documentFilterId);
+  isDocumentScopedRef.current = !!documentFilterId;
+
+  const {
+    isDocumentScoped,
+    isLoading: isLineageLoading,
+    isError: isLineageError,
+    error: lineageError,
+    refetch: refetchLineage,
+  } = useGraphDocumentScope(documentFilterId);
 
   // Responsive breakpoints
   const isMobile = useMediaQuery('(max-width: 640px)');
@@ -165,6 +171,7 @@ export function GraphViewer() {
   const setUseStreaming = useGraphStore((s) => s.setUseStreaming);
   const addNodesToGraph = useGraphStore((s) => s.addNodesToGraph);
   const clearGraphForStreaming = useGraphStore((s) => s.clearGraphForStreaming);
+  const graphResetToken = useGraphStore((s) => s.graphResetToken);
   const setStreamingProgress = useGraphStore((s) => s.setStreamingProgress);
   const resetStreamingProgress = useGraphStore((s) => s.resetStreamingProgress);
 
@@ -266,15 +273,6 @@ export function GraphViewer() {
     },
   });
 
-  // Standard query for non-streaming mode (fallback)
-  const {
-    data: lineageData,
-    isLoading: isLineageLoading,
-    isError: isLineageError,
-    error: lineageError,
-    refetch: refetchLineage,
-  } = useDocumentLineage(documentFilterId);
-
   const { data, isLoading: isQueryLoading, isError, error, refetch } = useQuery({
     queryKey: ['graph', selectedTenantId, selectedWorkspaceId, maxNodes, depth, startNode],
     queryFn: () => getGraph({ 
@@ -320,6 +318,7 @@ export function GraphViewer() {
   // WHY: Ref to prevent React StrictMode double-render from causing duplicate stream starts
   const streamingInitializedRef = useRef(false);
   const lastStreamParamsRef = useRef<string>("");
+  const lastStreamScopeRef = useRef<string>("");
   
   // WHY: Track previous workspace/tenant to detect changes.
   // When workspace changes, the Zustand store still holds old nodes/edges from
@@ -327,7 +326,6 @@ export function GraphViewer() {
   // until new data arrives. The transition state ensures the loading overlay
   // stays visible for at least 800ms so users see clear visual feedback.
   const prevWorkspaceKeyRef = useRef<string>("");
-  const prevDocumentFilterRef = useRef<string | null>(null);
   useEffect(() => {
     const currentKey = `${selectedTenantId ?? ""}-${selectedWorkspaceId ?? ""}`;
     if (prevWorkspaceKeyRef.current !== "" && prevWorkspaceKeyRef.current !== currentKey) {
@@ -347,17 +345,9 @@ export function GraphViewer() {
     return () => { if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current); };
   }, [selectedTenantId, selectedWorkspaceId, clearGraphForStreaming, setDocumentFilter]);
 
-  // Clear stale graph when entering or switching document scope
-  useEffect(() => {
-    if (prevDocumentFilterRef.current !== documentFilterId) {
-      clearGraphForStreaming();
-      prevDocumentFilterRef.current = documentFilterId;
-    }
-  }, [documentFilterId, clearGraphForStreaming]);
-
   // Start streaming when in streaming mode
   useEffect(() => {
-    if (isDocumentScoped) {
+    if (isDocumentScoped || documentFilterId) {
       streamingInitializedRef.current = false;
       if (isStreaming) {
         cancelStream();
@@ -371,23 +361,26 @@ export function GraphViewer() {
     }
     
     // WHY: Create param key to detect if we need to restart stream
-    const paramKey = `${selectedTenantId}-${selectedWorkspaceId}-${maxNodes}-${startNode || ""}`;
+    const streamScopeKey = `${selectedTenantId}-${selectedWorkspaceId}-${maxNodes}-${startNode || ""}`;
+    const paramKey = `${streamScopeKey}-${graphResetToken}`;
     
     // WHY: Skip if already initialized with same params (prevents duplicate calls)
     if (streamingInitializedRef.current && lastStreamParamsRef.current === paramKey) {
       return;
     }
     
-    // WHY: Clear stale graph data IMMEDIATELY when params change.
-    // Without this, nodes/edges from a previous workspace or query remain visible
-    // until the new stream's onMetadata callback fires (which can take seconds).
-    // This is the root cause of "stale data from previous execution" bug.
-    if (lastStreamParamsRef.current !== "" && lastStreamParamsRef.current !== paramKey) {
+    // WHY: Clear stale graph data when workspace/query scope changes — not when only
+    // graphResetToken bumps (document delete already cleared via invalidateKnowledgeGraph).
+    if (
+      lastStreamScopeRef.current !== "" &&
+      lastStreamScopeRef.current !== streamScopeKey
+    ) {
       clearGraphForStreaming();
     }
     
     streamingInitializedRef.current = true;
     lastStreamParamsRef.current = paramKey;
+    lastStreamScopeRef.current = streamScopeKey;
     resetStreamingProgress();
     startStream();
     
@@ -400,7 +393,7 @@ export function GraphViewer() {
     };
     // Only re-run when these key params change
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [useStreaming, isDocumentScoped, selectedTenantId, selectedWorkspaceId, maxNodes, startNode]);
+  }, [useStreaming, isDocumentScoped, documentFilterId, selectedTenantId, selectedWorkspaceId, maxNodes, startNode, graphResetToken]);
 
   // Handle refetch for both modes
   const handleRefetch = useCallback(() => {
@@ -418,19 +411,6 @@ export function GraphViewer() {
       refetch();
     }
   }, [isDocumentScoped, useStreaming, cancelStream, resetStreamingProgress, clearGraphForStreaming, startStream, refetch, refetchLineage]);
-
-  // Set graph data from document lineage when document filter is active
-  useEffect(() => {
-    if (lineageData && isDocumentScoped) {
-      const scopedGraph = documentLineageToKnowledgeGraph(lineageData);
-      setGraph(scopedGraph);
-      setTruncationInfo(
-        false,
-        scopedGraph.nodes.length,
-        scopedGraph.edges.length,
-      );
-    }
-  }, [lineageData, isDocumentScoped, setGraph, setTruncationInfo]);
 
   // Set graph data from non-streaming query (when streaming is disabled)
   useEffect(() => {
@@ -567,6 +547,12 @@ export function GraphViewer() {
 
   const selectedNode = allNodes.find((n) => n.id === selectedNodeId);
   const graphMetadata = useGraphStore((s) => s.graph?.metadata);
+  const headerNodeCount = isDocumentScoped
+    ? allNodes.length
+    : (graphMetadata?.node_count ?? data?.metadata?.node_count ?? allNodes.length);
+  const headerEdgeCount = isDocumentScoped
+    ? allEdges.length
+    : (graphMetadata?.edge_count ?? data?.metadata?.edge_count ?? allEdges.length);
 
   // Combine error states from streaming, full-graph, and document-scoped modes
   const hasError = isDocumentScoped
@@ -626,9 +612,9 @@ export function GraphViewer() {
               {isMobile ? 'Graph' : 'Knowledge Graph'}
             </h2>
             {effectiveIsLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
-            {(graphMetadata ?? data?.metadata) && !isMobile && (
+            {!isMobile && (headerNodeCount > 0 || headerEdgeCount > 0 || !isDocumentScoped) && (
               <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-md">
-                {(graphMetadata ?? data?.metadata)!.node_count.toLocaleString()} nodes · {(graphMetadata ?? data?.metadata)!.edge_count.toLocaleString()} edges
+                {headerNodeCount.toLocaleString()} nodes · {headerEdgeCount.toLocaleString()} edges
               </span>
             )}
           </div>
@@ -743,7 +729,7 @@ export function GraphViewer() {
                 </div>
                 <h3 className="text-lg font-medium">No visible nodes</h3>
                 <p className="text-sm text-muted-foreground mt-2">
-                  All node types are hidden. Use the legend below to show node categories.
+                  All entity types are hidden. Use <strong>Show All</strong> in the filters panel or click a type to show it again.
                 </p>
               </div>
             </div>
@@ -910,47 +896,45 @@ export function GraphViewer() {
                 </Button>
               </div>
 
-              {/* Panel Content - Full height scroll */}
-              <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:block!" showShadows>
-                <div className="px-4 py-4 space-y-5 overflow-hidden">
-                  {/* Node Details - Primary content when selected */}
-                  {selectedNode && showNodeDetails && (
-                    <NodeDetails node={selectedNode} />
-                  )}
+              {/* Node details (scrollable when tall) + filters that fill remaining height */}
+              <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+                <div className="shrink-0 max-h-[40%] overflow-y-auto border-b border-border/40">
+                  <div className="px-4 py-4 space-y-3">
+                    {selectedNode && showNodeDetails && (
+                      <NodeDetails node={selectedNode} />
+                    )}
 
-                  {/* Show details button when panel is hidden but node is selected */}
-                  {selectedNode && !showNodeDetails && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full h-8 text-xs"
-                      onClick={toggleNodeDetails}
-                    >
-                      Show Node Details
-                    </Button>
-                  )}
+                    {selectedNode && !showNodeDetails && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full h-8 text-xs"
+                        onClick={toggleNodeDetails}
+                      >
+                        Show Node Details
+                      </Button>
+                    )}
 
-                  {/* Empty state when no node selected */}
-                  {!selectedNode && (
-                    <div className="py-8 text-center px-4">
-                      <div className="w-10 h-10 mx-auto mb-3 rounded-full bg-muted/50 flex items-center justify-center">
-                        <Network className="h-5 w-5 text-muted-foreground/40" />
+                    {!selectedNode && (
+                      <div className="py-4 text-center px-2">
+                        <div className="w-9 h-9 mx-auto mb-2 rounded-full bg-muted/50 flex items-center justify-center">
+                          <Network className="h-4 w-4 text-muted-foreground/40" />
+                        </div>
+                        <p className="text-xs font-medium text-muted-foreground mb-1">
+                          Select a node
+                        </p>
+                        <p className="text-[11px] text-muted-foreground/70 leading-relaxed">
+                          Click any node to explore its connections and sources
+                        </p>
                       </div>
-                      <p className="text-xs font-medium text-muted-foreground mb-1">
-                        Select a node
-                      </p>
-                      <p className="text-[11px] text-muted-foreground/70 leading-relaxed">
-                        Click any node to explore its connections, relationships, and source documents
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Filters Section */}
-                  <div className="pt-4 border-t">
-                    <GraphFilters />
+                    )}
                   </div>
                 </div>
-              </ScrollArea>
+
+                <div className="flex-1 min-h-0 px-4 py-3">
+                  <GraphFilters fillHeight />
+                </div>
+              </div>
             </div>
           </ResizablePanel>
         )
@@ -1001,9 +985,9 @@ export function GraphViewer() {
                 </div>
               )}
 
-              {/* Filters Section */}
-              <div className="pt-3 border-t">
-                <GraphFilters />
+              {/* Filters Section — fill remaining drawer height */}
+              <div className="pt-3 border-t min-h-[50vh]">
+                <GraphFilters fillHeight />
               </div>
             </div>
           </ScrollArea>

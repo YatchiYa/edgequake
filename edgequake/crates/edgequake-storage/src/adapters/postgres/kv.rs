@@ -180,13 +180,44 @@ impl KVStorage for PostgresKVStorage {
 
         let pool = self.pool.get().await?;
 
-        let sql = format!("SELECT value FROM {} WHERE key = ANY($1)", self.table_name);
+        // Preserve input order (SPEC-045) — never rely on unordered ANY() scans.
+        let sql = format!(
+            "SELECT kv.value \
+             FROM unnest($1::text[]) WITH ORDINALITY AS u(key, ord) \
+             INNER JOIN {table} kv ON kv.key = u.key \
+             ORDER BY u.ord",
+            table = self.table_name
+        );
 
         let rows: Vec<(serde_json::Value,)> = sqlx::query_as(&sql)
             .bind(ids)
             .fetch_all(&pool)
             .await
             .map_err(|e| StorageError::Database(format!("KV get_by_ids failed: {}", e)))?;
+
+        Ok(rows.into_iter().map(|(v,)| v).collect())
+    }
+
+    async fn get_by_ids_ordered(&self, ids: &[String]) -> Result<Vec<Option<serde_json::Value>>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let pool = self.pool.get().await?;
+
+        let sql = format!(
+            "SELECT kv.value \
+             FROM unnest($1::text[]) WITH ORDINALITY AS u(key, ord) \
+             LEFT JOIN {table} kv ON kv.key = u.key \
+             ORDER BY u.ord",
+            table = self.table_name
+        );
+
+        let rows: Vec<(Option<serde_json::Value>,)> = sqlx::query_as(&sql)
+            .bind(ids)
+            .fetch_all(&pool)
+            .await
+            .map_err(|e| StorageError::Database(format!("KV get_by_ids_ordered failed: {}", e)))?;
 
         Ok(rows.into_iter().map(|(v,)| v).collect())
     }

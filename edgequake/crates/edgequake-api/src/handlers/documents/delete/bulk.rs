@@ -11,12 +11,13 @@ use crate::state::AppState;
 use axum::{extract::State, http::HeaderMap, Json};
 use chrono::Utc;
 
+use crate::middleware::resolve_workspace_uuid;
 use crate::services::document_metadata_scan::{
     document_id_from_metadata_key, load_scoped_document_metadata_entries,
 };
 use crate::services::{cascade_remove_document_sources, DocumentSourceScope};
 
-use super::super::storage_helpers::purge_persisted_tasks_for_document;
+use super::super::storage_helpers::{purge_persisted_tasks_for_document, purge_workspace_tasks};
 
 /// Delete all documents in the system (bulk deletion).
 ///
@@ -273,6 +274,83 @@ pub async fn delete_all_documents(
                 } else {
                     total_pdfs_deleted += 1;
                 }
+            }
+        }
+    }
+
+    // First principle: zero documents in workspace ⇒ zero workspace-scoped graph entities.
+    // Per-document source-prefix cascade misses orphans (no source_ids, PG-only rows, etc.).
+    if let Some(workspace_uuid) = resolve_workspace_uuid(tenant_ctx.workspace_id.as_deref()) {
+        #[cfg(feature = "postgres")]
+        {
+            let relational_deleted =
+                crate::document_read_model::delete_relational_documents_for_workspace(
+                    state.pg_pool.as_ref(),
+                    &tenant_ctx,
+                )
+                .await?;
+            if relational_deleted > 0 {
+                tracing::info!(
+                    workspace_id = %workspace_uuid,
+                    relational_deleted,
+                    "Removed remaining relational document rows during bulk delete"
+                );
+            }
+        }
+
+        let tasks_purged = purge_workspace_tasks(&state, workspace_uuid).await;
+        if tasks_purged > 0 {
+            tracing::info!(
+                workspace_id = %workspace_uuid,
+                tasks_purged,
+                "Purged persisted tasks during bulk delete"
+            );
+        }
+
+        match state
+            .storage
+            .graph_storage
+            .clear_workspace(&workspace_uuid)
+            .await
+        {
+            Ok((nodes, edges)) => {
+                total_entities_removed += nodes;
+                total_relationships_removed += edges;
+                tracing::info!(
+                    workspace_id = %workspace_uuid,
+                    nodes_cleared = nodes,
+                    edges_cleared = edges,
+                    "Workspace graph cleared after bulk document delete"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    workspace_id = %workspace_uuid,
+                    error = %e,
+                    "Failed workspace graph clear during bulk delete (non-fatal)"
+                );
+            }
+        }
+
+        match state
+            .storage
+            .vector_storage
+            .clear_workspace(&workspace_uuid)
+            .await
+        {
+            Ok(vectors) => {
+                tracing::info!(
+                    workspace_id = %workspace_uuid,
+                    vectors_cleared = vectors,
+                    "Workspace vectors cleared after bulk document delete"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    workspace_id = %workspace_uuid,
+                    error = %e,
+                    "Failed workspace vector clear during bulk delete (non-fatal)"
+                );
             }
         }
     }

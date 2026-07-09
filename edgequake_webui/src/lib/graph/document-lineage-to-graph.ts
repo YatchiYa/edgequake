@@ -3,6 +3,13 @@ import { formatEntityLabel } from "@/lib/graph/label-utils";
 import type { GraphEdge, GraphNode, KnowledgeGraph } from "@/types";
 import type { DocumentGraphLineageResponse } from "@/types/lineage";
 
+/** Normalize entity type labels for graph filter consistency. */
+export function normalizeEntityType(entityType: string | undefined): string {
+  const trimmed = (entityType ?? "unknown").trim();
+  if (!trimmed) return "UNKNOWN";
+  return trimmed.toUpperCase().replace(/\s+/g, "_");
+}
+
 /** Normalize relationship keywords from lineage API into a graph edge label. */
 export function parseRelationshipType(keywords: string): string {
   const trimmed = keywords.trim();
@@ -29,7 +36,7 @@ export function documentLineageToKnowledgeGraph(
     return {
       id,
       label: formatEntityLabel(id),
-      node_type: entity.entity_type || "unknown",
+      node_type: normalizeEntityType(entity.entity_type),
       description: entity.is_shared
         ? "Shared with other documents in this workspace"
         : undefined,

@@ -18,8 +18,10 @@ use crate::services::{
 use crate::state::AppState;
 use edgequake_core::MetricsTriggerType;
 
+use crate::document_read_model::relational_document_scope;
 use crate::services::document_metadata_scan::{
-    document_id_from_metadata_key, load_all_document_metadata_entries, metadata_key_for_document,
+    canonical_document_id, document_id_from_metadata_key, load_all_document_metadata_entries,
+    metadata_key_for_document,
 };
 
 use super::super::storage_helpers::{
@@ -57,14 +59,16 @@ async fn resolve_kv_key_prefix(document_id: &str, state: &AppState) -> (String, 
     }
 
     // Slow path: batch metadata entries (index-friendly suffix scan).
+    // SPEC-045: match canonical id (KV key wins over JSON `id`).
     if let Ok(entries) = load_all_document_metadata_entries(state.storage.kv_storage.as_ref()).await
     {
         for (key, val) in entries {
-            if let Some(json_id) = val.get("id").and_then(|v| v.as_str()) {
-                if json_id == document_id {
-                    let prefix = document_id_from_metadata_key(&key).unwrap_or_else(|| key.clone());
-                    return (prefix, key, true);
-                }
+            let canonical = canonical_document_id(&key, &val);
+            let legacy_json_id = val.get("id").and_then(|v| v.as_str());
+            if canonical == document_id || legacy_json_id == Some(document_id) {
+                let prefix =
+                    document_id_from_metadata_key(&key).unwrap_or_else(|| document_id.to_string());
+                return (prefix, key, true);
             }
         }
     }
@@ -128,12 +132,31 @@ pub async fn delete_document(
         .flatten()
         .is_some();
 
-    // Document must have either chunks, metadata, or content
-    if chunk_ids.is_empty() && !has_metadata && !has_content {
+    // First principle: if the list shows the document (relational read model), delete
+    // must succeed even when KV metadata/chunks/content are absent.
+    #[cfg(feature = "postgres")]
+    let relational_scope =
+        relational_document_scope(state.pg_pool.as_ref(), &document_id, &tenant_ctx).await?;
+    #[cfg(not(feature = "postgres"))]
+    let relational_scope: Option<crate::document_read_model::RelationalDocumentScope> = None;
+
+    let kv_present = !chunk_ids.is_empty() || has_metadata || has_content;
+    if !kv_present && relational_scope.is_none() {
         return Err(ApiError::NotFound(format!(
             "Document {} not found",
             document_id
         )));
+    }
+
+    if kv_present && relational_scope.is_none() && has_metadata {
+        if let Ok(Some(metadata)) = state.storage.kv_storage.get_by_id(&metadata_key).await {
+            if !metadata_matches_tenant_context(&metadata, &tenant_ctx) {
+                return Err(ApiError::NotFound(format!(
+                    "Document {} not found",
+                    document_id
+                )));
+            }
+        }
     }
 
     // SPEC-033: Get workspace_id from document metadata for vector storage isolation
@@ -142,42 +165,53 @@ pub async fn delete_document(
     let (workspace_id_for_storage, document_status, content_hash_opt, _pdf_id_opt, track_id_opt) =
         if has_metadata {
             if let Ok(Some(metadata)) = state.storage.kv_storage.get_by_id(&metadata_key).await {
-                // WHY: document IDs must not be enough to delete across workspace
-                // boundaries. If the request carries workspace context, the stored
-                // document metadata must match that scope or we fail closed.
-                if !metadata_matches_tenant_context(&metadata, &tenant_ctx) {
+                let tenant_ok = metadata_matches_tenant_context(&metadata, &tenant_ctx);
+                if tenant_ok || relational_scope.is_some() {
+                    let workspace = metadata
+                        .get("workspace_id")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| {
+                            relational_scope
+                                .as_ref()
+                                .map(|s| s.workspace_id.clone())
+                                .unwrap_or_else(|| "default".to_string())
+                        });
+                    let status = metadata
+                        .get("status")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| {
+                            relational_scope
+                                .as_ref()
+                                .map(|s| s.status.clone())
+                                .unwrap_or_else(|| "unknown".to_string())
+                        });
+                    // OADA-90: Extract content hash for duplicate detection key cleanup
+                    let content_hash = metadata
+                        .get("content_hash")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    // FIX-ISSUE-73: Extract pdf_id for pdf_documents cascade cleanup
+                    let pdf_id = metadata
+                        .get("pdf_id")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    // Extract track_id so we can cancel any in-flight processing task
+                    let track_id = metadata
+                        .get("track_id")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                        .or_else(|| relational_scope.as_ref().and_then(|s| s.track_id.clone()));
+                    (workspace, status, content_hash, pdf_id, track_id)
+                } else {
                     return Err(ApiError::NotFound(format!(
                         "Document {} not found",
                         document_id
                     )));
                 }
-
-                let workspace = metadata
-                    .get("workspace_id")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| "default".to_string());
-                let status = metadata
-                    .get("status")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| "unknown".to_string());
-                // OADA-90: Extract content hash for duplicate detection key cleanup
-                let content_hash = metadata
-                    .get("content_hash")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                // FIX-ISSUE-73: Extract pdf_id for pdf_documents cascade cleanup
-                let pdf_id = metadata
-                    .get("pdf_id")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                // Extract track_id so we can cancel any in-flight processing task
-                let track_id = metadata
-                    .get("track_id")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                (workspace, status, content_hash, pdf_id, track_id)
+            } else if let Some(scope) = relational_scope.clone() {
+                (scope.workspace_id, scope.status, None, None, scope.track_id)
             } else {
                 (
                     "default".to_string(),
@@ -187,6 +221,8 @@ pub async fn delete_document(
                     None,
                 )
             }
+        } else if let Some(scope) = relational_scope.clone() {
+            (scope.workspace_id, scope.status, None, None, scope.track_id)
         } else {
             (
                 "default".to_string(),

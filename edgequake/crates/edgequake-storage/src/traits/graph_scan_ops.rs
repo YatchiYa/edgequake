@@ -101,15 +101,20 @@ pub fn edge_matches_list_filter(edge: &GraphEdge, filter: &EdgeListFilter) -> bo
 }
 
 /// Collect source reference strings from node/edge properties.
+///
+/// SSOT for prefix scans and analytics reconcile (SPEC-045): includes legacy
+/// `source_id`, modern `source_ids`, and pipeline `source_chunk_ids`.
 pub fn collect_source_references(properties: &HashMap<String, serde_json::Value>) -> Vec<String> {
     let mut refs = Vec::new();
     if let Some(source_id) = properties.get("source_id").and_then(|v| v.as_str()) {
         refs.extend(source_id.split('|').map(|s| s.to_string()));
     }
-    if let Some(arr) = properties.get("source_ids").and_then(|v| v.as_array()) {
-        for item in arr {
-            if let Some(s) = item.as_str() {
-                refs.push(s.to_string());
+    for key in ["source_ids", "source_chunk_ids"] {
+        if let Some(arr) = properties.get(key).and_then(|v| v.as_array()) {
+            for item in arr {
+                if let Some(s) = item.as_str() {
+                    refs.push(s.to_string());
+                }
             }
         }
     }

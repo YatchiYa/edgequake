@@ -30,6 +30,7 @@ import type { UseMutationResult } from "@tanstack/react-query";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { invalidateKnowledgeGraph } from "@/lib/cache-manager";
 
 /**
  * Variables accepted by the reprocess mutation.
@@ -145,7 +146,14 @@ export function useDocumentMutations(
    */
   const deleteMutation = useMutation({
     mutationFn: deleteDocument,
-    onSuccess: () => {
+    onMutate: () => {
+      const toastId = toast.loading(
+        t("documents.delete.inProgress", "Deleting document…"),
+      );
+      return { toastId };
+    },
+    onSuccess: (_data, _documentId, context) => {
+      toast.dismiss(context?.toastId);
       toast.success(t("documents.delete.success", "Document deleted"), {
         duration: 4000,
         description: t(
@@ -154,8 +162,10 @@ export function useDocumentMutations(
         ),
       });
       queryClient.invalidateQueries({ queryKey: ["documents"] });
+      invalidateKnowledgeGraph(queryClient);
     },
-    onError: (error: Error) => {
+    onError: (error: Error, _documentId, context) => {
+      toast.dismiss(context?.toastId);
       toast.error(t("documents.delete.failed", "Delete failed"), {
         description:
           error instanceof Error
@@ -190,6 +200,7 @@ export function useDocumentMutations(
         },
       );
       queryClient.invalidateQueries({ queryKey: ["documents"] });
+      invalidateKnowledgeGraph(queryClient);
     },
     onError: (error: Error) => {
       toast.error(t("documents.deleteAll.failed", "Delete all failed"), {

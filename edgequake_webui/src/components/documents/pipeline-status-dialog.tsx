@@ -24,7 +24,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useChunkProgress } from '@/hooks';
 import { useCurrentTime } from '@/hooks/use-current-time';
 import { getEnhancedPipelineStatus, requestPipelineCancellation } from '@/lib/api/edgequake';
-import { summarizePipelineDocuments } from '@/lib/pipeline/pipeline-document-state';
+import { summarizePipelineDocuments, resolvePipelineUiState } from '@/lib/pipeline/pipeline-document-state';
+import { translateIngestionDetail } from '@/lib/pipeline/ingestion-user-messages';
 import type { Document, PipelineMessage } from '@/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
@@ -458,6 +459,11 @@ export function PipelineStatusDialog({
     enabled: open,
   });
 
+  const pipelineUi = useMemo(
+    () => resolvePipelineUiState(documents, data ?? undefined),
+    [documents, data],
+  );
+
   const cancelMutation = useMutation({
     mutationFn: requestPipelineCancellation,
     onSuccess: () => {
@@ -534,22 +540,29 @@ export function PipelineStatusDialog({
   // Use custom title or default
   const dialogTitle = title || t('pipeline.title', 'Pipeline Status');
 
-  const pendingTaskCount = data?.pending_tasks ?? 0;
-  const waitingCount = Math.max(documentSummary.waitingCount, pendingTaskCount);
-  const hasQueuedWork = !data?.is_busy && waitingCount > 0;
+  const waitingCount = pipelineUi.waitingDocCount;
+  const hasStuckWork = pipelineUi.isStuck;
+  const hasQueuedWork = pipelineUi.isQueuedOnly;
+  const isActivelyProcessing = pipelineUi.isActivelyProcessing;
 
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-lg max-w-[95vw]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+        <DialogContent className="sm:max-w-lg max-w-[calc(100%-2rem)] overflow-hidden">
+          <DialogHeader className="min-w-0">
+            <DialogTitle className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0 pr-8 leading-snug">
               <Activity className="h-5 w-5" />
               {dialogTitle}
-              {data?.is_busy && (
+              {isActivelyProcessing && (
                 <Badge variant="outline" className="ml-2 text-orange-500 border-orange-500">
                   <Loader2 className="h-3 w-3 mr-1 animate-spin" />
                   {t('pipeline.active', 'Active')}
+                </Badge>
+              )}
+              {hasStuckWork && (
+                <Badge variant="outline" className="ml-2 text-rose-600 border-rose-500">
+                  <AlertTriangle className="h-3 w-3 mr-1" />
+                  {t('pipeline.stuckBadge', 'Needs attention')}
                 </Badge>
               )}
               {hasQueuedWork && (
@@ -569,12 +582,58 @@ export function PipelineStatusDialog({
             </DialogDescription>
           </DialogHeader>
 
-          {isLoading ? (
+          {!open ? null : isLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
+          ) : hasStuckWork ? (
+            <div className="space-y-4 min-w-0 overflow-hidden" data-testid="pipeline-dialog-stuck">
+              <div className="py-4 text-center space-y-2">
+                <div className="flex justify-center">
+                  <AlertTriangle className="h-12 w-12 text-rose-500" />
+                </div>
+                <p className="font-medium text-foreground">
+                  {t('pipeline.stuckHeadline', '{{count}} document(s) need attention', {
+                    count: pipelineUi.stuckDocCount,
+                  })}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {t(
+                    'pipeline.stuckHint',
+                    'No worker is processing these documents. Reprocess to create a new task.',
+                  )}
+                </p>
+              </div>
+
+              {pipelineUi.stuckDocs.length > 0 && (
+                <div className="space-y-2 min-w-0">
+                  <p className="text-sm font-medium">{t('pipeline.stuckDocuments', 'Stuck documents')}</p>
+                  <div className="max-h-40 overflow-y-auto overflow-x-hidden rounded-md border w-full min-w-0">
+                    <div className="p-2 space-y-1 w-full min-w-0">
+                      {pipelineUi.stuckDocs.slice(0, 8).map((doc) => (
+                        <div
+                          key={doc.id}
+                          className="min-w-0 w-full overflow-hidden rounded bg-rose-50 dark:bg-rose-950/30 px-2 py-1.5 text-xs"
+                        >
+                          <p className="font-medium truncate">
+                            {doc.title || doc.file_name || doc.id}
+                          </p>
+                          <p className="text-muted-foreground break-words line-clamp-2">
+                            {translateIngestionDetail(doc, 'stuck')}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <Button variant="default" onClick={() => onOpenChange(false)} className="w-full" autoFocus>
+                {t('common.close', 'Close')}
+              </Button>
+            </div>
           ) : hasQueuedWork ? (
-            <div className="space-y-4">
+            <div className="space-y-4 min-w-0 overflow-hidden">
               <div className="py-4 text-center space-y-2">
                 <div className="flex justify-center">
                   <Clock className="h-12 w-12 text-amber-500" />
@@ -593,34 +652,34 @@ export function PipelineStatusDialog({
               </div>
 
               {documentSummary.waitingDocs.length > 0 && (
-                <div className="space-y-2">
+                <div className="space-y-2 min-w-0">
                   <p className="text-sm font-medium">{t('pipeline.waitingDocuments', 'Waiting documents')}</p>
-                  <ScrollArea className="max-h-40 rounded-md border">
-                    <div className="p-2 space-y-1">
+                  <div className="max-h-40 overflow-y-auto overflow-x-hidden rounded-md border w-full min-w-0">
+                    <div className="p-2 space-y-1 w-full min-w-0">
                       {documentSummary.waitingDocs.slice(0, 8).map((doc) => (
                         <div
                           key={doc.id}
-                          className="rounded bg-amber-50 dark:bg-amber-950/30 px-2 py-1.5 text-xs"
+                          className="min-w-0 w-full overflow-hidden rounded bg-amber-50 dark:bg-amber-950/30 px-2 py-1.5 text-xs"
                         >
                           <p className="font-medium truncate">
                             {doc.title || doc.file_name || doc.id}
                           </p>
-                          <p className="text-muted-foreground truncate">
+                          <p className="text-muted-foreground break-words line-clamp-2">
                             {doc.stage_message ||
                               t('pipeline.waitingForSlot', 'Waiting for a processing slot')}
                           </p>
                         </div>
                       ))}
                     </div>
-                  </ScrollArea>
+                  </div>
                 </div>
               )}
 
               {data && (
                 <div className="grid grid-cols-3 gap-2 text-sm">
                   <div className="p-2 bg-amber-50 dark:bg-amber-950 rounded text-center">
-                    <p className="text-xs text-muted-foreground">{t('pipeline.pendingLabel', 'Pending')}</p>
-                    <p className="text-lg font-bold text-amber-600">{pendingTaskCount}</p>
+                    <p className="text-xs text-muted-foreground">{t('pipeline.waitingLabel', 'Waiting')}</p>
+                    <p className="text-lg font-bold text-amber-600">{waitingCount}</p>
                   </div>
                   <div className="p-2 bg-green-50 dark:bg-green-950 rounded text-center">
                     <p className="text-xs text-muted-foreground">{t('pipeline.completedLabel', 'Completed')}</p>
@@ -633,12 +692,24 @@ export function PipelineStatusDialog({
                 </div>
               )}
 
+              {pipelineUi.pendingTaskCount > 0 &&
+                pipelineUi.pendingTaskCount !== waitingCount && (
+                <p className="text-xs text-center text-muted-foreground">
+                  {t(
+                    'pipeline.queuedTasksHint',
+                    '{{count}} task(s) in queue (not yet linked to a visible document)',
+                    { count: pipelineUi.pendingTaskCount },
+                  )}
+                </p>
+              )}
+
               <Button variant="default" onClick={() => onOpenChange(false)} className="w-full" autoFocus>
                 {t('common.close', 'Close')}
               </Button>
             </div>
-          ) : data?.is_busy ? (
-            <div className="space-y-4">
+          ) : isActivelyProcessing ? (
+            data ? (
+            <div className="space-y-4 min-w-0 overflow-hidden">
               {/* Job Info */}
               {data.job_name && (
                 <div className="p-3 bg-muted/50 rounded-lg">
@@ -768,6 +839,53 @@ export function PipelineStatusDialog({
                 </Button>
               </div>
             </div>
+            ) : (
+            <div className="space-y-4 min-w-0 overflow-hidden">
+              <div className="py-4 text-center space-y-2">
+                <div className="flex justify-center">
+                  <Loader2 className="h-12 w-12 animate-spin text-orange-500" />
+                </div>
+                <p className="font-medium text-foreground">
+                  {t('pipeline.activeDocuments', '{{count}} document(s) processing', {
+                    count: documentSummary.activeCount,
+                  })}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {t('pipeline.statusLoading', 'Loading pipeline details...')}
+                </p>
+              </div>
+
+              {documentSummary.activeDocs.length > 0 && (
+                <div className="space-y-2 min-w-0">
+                  <p className="text-sm font-medium">
+                    {t('pipeline.activeDocumentsLabel', 'Processing documents')}
+                  </p>
+                  <div className="max-h-40 overflow-y-auto overflow-x-hidden rounded-md border w-full min-w-0">
+                    <div className="p-2 space-y-1 w-full min-w-0">
+                      {documentSummary.activeDocs.slice(0, 8).map((doc) => (
+                        <div
+                          key={doc.id}
+                          className="min-w-0 w-full overflow-hidden rounded bg-orange-50 dark:bg-orange-950/30 px-2 py-1.5 text-xs"
+                        >
+                          <p className="font-medium truncate">
+                            {doc.title || doc.file_name || doc.id}
+                          </p>
+                          <p className="text-muted-foreground break-words line-clamp-2">
+                            {doc.stage_message ||
+                              t('pipeline.processingDocument', 'Processing document')}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <Button variant="default" onClick={() => onOpenChange(false)} className="w-full" autoFocus>
+                {t('common.close', 'Close')}
+              </Button>
+            </div>
+            )
           ) : (
             <div className="py-8 text-center space-y-4">
               <div className="flex justify-center">

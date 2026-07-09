@@ -2,9 +2,18 @@ import { describe, expect, it } from "vitest";
 
 import {
   documentLineageToKnowledgeGraph,
+  normalizeEntityType,
   parseRelationshipType,
 } from "../document-lineage-to-graph";
 import type { DocumentGraphLineageResponse } from "@/types/lineage";
+
+describe("normalizeEntityType", () => {
+  it("uppercases and snake-cases labels", () => {
+    expect(normalizeEntityType("concept")).toBe("CONCEPT");
+    expect(normalizeEntityType("  works for  ")).toBe("WORKS_FOR");
+    expect(normalizeEntityType(undefined)).toBe("UNKNOWN");
+  });
+});
 
 describe("parseRelationshipType", () => {
   it("normalizes plain keywords to uppercase snake case", () => {
@@ -62,7 +71,7 @@ describe("documentLineageToKnowledgeGraph", () => {
     expect(graph.edges).toHaveLength(1);
     expect(graph.metadata.node_count).toBe(2);
     expect(graph.metadata.edge_count).toBe(1);
-    expect(graph.metadata.entity_types).toEqual(["organization", "person"]);
+    expect(graph.metadata.entity_types).toEqual(["ORGANIZATION", "PERSON"]);
     expect(graph.metadata.relationship_types).toEqual(["WORKS_FOR"]);
   });
 

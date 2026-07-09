@@ -9,14 +9,9 @@ use crate::middleware::TenantContext;
 use crate::services::workspace_document_index::list_workspace_metadata_keys;
 use crate::workspace_scope::metadata_matches_tenant_context;
 
-/// Suffix for document metadata keys (`{document_id}-metadata`).
-pub const DOCUMENT_METADATA_SUFFIX: &str = "-metadata";
-
-/// Extract document id prefix from a metadata KV key.
-pub fn document_id_from_metadata_key(key: &str) -> Option<String> {
-    key.strip_suffix(DOCUMENT_METADATA_SUFFIX)
-        .map(str::to_string)
-}
+pub use edgequake_storage::document_metadata_integrity::{
+    canonical_document_id, document_id_from_metadata_key, DOCUMENT_METADATA_SUFFIX,
+};
 
 /// Metadata KV key for a document (DRY — delegates to `kv_keys::doc_metadata`).
 #[inline]
@@ -56,8 +51,12 @@ pub async fn load_all_document_metadata_entries(
     if keys.is_empty() {
         return Ok(vec![]);
     }
-    let values = kv_storage.get_by_ids(&keys).await?;
-    Ok(keys.into_iter().zip(values).collect())
+    let values = kv_storage.get_by_ids_ordered(&keys).await?;
+    Ok(keys
+        .into_iter()
+        .zip(values)
+        .filter_map(|(key, value)| value.map(|v| (key, v)))
+        .collect())
 }
 
 /// Load all document metadata values via indexed suffix scan (unscoped).
@@ -116,8 +115,12 @@ pub async fn load_workspace_metadata_entries_by_index(
     if metadata_keys.is_empty() {
         return Ok(vec![]);
     }
-    let values = kv_storage.get_by_ids(&metadata_keys).await?;
-    Ok(metadata_keys.into_iter().zip(values).collect())
+    let values = kv_storage.get_by_ids_ordered(&metadata_keys).await?;
+    Ok(metadata_keys
+        .into_iter()
+        .zip(values)
+        .filter_map(|(key, value)| value.map(|v| (key, v)))
+        .collect())
 }
 
 /// Load document metadata scoped to tenant/workspace.
@@ -321,6 +324,13 @@ mod tests {
             Some("abc-123")
         );
         assert!(document_id_from_metadata_key("not-metadata-key").is_none());
+    }
+
+    #[test]
+    fn canonical_document_id_prefers_metadata_key() {
+        let key = "real-doc-id-metadata";
+        let meta = serde_json::json!({ "id": "wrong-id" });
+        assert_eq!(canonical_document_id(key, &meta), "real-doc-id");
     }
 
     #[test]

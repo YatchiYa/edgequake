@@ -31,6 +31,8 @@
 //! - `relationship`: Relationship merge, update, creation, and placeholder node logic
 
 mod entity;
+mod lineage;
+mod merge_progress;
 mod metadata;
 mod relationship;
 
@@ -61,6 +63,16 @@ use crate::summarizer::LLMSummarizer;
 /// - `NoopLineageSink` — default, writes nothing
 /// - `PostgresLineageSink` in `edgequake-api` — inserts into `chunk_entity_links`
 ///   and `chunk_relation_links` (migration 066)
+///
+/// Chunk→relation lineage row (SPEC-032 W-08 batch writes).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RelationLineageLink {
+    pub chunk_id: String,
+    pub source_entity: String,
+    pub target_entity: String,
+    pub workspace_id: String,
+}
+
 #[async_trait]
 pub trait LineageSink: Send + Sync {
     /// Record that chunk `chunk_id` contributed to entity `entity_name`.
@@ -98,6 +110,20 @@ pub trait LineageSink: Send + Sync {
         description: &str,
         chunk_id: &str,
     ) -> Result<()>;
+
+    /// Batch insert chunk→relation links (default: sequential singles).
+    async fn record_relation_links_batch(&self, links: &[RelationLineageLink]) -> Result<()> {
+        for link in links {
+            self.record_relation_link(
+                &link.chunk_id,
+                &link.source_entity,
+                &link.target_entity,
+                &link.workspace_id,
+            )
+            .await?;
+        }
+        Ok(())
+    }
 }
 
 /// No-op implementation — used when lineage tracking is disabled (default).
@@ -112,6 +138,9 @@ impl LineageSink for NoopLineageSink {
         Ok(())
     }
     async fn append_description_history(&self, _: &str, _: &str, _: &str, _: &str) -> Result<()> {
+        Ok(())
+    }
+    async fn record_relation_links_batch(&self, _: &[RelationLineageLink]) -> Result<()> {
         Ok(())
     }
 }
@@ -458,8 +487,17 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
             .collect();
 
         if !all_relationships.is_empty() {
+            let progress_ctx = progress.map(|cb| merge_progress::MergeProgressCtx {
+                callback: Some(cb),
+                entities_processed: total_entities,
+                entities_total: total_entities,
+                relationships_total: total_relationships,
+                entities_created: stats.entities_created,
+                entities_updated: stats.entities_updated,
+            });
+
             if let Err(e) = self
-                .merge_relationships_batch(all_relationships, &mut stats)
+                .merge_relationships_batch(all_relationships, &mut stats, progress_ctx)
                 .await
             {
                 stats.errors += 1;
@@ -552,7 +590,7 @@ pub struct MergeProgress {
 /// Callback type for merge progress events. Fire-and-forget from caller's perspective.
 pub type MergeProgressCallback = Box<dyn Fn(MergeProgress) + Send + Sync>;
 
-fn emit_progress(cb: Option<&MergeProgressCallback>, progress: MergeProgress) {
+pub(crate) fn emit_progress(cb: Option<&MergeProgressCallback>, progress: MergeProgress) {
     if let Some(f) = cb {
         f(progress);
     }

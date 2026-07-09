@@ -40,6 +40,22 @@ import { EnhancedStatusBadge } from './enhanced-status-badge';
 import { ErrorMessagePopover } from './error-message-popover';
 import { QuickActionButtons } from './quick-action-buttons';
 
+/** Stages that show live backend detail under the status badge */
+const LIVE_STAGE_MESSAGE_STAGES = new Set([
+  'converting',
+  'storing',
+  'indexing',
+  'embedding',
+  'extracting',
+  'chunking',
+  'preprocessing',
+  'gleaning',
+  'merging',
+  'summarizing',
+  'processing',
+  'queued',
+]);
+
 /**
  * Get file type icon and color based on file extension.
  * WHY: Visual distinction helps users quickly identify document types.
@@ -240,9 +256,7 @@ export const DocumentTableRow = memo(function DocumentTableRow({
           <EnhancedStatusBadge document={doc} />
           {/* Live stage detail for long-running phases (conversion, graph storage, etc.) */}
           {doc.stage_message &&
-            ['converting', 'storing', 'indexing', 'embedding', 'extracting'].includes(
-              doc.current_stage ?? '',
-            ) && (
+            LIVE_STAGE_MESSAGE_STAGES.has(doc.current_stage ?? '') && (
             <span className="text-xs text-muted-foreground truncate max-w-[220px]">
               {doc.stage_message}
             </span>

@@ -37,6 +37,14 @@ describe("resolveDevProxyBackend", () => {
     expect(probeEdgequakeHealth("http://127.0.0.1:8081")).toBe(true);
   });
 
+  it("probeEdgequakeHealth accepts degraded EdgeQuake payload", () => {
+    vi.mocked(execSync).mockReturnValueOnce(
+      '{"status":"degraded","version":"0.15.1","components":{}}',
+    );
+
+    expect(probeEdgequakeHealth("http://127.0.0.1:8081")).toBe(true);
+  });
+
   it("probeEdgequakeHealth rejects non-EdgeQuake responses", () => {
     vi.mocked(execSync).mockImplementationOnce(() => {
       throw new Error("curl failed");
@@ -72,6 +80,6 @@ describe("resolveDevProxyBackend", () => {
     expect(discoverBackendUrl()).toBe("http://127.0.0.1:8081");
     const [command] = vi.mocked(execSync).mock.calls[0] ?? [];
     expect(String(command)).toContain("select_edgequake_port.py");
-    expect(String(command)).toContain("backend 8080 20");
+    expect(String(command)).toContain("backend 8090 20");
   });
 });

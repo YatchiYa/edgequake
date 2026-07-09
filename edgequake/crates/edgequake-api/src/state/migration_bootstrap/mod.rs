@@ -1443,6 +1443,14 @@ mod tests {
         assert!(SQL_038_APPLY.contains("CREATE INDEX IF NOT EXISTS"));
         assert!(SQL_038_APPLY.contains("migration_large_graph_threshold"));
         assert!(
+            SQL_038_APPLY.contains("\"Node\"") && SQL_038_APPLY.contains("\"EDGE\""),
+            "M038 must target AGE child label tables (SPEC-034), not _ag_label_* parents"
+        );
+        assert!(
+            SQL_038_APPLY.contains("idx_node_source_ids_gin"),
+            "index names must be NAMEDATALEN-safe (≤63 bytes)"
+        );
+        assert!(
             SQL_038_APPLY.contains("::jsonb") && SQL_038_APPLY.contains("jsonb_ops"),
             "GIN indexes must cast agtype to jsonb (json has no GIN opclass)"
         );
@@ -1456,7 +1464,7 @@ mod tests {
             indexes_ready: false,
             indexes_repaired_inline: false,
             deferred_large_graphs: vec!["g (600000 vertices)".into()],
-            missing_indexes: vec!["g.idx_g_vertex_source_ids_gin".into()],
+            missing_indexes: vec!["g.idx_node_source_ids_gin".into()],
             operator_action: Some("apply concurrent".into()),
         };
         assert!(report.is_degraded());

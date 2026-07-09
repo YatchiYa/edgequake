@@ -29,10 +29,7 @@ impl PostgresPdfStorage {
         match err {
             sqlx::Error::Database(db) => {
                 db.code().as_deref() == Some("42703")
-                    || db
-                        .message()
-                        .to_ascii_lowercase()
-                        .contains("does not exist")
+                    || db.message().to_ascii_lowercase().contains("does not exist")
             }
             _ => false,
         }

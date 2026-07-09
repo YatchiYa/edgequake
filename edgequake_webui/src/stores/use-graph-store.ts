@@ -146,6 +146,9 @@ interface GraphState {
   // Streaming state for progressive loading
   useStreaming: boolean;
   streamingProgress: StreamingProgress;
+
+  /** Bumped when documents are deleted so graph stream restarts. */
+  graphResetToken: number;
 }
 
 interface GraphActions {
@@ -224,6 +227,8 @@ interface GraphActions {
   setStreamingProgress: (progress: Partial<StreamingProgress>) => void;
   resetStreamingProgress: () => void;
   clearGraphForStreaming: () => void;
+  /** Bump after external invalidation (e.g. document delete) to restart SSE stream. */
+  bumpGraphResetToken: () => void;
 }
 
 type GraphStore = GraphState & GraphActions;
@@ -279,6 +284,7 @@ const initialState: GraphState = {
     edgesLoaded: 0,
     durationMs: 0,
   },
+  graphResetToken: 0,
 };
 
 // Load bookmarks from localStorage
@@ -628,6 +634,11 @@ export const useGraphStore = create<GraphStore>()((set, get) => ({
 
   addNodesToGraph: (newNodes, newEdges) =>
     set((state) => {
+      // SPEC-045: document-scoped mode must never accept streamed workspace batches.
+      if (state.documentFilterId) {
+        return state;
+      }
+
       // Create sets of existing IDs for quick lookup
       const existingNodeIds = new Set(state.nodes.map((n) => n.id));
       const existingEdgeIds = new Set(
@@ -954,7 +965,7 @@ export const useGraphStore = create<GraphStore>()((set, get) => ({
     // visibleRelationshipTypes, and graph metadata from the previous
     // workspace/query persisted — causing stale legends, stale entity
     // type pills, and stale metadata display.
-    set({
+    set((state) => ({
       graph: null,
       nodes: [],
       edges: [],
@@ -972,7 +983,11 @@ export const useGraphStore = create<GraphStore>()((set, get) => ({
       isTruncated: false,
       totalNodesInStorage: 0,
       totalEdgesInStorage: 0,
-    });
+    }));
+  },
+
+  bumpGraphResetToken: () => {
+    set((state) => ({ graphResetToken: state.graphResetToken + 1 }));
   },
 }));
 

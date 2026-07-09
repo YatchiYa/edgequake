@@ -169,13 +169,6 @@ impl DocumentTaskProcessor {
                 let track_id = track_id_cb.clone();
                 let doc_id = doc_id_cb.clone();
                 let kv = kv_storage.clone();
-                let msg = graph_merge_progress_message(
-                    p.phase.label(),
-                    p.entities_processed,
-                    p.entities_total,
-                    p.relationships_processed,
-                    p.relationships_total,
-                );
                 tokio::spawn(async move {
                     pipeline_state
                         .broadcast_graph_storage_progress(
@@ -193,7 +186,7 @@ impl DocumentTaskProcessor {
                             p.relationships_updated as u32,
                         )
                         .await;
-                    patch_document_indexing_progress(kv, &doc_id, &msg).await;
+                    patch_document_graph_merge_progress(kv, &doc_id, &p).await;
                 });
             }))
         } else {

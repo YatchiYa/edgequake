@@ -15,6 +15,8 @@ pub mod context_bundle_mapper;
 pub mod cost_aggregation;
 pub mod document_body_loader;
 pub mod document_graph_cascade;
+pub mod document_graph_lineage;
+pub mod document_metadata_repair;
 pub mod document_metadata_scan;
 pub mod document_reingest;
 pub mod document_task_cleanup;
@@ -86,8 +88,12 @@ pub use content_granularity::{
 pub use content_hasher::ContentHasher;
 pub use document_graph_cascade::{
     analyze_deletion_impact_stats, cascade_remove_document_sources, cleanup_document_graph_data,
-    find_document_edges, find_document_nodes, sources_for_document, CascadeStats, CleanupStats,
-    DocumentSourceScope,
+    find_document_edges, find_document_nodes, find_relationships_for_document_lineage,
+    sources_for_document, CascadeStats, CleanupStats, DocumentSourceScope,
+};
+pub use document_graph_lineage::{
+    build_document_graph_lineage, entity_summary_from_node, relationship_summary_from_edge,
+    DocumentGraphLineageBuild,
 };
 pub use document_reingest::{
     delete_document_for_reingestion, resolve_workspace_duplicate_for_reingestion,

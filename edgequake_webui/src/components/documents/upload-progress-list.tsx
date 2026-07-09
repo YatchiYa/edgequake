@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { PdfUploadProgress } from './pdf-upload-progress';
+import { IngestionProgressPanel } from './ingestion-progress-panel';
 import type { UploadingFile } from './types';
 
 /**
@@ -54,6 +55,12 @@ export function UploadProgressList({
     return null;
   }
 
+  const hasActivePipeline = uploadingFiles.some(
+    (f) => f.trackId && f.status === 'extracting',
+  );
+  const showProcessingHeader = isUploading || hasActivePipeline;
+  const completeCount = uploadingFiles.filter((f) => f.status === 'success').length;
+
   return (
     <div
       className="shrink-0 px-4 py-3 border-b space-y-2 bg-muted/20"
@@ -63,7 +70,7 @@ export function UploadProgressList({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <h4 className="text-sm font-semibold">
-            {isUploading ? (
+            {showProcessingHeader ? (
               <span className="flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 {t('documents.upload.processing', 'Processing Files')}
@@ -77,13 +84,13 @@ export function UploadProgressList({
           </h4>
         </div>
         <span className="text-xs text-muted-foreground">
-          {uploadingFiles.filter(f => f.status === 'success').length}/{uploadingFiles.length}{' '}
+          {completeCount}/{uploadingFiles.length}{' '}
           {t('documents.upload.filesComplete', 'files complete')}
         </span>
       </div>
       
       {/* Phase Legend */}
-      {isUploading && (
+      {showProcessingHeader && (
         <div className="flex items-center gap-4 text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
           <span className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-amber-500" />
@@ -107,11 +114,10 @@ export function UploadProgressList({
         </div>
       )}
       
-      <ScrollArea className="max-h-48">
+      <ScrollArea className="max-h-64">
         <div className="space-y-1">
           {uploadingFiles.map((uploadFile, index) => (
-            /* OODA-22: Conditionally render PdfUploadProgress for PDF files with trackId */
-            uploadFile.isPdf && uploadFile.trackId ? (
+            uploadFile.trackId && uploadFile.isPdf ? (
               <div
                 key={`${uploadFile.file.name}-${index}`}
                 className="relative p-2 rounded-lg border bg-card"
@@ -119,6 +125,28 @@ export function UploadProgressList({
                 <PdfUploadProgress
                   trackId={uploadFile.trackId}
                   filename={uploadFile.file.name}
+                  compact={true}
+                  onComplete={() => onComplete(index)}
+                  onFailed={(error) => onFailed(index, error)}
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-1 right-1 h-6 w-6"
+                  onClick={() => onRemove(index)}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            ) : uploadFile.trackId ? (
+              <div
+                key={`${uploadFile.file.name}-${index}`}
+                className="relative p-2 rounded-lg border bg-card"
+                data-testid="text-ingestion-progress-row"
+              >
+                <IngestionProgressPanel
+                  trackId={uploadFile.trackId}
+                  documentName={uploadFile.file.name}
                   compact={true}
                   onComplete={() => onComplete(index)}
                   onFailed={(error) => onFailed(index, error)}
