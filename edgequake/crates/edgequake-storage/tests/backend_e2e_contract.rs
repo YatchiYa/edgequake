@@ -106,6 +106,12 @@ async fn memory_graph_batch_e2e_contract() {
     graph_batch_contract::assert_graph_batch_upsert(&storage).await;
 }
 
+#[tokio::test]
+async fn memory_graph_batch_dedupe_e2e_contract() {
+    let storage = memory_graph().await;
+    graph_batch_contract::assert_graph_batch_upsert_dedupes_duplicate_endpoints(&storage).await;
+}
+
 #[cfg(feature = "postgres")]
 #[path = "support/postgres_test_config.rs"]
 mod postgres_test_config;
@@ -214,5 +220,18 @@ mod postgres_backend_contract {
         let storage = require_postgres_graph!();
         graph_batch_contract::assert_graph_batch_upsert(&storage).await;
         let _ = storage.clear().await;
+    }
+
+    #[tokio::test]
+    async fn postgres_native_graph_batch_dedupe_e2e_contract() {
+        let original = std::env::var("EDGEQUAKE_NATIVE_GRAPH_WRITES").ok();
+        std::env::set_var("EDGEQUAKE_NATIVE_GRAPH_WRITES", "1");
+        let storage = require_postgres_graph!();
+        graph_batch_contract::assert_graph_batch_upsert_dedupes_duplicate_endpoints(&storage).await;
+        let _ = storage.clear().await;
+        match original {
+            Some(v) => std::env::set_var("EDGEQUAKE_NATIVE_GRAPH_WRITES", v),
+            None => std::env::remove_var("EDGEQUAKE_NATIVE_GRAPH_WRITES"),
+        }
     }
 }

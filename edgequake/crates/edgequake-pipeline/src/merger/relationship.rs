@@ -44,6 +44,13 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
     ///
     /// SPEC-045: Emits incremental merge progress per chunk and batches lineage
     /// writes so the UI advances during long runs (fixes frozen 0/N counters).
+    ///
+    /// # Within-batch endpoint dedup (parity with entity W-03)
+    ///
+    /// AGE unique index `idx_edge_source_target_unique` is `(source_id, target_id)`
+    /// only — not `relation_type`. Multiple extracted edges for the same pair
+    /// (cross-chunk, multi-type) must collapse before `upsert_edges_batch`, or
+    /// native `ON CONFLICT DO UPDATE` fails with "cannot affect row a second time".
     pub(super) async fn merge_relationships_batch(
         &self,
         relationships: Vec<ExtractedRelationship>,
@@ -91,6 +98,10 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         if valid.is_empty() {
             return Ok(());
         }
+
+        // Domain dedup: one ExtractedRelationship per (source_key, target_key).
+        // Last-write-wins on relation_type/description; merge keywords + weight.
+        let valid = dedupe_relationships_by_endpoints(valid);
 
         let total_valid = valid.len();
         if let Some(ctx) = progress {
@@ -160,7 +171,8 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
                     });
                 }
 
-                if let Some(existing) = edge_map.get(&(source_key.clone(), target_key.clone())) {
+                let pair = (source_key.clone(), target_key.clone());
+                if let Some(existing) = edge_map.get(&pair) {
                     let mut edge = existing.clone();
                     self.update_relationship_edge(&mut edge, rel).await?;
                     edge_batch.push((
@@ -168,6 +180,8 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
                         edge.target.clone(),
                         edge.properties.clone(),
                     ));
+                    // Keep map coherent if the same pair appears again (defense).
+                    edge_map.insert(pair, edge);
                     stats.relationships_updated += 1;
                 } else {
                     let edge = self.create_relationship_edge(source_key, target_key, rel)?;
@@ -180,7 +194,12 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
                         .artifacts
                         .graph_edges_created
                         .push((source_key.clone(), target_key.clone()));
-                    edge_batch.push((edge.source, edge.target, edge.properties));
+                    edge_batch.push((
+                        edge.source.clone(),
+                        edge.target.clone(),
+                        edge.properties.clone(),
+                    ));
+                    edge_map.insert(pair, edge);
                     stats.relationships_created += 1;
                 }
             }
@@ -206,6 +225,10 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
                 );
             }
         }
+
+        // Storage-layer dedupe is the SSOT for ON CONFLICT safety; still collapse
+        // here so create/update stats and artifacts stay aligned with one edge/pair.
+        let edge_batch = edgequake_storage::dedupe_edges_by_endpoints(&edge_batch);
 
         if !edge_batch.is_empty() {
             if let Some(ctx) = progress {
@@ -351,6 +374,14 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
             serde_json::Value::Number(serde_json::Number::from_f64(new_weight as f64).unwrap()),
         );
 
+        // Prefer newer relation_type when present (last-write-wins for type label).
+        if !rel.relation_type.is_empty() {
+            edge.properties.insert(
+                "relation_type".to_string(),
+                serde_json::Value::String(rel.relation_type.clone()),
+            );
+        }
+
         // Merge keywords
         let mut keywords: Vec<String> = edge
             .properties
@@ -396,10 +427,6 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
             serde_json::Value::Number(serde_json::Number::from_f64(rel.weight as f64).unwrap()),
         );
         properties.insert("keywords".to_string(), serde_json::json!(rel.keywords));
-        properties.insert(
-            "relation_type".to_string(),
-            serde_json::Value::String(rel.relation_type.clone()),
-        );
 
         // Source tracking for citations (LightRAG parity)
         if let Some(ref chunk_id) = rel.source_chunk_id {
@@ -440,5 +467,100 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
             target: target_key.to_string(),
             properties,
         })
+    }
+}
+
+/// Collapse extracted relationships to one row per `(source_key, target_key)`.
+///
+/// # Policy (First Principles / AGE unique index)
+///
+/// - Last-write-wins for `relation_type`, `description`, embeddings, source ids
+/// - Keywords union (capped later at write time)
+/// - Weight = max of seen weights (preserve strongest signal)
+fn dedupe_relationships_by_endpoints(
+    rows: Vec<(ExtractedRelationship, String, String)>,
+) -> Vec<(ExtractedRelationship, String, String)> {
+    let mut order: Vec<(String, String)> = Vec::new();
+    let mut map: HashMap<(String, String), ExtractedRelationship> = HashMap::new();
+
+    for (rel, source_key, target_key) in rows {
+        let key = (source_key.clone(), target_key.clone());
+        if let Some(existing) = map.get_mut(&key) {
+            if rel.description.len() > existing.description.len() {
+                existing.description = rel.description.clone();
+            }
+            if !rel.relation_type.is_empty() {
+                existing.relation_type = rel.relation_type.clone();
+            }
+            if rel.weight > existing.weight {
+                existing.weight = rel.weight;
+            }
+            for kw in &rel.keywords {
+                if !existing.keywords.contains(kw) {
+                    existing.keywords.push(kw.clone());
+                }
+            }
+            if rel.embedding.is_some() {
+                existing.embedding = rel.embedding.clone();
+            }
+            if rel.source_chunk_id.is_some() {
+                existing.source_chunk_id = rel.source_chunk_id.clone();
+            }
+            if rel.source_document_id.is_some() {
+                existing.source_document_id = rel.source_document_id.clone();
+            }
+            if rel.source_file_path.is_some() {
+                existing.source_file_path = rel.source_file_path.clone();
+            }
+        } else {
+            order.push(key.clone());
+            map.insert(key, rel);
+        }
+    }
+
+    order
+        .into_iter()
+        .filter_map(|(src, tgt)| {
+            map.remove(&(src.clone(), tgt.clone()))
+                .map(|rel| (rel, src, tgt))
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dedupe_relationships_collapses_same_endpoints() {
+        let rows = vec![
+            (
+                ExtractedRelationship::new("Alice", "Bob", "KNOWS").with_description("a"),
+                "ALICE".into(),
+                "BOB".into(),
+            ),
+            (
+                ExtractedRelationship::new("Alice", "Bob", "WORKS_WITH")
+                    .with_description("longer description")
+                    .with_weight(0.9)
+                    .with_keywords(vec!["x".into()]),
+                "ALICE".into(),
+                "BOB".into(),
+            ),
+            (
+                ExtractedRelationship::new("Carol", "Dave", "RELATED"),
+                "CAROL".into(),
+                "DAVE".into(),
+            ),
+        ];
+        let out = dedupe_relationships_by_endpoints(rows);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].1, "ALICE");
+        assert_eq!(out[0].2, "BOB");
+        assert_eq!(out[0].0.relation_type, "WORKS_WITH");
+        assert_eq!(out[0].0.description, "longer description");
+        assert!((out[0].0.weight - 0.9).abs() < f32::EPSILON);
+        assert_eq!(out[0].0.keywords, vec!["x".to_string()]);
+        assert_eq!(out[1].1, "CAROL");
     }
 }

@@ -805,7 +805,26 @@ mod postgres_tests {
         graph_e2e_contract::assert_graph_node_crud(&storage).await;
         graph_e2e_contract::assert_graph_edge_crud(&storage).await;
         graph_batch_contract::assert_graph_batch_upsert(&storage).await;
+        graph_batch_contract::assert_graph_batch_upsert_dedupes_duplicate_endpoints(&storage).await;
         storage.clear().await.expect("Failed to clear");
+    }
+
+    /// Native write path + duplicate (source,target) — ultrag.pdf RCA regression.
+    #[tokio::test]
+    async fn test_postgres_native_graph_duplicate_endpoint_upsert() {
+        let config = require_postgres!();
+        let original = std::env::var("EDGEQUAKE_NATIVE_GRAPH_WRITES").ok();
+        std::env::set_var("EDGEQUAKE_NATIVE_GRAPH_WRITES", "1");
+
+        let storage = PostgresAGEGraphStorage::new(config);
+        storage.initialize().await.expect("Failed to initialize");
+        graph_batch_contract::assert_graph_batch_upsert_dedupes_duplicate_endpoints(&storage).await;
+        storage.clear().await.expect("Failed to clear");
+
+        match original {
+            Some(v) => std::env::set_var("EDGEQUAKE_NATIVE_GRAPH_WRITES", v),
+            None => std::env::remove_var("EDGEQUAKE_NATIVE_GRAPH_WRITES"),
+        }
     }
 }
 
