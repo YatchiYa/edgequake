@@ -32,9 +32,10 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useChunkDetail, useDocumentLineage } from '@/hooks/use-lineage';
+import { useChunkDetail, useDocumentFullLineage } from '@/hooks/use-lineage';
+import { normalizeFullLineageResponse } from '@/lib/lineage/normalize-full-lineage';
 import { cn } from '@/lib/utils';
-import type { EntityLineage } from '@/types/lineage';
+import type { DocumentLineageResponse, EntityLineage } from '@/types/lineage';
 import {
     AlertCircle,
     Box,
@@ -75,8 +76,12 @@ export function LineageExplorer({
   const [selectedChunkId, setSelectedChunkId] = useState<string | null>(null);
   const [chunkModalOpen, setChunkModalOpen] = useState(false);
 
-  // Fetch lineage data
-  const { data: lineage, isLoading, error } = useDocumentLineage(documentId);
+  // WHY: Full KV lineage includes chunks; graph endpoint is summary-only (graph viewer).
+  const { data: fullLineage, isLoading, error } = useDocumentFullLineage(documentId);
+  const lineage = useMemo(
+    () => (fullLineage ? normalizeFullLineageResponse(fullLineage) : null),
+    [fullLineage],
+  );
   
   // Fetch selected chunk detail
   const { data: selectedChunk, isLoading: isChunkLoading } = useChunkDetail(
@@ -313,7 +318,7 @@ function LineageTreeView({
   onEntityClick,
   selectedChunkId,
 }: {
-  lineage: ReturnType<typeof useDocumentLineage>['data'];
+  lineage: DocumentLineageResponse | null | undefined;
   onChunkSelect: (chunkId: string) => void;
   onEntityClick: (entityId: string) => void;
   selectedChunkId: string | null;
@@ -420,7 +425,7 @@ function LineageTableView({
   onChunkClick,
   onEntityClick,
 }: {
-  lineage: ReturnType<typeof useDocumentLineage>['data'];
+  lineage: DocumentLineageResponse | null | undefined;
   onChunkClick: (chunkId: string) => void;
   onEntityClick: (entityId: string) => void;
 }) {
