@@ -27,6 +27,7 @@ import {
 import type { MultipartUploadProgress } from "@/lib/upload/multipart-upload-client";
 import { isImageUploadFile, isPdfUploadFile } from "@/lib/upload/file-kind";
 import type { Document } from "@/types";
+import { useIngestionStore } from "@/stores/use-ingestion-store";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
@@ -309,6 +310,8 @@ export function useFileUpload(
               file_size: file.size,
               source_type: uploadResult.source_type ?? "text",
               status: "processing",
+              current_stage: "chunking",
+              stage_message: t("documents.upload.extracting", "Processing..."),
               mime_type: file.type || "text/plain",
               created_at: new Date().toISOString(),
               track_id: uploadResult.track_id,
@@ -340,7 +343,6 @@ export function useFileUpload(
                 idx === i
                   ? {
                       ...f,
-                      trackId: uploadResult.track_id,
                       isPdf: true,
                     }
                   : f,
@@ -381,7 +383,43 @@ export function useFileUpload(
             continue;
           }
 
-          // Phase 3: Extraction queued
+          // Pipeline tracking: PDF + text/markdown/image share track_id progress (FEAT0602 parity)
+          if (uploadResult.track_id) {
+            const documentId =
+              uploadResult.document_id ?? uploadResult.pdf_id ?? "";
+            useIngestionStore.getState().startTracking(
+              uploadResult.track_id,
+              documentId,
+              file.name,
+            );
+
+            setUploadingFiles((prev) =>
+              prev.map((f, idx) =>
+                idx === i
+                  ? {
+                      ...f,
+                      trackId: uploadResult.track_id,
+                      status: "extracting" as const,
+                      progress: uploadResult.isPdf ? f.progress : 85,
+                      phase: response.task_id
+                        ? t(
+                            "documents.upload.queued",
+                            "Queued for extraction (Task: {{taskId}})",
+                            {
+                              taskId: response.task_id.slice(0, 8),
+                            },
+                          )
+                        : t("documents.upload.extracting", "Processing..."),
+                    }
+                  : f,
+              ),
+            );
+
+            successCount++;
+            continue;
+          }
+
+          // No track_id — mark complete immediately (sync path)
           setUploadingFiles((prev) =>
             prev.map((f, idx) =>
               idx === i
@@ -389,24 +427,14 @@ export function useFileUpload(
                     ...f,
                     status: "extracting" as const,
                     progress: 80,
-                    phase: response.task_id
-                      ? t(
-                          "documents.upload.queued",
-                          "Queued for extraction (Task: {{taskId}})",
-                          {
-                            taskId: response.task_id.slice(0, 8),
-                          },
-                        )
-                      : t("documents.upload.extracting", "Processing..."),
+                    phase: t("documents.upload.extracting", "Processing..."),
                   }
                 : f,
             ),
           );
 
-          // Brief delay to show extraction phase
           await new Promise((resolve) => setTimeout(resolve, 300));
 
-          // Mark as complete
           setUploadingFiles((prev) =>
             prev.map((f, idx) =>
               idx === i
@@ -502,9 +530,11 @@ export function useFileUpload(
 
       setIsUploading(false);
 
-      // Clear upload list after delay
+      // Drop finished HTTP uploads; keep pipeline-tracked rows until onComplete
       setTimeout(() => {
-        setUploadingFiles([]);
+        setUploadingFiles((prev) =>
+          prev.filter((f) => f.trackId && f.status === "extracting"),
+        );
       }, 3000);
     },
     [isUploading, onUploadStart, pdfParserBackend, queryClient, router, t, tenantId, workspaceId],
@@ -616,12 +646,28 @@ export function useFileUpload(
    * Mark PDF upload as successful (called by PdfUploadProgress)
    */
   const handleUploadComplete = useCallback((index: number) => {
-    setUploadingFiles((prev) =>
-      prev.map((f, idx) =>
-        idx === index ? { ...f, status: "success" as const, progress: 100 } : f,
-      ),
-    );
-  }, []);
+    setUploadingFiles((prev) => {
+      const completedTrackId = prev[index]?.trackId;
+      const next = prev.map((f, idx) =>
+        idx === index
+          ? {
+              ...f,
+              status: "success" as const,
+              progress: 100,
+              phase: t("documents.upload.complete", "Complete!"),
+            }
+          : f,
+      );
+      if (completedTrackId) {
+        setTimeout(() => {
+          setUploadingFiles((current) =>
+            current.filter((f) => f.trackId !== completedTrackId),
+          );
+        }, 2500);
+      }
+      return next;
+    });
+  }, [t]);
 
   /**
    * Mark PDF upload as failed (called by PdfUploadProgress)

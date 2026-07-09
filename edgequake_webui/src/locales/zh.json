@@ -242,7 +242,8 @@
     "delete": {
       "failed": "删除失败",
       "success": "文档已删除",
-      "successDesc": "该文档已被永久删除。"
+      "successDesc": "该文档已被永久删除。",
+      "inProgress": "正在删除文档…"
     },
     "deleteAll": {
       "failed": "全部删除失败",
@@ -313,6 +314,8 @@
       "clear": "取消选择",
       "deleteSuccess": "已删除 {{count}} 个文档",
       "deleteFailed": "{{count}} 个文档删除失败",
+      "deleting": "正在删除 {{count}} 个文档…",
+      "deleteProgress": "正在删除 {{current}}/{{total}}…",
       "reprocessSuccess": "{{count}} 个文档已加入重新处理队列",
       "reprocessFailed": "{{count}} 个文档重新处理失败"
     },
@@ -364,15 +367,26 @@
     "filters": {
       "title": "筛选器",
       "nodeTypes": "节点类型",
-      "connectionRange": "连接范围"
+      "connectionRange": "连接范围",
+      "entityTypes": "实体类型",
+      "typeCount": "{{count}} 种类型",
+      "searchPlaceholder": "搜索实体或类型…",
+      "clearSearch": "清除搜索",
+      "visibleSummary": "可见 {{visible}} / {{total}} 个节点",
+      "hideAll": "全部隐藏",
+      "allHiddenHint": "所有类型已隐藏。请至少显示一个类别。",
+      "noTypes": "当前图谱中没有实体类型。",
+      "noMatchingTypes": "无匹配类型",
+      "documentScoped": "文档视图"
     },
     "legend": {
-      "title": "图例",
-      "person": "人物",
-      "organization": "组织",
-      "technology": "技术",
-      "location": "地点",
-      "other": "其他"
+      "title": "实体类型",
+      "showLegend": "显示图例",
+      "collapse": "收起图例",
+      "typeList": "实体类型可见性控制",
+      "entities": "实体",
+      "clickToHide": "点击隐藏",
+      "clickToShow": "点击显示"
     },
     "export": {
       "title": "导出图谱",

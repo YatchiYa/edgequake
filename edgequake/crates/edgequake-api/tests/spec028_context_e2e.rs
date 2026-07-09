@@ -714,6 +714,7 @@ async fn ec_artifact_markdown_retrieve_from_kv() {
         .contains("Artifact test"));
 }
 
+#[cfg(feature = "postgres")]
 #[tokio::test]
 async fn ec_artifact_pdf_retrieve_with_markdown() {
     use edgequake_storage::{

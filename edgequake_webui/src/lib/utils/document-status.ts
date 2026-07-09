@@ -11,6 +11,7 @@ import {
   type DocumentStatus,
 } from "@/components/documents/status-badge";
 import type { Document } from "@/types";
+import { formatGraphMergeStageMessage } from "@/lib/pipeline/graph-merge-progress";
 
 const TERMINAL_FAILURE_STATUSES = new Set([
   "failed",
@@ -70,10 +71,24 @@ export function isInformationalNotice(message: string): boolean {
  * Effective terminal error — never returns legacy warnings masquerading as errors.
  */
 export function getEffectiveErrorMessage(
-  doc: Pick<Document, "status" | "current_stage" | "error_message">,
+  doc: Pick<
+    Document,
+    "status" | "current_stage" | "error_message" | "entity_count" | "stage_message"
+  >,
 ): string | undefined {
   const raw = asNonEmptyString(doc.error_message);
   if (!raw) return undefined;
+
+  const entityCount = doc.entity_count ?? 0;
+  const stageMsg = doc.stage_message?.toLowerCase() ?? '';
+  if (
+    (doc.status?.toLowerCase() === 'cancelled' ||
+      doc.current_stage?.toLowerCase() === 'cancelled') &&
+    entityCount > 0 &&
+    (stageMsg.includes('pre-lineage') || raw.toLowerCase().includes('pre-lineage'))
+  ) {
+    return undefined;
+  }
 
   if (isTerminalFailureDocument(doc)) {
     return raw;
@@ -133,20 +148,41 @@ export function resolveDocumentDisplayStatus(
     | "stage_message"
     | "error_message"
     | "warning_message"
+    | "entity_count"
   >,
 ): DocumentStatus {
   const baseStatus = getDocumentDisplayStatus(doc);
   const legacyStatus = doc.status?.toLowerCase() as DocumentStatus | undefined;
+
+  // Graph saved but lineage/finalize interrupted — show partial, not hard cancel.
+  const entityCount = doc.entity_count ?? 0;
+  const stageMsg = doc.stage_message?.toLowerCase() ?? '';
+  if (
+    (legacyStatus === 'cancelled' || baseStatus === 'cancelled') &&
+    entityCount > 0 &&
+    (stageMsg.includes('pre-lineage') ||
+      stageMsg.includes('graph data is already saved') ||
+      stageMsg.includes('interrupted during'))
+  ) {
+    return 'partial_success';
+  }
 
   const terminalError = getEffectiveErrorMessage(doc);
   if (terminalError) {
     if (legacyStatus === "partial_failure" || baseStatus === "partial_failure") {
       return "partial_failure";
     }
+    if (legacyStatus === "partial_success" || baseStatus === "partial_success") {
+      return "partial_success";
+    }
     if (legacyStatus === "cancelled" || baseStatus === "cancelled") {
       return "cancelled";
     }
     return "failed";
+  }
+
+  if (legacyStatus === "partial_success" || baseStatus === "partial_success") {
+    return "partial_success";
   }
 
   if (doc.stage_message) {
@@ -198,6 +234,10 @@ export function resolveDocumentProgressMessage(
   }
 
   if (doc.stage_message) {
+    const graphMerge = formatGraphMergeStageMessage(doc.stage_message);
+    if (graphMerge) {
+      return graphMerge;
+    }
     return doc.stage_message;
   }
 

@@ -176,6 +176,26 @@ impl PostgresAGEGraphStorage {
                     self.graph_name
                 ),
             ),
+            // ── Migration 038: document-scoped source_ids (NAMEDATALEN-safe) ─────
+            (
+                "idx_node_source_id_expr",
+                format!(
+                    r#"CREATE INDEX IF NOT EXISTS idx_node_source_id_expr 
+                       ON {}."Node" (
+                         (ag_catalog.agtype_to_json(properties)->>'source_id')
+                       )"#,
+                    self.graph_name
+                ),
+            ),
+            (
+                "idx_node_source_ids_gin",
+                format!(
+                    r#"CREATE INDEX IF NOT EXISTS idx_node_source_ids_gin 
+                       ON {}."Node" 
+                       USING gin ((ag_catalog.agtype_to_json(properties)::jsonb -> 'source_ids') jsonb_ops)"#,
+                    self.graph_name
+                ),
+            ),
             // ── "EDGE" label indexes ────────────────────────────────────────────────
             // REMOVED: idx_edge_start_end (composite, 0 scans — superseded by text-cast indexes)
             // REMOVED: idx_edge_props_gin (GIN on edge properties, 0 scans)
@@ -212,6 +232,15 @@ impl PostgresAGEGraphStorage {
                        ON {}."EDGE" (
                          (ag_catalog.agtype_to_json(properties)->>'target_id')
                        )"#,
+                    self.graph_name
+                ),
+            ),
+            (
+                "idx_edge_source_ids_gin",
+                format!(
+                    r#"CREATE INDEX IF NOT EXISTS idx_edge_source_ids_gin 
+                       ON {}."EDGE" 
+                       USING gin ((ag_catalog.agtype_to_json(properties)::jsonb -> 'source_ids') jsonb_ops)"#,
                     self.graph_name
                 ),
             ),

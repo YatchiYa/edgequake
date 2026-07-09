@@ -310,7 +310,7 @@ pub async fn cleanup_stale_checkpoints(kv: &Arc<dyn KVStorage>) {
         .unwrap_or_default()
         .as_secs();
 
-    let values = match kv.get_by_ids(&checkpoint_keys).await {
+    let values = match kv.get_by_ids_ordered(&checkpoint_keys).await {
         Ok(values) => values,
         Err(e) => {
             warn!(error = %e, "Failed to batch-read checkpoint keys for cleanup");
@@ -319,7 +319,12 @@ pub async fn cleanup_stale_checkpoints(kv: &Arc<dyn KVStorage>) {
     };
 
     let mut cleaned = 0u32;
-    for (key, value) in checkpoint_keys.iter().zip(values.iter()) {
+    for (key, maybe_value) in checkpoint_keys.iter().zip(values.iter()) {
+        let Some(value) = maybe_value else {
+            let _ = kv.delete(std::slice::from_ref(key)).await;
+            cleaned += 1;
+            continue;
+        };
         if let Ok(cp) = serde_json::from_value::<PipelineCheckpoint>(value.clone()) {
             let age = now.saturating_sub(cp.created_at_epoch);
             if age > CHECKPOINT_MAX_AGE_SECS {

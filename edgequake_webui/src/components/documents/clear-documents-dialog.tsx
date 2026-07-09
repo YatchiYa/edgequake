@@ -14,6 +14,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { invalidateKnowledgeGraph } from '@/lib/cache-manager';
 import { deleteAllDocuments } from '@/lib/api/edgequake';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Loader2, Trash2 } from 'lucide-react';
@@ -83,8 +84,7 @@ export function ClearDocumentsDialog({
       );
       // Refresh documents list
       queryClient.invalidateQueries({ queryKey: ['documents'] });
-      queryClient.invalidateQueries({ queryKey: ['graph'] });
-      queryClient.invalidateQueries({ queryKey: ['entities'] });
+      invalidateKnowledgeGraph(queryClient);
       // Reset and close
       setConfirmation('');
       setOpen(false);

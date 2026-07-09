@@ -6,6 +6,8 @@
 --   - Idempotent: IF NOT EXISTS on each index
 --   - Run support/038/preflight.sql first (or apply_038.sh --dry-run)
 --
+-- PG16 / PG17 / PG18: child label tables ("Node", "EDGE") — NAMEDATALEN-safe names.
+--
 -- Usage:
 --   edgequake/scripts/migrations/apply_038.sh --dry-run
 --   edgequake/scripts/migrations/apply_038.sh --apply --concurrent --yes
@@ -23,32 +25,31 @@ BEGIN
     RAISE NOTICE 'Starting concurrent index build (SPEC-006 038)...';
 END $$;
 
--- Per-graph indexes (template executed via psql \gexec pattern below)
 SELECT format(
-    'CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_%s_vertex_source_id ON %I."_ag_label_vertex" '
+    'CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_node_source_id_expr ON %I."Node" '
     '((ag_catalog.agtype_to_json(properties)->>''source_id''));',
-    replace(g.name, '.', '_'), g.name
+    g.name
 )
 FROM ag_catalog.ag_graph g
-WHERE to_regclass(format('%I._ag_label_vertex', g.name)) IS NOT NULL
+WHERE to_regclass(format('%I."Node"', g.name)) IS NOT NULL
 \gexec
 
 SELECT format(
-    'CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_%s_vertex_source_ids_gin ON %I."_ag_label_vertex" '
+    'CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_node_source_ids_gin ON %I."Node" '
     'USING gin ((ag_catalog.agtype_to_json(properties)::jsonb -> ''source_ids'') jsonb_ops);',
-    replace(g.name, '.', '_'), g.name
+    g.name
 )
 FROM ag_catalog.ag_graph g
-WHERE to_regclass(format('%I._ag_label_vertex', g.name)) IS NOT NULL
+WHERE to_regclass(format('%I."Node"', g.name)) IS NOT NULL
 \gexec
 
 SELECT format(
-    'CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_%s_edge_source_ids_gin ON %I."_ag_label_edge" '
+    'CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_edge_source_ids_gin ON %I."EDGE" '
     'USING gin ((ag_catalog.agtype_to_json(properties)::jsonb -> ''source_ids'') jsonb_ops);',
-    replace(g.name, '.', '_'), g.name
+    g.name
 )
 FROM ag_catalog.ag_graph g
-WHERE to_regclass(format('%I._ag_label_edge', g.name)) IS NOT NULL
+WHERE to_regclass(format('%I."EDGE"', g.name)) IS NOT NULL
 \gexec
 
 DO $$ BEGIN RAISE NOTICE 'Concurrent index build complete (038)'; END $$;

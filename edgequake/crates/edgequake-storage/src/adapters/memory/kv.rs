@@ -243,6 +243,12 @@ mod tests {
         let ids: Vec<String> = vec!["0".to_string(), "2".to_string(), "999".to_string()];
         let results = storage.get_by_ids(&ids).await.unwrap();
         assert_eq!(results.len(), 2);
+
+        let ordered = storage.get_by_ids_ordered(&ids).await.unwrap();
+        assert_eq!(ordered.len(), 3);
+        assert!(ordered[0].is_some());
+        assert!(ordered[1].is_some());
+        assert!(ordered[2].is_none());
     }
 
     #[tokio::test]

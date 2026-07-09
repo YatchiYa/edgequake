@@ -4,14 +4,15 @@ use axum::extract::{Path, State};
 use axum::Json;
 
 use super::cache::cached_kv_get;
-use edgequake_storage::traits::{collect_source_references, KVStorage};
+use edgequake_storage::traits::KVStorage;
 
 use crate::error::{ApiError, ApiResult};
 use crate::handlers::isolation::verify_document_access;
 use crate::handlers::lineage_types::*;
 use crate::middleware::TenantContext;
 use crate::services::{
-    find_document_edges, find_document_nodes, sources_for_document, DocumentSourceScope,
+    build_document_graph_lineage, find_document_nodes, find_relationships_for_document_lineage,
+    DocumentSourceScope,
 };
 use crate::state::StorageRuntime;
 
@@ -220,6 +221,7 @@ pub async fn get_entity_lineage(
 )]
 pub async fn get_document_lineage(
     State(storage): State<StorageRuntime>,
+    #[cfg(feature = "postgres")] State(pg_runtime): State<crate::state::PostgresRuntime>,
     tenant_ctx: TenantContext,
     Path(document_id): Path<String>,
 ) -> ApiResult<Json<DocumentGraphLineageResponse>> {
@@ -239,62 +241,28 @@ pub async fn get_document_lineage(
         )));
     }
 
-    // SPEC-006 P1: bounded document-scoped lineage (no full graph scan)
-    let scope = DocumentSourceScope::from_document_id(document_id.clone());
-    let mut entities: Vec<EntitySummaryResponse> = Vec::new();
-
-    for node in find_document_nodes(&storage.graph_storage, Some(&tenant_ctx), &scope).await? {
-        let doc_sources = sources_for_document(&node.properties, &scope);
-        if doc_sources.is_empty() {
-            continue;
-        }
-        let all_sources = collect_source_references(&node.properties);
-        let entity_type = node
-            .properties
-            .get("entity_type")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown")
-            .to_string();
-        entities.push(EntitySummaryResponse {
-            name: node.id.clone(),
-            entity_type,
-            source_chunks: doc_sources,
-            is_shared: all_sources.len() > 1,
-        });
-    }
-
-    let mut relationships: Vec<RelationshipSummaryResponse> = Vec::new();
-    for edge in find_document_edges(&storage.graph_storage, Some(&tenant_ctx), &scope).await? {
-        let doc_sources = sources_for_document(&edge.properties, &scope);
-        if doc_sources.is_empty() {
-            continue;
-        }
-        let keywords = edge
-            .properties
-            .get("keywords")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        relationships.push(RelationshipSummaryResponse {
-            source: edge.source.clone(),
-            target: edge.target.clone(),
-            keywords,
-            source_chunks: doc_sources,
-        });
-    }
+    // SPEC-006 P1 + SPEC-045: bounded document-scoped lineage (SSOT builder).
+    let lineage = build_document_graph_lineage(
+        &storage.graph_storage,
+        &tenant_ctx,
+        &document_id,
+        #[cfg(feature = "postgres")]
+        pg_runtime.pool.as_ref(),
+    )
+    .await?;
 
     Ok(Json(DocumentGraphLineageResponse {
         document_id,
         chunk_count: chunk_ids.len(),
         extraction_stats: ExtractionStatsResponse {
-            total_entities: entities.len(),
-            unique_entities: entities.len(),
-            total_relationships: relationships.len(),
-            unique_relationships: relationships.len(),
+            total_entities: lineage.entities.len(),
+            unique_entities: lineage.entities.len(),
+            total_relationships: lineage.relationships.len(),
+            unique_relationships: lineage.relationships.len(),
             processing_time_ms: None,
         },
-        entities,
-        relationships,
+        entities: lineage.entities,
+        relationships: lineage.relationships,
     }))
 }
 
@@ -413,8 +381,13 @@ pub async fn get_chunk_lineage(
     let chunk_nodes =
         find_document_nodes(&storage.graph_storage, Some(&tenant_ctx), &chunk_scope).await?;
     let entity_names: Vec<String> = chunk_nodes.iter().map(|n| n.id.clone()).collect();
-    let chunk_edges =
-        find_document_edges(&storage.graph_storage, Some(&tenant_ctx), &chunk_scope).await?;
+    let chunk_edges = find_relationships_for_document_lineage(
+        &storage.graph_storage,
+        Some(&tenant_ctx),
+        &chunk_scope,
+        &entity_names,
+    )
+    .await?;
     let entity_count = entity_names.len();
     let relationship_count = chunk_edges.len();
 

@@ -7,7 +7,8 @@ use edgequake_storage::{EntityId, GraphEdge, GraphStorage, VectorStorage};
 use crate::error::Result;
 use crate::extractor::ExtractedRelationship;
 
-use super::{merge_descriptions, metadata, MergeStats};
+use super::merge_progress::MergeProgressCtx;
+use super::{merge_descriptions, merge_progress, metadata, MergeStats, RelationLineageLink};
 
 impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphMerger<G, V> {
     /// Collect batched relationship vector upserts (P-G4-merger).
@@ -40,10 +41,14 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
     }
 
     /// Merge relationships with batched graph reads/writes (P-G4-graph).
+    ///
+    /// SPEC-045: Emits incremental merge progress per chunk and batches lineage
+    /// writes so the UI advances during long runs (fixes frozen 0/N counters).
     pub(super) async fn merge_relationships_batch(
         &self,
         relationships: Vec<ExtractedRelationship>,
         stats: &mut MergeStats,
+        progress: Option<MergeProgressCtx<'_>>,
     ) -> Result<()> {
         if relationships.is_empty() {
             return Ok(());
@@ -87,6 +92,15 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
             return Ok(());
         }
 
+        let total_valid = valid.len();
+        if let Some(ctx) = progress {
+            ctx.emit_relationship_graph(
+                0,
+                stats.relationships_created,
+                stats.relationships_updated,
+            );
+        }
+
         let existing_nodes = self.graph_storage.get_nodes_batch(&endpoint_keys).await?;
         let incident_edges = self
             .graph_storage
@@ -123,50 +137,93 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         }
 
         let mut edge_batch: Vec<(String, String, HashMap<String, serde_json::Value>)> =
-            Vec::with_capacity(valid.len());
+            Vec::with_capacity(total_valid);
 
-        let ws = self.workspace_id.as_deref().unwrap_or("default");
+        let ws = self
+            .workspace_id
+            .as_deref()
+            .unwrap_or("default")
+            .to_string();
+        let chunk_size = merge_progress::relationship_merge_chunk_size();
 
-        for (rel, source_key, target_key) in valid {
-            // SPEC-032 W-08: record lineage link for this chunk→relation pair
-            if let Some(ref chunk_id) = rel.source_chunk_id {
+        for chunk_start in (0..total_valid).step_by(chunk_size) {
+            let chunk_end = (chunk_start + chunk_size).min(total_valid);
+            let mut lineage_batch: Vec<RelationLineageLink> = Vec::new();
+
+            for (rel, source_key, target_key) in &valid[chunk_start..chunk_end] {
+                if let Some(ref chunk_id) = rel.source_chunk_id {
+                    lineage_batch.push(RelationLineageLink {
+                        chunk_id: chunk_id.clone(),
+                        source_entity: source_key.clone(),
+                        target_entity: target_key.clone(),
+                        workspace_id: ws.clone(),
+                    });
+                }
+
+                if let Some(existing) = edge_map.get(&(source_key.clone(), target_key.clone())) {
+                    let mut edge = existing.clone();
+                    self.update_relationship_edge(&mut edge, rel).await?;
+                    edge_batch.push((
+                        edge.source.clone(),
+                        edge.target.clone(),
+                        edge.properties.clone(),
+                    ));
+                    stats.relationships_updated += 1;
+                } else {
+                    let edge = self.create_relationship_edge(source_key, target_key, rel)?;
+                    if rel.embedding.is_some() {
+                        let rel_id =
+                            format!("{}->{}:{}", source_key, target_key, rel.relation_type);
+                        stats.artifacts.relationship_vector_ids.push(rel_id);
+                    }
+                    stats
+                        .artifacts
+                        .graph_edges_created
+                        .push((source_key.clone(), target_key.clone()));
+                    edge_batch.push((edge.source, edge.target, edge.properties));
+                    stats.relationships_created += 1;
+                }
+            }
+
+            if !lineage_batch.is_empty() {
                 self.lineage_sink
-                    .record_relation_link(chunk_id, &source_key, &target_key, ws)
+                    .record_relation_links_batch(&lineage_batch)
                     .await
                     .unwrap_or_else(|e| {
                         tracing::warn!(
-                            source = %source_key, target = %target_key,
-                            error = %e, "Lineage sink record_relation_link failed (best-effort)"
+                            count = lineage_batch.len(),
+                            error = %e,
+                            "Lineage sink record_relation_links_batch failed (best-effort)"
                         );
                     });
             }
 
-            if let Some(existing) = edge_map.get(&(source_key.clone(), target_key.clone())) {
-                let mut edge = existing.clone();
-                self.update_relationship_edge(&mut edge, &rel).await?;
-                edge_batch.push((
-                    edge.source.clone(),
-                    edge.target.clone(),
-                    edge.properties.clone(),
-                ));
-                stats.relationships_updated += 1;
-            } else {
-                let edge = self.create_relationship_edge(&source_key, &target_key, &rel)?;
-                if rel.embedding.is_some() {
-                    let rel_id = format!("{}->{}:{}", source_key, target_key, rel.relation_type);
-                    stats.artifacts.relationship_vector_ids.push(rel_id);
-                }
-                stats
-                    .artifacts
-                    .graph_edges_created
-                    .push((source_key.clone(), target_key.clone()));
-                edge_batch.push((edge.source, edge.target, edge.properties));
-                stats.relationships_created += 1;
+            if let Some(ctx) = progress {
+                ctx.emit_relationship_graph(
+                    chunk_end,
+                    stats.relationships_created,
+                    stats.relationships_updated,
+                );
             }
         }
 
         if !edge_batch.is_empty() {
+            if let Some(ctx) = progress {
+                ctx.emit_relationship_graph(
+                    total_valid,
+                    stats.relationships_created,
+                    stats.relationships_updated,
+                );
+            }
             self.graph_storage.upsert_edges_batch(&edge_batch).await?;
+        }
+
+        if let Some(ctx) = progress {
+            ctx.emit_relationship_graph(
+                total_valid,
+                stats.relationships_created,
+                stats.relationships_updated,
+            );
         }
 
         Ok(())
@@ -214,8 +271,14 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
             .and_then(|v| v.as_str())
             .unwrap_or("");
 
+        // ── SPEC-032 W-06: Similarity gate (parity with entity merge) ─────────
+        let similarity = super::entity::description_similarity(existing_desc, &rel.description);
+        let use_llm = self.config.use_llm_summarization
+            && self.summarizer.is_some()
+            && similarity < self.config.description_similarity_threshold;
+
         // Use LLM summarizer if available and enabled
-        let merged_desc = if self.config.use_llm_summarization {
+        let merged_desc = if use_llm {
             if let Some(summarizer) = &self.summarizer {
                 // Use LLM to intelligently merge relationship descriptions
                 let descriptions = vec![existing_desc.to_string(), rel.description.clone()];
@@ -223,7 +286,15 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
                     .merge_relationship_descriptions(&rel.source, &rel.target, &descriptions)
                     .await
                 {
-                    Ok(merged) => merged,
+                    Ok(merged) => {
+                        tracing::debug!(
+                            source = %rel.source,
+                            target = %rel.target,
+                            similarity,
+                            "LLM relationship description merge completed"
+                        );
+                        merged
+                    }
                     Err(e) => {
                         tracing::warn!(
                             source = %rel.source,
@@ -246,11 +317,20 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
                 )
             }
         } else {
-            merge_descriptions(
-                existing_desc,
-                &rel.description,
-                self.config.max_description_length,
-            )
+            if similarity >= self.config.description_similarity_threshold {
+                tracing::debug!(
+                    source = %rel.source,
+                    target = %rel.target,
+                    similarity,
+                    threshold = self.config.description_similarity_threshold,
+                    "Similarity gate: skipping LLM summarizer (descriptions near-identical)"
+                );
+            }
+            if rel.description.len() > existing_desc.len() {
+                rel.description.clone()
+            } else {
+                existing_desc.to_string()
+            }
         };
 
         edge.properties.insert(

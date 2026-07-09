@@ -2127,6 +2127,7 @@ version = "0.15.1"
 dependencies = [
  "async-trait",
  "chrono",
+ "edgequake-observability",
  "serde",
  "serde_json",
  "sha2 0.10.9",

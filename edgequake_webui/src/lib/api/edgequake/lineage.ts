@@ -11,8 +11,8 @@ import { getRuntimeServerBaseUrl } from "@/lib/runtime-config";
  */
 export async function getDocumentLineage(
   documentId: string,
-): Promise<import("@/types/lineage").DocumentLineageResponse> {
-  return api.get<import("@/types/lineage").DocumentLineageResponse>(
+): Promise<import("@/types/lineage").DocumentGraphLineageResponse> {
+  return api.get<import("@/types/lineage").DocumentGraphLineageResponse>(
     `/lineage/documents/${documentId}`,
   );
 }

@@ -84,6 +84,8 @@ mod task_impl;
 mod text_insert;
 mod workspace_resolver;
 
+pub(crate) use status_updates::patch_document_graph_merge_progress;
+
 use std::sync::Arc;
 
 use crate::handlers::websocket_types::ProgressBroadcaster;
@@ -870,5 +872,25 @@ mod tests {
             // Scan/Reindex fail on unsupported
             assert!(result.is_err());
         }
+    }
+
+    #[test]
+    fn graph_merge_progress_message_includes_percentages() {
+        let msg = status_updates::graph_merge_progress_message(
+            "Merging relationships into knowledge graph",
+            2654,
+            2654,
+            128,
+            1999,
+        );
+        assert!(msg.contains("2654/2654 entities (100%)"));
+        assert!(msg.contains("128/1999 relationships (6%)"));
+    }
+
+    #[test]
+    fn graph_merge_progress_fraction_weights_entities_and_relationships() {
+        let frac = status_updates::graph_merge_progress_fraction(2654, 2654, 1000, 1999);
+        let expected = (2654 + 1000) as f32 / (2654 + 1999) as f32;
+        assert!((frac - expected).abs() < 0.001);
     }
 }

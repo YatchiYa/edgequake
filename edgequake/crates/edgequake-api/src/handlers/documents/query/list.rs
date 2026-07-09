@@ -8,7 +8,7 @@ use tracing::debug;
 
 use crate::error::ApiResult;
 use crate::middleware::TenantContext;
-use crate::services::document_metadata_scan::load_scoped_document_metadata;
+use crate::services::document_metadata_scan::canonical_document_id;
 use crate::services::list_pagination::paginate_vec;
 use crate::services::tenant_guard::{
     empty_documents_list, has_full_tenant_context, warn_missing_tenant_context,
@@ -49,11 +49,15 @@ pub async fn list_documents(
     }
 
     // SPEC-027: scoped metadata scan SSOT (suffix index + tenant filter).
-    let metadata_values =
-        load_scoped_document_metadata(storage.kv_storage.as_ref(), &tenant_ctx).await?;
+    let metadata_entries =
+        crate::services::document_metadata_scan::load_scoped_document_metadata_entries(
+            storage.kv_storage.as_ref(),
+            &tenant_ctx,
+        )
+        .await?;
     debug!(
-        metadata_values_count = metadata_values.len(),
-        "Scoped metadata values retrieved"
+        metadata_entries_count = metadata_entries.len(),
+        "Scoped metadata entries retrieved"
     );
 
     // Store complete document metadata, keyed by document ID
@@ -100,177 +104,176 @@ pub async fn list_documents(
     let mut doc_metadata: std::collections::HashMap<String, DocMetadata> =
         std::collections::HashMap::new();
 
-    for value in metadata_values {
-        debug!(value = ?value, "Processing metadata value");
+    for (metadata_key, value) in metadata_entries {
+        debug!(metadata_key = %metadata_key, value = ?value, "Processing metadata entry");
         if let Some(obj) = value.as_object() {
-            if let Some(id) = obj.get("id").and_then(|v| v.as_str()) {
-                let title_val = obj.get("title");
-                debug!(doc_id = %id, title = ?title_val, "Extracted ID and title from metadata");
+            let id = canonical_document_id(&metadata_key, &value);
+            let title_val = obj.get("title");
+            debug!(doc_id = %id, title = ?title_val, "Extracted canonical ID and title");
 
-                // WHY: We build DocMetadata incrementally because fields are extracted
-                // conditionally from JSON, and some fields depend on others (e.g., file_name
-                // is derived from title). Struct initializer syntax doesn't work well here.
-                let mut meta = DocMetadata::default();
+            // WHY: We build DocMetadata incrementally because fields are extracted
+            // conditionally from JSON, and some fields depend on others (e.g., file_name
+            // is derived from title). Struct initializer syntax doesn't work well here.
+            let mut meta = DocMetadata::default();
 
-                // Get title from metadata
-                meta.title = obj
-                    .get("title")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+            // Get title from metadata
+            meta.title = obj
+                .get("title")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
 
-                // Use title as file_name fallback if it looks like a filename
-                if let Some(ref title) = meta.title {
-                    if title.contains('.') {
-                        meta.file_name = Some(title.clone());
-                    }
+            // Use title as file_name fallback if it looks like a filename
+            if let Some(ref title) = meta.title {
+                if title.contains('.') {
+                    meta.file_name = Some(title.clone());
                 }
+            }
 
-                // Get content_summary
-                meta.content_summary = obj
-                    .get("content_summary")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+            // Get content_summary
+            meta.content_summary = obj
+                .get("content_summary")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
 
-                // Get content_length
-                meta.content_length = obj
-                    .get("content_length")
-                    .and_then(|v| v.as_u64())
-                    .map(|n| n as usize);
+            // Get content_length
+            meta.content_length = obj
+                .get("content_length")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as usize);
 
-                // Get status
-                meta.status = obj
-                    .get("status")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+            // Get status
+            meta.status = obj
+                .get("status")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
 
-                // Get error_message / warning_message (normalized at response build time)
-                meta.error_message = obj
-                    .get("error_message")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                meta.warning_message = obj
-                    .get("warning_message")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+            // Get error_message / warning_message (normalized at response build time)
+            meta.error_message = obj
+                .get("error_message")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            meta.warning_message = obj
+                .get("warning_message")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
 
-                // Get track_id
-                meta.track_id = obj
-                    .get("track_id")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+            // Get track_id
+            meta.track_id = obj
+                .get("track_id")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
 
-                // Get created_at
-                meta.created_at = obj
-                    .get("created_at")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+            // Get created_at
+            meta.created_at = obj
+                .get("created_at")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
 
-                // Get updated_at
-                meta.updated_at = obj
-                    .get("updated_at")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+            // Get updated_at
+            meta.updated_at = obj
+                .get("updated_at")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
 
-                // Get entity_count
-                meta.entity_count = obj
-                    .get("entity_count")
-                    .and_then(|v| v.as_u64())
-                    .map(|n| n as usize);
+            // Get entity_count
+            meta.entity_count = obj
+                .get("entity_count")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as usize);
 
-                // Get tenant_id
-                meta.tenant_id = obj
-                    .get("tenant_id")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+            // Get tenant_id
+            meta.tenant_id = obj
+                .get("tenant_id")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
 
-                // Get workspace_id
-                meta.workspace_id = obj
-                    .get("workspace_id")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+            // Get workspace_id
+            meta.workspace_id = obj
+                .get("workspace_id")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
 
-                // Get cost_usd
-                meta.cost_usd = obj.get("cost_usd").and_then(|v| v.as_f64());
+            // Get cost_usd
+            meta.cost_usd = obj.get("cost_usd").and_then(|v| v.as_f64());
 
-                // Get input_tokens
-                meta.input_tokens = obj
-                    .get("input_tokens")
-                    .and_then(|v| v.as_u64())
-                    .map(|n| n as usize);
+            // Get input_tokens
+            meta.input_tokens = obj
+                .get("input_tokens")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as usize);
 
-                // Get output_tokens
-                meta.output_tokens = obj
-                    .get("output_tokens")
-                    .and_then(|v| v.as_u64())
-                    .map(|n| n as usize);
+            // Get output_tokens
+            meta.output_tokens = obj
+                .get("output_tokens")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as usize);
 
-                // Get total_tokens
-                meta.total_tokens = obj
-                    .get("total_tokens")
-                    .and_then(|v| v.as_u64())
-                    .map(|n| n as usize);
+            // Get total_tokens
+            meta.total_tokens = obj
+                .get("total_tokens")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as usize);
 
-                // Get llm_model
-                meta.llm_model = obj
-                    .get("llm_model")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+            // Get llm_model
+            meta.llm_model = obj
+                .get("llm_model")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
 
-                // Get embedding_model
-                meta.embedding_model = obj
-                    .get("embedding_model")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+            // Get embedding_model
+            meta.embedding_model = obj
+                .get("embedding_model")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
 
-                // SPEC-002: Get source_type
-                meta.source_type = obj
-                    .get("source_type")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+            // SPEC-002: Get source_type
+            meta.source_type = obj
+                .get("source_type")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
 
-                // SPEC-002: Get current_stage
-                meta.current_stage = obj
-                    .get("current_stage")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+            // SPEC-002: Get current_stage
+            meta.current_stage = obj
+                .get("current_stage")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
 
-                // SPEC-002: Get stage_progress
-                meta.stage_progress = obj
-                    .get("stage_progress")
-                    .and_then(|v| v.as_f64())
-                    .map(|n| n as f32);
+            // SPEC-002: Get stage_progress
+            meta.stage_progress = obj
+                .get("stage_progress")
+                .and_then(|v| v.as_f64())
+                .map(|n| n as f32);
 
-                // SPEC-002: Get stage_message
-                meta.stage_message = obj
-                    .get("stage_message")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+            // SPEC-002: Get stage_message
+            meta.stage_message = obj
+                .get("stage_message")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
 
-                // SPEC-002: Get pdf_id (linked PDF document for viewing)
-                meta.pdf_id = obj
-                    .get("pdf_id")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+            // SPEC-002: Get pdf_id (linked PDF document for viewing)
+            meta.pdf_id = obj
+                .get("pdf_id")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
 
-                meta.chunk_count = obj
-                    .get("chunk_count")
-                    .and_then(|v| v.as_u64())
-                    .map(|n| n as usize);
+            meta.chunk_count = obj
+                .get("chunk_count")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as usize);
 
-                if let Some(existing) = doc_metadata.get(id) {
-                    if crate::document_metadata::should_prefer_incoming_document_metadata(
-                        existing.updated_at.as_deref(),
-                        existing.status.as_deref(),
-                        existing.current_stage.as_deref(),
-                        meta.updated_at.as_deref(),
-                        meta.status.as_deref(),
-                        meta.current_stage.as_deref(),
-                    ) {
-                        doc_metadata.insert(id.to_string(), meta);
-                    }
-                } else {
-                    doc_metadata.insert(id.to_string(), meta);
+            if let Some(existing) = doc_metadata.get(&id) {
+                if crate::document_metadata::should_prefer_incoming_document_metadata(
+                    existing.updated_at.as_deref(),
+                    existing.status.as_deref(),
+                    existing.current_stage.as_deref(),
+                    meta.updated_at.as_deref(),
+                    meta.status.as_deref(),
+                    meta.current_stage.as_deref(),
+                ) {
+                    doc_metadata.insert(id, meta);
                 }
+            } else {
+                doc_metadata.insert(id, meta);
             }
         }
     }

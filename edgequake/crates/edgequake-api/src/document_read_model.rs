@@ -206,17 +206,163 @@ pub async fn list_relational_document_summaries(
     Ok(vec![])
 }
 
+/// Relational row scope for delete when KV is missing or tenant-scoped out.
+///
+/// First principle: if the documents list shows a row (PG read model), delete
+/// must succeed even when KV metadata/chunks/content are absent.
+#[derive(Debug, Clone)]
+pub struct RelationalDocumentScope {
+    pub workspace_id: String,
+    pub status: String,
+    pub track_id: Option<String>,
+}
+
+/// Look up a document in the relational `documents` table under tenant scope.
+#[cfg(feature = "postgres")]
+pub async fn relational_document_scope(
+    pool: Option<&sqlx::PgPool>,
+    document_id: &str,
+    tenant_ctx: &TenantContext,
+) -> Result<Option<RelationalDocumentScope>, crate::error::ApiError> {
+    use crate::error::ApiError;
+    use sqlx::Row;
+
+    let Some(pool) = pool else {
+        return Ok(None);
+    };
+
+    let Ok(doc_uuid) = Uuid::parse_str(document_id) else {
+        return Ok(None);
+    };
+
+    let workspace_id = tenant_ctx
+        .workspace_id
+        .as_ref()
+        .and_then(|w| Uuid::parse_str(w).ok())
+        .ok_or_else(|| ApiError::BadRequest("workspace_id required".into()))?;
+
+    let tenant_uuid = tenant_ctx
+        .tenant_id
+        .as_ref()
+        .and_then(|t| Uuid::parse_str(t).ok());
+
+    let row = sqlx::query(
+        r#"
+        SELECT workspace_id::text AS workspace_id, status, track_id
+        FROM documents
+        WHERE id = $1
+          AND workspace_id = $2
+          AND ($3::uuid IS NULL OR tenant_id IS NULL OR tenant_id = $3)
+        "#,
+    )
+    .bind(doc_uuid)
+    .bind(workspace_id)
+    .bind(tenant_uuid)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| ApiError::Internal(format!("Failed to lookup relational document: {e}")))?;
+
+    Ok(row.map(|r| RelationalDocumentScope {
+        workspace_id: r.get("workspace_id"),
+        status: r.get("status"),
+        track_id: r.get("track_id"),
+    }))
+}
+
+#[cfg(not(feature = "postgres"))]
+pub async fn relational_document_scope<P>(
+    _pool: Option<&P>,
+    _document_id: &str,
+    _tenant_ctx: &TenantContext,
+) -> Result<Option<RelationalDocumentScope>, crate::error::ApiError> {
+    Ok(None)
+}
+
+/// Delete all relational `documents` rows for the request workspace (bulk delete SSOT).
+#[cfg(feature = "postgres")]
+pub async fn delete_relational_documents_for_workspace(
+    pool: Option<&sqlx::PgPool>,
+    tenant_ctx: &TenantContext,
+) -> Result<u64, crate::error::ApiError> {
+    use crate::error::ApiError;
+
+    let Some(pool) = pool else {
+        return Ok(0);
+    };
+
+    let workspace_id = tenant_ctx
+        .workspace_id
+        .as_ref()
+        .and_then(|w| Uuid::parse_str(w).ok())
+        .ok_or_else(|| ApiError::BadRequest("workspace_id required".into()))?;
+
+    let tenant_uuid = tenant_ctx
+        .tenant_id
+        .as_ref()
+        .and_then(|t| Uuid::parse_str(t).ok());
+
+    let result = sqlx::query(
+        r#"
+        DELETE FROM documents
+        WHERE workspace_id = $1
+          AND ($2::uuid IS NULL OR tenant_id IS NULL OR tenant_id = $2)
+        "#,
+    )
+    .bind(workspace_id)
+    .bind(tenant_uuid)
+    .execute(pool)
+    .await
+    .map_err(|e| ApiError::Internal(format!("Failed to bulk-delete relational documents: {e}")))?;
+
+    Ok(result.rows_affected())
+}
+
+#[cfg(not(feature = "postgres"))]
+pub async fn delete_relational_documents_for_workspace<P>(
+    _pool: Option<&P>,
+    _tenant_ctx: &TenantContext,
+) -> Result<u64, crate::error::ApiError> {
+    Ok(0)
+}
+
 /// Merge KV-derived documents with relational rows (relational fills gaps).
 pub fn merge_document_summaries(
     mut kv_documents: Vec<DocumentSummary>,
     relational_documents: Vec<DocumentSummary>,
 ) -> Vec<DocumentSummary> {
-    use std::collections::HashSet;
+    use std::collections::HashMap;
 
-    let existing: HashSet<String> = kv_documents.iter().map(|d| d.id.clone()).collect();
+    let mut by_id: HashMap<String, usize> = HashMap::new();
+    for (idx, doc) in kv_documents.iter().enumerate() {
+        by_id.insert(doc.id.clone(), idx);
+    }
 
     for rel in relational_documents {
-        if !existing.contains(&rel.id) {
+        if let Some(&idx) = by_id.get(&rel.id) {
+            // SPEC-045: relational title/counts are durable; KV may hold swapped blobs.
+            let kv = &mut kv_documents[idx];
+            if rel.title.is_some() {
+                kv.title = rel.title.clone();
+                kv.file_name = rel.file_name.clone();
+            }
+            if rel.status.is_some() {
+                kv.status = rel.status.clone();
+            }
+            kv.chunk_count = kv.chunk_count.max(rel.chunk_count);
+            if rel.entity_count.unwrap_or(0) > kv.entity_count.unwrap_or(0) {
+                kv.entity_count = rel.entity_count;
+            }
+            if kv.created_at.is_none() {
+                kv.created_at = rel.created_at.clone();
+            }
+            if rel.updated_at.is_some() {
+                kv.updated_at = rel.updated_at.clone();
+            }
+            if kv.cost_usd.is_none() {
+                kv.cost_usd = rel.cost_usd;
+            }
+        } else {
+            by_id.insert(rel.id.clone(), kv_documents.len());
             kv_documents.push(rel);
         }
     }
@@ -239,7 +385,8 @@ pub fn merge_document_summaries(
 /// backfill — whose `entity_count` column was never refreshed (P-A1 fixes the
 /// write side; this is the read-side safety net). AGE is the SSOT for entity
 /// counts, so we fall back to `node_count_by_source_prefix("{doc_id}-chunk-")`
-/// for any document whose current `entity_count` is 0 but which has chunks.
+/// for any document whose current `entity_count` is 0. Completed documents
+/// with corrupted KV/PG stats still reconcile via AGE `source_chunk_ids`.
 ///
 /// Best-effort: AGE failures are swallowed (counts stay as-is) so the list
 /// request never fails due to a graph hiccup. Batches the per-doc Cypher calls
@@ -255,7 +402,7 @@ pub async fn reconcile_entity_counts_with_graph(
     let candidates: Vec<(usize, String)> = documents
         .iter()
         .enumerate()
-        .filter(|(_, d)| d.entity_count.unwrap_or(0) == 0 && d.chunk_count > 0)
+        .filter(|(_, d)| d.entity_count.unwrap_or(0) == 0)
         .map(|(i, d)| (i, d.id.clone()))
         .collect();
 
@@ -346,65 +493,99 @@ mod tests {
             pdf_id: None,
         }];
 
-        let pg = vec![
-            DocumentSummary {
-                id: "a".into(),
-                title: Some("PG duplicate".into()),
-                file_name: None,
-                content_summary: None,
-                content_length: None,
-                chunk_count: 0,
-                entity_count: None,
-                status: Some("completed".into()),
-                error_message: None,
-                warning_message: None,
-                track_id: None,
-                created_at: Some("2026-01-01T00:00:00Z".into()),
-                updated_at: None,
-                cost_usd: None,
-                input_tokens: None,
-                output_tokens: None,
-                total_tokens: None,
-                llm_model: None,
-                embedding_model: None,
-                source_type: None,
-                current_stage: None,
-                stage_progress: None,
-                stage_message: None,
-                pdf_id: None,
-            },
-            DocumentSummary {
-                id: "b".into(),
-                title: Some("PG only".into()),
-                file_name: None,
-                content_summary: None,
-                content_length: None,
-                chunk_count: 0,
-                entity_count: None,
-                status: Some("completed".into()),
-                error_message: None,
-                warning_message: None,
-                track_id: None,
-                created_at: Some("2026-01-03T00:00:00Z".into()),
-                updated_at: None,
-                cost_usd: None,
-                input_tokens: None,
-                output_tokens: None,
-                total_tokens: None,
-                llm_model: None,
-                embedding_model: None,
-                source_type: None,
-                current_stage: None,
-                stage_progress: None,
-                stage_message: None,
-                pdf_id: None,
-            },
-        ];
+        let pg = vec![DocumentSummary {
+            id: "a".into(),
+            title: Some("PG duplicate".into()),
+            file_name: None,
+            content_summary: None,
+            content_length: None,
+            chunk_count: 0,
+            entity_count: None,
+            status: Some("completed".into()),
+            error_message: None,
+            warning_message: None,
+            track_id: None,
+            created_at: Some("2026-01-01T00:00:00Z".into()),
+            updated_at: None,
+            cost_usd: None,
+            input_tokens: None,
+            output_tokens: None,
+            total_tokens: None,
+            llm_model: None,
+            embedding_model: None,
+            source_type: None,
+            current_stage: None,
+            stage_progress: None,
+            stage_message: None,
+            pdf_id: None,
+        }];
+
+        let merged = merge_document_summaries(kv, pg);
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].id, "a");
+        // SPEC-045: relational title overlays corrupted KV title for same id.
+        assert_eq!(merged[0].title.as_deref(), Some("PG duplicate"));
+    }
+
+    #[test]
+    fn merge_document_summaries_adds_pg_only_rows() {
+        let kv = vec![DocumentSummary {
+            id: "a".into(),
+            title: Some("KV title".into()),
+            file_name: None,
+            content_summary: None,
+            content_length: None,
+            chunk_count: 2,
+            entity_count: None,
+            status: Some("completed".into()),
+            error_message: None,
+            warning_message: None,
+            track_id: None,
+            created_at: Some("2026-01-02T00:00:00Z".into()),
+            updated_at: None,
+            cost_usd: None,
+            input_tokens: None,
+            output_tokens: None,
+            total_tokens: None,
+            llm_model: None,
+            embedding_model: None,
+            source_type: None,
+            current_stage: None,
+            stage_progress: None,
+            stage_message: None,
+            pdf_id: None,
+        }];
+
+        let pg = vec![DocumentSummary {
+            id: "b".into(),
+            title: Some("PG only".into()),
+            file_name: None,
+            content_summary: None,
+            content_length: None,
+            chunk_count: 0,
+            entity_count: None,
+            status: Some("completed".into()),
+            error_message: None,
+            warning_message: None,
+            track_id: None,
+            created_at: Some("2026-01-03T00:00:00Z".into()),
+            updated_at: None,
+            cost_usd: None,
+            input_tokens: None,
+            output_tokens: None,
+            total_tokens: None,
+            llm_model: None,
+            embedding_model: None,
+            source_type: None,
+            current_stage: None,
+            stage_progress: None,
+            stage_message: None,
+            pdf_id: None,
+        }];
 
         let merged = merge_document_summaries(kv, pg);
         assert_eq!(merged.len(), 2);
         assert_eq!(merged[0].id, "b");
         assert_eq!(merged[1].id, "a");
-        assert_eq!(merged[1].title.as_deref(), Some("KV title"));
     }
 }

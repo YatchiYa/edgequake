@@ -9,14 +9,17 @@ DO $$
 DECLARE
     graph_name text;
     graph_schema text;
-    vertex_tbl regclass;
+    node_tbl regclass;
     edge_tbl regclass;
     vertex_count bigint;
     edge_count bigint;
     age_ok boolean;
+    pg_version int;
 BEGIN
     age_ok := EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'age');
+    pg_version := current_setting('server_version_num')::int;
     RAISE NOTICE '=== SPEC-006 Migration 038 Pre-flight ===';
+    RAISE NOTICE 'PostgreSQL server_version_num: % (PG16=160000, PG17=170000, PG18=180000)', pg_version;
     RAISE NOTICE 'AGE extension installed: %', age_ok;
 
     IF NOT age_ok THEN
@@ -28,21 +31,21 @@ BEGIN
         graph_schema := graph_name;
         vertex_count := NULL;
         edge_count := NULL;
-        vertex_tbl := to_regclass(format('%I._ag_label_vertex', graph_schema));
-        edge_tbl := to_regclass(format('%I._ag_label_edge', graph_schema));
+        node_tbl := to_regclass(format('%I."Node"', graph_schema));
+        edge_tbl := to_regclass(format('%I."EDGE"', graph_schema));
 
         RAISE NOTICE '--- Graph: % ---', graph_name;
-        RAISE NOTICE '  _ag_label_vertex exists: %', vertex_tbl IS NOT NULL;
-        RAISE NOTICE '  _ag_label_edge exists: %', edge_tbl IS NOT NULL;
+        RAISE NOTICE '  "Node" table exists: %', node_tbl IS NOT NULL;
+        RAISE NOTICE '  "EDGE" table exists: %', edge_tbl IS NOT NULL;
 
-        IF vertex_tbl IS NOT NULL THEN
-            EXECUTE format('SELECT COUNT(*) FROM %s."_ag_label_vertex"', graph_schema)
+        IF node_tbl IS NOT NULL THEN
+            EXECUTE format('SELECT COUNT(*) FROM %I."Node"', graph_schema)
                 INTO vertex_count;
-            RAISE NOTICE '  vertex rows: %', vertex_count;
+            RAISE NOTICE '  node rows: %', vertex_count;
         END IF;
 
         IF edge_tbl IS NOT NULL THEN
-            EXECUTE format('SELECT COUNT(*) FROM %s."_ag_label_edge"', graph_schema)
+            EXECUTE format('SELECT COUNT(*) FROM %I."EDGE"', graph_schema)
                 INTO edge_count;
             RAISE NOTICE '  edge rows: %', edge_count;
         END IF;

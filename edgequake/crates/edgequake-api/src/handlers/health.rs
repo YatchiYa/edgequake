@@ -26,7 +26,7 @@
 //! - Fast startup (ready before all caches warm)
 //! - Detailed debugging via `/health` response
 
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use std::sync::Arc;
 
 use crate::error::ApiResult;
@@ -310,6 +310,8 @@ fn build_migration_health_snapshot(state: &AppState) -> Option<MigrationHealthSn
         ready_for_traffic: crate::state::migration_bootstrap::is_ready_for_traffic(
             &state.migration_bootstrap,
         ),
+        halfvec_conversion_applied: report.migration_080.halfvec_conversion_applied,
+        age_rls_applied: report.migration_081.age_rls_applied,
     })
 }
 
@@ -350,11 +352,17 @@ async fn get_schema_health(state: &AppState) -> Option<SchemaHealth> {
             }
         });
 
+        let halfvec_conversion_applied = state
+            .migration_bootstrap
+            .as_ref()
+            .map(|r| r.migration_080.halfvec_conversion_applied);
+
         Some(SchemaHealth {
             latest_version: stats.latest_version,
             migrations_applied: stats.applied_count as usize,
             last_applied_at: stats.last_applied_at.map(|dt| dt.to_rfc3339()),
             source_ids_indexes,
+            halfvec_conversion_applied,
         })
     }
 
@@ -377,19 +385,38 @@ async fn get_schema_health(state: &AppState) -> Option<SchemaHealth> {
         (status = 503, description = "Migration 038 indexes pending — not ready for traffic")
     )
 )]
-pub async fn readiness_check(State(state): State<AppState>) -> StatusCode {
+pub async fn readiness_check(State(state): State<AppState>) -> impl IntoResponse {
     #[cfg(feature = "postgres")]
     {
-        if crate::state::migration_bootstrap::is_ready_for_traffic(&state.migration_bootstrap) {
+        let ready =
+            crate::state::migration_bootstrap::is_ready_for_traffic(&state.migration_bootstrap);
+        let body = crate::handlers::health_types::ReadinessResponse {
+            ready,
+            blockers: crate::state::migration_bootstrap::readiness_blockers(
+                &state.migration_bootstrap,
+            ),
+            operator_action: crate::state::migration_bootstrap::readiness_operator_action(
+                &state.migration_bootstrap,
+            ),
+        };
+        let status = if ready {
             StatusCode::OK
         } else {
             StatusCode::SERVICE_UNAVAILABLE
-        }
+        };
+        (status, Json(body))
     }
     #[cfg(not(feature = "postgres"))]
     {
         let _ = state;
-        StatusCode::OK
+        (
+            StatusCode::OK,
+            Json(crate::handlers::health_types::ReadinessResponse {
+                ready: true,
+                blockers: Vec::new(),
+                operator_action: None,
+            }),
+        )
     }
 }
 

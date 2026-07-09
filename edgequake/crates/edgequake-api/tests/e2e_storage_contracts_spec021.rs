@@ -142,6 +142,7 @@ async fn seed_completed_document(
         let mut props = HashMap::new();
         props.insert("entity_type".into(), json!("ORG"));
         props.insert("workspace_id".into(), json!(ws_str));
+        props.insert("tenant_id".into(), json!(tenant_str));
         props.insert(
             "source_ids".into(),
             json!((0..n_chunks)
@@ -394,4 +395,275 @@ async fn pe4b_null_status_not_counted_as_completed() {
         unknown >= 1,
         "NULL status must count as unknown (P-B2), got unknown={unknown}"
     );
+}
+
+// ============================================================================
+// P-E5: reconcile via source_chunk_ids when KV stats are zero (SPEC-045)
+// ============================================================================
+
+/// When metadata reports entity_count=0 (corrupted relational/KV drift) but
+/// graph nodes only carry `source_chunk_ids`, the list API must reconcile via AGE.
+#[tokio::test]
+async fn pe5_reconciles_entity_count_from_source_chunk_ids_only() {
+    let state = AppState::test_state();
+    let (ws_id, tenant_id) = setup_workspace(&state, "pe5").await;
+    let doc_id = Uuid::new_v4().to_string();
+    let ws_str = ws_id.to_string();
+    let tenant_str = tenant_id.to_string();
+    let chunk_prefix = kv_keys::doc_chunk_prefix(&doc_id);
+
+    // Corrupted metadata: zero stats (the screenshot case).
+    state
+        .storage
+        .kv_storage
+        .upsert(&[(
+            kv_keys::doc_metadata(&doc_id),
+            json!({
+                "id": doc_id,
+                "title": "pe5-corrupted.md",
+                "status": "completed",
+                "workspace_id": ws_str,
+                "tenant_id": tenant_str,
+                "chunk_count": 0,
+                "entity_count": 0,
+            }),
+        )])
+        .await
+        .unwrap();
+
+    // Graph nodes with pipeline-style source_chunk_ids only (no source_ids).
+    for (i, name) in ["PE5_ORG_A", "PE5_ORG_B"].iter().enumerate() {
+        let mut props = HashMap::new();
+        props.insert("entity_type".into(), json!("ORG"));
+        props.insert("workspace_id".into(), json!(ws_str));
+        props.insert(
+            "source_chunk_ids".into(),
+            json!([format!("{}{}", chunk_prefix, i)]),
+        );
+        state
+            .storage
+            .graph_storage
+            .upsert_node(name, props)
+            .await
+            .unwrap();
+    }
+
+    let app = Server::new(test_config(), state.clone()).build_router();
+    let (status, body) = list_documents(&app, ws_id, tenant_id).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let docs = body["documents"].as_array().expect("documents array");
+    let our_doc = docs
+        .iter()
+        .find(|d| d["id"] == doc_id)
+        .expect("seeded document appears in list");
+
+    let entity_count = our_doc["entity_count"].as_u64().unwrap_or(0);
+    assert!(
+        entity_count >= 2,
+        "P-A3 must reconcile from source_chunk_ids when KV entity_count is 0, got {entity_count}"
+    );
+}
+
+// ============================================================================
+// P-E6: canonical document id from metadata key (SPEC-045)
+// ============================================================================
+
+/// Misaligned batch reads can embed another document's JSON `id`. The list API
+/// must prefer the metadata KV key over the JSON field.
+#[tokio::test]
+async fn pe6_list_uses_metadata_key_over_corrupted_json_id() {
+    let state = AppState::test_state();
+    let (ws_id, tenant_id) = setup_workspace(&state, "pe6").await;
+    let doc_id = Uuid::new_v4().to_string();
+    let wrong_id = Uuid::new_v4().to_string();
+    let ws_str = ws_id.to_string();
+    let tenant_str = tenant_id.to_string();
+
+    state
+        .storage
+        .kv_storage
+        .upsert(&[(
+            kv_keys::doc_metadata(&doc_id),
+            json!({
+                "id": wrong_id,
+                "title": "pe6-canonical-id.md",
+                "status": "completed",
+                "workspace_id": ws_str,
+                "tenant_id": tenant_str,
+                "chunk_count": 1,
+                "entity_count": 1,
+            }),
+        )])
+        .await
+        .unwrap();
+
+    let app = Server::new(test_config(), state.clone()).build_router();
+    let (status, body) = list_documents(&app, ws_id, tenant_id).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let docs = body["documents"].as_array().expect("documents array");
+    assert!(
+        docs.iter().any(|d| d["id"] == doc_id),
+        "list must expose canonical id from metadata key, not corrupted JSON id"
+    );
+    assert!(
+        !docs.iter().any(|d| d["id"] == wrong_id),
+        "corrupted JSON id must not appear as a separate document row"
+    );
+}
+
+// ============================================================================
+// P-E7: metadata repair + relational overlay (SPEC-045 duplicate-title fix)
+// ============================================================================
+
+/// Swapped KV metadata must not make unrelated documents appear under the same
+/// title after repair + relational merge.
+#[tokio::test]
+async fn pe7_metadata_repair_restores_distinct_titles_in_list() {
+    use edgequake_api::services::document_metadata_repair::repair_all_document_metadata;
+
+    let state = AppState::test_state();
+    let (ws_id, tenant_id) = setup_workspace(&state, "pe7").await;
+    let ws_str = ws_id.to_string();
+    let tenant_str = tenant_id.to_string();
+
+    let doc_a = Uuid::new_v4().to_string();
+    let doc_b = Uuid::new_v4().to_string();
+
+    // Simulate corruption: both keys show the same title but different canonical ids.
+    state
+        .storage
+        .kv_storage
+        .upsert(&[
+            (
+                kv_keys::doc_metadata(&doc_a),
+                json!({
+                    "id": doc_b,
+                    "title": "deep_2604.26962v2.pdf",
+                    "status": "pending",
+                    "workspace_id": ws_str,
+                    "tenant_id": tenant_str,
+                }),
+            ),
+            (
+                kv_keys::doc_metadata(&doc_b),
+                json!({
+                    "id": doc_a,
+                    "title": "deep_2604.26962v2.pdf",
+                    "status": "completed",
+                    "workspace_id": ws_str,
+                    "tenant_id": tenant_str,
+                    "entity_count": 5,
+                }),
+            ),
+        ])
+        .await
+        .unwrap();
+
+    let report = repair_all_document_metadata(
+        state.storage.kv_storage.clone(),
+        #[cfg(feature = "postgres")]
+        None,
+    )
+    .await
+    .expect("repair should succeed");
+    assert!(report.repaired >= 2, "both blobs should be realigned");
+
+    let a_meta = state
+        .storage
+        .kv_storage
+        .get_by_id(&kv_keys::doc_metadata(&doc_a))
+        .await
+        .unwrap()
+        .expect("doc_a metadata");
+    let b_meta = state
+        .storage
+        .kv_storage
+        .get_by_id(&kv_keys::doc_metadata(&doc_b))
+        .await
+        .unwrap()
+        .expect("doc_b metadata");
+    assert_eq!(a_meta["id"], doc_a);
+    assert_eq!(b_meta["id"], doc_b);
+
+    let app = Server::new(test_config(), state.clone()).build_router();
+    let (status, body) = list_documents(&app, ws_id, tenant_id).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let docs = body["documents"].as_array().expect("documents array");
+    assert_eq!(
+        docs.len(),
+        2,
+        "two distinct document ids must appear in list"
+    );
+    let ids: Vec<_> = docs.iter().map(|d| d["id"].as_str().unwrap()).collect();
+    assert!(ids.contains(&doc_a.as_str()));
+    assert!(ids.contains(&doc_b.as_str()));
+}
+
+// ============================================================================
+// P-E8: document lineage includes entity-adjacency edges (SPEC-045)
+// ============================================================================
+
+async fn get_document_lineage(
+    app: &axum::Router,
+    ws_id: Uuid,
+    tenant_id: Uuid,
+    doc_id: &str,
+) -> (StatusCode, Value) {
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/v1/lineage/documents/{}", doc_id))
+                .header("X-Workspace-ID", ws_id.to_string())
+                .header("X-Tenant-ID", tenant_id.to_string())
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    (resp.status(), json_body(resp).await)
+}
+
+/// First principle: document-scoped relationships are edges whose endpoints
+/// are both document entities — even when merged edges lack `source_ids`.
+#[tokio::test]
+async fn pe8_document_lineage_includes_relationships_without_edge_source_ids() {
+    let state = AppState::test_state();
+    let (ws_id, tenant_id) = setup_workspace(&state, "pe8").await;
+    let doc_id = Uuid::new_v4().to_string();
+    let entities = ["PE8_ENTITY_A", "PE8_ENTITY_B"];
+
+    seed_completed_document(&state, ws_id, tenant_id, &doc_id, 1, &entities).await;
+
+    let mut edge_props = HashMap::new();
+    edge_props.insert("keywords".into(), json!("relates_to"));
+    edge_props.insert("workspace_id".into(), json!(ws_id.to_string()));
+    edge_props.insert("tenant_id".into(), json!(tenant_id.to_string()));
+    state
+        .storage
+        .graph_storage
+        .upsert_edge("PE8_ENTITY_A", "PE8_ENTITY_B", edge_props)
+        .await
+        .unwrap();
+
+    let app = Server::new(test_config(), state.clone()).build_router();
+    let (status, body) = get_document_lineage(&app, ws_id, tenant_id, &doc_id).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let relationships = body["relationships"]
+        .as_array()
+        .expect("relationships array");
+    assert!(
+        !relationships.is_empty(),
+        "lineage must include edges between document entities without edge source_ids"
+    );
+    assert_eq!(relationships[0]["source"], "PE8_ENTITY_A");
+    assert_eq!(relationships[0]["target"], "PE8_ENTITY_B");
+
+    let entities_resp = body["entities"].as_array().expect("entities array");
+    assert_eq!(entities_resp.len(), 2);
 }

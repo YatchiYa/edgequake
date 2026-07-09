@@ -1,11 +1,16 @@
 //! Large-document ingestion profile (SPEC-038 SSOT).
 //!
-//! Centralizes timeout budgets, text-density checks, routing policy, failure
-//! classification, and ETA helpers for PDFs with hundreds of pages.
+//! Centralizes timeout budgets, text-density checks, routing policy, and ETA
+//! helpers for PDFs with hundreds of pages. Failure taxonomy lives in
+//! `edgequake_tasks::ingestion_reliability` (SPEC-045 DRY).
 
 use edgequake_pdf::PdfParserBackend;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
+
+pub use edgequake_tasks::{
+    classify_ingestion_failure, is_permanent_ingestion_failure, IngestionFailureClass,
+};
 
 use crate::safety_limits::{
     is_local_provider, vision_outer_timeout_secs, VISION_MAX_OUTER_TIMEOUT_SECS,
@@ -34,70 +39,6 @@ pub struct IngestionEstimate {
     pub extract_seconds: u64,
     pub total_seconds_pessimistic: u64,
     pub recommended_backend: String,
-}
-
-/// Typed failure classes for large-document ingestion (SPEC-038 REQ-038-09).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IngestionFailureClass {
-    TimeoutPhaseConvert,
-    TimeoutPhaseExtract,
-    CircuitBreaker,
-    DocumentTooLarge,
-    EmbeddingLimit,
-    ProviderUnavailable,
-    Unknown,
-}
-
-impl IngestionFailureClass {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::TimeoutPhaseConvert => "timeout_phase_convert",
-            Self::TimeoutPhaseExtract => "timeout_phase_extract",
-            Self::CircuitBreaker => "circuit_breaker",
-            Self::DocumentTooLarge => "document_too_large",
-            Self::EmbeddingLimit => "embedding_limit",
-            Self::ProviderUnavailable => "provider_unavailable",
-            Self::Unknown => "unknown",
-        }
-    }
-
-    pub fn recommended_action(self) -> &'static str {
-        match self {
-            Self::TimeoutPhaseConvert => "reprocess_edgeparse",
-            Self::TimeoutPhaseExtract => "retry_faster_model",
-            Self::CircuitBreaker => "reprocess_edgeparse",
-            Self::DocumentTooLarge => "split_document",
-            Self::EmbeddingLimit => "retry_or_support",
-            Self::ProviderUnavailable => "check_provider",
-            Self::Unknown => "retry",
-        }
-    }
-}
-
-/// Classify a permanent failure message into a stable `failure_class` key.
-pub fn classify_ingestion_failure(error_msg: &str) -> IngestionFailureClass {
-    let lower = error_msg.to_ascii_lowercase();
-    if lower.contains("circuit breaker") {
-        return IngestionFailureClass::CircuitBreaker;
-    }
-    if lower.contains("document too large") || lower.contains("exceeds maximum size") {
-        return IngestionFailureClass::DocumentTooLarge;
-    }
-    if lower.contains("too many inputs") || lower.contains("embedding") && lower.contains("400") {
-        return IngestionFailureClass::EmbeddingLimit;
-    }
-    if lower.contains("timed out") || lower.contains("timeout") {
-        if lower.contains("vision") || lower.contains("convert") || lower.contains("markdown") {
-            return IngestionFailureClass::TimeoutPhaseConvert;
-        }
-        return IngestionFailureClass::TimeoutPhaseExtract;
-    }
-    if lower.contains("provider")
-        && (lower.contains("unavailable") || lower.contains("failed to create"))
-    {
-        return IngestionFailureClass::ProviderUnavailable;
-    }
-    IngestionFailureClass::Unknown
 }
 
 /// Profile inputs for a PDF at admission or worker time.

@@ -13,7 +13,10 @@ mod cypher_exec;
 mod cypher_format;
 mod graph_lifecycle;
 mod session;
+mod source_lineage_sql;
 mod vertex_filter;
+
+pub(in crate::adapters::postgres::graph) use source_lineage_sql::jsonb_matches_doc_source_prefix;
 
 pub(in crate::adapters::postgres::graph) use vertex_filter::EdgeTenantFilterMode;
 

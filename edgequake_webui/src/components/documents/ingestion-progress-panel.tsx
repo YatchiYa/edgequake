@@ -29,7 +29,7 @@ import { retryFailedChunks } from '@/lib/api/edgequake';
 import { cn } from '@/lib/utils';
 import type { IngestionStage } from '@/types/ingestion';
 import { RefreshCw, X } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 interface IngestionProgressPanelProps {
   /** Track ID for the ingestion job */
@@ -38,6 +38,8 @@ interface IngestionProgressPanelProps {
   documentName: string;
   /** Callback when ingestion completes */
   onComplete?: () => void;
+  /** Callback when ingestion fails */
+  onFailed?: (error: string) => void;
   /** Callback when cancelled */
   onCancel?: () => void;
   /** Show compact variant */
@@ -60,6 +62,7 @@ export function IngestionProgressPanel({
   trackId,
   documentName,
   onComplete,
+  onFailed,
   onCancel,
   compact = false,
   className,
@@ -157,16 +160,30 @@ export function IngestionProgressPanel({
     onCancel?.();
   }, [cancel, onCancel]);
 
-  // Check if complete
+  // Check if complete / failed
   const isComplete = progress?.status === 'completed';
-  
-  // WHY: useEffect (not useMemo) because calling onComplete() is a side effect.
-  // useMemo is for computing derived values; side effects belong in useEffect.
+  const isFailed = progress?.status === 'failed';
+  const isProcessing =
+    progress?.status === 'processing' || progress?.status === 'pending';
+
+  const completionFiredRef = useRef(false);
+  const failureFiredRef = useRef(false);
+
+  // WHY: useEffect (not useMemo) because parent callbacks are side effects.
   useEffect(() => {
-    if (isComplete) {
-      onComplete?.();
+    if (isComplete && onComplete && !completionFiredRef.current) {
+      completionFiredRef.current = true;
+      onComplete();
     }
   }, [isComplete, onComplete]);
+
+  useEffect(() => {
+    if (isFailed && onFailed && !failureFiredRef.current) {
+      failureFiredRef.current = true;
+      const stageError = progress?.progress?.stages?.find((s) => s.status === 'failed');
+      onFailed(stageError?.message ?? 'Ingestion failed');
+    }
+  }, [isFailed, onFailed, progress?.progress?.stages]);
 
   if (isLoading && !progress) {
     return (
@@ -179,22 +196,34 @@ export function IngestionProgressPanel({
     );
   }
 
-  // Compact variant for inline display
+  // Compact variant — parity with PdfUploadProgress compact row
   if (compact) {
     return (
-      <div className={cn('flex items-center gap-3', className)}>
-        <WebSocketStatusDot />
-        <div className="flex-1 min-w-0">
-          <AnimatedProgress
-            value={progress?.overall_progress ?? 0}
-            size="sm"
-            variant={progress?.status === 'failed' ? 'error' : 'default'}
-          />
+      <div className={cn('flex flex-col gap-1 w-full', className)}>
+        <div className="flex items-center gap-3">
+          {isLive && <WebSocketStatusDot className="shrink-0" />}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between mb-1 gap-2">
+              <span className="text-sm font-medium truncate">{documentName}</span>
+              <span className="text-xs text-muted-foreground shrink-0">
+                {Math.round(progress?.overall_progress ?? 0)}%
+              </span>
+            </div>
+            <AnimatedProgress
+              value={progress?.overall_progress ?? 0}
+              size="sm"
+              variant={isFailed ? 'error' : isProcessing ? 'info' : 'default'}
+            />
+          </div>
         </div>
-        <span className="text-xs text-muted-foreground">
-          {Math.round(progress?.overall_progress ?? 0)}%
-        </span>
-        <CostBadge cost={cost} size="sm" />
+        {isProcessing && currentMessage && (
+          <p className="text-xs text-blue-600 dark:text-blue-400 truncate pl-6">
+            {currentMessage}
+          </p>
+        )}
+        {isFailed && (
+          <p className="text-xs text-red-500 truncate pl-6">{currentMessage}</p>
+        )}
       </div>
     );
   }

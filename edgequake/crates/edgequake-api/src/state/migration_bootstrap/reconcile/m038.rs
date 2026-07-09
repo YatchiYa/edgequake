@@ -6,6 +6,11 @@ use tracing::info;
 use super::super::helpers::{large_graph_threshold, quote_schema, set_large_graph_threshold};
 use super::super::{Migration038Report, MIGRATION_038_VERSION, SQL_038_APPLY};
 
+/// NAMEDATALEN-safe index names (≤63 bytes) on AGE child label tables.
+const M038_NODE_SOURCE_ID: &str = "idx_node_source_id_expr";
+const M038_NODE_SOURCE_IDS_GIN: &str = "idx_node_source_ids_gin";
+const M038_EDGE_SOURCE_IDS_GIN: &str = "idx_edge_source_ids_gin";
+
 pub async fn reconcile_migration_038(
     pool: &PgPool,
     applied_this_run: &[i64],
@@ -106,6 +111,21 @@ struct GraphIndexAudit {
     missing_indexes: Vec<String>,
 }
 
+async fn index_exists(pool: &PgPool, schema: &str, index_name: &str) -> Result<bool, sqlx::Error> {
+    // WHY: pg_indexes.indexname is type `name` (NAMEDATALEN=63). sqlx binds text;
+    // cast to name so audit matches CREATE INDEX identifiers on PG16/17/18.
+    sqlx::query_scalar(
+        "SELECT EXISTS(
+            SELECT 1 FROM pg_indexes
+            WHERE schemaname = $1 AND indexname = $2::name
+        )",
+    )
+    .bind(schema)
+    .bind(index_name)
+    .fetch_one(pool)
+    .await
+}
+
 async fn audit_graph_indexes(pool: &PgPool) -> Result<Vec<GraphIndexAudit>, sqlx::Error> {
     #[derive(sqlx::FromRow)]
     struct GraphRow {
@@ -121,21 +141,20 @@ async fn audit_graph_indexes(pool: &PgPool) -> Result<Vec<GraphIndexAudit>, sqlx
 
     for graph in graphs {
         let graph_name = graph.name;
-        let idx_prefix = graph_name.replace('.', "_");
 
-        let vertex_tbl: Option<String> = sqlx::query_scalar("SELECT to_regclass($1)::text")
-            .bind(format!("{}.\"_ag_label_vertex\"", graph_name))
+        let node_tbl: Option<String> = sqlx::query_scalar("SELECT to_regclass($1)::text")
+            .bind(format!("{}.\"Node\"", graph_name))
             .fetch_one(pool)
             .await?;
 
         let edge_tbl: Option<String> = sqlx::query_scalar("SELECT to_regclass($1)::text")
-            .bind(format!("{}.\"_ag_label_edge\"", graph_name))
+            .bind(format!("{}.\"EDGE\"", graph_name))
             .fetch_one(pool)
             .await?;
 
-        let vertex_count = if vertex_tbl.is_some() {
+        let vertex_count = if node_tbl.is_some() {
             let count: i64 = sqlx::query_scalar(&format!(
-                "SELECT COUNT(*)::bigint FROM {}.\"_ag_label_vertex\"",
+                "SELECT COUNT(*)::bigint FROM {}.\"Node\"",
                 quote_schema(&graph_name)
             ))
             .fetch_one(pool)
@@ -147,37 +166,18 @@ async fn audit_graph_indexes(pool: &PgPool) -> Result<Vec<GraphIndexAudit>, sqlx
 
         let mut missing_indexes = Vec::new();
         let expected = [
-            (
-                vertex_tbl.is_some(),
-                format!("idx_{idx_prefix}_vertex_source_id"),
-            ),
-            (
-                vertex_tbl.is_some(),
-                format!("idx_{idx_prefix}_vertex_source_ids_gin"),
-            ),
-            (
-                edge_tbl.is_some(),
-                format!("idx_{idx_prefix}_edge_source_ids_gin"),
-            ),
+            (node_tbl.is_some(), M038_NODE_SOURCE_ID),
+            (node_tbl.is_some(), M038_NODE_SOURCE_IDS_GIN),
+            (edge_tbl.is_some(), M038_EDGE_SOURCE_IDS_GIN),
         ];
 
         for (required, index_name) in expected {
             if !required {
                 continue;
             }
-            let exists: bool = sqlx::query_scalar(
-                "SELECT EXISTS(
-                    SELECT 1 FROM pg_indexes
-                    WHERE schemaname = $1 AND indexname = $2
-                )",
-            )
-            .bind(&graph_name)
-            .bind(&index_name)
-            .fetch_one(pool)
-            .await?;
-
+            let exists = index_exists(pool, &graph_name, index_name).await?;
             if !exists {
-                missing_indexes.push(index_name);
+                missing_indexes.push(index_name.to_string());
             }
         }
 
@@ -189,4 +189,24 @@ async fn audit_graph_indexes(pool: &PgPool) -> Result<Vec<GraphIndexAudit>, sqlx
     }
 
     Ok(results)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn m038_index_names_fit_namedatalen() {
+        for name in [
+            M038_NODE_SOURCE_ID,
+            M038_NODE_SOURCE_IDS_GIN,
+            M038_EDGE_SOURCE_IDS_GIN,
+        ] {
+            assert!(
+                name.len() <= 63,
+                "index name {name} exceeds NAMEDATALEN ({} bytes)",
+                name.len()
+            );
+        }
+    }
 }

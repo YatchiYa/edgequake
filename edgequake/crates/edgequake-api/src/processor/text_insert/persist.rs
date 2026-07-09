@@ -151,19 +151,24 @@ impl DocumentTaskProcessor {
             }
         };
 
-        // SPEC-032 W-04: Build merge progress callback that broadcasts
-        // GraphStorageProgress events via PipelineState → WebSocket.
-        // Only wired when is_pdf_source (has a track_id for progress tracking).
-        let merge_progress_cb: Option<edgequake_pipeline::MergeProgressCallback> = if is_pdf_source
-        {
+        // SPEC-032 W-04: Broadcast merge progress for any tracked task (PDF + reprocess).
+        let has_track = !track_id.is_empty();
+        if has_track {
+            self.pipeline_state
+                .ensure_graph_storage_timer(&track_id)
+                .await;
+        }
+
+        let merge_progress_cb: Option<edgequake_pipeline::MergeProgressCallback> = if has_track {
             let pipeline_state = self.pipeline_state.clone();
             let track_id_cb = track_id.clone();
             let doc_id_cb = document_id.clone();
+            let kv_storage = self.kv_storage.clone();
             Some(Box::new(move |p: edgequake_pipeline::MergeProgress| {
                 let pipeline_state = pipeline_state.clone();
                 let track_id = track_id_cb.clone();
                 let doc_id = doc_id_cb.clone();
-                // Fire-and-forget: spawn async task to broadcast without blocking merge loop
+                let kv = kv_storage.clone();
                 tokio::spawn(async move {
                     pipeline_state
                         .broadcast_graph_storage_progress(
@@ -181,6 +186,7 @@ impl DocumentTaskProcessor {
                             p.relationships_updated as u32,
                         )
                         .await;
+                    patch_document_graph_merge_progress(kv, &doc_id, &p).await;
                 });
             }))
         } else {

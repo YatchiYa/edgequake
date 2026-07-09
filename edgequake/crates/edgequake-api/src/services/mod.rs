@@ -15,6 +15,8 @@ pub mod context_bundle_mapper;
 pub mod cost_aggregation;
 pub mod document_body_loader;
 pub mod document_graph_cascade;
+pub mod document_graph_lineage;
+pub mod document_metadata_repair;
 pub mod document_metadata_scan;
 pub mod document_reingest;
 pub mod document_task_cleanup;
@@ -48,6 +50,8 @@ pub mod pdf_admission_registry;
 pub mod pdf_auto_routing;
 pub mod pdf_lineage;
 pub mod pdf_workspace_dedup;
+#[cfg(feature = "postgres")]
+pub mod postgres_chunk_lineage;
 pub mod query_context;
 pub mod query_execution;
 pub mod query_generation;
@@ -57,6 +61,7 @@ pub mod route_registry;
 pub mod session_storage;
 pub mod source_reference_builder;
 pub mod staging_admission;
+pub mod task_document_sync;
 pub mod task_scope;
 pub mod tenant_guard;
 pub mod tenant_isolation;
@@ -83,8 +88,12 @@ pub use content_granularity::{
 pub use content_hasher::ContentHasher;
 pub use document_graph_cascade::{
     analyze_deletion_impact_stats, cascade_remove_document_sources, cleanup_document_graph_data,
-    find_document_edges, find_document_nodes, sources_for_document, CascadeStats, CleanupStats,
-    DocumentSourceScope,
+    find_document_edges, find_document_nodes, find_relationships_for_document_lineage,
+    sources_for_document, CascadeStats, CleanupStats, DocumentSourceScope,
+};
+pub use document_graph_lineage::{
+    build_document_graph_lineage, entity_summary_from_node, relationship_summary_from_edge,
+    DocumentGraphLineageBuild,
 };
 pub use document_reingest::{
     delete_document_for_reingestion, resolve_workspace_duplicate_for_reingestion,
@@ -163,6 +172,9 @@ pub use query_request_builder::{build_engine_request, QueryExecutionParams};
 pub use retrieval_id_cache::{global_retrieval_cache, new_retrieval_id, RetrievalIdCache};
 pub use source_reference_builder::{build_sources_from_context, is_injection_source};
 pub use staging_admission::{promote_staging_to_final, rollback_staging};
+pub use task_document_sync::{
+    extract_document_id_from_task, sync_document_failed_on_orphan_heartbeat,
+};
 pub use text_insert_content::{
     patch_document_metadata, resolve_document_metadata_key, resolve_text_insert_content,
 };

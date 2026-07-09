@@ -8,13 +8,16 @@
 --   edgequake.migration_large_graph_threshold — default 500000 vertices
 --
 -- Large graphs are SKIPPED here; use concurrent.sql for zero-downtime builds.
+--
+-- PG16 / PG17 / PG18: indexes target AGE child label tables ("Node", "EDGE")
+-- where graph data lives (SPEC-034). Names are ≤63 chars so sqlx text bind
+-- audit matches pg_indexes (NAMEDATALEN-safe).
 
 DO $$
 DECLARE
     graph_name text;
     graph_schema text;
-    idx_prefix text;
-    vertex_tbl regclass;
+    node_tbl regclass;
     edge_tbl regclass;
     vertex_count bigint;
     threshold bigint;
@@ -33,18 +36,17 @@ BEGIN
 
     FOR graph_name IN SELECT name FROM ag_catalog.ag_graph LOOP
         graph_schema := graph_name;
-        idx_prefix := replace(graph_name, '.', '_');
-        vertex_tbl := to_regclass(format('%I._ag_label_vertex', graph_schema));
-        edge_tbl := to_regclass(format('%I._ag_label_edge', graph_schema));
+        node_tbl := to_regclass(format('%I."Node"', graph_schema));
+        edge_tbl := to_regclass(format('%I."EDGE"', graph_schema));
 
-        IF vertex_tbl IS NULL AND edge_tbl IS NULL THEN
-            RAISE NOTICE 'Skip graph % — AGE label tables not present', graph_name;
+        IF node_tbl IS NULL AND edge_tbl IS NULL THEN
+            RAISE NOTICE 'Skip graph % — Node/EDGE label tables not present', graph_name;
             CONTINUE;
         END IF;
 
         vertex_count := NULL;
-        IF vertex_tbl IS NOT NULL THEN
-            EXECUTE format('SELECT COUNT(*) FROM %s."_ag_label_vertex"', graph_schema)
+        IF node_tbl IS NOT NULL THEN
+            EXECUTE format('SELECT COUNT(*) FROM %I."Node"', graph_schema)
                 INTO vertex_count;
         END IF;
 
@@ -56,40 +58,40 @@ BEGIN
 
         RAISE NOTICE 'Applying source_ids indexes for graph: % (vertices=%)', graph_name, COALESCE(vertex_count, 0);
 
-        IF vertex_tbl IS NOT NULL THEN
+        IF node_tbl IS NOT NULL THEN
             BEGIN
                 EXECUTE format(
-                    'CREATE INDEX IF NOT EXISTS idx_%s_vertex_source_id ON %I."_ag_label_vertex" '
+                    'CREATE INDEX IF NOT EXISTS idx_node_source_id_expr ON %I."Node" '
                     '((ag_catalog.agtype_to_json(properties)->>''source_id''))',
-                    idx_prefix, graph_schema
+                    graph_schema
                 );
-                RAISE NOTICE '  ✓ vertex source_id btree';
+                RAISE NOTICE '  ✓ Node source_id btree';
             EXCEPTION WHEN OTHERS THEN
-                RAISE NOTICE '  ✗ vertex source_id: %', SQLERRM;
+                RAISE WARNING '  ✗ Node source_id btree: %', SQLERRM;
             END;
 
             BEGIN
                 EXECUTE format(
-                    'CREATE INDEX IF NOT EXISTS idx_%s_vertex_source_ids_gin ON %I."_ag_label_vertex" '
+                    'CREATE INDEX IF NOT EXISTS idx_node_source_ids_gin ON %I."Node" '
                     'USING gin ((ag_catalog.agtype_to_json(properties)::jsonb -> ''source_ids'') jsonb_ops)',
-                    idx_prefix, graph_schema
+                    graph_schema
                 );
-                RAISE NOTICE '  ✓ vertex source_ids GIN';
+                RAISE NOTICE '  ✓ Node source_ids GIN';
             EXCEPTION WHEN OTHERS THEN
-                RAISE NOTICE '  ✗ vertex source_ids GIN: %', SQLERRM;
+                RAISE WARNING '  ✗ Node source_ids GIN: %', SQLERRM;
             END;
         END IF;
 
         IF edge_tbl IS NOT NULL THEN
             BEGIN
                 EXECUTE format(
-                    'CREATE INDEX IF NOT EXISTS idx_%s_edge_source_ids_gin ON %I."_ag_label_edge" '
+                    'CREATE INDEX IF NOT EXISTS idx_edge_source_ids_gin ON %I."EDGE" '
                     'USING gin ((ag_catalog.agtype_to_json(properties)::jsonb -> ''source_ids'') jsonb_ops)',
-                    idx_prefix, graph_schema
+                    graph_schema
                 );
-                RAISE NOTICE '  ✓ edge source_ids GIN';
+                RAISE NOTICE '  ✓ EDGE source_ids GIN';
             EXCEPTION WHEN OTHERS THEN
-                RAISE NOTICE '  ✗ edge source_ids GIN: %', SQLERRM;
+                RAISE WARNING '  ✗ EDGE source_ids GIN: %', SQLERRM;
             END;
         END IF;
     END LOOP;

@@ -151,30 +151,11 @@ impl PostgresAGEGraphStorage {
     }
 
     fn build_source_prefix_clause(props_expr: &str, source_prefixes: &[String]) -> String {
-        // agtype_to_json returns json; jsonb_* functions require jsonb (FIX-SPEC020-CASCADE).
         let props = format!("({props_expr})::jsonb");
         let mut conditions = Vec::new();
         for prefix in source_prefixes {
-            let esc = Self::escape_sql_string(prefix);
-            let chunk = Self::escape_sql_string(&format!("{prefix}-chunk-"));
-            conditions.push(format!(
-                "({props}->>'source_id' LIKE '{esc}%' \
-                 OR {props}->>'source_id' LIKE '%|{esc}%' \
-                 OR {props}->>'source_id' LIKE '%|{chunk}%' \
-                 OR {props}->>'source_id' LIKE '{chunk}%' \
-                 OR EXISTS (
-                     SELECT 1 FROM jsonb_array_elements_text(
-                         CASE
-                             WHEN jsonb_typeof({props}->'source_ids') = 'array'
-                             THEN {props}->'source_ids'
-                             ELSE '[]'::jsonb
-                         END
-                     ) src
-                     WHERE src LIKE '{esc}%' OR src LIKE '{chunk}%' OR src = '{esc}'
-                 ))",
-                props = props,
-                esc = esc,
-                chunk = chunk
+            conditions.push(super::helpers::jsonb_matches_doc_source_prefix(
+                &props, prefix,
             ));
         }
         if conditions.is_empty() {

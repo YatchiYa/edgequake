@@ -210,6 +210,44 @@ mod tests {
         assert!(!task.can_retry()); // Should not be retryable
     }
 
+    #[test]
+    fn spec045_permanent_merge_error_skips_retry() {
+        let data = serde_json::json!({});
+        let mut task = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::Insert,
+            data,
+        );
+
+        let error = TaskFailureInfo::from_processing_error(
+            "1 knowledge-graph merge error(s) during persist",
+        );
+        task.mark_failed_with_details(error);
+
+        assert!(!task.can_retry());
+        assert_eq!(task.error.as_ref().unwrap().step, "indexing");
+        assert_eq!(task.error.as_ref().unwrap().suggestion, "reprocess_full");
+    }
+
+    #[test]
+    fn spec045_permanent_embedding_400_skips_retry() {
+        let data = serde_json::json!({});
+        let mut task = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::Insert,
+            data,
+        );
+
+        let error = TaskFailureInfo::from_processing_error(
+            "Embedding error: Too many inputs in request (400)",
+        );
+        task.mark_failed_with_details(error);
+
+        assert!(!task.can_retry());
+    }
+
     // ============================================
     // Circuit Breaker Tests
     // ============================================

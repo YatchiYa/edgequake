@@ -427,7 +427,11 @@ impl WorkerPool {
                                         Ok(Err(e)) => {
                                             // HeartbeatGuard aborts heartbeat on drop at end of scope
                                             let error_msg = format!("{}", e);
-                                            task.mark_failed(error_msg.clone());
+                                            task.mark_failed_with_details(
+                                                crate::types::TaskFailureInfo::from_processing_error(
+                                                    error_msg.clone(),
+                                                ),
+                                            );
 
                                             // Log circuit breaker status
                                             if task.circuit_breaker_tripped {

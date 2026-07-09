@@ -345,6 +345,16 @@ impl AppState {
                 embedding_dim,
             ));
 
+        if migration_bootstrap.migration_080.halfvec_conversion_applied {
+            vector_registry.clear_cache().await;
+            tracing::warn!(
+                target: "edgequake.migration",
+                step = "migration_080_cache_cleared",
+                operator_action = "verify_embeddings_after_halfvec_conversion",
+                "M080 halfvec conversion applied — cleared workspace vector registry cache (SPEC-045 SRE-M05)"
+            );
+        }
+
         // Create auth services
         let auth = AuthRuntime::from_env();
 
