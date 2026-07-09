@@ -248,7 +248,20 @@
       "reprocess": "Reprocess",
       "delete": "Delete",
       "viewInGraph": "View in Graph",
-      "cancel": "Cancel Extraction"
+      "cancel": "Cancel Extraction",
+      "copyId": "Copy ID",
+      "viewPdf": "View PDF"
+    },
+    "download": {
+      "title": "Download",
+      "original": "Download original",
+      "markdown": "Download markdown",
+      "originalStarted": "Original download started",
+      "markdownStarted": "Markdown download started",
+      "originalFailed": "Failed to download original",
+      "markdownFailed": "Failed to download markdown",
+      "originalUnavailable": "Original file is not stored for this document type",
+      "markdownUnavailable": "Markdown content is not available yet"
     },
     "cancel": {
       "success": "Document processing cancelled",

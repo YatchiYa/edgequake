@@ -192,6 +192,22 @@ export class DocumentsResource extends Resource {
     return this._get(`/api/v1/documents/${documentId}`);
   }
 
+  /** Download the original uploaded file (PDF delegation or stored bytes). */
+  async downloadOriginal(documentId: string): Promise<Blob> {
+    return this.transport.requestBlob({
+      method: "GET",
+      path: `/api/v1/documents/${documentId}/download/original`,
+    });
+  }
+
+  /** Download extracted markdown for a document. */
+  async downloadMarkdown(documentId: string): Promise<Blob> {
+    return this.transport.requestBlob({
+      method: "GET",
+      path: `/api/v1/documents/${documentId}/download/markdown`,
+    });
+  }
+
   /** Delete a specific document. */
   async delete(documentId: string): Promise<void> {
     await this._del(`/api/v1/documents/${documentId}`);

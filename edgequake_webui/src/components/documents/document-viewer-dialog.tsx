@@ -24,17 +24,17 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { getPdfContent, getPdfDownloadUrl } from '@/lib/api/edgequake';
+import type { Document } from '@/types';
 import { useQuery } from '@tanstack/react-query';
 import {
     AlertCircle,
-    Download,
     ExternalLink,
     FileText,
     Loader2,
 } from 'lucide-react';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
+import { DocumentDownloadMenu } from './document-download-menu';
 import { MarkdownViewer } from './markdown-viewer';
 import { PDFViewer } from './pdf-viewer';
 import { SideBySideViewer } from './side-by-side-viewer';
@@ -81,22 +81,6 @@ export function DocumentViewerDialog({
     return getPdfDownloadUrl(pdfId);
   }, [pdfId]);
 
-  // Handle download
-  const handleDownload = () => {
-    if (!pdfUrl || !pdfContent) return;
-    
-    // Open download in new tab (browser will handle the download)
-    const link = document.createElement('a');
-    link.href = pdfUrl;
-    link.download = pdfContent.filename || 'document.pdf';
-    link.target = '_blank';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    toast.success(t('documents.viewer.downloadStarted', 'Download started'));
-  };
-
   // Handle open in new tab
   const handleOpenExternal = () => {
     if (!pdfUrl) return;
@@ -104,6 +88,15 @@ export function DocumentViewerDialog({
   };
 
   const displayTitle = title || pdfContent?.filename || t('documents.viewer.document', 'Document');
+
+  const viewerDocument = useMemo((): Document => ({
+    id: pdfId ?? '',
+    pdf_id: pdfId ?? undefined,
+    source_type: 'pdf',
+    file_name: pdfContent?.filename,
+    title: displayTitle,
+    content: pdfContent?.markdown_content ?? undefined,
+  }), [pdfId, pdfContent, displayTitle]);
   const isPdf = pdfContent?.content_type === 'application/pdf';
   const hasMarkdown = !!pdfContent?.markdown_content;
 
@@ -126,17 +119,13 @@ export function DocumentViewerDialog({
             </div>
             
             <div className="flex items-center gap-2">
-              {pdfUrl && (
+              {pdfId && (
                 <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8"
-                    onClick={handleDownload}
-                  >
-                    <Download className="h-4 w-4 mr-1.5" />
-                    {t('documents.viewer.download', 'Download')}
-                  </Button>
+                  <DocumentDownloadMenu
+                    document={viewerDocument}
+                    markdownContent={pdfContent?.markdown_content}
+                    variant="button"
+                  />
                   <Button
                     variant="ghost"
                     size="icon"

@@ -165,7 +165,20 @@
       "reprocess": "Retraiter",
       "delete": "Supprimer",
       "viewInGraph": "Voir dans le graphe",
-      "cancel": "Annuler l'extraction"
+      "cancel": "Annuler l'extraction",
+      "copyId": "Copier l'ID",
+      "viewPdf": "Voir le PDF"
+    },
+    "download": {
+      "title": "Télécharger",
+      "original": "Télécharger l'original",
+      "markdown": "Télécharger le markdown",
+      "originalStarted": "Téléchargement de l'original démarré",
+      "markdownStarted": "Téléchargement du markdown démarré",
+      "originalFailed": "Échec du téléchargement de l'original",
+      "markdownFailed": "Échec du téléchargement du markdown",
+      "originalUnavailable": "Le fichier original n'est pas stocké pour ce type de document",
+      "markdownUnavailable": "Le contenu markdown n'est pas encore disponible"
     },
     "cancel": {
       "success": "Traitement du document annulé",
