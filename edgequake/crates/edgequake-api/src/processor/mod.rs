@@ -84,6 +84,10 @@ mod task_impl;
 mod text_insert;
 mod workspace_resolver;
 
+pub(crate) use status_updates::{
+    graph_merge_progress_message, patch_document_indexing_progress,
+};
+
 use std::sync::Arc;
 
 use crate::handlers::websocket_types::ProgressBroadcaster;

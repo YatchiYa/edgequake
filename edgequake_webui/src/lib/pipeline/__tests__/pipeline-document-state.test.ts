@@ -43,5 +43,7 @@ describe('pipeline-document-state', () => {
   it('computes orphan queued tasks not tied to waiting docs', () => {
     expect(orphanQueuedTaskCount(3, 1)).toBe(2);
     expect(orphanQueuedTaskCount(1, 2)).toBe(0);
+    expect(orphanQueuedTaskCount(2, 0, 1)).toBe(1);
+    expect(orphanQueuedTaskCount(1, 0, 1)).toBe(0);
   });
 });

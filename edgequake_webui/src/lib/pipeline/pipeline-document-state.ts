@@ -59,10 +59,11 @@ export function summarizePipelineDocuments(
   };
 }
 
-/** Tasks pending in queue that are not already reflected on documents. */
+/** Tasks pending in queue not already represented by waiting or active documents. */
 export function orphanQueuedTaskCount(
   pipelineQueuedTasks: number,
   waitingDocCount: number,
+  activeDocCount = 0,
 ): number {
-  return Math.max(0, pipelineQueuedTasks - waitingDocCount);
+  return Math.max(0, pipelineQueuedTasks - waitingDocCount - activeDocCount);
 }

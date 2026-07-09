@@ -238,9 +238,12 @@ export const DocumentTableRow = memo(function DocumentTableRow({
       <TableCell>
         <div className="flex flex-col gap-1">
           <EnhancedStatusBadge document={doc} />
-          {/* Show stage_message for PDF conversion progress */}
-          {doc.stage_message && doc.current_stage === 'converting' && (
-            <span className="text-xs text-muted-foreground truncate">
+          {/* Live stage detail for long-running phases (conversion, graph storage, etc.) */}
+          {doc.stage_message &&
+            ['converting', 'storing', 'indexing', 'embedding', 'extracting'].includes(
+              doc.current_stage ?? '',
+            ) && (
+            <span className="text-xs text-muted-foreground truncate max-w-[220px]">
               {doc.stage_message}
             </span>
           )}

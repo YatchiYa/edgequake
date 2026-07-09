@@ -53,6 +53,12 @@ impl DocumentTaskProcessor {
             }
         }
 
+        // ── CANCELLATION GATE: before terminal stats / lineage ──
+        // WHY: Must run before update_document_status_with_stats so a reprocess
+        // race does not write "completed" stats then overwrite with "cancelled".
+        self.check_cancelled(&cancel_token, "pre-lineage", &document_id)
+            .await?;
+
         self.update_document_status_with_stats(&document_id, &final_status, &stats_with_lineage)
             .await?;
 
@@ -109,11 +115,6 @@ impl DocumentTaskProcessor {
         }
 
         // OODA-06: Persist DocumentLineage to KV storage for lineage API queries
-
-        // ── CANCELLATION GATE: before lineage persistence ──
-        self.check_cancelled(&cancel_token, "pre-lineage", &document_id)
-            .await?;
-
         // WHY: Without persistence, lineage data only exists in memory during processing
         // and is lost. Lineage endpoints need to read it back from storage.
         if let Some(ref lineage) = result.lineage {
