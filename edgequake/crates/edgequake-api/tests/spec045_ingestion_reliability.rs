@@ -13,8 +13,7 @@ use edgequake_api::services::{
 };
 use edgequake_pdf::PdfParserBackend;
 use edgequake_tasks::{
-    ingestion_reliability::is_permanent_ingestion_failure, Task, TaskFailureInfo,
-    TaskType,
+    ingestion_reliability::is_permanent_ingestion_failure, Task, TaskFailureInfo, TaskType,
 };
 
 // ── EC-045-03 / EC-045-07 / EC-045-09: failure taxonomy ─────────────────────

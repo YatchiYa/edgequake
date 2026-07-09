@@ -48,6 +48,8 @@ pub mod pdf_admission_registry;
 pub mod pdf_auto_routing;
 pub mod pdf_lineage;
 pub mod pdf_workspace_dedup;
+#[cfg(feature = "postgres")]
+pub mod postgres_chunk_lineage;
 pub mod query_context;
 pub mod query_execution;
 pub mod query_generation;
@@ -57,8 +59,8 @@ pub mod route_registry;
 pub mod session_storage;
 pub mod source_reference_builder;
 pub mod staging_admission;
-pub mod task_scope;
 pub mod task_document_sync;
+pub mod task_scope;
 pub mod tenant_guard;
 pub mod tenant_isolation;
 pub mod text_insert_content;

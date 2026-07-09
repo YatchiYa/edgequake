@@ -388,7 +388,8 @@ async fn get_schema_health(state: &AppState) -> Option<SchemaHealth> {
 pub async fn readiness_check(State(state): State<AppState>) -> impl IntoResponse {
     #[cfg(feature = "postgres")]
     {
-        let ready = crate::state::migration_bootstrap::is_ready_for_traffic(&state.migration_bootstrap);
+        let ready =
+            crate::state::migration_bootstrap::is_ready_for_traffic(&state.migration_bootstrap);
         let body = crate::handlers::health_types::ReadinessResponse {
             ready,
             blockers: crate::state::migration_bootstrap::readiness_blockers(

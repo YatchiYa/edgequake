@@ -11,11 +11,7 @@ use edgequake_storage::adapters::memory::{MemoryVectorStorage, MemoryWorkspaceVe
 use edgequake_storage::traits::{VectorStorage, WorkspaceVectorConfig, WorkspaceVectorRegistry};
 use uuid::Uuid;
 
-async fn seed_workspace(
-    service: &InMemoryWorkspaceService,
-    workspace_id: Uuid,
-    dimension: usize,
-) {
+async fn seed_workspace(service: &InMemoryWorkspaceService, workspace_id: Uuid, dimension: usize) {
     let now = chrono::Utc::now();
     let tenant_id = Uuid::new_v4();
     let mut tenant = Tenant::new("Spec045 Tenant", "spec045-tenant");
@@ -49,9 +45,12 @@ async fn spec045_ingest_evicts_stale_cache_on_dimension_change() {
     let workspace_service = Arc::new(InMemoryWorkspaceService::new());
     seed_workspace(&workspace_service, ws_id, 1536).await;
 
-    let default_vector: Arc<dyn VectorStorage> = Arc::new(MemoryVectorStorage::new("default", 1536));
+    let default_vector: Arc<dyn VectorStorage> =
+        Arc::new(MemoryVectorStorage::new("default", 1536));
     default_vector.initialize().await.unwrap();
-    let registry = Arc::new(MemoryWorkspaceVectorRegistry::new(Arc::clone(&default_vector)));
+    let registry = Arc::new(MemoryWorkspaceVectorRegistry::new(Arc::clone(
+        &default_vector,
+    )));
 
     let stale_config = WorkspaceVectorConfig::new(ws_id, 768);
     registry.get_or_create(stale_config).await.unwrap();

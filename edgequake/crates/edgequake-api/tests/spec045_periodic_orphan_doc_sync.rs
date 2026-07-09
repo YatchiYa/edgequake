@@ -59,7 +59,10 @@ async fn spec045_orphan_heartbeat_syncs_document_to_failed() {
         .expect("sync");
 
     let updated = kv.get_by_id(&metadata_key).await.unwrap().unwrap();
-    assert_eq!(updated.get("status").and_then(|v| v.as_str()), Some("failed"));
+    assert_eq!(
+        updated.get("status").and_then(|v| v.as_str()),
+        Some("failed")
+    );
     assert_eq!(
         updated.get("failure_class").and_then(|v| v.as_str()),
         Some("unknown")

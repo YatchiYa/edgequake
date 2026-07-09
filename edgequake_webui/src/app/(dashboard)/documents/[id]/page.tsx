@@ -199,7 +199,7 @@ export default function DocumentViewPage() {
 
   const handleViewInGraph = useCallback(() => {
     if (document) {
-      router.push(`/graph?highlight=${document.id}`);
+      router.push(`/graph?document=${encodeURIComponent(document.id)}`);
     }
   }, [document, router]);
 

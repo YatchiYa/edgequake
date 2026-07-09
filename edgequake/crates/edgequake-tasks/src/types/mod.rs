@@ -227,10 +227,7 @@ mod tests {
 
         assert!(!task.can_retry());
         assert_eq!(task.error.as_ref().unwrap().step, "indexing");
-        assert_eq!(
-            task.error.as_ref().unwrap().suggestion,
-            "reprocess_full"
-        );
+        assert_eq!(task.error.as_ref().unwrap().suggestion, "reprocess_full");
     }
 
     #[test]

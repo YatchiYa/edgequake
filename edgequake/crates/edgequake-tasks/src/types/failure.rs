@@ -132,12 +132,6 @@ impl TaskFailureInfo {
         let retryable = !is_permanent_ingestion_failure(&message);
         let suggestion = class.recommended_action();
 
-        Self::new(
-            message.clone(),
-            step,
-            message,
-            suggestion,
-            retryable,
-        )
+        Self::new(message.clone(), step, message, suggestion, retryable)
     }
 }

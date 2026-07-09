@@ -22,6 +22,7 @@ import {
   getDocumentMetadata,
   getEntityProvenance,
 } from "@/lib/api/edgequake";
+import { useTenantStore } from "@/stores/use-tenant-store";
 import { useQuery } from "@tanstack/react-query";
 
 /**
@@ -47,10 +48,15 @@ export const lineageKeys = {
  * Returns entity/relationship summaries.
  */
 export function useDocumentLineage(documentId: string | null) {
+  const { selectedTenantId, selectedWorkspaceId } = useTenantStore();
   return useQuery({
-    queryKey: lineageKeys.document(documentId ?? ""),
+    queryKey: [
+      ...lineageKeys.document(documentId ?? ""),
+      selectedTenantId,
+      selectedWorkspaceId,
+    ],
     queryFn: () => getDocumentLineage(documentId!),
-    enabled: !!documentId,
+    enabled: !!documentId && !!selectedTenantId && !!selectedWorkspaceId,
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 }

@@ -198,9 +198,8 @@ pub(crate) async fn run_recover_stuck(
 
                     use edgequake_tasks::{PdfProcessingData, Task, TaskType};
 
-                    let tenant_uuid = Uuid::parse_str(&tenant_id).map_err(|_| {
-                        ApiError::ValidationError("Invalid tenant ID".to_string())
-                    })?;
+                    let tenant_uuid = Uuid::parse_str(&tenant_id)
+                        .map_err(|_| ApiError::ValidationError("Invalid tenant ID".to_string()))?;
                     let workspace_uuid = Uuid::parse_str(&workspace_id).map_err(|_| {
                         ApiError::ValidationError("Invalid workspace ID".to_string())
                     })?;

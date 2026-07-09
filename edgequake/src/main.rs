@@ -386,9 +386,7 @@ async fn requeue_pending_tasks(
         }
 
         if page == 1 && batch_len > 0 {
-            info!(
-                "📋 Found pending task(s) in database, requeueing to worker pool..."
-            );
+            info!("📋 Found pending task(s) in database, requeueing to worker pool...");
         }
 
         for task in task_list.tasks {
@@ -474,12 +472,13 @@ async fn periodic_orphan_check(
                             humanize_duration(age)
                         );
                         // SPEC-045 SRE-I01: sync document KV so UI does not show processing
-                        if let Err(e) = edgequake_api::services::sync_document_failed_on_orphan_heartbeat(
-                            Arc::clone(&kv_storage),
-                            &task,
-                            &error_msg,
-                        )
-                        .await
+                        if let Err(e) =
+                            edgequake_api::services::sync_document_failed_on_orphan_heartbeat(
+                                Arc::clone(&kv_storage),
+                                &task,
+                                &error_msg,
+                            )
+                            .await
                         {
                             warn!(
                                 task_id = %task.track_id,
@@ -793,8 +792,8 @@ async fn main() -> Result<()> {
     // updating every 60s. This complements startup recovery (which is unconditional)
     // and the processing timeout (which catches hung tasks with active heartbeats).
     let periodic_task_storage = Arc::clone(&state.tasks.storage) as Arc<dyn TaskStorage>;
-    let periodic_kv_storage = Arc::clone(&state.storage.kv_storage)
-        as Arc<dyn edgequake_storage::traits::KVStorage>;
+    let periodic_kv_storage =
+        Arc::clone(&state.storage.kv_storage) as Arc<dyn edgequake_storage::traits::KVStorage>;
     tokio::spawn(async move {
         // WHY 5 minutes: Frequent enough to catch dead-heartbeat tasks within
         // ~15 minutes (10 min threshold + up to 5 min wait for the next check).
@@ -826,8 +825,8 @@ async fn main() -> Result<()> {
         .and_then(|s| s.parse::<u64>().ok())
         .filter(|&m| m > 0)
     {
-        let kv = Arc::clone(&state.storage.kv_storage)
-            as Arc<dyn edgequake_storage::traits::KVStorage>;
+        let kv =
+            Arc::clone(&state.storage.kv_storage) as Arc<dyn edgequake_storage::traits::KVStorage>;
         tokio::spawn(async move {
             let mut interval =
                 tokio::time::interval(tokio::time::Duration::from_secs(interval_mins * 60));

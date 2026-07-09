@@ -723,11 +723,9 @@ impl From<edgequake_query::error::QueryError> for ApiError {
         let class = QueryFailureClass::from_query_error(&e);
         let diag = edgequake_query::query_reliability::query_failure_diagnostic(&e.to_string());
         match e {
-            QueryError::InvalidQuery(msg) => ApiError::BadRequest(format!(
-                "{} [failure_class={}]",
-                msg,
-                class.as_str()
-            )),
+            QueryError::InvalidQuery(msg) => {
+                ApiError::BadRequest(format!("{} [failure_class={}]", msg, class.as_str()))
+            }
             QueryError::NoResults => ApiError::NotFound(format!(
                 "No results found for query [failure_class={}]",
                 class.as_str()
@@ -740,21 +738,17 @@ impl From<edgequake_query::error::QueryError> for ApiError {
             )),
             QueryError::StorageError(se) => ApiError::Storage(se),
             QueryError::LlmError(le) => ApiError::Llm(le),
-            QueryError::ConfigError(msg) => ApiError::ConfigError(format!(
-                "{} | diagnostic={}",
-                msg,
-                diag
-            )),
+            QueryError::ConfigError(msg) => {
+                ApiError::ConfigError(format!("{} | diagnostic={}", msg, diag))
+            }
             QueryError::Timeout(ms) => ApiError::Timeout(format!(
                 "Query timed out after {}ms [failure_class={}]",
                 ms,
                 class.as_str()
             )),
-            QueryError::Internal(msg) => ApiError::Internal(format!(
-                "{} | diagnostic={}",
-                msg,
-                diag
-            )),
+            QueryError::Internal(msg) => {
+                ApiError::Internal(format!("{} | diagnostic={}", msg, diag))
+            }
         }
     }
 }
