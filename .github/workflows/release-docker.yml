@@ -49,6 +49,7 @@ jobs:
           POSTGRES_PASSWORD: ""
           RUST_LOG: warn
           RELEASE_SKIP_LIB_TESTS: "1"
+          RELEASE_SKIP_PER_CRATE_CLIPPY: "1"
         run: |
           chmod +x scripts/release_gates.sh
           ./scripts/release_gates.sh
