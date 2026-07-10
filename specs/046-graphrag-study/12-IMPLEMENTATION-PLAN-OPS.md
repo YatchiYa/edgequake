@@ -1,12 +1,13 @@
 # 12 — Implementation Plan: Ops · Storage · Defense · Observability
 
-**Date:** 2026-07-10 (updated after OPS-P3 implementation)  
+**Date:** 2026-07-10 (updated after OPS-P3 + **v0.16.0 release**)  
 **Goal:** Make EdgeQuake **fail-closed, O(N)-safe, healable, and observable** on PG16/17/18 + pgvector 0.8.3 + AGE 1.6/1.7 — without abandoning the Mix spine.  
-**Law:** Every ticket names files/symbols. No vapor.
+**Law:** Every ticket names files/symbols. No vapor. **Status: all tickets DONE in v0.16.0.**
 
 **Companion science plan:** [07-IMPROVEMENT-PLAN.md](./07-IMPROVEMENT-PLAN.md) (retrieval physics).  
 **This plan owns:** defense, migration, auto-repair, tracing/metrics, Postgres performance.  
 **Runbooks:** [13-OPS-RUNBOOKS.md](./13-OPS-RUNBOOKS.md).
+**Traceability:** [08-CODE-IS-LAW-TRACEABILITY.md](./08-CODE-IS-LAW-TRACEABILITY.md).
 
 ---
 

@@ -74,7 +74,7 @@ SPEC-046 GraphRAG / Hybrid RAG ops + science delivery — fail-closed substrate,
 
 ### Documentation
 
-- `specs/046-graphrag-study/` — INDEX, ops plan 09–13, science plan 07, code-is-law 08, smells 11 updated post P0–P4.
+- `specs/046-graphrag-study/` — INDEX, ops plan 09–13, science plan 07, code-is-law 08, smells 11, multi-lens 05, query 04, competitive 06 updated for **v0.16.0 code-is-law** (stale stub/BFS/miswired claims removed).
 
 ---
 

@@ -206,14 +206,20 @@ Grounded in AWS/Azure/pgvector production notes — **not** cargo-cult; tune per
 4. Matrix: pg16 / pg17 / pg18 images from extension-pins.sh
 ```
 
-Artifacts: `specs/046-graphrag-study/eval/postgres-perf/` (to create in EQ-046-OPS tickets).
+Artifacts: pin smoke via `make ops17-smoke` / `e2e/run_ops17_perf_smoke.sh` (DONE).  
+Large-scale ANN/graph wall-time benches (`eval/postgres-perf/`) remain **optional post-0.16** measurement work — not a blocker for fail-closed correctness.
 
 ---
 
-## Verdict
+## Verdict (v0.16.0 code-is-law)
 
-EdgeQuake's **pgvector + AGE configuration is ahead of most OSS GraphRAG stacks** (iterative_scan, halfvec policy, AGE indexes, triple PG track).  
+EdgeQuake's **pgvector + AGE configuration is ahead of most OSS GraphRAG stacks** (iterative_scan, halfvec policy, AGE indexes, triple PG track).
 
-It is **not yet O(N)-safe at community scale**, and **ANN readiness is not fail-closed**. Those two fixes dominate the storage performance roadmap.
+**Shipped in v0.16.0:**
+- ✅ Community ingest path is **O(sample)-safe** (`load_graph_bounded`)
+- ✅ ANN readiness is **fail-closed** (`missing_hnsw_index` on `/ready`)
+- ✅ Multi-major pin smoke (`make ops17-smoke` + nightly workflow)
 
-→ Implementation: [12-IMPLEMENTATION-PLAN-OPS.md](./12-IMPLEMENTATION-PLAN-OPS.md)
+**Still open (measurement, not correctness):** 100k/1M ANN + graph wall-time artifact suite.
+
+→ Implementation: [12-IMPLEMENTATION-PLAN-OPS.md](./12-IMPLEMENTATION-PLAN-OPS.md) (all OPS tickets DONE)
