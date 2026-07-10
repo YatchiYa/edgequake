@@ -21,21 +21,23 @@
 #     docker compose -f docker-compose.quickstart.yml up -d
 #
 # Pin to a specific release:
-#   EDGEQUAKE_VERSION=0.13.1 docker compose -f docker-compose.quickstart.yml up -d
+#   EDGEQUAKE_VERSION=0.16.0 docker compose -f docker-compose.quickstart.yml up -d
 #
-# Mistral (tested v0.13.1):
-#   EDGEQUAKE_VERSION=0.13.1 EDGEQUAKE_LLM_PROVIDER=mistral MISTRAL_API_KEY=... \
+# Mistral:
+#   EDGEQUAKE_VERSION=0.16.0 EDGEQUAKE_LLM_PROVIDER=mistral MISTRAL_API_KEY=... \
 #     EDGEQUAKE_LLM_MODEL=mistral-small-latest EDGEQUAKE_EMBEDDING_PROVIDER=mistral \
 #     MISTRAL_EMBEDDING_MODEL=mistral-embed docker compose -f docker-compose.quickstart.yml up -d
 #
-# Ollama gemma4:e4b on host (tested v0.13.1):
-#   EDGEQUAKE_VERSION=0.13.1 EDGEQUAKE_LLM_PROVIDER=ollama EDGEQUAKE_LLM_MODEL=gemma4:e4b \
+# Ollama gemma4:e4b on host:
+#   EDGEQUAKE_VERSION=0.16.0 EDGEQUAKE_LLM_PROVIDER=ollama EDGEQUAKE_LLM_MODEL=gemma4:e4b \
 #     OLLAMA_EMBEDDING_MODEL=embeddinggemma docker compose -f docker-compose.quickstart.yml up -d
 
+# Pin PostgreSQL major (optional; default image is PG18):
+#   EDGEQUAKE_POSTGRES_TAG=0.16.0-pg16|0.16.0-pg17|0.16.0-pg18
 services:
   # ── PostgreSQL with pgvector + Apache AGE ──────────────────────────────────
   postgres:
-    image: ghcr.io/raphaelmansuy/edgequake-postgres:${EDGEQUAKE_VERSION:-latest}
+    image: ghcr.io/raphaelmansuy/edgequake-postgres:${EDGEQUAKE_POSTGRES_TAG:-${EDGEQUAKE_VERSION:-latest}}
     container_name: edgequake-postgres
     restart: unless-stopped
     shm_size: '256m'
