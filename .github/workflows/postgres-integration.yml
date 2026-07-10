@@ -254,6 +254,23 @@ jobs:
             SET search_path = ag_catalog, "$user", public;
           EOSQL
 
+      # WHY: Native graph write contracts (EDGEQUAKE_NATIVE_GRAPH_WRITES=1) need
+      # eq_next_node_id / eq_next_edge_id from migrations 067/075. Graph initialize()
+      # does not run sqlx migrations — without this step CI fails with
+      # "function eq_next_node_id(unknown) does not exist".
+      - name: Install sqlx-cli
+        run: cargo install sqlx-cli --no-default-features --features postgres --locked
+
+      - name: Run database migrations (native graph helpers)
+        env:
+          DATABASE_URL: postgresql://edgequake_test:test_password_123@localhost:5432/edgequake_test
+        run: |
+          sqlx migrate run \
+            --source edgequake/migrations \
+            --database-url "$DATABASE_URL"
+          PGPASSWORD=test_password_123 psql -h localhost -p 5432 -U edgequake_test -d edgequake_test -c \
+            "SELECT proname FROM pg_proc WHERE proname IN ('eq_next_node_id','eq_next_edge_id') ORDER BY 1;"
+
       - name: Run SPEC-017 storage backend contracts (postgres)
         working-directory: edgequake
         env:
