@@ -5,9 +5,6 @@ import { resolveDevProxyBackend } from "./src/lib/server/dev-proxy-backend";
 /** Match upload-timeout.ts MAX_TIMEOUT_MS — dev rewrites proxy large PDF admits. */
 const DEV_PROXY_TIMEOUT_MS = 600_000;
 
-/** Next.js dev proxy default is 10MB; EdgeQuake allows 50MB uploads (SPEC-038). */
-const DEV_PROXY_MAX_BODY = `${Math.ceil(DEFAULT_MAX_UPLOAD_BYTES / (1024 * 1024))}mb`;
-
 const nextConfig: NextConfig = {
   // ============================================================================
   // Build Performance Optimization
@@ -21,8 +18,10 @@ const nextConfig: NextConfig = {
     // Use SWC minifier (faster than Terser)
     webpackBuildWorker: true,
     // SPEC-038: default rewrite proxy is 30s / 10MB — large PDFs hang at "Saving to workspace…"
+    // Use numeric bytes (SizeLimit). Template strings like `${n}mb` widen to `string`
+    // and fail `next build` typecheck (release-docker CD flake on Next 16.2).
     proxyTimeout: DEV_PROXY_TIMEOUT_MS,
-    proxyClientMaxBodySize: DEV_PROXY_MAX_BODY,
+    proxyClientMaxBodySize: DEFAULT_MAX_UPLOAD_BYTES,
   },
 
   // TypeScript configuration

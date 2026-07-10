@@ -81,7 +81,10 @@ mod tests {
         assert_eq!(out.len(), 2);
         assert_eq!(out[0].0, "A");
         assert_eq!(out[0].1, "B");
-        assert_eq!(out[0].2.get("label").and_then(|v| v.as_str()), Some("third"));
+        assert_eq!(
+            out[0].2.get("label").and_then(|v| v.as_str()),
+            Some("third")
+        );
         assert_eq!(out[1].0, "C");
         assert_eq!(out[1].1, "D");
     }

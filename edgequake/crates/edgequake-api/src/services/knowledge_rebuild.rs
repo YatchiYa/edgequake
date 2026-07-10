@@ -28,13 +28,19 @@ pub fn rebuild_description_from_remaining_sources(
 
     let remaining: HashSet<&str> = remaining_sources.iter().map(String::as_str).collect();
 
-    // Prefer double-newline segments (LLM summary concatenations)
-    let segments: Vec<&str> = if description.contains("\n\n") {
-        description.split("\n\n").collect()
+    // Prefer double-newline segments (LLM summary concatenations); a single
+    // unsplit string is still one segment so tagged sole claims can clear.
+    let join_sep = if description.contains("\n\n") {
+        "\n\n"
     } else if description.contains(" | ") {
-        description.split(" | ").collect()
+        " | "
     } else {
-        return description.to_string();
+        ""
+    };
+    let segments: Vec<&str> = if join_sep.is_empty() {
+        vec![description]
+    } else {
+        description.split(join_sep).collect()
     };
 
     let tagged: Vec<&str> = segments
@@ -65,10 +71,10 @@ pub fn rebuild_description_from_remaining_sources(
         return String::new();
     }
 
-    if description.contains("\n\n") {
-        kept.join("\n\n")
+    if join_sep.is_empty() {
+        kept[0].to_string()
     } else {
-        kept.join(" | ")
+        kept.join(join_sep)
     }
 }
 

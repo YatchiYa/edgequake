@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
-# Pre-release quality gates — fmt, per-crate clippy, lib tests, SPEC-006 + SPEC-018 proofs.
+# Pre-release quality gates — fmt, workspace clippy, optional lib tests,
+# SPEC-006 + SPEC-018 proofs, WebUI typecheck, version parity.
+#
+# Env knobs (CI sets these to avoid duplicate work already covered by CI.yml):
+#   RELEASE_SKIP_LIB_TESTS=1          — skip workspace lib tests
+#   RELEASE_SKIP_PER_CRATE_CLIPPY=1   — skip O(N) per-crate clippy (workspace is enough)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -24,29 +29,34 @@ echo "== rustfmt =="
 (cd "$EQ" && cargo fmt --all -- --check)
 
 echo "== workspace clippy =="
-(cd "$EQ" && cargo clippy --workspace --lib -- -D warnings)
+(cd "$EQ" && cargo clippy --workspace --lib --locked -- -D warnings)
 
-echo "== per-crate clippy =="
-for crate in "${CRATES[@]}"; do
-  echo "→ clippy -p $crate"
-  FEATURES=()
-  case "$crate" in
-    edgequake-api|edgequake-core|edgequake-storage|edgequake-tasks)
-      FEATURES=(--features postgres)
-      ;;
-  esac
-  if ((${#FEATURES[@]})); then
-    (cd "$EQ" && cargo clippy -p "$crate" --lib "${FEATURES[@]}" -- -D warnings)
-  else
-    (cd "$EQ" && cargo clippy -p "$crate" --lib -- -D warnings)
-  fi
-done
+if [[ "${RELEASE_SKIP_PER_CRATE_CLIPPY:-}" == "1" ]]; then
+  echo "== per-crate clippy =="
+  echo "skipped (RELEASE_SKIP_PER_CRATE_CLIPPY=1 — workspace clippy is SSOT)"
+else
+  echo "== per-crate clippy =="
+  for crate in "${CRATES[@]}"; do
+    echo "→ clippy -p $crate"
+    FEATURES=()
+    case "$crate" in
+      edgequake-api|edgequake-core|edgequake-storage|edgequake-tasks)
+        FEATURES=(--features postgres)
+        ;;
+    esac
+    if ((${#FEATURES[@]})); then
+      (cd "$EQ" && cargo clippy -p "$crate" --lib --locked "${FEATURES[@]}" -- -D warnings)
+    else
+      (cd "$EQ" && cargo clippy -p "$crate" --lib --locked -- -D warnings)
+    fi
+  done
+fi
 
 echo "== workspace lib tests =="
 if [[ "${RELEASE_SKIP_LIB_TESTS:-}" == "1" ]]; then
   echo "skipped (RELEASE_SKIP_LIB_TESTS=1 — full suite runs on main CI)"
 else
-  (cd "$EQ" && cargo test --workspace --lib --no-fail-fast)
+  (cd "$EQ" && cargo test --workspace --lib --locked --no-fail-fast)
 fi
 
 echo "== SPEC-006 resource-proof =="
@@ -62,16 +72,36 @@ echo "== WebUI typecheck (src only; e2e via Playwright) =="
 echo "== WebUI unit tests (observability + runtime-config) =="
 (cd "$WEBUI" && bun test src/lib/api/__tests__/observability-client.test.ts src/lib/__tests__/runtime-config.test.ts)
 
-echo "== Release version parity (VERSION vs API Cargo.toml vs WebUI package.json) =="
+echo "== Docker API context (cargo manifest + COPY/dockerignore) =="
+chmod +x "$ROOT/scripts/check_docker_api_context.sh"
+"$ROOT/scripts/check_docker_api_context.sh"
+
+echo "== WebUI next.config SizeLimit guard =="
+# Next 16 SizeLimit = number | \`${number}${suffix}\`. Template expressions widen to
+# `string` and fail `next build` typecheck in Docker CD — require numeric SSOT.
+if grep -E 'proxyClientMaxBodySize:\s*`|DEV_PROXY_MAX_BODY' "$WEBUI/next.config.ts" >/dev/null; then
+  echo "ERROR: next.config.ts must use numeric SizeLimit (DEFAULT_MAX_UPLOAD_BYTES), not a string template"
+  exit 1
+fi
+grep -q 'proxyClientMaxBodySize: DEFAULT_MAX_UPLOAD_BYTES' "$WEBUI/next.config.ts" \
+  || { echo "ERROR: next.config.ts missing proxyClientMaxBodySize: DEFAULT_MAX_UPLOAD_BYTES"; exit 1; }
+echo "next.config SizeLimit guard OK"
+
+echo "== Release version parity (VERSION vs Cargo.toml vs package.json vs README) =="
 API_VER=$(grep -E '^version = ' "$EQ/Cargo.toml" | head -1 | sed 's/.*"\(.*\)".*/\1/')
 UI_VER=$(node -p "require('$WEBUI/package.json').version")
 FILE_VER=$(cat "$ROOT/VERSION" 2>/dev/null || echo "")
+README_VER=$(grep -Eo 'badge/version-[0-9]+\.[0-9]+\.[0-9]+' "$ROOT/README.md" | head -1 | sed 's/badge\/version-//')
 if [[ "$API_VER" != "$UI_VER" ]]; then
   echo "ERROR: version mismatch — edgequake/Cargo.toml=$API_VER edgequake_webui/package.json=$UI_VER"
   exit 1
 fi
 if [[ -n "$FILE_VER" && "$FILE_VER" != "$API_VER" ]]; then
   echo "ERROR: VERSION file=$FILE_VER does not match Cargo.toml=$API_VER"
+  exit 1
+fi
+if [[ -n "$README_VER" && "$README_VER" != "$API_VER" ]]; then
+  echo "ERROR: README badge version=$README_VER does not match Cargo.toml=$API_VER"
   exit 1
 fi
 echo "Release version parity OK: $API_VER"

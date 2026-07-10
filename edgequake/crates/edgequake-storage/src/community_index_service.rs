@@ -62,8 +62,12 @@ pub async fn schedule_community_index_refresh(
     graph: Arc<dyn GraphStorage>,
     workspace_id: Option<String>,
 ) {
-    schedule_community_index_refresh_with_extras(graph, workspace_id, CommunityRefreshExtras::default())
-        .await;
+    schedule_community_index_refresh_with_extras(
+        graph,
+        workspace_id,
+        CommunityRefreshExtras::default(),
+    )
+    .await;
 }
 
 /// Schedule refresh and optionally index community_report vectors after Louvain.
@@ -153,10 +157,8 @@ async fn maybe_index_community_reports(
     if !community_reports_enabled() {
         return;
     }
-    let (Some(vs), Some(embedder)) = (
-        extras.vector_storage.as_ref(),
-        extras.embedder.as_ref(),
-    ) else {
+    let (Some(vs), Some(embedder)) = (extras.vector_storage.as_ref(), extras.embedder.as_ref())
+    else {
         tracing::debug!(
             "SPEC-046: community reports enabled but embedder/vector missing — props only"
         );

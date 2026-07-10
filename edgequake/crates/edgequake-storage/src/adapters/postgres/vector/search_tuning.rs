@@ -15,14 +15,35 @@ impl PgVectorStorage {
         filtered: bool,
         iterative_scan_supported: bool,
     ) -> Vec<String> {
+        Self::search_tuning_statements_with_hnsw_mode(
+            index_type,
+            top_k,
+            filtered,
+            iterative_scan_supported,
+            hnsw_iterative_scan_mode(),
+        )
+    }
+
+    /// Pure variant for tests / DI (SPEC-046 OPS-P1.5 — no env reads).
+    pub(crate) fn search_tuning_statements_with_hnsw_mode(
+        index_type: VectorIndexType,
+        top_k: usize,
+        filtered: bool,
+        iterative_scan_supported: bool,
+        hnsw_iterative_mode: &str,
+    ) -> Vec<String> {
         let mut stmts = Vec::new();
         match index_type {
             VectorIndexType::HNSW => {
                 let ef = (top_k.saturating_mul(4)).clamp(40, 1000);
                 stmts.push(format!("SET LOCAL hnsw.ef_search = {}", ef));
                 if filtered && iterative_scan_supported {
-                    stmts.push("SET LOCAL hnsw.iterative_scan = strict_order".to_string());
-                    stmts.push("SET LOCAL hnsw.max_scan_tuples = 20000".to_string());
+                    // AWS/pgvector 2026 RAG guidance: relaxed_order for filtered search.
+                    let mode = parse_hnsw_iterative_scan_mode(hnsw_iterative_mode);
+                    if mode != "off" {
+                        stmts.push(format!("SET LOCAL hnsw.iterative_scan = {}", mode));
+                        stmts.push("SET LOCAL hnsw.max_scan_tuples = 20000".to_string());
+                    }
                 }
             }
             VectorIndexType::IVFFlat => {
@@ -76,6 +97,24 @@ impl PgVectorStorage {
     }
 }
 
+/// Resolve HNSW iterative_scan mode from a raw env value (SPEC-046 OPS-P1.5).
+///
+/// Default `relaxed_order` for filtered RAG (higher recall under filters).
+pub(crate) fn parse_hnsw_iterative_scan_mode(raw: &str) -> &'static str {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "strict" | "strict_order" => "strict_order",
+        "off" | "false" | "0" => "off",
+        _ => "relaxed_order",
+    }
+}
+
+/// Resolve HNSW iterative_scan mode (SPEC-046 OPS-P1.5).
+pub(crate) fn hnsw_iterative_scan_mode() -> &'static str {
+    parse_hnsw_iterative_scan_mode(
+        &std::env::var("EDGEQUAKE_HNSW_ITERATIVE_SCAN").unwrap_or_default(),
+    )
+}
+
 /// Return true if pgvector `extversion` is >= 0.8.0 (iterative-scan GUCs).
 pub(crate) fn pgvector_supports_iterative_scan(version: &str) -> bool {
     let mut parts = version
@@ -123,15 +162,58 @@ mod tests {
 
     #[test]
     fn test_search_tuning_hnsw_filtered_enables_iterative_scan() {
-        let stmts =
-            PgVectorStorage::search_tuning_statements(VectorIndexType::HNSW, 10, true, true);
+        let stmts = PgVectorStorage::search_tuning_statements_with_hnsw_mode(
+            VectorIndexType::HNSW,
+            10,
+            true,
+            true,
+            "relaxed_order",
+        );
         assert!(stmts.iter().any(|s| s.contains("hnsw.ef_search")));
         assert!(stmts
             .iter()
-            .any(|s| s == "SET LOCAL hnsw.iterative_scan = strict_order"));
+            .any(|s| s == "SET LOCAL hnsw.iterative_scan = relaxed_order"));
         assert!(stmts
             .iter()
             .any(|s| s == "SET LOCAL hnsw.max_scan_tuples = 20000"));
+    }
+
+    #[test]
+    fn test_search_tuning_hnsw_iterative_scan_strict() {
+        let stmts = PgVectorStorage::search_tuning_statements_with_hnsw_mode(
+            VectorIndexType::HNSW,
+            10,
+            true,
+            true,
+            "strict_order",
+        );
+        assert!(stmts
+            .iter()
+            .any(|s| s == "SET LOCAL hnsw.iterative_scan = strict_order"));
+    }
+
+    #[test]
+    fn test_search_tuning_hnsw_iterative_scan_off() {
+        let stmts = PgVectorStorage::search_tuning_statements_with_hnsw_mode(
+            VectorIndexType::HNSW,
+            10,
+            true,
+            true,
+            "off",
+        );
+        assert!(!stmts.iter().any(|s| s.contains("iterative_scan")));
+    }
+
+    #[test]
+    fn test_parse_hnsw_iterative_scan_mode_edge_cases() {
+        assert_eq!(parse_hnsw_iterative_scan_mode(""), "relaxed_order");
+        assert_eq!(parse_hnsw_iterative_scan_mode("STRICT"), "strict_order");
+        assert_eq!(
+            parse_hnsw_iterative_scan_mode(" relaxed_order "),
+            "relaxed_order"
+        );
+        assert_eq!(parse_hnsw_iterative_scan_mode("false"), "off");
+        assert_eq!(parse_hnsw_iterative_scan_mode("garbage"), "relaxed_order");
     }
 
     #[test]

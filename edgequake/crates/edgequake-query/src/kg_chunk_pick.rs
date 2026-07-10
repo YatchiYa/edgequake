@@ -46,10 +46,7 @@ impl KgChunkPickMethod {
 ///
 /// `related_chunk_number` mirrors LightRAG: max chunks contributed per entity
 /// or relationship. `0` means unlimited per source.
-pub fn collect_kg_chunk_ids(
-    context: &QueryContext,
-    related_chunk_number: usize,
-) -> Vec<String> {
+pub fn collect_kg_chunk_ids(context: &QueryContext, related_chunk_number: usize) -> Vec<String> {
     let mut ids = HashSet::new();
 
     for entity in &context.entities {
@@ -134,10 +131,81 @@ pub fn pick_chunks_by_entity_ppr(context: &QueryContext, max_chunks: usize) -> V
         .collect()
 }
 
+/// Full dual-node: PPR over entity–entity edges ∪ entity–chunk mentions (EQ-046-17).
+///
+/// When `entity_edges` is empty, falls back to lite [`pick_chunks_by_entity_ppr`].
+/// Seeds are entity names with positive score (else all entities with chunk links).
+pub fn pick_chunks_by_bipartite_ppr(
+    context: &QueryContext,
+    entity_edges: &[edgequake_storage::traits::GraphEdge],
+    max_chunks: usize,
+) -> Vec<String> {
+    use crate::graph_ppr::{rank_chunks_bipartite_ppr, PprConfig};
+
+    let mut links: Vec<(String, String)> = Vec::new();
+    let mut scored_entities: Vec<(String, f32)> = Vec::new();
+    for entity in &context.entities {
+        for chunk_id in &entity.source_chunk_ids {
+            links.push((entity.name.clone(), chunk_id.clone()));
+        }
+        if !entity.source_chunk_ids.is_empty() {
+            scored_entities.push((entity.name.clone(), entity.score.max(0.0)));
+        }
+    }
+    for rel in &context.relationships {
+        if let Some(chunk_id) = &rel.source_chunk_id {
+            links.push((rel.source.clone(), chunk_id.clone()));
+            links.push((rel.target.clone(), chunk_id.clone()));
+        }
+    }
+    if links.is_empty() {
+        return pick_chunks_by_weight(context, max_chunks);
+    }
+    // Seed only entities with score ≥ 50% of the max (keeps PPR personalized;
+    // seeding every positive score equalizes mass and defeats dual-node ranking).
+    let max_score = scored_entities
+        .iter()
+        .map(|(_, s)| *s)
+        .fold(0.0f32, f32::max);
+    let mut seeds: Vec<String> = if max_score > 0.0 {
+        scored_entities
+            .iter()
+            .filter(|(_, s)| *s >= max_score * 0.5)
+            .map(|(n, _)| n.clone())
+            .collect()
+    } else {
+        scored_entities.into_iter().map(|(n, _)| n).collect()
+    };
+    if seeds.is_empty() {
+        seeds = context
+            .entities
+            .iter()
+            .filter(|e| !e.source_chunk_ids.is_empty())
+            .map(|e| e.name.clone())
+            .collect();
+    }
+    if seeds.is_empty() || entity_edges.is_empty() {
+        // No structural entity edges → lite projection is the honest fallback.
+        return pick_chunks_by_entity_ppr(context, max_chunks);
+    }
+    let ranked = rank_chunks_bipartite_ppr(
+        entity_edges,
+        &links,
+        &seeds,
+        &PprConfig::default(),
+        max_chunks,
+    );
+    if ranked.is_empty() {
+        return pick_chunks_by_entity_ppr(context, max_chunks);
+    }
+    ranked
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::context::{QueryContext, RetrievedEntity, RetrievedRelationship};
+    use std::collections::HashMap;
 
     #[test]
     fn related_chunk_number_caps_per_entity() {
@@ -178,5 +246,37 @@ mod tests {
         ctx.add_entity(cold);
         let ranked = pick_chunks_by_entity_ppr(&ctx, 2);
         assert_eq!(ranked.first().map(String::as_str), Some("chunk-hot"));
+    }
+
+    #[test]
+    fn pick_chunks_by_bipartite_ppr_prefers_seed_chunk() {
+        use edgequake_storage::traits::GraphEdge;
+        let mut ctx = QueryContext::new();
+        let mut seed = RetrievedEntity::new("SEED", "CONCEPT", "d");
+        seed.score = 1.0;
+        seed.source_chunk_ids = vec!["chunk-hot".into()];
+        let mut n1 = RetrievedEntity::new("N1", "CONCEPT", "d");
+        n1.score = 0.2;
+        n1.source_chunk_ids = vec!["chunk-cold".into()];
+        ctx.add_entity(seed);
+        ctx.add_entity(n1);
+        let edges = vec![GraphEdge {
+            source: "SEED".into(),
+            target: "N1".into(),
+            properties: HashMap::new(),
+        }];
+        let ranked = pick_chunks_by_bipartite_ppr(&ctx, &edges, 2);
+        assert_eq!(ranked.first().map(String::as_str), Some("chunk-hot"));
+    }
+
+    #[test]
+    fn bipartite_falls_back_to_lite_without_entity_edges() {
+        let mut ctx = QueryContext::new();
+        let mut hot = RetrievedEntity::new("HOT", "CONCEPT", "d");
+        hot.score = 1.0;
+        hot.source_chunk_ids = vec!["chunk-hot".into()];
+        ctx.add_entity(hot);
+        let ranked = pick_chunks_by_bipartite_ppr(&ctx, &[], 1);
+        assert_eq!(ranked, vec!["chunk-hot".to_string()]);
     }
 }

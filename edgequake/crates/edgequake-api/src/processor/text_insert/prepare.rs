@@ -154,6 +154,7 @@ impl DocumentTaskProcessor {
             .and_then(|v| v.as_u64())
             .map(|v| v as usize)
             .unwrap_or(1);
+        let max_gleaning = edgequake_pipeline::clamp_max_gleaning(max_gleaning);
 
         let page_count_for_profile = data
             .metadata

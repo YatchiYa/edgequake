@@ -133,6 +133,9 @@ pub use persistence::{
     IngestionPersistOutput, IngestionPersistSettings, IngestionPersister,
 };
 pub use pipeline::{
+    clamp_max_concurrent_extractions,
+    clamp_max_gleaning,
+    ChunkErrorInfo,
     ChunkProgressCallback,
     ChunkProgressUpdate,
     CostBreakdownStats,
@@ -148,6 +151,8 @@ pub use pipeline::{
     DEFAULT_INITIAL_RETRY_DELAY_MS,
     DEFAULT_MAX_CONCURRENT_EXTRACTIONS,
     MAX_CHUNK_MAX_RETRIES,
+    MAX_CONCURRENT_EXTRACTIONS_CAP,
+    MAX_GLEANING_CAP,
     MIN_CHUNK_TIMEOUT_SECS,
 };
 pub use progress::{

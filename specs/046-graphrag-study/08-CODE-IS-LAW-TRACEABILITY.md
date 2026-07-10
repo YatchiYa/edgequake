@@ -2,6 +2,9 @@
 
 Every assessment claim maps to a concrete symbol. Use this when challenging the study.
 
+**Release:** EdgeQuake **v0.16.0** (2026-07-10) — OPS-P0–P3 + Science P4 shipped.  
+**Rule:** If a row below disagrees with `edgequake/crates/**`, update this file — code wins.
+
 ---
 
 ## EdgeQuake — Ingestion
@@ -30,7 +33,7 @@ Every assessment claim maps to a concrete symbol. Use this when challenging the 
 | E-I20 | pgvector | `edgequake-storage/src/adapters/postgres/vector/mod.rs` | `PgVectorStorage` |
 | E-I21 | Graph quality metrics | `edgequake-storage/src/graph_metrics.rs` | `collect_graph_quality_metrics` |
 | E-I22 | Process fingerprint | `edgequake-api/src/services/process_fingerprint.rs` | `ProcessFingerprintInput` |
-| E-I23 | Delete rebuild lite | `edgequake-api/src/services/knowledge_rebuild.rs` | `apply_rebuild_to_properties` |
+| E-I23 | Delete rebuild lite (single tagged segment clears) | `edgequake-api/src/services/knowledge_rebuild.rs` | `rebuild_description_from_remaining_sources`, `apply_rebuild_to_properties` |
 | E-I24 | MM orphan inject | `edgequake-pipeline/src/multimodal/injection.rs` | `inject_modality_relations` |
 | E-I25 | Community report index | `edgequake-storage/src/community_reports.rs` | `index_community_reports_with_embedder` |
 | E-I26 | TextEmbedder port | `edgequake-storage/src/traits/embedder.rs` | `TextEmbedder` |
@@ -59,7 +62,7 @@ Every assessment claim maps to a concrete symbol. Use this when challenging the 
 | E-Q11 | RRF | `fusion.rs` | `reciprocal_rank_fusion`, `RRF_K` |
 | E-Q12 | BM25 fuse | `sparse_retrieval.rs` | `fuse_vector_and_bm25_chunks` |
 | E-Q13 | Chunk pick | `engine_impl/modes/chunk_retrieval.rs` + `kg_chunk_pick.rs` | `append_score_ranked_chunks`, `KgChunkPickMethod` |
-| E-Q14 | BFS / PPR hops | `graph_expand.rs`, `graph_ppr.rs` | `expand_neighborhood_edges`, `GraphWalkMode` |
+| E-Q14 | BFS / PPR hops (PPR default) | `graph_expand.rs`, `graph_ppr.rs` | `expand_neighborhood_edges`, `parse_graph_walk_mode` |
 | E-Q15 | Community expand + reports | `community_global.rs` | `expand_global_context_with_communities`, `append_community_report_vector_chunks` |
 | E-Q16 | Keywords | `keywords/llm_extractor.rs` | `LLMKeywordExtractor` |
 | E-Q17 | Intent router (evidence-aligned) | `keywords/intent.rs` | `QueryIntent::recommended_mode` |
@@ -116,7 +119,61 @@ Every assessment claim maps to a concrete symbol. Use this when challenging the 
 
 ---
 
-## External Evidence
+## EdgeQuake — Ops / Storage / Defense / Observability (2026-07-10)
+
+| ID | Claim | Path | Symbol |
+|----|-------|------|--------|
+| E-O01 | PG extension pins SSOT | `edgequake/docker/extension-pins.sh` | `EQ_POSTGRES_PROFILE` pg16/17/18 |
+| E-O02 | HNSW DDL fail-closed | `.../vector/ddl.rs` | `create_table` ANN index `map_err` |
+| E-O03 | HNSW defaults m=16 ef_c=32 | `.../postgres/config.rs` | `PostgresConfig::default` |
+| E-O04 | ef_search + iterative_scan | `.../vector/search_tuning.rs` | `search_tuning_statements` |
+| E-O05 | halfvec policy | `.../capabilities.rs` | `AnnIndexPolicy::resolve` |
+| E-O06 | AGE ensure_indexes | `.../graph/helpers/graph_lifecycle.rs` | `ensure_indexes`, `bootstrap_concurrent_indexes` |
+| E-O07 | Bounded community load | `community.rs` | `load_graph_bounded` |
+| E-O08 | get_all_nodes (admin/legacy) | `.../graph/nodes_ops.rs` | `pg_get_all_nodes` (not community hot path) |
+| E-O09 | sqlx + reconcile bootstrap | `.../migration_bootstrap/mod.rs` | `run_postgres_migrations` |
+| E-O10 | Checksum repair M071/M078 | `reconcile/m071.rs`, `m078.rs` | `repair_migration_*_checksum_if_needed` |
+| E-O11 | Readiness gating SSOT | `migration_bootstrap/mod.rs` | `is_ready_for_traffic` ← `readiness_blockers` |
+| E-O12 | Saga compensation | `edgequake-storage/src/compensation.rs` | `compensate_merge_failure_with_kv` |
+| E-O13 | StorageInspector + hourly | `edgequake-api/src/storage_inspector.rs` | `auto_repair_safe`, `spawn_hourly_monitor` |
+| E-O14 | retry-chunks + graph merge | `handlers/documents/recovery/chunks.rs` | `retry_failed_chunks` → `KnowledgeGraphMerger::merge` |
+| E-O15 | failed_chunks persist | `failed_chunks.rs` + extraction | `insert_failed_chunks` |
+| E-O16 | Process fingerprint | `services/process_fingerprint.rs` | `fingerprint_is_stale` |
+| E-O17 | Prometheus metrics | `edgequake-observability/src/metrics.rs` | `record_query_completed`, … |
+| E-O18 | Graph quality + Prometheus | `graph_metrics.rs`, `metrics.rs` | `log_graph_quality` → `record_graph_quality` |
+| E-O19 | Optional OTEL | `edgequake-observability/src/subscriber.rs` | `otel_enabled` |
+| E-O20 | AGE RLS opt-in M081 | `migrations/support/081/apply.sql` | AGE ≥1.7 |
+| E-O21 | Semantic fail-loud | `chunker/semantic.rs` | `SemanticChunking::chunk` |
+| E-O22 | RLS session API | `.../postgres/rls.rs` | `acquire_rls_connection` |
+| E-O23 | Health / ready | `handlers/health.rs`, `health_types.rs` | `HealthResponse`, `MigrationHealthSnapshot` |
+| E-O24 | ANN readiness blocker | `migration_bootstrap` | `missing_hnsw_index` |
+| E-O25 | iterative_scan relaxed | `search_tuning.rs` | `parse_hnsw_iterative_scan_mode` |
+| E-O26 | Intent-gated Mix/Hybrid | `mix_weights.rs`, `modes/{mix,hybrid}.rs` | `resolve_arm_plan`, `resolve_hybrid_arm_plan` |
+| E-O27 | Gleaning/concurrency clamps | `pipeline/config.rs`, admission | `clamp_max_gleaning`, `MAX_CONCURRENT_EXTRACTIONS_CAP` |
+| E-O28 | Embed truncate policy | `helpers/embeddings.rs` | `EmbeddingTruncationPolicy`, `parse_embedding_truncation_policy` |
+| E-O29 | Orphan KV compensate | `compensation.rs` | `compensate_orphan_kv` |
+| E-O30 | QueryStats arm timings | `types.rs` QueryStats | `absorb_arm_metadata`, `arm_*_ms` |
+| E-O31 | OTel GenAI / rag spans | `observability/rag_span.rs` | `with_rag_retrieval_span`, `RagRetrievalAttrs` |
+| E-O32 | Popular-node telemetry | `retrieval_telemetry.rs`, local/global | `mark_popular_node_fallback` |
+| E-O33 | Sparse/FTS outcome | `sparse_retrieval.rs` | `SparseRetrievalOutcome`, `fuse_vector_and_bm25_chunks` |
+| E-O34 | RlsContext unexported | `postgres/mod.rs` | no `pub use … RlsContext` |
+| E-O35 | PG matrix smoke | `e2e/run_ops17_perf_smoke.sh`, nightly workflow | `make ops17-smoke` |
+| E-O36 | Drift SLO metrics | `storage_inspector.rs`, `metrics.rs` | `emit_drift_metrics`, `record_storage_drift` |
+| E-O37 | Faithfulness sampler | `eval/faithfulness.rs` | `maybe_score_faithfulness`, `score_faithfulness_heuristic` |
+| E-O38 | Ops runbooks | `13-OPS-RUNBOOKS.md` | upgrade / REINDEX / drift / retry |
+| E-O39 | Arm/mode span wiring | `modes/arm_timed.rs`, `query_pipeline.rs` | `run_arm_timed`, `pipeline_retrieve` |
+| E-O40 | LLM-judge faithfulness | `eval/faithfulness_judge.rs` | `score_faithfulness_llm`, `parse_judge_score` |
+| E-O41 | ACC CI harness | `eval/acc_harness.rs` | `run_spec046_acc_report`, `AccReport` |
+| E-O42 | PPR default walk | `graph_ppr.rs` | `parse_graph_walk_mode`, `GraphWalkMode::default=Ppr` |
+| E-O43 | Mistral ACC live | `tests/e2e_spec046_ops_p3_acc.rs` | `e2e_ops_p3_mistral_small_embed_faithfulness_live` |
+| E-O44 | ACC CI JSON artifact | `acc_harness.rs`, `e2e/run_spec046_acc.sh` | `write_spec046_acc_report_json`, `make spec046-acc` |
+| E-O45 | Bipartite dual-node PPR | `graph_ppr.rs`, `kg_chunk_pick.rs` | `adjacency_from_bipartite`, `pick_chunks_by_bipartite_ppr` |
+| E-O46 | Mini corpus retrieval ACC | `eval/graphrag_corpus.rs` | `run_spec046_corpus_acc_report`, `spec046_mini_corpus` |
+| E-O47 | Science P4 e2e | `tests/e2e_spec046_science_p4.rs` | ACC artifact + bipartite + Mistral live |
+
+---
+
+## External Evidence (extended)
 
 | ID | Claim | Source |
 |----|-------|--------|
@@ -124,22 +181,44 @@ Every assessment claim maps to a concrete symbol. Use this when challenging the 
 | X02 | HippoRAG2 denser + better multi-hop | arXiv:2502.14802 + GraphRAG-Bench tables |
 | X03 | LightRAG dual-level design | arXiv:2410.05779v3 |
 | X04 | Hybrid = dense+sparse+graph+RRF | 2026 Hybrid Search practice guides |
-| X05 | pgvector + AGE pattern | Azure HorizonDB Graph-Augmented RAG |
+| X05 | pgvector + AGE pattern | Azure HorizonDB / unified Postgres Graph-RAG |
+| X06 | iterative_scan for filtered ANN | pgvector 0.8.0 release (postgresql.org) |
+| X07 | AGE needs explicit indexes | Microsoft Learn AGE performance (2026-01) |
+| X08 | AGE 1.7 RLS + slow upgrade | apache/age PG17/PG18 v1.7.0 release notes |
+| X09 | OTel GenAI + rag retrieval attrs | open-telemetry/semantic-conventions-genai |
+| X10 | Faithfulness ≥0.9 production gate | RAG in Production 2026 guides |
+| X11 | PG18 checksums default | PostgreSQL 18 / corruption literature |
 
 ---
 
 ## Cross-Ref: Assessment → Evidence
 
-| Assessment statement | Evidence IDs |
-|----------------------|--------------|
-| EQ is LightRAG-class | E-Q01–09, L-Q01–08, X03 |
-| Mix+RRF+BM25 is EQ advantage | E-Q11, E-Q12, X04 |
-| Global ≠ MS GraphRAG reports (optional extractive) | E-Q02, E-Q15, E-I25, X03 |
-| Intent router evidence-aligned | E-Q17, X01 |
-| PPR available (default BFS) | E-Q14, X02 |
-| Semantic chunk V opt-in | E-I14, L-I05 |
-| Strong enterprise substrate | E-I19, E-I20, workspaces/RLS |
-| Process fingerprint stale purge | E-I22, L-I02 |
-| Role-LLM Keyword/Summary/Extract/Query/Vlm | E-I27, E-Q24 |
-| Plan P0.1 rewire intent | E-Q17, X01 |
-| Plan P1.1 PPR arm | X02, E-Q14 |
+| Assessment statement | Evidence IDs | Code truth (v0.16.0) |
+|----------------------|--------------|----------------------|
+| EQ is LightRAG-class | E-Q01–09, L-Q01–08, X03 | ✅ Mix default + dual-level |
+| Mix+RRF+BM25 is EQ advantage | E-Q11, E-Q12, X04 | ✅ |
+| Global ≠ MS GraphRAG reports (optional extractive) | E-Q02, E-Q15, E-I25, X03 | ✅ opt-in reports |
+| Intent router evidence-aligned | E-Q17, X01 | ✅ Factual→Naive |
+| PPR **default** graph walk (`bfs` escape) | E-Q14, E-O42, X02 | ✅ `GraphWalkMode::default=Ppr` |
+| Bipartite dual-node chunk pick | E-O45, E-Q27 | ✅ `pick_chunks_by_bipartite_ppr` |
+| Semantic chunk V opt-in | E-I14, L-I05 | ✅ fail-loud (E-O21) |
+| Strong enterprise substrate | E-I19, E-I20, E-O01–O06 | ✅ |
+| Process fingerprint stale purge | E-I22, L-I02 | ✅ |
+| Role-LLM Keyword/Summary/Extract/Query/Vlm | E-I27, E-Q24 | ✅ |
+| HNSW + iterative_scan + fail-closed `/ready` | E-O02–O04, E-O24–O25, X06 | ✅ |
+| AGE indexes created by EQ | E-O06, X07 | ✅ |
+| Community O(N) on ingest hot path | E-O07 | ✅ **bounded** `load_graph_bounded` |
+| retry-chunks + failed_chunks + merge | E-O14, E-O15 | ✅ **implemented** |
+| Defense skeleton (saga+inspector+drift) | E-O12, E-O13, E-O36 | ✅ |
+| Observability arms/graph/faithfulness | E-O17–O18, E-O30–O33, E-O37–O40 | ✅ P0–P3 |
+| ACC CI + mini corpus | E-O41, E-O44, E-O46–O47 | ✅ `make spec046-acc` |
+| Ops plan tickets | docs 09–12 / EQ-046-OPS-* | ✅ all DONE |
+| Deferred: HF full corpus / cross-encoder / density YAML / LLM community depth | 07 deferred list | ⏳ post-0.16 |
+
+---
+
+## Release stamp
+
+**Cut:** EdgeQuake **v0.16.0** (2026-07-10) — SPEC-046 OPS-P0–P3 + Science P4.  
+**Gates:** `make release-gates` · `make spec046-acc` · `make ops17-smoke` · CI nextest lib.  
+**Law:** If this index disagrees with `edgequake/crates/**`, **code wins** — update this file.

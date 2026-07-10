@@ -60,8 +60,7 @@ impl DocumentTaskProcessor {
 
         // SPEC-046: Summary role for merge summarizer when configured.
         let summary_ws = async {
-            let uuid =
-                crate::middleware::resolve_workspace_uuid(Some(data.workspace_id.as_str()))?;
+            let uuid = crate::middleware::resolve_workspace_uuid(Some(data.workspace_id.as_str()))?;
             let ws_svc = self.workspace_service.as_ref()?;
             ws_svc.get_workspace(uuid).await.ok().flatten()
         }

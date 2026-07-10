@@ -100,6 +100,7 @@ impl QueryEngine {
             .await?;
         stats.retrieval_time_ms = retrieval_start.elapsed().as_millis() as u64;
         stats.context_tokens = context.token_count;
+        stats.absorb_arm_metadata(&context);
 
         if request.context_only {
             if let Some(cache) = &self.result_cache {
@@ -183,6 +184,10 @@ impl QueryEngine {
             );
         }
 
+        let pre_e = context.entities.len();
+        let pre_r = context.relationships.len();
+        let pre_c = context.chunks.len();
+
         let (truncated_entities, truncated_relationships, truncated_chunks) = balance_context(
             context.entities.clone(),
             context.relationships.clone(),
@@ -194,6 +199,18 @@ impl QueryEngine {
         context.entities = truncated_entities;
         context.relationships = truncated_relationships;
         context.chunks = truncated_chunks;
+        if context.entities.len() < pre_e
+            || context.relationships.len() < pre_r
+            || context.chunks.len() < pre_c
+        {
+            context.is_truncated = true;
+        }
+        if let Some(s) = stats.as_mut() {
+            s.context_truncated = context.is_truncated;
+            s.context_empty = context.chunks.is_empty()
+                && context.entities.is_empty()
+                && context.relationships.is_empty();
+        }
         context
     }
 
@@ -280,6 +297,10 @@ impl QueryEngine {
         request: &QueryRequest,
         providers: &QueryProviders<'_>,
     ) -> Result<QueryContext> {
+        use edgequake_observability::{
+            query_preview, record_rag_retrieval_outcome, with_rag_retrieval_span, RagRetrievalAttrs,
+        };
+
         let tenant = request.tenant_id();
         let workspace = request.workspace_id();
         let mode = prepared.mode;
@@ -290,127 +311,160 @@ impl QueryEngine {
         // SPEC-031: pass allowed_document_ids into every mode for Tier 1 pre-filter
         let allowed_doc_ids = request.allowed_document_ids.as_deref();
 
-        match providers.vector_storage {
-            Some(vector_storage) => match mode {
-                QueryMode::Local => {
-                    self.query_local_with_vector_storage(
-                        &request.query,
-                        keywords,
-                        embeddings,
-                        tenant,
-                        workspace,
-                        allowed_doc_ids,
-                        vector_storage,
-                        max_chunks,
-                    )
-                    .await
-                }
-                QueryMode::Global => {
-                    self.query_global_with_vector_storage(
-                        &request.query,
-                        keywords,
-                        embeddings,
-                        tenant,
-                        workspace,
-                        allowed_doc_ids,
-                        vector_storage,
-                        max_chunks,
-                    )
-                    .await
-                }
-                QueryMode::Hybrid => {
-                    self.query_hybrid_with_vector_storage(
-                        &request.query,
-                        keywords,
-                        embeddings,
-                        tenant,
-                        workspace,
-                        allowed_doc_ids,
-                        vector_storage,
-                        max_chunks,
-                    )
-                    .await
-                }
-                QueryMode::Mix => {
-                    self.query_mix_with_vector_storage(
-                        &request.query,
-                        keywords,
-                        embeddings,
-                        tenant,
-                        workspace,
-                        allowed_doc_ids,
-                        vector_storage,
-                        request.mix_weights.as_ref(),
-                        max_chunks,
-                    )
-                    .await
-                }
-                QueryMode::Naive => {
-                    self.query_naive_with_vector_storage(
-                        &request.query,
-                        embeddings,
-                        tenant,
-                        workspace,
-                        allowed_doc_ids,
-                        vector_storage,
-                        max_chunks,
-                    )
-                    .await
-                }
-                QueryMode::Bypass => Ok(QueryContext::default()),
-            },
-            None => match mode {
-                QueryMode::Local => {
-                    self.query_local(
-                        &request.query,
-                        keywords,
-                        embeddings,
-                        tenant,
-                        workspace,
-                        max_chunks,
-                    )
-                    .await
-                }
-                QueryMode::Global => {
-                    self.query_global(
-                        &request.query,
-                        keywords,
-                        embeddings,
-                        tenant,
-                        workspace,
-                        max_chunks,
-                    )
-                    .await
-                }
-                QueryMode::Hybrid => {
-                    self.query_hybrid(
-                        &request.query,
-                        keywords,
-                        embeddings,
-                        tenant,
-                        workspace,
-                        max_chunks,
-                    )
-                    .await
-                }
-                QueryMode::Mix => {
-                    self.query_mix(
-                        &request.query,
-                        keywords,
-                        embeddings,
-                        tenant,
-                        workspace,
-                        request.mix_weights.as_ref(),
-                        max_chunks,
-                    )
-                    .await
-                }
-                QueryMode::Naive => {
-                    self.query_naive(&request.query, embeddings, tenant, workspace, max_chunks)
+        // OPS-24: single-mode paths get a top-level retrieval span; Mix/Hybrid
+        // arms are spanned inside `run_arm_timed` (avoid double-nesting).
+        let needs_mode_span = matches!(
+            mode,
+            QueryMode::Local | QueryMode::Global | QueryMode::Naive
+        );
+
+        let retrieve = async {
+            match providers.vector_storage {
+                Some(vector_storage) => match mode {
+                    QueryMode::Local => {
+                        self.query_local_with_vector_storage(
+                            &request.query,
+                            keywords,
+                            embeddings,
+                            tenant,
+                            workspace,
+                            allowed_doc_ids,
+                            vector_storage,
+                            max_chunks,
+                        )
                         .await
-                }
-                QueryMode::Bypass => Ok(QueryContext::default()),
-            },
+                    }
+                    QueryMode::Global => {
+                        self.query_global_with_vector_storage(
+                            &request.query,
+                            keywords,
+                            embeddings,
+                            tenant,
+                            workspace,
+                            allowed_doc_ids,
+                            vector_storage,
+                            max_chunks,
+                        )
+                        .await
+                    }
+                    QueryMode::Hybrid => {
+                        self.query_hybrid_with_vector_storage(
+                            &request.query,
+                            keywords,
+                            embeddings,
+                            tenant,
+                            workspace,
+                            allowed_doc_ids,
+                            vector_storage,
+                            max_chunks,
+                        )
+                        .await
+                    }
+                    QueryMode::Mix => {
+                        self.query_mix_with_vector_storage(
+                            &request.query,
+                            keywords,
+                            embeddings,
+                            tenant,
+                            workspace,
+                            allowed_doc_ids,
+                            vector_storage,
+                            request.mix_weights.as_ref(),
+                            max_chunks,
+                        )
+                        .await
+                    }
+                    QueryMode::Naive => {
+                        self.query_naive_with_vector_storage(
+                            &request.query,
+                            embeddings,
+                            tenant,
+                            workspace,
+                            allowed_doc_ids,
+                            vector_storage,
+                            max_chunks,
+                        )
+                        .await
+                    }
+                    QueryMode::Bypass => Ok(QueryContext::default()),
+                },
+                None => match mode {
+                    QueryMode::Local => {
+                        self.query_local(
+                            &request.query,
+                            keywords,
+                            embeddings,
+                            tenant,
+                            workspace,
+                            max_chunks,
+                        )
+                        .await
+                    }
+                    QueryMode::Global => {
+                        self.query_global(
+                            &request.query,
+                            keywords,
+                            embeddings,
+                            tenant,
+                            workspace,
+                            max_chunks,
+                        )
+                        .await
+                    }
+                    QueryMode::Hybrid => {
+                        self.query_hybrid(
+                            &request.query,
+                            keywords,
+                            embeddings,
+                            tenant,
+                            workspace,
+                            max_chunks,
+                        )
+                        .await
+                    }
+                    QueryMode::Mix => {
+                        self.query_mix(
+                            &request.query,
+                            keywords,
+                            embeddings,
+                            tenant,
+                            workspace,
+                            request.mix_weights.as_ref(),
+                            max_chunks,
+                        )
+                        .await
+                    }
+                    QueryMode::Naive => {
+                        self.query_naive(&request.query, embeddings, tenant, workspace, max_chunks)
+                            .await
+                    }
+                    QueryMode::Bypass => Ok(QueryContext::default()),
+                },
+            }
+        };
+
+        if needs_mode_span {
+            with_rag_retrieval_span(
+                RagRetrievalAttrs {
+                    data_source_id: Some("edgequake"),
+                    top_k: Some(max_chunks),
+                    arm: Some(mode.as_str()),
+                    mode: Some(mode.as_str()),
+                    query_preview: Some(query_preview(&request.query, 64)),
+                },
+                async {
+                    let ctx = retrieve.await?;
+                    record_rag_retrieval_outcome(
+                        ctx.chunks.is_empty() && ctx.entities.is_empty(),
+                        false,
+                        None,
+                    );
+                    Ok(ctx)
+                },
+            )
+            .await
+        } else {
+            retrieve.await
         }
     }
 
@@ -483,6 +537,26 @@ impl QueryEngine {
 
         stats.generated_tokens = generated_tokens;
         stats.total_time_ms = pipeline_start.elapsed().as_millis() as u64;
+
+        // SPEC-046 OPS-P3.22: optional LLM-judge faithfulness (opt-in).
+        // Falls back to heuristic sampler (OPS-P2.20) when judge off / fails.
+        if let Some(score) = crate::eval::maybe_score_faithfulness_llm(
+            crate::eval::faithfulness_judge_enabled_from_env(),
+            providers.answer_llm.as_deref(),
+            &answer,
+            &final_context,
+        )
+        .await
+        {
+            stats.faithfulness_score = Some(score);
+        } else if let Some(score) = crate::eval::maybe_score_faithfulness(
+            crate::eval::faithfulness_sample_rate_from_env(),
+            &request.query,
+            &answer,
+            &final_context,
+        ) {
+            stats.faithfulness_score = Some(score);
+        }
 
         Ok(QueryResponse {
             answer,

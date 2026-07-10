@@ -1,301 +1,156 @@
 name: Test Quality Gates
 
+# First principles: do NOT recompile the full workspace lib suite here —
+# that already runs in CI (`test` job). This workflow owns complementary
+# gates: invariants, count floor, flake lint, UI-only Playwright.
+
 on:
-    push:
-        branches: [main, edgequake-main]
-    pull_request:
-        branches: [main, edgequake-main]
+  push:
+    branches: [main, edgequake-main]
+  pull_request:
+    branches: [main, edgequake-main]
 
 concurrency:
-    group: ci-${{ github.workflow }}-${{ github.ref }}
-    cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
-    CARGO_TERM_COLOR: always
-    RUST_BACKTRACE: 1
-    RUST_TOOLCHAIN: 1.95.0
-    CARGO_INCREMENTAL: 0
-    RUSTFLAGS: -C debuginfo=0
-    # Test timing thresholds (in seconds)
-    UNIT_TEST_TIMEOUT: 30
-    INTEGRATION_TEST_TIMEOUT: 120
-    E2E_TEST_TIMEOUT: 300
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: short
+  RUST_TOOLCHAIN: 1.95.0
+  CARGO_INCREMENTAL: "0"
+  CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+  RUST_LOG: warn
+  RUST_MIN_STACK: "16777216"
 
 jobs:
-    # Fast feedback loop - unit tests with timing gates
-    unit-tests:
-        name: "Unit Tests (Target: <30s)"
-        runs-on: ubuntu-latest
-        timeout-minutes: 5
-        steps:
-            - uses: actions/checkout@v6
+  invariant-tests:
+    name: Invariant Tests (INV-001 to INV-010)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-rust
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          cache-key: invariants
+          save-if: ${{ github.ref == 'refs/heads/edgequake-main' || github.ref == 'refs/heads/main' }}
 
-            - name: Install Rust
-              uses: dtolnay/rust-toolchain@master
-              with:
-                  toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - name: Run invariant tests
+        working-directory: edgequake
+        run: |
+          set -euo pipefail
+          echo "Running critical invariant tests..."
+          cargo test --package edgequake-core --test inviolable_invariants --locked --no-fail-fast 2>&1 | tee invariant_output.txt
+          cargo test --package edgequake-core --test edge_case_invariants --locked --no-fail-fast 2>&1 | tee -a invariant_output.txt
+          cargo test --package edgequake-api --test integration_invariants --locked --no-fail-fast 2>&1 | tee -a invariant_output.txt
+          if grep -q "FAILED" invariant_output.txt; then
+            echo "::error::CRITICAL: Invariant tests failed! This is a reliability violation."
+            exit 1
+          fi
+          echo "::notice::All invariant tests passed - reliability verified"
 
-            - name: Cache cargo
-              uses: Swatinem/rust-cache@v2
-              with:
-                  workspaces: edgequake
+  test-count-gate:
+    name: Test Count Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-rust
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          cache-key: test-count
+          save-if: ${{ github.ref == 'refs/heads/edgequake-main' || github.ref == 'refs/heads/main' }}
 
-            - name: Run unit tests with timing
-              working-directory: edgequake
-              run: |
-                  START_TIME=$(date +%s)
-                  cargo test --lib --workspace --no-default-features --no-fail-fast 2>&1 | tee test_output.txt
-                  END_TIME=$(date +%s)
-                  DURATION=$((END_TIME - START_TIME))
-                  echo "::notice::Unit tests completed in ${DURATION}s"
-                  
-                  # Count passed tests
-                  PASSED=$(grep -c "test result: ok" test_output.txt || echo "0")
-                  echo "::notice::Tests passed: ${PASSED}"
-                  
-                  # Timing gate check
-                  if [ $DURATION -gt $UNIT_TEST_TIMEOUT ]; then
-                    echo "::warning::Unit tests exceeded ${UNIT_TEST_TIMEOUT}s threshold (actual: ${DURATION}s)"
-                  fi
+      - name: Verify minimum test count (lib, no-default-features)
+        working-directory: edgequake
+        run: |
+          set -euo pipefail
+          # Feature-matrix floor only (CI `test` already covers default features).
+          cargo test --workspace --lib --no-default-features --locked --no-fail-fast 2>&1 | tee all_tests.txt
+          TOTAL_PASSED=$(grep "test result:" all_tests.txt | grep -oE "[0-9]+ passed" | awk '{sum += $1} END {print sum}')
+          echo "::notice::Total tests passed: ${TOTAL_PASSED}"
+          MIN_TESTS=870
+          if [ "${TOTAL_PASSED:-0}" -lt "$MIN_TESTS" ]; then
+            echo "::error::Test count below threshold! Expected >= ${MIN_TESTS}, got ${TOTAL_PASSED}"
+            exit 1
+          fi
+          echo "✅ Test count gate passed: ${TOTAL_PASSED} >= ${MIN_TESTS}"
 
-    # Invariant tests - critical reliability checks
-    invariant-tests:
-        name: Invariant Tests (INV-001 to INV-010)
-        runs-on: ubuntu-latest
-        timeout-minutes: 15
-        steps:
-            - uses: actions/checkout@v6
+  e2e-flake-lint:
+    name: E2E Flake Lint (chromium gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate chromium gate anti-patterns
+        run: make test-e2e-lint
 
-            - name: Install Rust
-              uses: dtolnay/rust-toolchain@master
-              with:
-                  toolchain: ${{ env.RUST_TOOLCHAIN }}
+  e2e-ui:
+    name: E2E UI Gate (chromium, no backend)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
 
-            - name: Cache cargo
-              uses: Swatinem/rust-cache@v2
-              with:
-                  workspaces: edgequake
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
 
-            - name: Run invariant tests
-              working-directory: edgequake
-              run: |
-                  echo "Running critical invariant tests..."
-                  
-                  # Core invariants (must pass 100%)
-                  cargo test --package edgequake-core --test inviolable_invariants --no-default-features 2>&1 | tee invariant_output.txt
-                  
-                  # Edge case invariants
-                  cargo test --package edgequake-core --test edge_case_invariants --no-default-features 2>&1 | tee -a invariant_output.txt
-                  
-                  # Integration invariants
-                  cargo test --package edgequake-api --test integration_invariants --no-default-features 2>&1 | tee -a invariant_output.txt
-                  
-                  # Verify all passed
-                  if grep -q "FAILED" invariant_output.txt; then
-                    echo "::error::CRITICAL: Invariant tests failed! This is a reliability violation."
-                    exit 1
-                  fi
-                  echo "::notice::All invariant tests passed - reliability verified"
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.13.1
 
-    # API tests with timing
-    api-tests:
-        name: "API Tests (Target: <30s)"
-        runs-on: ubuntu-latest
-        timeout-minutes: 20
-        steps:
-            - uses: actions/checkout@v6
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
 
-            - name: Install Rust
-              uses: dtolnay/rust-toolchain@master
-              with:
-                  toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - name: Install frontend dependencies
+        working-directory: edgequake_webui
+        run: pnpm install --frozen-lockfile
 
-            - name: Cache cargo
-              uses: Swatinem/rust-cache@v2
-              with:
-                  workspaces: edgequake
+      - name: Install Playwright Chromium
+        working-directory: edgequake_webui
+        run: pnpm exec playwright install chromium --with-deps
 
-            - name: Run API tests with timing
-              working-directory: edgequake
-              run: |
-                  START_TIME=$(date +%s)
-                  # Keep this gate focused on the API crate's library/unit coverage.
-                  # Heavier end-to-end paths already run in dedicated E2E workflows.
-                  cargo test --package edgequake-api --lib --no-default-features --no-fail-fast 2>&1 | tee api_output.txt
-                  END_TIME=$(date +%s)
-                  DURATION=$((END_TIME - START_TIME))
-                  echo "::notice::API tests completed in ${DURATION}s"
-                  
-                  # Extract test count
-                  PASSED=$(grep "test result:" api_output.txt | grep -o "[0-9]* passed" | head -1 || echo "unknown")
-                  echo "::notice::API tests: ${PASSED}"
+      - name: Run UI-only chromium gate
+        run: make test-e2e-ui
 
-    # Rate limiter and LLM tests - previously slow, now optimized
-    optimized-tests:
-        name: Optimized Tests (Previously Slow)
-        runs-on: ubuntu-latest
-        timeout-minutes: 5
-        steps:
-            - uses: actions/checkout@v6
+  quality-summary:
+    name: Quality Gate Summary
+    needs: [invariant-tests, test-count-gate, e2e-flake-lint, e2e-ui]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check quality gates
+        run: |
+          echo "## Quality Gate Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Gate | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Invariant Tests | ${{ needs.invariant-tests.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Count (>=870) | ${{ needs.test-count-gate.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| E2E Flake Lint | ${{ needs.e2e-flake-lint.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| E2E UI Gate | ${{ needs.e2e-ui.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Workspace lib suite lives in **CI → Test** (not duplicated here)." >> $GITHUB_STEP_SUMMARY
 
-            - name: Install Rust
-              uses: dtolnay/rust-toolchain@master
-              with:
-                  toolchain: ${{ env.RUST_TOOLCHAIN }}
-
-            - name: Cache cargo
-              uses: Swatinem/rust-cache@v2
-              with:
-                  workspaces: edgequake
-
-            - name: Run LLM crate tests with timing check
-              working-directory: edgequake
-              run: |
-                  START_TIME=$(date +%s)
-                  cargo test --package edgequake-llm --no-default-features --no-fail-fast 2>&1 | tee llm_output.txt
-                  END_TIME=$(date +%s)
-                  DURATION=$((END_TIME - START_TIME))
-                  
-                  echo "::notice::LLM crate tests completed in ${DURATION}s"
-                  
-                  # Check optimization maintained (should be <5s, was 4.69s before optimization)
-                  if [ $DURATION -gt 10 ]; then
-                    echo "::warning::LLM tests regression detected - exceeded 10s (actual: ${DURATION}s)"
-                  fi
-
-            - name: Run Rate Limiter tests with timing check
-              working-directory: edgequake
-              run: |
-                  START_TIME=$(date +%s)
-                  cargo test --package edgequake-rate-limiter --no-default-features --no-fail-fast 2>&1 | tee rl_output.txt
-                  END_TIME=$(date +%s)
-                  DURATION=$((END_TIME - START_TIME))
-                  
-                  echo "::notice::Rate limiter tests completed in ${DURATION}s"
-                  
-                  # Token bucket was optimized from 2s to 50ms
-                  if [ $DURATION -gt 5 ]; then
-                    echo "::warning::Rate limiter tests regression - exceeded 5s (actual: ${DURATION}s)"
-                  fi
-
-    # Test count verification
-    test-count-gate:
-        name: Test Count Gate
-        runs-on: ubuntu-latest
-        timeout-minutes: 10
-        steps:
-            - uses: actions/checkout@v6
-
-            - name: Install Rust
-              uses: dtolnay/rust-toolchain@master
-              with:
-                  toolchain: ${{ env.RUST_TOOLCHAIN }}
-
-            - name: Cache cargo
-              uses: Swatinem/rust-cache@v2
-              with:
-                  workspaces: edgequake
-
-            - name: Verify minimum test count
-              working-directory: edgequake
-              run: |
-                  # Run all tests and count (without postgres feature to match CI environment)
-                  cargo test --workspace --lib --no-default-features 2>&1 | tee all_tests.txt
-                  
-                  # Extract total passed tests
-                  TOTAL_PASSED=$(grep "test result:" all_tests.txt | grep -oE "[0-9]+ passed" | awk '{sum += $1} END {print sum}')
-                  
-                  echo "::notice::Total tests passed: ${TOTAL_PASSED}"
-                  
-                  # Adjusted threshold for no-default-features (postgres tests excluded)
-                  # Note: edgequake-pdf crate moved to legacy/ in v0.4.0, reducing total count
-                  MIN_TESTS=870
-                  if [ "$TOTAL_PASSED" -lt "$MIN_TESTS" ]; then
-                    echo "::error::Test count below threshold! Expected >= ${MIN_TESTS}, got ${TOTAL_PASSED}"
-                    exit 1
-                  fi
-                  
-                  echo "✅ Test count gate passed: ${TOTAL_PASSED} >= ${MIN_TESTS}"
-
-    # E2E static flake lint — no Playwright/browser required
-    e2e-flake-lint:
-        name: E2E Flake Lint (chromium gate)
-        runs-on: ubuntu-latest
-        timeout-minutes: 2
-        steps:
-            - uses: actions/checkout@v6
-            - name: Validate chromium gate anti-patterns
-              run: make test-e2e-lint
-
-    # UI-only Playwright gate — no backend; skips integration specs
-    e2e-ui:
-        name: E2E UI Gate (chromium, no backend)
-        runs-on: ubuntu-latest
-        timeout-minutes: 10
-        steps:
-            - uses: actions/checkout@v6
-
-            - name: Setup Node.js
-              uses: actions/setup-node@v4
-              with:
-                  node-version: "20"
-
-            - name: Install pnpm
-              uses: pnpm/action-setup@v4
-              with:
-                  version: 10.13.1
-
-            - name: Install Bun
-              uses: oven-sh/setup-bun@v2
-
-            - name: Install frontend dependencies
-              working-directory: edgequake_webui
-              run: pnpm install
-
-            - name: Install Playwright Chromium
-              working-directory: edgequake_webui
-              run: pnpm exec playwright install chromium
-
-            - name: Run UI-only chromium gate
-              run: make test-e2e-ui
-
-    # Summary job
-    quality-summary:
-        name: Quality Gate Summary
-        needs: [unit-tests, invariant-tests, api-tests, optimized-tests, test-count-gate, e2e-flake-lint, e2e-ui]
-        runs-on: ubuntu-latest
-        if: always()
-        steps:
-            - name: Check quality gates
-              run: |
-                  echo "## Quality Gate Results" >> $GITHUB_STEP_SUMMARY
-                  echo "" >> $GITHUB_STEP_SUMMARY
-                  echo "| Gate | Status |" >> $GITHUB_STEP_SUMMARY
-                  echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
-                  echo "| Unit Tests (<30s) | ${{ needs.unit-tests.result }} |" >> $GITHUB_STEP_SUMMARY
-                  echo "| Invariant Tests | ${{ needs.invariant-tests.result }} |" >> $GITHUB_STEP_SUMMARY
-                  echo "| API Tests (<30s) | ${{ needs.api-tests.result }} |" >> $GITHUB_STEP_SUMMARY
-                  echo "| Optimized Tests | ${{ needs.optimized-tests.result }} |" >> $GITHUB_STEP_SUMMARY
-                  echo "| Test Count (>900) | ${{ needs.test-count-gate.result }} |" >> $GITHUB_STEP_SUMMARY
-                  echo "| E2E Flake Lint | ${{ needs.e2e-flake-lint.result }} |" >> $GITHUB_STEP_SUMMARY
-                  echo "| E2E UI Gate | ${{ needs.e2e-ui.result }} |" >> $GITHUB_STEP_SUMMARY
-                  echo "" >> $GITHUB_STEP_SUMMARY
-                  echo "### Timing Targets" >> $GITHUB_STEP_SUMMARY
-                  echo "- Unit tests: <30s" >> $GITHUB_STEP_SUMMARY
-                  echo "- API tests: <30s" >> $GITHUB_STEP_SUMMARY
-                  echo "- LLM tests: <10s (optimized from 4.69s)" >> $GITHUB_STEP_SUMMARY
-                  echo "- Rate limiter: <5s (optimized from 2.6s)" >> $GITHUB_STEP_SUMMARY
-                  
-                  # Fail if any required job failed
-                  if [ "${{ needs.invariant-tests.result }}" == "failure" ]; then
-                    echo "::error::CRITICAL: Invariant tests failed - reliability violation!"
-                    exit 1
-                  fi
-                  if [ "${{ needs.e2e-flake-lint.result }}" == "failure" ]; then
-                    echo "::error::E2E flake lint failed — fix anti-patterns in chromium gate specs"
-                    exit 1
-                  fi
-                  if [ "${{ needs.e2e-ui.result }}" == "failure" ]; then
-                    echo "::error::E2E UI gate failed — run make test-e2e-ui locally"
-                    exit 1
-                  fi
+          if [ "${{ needs.invariant-tests.result }}" == "failure" ]; then
+            echo "::error::CRITICAL: Invariant tests failed - reliability violation!"
+            exit 1
+          fi
+          if [ "${{ needs.test-count-gate.result }}" == "failure" ]; then
+            echo "::error::Test count gate failed"
+            exit 1
+          fi
+          if [ "${{ needs.e2e-flake-lint.result }}" == "failure" ]; then
+            echo "::error::E2E flake lint failed — fix anti-patterns in chromium gate specs"
+            exit 1
+          fi
+          if [ "${{ needs.e2e-ui.result }}" == "failure" ]; then
+            echo "::error::E2E UI gate failed — run make test-e2e-ui locally"
+            exit 1
+          fi

@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Tag name to publish (e.g. v0.10.7)'
+        description: 'Tag name to publish (e.g. v0.16.0)'
         required: true
-        default: 'v0.14.0'
+        default: 'v0.16.0'
 
 permissions:
   contents: read
@@ -49,6 +49,7 @@ jobs:
           POSTGRES_PASSWORD: ""
           RUST_LOG: warn
           RELEASE_SKIP_LIB_TESTS: "1"
+          RELEASE_SKIP_PER_CRATE_CLIPPY: "1"
         run: |
           chmod +x scripts/release_gates.sh
           ./scripts/release_gates.sh

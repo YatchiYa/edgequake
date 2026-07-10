@@ -255,7 +255,36 @@ impl StorageInspector {
         }
 
         report.duration_ms = start.elapsed().as_millis() as u64;
+        Self::emit_drift_metrics(&report);
         report
+    }
+
+    /// Publish drift counters/gauges for OPS-P2.19.
+    fn emit_drift_metrics(report: &InspectorReport) {
+        let mut critical = 0u64;
+        for v in &report.invariant_violations {
+            let sev = match v.severity {
+                Severity::Critical => {
+                    critical += 1;
+                    "critical"
+                }
+                Severity::Warning => "warning",
+                Severity::Info => "info",
+            };
+            edgequake_observability::record_storage_drift(&v.invariant_id, sev, 1);
+        }
+        for i in &report.schema_issues {
+            let sev = match i.severity {
+                Severity::Critical => {
+                    critical += 1;
+                    "critical"
+                }
+                Severity::Warning => "warning",
+                Severity::Info => "info",
+            };
+            edgequake_observability::record_storage_drift(&i.check_name, sev, 1);
+        }
+        edgequake_observability::set_storage_drift_critical(critical);
     }
 
     /// Auto-repair SAFE-tier issues. Returns list of applied repairs.

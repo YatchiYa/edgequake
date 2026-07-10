@@ -8,9 +8,14 @@ pub fn default_enable_gleaning() -> bool {
     true
 }
 
-/// Default: 1 gleaning pass.
+/// Default: 1 gleaning pass (hard-capped at [`edgequake_pipeline::MAX_GLEANING_CAP`]).
 pub fn default_max_gleaning() -> usize {
-    1
+    edgequake_pipeline::clamp_max_gleaning(1)
+}
+
+/// Clamp request `max_gleaning` to the OPS-P1.6 safety cap (pure helper).
+pub fn clamp_request_max_gleaning(raw: usize) -> usize {
+    edgequake_pipeline::clamp_max_gleaning(raw)
 }
 
 /// Default: enable LLM-powered description summarization.

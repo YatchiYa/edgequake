@@ -16,15 +16,17 @@ use crate::error::{ApiError, ApiResult};
 use crate::handlers::documents::storage_helpers::{
     resolve_workspace_duplicate_for_reingestion, DuplicateReingestAction,
 };
-use crate::handlers::documents_types::{default_enable_gleaning, default_max_gleaning};
+use crate::handlers::documents_types::{
+    clamp_request_max_gleaning, default_enable_gleaning, default_max_gleaning,
+};
 use crate::middleware::TenantContext;
-use crate::services::ContentHasher;
 use crate::services::process_fingerprint::{
     apply_fingerprint_to_metadata, ProcessFingerprintInput,
 };
+use crate::services::ContentHasher;
 use crate::services::{
     apply_process_options_to_metadata, metadata_multimodal_patch, persist_manifest,
-    MultimodalSummary, resolve_process_options_from_metadata,
+    resolve_process_options_from_metadata, MultimodalSummary,
 };
 use crate::state::AppState;
 
@@ -40,6 +42,16 @@ impl Default for GleaningAdmissionOptions {
         Self {
             enable_gleaning: default_enable_gleaning(),
             max_gleaning: default_max_gleaning(),
+        }
+    }
+}
+
+impl GleaningAdmissionOptions {
+    /// Build options with OPS-P1.6 gleaning clamp applied.
+    pub fn new(enable_gleaning: bool, max_gleaning: usize) -> Self {
+        Self {
+            enable_gleaning,
+            max_gleaning: clamp_request_max_gleaning(max_gleaning),
         }
     }
 }
@@ -242,7 +254,10 @@ pub async fn admit_document_for_processing(
     let mm_opts = resolve_process_options_from_metadata(&doc_metadata);
     let fp = ProcessFingerprintInput::from_ingest_fields(
         chunk_strategy.as_str(),
-        input.chunk_options.as_ref().and_then(|o| o.chunk_token_size),
+        input
+            .chunk_options
+            .as_ref()
+            .and_then(|o| o.chunk_token_size),
         input
             .chunk_options
             .as_ref()
@@ -421,6 +436,12 @@ mod tests {
         let opts = GleaningAdmissionOptions::default();
         assert!(opts.enable_gleaning);
         assert_eq!(opts.max_gleaning, 1);
+    }
+
+    #[test]
+    fn gleaning_new_clamps_above_cap() {
+        let opts = GleaningAdmissionOptions::new(true, 99);
+        assert_eq!(opts.max_gleaning, edgequake_pipeline::MAX_GLEANING_CAP);
     }
 
     #[test]

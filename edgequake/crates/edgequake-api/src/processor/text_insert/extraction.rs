@@ -173,6 +173,21 @@ impl DocumentTaskProcessor {
                                     error_info.retry_attempts,
                                 );
                             }
+
+                            // SPEC-046 OPS-P0.4: persist to failed_chunks for retry API
+                            #[cfg(feature = "postgres")]
+                            if let Some(ref pool) = self.pg_pool {
+                                let ws =
+                                    workspace_id.unwrap_or("00000000-0000-0000-0000-000000000000");
+                                crate::handlers::persist_chunk_failures_from_stats(
+                                    pool,
+                                    &document_id,
+                                    ws,
+                                    tenant_id.as_deref(),
+                                    chunk_errors,
+                                )
+                                .await;
+                            }
                         }
                     }
                     result
