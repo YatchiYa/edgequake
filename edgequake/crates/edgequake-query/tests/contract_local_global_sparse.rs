@@ -36,7 +36,7 @@ async fn contract_kg_linked_chunks_bm25_reorders_vector_leaders() {
     let config = QueryEngineConfig::default();
     let storage: Arc<dyn VectorStorage> = Arc::new(MemoryVectorStorage::new("kg-sparse", 4));
 
-    let chunks = sparse_retrieval::fuse_vector_and_bm25_chunks(
+    let (chunks, outcome) = sparse_retrieval::fuse_vector_and_bm25_chunks(
         "INV-2027-XY999",
         &kg_linked_results,
         &storage,
@@ -47,6 +47,10 @@ async fn contract_kg_linked_chunks_bm25_reorders_vector_leaders() {
     )
     .await;
 
+    assert_eq!(
+        outcome,
+        sparse_retrieval::SparseRetrievalOutcome::InMemoryBm25
+    );
     assert_eq!(
         chunks.first().map(|c| c.id.as_str()),
         Some("chunk-sparse-match"),

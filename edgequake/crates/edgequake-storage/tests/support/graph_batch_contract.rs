@@ -93,9 +93,7 @@ pub async fn assert_graph_batch_upsert_dedupes_duplicate_endpoints<G: GraphStora
         .unwrap()
         .expect("edge after dedupe");
     assert_eq!(
-        edge.properties
-            .get("description")
-            .and_then(|v| v.as_str()),
+        edge.properties.get("description").and_then(|v| v.as_str()),
         Some("second-wins"),
         "last-write-wins on duplicate endpoint upsert"
     );

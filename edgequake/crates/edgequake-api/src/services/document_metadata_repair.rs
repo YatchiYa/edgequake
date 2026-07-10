@@ -198,7 +198,10 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(staging["id"], "wrong", "staging shells must not be rewritten");
+        assert_eq!(
+            staging["id"], "wrong",
+            "staging shells must not be rewritten"
+        );
     }
 
     #[tokio::test]

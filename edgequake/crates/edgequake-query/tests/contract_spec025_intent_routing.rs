@@ -37,10 +37,7 @@ fn contract_relational_routes_to_hybrid() {
 
 #[test]
 fn contract_comparative_and_procedural_use_mix() {
-    assert_eq!(
-        QueryIntent::Comparative.recommended_mode(),
-        QueryMode::Mix
-    );
+    assert_eq!(QueryIntent::Comparative.recommended_mode(), QueryMode::Mix);
     assert_eq!(QueryIntent::Procedural.recommended_mode(), QueryMode::Mix);
 }
 

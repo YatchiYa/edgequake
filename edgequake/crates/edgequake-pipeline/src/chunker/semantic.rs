@@ -112,8 +112,8 @@ pub fn breakpoint_threshold(distances: &[f32], kind: BreakpointThreshold, amount
         }
         BreakpointThreshold::StandardDeviation => {
             let mean = distances.iter().sum::<f32>() / distances.len() as f32;
-            let var = distances.iter().map(|d| (d - mean).powi(2)).sum::<f32>()
-                / distances.len() as f32;
+            let var =
+                distances.iter().map(|d| (d - mean).powi(2)).sum::<f32>() / distances.len() as f32;
             mean + amount.max(0.0) * var.sqrt()
         }
         BreakpointThreshold::Interquartile => {
@@ -144,7 +144,11 @@ fn percentile_of_sorted(sorted: &[f32], pct: f32) -> f32 {
 /// Group sentence indices into chunks given distances and a threshold.
 ///
 /// Break **after** sentence `i` when `distances[i] >= threshold`.
-pub fn group_by_breakpoints(n_sentences: usize, distances: &[f32], threshold: f32) -> Vec<Vec<usize>> {
+pub fn group_by_breakpoints(
+    n_sentences: usize,
+    distances: &[f32],
+    threshold: f32,
+) -> Vec<Vec<usize>> {
     if n_sentences == 0 {
         return Vec::new();
     }
@@ -175,11 +179,30 @@ pub fn buffered_windows(sentences: &[String], buffer_size: usize) -> Vec<String>
         .collect()
 }
 
-/// Semantic chunking strategy. Falls back to recursive when embedder is absent.
+/// Whether silent recursive fallback is allowed when Semantic cannot run.
+///
+/// Default **false** (SPEC-046 OPS-P0.1 fail-loud). Opt-in via
+/// `EDGEQUAKE_SEMANTIC_ALLOW_FALLBACK=true` for emergency recovery only.
+pub fn semantic_allow_fallback() -> bool {
+    matches!(
+        std::env::var("EDGEQUAKE_SEMANTIC_ALLOW_FALLBACK")
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .as_str(),
+        "1" | "true" | "yes" | "on"
+    )
+}
+
+/// Semantic chunking strategy.
+///
+/// Fail-closed by default when the embedder is missing or embedding count
+/// mismatches (SPEC-046 EQ-046-OPS-01). Hard-split of oversized semantic
+/// groups via recursive is intentional (not a strategy downgrade).
 pub struct SemanticChunking {
     embedder: Option<Arc<dyn EmbeddingProvider>>,
     semantic: SemanticChunkConfig,
     fallback: RecursiveCharacterChunking,
+    allow_fallback: bool,
 }
 
 impl SemanticChunking {
@@ -188,6 +211,7 @@ impl SemanticChunking {
             embedder,
             semantic: SemanticChunkConfig::default(),
             fallback: RecursiveCharacterChunking,
+            allow_fallback: semantic_allow_fallback(),
         }
     }
 
@@ -199,7 +223,45 @@ impl SemanticChunking {
             embedder,
             semantic,
             fallback: RecursiveCharacterChunking,
+            allow_fallback: semantic_allow_fallback(),
         }
+    }
+
+    /// Test/DI hook: override fail-loud policy without env mutation.
+    pub fn with_allow_fallback(mut self, allow: bool) -> Self {
+        self.allow_fallback = allow;
+        self
+    }
+
+    fn missing_embedder_error() -> PipelineError {
+        PipelineError::ChunkingError(
+            "ChunkStrategy::Semantic requires an embedding provider \
+             (set EDGEQUAKE_SEMANTIC_ALLOW_FALLBACK=true only for emergency recursive fallback)"
+                .into(),
+        )
+    }
+
+    fn embedding_mismatch_error(expected: usize, got: usize) -> PipelineError {
+        PipelineError::ChunkingError(format!(
+            "ChunkStrategy::Semantic embedding count mismatch: expected {expected} sentences, got {got}"
+        ))
+    }
+
+    async fn maybe_fallback(
+        &self,
+        content: &str,
+        config: &ChunkerConfig,
+        reason: &str,
+        err: PipelineError,
+    ) -> Result<Vec<ChunkResult>> {
+        if self.allow_fallback {
+            tracing::warn!(
+                reason,
+                "ChunkStrategy::Semantic degraded to recursive (allow_fallback=true)"
+            );
+            return self.fallback.chunk(content, config).await;
+        }
+        Err(err)
     }
 
     async fn chunk_semantic(
@@ -212,17 +274,15 @@ impl SemanticChunking {
         if sentences.is_empty() {
             return Ok(Vec::new());
         }
+        // Single sentence: recursive hard-split is the correct algorithm
+        // (no consecutive distances to threshold) — not a strategy downgrade.
         if sentences.len() == 1 {
-            return self
-                .fallback
-                .chunk(content, config)
-                .await
-                .map(|mut v| {
-                    for (i, c) in v.iter_mut().enumerate() {
-                        c.chunk_order_index = i;
-                    }
-                    v
-                });
+            return self.fallback.chunk(content, config).await.map(|mut v| {
+                for (i, c) in v.iter_mut().enumerate() {
+                    c.chunk_order_index = i;
+                }
+                v
+            });
         }
 
         let windows = buffered_windows(&sentences, self.semantic.buffer_size);
@@ -232,12 +292,14 @@ impl SemanticChunking {
             .map_err(|e| PipelineError::EmbeddingError(e.to_string()))?;
 
         if embeddings.len() != sentences.len() {
-            tracing::warn!(
-                expected = sentences.len(),
-                got = embeddings.len(),
-                "semantic chunk: embedding count mismatch; falling back to recursive"
-            );
-            return self.fallback.chunk(content, config).await;
+            return self
+                .maybe_fallback(
+                    content,
+                    config,
+                    "embedding_count_mismatch",
+                    Self::embedding_mismatch_error(sentences.len(), embeddings.len()),
+                )
+                .await;
         }
 
         let distances: Vec<f32> = embeddings
@@ -303,13 +365,23 @@ impl SemanticChunking {
 #[async_trait]
 impl ChunkingStrategy for SemanticChunking {
     async fn chunk(&self, content: &str, config: &ChunkerConfig) -> Result<Vec<ChunkResult>> {
+        // Empty input is not an embedder failure (edge case — fail-loud only when work is needed).
+        if content.trim().is_empty() {
+            return Ok(Vec::new());
+        }
         match &self.embedder {
-            Some(embedder) => self.chunk_semantic(content, config, embedder.as_ref()).await,
+            Some(embedder) => {
+                self.chunk_semantic(content, config, embedder.as_ref())
+                    .await
+            }
             None => {
-                tracing::warn!(
-                    "ChunkStrategy::Semantic requested without embedding provider; falling back to recursive"
-                );
-                self.fallback.chunk(content, config).await
+                self.maybe_fallback(
+                    content,
+                    config,
+                    "missing_embedder",
+                    Self::missing_embedder_error(),
+                )
+                .await
             }
         }
     }
@@ -359,5 +431,45 @@ mod tests {
         assert_eq!(w[0], "a b");
         assert_eq!(w[1], "a b c");
         assert_eq!(w[2], "b c");
+    }
+
+    #[tokio::test]
+    async fn semantic_without_embedder_fails_loud_by_default() {
+        let chunker = SemanticChunking::new(None).with_allow_fallback(false);
+        let err = chunker
+            .chunk(
+                "First sentence. Second sentence.",
+                &ChunkerConfig::default(),
+            )
+            .await
+            .expect_err("must fail closed without embedder");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("Semantic") && msg.contains("embedding"),
+            "unexpected error: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn semantic_without_embedder_falls_back_when_allowed() {
+        let chunker = SemanticChunking::new(None).with_allow_fallback(true);
+        let chunks = chunker
+            .chunk(
+                "First sentence. Second sentence.",
+                &ChunkerConfig::default(),
+            )
+            .await
+            .expect("fallback must succeed");
+        assert!(!chunks.is_empty());
+    }
+
+    #[tokio::test]
+    async fn semantic_empty_content_ok() {
+        let chunker = SemanticChunking::new(None).with_allow_fallback(false);
+        let chunks = chunker
+            .chunk("", &ChunkerConfig::default())
+            .await
+            .expect("empty input is not an embedder failure");
+        assert!(chunks.is_empty());
     }
 }

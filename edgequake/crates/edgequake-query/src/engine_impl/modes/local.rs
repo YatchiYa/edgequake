@@ -85,6 +85,7 @@ impl QueryEngine {
                 workspace_id = ?workspace_id,
                 "OODA-231: No entity vectors found, falling back to popular entities from graph"
             );
+            crate::retrieval_telemetry::mark_popular_node_fallback(&mut context, "local");
             let graph = self.graph_read();
             let popular = graph
                 .get_popular_nodes_with_degree(
@@ -154,7 +155,7 @@ impl QueryEngine {
             }
         }
 
-        let chunks = append_score_ranked_chunks(
+        let (chunks, sparse_outcome) = append_score_ranked_chunks(
             self,
             &context,
             query_text,
@@ -168,6 +169,11 @@ impl QueryEngine {
         )
         .await?;
 
+        crate::retrieval_telemetry::mark_sparse_outcome(
+            &mut context,
+            sparse_outcome.as_str(),
+            sparse_outcome.is_fts_fallback(),
+        );
         for chunk in chunks {
             context.add_chunk(chunk);
         }

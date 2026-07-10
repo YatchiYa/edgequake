@@ -225,8 +225,7 @@ pub const MIGRATION_081_VERSION: i64 = 81;
 pub const MIGRATION_083_VERSION: i64 = 83;
 
 /// Native UNIQUE index reconcile — SSOT: `migrations/support/083/apply.sql`
-pub const SQL_083_APPLY: &str =
-    include_str!("../../../../../migrations/support/083/apply.sql");
+pub const SQL_083_APPLY: &str = include_str!("../../../../../migrations/support/083/apply.sql");
 
 /// JSONB→column stats backfill — SSOT: `migrations/support/083/stats_backfill.sql`
 pub const SQL_083_STATS_BACKFILL: &str =
@@ -297,11 +296,14 @@ pub struct Migration042Report {
     pub iterative_scan_capable: bool,
     pub indexes_rebuilt: bool,
     pub vector_tables_checked: usize,
+    /// SPEC-046 OPS-P0.3: vector tables missing HNSW/IVFFlat index.
+    pub missing_ann_index_tables: usize,
 }
 
 impl Migration042Report {
     pub fn is_degraded(&self) -> bool {
-        self.pgvector_available && !self.iterative_scan_capable
+        self.pgvector_available
+            && (!self.iterative_scan_capable || self.missing_ann_index_tables > 0)
     }
 }
 
@@ -639,18 +641,65 @@ impl Migration081Report {
     }
 }
 
-/// Collect readiness blocker IDs for `/ready` JSON (SPEC-045 SRE-M03).
+/// Collect readiness blocker IDs for `/ready` JSON (SPEC-045 SRE-M03 / SPEC-046 OPS-P1.13).
+///
+/// SSOT: every migration report that participates in [`is_ready_for_traffic`]
+/// must appear here so probe JSON and boolean readiness cannot diverge.
 pub fn readiness_blockers(report: &Option<MigrationBootstrapReport>) -> Vec<String> {
     let Some(r) = report else {
         return Vec::new();
     };
     let mut blockers = Vec::new();
+
+    // 038: AGE indexes
     if r.migration_038.is_degraded() {
         blockers.push("migration_038".to_string());
     }
+
+    // 042: pgvector iterative_scan + HNSW presence (split for operator action)
     if r.migration_042.is_degraded() {
-        blockers.push("migration_042".to_string());
+        if r.migration_042.pgvector_available && !r.migration_042.iterative_scan_capable {
+            blockers.push("migration_042".to_string());
+        }
+        if r.migration_042.missing_ann_index_tables > 0 {
+            blockers.push("missing_hnsw_index".to_string());
+        }
     }
+
+    // Remaining migrations: emit when degraded (most currently never degrade).
+    macro_rules! push_if_degraded {
+        ($field:ident, $id:expr) => {
+            if r.$field.is_degraded() {
+                blockers.push($id.to_string());
+            }
+        };
+    }
+    push_if_degraded!(migration_043, "migration_043");
+    push_if_degraded!(migration_044, "migration_044");
+    push_if_degraded!(migration_045, "migration_045");
+    push_if_degraded!(migration_046, "migration_046");
+    push_if_degraded!(migration_047, "migration_047");
+    push_if_degraded!(migration_048, "migration_048");
+    push_if_degraded!(migration_049, "migration_049");
+    push_if_degraded!(migration_050, "migration_050");
+    push_if_degraded!(migration_051, "migration_051");
+    push_if_degraded!(migration_052, "migration_052");
+    push_if_degraded!(migration_053, "migration_053");
+    push_if_degraded!(migration_054, "migration_054");
+    push_if_degraded!(migration_055, "migration_055");
+    push_if_degraded!(migration_056, "migration_056");
+    push_if_degraded!(migration_057, "migration_057");
+    push_if_degraded!(migration_058, "migration_058");
+    push_if_degraded!(migration_059, "migration_059");
+    push_if_degraded!(migration_060, "migration_060");
+    push_if_degraded!(migration_061, "migration_061");
+    push_if_degraded!(migration_062, "migration_062");
+    push_if_degraded!(migration_063, "migration_063");
+    push_if_degraded!(migration_064, "migration_064");
+    push_if_degraded!(migration_065, "migration_065");
+    push_if_degraded!(migration_080, "migration_080");
+    push_if_degraded!(migration_081, "migration_081");
+
     blockers
 }
 
@@ -665,43 +714,22 @@ pub fn readiness_operator_action(report: &Option<MigrationBootstrapReport>) -> O
             .or_else(|| Some("apply_038.sh --concurrent for large graphs".to_string()));
     }
     if r.migration_042.is_degraded() {
+        if r.migration_042.missing_ann_index_tables > 0 {
+            return Some(format!(
+                "ANN index missing on {} vector table(s); restart backend to recreate HNSW or run CREATE INDEX",
+                r.migration_042.missing_ann_index_tables
+            ));
+        }
         return Some("Upgrade pgvector to >= 0.8 and restart backend (make db-start)".to_string());
     }
     None
 }
 
 /// True when the process may receive traffic (readiness probe).
+///
+/// SPEC-046 OPS-P1.13: derived from [`readiness_blockers`] (single source of truth).
 pub fn is_ready_for_traffic(report: &Option<MigrationBootstrapReport>) -> bool {
-    match report {
-        None => true,
-        Some(r) => {
-            !r.migration_038.is_degraded()
-                && !r.migration_042.is_degraded()
-                && !r.migration_043.is_degraded()
-                && !r.migration_044.is_degraded()
-                && !r.migration_045.is_degraded()
-                && !r.migration_046.is_degraded()
-                && !r.migration_047.is_degraded()
-                && !r.migration_048.is_degraded()
-                && !r.migration_049.is_degraded()
-                && !r.migration_050.is_degraded()
-                && !r.migration_051.is_degraded()
-                && !r.migration_052.is_degraded()
-                && !r.migration_053.is_degraded()
-                && !r.migration_054.is_degraded()
-                && !r.migration_055.is_degraded()
-                && !r.migration_056.is_degraded()
-                && !r.migration_057.is_degraded()
-                && !r.migration_058.is_degraded()
-                && !r.migration_059.is_degraded()
-                && !r.migration_060.is_degraded()
-                && !r.migration_061.is_degraded()
-                && !r.migration_062.is_degraded()
-                && !r.migration_063.is_degraded()
-                && !r.migration_064.is_degraded()
-                && !r.migration_065.is_degraded()
-        }
-    }
+    readiness_blockers(report).is_empty()
 }
 
 /// Run sqlx migrations plus size-aware 038 apply with structured progression logs.
@@ -1267,6 +1295,7 @@ mod tests {
             iterative_scan_capable: true,
             indexes_rebuilt: false,
             vector_tables_checked: 0,
+            missing_ann_index_tables: 0,
         }
     }
 
@@ -1583,6 +1612,7 @@ mod tests {
             iterative_scan_capable: false,
             indexes_rebuilt: false,
             vector_tables_checked: 0,
+            missing_ann_index_tables: 0,
         };
         assert!(!report.is_degraded());
         assert!(is_ready_for_traffic(&Some(MigrationBootstrapReport {
@@ -1637,6 +1667,7 @@ mod tests {
             iterative_scan_capable: false,
             indexes_rebuilt: false,
             vector_tables_checked: 1,
+            missing_ann_index_tables: 0,
         };
         assert!(report.is_degraded());
         assert!(!is_ready_for_traffic(&Some(MigrationBootstrapReport {
@@ -1725,6 +1756,171 @@ mod tests {
             migration_080: noop_migration_080(),
             migration_081: noop_migration_081(),
         })));
+    }
+
+    #[test]
+    fn degraded_when_ann_index_missing() {
+        let report = Migration042Report {
+            pgvector_available: true,
+            extversion_before: Some("0.8.3".into()),
+            extversion_after: Some("0.8.3".into()),
+            shipped_extversion: Some("0.8.3".into()),
+            iterative_scan_capable: true,
+            indexes_rebuilt: false,
+            vector_tables_checked: 2,
+            missing_ann_index_tables: 1,
+        };
+        assert!(report.is_degraded());
+        let blockers = readiness_blockers(&Some(MigrationBootstrapReport {
+            pending_before: 0,
+            applied_versions: vec![],
+            latest_version: Some(42),
+            migration_038: Migration038Report {
+                age_available: true,
+                graphs_checked: 0,
+                indexes_ready: true,
+                indexes_repaired_inline: false,
+                deferred_large_graphs: vec![],
+                missing_indexes: vec![],
+                operator_action: None,
+            },
+            migration_042: report,
+            migration_043: noop_migration_043(),
+            migration_044: noop_migration_044(),
+            migration_045: noop_migration_045(),
+            migration_046: noop_migration_046(),
+            migration_047: noop_migration_047(),
+            migration_048: noop_migration_048(),
+            migration_049: noop_migration_049(),
+            migration_050: noop_migration_050(),
+            migration_051: noop_migration_051(),
+            migration_052: noop_migration_052(),
+            migration_053: noop_migration_053(),
+            migration_054: noop_migration_054(),
+            migration_055: noop_migration_055(),
+            migration_056: noop_migration_056(),
+            migration_057: noop_migration_057(),
+            migration_058: noop_migration_058(),
+            migration_059: noop_migration_059(),
+            migration_060: noop_migration_060(),
+            migration_061: noop_migration_061(),
+            migration_062: noop_migration_062(),
+            migration_063: noop_migration_063(),
+            migration_064: noop_migration_064(),
+            migration_065: noop_migration_065(),
+            migration_080: noop_migration_080(),
+            migration_081: noop_migration_081(),
+        }));
+        assert!(blockers.iter().any(|b| b == "missing_hnsw_index"));
+        assert!(!is_ready_for_traffic(&Some(MigrationBootstrapReport {
+            pending_before: 0,
+            applied_versions: vec![],
+            latest_version: Some(42),
+            migration_038: Migration038Report {
+                age_available: true,
+                graphs_checked: 0,
+                indexes_ready: true,
+                indexes_repaired_inline: false,
+                deferred_large_graphs: vec![],
+                missing_indexes: vec![],
+                operator_action: None,
+            },
+            migration_042: Migration042Report {
+                pgvector_available: true,
+                extversion_before: Some("0.8.3".into()),
+                extversion_after: Some("0.8.3".into()),
+                shipped_extversion: Some("0.8.3".into()),
+                iterative_scan_capable: true,
+                indexes_rebuilt: false,
+                vector_tables_checked: 2,
+                missing_ann_index_tables: 1,
+            },
+            migration_043: noop_migration_043(),
+            migration_044: noop_migration_044(),
+            migration_045: noop_migration_045(),
+            migration_046: noop_migration_046(),
+            migration_047: noop_migration_047(),
+            migration_048: noop_migration_048(),
+            migration_049: noop_migration_049(),
+            migration_050: noop_migration_050(),
+            migration_051: noop_migration_051(),
+            migration_052: noop_migration_052(),
+            migration_053: noop_migration_053(),
+            migration_054: noop_migration_054(),
+            migration_055: noop_migration_055(),
+            migration_056: noop_migration_056(),
+            migration_057: noop_migration_057(),
+            migration_058: noop_migration_058(),
+            migration_059: noop_migration_059(),
+            migration_060: noop_migration_060(),
+            migration_061: noop_migration_061(),
+            migration_062: noop_migration_062(),
+            migration_063: noop_migration_063(),
+            migration_064: noop_migration_064(),
+            migration_065: noop_migration_065(),
+            migration_080: noop_migration_080(),
+            migration_081: noop_migration_081(),
+        })));
+    }
+
+    #[test]
+    fn readiness_blockers_ssot_matches_is_ready() {
+        // Empty report → ready
+        assert!(is_ready_for_traffic(&None));
+        assert!(readiness_blockers(&None).is_empty());
+
+        // Healthy bootstrap → ready iff blockers empty
+        let healthy = MigrationBootstrapReport {
+            pending_before: 0,
+            applied_versions: vec![],
+            latest_version: Some(65),
+            migration_038: Migration038Report {
+                age_available: true,
+                graphs_checked: 0,
+                indexes_ready: true,
+                indexes_repaired_inline: false,
+                deferred_large_graphs: vec![],
+                missing_indexes: vec![],
+                operator_action: None,
+            },
+            migration_042: Migration042Report {
+                pgvector_available: true,
+                extversion_before: Some("0.8.3".into()),
+                extversion_after: Some("0.8.3".into()),
+                shipped_extversion: Some("0.8.3".into()),
+                iterative_scan_capable: true,
+                indexes_rebuilt: true,
+                vector_tables_checked: 2,
+                missing_ann_index_tables: 0,
+            },
+            migration_043: noop_migration_043(),
+            migration_044: noop_migration_044(),
+            migration_045: noop_migration_045(),
+            migration_046: noop_migration_046(),
+            migration_047: noop_migration_047(),
+            migration_048: noop_migration_048(),
+            migration_049: noop_migration_049(),
+            migration_050: noop_migration_050(),
+            migration_051: noop_migration_051(),
+            migration_052: noop_migration_052(),
+            migration_053: noop_migration_053(),
+            migration_054: noop_migration_054(),
+            migration_055: noop_migration_055(),
+            migration_056: noop_migration_056(),
+            migration_057: noop_migration_057(),
+            migration_058: noop_migration_058(),
+            migration_059: noop_migration_059(),
+            migration_060: noop_migration_060(),
+            migration_061: noop_migration_061(),
+            migration_062: noop_migration_062(),
+            migration_063: noop_migration_063(),
+            migration_064: noop_migration_064(),
+            migration_065: noop_migration_065(),
+            migration_080: noop_migration_080(),
+            migration_081: noop_migration_081(),
+        };
+        let blockers = readiness_blockers(&Some(healthy.clone()));
+        assert_eq!(is_ready_for_traffic(&Some(healthy)), blockers.is_empty());
     }
 
     #[test]

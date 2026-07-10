@@ -27,6 +27,7 @@ pub async fn reconcile_migration_042(
             iterative_scan_capable: false,
             indexes_rebuilt: false,
             vector_tables_checked: 0,
+            missing_ann_index_tables: 0,
         });
     }
 
@@ -78,6 +79,17 @@ pub async fn reconcile_migration_042(
         .map(pgvector_supports_iterative_scan)
         .unwrap_or(false);
 
+    let missing_ann_index_tables =
+        edgequake_storage::adapters::postgres::PgVectorStorage::count_vector_tables_missing_ann_index(
+            pool,
+        )
+        .await
+        .unwrap_or(0);
+
+    if missing_ann_index_tables > 0 {
+        edgequake_observability::set_vector_ann_index_missing(missing_ann_index_tables as u64);
+    }
+
     Ok(Migration042Report {
         pgvector_available: true,
         extversion_before,
@@ -86,5 +98,6 @@ pub async fn reconcile_migration_042(
         iterative_scan_capable,
         indexes_rebuilt: needs_apply,
         vector_tables_checked: vector_tables_checked as usize,
+        missing_ann_index_tables,
     })
 }

@@ -174,11 +174,8 @@ impl DocumentTaskProcessor {
         // CHECKPOINT-CLEAR: only on successful terminal outcomes.
         // WHY: Clearing on `failed` drops resume state before the user reprocesses.
         if final_status == "completed" || final_status == "partial_failure" {
-            super::pipeline_checkpoint::clear_pipeline_checkpoint(
-                &self.kv_storage,
-                &document_id,
-            )
-            .await;
+            super::pipeline_checkpoint::clear_pipeline_checkpoint(&self.kv_storage, &document_id)
+                .await;
         }
 
         // Log success

@@ -72,10 +72,7 @@ pub async fn upload_document(
             content_hash,
             custom_metadata: request.metadata,
             track_id: request.track_id,
-            gleaning: GleaningAdmissionOptions {
-                enable_gleaning: request.enable_gleaning,
-                max_gleaning: request.max_gleaning,
-            },
+            gleaning: GleaningAdmissionOptions::new(request.enable_gleaning, request.max_gleaning),
             document_type: Some("markdown"),
             chunk_strategy,
             chunk_options,

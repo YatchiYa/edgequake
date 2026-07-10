@@ -8,7 +8,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use edgequake_llm::LLMProvider;
-use edgequake_storage::{compensation, traits::KVStorage, GraphStorage, TextEmbedder, VectorStorage};
+use edgequake_storage::{
+    compensation, traits::KVStorage, GraphStorage, TextEmbedder, VectorStorage,
+};
 
 use crate::merger::{
     KnowledgeGraphMerger, MergeProgressCallback, MergeStats, MergerConfig, RelationalEntitySink,
@@ -283,6 +285,7 @@ async fn persist_processing_result_impl(
     result: &ProcessingResult,
     chunk_options: ChunkVectorBuildOptions,
 ) -> Result<IngestionPersistOutput> {
+    let mut chunk_kv_ids: Vec<String> = Vec::new();
     if let Some(kv) = &config.kv_storage {
         let records = crate::chunk_storage::build_chunk_kv_records(
             &ctx.document_id,
@@ -290,6 +293,7 @@ async fn persist_processing_result_impl(
             result,
         );
         if !records.is_empty() {
+            chunk_kv_ids = records.iter().map(|(id, _)| id.clone()).collect();
             kv.upsert(&records)
                 .await
                 .map_err(crate::error::PipelineError::StorageError)?;
@@ -340,10 +344,7 @@ async fn persist_processing_result_impl(
                 &stats.artifacts.graph_nodes_created,
                 &stats.artifacts.graph_edges_created,
             );
-            edgequake_storage::log_graph_quality(
-                &delta_metrics,
-                Some(ctx.document_id.as_str()),
-            );
+            edgequake_storage::log_graph_quality(&delta_metrics, Some(ctx.document_id.as_str()));
 
             // SPEC-034 IMP-06: Fire community index refresh as a background task.
             //
@@ -383,10 +384,10 @@ async fn persist_processing_result_impl(
                         }
                     }
                     let extras = match embedder {
-                        Some(e) => edgequake_storage::CommunityRefreshExtras::with_report_indexing(
-                            vs, e,
-                        )
-                        .with_tenant_id(tenant),
+                        Some(e) => {
+                            edgequake_storage::CommunityRefreshExtras::with_report_indexing(vs, e)
+                                .with_tenant_id(tenant)
+                        }
                         None => edgequake_storage::CommunityRefreshExtras::default()
                             .with_tenant_id(tenant),
                     };
@@ -407,8 +408,10 @@ async fn persist_processing_result_impl(
             compensate_merge_failure(
                 graph_storage.as_ref(),
                 vector_storage.as_ref(),
+                config.kv_storage.as_deref(),
                 ctx,
                 &chunk_vector_ids,
+                &chunk_kv_ids,
                 &stats.artifacts,
                 &cause,
             )
@@ -420,8 +423,10 @@ async fn persist_processing_result_impl(
             compensate_merge_failure(
                 graph_storage.as_ref(),
                 vector_storage.as_ref(),
+                config.kv_storage.as_deref(),
                 ctx,
                 &chunk_vector_ids,
+                &chunk_kv_ids,
                 &crate::merger::MergeArtifacts::default(),
                 &cause,
             )
@@ -431,19 +436,24 @@ async fn persist_processing_result_impl(
     }
 }
 
+#[allow(clippy::too_many_arguments)] // thin saga wrapper; mirrors compensation::compensate_merge_failure_with_kv
 async fn compensate_merge_failure(
     graph_storage: &dyn GraphStorage,
     vector_storage: &dyn VectorStorage,
+    kv_storage: Option<&dyn KVStorage>,
     ctx: &IngestionPersistContext,
     chunk_vector_ids: &[String],
+    chunk_kv_ids: &[String],
     artifacts: &crate::merger::MergeArtifacts,
     cause: &str,
 ) {
-    compensation::compensate_merge_failure(
+    compensation::compensate_merge_failure_with_kv(
         graph_storage,
         vector_storage,
+        kv_storage,
         &ctx.document_id,
         chunk_vector_ids,
+        chunk_kv_ids,
         &artifacts.entity_vector_ids,
         &artifacts.relationship_vector_ids,
         &artifacts.graph_nodes_created,

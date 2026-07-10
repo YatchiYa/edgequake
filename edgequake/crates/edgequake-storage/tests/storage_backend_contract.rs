@@ -73,7 +73,9 @@ mod postgres_contract {
     #[tokio::test]
     async fn postgres_native_graph_batch_upsert_dedupes_duplicate_endpoints() {
         let Some(config) = postgres_test_config::contract_postgres_config("graph_dedupe") else {
-            eprintln!("Skipping postgres native dedupe contract: DATABASE_URL/POSTGRES_PASSWORD not set");
+            eprintln!(
+                "Skipping postgres native dedupe contract: DATABASE_URL/POSTGRES_PASSWORD not set"
+            );
             return;
         };
 

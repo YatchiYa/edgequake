@@ -72,6 +72,22 @@ pub const DEFAULT_INITIAL_RETRY_DELAY_MS: u64 = 1_000;
 /// Default maximum concurrent LLM extraction tasks.
 pub const DEFAULT_MAX_CONCURRENT_EXTRACTIONS: usize = 16;
 
+/// Hard cap on concurrent extractions (SPEC-046 OPS-P1.6 — OOM / LLM storm guard).
+pub const MAX_CONCURRENT_EXTRACTIONS_CAP: usize = 32;
+
+/// Hard cap on gleaning passes (SPEC-046 OPS-P1.6 — cost/latency bound).
+pub const MAX_GLEANING_CAP: usize = 2;
+
+/// Clamp gleaning passes to `[0, MAX_GLEANING_CAP]` (pure — non-flaky tests).
+pub fn clamp_max_gleaning(raw: usize) -> usize {
+    raw.min(MAX_GLEANING_CAP)
+}
+
+/// Clamp concurrent extractions to `[1, MAX_CONCURRENT_EXTRACTIONS_CAP]`.
+pub fn clamp_max_concurrent_extractions(raw: usize) -> usize {
+    raw.clamp(1, MAX_CONCURRENT_EXTRACTIONS_CAP)
+}
+
 fn default_chunk_timeout() -> u64 {
     DEFAULT_CHUNK_TIMEOUT_SECS
 }
@@ -129,12 +145,12 @@ impl PipelineConfig {
             0,
             60_000,
         );
-        let max_concurrent = read_env_usize(
+        let max_concurrent = clamp_max_concurrent_extractions(read_env_usize(
             "EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS",
             DEFAULT_MAX_CONCURRENT_EXTRACTIONS,
             1,
-            256,
-        );
+            MAX_CONCURRENT_EXTRACTIONS_CAP,
+        ));
 
         Self {
             chunk_extraction_timeout_secs: chunk_timeout,
@@ -164,5 +180,28 @@ impl Default for PipelineConfig {
             chunk_max_retries: DEFAULT_CHUNK_MAX_RETRIES,
             initial_retry_delay_ms: DEFAULT_INITIAL_RETRY_DELAY_MS,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clamp_gleaning_caps_at_two() {
+        assert_eq!(clamp_max_gleaning(0), 0);
+        assert_eq!(clamp_max_gleaning(1), 1);
+        assert_eq!(clamp_max_gleaning(2), 2);
+        assert_eq!(clamp_max_gleaning(99), MAX_GLEANING_CAP);
+    }
+
+    #[test]
+    fn clamp_concurrent_extractions_bounds() {
+        assert_eq!(clamp_max_concurrent_extractions(0), 1);
+        assert_eq!(clamp_max_concurrent_extractions(16), 16);
+        assert_eq!(
+            clamp_max_concurrent_extractions(256),
+            MAX_CONCURRENT_EXTRACTIONS_CAP
+        );
     }
 }

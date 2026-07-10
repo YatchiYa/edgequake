@@ -74,6 +74,7 @@ pub mod mix_weights;
 pub mod modes;
 pub mod path_prune;
 pub mod query_reliability;
+pub mod retrieval_telemetry;
 pub mod sparse_retrieval;
 pub mod tokenizer;
 pub mod truncation;
@@ -90,16 +91,16 @@ pub use bootstrap::{
 };
 pub use cache::{QueryResultCache, QueryResultCacheInvalidator};
 pub use engine_impl::{QueryEmbeddings, QueryEngine, QueryEngineConfig};
+pub use graph_ppr::{parse_graph_walk_mode, GraphWalkMode, PprConfig};
 #[cfg(feature = "postgres")]
 pub use keywords::PostgresKeywordCache;
 pub use keywords::{
     CachedKeywordExtractor, ExtractedKeywords, InMemoryKeywordCache, KeywordCache,
     KeywordExtractor, Keywords, LLMKeywordExtractor, MockKeywordExtractor, QueryIntent,
 };
+pub use kg_chunk_pick::KgChunkPickMethod;
 pub use mix_weights::MixWeightOverride;
 pub use modes::QueryMode;
-pub use graph_ppr::{GraphWalkMode, PprConfig};
-pub use kg_chunk_pick::KgChunkPickMethod;
 pub use path_prune::PathPruneConfig;
 pub use query_reliability::{classify_query_failure, query_failure_diagnostic, QueryFailureClass};
 pub use tokenizer::{MockTokenizer, SimpleTokenizer, Tokenizer};

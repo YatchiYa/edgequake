@@ -131,9 +131,7 @@ async fn recover_orphaned_tasks(
             let age = now.signed_duration_since(task.updated_at);
 
             // Split-brain: task=processing but document already completed.
-            if let Some(doc_id) =
-                edgequake_api::services::extract_document_id_from_task(&task)
-            {
+            if let Some(doc_id) = edgequake_api::services::extract_document_id_from_task(&task) {
                 let meta_key =
                     edgequake_api::services::resolve_document_metadata_key(&doc_id, &kv_storage)
                         .await;
@@ -156,10 +154,7 @@ async fn recover_orphaned_tasks(
                                 completed_count += 1;
                             }
                             Err(e) => {
-                                warn!(
-                                    "⚠️ Failed to close orphaned task {}: {}",
-                                    task.track_id, e
-                                );
+                                warn!("⚠️ Failed to close orphaned task {}: {}", task.track_id, e);
                             }
                         }
                         continue;

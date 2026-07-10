@@ -1,33 +1,94 @@
-//! Chunk-level retry and listing handlers (FEAT0408, FEAT0409).
+//! Chunk-level retry and listing handlers (FEAT0408, FEAT0409 / SPEC-046 OPS-P0.4).
 //!
-//! Provides endpoints for retrying specific failed chunks and listing
-//! which chunks failed during extraction. Currently placeholder
-//! implementations pending chunk-level storage.
+//! Persists failures to `failed_chunks`, lists them, and retries by re-reading
+//! chunk content from KV (`kv_keys::doc_chunk`) then re-extracting.
 
 use axum::{extract::State, Json};
-use tracing::debug;
+use std::sync::Arc;
+use tracing::{debug, info, warn};
 
 use crate::error::{ApiError, ApiResult};
 use crate::handlers::documents_types::*;
 use crate::state::AppState;
+use edgequake_pipeline::TextChunk;
+use edgequake_storage::{kv_keys, FailedChunkInsert, FailedChunkRecord};
+
+fn record_to_info(r: FailedChunkRecord) -> FailedChunkInfo {
+    FailedChunkInfo {
+        chunk_index: r.chunk_index.max(0) as usize,
+        chunk_id: r.chunk_id,
+        error_message: r.error_message,
+        was_timeout: r.was_timeout,
+        retry_attempts: r.retry_attempts.max(0) as usize,
+        status: r.status,
+    }
+}
+
+/// Persist extraction failures after resilient pipeline (called from text_insert).
+#[cfg(feature = "postgres")]
+pub async fn persist_chunk_failures_from_stats(
+    pool: &sqlx::PgPool,
+    document_id: &str,
+    workspace_id: &str,
+    tenant_id: Option<&str>,
+    chunk_errors: &[edgequake_pipeline::ChunkErrorInfo],
+) {
+    if chunk_errors.is_empty() {
+        return;
+    }
+    let inserts: Vec<FailedChunkInsert> = chunk_errors
+        .iter()
+        .map(|e| FailedChunkInsert {
+            document_id: document_id.to_string(),
+            workspace_id: workspace_id.to_string(),
+            tenant_id: tenant_id.map(|s| s.to_string()),
+            chunk_index: e.chunk_index,
+            chunk_id: if e.chunk_id.is_empty() {
+                kv_keys::doc_chunk(document_id, e.chunk_index)
+            } else {
+                e.chunk_id.clone()
+            },
+            error_message: e.error_message.clone(),
+            was_timeout: e.was_timeout,
+            retry_attempts: e.retry_attempts,
+            processing_time_ms: 0,
+        })
+        .collect();
+
+    match edgequake_storage::failed_chunks::postgres::insert_failed_chunks(pool, &inserts).await {
+        Ok(n) => info!(
+            document_id = %document_id,
+            written = n,
+            "Persisted failed_chunks for retry queue"
+        ),
+        Err(e) => warn!(
+            document_id = %document_id,
+            error = %e,
+            "Failed to persist failed_chunks (non-fatal)"
+        ),
+    }
+}
+
+fn text_chunk_from_kv(document_id: &str, idx: usize, content: String) -> TextChunk {
+    TextChunk {
+        id: kv_keys::doc_chunk(document_id, idx),
+        content: content.clone(),
+        index: idx,
+        start_offset: 0,
+        end_offset: content.len(),
+        start_line: 1,
+        end_line: 1,
+        token_count: content.split_whitespace().count(),
+        embedding: None,
+        section: None,
+        page_start: None,
+        page_end: None,
+    }
+}
 
 /// Retry failed chunks for a specific document.
 ///
 /// @implements FEAT0408 (Chunk retry handler)
-///
-/// # OODA-03: Chunk-Level Retry Queue
-///
-/// This endpoint allows retrying specific failed chunks without reprocessing the entire document.
-/// Currently returns a placeholder response; full implementation pending chunk-level storage.
-///
-/// ## Architecture Note
-///
-/// Full implementation requires:
-/// 1. Storing individual chunk content in failed_chunks table
-/// 2. Re-running extraction on specific chunks
-/// 3. Merging results into existing graph data
-///
-/// This is a scaffolding endpoint to enable frontend integration while backend is developed.
 #[utoipa::path(
     post,
     path = "/api/v1/documents/{document_id}/retry-chunks",
@@ -39,7 +100,7 @@ use crate::state::AppState;
     responses(
         (status = 200, description = "Chunks queued for retry", body = RetryChunksResponse),
         (status = 404, description = "Document not found"),
-        (status = 501, description = "Chunk-level retry not yet implemented")
+        (status = 503, description = "PostgreSQL required for chunk retry")
     )
 )]
 pub async fn retry_failed_chunks(
@@ -52,59 +113,260 @@ pub async fn retry_failed_chunks(
         document_id, request.chunk_indices, request.force
     );
 
-    // Verify document exists
     let metadata_key =
         crate::services::document_metadata_scan::metadata_key_for_document(&document_id);
-    let doc_exists = state
+    let metadata = state
         .storage
         .kv_storage
         .get_by_id(&metadata_key)
         .await?
-        .is_some();
+        .ok_or_else(|| ApiError::NotFound(format!("Document {} not found", document_id)))?;
 
-    if !doc_exists {
-        return Err(ApiError::NotFound(format!(
-            "Document {} not found",
-            document_id
-        )));
+    #[cfg(feature = "postgres")]
+    {
+        let pool = state
+            .pg_pool
+            .as_ref()
+            .ok_or_else(|| ApiError::ServiceUnavailable {
+                message: "Chunk retry requires PostgreSQL (failed_chunks table)".into(),
+                retry_after_secs: 60,
+            })?;
+
+        let indices = if request.chunk_indices.is_empty() {
+            None
+        } else {
+            Some(request.chunk_indices.as_slice())
+        };
+
+        let mut pending = edgequake_storage::failed_chunks::postgres::list_pending_for_retry(
+            pool,
+            &document_id,
+            indices,
+        )
+        .await
+        .map_err(|e| ApiError::Internal(format!("failed_chunks query: {e}")))?;
+
+        if request.force && pending.is_empty() && !request.chunk_indices.is_empty() {
+            let ws = metadata
+                .get("workspace_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("00000000-0000-0000-0000-000000000000");
+            for &idx in &request.chunk_indices {
+                pending.push(FailedChunkRecord {
+                    document_id: document_id.clone(),
+                    workspace_id: ws.to_string(),
+                    tenant_id: metadata
+                        .get("tenant_id")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    chunk_index: idx as i32,
+                    chunk_id: kv_keys::doc_chunk(&document_id, idx),
+                    error_message: "force retry".into(),
+                    was_timeout: false,
+                    retry_attempts: 0,
+                    processing_time_ms: None,
+                    status: "pending".into(),
+                });
+            }
+        }
+
+        if pending.is_empty() {
+            return Ok(Json(RetryChunksResponse {
+                document_id: document_id.clone(),
+                chunks_queued: 0,
+                chunk_indices: vec![],
+                message: "No pending failed chunks to retry".into(),
+                implemented: true,
+            }));
+        }
+
+        let extractor =
+            state
+                .query
+                .pipeline
+                .extractor()
+                .ok_or_else(|| ApiError::ServiceUnavailable {
+                    message: "No entity extractor configured for chunk retry".into(),
+                    retry_after_secs: 30,
+                })?;
+
+        let max_retries = request.max_retries;
+        let mut queued = Vec::new();
+        let mut abandoned = 0usize;
+
+        for rec in pending {
+            let idx = rec.chunk_index.max(0) as usize;
+            if !request.force && (rec.retry_attempts as usize) >= max_retries {
+                let _ = edgequake_storage::failed_chunks::postgres::mark_chunk_status(
+                    pool,
+                    &document_id,
+                    idx,
+                    "abandoned",
+                )
+                .await;
+                abandoned += 1;
+                continue;
+            }
+
+            let chunk_key = kv_keys::doc_chunk(&document_id, idx);
+            let Some(chunk_val) = state.storage.kv_storage.get_by_id(&chunk_key).await? else {
+                warn!(document_id = %document_id, chunk_index = idx, "KV chunk missing; abandoning");
+                let _ = edgequake_storage::failed_chunks::postgres::mark_chunk_status(
+                    pool,
+                    &document_id,
+                    idx,
+                    "abandoned",
+                )
+                .await;
+                abandoned += 1;
+                continue;
+            };
+
+            let content = edgequake_storage::content_from_kv_value(&chunk_val).unwrap_or_default();
+            if content.is_empty() {
+                warn!(document_id = %document_id, chunk_index = idx, "empty chunk content; abandoning");
+                let _ = edgequake_storage::failed_chunks::postgres::mark_chunk_status(
+                    pool,
+                    &document_id,
+                    idx,
+                    "abandoned",
+                )
+                .await;
+                abandoned += 1;
+                continue;
+            }
+
+            let _ = edgequake_storage::failed_chunks::postgres::mark_chunk_status(
+                pool,
+                &document_id,
+                idx,
+                "retrying",
+            )
+            .await;
+
+            let text_chunk = text_chunk_from_kv(&document_id, idx, content);
+            match extractor.extract(&text_chunk).await {
+                Ok(extraction) => {
+                    // SPEC-046 OPS-P1.21: merge extraction into graph (full parity with ingest).
+                    let tenant_id = metadata
+                        .get("tenant_id")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    let workspace_id = metadata
+                        .get("workspace_id")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+
+                    // Retry path: skip LLM summarization to keep latency bounded
+                    // and avoid double-billing; descriptions still merge textually.
+                    let merger_config = edgequake_pipeline::MergerConfig {
+                        use_llm_summarization: false,
+                        ..Default::default()
+                    };
+                    let merger = edgequake_pipeline::KnowledgeGraphMerger::new(
+                        merger_config,
+                        Arc::clone(&state.storage.graph_storage),
+                        Arc::clone(&state.storage.vector_storage),
+                    )
+                    .with_tenant_context(tenant_id, workspace_id);
+
+                    match merger.merge(vec![extraction]).await {
+                        Ok(stats) if stats.errors == 0 => {
+                            let _ = edgequake_storage::failed_chunks::postgres::mark_chunk_status(
+                                pool,
+                                &document_id,
+                                idx,
+                                "succeeded",
+                            )
+                            .await;
+                            queued.push(idx);
+                        }
+                        Ok(stats) => {
+                            warn!(
+                                document_id = %document_id,
+                                chunk_index = idx,
+                                merge_errors = stats.errors,
+                                "chunk retry merge reported errors; leaving pending"
+                            );
+                            let _ = edgequake_storage::failed_chunks::postgres::mark_chunk_status(
+                                pool,
+                                &document_id,
+                                idx,
+                                "pending",
+                            )
+                            .await;
+                        }
+                        Err(e) => {
+                            warn!(
+                                document_id = %document_id,
+                                chunk_index = idx,
+                                error = %e,
+                                "chunk retry graph merge failed"
+                            );
+                            let _ = edgequake_storage::failed_chunks::postgres::mark_chunk_status(
+                                pool,
+                                &document_id,
+                                idx,
+                                "pending",
+                            )
+                            .await;
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!(
+                        document_id = %document_id,
+                        chunk_index = idx,
+                        error = %e,
+                        "chunk retry extraction failed"
+                    );
+                    let _ = edgequake_storage::failed_chunks::postgres::mark_chunk_status(
+                        pool,
+                        &document_id,
+                        idx,
+                        "pending",
+                    )
+                    .await;
+                }
+            }
+        }
+
+        edgequake_observability::record_document_processing(
+            "chunk_retry",
+            "retry",
+            if queued.is_empty() {
+                "failure"
+            } else {
+                "success"
+            },
+            0.0,
+        );
+
+        Ok(Json(RetryChunksResponse {
+            document_id: document_id.clone(),
+            chunks_queued: queued.len(),
+            chunk_indices: queued,
+            message: format!("Retried chunk(s) with graph merge; abandoned {abandoned}"),
+            implemented: true,
+        }))
     }
 
-    // OODA-03: Placeholder implementation
-    // Full implementation requires:
-    // 1. Query failed_chunks table for document
-    // 2. Retrieve chunk content from storage
-    // 3. Re-run extraction pipeline on specific chunks
-    // 4. Merge extracted entities/relationships into graph
-    // 5. Update failed_chunks status
-
-    let chunks_to_retry = if request.chunk_indices.is_empty() {
-        // Would query failed_chunks table here
-        vec![]
-    } else {
-        request.chunk_indices.clone()
-    };
-
-    tracing::info!(
-        document_id = %document_id,
-        chunks = ?chunks_to_retry,
-        "Chunk retry requested (placeholder - full implementation pending)"
-    );
-
-    Ok(Json(RetryChunksResponse {
-        document_id: document_id.clone(),
-        chunks_queued: chunks_to_retry.len(),
-        chunk_indices: chunks_to_retry,
-        message: "Chunk-level retry is pending implementation. Use /documents/reprocess to retry the entire document.".to_string(),
-        implemented: false,
-    }))
+    #[cfg(not(feature = "postgres"))]
+    {
+        let _ = metadata;
+        Ok(Json(RetryChunksResponse {
+            document_id: document_id.clone(),
+            chunks_queued: 0,
+            chunk_indices: vec![],
+            message: "Chunk retry requires postgres feature".into(),
+            implemented: false,
+        }))
+    }
 }
 
 /// List failed chunks for a document.
 ///
 /// @implements FEAT0409
-///
-/// Returns information about chunks that failed during extraction,
-/// allowing the user to decide which to retry.
 #[utoipa::path(
     get,
     path = "/api/v1/documents/{document_id}/failed-chunks",
@@ -123,33 +385,108 @@ pub async fn list_failed_chunks(
 ) -> ApiResult<Json<ListFailedChunksResponse>> {
     debug!("list_failed_chunks called for document: {}", document_id);
 
-    // Verify document exists
     let metadata_key =
         crate::services::document_metadata_scan::metadata_key_for_document(&document_id);
-    let metadata = state.storage.kv_storage.get_by_id(&metadata_key).await?;
+    let metadata = state
+        .storage
+        .kv_storage
+        .get_by_id(&metadata_key)
+        .await?
+        .ok_or_else(|| ApiError::NotFound(format!("Document {} not found", document_id)))?;
 
-    if metadata.is_none() {
-        return Err(ApiError::NotFound(format!(
-            "Document {} not found",
-            document_id
-        )));
-    }
-
-    // Get chunk count from metadata
     let chunk_count = metadata
-        .as_ref()
-        .and_then(|m| m.get("chunk_count"))
+        .get("chunk_count")
         .and_then(|v| v.as_u64())
         .unwrap_or(0) as usize;
 
-    // OODA-03: Placeholder - would query failed_chunks table
-    // For now, return empty list since we don't persist failed chunks yet
+    #[cfg(feature = "postgres")]
+    let failed_chunks: Vec<FailedChunkInfo> = {
+        if let Some(pool) = state.pg_pool.as_ref() {
+            match edgequake_storage::failed_chunks::postgres::list_failed_chunks(pool, &document_id)
+                .await
+            {
+                Ok(rows) => {
+                    let mut seen = std::collections::HashSet::new();
+                    rows.into_iter()
+                        .filter(|r| seen.insert(r.chunk_index))
+                        .map(record_to_info)
+                        .collect()
+                }
+                Err(e) => {
+                    warn!(error = %e, "list_failed_chunks query failed");
+                    vec![]
+                }
+            }
+        } else {
+            vec![]
+        }
+    };
+
+    #[cfg(not(feature = "postgres"))]
     let failed_chunks: Vec<FailedChunkInfo> = vec![];
+
+    let failed_pending = failed_chunks
+        .iter()
+        .filter(|c| c.status == "pending" || c.status == "retrying")
+        .count();
 
     Ok(Json(ListFailedChunksResponse {
         document_id: document_id.clone(),
-        failed_chunks,
+        successful_chunks: chunk_count.saturating_sub(failed_pending),
         total_chunks: chunk_count,
-        successful_chunks: chunk_count, // Placeholder - all successful if no failures recorded
+        failed_chunks,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use edgequake_storage::InMemoryFailedChunkStore;
+
+    #[test]
+    fn record_to_info_maps_fields() {
+        let info = record_to_info(FailedChunkRecord {
+            document_id: "d".into(),
+            workspace_id: "w".into(),
+            tenant_id: None,
+            chunk_index: 3,
+            chunk_id: "d-chunk-3".into(),
+            error_message: "boom".into(),
+            was_timeout: true,
+            retry_attempts: 2,
+            processing_time_ms: Some(10),
+            status: "pending".into(),
+        });
+        assert_eq!(info.chunk_index, 3);
+        assert!(info.was_timeout);
+        assert_eq!(info.retry_attempts, 2);
+    }
+
+    #[test]
+    fn in_memory_store_roundtrip_for_handler_logic() {
+        let store = InMemoryFailedChunkStore::new();
+        store.upsert_pending(&[FailedChunkInsert {
+            document_id: "doc".into(),
+            workspace_id: "00000000-0000-0000-0000-000000000001".into(),
+            tenant_id: None,
+            chunk_index: 0,
+            chunk_id: "doc-chunk-0".into(),
+            error_message: "x".into(),
+            was_timeout: false,
+            retry_attempts: 0,
+            processing_time_ms: 1,
+        }]);
+        assert_eq!(store.list_pending("doc", None).len(), 1);
+        store.mark_status("doc", 0, "succeeded");
+        assert!(store.list_pending("doc", None).is_empty());
+    }
+
+    #[test]
+    fn text_chunk_from_kv_sets_offsets() {
+        let c = text_chunk_from_kv("doc", 1, "hello world".into());
+        assert_eq!(c.id, "doc-chunk-1");
+        assert_eq!(c.index, 1);
+        assert_eq!(c.end_offset, 11);
+        assert_eq!(c.token_count, 2);
+    }
 }

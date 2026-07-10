@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use edgequake_core::{role_config_from_workspace, resolve_role_llm, LlmRole, Workspace};
+use edgequake_core::{resolve_role_llm, role_config_from_workspace, LlmRole, Workspace};
 use edgequake_llm::traits::LLMProvider;
 
 /// Resolve merge-summarizer LLM: Summary role override, else `fallback`.

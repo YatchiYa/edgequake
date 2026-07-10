@@ -168,6 +168,9 @@ pub async fn collect_graph_quality_metrics(
 }
 
 /// Emit structured tracing for ops dashboards; never fails the caller.
+///
+/// When the `observability` feature is enabled, also updates Prometheus gauges
+/// (SPEC-046 OPS-P3.23).
 pub fn log_graph_quality(metrics: &GraphQualityMetrics, document_id: Option<&str>) {
     if metrics.is_sparse() {
         tracing::warn!(
@@ -192,7 +195,25 @@ pub fn log_graph_quality(metrics: &GraphQualityMetrics, document_id: Option<&str
             "SPEC-046: graph quality metrics"
         );
     }
+    emit_graph_quality_prometheus(metrics);
 }
+
+#[cfg(feature = "observability")]
+fn emit_graph_quality_prometheus(metrics: &GraphQualityMetrics) {
+    let ws = metrics.workspace_id.as_deref().unwrap_or("default");
+    edgequake_observability::record_graph_quality(
+        ws,
+        metrics.node_count as u64,
+        metrics.edge_count as u64,
+        metrics.avg_degree,
+        metrics.orphan_rate,
+        metrics.empty_description_rate,
+        metrics.is_sparse(),
+    );
+}
+
+#[cfg(not(feature = "observability"))]
+fn emit_graph_quality_prometheus(_metrics: &GraphQualityMetrics) {}
 
 /// Quick metrics from merge artifacts alone (no extra graph round-trip).
 ///
