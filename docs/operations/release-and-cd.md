@@ -81,6 +81,8 @@ Both `linux/amd64` (ubuntu-latest runner) and `linux/arm64` (native ARM64 runner
 
 You can also trigger a manual Docker build + publish without a tag via the `workflow_dispatch` input on GitHub Actions (`Actions -> Release -- Docker (GHCR) -> Run workflow`).
 
+**Republish tip:** `gh workflow run "Release — Docker (GHCR)" --ref release/vX.Y.Z -f tag_name=vX.Y.Z` builds from the release branch (including post-tag CD fixes) while still publishing the `X.Y.Z` / `latest` GHCR tags. Use this when the git tag already exists but Docker CD needs a fix commit.
+
 ## Building the Image Locally
 
 The Dockerfile lives at `edgequake/docker/Dockerfile` and uses a two-stage build (Rust builder -> Debian slim runtime). pdfium is embedded at compile time via `pdfium-auto` -- no external shared library is needed.
