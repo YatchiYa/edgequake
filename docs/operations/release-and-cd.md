@@ -32,6 +32,11 @@ cd .. && make backend-bg frontend-bg && make spec013-proof-ui
 
 **Speed knobs (first principles):** shared Swatinem cache (`shared-key: edgequake-ci`), sparse crates.io, no incremental, `--locked`, cancel-in-progress, no duplicate workspace lib compile in Quality Gates / Release Gates.
 
+**Docker CD anti-flake gates (in `make release-gates` / `scripts/release_gates.sh`):**
+- `scripts/check_docker_api_context.sh` — Cargo `[[bench]]`/`[[example]]` paths must exist; Dockerfile must `COPY` them; `.dockerignore` must not exclude them.
+- `next.config.ts` SizeLimit guard — `proxyClientMaxBodySize` must be numeric (`DEFAULT_MAX_UPLOAD_BYTES`).
+- README badge version must match `VERSION` / Cargo / package.json.
+
 ## 3) Cut Release (CD publish)
 
 ```bash
