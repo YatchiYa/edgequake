@@ -2269,7 +2269,7 @@ spec020-qc-proof-auth: ## SPEC-020 auth-enabled login proof (DEV_AUTH_ENABLED=tr
 	@chmod +x specs/020-e2e-quality-control/e2e/run_quality_control_proof.sh
 	@SPEC020_AUTH_PROOF=1 ./specs/020-e2e-quality-control/e2e/run_quality_control_proof.sh
 
-release-gates: ## Pre-release gate: fmt, per-crate clippy, tests, SPEC-006 + SPEC-018 proofs
+release-gates: ## Pre-release gate: fmt, workspace clippy, SPEC-006/018, WebUI, version parity
 	@chmod +x scripts/release_gates.sh
 	@./scripts/release_gates.sh
 

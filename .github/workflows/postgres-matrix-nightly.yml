@@ -23,7 +23,7 @@ jobs:
   pin-smoke:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: OPS-17 pin smoke (pg16/pg17/pg18)
         run: bash specs/046-graphrag-study/e2e/run_ops17_perf_smoke.sh
 
@@ -36,7 +36,7 @@ jobs:
       matrix:
         profile: [pg16, pg17, pg18]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Battle test ${{ matrix.profile }}
         env:
           EQ_POSTGRES_PROFILE: ${{ matrix.profile }}

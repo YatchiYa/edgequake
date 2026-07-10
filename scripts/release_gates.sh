@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
-# Pre-release quality gates — fmt, per-crate clippy, lib tests, SPEC-006 + SPEC-018 proofs.
+# Pre-release quality gates — fmt, workspace clippy, optional lib tests,
+# SPEC-006 + SPEC-018 proofs, WebUI typecheck, version parity.
+#
+# Env knobs (CI sets these to avoid duplicate work already covered by CI.yml):
+#   RELEASE_SKIP_LIB_TESTS=1          — skip workspace lib tests
+#   RELEASE_SKIP_PER_CRATE_CLIPPY=1   — skip O(N) per-crate clippy (workspace is enough)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -24,29 +29,34 @@ echo "== rustfmt =="
 (cd "$EQ" && cargo fmt --all -- --check)
 
 echo "== workspace clippy =="
-(cd "$EQ" && cargo clippy --workspace --lib -- -D warnings)
+(cd "$EQ" && cargo clippy --workspace --lib --locked -- -D warnings)
 
-echo "== per-crate clippy =="
-for crate in "${CRATES[@]}"; do
-  echo "→ clippy -p $crate"
-  FEATURES=()
-  case "$crate" in
-    edgequake-api|edgequake-core|edgequake-storage|edgequake-tasks)
-      FEATURES=(--features postgres)
-      ;;
-  esac
-  if ((${#FEATURES[@]})); then
-    (cd "$EQ" && cargo clippy -p "$crate" --lib "${FEATURES[@]}" -- -D warnings)
-  else
-    (cd "$EQ" && cargo clippy -p "$crate" --lib -- -D warnings)
-  fi
-done
+if [[ "${RELEASE_SKIP_PER_CRATE_CLIPPY:-}" == "1" ]]; then
+  echo "== per-crate clippy =="
+  echo "skipped (RELEASE_SKIP_PER_CRATE_CLIPPY=1 — workspace clippy is SSOT)"
+else
+  echo "== per-crate clippy =="
+  for crate in "${CRATES[@]}"; do
+    echo "→ clippy -p $crate"
+    FEATURES=()
+    case "$crate" in
+      edgequake-api|edgequake-core|edgequake-storage|edgequake-tasks)
+        FEATURES=(--features postgres)
+        ;;
+    esac
+    if ((${#FEATURES[@]})); then
+      (cd "$EQ" && cargo clippy -p "$crate" --lib --locked "${FEATURES[@]}" -- -D warnings)
+    else
+      (cd "$EQ" && cargo clippy -p "$crate" --lib --locked -- -D warnings)
+    fi
+  done
+fi
 
 echo "== workspace lib tests =="
 if [[ "${RELEASE_SKIP_LIB_TESTS:-}" == "1" ]]; then
   echo "skipped (RELEASE_SKIP_LIB_TESTS=1 — full suite runs on main CI)"
 else
-  (cd "$EQ" && cargo test --workspace --lib --no-fail-fast)
+  (cd "$EQ" && cargo test --workspace --lib --locked --no-fail-fast)
 fi
 
 echo "== SPEC-006 resource-proof =="

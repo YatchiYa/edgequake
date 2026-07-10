@@ -31,6 +31,14 @@ SPEC-043 unified LLM model picker, server config, provider attribution, and Vert
 
 SPEC-046 GraphRAG / Hybrid RAG ops + science delivery — fail-closed substrate, PPR-default walks, ACC CI, bipartite dual-node retrieval.
 
+### Changed — CI/CD speed (first principles)
+
+- **Shared Rust setup action** — `.github/actions/setup-rust` with Swatinem `shared-key` across jobs.
+- **No duplicate lib suite** — Quality Gates drops redundant unit/API/LLM jobs; Release Gates skips per-crate clippy + lib re-run (`RELEASE_SKIP_*`).
+- **Faster cargo defaults** — `CARGO_INCREMENTAL=0`, sparse crates.io, `--locked`, nextest (`--test-threads=4` + `RUST_MIN_STACK`) for workspace lib tests, cancel-in-progress.
+- **Scoped SPEC-006/018 proofs** — resource/observability scripts use `--lib` / `--test <name>` (no unscoped filter that compiles every integration binary).
+- **README + release-and-cd** — v0.16 Hybrid RAG section and pre-delivery checklist aligned with CI map.
+
 ### Added — SPEC-046 ops (P0–P3)
 
 - **Fail-loud Semantic chunking** — no silent Recursive downgrade; strategy degradation metrics.
