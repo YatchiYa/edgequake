@@ -1,0 +1,41 @@
+# Shared Rust CI setup — one place for toolchain + cache + speed env.
+# First principles: compile deps once (shared-key), no incremental in CI, sparse index.
+name: Setup Rust
+description: Install pinned Rust toolchain and restore Swatinem cargo cache
+inputs:
+  toolchain:
+    description: Rust toolchain version
+    required: false
+    default: "1.95.0"
+  components:
+    description: Extra rustup components (comma-separated)
+    required: false
+    default: ""
+  cache-key:
+    description: Extra cache key suffix (job-specific flavor)
+    required: false
+    default: ""
+  shared-key:
+    description: Cross-job cache key (same deps across CI jobs)
+    required: false
+    default: edgequake-ci
+  save-if:
+    description: Whether to save cache
+    required: false
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ inputs.toolchain }}
+        components: ${{ inputs.components }}
+
+    - name: Cache cargo
+      uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: edgequake
+        shared-key: ${{ inputs.shared-key }}
+        key: ${{ inputs.cache-key }}
+        save-if: ${{ inputs.save-if }}

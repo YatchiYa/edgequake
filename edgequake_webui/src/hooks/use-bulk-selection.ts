@@ -25,6 +25,7 @@ import type { Document } from "@/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { invalidateKnowledgeGraph } from "@/lib/cache-manager";
 
 /**

@@ -98,6 +98,12 @@ export interface Document {
    * @implements SPEC-002
    */
   pdf_id?: string;
+
+  /**
+   * Opaque server metadata bag (e.g. `has_original` for download eligibility).
+   * @implements SPEC-002
+   */
+  metadata?: Record<string, unknown>;
 }
 
 /** Extraction lineage information for a document. */

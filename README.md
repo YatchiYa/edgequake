@@ -157,6 +157,20 @@ EdgeQuake implements the [LightRAG algorithm](https://arxiv.org/abs/2410.05779) 
 | **Mix** | Weighted vector + graph blend | configurable |
 | **Bypass** | Direct LLM (no RAG) | LLM-dependent |
 
+### Hybrid RAG (v0.16 / SPEC-046)
+
+Production Hybrid RAG with **fail-closed ops** and science-grade retrieval defaults:
+
+- **PPR-default graph walk** — Personalized PageRank expands entity neighborhoods (`EDGEQUAKE_GRAPH_WALK=bfs` escape hatch)
+- **Bipartite dual-node pick** — entity∪chunk adjacency for Local / Global / Mix chunk selection
+- **HNSW fail-closed + `/ready`** — missing ANN index blocks traffic instead of silent degradation
+- **Intent-gated Mix/Hybrid arms** — skip irrelevant retrieval arms; GenAI `rag.retrieval` spans
+- **Failed-chunk retry → merge** — persist / list / retry extraction failures into the knowledge graph
+- **Faithfulness sampling** — heuristic + optional LLM judge (`EDGEQUAKE_FAITHFULNESS_JUDGE`)
+- **ACC CI gate** — `make spec046-acc` writes a deterministic AccReport JSON (no API key)
+
+Ops runbooks: [specs/046-graphrag-study/13-OPS-RUNBOOKS.md](specs/046-graphrag-study/13-OPS-RUNBOOKS.md).
+
 ### PDF Vision Pipeline
 
 - **Text Mode** — Fast pdfium-based extraction (default, zero-config, embedded in binary)
@@ -322,11 +336,35 @@ make dev                        # Start full stack (PostgreSQL + Backend + Front
 ```
 
 ```bash
-cargo test                      # Run tests
-cargo clippy && cargo fmt       # Lint and format
-make status                     # Check service health
-make stop                       # Stop all services
+cd edgequake && cargo test --workspace --lib --locked   # Unit / lib suite
+cargo clippy --workspace --lib --locked -- -D warnings
+cargo fmt --all -- --check
+cd .. && make status && make stop
 ```
+
+### Pre-delivery checklist (v0.16+)
+
+Run these **before** tagging a release. Prefer Makefile targets — they set required env vars.
+
+```bash
+# Fast local gates (mirrors CI first principles: fail cheap → compile once → proofs)
+make ops17-smoke                # PG extension pin SSOT (pg16/17/18)
+make spec046-acc                # SPEC-046 ACC + AccReport JSON
+make release-gates              # fmt + workspace clippy + SPEC-006/018 + WebUI + version parity
+make test-e2e-lint              # Playwright flake anti-patterns
+# Optional UI-only (no backend): make test-e2e-ui
+```
+
+| Gate | What it proves | CI workflow |
+|------|----------------|-------------|
+| Migration checksum | Immutable SQL lockfile | `CI` → migration-checksum-guard |
+| fmt + clippy + lib tests | Code quality | `CI` → check / test (nextest) |
+| SPEC-006 / SPEC-018 | Resource + observability proofs | `CI` + `Release Gates` |
+| Invariants + test floor | Reliability floor (≥870 lib) | `Test Quality Gates` |
+| SPEC-046 ACC | Hybrid RAG science ACC | `SPEC-046 ACC` |
+| OPS-17 pins | pgvector/AGE pin matrix | `PostgreSQL Matrix Nightly` |
+
+**CI speed principles** (see `.github/workflows/ci.yml`): shared cargo cache across jobs, `CARGO_INCREMENTAL=0` + sparse index, `--locked`, cancel-in-progress, no duplicate workspace lib suite in sibling workflows, release gates skip per-crate clippy / lib re-run when CI already owns them.
 
 See [AGENTS.md](AGENTS.md) for the full developer workflow and [Release & CD](docs/operations/release-and-cd.md) for the release process.
 

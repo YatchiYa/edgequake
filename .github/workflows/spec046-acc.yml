@@ -11,7 +11,9 @@ on:
       - "edgequake/crates/edgequake-observability/**"
       - "edgequake/crates/edgequake-storage/**"
       - "specs/046-graphrag-study/**"
+      - "Makefile"
       - ".github/workflows/spec046-acc.yml"
+      - ".github/actions/setup-rust/**"
   pull_request:
     branches: [main, edgequake-main]
     paths:
@@ -19,7 +21,9 @@ on:
       - "edgequake/crates/edgequake-observability/**"
       - "edgequake/crates/edgequake-storage/**"
       - "specs/046-graphrag-study/**"
+      - "Makefile"
       - ".github/workflows/spec046-acc.yml"
+      - ".github/actions/setup-rust/**"
   workflow_dispatch:
 
 concurrency:
@@ -30,25 +34,24 @@ env:
   CARGO_TERM_COLOR: always
   RUST_TOOLCHAIN: 1.95.0
   RUST_LOG: warn
+  CARGO_INCREMENTAL: "0"
+  CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
 
 jobs:
   acc:
     name: SPEC-046 ACC gate
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@master
+      - uses: ./.github/actions/setup-rust
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: edgequake
-          key: spec046-acc
+          cache-key: spec046-acc
+          save-if: ${{ github.ref == 'refs/heads/edgequake-main' || github.ref == 'refs/heads/main' }}
 
       - name: Run ACC e2e + write JSON artifact
         working-directory: edgequake
