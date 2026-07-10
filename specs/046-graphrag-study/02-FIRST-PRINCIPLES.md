@@ -55,7 +55,8 @@ Sparse (BM25/FTS)  ─┼─► Fusion (RRF) ─► Rerank ─► Truncate ─�
 Graph (paths/PPR)  ─┘
 ```
 
-EdgeQuake already has dense + sparse + graph arms and RRF (`fusion.rs`, `sparse_retrieval.rs`). Missing: **strong graph walk** and **difficulty-aware routing**.
+EdgeQuake already has dense + sparse + graph arms and RRF (`fusion.rs`, `sparse_retrieval.rs`).  
+**v0.16.0:** strong graph walk (**PPR default** + bipartite dual-node) and **difficulty-aware routing** (Factual→Naive + Mix/Hybrid arm gate) are **shipped**. Remaining physics gap: true cross-encoder rerank + full HF GraphRAG-Bench ACC.
 
 ### A6 — Incremental index > full rebuild
 
@@ -71,6 +72,20 @@ Specs and papers are hypotheses. Behavior is defined by:
 | Default query mode | `QueryMode::Mix` | `QueryParam.mode = mix` |
 | Global semantics | Relation vectors + community_id expand | Relation vectors (no community reports) |
 | Fusion | RRF default for Mix | Round-robin merge of C/E/R chunks |
+
+### A8 — Silent degradation is negative EV (ops axiom, 2026-07-10)
+
+Any path that **warns and continues** (Semantic→Recursive, HNSW create `.ok()`, embedding truncate, stub repair `200 OK`) increases `P(answer looks fine | evidence broken)`.  
+July 2026 production RAG practice treats empty retrieval, truncation, and strategy downgrade as **first-class telemetry**, not log noise.
+
+### A9 — Storage complexity contract
+
+| Hot path | Max complexity |
+|----------|----------------|
+| Vector ANN | O(log N) with live HNSW |
+| Graph expand | O(k · degree · hops) batched |
+| Community on ingest | O(sample) capped — **never** full `get_all_nodes` |
+| Mix arms | Router may zero arms; forced 3-arm is a cost choice |
 
 ---
 
@@ -92,7 +107,7 @@ q ──► Classify difficulty (L1..L4)
              + faithfulness check against evidence
 ```
 
-**EdgeQuake today:** Mix runs Local+Global+Naive always (unless adaptive mode). That approximates "always L2/L3" — overkill for L1, underpowered vs HippoRAG2 for hard L2.
+**EdgeQuake v0.16.0:** Adaptive intent routing + Mix/Hybrid **arm gate** skip graph tax on L1 when configured; default API mode remains Mix. Graph walk defaults to **PPR** (`EDGEQUAKE_GRAPH_WALK=bfs` escape). That approximates "L2-capable by default" with an L1 off-ramp — closer to HippoRAG2 physics than always-3-arm Mix, still short of full dual-node AGE store + cross-encoder.
 
 ---
 
@@ -106,10 +121,10 @@ Document
   ├─ Extract (precision/recall)  ← gleaning, schema, JSON vs tuple
   ├─ Merge (dedupe + summarize)  ← graph density & description quality
   ├─ Embed (chunk/entity/rel)    ← retrieval surface
-  └─ Measure (degree, clustering, orphan rate)  ← MISSING in both for ops
+  └─ Measure (degree, clustering, orphan rate)  ← **shipped** `graph_metrics` + Prometheus `record_graph_quality`
 ```
 
-**Implication:** Improving extraction prompts without measuring graph quality is cargo cult.
+**Implication:** Improving extraction prompts without measuring graph quality is cargo cult — v0.16 closes the measure gap; density tuning YAML remains open.
 
 ---
 

@@ -7,6 +7,7 @@
 pub mod error_context;
 pub mod http_span;
 pub mod propagation;
+pub mod rag_span;
 pub mod request_context;
 pub mod subscriber;
 
@@ -21,6 +22,10 @@ pub mod metrics;
 pub use error_context::ErrorEvent;
 pub use http_span::{record_http_error, record_http_status, with_http_span};
 pub use query_guard::{QueryFailureGuard, QueryOutcomeGuard};
+pub use rag_span::{
+    query_preview, record_rag_retrieval_outcome, with_rag_generation_span, with_rag_retrieval_span,
+    RagRetrievalAttrs,
+};
 
 pub use propagation::{harvest_propagation_headers, PropagationHeaders};
 pub use request_context::{
@@ -37,8 +42,12 @@ pub use trace_context::{extract_from_headers, inject_current_context};
 
 #[cfg(feature = "metrics")]
 pub use metrics::{
-    init_metrics, record_compensation_quarantine, record_db_pool_stats, record_document_processing,
-    record_document_processing_with_labels, record_http_request, record_ingestion_failure,
-    record_llm_request, record_pipeline_error, record_query_completed, record_rate_limit_exceeded,
-    record_storage_error, record_task_queue_stats, render_prometheus_metrics,
+    init_metrics, record_chunk_strategy_degraded, record_community_sampled,
+    record_compensation_quarantine, record_db_pool_stats, record_document_processing,
+    record_document_processing_with_labels, record_faithfulness_sample, record_graph_quality,
+    record_http_request, record_ingestion_failure, record_llm_request, record_pipeline_error,
+    record_popular_node_fallback, record_query_completed, record_rate_limit_exceeded,
+    record_sparse_retrieval_outcome, record_storage_drift, record_storage_error,
+    record_task_queue_stats, render_prometheus_metrics, set_storage_drift_critical,
+    set_vector_ann_index_missing,
 };

@@ -14,7 +14,7 @@ use edgequake_pipeline::{
 };
 use edgequake_query::community_global::append_community_report_vector_chunks;
 use edgequake_query::eval::{
-    assert_case_routing, run_spec046_bench_report, spec046_synthetic_bench,
+    assert_case_routing, run_spec046_acc_report, run_spec046_bench_report, spec046_synthetic_bench,
 };
 use edgequake_query::graph_expand::expand_neighborhood_edges;
 use edgequake_query::graph_ppr::GraphWalkMode;
@@ -28,7 +28,9 @@ use edgequake_query::{
     QueryEngine, QueryEngineConfig, QueryMode, QueryRequest,
 };
 use edgequake_storage::adapters::memory::{MemoryGraphStorage, MemoryVectorStorage};
-use edgequake_storage::traits::{GraphReadView, GraphStorage, GraphStorageMutateOps, VectorStorage};
+use edgequake_storage::traits::{
+    GraphReadView, GraphStorage, GraphStorageMutateOps, VectorStorage,
+};
 use edgequake_storage::{Community, CommunityDetectionResult, VectorSearchResult};
 
 #[test]
@@ -49,6 +51,20 @@ fn e2e_spec046_bench_report_full_pass() {
 }
 
 #[test]
+fn e2e_spec046_acc_harness_full_pass() {
+    let report = run_spec046_acc_report();
+    assert!(
+        report.is_full_pass(),
+        "ACC failures: {:?}",
+        report
+            .checks
+            .iter()
+            .filter(|c| !c.passed)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn e2e_factual_heuristic_maps_to_naive() {
     let intent = QueryIntent::classify_heuristic("What is Rust?");
     assert_eq!(intent, QueryIntent::Factual);
@@ -63,10 +79,9 @@ async fn e2e_ppr_walk_expands_seed_neighborhood() {
         graph.upsert_edge(a, b, HashMap::new()).await.unwrap();
     }
     let view = GraphReadView::new(&graph);
-    let edges =
-        expand_neighborhood_edges(&view, &["SEED".into()], 2, 10, GraphWalkMode::Ppr)
-            .await
-            .unwrap();
+    let edges = expand_neighborhood_edges(&view, &["SEED".into()], 2, 10, GraphWalkMode::Ppr)
+        .await
+        .unwrap();
     assert!(!edges.is_empty());
     assert!(
         edges
@@ -400,7 +415,10 @@ fn e2e_semantic_chunk_strategy_requires_embeddings() {
     use edgequake_pipeline::ChunkStrategy;
     assert!(ChunkStrategy::Semantic.requires_embeddings());
     assert_eq!(ChunkStrategy::parse("V"), Some(ChunkStrategy::Semantic));
-    assert_eq!(ChunkStrategy::parse("semantic"), Some(ChunkStrategy::Semantic));
+    assert_eq!(
+        ChunkStrategy::parse("semantic"),
+        Some(ChunkStrategy::Semantic)
+    );
 }
 
 #[tokio::test]

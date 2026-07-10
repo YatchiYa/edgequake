@@ -204,13 +204,17 @@ mod tests {
 
     #[test]
     fn parses_semantic_aliases() {
-        assert_eq!(ChunkStrategy::parse("semantic"), Some(ChunkStrategy::Semantic));
+        assert_eq!(
+            ChunkStrategy::parse("semantic"),
+            Some(ChunkStrategy::Semantic)
+        );
         assert_eq!(ChunkStrategy::parse("V"), Some(ChunkStrategy::Semantic));
         assert!(ChunkStrategy::Semantic.requires_embeddings());
     }
 
     #[test]
     fn semantic_without_embedder_still_resolves() {
+        // Registry still constructs the strategy; fail-loud happens at chunk() time.
         let chunker = resolve_chunker(ChunkStrategy::Semantic, ChunkerConfig::default());
         assert_eq!(chunker.strategy_name(), "semantic_vector");
     }

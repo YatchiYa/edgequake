@@ -131,6 +131,7 @@ release: ## Bump all crate versions and tag release using cargo-release (uses VE
 
 
 .PHONY: help install dev dev-auth dev-bg dev-auth-bg dev-memory kill-app stop clean build test lint format sync-dev-ports \
+        ops17-smoke spec046-acc \
         dev-pg16 dev-pg17 dev-pg18 dev-bg-pg16 dev-bg-pg17 dev-bg-pg18 \
         backend-dev backend-db backend-memory backend-bg backend-build backend-build-online backend-sqlx-prepare backend-test backend-run \
         frontend-dev frontend-bg frontend-build frontend-test frontend-lint \
@@ -1364,6 +1365,14 @@ postgres-image-build-unified: ## Build any PG profile via unified Dockerfile (DR
 check-extension-pins: ## Verify Dockerfile pins match extension-pins.sh SSOT (SPEC-042 DRY gate)
 	@bash scripts/check_extension_pins.sh all
 
+ops17-smoke: ## SPEC-046 OPS-17: pin smoke for pg16/pg17/pg18 (non-flaky; add --battle for Docker)
+	@chmod +x specs/046-graphrag-study/e2e/run_ops17_perf_smoke.sh
+	@./specs/046-graphrag-study/e2e/run_ops17_perf_smoke.sh
+
+spec046-acc: ## SPEC-046 science ACC gate + JSON artifact (deterministic; no API key)
+	@chmod +x specs/046-graphrag-study/e2e/run_spec046_acc.sh
+	@./specs/046-graphrag-study/e2e/run_spec046_acc.sh
+
 postgres-battle-test: ## Run SPEC-042 version feature battle test (all PG tiers)
 	@chmod +x specs/042-update-age-pgvector/e2e/run_version_feature_battle_test.sh
 	@./specs/042-update-age-pgvector/e2e/run_version_feature_battle_test.sh all
@@ -2260,7 +2269,7 @@ spec020-qc-proof-auth: ## SPEC-020 auth-enabled login proof (DEV_AUTH_ENABLED=tr
 	@chmod +x specs/020-e2e-quality-control/e2e/run_quality_control_proof.sh
 	@SPEC020_AUTH_PROOF=1 ./specs/020-e2e-quality-control/e2e/run_quality_control_proof.sh
 
-release-gates: ## Pre-release gate: fmt, per-crate clippy, tests, SPEC-006 + SPEC-018 proofs
+release-gates: ## Pre-release gate: fmt, workspace clippy, SPEC-006/018, WebUI, version parity
 	@chmod +x scripts/release_gates.sh
 	@./scripts/release_gates.sh
 

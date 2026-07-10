@@ -151,8 +151,7 @@ impl DocumentTaskProcessor {
         };
 
         let summary_ws = async {
-            let uuid =
-                crate::middleware::resolve_workspace_uuid(Some(workspace_id_meta.as_str()))?;
+            let uuid = crate::middleware::resolve_workspace_uuid(Some(workspace_id_meta.as_str()))?;
             let ws_svc = self.workspace_service.as_ref()?;
             ws_svc.get_workspace(uuid).await.ok().flatten()
         }
@@ -227,48 +226,49 @@ impl DocumentTaskProcessor {
             }
         };
 
-        let chunk_embeddings_stored = match crate::services::persist_with_providers_progress_and_embedder(
-            persist_llm,
-            self.query_cache_invalidator
-                .as_ref()
-                .map(|e| e.as_ref() as &dyn edgequake_query::QueryResultCacheInvalidator),
-            self.graph_storage.clone(),
-            workspace_vector_storage.clone(),
-            self.kv_storage.clone(),
-            self.relational_sink.clone(),
-            // SPEC-032 W-08: lineage sink — resolved from shared AppState pg_pool
-            self.resolve_lineage_sink().await,
-            text_embedder,
-            crate::services::PersistIngestionParams::for_document(
-                &document_id,
-                tenant_id.clone(),
-                workspace_id_meta.clone(),
-                &result,
-                ChunkVectorBuildOptions::STANDARD,
-                Some(&data.file_source),
-            ),
-            merge_progress_cb,
-        )
-        .await
-        {
-            Ok(out) => {
-                info!(
-                    document_id = %document_id,
-                    chunk_vectors = out.chunk_vector_ids.len(),
-                    entities = out.merge_stats.entities_created + out.merge_stats.entities_updated,
-                    relationships = out.merge_stats.relationships_created
-                        + out.merge_stats.relationships_updated,
-                    "P-G2 persist completed"
-                );
-                out.chunk_vector_ids.len()
-            }
-            Err(e) => {
-                let err_msg = format!("Knowledge graph persist failed: {}", e);
-                error!(document_id = %document_id, "{}", err_msg);
-                storage_errors.push(err_msg);
-                0
-            }
-        };
+        let chunk_embeddings_stored =
+            match crate::services::persist_with_providers_progress_and_embedder(
+                persist_llm,
+                self.query_cache_invalidator
+                    .as_ref()
+                    .map(|e| e.as_ref() as &dyn edgequake_query::QueryResultCacheInvalidator),
+                self.graph_storage.clone(),
+                workspace_vector_storage.clone(),
+                self.kv_storage.clone(),
+                self.relational_sink.clone(),
+                // SPEC-032 W-08: lineage sink — resolved from shared AppState pg_pool
+                self.resolve_lineage_sink().await,
+                text_embedder,
+                crate::services::PersistIngestionParams::for_document(
+                    &document_id,
+                    tenant_id.clone(),
+                    workspace_id_meta.clone(),
+                    &result,
+                    ChunkVectorBuildOptions::STANDARD,
+                    Some(&data.file_source),
+                ),
+                merge_progress_cb,
+            )
+            .await
+            {
+                Ok(out) => {
+                    info!(
+                        document_id = %document_id,
+                        chunk_vectors = out.chunk_vector_ids.len(),
+                        entities = out.merge_stats.entities_created + out.merge_stats.entities_updated,
+                        relationships = out.merge_stats.relationships_created
+                            + out.merge_stats.relationships_updated,
+                        "P-G2 persist completed"
+                    );
+                    out.chunk_vector_ids.len()
+                }
+                Err(e) => {
+                    let err_msg = format!("Knowledge graph persist failed: {}", e);
+                    error!(document_id = %document_id, "{}", err_msg);
+                    storage_errors.push(err_msg);
+                    0
+                }
+            };
         info!(
             "Stored {} chunk embeddings in vector storage for document {}",
             chunk_embeddings_stored, document_id

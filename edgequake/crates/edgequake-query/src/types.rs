@@ -289,6 +289,110 @@ pub struct QueryStats {
     /// Time spent in reranking (ms), when a reranker was applied.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rerank_time_ms: Option<u64>,
+
+    /// Per-arm wall time for Mix/Hybrid local retrieval (ms).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arm_local_ms: Option<u64>,
+
+    /// Per-arm wall time for Mix/Hybrid global retrieval (ms).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arm_global_ms: Option<u64>,
+
+    /// Per-arm wall time for Mix/Hybrid naive retrieval (ms).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arm_naive_ms: Option<u64>,
+
+    /// Comma-separated arms that actually ran (e.g. `"local,global"`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arms_run: Option<String>,
+
+    /// True when intent/weight gating skipped at least one arm.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arms_gated: Option<bool>,
+
+    /// True when retrieval returned no chunks/entities/relationships.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub context_empty: bool,
+
+    /// True when post-retrieval truncation removed context items.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub context_truncated: bool,
+
+    /// True when local/global used popular-node graph fallback (OPS-P2.14).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub popular_node_fallback: bool,
+
+    /// Arm that triggered popular-node fallback (`local` | `global`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub popular_node_arm: Option<String>,
+
+    /// Sparse fusion path label (`postgres_fts`, `in_memory_bm25`, …).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sparse_outcome: Option<String>,
+
+    /// True when FTS path degraded to BM25/vector-only (OPS-P2.15).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub fts_fallback: bool,
+
+    /// Optional online faithfulness sample score in `[0, 1]` (OPS-P2.20).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub faithfulness_score: Option<f32>,
+}
+
+impl QueryStats {
+    /// Copy Mix/Hybrid arm timing + OPS-P2 retrieval telemetry from context.
+    pub fn absorb_arm_metadata(&mut self, context: &crate::context::QueryContext) {
+        use crate::mix_weights::{
+            META_ARMS_GATED, META_ARMS_RUN, META_ARM_GLOBAL_MS, META_ARM_LOCAL_MS,
+            META_ARM_NAIVE_MS,
+        };
+        use crate::retrieval_telemetry::{
+            META_FTS_FALLBACK, META_POPULAR_NODE_ARM, META_POPULAR_NODE_FALLBACK,
+            META_SPARSE_OUTCOME,
+        };
+        self.arm_local_ms = context
+            .metadata
+            .get(META_ARM_LOCAL_MS)
+            .and_then(|v| v.as_u64());
+        self.arm_global_ms = context
+            .metadata
+            .get(META_ARM_GLOBAL_MS)
+            .and_then(|v| v.as_u64());
+        self.arm_naive_ms = context
+            .metadata
+            .get(META_ARM_NAIVE_MS)
+            .and_then(|v| v.as_u64());
+        self.arms_run = context
+            .metadata
+            .get(META_ARMS_RUN)
+            .and_then(|v| v.as_str().map(str::to_string));
+        self.arms_gated = context
+            .metadata
+            .get(META_ARMS_GATED)
+            .and_then(|v| v.as_bool());
+        self.popular_node_fallback = context
+            .metadata
+            .get(META_POPULAR_NODE_FALLBACK)
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        self.popular_node_arm = context
+            .metadata
+            .get(META_POPULAR_NODE_ARM)
+            .and_then(|v| v.as_str().map(str::to_string));
+        self.sparse_outcome = context
+            .metadata
+            .get(META_SPARSE_OUTCOME)
+            .and_then(|v| v.as_str().map(str::to_string));
+        self.fts_fallback = context
+            .metadata
+            .get(META_FTS_FALLBACK)
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        self.context_empty = context.chunks.is_empty()
+            && context.entities.is_empty()
+            && context.relationships.is_empty();
+        self.context_truncated = context.is_truncated;
+    }
 }
 
 #[cfg(test)]
@@ -346,5 +450,23 @@ mod tests {
         let json_without = serde_json::to_string(&without_sp).unwrap();
         let deserialized: QueryRequest = serde_json::from_str(&json_without).unwrap();
         assert!(deserialized.system_prompt.is_none());
+    }
+
+    #[test]
+    fn absorb_arm_metadata_from_context() {
+        use crate::mix_weights::{META_ARMS_GATED, META_ARMS_RUN, META_ARM_NAIVE_MS};
+        let mut ctx = QueryContext::new();
+        ctx.metadata
+            .insert(META_ARM_NAIVE_MS.into(), serde_json::json!(12u64));
+        ctx.metadata
+            .insert(META_ARMS_RUN.into(), serde_json::json!("naive"));
+        ctx.metadata
+            .insert(META_ARMS_GATED.into(), serde_json::json!(true));
+        let mut stats = QueryStats::default();
+        stats.absorb_arm_metadata(&ctx);
+        assert_eq!(stats.arm_naive_ms, Some(12));
+        assert_eq!(stats.arms_run.as_deref(), Some("naive"));
+        assert_eq!(stats.arms_gated, Some(true));
+        assert!(stats.context_empty);
     }
 }

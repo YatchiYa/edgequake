@@ -10,11 +10,12 @@ use edgequake_storage::traits::{MetadataFilter, VectorStorage};
 use crate::context::{QueryContext, RetrievedChunk};
 use crate::engine_impl::{QueryEngine, QueryEngineConfig};
 use crate::error::Result;
+use crate::graph_ppr::GraphWalkMode;
 use crate::helpers::build_chunk_from_result;
 use crate::kg_chunk_pick::{
-    collect_kg_chunk_ids, pick_chunks_by_entity_ppr, pick_chunks_by_weight, KgChunkPickMethod,
+    collect_kg_chunk_ids, pick_chunks_by_bipartite_ppr, pick_chunks_by_weight, KgChunkPickMethod,
 };
-use crate::graph_ppr::GraphWalkMode;
+use edgequake_storage::traits::GraphEdge;
 
 #[allow(clippy::too_many_arguments)] // retrieval pipeline mirrors QueryEngine workspace arity
 pub(super) async fn append_score_ranked_chunks(
@@ -28,13 +29,26 @@ pub(super) async fn append_score_ranked_chunks(
     retrieval_config: &QueryEngineConfig,
     workspace_mf: Option<&MetadataFilter>,
     log_label: &str,
-) -> Result<Vec<RetrievedChunk>> {
+) -> Result<(
+    Vec<RetrievedChunk>,
+    crate::sparse_retrieval::SparseRetrievalOutcome,
+)> {
     let related_n = retrieval_config.related_chunk_number;
 
-    // Dual-node lite: when PPR walk is active, prefer entity-score → chunk mapping
-    // over plain vector/weight pick (SPEC-046 EQ-046-07).
+    // Dual-node (EQ-046-17): bipartite PPR over entity relations ∪ mentions.
+    // Falls back to lite entity-score projection when no relations are present.
     let chunk_ids_vec = if retrieval_config.graph_walk == GraphWalkMode::Ppr {
-        let ranked = pick_chunks_by_entity_ppr(context, retrieval_config.max_chunks);
+        let entity_edges: Vec<GraphEdge> = context
+            .relationships
+            .iter()
+            .map(|r| GraphEdge {
+                source: r.source.clone(),
+                target: r.target.clone(),
+                properties: std::collections::HashMap::new(),
+            })
+            .collect();
+        let ranked =
+            pick_chunks_by_bipartite_ppr(context, &entity_edges, retrieval_config.max_chunks);
         if ranked.is_empty() {
             collect_kg_chunk_ids(context, related_n)
         } else {
@@ -66,7 +80,10 @@ pub(super) async fn append_score_ranked_chunks(
     );
 
     if chunk_ids_vec.is_empty() {
-        return Ok(Vec::new());
+        return Ok((
+            Vec::new(),
+            crate::sparse_retrieval::SparseRetrievalOutcome::VectorOnly,
+        ));
     }
 
     // Preserve ranked order for Weight and PPR dual-node picks; Vector uses score filter.
@@ -108,7 +125,8 @@ pub(super) async fn append_score_ranked_chunks(
 
     let mf_chunk = MetadataFilter::from_tenant_workspace_type(tenant_id, workspace_id, "chunk");
 
-    let mut chunks = if crate::sparse_retrieval::bm25_retrieval_enabled(retrieval_config) {
+    let (mut chunks, outcome) = if crate::sparse_retrieval::bm25_retrieval_enabled(retrieval_config)
+    {
         crate::sparse_retrieval::fuse_vector_and_bm25_chunks(
             query_text,
             &results,
@@ -120,18 +138,19 @@ pub(super) async fn append_score_ranked_chunks(
         )
         .await
     } else {
-        results
-            .iter()
-            .filter(|r| {
-                preserve_order || r.score >= retrieval_config.min_score
-            })
-            .take(retrieval_config.max_chunks)
-            .map(build_chunk_from_result)
-            .collect()
+        (
+            results
+                .iter()
+                .filter(|r| preserve_order || r.score >= retrieval_config.min_score)
+                .take(retrieval_config.max_chunks)
+                .map(build_chunk_from_result)
+                .collect(),
+            crate::sparse_retrieval::SparseRetrievalOutcome::VectorOnly,
+        )
     };
 
     crate::chunk_hydration::hydrate_retrieved_chunks(engine.kv_storage.as_deref(), &mut chunks)
         .await;
 
-    Ok(chunks)
+    Ok((chunks, outcome))
 }

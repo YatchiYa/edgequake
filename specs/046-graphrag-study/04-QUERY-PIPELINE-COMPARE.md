@@ -184,11 +184,13 @@ Both emit roughly:
 EdgeQuake: `QueryContext::to_context_string` + `balance_context`.  
 LightRAG: `kg_query_context` / `naive_query_context` prompts + dynamic budgets.
 
-**PathRAG lesson (2026):** prune low-flow paths before prompt. Neither system has flow-based pruning — opportunity for token tax reduction.
+**PathRAG lesson (2026):** prune low-flow paths before prompt. **v0.16.0:** EdgeQuake ships `path_prune.rs` before `balance_context` — PathRAG-inspired token tax reduction.
 
 ---
 
 ## Query Scorecard (honest)
+
+### Baseline (2026-07-09)
 
 | Dimension | EdgeQuake | LightRAG latest | Notes |
 |-----------|:---------:|:---------------:|-------|
@@ -204,6 +206,18 @@ LightRAG: `kg_query_context` / `naive_query_context` prompts + dynamic budgets.
 | Rerank ecosystem | 3/5 | 4/5 | LR more bindings |
 | Eval harness | 2/5 | 2/5 | Both weak vs GraphRAG-Bench |
 | **Overall query** | **3.7** | **3.5** | EQ slightly ahead on fusion; both behind HippoRAG2 physics |
+
+### Code truth — EdgeQuake **v0.16.0**
+
+| Dimension | EQ v0.16 | Notes |
+|-----------|:--------:|-------|
+| Graph walk power | **4/5** | PPR default + bipartite dual-node pick (`bfs` escape) |
+| Community reports | **2/5** | Opt-in extractive vector inject; LLM depth open |
+| Intent routing | **4/5** | Factual→Naive; Mix/Hybrid arm gate |
+| Token accounting | **4/5** | Dynamic remainder + path prune |
+| Eval harness | **4/5** | ACC CI + mini corpus; HF download open |
+| Rerank ecosystem | **3/5** | BM25 path; true CE open |
+| **Overall query** | **~4.3** | LightRAG-class+; HippoRAG2 still leads full-bench ACC |
 
 ---
 

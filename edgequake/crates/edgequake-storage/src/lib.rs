@@ -68,6 +68,7 @@ pub mod document_metadata_integrity;
 pub mod entity_id;
 pub mod entity_reconcile;
 pub mod error;
+pub mod failed_chunks;
 pub mod graph_batch_dedupe;
 pub mod graph_metrics;
 pub mod kv_key_schema;
@@ -90,25 +91,29 @@ pub use crate::community_index_service::{
 pub use chunk_content::{
     batch_fetch_chunk_contents, content_from_kv_value, content_from_metadata_or_kv,
 };
-pub use community::{Community, CommunityAlgorithm, CommunityConfig, CommunityDetectionResult};
-pub use community_reports::{
-    build_community_report_records, build_extractive_community_report, community_report_vector_id,
-    community_report_vector_metadata, community_reports_enabled,
-    index_community_reports_with_embedder, pack_community_report_vectors,
-    upsert_community_report_vectors, COMMUNITY_REPORT_VECTOR_TYPE,
-};
-pub use graph_batch_dedupe::{dedupe_edges_by_endpoints, dedupe_nodes_by_id};
-pub use graph_metrics::{
-    collect_graph_quality_metrics, log_graph_quality, metrics_from_merge_delta, GraphQualityMetrics,
+pub use community::{
+    community_max_nodes_from_env, load_graph_bounded, BoundedGraphLoad, Community,
+    CommunityAlgorithm, CommunityConfig, CommunityDetectionResult,
 };
 pub use community_persist::{
     backfill_communities_if_needed, community_features_enabled, detect_and_persist_communities,
     needs_community_backfill, persist_community_labels, refresh_community_index,
     spawn_community_backfill_if_needed,
 };
+pub use community_reports::{
+    build_community_report_records, build_extractive_community_report, community_report_vector_id,
+    community_report_vector_metadata, community_reports_enabled,
+    index_community_reports_with_embedder, pack_community_report_vectors,
+    upsert_community_report_vectors, COMMUNITY_REPORT_VECTOR_TYPE,
+};
 pub use document_metadata_integrity::{
     canonical_document_id, document_id_from_metadata_key, metadata_id_drift,
     repair_document_metadata_in_place, DOCUMENT_METADATA_SUFFIX,
+};
+pub use failed_chunks::{FailedChunkInsert, FailedChunkRecord, InMemoryFailedChunkStore};
+pub use graph_batch_dedupe::{dedupe_edges_by_endpoints, dedupe_nodes_by_id};
+pub use graph_metrics::{
+    collect_graph_quality_metrics, log_graph_quality, metrics_from_merge_delta, GraphQualityMetrics,
 };
 
 // Re-export PDF storage types

@@ -60,7 +60,14 @@ impl PgVectorStorage {
         };
 
         if !index_sql.is_empty() {
-            sqlx::query(&index_sql).execute(&pool).await.ok();
+            // SPEC-046 OPS-P0.3: fail-closed — never swallow ANN index DDL errors.
+            // Missing HNSW silently degrades to seq-scan (latency/recall cliff).
+            sqlx::query(&index_sql).execute(&pool).await.map_err(|e| {
+                StorageError::Database(format!(
+                    "Failed to create ANN index on {}: {}",
+                    self.table_name, e
+                ))
+            })?;
         }
 
         // SPEC-034 IMP-08: Vector metadata GIN index removed.
@@ -144,6 +151,60 @@ impl PgVectorStorage {
         };
 
         schema::relation_exists(&pool, &self.table_name).await
+    }
+
+    /// Name of the ANN embedding index for this table (SPEC-046 OPS-P0.3).
+    pub fn ann_index_name(&self) -> String {
+        format!("eq_{}_vectors_embedding_idx", self.prefix)
+    }
+
+    /// True when HNSW/IVFFlat index exists (fail-closed readiness probe).
+    pub async fn ann_index_exists(&self) -> Result<bool> {
+        let policy = AnnIndexPolicy::resolve(self.dimension, self.storage_mode);
+        if !policy.hnsw_viable || matches!(self.index_type, VectorIndexType::None) {
+            return Ok(true); // ANN not expected — not a readiness failure
+        }
+        let pool = self.pool.get().await?;
+        let index_name = self.ann_index_name();
+        let exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(
+                SELECT 1 FROM pg_indexes
+                WHERE schemaname = 'public' AND indexname = $1
+            )",
+        )
+        .bind(&index_name)
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| StorageError::Database(format!("ann_index_exists probe failed: {e}")))?;
+        Ok(exists)
+    }
+
+    /// Count vector tables that have no HNSW/IVFFlat index (bootstrap readiness).
+    pub async fn count_vector_tables_missing_ann_index(pool: &sqlx::PgPool) -> Result<usize> {
+        let missing: i64 = sqlx::query_scalar(
+            r#"
+            SELECT COUNT(*)::bigint
+            FROM pg_tables t
+            WHERE t.schemaname = 'public'
+              AND t.tablename LIKE 'eq\_%\_vectors' ESCAPE '\'
+              AND t.tablename NOT LIKE '%\_stats'
+              AND NOT EXISTS (
+                SELECT 1
+                FROM pg_indexes i
+                WHERE i.schemaname = 'public'
+                  AND i.tablename = t.tablename
+                  AND (
+                    i.indexname = (t.tablename || '_embedding_idx')
+                    OR i.indexdef ILIKE '% USING hnsw %'
+                    OR i.indexdef ILIKE '% USING ivfflat %'
+                  )
+              )
+            "#,
+        )
+        .fetch_one(pool)
+        .await
+        .map_err(|e| StorageError::Database(format!("missing ANN index scan failed: {e}")))?;
+        Ok(missing.max(0) as usize)
     }
 
     /// Add GIN-backed `content_tsv` for native Postgres FTS on chunk content (SPEC-023 I10).

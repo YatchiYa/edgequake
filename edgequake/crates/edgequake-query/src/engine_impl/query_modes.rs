@@ -247,7 +247,8 @@ mod tests {
 
         let engine = make_engine(storage.clone());
         use crate::keywords::{ExtractedKeywords, QueryIntent};
-        let keywords = ExtractedKeywords::new(vec![], vec![], QueryIntent::Exploratory);
+        // Comparative keeps all three arms under default intent gating (OPS-P1).
+        let keywords = ExtractedKeywords::new(vec![], vec![], QueryIntent::Comparative);
         let embeddings = QueryEmbeddings {
             query: vec![0.9, 0.1, 0.0, 0.0],
             high_level: vec![0.9, 0.1, 0.0, 0.0],

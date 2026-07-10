@@ -1237,8 +1237,14 @@ mod tests {
                 .with_source_chunk_id("chunk-1"),
         );
 
-        let stats = merger.merge(vec![r0, r1]).await.expect("merge must succeed");
-        assert_eq!(stats.errors, 0, "duplicate endpoints must not count as merge errors");
+        let stats = merger
+            .merge(vec![r0, r1])
+            .await
+            .expect("merge must succeed");
+        assert_eq!(
+            stats.errors, 0,
+            "duplicate endpoints must not count as merge errors"
+        );
         assert_eq!(
             stats.relationships_created, 1,
             "expected one edge after endpoint dedup, got {}",

@@ -48,6 +48,7 @@ fn test_truncation_with_large_context() {
         max_entity_tokens: 200, // Very strict limit
         max_relation_tokens: 200,
         max_total_tokens: 300, // Even stricter total
+        buffer_tokens: 0,
     };
 
     // Create many entities with longer descriptions to force truncation
@@ -157,6 +158,7 @@ fn test_balance_reduces_proportionally() {
         max_entity_tokens: 1000,
         max_relation_tokens: 1000,
         max_total_tokens: 200, // Very small limit to force reduction
+        buffer_tokens: 0,
     };
 
     // Create roughly equal amounts of each with longer content

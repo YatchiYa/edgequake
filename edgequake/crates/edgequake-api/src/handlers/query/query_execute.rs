@@ -11,7 +11,9 @@ use axum::{
 };
 use edgequake_audit::{AuditEvent, AuditEventType, AuditResult};
 use edgequake_observability::{
-    record_llm_request, scope_llm_provider, PropagationHeaders, QueryOutcomeGuard, RequestContext,
+    record_faithfulness_sample, record_llm_request, record_popular_node_fallback,
+    record_sparse_retrieval_outcome, scope_llm_provider, PropagationHeaders, QueryOutcomeGuard,
+    RequestContext,
 };
 use tracing::debug;
 
@@ -201,6 +203,23 @@ pub async fn execute_query(
     record_audit(&state, with_request_context(audit_event, &req_ctx));
 
     query_obs.mark_success(result.stats.total_time_ms as f64 / 1000.0);
+
+    // SPEC-046 OPS-P2: surface retrieval telemetry to Prometheus (API owns metrics).
+    if result.stats.popular_node_fallback {
+        record_popular_node_fallback(
+            result
+                .stats
+                .popular_node_arm
+                .as_deref()
+                .unwrap_or("unknown"),
+        );
+    }
+    if let Some(ref outcome) = result.stats.sparse_outcome {
+        record_sparse_retrieval_outcome(outcome);
+    }
+    if let Some(score) = result.stats.faithfulness_score {
+        record_faithfulness_sample(score as f64);
+    }
 
     if result.stats.generation_time_ms > 0 {
         record_llm_request(

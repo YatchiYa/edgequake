@@ -14,7 +14,7 @@
 //! - **Observable**: on cleanup failure, emits a structured `quarantine` log
 //!   so an operator or reconciliation job can remove residue out of band.
 
-use crate::traits::{GraphStorage, VectorStorage};
+use crate::traits::{GraphStorage, KVStorage, VectorStorage};
 
 /// Record quarantine metric when observability feature is enabled (SPEC-045 SRE-I07).
 #[cfg(feature = "observability")]
@@ -24,6 +24,43 @@ fn record_compensation_quarantine_metric(kind: &str) {
 
 #[cfg(not(feature = "observability"))]
 fn record_compensation_quarantine_metric(_kind: &str) {}
+
+/// Roll back chunk KV records written before a failed merge (SPEC-046 OPS-P1.8).
+///
+/// Best-effort and idempotent. Pass the exact KV keys upserted in the persist
+/// stage (typically `doc_chunk` ids from [`crate::kv_keys::doc_chunk`]).
+pub async fn compensate_orphan_kv(
+    kv_storage: &dyn KVStorage,
+    doc_id: &str,
+    chunk_kv_ids: &[String],
+    cause: &str,
+) {
+    if chunk_kv_ids.is_empty() {
+        return;
+    }
+
+    match kv_storage.delete(chunk_kv_ids).await {
+        Ok(()) => {
+            tracing::warn!(
+                document_id = %doc_id,
+                chunk_kv_deleted = chunk_kv_ids.len(),
+                cause = %cause,
+                "saga_compensation: rolled back orphan chunk KV after graph failure (SPEC-046 OPS-P1.8)"
+            );
+        }
+        Err(cleanup_err) => {
+            record_compensation_quarantine_metric("kv");
+            tracing::error!(
+                document_id = %doc_id,
+                orphan_chunk_kv = chunk_kv_ids.len(),
+                merge_cause = %cause,
+                cleanup_error = %cleanup_err,
+                "quarantine: failed to roll back orphan chunk KV after graph failure; \
+                 manual or reconciliation cleanup required"
+            );
+        }
+    }
+}
 
 /// Roll back chunk vectors (and optionally entity vectors) written earlier in
 /// the ingestion saga after the graph merge failed.
@@ -130,7 +167,7 @@ pub async fn compensate_orphan_graph_writes(
 }
 
 /// Full merge-stage compensation: chunk vectors, new-entity vectors, new-edge
-/// vectors, and newly created graph nodes/edges (P-G5 SSOT).
+/// vectors, newly created graph nodes/edges, and optional chunk KV (P-G5 + OPS-P1.8).
 #[allow(clippy::too_many_arguments)] // saga rollback mirrors merge stage arity
 pub async fn compensate_merge_failure(
     graph_storage: &dyn GraphStorage,
@@ -143,6 +180,41 @@ pub async fn compensate_merge_failure(
     edges_created: &[(String, String)],
     cause: &str,
 ) {
+    compensate_merge_failure_with_kv(
+        graph_storage,
+        vector_storage,
+        None,
+        doc_id,
+        chunk_vector_ids,
+        &[],
+        entity_vector_ids,
+        relationship_vector_ids,
+        nodes_created,
+        edges_created,
+        cause,
+    )
+    .await;
+}
+
+/// Same as [`compensate_merge_failure`] plus optional KV chunk rollback.
+#[allow(clippy::too_many_arguments)]
+pub async fn compensate_merge_failure_with_kv(
+    graph_storage: &dyn GraphStorage,
+    vector_storage: &dyn VectorStorage,
+    kv_storage: Option<&dyn KVStorage>,
+    doc_id: &str,
+    chunk_vector_ids: &[String],
+    chunk_kv_ids: &[String],
+    entity_vector_ids: &[String],
+    relationship_vector_ids: &[String],
+    nodes_created: &[String],
+    edges_created: &[(String, String)],
+    cause: &str,
+) {
+    if let Some(kv) = kv_storage {
+        compensate_orphan_kv(kv, doc_id, chunk_kv_ids, cause).await;
+    }
+
     compensate_orphan_vectors(
         vector_storage,
         doc_id,
@@ -260,5 +332,25 @@ mod tests {
         storage.initialize().await.unwrap();
         // No IDs → must not panic and must not delete anything.
         super::compensate_orphan_vectors(&storage, "doc1", &[], &[], "noop").await;
+    }
+
+    #[tokio::test]
+    async fn compensate_orphan_kv_deletes_chunk_keys() {
+        use crate::adapters::memory::MemoryKVStorage;
+        use crate::traits::KVStorage;
+
+        let kv = MemoryKVStorage::new("test");
+        kv.initialize().await.unwrap();
+        kv.upsert(&[(
+            "doc1-chunk-0".to_string(),
+            serde_json::json!({"content": "hello"}),
+        )])
+        .await
+        .unwrap();
+
+        super::compensate_orphan_kv(&kv, "doc1", &["doc1-chunk-0".to_string()], "merge failed")
+            .await;
+
+        assert!(kv.get_by_id("doc1-chunk-0").await.unwrap().is_none());
     }
 }

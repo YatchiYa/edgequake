@@ -5,6 +5,7 @@
  */
 import { expect, test } from "@playwright/test";
 
+import { GOTO_OPTS } from "./helpers/app-ready";
 import {
   GRAPH_FILTER_DOC_A,
   GRAPH_FILTER_DOC_B,
@@ -33,24 +34,31 @@ test.describe("Graph document filter (SPEC-045)", () => {
       }
     });
 
-    await page.goto(`/graph?document=${GRAPH_FILTER_DOC_A}&stream=0`);
-    await page.waitForLoadState("networkidle");
-
-    expect(lineageRequests.length).toBeGreaterThan(0);
-    expect(streamRequests).toHaveLength(0);
+    await page.goto(
+      `/graph?document=${GRAPH_FILTER_DOC_A}&stream=0`,
+      GOTO_OPTS,
+    );
 
     await expect(page.getByText(/2 nodes · 1 edge/i)).toBeVisible({
       timeout: 20000,
     });
+    expect(lineageRequests.length).toBeGreaterThan(0);
+    expect(streamRequests).toHaveLength(0);
   });
 
   test("switching document filter updates scoped counts", async ({ page }) => {
-    await page.goto(`/graph?document=${GRAPH_FILTER_DOC_A}&stream=0`);
+    await page.goto(
+      `/graph?document=${GRAPH_FILTER_DOC_A}&stream=0`,
+      GOTO_OPTS,
+    );
     await expect(page.getByText(/2 nodes · 1 edge/i)).toBeVisible({
       timeout: 20000,
     });
 
-    await page.goto(`/graph?document=${GRAPH_FILTER_DOC_B}&stream=0`);
+    await page.goto(
+      `/graph?document=${GRAPH_FILTER_DOC_B}&stream=0`,
+      GOTO_OPTS,
+    );
     await expect(page.getByText(/1 nodes · 0 edges/i)).toBeVisible({
       timeout: 20000,
     });

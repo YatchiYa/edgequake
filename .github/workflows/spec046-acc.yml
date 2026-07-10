@@ -1,0 +1,68 @@
+name: SPEC-046 ACC (Science P4)
+
+# Deterministic ACC harness + bipartite + mini corpus — no secrets required.
+# Uploads AccReport JSON artifact. Live Mistral stays #[ignore] / separate job.
+
+on:
+  push:
+    branches: [main, edgequake-main, "feat/**"]
+    paths:
+      - "edgequake/crates/edgequake-query/**"
+      - "edgequake/crates/edgequake-observability/**"
+      - "edgequake/crates/edgequake-storage/**"
+      - "specs/046-graphrag-study/**"
+      - "Makefile"
+      - ".github/workflows/spec046-acc.yml"
+      - ".github/actions/setup-rust/**"
+  pull_request:
+    branches: [main, edgequake-main]
+    paths:
+      - "edgequake/crates/edgequake-query/**"
+      - "edgequake/crates/edgequake-observability/**"
+      - "edgequake/crates/edgequake-storage/**"
+      - "specs/046-graphrag-study/**"
+      - "Makefile"
+      - ".github/workflows/spec046-acc.yml"
+      - ".github/actions/setup-rust/**"
+  workflow_dispatch:
+
+concurrency:
+  group: spec046-acc-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_TOOLCHAIN: 1.95.0
+  RUST_LOG: warn
+  CARGO_INCREMENTAL: "0"
+  CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+
+jobs:
+  acc:
+    name: SPEC-046 ACC gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/setup-rust
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          cache-key: spec046-acc
+          save-if: ${{ github.ref == 'refs/heads/edgequake-main' || github.ref == 'refs/heads/main' }}
+
+      - name: Run ACC e2e + write JSON artifact
+        working-directory: edgequake
+        run: |
+          chmod +x ../specs/046-graphrag-study/e2e/run_spec046_acc.sh
+          SPEC046_ACC_OUT="$(pwd)/target/spec046-acc" \
+            bash ../specs/046-graphrag-study/e2e/run_spec046_acc.sh
+
+      - name: Upload AccReport JSON
+        uses: actions/upload-artifact@v4
+        with:
+          name: spec046-acc-report
+          path: edgequake/target/spec046-acc/acc_report.json
+          if-no-files-found: error

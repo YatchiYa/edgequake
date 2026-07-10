@@ -1,26 +1,33 @@
 #!/usr/bin/env bash
 # SPEC-006 resource safety proof runner.
+#
+# First principles for speed: never run unscoped `cargo test -p X filter`
+# without `--lib` / `--test <name>` — that compiles *every* integration binary
+# then filters to zero matches (minutes of waste per invocation).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$ROOT/edgequake"
 
+CARGO_COMMON=(--locked --quiet)
+
 echo "== SPEC-006: edgequake-core resource budget =="
-cargo test -p edgequake-core resource_budget --quiet
-cargo test -p edgequake-core default_token_budget_matches_resource_ssot --features pipeline --quiet
+cargo test -p edgequake-core --lib resource_budget "${CARGO_COMMON[@]}"
+cargo test -p edgequake-core --lib default_token_budget_matches_resource_ssot \
+  --features pipeline "${CARGO_COMMON[@]}"
 
 echo "== SPEC-006: edgequake-storage graph_scan_ops =="
-cargo test -p edgequake-storage graph_scan_ops --quiet
+cargo test -p edgequake-storage --test graph_scan_ops_tests "${CARGO_COMMON[@]}"
 
 echo "== SPEC-006: edgequake-api resource_safety proof =="
-cargo test -p edgequake-api resource_safety --features postgres --quiet
-cargo test -p edgequake-api graph_materialization --lib --features postgres --quiet
+cargo test -p edgequake-api --test resource_safety_proof --features postgres "${CARGO_COMMON[@]}"
 
 echo "== SPEC-006: migration readiness battle test =="
-cargo test -p edgequake-api --test migration_readiness_proof --features postgres --quiet
+cargo test -p edgequake-api --test migration_readiness_proof --features postgres "${CARGO_COMMON[@]}"
 
 echo "== SPEC-006: e2e_document_deletion shared-entity smoke =="
-cargo test -p edgequake-api test_delete_preserves_shared_entities --features postgres --quiet
+cargo test -p edgequake-api --test e2e_document_deletion \
+  test_delete_preserves_shared_entities --features postgres "${CARGO_COMMON[@]}"
 
 postgres_bootstrap_ready() {
   if [[ -z "${DATABASE_URL:-}" && -z "${POSTGRES_PASSWORD:-}" ]]; then
@@ -37,7 +44,7 @@ postgres_bootstrap_ready() {
 
 if postgres_bootstrap_ready; then
   echo "== SPEC-006: migration bootstrap postgres e2e =="
-  cargo test -p edgequake-api --test migration_bootstrap_proof --features postgres --quiet
+  cargo test -p edgequake-api --test migration_bootstrap_proof --features postgres "${CARGO_COMMON[@]}"
 else
   echo "== SPEC-006: migration bootstrap postgres e2e (skipped — no reachable Postgres) =="
 fi

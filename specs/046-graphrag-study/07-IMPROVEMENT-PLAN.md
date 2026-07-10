@@ -8,14 +8,14 @@
 
 ## North Star Metrics
 
-| Metric | Baseline (today) | Target (90 days) |
-|--------|------------------|------------------|
-| L1 Fact ACC | Untested systematically | ≥ Naive+rerank (no regression) |
-| L2 Reasoning ACC | Untested | +10–15 pts vs Mix-only baseline on GraphRAG-Bench-style set |
-| Avg tokens / query (L2) | Mix full context | −30% via prune + router |
-| p50 latency L1 | Mix 3-arm | ≤ Naive path when routed |
-| Graph avg degree (ops) | Unknown | Instrumented; alert if < 2.0 after ingest |
-| Eval in CI | Partial unit/contract | Nightly GraphRAG-Bench subset |
+| Metric | Baseline (pre-046) | v0.16.0 (code) | Next target |
+|--------|--------------------|----------------|-------------|
+| L1 Fact ACC | Untested systematically | Router→Naive + ACC routing checks | ≥ Naive+rerank on HF subset |
+| L2 Reasoning ACC | Untested | Mini corpus ACC + PPR bipartite | +10–15 pts vs Mix-only on HF set |
+| Avg tokens / query (L2) | Mix full context | prune + arm gate | −30% measured on HF |
+| p50 latency L1 | Mix 3-arm | Intent/arm gate path | ≤ Naive when routed |
+| Graph avg degree (ops) | Unknown | Prometheus `record_graph_quality` | alert if < 2.0 after ingest |
+| Eval in CI | Partial unit/contract | **`make spec046-acc` + workflow** | Nightly HF GraphRAG-Bench subset |
 
 ---
 
@@ -109,7 +109,7 @@ State clearly: EQ `hybrid` includes naive; LR `hybrid` does not.
 
 **Storage:** Prefer in-process PPR on fetched subgraph first (ship fast). AGE native later if needed.
 
-**Config:** `EDGEQUAKE_GRAPH_WALK=bfs|ppr` default `bfs` until eval passes.
+**Config:** `EDGEQUAKE_GRAPH_WALK=bfs|ppr` — **v0.16.0 default `ppr`** (ACC-gated); `bfs` escape hatch.
 
 ### P1.2 Dual-node lite (phrase ↔ passage)
 
@@ -221,20 +221,32 @@ Ensure VLM table/drawing/equation chunks create entities + edges (LR `operate.py
 [x] EQ-046-13  Role-LLM default matrix in docs + Keyword role
 [x] EQ-046-14  Stale purge on process_options change (fingerprint)
 [x] EQ-046-15  Multimodal entity injection audit (orphan guarantee)
+[x] EQ-046-16  ACC CI gate + AccReport JSON artifact (`make spec046-acc`)
+[x] EQ-046-17  Bipartite dual-node PPR (entity∪chunk adjacency)
+[x] EQ-046-18  GraphRAG-Bench-style mini corpus retrieval ACC
 ```
 
-**Implementation status (2026-07-09):** P0–P3 backlog tickets EQ-046-01…15 complete at lite/parity level. Wired end-to-end: community report auto-embed (`LlmTextEmbedder` in pipeline, used by API + core orchestrator), Keyword/Summary roles (sync+stream + merge via `resolve_summary_llm_or_fallback`), dual-node PPR→chunk pick via `source_chunk_ids`, DRY postprocess + SOTA provider resolve, injection persist with Summary+embedder+lineage, semantic chunking refuses silent Recursive fallback, Query LLM override renamed (`resolve_query_llm_override`). Criterion: `cargo bench --bench graphrag_bench`. Deferred: full LightRAG LLM cache-replay rebuild; real GraphRAG-Bench HF corpus / ACC CI; PPR default after ACC gate; cross-encoder rerank; density YAML.
+**Implementation status (2026-07-10 / v0.16.0):** P0–P3 science + **Science P4** (EQ-046-16…18) shipped. ACC CI: `make spec046-acc`, `.github/workflows/spec046-acc.yml`, `write_spec046_acc_report_json`. Bipartite PPR: `adjacency_from_bipartite` / `pick_chunks_by_bipartite_ppr` wired in `chunk_retrieval`. Mini corpus: `eval/graphrag_corpus.rs` (no HF download). Criterion: `make spec046-acc` + optional Mistral live.
+
+**Deferred (post-0.16):** full HF GraphRAG-Bench download ACC; LightRAG cache-replay rebuild; true cross-encoder rerank; density YAML; LLM community report depth.
 
 ---
 
-## Success Definition ("Best Hybrid RAG")
+## Success Definition ("Best Hybrid RAG") — honesty vs v0.16.0
 
 EdgeQuake is best-in-class when:
 
-1. **Router** sends L1 → Naive+BM25+rerank with no quality loss.
-2. **L2** uses PPR dual-node (or proven equal) inside Mix/RRF.
-3. **Tokens** on L2/L3 drop ≥30% via prune without ACC loss.
-4. **Eval** runs in CI and beats prior Mix baseline.
-5. **Enterprise** properties (tenancy, AGE, PDF, saga) remain intact.
+1. **Router** sends L1 → Naive+BM25+rerank with no quality loss. — ✅ router shipped; CE rerank open
+2. **L2** uses PPR dual-node (or proven equal) inside Mix/RRF. — ✅ PPR default + bipartite pick
+3. **Tokens** on L2/L3 drop ≥30% via prune without ACC loss. — ✅ prune shipped; −30% HF measure open
+4. **Eval** runs in CI and beats prior Mix baseline. — ✅ ACC CI; HF beat-baseline open
+5. **Enterprise** properties (tenancy, AGE, PDF, saga) remain intact. — ✅
 
-Until then: honest label is **"production Hybrid RAG (LightRAG-class) with a clear path to SOTA retrieval physics."**
+**v0.16.0 honest label:** **"production Hybrid RAG (LightRAG-class+) with fail-closed ops, PPR-default bipartite retrieval, and ACC CI"** — not yet "beat HippoRAG2 on full GraphRAG-Bench download."
+
+---
+
+## Ops companion (2026-07-10 / v0.16.0)
+
+Science tickets above do **not** alone cover fail-closed storage — that is **[12-IMPLEMENTATION-PLAN-OPS.md](./12-IMPLEMENTATION-PLAN-OPS.md)** (EQ-046-OPS-01…24) — **all DONE**.  
+→ Evidence: [09](./09-OPS-RELIABILITY-DEEPSTUDY.md) · [10](./10-POSTGRES-PGVECTOR-AGE-PERFORMANCE.md) · [11](./11-CODE-SMELLS-AND-LENSES.md) · [08](./08-CODE-IS-LAW-TRACEABILITY.md)

@@ -5,7 +5,7 @@
 > **High-Performance Graph-RAG Framework in Rust**  
 > Transform documents into intelligent knowledge graphs for superior retrieval and generation
 
-[![Version](https://img.shields.io/badge/version-0.15.2-blue.svg?style=flat)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.16.0-blue.svg?style=flat)](CHANGELOG.md)
 [![Rust](https://img.shields.io/badge/rust-1.95+-orange.svg?style=flat&logo=rust)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat)](LICENSE)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg?style=flat)](https://github.com/raphaelmansuy/edgequake)
@@ -66,7 +66,7 @@ EDGEQUAKE_LLM_PROVIDER=ollama \
 curl -s http://localhost:8080/health | python3 -m json.tool
 ```
 
-> Pin a version: `EDGEQUAKE_VERSION=0.15.2 sh quickstart.sh`
+> Pin a version: `EDGEQUAKE_VERSION=0.16.0 sh quickstart.sh`
 
 ### Authentication (v0.15+)
 
@@ -157,6 +157,20 @@ EdgeQuake implements the [LightRAG algorithm](https://arxiv.org/abs/2410.05779) 
 | **Mix** | Weighted vector + graph blend | configurable |
 | **Bypass** | Direct LLM (no RAG) | LLM-dependent |
 
+### Hybrid RAG (v0.16 / SPEC-046)
+
+Production Hybrid RAG with **fail-closed ops** and science-grade retrieval defaults:
+
+- **PPR-default graph walk** — Personalized PageRank expands entity neighborhoods (`EDGEQUAKE_GRAPH_WALK=bfs` escape hatch)
+- **Bipartite dual-node pick** — entity∪chunk adjacency for Local / Global / Mix chunk selection
+- **HNSW fail-closed + `/ready`** — missing ANN index blocks traffic instead of silent degradation
+- **Intent-gated Mix/Hybrid arms** — skip irrelevant retrieval arms; GenAI `rag.retrieval` spans
+- **Failed-chunk retry → merge** — persist / list / retry extraction failures into the knowledge graph
+- **Faithfulness sampling** — heuristic + optional LLM judge (`EDGEQUAKE_FAITHFULNESS_JUDGE`)
+- **ACC CI gate** — `make spec046-acc` writes a deterministic AccReport JSON (no API key)
+
+Ops runbooks: [specs/046-graphrag-study/13-OPS-RUNBOOKS.md](specs/046-graphrag-study/13-OPS-RUNBOOKS.md).
+
 ### PDF Vision Pipeline
 
 - **Text Mode** — Fast pdfium-based extraction (default, zero-config, embedded in binary)
@@ -240,11 +254,28 @@ docker compose -f docker-compose.prebuilt.yml up -d
 
 | Service | Port | Image |
 |---------|------|-------|
-| API | 8080 | `ghcr.io/raphaelmansuy/edgequake:latest` |
-| Frontend | 3000 | `ghcr.io/raphaelmansuy/edgequake-frontend:latest` |
-| PostgreSQL | 5432 | `ghcr.io/raphaelmansuy/edgequake-postgres:latest` (PG18) |
+| API | 8080 | `ghcr.io/raphaelmansuy/edgequake:0.16.0` (`:latest`) |
+| Frontend | 3000 | `ghcr.io/raphaelmansuy/edgequake-frontend:0.16.0` (`:latest`) |
+| PostgreSQL | 5432 | `ghcr.io/raphaelmansuy/edgequake-postgres:0.16.0` (**PG18** default) |
 
-Pin a PostgreSQL tier: `EDGEQUAKE_POSTGRES_TAG=latest-pg16` or `latest-pg17`.
+**PostgreSQL major tags (multi-arch amd64 + arm64):**
+
+| Tag | PostgreSQL |
+|-----|------------|
+| `0.16.0` / `latest` / `0.16.0-pg18` / `latest-pg18` | PG18 |
+| `0.16.0-pg17` / `latest-pg17` | PG17 |
+| `0.16.0-pg16` / `latest-pg16` | PG16 |
+
+```bash
+# Pin full stack to this release
+EDGEQUAKE_VERSION=0.16.0 docker compose -f docker-compose.quickstart.yml up -d
+
+# Pin PostgreSQL major (optional; default tag follows EDGEQUAKE_VERSION → PG18)
+EDGEQUAKE_VERSION=0.16.0 EDGEQUAKE_POSTGRES_TAG=0.16.0-pg16 \
+  docker compose -f docker-compose.quickstart.yml up -d
+```
+
+Also works with `latest-pg16` / `latest-pg17` / `latest-pg18`.
 
 </details>
 
@@ -322,11 +353,35 @@ make dev                        # Start full stack (PostgreSQL + Backend + Front
 ```
 
 ```bash
-cargo test                      # Run tests
-cargo clippy && cargo fmt       # Lint and format
-make status                     # Check service health
-make stop                       # Stop all services
+cd edgequake && cargo test --workspace --lib --locked   # Unit / lib suite
+cargo clippy --workspace --lib --locked -- -D warnings
+cargo fmt --all -- --check
+cd .. && make status && make stop
 ```
+
+### Pre-delivery checklist (v0.16+)
+
+Run these **before** tagging a release. Prefer Makefile targets — they set required env vars.
+
+```bash
+# Fast local gates (mirrors CI first principles: fail cheap → compile once → proofs)
+make ops17-smoke                # PG extension pin SSOT (pg16/17/18)
+make spec046-acc                # SPEC-046 ACC + AccReport JSON
+make release-gates              # fmt + workspace clippy + SPEC-006/018 + WebUI + version parity
+make test-e2e-lint              # Playwright flake anti-patterns
+# Optional UI-only (no backend): make test-e2e-ui
+```
+
+| Gate | What it proves | CI workflow |
+|------|----------------|-------------|
+| Migration checksum | Immutable SQL lockfile | `CI` → migration-checksum-guard |
+| fmt + clippy + lib tests | Code quality | `CI` → check / test (nextest) |
+| SPEC-006 / SPEC-018 | Resource + observability proofs | `CI` + `Release Gates` |
+| Invariants + test floor | Reliability floor (≥870 lib) | `Test Quality Gates` |
+| SPEC-046 ACC | Hybrid RAG science ACC | `SPEC-046 ACC` |
+| OPS-17 pins | pgvector/AGE pin matrix | `PostgreSQL Matrix Nightly` |
+
+**CI speed principles** (see `.github/workflows/ci.yml`): shared cargo cache across jobs, `CARGO_INCREMENTAL=0` + sparse index, `--locked`, cancel-in-progress, no duplicate workspace lib suite in sibling workflows, release gates skip per-crate clippy / lib re-run when CI already owns them.
 
 See [AGENTS.md](AGENTS.md) for the full developer workflow and [Release & CD](docs/operations/release-and-cd.md) for the release process.
 

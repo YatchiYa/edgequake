@@ -40,7 +40,7 @@ async fn contract_in_memory_bm25_fallback_promotes_exact_token_match() {
         "memory adapter must use in-memory BM25 fallback"
     );
 
-    let chunks = sparse_retrieval::fuse_vector_and_bm25_chunks(
+    let (chunks, outcome) = sparse_retrieval::fuse_vector_and_bm25_chunks(
         "SKU-XY999",
         &vector_results,
         &storage,
@@ -51,6 +51,11 @@ async fn contract_in_memory_bm25_fallback_promotes_exact_token_match() {
     )
     .await;
 
+    assert_eq!(
+        outcome,
+        sparse_retrieval::SparseRetrievalOutcome::InMemoryBm25,
+        "memory adapter must report in_memory_bm25 outcome"
+    );
     assert!(
         !chunks.is_empty(),
         "BM25 retrieval must return at least one chunk"

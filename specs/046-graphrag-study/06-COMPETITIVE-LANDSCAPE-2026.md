@@ -1,6 +1,7 @@
 # 06 — Competitive Landscape (July 2026)
 
-**Lens:** Where EdgeQuake sits among GraphRAG / Hybrid RAG systems that matter in 2026.
+**Lens:** Where EdgeQuake sits among GraphRAG / Hybrid RAG systems that matter in 2026.  
+**Refresh:** EdgeQuake **v0.16.0** — PPR-default + bipartite + ACC CI + fail-closed ops (see [00](./00-INDEX.md)).
 
 ---
 
@@ -107,6 +108,8 @@ Source: https://github.com/GraphRAG-Bench/GraphRAG-Benchmark
 ```
 
 **Strategic target:** Top-right cell — HippoRAG2-class retrieval on EdgeQuake's enterprise substrate.
+
+**v0.16.0 position (code is law):** EdgeQuake moved **up** (PPR-default + bipartite + ACC CI) and **right** (fail-closed ops). Still short of HippoRAG2 on full GraphRAG-Bench download ACC and true cross-encoder; ahead of LightRAG core on sparse fusion + enterprise ops.
 
 ---
 

@@ -3,11 +3,13 @@
 use std::cell::Cell;
 use std::time::Instant;
 
+#[cfg(feature = "metrics")]
 use crate::metrics::record_query_completed;
 
 /// Records `success` on [`mark_success`], else `failure` on drop (sync query path).
 ///
 /// Logging is **not** done here — `ApiError::into_response` emits explicit structured logs.
+#[cfg_attr(not(feature = "metrics"), allow(dead_code))]
 pub struct QueryOutcomeGuard {
     mode: String,
     started: Instant,
@@ -31,13 +33,17 @@ impl QueryOutcomeGuard {
     /// Call once when the query pipeline completes successfully.
     pub fn mark_success(&self, duration_secs: f64) {
         self.finished.set(true);
+        #[cfg(feature = "metrics")]
         record_query_completed(&self.mode, "success", duration_secs);
+        #[cfg(not(feature = "metrics"))]
+        let _ = duration_secs;
     }
 }
 
 impl Drop for QueryOutcomeGuard {
     fn drop(&mut self) {
         if !self.finished.get() {
+            #[cfg(feature = "metrics")]
             record_query_completed(&self.mode, "failure", self.started.elapsed().as_secs_f64());
         }
     }
@@ -46,6 +52,7 @@ impl Drop for QueryOutcomeGuard {
 /// Records `failure` on drop unless [`dismiss`](Self::dismiss) is called.
 ///
 /// Use for streaming handlers that return `Ok(Sse)` before work finishes in a background task.
+#[cfg_attr(not(feature = "metrics"), allow(dead_code))]
 pub struct QueryFailureGuard {
     mode: String,
     started: Instant,
@@ -78,12 +85,13 @@ impl QueryFailureGuard {
 impl Drop for QueryFailureGuard {
     fn drop(&mut self) {
         if !self.dismissed.get() {
+            #[cfg(feature = "metrics")]
             record_query_completed(&self.mode, "failure", self.started.elapsed().as_secs_f64());
         }
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "metrics"))]
 mod tests {
     use super::*;
     use crate::metrics::render_prometheus_metrics;

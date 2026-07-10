@@ -198,24 +198,20 @@ impl PipelineProgressCallback {
 
             handle.spawn(async move {
                 // Staging-aware + terminal-status guard (DRY with text_insert_content).
-                if let Err(e) = crate::services::patch_document_metadata(
-                    &kv,
-                    &doc_id,
-                    |obj| {
-                        obj.insert(
-                            "stage_message".to_string(),
-                            serde_json::json!(stage_message),
-                        );
-                        obj.insert(
-                            "stage_progress".to_string(),
-                            serde_json::json!(stage_progress),
-                        );
-                        obj.insert(
-                            "updated_at".to_string(),
-                            serde_json::json!(chrono::Utc::now().to_rfc3339()),
-                        );
-                    },
-                )
+                if let Err(e) = crate::services::patch_document_metadata(&kv, &doc_id, |obj| {
+                    obj.insert(
+                        "stage_message".to_string(),
+                        serde_json::json!(stage_message),
+                    );
+                    obj.insert(
+                        "stage_progress".to_string(),
+                        serde_json::json!(stage_progress),
+                    );
+                    obj.insert(
+                        "updated_at".to_string(),
+                        serde_json::json!(chrono::Utc::now().to_rfc3339()),
+                    );
+                })
                 .await
                 {
                     tracing::warn!(

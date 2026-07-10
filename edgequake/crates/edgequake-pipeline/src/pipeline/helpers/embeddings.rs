@@ -59,35 +59,82 @@ fn truncate_at_char_boundary(s: &str, max_bytes: usize) -> &str {
     &s[..end]
 }
 
+/// Policy when an embedding input exceeds the provider-safe character cap (OPS-P1.7).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum EmbeddingTruncationPolicy {
+    /// Truncate and continue (historical default — partial embedding > hard fail).
+    #[default]
+    Truncate,
+    /// Fail the embed batch so operators fix chunk_size / model.
+    Fail,
+}
+
+/// Parse `EDGEQUAKE_EMBED_TRUNCATE_POLICY` (pure — pass raw for non-flaky tests).
+///
+/// Default: truncate. `fail` / `error` / `strict` → Fail.
+pub fn parse_embedding_truncation_policy(raw: &str) -> EmbeddingTruncationPolicy {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "fail" | "error" | "strict" | "abort" => EmbeddingTruncationPolicy::Fail,
+        _ => EmbeddingTruncationPolicy::Truncate,
+    }
+}
+
+fn embedding_truncation_policy_from_env() -> EmbeddingTruncationPolicy {
+    parse_embedding_truncation_policy(
+        &std::env::var("EDGEQUAKE_EMBED_TRUNCATE_POLICY").unwrap_or_default(),
+    )
+}
+
+/// Outcome of guarding a text batch for embedding.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmbeddingGuardResult {
+    pub texts: Vec<String>,
+    /// True when at least one input was truncated.
+    pub truncated: bool,
+}
+
 /// Guard a text batch before sending to the embedding provider.
 ///
-/// Truncates any string that exceeds `max_chars` and logs a WARNING so
-/// operators know chunks are being trimmed and can tune `chunk_size` or
-/// switch to an embedding model with a larger context window.
-///
-/// WHY: A partial embedding is more useful than a pipeline failure.
-/// The 400 "input length exceeds context length" error from Ollama would
-/// otherwise abort the entire document ingestion.
-fn guard_for_embedding(texts: &[String], max_chars: usize) -> Vec<String> {
-    texts
-        .iter()
-        .enumerate()
-        .map(|(i, text)| {
-            if text.len() > max_chars {
-                tracing::warn!(
-                    input_index = i,
-                    original_chars = text.len(),
-                    cap_chars = max_chars,
-                    "Embedding input truncated: text exceeds the safe token limit for the \
-                     embedding model. Consider reducing chunk_size in PipelineConfig or \
-                     switching to an embedding model with a larger context window."
-                );
-                truncate_at_char_boundary(text, max_chars).to_string()
-            } else {
-                text.clone()
+/// Truncates (or fails) any string that exceeds `max_chars`.
+fn guard_for_embedding(
+    texts: &[String],
+    max_chars: usize,
+    policy: EmbeddingTruncationPolicy,
+) -> crate::error::Result<EmbeddingGuardResult> {
+    let mut out = Vec::with_capacity(texts.len());
+    let mut truncated = false;
+    for (i, text) in texts.iter().enumerate() {
+        if text.len() > max_chars {
+            truncated = true;
+            match policy {
+                EmbeddingTruncationPolicy::Fail => {
+                    return Err(crate::error::PipelineError::EmbeddingError(format!(
+                        "Embedding input[{i}] exceeds safe limit ({max_chars} chars, got {}); \
+                         set EDGEQUAKE_EMBED_TRUNCATE_POLICY=truncate to allow truncation, \
+                         or reduce chunk_size / use a larger embedding model",
+                        text.len()
+                    )));
+                }
+                EmbeddingTruncationPolicy::Truncate => {
+                    tracing::warn!(
+                        input_index = i,
+                        original_chars = text.len(),
+                        cap_chars = max_chars,
+                        "Embedding input truncated: text exceeds the safe token limit for the \
+                         embedding model. Consider reducing chunk_size in PipelineConfig or \
+                         switching to an embedding model with a larger context window."
+                    );
+                    out.push(truncate_at_char_boundary(text, max_chars).to_string());
+                }
             }
-        })
-        .collect()
+        } else {
+            out.push(text.clone());
+        }
+    }
+    Ok(EmbeddingGuardResult {
+        texts: out,
+        truncated,
+    })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -265,8 +312,15 @@ async fn safe_embed(
     if texts.is_empty() {
         return Ok(Vec::new());
     }
-    let safe_texts = guard_for_embedding(texts, max_chars);
-    let embeddings = embed_with_token_budget(provider, &safe_texts).await?;
+    let guarded = guard_for_embedding(texts, max_chars, embedding_truncation_policy_from_env())?;
+    if guarded.truncated {
+        tracing::info!(
+            kind,
+            truncated = true,
+            "SPEC-046 OPS-P1.7: embedding inputs truncated under Truncate policy"
+        );
+    }
+    let embeddings = embed_with_token_budget(provider, &guarded.texts).await?;
     if embeddings.len() != texts.len() {
         tracing::warn!(
             expected = texts.len(),
@@ -524,16 +578,51 @@ mod tests {
     #[test]
     fn test_guard_preserves_short_texts() {
         let texts = vec!["hello".to_string(), "world".to_string()];
-        let result = guard_for_embedding(&texts, 100);
-        assert_eq!(result, texts);
+        let result = guard_for_embedding(&texts, 100, EmbeddingTruncationPolicy::Truncate).unwrap();
+        assert_eq!(result.texts, texts);
+        assert!(!result.truncated);
     }
 
     #[test]
     fn test_guard_truncates_long_texts() {
         let long_text = "a".repeat(200);
-        let result = guard_for_embedding(std::slice::from_ref(&long_text), 50);
-        assert_eq!(result.len(), 1);
-        assert!(result[0].len() <= 50);
+        let result = guard_for_embedding(
+            std::slice::from_ref(&long_text),
+            50,
+            EmbeddingTruncationPolicy::Truncate,
+        )
+        .unwrap();
+        assert_eq!(result.texts.len(), 1);
+        assert!(result.texts[0].len() <= 50);
+        assert!(result.truncated);
+    }
+
+    #[test]
+    fn test_guard_fail_policy_rejects_long_texts() {
+        let long_text = "a".repeat(200);
+        let err = guard_for_embedding(
+            std::slice::from_ref(&long_text),
+            50,
+            EmbeddingTruncationPolicy::Fail,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("exceeds safe limit"));
+    }
+
+    #[test]
+    fn test_parse_embedding_truncation_policy() {
+        assert_eq!(
+            parse_embedding_truncation_policy(""),
+            EmbeddingTruncationPolicy::Truncate
+        );
+        assert_eq!(
+            parse_embedding_truncation_policy("fail"),
+            EmbeddingTruncationPolicy::Fail
+        );
+        assert_eq!(
+            parse_embedding_truncation_policy("STRICT"),
+            EmbeddingTruncationPolicy::Fail
+        );
     }
 
     // ── embed_with_token_budget ────────────────────────────────────────────

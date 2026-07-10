@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-SPEC-043 unified LLM model picker, server config, provider attribution, and Vertex AI identity authentication.
+SPEC-043 unified LLM model picker, server config, provider attribution, and Vertex AI identity authentication (pending cut).
 
 ### Added — SPEC-043 LLM model picker & server config
 
@@ -24,6 +24,64 @@ SPEC-043 unified LLM model picker, server config, provider attribution, and Vert
 ### Documentation
 
 - README, `docs/operations/configuration.md`, and `edgequake/docs/configuration.md` — Vertex AI vs Gemini Developer API auth, env vars, and local ADC setup.
+
+---
+
+## [0.16.0] — 2026-07-10
+
+SPEC-046 GraphRAG / Hybrid RAG ops + science delivery — fail-closed substrate, PPR-default walks, ACC CI, bipartite dual-node retrieval.
+
+### Fixed — Docker CD reliability (API + frontend publish)
+
+- **API image build** — `Dockerfile` now `COPY benches/` + `examples/` (Cargo refuses to parse `[[bench]]`/`[[example]]` when paths are missing). `.dockerignore` no longer excludes those dirs.
+- **Frontend image build** — `proxyClientMaxBodySize` uses numeric `DEFAULT_MAX_UPLOAD_BYTES` (`SizeLimit`); string templates widened to `string` and failed `next build` typecheck on Next 16.2.
+- **Release gates** — `scripts/check_docker_api_context.sh` + README badge parity + SizeLimit guard so CD cannot regress silently.
+- **Docs** — README + `docker-compose.quickstart.yml` pin examples to **0.16.0** and document PG16/17/18 GHCR tags.
+
+### Changed — CI/CD speed (first principles)
+
+- **Shared Rust setup action** — `.github/actions/setup-rust` with Swatinem `shared-key` across jobs.
+- **No duplicate lib suite** — Quality Gates drops redundant unit/API/LLM jobs; Release Gates skips per-crate clippy + lib re-run (`RELEASE_SKIP_*`).
+- **Faster cargo defaults** — `CARGO_INCREMENTAL=0`, sparse crates.io, `--locked`, nextest (`--test-threads=4` + `RUST_MIN_STACK`) for workspace lib tests, cancel-in-progress.
+- **Scoped SPEC-006/018 proofs** — resource/observability scripts use `--lib` / `--test <name>` (no unscoped filter that compiles every integration binary).
+- **README + release-and-cd** — v0.16 Hybrid RAG section and pre-delivery checklist aligned with CI map.
+
+### Added — SPEC-046 ops (P0–P3)
+
+- **Fail-loud Semantic chunking** — no silent Recursive downgrade; strategy degradation metrics.
+- **Bounded community detection** — O(N)-safe sampled load; community sampled counter.
+- **HNSW fail-closed + `/ready`** — missing ANN index blocks traffic (`missing_hnsw_index`); iterative_scan default `relaxed_order`.
+- **Failed-chunk persist / list / retry** — retry path extracts + `KnowledgeGraphMerger::merge`.
+- **Intent-gated Mix/Hybrid arms** — `EDGEQUAKE_MIX_ARM_GATE`; shared `run_arm_timed` with GenAI `rag.retrieval` spans.
+- **Embed truncate policy** — `EDGEQUAKE_EMBED_TRUNCATE_POLICY=truncate|fail`.
+- **KV/vector/graph compensation** — orphan KV + merge-failure compensate; quarantine metrics.
+- **QueryStats arm timings / empty / truncated / FTS / popular-node / faithfulness** — Prometheus recording from API.
+- **OTel GenAI helpers** — `rag_span.rs` (`with_rag_retrieval_span`, generation spans).
+- **Drift SLO metrics** — `StorageInspector::emit_drift_metrics`.
+- **Online faithfulness** — heuristic sampler + opt-in LLM judge (`EDGEQUAKE_FAITHFULNESS_JUDGE`).
+- **Graph quality Prometheus** — gauges from `log_graph_quality` (nodes/edges/avg_degree/orphan/sparse).
+- **PG matrix nightly** — `make ops17-smoke` + `.github/workflows/postgres-matrix-nightly.yml`.
+- **Ops runbooks** — `specs/046-graphrag-study/13-OPS-RUNBOOKS.md`.
+
+### Added — SPEC-046 science (P4)
+
+- **PPR default graph walk** — `EDGEQUAKE_GRAPH_WALK` default `ppr` (`bfs` escape); pure `parse_graph_walk_mode`.
+- **Bipartite dual-node PPR** — entity∪chunk adjacency; `pick_chunks_by_bipartite_ppr` on Local/Global/Mix chunk pick.
+- **ACC CI gate** — `make spec046-acc`, `write_spec046_acc_report_json`, `.github/workflows/spec046-acc.yml` artifact.
+- **GraphRAG-Bench-style mini corpus** — deterministic routing + retrieval ACC (`eval/graphrag_corpus.rs`).
+- **E2E** — `e2e_spec046_ops_p3_acc`, `e2e_spec046_science_p4`; optional Mistral small+embed live (ignored without key).
+
+### Changed
+
+- **Readiness SSOT** — `is_ready_for_traffic` ≡ empty `readiness_blockers`.
+- **Gleaning / extract concurrency clamps** — ≤2 / ≤32.
+- **RlsContext** — removed from `postgres::` public re-exports.
+- **Knowledge rebuild** — single tagged description segments clear when no remaining sources match (no longer require `\n\n` / ` | ` separators).
+- **Version parity** — `VERSION`, workspace `Cargo.toml`, `package.json`, README badge, OpenAPI snapshot aligned to **0.16.0**.
+
+### Documentation
+
+- `specs/046-graphrag-study/` — INDEX, ops plan 09–13, science plan 07, code-is-law 08, smells 11, multi-lens 05, query 04, competitive 06 updated for **v0.16.0 code-is-law** (stale stub/BFS/miswired claims removed).
 
 ---
 

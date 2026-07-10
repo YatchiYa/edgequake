@@ -14,6 +14,7 @@ postgres = ["dep:sqlx"]
 [dependencies]
 edgequake-storage = { path = "../edgequake-storage", default-features = false }
 edgequake-llm = { workspace = true }
+edgequake-observability = { path = "../edgequake-observability", default-features = false }
 
 async-trait.workspace = true
 tokio = { workspace = true, features = ["full"] }
