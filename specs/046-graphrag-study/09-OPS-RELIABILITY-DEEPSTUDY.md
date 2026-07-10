@@ -96,9 +96,9 @@ Startup → repair M071/M078 checksums
 | INVALID AGE index repair | ✅ boot | `graph_lifecycle.rs` `bootstrap_concurrent_indexes` |
 | Knowledge rebuild lite | ✅ | `knowledge_rebuild.rs` |
 | Community refresh | ✅ async | `schedule_community_index_refresh_with_extras` |
-| **retry-chunks** | ❌ **STUB** | `handlers/documents/recovery/chunks.rs` `implemented: false` |
-| **failed-chunks list** | ❌ empty | same file — does not query `failed_chunks` |
-| Cross-store 2PC | ❌ by design | compensation best-effort |
+| **retry-chunks** | ✅ **DONE (v0.16)** | `retry_failed_chunks` → extract + `KnowledgeGraphMerger::merge` |
+| **failed-chunks list** | ✅ **DONE (v0.16)** | `failed_chunks.rs` + recovery handlers |
+| Cross-store 2PC | ❌ by design | compensation best-effort (`compensate_orphan_kv`) |
 
 ### D. Tracing / Metrics
 
@@ -108,9 +108,10 @@ Startup → repair M071/M078 checksums
 | Query duration/mode | ✅ | `edgequake_query_duration_seconds`, `record_query_completed` |
 | LLM / ingest / compensation | ✅ | counters listed in metrics.rs |
 | Optional OTLP | ⚠️ off by default | `OTEL_EXPORTER_OTLP_ENDPOINT` / `EDGEQUAKE_OTEL_ENABLED` |
-| Graph quality Prometheus | ❌ | `graph_metrics.rs` → tracing only |
-| Per-arm query latency | ❌ | `QueryStats` lacks local/global/naive splits |
-| GenAI semantic conventions | ❌ | No `gen_ai.*` / `rag.retrieval.*` attributes |
+| Graph quality Prometheus | ✅ **v0.16** | `record_graph_quality` from `log_graph_quality` |
+| Per-arm query latency | ✅ **v0.16** | `QueryStats.arm_*_ms` + `run_arm_timed` |
+| GenAI / rag retrieval spans | ✅ **v0.16** | `rag_span.rs` + arm/mode wiring |
+| Faithfulness (heuristic + LLM-judge) | ✅ **v0.16** | `faithfulness.rs`, `faithfulness_judge.rs` |
 | Token histograms | ❌ | tokens in response stats only |
 | Retrieval fingerprint | ✅ header | `X-Retrieval-Fingerprint` |
 
@@ -118,53 +119,55 @@ Startup → repair M071/M078 checksums
 
 ## Gaps vs July 2026 Best Practice
 
-### Gap matrix
+### Gap matrix — **post v0.16.0 code-is-law refresh**
 
-| Concern | 2026 practice | EdgeQuake today | Severity |
-|---------|---------------|-----------------|----------|
-| Cross-store drift | Measure + heal | Inspector + compensation; no drift SLO | **P1** |
-| Chunk-level retry | Persist failures + retry | Table exists (M021); API stub | **P0** |
-| Silent strategy downgrade | Fail loud / flag metadata | Semantic→Recursive warn-only | **P0** |
-| HNSW DDL failure | Fail boot / readiness | `.ok()` swallow in `ddl.rs:63` | **P0** |
-| Full-graph community | Incremental / sampled | `get_all_nodes` + `get_all_edges` | **P0** |
-| Observability | OTel GenAI + arm metrics | Coarse Prometheus | **P1** |
-| Migration rollback | Documented forward-only + PITR | Forward-only; M038 index rollback only | **P1** |
-| PG checksums | PG18 default on new clusters | Depends on image init | **P2** |
-| Faithfulness online eval | Sampled LLM-as-judge | Synthetic bench only | **P1** |
+| Concern | 2026 practice | EdgeQuake **v0.16.0** | Severity |
+|---------|---------------|----------------------|----------|
+| Cross-store drift | Measure + heal | Inspector + compensate + **drift_* metrics** | ✅ P1 closed |
+| Chunk-level retry | Persist + retry + merge | **failed_chunks + retry → merge** | ✅ P0 closed |
+| Silent strategy downgrade | Fail loud | **Semantic fail-loud** | ✅ P0 closed |
+| HNSW DDL failure | Fail boot / readiness | **fail-closed + `missing_hnsw_index`** | ✅ P0 closed |
+| Full-graph community | Incremental / sampled | **`load_graph_bounded`** | ✅ P0 closed |
+| Observability | OTel GenAI + arm metrics | **rag spans + arm timings + graph gauges** | ✅ P1 closed |
+| Migration rollback | Forward-only + PITR | Unchanged — PITR is law | P1 (ops process) |
+| PG checksums | PG18 default | Depends on image init | P2 |
+| Faithfulness online eval | Sampled LLM-as-judge | **Heuristic + opt-in judge + ACC CI** | ✅ P1 closed |
+| Full HF GraphRAG-Bench ACC | Nightly corpus | Mini corpus only (no HF download) | ⏳ deferred |
+| True cross-encoder rerank | Prod default | BM25 path; CE hook open | ⏳ deferred |
 
 ### Complexity (O(N)) hotspots
 
 | Operation | Complexity | Path | Risk |
 |-----------|------------|------|------|
-| `pg_get_all_nodes` | **O(N)** unbounded | `nodes_ops.rs:394` | Community + reconcile |
-| Community Louvain | **O(V+E)** full load | `community.rs:158-159` | Ingest refresh |
-| Scoped BFS + per-node fetch | O(frontier×degree) + N+1 nodes | `query_ops.rs` | Admin KG view |
-| Vector ANN | O(log N) | HNSW + `ef_search` | OK if index exists |
-| Filtered ANN | O(log N) capped 20k | `iterative_scan` | OK ≥ pgvector 0.8 |
-| Mix 3-arm retrieve | 3× retrieval | `mix.rs` | Cost on L1 if forced |
+| `pg_get_all_nodes` | **O(N)** unbounded | `nodes_ops.rs` | **Admin/legacy only** — not community hot path |
+| Community Louvain | **O(sample)** capped | `community.rs` `load_graph_bounded` | ✅ ingest-safe |
+| Scoped BFS/PPR + per-node fetch | O(frontier×degree) | `graph_expand` / `graph_ppr` | OK with caps |
+| Vector ANN | O(log N) | HNSW + `ef_search` | OK if index exists (`/ready`) |
+| Filtered ANN | O(log N) capped | `iterative_scan` relaxed | OK ≥ pgvector 0.8 |
+| Mix/Hybrid arms | 1–3× retrieval | intent-gated | L1 can skip graph |
 
 ---
 
 ## Lens: Database Expert
 
-**Verdict:** Storage substrate is **production-grade for a Postgres GraphRAG** (HNSW, halfvec policy, iterative_scan, AGE indexes, reconcile bootstrap). The weak points are **operator-visible failure modes** (swallowed DDL, stub repair) and **unbounded graph scans**, not missing extensions.
+**Verdict (v0.16.0):** Storage substrate is **production-grade Postgres GraphRAG** with **fail-closed ANN readiness**, bounded community load, and multi-major pin smoke. Remaining work is **measured perf artifacts** (100k/1M benches) and PITR runbook discipline — not missing extensions.
 
-**Must-fix before claiming "defense in depth":**
+**Shipped must-fixes:**
 
-1. Never swallow HNSW create errors — surface on `/ready`.
-2. Ban `get_all_nodes` from ingest hot path; require workspace-scoped + LIMIT/sample.
-3. Wire `failed_chunks` end-to-end (write on extract fail → list → retry).
-4. Document PITR / `pg_basebackup` as the only true rollback for major upgrades.
+1. ✅ Never swallow HNSW create errors — surface on `/ready`.
+2. ✅ Ban unbounded `get_all_nodes` from ingest hot path — `load_graph_bounded`.
+3. ✅ Wire `failed_chunks` end-to-end (write → list → retry → merge).
+4. Document PITR / `pg_basebackup` as the only true rollback for major upgrades (process).
 
 ## Lens: AI Engineer
 
-**Verdict:** Retrieval brain (Mix+RRF+BM25+router) is LightRAG-class. Reliability of **evidence quality** is undermined by silent chunking downgrade, silent embedding truncation, and missing arm-level telemetry — you cannot tune what you cannot see.
+**Verdict (v0.16.0):** Retrieval brain is LightRAG-class **plus** PPR-default bipartite dual-node pick, intent-gated arms, path prune, ACC CI, and optional LLM-judge faithfulness. Deferred: full HF GraphRAG-Bench download, true cross-encoder, density YAML, LLM community report depth.
 
-**Must-fix:**
+**Shipped must-fixes:**
 
-1. Strategy downgrade → document metadata flag + metric.
-2. `QueryStats` arm timings + fusion/walk/pick method.
-3. OTel spans: embed → retrieve(arm) → fuse → rerank → generate with `rag.retrieval.empty_result`, `rag.context.truncated`.
+1. ✅ Strategy downgrade → fail-loud + metric.
+2. ✅ `QueryStats` arm timings + fusion/walk/pick telemetry.
+3. ✅ OTel/rag spans on arms + single modes.
 
 ---
 
@@ -181,10 +184,11 @@ Startup → repair M071/M078 checksums
 
 ---
 
-## Synthesis
+## Synthesis (v0.16.0)
 
-EdgeQuake already has the **skeleton** of enterprise reliability (saga, inspector, migrations, Prometheus).  
-It is **not yet defense-in-depth complete** because several heal/observe paths are stubs or silent.
+EdgeQuake has the **skeleton and the P0–P3 flesh** of enterprise reliability (saga, inspector, migrations, Prometheus, fail-closed ANN, chunk retry, ACC).
+
+**Honest label:** production Hybrid RAG with fail-closed ops substrate — not "defense stubs." Remaining gaps are **science depth** (HF corpus, cross-encoder, LLM community reports) and **perf measurement artifacts**, not silent heal paths.
 
 Next document: [10 — Postgres / pgvector / AGE Performance](./10-POSTGRES-PGVECTOR-AGE-PERFORMANCE.md)  
-Plan: [12 — Implementation Plan (Ops + Storage)](./12-IMPLEMENTATION-PLAN-OPS.md)
+Implementation status: [12 — Ops Plan](./12-IMPLEMENTATION-PLAN-OPS.md) (all tickets DONE).

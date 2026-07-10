@@ -62,5 +62,12 @@ Hourly monitor already logs CRITICAL and applies SAFE repairs (`StorageInspector
 ```bash
 curl -s http://localhost:8080/health | jq .
 curl -s http://localhost:8080/ready | jq .
-curl -s http://localhost:8080/metrics | grep -E 'drift|ann_index|popular_node|sparse_retrieval|faithfulness'
+curl -s http://localhost:8080/metrics | grep -E 'drift|ann_index|popular_node|sparse_retrieval|faithfulness|graph_quality|query_requests'
+```
+
+**ACC / pins (pre-release):**
+
+```bash
+make ops17-smoke
+make spec046-acc
 ```

@@ -1,7 +1,7 @@
 # 05 — Multi-Lens Assessment
 
 **Lens pack:** Product, retrieval science, systems, cost, risk, honesty.  
-**Date:** 2026-07-09
+**Date:** 2026-07-09 (baseline) · **Refresh:** 2026-07-10 **v0.16.0** code-is-law (see [11](./11-CODE-SMELLS-AND-LENSES.md) for post-ship scores)
 
 ---
 
@@ -12,7 +12,7 @@
 | Can a team run multi-tenant GraphRAG in prod? | Yes (workspaces, RLS, API) | Partial | **EQ** |
 | Can a researcher swap Neo4j/Milvus quickly? | No (Postgres-first) | Yes | **LR** |
 | PDF / enterprise docs? | Strong (pdfium + page chunks) | Strong (MinerU/Docling) | Tie |
-| Default answer quality out of box? | Mix+RRF+BM25 — strong | Mix+round-robin — strong | **EQ slight** |
+| Default answer quality out of box? | Mix+RRF+BM25+PPR — strong | Mix+round-robin — strong | **EQ slight** |
 | Time-to-first-success for OSS hackers | Higher (Rust/make/Postgres) | Lower (pip) | **LR** |
 
 **Product thesis:** EdgeQuake should own **enterprise Hybrid RAG**. LightRAG owns **hackable GraphRAG lab**. Do not blur.
@@ -20,6 +20,8 @@
 ---
 
 ## Lens B — Retrieval Science (July 2026)
+
+### Baseline (2026-07-09 assessment)
 
 ```text
 Capability ladder (must climb in order)
@@ -35,18 +37,32 @@ Capability ladder (must climb in order)
  9. Full-link eval (graph→ret→gen)  ❌ EQ ❌ LR
 ```
 
-**Science verdict:** EdgeQuake is at rung 3–4. Market leaders for hard multi-hop (HippoRAG2) sit at 5–6 with better token efficiency. Closing 4→6 is the science gap.
+**Science verdict (then):** EdgeQuake at rung 3–4.
+
+### Code truth — EdgeQuake **v0.16.0** (2026-07-10)
+
+```text
+ 4. Difficulty-aware routing        ✅ Factual→Naive + arm gate
+ 5. Associative graph walk (PPR)    ✅ default PPR (`bfs` escape)
+ 6. Dual-node phrase↔passage        ✅ bipartite PPR pick (AGE store lite)
+ 7. Path / flow pruning             ✅
+ 8. Community reports (optional)    ⚠️ extractive opt-in (LLM depth open)
+ 9. Full-link eval                  ✅ ACC CI + mini corpus (+ LLM-judge opt-in)
+10. Ops fail-loud / heal / OTel     ✅ OPS-P0–P3
+```
+
+**Science verdict (now):** Rungs 4–7 + 9–10 shipped. Market leaders may still lead on **full HF GraphRAG-Bench ACC** and **true cross-encoder**; EQ leads **enterprise Hybrid + fail-closed Postgres**.
 
 ---
 
 ## Lens C — Systems / Reliability
 
-| Concern | EdgeQuake | Notes |
-|---------|-----------|-------|
+| Concern | EdgeQuake v0.16 | Notes |
+|---------|-----------------|-------|
 | Typed pipelines | Excellent | Rust Result/async |
-| Cross-store consistency | Good saga | Not 2PC |
-| Resume after crash | Medium | Reanalyze/retry-chunks; weaker than LR process_options purge |
-| Observability | Medium | tracing; missing graph quality metrics |
+| Cross-store consistency | Good saga | Not 2PC; KV compensate + drift metrics |
+| Resume after crash | Good | failed_chunks retry→merge; fingerprint stale purge |
+| Observability | High | arm timings, rag spans, graph Prometheus |
 | Horizontal scale | Postgres-bound | Correct for AGE+pgvector choice |
 
 ---
@@ -58,70 +74,73 @@ Capability ladder (must climb in order)
 LightRAG paper      Low (no rebuild) Medium            Low vs GraphRAG
 MS GraphRAG         Very High        High (reports)    High
 HippoRAG2           Medium           Low tokens        Low-Med
-EdgeQuake Mix       Med-High (3 arms)Med-High          Med (parallel arms)
+EdgeQuake Mix       Med-High (≤3 arms)Med              Med (gated arms)
 EdgeQuake + router  Med              Low on L1         Better p50
 ```
 
-**Cost lever #1:** Fix intent router → skip graph on L1.  
-**Cost lever #2:** Path/PPR prune → cut tokens 30–50% on L2/L3.  
-**Cost lever #3:** Role-specific small models for extract/keyword (LR pattern).
+**Cost lever #1:** Intent router → skip graph on L1 — ✅ shipped.  
+**Cost lever #2:** Path/PPR prune → cut tokens on L2/L3 — ✅ shipped.  
+**Cost lever #3:** Role-specific small models for extract/keyword — ✅ matrix present.
 
 ---
 
 ## Lens E — Competitive Honesty Scorecard
 
-Scores 1–5. **5 = best-in-class market.**
+Scores 1–5. **5 = best-in-class market.**  
+**v0.16.0 EQ** scores reflect shipped code (baseline 2026-07-09 was lower on L2/eval/ops).
 
 | Capability | EQ | LR | HippoRAG2 | MS GraphRAG | Naive+Rerank |
 |------------|:--:|:--:|:---------:|:-----------:|:------------:|
-| L1 Fact | 3 | 3 | **5** | 2 | **5** |
-| L2 Multi-hop | 3 | 3 | **5** | 4 | 2 |
+| L1 Fact | **4** | 3 | **5** | 2 | **5** |
+| L2 Multi-hop | **4** | 3 | **5** | 4 | 2 |
 | L3 Summary | 3 | 4 | 4 | **5** | 3 |
-| Token efficiency | 3 | 2 | **5** | 1 | **5** |
+| Token efficiency | **4** | 2 | **5** | 1 | **5** |
 | Incremental ingest | **5** | **5** | 4 | 2 | **5** |
 | Hybrid fusion (dense+sparse) | **5** | 2 | 3 | 2 | 4 |
 | Enterprise multi-tenant | **5** | 2 | 1 | 2 | 3 |
-| Eval / benchmarks | 2 | 2 | 4 | 3 | 3 |
+| Eval / benchmarks | **4** | 2 | 4 | 3 | 3 |
 | Dev experience (OSS) | 3 | **5** | 3 | 2 | **5** |
-| **Weighted* ** | **3.7** | **3.2** | **4.1** | **2.7** | **3.8** |
+| Ops fail-closed | **5** | 2 | 1 | 2 | 2 |
 
-\*Weights: L2×2, token×1.5, enterprise×1.5, others×1. HippoRAG2 leads science; Naive+Rerank wins cheap L1; **EQ leads enterprise Hybrid**.
+\*Weights: L2×2, token×1.5, enterprise×1.5, others×1. HippoRAG2 still leads pure science ACC; **EQ leads enterprise Hybrid + ops**.
 
 ---
 
-## Lens F — SWOT (EdgeQuake)
+## Lens F — SWOT (EdgeQuake v0.16.0)
 
 ```text
 STRENGTHS                         WEAKNESSES
 ─────────────────────────────     ─────────────────────────────
-Rust + Postgres AGE/pgvector      No PPR / dual-node walk
-Mix + RRF + BM25 spine            Intent router misaligned
-Workspaces / RLS / API            No GraphRAG-Bench harness
-PDF page-aware + VLM path         Semantic chunking missing
-Community labels on nodes         Token accounting less dynamic
-Saga ingest + recovery APIs       Hybrid naming ≠ LightRAG hybrid
+Rust + Postgres AGE/pgvector      Full HF GraphRAG-Bench ACC open
+Mix + RRF + BM25 + PPR default    True cross-encoder rerank open
+Workspaces / RLS / API            LLM community report depth open
+PDF page-aware + VLM path         Perf bench artifacts optional
+Fail-closed /ready + ACC CI       Hybrid naming ≠ LightRAG hybrid
+Saga + failed_chunks retry        —
 
 OPPORTUNITIES                     THREATS
 ─────────────────────────────     ─────────────────────────────
-Import HippoRAG2 physics          LightRAG keeps shipping knobs
-Become "Postgres GraphRAG" ref    Neo4j GraphRAG module DX
-Own enterprise eval brand         Teams default to Naive+Rerank
-Path prune → kill token tax       GraphRAG-Bench shows graph tax
+Publish Postgres GraphRAG ref     LightRAG keeps shipping knobs
+Own enterprise eval brand         Neo4j GraphRAG module DX
+HF corpus nightly ACC             Teams default to Naive+Rerank
+Cross-encoder prod path           GraphRAG-Bench graph-tax narratives
 ```
 
 ---
 
-## Lens G — "Would I bet production on it today?"
+## Lens G — "Would I bet production on it today?" (v0.16.0)
 
 | Workload | Bet? | Why |
 |----------|------|-----|
-| Enterprise multi-tenant KB, mixed queries | **Yes** | EQ Mix+BM25+tenancy |
-| Pure multi-hop research QA, max ACC | **Not yet** | Need PPR arm + eval |
-| Global corpus thematic reports | **No** | Use MS GraphRAG / build reports |
-| Simple FAQ / policy lookup | **Overkill** | Naive+rerank; router should send here |
+| Enterprise multi-tenant KB, mixed queries | **Yes** | Mix+BM25+PPR+tenancy+`/ready` |
+| Pure multi-hop research QA, max ACC | **Conditional** | PPR+bipartite shipped; need HF ACC to claim SOTA |
+| Global corpus thematic reports | **Partial** | Extractive reports; not MS GraphRAG depth |
+| Simple FAQ / policy lookup | **Yes via router** | Factual→Naive; avoid Mix tax |
 
 ---
 
 ## Synthesis
 
-EdgeQuake is the **best-positioned open Hybrid RAG substrate for Postgres-centric enterprises** in this comparison — but **not** the best retrieval brain. The improvement plan must upgrade the brain without abandoning the substrate.
+EdgeQuake is the **best-positioned open Hybrid RAG substrate for Postgres-centric enterprises** — and as of **v0.16.0** the retrieval brain has climbed to **PPR-default + bipartite + ACC CI**. Honest label: **production Hybrid RAG (LightRAG-class+) with fail-closed ops**, not yet "beat HippoRAG2 on GraphRAG-Bench download."
+
+Post-ship scorecard detail: [11-CODE-SMELLS-AND-LENSES.md](./11-CODE-SMELLS-AND-LENSES.md).

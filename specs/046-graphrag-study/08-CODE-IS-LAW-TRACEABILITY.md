@@ -2,6 +2,9 @@
 
 Every assessment claim maps to a concrete symbol. Use this when challenging the study.
 
+**Release:** EdgeQuake **v0.16.0** (2026-07-10) — OPS-P0–P3 + Science P4 shipped.  
+**Rule:** If a row below disagrees with `edgequake/crates/**`, update this file — code wins.
+
 ---
 
 ## EdgeQuake — Ingestion
@@ -30,7 +33,7 @@ Every assessment claim maps to a concrete symbol. Use this when challenging the 
 | E-I20 | pgvector | `edgequake-storage/src/adapters/postgres/vector/mod.rs` | `PgVectorStorage` |
 | E-I21 | Graph quality metrics | `edgequake-storage/src/graph_metrics.rs` | `collect_graph_quality_metrics` |
 | E-I22 | Process fingerprint | `edgequake-api/src/services/process_fingerprint.rs` | `ProcessFingerprintInput` |
-| E-I23 | Delete rebuild lite | `edgequake-api/src/services/knowledge_rebuild.rs` | `apply_rebuild_to_properties` |
+| E-I23 | Delete rebuild lite (single tagged segment clears) | `edgequake-api/src/services/knowledge_rebuild.rs` | `rebuild_description_from_remaining_sources`, `apply_rebuild_to_properties` |
 | E-I24 | MM orphan inject | `edgequake-pipeline/src/multimodal/injection.rs` | `inject_modality_relations` |
 | E-I25 | Community report index | `edgequake-storage/src/community_reports.rs` | `index_community_reports_with_embedder` |
 | E-I26 | TextEmbedder port | `edgequake-storage/src/traits/embedder.rs` | `TextEmbedder` |
@@ -190,23 +193,32 @@ Every assessment claim maps to a concrete symbol. Use this when challenging the 
 
 ## Cross-Ref: Assessment → Evidence
 
-| Assessment statement | Evidence IDs |
-|----------------------|--------------|
-| EQ is LightRAG-class | E-Q01–09, L-Q01–08, X03 |
-| Mix+RRF+BM25 is EQ advantage | E-Q11, E-Q12, X04 |
-| Global ≠ MS GraphRAG reports (optional extractive) | E-Q02, E-Q15, E-I25, X03 |
-| Intent router evidence-aligned | E-Q17, X01 |
-| PPR available (default BFS) | E-Q14, X02 |
-| Semantic chunk V opt-in | E-I14, L-I05 |
-| Strong enterprise substrate | E-I19, E-I20, E-O01–O06, workspaces/RLS |
-| Process fingerprint stale purge | E-I22, L-I02 |
-| Role-LLM Keyword/Summary/Extract/Query/Vlm | E-I27, E-Q24 |
-| Plan P0.1 rewire intent | E-Q17, X01 |
-| Plan P1.1 PPR arm | X02, E-Q14 |
-| HNSW + iterative_scan present | E-O03, E-O04, X06 |
-| AGE indexes created by EQ | E-O06, X07 |
-| Community O(N) smell | E-O07, E-O08 |
-| retry-chunks not implemented | E-O14, E-O15 |
-| Defense skeleton (saga+inspector) | E-O12, E-O13 |
-| Observability incomplete for arms/graph | E-O17, E-O18, E-O19, X09 |
-| Ops plan tickets | docs 09–12 / EQ-046-OPS-* |
+| Assessment statement | Evidence IDs | Code truth (v0.16.0) |
+|----------------------|--------------|----------------------|
+| EQ is LightRAG-class | E-Q01–09, L-Q01–08, X03 | ✅ Mix default + dual-level |
+| Mix+RRF+BM25 is EQ advantage | E-Q11, E-Q12, X04 | ✅ |
+| Global ≠ MS GraphRAG reports (optional extractive) | E-Q02, E-Q15, E-I25, X03 | ✅ opt-in reports |
+| Intent router evidence-aligned | E-Q17, X01 | ✅ Factual→Naive |
+| PPR **default** graph walk (`bfs` escape) | E-Q14, E-O42, X02 | ✅ `GraphWalkMode::default=Ppr` |
+| Bipartite dual-node chunk pick | E-O45, E-Q27 | ✅ `pick_chunks_by_bipartite_ppr` |
+| Semantic chunk V opt-in | E-I14, L-I05 | ✅ fail-loud (E-O21) |
+| Strong enterprise substrate | E-I19, E-I20, E-O01–O06 | ✅ |
+| Process fingerprint stale purge | E-I22, L-I02 | ✅ |
+| Role-LLM Keyword/Summary/Extract/Query/Vlm | E-I27, E-Q24 | ✅ |
+| HNSW + iterative_scan + fail-closed `/ready` | E-O02–O04, E-O24–O25, X06 | ✅ |
+| AGE indexes created by EQ | E-O06, X07 | ✅ |
+| Community O(N) on ingest hot path | E-O07 | ✅ **bounded** `load_graph_bounded` |
+| retry-chunks + failed_chunks + merge | E-O14, E-O15 | ✅ **implemented** |
+| Defense skeleton (saga+inspector+drift) | E-O12, E-O13, E-O36 | ✅ |
+| Observability arms/graph/faithfulness | E-O17–O18, E-O30–O33, E-O37–O40 | ✅ P0–P3 |
+| ACC CI + mini corpus | E-O41, E-O44, E-O46–O47 | ✅ `make spec046-acc` |
+| Ops plan tickets | docs 09–12 / EQ-046-OPS-* | ✅ all DONE |
+| Deferred: HF full corpus / cross-encoder / density YAML / LLM community depth | 07 deferred list | ⏳ post-0.16 |
+
+---
+
+## Release stamp
+
+**Cut:** EdgeQuake **v0.16.0** (2026-07-10) — SPEC-046 OPS-P0–P3 + Science P4.  
+**Gates:** `make release-gates` · `make spec046-acc` · `make ops17-smoke` · CI nextest lib.  
+**Law:** If this index disagrees with `edgequake/crates/**`, **code wins** — update this file.
