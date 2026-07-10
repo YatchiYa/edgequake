@@ -72,6 +72,20 @@ Specs and papers are hypotheses. Behavior is defined by:
 | Global semantics | Relation vectors + community_id expand | Relation vectors (no community reports) |
 | Fusion | RRF default for Mix | Round-robin merge of C/E/R chunks |
 
+### A8 — Silent degradation is negative EV (ops axiom, 2026-07-10)
+
+Any path that **warns and continues** (Semantic→Recursive, HNSW create `.ok()`, embedding truncate, stub repair `200 OK`) increases `P(answer looks fine | evidence broken)`.  
+July 2026 production RAG practice treats empty retrieval, truncation, and strategy downgrade as **first-class telemetry**, not log noise.
+
+### A9 — Storage complexity contract
+
+| Hot path | Max complexity |
+|----------|----------------|
+| Vector ANN | O(log N) with live HNSW |
+| Graph expand | O(k · degree · hops) batched |
+| Community on ingest | O(sample) capped — **never** full `get_all_nodes` |
+| Mix arms | Router may zero arms; forced 3-arm is a cost choice |
+
 ---
 
 ## First-Principles Decomposition of a Query

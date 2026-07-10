@@ -49,16 +49,12 @@ fn bench_routing_table(c: &mut Criterion) {
         })
     });
     for case in &cases {
-        group.bench_with_input(
-            BenchmarkId::new("classify", case.id),
-            case.query,
-            |b, q| {
-                b.iter(|| {
-                    let intent = QueryIntent::classify_heuristic(black_box(q));
-                    black_box(intent.recommended_mode())
-                })
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("classify", case.id), case.query, |b, q| {
+            b.iter(|| {
+                let intent = QueryIntent::classify_heuristic(black_box(q));
+                black_box(intent.recommended_mode())
+            })
+        });
     }
     group.finish();
 }
@@ -75,11 +71,7 @@ fn bench_path_prune(c: &mut Criterion) {
             .map(|i| {
                 RetrievedRelationship::new("A", format!("T{i}"), "REL")
                     .with_score(i as f32 * 0.01)
-                    .with_description(if i % 3 == 0 {
-                        "rich evidence path"
-                    } else {
-                        ""
-                    })
+                    .with_description(if i % 3 == 0 { "rich evidence path" } else { "" })
             })
             .collect();
         group.throughput(Throughput::Elements(n as u64));

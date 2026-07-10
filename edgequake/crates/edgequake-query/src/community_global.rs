@@ -9,9 +9,7 @@
 use std::collections::HashSet;
 
 use edgequake_storage::community_persist::community_features_enabled;
-use edgequake_storage::community_reports::{
-    community_report_vector_id, community_reports_enabled,
-};
+use edgequake_storage::community_reports::{community_report_vector_id, community_reports_enabled};
 use edgequake_storage::traits::{GraphReadView, NodeListFilter};
 
 use crate::context::{QueryContext, RetrievedChunk};
@@ -67,20 +65,15 @@ pub async fn expand_global_context_with_communities(
     for node in page.items {
         if reports_on {
             if let (Some(cid), Some(report)) = (
-                node.properties
-                    .get("community_id")
-                    .and_then(|v| v.as_u64()),
+                node.properties.get("community_id").and_then(|v| v.as_u64()),
                 node.properties
                     .get("community_report")
                     .and_then(|v| v.as_str())
                     .filter(|s| !s.is_empty()),
             ) {
                 if report_cids.insert(cid) {
-                    let chunk = RetrievedChunk::new(
-                        community_report_vector_id(cid as usize),
-                        report,
-                        0.55,
-                    );
+                    let chunk =
+                        RetrievedChunk::new(community_report_vector_id(cid as usize), report, 0.55);
                     context.add_chunk(chunk);
                 }
             }

@@ -1,0 +1,49 @@
+name: PostgreSQL Matrix Nightly (OPS-17)
+
+# SPEC-046 OPS-P2.17 — multi-major pin smoke + optional battle.
+# Default job is non-flaky (no Docker DB required): validates extension-pins.sh.
+# Full battle suite runs on schedule / workflow_dispatch with battle=true.
+
+on:
+  schedule:
+    - cron: "0 4 * * *" # 04:00 UTC daily
+  workflow_dispatch:
+    inputs:
+      battle:
+        description: "Run SPEC-042 Docker battle tests for all profiles"
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: ops17-matrix-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pin-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: OPS-17 pin smoke (pg16/pg17/pg18)
+        run: bash specs/046-graphrag-study/e2e/run_ops17_perf_smoke.sh
+
+  battle-matrix:
+    if: ${{ github.event_name == 'schedule' || inputs.battle == true }}
+    runs-on: ubuntu-latest
+    needs: pin-smoke
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [pg16, pg17, pg18]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Battle test ${{ matrix.profile }}
+        env:
+          EQ_POSTGRES_PROFILE: ${{ matrix.profile }}
+        run: |
+          set -euo pipefail
+          if [[ -x specs/042-update-age-pgvector/e2e/run_version_feature_battle_test.sh ]]; then
+            specs/042-update-age-pgvector/e2e/run_version_feature_battle_test.sh "${{ matrix.profile }}"
+          else
+            echo "Battle script missing — pin smoke already passed"
+          fi

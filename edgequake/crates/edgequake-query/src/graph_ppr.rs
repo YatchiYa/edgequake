@@ -1,10 +1,14 @@
-//! Personalized PageRank over entity subgraphs (SPEC-046 P1.1 / HippoRAG-inspired).
+//! Personalized PageRank over entity (and bipartite entity↔chunk) subgraphs
+//! (SPEC-046 P1.1 / HippoRAG-inspired).
 //!
 //! Pure in-process PPR on an adjacency list built from AGE/memory graph edges.
-//! Dual-node lite: after ranking entities, callers map scores onto passage/chunk
-//! IDs via `source_chunk_ids` (no separate passage graph required).
 //!
-//! Config: `EDGEQUAKE_GRAPH_WALK=bfs|ppr` (default `bfs` until eval gates pass).
+//! - **Lite dual-node:** entity PPR then [`chunk_scores_from_entity_ppr`] projection.
+//! - **Full dual-node (EQ-046-17):** bipartite adjacency with `chunk:{id}` nodes via
+//!   [`adjacency_from_bipartite`] + [`chunk_scores_from_bipartite_ppr`].
+//!
+//! Config: `EDGEQUAKE_GRAPH_WALK=bfs|ppr` (default **`ppr`** after OPS-P3 ACC gate;
+//! set `bfs` to escape).
 
 use std::collections::{HashMap, HashSet};
 
@@ -14,23 +18,34 @@ use edgequake_storage::traits::GraphEdge;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum GraphWalkMode {
     /// Classic BFS hop expansion (`edges_within_depth`).
-    #[default]
     Bfs,
     /// Personalized PageRank on the fetched subgraph (HippoRAG-style).
+    /// Default after SPEC-046 OPS-P3 ACC gate.
+    #[default]
     Ppr,
 }
 
 impl GraphWalkMode {
-    /// Read from `EDGEQUAKE_GRAPH_WALK` (`bfs` | `ppr`). Default: Bfs.
+    /// Parse walk mode from a raw string (pure — non-flaky tests).
+    ///
+    /// Empty / unknown → **Ppr** (production default). Explicit `bfs` escapes.
+    pub fn parse(raw: &str) -> Self {
+        parse_graph_walk_mode(raw)
+    }
+
+    /// Read from `EDGEQUAKE_GRAPH_WALK` (`bfs` | `ppr`). Default: Ppr.
     pub fn from_env() -> Self {
-        match std::env::var("EDGEQUAKE_GRAPH_WALK")
-            .unwrap_or_default()
-            .to_ascii_lowercase()
-            .as_str()
-        {
-            "ppr" | "pagerank" | "personalized_pagerank" => Self::Ppr,
-            _ => Self::Bfs,
-        }
+        parse_graph_walk_mode(&std::env::var("EDGEQUAKE_GRAPH_WALK").unwrap_or_default())
+    }
+}
+
+/// Pure parser for `EDGEQUAKE_GRAPH_WALK` (SPEC-046 OPS-P3 — no env mutation in tests).
+pub fn parse_graph_walk_mode(raw: &str) -> GraphWalkMode {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "bfs" | "breadth" | "breadth_first" => GraphWalkMode::Bfs,
+        "ppr" | "pagerank" | "personalized_pagerank" | "" => GraphWalkMode::Ppr,
+        // Unknown values fail closed to Ppr (documented default) rather than silent BFS.
+        _ => GraphWalkMode::Ppr,
     }
 }
 
@@ -179,10 +194,7 @@ pub fn personalized_pagerank(
         }
     }
 
-    node_list
-        .into_iter()
-        .zip(rank)
-        .collect()
+    node_list.into_iter().zip(rank).collect()
 }
 
 /// Rank seed-neighborhood edges by the sum of endpoint PPR scores (desc).
@@ -228,6 +240,86 @@ pub fn chunk_scores_from_entity_ppr(
         }
     }
     chunk_scores
+}
+
+/// Prefix for passage/chunk nodes in bipartite adjacency (avoids id collisions).
+pub const CHUNK_NODE_PREFIX: &str = "chunk:";
+
+/// Build a bipartite-aware undirected adjacency: entity–entity + entity–chunk.
+///
+/// Chunk nodes are keyed as `chunk:{id}`. Mentions links are undirected so PPR
+/// mass flows seed → entity → chunk (and back).
+pub fn adjacency_from_bipartite(
+    entity_edges: &[GraphEdge],
+    entity_chunk_links: &[(String, String)],
+) -> HashMap<String, Vec<String>> {
+    let mut adj = adjacency_from_edges(entity_edges);
+    for (entity, chunk_id) in entity_chunk_links {
+        if entity.is_empty() || chunk_id.is_empty() {
+            continue;
+        }
+        let chunk_node = format!("{CHUNK_NODE_PREFIX}{chunk_id}");
+        adj.entry(entity.clone())
+            .or_default()
+            .push(chunk_node.clone());
+        adj.entry(chunk_node).or_default().push(entity.clone());
+    }
+    for neighbors in adj.values_mut() {
+        neighbors.sort();
+        neighbors.dedup();
+    }
+    adj
+}
+
+/// Strip [`CHUNK_NODE_PREFIX`] from a bipartite node id; `None` if not a chunk node.
+pub fn strip_chunk_node_prefix(node_id: &str) -> Option<&str> {
+    node_id.strip_prefix(CHUNK_NODE_PREFIX)
+}
+
+/// Run PPR on a bipartite adjacency and return scores for **chunk ids only**.
+///
+/// Near-zero scores (< `eps`) are dropped so disconnected mention islands do not
+/// pollute top-k rankings.
+pub fn chunk_scores_from_bipartite_ppr(
+    adjacency: &HashMap<String, Vec<String>>,
+    seed_entity_ids: &[String],
+    config: &PprConfig,
+) -> HashMap<String, f32> {
+    const EPS: f32 = 1e-8;
+    let scores = personalized_pagerank(adjacency, seed_entity_ids, config);
+    let mut chunk_scores = HashMap::new();
+    for (node, score) in scores {
+        if score < EPS {
+            continue;
+        }
+        if let Some(chunk_id) = strip_chunk_node_prefix(&node) {
+            chunk_scores.insert(chunk_id.to_string(), score);
+        }
+    }
+    chunk_scores
+}
+
+/// Convenience: build bipartite adj from entity edges + mentions, PPR, rank chunks.
+pub fn rank_chunks_bipartite_ppr(
+    entity_edges: &[GraphEdge],
+    entity_chunk_links: &[(String, String)],
+    seed_entity_ids: &[String],
+    config: &PprConfig,
+    max_chunks: usize,
+) -> Vec<String> {
+    let adj = adjacency_from_bipartite(entity_edges, entity_chunk_links);
+    let scores = chunk_scores_from_bipartite_ppr(&adj, seed_entity_ids, config);
+    let mut ranked: Vec<(String, f32)> = scores.into_iter().collect();
+    ranked.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.0.cmp(&b.0))
+    });
+    ranked
+        .into_iter()
+        .take(max_chunks)
+        .map(|(id, _)| id)
+        .collect()
 }
 
 #[cfg(test)]
@@ -288,8 +380,55 @@ mod tests {
     }
 
     #[test]
-    fn graph_walk_mode_env_default_bfs() {
-        // Do not assert env mutation in parallel tests; just parse known strings.
-        assert_eq!(GraphWalkMode::default(), GraphWalkMode::Bfs);
+    fn graph_walk_mode_default_is_ppr() {
+        assert_eq!(GraphWalkMode::default(), GraphWalkMode::Ppr);
+        assert_eq!(parse_graph_walk_mode(""), GraphWalkMode::Ppr);
+        assert_eq!(parse_graph_walk_mode("bfs"), GraphWalkMode::Bfs);
+        assert_eq!(parse_graph_walk_mode("PPR"), GraphWalkMode::Ppr);
+        assert_eq!(parse_graph_walk_mode("nope"), GraphWalkMode::Ppr);
+    }
+
+    #[test]
+    fn bipartite_ppr_ranks_seed_local_chunks() {
+        // SEED --entity--> N1; SEED mentions chunk-hot; N1 mentions chunk-cold
+        let entity_edges = vec![edge("SEED", "N1")];
+        let links = vec![
+            ("SEED".into(), "chunk-hot".into()),
+            ("N1".into(), "chunk-cold".into()),
+            ("OTHER".into(), "chunk-other".into()),
+        ];
+        let ranked = rank_chunks_bipartite_ppr(
+            &entity_edges,
+            &links,
+            &["SEED".into()],
+            &PprConfig::default(),
+            3,
+        );
+        assert!(!ranked.is_empty());
+        assert_eq!(
+            ranked.first().map(String::as_str),
+            Some("chunk-hot"),
+            "seed-adjacent chunk should outrank neighbor/far chunks: {ranked:?}"
+        );
+        // Disconnected OTHER island must not enter ranked list (near-zero filtered).
+        assert!(
+            !ranked.iter().any(|c| c == "chunk-other"),
+            "disconnected chunk should be filtered: {ranked:?}"
+        );
+    }
+
+    #[test]
+    fn strip_chunk_prefix_edge_cases() {
+        assert_eq!(strip_chunk_node_prefix("chunk:abc"), Some("abc"));
+        assert_eq!(strip_chunk_node_prefix("ENTITY"), None);
+        assert_eq!(strip_chunk_node_prefix(""), None);
+    }
+
+    #[test]
+    fn bipartite_skips_empty_link_ids() {
+        let adj =
+            adjacency_from_bipartite(&[], &[("".into(), "c1".into()), ("E".into(), "".into())]);
+        assert!(!adj.contains_key(""));
+        assert!(!adj.keys().any(|k| k.starts_with(CHUNK_NODE_PREFIX)));
     }
 }

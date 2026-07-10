@@ -1,5 +1,6 @@
 //! Per-mode vector query implementations (SPEC-024 2.8).
 
+mod arm_timed;
 mod chunk_retrieval;
 mod global;
 mod hybrid;

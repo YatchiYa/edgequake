@@ -69,11 +69,13 @@ async fn resolve_workspace_keyword_llm(
     crate::safety_limits::create_safe_llm_provider(&role.provider, &role.model).ok()
 }
 
+type OptionalLlm = Option<Arc<dyn LLMProvider>>;
+
 /// Resolve Keyword / Query role LLMs for a SOTA dispatch (DRY sync+stream).
 fn resolve_role_llms_for_dispatch(
     resources: &WorkspaceQueryResources,
-    llm_override: Option<Arc<dyn LLMProvider>>,
-) -> (Option<Arc<dyn LLMProvider>>, Option<Arc<dyn LLMProvider>>) {
+    llm_override: OptionalLlm,
+) -> (OptionalLlm, OptionalLlm) {
     let keyword_llm = resources
         .keyword_llm
         .clone()
@@ -109,13 +111,11 @@ pub async fn execute_sota_query(
 ) -> ApiResult<QueryResponse> {
     let has_llm_override = llm_override.is_some();
     let (keyword_llm, answer_llm) = resolve_role_llms_for_dispatch(&resources, llm_override);
-    let (embedding, vector_storage, used_defaults) =
-        resolve_sota_providers(state, resources);
+    let (embedding, vector_storage, used_defaults) = resolve_sota_providers(state, resources);
 
     debug!(
         has_llm_override,
-        used_defaults,
-        "SOTA query: workspace routing matrix"
+        used_defaults, "SOTA query: workspace routing matrix"
     );
 
     let result = if used_defaults && answer_llm.is_none() && keyword_llm.is_none() {
@@ -124,13 +124,7 @@ pub async fn execute_sota_query(
         state
             .query
             .engine_impl
-            .query_with_role_llms(
-                request,
-                embedding,
-                vector_storage,
-                keyword_llm,
-                answer_llm,
-            )
+            .query_with_role_llms(request, embedding, vector_storage, keyword_llm, answer_llm)
             .await
     };
 
@@ -181,8 +175,7 @@ pub async fn execute_sota_query_stream(
 
     debug!(
         has_llm_override,
-        used_defaults,
-        "SOTA stream: workspace routing matrix"
+        used_defaults, "SOTA stream: workspace routing matrix"
     );
 
     if used_defaults && answer_llm.is_none() && keyword_llm.is_none() {

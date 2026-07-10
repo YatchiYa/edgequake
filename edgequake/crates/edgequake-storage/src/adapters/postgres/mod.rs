@@ -65,7 +65,11 @@ pub use pdf_storage_impl::PostgresPdfStorage;
 pub use rls::{
     acquire_rls_connection, clear_tenant_context, clear_tenant_context_on_conn,
     release_rls_connection, set_tenant_context, set_tenant_context_on_conn,
-    with_acquired_tenant_context, RlsContext, RlsQueryBuilder,
+    with_acquired_tenant_context, RlsQueryBuilder,
 };
+
+// SPEC-046 OPS-P2.16: `RlsContext` is no longer re-exported from `postgres::`.
+// Use `acquire_rls_connection` / `with_acquired_tenant_context` (SEC-014 SSOT).
+// The type remains in `rls` for transitional `#[deprecated]` compile errors.
 pub use vector::PgVectorStorage;
 pub use workspace_vector::PgWorkspaceVectorRegistry;

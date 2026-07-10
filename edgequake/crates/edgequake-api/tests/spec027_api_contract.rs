@@ -921,6 +921,12 @@ fn spec027_rls_acquire_ssot_phase37() {
     .expect("postgres/mod.rs");
     assert!(postgres_mod.contains("acquire_rls_connection"));
     assert!(postgres_mod.contains("release_rls_connection"));
+    assert!(
+        !postgres_mod
+            .lines()
+            .any(|l| l.contains("RlsContext") && l.contains("pub use")),
+        "OPS-P2.16: RlsContext must not be re-exported from postgres:: (use acquire_rls_connection)"
+    );
 }
 
 #[test]

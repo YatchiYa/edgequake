@@ -221,9 +221,12 @@ Ensure VLM table/drawing/equation chunks create entities + edges (LR `operate.py
 [x] EQ-046-13  Role-LLM default matrix in docs + Keyword role
 [x] EQ-046-14  Stale purge on process_options change (fingerprint)
 [x] EQ-046-15  Multimodal entity injection audit (orphan guarantee)
+[x] EQ-046-16  ACC CI gate + AccReport JSON artifact (`make spec046-acc`)
+[x] EQ-046-17  Bipartite dual-node PPR (entity∪chunk adjacency)
+[x] EQ-046-18  GraphRAG-Bench-style mini corpus retrieval ACC
 ```
 
-**Implementation status (2026-07-09):** P0–P3 backlog tickets EQ-046-01…15 complete at lite/parity level. Wired end-to-end: community report auto-embed (`LlmTextEmbedder` in pipeline, used by API + core orchestrator), Keyword/Summary roles (sync+stream + merge via `resolve_summary_llm_or_fallback`), dual-node PPR→chunk pick via `source_chunk_ids`, DRY postprocess + SOTA provider resolve, injection persist with Summary+embedder+lineage, semantic chunking refuses silent Recursive fallback, Query LLM override renamed (`resolve_query_llm_override`). Criterion: `cargo bench --bench graphrag_bench`. Deferred: full LightRAG LLM cache-replay rebuild; real GraphRAG-Bench HF corpus / ACC CI; PPR default after ACC gate; cross-encoder rerank; density YAML.
+**Implementation status (2026-07-10):** P0–P3 science + **Science P4** (EQ-046-16…18) shipped. ACC CI: `make spec046-acc`, `.github/workflows/spec046-acc.yml`, `write_spec046_acc_report_json`. Bipartite PPR: `adjacency_from_bipartite` / `pick_chunks_by_bipartite_ppr` wired in `chunk_retrieval`. Mini corpus: `eval/graphrag_corpus.rs` (no HF download). Criterion: `make spec046-acc` + optional Mistral live. Deferred: full HF GraphRAG-Bench download ACC; LightRAG cache-replay rebuild; true cross-encoder rerank; density YAML; LLM community report depth.
 
 ---
 
@@ -238,3 +241,12 @@ EdgeQuake is best-in-class when:
 5. **Enterprise** properties (tenancy, AGE, PDF, saga) remain intact.
 
 Until then: honest label is **"production Hybrid RAG (LightRAG-class) with a clear path to SOTA retrieval physics."**
+
+---
+
+## Ops companion (2026-07-10)
+
+Science tickets above do **not** cover fail-closed storage, chunk retry, O(N) community, or OTel depth.
+
+→ Execute in parallel: **[12-IMPLEMENTATION-PLAN-OPS.md](./12-IMPLEMENTATION-PLAN-OPS.md)** (EQ-046-OPS-01…20)  
+→ Evidence: [09](./09-OPS-RELIABILITY-DEEPSTUDY.md) · [10](./10-POSTGRES-PGVECTOR-AGE-PERFORMANCE.md) · [11](./11-CODE-SMELLS-AND-LENSES.md)

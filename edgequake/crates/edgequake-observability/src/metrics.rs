@@ -27,6 +27,21 @@ const INGESTION_CHUNK_STRATEGY: &str = "edgequake_ingestion_chunk_strategy_total
 const INGESTION_SECTION_CONTEXT: &str = "edgequake_ingestion_section_context_total";
 const INGESTION_FAILURES: &str = "edgequake_ingestion_failures_total";
 const COMPENSATION_QUARANTINE: &str = "edgequake_compensation_quarantine_total";
+const CHUNK_STRATEGY_DEGRADED: &str = "edgequake_ingestion_chunk_strategy_degraded_total";
+const VECTOR_ANN_INDEX_MISSING: &str = "edgequake_vector_ann_index_missing";
+const COMMUNITY_SAMPLED: &str = "edgequake_community_detection_sampled_total";
+const POPULAR_NODE_FALLBACK: &str = "edgequake_query_popular_node_fallback_total";
+const SPARSE_RETRIEVAL: &str = "edgequake_query_sparse_retrieval_total";
+const STORAGE_DRIFT: &str = "edgequake_storage_drift_violations_total";
+const STORAGE_DRIFT_CRITICAL: &str = "edgequake_storage_drift_critical";
+const FAITHFULNESS_SAMPLES: &str = "edgequake_faithfulness_samples_total";
+const FAITHFULNESS_SCORE: &str = "edgequake_faithfulness_score";
+const GRAPH_QUALITY_NODES: &str = "edgequake_graph_quality_nodes";
+const GRAPH_QUALITY_EDGES: &str = "edgequake_graph_quality_edges";
+const GRAPH_QUALITY_AVG_DEGREE: &str = "edgequake_graph_quality_avg_degree";
+const GRAPH_QUALITY_ORPHAN_RATE: &str = "edgequake_graph_quality_orphan_rate";
+const GRAPH_QUALITY_EMPTY_DESC_RATE: &str = "edgequake_graph_quality_empty_description_rate";
+const GRAPH_QUALITY_SPARSE: &str = "edgequake_graph_quality_sparse";
 
 /// Pre-register metric metadata so `/metrics` is never an empty body before first request.
 fn describe_http_metrics() {
@@ -96,6 +111,63 @@ fn describe_http_metrics() {
     describe_counter!(
         COMPENSATION_QUARANTINE,
         "Saga compensation cleanup failures requiring operator quarantine"
+    );
+    describe_counter!(
+        CHUNK_STRATEGY_DEGRADED,
+        "Semantic (or other) chunk strategy degraded to fallback"
+    );
+    describe_gauge!(
+        VECTOR_ANN_INDEX_MISSING,
+        "Count of vector tables missing HNSW/IVFFlat ANN index"
+    );
+    describe_counter!(
+        COMMUNITY_SAMPLED,
+        "Community detection runs that used a sampled subgraph"
+    );
+    describe_counter!(
+        POPULAR_NODE_FALLBACK,
+        "Queries that fell back to popular-node graph retrieval"
+    );
+    describe_counter!(
+        SPARSE_RETRIEVAL,
+        "Sparse/FTS fusion outcomes (postgres_fts, in_memory_bm25, fallbacks)"
+    );
+    describe_counter!(
+        STORAGE_DRIFT,
+        "Storage inspector invariant violations by severity"
+    );
+    describe_gauge!(
+        STORAGE_DRIFT_CRITICAL,
+        "Count of CRITICAL storage drift violations from last inspect"
+    );
+    describe_counter!(FAITHFULNESS_SAMPLES, "Online faithfulness samples recorded");
+    describe_histogram!(
+        FAITHFULNESS_SCORE,
+        "Online faithfulness heuristic score in [0,1]"
+    );
+    describe_gauge!(
+        GRAPH_QUALITY_NODES,
+        "Knowledge-graph node count from last quality sample (SPEC-046 OPS-23)"
+    );
+    describe_gauge!(
+        GRAPH_QUALITY_EDGES,
+        "Knowledge-graph edge count from last quality sample (SPEC-046 OPS-23)"
+    );
+    describe_gauge!(
+        GRAPH_QUALITY_AVG_DEGREE,
+        "Knowledge-graph average degree from last quality sample (SPEC-046 OPS-23)"
+    );
+    describe_gauge!(
+        GRAPH_QUALITY_ORPHAN_RATE,
+        "Fraction of orphan nodes from last quality sample (SPEC-046 OPS-23)"
+    );
+    describe_gauge!(
+        GRAPH_QUALITY_EMPTY_DESC_RATE,
+        "Fraction of nodes with empty description from last quality sample"
+    );
+    describe_gauge!(
+        GRAPH_QUALITY_SPARSE,
+        "1 when graph quality sample is sparse (avg_degree < 2 on ≥10 nodes)"
     );
 }
 
@@ -321,6 +393,29 @@ pub fn record_compensation_quarantine(kind: &str) {
     counter!(COMPENSATION_QUARANTINE, "kind" => kind.to_string()).increment(1);
 }
 
+/// Record chunk strategy degradation (SPEC-046 OPS-P0.1).
+pub fn record_chunk_strategy_degraded(requested: &str, effective: &str) {
+    init_metrics();
+    counter!(
+        CHUNK_STRATEGY_DEGRADED,
+        "requested" => requested.to_string(),
+        "effective" => effective.to_string()
+    )
+    .increment(1);
+}
+
+/// Set missing ANN index gauge (SPEC-046 OPS-P0.3).
+pub fn set_vector_ann_index_missing(count: u64) {
+    init_metrics();
+    gauge!(VECTOR_ANN_INDEX_MISSING).set(count as f64);
+}
+
+/// Record sampled community detection (SPEC-046 OPS-P0.2).
+pub fn record_community_sampled() {
+    init_metrics();
+    counter!(COMMUNITY_SAMPLED).increment(1);
+}
+
 /// Record a completed RAG query (API handler).
 pub fn record_query_completed(mode: &str, outcome: &str, duration_secs: f64) {
     init_metrics();
@@ -331,6 +426,70 @@ pub fn record_query_completed(mode: &str, outcome: &str, duration_secs: f64) {
     )
     .increment(1);
     histogram!(QUERY_DURATION, "mode" => mode.to_string()).record(duration_secs);
+}
+
+/// Record popular-node fallback (SPEC-046 OPS-P2.14).
+pub fn record_popular_node_fallback(arm: &str) {
+    init_metrics();
+    counter!(POPULAR_NODE_FALLBACK, "arm" => arm.to_string()).increment(1);
+}
+
+/// Record sparse/FTS fusion outcome (SPEC-046 OPS-P2.15).
+pub fn record_sparse_retrieval_outcome(outcome: &str) {
+    init_metrics();
+    counter!(SPARSE_RETRIEVAL, "outcome" => outcome.to_string()).increment(1);
+}
+
+/// Record storage drift violations (SPEC-046 OPS-P2.19).
+pub fn record_storage_drift(invariant: &str, severity: &str, count: u64) {
+    init_metrics();
+    counter!(
+        STORAGE_DRIFT,
+        "invariant" => invariant.to_string(),
+        "severity" => severity.to_string()
+    )
+    .increment(count);
+}
+
+/// Set CRITICAL drift gauge from last inspect (OPS-P2.19).
+pub fn set_storage_drift_critical(count: u64) {
+    init_metrics();
+    gauge!(STORAGE_DRIFT_CRITICAL).set(count as f64);
+}
+
+/// Record an online faithfulness sample (OPS-P2.20).
+pub fn record_faithfulness_sample(score: f64) {
+    init_metrics();
+    counter!(FAITHFULNESS_SAMPLES).increment(1);
+    histogram!(FAITHFULNESS_SCORE).record(score.clamp(0.0, 1.0));
+}
+
+/// Record graph structural quality gauges (SPEC-046 OPS-P3.23).
+///
+/// Call after ingest merge / quality sample. Labels keep multi-workspace
+/// scrapes distinguishable without exploding cardinality (workspace only).
+pub fn record_graph_quality(
+    workspace: &str,
+    node_count: u64,
+    edge_count: u64,
+    avg_degree: f64,
+    orphan_rate: f64,
+    empty_description_rate: f64,
+    sparse: bool,
+) {
+    init_metrics();
+    let ws = if workspace.is_empty() {
+        "default".to_string()
+    } else {
+        workspace.to_string()
+    };
+    gauge!(GRAPH_QUALITY_NODES, "workspace" => ws.clone()).set(node_count as f64);
+    gauge!(GRAPH_QUALITY_EDGES, "workspace" => ws.clone()).set(edge_count as f64);
+    gauge!(GRAPH_QUALITY_AVG_DEGREE, "workspace" => ws.clone()).set(avg_degree);
+    gauge!(GRAPH_QUALITY_ORPHAN_RATE, "workspace" => ws.clone()).set(orphan_rate.clamp(0.0, 1.0));
+    gauge!(GRAPH_QUALITY_EMPTY_DESC_RATE, "workspace" => ws.clone())
+        .set(empty_description_rate.clamp(0.0, 1.0));
+    gauge!(GRAPH_QUALITY_SPARSE, "workspace" => ws).set(if sparse { 1.0 } else { 0.0 });
 }
 
 /// Render metrics in Prometheus text exposition format.

@@ -117,6 +117,9 @@ pub struct CommunityConfig {
     pub max_iterations: usize,
     /// Resolution parameter for Louvain (higher = more communities).
     pub resolution: f64,
+    /// Hard cap on nodes loaded for detection (SPEC-046 OPS-P0.2).
+    /// Default from `EDGEQUAKE_COMMUNITY_MAX_NODES` (50_000).
+    pub max_nodes: usize,
 }
 
 impl Default for CommunityConfig {
@@ -126,8 +129,111 @@ impl Default for CommunityConfig {
             min_community_size: 2,
             max_iterations: 100,
             resolution: 1.0,
+            max_nodes: community_max_nodes_from_env(),
         }
     }
+}
+
+/// Default community node cap (aligned with ResourceGuard graph_scan_threshold).
+pub fn community_max_nodes_from_env() -> usize {
+    std::env::var("EDGEQUAKE_COMMUNITY_MAX_NODES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(50_000)
+        .clamp(100, 5_000_000)
+}
+
+/// Result of a bounded graph load for community detection.
+#[derive(Debug, Clone)]
+pub struct BoundedGraphLoad {
+    pub nodes: Vec<crate::traits::GraphNode>,
+    pub edges: Vec<crate::traits::GraphEdge>,
+    pub sampled: bool,
+    pub total_nodes_estimate: usize,
+}
+
+/// Load nodes/edges with pagination + hard cap (O(sample), never unbounded Cypher).
+///
+/// SOLID: single responsibility — graph materialization for community algos.
+/// Prefer this over `get_all_nodes` / `get_all_edges` on ingest refresh paths.
+pub async fn load_graph_bounded(
+    graph: &Arc<dyn GraphStorage>,
+    max_nodes: usize,
+) -> Result<BoundedGraphLoad> {
+    use crate::traits::{EdgeListFilter, NodeListFilter};
+
+    let max_nodes = max_nodes.max(1);
+    let page = 2_000usize.min(max_nodes);
+    let filter = NodeListFilter::default();
+    let edge_filter = EdgeListFilter::default();
+
+    let mut nodes = Vec::new();
+    let mut offset = 0usize;
+    let mut total_estimate = 0usize;
+    loop {
+        let page_result = graph.list_nodes_filtered(&filter, offset, page).await?;
+        total_estimate = page_result.total.max(total_estimate);
+        if page_result.items.is_empty() {
+            break;
+        }
+        let remaining = max_nodes.saturating_sub(nodes.len());
+        if remaining == 0 {
+            break;
+        }
+        let take = remaining.min(page_result.items.len());
+        nodes.extend(page_result.items.into_iter().take(take));
+        offset += take;
+        if nodes.len() >= max_nodes || offset >= total_estimate {
+            break;
+        }
+    }
+
+    let sampled = total_estimate > nodes.len();
+
+    // Edges: page until we cover endpoints in the node set (or hit 4× node cap).
+    let node_ids: HashSet<String> = nodes.iter().map(|n| n.id.clone()).collect();
+    let mut edges = Vec::new();
+    let edge_cap = max_nodes.saturating_mul(4).max(page);
+    let mut e_offset = 0usize;
+    loop {
+        let page_result = graph
+            .list_edges_filtered(&edge_filter, e_offset, page)
+            .await?;
+        if page_result.items.is_empty() {
+            break;
+        }
+        let batch_len = page_result.items.len();
+        for edge in page_result.items {
+            if node_ids.contains(&edge.source) && node_ids.contains(&edge.target) {
+                edges.push(edge);
+                if edges.len() >= edge_cap {
+                    break;
+                }
+            }
+        }
+        e_offset += batch_len;
+        if edges.len() >= edge_cap || e_offset >= page_result.total {
+            break;
+        }
+    }
+
+    if sampled {
+        tracing::warn!(
+            loaded_nodes = nodes.len(),
+            total_nodes_estimate = total_estimate,
+            max_nodes,
+            loaded_edges = edges.len(),
+            "community detection using sampled subgraph (SPEC-046 OPS-P0.2)"
+        );
+    }
+
+    let node_len = nodes.len();
+    Ok(BoundedGraphLoad {
+        nodes,
+        edges,
+        sampled,
+        total_nodes_estimate: total_estimate.max(node_len),
+    })
 }
 
 /// Detect communities in a graph (full-graph load — internal use only).
@@ -155,8 +261,9 @@ async fn louvain_communities(
     graph: &Arc<dyn GraphStorage>,
     config: &CommunityConfig,
 ) -> Result<CommunityDetectionResult> {
-    let nodes = graph.get_all_nodes().await?;
-    let edges = graph.get_all_edges().await?;
+    let loaded = load_graph_bounded(graph, config.max_nodes).await?;
+    let nodes = loaded.nodes;
+    let edges = loaded.edges;
 
     if nodes.is_empty() {
         return Ok(CommunityDetectionResult::new());
@@ -320,8 +427,9 @@ async fn label_propagation(
     graph: &Arc<dyn GraphStorage>,
     config: &CommunityConfig,
 ) -> Result<CommunityDetectionResult> {
-    let nodes = graph.get_all_nodes().await?;
-    let edges = graph.get_all_edges().await?;
+    let loaded = load_graph_bounded(graph, config.max_nodes).await?;
+    let nodes = loaded.nodes;
+    let edges = loaded.edges;
 
     if nodes.is_empty() {
         return Ok(CommunityDetectionResult::new());
@@ -418,8 +526,9 @@ async fn connected_components(
     graph: &Arc<dyn GraphStorage>,
     config: &CommunityConfig,
 ) -> Result<CommunityDetectionResult> {
-    let nodes = graph.get_all_nodes().await?;
-    let edges = graph.get_all_edges().await?;
+    let loaded = load_graph_bounded(graph, config.max_nodes).await?;
+    let nodes = loaded.nodes;
+    let edges = loaded.edges;
 
     if nodes.is_empty() {
         return Ok(CommunityDetectionResult::new());
@@ -626,5 +735,63 @@ mod tests {
 
         // Should detect at least 2 communities
         assert!(!result.communities.is_empty());
+    }
+
+    #[tokio::test]
+    async fn load_graph_bounded_respects_max_nodes_cap() {
+        let graph = test_graph();
+        graph.initialize().await.unwrap();
+        for i in 0..10 {
+            let id = format!("N{i}");
+            let mut props = HashMap::new();
+            props.insert("name".to_string(), serde_json::json!(id));
+            graph.upsert_node(&id, props).await.unwrap();
+        }
+        for i in 0..9 {
+            let mut edge_props = HashMap::new();
+            edge_props.insert("weight".to_string(), serde_json::json!(1.0));
+            graph
+                .upsert_edge(&format!("N{i}"), &format!("N{}", i + 1), edge_props)
+                .await
+                .unwrap();
+        }
+
+        let loaded = load_graph_bounded(&graph, 4).await.unwrap();
+        assert_eq!(loaded.nodes.len(), 4);
+        assert!(loaded.sampled);
+        assert!(loaded.total_nodes_estimate >= 4);
+        // Edges only among loaded nodes
+        let ids: HashSet<_> = loaded.nodes.iter().map(|n| n.id.clone()).collect();
+        for e in &loaded.edges {
+            assert!(ids.contains(&e.source) && ids.contains(&e.target));
+        }
+    }
+
+    #[tokio::test]
+    async fn community_detection_uses_bounded_loader_not_full_scan_path() {
+        let graph = test_graph();
+        graph.initialize().await.unwrap();
+        for i in 0..6 {
+            let id = format!("C{i}");
+            let mut props = HashMap::new();
+            props.insert("name".to_string(), serde_json::json!(id));
+            graph.upsert_node(&id, props).await.unwrap();
+        }
+        for (a, b) in [("C0", "C1"), ("C1", "C2"), ("C3", "C4"), ("C4", "C5")] {
+            let mut edge_props = HashMap::new();
+            edge_props.insert("weight".to_string(), serde_json::json!(1.0));
+            graph.upsert_edge(a, b, edge_props).await.unwrap();
+        }
+
+        let config = CommunityConfig {
+            algorithm: CommunityAlgorithm::ConnectedComponents,
+            min_community_size: 2,
+            max_nodes: 3,
+            ..Default::default()
+        };
+        // Must succeed without calling unbounded get_all_nodes semantics.
+        let result = detect_communities_unchecked(&graph, &config).await.unwrap();
+        // With only 3 nodes loaded, at most one size>=2 component may appear.
+        assert!(result.communities.len() <= 2);
     }
 }

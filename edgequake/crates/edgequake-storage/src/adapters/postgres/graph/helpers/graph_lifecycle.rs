@@ -477,9 +477,10 @@ impl PostgresAGEGraphStorage {
             r#"DELETE FROM {graph}."Node"
                WHERE COALESCE(ag_catalog.agtype_to_json(properties)->>'node_id', '') = ''"#
         );
-        sqlx::query(&delete_null).execute(pool).await.map_err(|e| {
-            StorageError::Database(format!("node null-id cleanup failed: {e}"))
-        })?;
+        sqlx::query(&delete_null)
+            .execute(pool)
+            .await
+            .map_err(|e| StorageError::Database(format!("node null-id cleanup failed: {e}")))?;
         let dedup = format!(
             r#"DELETE FROM {graph}."Node"
                WHERE ctid NOT IN (
@@ -487,9 +488,10 @@ impl PostgresAGEGraphStorage {
                  GROUP BY ag_catalog.agtype_to_json(properties)->>'node_id'
                )"#
         );
-        sqlx::query(&dedup).execute(pool).await.map_err(|e| {
-            StorageError::Database(format!("node dedup failed: {e}"))
-        })?;
+        sqlx::query(&dedup)
+            .execute(pool)
+            .await
+            .map_err(|e| StorageError::Database(format!("node dedup failed: {e}")))?;
         Ok(())
     }
 
@@ -504,9 +506,10 @@ impl PostgresAGEGraphStorage {
                           (ag_catalog.agtype_to_json(properties)->>'target_id')
                )"#
         );
-        sqlx::query(&dedup).execute(pool).await.map_err(|e| {
-            StorageError::Database(format!("edge dedup failed: {e}"))
-        })?;
+        sqlx::query(&dedup)
+            .execute(pool)
+            .await
+            .map_err(|e| StorageError::Database(format!("edge dedup failed: {e}")))?;
         Ok(())
     }
 

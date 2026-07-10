@@ -45,7 +45,7 @@ impl QueryEngine {
             .await?;
 
         if crate::sparse_retrieval::bm25_retrieval_enabled(&retrieval_config) {
-            let mut chunks = crate::sparse_retrieval::fuse_vector_and_bm25_chunks(
+            let (mut chunks, outcome) = crate::sparse_retrieval::fuse_vector_and_bm25_chunks(
                 query_text,
                 &results,
                 vector_storage,
@@ -60,6 +60,11 @@ impl QueryEngine {
                 &mut chunks,
             )
             .await;
+            crate::retrieval_telemetry::mark_sparse_outcome(
+                &mut context,
+                outcome.as_str(),
+                outcome.is_fts_fallback(),
+            );
             for chunk in chunks {
                 context.add_chunk(chunk);
             }

@@ -26,7 +26,7 @@
 use edgequake_pipeline::{
     PipelineConfig, DEFAULT_CHUNK_MAX_RETRIES, DEFAULT_CHUNK_TIMEOUT_SECS,
     DEFAULT_INITIAL_RETRY_DELAY_MS, DEFAULT_MAX_CONCURRENT_EXTRACTIONS, MAX_CHUNK_MAX_RETRIES,
-    MIN_CHUNK_TIMEOUT_SECS,
+    MAX_CONCURRENT_EXTRACTIONS_CAP, MIN_CHUNK_TIMEOUT_SECS,
 };
 use serial_test::serial;
 
@@ -257,6 +257,20 @@ fn test_max_concurrent_zero_clamped_to_one() {
     assert_eq!(
         config.max_concurrent_extractions, 1,
         "max_concurrent=0 must be clamped to 1 (semaphore cannot have 0 permits)"
+    );
+}
+
+/// SPEC-046 OPS-P1.6: `EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS=256` clamps to 32.
+#[test]
+#[serial]
+fn test_max_concurrent_above_cap_is_clamped() {
+    let _guard = EnvGuard::set(&[(MAX_CONCURRENT_VAR, "256")]);
+
+    let config = PipelineConfig::from_env();
+
+    assert_eq!(
+        config.max_concurrent_extractions, MAX_CONCURRENT_EXTRACTIONS_CAP,
+        "max_concurrent=256 must be clamped to MAX_CONCURRENT_EXTRACTIONS_CAP (OPS-P1.6)"
     );
 }
 

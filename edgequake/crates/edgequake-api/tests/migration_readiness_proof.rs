@@ -43,6 +43,7 @@ fn degraded_bootstrap_report() -> MigrationBootstrapReport {
             iterative_scan_capable: true,
             indexes_rebuilt: false,
             vector_tables_checked: 0,
+            missing_ann_index_tables: 0,
         },
         migration_043: Migration043Report {
             age_available: true,
