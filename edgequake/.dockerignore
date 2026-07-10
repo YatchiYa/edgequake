@@ -42,8 +42,8 @@ Dockerfile*
 
 # Misc
 audit_*/
-benches/
-examples/
+# benches/ + examples/ MUST stay in context — Cargo.toml declares [[bench]]/[[example]]
+# and refuses to parse the manifest if those paths are missing (release-docker CD).
 .env
 .env.*
 debug_output.txt

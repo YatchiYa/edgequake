@@ -254,11 +254,28 @@ docker compose -f docker-compose.prebuilt.yml up -d
 
 | Service | Port | Image |
 |---------|------|-------|
-| API | 8080 | `ghcr.io/raphaelmansuy/edgequake:latest` |
-| Frontend | 3000 | `ghcr.io/raphaelmansuy/edgequake-frontend:latest` |
-| PostgreSQL | 5432 | `ghcr.io/raphaelmansuy/edgequake-postgres:latest` (PG18) |
+| API | 8080 | `ghcr.io/raphaelmansuy/edgequake:0.16.0` (`:latest`) |
+| Frontend | 3000 | `ghcr.io/raphaelmansuy/edgequake-frontend:0.16.0` (`:latest`) |
+| PostgreSQL | 5432 | `ghcr.io/raphaelmansuy/edgequake-postgres:0.16.0` (**PG18** default) |
 
-Pin a PostgreSQL tier: `EDGEQUAKE_POSTGRES_TAG=latest-pg16` or `latest-pg17`.
+**PostgreSQL major tags (multi-arch amd64 + arm64):**
+
+| Tag | PostgreSQL |
+|-----|------------|
+| `0.16.0` / `latest` / `0.16.0-pg18` / `latest-pg18` | PG18 |
+| `0.16.0-pg17` / `latest-pg17` | PG17 |
+| `0.16.0-pg16` / `latest-pg16` | PG16 |
+
+```bash
+# Pin full stack to this release
+EDGEQUAKE_VERSION=0.16.0 docker compose -f docker-compose.quickstart.yml up -d
+
+# Pin PostgreSQL major (optional; default tag follows EDGEQUAKE_VERSION → PG18)
+EDGEQUAKE_VERSION=0.16.0 EDGEQUAKE_POSTGRES_TAG=0.16.0-pg16 \
+  docker compose -f docker-compose.quickstart.yml up -d
+```
+
+Also works with `latest-pg16` / `latest-pg17` / `latest-pg18`.
 
 </details>
 

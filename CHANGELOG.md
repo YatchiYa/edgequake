@@ -31,6 +31,13 @@ SPEC-043 unified LLM model picker, server config, provider attribution, and Vert
 
 SPEC-046 GraphRAG / Hybrid RAG ops + science delivery — fail-closed substrate, PPR-default walks, ACC CI, bipartite dual-node retrieval.
 
+### Fixed — Docker CD reliability (API + frontend publish)
+
+- **API image build** — `Dockerfile` now `COPY benches/` + `examples/` (Cargo refuses to parse `[[bench]]`/`[[example]]` when paths are missing). `.dockerignore` no longer excludes those dirs.
+- **Frontend image build** — `proxyClientMaxBodySize` uses numeric `DEFAULT_MAX_UPLOAD_BYTES` (`SizeLimit`); string templates widened to `string` and failed `next build` typecheck on Next 16.2.
+- **Release gates** — `scripts/check_docker_api_context.sh` + README badge parity + SizeLimit guard so CD cannot regress silently.
+- **Docs** — README + `docker-compose.quickstart.yml` pin examples to **0.16.0** and document PG16/17/18 GHCR tags.
+
 ### Changed — CI/CD speed (first principles)
 
 - **Shared Rust setup action** — `.github/actions/setup-rust` with Swatinem `shared-key` across jobs.
