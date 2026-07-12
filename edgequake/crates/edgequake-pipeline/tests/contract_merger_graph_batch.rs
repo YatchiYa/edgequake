@@ -41,6 +41,7 @@ async fn contract_batch_merge_creates_all_entity_nodes() {
         section: None,
         page_start: None,
         page_end: None,
+        modality: None,
     };
 
     let result = ProcessingResult {

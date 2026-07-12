@@ -595,8 +595,23 @@ async fn periodic_orphan_check(
     Ok(())
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
+    // WHY 8 MiB: Hybrid/Mix join three large retrieval futures. Debug builds still
+    // need headroom even after Box::pin (SPEC-047 stack overflow). Override via
+    // TOKIO_WORKER_STACK_SIZE (bytes).
+    let worker_stack = std::env::var("TOKIO_WORKER_STACK_SIZE")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(8 * 1024 * 1024);
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .thread_stack_size(worker_stack)
+        .build()
+        .context("failed to build tokio runtime")?;
+    rt.block_on(async_main())
+}
+
+async fn async_main() -> Result<()> {
     let _obs_guard = init_observability(ObservabilityConfig::from_env());
 
     info!("Starting EdgeQuake v{}", env!("CARGO_PKG_VERSION"));
@@ -738,6 +753,10 @@ async fn main() -> Result<()> {
     if let Some(ref pdf_storage) = state.storage.pdf_storage {
         processor = processor.with_pdf_storage(Arc::clone(pdf_storage));
         info!("📄 PDF storage attached to task processor");
+    }
+    if let Some(ref mm_asset_storage) = state.storage.mm_asset_storage {
+        processor = processor.with_mm_asset_storage(Arc::clone(mm_asset_storage));
+        info!("🖼️  MM-asset storage attached to task processor");
     }
 
     #[cfg(feature = "postgres")]

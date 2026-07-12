@@ -17,7 +17,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use edgequake_pipeline::{LineageSink, NoopLineageSink, RelationLineageLink};
+use edgequake_pipeline::{EntityLineageLink, LineageSink, NoopLineageSink, RelationLineageLink};
 #[cfg(feature = "postgres")]
 use sqlx::PgPool;
 use tracing::warn;
@@ -149,6 +149,39 @@ impl LineageSink for PostgresLineageSink {
                 count = links.len(),
                 error = %e,
                 "PostgresLineageSink: failed to batch insert chunk_relation_links"
+            );
+        }
+        Ok(())
+    }
+
+    async fn record_entity_links_batch(
+        &self,
+        links: &[EntityLineageLink],
+    ) -> edgequake_pipeline::error::Result<()> {
+        if links.is_empty() {
+            return Ok(());
+        }
+
+        let chunk_ids: Vec<&str> = links.iter().map(|l| l.chunk_id.as_str()).collect();
+        let entities: Vec<&str> = links.iter().map(|l| l.entity_name.as_str()).collect();
+        let workspaces: Vec<&str> = links.iter().map(|l| l.workspace_id.as_str()).collect();
+
+        let result = sqlx::query(
+            "INSERT INTO chunk_entity_links (chunk_id, entity_name, workspace_id)
+             SELECT * FROM UNNEST($1::text[], $2::text[], $3::text[])
+             ON CONFLICT DO NOTHING",
+        )
+        .bind(&chunk_ids)
+        .bind(&entities)
+        .bind(&workspaces)
+        .execute(self.pool.as_ref())
+        .await;
+
+        if let Err(e) = result {
+            warn!(
+                count = links.len(),
+                error = %e,
+                "PostgresLineageSink: failed to batch insert chunk_entity_links"
             );
         }
         Ok(())

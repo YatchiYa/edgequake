@@ -1,0 +1,16 @@
+{
+  "workspace_id": "be4c40a9-252d-48a9-a57b-d42ea9f4ef30",
+  "workspace_slug": "bench047-smoke-9f17ca7d-p0_mm_ite-1783767364",
+  "stage": "smoke",
+  "profile": "P0_mm_ite",
+  "doc_ids": [
+    "05-03-18-political-release.pdf"
+  ],
+  "api_base": "http://127.0.0.1:8090",
+  "document_scope": true,
+  "note": "MV-18/19 Pass A + specialize probe (1/8 chart docs). Not full Acc lock.",
+  "tickets": [
+    "EQ-047-MV-18",
+    "EQ-047-MV-19"
+  ]
+}

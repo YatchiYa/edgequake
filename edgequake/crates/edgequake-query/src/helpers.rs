@@ -234,6 +234,15 @@ pub fn build_chunk_from_result(result: &VectorSearchResult) -> RetrievedChunk {
         chunk = chunk.with_page(page as u32);
     }
 
+    if let Some(modality) = result
+        .metadata
+        .get("modality")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+    {
+        chunk = chunk.with_modality(modality);
+    }
+
     chunk
 }
 
@@ -353,6 +362,21 @@ mod tests {
 
         // Malformed (chunk at start)
         assert_eq!(extract_document_id("-chunk-0"), None);
+    }
+
+    #[test]
+    fn build_chunk_from_result_extracts_modality_metadata() {
+        let result = VectorSearchResult {
+            id: "chart-0".into(),
+            score: 0.9,
+            metadata: serde_json::json!({
+                "type": "chunk",
+                "modality": "chart",
+                "content": "Q4: 42M"
+            }),
+        };
+        let chunk = build_chunk_from_result(&result);
+        assert_eq!(chunk.modality.as_deref(), Some("chart"));
     }
 
     #[test]

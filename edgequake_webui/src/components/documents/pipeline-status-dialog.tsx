@@ -24,6 +24,12 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useChunkProgress } from '@/hooks';
 import { useCurrentTime } from '@/hooks/use-current-time';
 import { getEnhancedPipelineStatus, requestPipelineCancellation } from '@/lib/api/edgequake';
+import { resolveBannerProgressMeta } from '@/lib/pipeline/graph-merge-progress';
+import {
+  buildIngestionRunViews,
+  formatRunHeadline,
+  selectPrimaryRun,
+} from '@/lib/pipeline/ingestion-run-view';
 import { summarizePipelineDocuments, resolvePipelineUiState } from '@/lib/pipeline/pipeline-document-state';
 import { translateIngestionDetail } from '@/lib/pipeline/ingestion-user-messages';
 import type { Document, PipelineMessage } from '@/types';
@@ -494,10 +500,23 @@ export function PipelineStatusDialog({
     cancelMutation.mutate();
   };
 
-  // Calculate progress
-  const progress = data?.total_documents && data.total_documents > 0
-    ? (data.processed_documents / data.total_documents) * 100
-    : 0;
+  // Calculate progress — prefer document stage_progress for ingest (SPEC-048)
+  const bannerMeta = useMemo(
+    () => resolveBannerProgressMeta(documentSummary.activeDocs),
+    [documentSummary.activeDocs],
+  );
+  const primaryRun = useMemo(() => {
+    const map = buildIngestionRunViews(documents);
+    return selectPrimaryRun(map);
+  }, [documents]);
+  const jobProgress =
+    data?.total_documents && data.total_documents > 0
+      ? (data.processed_documents / data.total_documents) * 100
+      : 0;
+  const progress =
+    bannerMeta && (!data?.job_name || data.job_name === 'ingest')
+      ? bannerMeta.progress01 * 100
+      : jobProgress;
 
   // OODA-08: Calculate ETA based on processing rate
   const eta = useMemo(() => {
@@ -554,7 +573,7 @@ export function PipelineStatusDialog({
               <Activity className="h-5 w-5" />
               {dialogTitle}
               {isActivelyProcessing && (
-                <Badge variant="outline" className="ml-2 text-orange-500 border-orange-500">
+                <Badge variant="outline" className="ml-2 text-sky-600 border-sky-500">
                   <Loader2 className="h-3 w-3 mr-1 animate-spin" />
                   {t('pipeline.active', 'Active')}
                 </Badge>
@@ -733,19 +752,26 @@ export function PipelineStatusDialog({
               {/* OODA-26: Clear Summary Section - shows what was cleared */}
               <ClearSummarySection clearStats={clearStats} />
 
-              {/* Progress Bar */}
-              {data.total_documents > 0 && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">
-                      {t('pipeline.progress', 'Progress: {{current}}/{{total}} documents', {
-                        current: data.processed_documents,
-                        total: data.total_documents,
-                      })}
+              {/* Progress Bar — stage-aware for ingest (SPEC-048) */}
+              {(bannerMeta || (data.total_documents > 0)) && (
+                <div className="space-y-2" data-testid="pipeline-dialog-progress">
+                  <div className="flex items-center justify-between text-sm gap-2">
+                    <span className="text-muted-foreground truncate">
+                      {primaryRun
+                        ? formatRunHeadline(primaryRun)
+                        : t('pipeline.progress', 'Progress: {{current}}/{{total}} documents', {
+                            current: data.processed_documents,
+                            total: data.total_documents,
+                          })}
                     </span>
-                    <span className="font-medium">{Math.round(progress)}%</span>
+                    <span className="font-medium tabular-nums shrink-0">
+                      {Math.round(progress)}%
+                    </span>
                   </div>
-                  <Progress value={progress} className="h-2" />
+                  <Progress
+                    value={progress}
+                    className="h-2 [&_[data-slot=progress-indicator]]:bg-sky-500"
+                  />
                   {/* OODA-08: ETA display */}
                   {eta && (
                     <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">

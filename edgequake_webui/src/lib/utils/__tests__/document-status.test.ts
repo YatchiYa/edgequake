@@ -112,4 +112,22 @@ describe("resolveDocumentDisplayStatus", () => {
     expect(resolveDocumentDisplayStatus(doc)).toBe("partial_failure");
     expect(isTerminalFailureDocument(doc)).toBe(true);
   });
+
+  it("keeps converting while post-OCR page images are prepared", () => {
+    const doc = baseDoc({
+      status: "processing",
+      current_stage: "converting",
+      stage_message: "Pages converted (24/24) — preparing page images…",
+    });
+    expect(resolveDocumentDisplayStatus(doc)).toBe("converting");
+  });
+
+  it("does not jump to chunking on legacy OCR-complete wording", () => {
+    const doc = baseDoc({
+      status: "processing",
+      current_stage: "converting",
+      stage_message: "PDF conversion complete: 24/24 pages extracted",
+    });
+    expect(resolveDocumentDisplayStatus(doc)).toBe("converting");
+  });
 });

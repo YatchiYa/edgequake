@@ -1,0 +1,12 @@
+# SPEC-047 G-A chart-heavy subset of smoke (8/10 docs with Chart evidence_sources).
+# Baseline Chart answer_in_evidence ≈ 0.36 (n=22). Use:
+#   EDGEQUAKE_BENCH_FIXTURE=smoke_chart_doc_ids_v1.txt \
+#   python3 -m bench047.cli smoke --profile P0_mm_ite --no-resume --api http://127.0.0.1:8091
+05-03-18-political-release.pdf
+2311.16502v3.pdf
+PIP_Seniors-and-Tech-Use_040314.pdf
+afe620b9beac86c1027b96d31d396407.pdf
+e79deb02a0c0e87511080836c5d4347b.pdf
+germanwingsdigitalcrisisanalysis-150403064828-conversion-gate01_95.pdf
+indonesiamobilemarketresearch-ag-150106055934-conversion-gate02_95.pdf
+measuringsuccessonfacebooktwitterlinkedin-160317142140_95.pdf

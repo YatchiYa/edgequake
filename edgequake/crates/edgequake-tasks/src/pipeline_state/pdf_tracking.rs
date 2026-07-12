@@ -144,10 +144,14 @@ impl PipelineState {
                 .unwrap_or(0)
         };
 
-        // Compute ETA: if some entities have been processed, extrapolate
-        let eta_ms = if entities_total > 0 && entities_processed > 0 && elapsed_ms > 0 {
-            let rate = entities_processed as f64 / elapsed_ms as f64; // entities/ms
-            let remaining = entities_total.saturating_sub(entities_processed) as f64;
+        // Compute ETA from combined entity + relationship throughput (SPEC-047 P0).
+        // WHY: entity-only ETA hit 0 remaining while relationship vector upserts
+        // still ran for minutes on mega-docs — UI looked stuck at 100%.
+        let work_done = entities_processed.saturating_add(relationships_processed);
+        let work_total = entities_total.saturating_add(relationships_total);
+        let eta_ms = if work_total > 0 && work_done > 0 && elapsed_ms > 0 {
+            let rate = work_done as f64 / elapsed_ms as f64;
+            let remaining = work_total.saturating_sub(work_done) as f64;
             Some((remaining / rate) as u64)
         } else {
             None

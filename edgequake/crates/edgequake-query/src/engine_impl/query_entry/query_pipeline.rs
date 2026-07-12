@@ -13,7 +13,7 @@ use crate::context::QueryContext;
 use crate::error::Result;
 use crate::keywords::{ExtractedKeywords, QueryIntent};
 use crate::modes::QueryMode;
-use crate::truncation::balance_context;
+use crate::truncation::{balance_context, truncation_config_for_intent};
 use crate::types::{QueryRequest, QueryResponse, QueryStats};
 use crate::{EmbeddingProvider, LLMProvider};
 
@@ -188,11 +188,15 @@ impl QueryEngine {
         let pre_r = context.relationships.len();
         let pre_c = context.chunks.len();
 
+        // 020 A3: Factual demotes graph token tax (heuristic matches keyword L1 when LLM skipped).
+        let intent = QueryIntent::classify_heuristic(&request.query);
+        let trunc_cfg = truncation_config_for_intent(&self.config.truncation, intent);
+
         let (truncated_entities, truncated_relationships, truncated_chunks) = balance_context(
             context.entities.clone(),
             context.relationships.clone(),
             context.chunks.clone(),
-            &self.config.truncation,
+            &trunc_cfg,
             self.tokenizer.as_ref(),
         );
 

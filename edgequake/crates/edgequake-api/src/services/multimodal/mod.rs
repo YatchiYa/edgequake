@@ -11,6 +11,7 @@ mod chunks_store;
 mod context;
 mod enrich;
 mod gates;
+mod image_specialize;
 mod item_record;
 mod json_recovery;
 mod manifest;
@@ -27,7 +28,10 @@ mod stage;
 mod standalone;
 mod surrounding;
 
-pub use analyzer::{analyze_image_bytes, analyze_multimodal_images, AnalyzeOutcome};
+pub use analyzer::{
+    analyze_image_bytes, analyze_image_bytes_with_asset, analyze_multimodal_images,
+    analyze_multimodal_images_with_substep, AnalyzeOutcome,
+};
 pub use api_views::{manifest_item_status_views, summary_from_metadata, MultimodalItemStatusView};
 pub use blocks::{
     block_id_for_offset, blocks_map_from_sections, content_for_item, enrich_items_with_block_ids,
@@ -52,7 +56,10 @@ pub use context::{
     max_extract_input_chars, max_extract_input_tokens, trim_content_to_budget, SurroundingContext,
 };
 pub use enrich::enrich_markdown_with_vlm;
-pub use gates::{should_run_image_analysis, vlm_process_enabled, MultimodalFailMode};
+pub use gates::{
+    should_abort_multimodal_hard_error, should_run_image_analysis, vlm_process_enabled,
+    MultimodalFailMode,
+};
 pub use item_record::{MultimodalItemRecord, MultimodalItemStatus, MultimodalSummary};
 pub use json_recovery::{extract_json_object, parse_json_object};
 pub use manifest::{ManifestItem, MultimodalManifest};
@@ -64,8 +71,9 @@ pub use metadata::{
 };
 pub use prompt_context::{table_content_format_label, PromptContext};
 pub use prompts::{
-    equation_analysis_messages, image_analysis_messages, json_repair_user_message,
-    table_analysis_messages,
+    chart_analysis_messages, equation_analysis_messages, figure_analysis_messages,
+    image_analysis_messages, is_chart_like_type, is_figure_like_type, json_repair_user_message,
+    should_specialize_as_chart, table_analysis_messages,
 };
 pub use providers::MultimodalProviders;
 pub use reanalyze::{
@@ -75,7 +83,10 @@ pub use scan::{find_table_cite_span, scan_manifest_items, span_for_item};
 pub use sidecar::{
     build_sidecar_block, MultimodalHeading, MultimodalSidecar, MultimodalSidecarRef,
 };
-pub use stage::{run_multimodal_analyze_stage, run_multimodal_analyze_stage_outcome};
+pub use stage::{
+    run_multimodal_analyze_stage, run_multimodal_analyze_stage_outcome,
+    run_multimodal_analyze_stage_outcome_with_substep,
+};
 pub use standalone::{analyze_standalone_image, StandaloneImageOutcome};
 pub use surrounding::{
     build_surrounding, char_trim_trailing, find_target_span, load_chunk_separators,

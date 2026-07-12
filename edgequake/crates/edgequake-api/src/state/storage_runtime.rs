@@ -18,6 +18,8 @@ pub struct StorageRuntime {
     pub pdf_storage: Option<Arc<dyn edgequake_storage::PdfDocumentStorage>>,
     #[cfg(feature = "postgres")]
     pub original_storage: Option<Arc<dyn edgequake_storage::DocumentOriginalStorage>>,
+    #[cfg(feature = "postgres")]
+    pub mm_asset_storage: Option<Arc<dyn edgequake_storage::DocumentMmAssetStorage>>,
     pub mode: StorageMode,
 }
 
@@ -44,6 +46,9 @@ impl StorageRuntime {
         if self.original_storage.is_none() {
             return Err("PostgreSQL mode requires PostgresOriginalStorage adapter".into());
         }
+        if self.mm_asset_storage.is_none() {
+            return Err("PostgreSQL mode requires PostgresMmAssetStorage adapter".into());
+        }
         Ok(())
     }
 }
@@ -55,7 +60,9 @@ mod tests {
         MemoryGraphStorage, MemoryKVStorage, MemoryVectorStorage, MemoryWorkspaceVectorRegistry,
     };
     #[cfg(feature = "postgres")]
-    use edgequake_storage::adapters::memory::{MemoryOriginalStorage, MemoryPdfStorage};
+    use edgequake_storage::adapters::memory::{
+        MemoryMmAssetStorage, MemoryOriginalStorage, MemoryPdfStorage,
+    };
 
     #[test]
     fn memory_mode_flags() {
@@ -78,6 +85,8 @@ mod tests {
             pdf_storage: None,
             #[cfg(feature = "postgres")]
             original_storage: None,
+            #[cfg(feature = "postgres")]
+            mm_asset_storage: None,
             mode: StorageMode::Memory,
         };
 
@@ -105,6 +114,7 @@ mod tests {
             auth_memory: Arc::new(AuthMemoryStore::new()),
             pdf_storage: None,
             original_storage: None,
+            mm_asset_storage: None,
             mode: StorageMode::PostgreSQL,
         };
         assert!(missing_pdf.validate_postgres_adapters().is_err());
@@ -123,6 +133,8 @@ mod tests {
         let pdf: Arc<dyn edgequake_storage::PdfDocumentStorage> = Arc::new(MemoryPdfStorage::new());
         let original: Arc<dyn edgequake_storage::DocumentOriginalStorage> =
             Arc::new(MemoryOriginalStorage::new());
+        let mm: Arc<dyn edgequake_storage::DocumentMmAssetStorage> =
+            Arc::new(MemoryMmAssetStorage::new());
 
         let storage = StorageRuntime {
             kv_storage: Arc::clone(&kv) as Arc<dyn edgequake_storage::traits::KVStorage>,
@@ -133,12 +145,14 @@ mod tests {
             auth_memory: Arc::new(AuthMemoryStore::new()),
             pdf_storage: Some(pdf),
             original_storage: Some(original),
+            mm_asset_storage: Some(mm),
             mode: StorageMode::Memory,
         };
 
         assert!(storage.is_memory());
         assert!(storage.pdf_storage.is_some());
         assert!(storage.original_storage.is_some());
+        assert!(storage.mm_asset_storage.is_some());
         assert!(storage.validate_postgres_adapters().is_ok());
     }
 }

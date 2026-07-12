@@ -53,7 +53,8 @@ fn vision_markdown_includes_name_heading() {
         description: "Research lead.".into(),
     };
     let md = image_analysis_to_markdown(&analysis);
-    assert!(md.contains("# sarah chen"));
+    assert!(md.contains("### Vision analysis: sarah chen"));
+    assert!(md.contains("**Type:** Photo"));
 }
 
 #[test]

@@ -1,23 +1,49 @@
 //! Relationship merge, update, creation, and placeholder node logic.
+//!
+//! # SPEC-047 P7b / P7d
+//! - Parallel unique-edge description merges (`merge_max_async`)
+//! - SOURCE_IDS KEEP: skip saturated description updates
 
 use std::collections::HashMap;
 
 use edgequake_storage::{EntityId, GraphEdge, GraphStorage, VectorStorage};
+use futures::stream::{self, StreamExt};
 
 use crate::error::Result;
 use crate::extractor::ExtractedRelationship;
 
-use super::merge_progress::MergeProgressCtx;
-use super::{merge_descriptions, merge_progress, metadata, MergeStats, RelationLineageLink};
+use super::merge_limits::{
+    apply_source_ids_limit, merge_source_ids, should_skip_description_update_keep,
+    source_chunk_ids_from_properties,
+};
+use super::merge_progress::{self, MergeProgressCtx};
+use super::{metadata, MergeStats, RelationLineageLink};
+
+/// One unique-edge merge result (P7b parallel collect).
+struct RelMergeOutcome {
+    source: String,
+    target: String,
+    properties: HashMap<String, serde_json::Value>,
+    is_new: bool,
+    skipped_saturated: bool,
+    vector_id: Option<String>,
+    /// Updated edge for map coherence (None when saturated skip).
+    edge_for_map: Option<GraphEdge>,
+}
 
 impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphMerger<G, V> {
     /// Collect batched relationship vector upserts (P-G4-merger).
+    ///
+    /// SPEC-047 P6: dedupe by `(src, tgt, type)` before upsert (O(unique)).
     pub(super) fn collect_relationship_vector_batch(
         &self,
         relationships: &[ExtractedRelationship],
     ) -> Vec<(String, Vec<f32>, serde_json::Value)> {
-        let mut batch = Vec::new();
-        for rel in relationships {
+        let unique = crate::pipeline::helpers::unique_embed::dedupe_relationships_by_endpoints(
+            relationships,
+        );
+        let mut batch = Vec::with_capacity(unique.len());
+        for rel in &unique {
             let source_id = EntityId::new(&rel.source);
             let target_id = EntityId::new(&rel.target);
             let source_key = source_id.as_graph_node_id();
@@ -156,10 +182,33 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
             .unwrap_or("default")
             .to_string();
         let chunk_size = merge_progress::relationship_merge_chunk_size();
+        let concurrency = self.config.merge_max_async.max(1);
 
         for chunk_start in (0..total_valid).step_by(chunk_size) {
             let chunk_end = (chunk_start + chunk_size).min(total_valid);
             let mut lineage_batch: Vec<RelationLineageLink> = Vec::new();
+
+            let works: Vec<(
+                usize,
+                ExtractedRelationship,
+                String,
+                String,
+                Option<GraphEdge>,
+            )> = valid[chunk_start..chunk_end]
+                .iter()
+                .enumerate()
+                .map(|(offset, (rel, source_key, target_key))| {
+                    let pair = (source_key.clone(), target_key.clone());
+                    let existing = edge_map.get(&pair).cloned();
+                    (
+                        chunk_start + offset,
+                        rel.clone(),
+                        source_key.clone(),
+                        target_key.clone(),
+                        existing,
+                    )
+                })
+                .collect();
 
             for (rel, source_key, target_key) in &valid[chunk_start..chunk_end] {
                 if let Some(ref chunk_id) = rel.source_chunk_id {
@@ -170,38 +219,58 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
                         workspace_id: ws.clone(),
                     });
                 }
+            }
 
-                let pair = (source_key.clone(), target_key.clone());
-                if let Some(existing) = edge_map.get(&pair) {
-                    let mut edge = existing.clone();
-                    self.update_relationship_edge(&mut edge, rel).await?;
-                    edge_batch.push((
-                        edge.source.clone(),
-                        edge.target.clone(),
-                        edge.properties.clone(),
-                    ));
-                    // Keep map coherent if the same pair appears again (defense).
-                    edge_map.insert(pair, edge);
-                    stats.relationships_updated += 1;
-                } else {
-                    let edge = self.create_relationship_edge(source_key, target_key, rel)?;
-                    if rel.embedding.is_some() {
-                        let rel_id =
-                            format!("{}->{}:{}", source_key, target_key, rel.relation_type);
-                        stats.artifacts.relationship_vector_ids.push(rel_id);
+            // SPEC-047 P7b: parallel unique-edge description merges within chunk.
+            let outcomes: Vec<Result<(usize, RelMergeOutcome)>> = stream::iter(works)
+                .map(|(idx, rel, source_key, target_key, existing)| async move {
+                    let outcome = self
+                        .build_relationship_merge_outcome(&rel, &source_key, &target_key, existing)
+                        .await?;
+                    Ok((idx, outcome))
+                })
+                .buffer_unordered(concurrency)
+                .collect()
+                .await;
+
+            let mut ordered: Vec<(usize, RelMergeOutcome)> = Vec::with_capacity(outcomes.len());
+            for item in outcomes {
+                match item {
+                    Ok(pair) => ordered.push(pair),
+                    Err(e) => {
+                        stats.errors += 1;
+                        tracing::warn!(
+                            error.source = "pipeline_merger",
+                            error.action = "merge_relationship",
+                            error.message = %e,
+                            "Failed to merge relationship"
+                        );
                     }
+                }
+            }
+            ordered.sort_by_key(|(i, _)| *i);
+
+            for (_idx, outcome) in ordered {
+                if outcome.skipped_saturated {
+                    stats.relationships_skipped_saturated += 1;
+                    continue;
+                }
+                if let Some(vid) = outcome.vector_id {
+                    stats.artifacts.relationship_vector_ids.push(vid);
+                }
+                if outcome.is_new {
                     stats
                         .artifacts
                         .graph_edges_created
-                        .push((source_key.clone(), target_key.clone()));
-                    edge_batch.push((
-                        edge.source.clone(),
-                        edge.target.clone(),
-                        edge.properties.clone(),
-                    ));
-                    edge_map.insert(pair, edge);
+                        .push((outcome.source.clone(), outcome.target.clone()));
                     stats.relationships_created += 1;
+                } else {
+                    stats.relationships_updated += 1;
                 }
+                if let Some(edge) = outcome.edge_for_map {
+                    edge_map.insert((edge.source.clone(), edge.target.clone()), edge);
+                }
+                edge_batch.push((outcome.source, outcome.target, outcome.properties));
             }
 
             if !lineage_batch.is_empty() {
@@ -281,80 +350,98 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         properties
     }
 
-    /// Update an existing relationship edge.
+    async fn build_relationship_merge_outcome(
+        &self,
+        rel: &ExtractedRelationship,
+        source_key: &str,
+        target_key: &str,
+        existing: Option<GraphEdge>,
+    ) -> Result<RelMergeOutcome> {
+        if let Some(mut edge) = existing {
+            let mutated = self.update_relationship_edge(&mut edge, rel).await?;
+            if !mutated {
+                return Ok(RelMergeOutcome {
+                    source: edge.source.clone(),
+                    target: edge.target.clone(),
+                    properties: edge.properties,
+                    is_new: false,
+                    skipped_saturated: true,
+                    vector_id: None,
+                    edge_for_map: None,
+                });
+            }
+            return Ok(RelMergeOutcome {
+                source: edge.source.clone(),
+                target: edge.target.clone(),
+                properties: edge.properties.clone(),
+                is_new: false,
+                skipped_saturated: false,
+                vector_id: None,
+                edge_for_map: Some(edge),
+            });
+        }
+
+        let edge = self.create_relationship_edge(source_key, target_key, rel)?;
+        let vector_id = rel
+            .embedding
+            .as_ref()
+            .map(|_| format!("{}->{}:{}", source_key, target_key, rel.relation_type));
+        Ok(RelMergeOutcome {
+            source: edge.source.clone(),
+            target: edge.target.clone(),
+            properties: edge.properties.clone(),
+            is_new: true,
+            skipped_saturated: false,
+            vector_id,
+            edge_for_map: Some(edge),
+        })
+    }
+
+    /// Update an existing relationship edge (SPEC-047 P7a fragment gate + P7d KEEP).
+    ///
+    /// Returns `false` when KEEP-saturated → caller skips upsert.
     async fn update_relationship_edge(
         &self,
         edge: &mut GraphEdge,
         rel: &ExtractedRelationship,
-    ) -> Result<()> {
-        // Merge descriptions
+    ) -> Result<bool> {
+        let incoming_ids: Vec<String> = rel
+            .source_chunk_id
+            .iter()
+            .filter(|s| !s.is_empty())
+            .cloned()
+            .collect();
+        let existing_chunk_ids = source_chunk_ids_from_properties(&edge.properties);
+        if should_skip_description_update_keep(
+            &existing_chunk_ids,
+            &incoming_ids,
+            self.config.max_source_ids_per_relation,
+            self.config.source_ids_limit_method,
+        ) {
+            tracing::debug!(
+                source = %rel.source,
+                target = %rel.target,
+                existing = existing_chunk_ids.len(),
+                max = self.config.max_source_ids_per_relation,
+                "P7d KEEP: skip relationship description update (saturated)"
+            );
+            return Ok(false);
+        }
+
         let existing_desc = edge
             .properties
             .get("description")
             .and_then(|v| v.as_str())
             .unwrap_or("");
 
-        // ── SPEC-032 W-06: Similarity gate (parity with entity merge) ─────────
-        let similarity = super::entity::description_similarity(existing_desc, &rel.description);
-        let use_llm = self.config.use_llm_summarization
-            && self.summarizer.is_some()
-            && similarity < self.config.description_similarity_threshold;
-
-        // Use LLM summarizer if available and enabled
-        let merged_desc = if use_llm {
-            if let Some(summarizer) = &self.summarizer {
-                // Use LLM to intelligently merge relationship descriptions
-                let descriptions = vec![existing_desc.to_string(), rel.description.clone()];
-                match summarizer
-                    .merge_relationship_descriptions(&rel.source, &rel.target, &descriptions)
-                    .await
-                {
-                    Ok(merged) => {
-                        tracing::debug!(
-                            source = %rel.source,
-                            target = %rel.target,
-                            similarity,
-                            "LLM relationship description merge completed"
-                        );
-                        merged
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            source = %rel.source,
-                            target = %rel.target,
-                            error = %e,
-                            "LLM summarization failed, falling back to simple merge"
-                        );
-                        merge_descriptions(
-                            existing_desc,
-                            &rel.description,
-                            self.config.max_description_length,
-                        )
-                    }
-                }
-            } else {
-                merge_descriptions(
-                    existing_desc,
-                    &rel.description,
-                    self.config.max_description_length,
-                )
-            }
-        } else {
-            if similarity >= self.config.description_similarity_threshold {
-                tracing::debug!(
-                    source = %rel.source,
-                    target = %rel.target,
-                    similarity,
-                    threshold = self.config.description_similarity_threshold,
-                    "Similarity gate: skipping LLM summarizer (descriptions near-identical)"
-                );
-            }
-            if rel.description.len() > existing_desc.len() {
-                rel.description.clone()
-            } else {
-                existing_desc.to_string()
-            }
-        };
+        let merged_desc = self
+            .resolve_relationship_description(
+                &rel.source,
+                &rel.target,
+                existing_desc,
+                &rel.description,
+            )
+            .await?;
 
         edge.properties.insert(
             "description".to_string(),
@@ -403,7 +490,27 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         edge.properties
             .insert("keywords".to_string(), serde_json::json!(keywords));
 
-        Ok(())
+        // Merge + cap source chunk IDs (P7d)
+        let merged_ids = merge_source_ids(&existing_chunk_ids, &incoming_ids);
+        let capped = apply_source_ids_limit(
+            &merged_ids,
+            self.config.max_source_ids_per_relation,
+            self.config.source_ids_limit_method,
+        );
+        super::lineage::insert_chunk_lineage_properties(&mut edge.properties, &capped);
+        if let Some(first) = capped.first() {
+            edge.properties.insert(
+                "source_chunk_id".to_string(),
+                serde_json::Value::String(first.clone()),
+            );
+        }
+        super::lineage::merge_and_insert_document_lineage(
+            &mut edge.properties,
+            rel.source_document_id.as_deref(),
+            &capped,
+        );
+
+        Ok(true)
     }
 
     /// Create a new relationship edge.
@@ -429,18 +536,29 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         properties.insert("keywords".to_string(), serde_json::json!(rel.keywords));
 
         // Source tracking for citations (LightRAG parity)
-        if let Some(ref chunk_id) = rel.source_chunk_id {
+        let incoming: Vec<String> = rel
+            .source_chunk_id
+            .iter()
+            .filter(|s| !s.is_empty())
+            .cloned()
+            .collect();
+        let capped = apply_source_ids_limit(
+            &incoming,
+            self.config.max_source_ids_per_relation,
+            self.config.source_ids_limit_method,
+        );
+        super::lineage::insert_chunk_lineage_properties(&mut properties, &capped);
+        if let Some(first) = capped.first() {
             properties.insert(
                 "source_chunk_id".to_string(),
-                serde_json::Value::String(chunk_id.clone()),
+                serde_json::Value::String(first.clone()),
             );
         }
-        if let Some(ref doc_id) = rel.source_document_id {
-            properties.insert(
-                "source_document_id".to_string(),
-                serde_json::Value::String(doc_id.clone()),
-            );
-        }
+        super::lineage::merge_and_insert_document_lineage(
+            &mut properties,
+            rel.source_document_id.as_deref(),
+            &capped,
+        );
         if let Some(ref file_path) = rel.source_file_path {
             properties.insert(
                 "source_file_path".to_string(),

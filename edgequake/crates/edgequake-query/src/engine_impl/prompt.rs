@@ -102,6 +102,7 @@ impl QueryEngine {
         )
         .map(|section| format!("\n{section}\n"))
         .unwrap_or_default();
+        let grounding = crate::grounding::grounding_instructions();
 
         format!(
             r#"---Role---
@@ -123,6 +124,8 @@ The answer must integrate relevant facts from the Knowledge Graph and Document C
 2. Content & Grounding:
   - Strictly adhere to the provided context; DO NOT invent, assume, or infer any information not explicitly stated.
   - If the answer cannot be fully determined from the **Context**, state what information IS available and note what is missing. A partial answer with specific data is better than a generic "insufficient information" response.
+
+{grounding}
 
 3. Formatting & Language:
   - The response MUST be in the same language as the user query.
@@ -156,6 +159,7 @@ The answer must integrate relevant facts from the Knowledge Graph and Document C
     ) -> String {
         let (context_text, additional_instructions) =
             Self::format_context_section(context, system_prompt_extension);
+        let grounding = crate::grounding::grounding_instructions();
 
         format!(
             r#"---Role---
@@ -183,6 +187,8 @@ Generate a comprehensive, well-structured answer that integrates observations fr
 3. Content & Grounding:
   - Prefer explicit visual evidence from images and stated facts from the context.
   - If the answer cannot be fully determined, state what IS available and note what is missing.
+
+{grounding}
 
 4. Formatting & Language:
   - The response MUST be in the same language as the user query.

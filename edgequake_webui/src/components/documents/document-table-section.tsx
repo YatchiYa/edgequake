@@ -30,6 +30,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import type { SortDirection, SortField } from '@/lib/documents/document-sort';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { Document } from '@/types';
 import { FileText } from 'lucide-react';
@@ -37,6 +38,7 @@ import { memo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DocumentTableRow } from './document-table-row';
 import { DocumentTableStates } from './document-table-states';
+import { SortableColumnHeader } from './sortable-column-header';
 
 /** Estimated row height for the virtualizer (px). */
 const ESTIMATED_ROW_HEIGHT = 52;
@@ -74,6 +76,8 @@ export interface DocumentTableSectionProps {
   statusFilter: string;
   /** Whether all are selected */
   isAllSelected: boolean;
+  /** Document IDs currently in an active ingestion run (SPEC-048 mute others) */
+  activeRunDocumentIds?: Set<string>;
   onSelectAll: (checked: boolean) => void;
   onSelectOne: (id: string, checked: boolean) => void;
   onRowClick: (doc: Document) => void;
@@ -89,6 +93,12 @@ export interface DocumentTableSectionProps {
   isCancelling: boolean;
   onUploadClick: () => void;
   onClearFilter?: () => void;
+  /** Active sort field (shared with toolbar — DRY) */
+  sortField: SortField;
+  /** Active sort direction */
+  sortDirection: SortDirection;
+  /** Column header sort toggle */
+  onSort: (field: SortField) => void;
 }
 
 /**
@@ -106,6 +116,7 @@ export const DocumentTableSection = memo(function DocumentTableSection({
   searchQuery,
   statusFilter,
   isAllSelected,
+  activeRunDocumentIds,
   onSelectAll,
   onSelectOne,
   onRowClick,
@@ -121,6 +132,9 @@ export const DocumentTableSection = memo(function DocumentTableSection({
   isCancelling,
   onUploadClick,
   onClearFilter,
+  sortField,
+  sortDirection,
+  onSort,
 }: DocumentTableSectionProps) {
   const { t } = useTranslation();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -163,7 +177,7 @@ export const DocumentTableSection = memo(function DocumentTableSection({
 
         {/* Column header row — physically outside the scroll container */}
         {showTable && (
-          <div className="border-t border-x rounded-t-lg bg-muted/50 overflow-hidden shadow-sm">
+          <div className="border border-border border-b-0 rounded-t-lg bg-muted/40 overflow-hidden shadow-sm">
             <table className="w-full table-fixed caption-bottom text-sm" role="presentation">
               <TableColGroup />
               <TableHeader>
@@ -175,12 +189,50 @@ export const DocumentTableSection = memo(function DocumentTableSection({
                       aria-label={t('documents.bulk.selectAll', 'Select all')}
                     />
                   </TableHead>
-                  <TableHead scope="col">{t('documents.table.title', 'Title')}</TableHead>
-                  <TableHead scope="col">{t('documents.table.status', 'Status')}</TableHead>
-                  <TableHead scope="col" className="text-center">{t('documents.table.entities', 'Entities')}</TableHead>
-                  <TableHead scope="col" className="text-center">{t('documents.table.cost', 'Cost')}</TableHead>
-                  <TableHead scope="col">{t('documents.table.created', 'Created')}</TableHead>
-                  <TableHead scope="col">{t('documents.table.updated', 'Last Updated')}</TableHead>
+                  <SortableColumnHeader
+                    field="title"
+                    label={t('documents.table.title', 'Title')}
+                    activeField={sortField}
+                    direction={sortDirection}
+                    onSort={onSort}
+                  />
+                  <SortableColumnHeader
+                    field="status"
+                    label={t('documents.table.status', 'Status')}
+                    activeField={sortField}
+                    direction={sortDirection}
+                    onSort={onSort}
+                  />
+                  <SortableColumnHeader
+                    field="entity_count"
+                    label={t('documents.table.entities', 'Entities')}
+                    activeField={sortField}
+                    direction={sortDirection}
+                    onSort={onSort}
+                    align="center"
+                  />
+                  <SortableColumnHeader
+                    field="cost_usd"
+                    label={t('documents.table.cost', 'Cost')}
+                    activeField={sortField}
+                    direction={sortDirection}
+                    onSort={onSort}
+                    align="center"
+                  />
+                  <SortableColumnHeader
+                    field="created_at"
+                    label={t('documents.table.created', 'Created')}
+                    activeField={sortField}
+                    direction={sortDirection}
+                    onSort={onSort}
+                  />
+                  <SortableColumnHeader
+                    field="updated_at"
+                    label={t('documents.table.updated', 'Last Updated')}
+                    activeField={sortField}
+                    direction={sortDirection}
+                    onSort={onSort}
+                  />
                   <TableHead scope="col" className="rounded-tr-lg">
                     <span className="sr-only">{t('documents.table.actions', 'Actions')}</span>
                   </TableHead>
@@ -205,7 +257,7 @@ export const DocumentTableSection = memo(function DocumentTableSection({
 
         {showTable && (
           <div
-            className="border-b border-x rounded-b-lg overflow-hidden shadow-sm"
+            className="border border-border rounded-b-lg overflow-hidden shadow-sm bg-background"
             aria-label={t('documents.table.ariaLabel', 'Documents list')}
           >
             <table className="w-full table-fixed caption-bottom text-sm">
@@ -217,6 +269,10 @@ export const DocumentTableSection = memo(function DocumentTableSection({
                 {virtualItems.map((virtualRow) => {
                   const doc = documents[virtualRow.index];
                   if (!doc) return null;
+                  const isLiveRun = activeRunDocumentIds?.has(doc.id) ?? false;
+                  const isBackground =
+                    Boolean(activeRunDocumentIds && activeRunDocumentIds.size > 0) &&
+                    !isLiveRun;
                   return (
                     <DocumentTableRow
                       key={doc.id}
@@ -224,6 +280,7 @@ export const DocumentTableSection = memo(function DocumentTableSection({
                       index={virtualRow.index}
                       isSelected={selectedIds.has(doc.id)}
                       isActive={selectedDocument?.id === doc.id}
+                      isBackground={isBackground}
                       searchQuery={searchQuery}
                       onSelect={onSelectOne}
                       onClick={onRowClick}

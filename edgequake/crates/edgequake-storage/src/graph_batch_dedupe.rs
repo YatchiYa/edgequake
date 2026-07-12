@@ -59,6 +59,43 @@ pub fn dedupe_edges_by_endpoints(
         .collect()
 }
 
+/// SPEC-047 P7f — default native/Cypher UNWIND chunk size (rows per statement).
+pub const DEFAULT_GRAPH_UPSERT_CHUNK: usize = 500;
+const MIN_GRAPH_UPSERT_CHUNK: usize = 50;
+const MAX_GRAPH_UPSERT_CHUNK: usize = 2_000;
+
+/// Tunable graph upsert chunk size (`EDGEQUAKE_GRAPH_UPSERT_CHUNK`).
+///
+/// Caps adaptive UNWIND / native `unnest` batches. Larger = fewer round-trips;
+/// smaller = shorter locks / safer statement size.
+pub fn graph_upsert_chunk_size() -> usize {
+    parse_graph_upsert_chunk(&std::env::var("EDGEQUAKE_GRAPH_UPSERT_CHUNK").unwrap_or_default())
+        .unwrap_or(DEFAULT_GRAPH_UPSERT_CHUNK)
+}
+
+/// Pure parser for `EDGEQUAKE_GRAPH_UPSERT_CHUNK` (testable).
+pub fn parse_graph_upsert_chunk(raw: &str) -> Option<usize> {
+    raw.trim()
+        .parse::<usize>()
+        .ok()
+        .filter(|&n| n > 0)
+        .map(|n| n.clamp(MIN_GRAPH_UPSERT_CHUNK, MAX_GRAPH_UPSERT_CHUNK))
+}
+
+/// Combine adaptive size estimate with env cap (P7f SSOT).
+///
+/// When env is set, use `min(adaptive, env)`. When unset, clamp adaptive to
+/// [`DEFAULT_GRAPH_UPSERT_CHUNK`].
+pub fn resolve_graph_upsert_chunk(adaptive: usize) -> usize {
+    let env_cap = parse_graph_upsert_chunk(
+        &std::env::var("EDGEQUAKE_GRAPH_UPSERT_CHUNK").unwrap_or_default(),
+    );
+    match env_cap {
+        Some(cap) => adaptive.min(cap).max(MIN_GRAPH_UPSERT_CHUNK),
+        None => adaptive.clamp(MIN_GRAPH_UPSERT_CHUNK, DEFAULT_GRAPH_UPSERT_CHUNK),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -67,6 +104,21 @@ mod tests {
         let mut m = HashMap::new();
         m.insert("label".to_string(), serde_json::json!(label));
         m
+    }
+
+    #[test]
+    fn parse_graph_upsert_chunk_clamps() {
+        assert_eq!(parse_graph_upsert_chunk("100"), Some(100));
+        assert_eq!(parse_graph_upsert_chunk("10"), Some(50));
+        assert_eq!(parse_graph_upsert_chunk("99999"), Some(2000));
+        assert_eq!(parse_graph_upsert_chunk(""), None);
+        assert_eq!(parse_graph_upsert_chunk("0"), None);
+    }
+
+    #[test]
+    fn resolve_respects_adaptive_without_env() {
+        assert_eq!(resolve_graph_upsert_chunk(250), 250);
+        assert_eq!(resolve_graph_upsert_chunk(10), 50);
     }
 
     #[test]

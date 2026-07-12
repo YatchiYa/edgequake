@@ -121,7 +121,7 @@ export function useQueryPageState(): QueryPageState {
   // Actions
   const createNewConversation = useCallback(async () => {
     const conversation = await createConversationMutation.mutateAsync({
-      mode: "hybrid",
+      mode: "mix",
     });
     store.setActiveConversation(conversation.id);
     return conversation.id;

@@ -1,17 +1,20 @@
 //! Multimodal analyze orchestrator (LightRAG `analyze_multimodal` image + table + equation).
 
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use edgequake_llm::traits::LLMProvider;
 use edgequake_pdf::inline_images::scan_inline_image_refs;
 use edgequake_storage::traits::KVStorage;
-use tracing::{debug, warn};
+use futures::stream::{self, StreamExt};
+use tracing::{debug, info, warn};
 
 use serde::Deserialize;
 
 use super::super::vision_content::{
-    image_analysis_to_markdown, normalize_image_type, ImageAnalysisResult, MultimodalProcessOptions,
+    image_analysis_to_markdown_with_asset, normalize_image_type, ImageAnalysisResult,
+    MultimodalProcessOptions,
 };
 use super::super::vlm_limits::{probe_image_dimensions, validate_image_for_vlm};
 use super::assets::resolve_image_asset;
@@ -19,6 +22,7 @@ use super::blocks::{enrich_items_with_block_ids, prepare_analyze_blocks};
 use super::cache::{chat_json_with_analysis_cache, maybe_attach_cache_key};
 use super::context::{max_extract_input_tokens, trim_content_to_budget, SurroundingContext};
 use super::gates::{should_run_image_analysis, vlm_process_enabled, MultimodalFailMode};
+use super::image_specialize::specialize_image_analysis;
 use super::item_record::{MultimodalItemRecord, MultimodalItemStatus, MultimodalSummary};
 use super::json_recovery::parse_json_object;
 use super::manifest::{ManifestItem, MultimodalManifest};
@@ -30,6 +34,24 @@ use super::prompts::{
 use super::providers::MultimodalProviders;
 use super::scan::scan_manifest_items;
 use super::surrounding::SurroundingKind;
+use crate::services::converting_subprogress::{
+    report_vision_figure_analyze, ConvertingSubstepReporter,
+};
+
+/// Remove `<drawing …/>` placeholders that Pass B did not replace (viewer hygiene).
+fn strip_drawing_tags(markdown: &str) -> String {
+    let refs = scan_inline_image_refs(markdown);
+    if refs.is_empty() {
+        return markdown.to_string();
+    }
+    let mut out = markdown.to_string();
+    for image_ref in refs.into_iter().rev() {
+        if image_ref.start <= out.len() && image_ref.end <= out.len() {
+            out.replace_range(image_ref.start..image_ref.end, "");
+        }
+    }
+    out
+}
 
 /// Outcome of the analyze stage.
 #[derive(Debug, Clone)]
@@ -44,10 +66,32 @@ pub struct AnalyzeOutcome {
 pub async fn analyze_multimodal_images(
     markdown: &str,
     process_options: Option<&str>,
+    filename: &str,
+    providers: MultimodalProviders<'_>,
+    asset_base_dir: Option<&Path>,
+    kv_storage: Option<Arc<dyn KVStorage>>,
+) -> AnalyzeOutcome {
+    analyze_multimodal_images_with_substep(
+        markdown,
+        process_options,
+        filename,
+        providers,
+        asset_base_dir,
+        kv_storage,
+        None,
+    )
+    .await
+}
+
+/// Same as [`analyze_multimodal_images`] with optional converting sub-step reporter (PDF Pass B).
+pub async fn analyze_multimodal_images_with_substep(
+    markdown: &str,
+    process_options: Option<&str>,
     _filename: &str,
     providers: MultimodalProviders<'_>,
     asset_base_dir: Option<&Path>,
     kv_storage: Option<Arc<dyn KVStorage>>,
+    converting_substep: Option<ConvertingSubstepReporter>,
 ) -> AnalyzeOutcome {
     let opts = process_options
         .map(MultimodalProcessOptions::from_option_str)
@@ -81,7 +125,15 @@ pub async fn analyze_multimodal_images(
                 hard_error: Some(msg.into()),
             };
         }
-        warn!(%msg, "multimodal analyze degraded");
+        // First principle: never leave unscanned `<drawing/>` placeholders in
+        // viewer markdown when Pass B cannot run — they leak as raw HTML text.
+        warn!(%msg, "multimodal analyze degraded — stripping unanalyzed drawing tags");
+        return AnalyzeOutcome {
+            markdown: strip_drawing_tags(markdown),
+            manifest,
+            summary: MultimodalSummary::default(),
+            hard_error: None,
+        };
     }
 
     if manifest.items.is_empty() {
@@ -99,28 +151,74 @@ pub async fn analyze_multimodal_images(
 
     if should_run_image_analysis(&opts) {
         let refs = scan_inline_image_refs(markdown);
-        for image_ref in refs.into_iter().rev() {
-            let surrounding = manifest
-                .items
-                .iter()
-                .find(|i| i.modality == "drawing" && i.item_id == image_ref.item_id)
-                .map(|item| SurroundingContext::from_item_with_blocks(markdown, item, &blocks_map))
-                .unwrap_or_else(|| {
-                    SurroundingContext::from_span(
-                        markdown,
-                        (image_ref.start, image_ref.end),
-                        SurroundingKind::Drawings,
+        let total = refs.len();
+        let concurrency = mm_image_concurrency();
+        if total > 0 {
+            info!(
+                total_images = total,
+                concurrency, "multimodal image analyze starting (parallel VLM)"
+            );
+            report_vision_figure_analyze(converting_substep.as_ref(), 0, total);
+        }
+        // Analyze concurrently (I/O-bound VLM calls), then apply replacements in
+        // reverse document order so byte spans stay valid.
+        let jobs: Vec<_> = refs
+            .into_iter()
+            .map(|image_ref| {
+                let surrounding = manifest
+                    .items
+                    .iter()
+                    .find(|i| i.modality == "drawing" && i.item_id == image_ref.item_id)
+                    .map(|item| {
+                        SurroundingContext::from_item_with_blocks(markdown, item, &blocks_map)
+                    })
+                    .unwrap_or_else(|| {
+                        SurroundingContext::from_span(
+                            markdown,
+                            (image_ref.start, image_ref.end),
+                            SurroundingKind::Drawings,
+                        )
+                    });
+                (image_ref, surrounding)
+            })
+            .collect();
+
+        let completed = AtomicUsize::new(0);
+        type ImageAnalyzeOutcome = (
+            edgequake_pdf::inline_images::InlineImageRef,
+            Result<(MultimodalItemRecord, String), MultimodalItemRecord>,
+        );
+        let substep = converting_substep.clone();
+        let mut results: Vec<ImageAnalyzeOutcome> = stream::iter(jobs)
+            .map(|(image_ref, surrounding)| {
+                let kv = kv_storage.clone();
+                let asset_owned = asset_base_dir.map(|p| p.to_path_buf());
+                async move {
+                    let r = analyze_one_image(
+                        &image_ref,
+                        providers.vlm,
+                        asset_owned.as_deref(),
+                        &surrounding,
+                        kv,
                     )
-                });
-            match analyze_one_image(
-                &image_ref,
-                providers.vlm,
-                asset_base_dir,
-                &surrounding,
-                kv_storage.clone(),
-            )
-            .await
-            {
+                    .await;
+                    (image_ref, r)
+                }
+            })
+            .buffer_unordered(concurrency)
+            .inspect(move |_| {
+                let n = completed.fetch_add(1, Ordering::Relaxed) + 1;
+                report_vision_figure_analyze(substep.as_ref(), n, total);
+                if n == 1 || n == total || n.is_multiple_of(5) {
+                    info!(completed = n, total, "multimodal image analyze progress");
+                }
+            })
+            .collect()
+            .await;
+
+        results.sort_by_key(|b| std::cmp::Reverse(b.0.start));
+        for (image_ref, result) in results {
+            match result {
                 Ok((record, replacement)) => {
                     if image_ref.start <= output.len() && image_ref.end <= output.len() {
                         output.replace_range(image_ref.start..image_ref.end, &replacement);
@@ -152,12 +250,48 @@ pub async fn analyze_multimodal_images(
             .filter(|i| i.modality == "table")
             .cloned()
             .collect();
-        for item in table_items.into_iter().rev() {
-            let surrounding =
-                SurroundingContext::from_item_with_blocks(markdown, &item, &blocks_map);
-            match analyze_one_table(&item, providers.extract, &surrounding, kv_storage.clone())
-                .await
-            {
+        let total = table_items.len();
+        let concurrency = mm_item_concurrency();
+        if total > 0 {
+            info!(
+                total_tables = total,
+                concurrency, "multimodal table analyze starting (parallel VLM)"
+            );
+        }
+        let jobs: Vec<_> = table_items
+            .into_iter()
+            .map(|item| {
+                let surrounding =
+                    SurroundingContext::from_item_with_blocks(markdown, &item, &blocks_map);
+                (item, surrounding)
+            })
+            .collect();
+        let completed = AtomicUsize::new(0);
+        type ManifestAnalyzeOutcome = (
+            ManifestItem,
+            Result<(MultimodalItemRecord, String), MultimodalItemRecord>,
+        );
+        let mut results: Vec<ManifestAnalyzeOutcome> = stream::iter(jobs)
+            .map(|(item, surrounding)| {
+                let kv = kv_storage.clone();
+                async move {
+                    let r = analyze_one_table(&item, providers.extract, &surrounding, kv).await;
+                    (item, r)
+                }
+            })
+            .buffer_unordered(concurrency)
+            .inspect(|_| {
+                let n = completed.fetch_add(1, Ordering::Relaxed) + 1;
+                if n == 1 || n == total || n.is_multiple_of(5) {
+                    info!(completed = n, total, "multimodal table analyze progress");
+                }
+            })
+            .collect()
+            .await;
+        // Apply replacements in reverse document order so byte spans stay valid.
+        results.sort_by_key(|b| std::cmp::Reverse(b.0.start));
+        for (item, result) in results {
+            match result {
                 Ok((record, replacement)) => {
                     if item.start <= output.len() && item.end <= output.len() {
                         output.replace_range(item.start..item.end, &replacement);
@@ -189,12 +323,47 @@ pub async fn analyze_multimodal_images(
             .filter(|i| i.modality == "equation")
             .cloned()
             .collect();
-        for item in equation_items.into_iter().rev() {
-            let surrounding =
-                SurroundingContext::from_item_with_blocks(markdown, &item, &blocks_map);
-            match analyze_one_equation(&item, providers.extract, &surrounding, kv_storage.clone())
-                .await
-            {
+        let total = equation_items.len();
+        let concurrency = mm_item_concurrency();
+        if total > 0 {
+            info!(
+                total_equations = total,
+                concurrency, "multimodal equation analyze starting (parallel VLM)"
+            );
+        }
+        let jobs: Vec<_> = equation_items
+            .into_iter()
+            .map(|item| {
+                let surrounding =
+                    SurroundingContext::from_item_with_blocks(markdown, &item, &blocks_map);
+                (item, surrounding)
+            })
+            .collect();
+        let completed = AtomicUsize::new(0);
+        type ManifestAnalyzeOutcome = (
+            ManifestItem,
+            Result<(MultimodalItemRecord, String), MultimodalItemRecord>,
+        );
+        let mut results: Vec<ManifestAnalyzeOutcome> = stream::iter(jobs)
+            .map(|(item, surrounding)| {
+                let kv = kv_storage.clone();
+                async move {
+                    let r = analyze_one_equation(&item, providers.extract, &surrounding, kv).await;
+                    (item, r)
+                }
+            })
+            .buffer_unordered(concurrency)
+            .inspect(|_| {
+                let n = completed.fetch_add(1, Ordering::Relaxed) + 1;
+                if n == 1 || n == total || n.is_multiple_of(5) {
+                    info!(completed = n, total, "multimodal equation analyze progress");
+                }
+            })
+            .collect()
+            .await;
+        results.sort_by_key(|b| std::cmp::Reverse(b.0.start));
+        for (item, result) in results {
+            match result {
                 Ok((record, replacement)) => {
                     if item.start <= output.len() && item.end <= output.len() {
                         output.replace_range(item.start..item.end, &replacement);
@@ -264,7 +433,25 @@ fn attach_record(manifest: &mut MultimodalManifest, record: &MultimodalItemRecor
     }
 }
 
+/// Parallel VLM item analyze concurrency (I/O-bound). Default 4; clamp 1..=16.
+/// Override with `EDGEQUAKE_MM_IMAGE_CONCURRENCY` (shared for images/tables/equations).
+fn mm_item_concurrency() -> usize {
+    std::env::var("EDGEQUAKE_MM_IMAGE_CONCURRENCY")
+        .ok()
+        .and_then(|s| s.trim().parse::<usize>().ok())
+        .unwrap_or(4)
+        .clamp(1, 16)
+}
+
+/// Backward-compatible alias used by the image path.
+fn mm_image_concurrency() -> usize {
+    mm_item_concurrency()
+}
+
 /// Shared image byte analysis (standalone upload + inline PDF path).
+///
+/// `asset_path` / `asset_alt`: when present, replacement keeps a viewer-visible
+/// `![alt](path)` on the page (MV-28) so the markdown viewer can render the PNG.
 pub async fn analyze_image_bytes(
     item_id: &str,
     bytes: &[u8],
@@ -272,6 +459,21 @@ pub async fn analyze_image_bytes(
     llm: &dyn LLMProvider,
     ctx: &PromptContext,
     kv: Option<Arc<dyn KVStorage>>,
+) -> Result<(MultimodalItemRecord, String), MultimodalItemRecord> {
+    analyze_image_bytes_with_asset(item_id, bytes, mime_type, llm, ctx, kv, None, None).await
+}
+
+/// Like [`analyze_image_bytes`] with optional asset path for inline markdown image.
+#[allow(clippy::too_many_arguments)]
+pub async fn analyze_image_bytes_with_asset(
+    item_id: &str,
+    bytes: &[u8],
+    mime_type: &str,
+    llm: &dyn LLMProvider,
+    ctx: &PromptContext,
+    kv: Option<Arc<dyn KVStorage>>,
+    asset_path: Option<&str>,
+    asset_alt: Option<&str>,
 ) -> Result<(MultimodalItemRecord, String), MultimodalItemRecord> {
     let (width, height) = match probe_image_dimensions(bytes, mime_type) {
         Some(d) => d,
@@ -289,9 +491,9 @@ pub async fn analyze_image_bytes(
     }
 
     let messages = image_analysis_messages(bytes, mime_type, ctx);
-    let (analysis, cache_id): (ImageAnalysisResult, _) = chat_json_with_analysis_cache(
+    let (classified, cache_id): (ImageAnalysisResult, _) = chat_json_with_analysis_cache(
         llm,
-        kv,
+        kv.clone(),
         item_id,
         "drawing",
         messages,
@@ -301,6 +503,10 @@ pub async fn analyze_image_bytes(
     .await
     .map_err(|e| MultimodalItemRecord::failed(item_id, "drawing", e))?;
 
+    // Phase B: classify → specialize Chart/Figure (MV-27 soft-fail to Pass A dump).
+    let analysis =
+        specialize_image_analysis(item_id, bytes, mime_type, llm, ctx, kv, classified).await;
+
     let mut record = MultimodalItemRecord::success_image(
         item_id,
         analysis.name.clone(),
@@ -308,7 +514,10 @@ pub async fn analyze_image_bytes(
         analysis.description.clone(),
     );
     maybe_attach_cache_key(&mut record, cache_id.as_deref());
-    let replacement = format!("\n\n{}\n\n", image_analysis_to_markdown(&analysis));
+    let replacement = format!(
+        "\n\n{}\n\n",
+        image_analysis_to_markdown_with_asset(&analysis, asset_path, asset_alt)
+    );
     Ok((record, replacement))
 }
 
@@ -326,13 +535,18 @@ async fn analyze_one_image(
         image_ref.footnote.as_deref(),
         surrounding,
     );
-    analyze_image_bytes(
+    // MV-28: `format_drawing_block` already emits `![alt](assets/…)` above the
+    // `<drawing/>` tag. Replace only the tag with analysis body so the viewer
+    // image stays on-page without duplication.
+    analyze_image_bytes_with_asset(
         &image_ref.item_id,
         &asset.bytes,
         &asset.mime_type,
         llm,
         &ctx,
         kv,
+        None,
+        None,
     )
     .await
 }
@@ -546,5 +760,44 @@ mod tests {
         .await;
         assert!(out.markdown.contains("[Table Name]revenue_table"));
         assert_eq!(out.summary.success, 1);
+    }
+
+    /// E2E (mock VLM): classify Chart → specialize → key_values land in description.
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn chart_classify_then_specialize_lands_key_values() {
+        std::env::set_var("VLM_MIN_IMAGE_PIXEL", "1");
+        let png: &[u8] = &[
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48,
+            0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00,
+            0x00, 0x1F, 0x15, 0xC4, 0x89,
+        ];
+        let mock = MockProvider::new();
+        mock.add_response(r#"{"name":"rev","type":"Chart","description":"generic chart"}"#)
+            .await;
+        mock.add_response(
+            r#"{"name":"rev_q4","chart_kind":"bar","title":"Q4 Revenue","x_axis":"Quarter","y_axis":"USD M","key_values":[{"label":"Q4","value_raw":"42"}],"series":[],"description":"Revenue rose."}"#,
+        )
+        .await;
+        let ctx = PromptContext {
+            language: "English".into(),
+            captions: "n/a".into(),
+            footnotes: "n/a".into(),
+            leading: "n/a".into(),
+            trailing: "n/a".into(),
+        };
+        let (record, replacement) =
+            analyze_image_bytes("im-chart", png, "image/png", &mock, &ctx, None)
+                .await
+                .expect("chart specialize path");
+        let desc = record.description.as_deref().unwrap_or("");
+        assert!(
+            desc.contains("42"),
+            "expected key value in description: {desc}"
+        );
+        assert!(desc.contains("bar"));
+        assert_eq!(record.item_type.as_deref(), Some("Chart"));
+        assert!(replacement.contains("42"));
+        std::env::remove_var("VLM_MIN_IMAGE_PIXEL");
     }
 }

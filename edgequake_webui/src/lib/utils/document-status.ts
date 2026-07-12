@@ -188,13 +188,27 @@ export function resolveDocumentDisplayStatus(
   if (doc.stage_message) {
     const msg = doc.stage_message.toLowerCase();
 
+    // Do NOT advance converting → chunking on OCR-finished wording.
+    // WHY: After last page, vision still renders PNGs, persists assets, and may
+    // run multimodal analyze while current_stage stays "converting". Treating
+    // "complete"/"extracted" as chunking caused Chunking badge vs Converting stage.
     if (
       baseStatus === "converting" &&
-      (msg.includes("complete") || msg.includes("extracted"))
+      (msg.includes("preparing page") ||
+        msg.includes("rendering page") ||
+        msg.includes("saving page") ||
+        msg.includes("analyzing figure") ||
+        msg.includes("pages converted") ||
+        msg.includes("assembling markdown") ||
+        msg.includes("chart crop"))
     ) {
-      return "chunking";
+      return "converting";
     }
-    if (baseStatus === "chunking" && msg.includes("complete")) {
+    if (
+      baseStatus === "chunking" &&
+      msg.includes("complete") &&
+      !msg.includes("conversion")
+    ) {
       return "extracting";
     }
     if (baseStatus === "extracting" && msg.includes("complete")) {

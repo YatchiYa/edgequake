@@ -21,6 +21,14 @@ pub fn community_features_enabled() -> bool {
         .unwrap_or(true)
 }
 
+/// Max nodes for automatic community Louvain (backfill + ingest refresh). Default 50_000.
+pub fn community_auto_max_nodes() -> usize {
+    std::env::var("EDGEQUAKE_COMMUNITY_BACKFILL_MAX_NODES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(50_000)
+}
+
 /// Detect communities and write `community_id` onto node properties.
 pub async fn detect_and_persist_communities(
     graph: Arc<dyn GraphStorage>,
@@ -104,10 +112,7 @@ pub async fn backfill_communities_if_needed(
     }
 
     let node_count = graph.node_count_fast().await.unwrap_or(0);
-    let threshold = std::env::var("EDGEQUAKE_COMMUNITY_BACKFILL_MAX_NODES")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(50_000);
+    let threshold = community_auto_max_nodes();
     if node_count > threshold {
         tracing::warn!(
             node_count,
@@ -150,6 +155,10 @@ pub async fn refresh_community_index(graph: Arc<dyn GraphStorage>) {
 
 /// Background startup backfill for legacy graphs (migration 044 / postgres bootstrap).
 pub fn spawn_community_backfill_if_needed(graph: Arc<dyn GraphStorage>) {
+    if !community_features_enabled() {
+        tracing::debug!("Community backfill skipped (EDGEQUAKE_COMMUNITY_GLOBAL=false)");
+        return;
+    }
     tokio::spawn(async move {
         match backfill_communities_if_needed(graph).await {
             Ok(Some(_)) => tracing::info!("Automatic community backfill complete"),

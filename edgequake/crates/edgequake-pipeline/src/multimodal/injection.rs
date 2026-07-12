@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
 
 static MM_DISPLAY_NAME: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?m)^\[(?:Image|Table|Equation) Name\](.+)$").expect("mm display name regex")
+    Regex::new(r"(?m)^\[(?:Image|Chart|Figure|Table|Equation) Name\](.+)$")
+        .expect("mm display name regex")
 });
 
 /// Parse friendly name from mm chunk content (LightRAG `_parse_mm_display_name`).
@@ -58,10 +59,7 @@ pub struct MmChunkSidecarMeta {
 }
 
 fn chunk_matches_mm(chunk_content: &str, mm: &MmChunkSidecarMeta) -> bool {
-    chunk_content.contains(&mm.text)
-        || (chunk_content.contains("[Image Name]") && mm.text.starts_with("[Image Name]"))
-        || (chunk_content.contains("[Table Name]") && mm.text.starts_with("[Table Name]"))
-        || (chunk_content.contains("[Equation Name]") && mm.text.starts_with("[Equation Name]"))
+    super::retrieval_modality::chunk_matches_mm_sidecar(chunk_content, mm)
 }
 
 /// Augment extractions with mm entity + association edges (LightRAG operate L3622+).
@@ -193,7 +191,7 @@ mod tests {
 
     #[test]
     fn parse_mm_display_name_reads_image_label() {
-        let content = "[Image Name]系统架构图\n[Image Type]Chart\n\n模块交互关系";
+        let content = "[Image Name]系统架构图\n[Image Type]Photo\n\n模块交互关系";
         assert_eq!(parse_mm_display_name(content, "d1"), "系统架构图");
         assert_eq!(
             parse_mm_display_name("no marker", "fallback-id"),
@@ -202,11 +200,23 @@ mod tests {
     }
 
     #[test]
+    fn parse_mm_display_name_reads_chart_and_figure_labels() {
+        assert_eq!(
+            parse_mm_display_name("[Chart Name]revenue\n[Image Type]Chart\n\nbody", "x"),
+            "revenue"
+        );
+        assert_eq!(
+            parse_mm_display_name("[Figure Name]arch\n[Image Type]Flowchart\n\nbody", "x"),
+            "arch"
+        );
+    }
+
+    #[test]
     fn inject_modality_relations_adds_entity_and_edges() {
         let mm = MmChunkSidecarMeta {
             item_id: "d1".into(),
             modality: "drawing".into(),
-            text: "[Image Name]系统架构图\n[Image Type]Chart\n\n模块交互关系".into(),
+            text: "[Chart Name]系统架构图\n[Image Type]Chart\n\n模块交互关系".into(),
             sidecar: MmSidecarBlock {
                 sidecar_type: "drawing".into(),
                 id: "d1".into(),
@@ -235,6 +245,7 @@ mod tests {
             section: None,
             page_start: None,
             page_end: None,
+            modality: None,
         }];
         let mut extractions = vec![ExtractionResult {
             entities: vec![ExtractedEntity::new(
@@ -284,6 +295,7 @@ mod tests {
             section: None,
             page_start: None,
             page_end: None,
+            modality: None,
         }];
         // Empty extractions — LLM never saw this chunk
         let mut extractions = Vec::new();

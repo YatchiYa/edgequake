@@ -25,6 +25,36 @@ describe("performFileUpload", () => {
     vi.mocked(uploadPdfDocument).mockReset();
   });
 
+  it("routes PDF uploads with inline image analysis enabled by default", async () => {
+    vi.mocked(uploadPdfDocument).mockResolvedValue({
+      pdf_id: "pdf-1",
+      document_id: "doc-1",
+      status: "processing",
+      task_id: "task-1",
+      track_id: "track-1",
+      message: "ok",
+      estimated_time_seconds: 60,
+      metadata: {
+        filename: "paper.pdf",
+        file_size_bytes: 100,
+        page_count: 1,
+        sha256_checksum: "abc",
+        vision_enabled: true,
+        vision_model: null,
+      },
+    });
+
+    const pdf = file("paper.pdf", "application/pdf");
+    await performFileUpload(pdf, { trackId: "batch-1" });
+
+    expect(uploadPdfDocument).toHaveBeenCalledWith(
+      pdf,
+      expect.objectContaining({
+        analyze_inline_images: true,
+      }),
+    );
+  });
+
   it("routes PNG to multipart uploadFile, not JSON uploadDocument", async () => {
     vi.mocked(uploadFile).mockResolvedValue({
       document_id: "img-doc-1",

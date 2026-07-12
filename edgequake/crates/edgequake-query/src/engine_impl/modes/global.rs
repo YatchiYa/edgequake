@@ -218,6 +218,7 @@ impl QueryEngine {
             vector_storage,
             &retrieval_config,
             mf.as_ref(),
+            allowed_document_ids,
             "global",
         )
         .await?;

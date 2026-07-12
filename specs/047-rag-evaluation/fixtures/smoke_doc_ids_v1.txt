@@ -1,0 +1,15 @@
+# SPEC-047 smoke_doc_ids_v1 — FROZEN
+# seed=047-smoke-v1
+# n=10
+# Do not edit without bumping to _v2.
+
+e79deb02a0c0e87511080836c5d4347b.pdf
+afe620b9beac86c1027b96d31d396407.pdf
+germanwingsdigitalcrisisanalysis-150403064828-conversion-gate01_95.pdf
+2311.16502v3.pdf
+measuringsuccessonfacebooktwitterlinkedin-160317142140_95.pdf
+8dfc21ec151fb9d3578fc32d5c4e5df9.pdf
+GPL-Graduate-Studies-Professional-Learning-Brochure-Jul-2021.pdf
+indonesiamobilemarketresearch-ag-150106055934-conversion-gate02_95.pdf
+PIP_Seniors-and-Tech-Use_040314.pdf
+05-03-18-political-release.pdf

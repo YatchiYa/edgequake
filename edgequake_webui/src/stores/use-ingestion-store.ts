@@ -414,7 +414,9 @@ function handlePdfPageProgress(
     };
 
     // Update latest message with page info
-    if (event.data.current_page > 0) {
+    if (event.data.phase === "complete" || event.data.phase?.startsWith("partial_complete")) {
+      track.progress.latest_message = `Pages converted (${event.data.total_pages}) — preparing page images…`;
+    } else if (event.data.current_page > 0) {
       track.progress.latest_message = `Converting PDF to Markdown: page ${event.data.current_page}/${event.data.total_pages} (${Math.round(event.data.progress * 100)}%)`;
     } else {
       track.progress.latest_message = `Starting PDF extraction (${event.data.total_pages} pages)...`;

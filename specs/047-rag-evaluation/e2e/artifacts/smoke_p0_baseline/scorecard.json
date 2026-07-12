@@ -1,0 +1,121 @@
+{
+  "spec": "047",
+  "stage": "smoke",
+  "valid": true,
+  "invalid_reason": null,
+  "task_name": "MMLongBench-Doc/RAG-adaptation",
+  "banner": "EdgeQuake RAG adaptation of MMLongBench-Doc; not comparable to the LVLM leaderboard without caveats. Official LVLM GPT-4o F1\u224844.9% is a difficulty reference only. Provider stack: mistral-small-latest + mistral-embed (Postgres).",
+  "pins": {
+    "edgequake_version": "0.16.0",
+    "edgequake_git_sha": "9f17ca7d",
+    "dataset_id": "yubo2333/MMLongBench-Doc",
+    "dataset_revision": "parquet-train",
+    "fixture_id": "smoke_doc_ids_v1",
+    "llm_provider": "mistral",
+    "llm_model": "mistral-small-latest",
+    "vision_provider": "mistral",
+    "vision_model": "mistral-small-latest",
+    "embedding_provider": "mistral",
+    "embedding_model": "mistral-embed",
+    "embedding_dim": 1024,
+    "query_mode": "hybrid",
+    "extractor_model": "mistral-small-latest",
+    "eval_score_sha": "cafa268358b08521cfc9a805c67d86732d943677e4408c5751f336123d09631f",
+    "system_prompt_sha": "server-default",
+    "profile_id": "P0_primary",
+    "pdf_parser_backend": "vision"
+  },
+  "metrics": {
+    "n_docs": 10,
+    "n_questions": 137,
+    "n_scored": 137,
+    "n_skipped_ingest_failed": 0,
+    "accuracy": 0.40678534187397586,
+    "f1": 0.26482673606355295
+  },
+  "slices": {
+    "single_page_accuracy": 0.22999199679871948,
+    "cross_page_accuracy": 0.2,
+    "unanswerable_accuracy": 0.782608695652174,
+    "by_evidence_source": {
+      "Figure": {
+        "accuracy": 0.14285714285714285,
+        "n": 28
+      },
+      "Generalized-text (Layout)": {
+        "accuracy": 0.2955994897959184,
+        "n": 16
+      },
+      "Table": {
+        "accuracy": 0.33620689655172414,
+        "n": 29
+      },
+      "Pure-text (Plain-text)": {
+        "accuracy": 0.1935483870967742,
+        "n": 31
+      },
+      "Chart": {
+        "accuracy": 0.045454545454545456,
+        "n": 22
+      }
+    },
+    "by_doc_type": {
+      "Academic paper": {
+        "accuracy": 0.3125,
+        "n": 16
+      },
+      "Research report / Introduction": {
+        "accuracy": 0.4074074074074074,
+        "n": 54
+      },
+      "Brochure": {
+        "accuracy": 0.21875,
+        "n": 8
+      },
+      "Financial report": {
+        "accuracy": 0.35294117647058826,
+        "n": 17
+      },
+      "Administration/Industry file": {
+        "accuracy": 0.3877551020408163,
+        "n": 18
+      },
+      "Guidebook": {
+        "accuracy": 0.6666666666666666,
+        "n": 12
+      },
+      "Tutorial/Workshop": {
+        "accuracy": 0.5,
+        "n": 12
+      }
+    }
+  },
+  "ops": {
+    "ingest_coverage": 1.0,
+    "cost_usd_total": null,
+    "p50_query_latency_ms": 4379.532098770142,
+    "p95_query_latency_ms": 6504.595637321472,
+    "answer_empty_rate": 0.0,
+    "extractor_fail_rate": 0.0,
+    "page_hit_rate": 0.5934065934065934,
+    "document_scope": false,
+    "retrieval": {
+      "n_with_retrieval_diag": 91,
+      "answerable_only": true,
+      "context_empty_rate": 0.0,
+      "mean_n_chunk_sources": 13.505494505494505,
+      "page_hit@1": 0.4065934065934066,
+      "page_recall@1": 0.2967032967032967,
+      "page_hit@3": 0.5274725274725275,
+      "page_recall@3": 0.4673992673992674,
+      "page_hit@5": 0.5934065934065934,
+      "page_recall@5": 0.5188034188034187,
+      "page_hit@10": 0.7362637362637363,
+      "page_recall@10": 0.6793650793650794,
+      "mean_arm_local_chunks": 14.857142857142858,
+      "mean_arm_global_chunks": 14.733333333333333,
+      "mean_arm_naive_chunks": 20.0
+    }
+  },
+  "created_at_utc": "2026-07-10T09:54:36Z"
+}

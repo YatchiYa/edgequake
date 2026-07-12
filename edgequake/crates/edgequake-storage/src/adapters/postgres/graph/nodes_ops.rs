@@ -216,18 +216,21 @@ impl PostgresAGEGraphStorage {
                 .sum::<usize>()
                 + 16; // node_id + struct punctuation
 
-            let cap = MAX_BODY_BYTES
+            let adaptive = MAX_BODY_BYTES
                 .checked_div(estimated_row)
                 .map(|n| n.clamp(MIN_CHUNK, MAX_CHUNK))
                 .unwrap_or(MAX_CHUNK);
+            // SPEC-047 P7f: env-tunable cap over adaptive estimate.
+            let cap = crate::graph_batch_dedupe::resolve_graph_upsert_chunk(adaptive);
             tracing::trace!(
                 estimated_row_bytes = estimated_row,
-                adaptive_chunk = cap,
-                "UNWIND node chunk size (SPEC-032 W-05)"
+                adaptive_chunk = adaptive,
+                resolved_chunk = cap,
+                "UNWIND node chunk size (SPEC-032 W-05 / SPEC-047 P7f)"
             );
             return cap;
         }
-        MAX_CHUNK
+        crate::graph_batch_dedupe::resolve_graph_upsert_chunk(MAX_CHUNK)
     }
 
     pub(super) async fn pg_delete_node(&self, node_id: &str) -> Result<()> {

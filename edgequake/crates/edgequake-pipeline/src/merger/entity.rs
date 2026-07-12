@@ -3,15 +3,34 @@
 //! # SPEC-032 changes
 //! - W-03: `merge_entities_batch` deduplicates within-document before graph read
 //! - W-06: Similarity gate skips LLM summarizer when descriptions are near-identical
+//!
+//! # SPEC-047 P7b / P7d
+//! - Parallel unique-entity description merges (`merge_max_async`)
+//! - SOURCE_IDS KEEP: skip saturated description updates
 
 use std::collections::HashMap;
 
 use edgequake_storage::{EntityId, GraphNode, GraphStorage, VectorStorage};
+use futures::stream::{self, StreamExt};
 
 use crate::error::Result;
 use crate::extractor::{ExtractedEntity, ExtractionResult};
 
-use super::{merge_descriptions, metadata, MergeArtifacts, MergeStats};
+use super::merge_limits::{
+    apply_source_ids_limit, merge_source_ids, should_skip_description_update_keep,
+    source_chunk_ids_from_properties,
+};
+use super::{metadata, MergeStats};
+
+/// Outcome of one unique-entity merge (P7b parallel collect).
+struct EntityMergeOutcome {
+    node_id: String,
+    properties: HashMap<String, serde_json::Value>,
+    is_new: bool,
+    skipped_saturated: bool,
+    vector_id: Option<String>,
+    graph_key_created: Option<String>,
+}
 
 /// Jaccard word-overlap similarity between two strings (pub for tests and external use).
 pub fn description_similarity(a: &str, b: &str) -> f32 {
@@ -37,31 +56,39 @@ pub fn description_similarity(a: &str, b: &str) -> f32 {
 /// Tunable via `MergerConfig.description_similarity_threshold`.
 /// Default exposed here for tests; runtime value comes from `MergerConfig`.
 #[cfg(test)]
+#[allow(dead_code)]
 pub(crate) const DEFAULT_SIMILARITY_THRESHOLD: f32 = 0.85;
 
 impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphMerger<G, V> {
     /// Collect batched entity vector upserts for all extractions (P-G4-merger).
+    ///
+    /// SPEC-047 P6: dedupe by `EntityId` before upsert so HNSW pays O(unique),
+    /// not O(mentions). Embeddings are already unique-before-embed; this is the
+    /// storage-side half of the same first principle.
     pub(super) fn collect_entity_vector_batch(
         &self,
         results: &[ExtractionResult],
     ) -> Vec<(String, Vec<f32>, serde_json::Value)> {
-        let mut batch = Vec::new();
-        for result in results {
-            for entity in &result.entities {
-                let entity_id = EntityId::new(&entity.name);
-                if entity_id.is_empty() {
-                    continue;
-                }
-                let Some(embedding) = entity.embedding.as_ref() else {
-                    continue;
-                };
-                let scope = metadata::TenantScope {
-                    tenant_id: &self.tenant_id,
-                    workspace_id: &self.workspace_id,
-                };
-                let metadata = metadata::entity_vector_metadata(entity, &entity_id, scope);
-                batch.push((entity_id.as_vector_id(), embedding.clone(), metadata));
+        let all: Vec<_> = results
+            .iter()
+            .flat_map(|r| r.entities.iter().cloned())
+            .collect();
+        let unique = crate::pipeline::helpers::unique_embed::dedupe_entities_by_id(&all);
+        let mut batch = Vec::with_capacity(unique.len());
+        for entity in &unique {
+            let entity_id = EntityId::new(&entity.name);
+            if entity_id.is_empty() {
+                continue;
             }
+            let Some(embedding) = entity.embedding.as_ref() else {
+                continue;
+            };
+            let scope = metadata::TenantScope {
+                tenant_id: &self.tenant_id,
+                workspace_id: &self.workspace_id,
+            };
+            let metadata = metadata::entity_vector_metadata(entity, &entity_id, scope);
+            batch.push((entity_id.as_vector_id(), embedding.clone(), metadata));
         }
         batch
     }
@@ -148,55 +175,34 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
             valid.iter().map(|e| e.source_chunk_ids.clone()).collect();
 
         let existing_map = self.graph_storage.get_nodes_batch(&keys).await?;
-        let mut node_batch: Vec<(String, HashMap<String, serde_json::Value>)> =
-            Vec::with_capacity(valid.len());
+        let concurrency = self.config.merge_max_async.max(1);
 
-        for (i, (entity, key)) in valid.into_iter().zip(keys.iter()).enumerate() {
-            match self
-                .build_entity_node_batch_entry(&entity, existing_map.get(key), &mut stats.artifacts)
-                .await
-            {
-                Ok((node_id, properties, is_new)) => {
-                    node_batch.push((node_id, properties));
-                    if is_new {
-                        stats.entities_created += 1;
-                    } else {
-                        stats.entities_updated += 1;
-                    }
-                    // CQRS relational sink (SPEC-021)
-                    self.relational_sink
-                        .upsert_entity(
-                            key,
-                            &entity_types[i],
-                            &descriptions[i],
-                            self.tenant_id.as_deref(),
-                            self.workspace_id.as_deref(),
-                            &source_chunk_ids[i],
-                        )
-                        .await
-                        .unwrap_or_else(|e| {
-                            tracing::warn!(
-                                entity = %key,
-                                error = %e,
-                                "Relational entity sink failed (best-effort; graph write succeeded)"
-                            );
-                        });
-                    // Lineage sink (SPEC-032 W-08): record chunk→entity links
-                    let ws = self.workspace_id.as_deref().unwrap_or("default");
-                    for chunk_id in &source_chunk_ids[i] {
-                        self.lineage_sink
-                            .record_entity_link(chunk_id, key, ws)
-                            .await
-                            .unwrap_or_else(|e| {
-                                tracing::warn!(
-                                    entity = %key,
-                                    chunk = %chunk_id,
-                                    error = %e,
-                                    "Lineage sink record_entity_link failed (best-effort)"
-                                );
-                            });
-                    }
+        // SPEC-047 P7b: resolve unique entity merges concurrently (LLM-bound).
+        let indexed: Vec<(usize, ExtractedEntity, String)> = valid
+            .into_iter()
+            .zip(keys.iter().cloned())
+            .enumerate()
+            .map(|(i, (entity, key))| (i, entity, key))
+            .collect();
+
+        let outcomes: Vec<Result<(usize, EntityMergeOutcome)>> = stream::iter(indexed)
+            .map(|(i, entity, key)| {
+                let existing = existing_map.get(&key).cloned();
+                async move {
+                    let outcome = self
+                        .build_entity_merge_outcome(&entity, existing.as_ref())
+                        .await?;
+                    Ok((i, outcome))
                 }
+            })
+            .buffer_unordered(concurrency)
+            .collect()
+            .await;
+
+        let mut ordered: Vec<(usize, EntityMergeOutcome)> = Vec::with_capacity(outcomes.len());
+        for item in outcomes {
+            match item {
+                Ok(pair) => ordered.push(pair),
                 Err(e) => {
                     stats.errors += 1;
                     tracing::warn!(
@@ -208,6 +214,72 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
                 }
             }
         }
+        ordered.sort_by_key(|(i, _)| *i);
+
+        let mut node_batch: Vec<(String, HashMap<String, serde_json::Value>)> =
+            Vec::with_capacity(ordered.len());
+
+        for (i, outcome) in ordered {
+            if outcome.skipped_saturated {
+                stats.entities_skipped_saturated += 1;
+                continue;
+            }
+            if let Some(vid) = outcome.vector_id {
+                stats.artifacts.entity_vector_ids.push(vid);
+            }
+            if let Some(key) = outcome.graph_key_created {
+                stats.artifacts.graph_nodes_created.push(key);
+            }
+            node_batch.push((outcome.node_id, outcome.properties));
+            if outcome.is_new {
+                stats.entities_created += 1;
+            } else {
+                stats.entities_updated += 1;
+            }
+
+            let key = &keys[i];
+            // CQRS relational sink (SPEC-021)
+            self.relational_sink
+                .upsert_entity(
+                    key,
+                    &entity_types[i],
+                    &descriptions[i],
+                    self.tenant_id.as_deref(),
+                    self.workspace_id.as_deref(),
+                    &source_chunk_ids[i],
+                )
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::warn!(
+                        entity = %key,
+                        error = %e,
+                        "Relational entity sink failed (best-effort; graph write succeeded)"
+                    );
+                });
+            // Lineage sink (SPEC-032 W-08 / SPEC-047 P4): batch chunk→entity links
+            let ws = self.workspace_id.as_deref().unwrap_or("default");
+            let links: Vec<crate::merger::EntityLineageLink> = source_chunk_ids[i]
+                .iter()
+                .map(|chunk_id| crate::merger::EntityLineageLink {
+                    chunk_id: chunk_id.clone(),
+                    entity_name: key.to_string(),
+                    workspace_id: ws.to_string(),
+                })
+                .collect();
+            if !links.is_empty() {
+                self.lineage_sink
+                    .record_entity_links_batch(&links)
+                    .await
+                    .unwrap_or_else(|e| {
+                        tracing::warn!(
+                            entity = %key,
+                            count = links.len(),
+                            error = %e,
+                            "Lineage sink record_entity_links_batch failed (best-effort)"
+                        );
+                    });
+            }
+        }
 
         if !node_batch.is_empty() {
             self.graph_storage.upsert_nodes_batch(&node_batch).await?;
@@ -216,111 +288,90 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         Ok(())
     }
 
-    async fn build_entity_node_batch_entry(
+    async fn build_entity_merge_outcome(
         &self,
         entity: &ExtractedEntity,
         existing: Option<&GraphNode>,
-        artifacts: &mut MergeArtifacts,
-    ) -> Result<(String, HashMap<String, serde_json::Value>, bool)> {
+    ) -> Result<EntityMergeOutcome> {
         let entity_id = EntityId::new(&entity.name);
         let entity_key = entity_id.as_graph_node_id().to_string();
 
         match existing.cloned() {
             Some(mut node) => {
-                self.update_entity_node(&mut node, entity).await?;
-                Ok((node.id.clone(), node.properties, false))
+                let mutated = self.update_entity_node(&mut node, entity).await?;
+                if !mutated {
+                    return Ok(EntityMergeOutcome {
+                        node_id: node.id.clone(),
+                        properties: node.properties,
+                        is_new: false,
+                        skipped_saturated: true,
+                        vector_id: None,
+                        graph_key_created: None,
+                    });
+                }
+                Ok(EntityMergeOutcome {
+                    node_id: node.id.clone(),
+                    properties: node.properties,
+                    is_new: false,
+                    skipped_saturated: false,
+                    vector_id: None,
+                    graph_key_created: None,
+                })
             }
             None => {
                 let node = self.create_entity_node(entity)?;
-                if entity.embedding.is_some() {
-                    artifacts.entity_vector_ids.push(entity_id.as_vector_id());
-                }
-                artifacts.graph_nodes_created.push(entity_key);
-                Ok((node.id, node.properties, true))
+                let vector_id = entity.embedding.as_ref().map(|_| entity_id.as_vector_id());
+                Ok(EntityMergeOutcome {
+                    node_id: node.id,
+                    properties: node.properties,
+                    is_new: true,
+                    skipped_saturated: false,
+                    vector_id,
+                    graph_key_created: Some(entity_key),
+                })
             }
         }
     }
 
     /// Update an existing entity node with new information.
     ///
-    /// # SPEC-032 W-06: Similarity gate for LLM summarizer
+    /// Returns `false` when SPEC-047 P7d KEEP saturated → caller skips upsert.
     ///
-    /// WHY: When the same entity appears across multiple chunks or documents,
-    /// its description is often near-identical (same sentence, slightly reworded).
-    /// Calling the LLM to "merge" two 95%-similar descriptions costs ~500ms and
-    /// API credits while adding minimal value.
+    /// # SPEC-047 P7a + SPEC-032 W-06
     ///
-    /// Gate: if Jaccard(existing_desc, new_desc) ≥ threshold → keep the longer
-    /// description (richer), skip the LLM call. Below threshold → use LLM.
+    /// Description merge is delegated to [`super::decide_description_merge`]
+    /// (LightRAG fragment gate + Jaccard soft-resume skip). LLM runs only when
+    /// the policy returns [`super::DescriptionMergeDecision::NeedsLlm`].
     async fn update_entity_node(
         &self,
         node: &mut GraphNode,
         entity: &ExtractedEntity,
-    ) -> Result<()> {
-        // Merge descriptions
+    ) -> Result<bool> {
+        let existing_chunk_ids = source_chunk_ids_from_properties(&node.properties);
+        if should_skip_description_update_keep(
+            &existing_chunk_ids,
+            &entity.source_chunk_ids,
+            self.config.max_source_ids_per_entity,
+            self.config.source_ids_limit_method,
+        ) {
+            tracing::debug!(
+                entity = %entity.name,
+                existing = existing_chunk_ids.len(),
+                max = self.config.max_source_ids_per_entity,
+                "P7d KEEP: skip entity description update (saturated)"
+            );
+            return Ok(false);
+        }
+
         let existing_desc = node
             .properties
             .get("description")
             .and_then(|v| v.as_str())
             .unwrap_or("");
 
-        // ── SPEC-032 W-06: Similarity gate ───────────────────────────────
-        let similarity = super::entity::description_similarity(existing_desc, &entity.description);
-        let use_llm = self.config.use_llm_summarization
-            && self.summarizer.is_some()
-            && similarity < self.config.description_similarity_threshold;
-
-        let merged_desc = if use_llm {
-            if let Some(summarizer) = &self.summarizer {
-                let descriptions = vec![existing_desc.to_string(), entity.description.clone()];
-                match summarizer
-                    .merge_entity_descriptions(&entity.name, &descriptions)
-                    .await
-                {
-                    Ok(merged) => {
-                        tracing::debug!(
-                            entity = %entity.name,
-                            similarity,
-                            "LLM description merge completed"
-                        );
-                        merged
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            entity = %entity.name,
-                            error = %e,
-                            "LLM summarization failed, falling back to simple merge"
-                        );
-                        merge_descriptions(
-                            existing_desc,
-                            &entity.description,
-                            self.config.max_description_length,
-                        )
-                    }
-                }
-            } else {
-                merge_descriptions(
-                    existing_desc,
-                    &entity.description,
-                    self.config.max_description_length,
-                )
-            }
-        } else {
-            // Similarity gate: descriptions overlap enough → keep the longer one
-            if similarity >= self.config.description_similarity_threshold {
-                tracing::debug!(
-                    entity = %entity.name,
-                    similarity,
-                    threshold = self.config.description_similarity_threshold,
-                    "Similarity gate: skipping LLM summarizer (descriptions near-identical)"
-                );
-            }
-            if entity.description.len() > existing_desc.len() {
-                entity.description.clone()
-            } else {
-                existing_desc.to_string()
-            }
-        };
+        let merged_desc = self
+            .resolve_entity_description(&entity.name, existing_desc, &entity.description)
+            .await?;
 
         node.properties.insert(
             "description".to_string(),
@@ -356,30 +407,21 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         node.properties
             .insert("sources".to_string(), serde_json::json!(sources));
 
-        // Merge source chunk IDs (for citation tracking + analytics reconcile)
-        let mut source_chunk_ids: Vec<String> = node
-            .properties
-            .get("source_chunk_ids")
-            .and_then(|v| serde_json::from_value(v.clone()).ok())
-            .unwrap_or_default();
-
-        for chunk_id in &entity.source_chunk_ids {
-            if !source_chunk_ids.contains(chunk_id) {
-                source_chunk_ids.push(chunk_id.clone());
-            }
-        }
-
+        // Merge + cap source chunk IDs (P7d KEEP/FIFO)
+        let merged_ids = merge_source_ids(&existing_chunk_ids, &entity.source_chunk_ids);
+        let source_chunk_ids = apply_source_ids_limit(
+            &merged_ids,
+            self.config.max_source_ids_per_entity,
+            self.config.source_ids_limit_method,
+        );
         super::lineage::insert_chunk_lineage_properties(&mut node.properties, &source_chunk_ids);
+        super::lineage::merge_and_insert_document_lineage(
+            &mut node.properties,
+            entity.source_document_id.as_deref(),
+            &source_chunk_ids,
+        );
 
-        // Update source document ID and file path if not already set
-        if !node.properties.contains_key("source_document_id") {
-            if let Some(ref doc_id) = entity.source_document_id {
-                node.properties.insert(
-                    "source_document_id".to_string(),
-                    serde_json::Value::String(doc_id.clone()),
-                );
-            }
-        }
+        // Update source file path if not already set
         if !node.properties.contains_key("source_file_path") {
             if let Some(ref file_path) = entity.source_file_path {
                 node.properties.insert(
@@ -389,7 +431,7 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
             }
         }
 
-        Ok(())
+        Ok(true)
     }
 
     /// Create a new entity node.
@@ -422,13 +464,17 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         );
 
         // Source tracking for citations (LightRAG parity) + analytics reconcile
-        super::lineage::insert_chunk_lineage_properties(&mut properties, &entity.source_chunk_ids);
-        if let Some(ref doc_id) = entity.source_document_id {
-            properties.insert(
-                "source_document_id".to_string(),
-                serde_json::Value::String(doc_id.clone()),
-            );
-        }
+        let capped = apply_source_ids_limit(
+            &entity.source_chunk_ids,
+            self.config.max_source_ids_per_entity,
+            self.config.source_ids_limit_method,
+        );
+        super::lineage::insert_chunk_lineage_properties(&mut properties, &capped);
+        super::lineage::merge_and_insert_document_lineage(
+            &mut properties,
+            entity.source_document_id.as_deref(),
+            &capped,
+        );
         if let Some(ref file_path) = entity.source_file_path {
             properties.insert(
                 "source_file_path".to_string(),

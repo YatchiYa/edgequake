@@ -470,10 +470,28 @@ pub async fn get_document_full_lineage(
     let metadata = cached_kv_get(storage.kv_storage.as_ref(), &metadata_key)
         .await?
         .unwrap_or(serde_json::json!({"id": document_id, "status": "unknown"}));
+
+    // SPEC-047: page→asset lineage summaries (no BYTEA) when mm-asset storage is wired.
+    #[cfg(feature = "postgres")]
+    let mm_assets = {
+        let workspace_id = uuid::Uuid::parse_str(&tenant_ctx.workspace_id_or_default()).ok();
+        match (storage.mm_asset_storage.as_deref(), workspace_id) {
+            (Some(mm), Some(ws)) => {
+                crate::services::list_mm_asset_summaries_for_document(Some(mm), &document_id, ws)
+                    .await
+                    .unwrap_or_default()
+            }
+            _ => Vec::new(),
+        }
+    };
+    #[cfg(not(feature = "postgres"))]
+    let mm_assets: Vec<serde_json::Value> = Vec::new();
+
     Ok(Json(serde_json::json!({
         "document_id": document_id,
         "metadata": metadata,
         "lineage": lineage_data,
+        "mm_assets": mm_assets,
     })))
 }
 

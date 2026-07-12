@@ -5,6 +5,7 @@
 
 use async_trait::async_trait;
 
+use super::atomic_blocks::split_preserving_atomic_regions;
 use super::text_utils::{estimate_tokens, floor_char_boundary};
 use super::types::{ChunkResult, ChunkerConfig, ChunkingStrategy};
 use crate::error::Result;
@@ -376,23 +377,46 @@ impl ChunkingStrategy for RecursiveCharacterChunking {
         let chunk_size = config.chunk_size.max(1);
         let chunk_overlap = config.chunk_overlap;
 
-        let pieces =
-            Self::split_text_with_spans(content, 0, &separators, chunk_size, chunk_overlap);
+        let regions = split_preserving_atomic_regions(content);
+        let mut results = Vec::new();
+        let mut order = 0usize;
 
-        Ok(pieces
+        for region in regions {
+            let pieces = if region.atomic.is_some() {
+                vec![(
+                    region.text.clone(),
+                    region.start,
+                    region.end.min(content.len()),
+                )]
+            } else {
+                Self::split_text_with_spans(
+                    &region.text,
+                    region.start,
+                    &separators,
+                    chunk_size,
+                    chunk_overlap,
+                )
+            };
+
+            for (text, start, end) in pieces {
+                if let Some((body, start, end)) = Self::trim_span_piece((text, start, end)) {
+                    results.push(ChunkResult {
+                        content: body.clone(),
+                        tokens: recursive_token_len(&body),
+                        chunk_order_index: order,
+                        section: None,
+                        start_offset: Some(start),
+                        end_offset: Some(end),
+                        page_start: None,
+                        page_end: None,
+                    });
+                    order += 1;
+                }
+            }
+        }
+
+        Ok(results
             .into_iter()
-            .filter_map(Self::trim_span_piece)
-            .enumerate()
-            .map(|(idx, (text, start, end))| ChunkResult {
-                content: text.clone(),
-                tokens: recursive_token_len(&text),
-                chunk_order_index: idx,
-                section: None,
-                start_offset: Some(start),
-                end_offset: Some(end),
-                page_start: None,
-                page_end: None,
-            })
             .filter(|c| !c.content.is_empty())
             .collect())
     }
@@ -405,6 +429,35 @@ impl ChunkingStrategy for RecursiveCharacterChunking {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn mm_chart_block_not_split_on_internal_paragraphs() {
+        let block =
+            "[Chart Name]rev_q4\n[Image Type]Chart\n\n**Key values:**\n- Q4: 42\n\nRevenue rose.";
+        let md = format!("Preamble text.\n\n{block}\n\nEpilogue text.");
+        let config = ChunkerConfig {
+            chunk_size: 6,
+            chunk_overlap: 0,
+            min_chunk_size: 1,
+            separators: default_recursive_separators(),
+            ..Default::default()
+        };
+        let chunks = RecursiveCharacterChunking
+            .chunk(&md, &config)
+            .await
+            .unwrap();
+        let with_header: Vec<_> = chunks
+            .iter()
+            .filter(|c| c.content.contains("[Chart Name]"))
+            .collect();
+        assert_eq!(
+            with_header.len(),
+            1,
+            "chart block must stay in one chunk, got: {:?}",
+            chunks.iter().map(|c| &c.content).collect::<Vec<_>>()
+        );
+        assert!(with_header[0].content.contains("42"));
+    }
 
     #[test]
     fn default_separators_match_lightrag() {

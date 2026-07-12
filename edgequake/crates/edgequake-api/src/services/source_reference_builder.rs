@@ -175,6 +175,7 @@ mod tests {
             chunk_index: None,
             page_start: None,
             page_end: None,
+            modality: None,
         });
         ctx.chunks.push(RetrievedChunk {
             id: "c2".into(),
@@ -187,6 +188,7 @@ mod tests {
             chunk_index: None,
             page_start: None,
             page_end: None,
+            modality: None,
         });
 
         let sources =
@@ -233,6 +235,7 @@ mod tests {
             chunk_index: None,
             page_start: None,
             page_end: None,
+            modality: None,
         });
 
         let citation =

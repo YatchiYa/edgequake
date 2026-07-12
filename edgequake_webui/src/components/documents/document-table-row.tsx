@@ -19,6 +19,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { TableCell, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import {
+  buildIngestionRunView,
+  formatRunHeadline,
+} from '@/lib/pipeline/ingestion-run-view';
+import {
     getEffectiveErrorMessage,
     isTerminalFailureDocument,
 } from '@/lib/utils/document-status';
@@ -131,6 +135,8 @@ export interface DocumentTableRowProps {
   isSelected: boolean;
   /** Whether this row is the active preview document */
   isActive: boolean;
+  /** Dim completed/idle rows while another document is actively ingesting */
+  isBackground?: boolean;
   /** Current search query for highlighting */
   searchQuery: string;
   /** Called when selection checkbox changes */
@@ -168,6 +174,7 @@ export const DocumentTableRow = memo(function DocumentTableRow({
   index,
   isSelected,
   isActive,
+  isBackground = false,
   searchQuery,
   onSelect,
   onClick,
@@ -190,6 +197,8 @@ export const DocumentTableRow = memo(function DocumentTableRow({
     'hover:bg-primary/5 dark:hover:bg-primary/10',
     isActive && 'bg-primary/10 dark:bg-primary/15 ring-1 ring-primary/20',
     index % 2 === 0 ? 'bg-background' : 'bg-muted/20',
+    // SPEC-048: only gently de-emphasize non-active rows — never look disabled
+    isBackground && 'opacity-80',
     // OODA-25: Failed/cancelled documents highlight
     doc.status === 'failed' &&
       'bg-red-50/50 dark:bg-red-950/20 border-l-4 border-l-red-500',
@@ -213,6 +222,8 @@ export const DocumentTableRow = memo(function DocumentTableRow({
       className={cn(rowClassName, 'group/row')}
       onClick={() => onClick(doc)}
       onDoubleClick={() => onDoubleClick(doc)}
+      data-testid={`document-row-${doc.id}`}
+      data-document-title={displayTitle}
     >
       {/* Selection Checkbox */}
       <TableCell onClick={(e) => e.stopPropagation()}>
@@ -250,17 +261,24 @@ export const DocumentTableRow = memo(function DocumentTableRow({
         </div>
       </TableCell>
 
-      {/* Status Badge */}
+      {/* Status Badge — SPEC-048: single RunView line (DEF-08) */}
       <TableCell>
         <div className="flex flex-col gap-1">
           <EnhancedStatusBadge document={doc} />
-          {/* Live stage detail for long-running phases (conversion, graph storage, etc.) */}
-          {doc.stage_message &&
-            LIVE_STAGE_MESSAGE_STAGES.has(doc.current_stage ?? '') && (
-            <span className="text-xs text-muted-foreground truncate max-w-[220px]">
-              {doc.stage_message}
-            </span>
-          )}
+          {(() => {
+            const run = buildIngestionRunView(doc);
+            if (!run || run.stageStatus === 'complete') return null;
+            if (!LIVE_STAGE_MESSAGE_STAGES.has(String(run.stage))) return null;
+            return (
+              <span
+                className="text-xs text-muted-foreground truncate max-w-[220px]"
+                data-testid="spec048-row-stage"
+                data-stage={run.stage}
+              >
+                {formatRunHeadline(run)}
+              </span>
+            );
+          })()}
         </div>
       </TableCell>
 

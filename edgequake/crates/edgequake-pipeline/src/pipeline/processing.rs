@@ -36,7 +36,7 @@ impl Pipeline {
     ) -> Result<ProcessingResult> {
         if self.config.enable_entity_extraction || self.config.enable_relationship_extraction {
             if let Some(extractor) = &self.extractor {
-                link_extractions_to_chunks(&mut extractions);
+                link_extractions_to_chunks(&mut extractions, document_id);
                 aggregate_extraction_stats(&extractions, extractor, &mut stats);
             }
         }

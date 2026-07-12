@@ -15,6 +15,9 @@ mod graph_e2e_contract;
 #[path = "support/graph_batch_contract.rs"]
 mod graph_batch_contract;
 
+#[path = "support/metadata_filter_modality_contract.rs"]
+mod metadata_filter_modality_contract;
+
 #[path = "support/e2e_fixtures.rs"]
 mod e2e_fixtures;
 
@@ -110,6 +113,21 @@ async fn memory_graph_batch_e2e_contract() {
 async fn memory_graph_batch_dedupe_e2e_contract() {
     let storage = memory_graph().await;
     graph_batch_contract::assert_graph_batch_upsert_dedupes_duplicate_endpoints(&storage).await;
+}
+
+#[tokio::test]
+async fn memory_vector_chart_modality_filter_e2e_contract() {
+    let storage = memory_vector().await;
+    metadata_filter_modality_contract::assert_query_filtered_chart_modality(&storage).await;
+}
+
+#[tokio::test]
+async fn memory_vector_emulated_fts_chart_modality_e2e_contract() {
+    let storage =
+        MemoryVectorStorage::new(generate_namespace(), VECTOR_DIM).with_emulated_native_fts(true);
+    storage.initialize().await.unwrap();
+    metadata_filter_modality_contract::assert_text_search_chart_modality_when_supported(&storage)
+        .await;
 }
 
 #[cfg(feature = "postgres")]
@@ -233,5 +251,23 @@ mod postgres_backend_contract {
             Some(v) => std::env::set_var("EDGEQUAKE_NATIVE_GRAPH_WRITES", v),
             None => std::env::remove_var("EDGEQUAKE_NATIVE_GRAPH_WRITES"),
         }
+    }
+
+    #[tokio::test]
+    async fn postgres_vector_chart_modality_filter_e2e_contract() {
+        let storage = require_postgres_vector!();
+        super::metadata_filter_modality_contract::assert_query_filtered_chart_modality(&storage)
+            .await;
+        let _ = storage.clear().await;
+    }
+
+    #[tokio::test]
+    async fn postgres_vector_native_fts_chart_modality_e2e_contract() {
+        let storage = require_postgres_vector!();
+        super::metadata_filter_modality_contract::assert_text_search_chart_modality_when_supported(
+            &storage,
+        )
+        .await;
+        let _ = storage.clear().await;
     }
 }

@@ -673,6 +673,36 @@ impl PdfDocumentStorage for PostgresPdfStorage {
         Ok(())
     }
 
+    async fn touch_document_status(&self, document_id: &Uuid, status: &str) -> Result<()> {
+        // SPEC-047 P1: status + updated_at only — never clobber entity_count.
+        let pg_status = if status == "completed" {
+            "indexed"
+        } else {
+            status
+        };
+        let result = sqlx::query(
+            r#"
+            UPDATE documents SET
+                status     = $2,
+                updated_at = NOW()
+            WHERE id = $1
+            "#,
+        )
+        .bind(document_id)
+        .bind(pg_status)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| StorageError::Database(format!("Failed to touch document status: {e}")))?;
+
+        if result.rows_affected() == 0 {
+            warn!(
+                document_id = %document_id,
+                "touch_document_status: no documents row yet (non-fatal)"
+            );
+        }
+        Ok(())
+    }
+
     async fn delete_document_record(&self, document_id: &Uuid) -> Result<()> {
         // WHY: CASCADE on chunks.document_id and pdf_documents.document_id
         // means this single DELETE propagates to related rows automatically.

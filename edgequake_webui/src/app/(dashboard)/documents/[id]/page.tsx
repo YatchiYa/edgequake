@@ -10,7 +10,7 @@ import { ResizablePanel } from '@/components/ui/resizable-panel';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DocumentDownloadMenu } from '@/components/documents/document-download-menu';
-import { getDocument, getPdfContent, getPdfDownloadUrl } from '@/lib/api/edgequake';
+import { getDocument, getPdfContent, getPdfDownloadUrl, includeDocumentAssetsFromPdf } from '@/lib/api/edgequake';
 import { getEffectiveErrorMessage } from '@/lib/utils/document-status';
 import { useTenantStore } from '@/stores/use-tenant-store';
 import { useQuery } from '@tanstack/react-query';
@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 type DocumentStatus =
@@ -178,6 +178,36 @@ export default function DocumentViewPage() {
     staleTime: 30 * 1000,
     refetchOnMount: 'always',
   });
+
+  // First principles: if a PDF has figure captions but no page assets yet, include
+  // extracted page PNGs from the stored PDF and enrich markdown (no VLM re-OCR).
+  const assetsIncludeAttempted = useRef<string | null>(null);
+  useEffect(() => {
+    if (!document?.id || document.source_type !== 'pdf') return;
+    if (assetsIncludeAttempted.current === document.id) return;
+    const md = document.content || '';
+    const needsAssets =
+      /figure\s+\d/i.test(md) &&
+      !md.includes('assets/') &&
+      !md.includes('/documents/') &&
+      Boolean(document.pdf_id);
+    if (!needsAssets) return;
+    assetsIncludeAttempted.current = document.id;
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await includeDocumentAssetsFromPdf(document.id);
+        if (!cancelled && (result.markdown_updated || result.assets_persisted > 0)) {
+          await refetch();
+        }
+      } catch {
+        // Soft-fail: viewer still shows caption text; user can refresh after backend upgrade.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [document, refetch]);
 
   // OODA-91: Derive PDF ID for content fetching
   // WHY: pdf_id may be in document.pdf_id or derived from source_type

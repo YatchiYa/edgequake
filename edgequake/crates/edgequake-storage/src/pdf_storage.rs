@@ -487,6 +487,15 @@ pub trait PdfDocumentStorage: Send + Sync {
     /// (the KV metadata write remains the authoritative stats carrier).
     async fn update_document_stats(&self, stats: &DocumentStatsUpdate<'_>) -> Result<()>;
 
+    /// Best-effort status-only refresh of the relational `documents` row
+    /// (SPEC-047 P1 — early sync during soft-resume / indexing).
+    ///
+    /// Unlike [`Self::update_document_stats`], this does **not** overwrite
+    /// chunk/entity counts with zeros. Call on every non-terminal stage so the
+    /// Documents list does not stay stuck on a prior `failed` / stale status
+    /// while KV already shows `indexing`.
+    async fn touch_document_status(&self, document_id: &Uuid, status: &str) -> Result<()>;
+
     /// Delete a document row from the `documents` relational table.
     ///
     /// WHY: Cascade-deletes related rows in `pdf_documents` and `chunks`

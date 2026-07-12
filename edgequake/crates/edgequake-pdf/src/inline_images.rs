@@ -34,7 +34,12 @@ pub struct InlineImageRef {
 }
 
 /// LightRAG native drawing placeholder: `<drawing id="im-…" … />`.
-static DRAWING_TAG_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(?i)<drawing\b[^>]*/>"#).unwrap());
+///
+/// Allow `>` inside quoted attribute values (Pass A captions often embed
+/// `<sup>1</sup>` / HTML). A naïve `[^>]*` regex misses Figure 1 on papers.
+static DRAWING_TAG_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?i)<drawing\b(?:[^>"']|"[^"]*"|'[^']*')*\s*/>"#).unwrap()
+});
 
 static DRAWING_ID_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(?i)\bid="([^"]+)""#).unwrap());
 
@@ -150,6 +155,20 @@ impl InlineImageAnalyzer for NoopInlineImageAnalyzer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scan_finds_drawing_tag_with_html_in_caption() {
+        let md = r#"Intro
+<drawing id="im-1" format="png" path="assets/page-0001-fig-01.png" caption="Page 1 | **Yuze Zhao** <sup>1</sup> **Junpeng Fang**" />
+Trailing"#;
+        let refs = scan_inline_image_refs(md);
+        assert_eq!(refs.len(), 1, "HTML in caption must not break drawing scan");
+        assert_eq!(refs[0].item_id, "im-1");
+        assert_eq!(
+            refs[0].asset_path.as_deref(),
+            Some("assets/page-0001-fig-01.png")
+        );
+    }
 
     #[test]
     fn scan_finds_lightrag_drawing_tag() {

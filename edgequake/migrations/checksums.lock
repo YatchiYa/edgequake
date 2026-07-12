@@ -1,19 +1,6 @@
-# Migration Immutability Lockfile
-# Updated: 2026-07-09
-#
-# PURPOSE: Every line records the SHA-384 of a migration file at the time it was
-# declared stable. This file is the source of truth for the migration-guard CI
-# workflow and the local check script.
-#
-# RULES:
-#   - Never modify an existing line once the migration has been deployed.
-#   - When a NEW migration file is added, append its checksum here as part of the
-#     same PR that adds the migration file.
-#   - The check script (scripts/check_migration_checksums.sh) will fail CI if
-#     any on-disk file diverges from the checksum recorded here.
-#
-# FORMAT: <sha384>  <filename>   (two spaces, same as sha384sum output)
-#
+#  - Never modify an existing line once the migration has been deployed.
+#  - The check script (scripts/check_migration_checksums.sh) will fail CI if
+#  - When a NEW migration file is added, append its checksum here as part of the
 bb40c61f7d5cbeafa7827f2e8878588464e814ed118179bdb3c16e92880c79b2a3db4c92240e632bc8355363a768daf2  001_init_database.sql
 f8dbccf1b2534f9b52d9a8d868299dd884ed2bddc23723a668873f6ae73e4af61922641f7af5cd85b09321af11157c00  002_add_tasks_table.sql
 7b499ed1be46f44e60eac4910d7367e1a0934491b3077760c07d56c750ddf03fe024217f6db853f4077f39c78fdb0a1b  003_add_document_status_fields.sql
@@ -96,4 +83,14 @@ a043177271c82c65a7509855f1d64c02c46235343126a9bbb96c359f4c25aa35427c79bb50051d49
 adf6752b6668815ffc9c621f73e291e77a6860b6b4274ed8d48983ac2f7f1b37b784fc459e43f257a2607960043a32a9  081_age_graph_rls_marker.sql
 93680c94271dff779e5f0faca0fa24a8508e23e2b24f604b1a81f025f282b36e4973f3e2a84cbaebc4bbd0c1c1bd3d83  082_add_document_originals.sql
 104ea3084e83d10546cd622af3837844629282c01a09cd2c1db2fb923d319e35c3c56e9fcf5f2c93ad0db76b9020850a  083_age_native_unique_index_reconcile.sql
-
+83fb168ef27837e129dd7869e273fecd2714f08c24830825a25b3f01ad16c92f6eac006a480d4f802b4268fab0a1237e  084_add_document_mm_assets.sql
+380546b111d64ce2103a1063fef0d6ae94c41d1b35b7086f9acf080393aead817bf73f0ecd9cf090ca862006d47b9662  085_document_mm_assets_asset_id.sql
+#  FORMAT: <sha384>  <filename>   (two spaces, same as sha384sum output)
+#  Migration Immutability Lockfile
+#  PURPOSE: Every line records the SHA-384 of a migration file at the time it was
+#  RULES:
+#  Updated: 2026-07-09
+#  any on-disk file diverges from the checksum recorded here.
+#  declared stable. This file is the source of truth for the migration-guard CI
+#  same PR that adds the migration file.
+#  workflow and the local check script.

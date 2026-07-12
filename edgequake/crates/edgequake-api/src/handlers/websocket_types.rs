@@ -120,6 +120,36 @@ pub enum ProgressEvent {
         /// Error message if this page failed.
         error: Option<String>,
     },
+    /// Chunk extraction progress (SPEC-048 DEF-02).
+    ChunkProgress {
+        document_id: String,
+        task_id: String,
+        chunk_index: u32,
+        total_chunks: u32,
+        chunk_preview: String,
+        time_ms: u64,
+        eta_seconds: u64,
+        tokens_in: u64,
+        tokens_out: u64,
+        cost_usd: f64,
+    },
+    /// Graph storage / merge progress (SPEC-048 DEF-02).
+    GraphStorageProgress {
+        track_id: String,
+        document_id: String,
+        sub_phase: String,
+        sub_phase_label: String,
+        entities_processed: u32,
+        entities_total: u32,
+        entities_created: u32,
+        entities_updated: u32,
+        relationships_processed: u32,
+        relationships_total: u32,
+        relationships_created: u32,
+        relationships_updated: u32,
+        elapsed_ms: u64,
+        eta_ms: Option<u64>,
+    },
 }
 
 // ============================================================================

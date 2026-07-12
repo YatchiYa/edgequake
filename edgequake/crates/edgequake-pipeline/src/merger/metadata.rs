@@ -42,6 +42,10 @@ pub fn entity_vector_metadata(
         "description": entity.description,
         "source_chunk_ids": entity.source_chunk_ids,
         "source_document_id": entity.source_document_id,
+        "source_document_ids": crate::merger::lineage::resolve_incoming_document_ids(
+            entity.source_document_id.as_deref(),
+            &entity.source_chunk_ids,
+        ),
         "source_file_path": entity.source_file_path
     });
     scope.apply(&mut metadata);
@@ -55,6 +59,11 @@ pub fn relationship_vector_metadata(
     target_key: &str,
     scope: TenantScope<'_>,
 ) -> Value {
+    let chunk_ids: Vec<String> = rel.source_chunk_id.iter().cloned().collect();
+    let doc_ids = crate::merger::lineage::resolve_incoming_document_ids(
+        rel.source_document_id.as_deref(),
+        &chunk_ids,
+    );
     let mut metadata = json!({
         "type": "relationship",
         "src_id": source_key,
@@ -64,6 +73,7 @@ pub fn relationship_vector_metadata(
         "description": rel.description,
         "source_chunk_id": rel.source_chunk_id,
         "source_document_id": rel.source_document_id,
+        "source_document_ids": doc_ids,
         "source_file_path": rel.source_file_path
     });
     scope.apply(&mut metadata);

@@ -40,6 +40,11 @@ fn memory_original_storage() -> Option<Arc<dyn edgequake_storage::DocumentOrigin
     Some(Arc::new(MemoryOriginalStorage::new()))
 }
 
+#[cfg(feature = "postgres")]
+fn memory_mm_asset_storage() -> Option<Arc<dyn edgequake_storage::DocumentMmAssetStorage>> {
+    Some(Arc::new(edgequake_storage::MemoryMmAssetStorage::new()))
+}
+
 /// Memory-mode conversation service: storage trait adapter when postgres feature is enabled.
 fn memory_conversation_service() -> SharedConversationService {
     #[cfg(feature = "postgres")]
@@ -89,6 +94,8 @@ impl AppState {
                 pdf_storage: memory_pdf_storage(),
                 #[cfg(feature = "postgres")]
                 original_storage: memory_original_storage(),
+                #[cfg(feature = "postgres")]
+                mm_asset_storage: memory_mm_asset_storage(),
                 mode: StorageMode::Memory,
             },
             query: QueryRuntime {
@@ -225,6 +232,8 @@ impl AppState {
                 pdf_storage: memory_pdf_storage(),
                 #[cfg(feature = "postgres")]
                 original_storage: memory_original_storage(),
+                #[cfg(feature = "postgres")]
+                mm_asset_storage: memory_mm_asset_storage(),
                 mode: StorageMode::Memory,
             },
             query: QueryRuntime {
@@ -335,6 +344,8 @@ impl AppState {
                 pdf_storage: memory_pdf_storage(),
                 #[cfg(feature = "postgres")]
                 original_storage: memory_original_storage(),
+                #[cfg(feature = "postgres")]
+                mm_asset_storage: memory_mm_asset_storage(),
                 mode: StorageMode::Memory,
             },
             query: QueryRuntime {

@@ -1,0 +1,7 @@
+# core_doc_ids_v1.txt — PLACEHOLDER
+
+# STATUS: NOT FROZEN — create during EQ-047-13 (extends smoke).
+# Seed: 047-core-v1
+# Target: ~40 documents including all smoke_doc_ids_v1 entries.
+
+PLACEHOLDER_PENDING_EQ_047_13

@@ -21,6 +21,15 @@ fn contract_workspace_vector_uses_shared_chunk_kv_table() {
 }
 
 #[test]
+fn contract_postgres_vector_fts_filters_modality_metadata() {
+    let fts = include_str!("../src/adapters/postgres/vector/fts.rs");
+    let storage_impl = include_str!("../src/adapters/postgres/vector/storage_impl.rs");
+    assert!(fts.contains("Failed to bind modalities"));
+    assert!(storage_impl.contains("Failed to bind modalities"));
+    assert!(fts.contains("build_sql_with_alias"));
+}
+
+#[test]
 fn contract_vector_ddl_adds_content_tsv() {
     let ddl = include_str!("../src/adapters/postgres/vector/ddl.rs");
     assert!(ddl.contains("content_tsv"));

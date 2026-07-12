@@ -4,7 +4,7 @@ use axum_extra::extract::Multipart;
 use tracing::{debug, info, warn};
 
 use super::helpers::{
-    clear_document_derived_data, create_pdf_processing_task, estimate_processing_time,
+    clear_document_derived_data_in_workspace, create_pdf_processing_task, estimate_processing_time,
     extract_page_count, get_pdf_storage,
 };
 use super::types::*;
@@ -432,7 +432,10 @@ async fn process_pdf_upload_parts(
             // restart_from_scratch so the PDF -> markdown conversion re-runs.
             let existing_document_id = existing.document_id.map(|id| id.to_string());
             if let Some(ref document_id) = existing_document_id {
-                if let Err(e) = clear_document_derived_data(state, document_id).await {
+                let workspace_id = context.workspace_id.as_deref();
+                if let Err(e) =
+                    clear_document_derived_data_in_workspace(state, document_id, workspace_id).await
+                {
                     warn!(
                         "Failed to clear document data during re-index: {} (continuing anyway)",
                         e

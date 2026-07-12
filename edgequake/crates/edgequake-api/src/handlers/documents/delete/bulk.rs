@@ -245,6 +245,23 @@ pub async fn delete_all_documents(
         total_chunks_deleted += chunk_ids.len();
         deleted_count += 1;
 
+        // SPEC-047: remove mm-assets (DB + FS) for each deleted document.
+        #[cfg(feature = "postgres")]
+        {
+            let mm_storage = state.storage.mm_asset_storage.as_deref();
+            let workspace_uuid = uuid::Uuid::parse_str(&tenant_ctx.workspace_id_or_default()).ok();
+            if let Err(e) =
+                crate::services::delete_document_mm_assets(mm_storage, &document_id, workspace_uuid)
+                    .await
+            {
+                tracing::warn!(
+                    document_id = %document_id,
+                    error = %e,
+                    "Failed to delete mm-assets during bulk delete"
+                );
+            }
+        }
+
         #[cfg(feature = "postgres")]
         if let Some(pdf_id) = pdf_id_for_delete {
             pdf_ids_to_delete.insert(pdf_id);

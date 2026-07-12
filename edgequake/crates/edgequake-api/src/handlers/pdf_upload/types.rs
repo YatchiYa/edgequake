@@ -70,6 +70,64 @@ impl PdfUploadOptions {
             .or_else(PdfParserBackend::from_env)
             .unwrap_or_default()
     }
+
+    /// Resolve multimodal process flags for this upload.
+    ///
+    /// First principle (SPEC-047 FP1): figure/chart assets extracted during Vision
+    /// PDF conversion must receive Pass B VLM analysis or their semantics never
+    /// land in indexable markdown. When the client omits `process_options`, default
+    /// to `"i"` for vision-enabled uploads on the Vision backend.
+    pub fn resolved_process_options(&self, workspace: Option<&Workspace>) -> Option<String> {
+        if let Some(opts) = self
+            .process_options
+            .as_ref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+        {
+            return Some(opts.to_string());
+        }
+        if self.enable_vision && self.resolved_backend(workspace) == PdfParserBackend::Vision {
+            Some("i".to_string())
+        } else {
+            None
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolved_process_options_defaults_i_for_vision_upload() {
+        let opts = PdfUploadOptions {
+            enable_vision: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            opts.resolved_process_options(None).as_deref(),
+            Some("i")
+        );
+    }
+
+    #[test]
+    fn resolved_process_options_respects_explicit_override() {
+        let opts = PdfUploadOptions {
+            enable_vision: true,
+            process_options: Some("te".into()),
+            ..Default::default()
+        };
+        assert_eq!(opts.resolved_process_options(None).as_deref(), Some("te"));
+    }
+
+    #[test]
+    fn resolved_process_options_skipped_when_vision_disabled() {
+        let opts = PdfUploadOptions {
+            enable_vision: false,
+            ..Default::default()
+        };
+        assert!(opts.resolved_process_options(None).is_none());
+    }
 }
 
 /// PDF upload response.

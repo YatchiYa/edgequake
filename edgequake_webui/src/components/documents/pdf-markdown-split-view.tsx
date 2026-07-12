@@ -37,6 +37,8 @@ interface PDFMarkdownSplitViewProps {
   height?: number;
   /** Initial view mode (defaults to 'split') */
   initialMode?: ViewMode;
+  /** Document id for rewriting `assets/…` image URLs in the markdown viewer */
+  documentId?: string | null;
 }
 
 /**
@@ -57,6 +59,7 @@ export function PDFMarkdownSplitView({
   className,
   height = 500,
   initialMode = 'split',
+  documentId = null,
 }: PDFMarkdownSplitViewProps) {
   const { t } = useTranslation();
   const [viewMode, setViewMode] = useState<ViewMode>(initialMode);
@@ -158,6 +161,7 @@ export function PDFMarkdownSplitView({
               height={viewMode === 'split' ? height / 2 : height}
               title={t('documents.viewer.extractedMarkdown', 'Extracted Markdown')}
               className="flex-1"
+              documentId={documentId}
             />
           </div>
         )}

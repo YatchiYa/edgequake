@@ -60,7 +60,7 @@ export async function performFileUpload(
       enable_vision: true,
       track_id: options.trackId,
       pdf_parser_backend: options.pdfParserBackend,
-      analyze_inline_images: options.analyzeInlineImages ?? false,
+      analyze_inline_images: options.analyzeInlineImages ?? true,
       onUploadProgress: options.onUploadProgress,
     });
     return {
