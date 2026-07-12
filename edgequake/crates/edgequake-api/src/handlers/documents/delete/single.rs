@@ -416,6 +416,43 @@ pub async fn delete_document(
     // Delete all document data from KV storage
     state.storage.kv_storage.delete(&keys_to_delete).await?;
 
+    // SPEC-047: explicit mm-asset cleanup (DB + FS). FK CASCADE also removes DB rows
+    // when the documents row is deleted; this covers memory mode and FS orphans.
+    #[cfg(feature = "postgres")]
+    {
+        let mm_storage = state.storage.mm_asset_storage.as_deref();
+        let workspace_uuid = uuid::Uuid::parse_str(&workspace_id_for_storage).ok();
+        match crate::services::delete_document_mm_assets(mm_storage, &document_id, workspace_uuid)
+            .await
+        {
+            Ok(n) => {
+                if n > 0 {
+                    tracing::debug!(
+                        document_id = %document_id,
+                        deleted = n,
+                        "Deleted document mm-assets"
+                    );
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    document_id = %document_id,
+                    error = %e,
+                    "Failed to delete document mm-assets (continuing cascade)"
+                );
+            }
+        }
+        // Also try actual_key_prefix when it differs (key/id mismatch).
+        if key_id_mismatch {
+            let _ = crate::services::delete_document_mm_assets(
+                mm_storage,
+                &actual_key_prefix,
+                workspace_uuid,
+            )
+            .await;
+        }
+    }
+
     // FIX-ISSUE-73: Cascade delete pdf_documents, chunks, and the documents row.
     // WHY: Previously only KV/graph/vector data was cleaned up, leaving orphaned rows
     // in pdf_documents, chunks, and documents tables (GitHub Issue #73).

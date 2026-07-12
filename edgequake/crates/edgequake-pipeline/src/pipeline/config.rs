@@ -124,6 +124,45 @@ fn read_env_usize(name: &str, default: usize, min_val: usize, max_val: usize) ->
         .clamp(min_val, max_val)
 }
 
+/// Ingest profile names for `EDGEQUAKE_INGEST_PROFILE` (SPEC-047 P4 / retrieve-only eval).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IngestProfile {
+    /// Full KG + embeddings (default).
+    Full,
+    /// Chunk + chunk embeddings only — skip entity/relationship extract & embed.
+    ChunkOnly,
+}
+
+impl IngestProfile {
+    /// Parse profile from env string (`chunk_only` / `retrieve_only` → ChunkOnly).
+    pub fn from_env_str(raw: &str) -> Self {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "chunk_only" | "retrieve_only" | "p0_retrieve_only" => Self::ChunkOnly,
+            _ => Self::Full,
+        }
+    }
+
+    /// Read `EDGEQUAKE_INGEST_PROFILE` (default Full).
+    pub fn from_env() -> Self {
+        std::env::var("EDGEQUAKE_INGEST_PROFILE")
+            .ok()
+            .map(|s| Self::from_env_str(&s))
+            .unwrap_or(Self::Full)
+    }
+
+    /// Apply profile flags onto a config (entity/rel extract + embed gates).
+    pub fn apply_to(self, config: &mut PipelineConfig) {
+        if self == Self::ChunkOnly {
+            config.enable_entity_extraction = false;
+            config.enable_relationship_extraction = false;
+            config.enable_entity_embeddings = false;
+            config.enable_relationship_embeddings = false;
+            // Chunk embeddings stay on — required for retrieve-only RAG.
+            config.enable_chunk_embeddings = true;
+        }
+    }
+}
+
 impl PipelineConfig {
     /// Create a `PipelineConfig` from environment variables, falling back to defaults.
     pub fn from_env() -> Self {
@@ -152,13 +191,15 @@ impl PipelineConfig {
             MAX_CONCURRENT_EXTRACTIONS_CAP,
         ));
 
-        Self {
+        let mut config = Self {
             chunk_extraction_timeout_secs: chunk_timeout,
             chunk_max_retries: max_retries,
             initial_retry_delay_ms: retry_delay,
             max_concurrent_extractions: max_concurrent,
             ..Self::default()
-        }
+        };
+        IngestProfile::from_env().apply_to(&mut config);
+        config
     }
 }
 
@@ -203,5 +244,26 @@ mod tests {
             clamp_max_concurrent_extractions(256),
             MAX_CONCURRENT_EXTRACTIONS_CAP
         );
+    }
+
+    #[test]
+    fn ingest_profile_chunk_only_disables_kg_extract() {
+        assert_eq!(
+            IngestProfile::from_env_str("chunk_only"),
+            IngestProfile::ChunkOnly
+        );
+        assert_eq!(
+            IngestProfile::from_env_str("retrieve_only"),
+            IngestProfile::ChunkOnly
+        );
+        assert_eq!(IngestProfile::from_env_str("full"), IngestProfile::Full);
+
+        let mut config = PipelineConfig::default();
+        IngestProfile::ChunkOnly.apply_to(&mut config);
+        assert!(!config.enable_entity_extraction);
+        assert!(!config.enable_relationship_extraction);
+        assert!(!config.enable_entity_embeddings);
+        assert!(!config.enable_relationship_embeddings);
+        assert!(config.enable_chunk_embeddings);
     }
 }

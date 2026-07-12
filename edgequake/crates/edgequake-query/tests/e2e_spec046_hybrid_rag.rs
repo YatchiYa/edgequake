@@ -117,6 +117,7 @@ fn e2e_dynamic_truncation_gives_chunks_remainder() {
         max_relation_tokens: 50,
         max_total_tokens: 100,
         buffer_tokens: 10,
+        min_chunk_budget_ratio: 0.0,
     };
     let entities = vec![RetrievedEntity::new("E", "T", "x")];
     let rels = vec![RetrievedRelationship::new("A", "B", "R")];
@@ -341,6 +342,7 @@ fn e2e_multimodal_orphan_injection_guarantees_entity() {
         section: None,
         page_start: None,
         page_end: None,
+        modality: None,
     }];
     let mut extractions: Vec<ExtractionResult> = Vec::new();
     inject_modality_relations(&mut extractions, &chunks, &[mm], "paper.pdf");
@@ -376,6 +378,7 @@ fn e2e_multimodal_injection_links_existing_entities() {
         section: None,
         page_start: None,
         page_end: None,
+        modality: None,
     }];
     let mut extractions = vec![ExtractionResult {
         entities: vec![ExtractedEntity::new("SYSTEM", "CONCEPT", "ctx")],

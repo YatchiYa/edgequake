@@ -1,0 +1,135 @@
+/**
+ * SPEC-048: Server-aligned stage stepper with per-step detail progress.
+ *
+ * Renders full UnifiedStage timeline (skip/fail/active/done) and shows
+ * countable detail on the active (or failed) step.
+ */
+
+"use client";
+
+import { cn } from "@/lib/utils";
+import type { IngestionRunView } from "@/lib/pipeline/ingestion-run-view";
+import {
+  buildStageTimeline,
+  formatStepDetailLine,
+  type StageStepStatus,
+} from "@/lib/pipeline/stage-timeline";
+
+interface ServerStageStepperProps {
+  run: IngestionRunView;
+  /** When true, hide skipped converting for non-PDF (still shown muted by default). */
+  hideSkipped?: boolean;
+  className?: string;
+}
+
+function statusClasses(status: StageStepStatus): string {
+  switch (status) {
+    case "done":
+      return "text-emerald-700 dark:text-emerald-400";
+    case "active":
+      return "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-200";
+    case "failed":
+      return "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-200";
+    case "skipped":
+      return "text-muted-foreground/50 line-through decoration-muted-foreground/40";
+    default:
+      return "text-muted-foreground";
+  }
+}
+
+function dotClasses(status: StageStepStatus): string {
+  switch (status) {
+    case "done":
+      return "bg-emerald-500";
+    case "active":
+      return "bg-sky-500 animate-pulse";
+    case "failed":
+      return "bg-rose-500";
+    case "skipped":
+      return "bg-muted-foreground/25";
+    default:
+      return "bg-muted-foreground/40";
+  }
+}
+
+export function ServerStageStepper({
+  run,
+  hideSkipped = false,
+  className,
+}: ServerStageStepperProps) {
+  const timeline = buildStageTimeline(run);
+  const steps = hideSkipped
+    ? timeline.steps.filter((s) => s.status !== "skipped")
+    : timeline.steps;
+  const active = steps.find(
+    (s) => s.status === "active" || s.status === "failed",
+  );
+  const detailLine = formatStepDetailLine(active?.detail);
+
+  return (
+    <div
+      className={cn("space-y-2", className)}
+      data-testid="spec048-server-stage-stepper"
+      data-stage={run.stage}
+      data-admission={timeline.admissionQueued ? "queued" : "running"}
+      data-overall-progress={timeline.overallProgress01.toFixed(3)}
+    >
+      {timeline.admissionQueued ? (
+        <div
+          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200"
+          data-testid="spec048-stage-queued"
+          data-state="pending"
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+          Queued — waiting for a free worker slot
+        </div>
+      ) : null}
+
+      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+        {steps.map((step) => (
+          <span
+            key={step.id}
+            className={cn(
+              "inline-flex items-center gap-1 rounded px-1.5 py-0.5",
+              statusClasses(step.status),
+            )}
+            data-testid={`spec048-stage-${step.id}`}
+            data-state={step.status}
+            title={
+              step.status === "skipped"
+                ? `${step.label} (skipped)`
+                : step.label
+            }
+          >
+            <span
+              className={cn("h-1.5 w-1.5 rounded-full", dotClasses(step.status))}
+            />
+            {step.label}
+            {step.status === "skipped" ? (
+              <span className="sr-only">skipped</span>
+            ) : null}
+          </span>
+        ))}
+      </div>
+
+      {active && detailLine ? (
+        <div
+          className={cn(
+            "rounded-md border px-2 py-1.5 text-[11px] tabular-nums",
+            active.status === "failed"
+              ? "border-rose-200 bg-rose-50/80 text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200"
+              : "border-sky-200/80 bg-sky-50/60 text-sky-900 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-100",
+          )}
+          data-testid="spec048-step-detail"
+          data-stage={active.id}
+        >
+          <span className="font-medium">{active.label}</span>
+          <span className="mx-1.5 text-muted-foreground">·</span>
+          <span>{detailLine}</span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export default ServerStageStepper;

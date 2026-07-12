@@ -40,5 +40,6 @@ pub(super) fn make_scope_metadata_filter(
         workspace_id,
         document_ids: doc_ids,
         vector_type: vector_type.map(str::to_string),
+        modalities: None,
     })
 }

@@ -504,6 +504,8 @@ fn matches_track_id(event: &ProgressEvent, track_id: &str) -> bool {
     match event {
         ProgressEvent::PdfPageProgress { task_id, .. } => task_id == track_id,
         ProgressEvent::ChunkFailure { task_id, .. } => task_id == track_id,
+        ProgressEvent::ChunkProgress { task_id, .. } => task_id == track_id,
+        ProgressEvent::GraphStorageProgress { track_id: tid, .. } => tid == track_id,
         _ => false, // Other events don't have task_id, skip them
     }
 }

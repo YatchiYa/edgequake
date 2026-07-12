@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 import type { Document } from '@/types';
 import {
+  bannerProgressLabelKey,
   formatGraphMergeStageMessage,
   formatGraphMergeUserDetail,
   parseGraphMergeStageMessage,
   primaryGraphMergeCounter,
+  resolveBannerProgressMeta,
   resolveBannerStageProgress,
 } from '../graph-merge-progress';
 
@@ -57,5 +59,21 @@ describe('graph-merge-progress', () => {
       { id: 'c', stage_progress: 0 } as Document,
     ];
     expect(resolveBannerStageProgress(docs)).toBe(0.67);
+  });
+
+  it('gates banner progress label by stage (SPEC-048)', () => {
+    expect(bannerProgressLabelKey('extracting')).toBe('pipeline.extractionProgress');
+    expect(bannerProgressLabelKey('storing')).toBe('pipeline.graphMergeProgress');
+    expect(bannerProgressLabelKey('embedding')).toBe('pipeline.embeddingProgress');
+
+    const meta = resolveBannerProgressMeta([
+      {
+        id: 'a',
+        current_stage: 'extracting',
+        stage_progress: 0.12,
+      } as Document,
+    ]);
+    expect(meta?.labelKey).toBe('pipeline.extractionProgress');
+    expect(meta?.progress01).toBe(0.12);
   });
 });

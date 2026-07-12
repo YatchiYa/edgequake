@@ -2,6 +2,7 @@
  * Presentational ingestion activity banner (DRY surface for documents page).
  *
  * @implements SPEC-045 — honest ingestion UX (working / queued / stuck)
+ * @implements SPEC-048 — stage-specific microcopy + progress label gating
  */
 'use client';
 
@@ -13,8 +14,14 @@ import {
   ingestionAlertDetailClass,
   ingestionAlertTitleClass,
 } from '@/lib/pipeline/ingestion-alert-presenter';
-import { resolveBannerStageProgress } from '@/lib/pipeline/graph-merge-progress';
+import { resolveBannerProgressMeta } from '@/lib/pipeline/graph-merge-progress';
 import { translateIngestionDetail } from '@/lib/pipeline/ingestion-user-messages';
+import {
+  buildIngestionRunView,
+  formatRunHeadline,
+  selectPrimaryRun,
+  buildIngestionRunViews,
+} from '@/lib/pipeline/ingestion-run-view';
 import {
   resolvePipelineUiState,
   summarizePipelineDocuments,
@@ -52,10 +59,22 @@ export function IngestionAlertBanner({
     [documents, pipelineStatus],
   );
 
-  const stageProgress = useMemo(
+  const detailDocs =
+    pipelineUi.alertMode === 'stuck'
+      ? pipelineUi.stuckDocs
+      : pipelineUi.alertMode === 'queued'
+        ? summary.waitingDocs
+        : [...summary.activeDocs, ...summary.waitingDocs];
+
+  const primaryRun = useMemo(() => {
+    const map = buildIngestionRunViews(detailDocs);
+    return selectPrimaryRun(map);
+  }, [detailDocs]);
+
+  const progressMeta = useMemo(
     () =>
       pipelineUi.isActivelyProcessing
-        ? resolveBannerStageProgress(summary.activeDocs)
+        ? resolveBannerProgressMeta(summary.activeDocs)
         : undefined,
     [pipelineUi.isActivelyProcessing, summary.activeDocs],
   );
@@ -64,20 +83,19 @@ export function IngestionAlertBanner({
     return null;
   }
 
-  const headline = buildIngestionAlertHeadline(pipelineUi, t);
+  const baseHeadline = buildIngestionAlertHeadline(pipelineUi, t);
+  // SPEC-048: stage-specific title when working (not generic "Processing N")
+  const headlineText =
+    pipelineUi.alertMode === 'working' && primaryRun
+      ? formatRunHeadline(primaryRun)
+      : baseHeadline.text;
+
   const messageContext =
     pipelineUi.alertMode === 'stuck'
       ? 'stuck'
       : pipelineUi.alertMode === 'queued'
         ? 'queued'
         : 'active';
-
-  const detailDocs =
-    pipelineUi.alertMode === 'stuck'
-      ? pipelineUi.stuckDocs
-      : pipelineUi.alertMode === 'queued'
-        ? summary.waitingDocs
-        : [...summary.activeDocs, ...summary.waitingDocs];
 
   const hintText =
     pipelineUi.alertMode === 'stuck'
@@ -92,13 +110,28 @@ export function IngestionAlertBanner({
           )
         : null;
 
+  const progressLabel = progressMeta
+    ? t(
+        progressMeta.labelKey,
+        progressMeta.labelKey === 'pipeline.graphMergeProgress'
+          ? 'Graph save progress'
+          : progressMeta.labelKey === 'pipeline.extractionProgress'
+            ? 'Extraction progress'
+            : progressMeta.labelKey === 'pipeline.embeddingProgress'
+              ? 'Embedding progress'
+              : progressMeta.labelKey === 'pipeline.conversionProgress'
+                ? 'Conversion progress'
+                : 'Stage progress',
+      )
+    : null;
+
   return (
     <div
       data-testid="ingestion-status-banner"
-      data-ingestion-mode={headline.dataTestId}
+      data-ingestion-mode={baseHeadline.dataTestId}
       className={cn(
-        'flex flex-col gap-2 px-3 py-2 border rounded-lg cursor-pointer transition-colors overflow-hidden',
-        ingestionAlertContainerClass(headline.variant),
+        'flex flex-col gap-1.5 px-3 py-2 border rounded-lg cursor-pointer transition-colors overflow-hidden',
+        ingestionAlertContainerClass(baseHeadline.variant),
       )}
       onClick={onOpenDetails}
       role="button"
@@ -106,24 +139,41 @@ export function IngestionAlertBanner({
       onKeyDown={(e) => e.key === 'Enter' && onOpenDetails()}
     >
       <div className="flex items-start gap-3 min-w-0">
-        {headline.showAlert ? (
+        {baseHeadline.showAlert ? (
           <AlertTriangle className="h-4 w-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
-        ) : headline.showClock ? (
+        ) : baseHeadline.showClock ? (
           <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
         ) : (
-          <Loader2 className="h-4 w-4 text-blue-600 dark:text-blue-400 animate-spin shrink-0 mt-0.5" />
+          <Loader2 className="h-4 w-4 text-sky-600 dark:text-sky-400 animate-spin shrink-0 mt-0.5" />
         )}
         <div className="flex-1 min-w-0 space-y-1">
           <div className="flex items-start justify-between gap-2 min-w-0">
-            <p
-              data-testid={headline.dataTestId}
-              className={cn(
-                'text-sm font-medium min-w-0',
-                ingestionAlertTitleClass(headline.variant),
-              )}
-            >
-              {headline.text}
-            </p>
+            <div className="min-w-0 space-y-0.5">
+              <p
+                data-testid={baseHeadline.dataTestId}
+                className={cn(
+                  'text-sm font-medium min-w-0 truncate',
+                  ingestionAlertTitleClass(baseHeadline.variant),
+                )}
+              >
+                {headlineText}
+              </p>
+              {pipelineUi.alertMode === 'working' && primaryRun ? (
+                <p
+                  data-testid="spec048-banner-run-detail"
+                  data-stage={primaryRun.stage}
+                  className={cn(
+                    'text-xs truncate',
+                    ingestionAlertDetailClass(baseHeadline.variant),
+                  )}
+                >
+                  {primaryRun.filename}
+                  {pipelineUi.activeDocCount > 1
+                    ? ` · +${pipelineUi.activeDocCount - 1} more`
+                    : ''}
+                </p>
+              ) : null}
+            </div>
             <div className="flex items-center gap-2 shrink-0">
               {pipelineUi.isStuck && onReprocessStuck && (
                 <Button
@@ -148,7 +198,7 @@ export function IngestionAlertBanner({
               <span
                 className={cn(
                   'text-xs whitespace-nowrap',
-                  ingestionAlertDetailClass(headline.variant),
+                  ingestionAlertDetailClass(baseHeadline.variant),
                 )}
               >
                 {t('pipeline.clickForDetails', 'Details →')}
@@ -157,48 +207,57 @@ export function IngestionAlertBanner({
           </div>
 
           {hintText && (
-            <p className={cn('text-xs', ingestionAlertDetailClass(headline.variant))}>
+            <p className={cn('text-xs', ingestionAlertDetailClass(baseHeadline.variant))}>
               {hintText}
             </p>
           )}
 
-          {detailDocs.length > 0 && (
+          {pipelineUi.alertMode !== 'working' && detailDocs.length > 0 && (
             <div className="space-y-0.5 min-w-0">
-              {detailDocs.slice(0, 2).map((doc) => (
-                <p
-                  key={doc.id}
-                  className={cn(
-                    'text-xs line-clamp-2 break-words',
-                    ingestionAlertDetailClass(headline.variant),
-                  )}
-                >
-                  {translateIngestionDetail(doc, messageContext)}
-                </p>
-              ))}
+              {detailDocs.slice(0, 2).map((doc) => {
+                const run = buildIngestionRunView(doc);
+                const detail = run
+                  ? formatRunHeadline(run)
+                  : translateIngestionDetail(doc, messageContext);
+                return (
+                  <p
+                    key={doc.id}
+                    data-testid="spec048-banner-run-detail"
+                    data-stage={run?.stage}
+                    className={cn(
+                      'text-xs line-clamp-2 break-words',
+                      ingestionAlertDetailClass(baseHeadline.variant),
+                    )}
+                  >
+                    {detail}
+                  </p>
+                );
+              })}
             </div>
           )}
 
-          {typeof stageProgress === 'number' && stageProgress > 0 && (
+          {progressMeta && progressLabel && (
             <div
               className="space-y-1 pt-0.5"
               data-testid="ingestion-banner-progress"
+              data-progress-label={progressMeta.labelKey}
             >
               <div className="flex items-center justify-between gap-2 text-[11px]">
-                <span className={ingestionAlertDetailClass(headline.variant)}>
-                  {t('pipeline.graphMergeProgress', 'Graph save progress')}
+                <span className={ingestionAlertDetailClass(baseHeadline.variant)}>
+                  {progressLabel}
                 </span>
                 <span
                   className={cn(
                     'tabular-nums font-medium',
-                    ingestionAlertDetailClass(headline.variant),
+                    ingestionAlertDetailClass(baseHeadline.variant),
                   )}
                 >
-                  {Math.round(stageProgress * 100)}%
+                  {Math.round(progressMeta.progress01 * 100)}%
                 </span>
               </div>
               <Progress
-                value={stageProgress * 100}
-                className="h-1.5 bg-black/5 dark:bg-white/10"
+                value={progressMeta.progress01 * 100}
+                className="h-1.5 bg-black/5 dark:bg-white/10 [&_[data-slot=progress-indicator]]:bg-sky-500"
               />
             </div>
           )}

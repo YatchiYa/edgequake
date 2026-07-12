@@ -172,7 +172,7 @@ edgequake-storage = { path = "crates/edgequake-storage" }
 edgequake-tasks = { path = "crates/edgequake-tasks" }
 edgequake-observability = { path = "crates/edgequake-observability" }
 edgeparse-core = "0.2.5"
-edgequake-pdf2md = { version = "0.9.2", default-features = false, features = ["bundled"] }
+edgequake-pdf2md = { path = "../../edgequake-pdf2md", version = "0.9.7", default-features = false, features = ["bundled"] }
 
 # CPU utilities
 num_cpus = "1.16"

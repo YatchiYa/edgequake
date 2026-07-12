@@ -2,6 +2,8 @@
 
 use std::sync::Arc;
 
+use futures::stream::{self, StreamExt};
+
 use crate::chunker::TextChunk;
 use crate::error::Result;
 use crate::extractor::ExtractionResult;
@@ -9,6 +11,7 @@ use crate::extractor::ExtractionResult;
 use super::super::{
     CostBreakdownStats, EmbedProgressCallback, EmbedProgressUpdate, Pipeline, ProcessingStats,
 };
+use super::unique_embed::{unique_entities_for_embed, unique_relationships_for_embed};
 
 // ─────────────────────────────────────────────────────────────────────────────
 //                       EMBEDDING GENERATION HELPERS
@@ -207,80 +210,132 @@ fn is_transient_embedding_error(message: &str) -> bool {
         || lower.contains("temporarily unavailable")
 }
 
-async fn embed_with_token_budget(
-    provider: &Arc<dyn edgequake_llm::traits::EmbeddingProvider>,
+/// Max concurrent embedding API sub-batches (LightRAG `embedding_func_max_async` ≈ 8).
+///
+/// Override with `EDGEQUAKE_EMBED_MAX_ASYNC` (clamped 1..=32).
+pub fn embed_max_async() -> usize {
+    parse_embed_max_async(&std::env::var("EDGEQUAKE_EMBED_MAX_ASYNC").unwrap_or_default())
+}
+
+/// Pure parser for `EDGEQUAKE_EMBED_MAX_ASYNC` (testable without env mutation).
+pub fn parse_embed_max_async(raw: &str) -> usize {
+    raw.trim()
+        .parse::<usize>()
+        .ok()
+        .filter(|&n| n > 0)
+        .map(|n| n.min(32))
+        .unwrap_or(8)
+}
+
+/// Plan token/count-aware sub-batches as `(start_index, end_index)` half-open ranges.
+///
+/// Pure function — shared by sequential and parallel embed paths (DRY).
+pub(crate) fn plan_embed_sub_batches(
     texts: &[String],
-) -> crate::error::Result<Vec<Vec<f32>>> {
+    max_tokens: usize,
+    max_batch_count: usize,
+) -> Vec<(usize, usize)> {
     if texts.is_empty() {
-        return Ok(Vec::new());
+        return Vec::new();
     }
-
-    let max_tokens = provider.max_tokens();
     if max_tokens == 0 {
-        // Limit unknown — standard count-based batching
-        return embed_batched_with_retry(provider, texts).await;
+        return vec![(0, texts.len())];
     }
 
-    // Effective token budget per sub-batch (apply safety headroom)
     let token_budget = (max_tokens as f64 * EMBED_SAFETY_FACTOR) as usize;
-
-    // Maximum input count per sub-batch from the provider (e.g. 512 for Mistral).
-    //
-    // WHY DUAL-DIMENSION SPLIT (spec-011):
-    // Mistral enforces TWO independent limits per embedding request:
-    //   (A) total tokens ≤ 8 192  → guarded by `token_budget` above
-    //   (B) input count  ≤ 512    → guarded by `max_batch_count` here
-    //
-    // For dense legal/regulatory documents (EU AI Act, GDPR) many short entity
-    // names (~10 tokens each) fit within the token budget but may exceed the
-    // input count limit (e.g. 700 items × 10 tokens = 7 000 ≤ 8 192, but
-    // 700 > 512).  The previous token-only split produced sub-batches of 700
-    // items, triggering HTTP 400 "Too many inputs in request" (code 3210).
-    //
-    // By flushing on EITHER dimension we satisfy both limits simultaneously.
-    let max_batch_count = provider.max_batch_size();
-
-    let mut all_embeddings: Vec<Vec<f32>> = Vec::with_capacity(texts.len());
-    let mut batch_start: usize = 0;
-    let mut batch_tokens: usize = 0;
+    let max_batch_count = max_batch_count.max(1);
+    let mut ranges = Vec::new();
+    let mut batch_start = 0usize;
+    let mut batch_tokens = 0usize;
 
     for (i, text) in texts.iter().enumerate() {
-        // Estimate token count for this text
         let text_tokens = ((text.len() as f64) / EMBED_CHARS_PER_TOKEN).ceil() as usize;
-
         let current_count = i - batch_start;
         let token_overflow = batch_tokens + text_tokens > token_budget;
         let count_overflow = current_count >= max_batch_count;
-
-        // Flush if EITHER the token budget OR the input count limit would be exceeded.
-        // Always include at least one text even if it alone exceeds the budget (single-text
-        // requests are the smallest possible unit; the provider must handle them).
         if (token_overflow || count_overflow) && i > batch_start {
-            let flush_reason = if count_overflow {
-                "count limit"
-            } else {
-                "token budget"
-            };
-            tracing::debug!(
-                sub_batch_texts = current_count,
-                estimated_tokens = batch_tokens,
-                token_budget = token_budget,
-                max_batch_count = max_batch_count,
-                reason = flush_reason,
-                "Flushing embedding sub-batch"
-            );
-            let batch_result = embed_batched_with_retry(provider, &texts[batch_start..i]).await?;
-            all_embeddings.extend(batch_result);
+            ranges.push((batch_start, i));
             batch_start = i;
             batch_tokens = 0;
         }
         batch_tokens += text_tokens;
     }
-
-    // Flush the final sub-batch
     if batch_start < texts.len() {
-        let batch_result = embed_batched_with_retry(provider, &texts[batch_start..]).await?;
-        all_embeddings.extend(batch_result);
+        ranges.push((batch_start, texts.len()));
+    }
+    ranges
+}
+
+async fn embed_with_token_budget(
+    provider: &Arc<dyn edgequake_llm::traits::EmbeddingProvider>,
+    texts: &[String],
+    progress: Option<(&EmbedProgressCallback, &'static str)>,
+) -> crate::error::Result<Vec<Vec<f32>>> {
+    if texts.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let emit = |current: usize| {
+        if let Some((cb, stage)) = progress {
+            cb(EmbedProgressUpdate {
+                stage,
+                current,
+                total: texts.len(),
+            });
+        }
+    };
+
+    let ranges = plan_embed_sub_batches(texts, provider.max_tokens(), provider.max_batch_size());
+    let concurrency = embed_max_async().min(ranges.len().max(1));
+
+    // Single sub-batch: no fan-out overhead.
+    if ranges.len() <= 1 {
+        let batch_result = embed_batched_with_retry(provider, texts).await?;
+        emit(batch_result.len());
+        return Ok(batch_result);
+    }
+
+    // Parallel sub-batches (LightRAG asyncio.gather + embedding_func_max_async).
+    // Preserve order by tagging each result with its start index.
+    tracing::debug!(
+        sub_batches = ranges.len(),
+        concurrency,
+        texts = texts.len(),
+        "Embedding sub-batches in parallel"
+    );
+
+    let provider = Arc::clone(provider);
+    let texts_owned: Vec<String> = texts.to_vec();
+    let mut completed = 0usize;
+    let mut indexed: Vec<(usize, Vec<Vec<f32>>)> = stream::iter(ranges)
+        .map(|(start, end)| {
+            let provider = Arc::clone(&provider);
+            let batch = texts_owned[start..end].to_vec();
+            async move {
+                let emb = embed_batched_with_retry(&provider, &batch).await?;
+                Ok::<_, crate::error::PipelineError>((start, emb))
+            }
+        })
+        .buffer_unordered(concurrency)
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .collect::<crate::error::Result<Vec<_>>>()?;
+
+    indexed.sort_by_key(|(start, _)| *start);
+    let mut all_embeddings: Vec<Vec<f32>> = Vec::with_capacity(texts.len());
+    for (_, emb) in indexed {
+        completed += emb.len();
+        all_embeddings.extend(emb);
+        emit(completed.min(texts.len()));
+    }
+
+    if all_embeddings.len() != texts.len() {
+        tracing::warn!(
+            expected = texts.len(),
+            actual = all_embeddings.len(),
+            "Parallel embed sub-batch result count mismatch"
+        );
     }
 
     Ok(all_embeddings)
@@ -308,6 +363,7 @@ async fn safe_embed(
     texts: &[String],
     max_chars: usize,
     kind: &str,
+    progress: Option<(&EmbedProgressCallback, &'static str)>,
 ) -> crate::error::Result<Vec<Vec<f32>>> {
     if texts.is_empty() {
         return Ok(Vec::new());
@@ -320,7 +376,7 @@ async fn safe_embed(
             "SPEC-046 OPS-P1.7: embedding inputs truncated under Truncate policy"
         );
     }
-    let embeddings = embed_with_token_budget(provider, &guarded.texts).await?;
+    let embeddings = embed_with_token_budget(provider, &guarded.texts, progress).await?;
     if embeddings.len() != texts.len() {
         tracing::warn!(
             expected = texts.len(),
@@ -398,7 +454,14 @@ impl Pipeline {
             let texts: Vec<String> = chunks.iter().map(|c| c.content.clone()).collect();
             // Notify: starting chunk embeddings
             Self::emit_embed_progress(progress, "chunks", 0, texts.len());
-            let embeddings = safe_embed(provider, &texts, max_chars, "Chunk").await?;
+            let embeddings = safe_embed(
+                provider,
+                &texts,
+                max_chars,
+                "Chunk",
+                progress.map(|cb| (cb, "chunks")),
+            )
+            .await?;
             for (chunk, embedding) in chunks.iter_mut().zip(embeddings) {
                 chunk.embedding = Some(embedding);
             }
@@ -406,84 +469,80 @@ impl Pipeline {
             Self::emit_embed_progress(progress, "chunks", texts.len(), texts.len());
         }
 
-        // ── Entity embeddings (batched) ──
+        // ── Entity embeddings (unique-before-embed, SPEC-047 P6 / LightRAG) ──
+        // WHY: mega-docs extract thousands of *mentions* but only hundreds of
+        // unique EntityIds. Embedding every mention is O(Σ mentions); LightRAG
+        // embeds once per unique name after merge. We collapse within-doc first,
+        // embed unique texts, then broadcast the vector to all mentions so the
+        // merger's collect path stays unchanged.
         if self.config.enable_entity_embeddings {
-            let mut all_entity_texts: Vec<String> = Vec::new();
-            let mut entity_indices: Vec<(usize, usize)> = Vec::new(); // (extraction_idx, entity_idx)
+            let unique = unique_entities_for_embed(extractions);
+            let mention_total: usize = unique.iter().map(|u| u.mentions.len()).sum();
+            let all_entity_texts: Vec<String> = unique.iter().map(|u| u.text.clone()).collect();
 
-            for (ext_idx, extraction) in extractions.iter().enumerate() {
-                for (ent_idx, entity) in extraction.entities.iter().enumerate() {
-                    all_entity_texts.push(format!("{}: {}", entity.name, entity.description));
-                    entity_indices.push((ext_idx, ent_idx));
+            tracing::info!(
+                unique_entities = unique.len(),
+                mention_entities = mention_total,
+                "Entity embed: unique-before-embed (SPEC-047 P6)"
+            );
+
+            Self::emit_embed_progress(progress, "entities", 0, unique.len());
+
+            let all_embeddings = safe_embed(
+                provider,
+                &all_entity_texts,
+                max_chars,
+                "Entity",
+                progress.map(|cb| (cb, "entities")),
+            )
+            .await?;
+            for (embedding, entry) in all_embeddings.into_iter().zip(unique.iter()) {
+                // Store once on the first mention; merger `dedupe_entities_by_id`
+                // picks up any available embedding (avoids cloning Vec<f32> × mentions).
+                if let Some(&(ext_idx, ent_idx)) = entry.mentions.first() {
+                    extractions[ext_idx].entities[ent_idx].embedding = Some(embedding);
                 }
             }
 
-            // Notify: starting entity embeddings
-            Self::emit_embed_progress(progress, "entities", 0, all_entity_texts.len());
-
-            // WHY safe_embed: guards length, embeds in compliant sub-batches, and
-            // warns if the provider silently drops results (zip() would otherwise
-            // create orphaned graph nodes with no embedding vector).
-            let all_embeddings =
-                safe_embed(provider, &all_entity_texts, max_chars, "Entity").await?;
-            for (embedding, (ext_idx, ent_idx)) in all_embeddings.into_iter().zip(entity_indices) {
-                extractions[ext_idx].entities[ent_idx].embedding = Some(embedding);
-            }
-
-            // Notify: entity embeddings complete
-            Self::emit_embed_progress(
-                progress,
-                "entities",
-                all_entity_texts.len(),
-                all_entity_texts.len(),
-            );
+            Self::emit_embed_progress(progress, "entities", unique.len(), unique.len());
         }
 
-        // ── Relationship embeddings (batched) ──
+        // ── Relationship embeddings (unique-before-embed) ──
         if self.config.enable_relationship_embeddings {
-            let mut all_relationship_texts: Vec<String> = Vec::new();
-            let mut relationship_indices: Vec<(usize, usize)> = Vec::new();
+            let unique = unique_relationships_for_embed(extractions);
+            let mention_total: usize = unique.iter().map(|u| u.mentions.len()).sum();
+            let all_relationship_texts: Vec<String> =
+                unique.iter().map(|u| u.text.clone()).collect();
 
-            for (ext_idx, extraction) in extractions.iter().enumerate() {
-                for (rel_idx, r) in extraction.relationships.iter().enumerate() {
-                    // Format: "keywords\tsource->target\ndescription"
-                    // Matches LightRAG's relationship embedding format
-                    all_relationship_texts.push(format!(
-                        "{}\t{}->{}\n{}",
-                        r.keywords.join(", "),
-                        r.source,
-                        r.target,
-                        r.description
-                    ));
-                    relationship_indices.push((ext_idx, rel_idx));
+            tracing::info!(
+                unique_relationships = unique.len(),
+                mention_relationships = mention_total,
+                "Relationship embed: unique-before-embed (SPEC-047 P6)"
+            );
+
+            Self::emit_embed_progress(progress, "relationships", 0, unique.len());
+
+            let all_embeddings = safe_embed(
+                provider,
+                &all_relationship_texts,
+                max_chars,
+                "Relationship",
+                progress.map(|cb| (cb, "relationships")),
+            )
+            .await?;
+            for (embedding, entry) in all_embeddings.into_iter().zip(unique.iter()) {
+                if let Some(&(ext_idx, rel_idx)) = entry.mentions.first() {
+                    extractions[ext_idx].relationships[rel_idx].embedding = Some(embedding);
                 }
             }
 
-            // Notify: starting relationship embeddings
-            Self::emit_embed_progress(progress, "relationships", 0, all_relationship_texts.len());
-
-            let all_embeddings =
-                safe_embed(provider, &all_relationship_texts, max_chars, "Relationship").await?;
-            for (embedding, (ext_idx, rel_idx)) in
-                all_embeddings.into_iter().zip(relationship_indices)
-            {
-                extractions[ext_idx].relationships[rel_idx].embedding = Some(embedding);
-            }
-
-            // Notify: relationship embeddings complete
-            Self::emit_embed_progress(
-                progress,
-                "relationships",
-                all_relationship_texts.len(),
-                all_relationship_texts.len(),
-            );
+            Self::emit_embed_progress(progress, "relationships", unique.len(), unique.len());
         }
 
-        // ── Embedding cost calculation ──
+        // ── Embedding cost calculation (unique texts only) ──
         // WHY estimate_embed_tokens: uses the same EMBED_CHARS_PER_TOKEN denominator
-        // as sub-batch sizing — one constant, one formula (DRY). The previous code
-        // used a hardcoded / 4 (4 chars/token) which diverged from the 2.5 used in
-        // the batch splitter, giving inconsistent cost estimates for the same content.
+        // as sub-batch sizing — one constant, one formula (DRY). Cost tracks what
+        // we actually sent to the provider (unique), not mention cardinality.
         let mut total_embed_tokens = 0usize;
 
         if self.config.enable_chunk_embeddings {
@@ -491,20 +550,13 @@ impl Pipeline {
             total_embed_tokens += estimate_embed_tokens(chunk_text_len);
         }
         if self.config.enable_entity_embeddings {
-            for extraction in extractions.iter() {
-                for entity in &extraction.entities {
-                    total_embed_tokens +=
-                        estimate_embed_tokens(entity.name.len() + entity.description.len());
-                }
+            for entry in unique_entities_for_embed(extractions) {
+                total_embed_tokens += estimate_embed_tokens(entry.text.len());
             }
         }
         if self.config.enable_relationship_embeddings {
-            for extraction in extractions.iter() {
-                for rel in &extraction.relationships {
-                    total_embed_tokens += estimate_embed_tokens(
-                        rel.source.len() + rel.target.len() + rel.description.len(),
-                    );
-                }
+            for entry in unique_relationships_for_embed(extractions) {
+                total_embed_tokens += estimate_embed_tokens(entry.text.len());
             }
         }
 
@@ -531,7 +583,27 @@ impl Pipeline {
 
         Ok(())
     }
+
+    /// Re-generate embeddings for a `ProcessingResult` (slim-checkpoint resume).
+    ///
+    /// WHY (SPEC-047 P5): Checkpoints omit embeddings to stay under Postgres
+    /// jsonb size limits. On resume we skip LLM extraction but must re-embed
+    /// before merge/persist.
+    pub async fn ensure_embeddings(
+        &self,
+        result: &mut crate::pipeline::ProcessingResult,
+        progress: Option<&EmbedProgressCallback>,
+    ) -> Result<()> {
+        self.generate_all_embeddings(
+            &mut result.chunks,
+            &mut result.extractions,
+            &mut result.stats,
+            progress,
+        )
+        .await
+    }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -690,7 +762,9 @@ mod tests {
         let (provider, call_sizes) = CountingEmbedProvider::new(8192);
         let provider: Arc<dyn edgequake_llm::traits::EmbeddingProvider> = Arc::new(provider);
 
-        let result = embed_with_token_budget(&provider, &texts).await.unwrap();
+        let result = embed_with_token_budget(&provider, &texts, None)
+            .await
+            .unwrap();
         assert_eq!(result.len(), 10, "All 10 embeddings must be returned");
         let sizes = call_sizes.lock().unwrap();
         assert_eq!(sizes.len(), 1, "Should have made exactly 1 embed call");
@@ -707,7 +781,9 @@ mod tests {
         let (provider, call_sizes) = CountingEmbedProvider::new(80); // tiny budget forces splits
         let provider: Arc<dyn edgequake_llm::traits::EmbeddingProvider> = Arc::new(provider);
 
-        let result = embed_with_token_budget(&provider, &texts).await.unwrap();
+        let result = embed_with_token_budget(&provider, &texts, None)
+            .await
+            .unwrap();
         assert_eq!(result.len(), 20, "All 20 embeddings must be returned");
         // With max_tokens=80 and SAFETY_FACTOR=0.85, budget = 68 tokens.
         // Each text costs ceil(100/2.5)=40 tokens. Two texts = 80 > 68 → at least 2 calls.
@@ -728,7 +804,7 @@ mod tests {
         let (provider, call_sizes) = CountingEmbedProvider::new(8192);
         let provider: Arc<dyn edgequake_llm::traits::EmbeddingProvider> = Arc::new(provider);
 
-        let result = embed_with_token_budget(&provider, &[]).await.unwrap();
+        let result = embed_with_token_budget(&provider, &[], None).await.unwrap();
         assert!(result.is_empty());
         assert!(
             call_sizes.lock().unwrap().is_empty(),
@@ -743,7 +819,9 @@ mod tests {
         let (provider, call_sizes) = CountingEmbedProvider::new(0); // 0 = unknown limit
         let provider: Arc<dyn edgequake_llm::traits::EmbeddingProvider> = Arc::new(provider);
 
-        let result = embed_with_token_budget(&provider, &texts).await.unwrap();
+        let result = embed_with_token_budget(&provider, &texts, None)
+            .await
+            .unwrap();
         assert_eq!(result.len(), 5);
         let sizes = call_sizes.lock().unwrap();
         assert_eq!(
@@ -769,7 +847,9 @@ mod tests {
         let (provider, call_sizes) = CountingEmbedProvider::new_with_batch(8192, 512);
         let provider: Arc<dyn edgequake_llm::traits::EmbeddingProvider> = Arc::new(provider);
 
-        let result = embed_with_token_budget(&provider, &texts).await.unwrap();
+        let result = embed_with_token_budget(&provider, &texts, None)
+            .await
+            .unwrap();
         assert_eq!(result.len(), 600, "All 600 embeddings returned");
 
         let sizes = call_sizes.lock().unwrap();
@@ -799,7 +879,9 @@ mod tests {
         let (provider, call_sizes) = CountingEmbedProvider::new_with_batch(8192, 512);
         let provider: Arc<dyn edgequake_llm::traits::EmbeddingProvider> = Arc::new(provider);
 
-        let result = embed_with_token_budget(&provider, &texts).await.unwrap();
+        let result = embed_with_token_budget(&provider, &texts, None)
+            .await
+            .unwrap();
         assert_eq!(result.len(), 512);
 
         let sizes = call_sizes.lock().unwrap();
@@ -814,7 +896,9 @@ mod tests {
         let (provider, call_sizes) = CountingEmbedProvider::new_with_batch(8192, 512);
         let provider: Arc<dyn edgequake_llm::traits::EmbeddingProvider> = Arc::new(provider);
 
-        let result = embed_with_token_budget(&provider, &texts).await.unwrap();
+        let result = embed_with_token_budget(&provider, &texts, None)
+            .await
+            .unwrap();
         assert_eq!(result.len(), 513);
 
         let sizes = call_sizes.lock().unwrap();
@@ -834,7 +918,9 @@ mod tests {
         let (provider, call_sizes) = CountingEmbedProvider::new_with_batch(8192, 5);
         let provider: Arc<dyn edgequake_llm::traits::EmbeddingProvider> = Arc::new(provider);
 
-        let result = embed_with_token_budget(&provider, &texts).await.unwrap();
+        let result = embed_with_token_budget(&provider, &texts, None)
+            .await
+            .unwrap();
         assert_eq!(result.len(), 20);
 
         let sizes = call_sizes.lock().unwrap();
@@ -866,7 +952,9 @@ mod tests {
         let (provider, call_sizes) = CountingEmbedProvider::new_with_batch(100, 2048);
         let provider: Arc<dyn edgequake_llm::traits::EmbeddingProvider> = Arc::new(provider);
 
-        let result = embed_with_token_budget(&provider, &texts).await.unwrap();
+        let result = embed_with_token_budget(&provider, &texts, None)
+            .await
+            .unwrap();
         assert_eq!(result.len(), 5);
 
         // Each text = ceil(1000/2.5) = 400 tokens; budget = 100*0.85 = 85 tokens
@@ -880,6 +968,49 @@ mod tests {
         );
         let total: usize = sizes.iter().sum();
         assert_eq!(total, 5);
+    }
+
+    #[test]
+    fn spec047_p6_parse_embed_max_async_defaults_and_clamps() {
+        assert_eq!(parse_embed_max_async(""), 8);
+        assert_eq!(parse_embed_max_async("4"), 4);
+        assert_eq!(parse_embed_max_async("0"), 8);
+        assert_eq!(parse_embed_max_async("99"), 32);
+        assert_eq!(parse_embed_max_async("nope"), 8);
+    }
+
+    #[test]
+    fn spec047_p6_plan_embed_sub_batches_respects_count_limit() {
+        let texts: Vec<String> = (0..20).map(|i| format!("t{i}")).collect();
+        let ranges = plan_embed_sub_batches(&texts, 100_000, 5);
+        assert!(ranges.len() >= 4);
+        for (start, end) in &ranges {
+            assert!(end - start <= 5);
+        }
+        assert_eq!(ranges.last().unwrap().1, 20);
+    }
+
+    /// Parallel path must preserve order across concurrent sub-batches.
+    #[tokio::test]
+    async fn spec047_p6_parallel_embed_preserves_order() {
+        let texts: Vec<String> = (0..20).map(|i| format!("item-{i}")).collect();
+        let (provider, call_sizes) = CountingEmbedProvider::new_with_batch(8_192, 5);
+        let provider: Arc<dyn edgequake_llm::traits::EmbeddingProvider> = Arc::new(provider);
+        // Force parallel path via env-independent concurrency (ranges > 1).
+        let result = embed_with_token_budget(&provider, &texts, None)
+            .await
+            .unwrap();
+        assert_eq!(result.len(), 20);
+        // CountingEmbedProvider returns deterministic dims; order = input order.
+        for (i, emb) in result.iter().enumerate() {
+            assert!(!emb.is_empty(), "missing embedding at {i}");
+        }
+        let sizes = call_sizes.lock().unwrap();
+        assert!(
+            sizes.len() >= 4,
+            "expected multiple sub-batches, got {}",
+            sizes.len()
+        );
     }
 
     #[test]

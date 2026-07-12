@@ -123,11 +123,11 @@ export function formatStageName(stage: IngestionStage): string {
  * Examples:
  * - { current_page: 0, total_pages: 10 } → "Starting PDF extraction (10 pages)..."
  * - { current_page: 5, total_pages: 10, progress: 50 } → "Converting PDF: page 5/10 (50%)"
- * - { phase: "complete", total_pages: 10 } → "PDF conversion complete (10 pages)"
+ * - { phase: "complete", total_pages: 10 } → "Pages converted (10) — preparing page images…"
  */
 export function formatPdfProgress(pdf: PdfProgress): string {
-  if (pdf.phase === "complete") {
-    return `PDF conversion complete (${pdf.total_pages} pages)`;
+  if (pdf.phase === "complete" || pdf.phase?.startsWith("partial_complete")) {
+    return `Pages converted (${pdf.total_pages}) — preparing page images…`;
   }
 
   if (pdf.current_page === 0) {

@@ -486,6 +486,7 @@ mod tests {
             section: None,
             page_start: None,
             page_end: None,
+            modality: None,
         };
         ProcessingResult {
             document_id: "doc1".to_string(),

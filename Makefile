@@ -224,24 +224,80 @@ export
 # Environment variables (can be overridden from shell)
 OPENAI_API_KEY ?= $(shell echo $$OPENAI_API_KEY)
 
-# P-G13: dev stability defaults — prevent OOM during heavy PDF ingestion.
-# Override from shell or .env when you need higher throughput.
-WORKER_THREADS ?= 4
-MAX_TASKS_PER_TENANT ?= 2
-EDGEQUAKE_PDF_CONCURRENCY ?= 2
-EDGEQUAKE_PDF_VISION_JOBS ?= 2
-# SPEC-034: native SQL AGE upserts (~69× faster than Cypher MERGE). Requires
-# migrations 067/074–076/083 UNIQUE indexes. Override with =0 to force Cypher.
+# ── Ingest throughput profile (SPEC-047 / P-G13) ─────────────────────────────
+# Detected workstation class: 16 logical CPUs · ~128 GiB RAM.
+# Hierarchy (outer → inner):
+#   WORKER_THREADS ⊃ MAX_TASKS_PER_TENANT ⊃ PDF_VISION_JOBS ⊃ PDF_CONCURRENCY
+#     ⊃ MM_IMAGE_CONCURRENCY ⊃ MAX_CONCURRENT_EXTRACTIONS
+# Peak vision in-flight ≈ PDF_VISION_JOBS × PDF_CONCURRENCY (here 4×4=16).
+# Dial down if provider 429s or RSS climbs; set MEM_LIMIT so budget code is aware.
+# Low-RAM override example: WORKER_THREADS=4 MAX_TASKS_PER_TENANT=2 \
+#   EDGEQUAKE_PDF_VISION_JOBS=1 EDGEQUAKE_PDF_CONCURRENCY=1
+WORKER_THREADS ?= 16
+MAX_TASKS_PER_TENANT ?= 12
+EDGEQUAKE_PDF_CONCURRENCY ?= 4
+EDGEQUAKE_PDF_VISION_JOBS ?= 4
+EDGEQUAKE_MM_IMAGE_CONCURRENCY ?= 8
+EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS ?= 32
+EDGEQUAKE_MEM_LIMIT ?= 48g
+# SPEC-034: native SQL AGE upserts (~69× faster than Cypher MERGE).
 EDGEQUAKE_NATIVE_GRAPH_WRITES ?= 1
-export WORKER_THREADS MAX_TASKS_PER_TENANT EDGEQUAKE_PDF_CONCURRENCY EDGEQUAKE_PDF_VISION_JOBS EDGEQUAKE_NATIVE_GRAPH_WRITES
+# SPEC-047: skip Louvain tax in local/bench; fail-open MM for throughput.
+EDGEQUAKE_COMMUNITY_GLOBAL ?= false
+EDGEQUAKE_MULTIMODAL_FAIL_MODE ?= degraded
+# SPEC-026/047: inline chart/figure VLM analyze (Pass B). Opt out with false.
+VLM_PROCESS_ENABLE ?= true
+# SPEC-047 P5: HNSW upsert progress cadence (default 1000); chunk_only skips KG extract.
+EDGEQUAKE_VECTOR_UPSERT_CHUNK ?= 1000
+EDGEQUAKE_INGEST_PROFILE ?= full
+# SPEC-047 P6: parallel embed sub-batches (LightRAG embedding_func_max_async ≈ 8).
+EDGEQUAKE_EMBED_MAX_ASYNC ?= 8
+# SPEC-047 P7a: LightRAG FORCE_LLM_SUMMARY_ON_MERGE — join <N fragments with <SEP>, else LLM.
+EDGEQUAKE_FORCE_LLM_SUMMARY_ON_MERGE ?= 8
+# SPEC-047 P7b: LightRAG graph_max_async ≈ llm_max_async×2 — parallel unique entity/rel merges.
+EDGEQUAKE_MERGE_MAX_ASYNC ?= 8
+# SPEC-047 P7d: LightRAG SOURCE_IDS KEEP — skip description updates when saturated (default 200).
+EDGEQUAKE_MAX_SOURCE_IDS_PER_ENTITY ?= 200
+EDGEQUAKE_MAX_SOURCE_IDS_PER_RELATION ?= 200
+EDGEQUAKE_SOURCE_IDS_LIMIT_METHOD ?= KEEP
+# SPEC-047 P7f: native/Cypher graph upsert chunk size (rows per UNNEST/UNWIND statement).
+EDGEQUAKE_GRAPH_UPSERT_CHUNK ?= 500
+export WORKER_THREADS MAX_TASKS_PER_TENANT \
+	EDGEQUAKE_PDF_CONCURRENCY EDGEQUAKE_PDF_VISION_JOBS \
+	EDGEQUAKE_MM_IMAGE_CONCURRENCY EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS \
+	EDGEQUAKE_MEM_LIMIT EDGEQUAKE_NATIVE_GRAPH_WRITES \
+	EDGEQUAKE_COMMUNITY_GLOBAL EDGEQUAKE_MULTIMODAL_FAIL_MODE VLM_PROCESS_ENABLE \
+	EDGEQUAKE_VECTOR_UPSERT_CHUNK EDGEQUAKE_INGEST_PROFILE \
+	EDGEQUAKE_EMBED_MAX_ASYNC EDGEQUAKE_FORCE_LLM_SUMMARY_ON_MERGE \
+	EDGEQUAKE_MERGE_MAX_ASYNC EDGEQUAKE_MAX_SOURCE_IDS_PER_ENTITY \
+	EDGEQUAKE_MAX_SOURCE_IDS_PER_RELATION EDGEQUAKE_SOURCE_IDS_LIMIT_METHOD \
+	EDGEQUAKE_GRAPH_UPSERT_CHUNK
 
 # Shared exports appended to /tmp/edgequake-start.sh by backend-bg.
+# SPEC-047: also pin VLM + chart modality so bench restarts do not silently drop MV-32.
 define BACKEND_STABILITY_EXPORTS
 printf '%s\n' "export WORKER_THREADS=\"$(WORKER_THREADS)\"" >> /tmp/edgequake-start.sh; \
 printf '%s\n' "export MAX_TASKS_PER_TENANT=\"$(MAX_TASKS_PER_TENANT)\"" >> /tmp/edgequake-start.sh; \
 printf '%s\n' "export EDGEQUAKE_PDF_CONCURRENCY=\"$(EDGEQUAKE_PDF_CONCURRENCY)\"" >> /tmp/edgequake-start.sh; \
 printf '%s\n' "export EDGEQUAKE_PDF_VISION_JOBS=\"$(EDGEQUAKE_PDF_VISION_JOBS)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_NATIVE_GRAPH_WRITES=\"$(EDGEQUAKE_NATIVE_GRAPH_WRITES)\"" >> /tmp/edgequake-start.sh;
+printf '%s\n' "export EDGEQUAKE_MM_IMAGE_CONCURRENCY=\"$(EDGEQUAKE_MM_IMAGE_CONCURRENCY)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS=\"$(EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MEM_LIMIT=\"$(EDGEQUAKE_MEM_LIMIT)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_NATIVE_GRAPH_WRITES=\"$(EDGEQUAKE_NATIVE_GRAPH_WRITES)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_COMMUNITY_GLOBAL=\"$(EDGEQUAKE_COMMUNITY_GLOBAL)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MULTIMODAL_FAIL_MODE=\"$(EDGEQUAKE_MULTIMODAL_FAIL_MODE)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_VECTOR_UPSERT_CHUNK=\"$(EDGEQUAKE_VECTOR_UPSERT_CHUNK)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_INGEST_PROFILE=\"$(EDGEQUAKE_INGEST_PROFILE)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_EMBED_MAX_ASYNC=\"$(EDGEQUAKE_EMBED_MAX_ASYNC)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_FORCE_LLM_SUMMARY_ON_MERGE=\"$(EDGEQUAKE_FORCE_LLM_SUMMARY_ON_MERGE)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MERGE_MAX_ASYNC=\"$(EDGEQUAKE_MERGE_MAX_ASYNC)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MAX_SOURCE_IDS_PER_ENTITY=\"$(EDGEQUAKE_MAX_SOURCE_IDS_PER_ENTITY)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MAX_SOURCE_IDS_PER_RELATION=\"$(EDGEQUAKE_MAX_SOURCE_IDS_PER_RELATION)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_SOURCE_IDS_LIMIT_METHOD=\"$(EDGEQUAKE_SOURCE_IDS_LIMIT_METHOD)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_GRAPH_UPSERT_CHUNK=\"$(EDGEQUAKE_GRAPH_UPSERT_CHUNK)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export VLM_PROCESS_ENABLE=\"$(VLM_PROCESS_ENABLE)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_CHART_MODALITY_FILTER=\"true\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MM_ANALYSIS_CACHE=\"true\"" >> /tmp/edgequake-start.sh;
 endef
 DEV_AUTH_ENABLED ?= false
 DEV_DISABLE_DEMO_LOGIN ?= false
@@ -523,6 +579,9 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 		EDGEQUAKE_AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
 			AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
 			EDGEQUAKE_NATIVE_GRAPH_WRITES="$(EDGEQUAKE_NATIVE_GRAPH_WRITES)" \
+			VLM_PROCESS_ENABLE="$(VLM_PROCESS_ENABLE)" \
+			EDGEQUAKE_MULTIMODAL_FAIL_MODE="$(EDGEQUAKE_MULTIMODAL_FAIL_MODE)" \
+			EDGEQUAKE_MM_IMAGE_CONCURRENCY="$(EDGEQUAKE_MM_IMAGE_CONCURRENCY)" \
 			cargo run 2>&1 | sed 's/^/[backend] /') & \
 		BACKEND_PID=$$!; \
 	else \
@@ -534,6 +593,9 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 		EDGEQUAKE_AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
 			AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
 			EDGEQUAKE_NATIVE_GRAPH_WRITES="$(EDGEQUAKE_NATIVE_GRAPH_WRITES)" \
+			VLM_PROCESS_ENABLE="$(VLM_PROCESS_ENABLE)" \
+			EDGEQUAKE_MULTIMODAL_FAIL_MODE="$(EDGEQUAKE_MULTIMODAL_FAIL_MODE)" \
+			EDGEQUAKE_MM_IMAGE_CONCURRENCY="$(EDGEQUAKE_MM_IMAGE_CONCURRENCY)" \
 			OLLAMA_HOST="http://localhost:11434" \
 			OLLAMA_MODEL="gemma4:latest" \
 			OLLAMA_EMBEDDING_MODEL="embeddinggemma:latest" \
@@ -672,9 +734,9 @@ dev-bg: check-deps check-ports ## Start full development stack in BACKGROUND wit
 		echo "  $(BLUE)LLM Provider$(RESET): openai (gpt-5-nano)"; \
 		echo "  $(BLUE)Embedding$(RESET): openai (text-embedding-3-small, 1536d)"; \
 	elif [ -n "$(MISTRAL_API_KEY)" ]; then \
-		echo "  $(BLUE)LLM Provider$(RESET): mistral (mistral-small-latest)"; \
+		echo "  $(BLUE)LLM Provider$(RESET): mistral (mistral-large-latest)"; \
 		echo "  $(BLUE)Embedding$(RESET): mistral (mistral-embed, 1024d)"; \
-		echo "  $(BLUE)Vision$(RESET): mistral (pixtral-large-latest)"; \
+		echo "  $(BLUE)Vision$(RESET): mistral (mistral-large-latest)"; \
 	else \
 		echo "  $(BLUE)LLM Provider$(RESET): ollama (gemma4:latest)"; \
 		echo "  $(BLUE)Embedding$(RESET): ollama (embeddinggemma:latest, 768d)"; \
@@ -796,6 +858,7 @@ backend-dev: db-wait ## Run backend in development mode with PostgreSQL (uses .e
 		EDGEQUAKE_DEFAULT_EMBEDDING_DIMENSION="$(EDGEQUAKE_DEFAULT_EMBEDDING_DIMENSION)" \
 		EDGEQUAKE_VISION_PROVIDER="$(EDGEQUAKE_VISION_PROVIDER)" \
 		EDGEQUAKE_VISION_MODEL="$(EDGEQUAKE_VISION_MODEL)" \
+		VLM_PROCESS_ENABLE="$(VLM_PROCESS_ENABLE)" \
 		OLLAMA_HOST="http://localhost:11434" \
 		OLLAMA_MODEL="gemma4:latest" \
 		OLLAMA_EMBEDDING_MODEL="embeddinggemma:latest" \
@@ -821,6 +884,7 @@ backend-db: db-wait ## Run backend with PostgreSQL storage (uses .env configurat
 		EDGEQUAKE_DEFAULT_EMBEDDING_DIMENSION="$(EDGEQUAKE_DEFAULT_EMBEDDING_DIMENSION)" \
 		EDGEQUAKE_VISION_PROVIDER="$(EDGEQUAKE_VISION_PROVIDER)" \
 		EDGEQUAKE_VISION_MODEL="$(EDGEQUAKE_VISION_MODEL)" \
+		VLM_PROCESS_ENABLE="$(VLM_PROCESS_ENABLE)" \
 		OLLAMA_HOST="http://localhost:11434" \
 		OLLAMA_MODEL="gemma4:latest" \
 		OLLAMA_EMBEDDING_MODEL="embeddinggemma:latest" \
@@ -866,6 +930,7 @@ backend-bg: sync-dev-ports db-wait ## Run backend in background with PostgreSQL 
 		echo "$(YELLOW)→ MISTRAL_API_KEY detected - using Mistral as default provider$(RESET)"; \
 		printf '%s\n' "#!/bin/bash" > /tmp/edgequake-start.sh; \
 		printf '%s\n' "set -a && . \"$(DEV_PORTS_ENV)\" && set +a" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export PORT=\"$${BACKEND_PORT:-8090}\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export DATABASE_URL=\"$$_EFF_DB_URL\"" >> /tmp/edgequake-start.sh; \
 		$(BACKEND_STABILITY_EXPORTS) \
 		printf '%s\n' "export MISTRAL_API_KEY=\"$$_MISTRAL_KEY\"" >> /tmp/edgequake-start.sh; \
@@ -878,7 +943,8 @@ backend-bg: sync-dev-ports db-wait ## Run backend in background with PostgreSQL 
 		printf '%s\n' "export EDGEQUAKE_EMBEDDING_PROVIDER=\"mistral\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export MISTRAL_EMBEDDING_MODEL=\"mistral-embed\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_VISION_PROVIDER=\"mistral\"" >> /tmp/edgequake-start.sh; \
-		printf '%s\n' "export EDGEQUAKE_VISION_MODEL=\"pixtral-large-latest\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_VISION_MODEL=\"$${EDGEQUAKE_VISION_MODEL:-mistral-small-latest}\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_LLM_MODEL=\"$${EDGEQUAKE_LLM_MODEL:-mistral-small-latest}\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_EMBEDDING_BATCH_SIZE=\"16\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_ALLOWED_PROVIDERS=\"*\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "$$_RUN" >> /tmp/edgequake-start.sh; \
@@ -888,6 +954,7 @@ backend-bg: sync-dev-ports db-wait ## Run backend in background with PostgreSQL 
 		echo "$(YELLOW)→ OPENAI_API_KEY detected - using OpenAI as default provider$(RESET)"; \
 		printf '%s\n' "#!/bin/bash" > /tmp/edgequake-start.sh; \
 		printf '%s\n' "set -a && . \"$(DEV_PORTS_ENV)\" && set +a" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export PORT=\"$${BACKEND_PORT:-8090}\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export DATABASE_URL=\"$$_EFF_DB_URL\"" >> /tmp/edgequake-start.sh; \
 		$(BACKEND_STABILITY_EXPORTS) \
 		printf '%s\n' "export OPENAI_API_KEY=\"$(OPENAI_API_KEY)\"" >> /tmp/edgequake-start.sh; \
@@ -905,6 +972,7 @@ backend-bg: sync-dev-ports db-wait ## Run backend in background with PostgreSQL 
 		echo "$(YELLOW)→ No API key detected, using Ollama provider$(RESET)"; \
 		printf '%s\n' "#!/bin/bash" > /tmp/edgequake-start.sh; \
 		printf '%s\n' "set -a && . \"$(DEV_PORTS_ENV)\" && set +a" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export PORT=\"$${BACKEND_PORT:-8090}\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export DATABASE_URL=\"$$_EFF_DB_URL\"" >> /tmp/edgequake-start.sh; \
 		$(BACKEND_STABILITY_EXPORTS) \
 		printf '%s\n' "export EDGEQUAKE_DEV_MODE=\"$(DEV_EDGEQUAKE_DEV_MODE)\"" >> /tmp/edgequake-start.sh; \
@@ -985,6 +1053,10 @@ frontend-bg: sync-dev-ports ## Start frontend development server in background
 	@printf '%s\n' "set -a && . \"$(DEV_PORTS_ENV)\" && set +a" >> /tmp/edgequake-frontend-start.sh
 	@printf '%s\n' "cd $(FRONTEND_DIR)" >> /tmp/edgequake-frontend-start.sh
 	@printf '%s\n' "if [ -f .env.local.ports ]; then set -a && . ./.env.local.ports && set +a; fi" >> /tmp/edgequake-frontend-start.sh
+	@# Never inherit backend PORT from a shared env — Next binds to PORT.
+	@printf '%s\n' "export PORT=\"$${FRONTEND_PORT:-3010}\"" >> /tmp/edgequake-frontend-start.sh
+	@printf '%s\n' "export EDGEQUAKE_API_URL=\"$${EDGEQUAKE_API_URL:-http://127.0.0.1:8090}\"" >> /tmp/edgequake-frontend-start.sh
+	@printf '%s\n' "export NEXT_PUBLIC_API_URL=\"$${NEXT_PUBLIC_API_URL:-$$EDGEQUAKE_API_URL}\"" >> /tmp/edgequake-frontend-start.sh
 	@printf '%s\n' "export NEXT_PUBLIC_AUTH_ENABLED=\"$(DEV_AUTH_ENABLED)\"" >> /tmp/edgequake-frontend-start.sh
 	@printf '%s\n' "export NEXT_PUBLIC_DISABLE_DEMO_LOGIN=\"$(DEV_DISABLE_DEMO_LOGIN)\"" >> /tmp/edgequake-frontend-start.sh
 	@printf '%s\n' "if command -v pnpm >/dev/null 2>&1; then" >> /tmp/edgequake-frontend-start.sh
@@ -2327,3 +2399,44 @@ status: ## Show status of all services
 		echo "  $(RED)Not running$(RESET)"; \
 	fi
 	@echo ""
+
+
+# ============================================================================
+# SPEC-047 — MMLongBench-Doc RAG evaluation (tools/bench047)
+# ============================================================================
+
+.PHONY: bench047-install bench047-doctor bench047-freeze-smoke bench047-smoke bench047-core bench047-full
+
+bench047-install: ## Install SPEC-047 Python harness (editable)
+	@cd tools/bench047 && pip3 install -e . -q
+	@echo "$(GREEN)✓ bench047 installed$(RESET)"
+
+bench047-doctor: bench047-install ## Check API + Mistral profile for SPEC-047
+	@set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)"; set +a; \
+	EDGEQUAKE_API_URL="$${EDGEQUAKE_API_URL:-$(BACKEND_URL)}" \
+	python3 -m bench047.cli doctor --api "$${EDGEQUAKE_API_URL:-$(BACKEND_URL)}"
+
+bench047-freeze-smoke: bench047-install ## Freeze stratified 10-doc smoke fixture
+	@python3 -m bench047.cli download-qa
+	@python3 -m bench047.cli freeze-smoke
+	@python3 -m bench047.cli download-pdfs
+
+bench047-smoke: bench047-install ## Run SPEC-047 smoke (10 real PDFs, hybrid, Mistral Small LLM+vision + embed, Postgres)
+	@set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)"; set +a; \
+	export EDGEQUAKE_API_URL="$${EDGEQUAKE_API_URL:-$(BACKEND_URL)}"; \
+	export EDGEQUAKE_LLM_PROVIDER=mistral EDGEQUAKE_LLM_MODEL=mistral-small-latest; \
+	export EDGEQUAKE_EMBEDDING_PROVIDER=mistral MISTRAL_EMBEDDING_MODEL=mistral-embed; \
+	export EDGEQUAKE_VISION_PROVIDER=mistral EDGEQUAKE_VISION_MODEL=mistral-small-latest; \
+	export BENCH047_WORKERS="$${BENCH047_WORKERS:-30}"; \
+	python3 -m bench047.cli smoke --api "$$EDGEQUAKE_API_URL" --profile P0_primary --workers "$$BENCH047_WORKERS"; \
+	echo "$(GREEN)→ SUMMARY:$(RESET) specs/047-rag-evaluation/e2e/artifacts/smoke/SUMMARY.md"
+
+bench047-core: bench047-install ## Run SPEC-047 core (~40 docs) — requires --i-accept-cost
+	@set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)"; set +a; \
+	export EDGEQUAKE_API_URL="$${EDGEQUAKE_API_URL:-$(BACKEND_URL)}"; \
+	python3 -m bench047.cli core --api "$$EDGEQUAKE_API_URL" --i-accept-cost
+
+bench047-full: bench047-install ## Run SPEC-047 full (135 docs) — requires --i-accept-cost
+	@set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)"; set +a; \
+	export EDGEQUAKE_API_URL="$${EDGEQUAKE_API_URL:-$(BACKEND_URL)}"; \
+	python3 -m bench047.cli full --api "$$EDGEQUAKE_API_URL" --i-accept-cost

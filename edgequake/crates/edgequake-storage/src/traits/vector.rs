@@ -60,6 +60,10 @@ pub struct MetadataFilter {
     /// Pushing type filtering to the SQL layer ensures the LIMIT clause operates on
     /// the correct vector type, preventing naive mode from returning 0 chunks.
     pub vector_type: Option<String>,
+    /// Filter by retrieval modality (SPEC-047 MV-32): `chart`, `figure`, `table`, `equation`.
+    ///
+    /// Matches JSONB key `modality`. When set, vectors without a matching modality are excluded.
+    pub modalities: Option<Vec<String>>,
 }
 
 impl MetadataFilter {
@@ -69,6 +73,7 @@ impl MetadataFilter {
             && self.tenant_id.is_none()
             && self.workspace_id.is_none()
             && self.vector_type.is_none()
+            && self.modalities.is_none()
     }
 
     /// Build a filter from optional tenant and workspace IDs.
@@ -84,6 +89,7 @@ impl MetadataFilter {
             tenant_id,
             workspace_id,
             vector_type: None,
+            modalities: None,
         })
     }
 
@@ -101,6 +107,7 @@ impl MetadataFilter {
             tenant_id,
             workspace_id,
             vector_type: Some(vector_type.into()),
+            modalities: None,
         })
     }
 
@@ -182,8 +189,37 @@ impl MetadataFilter {
             }
         }
 
+        if let Some(modalities) = &self.modalities {
+            if modalities.is_empty() {
+                return false;
+            }
+            let meta_mod = get_str("modality").unwrap_or("");
+            if !modalities.iter().any(|m| m == meta_mod) {
+                return false;
+            }
+        }
+
         true
     }
+}
+
+/// Default UNNEST / batch size for vector upserts (SPEC-047 P3).
+pub const DEFAULT_VECTOR_UPSERT_CHUNK: usize = 1_000;
+
+/// Soft floor/ceiling for `EDGEQUAKE_VECTOR_UPSERT_CHUNK`.
+const MIN_VECTOR_UPSERT_CHUNK: usize = 100;
+const MAX_VECTOR_UPSERT_CHUNK: usize = 10_000;
+
+/// Tunable vector upsert chunk size (Postgres UNNEST + merger progress cadence).
+///
+/// Reads `EDGEQUAKE_VECTOR_UPSERT_CHUNK` (default 1000). Larger chunks reduce
+/// round-trips; smaller chunks keep HNSW upsert latency visible in UI progress.
+pub fn vector_upsert_chunk_size() -> usize {
+    std::env::var("EDGEQUAKE_VECTOR_UPSERT_CHUNK")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(DEFAULT_VECTOR_UPSERT_CHUNK)
+        .clamp(MIN_VECTOR_UPSERT_CHUNK, MAX_VECTOR_UPSERT_CHUNK)
 }
 
 /// Vector storage interface for similarity search.
@@ -299,6 +335,24 @@ pub trait VectorStorage: Send + Sync {
         Ok(0)
     }
 
+    /// Delete all vectors belonging to a document (SPEC-047 P1a / ingest battle plan).
+    ///
+    /// Matches denormalized `document_id` column and JSONB
+    /// `document_id` / `source_document_id`, plus chunk id prefix
+    /// `{document_id}-chunk-` for legacy rows.
+    ///
+    /// # Returns
+    ///
+    /// Number of vectors deleted.
+    ///
+    /// # Default
+    ///
+    /// Returns 0 — backends that store document-scoped vectors must override.
+    async fn delete_by_document(&self, document_id: &str) -> Result<usize> {
+        let _ = document_id;
+        Ok(0)
+    }
+
     /// Query with metadata pre-filter (SPEC-007 Tier 2+).
     ///
     /// Pushes tenant/workspace/document filters to the storage layer (SQL WHERE)
@@ -386,6 +440,7 @@ mod tests {
             tenant_id: Some("t1".into()),
             workspace_id: Some("ws1".into()),
             vector_type: None,
+            modalities: None,
         };
         let json = serde_json::to_string(&mf).unwrap();
         let mf2: MetadataFilter = serde_json::from_str(&json).unwrap();
@@ -454,6 +509,18 @@ mod tests {
         let restored: MetadataFilter = serde_json::from_str(&json).unwrap();
         assert_eq!(restored.vector_type.as_deref(), Some("chunk"));
         assert_eq!(restored.tenant_id.as_deref(), Some("t1"));
+    }
+
+    #[test]
+    fn matches_modality_filter() {
+        let mf = MetadataFilter {
+            modalities: Some(vec!["chart".into(), "table".into()]),
+            ..Default::default()
+        };
+        assert!(mf.matches(&serde_json::json!({"modality": "chart"})));
+        assert!(mf.matches(&serde_json::json!({"modality": "table"})));
+        assert!(!mf.matches(&serde_json::json!({"modality": "figure"})));
+        assert!(!mf.matches(&serde_json::json!({"type": "chunk"})));
     }
 
     #[test]

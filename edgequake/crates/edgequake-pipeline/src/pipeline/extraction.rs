@@ -59,14 +59,16 @@ impl Pipeline {
             .unwrap_or_else(|| crate::progress::ModelPricing::new("gpt-4.1-nano", 0.00015, 0.0006));
         let model_pricing = Arc::new(model_pricing);
 
-        // Create futures for all chunks with progress tracking
-        let futures: Vec<_> = chunks
-            .iter()
-            .enumerate()
+        // SPEC-047 P3a: own chunk clones (O(C) data), then stream futures lazily so
+        // only `max_concurrent` async state machines exist at once (Send-safe).
+        // Do NOT stream over a borrowed chunk slice across await — that breaks
+        // TaskProcessor: Send. Own the clones first, then stream::iter(owned).
+        let owned: Vec<(usize, crate::chunker::TextChunk)> =
+            chunks.iter().cloned().enumerate().collect();
+        let results: Vec<Result<crate::extractor::ExtractionResult>> = stream::iter(owned)
             .map(|(chunk_index, chunk)| {
                 let semaphore = semaphore.clone();
                 let extractor = extractor.clone();
-                let chunk = chunk.clone();
                 let progress_callback = progress_callback.clone();
                 let cumulative_time_ms = cumulative_time_ms.clone();
                 let cumulative_input_tokens = cumulative_input_tokens.clone();
@@ -151,10 +153,6 @@ impl Pipeline {
                     Ok(result)
                 }
             })
-            .collect();
-
-        // Execute concurrently with buffer to respect semaphore
-        let results: Vec<Result<crate::extractor::ExtractionResult>> = stream::iter(futures)
             .buffer_unordered(self.config.max_concurrent_extractions)
             .collect()
             .await;
@@ -248,13 +246,13 @@ impl Pipeline {
         //                           MAP PHASE
         // ═══════════════════════════════════════════════════════════════════════
 
-        let futures: Vec<_> = chunks
-            .iter()
-            .enumerate()
+        // SPEC-047 P3a: own clones, then lazy futures (Send-safe; see extract_parallel_with_progress).
+        let owned: Vec<(usize, crate::chunker::TextChunk)> =
+            chunks.iter().cloned().enumerate().collect();
+        let outcomes: Vec<ChunkExtractionOutcome> = stream::iter(owned)
             .map(|(chunk_index, chunk)| {
                 let semaphore = semaphore.clone();
                 let extractor = extractor.clone();
-                let chunk = chunk.clone();
                 let progress_callback = progress_callback.clone();
                 let cumulative_time_ms = cumulative_time_ms.clone();
                 let cumulative_input_tokens = cumulative_input_tokens.clone();
@@ -434,13 +432,6 @@ impl Pipeline {
                     })
                 }
             })
-            .collect();
-
-        // ═══════════════════════════════════════════════════════════════════════
-        //                          REDUCE PHASE
-        // ═══════════════════════════════════════════════════════════════════════
-
-        let outcomes: Vec<ChunkExtractionOutcome> = stream::iter(futures)
             .buffer_unordered(self.config.max_concurrent_extractions)
             .collect()
             .await;

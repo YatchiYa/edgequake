@@ -378,6 +378,9 @@ mod merger_tests {
             max_sources: 20,
             use_llm_summarization: true,
             description_similarity_threshold: 0.85,
+            force_llm_summary_on_merge: 8,
+            summary_max_tokens: 1200,
+            ..Default::default()
         };
 
         assert_eq!(config.max_description_length, 8192);

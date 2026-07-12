@@ -10,13 +10,13 @@ import { DocumentSearchBar } from './document-search-bar';
 import { ProcessingStatusSummary } from './processing-status-summary';
 import type { UploadingFile } from './types';
 import { UploadProgressList } from './upload-progress-list';
-
-/**
- * OODA-30: Document toolbar section component
- * 
- * WHY: Single Responsibility Principle - isolate toolbar UI from main component.
- * Contains search, filters, status summary, dropzone, batch actions, and upload progress.
- */
+import { ActiveRunsPanel } from './active-runs-panel';
+import {
+  buildIngestionRunViews,
+  selectPrimaryRun,
+} from '@/lib/pipeline/ingestion-run-view';
+import { resolvePipelineUiState } from '@/lib/pipeline/pipeline-document-state';
+import { useMemo } from 'react';
 
 export interface DocumentToolbarSectionProps {
   // Search
@@ -92,6 +92,39 @@ export function DocumentToolbarSection({
   onUploadComplete,
   onUploadFailed,
 }: DocumentToolbarSectionProps) {
+  const runViews = useMemo(
+    () => buildIngestionRunViews(documents),
+    [documents],
+  );
+  const activeRuns = useMemo(() => [...runViews.values()], [runViews]);
+  const primaryRun = useMemo(() => selectPrimaryRun(runViews), [runViews]);
+  const pipelineUi = useMemo(
+    () =>
+      resolvePipelineUiState(
+        documents,
+        pipelineStatus ?? {
+          is_busy: Boolean(primaryRun && primaryRun.stageStatus === 'active'),
+          running_tasks: primaryRun?.stageStatus === 'active' ? 1 : 0,
+          queued_tasks: primaryRun?.stageStatus === 'pending' ? 1 : 0,
+          completed_tasks: 0,
+          failed_tasks: 0,
+          tasks: [],
+        },
+      ),
+    [documents, pipelineStatus, primaryRun],
+  );
+  // Hide chrome once every document is terminal (ignore stale pipelineStatus).
+  const showBanner = pipelineUi.showPipelineIndicator;
+  const quietDropzone =
+    pipelineUi.isActivelyProcessing ||
+    primaryRun?.stageStatus === 'active';
+  // Stuck attention path owns the narrative — hide "Active run" chrome
+  const showActiveRuns = activeRuns.length > 0 && pipelineUi.alertMode !== 'stuck';
+
+  // Client upload rows without track_id still use UploadProgressList
+  const clientOnlyUploads = uploadingFiles.filter((f) => !f.trackId);
+  const trackedUploads = uploadingFiles.filter((f) => Boolean(f.trackId));
+
   return (
     <>
       {/* Search and Filters */}
@@ -112,9 +145,18 @@ export function DocumentToolbarSection({
       </div>
 
       {/* Processing Status Summary */}
-      {pipelineStatus && (
+      {showBanner && (
         <ProcessingStatusSummary
-          pipelineStatus={pipelineStatus}
+          pipelineStatus={
+            pipelineStatus ?? {
+              is_busy: Boolean(primaryRun && primaryRun.stageStatus === 'active'),
+              running_tasks: primaryRun?.stageStatus === 'active' ? 1 : 0,
+              queued_tasks: primaryRun?.stageStatus === 'pending' ? 1 : 0,
+              completed_tasks: 0,
+              failed_tasks: 0,
+              tasks: [],
+            }
+          }
           documents={documents}
           onOpenDetails={onOpenPipelineDetails}
           onReprocessStuck={onReprocessStuckDocuments}
@@ -122,7 +164,7 @@ export function DocumentToolbarSection({
         />
       )}
 
-      {/* Compact Upload Zone */}
+      {/* Compact Upload Zone — quieter while a run is active (SPEC-048) */}
       <DocumentDropzone
         getRootProps={getRootProps}
         getInputProps={getInputProps}
@@ -130,6 +172,7 @@ export function DocumentToolbarSection({
         openFileDialog={openFileDialog}
         pdfParserBackend={pdfParserBackend}
         onPdfParserBackendChange={onPdfParserBackendChange}
+        quiet={quietDropzone}
       />
 
       {/* Bulk Actions Bar */}
@@ -140,14 +183,20 @@ export function DocumentToolbarSection({
         onClear={onClearSelection}
       />
 
-      {/* Upload Progress */}
-      <UploadProgressList
-        uploadingFiles={uploadingFiles}
-        isUploading={isUploading}
-        onRemove={onRemoveUpload}
-        onComplete={onUploadComplete}
-        onFailed={onUploadFailed}
-      />
+      {/* SPEC-048: server stepper for tracked runs; client FSM only pre-track */}
+      {showActiveRuns ? <ActiveRunsPanel runs={activeRuns} /> : null}
+      {(clientOnlyUploads.length > 0 ||
+        (trackedUploads.length > 0 && activeRuns.length === 0)) && (
+        <UploadProgressList
+          uploadingFiles={
+            activeRuns.length > 0 ? clientOnlyUploads : uploadingFiles
+          }
+          isUploading={isUploading}
+          onRemove={onRemoveUpload}
+          onComplete={onUploadComplete}
+          onFailed={onUploadFailed}
+        />
+      )}
     </>
   );
 }

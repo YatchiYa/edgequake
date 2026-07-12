@@ -189,6 +189,7 @@ export function DocumentViewerDialog({
                       content={pdfContent.markdown_content}
                       showToolbar={false}
                       className="h-full"
+                      documentId={pdfContent.document_id ?? pdfId}
                     />
                   }
                   height={window.innerHeight - 150}
@@ -260,6 +261,7 @@ export function DocumentViewerDialog({
                   showToolbar={true}
                   height={window.innerHeight - 150}
                   className="w-full"
+                  documentId={pdfContent.document_id ?? pdfId}
                 />
               )}
 

@@ -179,6 +179,28 @@ impl PipelineProgressCallback {
         self
     }
 
+    /// Report post-VLM converting work (page images, asset persist, figure analyze).
+    ///
+    /// WHY: `on_conversion_complete` fires when pdf2md finishes page OCR, but vision
+    /// still renders PNGs / persists mm-assets / may run multimodal analyze. Without
+    /// these messages the UI freezes at "24/24 pages" and looks stalled.
+    pub fn report_converting_status(&self, stage_message: impl Into<String>, stage_progress: f64) {
+        self.update_document_metadata(stage_message.into(), stage_progress.clamp(0.0, 1.0));
+    }
+
+    /// Mark PdfConversion phase complete after post-page work finishes.
+    ///
+    /// Call only when convert + page assets + optional multimodal analyze are done.
+    pub fn complete_pdf_conversion_phase(&self) {
+        let state = self.pipeline_state.clone();
+        let track_id = self.task_id.clone();
+        self.runtime_handle.spawn(async move {
+            state
+                .complete_pdf_phase(&track_id, PipelinePhase::PdfConversion)
+                .await;
+        });
+    }
+
     /// Send a ProgressEvent to WebSocket clients if broadcaster is configured.
     fn broadcast_event(&self, event: ProgressEvent) {
         if let Some(ref broadcaster) = self.progress_broadcaster {
@@ -579,28 +601,20 @@ impl ConversionProgressCallback for PipelineProgressCallback {
             error: error_msg,
         });
 
-        // BUG FIX: Update KV metadata to 100% on completion.
-        // WHY: Previously, on_page_complete's debounce might skip the last page
-        // (e.g., stuck at 35/40). This ensures the metadata always reaches 100%
-        // when extraction finishes, so users see complete progress in the UI
-        // even before the next pipeline stage begins.
+        // Page OCR finished — keep converting stage active for post-page work
+        // (PNG render, mm-asset persist, multimodal analyze). Do NOT mark
+        // PdfConversion complete here; caller finishes that via
+        // `complete_pdf_conversion_phase` after those steps.
+        //
+        // Message avoids "complete"/"extracted" wording that previously caused
+        // the WebUI to prematurely show a Chunking badge.
         self.update_document_metadata(
             format!(
-                "PDF conversion complete: {}/{} pages extracted",
+                "Pages converted ({}/{}) — preparing page images…",
                 success_count, total_pages
             ),
-            1.0,
+            0.92,
         );
-
-        // OODA-13: Complete the PdfConversion phase in persistent storage
-        // OODA-04: Use captured runtime handle to spawn from sync context
-        let state = self.pipeline_state.clone();
-        let track_id = self.task_id.clone();
-        self.runtime_handle.spawn(async move {
-            state
-                .complete_pdf_phase(&track_id, PipelinePhase::PdfConversion)
-                .await;
-        });
     }
 }
 
@@ -855,6 +869,8 @@ mod tests {
         callback.on_page_complete(4, 5, 1000);
         callback.on_page_complete(5, 5, 1000);
         callback.on_conversion_complete(5, 5);
+        // Phase completion is deferred until post-OCR asset work finishes.
+        callback.complete_pdf_conversion_phase();
 
         // Wait for spawned tasks to complete
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1292,6 +1308,8 @@ mod tests {
         callback.on_page_complete(1, 3, 100);
         // Skip page 2 (simulate debounce skipping it)
         callback.on_conversion_complete(3, 3);
+        // PdfConversion phase completes only after post-OCR work (caller).
+        callback.complete_pdf_conversion_phase();
 
         // Wait for spawned tasks
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;

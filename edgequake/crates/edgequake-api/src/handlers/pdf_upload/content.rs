@@ -20,6 +20,9 @@ use edgequake_storage::PdfProcessingStatus;
 pub struct PdfContentResponse {
     /// PDF ID.
     pub pdf_id: String,
+    /// Linked document ID (mm-assets / markdown viewer scope).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub document_id: Option<String>,
     /// Original filename.
     pub filename: String,
     /// File size in bytes.
@@ -180,6 +183,7 @@ pub async fn get_pdf_content(
 
     Ok(Json(PdfContentResponse {
         pdf_id: pdf.pdf_id.to_string(),
+        document_id: pdf.document_id.map(|id| id.to_string()),
         filename: pdf.filename,
         file_size_bytes: pdf.file_size_bytes,
         content_type: pdf.content_type,

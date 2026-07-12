@@ -26,6 +26,46 @@ pub struct ProcessingResult {
     pub lineage: Option<crate::lineage::DocumentLineage>,
 }
 
+impl ProcessingResult {
+    /// Drop all embedding vectors (chunks, entities, relationships).
+    ///
+    /// WHY (SPEC-047 P5): Postgres jsonb rejects values ≥ ~256 MiB. Mega-doc
+    /// checkpoints with 7k+ entity embeddings blow that limit and leave no
+    /// durable resume. Embeddings are regenerable; LLM extraction is not.
+    /// Returns the number of vectors stripped.
+    pub fn strip_embeddings(&mut self) -> usize {
+        let mut stripped = 0usize;
+        for chunk in &mut self.chunks {
+            if chunk.embedding.take().is_some() {
+                stripped += 1;
+            }
+        }
+        for extraction in &mut self.extractions {
+            for entity in &mut extraction.entities {
+                if entity.embedding.take().is_some() {
+                    stripped += 1;
+                }
+            }
+            for relationship in &mut extraction.relationships {
+                if relationship.embedding.take().is_some() {
+                    stripped += 1;
+                }
+            }
+        }
+        stripped
+    }
+
+    /// True when chunk embeddings are missing (slim-checkpoint resume signal).
+    ///
+    /// WHY only chunks: `strip_embeddings` clears chunk vectors too, and
+    /// `enable_chunk_embeddings` stays on for every ingest profile. Entity/rel
+    /// vectors may be intentionally absent under `chunk_only` — do not treat
+    /// that as a re-embed requirement.
+    pub fn needs_reembed(&self) -> bool {
+        !self.chunks.is_empty() && self.chunks.iter().any(|c| c.embedding.is_none())
+    }
+}
+
 /// Statistics from pipeline processing.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ProcessingStats {

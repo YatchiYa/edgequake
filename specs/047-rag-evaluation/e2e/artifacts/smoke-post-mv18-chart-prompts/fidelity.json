@@ -1,0 +1,141 @@
+{
+  "stage": "smoke-post-mv18-chart-prompts",
+  "workspace_id": "be4c40a9-252d-48a9-a57b-d42ea9f4ef30",
+  "document_id": "019f50d1-f8ea-76ee-a5cc-e4bb63d4c2c4",
+  "doc_id": "05-03-18-political-release.pdf",
+  "tickets": [
+    "EQ-047-MV-18",
+    "EQ-047-MV-19"
+  ],
+  "aggregate": {
+    "n": 6,
+    "answer_in_evidence_rate": 0.5,
+    "answer_in_document_rate": 0.5
+  },
+  "chart_aggregate": {
+    "n": 6,
+    "answer_in_evidence_rate": 0.5,
+    "answer_in_document_rate": 0.5
+  },
+  "n_chart": 6,
+  "samples": [
+    {
+      "gold_evidence_pages": [
+        3,
+        4
+      ],
+      "answer_in_evidence_pages": false,
+      "answer_in_document": false,
+      "pages_with_answer": [],
+      "evidence_pages_present_in_markdown": [
+        3,
+        4
+      ],
+      "n_pages_in_markdown": 17,
+      "evidence_sources": "['Pure-text (Plain-text)', 'Chart']"
+    },
+    {
+      "gold_evidence_pages": [
+        5
+      ],
+      "answer_in_evidence_pages": false,
+      "answer_in_document": false,
+      "pages_with_answer": [],
+      "evidence_pages_present_in_markdown": [
+        5
+      ],
+      "n_pages_in_markdown": 17,
+      "evidence_sources": "['Chart']"
+    },
+    {
+      "gold_evidence_pages": [
+        11,
+        13
+      ],
+      "answer_in_evidence_pages": true,
+      "answer_in_document": true,
+      "pages_with_answer": [
+        3,
+        5,
+        8,
+        10,
+        13
+      ],
+      "evidence_pages_present_in_markdown": [
+        11,
+        13
+      ],
+      "n_pages_in_markdown": 17,
+      "evidence_sources": "['Chart', 'Pure-text (Plain-text)']"
+    },
+    {
+      "gold_evidence_pages": [
+        11,
+        14
+      ],
+      "answer_in_evidence_pages": true,
+      "answer_in_document": true,
+      "pages_with_answer": [
+        14
+      ],
+      "evidence_pages_present_in_markdown": [
+        11,
+        14
+      ],
+      "n_pages_in_markdown": 17,
+      "evidence_sources": "['Chart', 'Pure-text (Plain-text)']"
+    },
+    {
+      "gold_evidence_pages": [
+        8,
+        10
+      ],
+      "answer_in_evidence_pages": true,
+      "answer_in_document": true,
+      "pages_with_answer": [
+        1,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        16,
+        17
+      ],
+      "evidence_pages_present_in_markdown": [
+        8,
+        10
+      ],
+      "n_pages_in_markdown": 17,
+      "evidence_sources": "['Pure-text (Plain-text)', 'Chart']"
+    },
+    {
+      "gold_evidence_pages": [
+        12,
+        17
+      ],
+      "answer_in_evidence_pages": false,
+      "answer_in_document": false,
+      "pages_with_answer": [],
+      "evidence_pages_present_in_markdown": [
+        12,
+        17
+      ],
+      "n_pages_in_markdown": 17,
+      "evidence_sources": "['Table', 'Chart']"
+    }
+  ],
+  "mm_probe": {
+    "type_chart_blocks": 10,
+    "key_values_blocks": 10,
+    "data_table_blocks": 9,
+    "multimodal_success": 17
+  }
+}

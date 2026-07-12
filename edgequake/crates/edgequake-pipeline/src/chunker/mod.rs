@@ -38,6 +38,7 @@
 //! - [`text_utils`]: String splitting, UTF-8 boundary, sentence detection utilities
 //! - `strategies`: Chunking strategy implementations (token, character, sentence, paragraph)
 
+mod atomic_blocks;
 mod markdown_chunking;
 mod page_aware;
 mod recursive;
@@ -62,6 +63,9 @@ pub use types::{
 pub use text_utils::calculate_line_numbers;
 
 // Re-export strategies
+pub use atomic_blocks::{
+    is_mm_chunk_header, split_preserving_atomic_regions, AtomicKind, ContentRegion,
+};
 pub use markdown_chunking::MarkdownChunking;
 pub use page_aware::{split_into_page_segments, PageAwareChunking};
 pub use recursive::{default_recursive_separators, RecursiveCharacterChunking};

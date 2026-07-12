@@ -25,10 +25,12 @@ import { useSelectedWorkspace, useTenantStore } from '@/stores/use-tenant-store'
 import type { Document } from '@/types';
 
 import { useRouter } from 'next/navigation';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { nextDocumentSortState } from '@/lib/documents/document-sort';
 import { resolvePipelineUiState } from '@/lib/pipeline/pipeline-document-state';
+import { buildIngestionRunViews } from '@/lib/pipeline/ingestion-run-view';
 
 import { useBulkSelection } from '@/hooks/use-bulk-selection';
 import { useDocumentDropzone } from '@/hooks/use-document-dropzone';
@@ -51,7 +53,6 @@ import { DuplicateUploadDialog } from './duplicate-upload-dialog';
 import { LargePdfAdmissionDialog } from './large-pdf-admission-dialog';
 import { BulkReprocessDialog, type BulkReprocessChoice } from './bulk-reprocess-dialog';
 import { ReprocessDialog, type ReprocessChoice } from './reprocess-dialog';
-import { isProcessingStatus } from './status-badge';
 import {
   filterLargePdfFiles,
   type LargePdfAdmissionPreview,
@@ -114,6 +115,15 @@ export function DocumentManager() {
     sortDirection, setSortDirection,
   } = useDocumentPreferences();
 
+  const handleColumnSort = useCallback(
+    (field: typeof sortField) => {
+      const next = nextDocumentSortState(sortField, sortDirection, field);
+      setSortField(next.field);
+      setSortDirection(next.direction);
+    },
+    [sortField, sortDirection, setSortField, setSortDirection],
+  );
+
   // Pipeline status dialog state
   const [pipelineDialogOpen, setPipelineDialogOpen] = useState(false);
 
@@ -125,6 +135,7 @@ export function DocumentManager() {
     removeUploadingFile,
     handleUploadComplete,
     handleUploadFailed,
+    pruneTerminalUploads,
     pendingDuplicates,
     resolvePendingDuplicates,
   } = useFileUpload({
@@ -221,10 +232,24 @@ export function DocumentManager() {
     serverStatusCounts: data?.status_counts,
   });
 
+  // SPEC-048: clear upload chrome when documents reach terminal state
+  useEffect(() => {
+    pruneTerminalUploads(documents ?? []);
+  }, [documents, pruneTerminalUploads]);
+
   const pipelineUi = useMemo(
     () => resolvePipelineUiState(documents, pipelineStatus),
     [documents, pipelineStatus],
   );
+
+  // Only mute siblings while a run is actively working (not merely queued)
+  const workingRunDocumentIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const run of buildIngestionRunViews(documents).values()) {
+      if (run.stageStatus === 'active') ids.add(run.documentId);
+    }
+    return ids;
+  }, [documents]);
 
   // OODA-16: Bulk selection extracted to useBulkSelection hook
   const {
@@ -273,16 +298,11 @@ export function DocumentManager() {
     t,
   });
 
-  // OODA-22: Dynamic page title with document count
-  // WHY: Use document-level processing count (not task count) so the title
-  // reflects what users see in the table. Tasks can be "processing" while
-  // their documents are already "failed" or "completed" (e.g., after restart).
-  const processingDocCount = documents?.filter(
-    (d: Document) => d.status && isProcessingStatus(d.status)
-  ).length ?? 0;
+  // OODA-22 / SPEC-048 DEF-06: Working vs Queued in tab title
   useDocumentTitle({
     totalCount,
-    processingCount: processingDocCount,
+    processingCount: pipelineUi.activeDocCount,
+    queuedCount: pipelineUi.waitingDocCount,
   });
 
   if (isError) {
@@ -300,6 +320,7 @@ export function DocumentManager() {
             failedCount={statusCounts.failed + statusCounts.cancelled}
             showPipelineIndicator={pipelineUi.showPipelineIndicator}
             pipelineAlertMode={pipelineUi.alertMode}
+            activeDocCount={pipelineUi.activeDocCount}
             pipelineWaitingOnly={pipelineUi.isQueuedOnly}
             pipelineDialogOpen={pipelineDialogOpen}
             onPipelineDialogChange={setPipelineDialogOpen}
@@ -363,6 +384,7 @@ export function DocumentManager() {
         searchQuery={searchQuery}
         statusFilter={statusFilter}
         isAllSelected={isAllSelected}
+        activeRunDocumentIds={workingRunDocumentIds}
         onSelectAll={handleSelectAll}
         onSelectOne={handleSelectOne}
         onRowClick={handleDocumentClick}
@@ -386,6 +408,9 @@ export function DocumentManager() {
           setStatusFilter('all');
           setSearchQuery('');
         }}
+        sortField={sortField}
+        sortDirection={sortDirection}
+        onSort={handleColumnSort}
       />
       </div>
 

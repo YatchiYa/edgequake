@@ -1,0 +1,45 @@
+{
+  "per": {
+    "2311.16502v3.pdf": {
+      "sec": 617.4,
+      "status": "completed",
+      "ents": 7236
+    },
+    "measuringsuccessonfacebooktwitterlinkedin-160317142140_95.pdf": {
+      "sec": 77.4,
+      "status": "completed",
+      "ents": 700
+    },
+    "indonesiamobilemarketresearch-ag-150106055934-conversion-gate02_95.pdf": {
+      "sec": 178.1,
+      "status": "completed",
+      "ents": 1910
+    },
+    "germanwingsdigitalcrisisanalysis-150403064828-conversion-gate01_95.pdf": {
+      "sec": 77.9,
+      "status": "completed",
+      "ents": 736
+    },
+    "e79deb02a0c0e87511080836c5d4347b.pdf": {
+      "sec": 139.0,
+      "status": "completed",
+      "ents": 1168
+    },
+    "afe620b9beac86c1027b96d31d396407.pdf": {
+      "sec": 177.5,
+      "status": "completed",
+      "ents": 1862
+    },
+    "PIP_Seniors-and-Tech-Use_040314.pdf": {
+      "sec": 167.2,
+      "status": "completed",
+      "ents": 1749
+    },
+    "05-03-18-political-release.pdf": {
+      "sec": 114.4,
+      "status": "completed",
+      "ents": 997
+    }
+  },
+  "total_sec": 1548.9
+}

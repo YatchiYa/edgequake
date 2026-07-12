@@ -12,6 +12,9 @@ use crate::keywords::QueryIntent;
 pub const META_ARM_LOCAL_MS: &str = "arm_local_ms";
 pub const META_ARM_GLOBAL_MS: &str = "arm_global_ms";
 pub const META_ARM_NAIVE_MS: &str = "arm_naive_ms";
+pub const META_ARM_LOCAL_CHUNKS: &str = "arm_local_chunks";
+pub const META_ARM_GLOBAL_CHUNKS: &str = "arm_global_chunks";
+pub const META_ARM_NAIVE_CHUNKS: &str = "arm_naive_chunks";
 pub const META_ARMS_RUN: &str = "arms_run";
 pub const META_ARMS_GATED: &str = "arms_gated";
 
@@ -66,13 +69,33 @@ pub fn mix_arm_gate_enabled() -> bool {
 
 /// Intent → preferred arm mask when gating is on (SPEC-046 OPS-P1.3).
 ///
-/// Even when the client forces `mode=mix|hybrid`, L1 factual queries should
-/// not pay the full 3-arm tax unless the operator disables the gate.
+/// Used by **Mix** (production cost path). Even when the client forces `mode=mix`,
+/// L1 factual queries should not pay the full 3-arm tax unless the operator
+/// disables the gate (`EDGEQUAKE_MIX_ARM_GATE=false`).
+///
+/// **Hybrid** uses [`intent_arm_mask_hybrid`] instead (020 B2).
 pub fn intent_arm_mask(intent: QueryIntent) -> (bool, bool, bool) {
     match intent {
-        QueryIntent::Factual => (false, false, true), // naive only
+        QueryIntent::Factual => (false, false, true), // naive only (Mix cost)
         QueryIntent::Relational => (true, true, false), // local + global
         QueryIntent::Exploratory => (false, true, false), // global
+        QueryIntent::Comparative | QueryIntent::Procedural => (true, true, true),
+    }
+}
+
+/// Hybrid arm mask (SPEC-047 / 020 B2).
+///
+/// Law: requesting `mode=hybrid` means multi-arm fusion. Collapsing Factual→naive-only
+/// made hybrid a lie on MMLongBench (≈96% `naive_only_rate`). Keep Mix aggressive;
+/// Hybrid always retains the naive chunk arm plus at least one graph arm when gated.
+pub fn intent_arm_mask_hybrid(intent: QueryIntent) -> (bool, bool, bool) {
+    match intent {
+        // Local + naive: entity neighborhood + page chunks (skip global community tax).
+        QueryIntent::Factual => (true, false, true),
+        // Relational: keep graph arms and add naive for page-grounded evidence.
+        QueryIntent::Relational => (true, true, true),
+        // Exploratory: global + naive (page evidence still required for Acc).
+        QueryIntent::Exploratory => (false, true, true),
         QueryIntent::Comparative | QueryIntent::Procedural => (true, true, true),
     }
 }
@@ -155,10 +178,11 @@ pub fn resolve_arm_plan(
 
 /// Hybrid arm plan: equal weights among surviving arms (intent gate only).
 ///
-/// Hybrid does not take Mix weight overrides — gating is pure intent / env.
+/// Hybrid does not take Mix weight overrides — gating uses [`intent_arm_mask_hybrid`]
+/// so Factual does not collapse to naive-only (020 B2).
 pub fn resolve_hybrid_arm_plan(intent: QueryIntent, gate_enabled: bool) -> ArmPlan {
     let (ml, mg, mn) = if gate_enabled {
-        intent_arm_mask(intent)
+        intent_arm_mask_hybrid(intent)
     } else {
         (true, true, true)
     };
@@ -189,15 +213,46 @@ mod tests {
     }
 
     #[test]
+    fn hybrid_factual_keeps_local_and_naive_b2() {
+        let plan = resolve_hybrid_arm_plan(QueryIntent::Factual, true);
+        assert!(
+            plan.run_local && !plan.run_global && plan.run_naive,
+            "020 B2: hybrid Factual must not collapse to naive-only; got {plan:?}"
+        );
+        assert!((plan.w_local - 0.5).abs() < 1e-5);
+        assert!((plan.w_naive - 0.5).abs() < 1e-5);
+    }
+
+    #[test]
+    fn hybrid_mask_differs_from_mix_on_factual() {
+        assert_eq!(intent_arm_mask(QueryIntent::Factual), (false, false, true));
+        assert_eq!(
+            intent_arm_mask_hybrid(QueryIntent::Factual),
+            (true, false, true)
+        );
+    }
+
+    #[test]
     fn relational_gate_skips_naive() {
         let plan = resolve_arm_plan(&cfg(), None, QueryIntent::Relational, true);
         assert!(plan.run_local && plan.run_global && !plan.run_naive);
     }
 
     #[test]
+    fn hybrid_relational_includes_naive() {
+        let plan = resolve_hybrid_arm_plan(QueryIntent::Relational, true);
+        assert!(plan.run_local && plan.run_global && plan.run_naive);
+        assert!((plan.w_local - 1.0 / 3.0).abs() < 1e-5);
+        assert!((plan.w_global - 1.0 / 3.0).abs() < 1e-5);
+        assert!((plan.w_naive - 1.0 / 3.0).abs() < 1e-5);
+    }
+
+    #[test]
     fn gate_off_runs_all_arms() {
         let plan = resolve_arm_plan(&cfg(), None, QueryIntent::Factual, false);
         assert!(plan.run_local && plan.run_global && plan.run_naive);
+        let h = resolve_hybrid_arm_plan(QueryIntent::Factual, false);
+        assert!(h.run_local && h.run_global && h.run_naive);
     }
 
     #[test]
@@ -231,13 +286,18 @@ mod tests {
             (true, true, true)
         );
         assert_eq!(intent_arm_mask(QueryIntent::Procedural), (true, true, true));
+        assert_eq!(
+            intent_arm_mask_hybrid(QueryIntent::Exploratory),
+            (false, true, true)
+        );
     }
 
     #[test]
     fn hybrid_plan_equal_weights_among_survivors() {
-        let plan = resolve_hybrid_arm_plan(QueryIntent::Relational, true);
-        assert!(plan.run_local && plan.run_global && !plan.run_naive);
+        // Factual hybrid: local+naive survivors → equal 0.5
+        let plan = resolve_hybrid_arm_plan(QueryIntent::Factual, true);
+        assert!(plan.run_local && !plan.run_global && plan.run_naive);
         assert!((plan.w_local - 0.5).abs() < 1e-5);
-        assert!((plan.w_global - 0.5).abs() < 1e-5);
+        assert!((plan.w_naive - 0.5).abs() < 1e-5);
     }
 }

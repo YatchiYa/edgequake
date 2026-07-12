@@ -91,8 +91,16 @@ use axum::{
 use crate::handlers;
 use crate::state::AppState;
 
-/// Create the API router.
+/// Create the API router and spawn SPEC-048 pipeline→WS progress bridge.
 pub fn create_router(state: AppState) -> Router {
+    crate::services::pipeline_ws_bridge::spawn_pipeline_ws_bridge(
+        state.tasks.pipeline_state.clone(),
+        state.tasks.progress_broadcaster.clone(),
+    );
+    create_router_inner(state)
+}
+
+fn create_router_inner(state: AppState) -> Router {
     let api_v1 = api_v1_routes()
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
@@ -423,6 +431,22 @@ fn api_v1_routes() -> Router<AppState> {
             "/documents/{document_id}/download/markdown",
             get(handlers::download_document_markdown),
         )
+        .route(
+            "/documents/{document_id}/assets/include-from-pdf",
+            post(handlers::include_document_assets_from_pdf),
+        )
+        .route(
+            "/documents/{document_id}/assets",
+            get(handlers::list_document_assets),
+        )
+        .route(
+            "/documents/{document_id}/assets/{asset_id}",
+            get(handlers::download_document_asset_by_id),
+        )
+        .route(
+            "/documents/{document_id}/mm-assets/{*asset_path}",
+            get(handlers::download_document_mm_asset),
+        )
         // Document by ID - comes last because {document_id} matches any path segment
         .route("/documents/{document_id}", get(handlers::get_document))
         .route(
@@ -549,9 +573,19 @@ fn api_v1_routes() -> Router<AppState> {
         .route("/tasks/{track_id}/retry", post(handlers::retry_task))
         // Pipeline (Phase 3)
         .route("/pipeline/status", get(handlers::get_pipeline_status))
+        .route("/pipeline/activity", get(handlers::get_pipeline_activity))
         .route("/pipeline/cancel", post(handlers::cancel_pipeline))
         // OODA-20: Queue metrics for Objective B (Workspace-Level Task Queue Visibility)
         .route("/pipeline/queue-metrics", get(handlers::get_queue_metrics))
+        // SPEC-048: ingestion progress (DEF-01)
+        .route(
+            "/ingestion/{track_id}/progress",
+            get(handlers::get_ingestion_progress),
+        )
+        .route(
+            "/ingestion/progress",
+            post(handlers::post_ingestion_progress_batch),
+        )
         // Cost Tracking (Phase 5)
         .route("/pipeline/costs/pricing", get(handlers::get_model_pricing))
         .route("/pipeline/costs/estimate", post(handlers::estimate_cost))

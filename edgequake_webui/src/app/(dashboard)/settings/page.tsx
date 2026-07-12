@@ -32,8 +32,10 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { RebuildEmbeddingsButton } from '@/components/workspace/rebuild-embeddings-button';
+import { QUERY_MODE_META } from '@/lib/query/query-mode-meta';
 import { useQueryStore } from '@/stores/use-query-store';
 import { useSettingsStore } from '@/stores/use-settings-store';
+import type { QueryMode } from '@/types';
 import { Database, Download, Globe, Monitor, Moon, Palette, Sun, Upload } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useRef } from 'react';
@@ -364,18 +366,29 @@ export default function SettingsPage() {
             </div>
             <Select
               value={querySettings.mode}
-              onValueChange={(mode: 'local' | 'global' | 'hybrid' | 'naive') => 
+              onValueChange={(mode: QueryMode) =>
                 handleQuerySettingsChange('mode', mode)
               }
             >
-              <SelectTrigger className="w-[120px]">
+              <SelectTrigger className="w-[160px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="local">Local</SelectItem>
-                <SelectItem value="global">Global</SelectItem>
-                <SelectItem value="hybrid">Hybrid</SelectItem>
-                <SelectItem value="naive">Naive</SelectItem>
+                {QUERY_MODE_META.map((mode) => (
+                  <SelectItem
+                    key={mode.id}
+                    value={mode.id}
+                    title={t(`query.modes.${mode.id}Description`, mode.description)}
+                  >
+                    {t(`query.modes.${mode.id}`, mode.label)}
+                    {mode.recommended
+                      ? t('query.modes.recommendedSuffix', ' · Recommended')
+                      : ''}
+                    <span className="ml-1 text-[10px] text-muted-foreground">
+                      ({mode.apiName})
+                    </span>
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

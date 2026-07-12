@@ -126,6 +126,31 @@ export async function getTrackProgress(
   return api.get<TrackProgressResponse>(`/ingestion/${trackId}/progress`);
 }
 
+/** SPEC-048 PipelineActivity — Busy SSOT */
+export interface PipelineActivityResponse {
+  busy: boolean;
+  working: Array<{
+    document_id: string;
+    filename: string;
+    stage: string;
+    track_id?: string;
+    message?: string;
+  }>;
+  queued: Array<{
+    document_id: string;
+    filename: string;
+    stage: string;
+    track_id?: string;
+    message?: string;
+  }>;
+  tasks: Array<{ id: string; kind: string; document_id?: string }>;
+  updated_at: string;
+}
+
+export async function getPipelineActivity(): Promise<PipelineActivityResponse> {
+  return api.get<PipelineActivityResponse>("/pipeline/activity");
+}
+
 /**
  * Get progress for multiple tracks at once.
  */

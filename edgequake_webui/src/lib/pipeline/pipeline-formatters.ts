@@ -3,6 +3,7 @@ import {
   normalizeStatus,
 } from "@/components/documents/status-badge";
 import type { TaskResponse } from "@/types";
+import { isWaitingStatus } from "./pipeline-document-state";
 
 /** Pipeline phase counts derived from document statuses (SPEC-017 UI-P3-004). */
 export interface PipelinePhaseCounts {
@@ -27,10 +28,11 @@ export function countDocumentsByPhase(
   return statuses.reduce<PipelinePhaseCounts>((acc, raw) => {
     const status = normalizeStatus(raw);
 
-    if (isProcessingStatus(status)) {
-      acc.processing += 1;
-    } else if (status === "pending") {
+    // Waiting (pending/queued) is not "processing" for phase counts.
+    if (isWaitingStatus(status) || status === "pending") {
       acc.pending += 1;
+    } else if (isProcessingStatus(status)) {
+      acc.processing += 1;
     } else if (status === "completed" || status === "indexed") {
       acc.completed += 1;
     } else if (status === "failed" || status === "cancelled") {

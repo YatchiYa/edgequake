@@ -16,6 +16,10 @@ use std::time::Instant;
 /// When `run` is true, the arm future executes inside a `rag.retrieval` span
 /// labeled with `arm` / `mode`. Outcome flags (`empty_result`) are recorded
 /// after the arm completes.
+///
+/// WHY `Box::pin`: Mix/Hybrid `tokio::join!` three arms. Without boxing, the
+/// combined Future state machine (local+global+naive retrieval) overflows the
+/// default tokio worker stack in debug builds (SPEC-047 smoke crash).
 pub(super) async fn run_arm_timed<F, Fut>(
     run: bool,
     arm: &'static str,
@@ -30,7 +34,7 @@ where
 {
     let start = Instant::now();
     let ctx = if run {
-        with_rag_retrieval_span(
+        Box::pin(with_rag_retrieval_span(
             RagRetrievalAttrs {
                 data_source_id: Some("edgequake"),
                 top_k: Some(top_k),
@@ -47,7 +51,7 @@ where
                 );
                 Ok::<QueryContext, crate::error::QueryError>(ctx)
             },
-        )
+        ))
         .await?
     } else {
         QueryContext::new()

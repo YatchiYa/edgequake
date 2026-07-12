@@ -37,7 +37,7 @@ export function buildPdfUploadFormData(
   }
   if (options?.process_options) {
     formData.append("process_options", options.process_options);
-  } else if (options?.analyze_inline_images) {
+  } else if (options?.analyze_inline_images ?? true) {
     formData.append("process_options", "i");
   }
 

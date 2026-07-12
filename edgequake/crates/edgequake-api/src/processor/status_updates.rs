@@ -304,6 +304,11 @@ impl DocumentTaskProcessor {
 
         upsert_metadata_with_wsdoc_index(&self.kv_storage, &metadata_key, updated_json).await?;
 
+        // SPEC-047 P1: mirror non-terminal status into relational documents so
+        // soft-resume / indexing is visible (do not wait for finalize stats).
+        self.touch_relational_document_status(document_id, status)
+            .await;
+
         Ok(())
     }
 
@@ -673,6 +678,27 @@ impl DocumentTaskProcessor {
     ) {
         // No-op: postgres feature disabled → no relational `documents` table.
     }
+
+    /// Best-effort status-only sync to relational `documents` (SPEC-047 P1).
+    #[cfg(feature = "postgres")]
+    async fn touch_relational_document_status(&self, document_id: &str, status: &str) {
+        let Some(ref pdf_storage) = self.pdf_storage else {
+            return;
+        };
+        let Ok(doc_uuid) = uuid::Uuid::parse_str(document_id) else {
+            return;
+        };
+        if let Err(e) = pdf_storage.touch_document_status(&doc_uuid, status).await {
+            tracing::warn!(
+                document_id = document_id,
+                error = %e,
+                "SPEC-047 P1: touch_document_status failed (non-fatal)"
+            );
+        }
+    }
+
+    #[cfg(not(feature = "postgres"))]
+    async fn touch_relational_document_status(&self, _document_id: &str, _status: &str) {}
 }
 
 #[cfg(test)]

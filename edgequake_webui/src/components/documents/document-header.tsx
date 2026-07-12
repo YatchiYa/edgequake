@@ -38,6 +38,8 @@ export interface DocumentHeaderProps {
   showPipelineIndicator: boolean;
   /** Ingestion alert mode for header shortcut styling */
   pipelineAlertMode?: 'working' | 'queued' | 'stuck' | 'mixed';
+  /** Active working document count (for Working · N pill) */
+  activeDocCount?: number;
   /** @deprecated Use pipelineAlertMode */
   pipelineWaitingOnly: boolean;
   /** Whether pipeline dialog is open */
@@ -62,6 +64,7 @@ export function DocumentHeader({
   failedCount,
   showPipelineIndicator,
   pipelineAlertMode,
+  activeDocCount,
   pipelineWaitingOnly,
   pipelineDialogOpen,
   onPipelineDialogChange,
@@ -75,17 +78,21 @@ export function DocumentHeader({
 
   const pipelineButtonClass =
     alertMode === 'stuck'
-      ? 'gap-1 text-rose-600 border-rose-300'
+      ? 'gap-1 text-rose-600 border-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40'
       : alertMode === 'queued'
-        ? 'gap-1 text-amber-600 border-amber-300'
-        : 'gap-1 text-orange-500';
+        ? 'gap-1 text-amber-700 border-amber-300 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/40'
+        : 'gap-1 text-sky-700 border-sky-300 hover:bg-sky-50 dark:text-sky-300 dark:border-sky-800 dark:hover:bg-sky-950/40';
 
   const pipelineButtonLabel =
     alertMode === 'stuck'
       ? t('pipeline.stuckBadge', 'Needs attention')
       : alertMode === 'queued'
         ? t('pipeline.queuedBadge', 'Queued')
-        : t('pipeline.busy');
+        : activeDocCount && activeDocCount > 0
+          ? t('pipeline.workingCount', 'Working · {{count}}', {
+              count: activeDocCount,
+            })
+          : t('pipeline.busy', 'Working');
 
   return (
     <>

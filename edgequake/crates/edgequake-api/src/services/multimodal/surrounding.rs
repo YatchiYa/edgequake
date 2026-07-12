@@ -82,15 +82,19 @@ pub fn load_chunk_separators() -> Vec<String> {
 }
 
 static MM_TAG_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?s)<drawing\b[^>]*/>|<table\b[^>]*>.*?</table>|<equation\b[^>]*>.*?</equation>")
-        .expect("mm tag regex")
+    // Quoted attrs may contain `>` (e.g. HTML in caption) — match like inline_images.
+    Regex::new(
+        r#"(?s)<drawing\b(?:[^>"']|"[^"]*"|'[^']*')*\s*/>|<table\b[^>]*>.*?</table>|<equation\b[^>]*>.*?</equation>"#,
+    )
+    .expect("mm tag regex")
 });
 
 static CITE_REFID_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"\srefid\s*=\s*"[^"]*""#).expect("cite refid regex"));
 
-static DRAWING_INTERNAL_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"(?s)<drawing\b([^>]*)/>"#).expect("drawing regex"));
+static DRAWING_INTERNAL_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?s)<drawing\b((?:[^>"']|"[^"]*"|'[^']*')*)\s*/>"#).expect("drawing regex")
+});
 
 static TABLE_INTERNAL_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?s)<table\b([^>]*)>(.*?)</table>"#).expect("table internal regex")

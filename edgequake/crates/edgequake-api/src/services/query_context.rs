@@ -18,7 +18,7 @@ use crate::handlers::context_types::{
 };
 use crate::handlers::query::resolve_query_workspace;
 use crate::handlers::query_types::{
-    MixWeightRequest, QueryResponse as LegacyQueryResponse, QueryStats, SourceReference,
+    MixWeightRequest, QueryResponse as LegacyQueryResponse, SourceReference,
 };
 use crate::middleware::TenantContext;
 use crate::providers::{LlmResolutionRequest, WorkspaceProviderResolver};
@@ -479,22 +479,6 @@ pub fn build_legacy_query_response(
     include_subgraph: bool,
     rerank_top_k: Option<usize>,
 ) -> LegacyQueryResponse {
-    let tokens_used = if result.stats.generated_tokens > 0 {
-        Some(result.stats.generated_tokens)
-    } else {
-        None
-    };
-
-    let tokens_per_second =
-        if result.stats.generation_time_ms > 0 && result.stats.generated_tokens > 0 {
-            Some(
-                (result.stats.generated_tokens as f32) / (result.stats.generation_time_ms as f32)
-                    * 1000.0,
-            )
-        } else {
-            None
-        };
-
     let subgraph = build_query_response_subgraph(&result, include_subgraph, rerank_top_k, reranked);
 
     LegacyQueryResponse {
@@ -502,20 +486,12 @@ pub fn build_legacy_query_response(
         mode: result.mode.to_string(),
         sources,
         subgraph,
-        stats: QueryStats {
-            embedding_time_ms: result.stats.embedding_time_ms,
-            retrieval_time_ms: result.stats.retrieval_time_ms,
-            generation_time_ms: result.stats.generation_time_ms,
-            total_time_ms: result.stats.total_time_ms,
-            sources_retrieved: result.context.chunks.len()
-                + result.context.entities.len()
-                + result.context.relationships.len(),
-            rerank_time_ms: result.stats.rerank_time_ms,
-            tokens_used,
-            tokens_per_second,
+        stats: crate::services::query_stats_mapper::from_engine_stats(
+            &result.stats,
+            &result.context,
             llm_provider,
             llm_model,
-        },
+        ),
         conversation_id,
         reranked,
     }

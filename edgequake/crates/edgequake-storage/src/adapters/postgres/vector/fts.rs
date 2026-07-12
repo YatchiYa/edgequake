@@ -122,6 +122,11 @@ impl PgVectorStorage {
                 StorageError::Database(format!("Failed to bind vector_type: {}", e))
             })?;
         }
+        if let Some(modalities) = &mf.modalities {
+            let mods: Vec<String> = modalities.clone();
+            args.add(&mods)
+                .map_err(|e| StorageError::Database(format!("Failed to bind modalities: {}", e)))?;
+        }
 
         args.add(top_k as i32)
             .map_err(|e| StorageError::Database(format!("Failed to bind top_k: {}", e)))?;

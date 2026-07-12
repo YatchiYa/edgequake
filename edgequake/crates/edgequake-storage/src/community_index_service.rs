@@ -133,6 +133,17 @@ async fn run_community_refresh(
     if !community_features_enabled() {
         return;
     }
+    // SPEC-047 P4: size gate (DRY with backfill) — ingest path previously unguarded.
+    let node_count = graph.node_count_fast().await.unwrap_or(0);
+    let threshold = crate::community_persist::community_auto_max_nodes();
+    if node_count > threshold {
+        tracing::warn!(
+            node_count,
+            threshold,
+            "Skipping community index refresh — graph too large"
+        );
+        return;
+    }
     match detect_and_persist_communities(graph, &CommunityConfig::default()).await {
         Ok(result) => {
             tracing::debug!(

@@ -21,10 +21,11 @@ import {
     VirtualizedMarkdownContent,
 } from '@/components/query/markdown/VirtualizedMarkdownContent';
 import { Button } from '@/components/ui/button';
+import { rewriteMarkdownMmAssetUrls } from '@/lib/api/edgequake/documents';
 import { downloadFile, sanitizeFilename } from '@/lib/export-conversation';
 import { cn } from '@/lib/utils';
 import { Check, Copy, Download, FileText } from 'lucide-react';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -41,6 +42,8 @@ interface MarkdownViewerProps {
   showLineNumbers?: boolean;
   /** Title displayed in toolbar */
   title?: string;
+  /** When set, rewrite `![…](assets/…)` to document mm-asset API URLs (MV-28). */
+  documentId?: string | null;
 }
 
 /**
@@ -56,9 +59,14 @@ export function MarkdownViewer({
   showToolbar = true,
   showLineNumbers = false,
   title = 'Extracted Markdown',
+  documentId = null,
 }: MarkdownViewerProps) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
+  const displayContent = useMemo(
+    () => (content ? rewriteMarkdownMmAssetUrls(content, documentId) : content),
+    [content, documentId],
+  );
 
   const handleCopy = useCallback(async () => {
     if (!content) return;
@@ -145,11 +153,11 @@ export function MarkdownViewer({
         )}
         style={{ height: height ? `${height}px` : 'auto' }}
       >
-        {content.length >= VIRTUALIZATION_CHAR_THRESHOLD ? (
+        {displayContent!.length >= VIRTUALIZATION_CHAR_THRESHOLD ? (
           // WHY: Large markdown (e.g. 1 000-page PDF) freezes the browser if
           // tokenised all at once. VirtualizedMarkdownContent splits the raw
           // string into ~25 KB chunks — only visible chunks are tokenised.
-          <VirtualizedMarkdownContent content={content}>
+          <VirtualizedMarkdownContent content={displayContent!}>
             {(pageContent) => (
               <div className={cn(
                 'p-4 md:p-6',
@@ -178,7 +186,7 @@ export function MarkdownViewer({
             showLineNumbers && 'markdown-with-line-numbers'
           )}>
             <StreamingMarkdownRenderer
-              content={content}
+              content={displayContent!}
               isStreaming={false}
             />
           </div>

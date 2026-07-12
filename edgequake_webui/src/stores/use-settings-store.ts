@@ -40,7 +40,7 @@ const defaultGraphSettings: GraphSettings = {
 };
 
 const defaultQuerySettings: QuerySettings = {
-  mode: "hybrid" as QueryMode,
+  mode: "mix" as QueryMode,
   topK: 10,
   maxTokens: 2048,
   temperature: 0.7,

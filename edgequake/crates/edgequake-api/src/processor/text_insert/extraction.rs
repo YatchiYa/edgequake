@@ -43,12 +43,20 @@ impl DocumentTaskProcessor {
             .and_then(|m| m.get("force_fresh_extraction"))
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
+        let merge_only = data
+            .metadata
+            .as_ref()
+            .and_then(|m| m.get("merge_only"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         if force_fresh_extraction {
             info!(
                 document_id = %document_id,
-                "Fresh extraction requested — clearing KG pipeline checkpoint"
+                "Fresh extraction requested — clearing KG pipeline checkpoint + extraction snapshot"
             );
             super::pipeline_checkpoint::clear_pipeline_checkpoint(&self.kv_storage, &document_id)
+                .await;
+            super::pipeline_checkpoint::clear_extraction_snapshot(&self.kv_storage, &document_id)
                 .await;
         }
 
@@ -62,228 +70,263 @@ impl DocumentTaskProcessor {
         )
         .await;
 
-        let (mut result, resumed_from_checkpoint) = if let Some(checkpointed) = checkpoint_result {
-            info!(
-                document_id = %document_id,
-                chunks = checkpointed.chunks.len(),
-                entities = checkpointed.stats.entity_count,
-                "CHECKPOINT-RESUME: Skipping LLM extraction — loaded from checkpoint"
-            );
-            (checkpointed, true)
-        } else {
-            // OODA-PERF-02: Build embed progress callback for KV metadata updates.
-            // WHY: generate_all_embeddings runs AFTER chunk 141/141 extraction completes
-            // (status = "99%"). For a large document it embeds thousands of entity /
-            // relationship texts via the API — with zero UI feedback. This fire-and-forget
-            // callback updates document metadata so the UI shows progress instead of
-            // freezing at "99%" for minutes.
-            let doc_id_for_embed = document_id.clone();
-            let kv_for_embed = Arc::clone(&self.kv_storage);
-            let embed_progress_callback: EmbedProgressCallback =
-                Arc::new(move |update: EmbedProgressUpdate| {
-                    let doc_id_clone = doc_id_for_embed.clone();
-                    let kv_clone = Arc::clone(&kv_for_embed);
-                    let stage = update.stage;
-                    let current = update.current;
-                    let total = update.total;
-
-                    // Fire-and-forget metadata update — same pattern as chunk callback
-                    tokio::spawn(async move {
-                        let pct = if total == 0 {
-                            100u32
-                        } else {
-                            ((current as f64 / total as f64) * 100.0).round() as u32
-                        };
-                        let label = match stage {
-                            "chunks" => "chunk",
-                            "entities" => "entit",
-                            "relationships" => "relationship",
-                            other => other,
-                        };
-                        let msg = if current == 0 {
-                            format!("Embedding {}ies: starting ({} total)", label, total)
-                        } else {
-                            format!("Embedding {}ies: {}/{} ({}%)", label, current, total, pct)
-                        };
-                        let _ = crate::services::patch_document_metadata(
-                            &kv_clone,
-                            &doc_id_clone,
-                            |updated| {
-                                updated.insert("current_stage".to_string(), json!("embedding"));
-                                updated.insert("stage_message".to_string(), json!(msg));
-                                updated.insert(
-                                    "stage_progress".to_string(),
-                                    json!(0.99 + (0.01 * pct as f64 / 100.0)),
-                                );
-                                updated.insert(
-                                    "updated_at".to_string(),
-                                    json!(chrono::Utc::now().to_rfc3339()),
-                                );
-                            },
-                        )
-                        .await;
-                    });
-                });
-
-            // No valid checkpoint — run the full pipeline
-            let fresh_result = match pipeline
-                .process_with_resilience_cancellable(
-                    &document_id,
-                    &processed_text,
-                    Some(chunk_progress_callback.clone()),
-                    Some(cancel_token.clone()),
-                    Some(embed_progress_callback),
-                )
-                .await
-            {
-                Ok(result) => {
-                    // SPEC-003: Log partial success if some chunks failed
-                    if result.stats.failed_chunks > 0 {
-                        warn!(
-                            document_id = %document_id,
-                            successful_chunks = result.stats.successful_chunks,
-                            failed_chunks = result.stats.failed_chunks,
-                            total_chunks = result.stats.chunk_count,
-                            error.code = "EXTRACTION_PARTIAL_FAILURE",
-                            error.source = "pipeline",
-                            "Document processed with partial success - some chunks failed extraction"
-                        );
-                        edgequake_observability::ErrorEvent::log_domain_warn(
-                            "pipeline",
-                            "partial_extraction",
-                            "Some chunks failed extraction",
-                            serde_json::json!({
-                                "document_id": document_id,
-                                "successful_chunks": result.stats.successful_chunks,
-                                "failed_chunks": result.stats.failed_chunks,
-                                "total_chunks": result.stats.chunk_count,
-                            }),
-                        );
-
-                        // Emit WebSocket events for failed chunks
-                        if let Some(ref chunk_errors) = result.stats.chunk_errors {
-                            for error_info in chunk_errors {
-                                self.pipeline_state.emit_chunk_failure(
-                                    document_id.clone(),
-                                    task.track_id.clone(),
-                                    error_info.chunk_index as u32,
-                                    result.stats.chunk_count as u32,
-                                    error_info.error_message.clone(),
-                                    error_info.was_timeout,
-                                    error_info.retry_attempts,
-                                );
-                            }
-
-                            // SPEC-046 OPS-P0.4: persist to failed_chunks for retry API
-                            #[cfg(feature = "postgres")]
-                            if let Some(ref pool) = self.pg_pool {
-                                let ws =
-                                    workspace_id.unwrap_or("00000000-0000-0000-0000-000000000000");
-                                crate::handlers::persist_chunk_failures_from_stats(
-                                    pool,
-                                    &document_id,
-                                    ws,
-                                    tenant_id.as_deref(),
-                                    chunk_errors,
-                                )
-                                .await;
-                            }
-                        }
-                    }
-                    result
-                }
-                Err(e) => {
-                    // FIX-3: Comprehensive error logging with context
-                    let error_msg = format!("Pipeline processing failed: {}", e);
-                    error!(
-                        document_id = %document_id,
-                        workspace_id = ?workspace_id,
-                        tenant_id = ?tenant_id,
-                        content_length = text_content.len(),
-                        error = %e,
-                        error.source = "pipeline",
-                        error.code = "PIPELINE_PROCESSING_FAILED",
-                        "CRITICAL: Pipeline processing failed - document marked as failed"
-                    );
-                    edgequake_observability::record_document_processing(
-                        "text_insert",
-                        "pipeline",
-                        "failure",
-                        0.0,
-                    );
-
-                    // Update document status to failed with detailed error
-                    self.update_document_status(&document_id, "failed", Some(&error_msg))
-                        .await?;
-
-                    if let (Some(hash), Some(ws)) = (
-                        data.metadata
-                            .as_ref()
-                            .and_then(|m| m.get("content_hash"))
-                            .and_then(|v| v.as_str()),
-                        data.metadata
-                            .as_ref()
-                            .and_then(|m| m.get("workspace_id"))
-                            .and_then(|v| v.as_str()),
-                    ) {
-                        let _ = crate::services::rollback_staging(
-                            &self.kv_storage,
-                            &document_id,
-                            ws,
-                            hash,
-                        )
-                        .await;
-                    }
-
-                    self.pipeline_state
-                        .document_failed(&document_id, &error_msg)
-                        .await;
-
-                    return Err(edgequake_tasks::TaskError::Process(error_msg));
-                }
-            };
-
-            // CHECKPOINT-SAVE: Persist pipeline results so a crash during
-            // storage won't force re-running the expensive LLM extraction.
-            if let Err(e) = super::pipeline_checkpoint::save_pipeline_checkpoint(
+        // SPEC-047 P7e: durable snapshot after successful persist (survives checkpoint clear).
+        let snapshot_result = if checkpoint_result.is_none() && !force_fresh_extraction {
+            super::pipeline_checkpoint::load_extraction_snapshot(
                 &self.kv_storage,
                 &document_id,
-                &fresh_result,
                 &data.workspace_id,
                 &provider_lineage.extraction_provider,
                 &provider_lineage.embedding_provider,
                 &processed_text,
             )
             .await
-            {
-                warn!(
-                    document_id = %document_id,
-                    error = %e,
-                    "Failed to save pipeline checkpoint — processing continues without checkpoint"
-                );
-            }
-
-            (fresh_result, false)
+        } else {
+            None
         };
 
-        // Phase 4k: inject mm entity + association edges when sidecar chunks persisted.
-        if let Some(mm_chunks) =
-            crate::services::load_mm_chunks(self.kv_storage.as_ref(), &document_id).await
-        {
-            let metas: Vec<edgequake_pipeline::MmChunkSidecarMeta> = mm_chunks
-                .iter()
-                .filter_map(|c| serde_json::from_value(serde_json::to_value(c).ok()?).ok())
-                .collect();
-            if !metas.is_empty() {
-                let file_path = data.file_source.as_str();
-                edgequake_pipeline::inject_modality_relations(
-                    &mut result.extractions,
-                    &result.chunks,
-                    &metas,
-                    file_path,
+        let reuse_plan = super::pipeline_checkpoint::plan_extraction_reuse(
+            checkpoint_result.is_some(),
+            snapshot_result.is_some(),
+            force_fresh_extraction,
+            merge_only,
+        );
+
+        // SPEC-047 P0: announce extracting *before* LLM work (not after embed).
+        self.update_document_status(&document_id, "extracting", None)
+            .await?;
+
+        let embed_progress_callback = self.build_embed_progress_callback(&document_id);
+
+        let (mut result, resumed_from_checkpoint) = match reuse_plan {
+            super::pipeline_checkpoint::ExtractionReusePlan::MergeOnlyMissing => {
+                let error_msg = "merge_only requested but no extraction snapshot/checkpoint found \
+                     — run entities reprocess once to create a snapshot, or disable merge_only"
+                    .to_string();
+                error!(
+                    document_id = %document_id,
+                    "P7e: merge_only missing durable extractions"
                 );
+                self.update_document_status(&document_id, "failed", Some(&error_msg))
+                    .await?;
+                self.pipeline_state
+                    .document_failed(&document_id, &error_msg)
+                    .await;
+                return Err(edgequake_tasks::TaskError::Process(error_msg));
+            }
+            super::pipeline_checkpoint::ExtractionReusePlan::Reuse(kind) => {
+                let reused = match kind {
+                    super::pipeline_checkpoint::ExtractionReuseKind::CrashCheckpoint => {
+                        checkpoint_result.expect("plan said checkpoint present")
+                    }
+                    super::pipeline_checkpoint::ExtractionReuseKind::DurableSnapshot => {
+                        snapshot_result.expect("plan said snapshot present")
+                    }
+                };
+                info!(
+                    document_id = %document_id,
+                    chunks = reused.chunks.len(),
+                    entities = reused.stats.entity_count,
+                    reuse = ?kind,
+                    needs_reembed = reused.needs_reembed(),
+                    "P7e/CHECKPOINT-RESUME: Skipping LLM extraction — loaded stored extractions"
+                );
+                (reused, true)
+            }
+            super::pipeline_checkpoint::ExtractionReusePlan::Fresh => {
+                // No valid checkpoint — run the full pipeline
+                let fresh_result = match pipeline
+                    .process_with_resilience_cancellable(
+                        &document_id,
+                        &processed_text,
+                        Some(chunk_progress_callback.clone()),
+                        Some(cancel_token.clone()),
+                        Some(embed_progress_callback.clone()),
+                    )
+                    .await
+                {
+                    Ok(result) => {
+                        // SPEC-003: Log partial success if some chunks failed
+                        if result.stats.failed_chunks > 0 {
+                            warn!(
+                                document_id = %document_id,
+                                successful_chunks = result.stats.successful_chunks,
+                                failed_chunks = result.stats.failed_chunks,
+                                total_chunks = result.stats.chunk_count,
+                                error.code = "EXTRACTION_PARTIAL_FAILURE",
+                                error.source = "pipeline",
+                                "Document processed with partial success - some chunks failed extraction"
+                            );
+                            edgequake_observability::ErrorEvent::log_domain_warn(
+                                "pipeline",
+                                "partial_extraction",
+                                "Some chunks failed extraction",
+                                serde_json::json!({
+                                    "document_id": document_id,
+                                    "successful_chunks": result.stats.successful_chunks,
+                                    "failed_chunks": result.stats.failed_chunks,
+                                    "total_chunks": result.stats.chunk_count,
+                                }),
+                            );
+
+                            // Emit WebSocket events for failed chunks
+                            if let Some(ref chunk_errors) = result.stats.chunk_errors {
+                                for error_info in chunk_errors {
+                                    self.pipeline_state.emit_chunk_failure(
+                                        document_id.clone(),
+                                        task.track_id.clone(),
+                                        error_info.chunk_index as u32,
+                                        result.stats.chunk_count as u32,
+                                        error_info.error_message.clone(),
+                                        error_info.was_timeout,
+                                        error_info.retry_attempts,
+                                    );
+                                }
+
+                                // SPEC-046 OPS-P0.4: persist to failed_chunks for retry API
+                                #[cfg(feature = "postgres")]
+                                if let Some(ref pool) = self.pg_pool {
+                                    let ws = workspace_id
+                                        .unwrap_or("00000000-0000-0000-0000-000000000000");
+                                    crate::handlers::persist_chunk_failures_from_stats(
+                                        pool,
+                                        &document_id,
+                                        ws,
+                                        tenant_id.as_deref(),
+                                        chunk_errors,
+                                    )
+                                    .await;
+                                }
+                            }
+                        }
+                        result
+                    }
+                    Err(e) => {
+                        // FIX-3: Comprehensive error logging with context
+                        let error_msg = format!("Pipeline processing failed: {}", e);
+                        error!(
+                            document_id = %document_id,
+                            workspace_id = ?workspace_id,
+                            tenant_id = ?tenant_id,
+                            content_length = text_content.len(),
+                            error = %e,
+                            error.source = "pipeline",
+                            error.code = "PIPELINE_PROCESSING_FAILED",
+                            "CRITICAL: Pipeline processing failed - document marked as failed"
+                        );
+                        edgequake_observability::record_document_processing(
+                            "text_insert",
+                            "pipeline",
+                            "failure",
+                            0.0,
+                        );
+
+                        // Update document status to failed with detailed error
+                        self.update_document_status(&document_id, "failed", Some(&error_msg))
+                            .await?;
+
+                        if let (Some(hash), Some(ws)) = (
+                            data.metadata
+                                .as_ref()
+                                .and_then(|m| m.get("content_hash"))
+                                .and_then(|v| v.as_str()),
+                            data.metadata
+                                .as_ref()
+                                .and_then(|m| m.get("workspace_id"))
+                                .and_then(|v| v.as_str()),
+                        ) {
+                            let _ = crate::services::rollback_staging(
+                                &self.kv_storage,
+                                &document_id,
+                                ws,
+                                hash,
+                            )
+                            .await;
+                        }
+
+                        self.pipeline_state
+                            .document_failed(&document_id, &error_msg)
+                            .await;
+
+                        return Err(edgequake_tasks::TaskError::Process(error_msg));
+                    }
+                };
+
+                // CHECKPOINT-SAVE: Persist pipeline results so a crash during
+                // storage won't force re-running the expensive LLM extraction.
+                // Embeddings are stripped (SPEC-047 P5) — re-embedded on resume.
+                if let Err(e) = super::pipeline_checkpoint::save_pipeline_checkpoint(
+                    &self.kv_storage,
+                    &document_id,
+                    &fresh_result,
+                    &data.workspace_id,
+                    &provider_lineage.extraction_provider,
+                    &provider_lineage.embedding_provider,
+                    &processed_text,
+                )
+                .await
+                {
+                    warn!(
+                        document_id = %document_id,
+                        error = %e,
+                        "Failed to save pipeline checkpoint — processing continues without checkpoint"
+                    );
+                }
+
+                (fresh_result, false)
+            }
+        };
+
+        // SPEC-047 P5: slim checkpoints omit embeddings — re-embed before persist.
+        if result.needs_reembed() {
+            info!(
+                document_id = %document_id,
+                resumed = resumed_from_checkpoint,
+                "Re-generating embeddings (slim checkpoint or incomplete embed)"
+            );
+            self.update_document_status(&document_id, "embedding", None)
+                .await?;
+            if let Err(e) = pipeline
+                .ensure_embeddings(&mut result, Some(&embed_progress_callback))
+                .await
+            {
+                let error_msg = format!("Embedding regeneration failed: {e}");
+                error!(
+                    document_id = %document_id,
+                    error = %e,
+                    "CRITICAL: ensure_embeddings failed after checkpoint resume"
+                );
+                self.update_document_status(&document_id, "failed", Some(&error_msg))
+                    .await?;
+                self.pipeline_state
+                    .document_failed(&document_id, &error_msg)
+                    .await;
+                return Err(edgequake_tasks::TaskError::Process(error_msg));
             }
         }
+
+        // Phase 4k: inject mm entity + association edges when sidecar chunks persisted.
+        let mm_metas: Vec<edgequake_pipeline::MmChunkSidecarMeta> = if let Some(mm_chunks) =
+            crate::services::load_mm_chunks(self.kv_storage.as_ref(), &document_id).await
+        {
+            mm_chunks
+                .iter()
+                .filter_map(|c| serde_json::from_value(serde_json::to_value(c).ok()?).ok())
+                .collect()
+        } else {
+            Vec::new()
+        };
+
+        if !mm_metas.is_empty() {
+            let file_path = data.file_source.as_str();
+            edgequake_pipeline::inject_modality_relations(
+                &mut result.extractions,
+                &result.chunks,
+                &mm_metas,
+                file_path,
+            );
+        }
+        edgequake_pipeline::stamp_retrieval_modality_on_chunks(&mut result.chunks, &mm_metas);
 
         // Log checkpoint usage metrics
         if resumed_from_checkpoint {
@@ -293,8 +336,8 @@ impl DocumentTaskProcessor {
             );
         }
 
-        // Update task progress - embedding
-        task.update_progress("embedding".to_string(), 4, 30);
+        // Update task progress — extract+embed done; persist owns indexing.
+        task.update_progress("extraction_complete".to_string(), 4, 30);
 
         // ── CANCELLATION GATE: after extraction, before embedding storage ──
         self.check_cancelled(&cancel_token, "post-extraction", &document_id)
@@ -308,10 +351,8 @@ impl DocumentTaskProcessor {
             ))
             .await;
 
-        // OODA-02: Update status to "extracting" - LLM entity extraction in progress
-        // WHY: This is often the longest stage, users need visibility
-        self.update_document_status(&document_id, "extracting", None)
-            .await?;
+        // SPEC-047 P0: do NOT set status back to "extracting" here — extract+embed
+        // already finished. Persist will move to "indexing".
 
         Ok(TextInsertExtracted {
             prepared: TextInsertPrepared {
@@ -329,6 +370,47 @@ impl DocumentTaskProcessor {
                 chunk_progress_callback,
             },
             result,
+        })
+    }
+
+    /// Fire-and-forget KV progress while embedding sub-batches run.
+    fn build_embed_progress_callback(&self, document_id: &str) -> EmbedProgressCallback {
+        let doc_id_for_embed = document_id.to_string();
+        let kv_for_embed = Arc::clone(&self.kv_storage);
+        Arc::new(move |update: EmbedProgressUpdate| {
+            let doc_id_clone = doc_id_for_embed.clone();
+            let kv_clone = Arc::clone(&kv_for_embed);
+            let stage = update.stage;
+            let current = update.current;
+            let total = update.total;
+
+            tokio::spawn(async move {
+                let pct = if total == 0 {
+                    100u32
+                } else {
+                    ((current as f64 / total as f64) * 100.0).round() as u32
+                };
+                let label = stage;
+                let msg = if current == 0 {
+                    format!("Embedding {label}: starting ({total} total)")
+                } else {
+                    format!("Embedding {label}: {current}/{total} ({pct}%)")
+                };
+                let _ =
+                    crate::services::patch_document_metadata(&kv_clone, &doc_id_clone, |updated| {
+                        updated.insert("current_stage".to_string(), json!("embedding"));
+                        updated.insert("stage_message".to_string(), json!(msg));
+                        updated.insert(
+                            "stage_progress".to_string(),
+                            json!(0.99 + (0.01 * pct as f64 / 100.0)),
+                        );
+                        updated.insert(
+                            "updated_at".to_string(),
+                            json!(chrono::Utc::now().to_rfc3339()),
+                        );
+                    })
+                    .await;
+            });
         })
     }
 }

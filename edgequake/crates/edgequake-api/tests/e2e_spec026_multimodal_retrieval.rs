@@ -14,26 +14,6 @@ use tower::ServiceExt;
 
 const VLM_RETRIEVAL_JSON: &str = r#"{"name":"zurich_lab_photo","type":"Photo","description":"EdgeQuake multimodal retrieval fixture: research laboratory in Zurich with distinctive phrase MM-RETRIEVAL-026."}"#;
 
-async fn doc_chunks_contain(
-    kv: &std::sync::Arc<dyn edgequake_storage::traits::KVStorage>,
-    doc_id: &str,
-    needle: &str,
-) -> bool {
-    let prefix = kv_keys::doc_chunk_prefix(doc_id);
-    let Ok(keys) = kv.keys_with_prefix(&prefix).await else {
-        return false;
-    };
-    for key in keys {
-        if let Ok(Some(val)) = kv.get_by_id(&key).await {
-            let content = val.get("content").and_then(|v| v.as_str()).unwrap_or("");
-            if content.contains(needle) {
-                return true;
-            }
-        }
-    }
-    false
-}
-
 async fn chunk_key_contains(
     kv: &std::sync::Arc<dyn edgequake_storage::traits::KVStorage>,
     chunk_key: &str,
@@ -110,9 +90,13 @@ async fn vlm_image_mm_chunks_indexed_and_local_query_hits_content() {
     );
 
     assert!(
-        doc_chunks_contain(&workers.kv_storage, &doc_id, "MM-RETRIEVAL-026").await
-            || doc_chunks_contain(&workers.kv_storage, &doc_id, "[Image Name]zurich_lab_photo")
-                .await,
+        common::doc_chunks_contain(&workers.kv_storage, &doc_id, "MM-RETRIEVAL-026").await
+            || common::doc_chunks_contain(
+                &workers.kv_storage,
+                &doc_id,
+                "[Image Name]zurich_lab_photo",
+            )
+            .await,
         "chunk KV should contain VLM body or LightRAG mm-chunk label"
     );
 

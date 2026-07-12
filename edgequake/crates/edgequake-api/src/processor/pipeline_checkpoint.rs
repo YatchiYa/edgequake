@@ -54,9 +54,19 @@ use tracing::{debug, info, warn};
 /// Suffix for checkpoint KV keys (`{document_id}-pipeline-checkpoint`).
 pub const CHECKPOINT_KEY_SUFFIX: &str = "-pipeline-checkpoint";
 
-/// Maximum age of a checkpoint in seconds before it's considered stale.
-/// Default: 24 hours. Checkpoints older than this are cleaned up on startup.
+/// SPEC-047 P7e: durable extraction snapshot after successful persist.
+/// Survives checkpoint clear so soft-reprocess / merge-only can skip LLM extract.
+pub const EXTRACTION_SNAPSHOT_SUFFIX: &str = "-extraction-snapshot";
+
+/// Maximum age of a crash-resume checkpoint in seconds (24h).
 const CHECKPOINT_MAX_AGE_SECS: u64 = 86_400;
+
+/// SPEC-047 P7e: durable snapshots live longer (7d) — soft-reprocess of completed docs.
+const SNAPSHOT_MAX_AGE_SECS: u64 = 7 * 86_400;
+
+/// Soft size guard before Postgres jsonb (~256 MiB hard limit / JENTRY_OFFLENMASK).
+/// Stay well under so array-element totals and encoding overhead do not trip 54000.
+const CHECKPOINT_MAX_SERIALIZED_BYTES: usize = 200_000_000;
 
 /// Wrapper around `ProcessingResult` with metadata for checkpoint validation.
 ///
@@ -83,6 +93,11 @@ pub struct PipelineCheckpoint {
 
     /// Content hash (first 64 bytes of source text SHA-256) for integrity.
     pub content_hash: String,
+
+    /// When true, embeddings were omitted to stay under jsonb size limits
+    /// (SPEC-047 P5). Caller must re-run `Pipeline::ensure_embeddings` on resume.
+    #[serde(default)]
+    pub embeddings_omitted: bool,
 }
 
 impl PipelineCheckpoint {
@@ -102,6 +117,61 @@ impl PipelineCheckpoint {
 /// Build the KV storage key for a document's pipeline checkpoint.
 fn checkpoint_key(document_id: &str) -> String {
     format!("{document_id}{CHECKPOINT_KEY_SUFFIX}")
+}
+
+/// Build the KV key for a durable extraction snapshot (SPEC-047 P7e).
+fn extraction_snapshot_key(document_id: &str) -> String {
+    format!("{document_id}{EXTRACTION_SNAPSHOT_SUFFIX}")
+}
+
+/// Where reused extractions came from (SPEC-047 P7e).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExtractionReuseKind {
+    /// Mid-flight crash checkpoint (cleared on success).
+    CrashCheckpoint,
+    /// Durable post-success snapshot (survives finalize).
+    DurableSnapshot,
+}
+
+/// Pure plan for extract-vs-reuse (SOLID: no I/O).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExtractionReusePlan {
+    /// Load from checkpoint or snapshot (caller picks which exists).
+    Reuse(ExtractionReuseKind),
+    /// Run LLM extraction.
+    Fresh,
+    /// `merge_only` requested but nothing reusable — fail closed.
+    MergeOnlyMissing,
+}
+
+/// Decide extract reuse without I/O (SPEC-047 P7e SSOT).
+///
+/// Priority: force_fresh → Fresh (unless merge_only → Missing);
+/// crash checkpoint → Durable snapshot → Fresh / Missing.
+pub fn plan_extraction_reuse(
+    has_checkpoint: bool,
+    has_snapshot: bool,
+    force_fresh: bool,
+    merge_only: bool,
+) -> ExtractionReusePlan {
+    if force_fresh {
+        return if merge_only {
+            ExtractionReusePlan::MergeOnlyMissing
+        } else {
+            ExtractionReusePlan::Fresh
+        };
+    }
+    if has_checkpoint {
+        return ExtractionReusePlan::Reuse(ExtractionReuseKind::CrashCheckpoint);
+    }
+    if has_snapshot {
+        return ExtractionReusePlan::Reuse(ExtractionReuseKind::DurableSnapshot);
+    }
+    if merge_only {
+        ExtractionReusePlan::MergeOnlyMissing
+    } else {
+        ExtractionReusePlan::Fresh
+    }
 }
 
 /// Save a pipeline checkpoint to KV storage after extraction completes.
@@ -124,8 +194,14 @@ pub async fn save_pipeline_checkpoint(
     embedding_provider: &str,
     source_text: &str,
 ) -> Result<(), String> {
+    // SPEC-047 P5: always strip embeddings — regenerable; LLM extract is not.
+    // Mega-docs (7k+ ents) otherwise exceed Postgres jsonb ~256 MiB and leave
+    // no durable resume after crash during merge.
+    let mut slim_result = result.clone();
+    let stripped = slim_result.strip_embeddings();
+
     let checkpoint = PipelineCheckpoint {
-        result: result.clone(),
+        result: slim_result,
         workspace_id: workspace_id.to_string(),
         extraction_provider: extraction_provider.to_string(),
         embedding_provider: embedding_provider.to_string(),
@@ -134,11 +210,21 @@ pub async fn save_pipeline_checkpoint(
             .unwrap_or_default()
             .as_secs(),
         content_hash: PipelineCheckpoint::compute_content_hash(source_text),
+        embeddings_omitted: true,
     };
 
     let key = checkpoint_key(document_id);
     let value = serde_json::to_value(&checkpoint)
         .map_err(|e| format!("Failed to serialize pipeline checkpoint for {document_id}: {e}"))?;
+
+    let approx_bytes = serde_json::to_vec(&value).map(|b| b.len()).unwrap_or(0);
+    if approx_bytes > CHECKPOINT_MAX_SERIALIZED_BYTES {
+        return Err(format!(
+            "Pipeline checkpoint for {document_id} still too large after stripping embeddings \
+             ({approx_bytes} bytes > {CHECKPOINT_MAX_SERIALIZED_BYTES}). \
+             Resume will re-run extraction if this save is skipped."
+        ));
+    }
 
     kv.upsert(&[(key.clone(), value)])
         .await
@@ -149,7 +235,9 @@ pub async fn save_pipeline_checkpoint(
         chunks = result.chunks.len(),
         entities = result.stats.entity_count,
         relationships = result.stats.relationship_count,
-        "Saved pipeline checkpoint (extraction result persisted for resume)"
+        embeddings_stripped = stripped,
+        checkpoint_bytes = approx_bytes,
+        "Saved pipeline checkpoint (extraction result persisted for resume; embeddings omitted)"
     );
 
     Ok(())
@@ -173,103 +261,18 @@ pub async fn load_pipeline_checkpoint(
     embedding_provider: &str,
     source_text: &str,
 ) -> Option<ProcessingResult> {
-    let key = checkpoint_key(document_id);
-
-    let value = match kv.get_by_id(&key).await {
-        Ok(Some(v)) => v,
-        Ok(None) => {
-            debug!(document_id = %document_id, "No pipeline checkpoint found");
-            return None;
-        }
-        Err(e) => {
-            warn!(
-                document_id = %document_id,
-                error = %e,
-                "Failed to read pipeline checkpoint — reprocessing from scratch"
-            );
-            return None;
-        }
-    };
-
-    let checkpoint: PipelineCheckpoint = match serde_json::from_value(value) {
-        Ok(cp) => cp,
-        Err(e) => {
-            warn!(
-                document_id = %document_id,
-                error = %e,
-                "Corrupt pipeline checkpoint (deserialization failed) — clearing and reprocessing"
-            );
-            // Best-effort cleanup of corrupt checkpoint
-            let _ = kv.delete(&[key]).await;
-            return None;
-        }
-    };
-
-    // Validate workspace match
-    if checkpoint.workspace_id != workspace_id {
-        info!(
-            document_id = %document_id,
-            checkpoint_workspace = %checkpoint.workspace_id,
-            current_workspace = %workspace_id,
-            "Pipeline checkpoint workspace mismatch — reprocessing"
-        );
-        let _ = kv.delete(&[key]).await;
-        return None;
-    }
-
-    // Validate provider match (prevents stale embeddings from wrong model)
-    if checkpoint.extraction_provider != extraction_provider
-        || checkpoint.embedding_provider != embedding_provider
-    {
-        info!(
-            document_id = %document_id,
-            checkpoint_extraction = %checkpoint.extraction_provider,
-            current_extraction = %extraction_provider,
-            checkpoint_embedding = %checkpoint.embedding_provider,
-            current_embedding = %embedding_provider,
-            "Pipeline checkpoint provider mismatch — reprocessing with current providers"
-        );
-        let _ = kv.delete(&[key]).await;
-        return None;
-    }
-
-    // Validate content hash (prevents using checkpoint for changed content)
-    let current_hash = PipelineCheckpoint::compute_content_hash(source_text);
-    if checkpoint.content_hash != current_hash {
-        info!(
-            document_id = %document_id,
-            "Pipeline checkpoint content hash mismatch — source text changed, reprocessing"
-        );
-        let _ = kv.delete(&[key]).await;
-        return None;
-    }
-
-    // Validate age
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let age = now.saturating_sub(checkpoint.created_at_epoch);
-    if age > CHECKPOINT_MAX_AGE_SECS {
-        info!(
-            document_id = %document_id,
-            age_hours = age / 3600,
-            max_age_hours = CHECKPOINT_MAX_AGE_SECS / 3600,
-            "Pipeline checkpoint too old — reprocessing"
-        );
-        let _ = kv.delete(&[key]).await;
-        return None;
-    }
-
-    info!(
-        document_id = %document_id,
-        chunks = checkpoint.result.chunks.len(),
-        entities = checkpoint.result.stats.entity_count,
-        age_secs = age,
-        "Resuming from pipeline checkpoint — skipping LLM extraction"
-    );
-
-    Some(checkpoint.result)
+    load_validated_checkpoint_blob(
+        kv,
+        &checkpoint_key(document_id),
+        document_id,
+        workspace_id,
+        extraction_provider,
+        embedding_provider,
+        source_text,
+        CHECKPOINT_MAX_AGE_SECS,
+        "pipeline checkpoint",
+    )
+    .await
 }
 
 /// Clear a pipeline checkpoint after successful processing.
@@ -285,6 +288,204 @@ pub async fn clear_pipeline_checkpoint(kv: &Arc<dyn KVStorage>, document_id: &st
             "Failed to clear pipeline checkpoint (non-fatal)"
         ),
     }
+}
+
+/// SPEC-047 P7e: persist a durable extraction snapshot after successful merge.
+///
+/// Survives [`clear_pipeline_checkpoint`] so soft-reprocess / `merge_only` can
+/// skip LLM extract. Same slim shape as crash checkpoints (embeddings omitted).
+#[allow(clippy::too_many_arguments)]
+pub async fn save_extraction_snapshot(
+    kv: &Arc<dyn KVStorage>,
+    document_id: &str,
+    result: &ProcessingResult,
+    workspace_id: &str,
+    extraction_provider: &str,
+    embedding_provider: &str,
+    source_text: &str,
+) -> Result<(), String> {
+    let mut slim_result = result.clone();
+    let stripped = slim_result.strip_embeddings();
+
+    let snapshot = PipelineCheckpoint {
+        result: slim_result,
+        workspace_id: workspace_id.to_string(),
+        extraction_provider: extraction_provider.to_string(),
+        embedding_provider: embedding_provider.to_string(),
+        created_at_epoch: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+        content_hash: PipelineCheckpoint::compute_content_hash(source_text),
+        embeddings_omitted: true,
+    };
+
+    let key = extraction_snapshot_key(document_id);
+    let value = serde_json::to_value(&snapshot)
+        .map_err(|e| format!("Failed to serialize extraction snapshot for {document_id}: {e}"))?;
+
+    let approx_bytes = serde_json::to_vec(&value).map(|b| b.len()).unwrap_or(0);
+    if approx_bytes > CHECKPOINT_MAX_SERIALIZED_BYTES {
+        return Err(format!(
+            "Extraction snapshot for {document_id} too large ({approx_bytes} bytes)"
+        ));
+    }
+
+    kv.upsert(&[(key.clone(), value)])
+        .await
+        .map_err(|e| format!("Failed to save extraction snapshot {key}: {e}"))?;
+
+    info!(
+        document_id = %document_id,
+        chunks = result.chunks.len(),
+        entities = result.stats.entity_count,
+        embeddings_stripped = stripped,
+        snapshot_bytes = approx_bytes,
+        "P7e: saved durable extraction snapshot (soft-reprocess / merge-only reuse)"
+    );
+    Ok(())
+}
+
+/// Load durable extraction snapshot (SPEC-047 P7e). Same validation as checkpoint.
+pub async fn load_extraction_snapshot(
+    kv: &Arc<dyn KVStorage>,
+    document_id: &str,
+    workspace_id: &str,
+    extraction_provider: &str,
+    embedding_provider: &str,
+    source_text: &str,
+) -> Option<ProcessingResult> {
+    load_validated_checkpoint_blob(
+        kv,
+        &extraction_snapshot_key(document_id),
+        document_id,
+        workspace_id,
+        extraction_provider,
+        embedding_provider,
+        source_text,
+        SNAPSHOT_MAX_AGE_SECS,
+        "extraction snapshot",
+    )
+    .await
+}
+
+/// Clear durable extraction snapshot (Full reprocess / content wipe).
+pub async fn clear_extraction_snapshot(kv: &Arc<dyn KVStorage>, document_id: &str) {
+    let key = extraction_snapshot_key(document_id);
+    match kv.delete(std::slice::from_ref(&key)).await {
+        Ok(_) => debug!(document_id = %document_id, "Cleared extraction snapshot"),
+        Err(e) => warn!(
+            document_id = %document_id,
+            error = %e,
+            "Failed to clear extraction snapshot (non-fatal)"
+        ),
+    }
+}
+
+/// Shared load+validate for crash checkpoint and durable snapshot (DRY).
+#[allow(clippy::too_many_arguments)]
+async fn load_validated_checkpoint_blob(
+    kv: &Arc<dyn KVStorage>,
+    key: &str,
+    document_id: &str,
+    workspace_id: &str,
+    extraction_provider: &str,
+    embedding_provider: &str,
+    source_text: &str,
+    max_age_secs: u64,
+    label: &str,
+) -> Option<ProcessingResult> {
+    let value = match kv.get_by_id(key).await {
+        Ok(Some(v)) => v,
+        Ok(None) => {
+            debug!(document_id = %document_id, %label, "No reusable extraction blob found");
+            return None;
+        }
+        Err(e) => {
+            warn!(
+                document_id = %document_id,
+                error = %e,
+                %label,
+                "Failed to read reusable extraction blob — falling through"
+            );
+            return None;
+        }
+    };
+
+    let checkpoint: PipelineCheckpoint = match serde_json::from_value(value) {
+        Ok(cp) => cp,
+        Err(e) => {
+            warn!(
+                document_id = %document_id,
+                error = %e,
+                %label,
+                "Corrupt reusable extraction blob — clearing"
+            );
+            let _ = kv.delete(&[key.to_string()]).await;
+            return None;
+        }
+    };
+
+    if checkpoint.workspace_id != workspace_id {
+        info!(
+            document_id = %document_id,
+            %label,
+            "Workspace mismatch on reusable extraction blob — ignoring"
+        );
+        let _ = kv.delete(&[key.to_string()]).await;
+        return None;
+    }
+
+    if checkpoint.extraction_provider != extraction_provider
+        || checkpoint.embedding_provider != embedding_provider
+    {
+        info!(
+            document_id = %document_id,
+            %label,
+            "Provider mismatch on reusable extraction blob — ignoring"
+        );
+        let _ = kv.delete(&[key.to_string()]).await;
+        return None;
+    }
+
+    let current_hash = PipelineCheckpoint::compute_content_hash(source_text);
+    if checkpoint.content_hash != current_hash {
+        info!(
+            document_id = %document_id,
+            %label,
+            "Content hash mismatch on reusable extraction blob — ignoring"
+        );
+        let _ = kv.delete(&[key.to_string()]).await;
+        return None;
+    }
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let age = now.saturating_sub(checkpoint.created_at_epoch);
+    if age > max_age_secs {
+        info!(
+            document_id = %document_id,
+            age_hours = age / 3600,
+            max_age_hours = max_age_secs / 3600,
+            %label,
+            "Reusable extraction blob too old — ignoring"
+        );
+        let _ = kv.delete(&[key.to_string()]).await;
+        return None;
+    }
+
+    info!(
+        document_id = %document_id,
+        chunks = checkpoint.result.chunks.len(),
+        entities = checkpoint.result.stats.entity_count,
+        age_secs = age,
+        %label,
+        "Resuming from reusable extraction blob — skipping LLM extraction"
+    );
+
+    Some(checkpoint.result)
 }
 
 /// Clean up stale/orphaned pipeline checkpoints on server startup.
@@ -402,6 +603,7 @@ mod tests {
             embedding_provider: "ollama".to_string(),
             created_at_epoch: 1_700_000_000,
             content_hash: "abcdef0123456789".to_string(),
+            embeddings_omitted: false,
         };
 
         let json = serde_json::to_value(&checkpoint).unwrap();
@@ -410,6 +612,77 @@ mod tests {
         assert_eq!(restored.workspace_id, "ws-1");
         assert_eq!(restored.extraction_provider, "openai");
         assert_eq!(restored.result.document_id, "test-doc");
+    }
+
+    #[test]
+    fn slim_checkpoint_omits_embeddings_flag_defaults_false_for_legacy() {
+        use edgequake_pipeline::{ProcessingResult, ProcessingStats};
+
+        // Legacy checkpoints lack `embeddings_omitted` — serde default must be false.
+        let legacy = PipelineCheckpoint {
+            result: ProcessingResult {
+                document_id: "d".to_string(),
+                chunks: vec![],
+                extractions: vec![],
+                stats: ProcessingStats::default(),
+                lineage: None,
+            },
+            workspace_id: "ws".to_string(),
+            extraction_provider: "mock".to_string(),
+            embedding_provider: "mock".to_string(),
+            created_at_epoch: 1,
+            content_hash: "abcd".to_string(),
+            embeddings_omitted: false,
+        };
+        let mut json = serde_json::to_value(&legacy).unwrap();
+        json.as_object_mut().unwrap().remove("embeddings_omitted");
+        let cp: PipelineCheckpoint = serde_json::from_value(json).unwrap();
+        assert!(!cp.embeddings_omitted);
+    }
+
+    #[tokio::test]
+    async fn save_strips_embeddings_from_checkpoint() {
+        use edgequake_pipeline::{ProcessingResult, ProcessingStats, TextChunk};
+        use edgequake_storage::MemoryKVStorage;
+
+        let kv: Arc<dyn KVStorage> = Arc::new(MemoryKVStorage::new("test"));
+        let mut chunk = TextChunk::new("c0", "hello world", 0, 0, 11);
+        chunk.embedding = Some(vec![0.1, 0.2, 0.3]);
+
+        let result = ProcessingResult {
+            document_id: "doc-slim".to_string(),
+            chunks: vec![chunk],
+            extractions: vec![],
+            stats: ProcessingStats {
+                chunk_count: 1,
+                ..Default::default()
+            },
+            lineage: None,
+        };
+        assert!(!result.needs_reembed());
+
+        save_pipeline_checkpoint(
+            &kv,
+            "doc-slim",
+            &result,
+            "ws",
+            "mock",
+            "mock",
+            "hello world",
+        )
+        .await
+        .unwrap();
+
+        let loaded = load_pipeline_checkpoint(&kv, "doc-slim", "ws", "mock", "mock", "hello world")
+            .await
+            .expect("checkpoint should load");
+        assert!(
+            loaded.needs_reembed(),
+            "slim checkpoint must require re-embed"
+        );
+        assert!(loaded.chunks[0].embedding.is_none());
+        // In-memory original must still retain embeddings for persist path.
+        assert!(result.chunks[0].embedding.is_some());
     }
 
     #[tokio::test]
@@ -603,5 +876,80 @@ mod tests {
             load_pipeline_checkpoint(&kv, "nonexistent-doc", "ws", "openai", "ollama", "text")
                 .await;
         assert!(loaded.is_none());
+    }
+
+    #[test]
+    fn plan_extraction_reuse_priority() {
+        use super::{plan_extraction_reuse, ExtractionReuseKind, ExtractionReusePlan};
+
+        assert_eq!(
+            plan_extraction_reuse(true, true, false, false),
+            ExtractionReusePlan::Reuse(ExtractionReuseKind::CrashCheckpoint)
+        );
+        assert_eq!(
+            plan_extraction_reuse(false, true, false, false),
+            ExtractionReusePlan::Reuse(ExtractionReuseKind::DurableSnapshot)
+        );
+        assert_eq!(
+            plan_extraction_reuse(false, false, false, false),
+            ExtractionReusePlan::Fresh
+        );
+        assert_eq!(
+            plan_extraction_reuse(false, false, false, true),
+            ExtractionReusePlan::MergeOnlyMissing
+        );
+        assert_eq!(
+            plan_extraction_reuse(false, false, true, true),
+            ExtractionReusePlan::MergeOnlyMissing
+        );
+        assert_eq!(
+            plan_extraction_reuse(true, false, true, false),
+            ExtractionReusePlan::Fresh
+        );
+    }
+
+    #[tokio::test]
+    async fn p7e_snapshot_survives_checkpoint_clear() {
+        use edgequake_pipeline::{ProcessingResult, ProcessingStats};
+        use edgequake_storage::MemoryKVStorage;
+
+        let kv: Arc<dyn KVStorage> = Arc::new(MemoryKVStorage::new("p7e"));
+        let result = ProcessingResult {
+            document_id: "doc-p7e".to_string(),
+            chunks: vec![],
+            extractions: vec![],
+            stats: ProcessingStats {
+                entity_count: 2,
+                relationship_count: 1,
+                ..Default::default()
+            },
+            lineage: None,
+        };
+        let text = "durable snapshot source text";
+
+        save_pipeline_checkpoint(&kv, "doc-p7e", &result, "ws", "openai", "ollama", text)
+            .await
+            .unwrap();
+        save_extraction_snapshot(&kv, "doc-p7e", &result, "ws", "openai", "ollama", text)
+            .await
+            .unwrap();
+        clear_pipeline_checkpoint(&kv, "doc-p7e").await;
+
+        assert!(
+            load_pipeline_checkpoint(&kv, "doc-p7e", "ws", "openai", "ollama", text)
+                .await
+                .is_none(),
+            "crash checkpoint must be cleared"
+        );
+        let snap = load_extraction_snapshot(&kv, "doc-p7e", "ws", "openai", "ollama", text).await;
+        assert!(snap.is_some(), "P7e durable snapshot must survive");
+        assert_eq!(snap.unwrap().stats.entity_count, 2);
+
+        clear_extraction_snapshot(&kv, "doc-p7e").await;
+        assert!(
+            load_extraction_snapshot(&kv, "doc-p7e", "ws", "openai", "ollama", text)
+                .await
+                .is_none()
+        );
     }
 }

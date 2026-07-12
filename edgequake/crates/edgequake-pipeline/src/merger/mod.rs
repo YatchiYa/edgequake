@@ -29,14 +29,36 @@
 //!
 //! - `entity`: Entity merge, update, and creation logic
 //! - `relationship`: Relationship merge, update, creation, and placeholder node logic
+//! - `description_merge`: SPEC-047 P7a LightRAG fragment-gate SSOT
+//! - `merge_limits`: SPEC-047 P7b/P7d concurrency + SOURCE_IDS KEEP SSOT
 
+mod description_merge;
 mod entity;
-mod lineage;
+pub mod lineage;
+mod merge_limits;
 mod merge_progress;
 mod metadata;
 mod relationship;
 
+pub use description_merge::{
+    approx_token_count, collect_unique_fragments, decide_description_merge,
+    force_llm_summary_on_merge_from_env, join_description_fragments, split_description_fragments,
+    summary_max_tokens_from_env, DescriptionMergeDecision, DescriptionMergePolicy,
+    DEFAULT_FORCE_LLM_SUMMARY_ON_MERGE, DEFAULT_SUMMARY_MAX_TOKENS, GRAPH_FIELD_SEP,
+};
 pub use entity::description_similarity;
+pub use lineage::{
+    document_id_from_chunk_id, document_ids_from_chunk_ids, insert_chunk_lineage_properties,
+    insert_document_lineage_properties, merge_and_insert_document_lineage, merge_document_ids,
+    resolve_incoming_document_ids, source_document_ids_from_properties,
+};
+pub use merge_limits::{
+    apply_source_ids_limit, max_source_ids_per_entity_from_env,
+    max_source_ids_per_relation_from_env, merge_max_async_from_env, merge_source_ids,
+    parse_max_source_ids, parse_merge_max_async, should_skip_description_update_keep,
+    source_chunk_ids_from_properties, source_ids_limit_method_from_env, truncate_keep_doc_diverse,
+    SourceIdsLimitMethod, DEFAULT_MAX_SOURCE_IDS, DEFAULT_MERGE_MAX_ASYNC,
+};
 
 use std::sync::Arc;
 
@@ -46,6 +68,45 @@ use edgequake_storage::{GraphStorage, VectorStorage};
 use crate::error::Result;
 use crate::extractor::ExtractionResult;
 use crate::summarizer::LLMSummarizer;
+
+/// Backend for LLM description merges (Dependency Inversion for P7a tests).
+#[async_trait]
+pub trait DescriptionMergeBackend: Send + Sync {
+    /// Merge entity description fragments into one summary.
+    async fn merge_entity_descriptions(
+        &self,
+        entity_name: &str,
+        descriptions: &[String],
+    ) -> Result<String>;
+
+    /// Merge relationship description fragments into one summary.
+    async fn merge_relationship_descriptions(
+        &self,
+        source: &str,
+        target: &str,
+        descriptions: &[String],
+    ) -> Result<String>;
+}
+
+#[async_trait]
+impl DescriptionMergeBackend for LLMSummarizer {
+    async fn merge_entity_descriptions(
+        &self,
+        entity_name: &str,
+        descriptions: &[String],
+    ) -> Result<String> {
+        LLMSummarizer::merge_entity_descriptions(self, entity_name, descriptions).await
+    }
+
+    async fn merge_relationship_descriptions(
+        &self,
+        source: &str,
+        target: &str,
+        descriptions: &[String],
+    ) -> Result<String> {
+        LLMSummarizer::merge_relationship_descriptions(self, source, target, descriptions).await
+    }
+}
 
 // ── Lineage Sink (SPEC-032 W-08) ─────────────────────────────────────────────
 
@@ -64,6 +125,14 @@ use crate::summarizer::LLMSummarizer;
 /// - `PostgresLineageSink` in `edgequake-api` — inserts into `chunk_entity_links`
 ///   and `chunk_relation_links` (migration 066)
 ///
+/// Chunk→entity lineage row (SPEC-047 P4 — batch writes, DRY with RelationLineageLink).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntityLineageLink {
+    pub chunk_id: String,
+    pub entity_name: String,
+    pub workspace_id: String,
+}
+
 /// Chunk→relation lineage row (SPEC-032 W-08 batch writes).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RelationLineageLink {
@@ -124,6 +193,17 @@ pub trait LineageSink: Send + Sync {
         }
         Ok(())
     }
+
+    /// Batch insert chunk→entity links (default: sequential singles).
+    ///
+    /// SPEC-047 P4: kill O(E×S) N+1 when a concrete sink overrides this.
+    async fn record_entity_links_batch(&self, links: &[EntityLineageLink]) -> Result<()> {
+        for link in links {
+            self.record_entity_link(&link.chunk_id, &link.entity_name, &link.workspace_id)
+                .await?;
+        }
+        Ok(())
+    }
 }
 
 /// No-op implementation — used when lineage tracking is disabled (default).
@@ -141,6 +221,9 @@ impl LineageSink for NoopLineageSink {
         Ok(())
     }
     async fn record_relation_links_batch(&self, _: &[RelationLineageLink]) -> Result<()> {
+        Ok(())
+    }
+    async fn record_entity_links_batch(&self, _: &[EntityLineageLink]) -> Result<()> {
         Ok(())
     }
 }
@@ -252,6 +335,30 @@ pub struct MergerConfig {
     ///
     /// Set to 0.0 to always summarize, 1.0 to never summarize.
     pub description_similarity_threshold: f32,
+
+    /// SPEC-047 P7a / LightRAG: fragment count that forces LLM summary.
+    ///
+    /// Below this count (and under [`Self::summary_max_tokens`]), fragments are
+    /// joined with [`GRAPH_FIELD_SEP`] without an LLM call.
+    /// Env: `EDGEQUAKE_FORCE_LLM_SUMMARY_ON_MERGE` (alias `FORCE_LLM_SUMMARY_ON_MERGE`).
+    pub force_llm_summary_on_merge: usize,
+
+    /// Approx token budget for join-without-LLM (LightRAG `SUMMARY_MAX_TOKENS`).
+    /// Env: `EDGEQUAKE_SUMMARY_MAX_TOKENS` (alias `SUMMARY_MAX_TOKENS`).
+    pub summary_max_tokens: usize,
+
+    /// SPEC-047 P7b / LightRAG `graph_max_async` — concurrent unique entity/rel merges.
+    /// Env: `EDGEQUAKE_MERGE_MAX_ASYNC` (default `llm_max_async * 2` ≈ 8).
+    pub merge_max_async: usize,
+
+    /// SPEC-047 P7d / LightRAG `MAX_SOURCE_IDS_PER_ENTITY` (default 200).
+    pub max_source_ids_per_entity: usize,
+
+    /// SPEC-047 P7d / LightRAG `MAX_SOURCE_IDS_PER_RELATION` (default 200).
+    pub max_source_ids_per_relation: usize,
+
+    /// SPEC-047 P7d / LightRAG `SOURCE_IDS_LIMIT_METHOD` (default KEEP).
+    pub source_ids_limit_method: SourceIdsLimitMethod,
 }
 
 impl Default for MergerConfig {
@@ -267,7 +374,26 @@ impl Default for MergerConfig {
             max_sources: 10,
             use_llm_summarization: true, // Enable by default for SOTA quality
             description_similarity_threshold: threshold,
+            force_llm_summary_on_merge: force_llm_summary_on_merge_from_env(),
+            summary_max_tokens: summary_max_tokens_from_env(),
+            merge_max_async: merge_max_async_from_env(),
+            max_source_ids_per_entity: max_source_ids_per_entity_from_env(),
+            max_source_ids_per_relation: max_source_ids_per_relation_from_env(),
+            source_ids_limit_method: source_ids_limit_method_from_env(),
         }
+    }
+}
+
+impl MergerConfig {
+    /// SSOT policy view for P7a description merge decisions.
+    pub fn description_merge_policy(&self) -> DescriptionMergePolicy {
+        DescriptionMergePolicy::from_parts(
+            self.use_llm_summarization,
+            self.force_llm_summary_on_merge,
+            self.summary_max_tokens,
+            self.description_similarity_threshold,
+            self.max_description_length,
+        )
     }
 }
 
@@ -279,8 +405,8 @@ pub struct KnowledgeGraphMerger<G: GraphStorage + ?Sized, V: VectorStorage + ?Si
     pub(super) vector_storage: Arc<V>,
     pub(super) tenant_id: Option<String>,
     pub(super) workspace_id: Option<String>,
-    /// Optional LLM summarizer for intelligent description merging.
-    pub(super) summarizer: Option<Arc<LLMSummarizer>>,
+    /// Optional LLM backend for intelligent description merging (P7a DI).
+    pub(super) summarizer: Option<Arc<dyn DescriptionMergeBackend>>,
     /// Optional CQRS relational sink (SPEC-021 P3-01).
     /// When None, relational sync is skipped (backwards-compatible default).
     pub(super) relational_sink: Arc<dyn RelationalEntitySink>,
@@ -316,6 +442,50 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
         self
     }
 
+    /// Upsert vectors in `EDGEQUAKE_VECTOR_UPSERT_CHUNK`-sized slices with progress.
+    ///
+    /// `count_as_entities`: when true, `done` advances `entities_processed`;
+    /// otherwise advances `relationships_processed` (entity totals stay complete).
+    #[allow(clippy::too_many_arguments)]
+    async fn upsert_vectors_chunked(
+        &self,
+        batch: &[(String, Vec<f32>, serde_json::Value)],
+        progress: Option<&MergeProgressCallback>,
+        phase: MergePhase,
+        entities_total: usize,
+        relationships_total: usize,
+        entities_created: usize,
+        entities_updated: usize,
+        count_as_entities: bool,
+    ) -> Result<()> {
+        let chunk = edgequake_storage::vector_upsert_chunk_size();
+        let mut done = 0usize;
+        for slice in batch.chunks(chunk) {
+            self.vector_storage.upsert(slice).await?;
+            done += slice.len();
+            let (entities_processed, relationships_processed) = if count_as_entities {
+                (done.min(entities_total), 0)
+            } else {
+                (entities_total, done.min(relationships_total))
+            };
+            emit_progress(
+                progress,
+                MergeProgress {
+                    phase,
+                    entities_processed,
+                    entities_total,
+                    relationships_processed,
+                    relationships_total,
+                    entities_created,
+                    entities_updated,
+                    relationships_created: 0,
+                    relationships_updated: 0,
+                },
+            );
+        }
+        Ok(())
+    }
+
     /// Set tenant and workspace IDs.
     pub fn with_tenant_context(
         mut self,
@@ -328,9 +498,94 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
     }
 
     /// Set the LLM summarizer for intelligent description merging.
-    pub fn with_summarizer(mut self, summarizer: Arc<LLMSummarizer>) -> Self {
-        self.summarizer = Some(summarizer);
+    pub fn with_summarizer(self, summarizer: Arc<LLMSummarizer>) -> Self {
+        self.with_merge_backend(summarizer)
+    }
+
+    /// Inject any [`DescriptionMergeBackend`] (tests / alternate summarizers).
+    pub fn with_merge_backend(mut self, backend: Arc<dyn DescriptionMergeBackend>) -> Self {
+        self.summarizer = Some(backend);
         self
+    }
+
+    /// Apply P7a policy then optionally LLM-merge entity descriptions.
+    pub(super) async fn resolve_entity_description(
+        &self,
+        entity_name: &str,
+        existing: &str,
+        incoming: &str,
+    ) -> Result<String> {
+        let policy = self.config.description_merge_policy();
+        match decide_description_merge(existing, incoming, &policy) {
+            DescriptionMergeDecision::Resolved(s) => Ok(s),
+            DescriptionMergeDecision::NeedsLlm { fragments } => {
+                if let Some(backend) = &self.summarizer {
+                    match backend
+                        .merge_entity_descriptions(entity_name, &fragments)
+                        .await
+                    {
+                        Ok(merged) => Ok(merged),
+                        Err(e) => {
+                            tracing::warn!(
+                                entity = %entity_name,
+                                error = %e,
+                                "LLM entity description merge failed; joining fragments"
+                            );
+                            Ok(join_description_fragments(
+                                &fragments,
+                                self.config.max_description_length,
+                            ))
+                        }
+                    }
+                } else {
+                    Ok(join_description_fragments(
+                        &fragments,
+                        self.config.max_description_length,
+                    ))
+                }
+            }
+        }
+    }
+
+    /// Apply P7a policy then optionally LLM-merge relationship descriptions.
+    pub(super) async fn resolve_relationship_description(
+        &self,
+        source: &str,
+        target: &str,
+        existing: &str,
+        incoming: &str,
+    ) -> Result<String> {
+        let policy = self.config.description_merge_policy();
+        match decide_description_merge(existing, incoming, &policy) {
+            DescriptionMergeDecision::Resolved(s) => Ok(s),
+            DescriptionMergeDecision::NeedsLlm { fragments } => {
+                if let Some(backend) = &self.summarizer {
+                    match backend
+                        .merge_relationship_descriptions(source, target, &fragments)
+                        .await
+                    {
+                        Ok(merged) => Ok(merged),
+                        Err(e) => {
+                            tracing::warn!(
+                                source = %source,
+                                target = %target,
+                                error = %e,
+                                "LLM relationship description merge failed; joining fragments"
+                            );
+                            Ok(join_description_fragments(
+                                &fragments,
+                                self.config.max_description_length,
+                            ))
+                        }
+                    }
+                } else {
+                    Ok(join_description_fragments(
+                        &fragments,
+                        self.config.max_description_length,
+                    ))
+                }
+            }
+        }
     }
 
     /// Merge extraction results into the knowledge graph.
@@ -398,11 +653,23 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
             },
         );
 
-        // ── Phase 1: Entity vector upserts — one round-trip for all docs ──
+        // ── Phase 1: Entity vector upserts — chunked for progress honesty ──
         // WHY: entity vectors are collected globally already (P-G4-merger).
+        // SPEC-047 P5: mega-docs take ~1.5s/1k HNSW upserts; emit mid-batch
+        // progress so UI does not freeze at "Embedding 100%".
         let entity_vector_batch = self.collect_entity_vector_batch(&results);
         if !entity_vector_batch.is_empty() {
-            self.vector_storage.upsert(&entity_vector_batch).await?;
+            self.upsert_vectors_chunked(
+                &entity_vector_batch,
+                progress,
+                MergePhase::EntityVectors,
+                total_entities,
+                total_relationships,
+                0,
+                0,
+                true,
+            )
+            .await?;
         }
 
         emit_progress(
@@ -455,14 +722,26 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
             },
         );
 
-        // ── Phase 3: Relationship vector upserts — globally batched ──────
+        // ── Phase 3: Relationship vector upserts — chunked for progress ──
         // WHY: previously done per ExtractionResult inside the loop (F-09).
-        let all_rel_vectors: Vec<_> = results
+        // SPEC-047 P6: flatten then unique-dedupe once (not per-chunk).
+        let all_rels: Vec<_> = results
             .iter()
-            .flat_map(|r| self.collect_relationship_vector_batch(&r.relationships))
+            .flat_map(|r| r.relationships.iter().cloned())
             .collect();
+        let all_rel_vectors = self.collect_relationship_vector_batch(&all_rels);
         if !all_rel_vectors.is_empty() {
-            self.vector_storage.upsert(&all_rel_vectors).await?;
+            self.upsert_vectors_chunked(
+                &all_rel_vectors,
+                progress,
+                MergePhase::RelationshipVectors,
+                total_entities,
+                total_relationships,
+                stats.entities_created,
+                stats.entities_updated,
+                false,
+            )
+            .await?;
         }
 
         emit_progress(
@@ -611,6 +890,12 @@ pub struct MergeStats {
     /// Number of existing relationships updated.
     pub relationships_updated: usize,
 
+    /// SPEC-047 P7d: entity updates skipped (KEEP saturated).
+    pub entities_skipped_saturated: usize,
+
+    /// SPEC-047 P7d: relationship updates skipped (KEEP saturated).
+    pub relationships_skipped_saturated: usize,
+
     /// Number of errors encountered.
     pub errors: usize,
 
@@ -647,6 +932,10 @@ impl MergeStats {
 pub use crate::prompts::normalize_entity_name;
 
 /// Merge two descriptions, avoiding duplication.
+///
+/// Retained for callers outside the P7a path; prefer
+/// [`description_merge::decide_description_merge`] for graph updates.
+#[allow(dead_code)]
 fn merge_descriptions(existing: &str, new: &str, max_length: usize) -> String {
     if existing.is_empty() {
         return truncate_description(new, max_length);
@@ -676,6 +965,7 @@ fn merge_descriptions(existing: &str, new: &str, max_length: usize) -> String {
 }
 
 /// Truncate a description to a maximum length at sentence boundaries.
+#[allow(dead_code)]
 fn truncate_description(text: &str, max_length: usize) -> String {
     if text.len() <= max_length {
         return text.to_string();
@@ -825,8 +1115,7 @@ mod tests {
             entities_updated: 3,
             relationships_created: 10,
             relationships_updated: 2,
-            errors: 0,
-            artifacts: MergeArtifacts::default(),
+            ..Default::default()
         };
 
         assert_eq!(stats.total_entities(), 8);

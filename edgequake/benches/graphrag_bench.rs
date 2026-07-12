@@ -143,6 +143,7 @@ fn bench_dynamic_truncation(c: &mut Criterion) {
         max_relation_tokens: 2000,
         max_total_tokens: 8000,
         buffer_tokens: 200,
+        min_chunk_budget_ratio: 0.40,
     };
     let entities: Vec<_> = (0..40)
         .map(|i| RetrievedEntity::new(format!("E{i}"), "T", "entity description text"))

@@ -3,6 +3,7 @@
 use serde_json::{json, Value};
 
 use crate::chunker::TextChunk;
+use crate::multimodal::resolve_retrieval_modality_from_content;
 use crate::pipeline::ProcessingResult;
 
 use super::persistence::{ChunkVectorBuildOptions, IngestionPersistContext};
@@ -18,6 +19,13 @@ pub fn build_chunk_kv_records(
         .iter()
         .map(|c| (c.id.clone(), chunk_kv_value(document_id, source_file, c)))
         .collect()
+}
+
+fn effective_modality(chunk: &TextChunk) -> Option<String> {
+    chunk
+        .modality
+        .clone()
+        .or_else(|| resolve_retrieval_modality_from_content(&chunk.content).map(str::to_string))
 }
 
 fn chunk_kv_value(document_id: &str, source_file: Option<&str>, chunk: &TextChunk) -> Value {
@@ -45,6 +53,9 @@ fn chunk_kv_value(document_id: &str, source_file: Option<&str>, chunk: &TextChun
         value["page_start"] = json!(page);
         value["page_end"] = json!(chunk.page_end.unwrap_or(page));
     }
+    if let Some(modality) = effective_modality(chunk) {
+        value["modality"] = json!(modality);
+    }
     value
 }
 
@@ -60,6 +71,10 @@ pub fn build_chunk_vector_metadata(
         "index": chunk.index,
         "content_ref": chunk.id,
     });
+
+    if let Some(modality) = effective_modality(chunk) {
+        metadata["modality"] = json!(modality);
+    }
 
     if options.include_lineage_metadata {
         metadata["start_line"] = json!(chunk.start_line);
@@ -101,6 +116,7 @@ pub fn chunk_vector_metadata_json_len(metadata: &Value) -> usize {
 mod tests {
     use super::*;
     use crate::chunker::TextChunk;
+    use crate::pipeline::ProcessingResult;
 
     fn sample_chunk() -> TextChunk {
         TextChunk {
@@ -116,7 +132,56 @@ mod tests {
             section: None,
             page_start: None,
             page_end: None,
+            modality: None,
         }
+    }
+
+    #[test]
+    fn contract_vector_metadata_includes_modality_from_content() {
+        let chunk = TextChunk {
+            id: "doc-chunk-0".into(),
+            content: "# rev\n\n**Type:** Chart\n\n- Q4: 42".into(),
+            index: 0,
+            start_offset: 0,
+            end_offset: 0,
+            start_line: 1,
+            end_line: 1,
+            token_count: 5,
+            embedding: None,
+            section: None,
+            page_start: None,
+            page_end: None,
+            modality: None,
+        };
+        let ctx = IngestionPersistContext::new("doc", None, Some("ws".into()));
+        let meta = build_chunk_vector_metadata(&chunk, &ctx, ChunkVectorBuildOptions::STANDARD);
+        assert_eq!(meta.get("modality").and_then(|v| v.as_str()), Some("chart"));
+        let kv_records = build_chunk_kv_records(
+            "doc",
+            None,
+            &ProcessingResult {
+                document_id: "doc".into(),
+                chunks: vec![chunk],
+                extractions: vec![],
+                stats: Default::default(),
+                lineage: None,
+            },
+        );
+        assert_eq!(
+            kv_records[0].1.get("modality").and_then(|v| v.as_str()),
+            Some("chart")
+        );
+    }
+
+    #[test]
+    fn contract_vector_metadata_includes_modality() {
+        let mut chunk = sample_chunk();
+        chunk.modality = Some("chart".into());
+        let ctx = IngestionPersistContext::new("doc", None, Some("ws".into()));
+        let meta = build_chunk_vector_metadata(&chunk, &ctx, ChunkVectorBuildOptions::STANDARD);
+        assert_eq!(meta.get("modality").and_then(|v| v.as_str()), Some("chart"));
+        let kv = chunk_kv_value("doc", None, &chunk);
+        assert_eq!(kv.get("modality").and_then(|v| v.as_str()), Some("chart"));
     }
 
     #[test]

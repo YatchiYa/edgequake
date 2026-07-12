@@ -8,6 +8,7 @@
 import { cn } from '@/lib/utils';
 import type { Token, Tokens } from 'marked';
 import { memo } from 'react';
+import { AuthenticatedMarkdownImage } from './AuthenticatedMarkdownImage';
 import { MathTokenRenderer } from './MathTokenRenderer';
 import { sanitizeHtml } from './utils/sanitize-html';
 
@@ -210,14 +211,12 @@ export const MarkdownInlineTokens = memo(function MarkdownInlineTokens({
               );
             }
             return (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <AuthenticatedMarkdownImage
                 key={tokenId}
                 src={imgToken.href}
                 alt={imgToken.text}
                 title={imgToken.title ?? undefined}
                 className="max-w-full rounded-lg my-2"
-                loading="lazy"
               />
             );
           }

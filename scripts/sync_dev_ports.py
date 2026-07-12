@@ -44,7 +44,8 @@ def write_ports(
         f"FRONTEND_URL={frontend_url}",
         f"EDGEQUAKE_API_URL={backend_url}",
         f"NEXT_PUBLIC_API_URL={backend_url}",
-        f"PORT={backend}",
+        # PORT intentionally omitted — backend/frontend set their own PORT
+        # was: f"PORT={backend}",
     ]
     PORTS_ENV.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
