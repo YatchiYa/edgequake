@@ -17,6 +17,7 @@
  */
 "use client";
 
+import type { ReprocessMode } from "@/lib/api/edgequake";
 import {
     cancelTask,
     deleteAllDocuments,
@@ -24,13 +25,12 @@ import {
     reprocessDocument,
     retryTask,
 } from "@/lib/api/edgequake";
-import type { ReprocessMode } from "@/lib/api/edgequake";
+import { invalidateKnowledgeGraph } from "@/lib/cache-manager";
 import type { Document } from "@/types";
 import type { UseMutationResult } from "@tanstack/react-query";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { invalidateKnowledgeGraph } from "@/lib/cache-manager";
 
 /**
  * Variables accepted by the reprocess mutation.
@@ -40,6 +40,18 @@ import { invalidateKnowledgeGraph } from "@/lib/cache-manager";
 export interface ReprocessVariables {
   id: string;
   mode?: ReprocessMode;
+  /**
+   * Human-readable document name for progress panels.
+   * SPEC-050-REPROCESS: passed by the caller so IngestionProgressPanel can show
+   * a meaningful filename instead of just the document ID.
+   */
+  name?: string;
+  /**
+   * Whether this is a PDF document.
+   * SPEC-050-REPROCESS: drives which progress panel to show (PdfUploadProgress
+   * vs IngestionProgressPanel — currently always IngestionProgressPanel).
+   */
+  isPdf?: boolean;
 }
 
 /**
@@ -51,6 +63,18 @@ export interface UseDocumentMutationsOptions {
    * WHY: Allows parent component to open pipeline status dialog.
    */
   onReprocessSuccess?: () => void;
+  /**
+   * Callback invoked immediately when reprocess succeeds with the new track_id.
+   *
+   * SPEC-050-REPROCESS: Allows DocumentManager to show IngestionProgressPanel
+   * for the reprocessed document — identical feedback to a fresh upload.
+   * WHY DIP: useDocumentMutations doesn't know about the UI layer; it delegates
+   * the decision of what to show to its caller via this callback.
+   *
+   * @param documentName - Name to display in the progress panel.
+   * @param trackId      - New task tracking ID from the reprocess response.
+   */
+  onReprocessTriggered?: (documentName: string, trackId: string) => void;
 }
 
 /**
@@ -136,6 +160,9 @@ export function useDocumentMutations(
   options: UseDocumentMutationsOptions = {},
 ): UseDocumentMutationsReturn {
   const { onReprocessSuccess } = options;
+  // SPEC-050-REPROCESS: Destructure the callback that fires when a reprocess task
+  // is accepted — lets DocumentManager show IngestionProgressPanel immediately.
+  const { onReprocessTriggered } = options;
   const { t } = useTranslation();
   const queryClient = useQueryClient();
 
@@ -237,6 +264,8 @@ export function useDocumentMutations(
       // Optimistically update the document status to "pending" in all matching queries
       // WHY: This gives immediate visual feedback — the document row changes from
       // Failed/Cancelled badge to Pending badge, so the user knows their retry was accepted.
+      // SPEC-050: Set current_stage to "queued" so SPEC-048 stepper shows "Queued" badge
+      // immediately — no 2-5s gap while the task is picked up by a worker.
       queryClient.setQueriesData(
         { queryKey: ["documents"] },
         (oldData: { items?: Document[] } | undefined) => {
@@ -248,8 +277,9 @@ export function useDocumentMutations(
                 ? {
                     ...doc,
                     status: "pending",
+                    current_stage: "queued",
+                    stage_progress: 0,
                     error_message: undefined,
-                    current_stage: undefined,
                   }
                 : doc,
             ),
@@ -257,9 +287,44 @@ export function useDocumentMutations(
         },
       );
 
-      return { previousDocuments };
+      return { previousDocuments, documentId };
     },
-    onSuccess: () => {
+    onSuccess: (data, { id: documentId, name }) => {
+      // SPEC-050 GAP-FIX: Update the cache with the new track_id from the response.
+      // WHY: The immediate queryClient.invalidateQueries() overrides the optimistic
+      // state because the DB hasn't been updated yet (server still shows "completed").
+      // Solution: update the cache with the new track_id so the WS subscription
+      // picks up the new task channel, then delay the server refetch by 2s to allow
+      // the backend to update the document status.
+      queryClient.setQueriesData(
+        { queryKey: ["documents"] },
+        (oldData: { items?: Document[] } | undefined) => {
+          if (!oldData?.items) return oldData;
+          return {
+            ...oldData,
+            items: oldData.items.map((doc: Document) =>
+              doc.id === documentId
+                ? {
+                    ...doc,
+                    status: "pending",
+                    current_stage: "queued",
+                    stage_progress: 0,
+                    track_id: data.track_id,  // Bind new track_id for WS subscription
+                    error_message: undefined,
+                  }
+                : doc,
+            ),
+          };
+        },
+      );
+
+      // SPEC-050-REPROCESS: Fire the callback so DocumentManager can show
+      // IngestionProgressPanel — identical feedback to a fresh upload.
+      if (onReprocessTriggered) {
+        const displayName = name ?? documentId.slice(0, 8);
+        onReprocessTriggered(displayName, data.track_id);
+      }
+
       toast.success(
         t("documents.reprocess.success", "Document queued for reprocessing"),
         {
@@ -272,9 +337,15 @@ export function useDocumentMutations(
             : undefined,
         },
       );
-      // Refetch to get server-confirmed state
-      queryClient.invalidateQueries({ queryKey: ["documents"] });
-      queryClient.invalidateQueries({ queryKey: ["pipeline-status"] });
+
+      // WHY: Delay the server refetch by 2s so the backend has time to update
+      // the document status from "completed" to "pending" before we overwrite
+      // the optimistic state with stale server data.
+      // The WS subscription (using new track_id above) will update in real-time.
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["documents"] });
+        queryClient.invalidateQueries({ queryKey: ["pipeline-status"] });
+      }, 2000);
     },
     onError: (error: Error, _documentId, context) => {
       // Roll back to the previous value on error

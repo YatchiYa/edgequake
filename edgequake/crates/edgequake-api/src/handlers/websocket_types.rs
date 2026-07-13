@@ -3,8 +3,43 @@
 //! This module contains the core types used for real-time progress streaming
 //! via WebSocket connections.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
+
+// ============================================================================
+// Deletion Phase Types (SPEC-050)
+// ============================================================================
+
+/// Discrete phases of a single-document deletion operation.
+///
+/// @implements SPEC-050: Delete progress parity with ingestion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeletionPhaseKind {
+    /// Cancelling an in-flight ingestion task (if document is processing).
+    CancellingTask,
+    /// Removing vector embeddings from pgvector.
+    RemovingVectors,
+    /// Cascading removal of graph entities and edges.
+    RemovingGraph,
+    /// Removing KV records (chunks, content, metadata).
+    RemovingKv,
+    /// Cleanup finalisation (content-hash key, relational rows).
+    Finalizing,
+}
+
+impl DeletionPhaseKind {
+    /// Human-readable label for this phase.
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::CancellingTask => "Cancelling in-flight task",
+            Self::RemovingVectors => "Removing vector embeddings",
+            Self::RemovingGraph => "Removing graph entities & edges",
+            Self::RemovingKv => "Removing document records",
+            Self::Finalizing => "Finalizing",
+        }
+    }
+}
 
 // ============================================================================
 // Progress Event Types
@@ -150,6 +185,98 @@ pub enum ProgressEvent {
         elapsed_ms: u64,
         eta_ms: Option<u64>,
     },
+
+    // -----------------------------------------------------------------------
+    // Deletion events (SPEC-050)
+    // -----------------------------------------------------------------------
+
+    /// Single-document deletion started.
+    ///
+    /// @implements SPEC-050: Delete progress broadcast.
+    DeletionStarted {
+        /// Document being deleted.
+        document_id: String,
+        /// Transient operation ID (UUID) for tracking this deletion.
+        track_id: String,
+    },
+
+    /// Phase progress within a single-document deletion.
+    ///
+    /// @implements SPEC-050: Phase-granular delete progress.
+    DeletionPhase {
+        /// Document being deleted.
+        document_id: String,
+        /// Operation tracking ID.
+        track_id: String,
+        /// Which phase is now active.
+        phase: DeletionPhaseKind,
+        /// Human-readable label for this phase.
+        phase_label: String,
+        /// Items processed so far in this phase (e.g. chunks deleted).
+        items_processed: u32,
+        /// Total items in this phase (0 if unknown).
+        items_total: u32,
+    },
+
+    /// Single-document deletion completed (success or partial failure).
+    ///
+    /// @implements SPEC-050: Delete completion broadcast.
+    DeletionCompleted {
+        /// Document that was deleted.
+        document_id: String,
+        /// Operation tracking ID.
+        track_id: String,
+        /// Chunks removed from KV.
+        chunks_deleted: usize,
+        /// Entities removed from graph (exclusive to this document).
+        entities_removed: usize,
+        /// Relationships removed from graph.
+        relationships_removed: usize,
+        /// Vector embeddings deleted.
+        embeddings_deleted: usize,
+        /// True if one or more phases failed non-fatally (e.g. graph cascade error).
+        partial_failure: bool,
+        /// Description of the partial failure, if any.
+        error: Option<String>,
+    },
+
+    /// Bulk deletion started.
+    ///
+    /// @implements SPEC-050: Bulk delete progress broadcast.
+    BulkDeletionStarted {
+        /// Total documents to delete.
+        total: usize,
+    },
+
+    /// Per-document progress during a bulk deletion.
+    ///
+    /// @implements SPEC-050: Per-document progress during bulk delete.
+    BulkDeletionItemProgress {
+        /// Document that was just deleted.
+        document_id: String,
+        /// Number of documents deleted so far (including this one).
+        completed: usize,
+        /// Total documents to delete.
+        total: usize,
+        /// Entities removed during this document's deletion.
+        entities_removed: usize,
+        /// Relationships removed during this document's deletion.
+        relationships_removed: usize,
+    },
+
+    /// Bulk deletion finished.
+    ///
+    /// @implements SPEC-050: Bulk delete completion broadcast.
+    BulkDeletionCompleted {
+        /// Total documents successfully deleted.
+        deleted_count: usize,
+        /// Documents skipped (still processing).
+        skipped_count: usize,
+        /// Total entities removed across all documents.
+        total_entities_removed: usize,
+        /// Total relationships removed across all documents.
+        total_relationships_removed: usize,
+    },
 }
 
 // ============================================================================
@@ -279,6 +406,101 @@ impl ProgressBroadcaster {
             error_message,
             was_timeout,
             retry_attempts,
+        });
+    }
+
+    // -----------------------------------------------------------------------
+    // Deletion broadcast helpers (SPEC-050)
+    // -----------------------------------------------------------------------
+
+    /// Broadcast that a single-document deletion has started.
+    pub fn deletion_started(&self, document_id: &str, track_id: &str) {
+        self.broadcast(ProgressEvent::DeletionStarted {
+            document_id: document_id.to_string(),
+            track_id: track_id.to_string(),
+        });
+    }
+
+    /// Broadcast a deletion phase transition.
+    pub fn deletion_phase(
+        &self,
+        document_id: &str,
+        track_id: &str,
+        phase: DeletionPhaseKind,
+        items_processed: u32,
+        items_total: u32,
+    ) {
+        self.broadcast(ProgressEvent::DeletionPhase {
+            document_id: document_id.to_string(),
+            track_id: track_id.to_string(),
+            phase_label: phase.label().to_string(),
+            phase,
+            items_processed,
+            items_total,
+        });
+    }
+
+    /// Broadcast that a single-document deletion completed.
+    #[allow(clippy::too_many_arguments)]
+    pub fn deletion_completed(
+        &self,
+        document_id: &str,
+        track_id: &str,
+        chunks_deleted: usize,
+        entities_removed: usize,
+        relationships_removed: usize,
+        embeddings_deleted: usize,
+        partial_failure: bool,
+        error: Option<String>,
+    ) {
+        self.broadcast(ProgressEvent::DeletionCompleted {
+            document_id: document_id.to_string(),
+            track_id: track_id.to_string(),
+            chunks_deleted,
+            entities_removed,
+            relationships_removed,
+            embeddings_deleted,
+            partial_failure,
+            error,
+        });
+    }
+
+    /// Broadcast that a bulk deletion has started.
+    pub fn bulk_deletion_started(&self, total: usize) {
+        self.broadcast(ProgressEvent::BulkDeletionStarted { total });
+    }
+
+    /// Broadcast per-document progress during a bulk deletion.
+    pub fn bulk_deletion_item_progress(
+        &self,
+        document_id: &str,
+        completed: usize,
+        total: usize,
+        entities_removed: usize,
+        relationships_removed: usize,
+    ) {
+        self.broadcast(ProgressEvent::BulkDeletionItemProgress {
+            document_id: document_id.to_string(),
+            completed,
+            total,
+            entities_removed,
+            relationships_removed,
+        });
+    }
+
+    /// Broadcast that a bulk deletion has finished.
+    pub fn bulk_deletion_completed(
+        &self,
+        deleted_count: usize,
+        skipped_count: usize,
+        total_entities_removed: usize,
+        total_relationships_removed: usize,
+    ) {
+        self.broadcast(ProgressEvent::BulkDeletionCompleted {
+            deleted_count,
+            skipped_count,
+            total_entities_removed,
+            total_relationships_removed,
         });
     }
 }

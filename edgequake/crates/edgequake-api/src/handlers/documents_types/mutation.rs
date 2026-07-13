@@ -24,6 +24,24 @@ pub struct DeleteDocumentResponse {
 
     /// Number of relationships affected.
     pub relationships_affected: usize,
+
+    /// Number of vector embeddings deleted.
+    ///
+    /// @implements SPEC-050: Richer delete stats for UI feedback.
+    #[serde(default)]
+    pub embeddings_deleted: usize,
+
+    /// True when one or more non-fatal phases failed (e.g. graph cascade error).
+    ///
+    /// @implements SPEC-050: Partial failure visibility.
+    #[serde(default)]
+    pub partial_failure: bool,
+
+    /// Human-readable description of the partial failure, if any.
+    ///
+    /// @implements SPEC-050: Partial failure detail for UI.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub partial_failure_reason: Option<String>,
 }
 
 /// Bulk document deletion response.
@@ -64,15 +82,26 @@ pub struct DeletionImpactResponse {
     pub chunks_to_delete: usize,
 
     /// Number of entities that would be completely removed (no other sources).
+    ///
+    /// SPEC-050/EC-1: entities exclusive to this document → DELETED.
     pub entities_to_remove: usize,
 
     /// Number of entities that would be updated (some sources remaining).
+    ///
+    /// SPEC-050/EC-2: entities shared with other documents → SURVIVE with pruned sources.
+    /// These entities are NOT deleted — they persist in the knowledge graph with
+    /// their source_ids updated to exclude this document's chunks.
     pub entities_to_update: usize,
 
     /// Number of relationships that would be completely removed.
+    ///
+    /// Includes: (a) relationships exclusive to this document, and
+    /// (b) relationships whose source or target entity will be removed (EC-3).
     pub relationships_to_remove: usize,
 
-    /// Number of relationships that would be updated.
+    /// Number of relationships that would be updated (some sources remaining).
+    ///
+    /// SPEC-050/EC-6: relationships shared with other documents → SURVIVE with pruned sources.
     pub relationships_to_update: usize,
 
     /// Preview is read-only; document NOT deleted.

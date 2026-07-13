@@ -26,6 +26,8 @@ const TERMINAL_DOCUMENT_STATUSES = new Set([
 function isActiveIngestionDocument(doc: Document): boolean {
   if (!doc.track_id) return false;
   const status = doc.status?.toLowerCase() ?? "";
+  // SPEC-050 GAP-FIX: "pending" documents are freshly queued (e.g. after reprocess).
+  // They have a track_id and need WS subscription so stage updates arrive immediately.
   return !TERMINAL_DOCUMENT_STATUSES.has(status);
 }
 

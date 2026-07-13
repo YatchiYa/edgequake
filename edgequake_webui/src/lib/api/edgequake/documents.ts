@@ -3,10 +3,10 @@
  */
 
 import { getRuntimeServerBaseUrl } from "@/lib/runtime-config";
-import { api } from "../client";
-import { buildQueryString, withQuery } from "../query-params";
 import { postMultipart, type MultipartUploadProgress } from "@/lib/upload/multipart-upload-client";
 import { buildPdfUploadFormData } from "@/lib/upload/pdf-upload-form-data";
+import { api } from "../client";
+import { buildQueryString, withQuery } from "../query-params";
 
 import type {
     Document,
@@ -513,6 +513,58 @@ export async function deleteDocument(documentId: string): Promise<void> {
 
 export async function deleteAllDocuments(): Promise<{ deleted_count: number }> {
   return api.delete<{ deleted_count: number }>("/documents");
+}
+
+// ---------------------------------------------------------------------------
+// Deletion Impact Analysis (SPEC-050)
+// ---------------------------------------------------------------------------
+
+/**
+ * Pre-delete impact analysis — shows what will be removed without actually deleting.
+ *
+ * @implements SPEC-050: Show impact before confirm.
+ * @implements SPEC-050/EC-2: Shared entity semantics.
+ */
+export interface DeletionImpact {
+  /** Document ID being analysed. */
+  document_id: string;
+  /** Number of chunks (KV records) that would be deleted. */
+  chunks_to_delete: number;
+  /**
+   * Entities that would be fully removed (no other source documents).
+   * SPEC-050/EC-1: These entities exist ONLY in this document → DELETED.
+   */
+  entities_to_remove: number;
+  /**
+   * Entities that would be updated (still referenced by other documents).
+   * SPEC-050/EC-2: These entities SURVIVE with pruned source_ids.
+   * They are NOT deleted — they persist in the graph with fewer supporting sources.
+   */
+  entities_to_update: number;
+  /**
+   * Relationships that would be fully removed.
+   * Includes exclusive relationships AND those whose endpoint entity is removed.
+   */
+  relationships_to_remove: number;
+  /**
+   * Relationships that would be updated (still referenced by other documents).
+   * SPEC-050/EC-6: These relationships SURVIVE with pruned source_ids.
+   */
+  relationships_to_update: number;
+  /** Always true — this endpoint is read-only. */
+  preview_only: boolean;
+}
+
+/**
+ * Fetch deletion impact for a document without deleting it.
+ *
+ * @implements SPEC-050: Pre-delete impact analysis.
+ * @param documentId The document to analyse.
+ */
+export async function getDeletionImpact(
+  documentId: string,
+): Promise<DeletionImpact> {
+  return api.get<DeletionImpact>(`/documents/${documentId}/deletion-impact`);
 }
 
 /**
