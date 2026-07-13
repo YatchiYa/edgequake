@@ -91,7 +91,7 @@ impl std::fmt::Debug for VisionConversionConfig {
 ///
 /// First principle: page PNGs serve the markdown viewer. Multimodal VLM
 /// analyze (`<drawing/>` tags) is optional via [`Self::emit_analyze_tags`].
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct PageDrawingAssetsConfig {
     /// Root passed to multimodal `resolve_image_asset` as `base_dir`.
     pub assets_root: PathBuf,
@@ -99,6 +99,25 @@ pub struct PageDrawingAssetsConfig {
     pub id_prefix: Option<String>,
     /// When true, also emit `<drawing/>` tags for multimodal analyze scan (`i`).
     pub emit_analyze_tags: bool,
+    /// When set, run the SPEC-049 two-pass VLM figure filter after all crops
+    /// are written.  The provider should be the same vision LLM used for page
+    /// OCR.  Results are written to `figure_filter_manifest.json` under
+    /// `assets_root`.
+    pub figure_filter_provider: Option<Arc<dyn edgequake_llm::LLMProvider>>,
+}
+
+impl std::fmt::Debug for PageDrawingAssetsConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PageDrawingAssetsConfig")
+            .field("assets_root", &self.assets_root)
+            .field("id_prefix", &self.id_prefix)
+            .field("emit_analyze_tags", &self.emit_analyze_tags)
+            .field(
+                "figure_filter_provider",
+                &self.figure_filter_provider.as_ref().map(|p| p.name()),
+            )
+            .finish()
+    }
 }
 
 /// Configuration shared by PDF conversion backends.

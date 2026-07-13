@@ -1,0 +1,196 @@
+{
+  "pdf": "hierar_2607.02980v1.pdf",
+  "total_regions": 11,
+  "figures": 11,
+  "tables": 0,
+  "extraction_ms": 247,
+  "regions": [
+    {
+      "page": 1,
+      "index": 1,
+      "kind": "Figure",
+      "source": "ObjectCluster",
+      "label": "Figure",
+      "bbox": [
+        102.0,
+        346.657,
+        470.39835,
+        516.0735
+      ],
+      "width": 930,
+      "height": 428,
+      "area_frac_px": 0.09951,
+      "asset_path": "assets/p01-fig-01.png"
+    },
+    {
+      "page": 1,
+      "index": 2,
+      "kind": "Figure",
+      "source": "ObjectCluster",
+      "label": "Figure",
+      "bbox": [
+        262.888,
+        256.385,
+        492.69598,
+        342.21976
+      ],
+      "width": 580,
+      "height": 217,
+      "area_frac_px": 0.031465,
+      "asset_path": "assets/p01-fig-02.png"
+    },
+    {
+      "page": 1,
+      "index": 3,
+      "kind": "Figure",
+      "source": "ObjectCluster",
+      "label": "Figure 1",
+      "bbox": [
+        102.0,
+        156.858,
+        272.40112,
+        333.0327
+      ],
+      "width": 430,
+      "height": 445,
+      "area_frac_px": 0.0478375,
+      "asset_path": "assets/p01-fig-03.png"
+    },
+    {
+      "page": 1,
+      "index": 4,
+      "kind": "Figure",
+      "source": "ObjectCluster",
+      "label": "Figure",
+      "bbox": [
+        262.888,
+        156.858,
+        492.6911,
+        251.9466
+      ],
+      "width": 580,
+      "height": 240,
+      "area_frac_px": 0.0348,
+      "asset_path": "assets/p01-fig-04.png"
+    },
+    {
+      "page": 2,
+      "index": 1,
+      "kind": "Figure",
+      "source": "ObjectCluster",
+      "label": "Figure 2",
+      "bbox": [
+        331.681,
+        241.779,
+        509.99994,
+        367.5355
+      ],
+      "width": 450,
+      "height": 317,
+      "area_frac_px": 0.0356625,
+      "asset_path": "assets/p02-fig-01.png"
+    },
+    {
+      "page": 4,
+      "index": 1,
+      "kind": "Figure",
+      "source": "ObjectCluster",
+      "label": "Figure 3",
+      "bbox": [
+        105.961,
+        542.653,
+        506.01932,
+        726.00085
+      ],
+      "width": 1010,
+      "height": 463,
+      "area_frac_px": 0.1169075,
+      "asset_path": "assets/p04-fig-01.png"
+    },
+    {
+      "page": 5,
+      "index": 1,
+      "kind": "Figure",
+      "source": "ObjectCluster",
+      "label": "Figure",
+      "bbox": [
+        102.0,
+        255.57599,
+        510.00507,
+        344.745
+      ],
+      "width": 1030,
+      "height": 226,
+      "area_frac_px": 0.058195,
+      "asset_path": "assets/p05-fig-01.png"
+    },
+    {
+      "page": 8,
+      "index": 1,
+      "kind": "Figure",
+      "source": "ObjectCluster",
+      "label": "Figure 4",
+      "bbox": [
+        80.29024,
+        553.3969,
+        507.44092,
+        728.2565
+      ],
+      "width": 1078,
+      "height": 442,
+      "area_frac_px": 0.119119,
+      "asset_path": "assets/p08-fig-01.png"
+    },
+    {
+      "page": 14,
+      "index": 1,
+      "kind": "Figure",
+      "source": "ObjectCluster",
+      "label": "Figure 5",
+      "bbox": [
+        102.0,
+        501.671,
+        510.01108,
+        726.00116
+      ],
+      "width": 1030,
+      "height": 566,
+      "area_frac_px": 0.145745,
+      "asset_path": "assets/p14-fig-01.png"
+    },
+    {
+      "page": 16,
+      "index": 1,
+      "kind": "Figure",
+      "source": "ObjectCluster",
+      "label": "Figure 6",
+      "bbox": [
+        0.0,
+        543.404,
+        509.99673,
+        726.0006
+      ],
+      "width": 1287,
+      "height": 461,
+      "area_frac_px": 0.14832675,
+      "asset_path": "assets/p16-fig-01.png"
+    },
+    {
+      "page": 17,
+      "index": 1,
+      "kind": "Figure",
+      "source": "ObjectCluster",
+      "label": "Figure 7",
+      "bbox": [
+        111.901,
+        574.394,
+        500.11475,
+        726.0008
+      ],
+      "width": 981,
+      "height": 383,
+      "area_frac_px": 0.09393075,
+      "asset_path": "assets/p17-fig-01.png"
+    }
+  ]
+}

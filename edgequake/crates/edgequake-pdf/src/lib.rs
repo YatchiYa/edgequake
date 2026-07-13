@@ -4,6 +4,7 @@ pub mod drawing_tags;
 pub mod embedded_images;
 pub mod error;
 pub mod fallback;
+pub mod figure_filter;
 pub mod inline_images;
 pub mod page_assets;
 pub mod region_assets;
@@ -34,6 +35,10 @@ pub use embedded_images::{figures_by_page, write_embedded_figure_assets, Written
 pub use error::PdfConversionError;
 pub use fallback::{
     build_edgeparse_fallback_message, should_fallback_to_edgeparse, VisionFailureKind,
+};
+pub use figure_filter::{
+    load_manifest, write_manifest, FigureCandidate, FigureFilter, FigureFilterResult, FigureKind,
+    FIGURE_FILTER_MANIFEST,
 };
 pub use inline_images::{
     scan_inline_image_refs, InlineImageAnalysis, InlineImageAnalyzer, NoopInlineImageAnalyzer,

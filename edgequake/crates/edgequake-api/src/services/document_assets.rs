@@ -40,6 +40,7 @@ pub fn page_drawing_assets_config(
         assets_root: document_mm_assets_root(document_id),
         id_prefix: Some(document_id.to_string()),
         emit_analyze_tags: true,
+        figure_filter_provider: None, // opt-in via explicit provider injection
     })
 }
 
@@ -58,6 +59,7 @@ pub fn page_drawing_assets_config_for_vision(
         assets_root: document_mm_assets_root(document_id),
         id_prefix: Some(document_id.to_string()),
         emit_analyze_tags: images && vlm_on,
+        figure_filter_provider: None, // opt-in via explicit provider injection
     }
 }
 

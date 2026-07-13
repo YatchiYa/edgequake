@@ -1,0 +1,111 @@
+{
+  "pdf": "lighrad_2410.05779v3.pdf",
+  "total_regions": 6,
+  "figures": 6,
+  "tables": 0,
+  "extraction_ms": 198,
+  "regions": [
+    {
+      "page": 3,
+      "index": 1,
+      "kind": "Figure",
+      "source": "ObjectCluster",
+      "label": "Figure 1",
+      "bbox": [
+        96.03718,
+        530.5292,
+        552.402,
+        792.0
+      ],
+      "width": 1153,
+      "height": 660,
+      "area_frac_px": 0.190245,
+      "asset_path": "assets/p03-fig-01.png"
+    },
+    {
+      "page": 13,
+      "index": 1,
+      "kind": "Figure",
+      "source": "ObjectCluster",
+      "label": "Figure 3",
+      "bbox": [
+        102.0,
+        122.116,
+        510.0166,
+        430.90295
+      ],
+      "width": 1030,
+      "height": 780,
+      "area_frac_px": 0.20085,
+      "asset_path": "assets/p13-fig-01.png"
+    },
+    {
+      "page": 14,
+      "index": 1,
+      "kind": "Figure",
+      "source": "ObjectCluster",
+      "label": "Figure 4",
+      "bbox": [
+        102.0,
+        396.735,
+        510.0166,
+        628.8445
+      ],
+      "width": 1030,
+      "height": 586,
+      "area_frac_px": 0.150895,
+      "asset_path": "assets/p14-fig-01.png"
+    },
+    {
+      "page": 14,
+      "index": 2,
+      "kind": "Figure",
+      "source": "ObjectCluster",
+      "label": "Figure 5",
+      "bbox": [
+        102.0,
+        153.97,
+        510.0166,
+        267.30457
+      ],
+      "width": 1030,
+      "height": 286,
+      "area_frac_px": 0.073645,
+      "asset_path": "assets/p14-fig-02.png"
+    },
+    {
+      "page": 15,
+      "index": 1,
+      "kind": "Figure",
+      "source": "ObjectCluster",
+      "label": "Figure 6",
+      "bbox": [
+        102.0,
+        458.628,
+        510.0166,
+        690.43677
+      ],
+      "width": 1030,
+      "height": 586,
+      "area_frac_px": 0.150895,
+      "asset_path": "assets/p15-fig-01.png"
+    },
+    {
+      "page": 15,
+      "index": 2,
+      "kind": "Figure",
+      "source": "ObjectCluster",
+      "label": "Figure 7",
+      "bbox": [
+        102.0,
+        133.763,
+        510.0166,
+        341.5161
+      ],
+      "width": 1030,
+      "height": 524,
+      "area_frac_px": 0.13493,
+      "asset_path": "assets/p15-fig-02.png"
+    }
+  ]
+}
