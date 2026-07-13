@@ -176,6 +176,56 @@ impl PdfConverter for VisionPdfConverter {
                     }
                 }
 
+                // 1c) SPEC-049 two-pass VLM figure filter — runs after all figure PNGs are
+                //     on disk.  Optional: only when figure_filter_provider is set.
+                //     Pass 1 → semantic filter (discard logos / text-boxes).
+                //     Pass 2 → kind-aware description (chart→data, diagram→flow, …).
+                //     Results written to figure_filter_manifest.json for RAG.
+                if let Some(ref provider) = page_assets.figure_filter_provider {
+                    let candidates: Vec<crate::figure_filter::FigureCandidate> = figure_map
+                        .values()
+                        .flatten()
+                        .map(|fig| crate::figure_filter::FigureCandidate {
+                            rel_path: fig.rel_path.clone(),
+                            full_path: page_assets.assets_root.join(&fig.rel_path),
+                            page_num: fig.page_num,
+                            label: String::new(),
+                        })
+                        .collect();
+                    if !candidates.is_empty() {
+                        if let Some(hook) = status_hook {
+                            hook(
+                                &format!(
+                                    "Running two-pass figure filter on {} crops…",
+                                    candidates.len()
+                                ),
+                                0.935,
+                            );
+                        }
+                        let filter = crate::figure_filter::FigureFilter::new(Arc::clone(provider));
+                        match filter.run(&candidates).await {
+                            Ok(results) => {
+                                let kept = results.iter().filter(|r| r.is_figure).count();
+                                info!(
+                                    total = results.len(),
+                                    kept,
+                                    discarded = results.len() - kept,
+                                    "SPEC-049 two-pass figure filter complete"
+                                );
+                                if let Err(e) = crate::figure_filter::write_manifest(
+                                    &page_assets.assets_root,
+                                    &results,
+                                ) {
+                                    warn!(error = %e, "Failed to write figure filter manifest");
+                                }
+                            }
+                            Err(e) => {
+                                warn!(error = %e, "SPEC-049 figure filter failed; keeping all crops");
+                            }
+                        }
+                    }
+                }
+
                 // 2) Full-page PNGs for markdown viewer only (not VLM analyze targets).
                 if let Some(hook) = status_hook {
                     hook(

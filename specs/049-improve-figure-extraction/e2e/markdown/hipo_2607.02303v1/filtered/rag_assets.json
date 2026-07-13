@@ -1,0 +1,30 @@
+[
+  {
+    "asset": "p01-fig-01.png",
+    "page": 1,
+    "label": "Figure",
+    "kind": "bar_chart",
+    "description": "1. **Chart title**\n   Written-in property \u03a6\n\n2. **X-axis label** and tick values\n   \u2022 Label: (not explicitly shown, but implies different sample conditions)\n   \u2022 Tick values: W, A, A+, A++, X, X+, A\u2022\n\n3. **Y-axis label** and range\n   \u2022 Label: (not explicitly shown, inferred as a property value)\n   \u2022 Range: 0 to 30\n\n4. **Series/groups**\n   \u2022 Single series of bars with three highlighted in color (the last bar in green, the fifth in blue, the others in gray).\n\n5. **Key observations**\n   \u2022 The highest value (29.0) occurs for the first sample (W).\n   \u2022 The lowest value (22.9) is observed for the last sample (A\u2022).\n   \u2022 A gradual decrease from W to A\u2022 is interrupted by a local peak at X+ (26.9).\n\n6. **Data table**\n\n| Sample | Value |\n|--------|-------|\n| W      | 29.0  |\n| A      | 28.8  |\n| A+     | 28.2  |\n| A++    | 27.3  |\n| X      | 26.9  |\n| X+     | 26.2  |\n| A\u2022     | 22.9  |"
+  },
+  {
+    "asset": "p01-fig-02.png",
+    "page": 1,
+    "label": "Figure",
+    "kind": "line_chart",
+    "description": "1. **Chart title**\n   *Not visible in the provided crop.*\n\n2. **X-axis** label and range\n   - Label: *Not explicitly labeled, but likely represents some measure of size or iteration count (e.g., number of samples, steps, or epochs).*\n   - Range: **2k** to **32k**\n\n3. **Y-axis** label and range\n   - Label: *Not explicitly labeled, but likely represents an error metric (e.g., loss, classification error, or perplexity).*\n   - Range: **1** to **5**\n\n4. **Series** names and trend direction\n   - **Green solid line with circles**: Initially stable, then a slight increase followed by a sharp decline.\n   - **Red dashed line with triangles**: Steady decline throughout.\n   - **Blue dotted line with squares**: Steep decline initially, then flattens out near the bottom.\n   - **Gray dashed line with squares**: Steady decline, but less steep than the red series.\n\n5. **Key observations**\n   - The **blue series** achieves the lowest value earliest (around **4k**), then remains stable.\n   - The **red series** shows a consistent downward trend, outperforming the green series at higher values (beyond **8k**).\n   - The **green series** initially remains stable but eventually declines sharply after **16k**, though it does not reach the lowest error.\n\n6. **Approximate data**\nSince exact values are not fully readable, approximate trends are summarized below:\n\n| X-axis | Green Series | Red Series | Blue Series | Gray Series |\n|--------|--------------|------------|-------------|-------------|\n| 2k     | ~3.5         | ~3.8       | ~4.5        | ~3.8        |\n| 4k     | ~3.5         | ~3.3       | ~2.0        | ~3.2        |\n| 8k     | ~3.5         | ~2.8       | ~2.0        | ~2.8        |\n| 16k    | ~3.6         | ~2.3       | ~2.0        | ~2.4        |\n| 32k    | ~2.5         | ~1.8       | ~2.0        | ~2.0        |"
+  },
+  {
+    "asset": "p04-fig-01.png",
+    "page": 4,
+    "label": "Figure 2",
+    "kind": "diagram",
+    "description": "1. **Main elements** and their roles:\n   - **State memory (S\u209c)**: A component that stores the entire history of a process in a compressed form. The compression is lossy, meaning some information may be discarded to reduce the data size.\n   - **Arrow labeled \"tens\"**: Indicates the progression of time or sequential input feeding into the state memory.\n\n2. **Relationships and connections** between elements:\n   - The arrow points into the **State memory (S\u209c)**, suggesting that sequential or temporal data (e.g., time steps or observations) is continuously incorporated into the state memory.\n   - The state memory aggregates and compresses this incoming data to retain a summary of all past information.\n\n3. **Directional flow** (if present):\n   - The flow is unidirectional, moving from left (input or time progression) to right (state memory accumulation).\n\n4. **Key takeaway** in one sentence:\n   - The diagram illustrates how **state memory (S\u209c) compresses and retains all historical data in a lossy manner** as new inputs are processed over time."
+  },
+  {
+    "asset": "p04-fig-02.png",
+    "page": 4,
+    "label": "Figure",
+    "kind": "diagram",
+    "description": "1. **Main elements** and their roles:\n   - **\u03b2\u00b7||e|| (left side, green box)**: Likely represents a threshold or scaling factor related to an error or embedding norm, used to determine significance or surprise.\n   - **Exact KV memory \ud835\udc9c\u209c (central text)**: The precise key-value (KV) memory at time *t*, which stores relevant information.\n   - **top-w surprising KV pairs (central text)**: The subset of the most surprising or unexpected KV pairs selected from the exact memory, where *w* denotes the number of pairs.\n   - **CA\u2083 hippocampus (bottom text, italicized)**: Refers to a region in the hippocampus, often associated with memory processing and retrieval in neuroscience-inspired models.\n\n2. **Relationships and connections** between elements:\n   - The **exact KV memory \ud835\udc9c\u209c** is filtered to extract the **top-w surprising KV pairs**, implying a selection mechanism based on a surprise or novelty metric.\n   - The **\u03b2\u00b7||e||** term appears to act as a criterion or threshold for identifying the surprising KV pairs from the exact memory.\n\n3. **Directional flow** (if present):\n   - The flow is from the **exact KV memory \ud835\udc9c\u209c** to the **top-w surprising KV pairs**, indicating a filtering or selection process.\n   - The green arrow suggests that the threshold **\u03b2\u00b7||e||** influences or gates this selection.\n\n4. **Key takeaway** in one sentence:\n   - The diagram illustrates a mechanism for selecting the most surprising key-value pairs from an exact memory store, guided by a threshold criterion, likely for efficient memory retrieval or update in a hippocampal-inspired model."
+  }
+]

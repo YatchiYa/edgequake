@@ -1,6 +1,6 @@
 {
-  "workspace_id": "17d517a4-595c-4e45-b9ab-ad6b042a2461",
-  "workspace_slug": "bench047-smoke-9f17ca7d-p0_mm_ite-1783773733",
+  "workspace_id": "d38568e2-5acd-4ed1-8d3d-2aaa331bdf81",
+  "workspace_slug": "bench047-smoke-3d116f5e-p0_mm_ite-1783869484",
   "stage": "smoke",
   "profile": "P0_mm_ite",
   "doc_ids": [
@@ -13,7 +13,7 @@
     "indonesiamobilemarketresearch-ag-150106055934-conversion-gate02_95.pdf",
     "measuringsuccessonfacebooktwitterlinkedin-160317142140_95.pdf"
   ],
-  "api_base": "http://127.0.0.1:8090",
+  "api_base": "http://127.0.0.1:8091",
   "document_scope": true,
   "query_workers": 2
 }
