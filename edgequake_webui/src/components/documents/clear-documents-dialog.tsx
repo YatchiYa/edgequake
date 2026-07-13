@@ -14,10 +14,12 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
 import { invalidateKnowledgeGraph } from '@/lib/cache-manager';
 import { deleteAllDocuments } from '@/lib/api/edgequake';
+import { useBulkDeletionProgress } from '@/hooks/use-bulk-deletion-progress';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Loader2, Trash2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Loader2, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -105,6 +107,12 @@ export function ClearDocumentsDialog({
     },
   });
 
+  // SPEC-050: Track bulk deletion progress via WebSocket events.
+  // WHY: The bulk delete is a single HTTP call, but the server broadcasts
+  // per-document progress so the user can see real-time deletion progress.
+  // Declared after clearMutation to avoid temporal dead zone.
+  const bulkProgress = useBulkDeletionProgress(isOpen && clearMutation.isPending);
+
   const handleClear = () => {
     if (!isConfirmed) return;
     clearMutation.mutate();
@@ -174,6 +182,32 @@ export function ClearDocumentsDialog({
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
+
+        {/* SPEC-050: Real-time bulk deletion progress (shown while mutation is pending) */}
+        {clearMutation.isPending && (
+          <div className="space-y-2 py-1" data-testid="bulk-deletion-progress">
+            <Progress
+              value={bulkProgress.total > 0 ? (bulkProgress.completed / bulkProgress.total) * 100 : undefined}
+              className="h-2"
+            />
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>
+                {bulkProgress.total > 0
+                  ? t('documents.clearAll.progressCount', '{{done}} / {{total}} deleted', {
+                      done: bulkProgress.completed,
+                      total: bulkProgress.total,
+                    })
+                  : t('documents.clearAll.progressPreparing', 'Preparing…')}
+              </span>
+              {bulkProgress.isComplete && (
+                <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="h-3 w-3" />
+                  {t('documents.clearAll.progressDone', 'Done')}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={clearMutation.isPending}>
             {t('common.cancel', 'Cancel')}

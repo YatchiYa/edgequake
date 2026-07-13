@@ -13,6 +13,8 @@ import { Copy, Eye, MoreVertical, RefreshCw, StopCircle, Trash2 } from 'lucide-r
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { ResetDocumentStatusButton } from './reset-document-status-button';
+import { DeleteConfirmDialog } from './delete-confirm-dialog';
+import { useState } from 'react';
 
 /**
  * Props for the DocumentActionsMenu component.
@@ -26,10 +28,12 @@ interface DocumentActionsMenuProps {
   onCancel: (trackId: string) => void;
   /** Callback to reprocess document */
   onReprocess: (id: string) => void;
-  /** Callback to delete document */
+  /** Callback to delete document — called after user confirms via dialog */
   onDelete: (id: string) => void;
   /** Whether a cancel operation is in progress */
   isCancelling?: boolean;
+  /** Whether a delete operation is in progress for this document */
+  isDeleting?: boolean;
 }
 
 /** Processing status values that allow cancellation */
@@ -44,9 +48,10 @@ const CANCELLABLE_STAGES = [
  * Dropdown menu with document actions.
  * 
  * WHY: Extracted from DocumentManager for SRP compliance (OODA-09).
- * This component handles the actions dropdown for each document row.
+ * SPEC-050: Delete action now opens DeleteConfirmDialog with impact preview.
  * 
  * @implements FEAT0001 - Document ingestion with entity extraction
+ * @implements SPEC-050 - Impact preview before delete
  */
 export function DocumentActionsMenu({
   doc,
@@ -55,8 +60,12 @@ export function DocumentActionsMenu({
   onReprocess,
   onDelete,
   isCancelling = false,
+  isDeleting = false,
 }: DocumentActionsMenuProps) {
   const { t } = useTranslation();
+  // SPEC-050: Local state controls the DeleteConfirmDialog.
+  // WHY: The dialog is scoped to this menu row — no need to lift state.
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   const handleCopyId = () => {
     navigator.clipboard.writeText(doc.id);
@@ -73,65 +82,77 @@ export function DocumentActionsMenu({
   const showReset = doc.status === 'failed' || doc.status === 'partial_failure' || doc.status === 'cancelled';
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="More actions">
-          <MoreVertical className="h-4 w-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        {/* OODA-31: Copy document ID */}
-        <DropdownMenuItem onClick={handleCopyId}>
-          <Copy className="h-4 w-4 mr-2" />
-          {t('documents.actions.copyId', 'Copy ID')}
-        </DropdownMenuItem>
-
-        {/* SPEC-002: View PDF/Markdown for PDF documents */}
-        {showViewPdf && (
-          <DropdownMenuItem onClick={() => onViewPdf(doc)}>
-            <Eye className="h-4 w-4 mr-2" />
-            {t('documents.actions.viewPdf', 'View PDF')}
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="More actions">
+            <MoreVertical className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {/* OODA-31: Copy document ID */}
+          <DropdownMenuItem onClick={handleCopyId}>
+            <Copy className="h-4 w-4 mr-2" />
+            {t('documents.actions.copyId', 'Copy ID')}
           </DropdownMenuItem>
-        )}
 
-        <DocumentDownloadMenu document={doc} variant="submenu" />
+          {/* SPEC-002: View PDF/Markdown for PDF documents */}
+          {showViewPdf && (
+            <DropdownMenuItem onClick={() => onViewPdf(doc)}>
+              <Eye className="h-4 w-4 mr-2" />
+              {t('documents.actions.viewPdf', 'View PDF')}
+            </DropdownMenuItem>
+          )}
 
-        {/* Reset status option for failed documents */}
-        {showReset && (
-          <DropdownMenuItem asChild>
-            <div className="p-0">
-              <ResetDocumentStatusButton document={doc} iconOnly={false} size="sm" />
-            </div>
+          <DocumentDownloadMenu document={doc} variant="submenu" />
+
+          {/* Reset status option for failed documents */}
+          {showReset && (
+            <DropdownMenuItem asChild>
+              <div className="p-0">
+                <ResetDocumentStatusButton document={doc} iconOnly={false} size="sm" />
+              </div>
+            </DropdownMenuItem>
+          )}
+
+          {/* Cancel option for processing documents */}
+          {canCancel && (
+            <DropdownMenuItem 
+              onClick={() => onCancel(doc.track_id!)}
+              className="text-orange-600"
+              disabled={isCancelling}
+            >
+              <StopCircle className="h-4 w-4 mr-2" />
+              {t('documents.actions.cancel', 'Cancel Extraction')}
+            </DropdownMenuItem>
+          )}
+
+          {/* Reprocess */}
+          <DropdownMenuItem onClick={() => onReprocess(doc.id)}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            {t('documents.actions.reprocess')}
           </DropdownMenuItem>
-        )}
 
-        {/* Cancel option for processing documents */}
-        {canCancel && (
-          <DropdownMenuItem 
-            onClick={() => onCancel(doc.track_id!)}
-            className="text-orange-600"
-            disabled={isCancelling}
+          {/* SPEC-050: Delete now opens a confirm dialog with impact preview */}
+          <DropdownMenuItem
+            onClick={() => setDeleteDialogOpen(true)}
+            className="text-destructive"
+            disabled={isDeleting}
           >
-            <StopCircle className="h-4 w-4 mr-2" />
-            {t('documents.actions.cancel', 'Cancel Extraction')}
+            <Trash2 className="h-4 w-4 mr-2" />
+            {t('documents.actions.delete')}
           </DropdownMenuItem>
-        )}
+        </DropdownMenuContent>
+      </DropdownMenu>
 
-        {/* Reprocess */}
-        <DropdownMenuItem onClick={() => onReprocess(doc.id)}>
-          <RefreshCw className="h-4 w-4 mr-2" />
-          {t('documents.actions.reprocess')}
-        </DropdownMenuItem>
-
-        {/* Delete */}
-        <DropdownMenuItem
-          onClick={() => onDelete(doc.id)}
-          className="text-destructive"
-        >
-          <Trash2 className="h-4 w-4 mr-2" />
-          {t('documents.actions.delete')}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+      {/* SPEC-050: Impact preview + confirm before delete */}
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        document={doc}
+        onConfirm={onDelete}
+        isDeleting={isDeleting}
+      />
+    </>
   );
 }

@@ -195,6 +195,17 @@ export class ProgressWebSocket {
         this.emit("progress", message);
         this.options.onMessage?.(message);
         break;
+      case "DeletionStarted":
+      case "DeletionPhase":
+      case "DeletionCompleted":
+      case "BulkDeletionStarted":
+      case "BulkDeletionItemProgress":
+      case "BulkDeletionCompleted":
+        // SPEC-050: Deletion progress events — broadcast as generic "progress"
+        // so existing listeners receive them. Specialised hooks filter by type.
+        this.emit("progress", message);
+        this.options.onMessage?.(message);
+        break;
       default:
         console.warn(
           "[ProgressWebSocket] Unknown message type:",

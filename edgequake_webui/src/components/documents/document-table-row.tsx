@@ -163,6 +163,11 @@ export interface DocumentTableRowProps {
   isRetrying: boolean;
   /** Whether a cancel operation is pending */
   isCancelling: boolean;
+  /**
+   * Whether a delete operation is currently in progress for this document.
+   * SPEC-050: Dims the row and shows "Deleting" badge.
+   */
+  isDeleting?: boolean;
 }
 
 /**
@@ -188,6 +193,7 @@ export const DocumentTableRow = memo(function DocumentTableRow({
   onDelete,
   isRetrying,
   isCancelling,
+  isDeleting = false,
 }: DocumentTableRowProps) {
   const { t } = useTranslation();
 
@@ -199,6 +205,8 @@ export const DocumentTableRow = memo(function DocumentTableRow({
     index % 2 === 0 ? 'bg-background' : 'bg-muted/20',
     // SPEC-048: only gently de-emphasize non-active rows — never look disabled
     isBackground && 'opacity-80',
+    // SPEC-050: Dim row while deletion is in progress
+    isDeleting && 'opacity-50 pointer-events-none',
     // OODA-25: Failed/cancelled documents highlight
     doc.status === 'failed' &&
       'bg-red-50/50 dark:bg-red-950/20 border-l-4 border-l-red-500',
@@ -338,6 +346,7 @@ export const DocumentTableRow = memo(function DocumentTableRow({
             onReprocess={onReprocess}
             onDelete={onDelete}
             isCancelling={isCancelling}
+            isDeleting={isDeleting}
           />
         </QuickActionButtons>
       </TableCell>

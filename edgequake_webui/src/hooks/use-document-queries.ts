@@ -47,6 +47,9 @@ type ListedDocument = DocumentsResult["items"][number];
 function isDocumentActivelyProcessing(doc: ListedDocument): boolean {
   return (
     doc.status === "processing" ||
+    // SPEC-050 GAP-FIX: "pending" documents are queued — activate 2s polling
+    // so the row updates as soon as the worker picks them up.
+    doc.status === "pending" ||
     doc.current_stage === "processing" ||
     doc.current_stage === "converting" ||
     doc.current_stage === "preprocessing" ||

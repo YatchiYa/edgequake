@@ -91,6 +91,8 @@ export interface DocumentTableSectionProps {
   onDelete: (id: string) => void;
   isRetrying: boolean;
   isCancelling: boolean;
+  /** SPEC-050: IDs of documents currently being deleted (for row dimming). */
+  deletingDocumentIds?: Set<string>;
   onUploadClick: () => void;
   onClearFilter?: () => void;
   /** Active sort field (shared with toolbar — DRY) */
@@ -130,6 +132,7 @@ export const DocumentTableSection = memo(function DocumentTableSection({
   onDelete,
   isRetrying,
   isCancelling,
+  deletingDocumentIds,
   onUploadClick,
   onClearFilter,
   sortField,
@@ -294,6 +297,7 @@ export const DocumentTableSection = memo(function DocumentTableSection({
                       onDelete={onDelete}
                       isRetrying={isRetrying}
                       isCancelling={isCancelling}
+                      isDeleting={deletingDocumentIds?.has(doc.id) ?? false}
                     />
                   );
                 })}

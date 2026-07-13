@@ -305,6 +305,8 @@ export interface PdfPageProgressEvent {
     total_pages: number;
     /** Progress percentage (0.0 - 1.0) */
     progress: number;
+    /** Current phase: "start", "extraction", "partial_complete", "complete" */
+    phase?: string;
   };
 }
 
@@ -387,7 +389,103 @@ export type WebSocketProgressMessage =
   | StatusSnapshotEvent
   | PdfPageProgressEvent
   | ChunkProgressEvent
-  | ChunkFailureEvent;
+  | ChunkFailureEvent
+  | DeletionStartedEvent
+  | DeletionPhaseEvent
+  | DeletionCompletedEvent
+  | BulkDeletionStartedEvent
+  | BulkDeletionItemProgressEvent
+  | BulkDeletionCompletedEvent;
+
+// ============================================================================
+// Deletion Progress Event Types (SPEC-050)
+// ============================================================================
+
+/**
+ * Emitted when a single-document deletion begins.
+ * @implements SPEC-050: Delete progress parity with ingestion.
+ */
+export interface DeletionStartedEvent {
+  type: 'DeletionStarted';
+  data: {
+    document_id: string;
+    track_id: string;
+  };
+}
+
+/**
+ * Emitted for each phase of a single-document deletion.
+ * @implements SPEC-050: Phase-granular delete progress.
+ */
+export interface DeletionPhaseEvent {
+  type: 'DeletionPhase';
+  data: {
+    document_id: string;
+    track_id: string;
+    phase: string;
+    phase_label: string;
+    items_processed: number;
+    items_total: number;
+  };
+}
+
+/**
+ * Emitted when a single-document deletion completes (success or partial failure).
+ * @implements SPEC-050: Delete completion broadcast.
+ */
+export interface DeletionCompletedEvent {
+  type: 'DeletionCompleted';
+  data: {
+    document_id: string;
+    track_id: string;
+    chunks_deleted: number;
+    entities_removed: number;
+    relationships_removed: number;
+    embeddings_deleted: number;
+    partial_failure: boolean;
+    error: string | null;
+  };
+}
+
+/**
+ * Emitted when a bulk deletion begins.
+ * @implements SPEC-050: Bulk delete progress broadcast.
+ */
+export interface BulkDeletionStartedEvent {
+  type: 'BulkDeletionStarted';
+  data: {
+    total: number;
+  };
+}
+
+/**
+ * Emitted for each document deleted during a bulk deletion.
+ * @implements SPEC-050: Per-document progress during bulk delete.
+ */
+export interface BulkDeletionItemProgressEvent {
+  type: 'BulkDeletionItemProgress';
+  data: {
+    document_id: string;
+    completed: number;
+    total: number;
+    entities_removed: number;
+    relationships_removed: number;
+  };
+}
+
+/**
+ * Emitted when a bulk deletion finishes.
+ * @implements SPEC-050: Bulk delete completion broadcast.
+ */
+export interface BulkDeletionCompletedEvent {
+  type: 'BulkDeletionCompleted';
+  data: {
+    deleted_count: number;
+    skipped_count: number;
+    total_entities_removed: number;
+    total_relationships_removed: number;
+  };
+}
 
 // ============================================================================
 // Client Command Types
