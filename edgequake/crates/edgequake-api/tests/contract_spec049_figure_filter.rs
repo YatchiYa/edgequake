@@ -28,8 +28,8 @@ const TINY_PNG: &[u8] = &[
     0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, // 1×1
     0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53, 0xde, // bit depth, colour, crc
     0x00, 0x00, 0x00, 0x0c, 0x49, 0x44, 0x41, 0x54, // IDAT length + type
-    0x08, 0xd7, 0x63, 0xf8, 0xcf, 0xc0, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01,
-    0xe2, 0x21, 0xbc, 0x33, // data + crc
+    0x08, 0xd7, 0x63, 0xf8, 0xcf, 0xc0, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0xe2, 0x21, 0xbc,
+    0x33, // data + crc
     0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82, // IEND
 ];
 
@@ -95,7 +95,10 @@ async fn contract_spec049_filter_keeps_chart_and_describes() {
     assert_eq!(results.len(), 1);
     assert!(results[0].is_figure);
     assert_eq!(results[0].kind, FigureKind::BarChart);
-    assert!(!results[0].description.is_empty(), "Pass-2 description required");
+    assert!(
+        !results[0].description.is_empty(),
+        "Pass-2 description required"
+    );
     assert!(results[0].description.contains("Bar Chart"));
 }
 
@@ -103,24 +106,27 @@ async fn contract_spec049_filter_keeps_chart_and_describes() {
 async fn contract_spec049_filter_mixed_batch() {
     let tmp = tempfile::tempdir().unwrap();
     let png_chart = write_png(&tmp, "chart.png");
-    let png_logo  = write_png(&tmp, "logo.png");
-    let png_diag  = write_png(&tmp, "diag.png");
+    let png_logo = write_png(&tmp, "logo.png");
+    let png_diag = write_png(&tmp, "diag.png");
     let mock = Arc::new(MockProvider::new());
 
     // Filter processes each candidate sequentially: Pass-1 then Pass-2 per crop.
     // Queue responses in that exact consumption order.
-    mock.add_response(r#"{"kind":"bar_chart","is_figure":true}"#).await;   // P1 chart
-    mock.add_response("Chart description").await;                           // P2 chart
-    mock.add_response(r#"{"kind":"logo","is_figure":false}"#).await;       // P1 logo (no P2)
-    mock.add_response(r#"{"kind":"architecture_diagram","is_figure":true}"#).await; // P1 diag
-    mock.add_response("Diagram description").await;                         // P2 diag
+    mock.add_response(r#"{"kind":"bar_chart","is_figure":true}"#)
+        .await; // P1 chart
+    mock.add_response("Chart description").await; // P2 chart
+    mock.add_response(r#"{"kind":"logo","is_figure":false}"#)
+        .await; // P1 logo (no P2)
+    mock.add_response(r#"{"kind":"architecture_diagram","is_figure":true}"#)
+        .await; // P1 diag
+    mock.add_response("Diagram description").await; // P2 diag
 
     let filter = FigureFilter::new(Arc::clone(&mock) as Arc<dyn edgequake_llm::LLMProvider>);
     let results = filter
         .run(&[
             candidate("assets/chart.png", png_chart, 1),
-            candidate("assets/logo.png",  png_logo,  1),
-            candidate("assets/diag.png",  png_diag,  2),
+            candidate("assets/logo.png", png_logo, 1),
+            candidate("assets/diag.png", png_diag, 2),
         ])
         .await
         .unwrap();
@@ -194,10 +200,7 @@ async fn contract_spec049_pass1_tolerates_fenced_json() {
     mock.add_response("Flowchart description").await;
 
     let filter = FigureFilter::new(Arc::clone(&mock) as Arc<dyn edgequake_llm::LLMProvider>);
-    let results = filter
-        .run(&[candidate("p.png", png, 1)])
-        .await
-        .unwrap();
+    let results = filter.run(&[candidate("p.png", png, 1)]).await.unwrap();
 
     assert_eq!(results[0].kind, FigureKind::Flowchart);
     assert!(results[0].is_figure);
@@ -215,10 +218,7 @@ async fn contract_spec049_pass1_unknown_kind_is_conservative() {
     mock.add_response("Description of unknown thing").await;
 
     let filter = FigureFilter::new(Arc::clone(&mock) as Arc<dyn edgequake_llm::LLMProvider>);
-    let results = filter
-        .run(&[candidate("p.png", png, 1)])
-        .await
-        .unwrap();
+    let results = filter.run(&[candidate("p.png", png, 1)]).await.unwrap();
 
     assert_eq!(results[0].kind, FigureKind::Other);
     assert!(results[0].is_figure, "Other is conservatively kept");
@@ -230,17 +230,26 @@ async fn contract_spec049_pass1_unknown_kind_is_conservative() {
 fn contract_spec049_kind_is_figure_semantics() {
     // Real figures
     for kind in &[
-        FigureKind::BarChart, FigureKind::LineChart, FigureKind::ScatterPlot,
-        FigureKind::Heatmap, FigureKind::ArchitectureDiagram, FigureKind::Flowchart,
-        FigureKind::SystemDemo, FigureKind::Illustration, FigureKind::TableVisual,
+        FigureKind::BarChart,
+        FigureKind::LineChart,
+        FigureKind::ScatterPlot,
+        FigureKind::Heatmap,
+        FigureKind::ArchitectureDiagram,
+        FigureKind::Flowchart,
+        FigureKind::SystemDemo,
+        FigureKind::Illustration,
+        FigureKind::TableVisual,
         FigureKind::Other,
     ] {
         assert!(kind.is_figure(), "{kind:?} should be kept");
     }
     // Noise
     for kind in &[
-        FigureKind::Logo, FigureKind::IconLogo,
-        FigureKind::TextBlock, FigureKind::DecorativeRule, FigureKind::Empty,
+        FigureKind::Logo,
+        FigureKind::IconLogo,
+        FigureKind::TextBlock,
+        FigureKind::DecorativeRule,
+        FigureKind::Empty,
     ] {
         assert!(!kind.is_figure(), "{kind:?} should be discarded");
     }
@@ -250,13 +259,14 @@ fn contract_spec049_kind_is_figure_semantics() {
 
 #[tokio::test]
 async fn e2e_spec049_figure_filter_with_real_provider() {
-    let api_key = match std::env::var("OPENAI_API_KEY").or_else(|_| std::env::var("MISTRAL_API_KEY")) {
-        Ok(k) => k,
-        Err(_) => {
-            println!("skip: no OPENAI_API_KEY or MISTRAL_API_KEY set");
-            return;
-        }
-    };
+    let api_key =
+        match std::env::var("OPENAI_API_KEY").or_else(|_| std::env::var("MISTRAL_API_KEY")) {
+            Ok(k) => k,
+            Err(_) => {
+                println!("skip: no OPENAI_API_KEY or MISTRAL_API_KEY set");
+                return;
+            }
+        };
 
     // Use a real arXiv figure PNG from the spec data directory.
     let spec_png = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -273,8 +283,8 @@ async fn e2e_spec049_figure_filter_with_real_provider() {
     }
 
     // Build real provider via ProviderFactory
-    let (provider, _embedding) = edgequake_llm::ProviderFactory::from_env()
-        .expect("create provider from env");
+    let (provider, _embedding) =
+        edgequake_llm::ProviderFactory::from_env().expect("create provider from env");
 
     let filter = FigureFilter::new(Arc::clone(&provider));
     let results = filter
@@ -289,9 +299,16 @@ async fn e2e_spec049_figure_filter_with_real_provider() {
 
     assert_eq!(results.len(), 1);
     let r = &results[0];
-    println!("Live result: kind={:?} is_figure={} desc_len={}",
-             r.kind, r.is_figure, r.description.len());
+    println!(
+        "Live result: kind={:?} is_figure={} desc_len={}",
+        r.kind,
+        r.is_figure,
+        r.description.len()
+    );
     // LightRAG Figure 1 is a system architecture diagram — must be kept
     assert!(r.is_figure, "architecture diagram must be kept by Pass-1");
-    assert!(!r.description.is_empty(), "Pass-2 must produce a description");
+    assert!(
+        !r.description.is_empty(),
+        "Pass-2 must produce a description"
+    );
 }
