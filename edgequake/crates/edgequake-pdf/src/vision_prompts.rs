@@ -102,77 +102,89 @@ pub const FIGURE_FILTER_PASS2_SYSTEM: &str =
 pub fn figure_filter_pass2_prompt(kind: &crate::figure_filter::FigureKind) -> &'static str {
     use crate::figure_filter::FigureKind::*;
     match kind {
-        BarChart | Histogram =>
+        BarChart | Histogram => {
             "Extract from this bar/histogram chart:\n\
              1. **Title** (if visible)\n\
              2. **X-axis** label and tick values\n\
              3. **Y-axis** label and range\n\
              4. **Series/groups** (legend)\n\
              5. **Data table** (Markdown) with approximate bar values\n\
-             6. **Key observations** (2–3 bullets)",
-        LineChart =>
+             6. **Key observations** (2–3 bullets)"
+        }
+        LineChart => {
             "Extract from this line chart:\n\
              1. **Title** (if visible)\n\
              2. **X-axis** label and range\n\
              3. **Y-axis** label and range\n\
              4. **Series** names and trend direction\n\
              5. **Key observations** (2–3 bullets)\n\
-             6. **Approximate data** (Markdown table if readable)",
-        ScatterPlot =>
+             6. **Approximate data** (Markdown table if readable)"
+        }
+        ScatterPlot => {
             "Extract from this scatter plot:\n\
              1. **Title** and axis labels\n\
              2. **Groups/clusters** (colour / shape coding)\n\
-             3. **Key patterns or outliers** (2–3 bullets)",
-        Heatmap =>
+             3. **Key patterns or outliers** (2–3 bullets)"
+        }
+        Heatmap => {
             "Extract from this heatmap:\n\
              1. **Title**, row labels, column labels\n\
              2. **Colour scale** meaning (high / low)\n\
              3. **Hotspot regions** that stand out\n\
-             4. Reconstruct as **Markdown table** if axes are readable",
-        PieChart =>
+             4. Reconstruct as **Markdown table** if axes are readable"
+        }
+        PieChart => {
             "Extract from this pie chart:\n\
              1. **Title** (if visible)\n\
              2. **Slices**: label and approximate % for each\n\
-             3. **Key observation** (largest / smallest slice)",
-        RadarChart =>
+             3. **Key observation** (largest / smallest slice)"
+        }
+        RadarChart => {
             "Extract from this radar/spider chart:\n\
              1. **Axes** (dimension names)\n\
              2. **Series** compared (legend)\n\
-             3. **Notable strengths / weaknesses** per dimension",
-        ArchitectureDiagram =>
+             3. **Notable strengths / weaknesses** per dimension"
+        }
+        ArchitectureDiagram => {
             "Describe this architecture diagram:\n\
              1. **Top-level components** (list each named box/module)\n\
              2. **Data flow** — what flows between components and in what direction?\n\
              3. **External interfaces** (APIs, databases, users)\n\
-             4. **Key design decision** visible in the diagram",
-        Flowchart =>
+             4. **Key design decision** visible in the diagram"
+        }
+        Flowchart => {
             "Describe this flowchart:\n\
              1. **Start and end** conditions\n\
              2. **Main steps** in order (numbered list)\n\
              3. **Decision branches** (condition → outcome)\n\
-             4. **Loops or back-edges** (if any)",
-        Diagram =>
+             4. **Loops or back-edges** (if any)"
+        }
+        Diagram => {
             "Describe this technical diagram:\n\
              1. **Main elements** and their roles\n\
              2. **Relationships and connections** between elements\n\
              3. **Directional flow** (if present)\n\
-             4. **Key takeaway** in one sentence",
-        SystemDemo =>
+             4. **Key takeaway** in one sentence"
+        }
+        SystemDemo => {
             "Describe this system demonstration screenshot:\n\
              1. **Pipeline stages** shown (list each labelled section)\n\
              2. **Input** to the system (if visible)\n\
              3. **Output / response** produced\n\
-             4. **Key observations** about the system behaviour",
-        TableVisual =>
+             4. **Key observations** about the system behaviour"
+        }
+        TableVisual => {
             "Reconstruct this visual table:\n\
              1. **Headers** (column names)\n\
              2. **Rows** (as a Markdown table)\n\
-             3. **Notable values** (maxima, minima, highlighted cells)",
-        Illustration | Photograph =>
+             3. **Notable values** (maxima, minima, highlighted cells)"
+        }
+        Illustration | Photograph => {
             "Write a descriptive caption:\n\
              1. **Subject** (what is depicted)\n\
              2. **Key visual elements** labelled (if any)\n\
-             3. **One-sentence caption** suitable for a figure in a paper",
+             3. **One-sentence caption** suitable for a figure in a paper"
+        }
         // Noise kinds never reach Pass 2 — fallback for robustness
         _ => "Describe the key content of this image in 2–4 sentences.",
     }
@@ -198,8 +210,10 @@ mod tests {
         // Every figure kind must have a non-empty pass-2 prompt
         use crate::figure_filter::FigureKind;
         for kind in &[
-            FigureKind::BarChart, FigureKind::Flowchart,
-            FigureKind::ArchitectureDiagram, FigureKind::SystemDemo,
+            FigureKind::BarChart,
+            FigureKind::Flowchart,
+            FigureKind::ArchitectureDiagram,
+            FigureKind::SystemDemo,
         ] {
             let p = figure_filter_pass2_prompt(kind);
             assert!(!p.is_empty(), "empty Pass-2 prompt for {kind:?}");
