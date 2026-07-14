@@ -39,10 +39,11 @@ if grep -E '^(benches/|examples/)$' "$DOCKERIGNORE" >/dev/null; then
 fi
 
 # Dockerfile must COPY both directories.
+# WHY: Docker build context is repo root (.) so paths are prefixed with edgequake/
 DOCKERFILE="$EQ/docker/Dockerfile"
 [[ -f "$DOCKERFILE" ]] || fail "missing $DOCKERFILE"
-grep -q 'COPY benches/ benches/' "$DOCKERFILE" || fail "Dockerfile missing: COPY benches/ benches/"
-grep -q 'COPY examples/ examples/' "$DOCKERFILE" || fail "Dockerfile missing: COPY examples/ examples/"
+grep -qE 'COPY (edgequake/)?benches/ benches/' "$DOCKERFILE" || fail "Dockerfile missing: COPY [edgequake/]benches/ benches/"
+grep -qE 'COPY (edgequake/)?examples/ examples/' "$DOCKERFILE" || fail "Dockerfile missing: COPY [edgequake/]examples/ examples/"
 
 # Parse-only check (no compile) — same failure mode as the Docker builder stage.
 (cd "$EQ" && cargo metadata --format-version 1 --no-deps >/dev/null)
