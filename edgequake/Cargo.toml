@@ -88,7 +88,7 @@ name = "graphrag_bench"
 harness = false
 
 [workspace.package]
-version = "0.16.0"
+version = "0.17.0"
 edition = "2021"
 rust-version = "1.95"
 license = "Apache-2.0"
@@ -172,6 +172,8 @@ edgequake-storage = { path = "crates/edgequake-storage" }
 edgequake-tasks = { path = "crates/edgequake-tasks" }
 edgequake-observability = { path = "crates/edgequake-observability" }
 edgeparse-core = "0.2.5"
+# Local path takes precedence; registry version = crates.io fallback for CI once published.
+# Docker builds: release-docker.yml checks out edgequake-pdf2md alongside main repo.
 edgequake-pdf2md = { path = "../../edgequake-pdf2md", version = "0.9.7", default-features = false, features = ["bundled"] }
 
 # CPU utilities
@@ -194,3 +196,9 @@ debug = true
 
 [profile.dev.package.sqlx-macros]
 opt-level = 3
+
+# ── Local development override ────────────────────────────────────────────────
+# Remove or comment out when building for release/CI — the registry source
+# (0.9.7) is used by default. Uncomment to use a local checkout of pdf2md.
+# [patch.crates-io]
+# edgequake-pdf2md = { path = "../../edgequake-pdf2md" }

@@ -1,4 +1,6 @@
 # Ignore everything except what we need
+# WHY: Build context is now repo root so edgequake-pdf2md path dep is accessible.
+# We explicitly include edgequake/ and edgequake-pdf2md/ and exclude everything else.
 **/.git
 **/.github
 **/.vscode
@@ -28,6 +30,16 @@
 **/*.log
 **/*.md
 !**/README.md
+# Exclude everything except edgequake/ and edgequake-pdf2md/ subdirs
+edgequake-website/
+edgequake_webui/
+sdks/
+tools/
+tests/
+examples/
+mission/
+qa/
+wiki/
 **/*.py
 **/*.sh
 !**/scripts/*.sh
