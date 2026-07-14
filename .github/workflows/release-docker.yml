@@ -79,6 +79,17 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # WHY: edgequake/Cargo.toml uses path = "../../edgequake-pdf2md".
+      # The Docker build context is edgequake/ so the path dep is outside it.
+      # We check out edgequake-pdf2md alongside (at ../../edgequake-pdf2md from
+      # the workspace root) so Cargo can resolve it during the Docker build.
+      - name: Checkout edgequake-pdf2md (path dep for Docker build)
+        uses: actions/checkout@v6
+        with:
+          repository: raphaelmansuy/edgequake-pdf2md
+          path: edgequake-pdf2md
+          ref: main
+
       - uses: docker/setup-buildx-action@v3
 
       - uses: docker/login-action@v3
@@ -87,10 +98,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Build context includes repo root so ../edgequake-pdf2md is accessible.
+      # The Dockerfile WORKDIR is /app; Cargo sees ../../edgequake-pdf2md from /app/edgequake.
       - name: Build and push (amd64)
         uses: docker/build-push-action@v6
         with:
-          context: edgequake
+          context: .
           file: edgequake/docker/Dockerfile
           push: true
           platforms: linux/amd64
@@ -105,6 +118,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Checkout edgequake-pdf2md (path dep for Docker build)
+        uses: actions/checkout@v6
+        with:
+          repository: raphaelmansuy/edgequake-pdf2md
+          path: edgequake-pdf2md
+          ref: main
+
       - uses: docker/setup-buildx-action@v3
 
       - uses: docker/login-action@v3
@@ -116,7 +136,7 @@ jobs:
       - name: Build and push (arm64)
         uses: docker/build-push-action@v6
         with:
-          context: edgequake
+          context: .
           file: edgequake/docker/Dockerfile
           push: true
           platforms: linux/arm64
