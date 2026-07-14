@@ -172,10 +172,8 @@ edgequake-storage = { path = "crates/edgequake-storage" }
 edgequake-tasks = { path = "crates/edgequake-tasks" }
 edgequake-observability = { path = "crates/edgequake-observability" }
 edgeparse-core = "0.2.5"
-# Pinned to the published tag on crates.io. When CI has published v0.9.7,
-# this can be simplified to: edgequake-pdf2md = "0.9.7"
-# Using git ref pointing to the tagged release commit.
-edgequake-pdf2md = { git = "https://github.com/raphaelmansuy/edgequake-pdf2md.git", rev = "e05e4a8", default-features = false, features = [
+# Published to crates.io as v0.9.7 — use registry version now.
+edgequake-pdf2md = { version = "0.9.7", default-features = false, features = [
     "bundled",
 ] }
 
@@ -201,6 +199,6 @@ debug = true
 opt-level = 3
 
 # ── Local development override ────────────────────────────────────────────────
-# Uncomment to use a local checkout of pdf2md instead of the published git dep.
+# Uncomment to use a local checkout of pdf2md during development.
 # [patch.crates-io]
 # edgequake-pdf2md = { path = "../../edgequake-pdf2md" }
