@@ -175,7 +175,7 @@ edgeparse-core = "0.2.5"
 # Pinned to the published tag on crates.io. When CI has published v0.9.7,
 # this can be simplified to: edgequake-pdf2md = "0.9.7"
 # Using git ref pointing to the tagged release commit.
-edgequake-pdf2md = { git = "https://github.com/raphaelmansuy/edgequake-pdf2md.git", rev = "5b65205", default-features = false, features = [
+edgequake-pdf2md = { git = "https://github.com/raphaelmansuy/edgequake-pdf2md.git", rev = "9b661f9", default-features = false, features = [
     "bundled",
 ] }
 
