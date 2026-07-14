@@ -2040,7 +2040,7 @@ dependencies = [
 [[package]]
 name = "edgequake-pdf2md"
 version = "0.9.7"
-source = "git+https://github.com/raphaelmansuy/edgequake-pdf2md.git?rev=be72c30#be72c303bcee6b170238de2fc5457ebabe6259e0"
+source = "git+https://github.com/raphaelmansuy/edgequake-pdf2md.git?rev=e05e4a8#e05e4a81f6e2588112d64d5458a96029f171d5ab"
 dependencies = [
  "base64 0.22.1",
  "edgequake-llm 0.6.26",
@@ -4135,7 +4135,7 @@ dependencies = [
 [[package]]
 name = "pdfium-auto"
 version = "0.3.0"
-source = "git+https://github.com/raphaelmansuy/edgequake-pdf2md.git?rev=be72c30#be72c303bcee6b170238de2fc5457ebabe6259e0"
+source = "git+https://github.com/raphaelmansuy/edgequake-pdf2md.git?rev=e05e4a8#e05e4a81f6e2588112d64d5458a96029f171d5ab"
 dependencies = [
  "dirs",
  "flate2",
