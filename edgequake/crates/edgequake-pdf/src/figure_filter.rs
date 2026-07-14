@@ -80,11 +80,7 @@ impl FigureKind {
     pub fn is_figure(&self) -> bool {
         !matches!(
             self,
-            Self::Logo
-                | Self::IconLogo
-                | Self::TextBlock
-                | Self::DecorativeRule
-                | Self::Empty
+            Self::Logo | Self::IconLogo | Self::TextBlock | Self::DecorativeRule | Self::Empty
         )
     }
 
@@ -322,10 +318,7 @@ fn parse_pass1_json(raw: &str) -> Result<FigureKind, PdfConversionError> {
     let v: serde_json::Value = serde_json::from_str(cleaned)
         .map_err(|e| PdfConversionError::Backend(format!("Pass-1 JSON parse: {e} — raw={raw}")))?;
 
-    let kind_str = v
-        .get("kind")
-        .and_then(|k| k.as_str())
-        .unwrap_or("other");
+    let kind_str = v.get("kind").and_then(|k| k.as_str()).unwrap_or("other");
 
     Ok(FigureKind::from_str_fuzzy(kind_str))
 }
@@ -371,8 +364,14 @@ mod tests {
 
     #[test]
     fn kind_fuzzy_parsing() {
-        assert_eq!(FigureKind::from_str_fuzzy("architecture"), FigureKind::ArchitectureDiagram);
-        assert_eq!(FigureKind::from_str_fuzzy("flow chart"), FigureKind::Flowchart);
+        assert_eq!(
+            FigureKind::from_str_fuzzy("architecture"),
+            FigureKind::ArchitectureDiagram
+        );
+        assert_eq!(
+            FigureKind::from_str_fuzzy("flow chart"),
+            FigureKind::Flowchart
+        );
         assert_eq!(FigureKind::from_str_fuzzy("LOGO"), FigureKind::Logo);
     }
 }

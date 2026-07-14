@@ -4,11 +4,11 @@ use std::collections::HashMap;
 
 use crate::drawing_tags::{
     bind_figure_images_to_page_asset, caption_with_page_context, dedupe_markdown_asset_images,
-    finalize_page_asset_images, format_drawing_block,
-    format_drawing_tag, format_inline_asset_image, inject_figure_local_images,
-    insert_drawing_tag_after_first_image, is_drawing_eligible_asset_rel_path,
-    markdown_has_durable_asset_image, page_chart_crop_rel_path, page_drawing_item_id,
-    page_figure_asset_rel_path, page_figure_drawing_item_id, EMPTY_VISION_PAGE_PLACEHOLDER,
+    finalize_page_asset_images, format_drawing_block, format_drawing_tag,
+    format_inline_asset_image, inject_figure_local_images, insert_drawing_tag_after_first_image,
+    is_drawing_eligible_asset_rel_path, markdown_has_durable_asset_image, page_chart_crop_rel_path,
+    page_drawing_item_id, page_figure_asset_rel_path, page_figure_drawing_item_id,
+    EMPTY_VISION_PAGE_PLACEHOLDER,
 };
 use crate::embedded_images::WrittenFigureAsset;
 use crate::region_assets::WrittenTableAsset;

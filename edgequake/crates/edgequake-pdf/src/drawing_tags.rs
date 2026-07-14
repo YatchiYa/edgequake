@@ -609,7 +609,9 @@ mod tests {
         let md = "# Overview\n\n![Pipeline](assets/page-0003-fig-01.png)\n\nFigure 1: System architecture.\n\n![Figure 1: System architecture](assets/page-0003-fig-01.png)\n\nCaption body.";
         let out = dedupe_markdown_asset_images(md, "assets/page-0003-fig-01.png");
         assert_eq!(out.matches("](assets/page-0003-fig-01.png)").count(), 1);
-        let keep_pos = out.find("![Figure 1: System architecture]").expect("caption image kept");
+        let keep_pos = out
+            .find("![Figure 1: System architecture]")
+            .expect("caption image kept");
         let drop_pos = out.find("![Pipeline]");
         assert!(drop_pos.is_none(), "remote duplicate removed: {out}");
         assert!(out[keep_pos..].contains("Caption body."));
@@ -617,7 +619,8 @@ mod tests {
 
     #[test]
     fn dedupe_is_idempotent() {
-        let md = "![A](assets/page-0001-fig-01.png)\n\nFigure 1: X\n\n![B](assets/page-0001-fig-01.png)";
+        let md =
+            "![A](assets/page-0001-fig-01.png)\n\nFigure 1: X\n\n![B](assets/page-0001-fig-01.png)";
         let once = dedupe_markdown_asset_images(md, "assets/page-0001-fig-01.png");
         let twice = dedupe_markdown_asset_images(&once, "assets/page-0001-fig-01.png");
         assert_eq!(once, twice);

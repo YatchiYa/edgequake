@@ -14,8 +14,7 @@ import {
     XCircle,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { PdfUploadProgress } from './pdf-upload-progress';
-import { IngestionProgressPanel } from './ingestion-progress-panel';
+import { ProgressPanelRow } from './progress-panel-row';
 import type { UploadingFile } from './types';
 
 /**
@@ -117,49 +116,18 @@ export function UploadProgressList({
       <ScrollArea className="max-h-64">
         <div className="space-y-1">
           {uploadingFiles.map((uploadFile, index) => (
-            uploadFile.trackId && uploadFile.isPdf ? (
-              <div
+            uploadFile.trackId ? (
+              // WHY ProgressPanelRow: DRY component shared with reprocess panels.
+              // Renders PdfUploadProgress (isPdf=true) or IngestionProgressPanel.
+              <ProgressPanelRow
                 key={`${uploadFile.file.name}-${index}`}
-                className="relative p-2 rounded-lg border bg-card"
-              >
-                <PdfUploadProgress
-                  trackId={uploadFile.trackId}
-                  filename={uploadFile.file.name}
-                  compact={true}
-                  onComplete={() => onComplete(index)}
-                  onFailed={(error) => onFailed(index, error)}
-                />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute top-1 right-1 h-6 w-6"
-                  onClick={() => onRemove(index)}
-                >
-                  <X className="h-3 w-3" />
-                </Button>
-              </div>
-            ) : uploadFile.trackId ? (
-              <div
-                key={`${uploadFile.file.name}-${index}`}
-                className="relative p-2 rounded-lg border bg-card"
-                data-testid="text-ingestion-progress-row"
-              >
-                <IngestionProgressPanel
-                  trackId={uploadFile.trackId}
-                  documentName={uploadFile.file.name}
-                  compact={true}
-                  onComplete={() => onComplete(index)}
-                  onFailed={(error) => onFailed(index, error)}
-                />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute top-1 right-1 h-6 w-6"
-                  onClick={() => onRemove(index)}
-                >
-                  <X className="h-3 w-3" />
-                </Button>
-              </div>
+                trackId={uploadFile.trackId}
+                documentName={uploadFile.file.name}
+                isPdf={uploadFile.isPdf}
+                onRemove={() => onRemove(index)}
+                onComplete={() => onComplete(index)}
+                onFailed={(error) => onFailed(index, error)}
+              />
             ) : (
               <div
                 key={`${uploadFile.file.name}-${index}`}

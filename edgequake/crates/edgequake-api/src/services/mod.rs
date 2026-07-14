@@ -102,8 +102,8 @@ pub use content_granularity::{
 };
 pub use content_hasher::ContentHasher;
 pub use converting_subprogress::{
-    report_vision_figure_analyze, vision_figure_analyze_message,
-    vision_figure_analyze_progress_01, ConvertingSubstepReporter,
+    report_vision_figure_analyze, vision_figure_analyze_message, vision_figure_analyze_progress_01,
+    ConvertingSubstepReporter,
 };
 pub use document_assets::{
     document_mm_assets_root, mm_assets_base_dir, multimodal_asset_base_dir,
@@ -168,21 +168,20 @@ pub use message_context_mapper::{
 };
 pub use multimodal::{
     analysis_cache_enabled, analyze_multimodal_images, analyze_multimodal_images_with_substep,
-    analyze_standalone_image,
-    append_mm_chunks_to_text, apply_process_options_to_metadata, build_mm_chunks_from_manifest,
-    build_surrounding, collect_mm_chunks_from_manifest, enrich_markdown_with_vlm,
-    enrich_processed_text_with_mm_chunks, extract_json_object, find_target_span,
-    load_chunk_separators, load_content_rows_by_blockid_jsonl, load_manifest, load_mm_chunks,
-    manifest_item_status_views, manifest_key, maybe_attach_cache_key, metadata_multimodal_patch,
-    mm_chunks_enabled, mm_chunks_key, parse_json_object, persist_manifest, persist_mm_chunks,
-    reanalyze_document_multimodal, render_mm_chunk, resolve_process_options_from_metadata,
-    run_multimodal_analyze_stage, run_multimodal_analyze_stage_outcome,
-    run_multimodal_analyze_stage_outcome_with_substep, scan_manifest_items,
-    should_run_image_analysis, summary_from_metadata, table_analysis_messages, vlm_process_enabled,
-    AnalyzeOutcome, ManifestItem, MmChunkBuildError, MultimodalChunk, MultimodalHeading,
-    MultimodalItemRecord, MultimodalItemStatusView, MultimodalManifest, MultimodalProviders,
-    MultimodalReanalyzeOutcome, MultimodalReanalyzeParams, MultimodalSummary, PromptContext,
-    SurroundingContext, SurroundingKind, SurroundingTokenCounter, METADATA_FIELD,
+    analyze_standalone_image, append_mm_chunks_to_text, apply_process_options_to_metadata,
+    build_mm_chunks_from_manifest, build_surrounding, collect_mm_chunks_from_manifest,
+    enrich_markdown_with_vlm, enrich_processed_text_with_mm_chunks, extract_json_object,
+    find_target_span, load_chunk_separators, load_content_rows_by_blockid_jsonl, load_manifest,
+    load_mm_chunks, manifest_item_status_views, manifest_key, maybe_attach_cache_key,
+    metadata_multimodal_patch, mm_chunks_enabled, mm_chunks_key, parse_json_object,
+    persist_manifest, persist_mm_chunks, reanalyze_document_multimodal, render_mm_chunk,
+    resolve_process_options_from_metadata, run_multimodal_analyze_stage,
+    run_multimodal_analyze_stage_outcome, run_multimodal_analyze_stage_outcome_with_substep,
+    scan_manifest_items, should_run_image_analysis, summary_from_metadata, table_analysis_messages,
+    vlm_process_enabled, AnalyzeOutcome, ManifestItem, MmChunkBuildError, MultimodalChunk,
+    MultimodalHeading, MultimodalItemRecord, MultimodalItemStatusView, MultimodalManifest,
+    MultimodalProviders, MultimodalReanalyzeOutcome, MultimodalReanalyzeParams, MultimodalSummary,
+    PromptContext, SurroundingContext, SurroundingKind, SurroundingTokenCounter, METADATA_FIELD,
 };
 pub use multimodal_admission::{
     resolve_upload_content, MultimodalAdmissionMeta, ResolvedUploadContent,

@@ -45,6 +45,17 @@ export interface UseBulkSelectionOptions {
    * If not provided, falls back to the old direct-delete behaviour (backward compat).
    */
   onDeleteRequested?: (selectedDocuments: Document[]) => void;
+
+  /**
+   * SPEC-051: Callback fired after each successful reprocess in a bulk operation.
+   * DIP: useBulkSelection does not know about ProgressPanelRow; it delegates
+   * the UI decision to its caller.
+   */
+  onReprocessTriggered?: (
+    documentName: string,
+    trackId: string,
+    options: { documentId: string; isPdf?: boolean; mode?: string },
+  ) => void;
 }
 
 /**
@@ -143,6 +154,7 @@ export interface UseBulkSelectionReturn {
 export function useBulkSelection({
   documents,
   onDeleteRequested,
+  onReprocessTriggered,
 }: UseBulkSelectionOptions): UseBulkSelectionReturn {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -328,7 +340,18 @@ export function useBulkSelection({
             // WHY: reprocessDocument expects the document's `id` (KV metadata key),
             // not its track_id.  Using track_id caused silent no-ops on the backend.
             // mode propagates the bulk re-conversion intent to the backend.
-            await reprocessDocument(doc.id, true, mode);
+            const response = await reprocessDocument(doc.id, true, mode);
+            // SPEC-051: pass documentId + isPdf + mode so the tracking layer
+            // can use the stable document ID (not the rotating track_id) for
+            // prune logic and component selection.
+            if (onReprocessTriggered && response.track_id) {
+              const docName = doc.file_name || doc.title || doc.id.slice(0, 8);
+              onReprocessTriggered(docName, response.track_id, {
+                documentId: doc.id,
+                isPdf: doc.source_type === 'pdf',
+                mode,
+              });
+            }
             successCount++;
           } catch {
             errorCount++;
@@ -362,7 +385,7 @@ export function useBulkSelection({
         setSelectedIds(new Set());
       }
     },
-    [selectedIds, documents, queryClient, t],
+    [selectedIds, documents, queryClient, t, onReprocessTriggered],
   );
 
   return {

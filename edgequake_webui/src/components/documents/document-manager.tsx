@@ -51,6 +51,7 @@ import {
     type LargePdfAdmissionPreview,
     type PdfParserChoice,
 } from '@/lib/pdf/large-pdf-admission';
+import { ActiveRunsPanel } from './active-runs-panel';
 import { BulkDeleteConfirmDialog } from './bulk-delete-confirm-dialog';
 import { BulkReprocessDialog, type BulkReprocessChoice } from './bulk-reprocess-dialog';
 import { DeleteConfirmDialog } from './delete-confirm-dialog';
@@ -60,9 +61,10 @@ import { DocumentPreviewRightPanel } from './document-preview-right-panel';
 import { DocumentTableSection } from './document-table-section';
 import { DocumentToolbarSection } from './document-toolbar-section';
 import { DuplicateUploadDialog } from './duplicate-upload-dialog';
-import { IngestionProgressPanel } from './ingestion-progress-panel';
 import { LargePdfAdmissionDialog } from './large-pdf-admission-dialog';
+import { ProgressPanelRow } from './progress-panel-row';
 import { ReprocessDialog, type ReprocessChoice } from './reprocess-dialog';
+import { UploadProgressList } from './upload-progress-list';
 
 export function DocumentManager() {
   const { t } = useTranslation();
@@ -214,8 +216,10 @@ export function DocumentManager() {
     cancelMutation,
   } = useDocumentMutations({
     onReprocessSuccess: () => setPipelineDialogOpen(true),
-    // SPEC-050-REPROCESS: wire the new-track-id callback into the tracking state.
-    onReprocessTriggered: addReprocessEntry,
+    // SPEC-051: Forward documentId + isPdf + mode so the tracking layer can
+    // use the stable document ID for prune logic and component selection.
+    onReprocessTriggered: (name, trackId, opts) =>
+      addReprocessEntry(name, trackId, opts),
   });
 
   // SPEC-050: Track which document IDs are currently being deleted so rows can
@@ -303,6 +307,56 @@ export function DocumentManager() {
     return ids;
   }, [documents]);
 
+  // All active / pending runs — used for the unified feedback zone.
+  // WHY compute once: buildIngestionRunViews was called separately for
+  // workingRunDocumentIds and activeRunViews; this avoids the duplication.
+  const allRuns = useMemo(
+    () => [...buildIngestionRunViews(documents).values()],
+    [documents],
+  );
+
+  // All active / pending runs (kept for potential future use).
+  // NOTE: not used to auto-seed reprocessEntries — see WHY below.
+  const activeRunViews = useMemo(
+    () => allRuns.filter((r) => r.stageStatus === 'active' || r.stageStatus === 'pending'),
+    [allRuns],
+  );
+  // Unified feedback zone: visibility flags.
+  // showActiveRuns: hide when stuck (stuck CTA owns the narrative).
+  const showActiveRuns = allRuns.length > 0 && pipelineUi.alertMode !== 'stuck';
+
+  // Upload list split: client-only rows show always; tracked rows only when
+  // ActiveRunsPanel is hidden (it handles them visually when active).
+  const clientOnlyUploads = useMemo(
+    () => uploadingFiles.filter((f) => !f.trackId),
+    [uploadingFiles],
+  );
+  const trackedUploads = useMemo(
+    () => uploadingFiles.filter((f) => Boolean(f.trackId)),
+    [uploadingFiles],
+  );
+  const showUploadList =
+    clientOnlyUploads.length > 0 || (trackedUploads.length > 0 && !showActiveRuns);
+  const uploadFilesForList = showActiveRuns ? clientOnlyUploads : uploadingFiles;
+
+  // WHY the auto-seed useEffect was removed:
+  //
+  // The previous implementation called addReprocessEntry for every active run so
+  // IngestionProgressPanel would render after a page refresh. However, each
+  // IngestionProgressPanel polls GET /ingestion/{trackId}/progress every 5s.
+  // That handler calls load_scoped_document_metadata — a full PostgreSQL scan of
+  // ALL document metadata in the workspace. With N active documents, N scans fire
+  // every 5s in addition to all other processing queries. Result: connection pool
+  // exhaustion, health checks timing out (10+ s), cascade 500s on tenant endpoints.
+  //
+  // ActiveRunsPanel already shows all active runs from the documents cache with
+  // zero extra DB queries beyond the existing 2s document-list poll. That is
+  // sufficient feedback for background/post-refresh processing.
+  //
+  // IngestionProgressPanel is now reserved for documents explicitly reprocessed in
+  // the current session (addReprocessEntry is called from reprocessMutation and
+  // bulk reprocess — typically 1–3 docs, dismissed by the user on completion).
+
   // OODA-16: Bulk selection extracted to useBulkSelection hook
   // SPEC-050 GAP-FIX: Bulk delete confirmation callback.
   // WHY: useBulkSelection owns selection state; DocumentManager owns the
@@ -322,7 +376,16 @@ export function DocumentManager() {
     handleClearSelection,
     handleBulkDelete,
     handleBulkReprocess,
-  } = useBulkSelection({ documents, onDeleteRequested: handleBulkDeleteRequested });
+  } = useBulkSelection({
+    documents,
+    onDeleteRequested: handleBulkDeleteRequested,
+    // SPEC-051 GAP-051-02: wire bulk reprocess through IngestionProgressPanel.
+    // WHY: Previously bulk reprocess called reprocessDocument() directly and
+    // discarded the track_id — no progress panel appeared. Now each reprocessed
+    // document gets the same ProgressPanelRow as a single-doc reprocess.
+    onReprocessTriggered: (name, trackId, opts) =>
+      addReprocessEntry(name, trackId, opts),
+  });
 
   // SPEC-050 GAP-FIX: Confirmed bulk delete — delete each document through
   // handleDeleteDocument so the per-row dimming state also applies.
@@ -438,42 +501,78 @@ export function DocumentManager() {
             }}
             onBulkDelete={handleBulkDelete}
             onClearSelection={handleClearSelection}
-            uploadingFiles={uploadingFiles}
-            isUploading={isUploading}
-            onRemoveUpload={removeUploadingFile}
-            onUploadComplete={handleUploadComplete}
-            onUploadFailed={handleUploadFailed}
           />
 
         </div>
 
-      {/* SPEC-050-REPROCESS: IngestionProgressPanel for each active reprocess.
-          WHY: Fresh uploads show IngestionProgressPanel (stages, cost, ETA, cancel).
-          Reprocess now gets identical feedback through the tracking state above.
-          These panels appear between the toolbar and the table, in a shrink-0
-          zone so they never overlap with scrollable content. */}
-      {reprocessEntries.length > 0 && (
+      {/* ─── Unified feedback zone ───────────────────────────────────────────
+          WHY one zone instead of two separate capped sections:
+          Previously ActiveRunsPanel was capped at 28 vh inside the toolbar and
+          reprocess panels were capped at 30 vh below it → combined worst-case
+          58 vh + toolbar ≈ 500 px, leaving the table with <50 px (1 row visible).
+
+          Now ALL variable-height feedback (active-run stepper, upload progress,
+          reprocess panels) shares a SINGLE 35 vh cap and a single scroll boundary.
+          Layout guarantee:
+            static toolbar  ≈ 150 px  (search + filters + banner + dropzone + batch)
+            feedback zone   ≤ 35 vh   (scrolls internally when full)
+            table           = flex-1  (always gets the remaining ≥65 vh − 150 px)
+          On 760 px viewport: table ≥ 760×0.65−150 ≈ 344 px → ~5 rows always visible.
+      ─────────────────────────────────────────────────────────────────────── */}
+      {(showActiveRuns || showUploadList || reprocessEntries.length > 0) && (
         <div
-          className="shrink-0 space-y-1.5 px-4 pb-2"
-          data-testid="spec050-reprocess-progress-panels"
+          className="shrink-0 overflow-y-auto border-b bg-background"
+          style={{ maxHeight: '35vh' }}
+          data-testid="spec051-feedback-zone"
         >
-          {reprocessEntries.map((entry) => (
-            <div
-              key={entry.trackId}
-              className="relative rounded-lg border bg-card/80 p-2 shadow-sm"
-              data-testid="spec050-reprocess-panel"
-              data-track-id={entry.trackId}
-            >
-              <IngestionProgressPanel
-                trackId={entry.trackId}
-                documentName={entry.documentName}
-                compact={true}
-                onComplete={() => removeReprocessEntry(entry.trackId)}
-                onFailed={() => removeReprocessEntry(entry.trackId)}
-                onCancel={() => removeReprocessEntry(entry.trackId)}
+          <div className="px-4 py-2 space-y-2">
+            {/* Server-stage stepper for all active/pending ingestion runs */}
+            {showActiveRuns && <ActiveRunsPanel runs={allRuns} />}
+
+            {/* Upload progress: client-only rows always; tracked rows when
+                ActiveRunsPanel is hidden (it handles them when visible). */}
+            {showUploadList && (
+              <UploadProgressList
+                uploadingFiles={uploadFilesForList}
+                isUploading={isUploading}
+                onRemove={removeUploadingFile}
+                onComplete={handleUploadComplete}
+                onFailed={handleUploadFailed}
               />
-            </div>
-          ))}
+            )}
+
+            {/* Per-document reprocess progress panels */}
+            {reprocessEntries.length > 0 && (
+              <div data-testid="spec051-reprocess-progress-panels">
+                <h4 className="text-sm font-semibold flex items-center gap-2 text-muted-foreground mb-1.5">
+                  <span className="h-2 w-2 rounded-full bg-sky-500 animate-pulse" />
+                  {t('documents.reprocess.progressHeader', 'Reprocessing {{count}} document(s)', {
+                    count: reprocessEntries.length,
+                  })}
+                </h4>
+                <div className="space-y-1.5">
+                  {reprocessEntries.map((entry) => {
+                    const liveDoc = documents.find((d) => d.id === entry.documentId);
+                    const liveTrackId = liveDoc?.track_id ?? entry.trackId;
+                    return (
+                      <ProgressPanelRow
+                        key={entry.trackId}
+                        trackId={liveTrackId}
+                        documentName={entry.documentName}
+                        isPdf={false}
+                        onRemove={() => removeReprocessEntry(entry.trackId)}
+                        onComplete={() => removeReprocessEntry(entry.trackId)}
+                        onFailed={() => removeReprocessEntry(entry.trackId)}
+                        onCancel={() => removeReprocessEntry(entry.trackId)}
+                        data-testid="spec051-reprocess-panel"
+                        data-track-id={entry.trackId}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -496,10 +595,10 @@ export function DocumentManager() {
         onViewInGraph={handleViewInGraph}
         onViewPdf={handleViewPdf}
         onRetry={(id) => {
-          // Pass document name for IngestionProgressPanel display
+          // Pass document name + isPdf for ProgressPanelRow display
           const doc = documents.find((d) => d.id === id);
           const name = doc?.file_name || doc?.title || id.slice(0, 8);
-          reprocessMutation.mutate({ id, name });
+          reprocessMutation.mutate({ id, name, isPdf: doc?.source_type === 'pdf' });
         }}
         onReprocess={(id) => {
           // WHY: Open the choice dialog for the target document so the user can
@@ -588,6 +687,7 @@ export function DocumentManager() {
             id: reprocessTarget.id,
             mode: choice.mode,
             name: docName,
+            isPdf: reprocessTarget.source_type === 'pdf',
           });
           setReprocessTarget(null);
         }}

@@ -11,7 +11,6 @@ use tracing::warn;
 use super::super::vlm_provider_resolver::{
     resolve_extract_provider_for_workspace, resolve_vlm_provider_for_workspace,
 };
-use super::analyzer::analyze_multimodal_images_with_substep;
 use super::manifest_store::{metadata_multimodal_patch, persist_manifest};
 use super::providers::MultimodalProviders;
 use crate::state::SharedWorkspaceService;

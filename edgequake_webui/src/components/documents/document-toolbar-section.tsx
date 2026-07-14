@@ -1,22 +1,19 @@
 'use client';
 
 import type { StatusCounts } from '@/hooks/use-document-filtering';
+import {
+    buildIngestionRunViews,
+    selectPrimaryRun,
+} from '@/lib/pipeline/ingestion-run-view';
+import { resolvePipelineUiState } from '@/lib/pipeline/pipeline-document-state';
 import type { Document, PipelineStatus } from '@/types';
+import { useMemo } from 'react';
 import { BatchActionsBar } from './batch-actions-bar';
 import { DocumentDropzone, type DocumentDropzoneProps } from './document-dropzone';
 import type { DocStatus, SortField } from './document-filters';
 import { DocumentFilters } from './document-filters';
 import { DocumentSearchBar } from './document-search-bar';
 import { ProcessingStatusSummary } from './processing-status-summary';
-import type { UploadingFile } from './types';
-import { UploadProgressList } from './upload-progress-list';
-import { ActiveRunsPanel } from './active-runs-panel';
-import {
-  buildIngestionRunViews,
-  selectPrimaryRun,
-} from '@/lib/pipeline/ingestion-run-view';
-import { resolvePipelineUiState } from '@/lib/pipeline/pipeline-document-state';
-import { useMemo } from 'react';
 
 export interface DocumentToolbarSectionProps {
   // Search
@@ -52,13 +49,6 @@ export interface DocumentToolbarSectionProps {
   onBulkReprocess: () => void;
   onBulkDelete: () => void;
   onClearSelection: () => void;
-  
-  // Upload progress
-  uploadingFiles: UploadingFile[];
-  isUploading: boolean;
-  onRemoveUpload: (index: number) => void;
-  onUploadComplete: (index: number) => void;
-  onUploadFailed: (index: number, error: string) => void;
 }
 
 export function DocumentToolbarSection({
@@ -86,17 +76,11 @@ export function DocumentToolbarSection({
   onBulkReprocess,
   onBulkDelete,
   onClearSelection,
-  uploadingFiles,
-  isUploading,
-  onRemoveUpload,
-  onUploadComplete,
-  onUploadFailed,
 }: DocumentToolbarSectionProps) {
   const runViews = useMemo(
     () => buildIngestionRunViews(documents),
     [documents],
   );
-  const activeRuns = useMemo(() => [...runViews.values()], [runViews]);
   const primaryRun = useMemo(() => selectPrimaryRun(runViews), [runViews]);
   const pipelineUi = useMemo(
     () =>
@@ -118,12 +102,6 @@ export function DocumentToolbarSection({
   const quietDropzone =
     pipelineUi.isActivelyProcessing ||
     primaryRun?.stageStatus === 'active';
-  // Stuck attention path owns the narrative — hide "Active run" chrome
-  const showActiveRuns = activeRuns.length > 0 && pipelineUi.alertMode !== 'stuck';
-
-  // Client upload rows without track_id still use UploadProgressList
-  const clientOnlyUploads = uploadingFiles.filter((f) => !f.trackId);
-  const trackedUploads = uploadingFiles.filter((f) => Boolean(f.trackId));
 
   return (
     <>
@@ -182,21 +160,6 @@ export function DocumentToolbarSection({
         onDelete={onBulkDelete}
         onClear={onClearSelection}
       />
-
-      {/* SPEC-048: server stepper for tracked runs; client FSM only pre-track */}
-      {showActiveRuns ? <ActiveRunsPanel runs={activeRuns} /> : null}
-      {(clientOnlyUploads.length > 0 ||
-        (trackedUploads.length > 0 && activeRuns.length === 0)) && (
-        <UploadProgressList
-          uploadingFiles={
-            activeRuns.length > 0 ? clientOnlyUploads : uploadingFiles
-          }
-          isUploading={isUploading}
-          onRemove={onRemoveUpload}
-          onComplete={onUploadComplete}
-          onFailed={onUploadFailed}
-        />
-      )}
     </>
   );
 }

@@ -798,3 +798,136 @@ async fn resource_safety_health_regression() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 }
+
+// ============================================================================
+// SPEC-053 hardening tests — graph search reliability
+// ============================================================================
+
+/// HT-01 (SPEC-053 B1): search_nodes does NOT acquire the materialization semaphore.
+///
+/// WHY: search_nodes is an O(log N) indexed btree lookup and must never be blocked
+/// by graph materialization capacity. If the semaphore is full, graph streaming
+/// should 503 but search must succeed.
+///
+/// Proof: exhaust the semaphore (hold all slots), then call the search endpoint.
+/// The search must return 200 (not 503).
+#[tokio::test]
+async fn spec053_search_nodes_bypasses_materialization_semaphore() {
+    use edgequake_core::GraphMaterializationSemaphore;
+    use std::sync::Arc;
+
+    let mut state = AppState::test_state();
+    // Exhaust the entire semaphore
+    state.graph_materialize = Arc::new(GraphMaterializationSemaphore::new(1));
+    let _held = state
+        .graph_materialize
+        .acquire_owned()
+        .await
+        .expect("hold all slots");
+
+    let app = Server::new(
+        ServerConfig {
+            host: "127.0.0.1".to_string(),
+            port: 0,
+            enable_cors: false,
+            enable_compression: false,
+            enable_swagger: false,
+        },
+        state,
+    )
+    .build_router();
+
+    // With semaphore exhausted, search must still return 200.
+    // (It queries the empty in-memory store, so results are empty — that is fine.
+    // The critical assertion is that the status code is NOT 503.)
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/graph/nodes/search?q=test")
+                .header("X-Tenant-ID", PROOF_TENANT)
+                .header("X-Workspace-ID", PROOF_WORKSPACE)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_ne!(
+        response.status(),
+        StatusCode::SERVICE_UNAVAILABLE,
+        "search_nodes must not return 503 when materialization semaphore is exhausted \
+         (SPEC-053 B1: search is O(log N) indexed lookup, not a materialization)"
+    );
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+/// HT-02 (SPEC-053 source contract): search.rs must not contain admit_graph_materialization.
+///
+/// WHY: This is an inviolable contract test. If someone re-adds the guard to search.rs,
+/// this test will catch it immediately. The contract is: search is not a materialization.
+#[test]
+fn spec053_search_handler_does_not_call_admit_graph_materialization() {
+    let src = include_str!("../src/handlers/graph/graph_query/search.rs");
+    assert!(
+        !src.contains("admit_graph_materialization"),
+        "search_nodes must not gate on admit_graph_materialization — \
+         search is an O(log N) indexed lookup, not an O(V+E) materialization (SPEC-053 B1). \
+         Use run_timed_graph_query for backpressure."
+    );
+}
+
+/// HT-03 (SPEC-053 B2): stream_graph handler drops the guard before the SSE loop.
+///
+/// WHY contract test: If the guard drop comment/call is removed, the permit will be
+/// held for the entire SSE stream (seconds), starving concurrent search operations.
+#[test]
+fn spec053_stream_graph_drops_guard_before_sse_loop() {
+    let src = include_str!("../src/handlers/graph/graph_stream.rs");
+    // Verify the guard is explicitly dropped (not just held until task exit)
+    assert!(
+        src.contains("drop(_materialize_guard)"),
+        "stream_graph must explicitly drop(_materialize_guard) after the initial data fetch \
+         and before the SSE streaming loop (SPEC-053 B2). Without this, the permit is held \
+         for the entire stream duration (~5-10s), starving concurrent search operations."
+    );
+}
+
+/// HT-04 (SPEC-053 B2): popular_labels still returns 503 when semaphore is full.
+///
+/// Regression guard: popular_labels IS a materialization operation (O(V) scan)
+/// and MUST continue to be gated. Only search_nodes should bypass.
+#[tokio::test]
+async fn spec053_popular_labels_still_503_when_semaphore_full() {
+    use axum::extract::{Query, State};
+    use edgequake_api::handlers::{get_popular_labels, graph_types::PopularLabelsQuery};
+    use edgequake_api::middleware::TenantContext;
+    use edgequake_core::GraphMaterializationSemaphore;
+    use std::sync::Arc;
+
+    let mut state = AppState::test_state();
+    state.graph_materialize = Arc::new(GraphMaterializationSemaphore::new(1));
+    let _held = state
+        .graph_materialize
+        .acquire_owned()
+        .await
+        .expect("hold slot");
+
+    let result = get_popular_labels(
+        State(StorageRuntime::from_ref(&state)),
+        State(GraphQueryRuntime::from_ref(&state)),
+        TenantContext::default(),
+        Query(PopularLabelsQuery {
+            limit: 5,
+            min_degree: None,
+            entity_type: None,
+        }),
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "popular_labels must still 503 when semaphore is full — \
+         it IS a materialization operation (SPEC-053 regression guard)"
+    );
+}

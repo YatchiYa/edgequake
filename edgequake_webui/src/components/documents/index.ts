@@ -21,6 +21,7 @@ export { DocumentManager } from "./document-manager";
 export { BatchProgressCard } from "./batch-progress-card";
 export { IngestionProgressPanel } from "./ingestion-progress-panel";
 export { PdfUploadProgress } from "./pdf-upload-progress";
+export { ProgressPanelRow } from "./progress-panel-row";
 
 // History and status
 export { ConnectionStatus } from "./connection-status";

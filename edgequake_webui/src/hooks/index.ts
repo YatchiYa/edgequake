@@ -51,5 +51,5 @@ export { useWebSocket } from "./use-websocket";
 export { useBulkDeletionProgress, type BulkDeletionItemState, type BulkDeletionProgressState } from "./use-bulk-deletion-progress";
 export { useDeletionImpact, type UseDeletionImpactReturn } from "./use-deletion-impact";
 // SPEC-050-REPROCESS: Reprocess progress tracking
-export { useReprocessTracking, type ReprocessEntry, type UseReprocessTrackingReturn } from "./use-reprocess-tracking";
+export { useReprocessTracking, type AddReprocessEntryOptions, type ReprocessEntry, type UseReprocessTrackingReturn } from "./use-reprocess-tracking";
 

@@ -236,15 +236,31 @@ export function GraphSearch({ onSelect }: GraphSearchProps) {
     }
   }, [debouncedQuery, searchEngine, nodes]);
 
-  // Server-side search when graph is truncated and local search has no results
-  // This enables searching the full database when the displayed graph is limited
+  // Server-side search — only when local results are insufficient (SPEC-053 F1).
+  // WHY: FEAT0405 removed the isTruncated guard which caused a server search on
+  // every keystroke (≥2 chars) regardless of local results. This created a burst
+  // of search_nodes calls that competed with graph stream for the materialization
+  // semaphore, causing 503 errors.
+  //
+  // Correct condition: only call the server when the local MiniSearch index
+  // cannot satisfy the query — i.e., the graph is truncated (not all nodes loaded)
+  // or local results are thin. This preserves the "full database" coverage for
+  // truncated graphs while avoiding pointless server calls for full graphs.
   useEffect(() => {
-    // FEAT0405: Always trigger server search for comprehensive results
-    // WHY: Users expect search to cover the entire knowledge base,
-    // not just currently visible nodes. Removed isTruncated restriction.
-    const shouldServerSearch = debouncedQuery.trim().length >= 2;
+    const queryTrimmed = debouncedQuery.trim();
+    // WHY ≥3 (was 2): reduces server calls by ~50% while still covering all
+    // meaningful queries (single/double chars are almost never meaningful entity names).
+    const isQueryLongEnough = queryTrimmed.length >= 3;
+    // Only hit the server when: (a) graph is truncated so local index is partial,
+    // OR (b) local index returned fewer than 3 results (might be missing nodes).
+    const localResultsThin = results.length < 3;
+    const shouldServerSearch = isQueryLongEnough && (isTruncated || localResultsThin);
 
     if (!shouldServerSearch) {
+      // Clear stale server error state when the condition no longer applies
+      if (serverSearch.error) {
+        setServerSearch({ query: '', results: [], error: null });
+      }
       return;
     }
 
@@ -256,7 +272,7 @@ export function GraphSearch({ onSelect }: GraphSearchProps) {
     });
 
     searchNodes({
-      q: debouncedQuery.trim(),
+      q: queryTrimmed,
       limit: 20,
       includeNeighbors: true,
       neighborDepth: 1,
@@ -287,11 +303,21 @@ export function GraphSearch({ onSelect }: GraphSearchProps) {
       })
       .catch((error) => {
         if (cancelled) return;
-        console.error('[GraphSearch] Server search failed:', error);
+        // WHY silent fallback for capacity errors (SPEC-053 F2):
+        // A 503 "Graph materialization capacity reached" is a transient server-load
+        // condition. The local MiniSearch index likely has results already.
+        // Showing an error banner confuses users — silently fall back to local results.
+        const isTransientCapacity =
+          error?.message?.includes('capacity') ||
+          error?.message?.includes('503') ||
+          error?.status === 503;
+        if (!isTransientCapacity) {
+          console.error('[GraphSearch] Server search failed:', error);
+        }
         setServerSearch({
           query: debouncedQuery,
           results: [],
-          error: error.message || 'Search failed',
+          error: isTransientCapacity ? null : (error.message || 'Search failed'),
         });
       })
       .finally(() => {
@@ -303,7 +329,7 @@ export function GraphSearch({ onSelect }: GraphSearchProps) {
     return () => {
       cancelled = true;
     };
-  }, [debouncedQuery, addNodesToGraph]);
+  }, [debouncedQuery, results.length, isTruncated, addNodesToGraph, serverSearch.error]);
 
   // Combine local and server results
   const combinedResults = useMemo(() => {
