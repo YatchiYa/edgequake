@@ -218,6 +218,8 @@ pub struct WorkerAppGuard {
     pub router: axum::Router,
     pub graph_storage: std::sync::Arc<dyn edgequake_storage::GraphStorage>,
     pub kv_storage: std::sync::Arc<dyn edgequake_storage::traits::KVStorage>,
+    pub vector_storage: std::sync::Arc<dyn edgequake_storage::traits::VectorStorage>,
+    pub vector_registry: std::sync::Arc<dyn edgequake_storage::traits::WorkspaceVectorRegistry>,
     /// Production query engine (mirrors worker processor wiring for P-G9 E2E).
     pub query_engine: std::sync::Arc<edgequake_query::QueryEngine>,
 }
@@ -291,6 +293,8 @@ pub async fn create_test_app_with_workers() -> WorkerAppGuard {
     };
     let graph_storage = std::sync::Arc::clone(&state.storage.graph_storage);
     let kv_storage = std::sync::Arc::clone(&state.storage.kv_storage);
+    let vector_storage = std::sync::Arc::clone(&state.storage.vector_storage);
+    let vector_registry = std::sync::Arc::clone(&state.storage.vector_registry);
     let query_engine = std::sync::Arc::clone(&state.query.engine_impl);
 
     install_test_background_workers(&mut state, std::sync::Arc::clone(&processor)).await;
@@ -303,6 +307,8 @@ pub async fn create_test_app_with_workers() -> WorkerAppGuard {
         router,
         graph_storage,
         kv_storage,
+        vector_storage,
+        vector_registry,
         query_engine,
     }
 }
@@ -354,6 +360,8 @@ pub async fn create_test_app_with_llm_responses(extra_responses: &[&str]) -> Wor
     };
     let graph_storage = std::sync::Arc::clone(&state.storage.graph_storage);
     let kv_storage = std::sync::Arc::clone(&state.storage.kv_storage);
+    let vector_storage = std::sync::Arc::clone(&state.storage.vector_storage);
+    let vector_registry = std::sync::Arc::clone(&state.storage.vector_registry);
     let query_engine = std::sync::Arc::clone(&state.query.engine_impl);
 
     install_test_background_workers(&mut state, std::sync::Arc::clone(&processor)).await;
@@ -366,6 +374,8 @@ pub async fn create_test_app_with_llm_responses(extra_responses: &[&str]) -> Wor
         router,
         graph_storage,
         kv_storage,
+        vector_storage,
+        vector_registry,
         query_engine,
     }
 }
@@ -681,6 +691,115 @@ pub async fn count_doc_chunks(
         .await
         .map(|keys| keys.len())
         .unwrap_or(0)
+}
+
+/// True when any chunk KV record for `doc_id` has `modality` equal to `expected`.
+pub async fn doc_chunk_has_modality(
+    kv: &std::sync::Arc<dyn edgequake_storage::traits::KVStorage>,
+    doc_id: &str,
+    expected: &str,
+) -> bool {
+    use edgequake_storage::kv_keys;
+
+    async fn kv_key_has_modality(
+        kv: &std::sync::Arc<dyn edgequake_storage::traits::KVStorage>,
+        key: &str,
+        expected: &str,
+    ) -> bool {
+        kv.get_by_id(key)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|v| {
+                v.get("modality")
+                    .and_then(|m| m.as_str())
+                    .map(|m| m == expected)
+            })
+            .unwrap_or(false)
+    }
+
+    if let Ok(keys) = kv
+        .keys_with_prefix(&kv_keys::doc_chunk_prefix(doc_id))
+        .await
+    {
+        for key in keys {
+            if kv_key_has_modality(kv, &key, expected).await {
+                return true;
+            }
+        }
+    }
+    for idx in 0..64 {
+        let key = kv_keys::doc_chunk(doc_id, idx);
+        if kv_key_has_modality(kv, &key, expected).await {
+            return true;
+        }
+    }
+    false
+}
+
+/// True when any vector row for `doc_id` carries `modality` metadata (SPEC-047 MV-23).
+pub async fn doc_vector_has_modality(
+    vector: &std::sync::Arc<dyn edgequake_storage::traits::VectorStorage>,
+    doc_id: &str,
+    expected: &str,
+) -> bool {
+    let _ = vector.initialize().await;
+    let dim = vector.dimension().max(1);
+    let query = vec![0.0_f32; dim];
+    let Ok(results) = vector.query(&query, 512, None).await else {
+        return false;
+    };
+    results.iter().any(|r| {
+        r.metadata.get("document_id").and_then(|v| v.as_str()) == Some(doc_id)
+            && r.metadata.get("modality").and_then(|v| v.as_str()) == Some(expected)
+    })
+}
+
+/// True when KV or workspace vector storage has modality metadata for the document.
+pub async fn doc_ingestion_has_modality(
+    kv: &std::sync::Arc<dyn edgequake_storage::traits::KVStorage>,
+    vector_registry: &std::sync::Arc<dyn edgequake_storage::traits::WorkspaceVectorRegistry>,
+    _workspace_id: &str,
+    doc_id: &str,
+    expected: &str,
+) -> bool {
+    if doc_chunk_has_modality(kv, doc_id, expected).await {
+        return true;
+    }
+    for ws in vector_registry.list_workspaces().await {
+        if let Some(vector) = vector_registry.get(&ws).await {
+            if doc_vector_has_modality(&vector, doc_id, expected).await {
+                return true;
+            }
+        }
+    }
+    doc_vector_has_modality(&vector_registry.default_storage(), doc_id, expected).await
+}
+
+/// True when any chunk KV record for `doc_id` contains `needle` in `content`.
+pub async fn doc_chunks_contain(
+    kv: &std::sync::Arc<dyn edgequake_storage::traits::KVStorage>,
+    doc_id: &str,
+    needle: &str,
+) -> bool {
+    use edgequake_storage::kv_keys;
+    let Ok(keys) = kv
+        .keys_with_prefix(&kv_keys::doc_chunk_prefix(doc_id))
+        .await
+    else {
+        return false;
+    };
+    for key in keys {
+        if let Ok(Some(v)) = kv.get_by_id(&key).await {
+            if v.get("content")
+                .and_then(|c| c.as_str())
+                .is_some_and(|s| s.contains(needle))
+            {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// List all graph nodes for E2E assertions (SPEC-006 bounded scan; replaces deprecated `get_all_nodes`).

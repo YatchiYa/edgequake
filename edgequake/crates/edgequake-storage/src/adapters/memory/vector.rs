@@ -34,6 +34,8 @@ pub struct MemoryVectorStorage {
     dimension: usize,
     vectors: RwLock<HashMap<String, Vec<f32>>>,
     metadata: RwLock<HashMap<String, serde_json::Value>>,
+    /// When true, [`VectorStorage::text_search_filtered`] scans in-memory content (tests / dev).
+    emulate_native_fts: bool,
 }
 
 impl MemoryVectorStorage {
@@ -44,7 +46,14 @@ impl MemoryVectorStorage {
             dimension,
             vectors: RwLock::new(HashMap::new()),
             metadata: RwLock::new(HashMap::new()),
+            emulate_native_fts: false,
         }
+    }
+
+    /// Enable in-memory FTS emulation for sparse-retrieval contract tests (SPEC-047 MV-32).
+    pub fn with_emulated_native_fts(mut self, enabled: bool) -> Self {
+        self.emulate_native_fts = enabled;
+        self
     }
 
     /// Compute cosine similarity between two vectors.
@@ -255,6 +264,39 @@ impl VectorStorage for MemoryVectorStorage {
         Ok(count)
     }
 
+    async fn delete_by_document(&self, document_id: &str) -> Result<usize> {
+        if document_id.is_empty() {
+            return Ok(0);
+        }
+        let mut vectors = self.vectors.write().map_err(super::lock::map_lock_err)?;
+        let mut metadata_map = self.metadata.write().map_err(super::lock::map_lock_err)?;
+        let chunk_prefix = format!("{document_id}-chunk-");
+
+        let keys_to_remove: Vec<String> = metadata_map
+            .iter()
+            .filter_map(|(key, meta)| {
+                let by_meta = meta
+                    .get("document_id")
+                    .or_else(|| meta.get("source_document_id"))
+                    .and_then(|v| v.as_str())
+                    == Some(document_id);
+                let by_id = key.starts_with(&chunk_prefix);
+                if by_meta || by_id {
+                    Some(key.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let count = keys_to_remove.len();
+        for key in keys_to_remove {
+            vectors.remove(&key);
+            metadata_map.remove(&key);
+        }
+        Ok(count)
+    }
+
     /// Query with metadata pre-filter (SPEC-007 Tier 2).
     ///
     /// Applies MetadataFilter conditions in-memory, matching the same semantics
@@ -325,6 +367,73 @@ impl VectorStorage for MemoryVectorStorage {
             .collect();
 
         Ok(results)
+    }
+
+    fn supports_native_text_search(&self) -> bool {
+        self.emulate_native_fts
+    }
+
+    async fn text_search_filtered(
+        &self,
+        query_text: &str,
+        top_k: usize,
+        filter_ids: Option<&[String]>,
+        metadata_filter: Option<&MetadataFilter>,
+    ) -> Result<Vec<VectorSearchResult>> {
+        if !self.emulate_native_fts {
+            return Ok(Vec::new());
+        }
+
+        let metadata = self.metadata.read().map_err(super::lock::map_lock_err)?;
+        let query_terms: Vec<String> = query_text
+            .split_whitespace()
+            .map(|t| t.trim().to_lowercase())
+            .filter(|t| t.len() > 1)
+            .collect();
+
+        let filter_set: Option<std::collections::HashSet<&String>> =
+            filter_ids.map(|ids| ids.iter().collect());
+
+        let mut scored: Vec<(String, f32, serde_json::Value)> = metadata
+            .iter()
+            .filter(|(id, _)| {
+                filter_set
+                    .as_ref()
+                    .map(|set| set.contains(id))
+                    .unwrap_or(true)
+            })
+            .filter(|(_, meta)| {
+                metadata_filter
+                    .map(|mf| mf.is_empty() || mf.matches(meta))
+                    .unwrap_or(true)
+            })
+            .filter_map(|(id, meta)| {
+                let content = meta.get("content")?.as_str()?.to_lowercase();
+                if query_terms.is_empty() {
+                    return None;
+                }
+                let hits = query_terms
+                    .iter()
+                    .filter(|term| content.contains(term.as_str()))
+                    .count();
+                if hits == 0 {
+                    return None;
+                }
+                let score = hits as f32 / query_terms.len() as f32;
+                Some((id.clone(), score, meta.clone()))
+            })
+            .collect();
+
+        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        Ok(scored
+            .into_iter()
+            .take(top_k)
+            .map(|(id, score, metadata)| VectorSearchResult {
+                id,
+                score,
+                metadata,
+            })
+            .collect())
     }
 }
 
@@ -915,6 +1024,7 @@ mod tests {
             tenant_id: Some("t1".to_string()),
             workspace_id: Some("ws1".to_string()),
             vector_type: None,
+            modalities: None,
         };
         let results = storage
             .query_filtered(&[1.0, 0.0, 0.0], 10, None, Some(&mf))
@@ -1151,6 +1261,36 @@ mod tests {
     }
 
     // ── Fix #208: vector_type filter — naive mode zero-result regression ─────
+
+    #[tokio::test]
+    async fn test_query_filtered_by_modality_chart() {
+        let storage = MemoryVectorStorage::new("test", 3);
+        let data = vec![
+            (
+                "prose".to_string(),
+                vec![0.99, 0.01, 0.0],
+                serde_json::json!({"type": "chunk", "modality": "figure"}),
+            ),
+            (
+                "chart".to_string(),
+                vec![0.95, 0.05, 0.0],
+                serde_json::json!({"type": "chunk", "modality": "chart"}),
+            ),
+        ];
+        storage.upsert(&data).await.unwrap();
+
+        let mf = MetadataFilter {
+            vector_type: Some("chunk".to_string()),
+            modalities: Some(vec!["chart".to_string()]),
+            ..Default::default()
+        };
+        let results = storage
+            .query_filtered(&[1.0, 0.0, 0.0], 10, None, Some(&mf))
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "chart");
+    }
 
     /// WHY: Core regression test for issue #208.
     /// At scale, entity vectors dominate the top-k results. Without SQL-level

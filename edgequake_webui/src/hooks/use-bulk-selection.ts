@@ -17,16 +17,16 @@
 "use client";
 
 import {
-  deleteDocument,
-  reprocessDocument,
-  type ReprocessMode,
+    deleteDocument,
+    reprocessDocument,
+    type ReprocessMode,
 } from "@/lib/api/edgequake";
+import { invalidateKnowledgeGraph } from "@/lib/cache-manager";
 import type { Document } from "@/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { invalidateKnowledgeGraph } from "@/lib/cache-manager";
 
 /**
  * Options for useBulkSelection hook.
@@ -37,6 +37,25 @@ export interface UseBulkSelectionOptions {
    * WHY: Need document IDs for select all operation.
    */
   documents: Document[];
+  /**
+   * SPEC-050 GAP-FIX: Callback to request confirmation before bulk delete.
+   * WHY: Instead of deleting directly, the toolbar Delete button should open a
+   * confirmation dialog with the selected documents listed. This callback lets
+   * DocumentManager own the dialog state (SRP) while useBulkSelection owns selection.
+   * If not provided, falls back to the old direct-delete behaviour (backward compat).
+   */
+  onDeleteRequested?: (selectedDocuments: Document[]) => void;
+
+  /**
+   * SPEC-051: Callback fired after each successful reprocess in a bulk operation.
+   * DIP: useBulkSelection does not know about ProgressPanelRow; it delegates
+   * the UI decision to its caller.
+   */
+  onReprocessTriggered?: (
+    documentName: string,
+    trackId: string,
+    options: { documentId: string; isPdf?: boolean; mode?: string },
+  ) => void;
 }
 
 /**
@@ -134,6 +153,8 @@ export interface UseBulkSelectionReturn {
  */
 export function useBulkSelection({
   documents,
+  onDeleteRequested,
+  onReprocessTriggered,
 }: UseBulkSelectionOptions): UseBulkSelectionReturn {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -190,12 +211,24 @@ export function useBulkSelection({
 
   /**
    * Delete all selected documents.
-   * WHY: Bulk delete is more efficient than one-by-one.
+   *
+   * SPEC-050 GAP-FIX: If `onDeleteRequested` is provided, delegate to the
+   * caller's confirmation dialog instead of deleting directly.
+   * WHY: Maintains SRP — useBulkSelection owns selection, DocumentManager
+   * owns the confirmation dialog and the actual delete flow.
    */
   const handleBulkDelete = useCallback(async () => {
     const idsToDelete = Array.from(selectedIds);
     if (idsToDelete.length === 0) return;
 
+    // SPEC-050: Route through confirmation dialog if callback is provided.
+    if (onDeleteRequested) {
+      const selectedDocuments = documents.filter((d) => idsToDelete.includes(d.id));
+      onDeleteRequested(selectedDocuments);
+      return;
+    }
+
+    // Legacy fallback: direct delete without confirmation (kept for back-compat).
     setIsBulkDeleting(true);
     let successCount = 0;
     let errorCount = 0;
@@ -307,7 +340,18 @@ export function useBulkSelection({
             // WHY: reprocessDocument expects the document's `id` (KV metadata key),
             // not its track_id.  Using track_id caused silent no-ops on the backend.
             // mode propagates the bulk re-conversion intent to the backend.
-            await reprocessDocument(doc.id, true, mode);
+            const response = await reprocessDocument(doc.id, true, mode);
+            // SPEC-051: pass documentId + isPdf + mode so the tracking layer
+            // can use the stable document ID (not the rotating track_id) for
+            // prune logic and component selection.
+            if (onReprocessTriggered && response.track_id) {
+              const docName = doc.file_name || doc.title || doc.id.slice(0, 8);
+              onReprocessTriggered(docName, response.track_id, {
+                documentId: doc.id,
+                isPdf: doc.source_type === 'pdf',
+                mode,
+              });
+            }
             successCount++;
           } catch {
             errorCount++;
@@ -341,7 +385,7 @@ export function useBulkSelection({
         setSelectedIds(new Set());
       }
     },
-    [selectedIds, documents, queryClient, t],
+    [selectedIds, documents, queryClient, t, onReprocessTriggered],
   );
 
   return {

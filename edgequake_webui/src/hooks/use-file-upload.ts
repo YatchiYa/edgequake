@@ -27,6 +27,10 @@ import {
 import type { MultipartUploadProgress } from "@/lib/upload/multipart-upload-client";
 import { isImageUploadFile, isPdfUploadFile } from "@/lib/upload/file-kind";
 import type { Document } from "@/types";
+import {
+  getDocumentDisplayStatus,
+  isTerminalStatus,
+} from "@/components/documents/status-badge";
 import { useIngestionStore } from "@/stores/use-ingestion-store";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
@@ -61,6 +65,8 @@ export interface UseFileUploadReturn {
   handleUploadComplete: (index: number) => void;
   /** Mark upload as failed (for PdfUploadProgress) */
   handleUploadFailed: (index: number, error: string) => void;
+  /** Drop client upload rows once matching documents are terminal (SPEC-048). */
+  pruneTerminalUploads: (docs: Document[]) => void;
   /** Duplicates that need user resolution (drives DuplicateUploadDialog). */
   pendingDuplicates: PendingDuplicate[];
   /**
@@ -680,6 +686,30 @@ export function useFileUpload(
     );
   }, []);
 
+  /**
+   * SPEC-048: clear client upload rows once the matching document is terminal.
+   * Prevents leftover progress chrome after ingest completes.
+   */
+  const pruneTerminalUploads = useCallback((docs: Document[]) => {
+    if (!docs.length) return;
+    setUploadingFiles((prev) => {
+      if (prev.length === 0) return prev;
+      const next = prev.filter((f) => {
+        if (f.status === "error") return true;
+        const match = docs.find(
+          (d) =>
+            (f.trackId && d.track_id === f.trackId) ||
+            (f.file?.name &&
+              (d.file_name === f.file.name || d.title === f.file.name)),
+        );
+        if (!match) return true;
+        const status = getDocumentDisplayStatus(match);
+        return !isTerminalStatus(status);
+      });
+      return next.length === prev.length ? prev : next;
+    });
+  }, []);
+
   return {
     uploadingFiles,
     isUploading,
@@ -687,6 +717,7 @@ export function useFileUpload(
     removeUploadingFile,
     handleUploadComplete,
     handleUploadFailed,
+    pruneTerminalUploads,
     pendingDuplicates,
     resolvePendingDuplicates,
   };

@@ -2,6 +2,9 @@
 //!
 //! SPEC-046 P0.3: supports LightRAG-style `related_chunk_number` and
 //! `kg_chunk_pick_method` (vector | weight).
+//!
+//! SPEC-047 / 021 L-A3: candidate chunk ids are intersected with allowed
+//! documents before vector fetch (fail-closed under document_scope).
 
 use std::sync::Arc;
 
@@ -13,8 +16,10 @@ use crate::error::Result;
 use crate::graph_ppr::GraphWalkMode;
 use crate::helpers::build_chunk_from_result;
 use crate::kg_chunk_pick::{
-    collect_kg_chunk_ids, pick_chunks_by_bipartite_ppr, pick_chunks_by_weight, KgChunkPickMethod,
+    collect_kg_chunk_ids_scoped, pick_chunks_by_bipartite_ppr, pick_chunks_by_weight,
+    KgChunkPickMethod,
 };
+use crate::lineage_scope::filter_chunk_ids_by_allowed_docs;
 use edgequake_storage::traits::GraphEdge;
 
 #[allow(clippy::too_many_arguments)] // retrieval pipeline mirrors QueryEngine workspace arity
@@ -28,6 +33,7 @@ pub(super) async fn append_score_ranked_chunks(
     vector_storage: &Arc<dyn VectorStorage>,
     retrieval_config: &QueryEngineConfig,
     workspace_mf: Option<&MetadataFilter>,
+    allowed_document_ids: Option<&[String]>,
     log_label: &str,
 ) -> Result<(
     Vec<RetrievedChunk>,
@@ -37,7 +43,7 @@ pub(super) async fn append_score_ranked_chunks(
 
     // Dual-node (EQ-046-17): bipartite PPR over entity relations ∪ mentions.
     // Falls back to lite entity-score projection when no relations are present.
-    let chunk_ids_vec = if retrieval_config.graph_walk == GraphWalkMode::Ppr {
+    let raw_ids = if retrieval_config.graph_walk == GraphWalkMode::Ppr {
         let entity_edges: Vec<GraphEdge> = context
             .relationships
             .iter()
@@ -50,23 +56,27 @@ pub(super) async fn append_score_ranked_chunks(
         let ranked =
             pick_chunks_by_bipartite_ppr(context, &entity_edges, retrieval_config.max_chunks);
         if ranked.is_empty() {
-            collect_kg_chunk_ids(context, related_n)
+            collect_kg_chunk_ids_scoped(context, related_n, allowed_document_ids)
         } else {
-            ranked
+            filter_chunk_ids_by_allowed_docs(&ranked, allowed_document_ids)
         }
     } else {
         match retrieval_config.kg_chunk_pick_method {
             KgChunkPickMethod::Weight => {
                 let weighted = pick_chunks_by_weight(context, retrieval_config.max_chunks);
                 if weighted.is_empty() {
-                    collect_kg_chunk_ids(context, related_n)
+                    collect_kg_chunk_ids_scoped(context, related_n, allowed_document_ids)
                 } else {
-                    weighted
+                    filter_chunk_ids_by_allowed_docs(&weighted, allowed_document_ids)
                 }
             }
-            KgChunkPickMethod::Vector => collect_kg_chunk_ids(context, related_n),
+            KgChunkPickMethod::Vector => {
+                collect_kg_chunk_ids_scoped(context, related_n, allowed_document_ids)
+            }
         }
     };
+
+    let chunk_ids_vec = raw_ids;
 
     tracing::info!(
         total_chunk_ids = chunk_ids_vec.len(),
@@ -75,6 +85,7 @@ pub(super) async fn append_score_ranked_chunks(
         pick_method = retrieval_config.kg_chunk_pick_method.as_str(),
         graph_walk = ?retrieval_config.graph_walk,
         related_chunk_number = related_n,
+        scoped = allowed_document_ids.is_some(),
         log_label,
         "OODA-230: chunk collection (workspace)"
     );

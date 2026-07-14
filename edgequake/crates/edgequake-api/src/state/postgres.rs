@@ -364,6 +364,8 @@ impl AppState {
         let original_storage: Arc<dyn edgequake_storage::DocumentOriginalStorage> = Arc::new(
             edgequake_storage::PostgresOriginalStorage::new(pool.clone()),
         );
+        let mm_asset_storage: Arc<dyn edgequake_storage::DocumentMmAssetStorage> =
+            Arc::new(edgequake_storage::PostgresMmAssetStorage::new(pool.clone()));
 
         let storage = StorageRuntime {
             kv_storage: Arc::clone(&kv_storage) as Arc<dyn edgequake_storage::traits::KVStorage>,
@@ -375,6 +377,7 @@ impl AppState {
             auth_memory: Arc::new(crate::services::auth_memory_store::AuthMemoryStore::new()),
             pdf_storage: Some(pdf_storage),
             original_storage: Some(original_storage),
+            mm_asset_storage: Some(mm_asset_storage),
             mode: StorageMode::PostgreSQL,
         };
         storage.validate_postgres_adapters()?;

@@ -102,7 +102,10 @@ export function DocumentViewerDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] w-[95vw] max-h-[95vh] h-[95vh] p-0 gap-0">
+      <DialogContent
+        className="max-w-[95vw] w-[95vw] max-h-[95vh] h-[95vh] p-0 gap-0 flex flex-col"
+        showCloseButton={false}
+      >
         <DialogHeader className="px-4 py-3 border-b flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -189,6 +192,7 @@ export function DocumentViewerDialog({
                       content={pdfContent.markdown_content}
                       showToolbar={false}
                       className="h-full"
+                      documentId={pdfContent.document_id ?? pdfId}
                     />
                   }
                   height={window.innerHeight - 150}
@@ -260,6 +264,7 @@ export function DocumentViewerDialog({
                   showToolbar={true}
                   height={window.innerHeight - 150}
                   className="w-full"
+                  documentId={pdfContent.document_id ?? pdfId}
                 />
               )}
 

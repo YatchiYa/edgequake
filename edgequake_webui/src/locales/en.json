@@ -123,7 +123,16 @@
       "invalidType": "File \"{{name}}\" has an unsupported format. Supported: TXT, MD, JSON.",
       "viewInGraph": "View in Graph",
       "duplicateSkipped": "Duplicate (skipped)",
-      "uploadFailed": "Upload failed"
+      "uploadFailed": "Upload failed",
+      "uploadDrop": "Upload files by clicking or dragging",
+      "uploadDropActive": "Drop files here",
+      "uploadDropWithLimit": "Drag & drop or click to upload • TXT, MD, JSON, PDF, PNG, JPG, GIF, WEBP (max {{limit}})",
+      "uploadWhileWorking": "Add more files anytime · max {{limit}}",
+      "pdfParserHint": "Choose a PDF parser override for this upload, or keep the workspace default.",
+      "pdfParser": "Parser for this upload",
+      "pdfParserDefault": "Workspace Default",
+      "pdfParserVision": "Vision",
+      "pdfParserEdgeParse": "EdgeParse"
     },
     "duplicateDialog": {
       "titleSingle": "Duplicate document detected",
@@ -446,14 +455,23 @@
     "startConversation": "Start a conversation",
     "startConversationSubtitle": "Ask questions about your knowledge graph",
     "modes": {
-      "local": "Local",
-      "localDescription": "Search within entity neighborhood",
-      "global": "Global",
-      "globalDescription": "Search entire knowledge graph",
-      "hybrid": "Hybrid",
-      "hybridDescription": "Combine local and global search",
-      "naive": "Naive",
-      "naiveDescription": "Simple keyword search"
+      "groupLabel": "Query retrieval mode",
+      "select": "Select {{label}} query mode",
+      "selectRecommended": "Select {{label}} query mode (Recommended)",
+      "recommendedSuffix": " · Recommended",
+      "apiName": "API mode",
+      "local": "Focused",
+      "localDescription": "Entity-centric graph search: finds relevant entities and their nearby relationships and source chunks. Best for targeted questions about a known person, org, product, or concept.",
+      "global": "Broad",
+      "globalDescription": "Relationship-centric graph search: follows high-level themes and cross-document links. Best for summaries, trends, and “how things connect” questions.",
+      "hybrid": "Linked",
+      "hybridDescription": "Runs Focused and Broad together (and EdgeQuake also includes chunk retrieval), then merges results. Good when you want both entity detail and graph themes.",
+      "mix": "Smart",
+      "mixDescription": "Full blend: Focused + Broad + document chunks, fused with ranking (RRF). Richest context for most questions. Recommended default.",
+      "naive": "Chunks",
+      "naiveDescription": "Document-chunk retrieval only (dense vectors + keyword/BM25 when enabled). No knowledge-graph walk. Fastest RAG path for exact wording, numbers, and quotes.",
+      "bypass": "Chat",
+      "bypassDescription": "Skips retrieval entirely. Sends the conversation and your question straight to the LLM — no documents or graph context. Use for general chat or when RAG is not needed."
     },
     "settings": {
       "title": "Query Settings",
@@ -486,7 +504,16 @@
   "pipeline": {
     "title": "Pipeline Status",
     "idle": "Pipeline is idle",
-    "busy": "Pipeline Busy",
+    "busy": "Working",
+    "workingCount": "Working · {{count}}",
+    "clickForDetails": "Details →",
+    "graphMergeProgress": "Graph save progress",
+    "extractionProgress": "Extraction progress",
+    "embeddingProgress": "Embedding progress",
+    "conversionProgress": "Conversion progress",
+    "stageProgress": "Stage progress",
+    "processing": "Processing {{count}} document(s)",
+    "processingDocument": "Processing document",
     "waitingToStart": "{{count}} document(s) waiting to start",
     "stuckHeadline": "{{count}} document(s) need attention",
     "stuckHint": "No worker is processing these documents. Reprocess to create a new task.",
@@ -507,6 +534,39 @@
     "messages": "Messages",
     "cancel": "Cancel Pipeline",
     "processed": "{{current}} of {{total}} documents processed"
+  },
+  "ingestion": {
+    "stage": {
+      "queued": "Queued",
+      "uploading": "Uploading",
+      "converting": "Converting PDF",
+      "preprocessing": "Preprocessing",
+      "chunking": "Chunking",
+      "extracting": "Extracting Entities",
+      "gleaning": "Gleaning",
+      "merging": "Merging Graph",
+      "summarizing": "Summarizing",
+      "embedding": "Generating Embeddings",
+      "storing": "Storing",
+      "completed": "Completed",
+      "failed": "Failed"
+    },
+    "busy": {
+      "working": "Working",
+      "idle": "Idle"
+    },
+    "mode": {
+      "full": "full",
+      "entities": "entities",
+      "merge": "merge"
+    },
+    "counts": {
+      "chunks": "chunks",
+      "pages": "pages"
+    },
+    "banner": {
+      "working": "Working"
+    }
   },
   "settings": {
     "title": "Settings",

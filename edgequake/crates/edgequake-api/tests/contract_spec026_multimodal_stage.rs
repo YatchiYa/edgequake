@@ -7,6 +7,7 @@ use edgequake_api::services::{
 };
 use edgequake_llm::MockProvider;
 use serde_json::json;
+use serial_test::serial;
 use std::sync::Arc;
 
 #[test]
@@ -21,14 +22,15 @@ fn metadata_roundtrip_process_options() {
 }
 
 #[test]
-fn gates_default_disabled_like_lightrag() {
+#[serial]
+fn gates_default_enabled() {
     std::env::remove_var("VLM_PROCESS_ENABLE");
-    assert!(!vlm_process_enabled());
+    assert!(vlm_process_enabled());
     let opts = MultimodalProcessOptions {
         images: true,
         ..Default::default()
     };
-    assert!(!should_run_image_analysis(&opts));
+    assert!(should_run_image_analysis(&opts));
 }
 
 #[tokio::test]

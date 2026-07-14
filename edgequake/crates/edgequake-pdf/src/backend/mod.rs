@@ -1,6 +1,7 @@
 mod edgeparse;
 mod vision;
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -44,6 +45,11 @@ impl PdfParserBackend {
     }
 }
 
+/// Optional status reporter for post-OCR work inside vision convert (PNG render, etc.).
+///
+/// Arguments: `(stage_message, stage_progress_0_to_1)`.
+pub type VisionStatusHook = Arc<dyn Fn(&str, f64) + Send + Sync>;
+
 /// Per-task vision conversion options preserved from the existing processor.
 #[derive(Clone, Default)]
 pub struct VisionConversionConfig {
@@ -55,6 +61,8 @@ pub struct VisionConversionConfig {
     pub checkpoint_dir: Option<String>,
     pub no_resume: bool,
     pub progress_callback: Option<Arc<dyn edgequake_pdf2md::ConversionProgressCallback>>,
+    /// Fired between OCR complete and markdown return (viewer PNG / chart crops).
+    pub status_hook: Option<VisionStatusHook>,
 }
 
 impl std::fmt::Debug for VisionConversionConfig {
@@ -70,6 +78,44 @@ impl std::fmt::Debug for VisionConversionConfig {
                 "progress_callback",
                 &self.progress_callback.as_ref().map(|_| "<callback>"),
             )
+            .field(
+                "status_hook",
+                &self.status_hook.as_ref().map(|_| "<status_hook>"),
+            )
+            .finish()
+    }
+}
+
+/// When set, vision conversion writes page PNG assets under `assets_root` and
+/// injects viewer `![…](assets/…)` links (SPEC-047 Phase C MV-21 / MV-28).
+///
+/// First principle: page PNGs serve the markdown viewer. Multimodal VLM
+/// analyze (`<drawing/>` tags) is optional via [`Self::emit_analyze_tags`].
+#[derive(Clone)]
+pub struct PageDrawingAssetsConfig {
+    /// Root passed to multimodal `resolve_image_asset` as `base_dir`.
+    pub assets_root: PathBuf,
+    /// Optional stable prefix for drawing ids (typically document id).
+    pub id_prefix: Option<String>,
+    /// When true, also emit `<drawing/>` tags for multimodal analyze scan (`i`).
+    pub emit_analyze_tags: bool,
+    /// When set, run the SPEC-049 two-pass VLM figure filter after all crops
+    /// are written.  The provider should be the same vision LLM used for page
+    /// OCR.  Results are written to `figure_filter_manifest.json` under
+    /// `assets_root`.
+    pub figure_filter_provider: Option<Arc<dyn edgequake_llm::LLMProvider>>,
+}
+
+impl std::fmt::Debug for PageDrawingAssetsConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PageDrawingAssetsConfig")
+            .field("assets_root", &self.assets_root)
+            .field("id_prefix", &self.id_prefix)
+            .field("emit_analyze_tags", &self.emit_analyze_tags)
+            .field(
+                "figure_filter_provider",
+                &self.figure_filter_provider.as_ref().map(|p| p.name()),
+            )
             .finish()
     }
 }
@@ -81,6 +127,7 @@ pub struct PdfConversionConfig {
     pub table_method: Option<String>,
     pub filename: Option<String>,
     pub vision: Option<VisionConversionConfig>,
+    pub page_drawing_assets: Option<PageDrawingAssetsConfig>,
 }
 
 #[async_trait]

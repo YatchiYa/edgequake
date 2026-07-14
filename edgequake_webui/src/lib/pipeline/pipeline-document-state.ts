@@ -91,15 +91,56 @@ export function hasQueueCoverage(
   );
 }
 
-/** Waiting documents with no worker/task scheduled (document ↔ task desync). */
+/** Waiting documents with no worker/task scheduled (document ↔ task desync).
+ *
+ * SPEC-048: Do NOT treat a fresh upload as stuck. New docs often appear as
+ * pending/queued for a few seconds before the task row is visible — that is
+ * normal Queued, not "Needs attention".
+ *
+ * Stuck requires: no queue coverage AND (aged past grace OR recovery signal).
+ */
+export const STUCK_GRACE_MS = 60_000;
+
+const RECOVERY_STUCK_RE =
+  /auto-recovered|no worker|needs?\s+reprocess|orphaned|server restart/i;
+
+export function isRecoveryStuckSignal(doc: Document): boolean {
+  const msg = `${doc.stage_message || ""} ${doc.error_message || ""}`;
+  return RECOVERY_STUCK_RE.test(msg);
+}
+
+/** How long the document has been waiting (ms). Unknown timestamps → aged. */
+export function documentWaitAgeMs(doc: Document, now = Date.now()): number {
+  const ts = doc.updated_at || doc.created_at;
+  if (!ts) return Number.POSITIVE_INFINITY;
+  const parsed = Date.parse(ts);
+  if (Number.isNaN(parsed)) return Number.POSITIVE_INFINITY;
+  return Math.max(0, now - parsed);
+}
+
 export function detectStuckDocuments(
   summary: PipelineDocumentSummary,
   hasCoverage: boolean,
+  now = Date.now(),
 ): Document[] {
   if (summary.waitingCount === 0 || hasCoverage) {
     return [];
   }
-  return summary.waitingDocs;
+  return summary.waitingDocs.filter((doc) => {
+    // Explicit recovery / orphan copy → stuck even inside grace (server said so)
+    if (isRecoveryStuckSignal(doc)) {
+      return true;
+    }
+    // Fresh upload / just-queued: keep amber Queued, never red Needs attention
+    if (documentWaitAgeMs(doc, now) < STUCK_GRACE_MS) {
+      return false;
+    }
+    // Still has an active track — pipeline admitted the work; prefer Queued
+    if (doc.track_id) {
+      return false;
+    }
+    return true;
+  });
 }
 
 /** Unified banner + dialog pipeline UI state (document truth + task queue). */
@@ -168,11 +209,17 @@ export function resolvePipelineUiState(
     processingTaskCount,
   );
 
-  // First principle: "Processing N document(s)" requires N > 0 evidence.
-  // `is_busy` alone must NOT open the working banner (stale busy → "Processing 0").
-  // Keep `is_busy` in queueCoverage so waiting docs are not falsely marked stuck.
+  // First principle: "Processing N document(s)" requires document evidence when
+  // the list is loaded and fully terminal. Stale `processing_tasks` / `is_busy`
+  // must NOT keep the working banner after every doc is ingested.
+  // Empty list still trusts task counters (docs may lag the queue briefly).
+  const docsFullyIdle =
+    (documents?.length ?? 0) > 0 &&
+    summary.activeCount === 0 &&
+    summary.waitingCount === 0;
   const isActivelyProcessing =
-    summary.activeCount > 0 || processingTaskCount > 0;
+    summary.activeCount > 0 ||
+    (processingTaskCount > 0 && !docsFullyIdle);
 
   const stuckDocs = detectStuckDocuments(summary, queueCoverage);
   const isStuck = !isActivelyProcessing && stuckDocs.length > 0;
@@ -187,8 +234,12 @@ export function resolvePipelineUiState(
   );
 
   // Prefer document count; fall back to running tasks when list lags the queue.
-  const displayActiveCount =
-    summary.activeCount > 0 ? summary.activeCount : processingTaskCount;
+  // When fully idle, never surface a stale task count as "Processing N".
+  const displayActiveCount = isActivelyProcessing
+    ? summary.activeCount > 0
+      ? summary.activeCount
+      : processingTaskCount
+    : 0;
 
   return {
     activeDocCount: displayActiveCount,

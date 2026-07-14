@@ -50,9 +50,17 @@ mod tests {
         )
         .await;
         let out = enrich_markdown_with_vlm(&md, Some("i"), "doc.md", &mock).await;
-        assert!(out.contains("# inline chart"));
-        assert!(out.contains("Chart"));
-        assert!(!out.contains("data:image/png;base64"));
+        // WHY: image_analysis_to_markdown renders "### Vision analysis: {name}"
+        // (H3, not H1), so the name appears as a section subtitle.
+        assert!(
+            out.contains("inline chart"),
+            "name must appear in output: {out}"
+        );
+        assert!(out.contains("Chart"), "type must appear in output: {out}");
+        assert!(
+            !out.contains("data:image/png;base64"),
+            "base64 must be replaced: {out}"
+        );
         std::env::remove_var("VLM_MIN_IMAGE_PIXEL");
         std::env::remove_var("VLM_PROCESS_ENABLE");
     }

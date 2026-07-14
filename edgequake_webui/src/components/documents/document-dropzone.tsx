@@ -30,6 +30,10 @@ export interface DocumentDropzoneProps {
   pdfParserBackend: 'default' | 'vision' | 'edgeparse';
   /** Change handler for the PDF parser override selector. */
   onPdfParserBackendChange: (value: 'default' | 'vision' | 'edgeparse') => void;
+  /**
+   * SPEC-048: compact chrome while ingestion is working so progress UI stays primary.
+   */
+  quiet?: boolean;
 }
 
 /**
@@ -54,6 +58,7 @@ export function DocumentDropzone({
   openFileDialog,
   pdfParserBackend,
   onPdfParserBackendChange,
+  quiet = false,
 }: DocumentDropzoneProps) {
   const { t } = useTranslation();
   return (
@@ -67,27 +72,48 @@ export function DocumentDropzone({
         'aria-label': t('documents.upload.uploadDrop', 'Upload files by clicking or dragging'),
         tabIndex: 0,
       })}
+      data-testid="document-dropzone"
+      data-quiet={quiet ? 'true' : 'false'}
       className={cn(
-        "border-2 border-dashed rounded-lg cursor-pointer transition-all duration-200",
-        "flex items-center gap-4 px-4 py-3",
+        'border-dashed rounded-lg cursor-pointer transition-all duration-200',
+        'flex items-center gap-3',
+        quiet ? 'border px-3 py-2 gap-2' : 'border-2 px-4 py-3 gap-4',
         isDragActive
           ? 'border-primary bg-primary/5 ring-2 ring-primary/20 animate-pulse'
-          : 'border-muted-foreground/20 hover:border-primary/50 hover:bg-muted/30'
+          : quiet
+            ? 'border-muted-foreground/15 bg-muted/20 hover:border-primary/40 hover:bg-muted/30'
+            : 'border-muted-foreground/20 hover:border-primary/50 hover:bg-muted/30',
       )}
     >
       <input {...getInputProps()} />
-      <div className={cn(
-        "p-2 rounded-lg transition-all",
-        isDragActive ? "bg-primary/10" : "bg-muted/50"
-      )}>
-        <Upload className={cn(
-          "h-5 w-5 transition-all duration-200",
-          isDragActive ? "text-primary scale-110" : "text-muted-foreground"
-        )} />
+      <div
+        className={cn(
+          'rounded-lg transition-all',
+          quiet ? 'p-1.5' : 'p-2',
+          isDragActive ? 'bg-primary/10' : 'bg-muted/50',
+        )}
+      >
+        <Upload
+          className={cn(
+            'transition-all duration-200',
+            quiet ? 'h-4 w-4' : 'h-5 w-5',
+            isDragActive ? 'text-primary scale-110' : 'text-muted-foreground',
+          )}
+        />
       </div>
       <div className="flex-1 min-w-0">
         {isDragActive ? (
-          <p className="text-sm font-medium text-primary">{t('documents.upload.uploadDropActive', 'Drop files here')}</p>
+          <p className="text-sm font-medium text-primary">
+            {t('documents.upload.uploadDropActive', 'Drop files here')}
+          </p>
+        ) : quiet ? (
+          <p className="text-xs text-muted-foreground truncate">
+            {t(
+              'documents.upload.uploadWhileWorking',
+              'Add more files anytime · max {{limit}}',
+              { limit: MAX_UPLOAD_LABEL },
+            )}
+          </p>
         ) : (
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">
@@ -107,13 +133,15 @@ export function DocumentDropzone({
         )}
       </div>
       <div
-        className="flex items-center gap-2"
+        className={cn('flex items-center gap-2', quiet && 'opacity-80')}
         onClick={(event) => event.stopPropagation()}
         onKeyDown={(event) => event.stopPropagation()}
       >
-        <span className="text-xs text-muted-foreground whitespace-nowrap">
-          {t('documents.upload.pdfParser', 'Parser for this upload')}
-        </span>
+        {!quiet && (
+          <span className="text-xs text-muted-foreground whitespace-nowrap">
+            {t('documents.upload.pdfParser', 'Parser for this upload')}
+          </span>
+        )}
         <Select
           value={pdfParserBackend}
           onValueChange={(value: 'default' | 'vision' | 'edgeparse') =>
@@ -121,7 +149,10 @@ export function DocumentDropzone({
           }
         >
           <SelectTrigger
-            className="w-[190px] h-9 bg-background"
+            className={cn(
+              'bg-background',
+              quiet ? 'w-[140px] h-8 text-xs' : 'w-[190px] h-9',
+            )}
             data-testid="spec038-upload-parser-select"
           >
             <SelectValue />

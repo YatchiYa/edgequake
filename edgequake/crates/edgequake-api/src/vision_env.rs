@@ -43,7 +43,8 @@ pub fn default_vision_model_for_provider(provider: &str) -> String {
     match provider {
         "openai" => "gpt-4.1-nano".to_string(),
         "anthropic" => "claude-sonnet-4-20250514".to_string(),
-        "mistral" => "pixtral-large-latest".to_string(),
+        // SPEC-047: default Mistral vision to Small (multimodal). Override via EDGEQUAKE_VISION_MODEL.
+        "mistral" => "mistral-small-latest".to_string(),
         _ => "gemma4:latest".to_string(),
     }
 }

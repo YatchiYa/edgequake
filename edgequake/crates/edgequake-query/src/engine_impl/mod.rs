@@ -207,6 +207,9 @@ impl Default for QueryEngineConfig {
                     .and_then(|v| v.parse().ok())
                     .unwrap_or(200)
                     .clamp(0, 5_000),
+                min_chunk_budget_ratio: crate::truncation::parse_min_chunk_budget_ratio(
+                    &std::env::var("EDGEQUAKE_MIN_CHUNK_BUDGET_RATIO").unwrap_or_default(),
+                ),
             },
             keyword_cache_ttl_secs: 24 * 60 * 60, // 24 hours
             enable_rerank: true,                  // Enable by default for retrieval quality

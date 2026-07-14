@@ -47,7 +47,7 @@ fn mm_chunks_and_modality_relations_from_sidecars() {
     let chunks = collect_mm_chunks_from_manifest(&manifest, &opts).unwrap();
     assert_eq!(chunks.len(), 1);
     let chunk = &chunks[0];
-    assert!(chunk.text.starts_with("[Image Name]"));
+    assert!(chunk.text.starts_with("[Chart Name]"));
     assert!(chunk.text.contains("[Image Type]Chart"));
     assert_eq!(chunk.sidecar.id, "d1");
     assert_eq!(chunk.sidecar.sidecar_type, "drawing");
@@ -72,6 +72,7 @@ fn mm_chunks_and_modality_relations_from_sidecars() {
         section: None,
         page_start: None,
         page_end: None,
+        modality: None,
     }];
     let mut extractions = vec![ExtractionResult {
         entities: vec![ExtractedEntity::new("OTHER", "CONCEPT", "ctx")],
@@ -89,8 +90,12 @@ fn mm_chunks_and_modality_relations_from_sidecars() {
 
 #[test]
 fn parse_mm_display_name_matches_chunk_format() {
-    let drawing = "[Image Name]系统架构图\n[Image Type]Chart\n\nbody";
+    let drawing = "[Chart Name]系统架构图\n[Image Type]Chart\n\nbody";
     assert_eq!(parse_mm_display_name(drawing, "d1"), "系统架构图");
+    let photo = "[Image Name]lab_photo\n[Image Type]Photo\n\nbody";
+    assert_eq!(parse_mm_display_name(photo, "p1"), "lab_photo");
+    let figure = "[Figure Name]arch_flow\n[Image Type]Flowchart\n\nbody";
+    assert_eq!(parse_mm_display_name(figure, "f1"), "arch_flow");
     let table = "[Table Name]性能对比表\n\nbody";
     assert_eq!(parse_mm_display_name(table, "t1"), "性能对比表");
     let equation = "E=mc^2\n[Equation Name]质能方程\n\nbody";

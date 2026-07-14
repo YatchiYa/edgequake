@@ -111,3 +111,11 @@ export function spec037Screenshot(fileName: string): string {
 export function issueScreenshot(issueId: string, fileName: string): string {
   return e2eScreenshot(`issues/${issueId}`, fileName);
 }
+
+/** `specs/051-reprocess/e2e/screenshots/<fileName>` */
+export function spec051Screenshot(fileName: string): string {
+  return path.join(
+    ensureDir(path.join(REPO_ROOT, "specs/051-reprocess/e2e/screenshots")),
+    fileName,
+  );
+}

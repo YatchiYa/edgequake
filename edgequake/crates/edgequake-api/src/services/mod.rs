@@ -12,12 +12,16 @@ pub mod auth_validation;
 pub mod content_granularity;
 pub mod content_hasher;
 pub mod context_bundle_mapper;
+pub mod converting_subprogress;
 pub mod cost_aggregation;
+pub mod document_assets;
 pub mod document_body_loader;
 pub mod document_graph_cascade;
 pub mod document_graph_lineage;
 pub mod document_metadata_repair;
 pub mod document_metadata_scan;
+#[cfg(feature = "postgres")]
+pub mod document_mm_asset_persist;
 #[cfg(feature = "postgres")]
 pub mod document_original_persist;
 pub mod document_reingest;
@@ -32,6 +36,7 @@ pub mod graph_materialization;
 #[cfg(feature = "postgres")]
 pub mod health_schema;
 pub mod identity_storage;
+pub mod include_pdf_assets;
 pub mod ingest_admission;
 pub mod ingestion_persist;
 pub mod injection_list;
@@ -54,13 +59,17 @@ pub mod pdf_admission_registry;
 pub mod pdf_auto_routing;
 pub mod pdf_lineage;
 pub mod pdf_workspace_dedup;
+pub mod pipeline_ws_bridge;
 #[cfg(feature = "postgres")]
 pub mod postgres_chunk_lineage;
 pub mod process_fingerprint;
+pub mod progress_facade;
 pub mod query_context;
 pub mod query_execution;
 pub mod query_generation;
 pub mod query_request_builder;
+pub mod query_stats_mapper;
+pub mod reprocess_stage_reset;
 pub mod retrieval_id_cache;
 pub mod route_registry;
 pub mod session_storage;
@@ -92,6 +101,14 @@ pub use content_granularity::{
     ensure_debug_granularity_allowed, truncate_for_granularity, SNIPPET_LEN,
 };
 pub use content_hasher::ContentHasher;
+pub use converting_subprogress::{
+    report_vision_figure_analyze, vision_figure_analyze_message, vision_figure_analyze_progress_01,
+    ConvertingSubstepReporter,
+};
+pub use document_assets::{
+    document_mm_assets_root, mm_assets_base_dir, multimodal_asset_base_dir,
+    multimodal_images_requested, page_drawing_assets_config, page_drawing_assets_config_for_vision,
+};
 pub use document_graph_cascade::{
     analyze_deletion_impact_stats, cascade_remove_document_sources, cleanup_document_graph_data,
     find_document_edges, find_document_nodes, find_relationships_for_document_lineage,
@@ -100,6 +117,12 @@ pub use document_graph_cascade::{
 pub use document_graph_lineage::{
     build_document_graph_lineage, entity_summary_from_node, relationship_summary_from_edge,
     DocumentGraphLineageBuild,
+};
+#[cfg(feature = "postgres")]
+pub use document_mm_asset_persist::{
+    delete_document_mm_assets, list_mm_asset_summaries_for_document, load_mm_asset_bytes,
+    load_mm_asset_bytes_by_id, materialize_mm_assets_to_dir, persist_document_mm_assets_from_dir,
+    persist_mm_assets_with_storage, persist_uploaded_mm_assets, store_requests_from_dir,
 };
 #[cfg(feature = "postgres")]
 pub use document_original_persist::{persist_uploaded_original, should_store_original};
@@ -117,6 +140,7 @@ pub use graph_materialization::{
     admit_graph_materialization, graph_query_timeout, run_timed_graph_query,
     GraphMaterializationGuard,
 };
+pub use include_pdf_assets::{include_extracted_pdf_assets, IncludePdfAssetsResult};
 pub use ingest_admission::{
     admit_pdf_processing_enqueue, persist_pdf_task_document_id,
     provision_queued_pdf_document_shell, resolve_pdf_ingest_document_id,
@@ -143,20 +167,21 @@ pub use message_context_mapper::{
     build_message_context_from_engine, message_context_from_subgraph,
 };
 pub use multimodal::{
-    analysis_cache_enabled, analyze_multimodal_images, analyze_standalone_image,
-    append_mm_chunks_to_text, apply_process_options_to_metadata, build_mm_chunks_from_manifest,
-    build_surrounding, collect_mm_chunks_from_manifest, enrich_markdown_with_vlm,
-    enrich_processed_text_with_mm_chunks, extract_json_object, find_target_span,
-    load_chunk_separators, load_content_rows_by_blockid_jsonl, load_manifest, load_mm_chunks,
-    manifest_item_status_views, manifest_key, maybe_attach_cache_key, metadata_multimodal_patch,
-    mm_chunks_enabled, mm_chunks_key, parse_json_object, persist_manifest, persist_mm_chunks,
-    reanalyze_document_multimodal, render_mm_chunk, resolve_process_options_from_metadata,
-    run_multimodal_analyze_stage, run_multimodal_analyze_stage_outcome, scan_manifest_items,
-    should_run_image_analysis, summary_from_metadata, table_analysis_messages, vlm_process_enabled,
-    AnalyzeOutcome, ManifestItem, MmChunkBuildError, MultimodalChunk, MultimodalHeading,
-    MultimodalItemRecord, MultimodalItemStatusView, MultimodalManifest, MultimodalProviders,
-    MultimodalReanalyzeOutcome, MultimodalReanalyzeParams, MultimodalSummary, PromptContext,
-    SurroundingContext, SurroundingKind, SurroundingTokenCounter, METADATA_FIELD,
+    analysis_cache_enabled, analyze_multimodal_images, analyze_multimodal_images_with_substep,
+    analyze_standalone_image, append_mm_chunks_to_text, apply_process_options_to_metadata,
+    build_mm_chunks_from_manifest, build_surrounding, collect_mm_chunks_from_manifest,
+    enrich_markdown_with_vlm, enrich_processed_text_with_mm_chunks, extract_json_object,
+    find_target_span, load_chunk_separators, load_content_rows_by_blockid_jsonl, load_manifest,
+    load_mm_chunks, manifest_item_status_views, manifest_key, maybe_attach_cache_key,
+    metadata_multimodal_patch, mm_chunks_enabled, mm_chunks_key, parse_json_object,
+    persist_manifest, persist_mm_chunks, reanalyze_document_multimodal, render_mm_chunk,
+    resolve_process_options_from_metadata, run_multimodal_analyze_stage,
+    run_multimodal_analyze_stage_outcome, run_multimodal_analyze_stage_outcome_with_substep,
+    scan_manifest_items, should_run_image_analysis, summary_from_metadata, table_analysis_messages,
+    vlm_process_enabled, AnalyzeOutcome, ManifestItem, MmChunkBuildError, MultimodalChunk,
+    MultimodalHeading, MultimodalItemRecord, MultimodalItemStatusView, MultimodalManifest,
+    MultimodalProviders, MultimodalReanalyzeOutcome, MultimodalReanalyzeParams, MultimodalSummary,
+    PromptContext, SurroundingContext, SurroundingKind, SurroundingTokenCounter, METADATA_FIELD,
 };
 pub use multimodal_admission::{
     resolve_upload_content, MultimodalAdmissionMeta, ResolvedUploadContent,
@@ -178,6 +203,7 @@ pub use query_execution::{
 };
 pub use query_generation::{execute_full_query, execute_legacy_query_response};
 pub use query_request_builder::{build_engine_request, QueryExecutionParams};
+pub use query_stats_mapper::from_engine_stats as map_engine_query_stats;
 pub use retrieval_id_cache::{global_retrieval_cache, new_retrieval_id, RetrievalIdCache};
 pub use source_reference_builder::{build_sources_from_context, is_injection_source};
 pub use staging_admission::{promote_staging_to_final, rollback_staging};
@@ -190,7 +216,8 @@ pub use text_insert_content::{
 };
 pub use vision_content::{
     describe_image, describe_image_as_markdown, image_analysis_to_markdown,
-    parse_image_analysis_json, ImageAnalysisResult, MultimodalProcessOptions, IMAGE_TYPE_FALLBACK,
+    image_analysis_to_markdown_with_asset, parse_image_analysis_json, ImageAnalysisResult,
+    MultimodalProcessOptions, IMAGE_TYPE_FALLBACK,
 };
 pub use vlm_provider_resolver::{
     resolve_extract_provider_for_workspace, resolve_vlm_provider,

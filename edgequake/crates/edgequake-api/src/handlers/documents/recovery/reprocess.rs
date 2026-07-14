@@ -136,17 +136,53 @@ pub(crate) async fn run_reprocess_failed(
 
     // Requeue documents for processing
     for (doc_id, _doc_key) in &docs_to_reprocess {
-        // Edge case: cancel any in-flight task for this document before requeueing.
-        // WHY: A force=true reprocess on a doc that is still processing (or has a
-        // lingering queued task) would race the worker. For Full re-conversion this
-        // is especially important — we clear markdown and must not let a concurrent
-        // task reuse half-cleared state. purge_persisted_tasks_for_document cancels
-        // and removes persisted tasks referencing this document id.
         let workspace_id_for_tasks = tenant_ctx
             .workspace_id
             .as_deref()
             .unwrap_or("default")
             .to_string();
+
+        // Read metadata early so soft single-flight can see pdf_id before any purge.
+        let metadata_key =
+            crate::services::document_metadata_scan::metadata_key_for_document(doc_id);
+        let metadata_opt = state.storage.kv_storage.get_by_id(&metadata_key).await?;
+        let pdf_id_for_flight = metadata_opt
+            .as_ref()
+            .and_then(|m| m.as_object())
+            .and_then(|obj| obj.get("pdf_id"))
+            .and_then(|v| v.as_str())
+            .and_then(|s| uuid::Uuid::parse_str(s).ok());
+
+        // SPEC-047 P6: soft reprocess must not kill an in-flight pipeline
+        // (double extract + double embed). Only Full restart_from_scratch may
+        // purge and replace an active PdfProcessing task.
+        if !restart_from_scratch {
+            if let (Some(pdf_uuid), Ok(ws_uuid)) = (
+                pdf_id_for_flight,
+                uuid::Uuid::parse_str(&workspace_id_for_tasks),
+            ) {
+                if let Ok(Some(active)) = state
+                    .tasks
+                    .storage
+                    .find_active_pdf_processing_task(pdf_uuid, ws_uuid)
+                    .await
+                {
+                    tracing::info!(
+                        document_id = %doc_id,
+                        track_id = %active.track_id,
+                        "Single-flight: skipping soft reprocess; PDF task already in flight"
+                    );
+                    continue;
+                }
+            }
+        }
+
+        // Edge case: cancel any in-flight task for this document before requeueing.
+        // WHY: A force=true Full reprocess on a doc that is still processing (or has a
+        // lingering queued task) would race the worker. For Full re-conversion this
+        // is especially important — we clear markdown and must not let a concurrent
+        // task reuse half-cleared state. purge_persisted_tasks_for_document cancels
+        // and removes persisted tasks referencing this document id.
         let purged = super::super::storage_helpers::purge_persisted_tasks_for_document(
             &state,
             doc_id,
@@ -205,9 +241,7 @@ pub(crate) async fn run_reprocess_failed(
         // embedding → entity extraction). Using TaskType::Insert for PDFs would
         // only re-ingest the previously extracted markdown, missing re-extraction
         // with any new vision LLM model.
-        let metadata_key =
-            crate::services::document_metadata_scan::metadata_key_for_document(doc_id);
-        let metadata_opt = state.storage.kv_storage.get_by_id(&metadata_key).await?;
+        // metadata_opt already loaded above for single-flight check.
 
         let source_type = metadata_opt
             .as_ref()
@@ -285,14 +319,17 @@ pub(crate) async fn run_reprocess_failed(
                         }
                     }
 
-                    // Update status to pending
+                    // Update status for reprocess (SPEC-048: reset stage fields)
                     if let Some(mut metadata) = metadata_opt.clone() {
                         if let Some(obj) = metadata.as_object_mut() {
-                            obj.insert("status".to_string(), serde_json::json!("pending"));
                             obj.insert("track_id".to_string(), serde_json::json!(new_track_id));
                             obj.insert(
                                 "retry_at".to_string(),
                                 serde_json::json!(Utc::now().to_rfc3339()),
+                            );
+                            crate::services::reprocess_stage_reset::apply_reprocess_stage_reset(
+                                obj,
+                                reprocess_mode,
                             );
                             crate::services::upsert_metadata_kv_with_index(
                                 state.storage.kv_storage.as_ref(),
@@ -411,18 +448,20 @@ pub(crate) async fn run_reprocess_failed(
         if !task_created {
             if let Some(content_value) = state.storage.kv_storage.get_by_id(&content_key).await? {
                 if let Some(content) = content_value.get("content").and_then(|v| v.as_str()) {
-                    // Update status to pending
+                    // Update status for reprocess (SPEC-048: reset stage fields)
                     if let Some(mut metadata) =
                         state.storage.kv_storage.get_by_id(&metadata_key).await?
                     {
                         if let Some(obj) = metadata.as_object_mut() {
-                            obj.insert("status".to_string(), serde_json::json!("pending"));
                             obj.insert("track_id".to_string(), serde_json::json!(new_track_id));
                             obj.insert(
                                 "retry_at".to_string(),
                                 serde_json::json!(Utc::now().to_rfc3339()),
                             );
-
+                            crate::services::reprocess_stage_reset::apply_reprocess_stage_reset(
+                                obj,
+                                reprocess_mode,
+                            );
                             crate::services::upsert_metadata_kv_with_index(
                                 state.storage.kv_storage.as_ref(),
                                 &metadata_key,
@@ -447,6 +486,8 @@ pub(crate) async fn run_reprocess_failed(
                             "is_retry": true,
                             "tenant_id": tenant_id,
                             "workspace_id": workspace_id,
+                            "force_fresh_extraction": restart_from_scratch,
+                            "merge_only": reprocess_mode.merge_only(),
                         })),
                     };
 
@@ -498,14 +539,6 @@ pub(crate) async fn run_reprocess_failed(
                 .await
                 .map_err(|e| ApiError::Internal(format!("Failed to list failed PDFs: {}", e)))?;
 
-            // DRY: Use the same resolution chain as PdfUploadOptions (types.rs).
-            // WHY: Previously this was a duplicated inline chain that could diverge
-            // from the upload path, causing reprocessed PDFs to use different
-            // provider/model than new uploads.
-            let vision_opts = crate::handlers::pdf_upload::types::PdfUploadOptions::default();
-            let vision_provider = vision_opts.resolved_vision_provider();
-            let vision_model: Option<String> = Some(vision_opts.vision_model());
-
             for pdf in failed_pdfs.items {
                 // Determine tenant_id: prefer from context, fall back to a
                 // workspace-scoped default (workspace_id itself as tenant proxy).
@@ -523,13 +556,36 @@ pub(crate) async fn run_reprocess_failed(
                         ApiError::Internal(format!("Failed to reset PDF status: {}", e))
                     })?;
 
-                let pdf_parser_backend = match state
+                // SPEC-051 GAP-051-04: Resolve ALL vision settings from workspace,
+                // not from PdfUploadOptions::default().
+                // WHY: Previously vision_provider and vision_model used default
+                // env-var resolution, ignoring workspace-level overrides. Only
+                // pdf_parser_backend was read from the workspace. Now all three
+                // come from the same workspace.get_workspace() call (DRY).
+                let (vision_provider, vision_model, pdf_parser_backend) = match state
                     .workspace_service
                     .get_workspace(pdf.workspace_id)
                     .await
                 {
-                    Ok(Some(workspace)) => workspace.resolved_pdf_parser_backend(),
-                    Ok(None) | Err(_) => PdfParserBackend::from_env().unwrap_or_default(),
+                    Ok(Some(ws)) => {
+                        let vp = ws
+                            .vision_llm_provider
+                            .as_deref()
+                            .filter(|p| !p.is_empty())
+                            .unwrap_or("ollama")
+                            .to_string();
+                        let vm = ws.vision_llm_model.clone().filter(|m| !m.is_empty());
+                        let backend = ws.resolved_pdf_parser_backend();
+                        (vp, vm, backend)
+                    }
+                    Ok(None) | Err(_) => {
+                        // Fallback: env-var defaults (same as upload path default).
+                        let opts = crate::handlers::pdf_upload::types::PdfUploadOptions::default();
+                        let vp = opts.resolved_vision_provider();
+                        let vm = Some(opts.vision_model());
+                        let backend = PdfParserBackend::from_env().unwrap_or_default();
+                        (vp, vm, backend)
+                    }
                 };
 
                 // Edge case: empty-markdown fallback for failed PDFs.

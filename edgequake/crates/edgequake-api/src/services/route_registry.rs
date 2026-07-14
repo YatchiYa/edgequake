@@ -64,9 +64,14 @@ fn prefixed_paths(body: &str, prefix: &str) -> Vec<String> {
 pub fn all_axum_route_paths(routes_rs: &str) -> Vec<String> {
     let mut paths = HashSet::new();
 
-    if let Some(body) = function_body(routes_rs, "create_router") {
-        for path in extract_route_literals(body) {
-            paths.insert(path);
+    // WHY create_router_inner (not create_router): the public `create_router`
+    // is a thin wrapper that calls `spawn_pipeline_ws_bridge` and delegates to
+    // `create_router_inner`. All .route(...) registrations live in the inner fn.
+    for fn_name in &["create_router", "create_router_inner"] {
+        if let Some(body) = function_body(routes_rs, fn_name) {
+            for path in extract_route_literals(body) {
+                paths.insert(path);
+            }
         }
     }
     if let Some(body) = function_body(routes_rs, "ollama_api_routes") {

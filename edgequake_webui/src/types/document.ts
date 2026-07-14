@@ -93,6 +93,12 @@ export interface Document {
   stage_message?: string;
 
   /**
+   * Reprocess mode when this run was started via soft/hard reprocess (SPEC-048).
+   * Wire: full | entities | merge
+   */
+  reprocess_mode?: string;
+
+  /**
    * Linked PDF document ID (only set if source_type is "pdf").
    * Used to fetch PDF content for viewing.
    * @implements SPEC-002

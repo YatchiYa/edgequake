@@ -24,7 +24,7 @@
 # Supported default configurations:
 #   - OpenAI (default): gpt-4.1-mini (LLM), text-embedding-3-small (embedding), gpt-4o (vision)
 #   - Anthropic: claude-sonnet-4-6 (LLM), claude-opus-4-6 (flagship LLM)
-#   - Mistral: mistral-large-latest (LLM), mistral-embed (embedding), pixtral-large-latest (vision)
+#   - Mistral: mistral-large-latest (LLM+vision), mistral-embed (embedding); pixtral-* still available
 #   - Gemini: gemini-2.5-flash (LLM), gemini-embedding-001 (embedding)
 #   - xAI: grok-4.3 (LLM)
 #   - MiniMax: MiniMax-M2.7 (LLM)
@@ -455,14 +455,16 @@ description = "Mistral AI La Plateforme — high-efficiency frontier models, nat
 name = "mistral-small-latest"
 display_name = "Mistral Small (latest)"
 model_type = "llm"
-description = "Default Mistral chat model — cost-effective, 128K context, tool calling"
+description = "Default Mistral chat model — multimodal (text+vision), 128K+ context, tool calling (SPEC-047)"
 deprecated = false
-tags = ["recommended", "default", "fast", "tools"]
+tags = ["recommended", "default", "fast", "tools", "vision", "multimodal"]
 
 [providers.models.capabilities]
 context_length = 131072
 max_output_tokens = 4096
-supports_vision = false
+# WHY (SPEC-047 / Mistral Vision docs): mistral-small-latest resolves to Small 4
+# with native image input. Previously false caused silent image drops in chat routing.
+supports_vision = true
 supports_function_calling = true
 supports_json_mode = true
 supports_streaming = true
@@ -473,7 +475,7 @@ embedding_dimension = 0
 input_per_1k = 0.0002
 output_per_1k = 0.0006
 embedding_per_1k = 0.0
-image_per_unit = 0.0
+image_per_unit = 0.0002
 
 [[providers.models]]
 name = "mistral-medium-latest"
@@ -503,14 +505,15 @@ image_per_unit = 0.0
 name = "mistral-large-latest"
 display_name = "Mistral Large (latest)"
 model_type = "llm"
-description = "Highest-capability Mistral chat model — advanced reasoning, 128K context"
+description = "Highest-capability Mistral chat model — multimodal (text+vision), advanced reasoning, 128K+ context (SPEC-047)"
 deprecated = false
-tags = ["premium", "reasoning", "tools"]
+tags = ["premium", "reasoning", "tools", "vision", "multimodal"]
 
 [providers.models.capabilities]
 context_length = 131072
 max_output_tokens = 4096
-supports_vision = false
+# WHY (SPEC-047 / Mistral Vision docs): Large 3 (mistral-large-latest / 2512) is multimodal.
+supports_vision = true
 supports_function_calling = true
 supports_json_mode = true
 supports_streaming = true
@@ -518,10 +521,10 @@ supports_system_message = true
 embedding_dimension = 0
 
 [providers.models.cost]
-input_per_1k = 0.002
-output_per_1k = 0.006
+input_per_1k = 0.0005
+output_per_1k = 0.0015
 embedding_per_1k = 0.0
-image_per_unit = 0.0
+image_per_unit = 0.0005
 
 [[providers.models]]
 name = "magistral-small-latest"

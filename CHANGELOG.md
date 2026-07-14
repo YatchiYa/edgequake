@@ -4,7 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-SPEC-043 unified LLM model picker, server config, provider attribution, and Vertex AI identity authentication (pending cut).
+---
+
+## [0.17.0] — 2026-07-14
+
+Multi-modal vision ingest, real-time progress, graph reliability hardening, and 7 bug fixes.
 
 ### Added — SPEC-043 LLM model picker & server config
 
@@ -13,17 +17,66 @@ SPEC-043 unified LLM model picker, server config, provider attribution, and Vert
 - **Server LLM config overrides** — Persisted server defaults (provider/model) via settings API; config explainability panel for effective resolution chain.
 - **Application attribution API** — Runtime attribution headers and settings UI for downstream LLM request labeling (SPEC-043 §004).
 - **Expanded model catalog** — Bundled `models.toml` embedded at compile time; runtime override via `EDGEQUAKE_MODELS_CONFIG`, `./models.toml`, or `~/.edgequake/models.toml`.
-- **Vertex AI identity auth (§011)** — `vertexai` classified as `OAuth2Identity`, not API key. Auth ladder: `GOOGLE_ACCESS_TOKEN` → GCE metadata/ADC → service account JSON → gcloud ADC. Provider health and UI copy describe identity prerequisites; runtime uses `GeminiProvider::from_env_vertex_ai_adc()`.
-- **E2E** — `spec043-llm-model-picker.spec.ts` (model picker + Vertex identity badge); battle-tested screenshots under `specs/043-update-edgequake-llm/e2e/`.
+- **Vertex AI identity auth (§011)** — `vertexai` classified as `OAuth2Identity`. Auth ladder: `GOOGLE_ACCESS_TOKEN` → GCE metadata/ADC → service account JSON → gcloud ADC.
 
-### Changed
+### Added — SPEC-047 Vision Ingest
 
-- **`/api/v1/providers`** — Responses include `auth_kind` and `config_requirements`; Vertex health probes live token when configured.
-- **Provider catalog DRY** — Config requirements delegated to `credentials::provider_config_requirements()`.
+- **PDF → Markdown via VLM** — Page-level rendering with embedded image analysis using vision LLM providers (Ollama, OpenAI GPT-4o/vision).
+- **Per-page progress** — Real-time conversion progress via WebSocket (`/ws/progress/{track_id}`).
+- **Side-by-side viewer** — PDF source and converted Markdown rendered in parallel for QA.
+- **Visual asset extraction** — Charts, figures, tables extracted as PNG assets (`document_mm_assets`).
+- **`edgequake-pdf2md 0.9.7`** — Vision pipeline improvements, SPEC-047 compatibility.
+- **Migration 084/085** — `document_mm_assets` table with stable `asset_id` and workspace RLS.
 
-### Documentation
+### Added — SPEC-048 Pipeline Progress
 
-- README, `docs/operations/configuration.md`, and `edgequake/docs/configuration.md` — Vertex AI vs Gemini Developer API auth, env vars, and local ADC setup.
+- **WebSocket progress bridge** — `spawn_pipeline_ws_bridge` forwards pipeline events to SSE/WS clients.
+- **Pipeline status dialog** — Structured per-stage progress in the WebUI with phase timing.
+- **Track ID correlation** — Upload → pipeline → completion linked via `track_id`.
+
+### Added — SPEC-050 Pipeline UX Parity
+
+- **Deletion progress** — Delete document shows stage-by-stage progress (graph cleanup, vector cleanup, KV cleanup).
+- **Stage visibility** — All pipeline stages surfaced with human-readable labels and timing.
+
+### Added — Migration 086
+
+- **Edge BFS index reconcile** — `idx_edge_source_id` / `idx_edge_target_id` reconcile across all AGE graph schemas, ensuring consistent index coverage for BFS queries.
+
+### Fixed — SPEC-053 Graph Search & Storage Reliability
+
+- **503 on node search eliminated** — `search_nodes` is O(log N) indexed lookup; removed the heavyweight `GraphMaterializationSemaphore` gate that caused 503s on every keystroke while graph was loading.
+- **Stream holds semaphore too long** — `stream_graph` now releases the materialization permit after the data fetch (not after the full SSE stream), freeing slots for concurrent queries.
+- **"could not identify an equality operator for type json"** — `pg_get_incident_edges_batch` used `UNION` on a `json`-typed column (PostgreSQL `json` has no `=` operator). Fixed to `OR` predicate which uses `BitmapOr` of two btree index scans.
+- **Incident edges O(V+E) → O(log E)** — Rewrote `pg_get_incident_edges_batch` to query the `"EDGE"` child table directly (indexed) instead of joining `_ag_label_vertex` (parent table, no indexes after M070).
+- **Degrees batch O(V+E) → O(log E)** — `pg_node_degrees_batch` uses `"EDGE"` child table with `VALUES` CTE instead of `_ag_label_vertex` JOIN.
+
+### Fixed — SPEC-052 Dialog Layout
+
+- **Duplicate upload dialog overflow** — `DuplicateRow` changed from flex to CSS Grid (`grid-cols-[auto_minmax(0,1fr)_auto]`); `ScrollArea` gets `min-w-0 w-full` to override CSS Grid item `min-width:auto` cascade.
+- **Bulk delete dialog rows** — Same CSS Grid fix applied to file list rows.
+- **All dialogs audited** — 24 E2E layout tests verify no horizontal overflow across all dialog types.
+
+### Fixed — SPEC-054 (GitHub Issues #292–#297, #37, #186, #239)
+
+- **#297** — Workspace delete now drops the per-workspace vector table (`eq_..._ws_{id}_vectors`) instead of leaving it as an orphan.
+- **#296** — `proxyClientMaxBodySize` uses `number` type (was `string` template), fixing Next.js 16 `SizeLimit` typecheck failure.
+- **#294** — `WARN` log emitted when API keys fall back to in-memory KV store; documents multi-instance (ECS/k8s) requirement for `DATABASE_URL`.
+- **#292** — Docker image `0.16.0` published; `0.15.1` was skipped (now documented).
+- **#239** — Pipeline status dialog shows structured per-stage error detail (already implemented in v0.16).
+- **#186** — `OLLAMA_API_KEY` forwarded in all Ollama provider paths (LLM, embedding, vision) for cloud/remote Ollama.
+- **#37** — `context_only: true` in `POST /query` skips LLM generation and returns raw retrieval context (implemented since v0.10).
+
+### Changed — CI/CD Release Infrastructure
+
+- **Docker build context → repo root** — `release-docker.yml` now checks out `edgequake-pdf2md` alongside the main repo so the path dependency resolves correctly in Docker builds.
+- **`edgequake-pdf2md` published to crates.io** — `v0.9.7` tag triggers automatic publish via `publish.yml` CI/CD.
+
+### Performance
+
+- BFS traversal: `pg_get_incident_edges_batch` 200ms → <10ms per 200-node chunk (167k-edge graph).
+- Degree batch: `pg_node_degrees_batch` ~150ms → <15ms (no vertex JOIN).
+- Entity neighborhood depth=2: >15s timeout → <500ms.
 
 ---
 

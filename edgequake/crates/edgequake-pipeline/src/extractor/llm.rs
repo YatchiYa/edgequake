@@ -110,12 +110,11 @@ where
     async fn extract(&self, chunk: &TextChunk) -> Result<ExtractionResult> {
         let prompt = self.build_prompt(chunk);
 
-        // WHY reasoning_effort="none" + explicit max_tokens:
-        // Reasoning models (gpt-5-nano, gpt-5-mini, o-series) exhaust all completion_tokens
-        // on chain-of-thought when no limit is set (reasoning_tokens = completion_tokens → 0
-        // net output tokens → empty JSON → parse error). Setting reasoning_effort="none"
-        // disables CoT for extraction tasks where structured JSON output is required.
-        // Non-reasoning models silently ignore this field.
+        // WHY reasoning_effort="none" + explicit max_tokens (when model accepts it):
+        // Reasoning models (gpt-5-nano, gpt-5-mini, o-series, mistral-small) exhaust
+        // completion_tokens on chain-of-thought when no limit is set.
+        // SPEC-047: mistral-large-latest rejects reasoning_effort → omit via
+        // extraction_completion_options() model gate.
         let options = extraction_completion_options(self.llm_provider.model(), 16384);
 
         let response = self

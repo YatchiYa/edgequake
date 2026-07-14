@@ -70,19 +70,22 @@ impl DocumentTaskProcessor {
                 edgequake_tasks::TaskError::Process(error_msg)
             })?;
 
-        // OODA-02: Update status to "embedding" - generating vector embeddings
-        // WHY: Shows user that extraction is complete, now vectorizing
-        self.update_document_status(&document_id, "embedding", None)
-            .await?;
+        // OODA-02 / SPEC-047 P0: embeddings already finished in text_insert_extract
+        // (including slim-checkpoint re-embed). Do NOT set status back to
+        // "embedding" here — that freezes the UI at "Embedding 100%" during merge.
+        // Jump straight to indexing (graph + vector persist).
 
         // OODA-17: Update PDF phase progress - extraction complete, start embedding
         if is_pdf_source {
             self.pipeline_state
                 .complete_pdf_phase(&track_id, PipelinePhase::Extraction)
                 .await;
-            // Embedding phase: total = chunks to embed
+            // Embedding phase already done in extract; mark complete for PDF tracker.
             self.pipeline_state
                 .start_pdf_phase(&track_id, PipelinePhase::Embedding, result.chunks.len())
+                .await;
+            self.pipeline_state
+                .complete_pdf_phase(&track_id, PipelinePhase::Embedding)
                 .await;
         }
 
@@ -107,11 +110,8 @@ impl DocumentTaskProcessor {
         self.update_document_status(&document_id, "indexing", None)
             .await?;
 
-        // OODA-17: Update PDF phase progress - embedding complete, start graph storage
+        // OODA-17: Update PDF phase progress - start graph storage
         if is_pdf_source {
-            self.pipeline_state
-                .complete_pdf_phase(&track_id, PipelinePhase::Embedding)
-                .await;
             // GraphStorage phase: estimate operations = entities + relationships
             let total_entities: usize = result.extractions.iter().map(|e| e.entities.len()).sum();
             let total_rels: usize = result

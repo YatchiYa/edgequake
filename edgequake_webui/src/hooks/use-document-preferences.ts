@@ -14,7 +14,15 @@
  */
 "use client";
 
+import {
+  isSortDirection,
+  isSortField,
+  type SortDirection,
+  type SortField,
+} from "@/lib/documents/document-sort";
 import { useEffect, useState } from "react";
+
+export type { SortDirection, SortField };
 
 /**
  * Document status filter values.
@@ -27,21 +35,6 @@ export type DocStatus =
   | "failed"
   | "partial_failure"
   | "cancelled";
-
-/**
- * Sort field options.
- */
-export type SortField =
-  | "created_at"
-  | "updated_at"
-  | "title"
-  | "status"
-  | "entity_count";
-
-/**
- * Sort direction options.
- */
-export type SortDirection = "asc" | "desc";
 
 /**
  * localStorage key for document preferences.
@@ -107,28 +100,8 @@ function readPreferences(): Partial<{
 
 /**
  * Hook for managing document list preferences with persistence.
- *
- * @example
- * ```tsx
- * const {
- *   pageSize, setPageSize,
- *   statusFilter, setStatusFilter,
- *   sortField, setSortField,
- *   sortDirection, setSortDirection,
- * } = useDocumentPreferences();
- *
- * // Use in DocumentFilters
- * <DocumentFilters
- *   status={statusFilter}
- *   onStatusChange={setStatusFilter}
- *   sortField={sortField}
- *   onSortFieldChange={setSortField}
- *   ...
- * />
- * ```
  */
 export function useDocumentPreferences(): UseDocumentPreferencesReturn {
-  // Initialize states with localStorage values or defaults
   const [pageSize, setPageSize] = useState(() => {
     const prefs = readPreferences();
     const size = prefs.pageSize;
@@ -142,15 +115,16 @@ export function useDocumentPreferences(): UseDocumentPreferencesReturn {
 
   const [sortField, setSortField] = useState<SortField>(() => {
     const prefs = readPreferences();
-    return prefs.sortField || DEFAULTS.sortField;
+    return isSortField(prefs.sortField) ? prefs.sortField : DEFAULTS.sortField;
   });
 
   const [sortDirection, setSortDirection] = useState<SortDirection>(() => {
     const prefs = readPreferences();
-    return prefs.sortDirection || DEFAULTS.sortDirection;
+    return isSortDirection(prefs.sortDirection)
+      ? prefs.sortDirection
+      : DEFAULTS.sortDirection;
   });
 
-  // Persist changes to localStorage
   useEffect(() => {
     try {
       localStorage.setItem(

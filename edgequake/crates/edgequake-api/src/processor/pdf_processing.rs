@@ -358,8 +358,8 @@ impl DocumentTaskProcessor {
         if let Some(ref broadcaster) = self.progress_broadcaster {
             callback = callback.with_broadcaster(broadcaster.clone());
         }
-        let progress_callback: Arc<dyn edgequake_pdf2md::ConversionProgressCallback> =
-            Arc::new(callback);
+        // Keep concrete Arc so we can report post-OCR converting status + finish phase.
+        let progress_callback = Arc::new(callback);
 
         // 4. Extract content (vision or text mode)
         //
@@ -398,18 +398,31 @@ impl DocumentTaskProcessor {
                     let stored_vision_model = pdf.vision_model.clone();
 
                     // RESUME: apply multimodal analyze stage (LightRAG parity — was skipped before 4d).
-                    let stored_markdown = crate::services::run_multimodal_analyze_stage(
+                    let mm_asset_base = crate::services::multimodal_asset_base_dir(
+                        &early_doc_id,
+                        data.multimodal_process_options.as_deref(),
+                    );
+                    let mm_outcome = crate::services::run_multimodal_analyze_stage_outcome(
                         stored_markdown,
                         data.multimodal_process_options.as_deref(),
                         &filename,
                         self.workspace_service.as_ref(),
                         data.workspace_id,
                         Arc::clone(&self.llm_provider),
-                        None,
+                        mm_asset_base.as_deref(),
                         Some(&early_doc_id),
                         Some(Arc::clone(&self.kv_storage)),
                     )
                     .await;
+                    if crate::services::multimodal::should_abort_multimodal_hard_error(
+                        mm_outcome.hard_error.as_deref(),
+                    ) {
+                        return Err(edgequake_tasks::TaskError::Processing(format!(
+                            "Multimodal analyze failed: {}",
+                            mm_outcome.hard_error.as_deref().unwrap_or("unknown")
+                        )));
+                    }
+                    let stored_markdown = mm_outcome.markdown;
 
                     // Clone for linking step after process_text_insert consumes the string.
                     let stored_markdown_for_link = stored_markdown.clone();
@@ -440,6 +453,9 @@ impl DocumentTaskProcessor {
                             "pdf_vision_model": stored_vision_model,
                             "pdf_extraction_method": stored_extraction_method.as_ref().map(|m| m.as_str()),
                             "force_fresh_extraction": data.restart_from_scratch,
+                            "merge_only": data.reprocess_mode
+                                .map(|m| m.merge_only())
+                                .unwrap_or(false),
                         })),
                     };
 
@@ -656,21 +672,41 @@ impl DocumentTaskProcessor {
             dir.push("edgequake-checkpoints");
             dir.to_string_lossy().to_string()
         });
+        let page_drawing_assets = match extraction_method {
+            ExtractionMethod::Vision => {
+                Some(crate::services::page_drawing_assets_config_for_vision(
+                    &early_doc_id,
+                    data.multimodal_process_options.as_deref(),
+                ))
+            }
+            _ => crate::services::page_drawing_assets_config(
+                &early_doc_id,
+                data.multimodal_process_options.as_deref(),
+            ),
+        };
         let conversion_config = edgequake_pdf::PdfConversionConfig {
             page_count_hint: page_count_opt.map(|count| count as usize),
             table_method: None,
             filename: Some(filename.clone()),
-            vision: vision_model
-                .clone()
-                .map(|model| edgequake_pdf::VisionConversionConfig {
+            page_drawing_assets,
+            vision: vision_model.clone().map(|model| {
+                let status_hook: edgequake_pdf::VisionStatusHook = {
+                    let cb = progress_callback.clone();
+                    Arc::new(move |message: &str, progress: f64| {
+                        cb.report_converting_status(message, progress);
+                    })
+                };
+                edgequake_pdf::VisionConversionConfig {
                     provider_name: Some(data.vision_provider.clone()),
                     model: Some(model),
                     concurrency: Some(concurrency),
                     dpi: Some(dpi),
                     checkpoint_dir: Some(checkpoint_dir),
                     no_resume: should_cleanup_existing_content,
-                    progress_callback: Some(progress_callback),
-                }),
+                    progress_callback: Some(progress_callback.clone()),
+                    status_hook: Some(status_hook),
+                }
+            }),
         };
 
         let edgeparse_config = edgequake_pdf::PdfConversionConfig {
@@ -826,18 +862,116 @@ impl DocumentTaskProcessor {
         let markdown = strip_nul_bytes(markdown);
         drop(pdf_data);
 
-        let markdown = crate::services::run_multimodal_analyze_stage(
-            markdown,
+        // SPEC-047: durable mm-assets in DB (lineage: document_id + page_num + asset_id).
+        // Materialize from DB when resume skipped vision writes (disk cache miss).
+        #[cfg(feature = "postgres")]
+        {
+            let assets_root = crate::services::document_mm_assets_root(&early_doc_id);
+            // Persist whenever vision wrote page PNGs (viewer) and/or `i` analyze ran.
+            let should_persist_mm = conversion_config.page_drawing_assets.is_some()
+                || crate::services::multimodal_images_requested(
+                    data.multimodal_process_options.as_deref(),
+                );
+            if should_persist_mm {
+                progress_callback.report_converting_status("Saving page images to storage…", 0.97);
+                if let Some(ref mm_store) = self.mm_asset_storage {
+                    if let Err(e) = crate::services::materialize_mm_assets_to_dir(
+                        mm_store.as_ref(),
+                        uuid::Uuid::parse_str(&early_doc_id).unwrap_or(uuid::Uuid::nil()),
+                        data.workspace_id,
+                        &assets_root,
+                    )
+                    .await
+                    {
+                        tracing::warn!(
+                            document_id = %early_doc_id,
+                            error = %e,
+                            "Failed to materialize mm-assets from DB"
+                        );
+                    }
+                }
+                match crate::services::persist_mm_assets_with_storage(
+                    self.mm_asset_storage.as_ref(),
+                    self.kv_storage.as_ref(),
+                    &early_doc_id,
+                    data.workspace_id,
+                    &assets_root,
+                )
+                .await
+                {
+                    Ok(n) => {
+                        if n > 0 {
+                            tracing::info!(
+                                document_id = %early_doc_id,
+                                count = n,
+                                "Persisted mm-assets after vision ingest"
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            document_id = %early_doc_id,
+                            error = %e,
+                            "Failed to persist mm-assets to database after vision ingest"
+                        );
+                    }
+                }
+            }
+        }
+
+        let mm_asset_base = crate::services::multimodal_asset_base_dir(
+            &early_doc_id,
             data.multimodal_process_options.as_deref(),
-            &filename,
-            self.workspace_service.as_ref(),
-            data.workspace_id,
-            Arc::clone(&self.llm_provider),
-            None,
-            Some(&early_doc_id),
-            Some(Arc::clone(&self.kv_storage)),
-        )
-        .await;
+        );
+        let converting_substep: Option<crate::services::ConvertingSubstepReporter> = {
+            let cb = progress_callback.clone();
+            Some(Arc::new(move |message, progress| {
+                cb.report_converting_status(message, progress);
+            }))
+        };
+        let markdown = {
+            if crate::services::multimodal_images_requested(
+                data.multimodal_process_options.as_deref(),
+            ) {
+                let figure_total =
+                    edgequake_pdf::inline_images::scan_inline_image_refs(&markdown).len();
+                if figure_total > 0 {
+                    progress_callback.report_converting_status(
+                        crate::services::vision_figure_analyze_message(0, figure_total),
+                        crate::services::vision_figure_analyze_progress_01(0, figure_total),
+                    );
+                }
+            }
+            let mm_outcome = crate::services::run_multimodal_analyze_stage_outcome_with_substep(
+                markdown,
+                data.multimodal_process_options.as_deref(),
+                &filename,
+                self.workspace_service.as_ref(),
+                data.workspace_id,
+                Arc::clone(&self.llm_provider),
+                mm_asset_base.as_deref(),
+                Some(&early_doc_id),
+                Some(Arc::clone(&self.kv_storage)),
+                converting_substep,
+            )
+            .await;
+            if crate::services::multimodal::should_abort_multimodal_hard_error(
+                mm_outcome.hard_error.as_deref(),
+            ) {
+                return Err(edgequake_tasks::TaskError::Processing(format!(
+                    "Multimodal analyze failed: {}",
+                    mm_outcome.hard_error.as_deref().unwrap_or("unknown")
+                )));
+            }
+            mm_outcome.markdown
+        };
+
+        // Post-OCR converting work finished — advance PdfConversion phase for track ETA.
+        progress_callback.report_converting_status(
+            "PDF conversion finished — starting knowledge-graph pipeline…",
+            1.0,
+        );
+        progress_callback.complete_pdf_conversion_phase();
 
         let mut extraction_errors = if extraction_method == ExtractionMethod::EdgeParse {
             let avg_chars_per_page = markdown.len() / page_count.max(1);
@@ -945,6 +1079,9 @@ impl DocumentTaskProcessor {
                 "pdf_extraction_method": extraction_method.as_str(),
                 "pdf_extraction_warning": extraction_warning,
                 "force_fresh_extraction": data.restart_from_scratch,
+                "merge_only": data.reprocess_mode
+                    .map(|m| m.merge_only())
+                    .unwrap_or(false),
             })),
         };
 

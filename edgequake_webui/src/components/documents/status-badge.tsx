@@ -170,22 +170,26 @@ export function normalizeStatus(status: string | undefined | null): DocumentStat
 
 /**
  * Get the best status to display for a document.
- * 
+ *
  * @implements SPEC-002: Unified Ingestion Pipeline
- * 
- * Prefers current_stage (new unified field) over status (legacy field).
- * Falls back to status if current_stage is not available.
+ *
+ * Prefer fine-grained `current_stage` while work is in flight.
+ * Terminal `status` (completed / failed / …) always wins over a stale
+ * `current_stage` so the UI does not keep a "Processing" banner after ingest.
  */
 export function getDocumentDisplayStatus(doc: {
   current_stage?: string | null;
   status?: string | null;
 }): DocumentStatus {
-  // SPEC-002: Prefer unified current_stage over legacy status
+  const legacy = normalizeStatus(doc.status);
+  // Completed/failed/cancelled beat leftover stage labels from the last run.
+  if (isTerminalStatus(legacy)) {
+    return legacy;
+  }
   if (doc.current_stage) {
     return normalizeStatus(doc.current_stage);
   }
-  // Fallback to legacy status field
-  return normalizeStatus(doc.status);
+  return legacy;
 }
 
 interface StatusBadgeProps {

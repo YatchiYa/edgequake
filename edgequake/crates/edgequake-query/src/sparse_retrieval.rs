@@ -104,9 +104,14 @@ pub async fn fuse_vector_and_bm25_chunks(
 
     let (sparse_ranked, outcome) = if vector_storage.supports_native_text_search() {
         let candidate_k = max_chunks.saturating_mul(config.bm25_candidate_multiplier);
-        match vector_storage
-            .text_search_filtered(query, candidate_k, None, metadata_filter)
-            .await
+        match crate::modality_retrieve::text_search_with_modality_preference(
+            vector_storage,
+            query,
+            candidate_k,
+            None,
+            metadata_filter,
+        )
+        .await
         {
             Ok(fts_hits) if !fts_hits.is_empty() => {
                 for hit in &fts_hits {

@@ -65,55 +65,15 @@ impl QueryContext {
     }
 
     /// Build a text representation for LLM context.
+    ///
+    /// SPEC-047 Q1.1: chunk headers include `page=` / `modality=` via
+    /// [`crate::context_format`] so the LLM can ground answers on retrieved pages.
     pub fn to_context_string(&self) -> String {
-        let mut parts = Vec::new();
-
-        if !self.entities.is_empty() {
-            parts.push("### Knowledge Graph Data (Entities)\n\n".to_string());
-            for entity in &self.entities {
-                let degree_info = if entity.degree > 0 {
-                    format!(" [connections: {}]", entity.degree)
-                } else {
-                    String::new()
-                };
-                parts.push(format!(
-                    "- **{}** ({}){}: {}\n",
-                    entity.name, entity.entity_type, degree_info, entity.description
-                ));
-            }
-            parts.push("\n".to_string());
-        }
-
-        if !self.relationships.is_empty() {
-            parts.push("### Knowledge Graph Data (Relationships)\n\n".to_string());
-            for rel in &self.relationships {
-                if rel.description.is_empty() {
-                    parts.push(format!(
-                        "- {} --[{}]--> {}\n",
-                        rel.source, rel.relation_type, rel.target
-                    ));
-                } else {
-                    parts.push(format!(
-                        "- {} --[{}]--> {}: {}\n",
-                        rel.source, rel.relation_type, rel.target, rel.description
-                    ));
-                }
-            }
-            parts.push("\n".to_string());
-        }
-
-        if !self.chunks.is_empty() {
-            parts.push("### Document Chunks\n\n".to_string());
-            for (i, chunk) in self.chunks.iter().enumerate() {
-                let ref_id = i + 1;
-                parts.push(format!(
-                    "[{}] (score: {:.3})\n{}\n\n",
-                    ref_id, chunk.score, chunk.content
-                ));
-            }
-        }
-
-        parts.join("")
+        crate::context_format::format_query_context(
+            &self.entities,
+            &self.relationships,
+            &self.chunks,
+        )
     }
 
     /// Check if the context is empty.
@@ -156,6 +116,10 @@ pub struct RetrievedChunk {
 
     /// PDF page number where this chunk ends (always equals page_start).
     pub page_end: Option<u32>,
+
+    /// Retrieval modality stamped at ingest (`chart`, `figure`, `table`, `equation`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub modality: Option<String>,
 }
 
 impl RetrievedChunk {
@@ -174,6 +138,7 @@ impl RetrievedChunk {
             chunk_index: None,
             page_start: None,
             page_end: None,
+            modality: None,
         }
     }
 
@@ -200,6 +165,12 @@ impl RetrievedChunk {
     pub fn with_page(mut self, page: u32) -> Self {
         self.page_start = Some(page);
         self.page_end = Some(page);
+        self
+    }
+
+    /// Set retrieval modality (SPEC-047 MV-23 / MV-32 telemetry).
+    pub fn with_modality(mut self, modality: impl Into<String>) -> Self {
+        self.modality = Some(modality.into());
         self
     }
 }
@@ -436,6 +407,21 @@ mod tests {
         assert!(s.contains("Document Chunks"));
         assert!(s.contains("Test content"));
         assert!(s.contains("Knowledge Graph Data (Entities)"));
+    }
+
+    #[test]
+    fn test_context_to_string_includes_page_and_modality() {
+        let mut ctx = QueryContext::new();
+        ctx.add_chunk(
+            RetrievedChunk::new("c1", "Chart shows 42%", 0.9)
+                .with_page(11)
+                .with_modality("chart"),
+        );
+
+        let s = ctx.to_context_string();
+        assert!(s.contains("page=11"), "expected page header, got: {s}");
+        assert!(s.contains("modality=chart"), "expected modality, got: {s}");
+        assert!(s.contains("page=N"));
     }
 
     #[test]

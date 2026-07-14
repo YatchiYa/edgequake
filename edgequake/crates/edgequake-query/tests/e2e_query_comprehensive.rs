@@ -99,6 +99,7 @@ mod config_tests {
             max_relation_tokens: 4000,
             buffer_tokens: 200,
             max_total_tokens: 8000,
+            min_chunk_budget_ratio: 0.40,
         };
 
         assert_eq!(config.max_entity_tokens, 4000);

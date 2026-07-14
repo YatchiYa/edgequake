@@ -478,6 +478,23 @@ pub async fn delete_workspace(
     // WHY: Ensure cached storage instances are cleaned up
     state.storage.vector_registry.evict(&workspace_id).await;
 
+    // 4b. Drop the per-workspace vector table (SPEC-054 / GitHub #297).
+    // WHY: evict() only removes the in-memory cache entry. Without dropping the
+    // physical table, workspace delete leaves an orphan `eq_..._ws_{id}_vectors`
+    // table that accumulates on disk and can interfere with re-creation.
+    if let Err(e) = state
+        .storage
+        .vector_registry
+        .drop_workspace_table(&workspace_id)
+        .await
+    {
+        tracing::warn!(
+            workspace_id = %workspace_id,
+            error = %e,
+            "Failed to drop workspace vector table (orphan may remain — benign)"
+        );
+    }
+
     // 5. Finally delete the workspace record from database
     state
         .workspace_service

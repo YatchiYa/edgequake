@@ -125,6 +125,10 @@ fn spec017_extraction_completion_options_reasoning_models() {
     assert_eq!(opts.max_tokens, Some(8192));
     assert!(opts.temperature.is_none());
     assert_eq!(opts.reasoning_effort.as_deref(), Some("none"));
+
+    // SPEC-047: mistral-large rejects reasoning_effort (API 3051)
+    let large = extraction_completion_options("mistral-large-latest", 8192);
+    assert!(large.reasoning_effort.is_none());
 }
 
 #[test]

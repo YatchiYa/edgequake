@@ -35,14 +35,22 @@ impl QueryEngine {
             allowed_document_ids,
             Some("chunk"),
         );
+        let modality_plan =
+            crate::modality_retrieve::plan_modality_retrieval(query_text, mf.as_ref());
 
         let candidate_k = retrieval_config
             .max_chunks
             .saturating_mul(retrieval_config.bm25_candidate_multiplier);
 
-        let results = vector_storage
-            .query_filtered(&embeddings.query, candidate_k, None, mf.as_ref())
-            .await?;
+        let results = crate::modality_retrieve::query_filtered_with_modality_preference(
+            vector_storage,
+            query_text,
+            &embeddings.query,
+            candidate_k,
+            None,
+            mf.as_ref(),
+        )
+        .await?;
 
         if crate::sparse_retrieval::bm25_retrieval_enabled(&retrieval_config) {
             let (mut chunks, outcome) = crate::sparse_retrieval::fuse_vector_and_bm25_chunks(
@@ -65,6 +73,11 @@ impl QueryEngine {
                 outcome.as_str(),
                 outcome.is_fts_fallback(),
             );
+            crate::retrieval_telemetry::mark_chart_modality_filter(
+                &mut context,
+                modality_plan.chart_prefilter_active,
+            );
+            crate::retrieval_telemetry::mark_retrieved_chart_chunks(&mut context, &chunks);
             for chunk in chunks {
                 context.add_chunk(chunk);
             }
@@ -82,6 +95,11 @@ impl QueryEngine {
             &mut raw_chunks,
         )
         .await;
+        crate::retrieval_telemetry::mark_chart_modality_filter(
+            &mut context,
+            modality_plan.chart_prefilter_active,
+        );
+        crate::retrieval_telemetry::mark_retrieved_chart_chunks(&mut context, &raw_chunks);
         for chunk in raw_chunks {
             context.add_chunk(chunk);
         }

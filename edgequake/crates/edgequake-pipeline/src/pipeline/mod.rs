@@ -10,7 +10,9 @@
 
 mod config;
 mod extraction;
-mod helpers;
+pub(crate) mod helpers;
+// SPEC-047 P6: unique-before-embed helpers (integration-test surface).
+pub use helpers::unique_embed;
 mod processing;
 mod types;
 
@@ -22,7 +24,7 @@ use crate::chunker::{resolve_chunker, resolve_chunker_with_embedder, Chunker};
 use crate::extractor::EntityExtractor;
 
 pub use config::{
-    clamp_max_concurrent_extractions, clamp_max_gleaning, PipelineConfig,
+    clamp_max_concurrent_extractions, clamp_max_gleaning, IngestProfile, PipelineConfig,
     DEFAULT_CHUNK_MAX_RETRIES, DEFAULT_CHUNK_TIMEOUT_SECS, DEFAULT_INITIAL_RETRY_DELAY_MS,
     DEFAULT_MAX_CONCURRENT_EXTRACTIONS, MAX_CHUNK_MAX_RETRIES, MAX_CONCURRENT_EXTRACTIONS_CAP,
     MAX_GLEANING_CAP, MIN_CHUNK_TIMEOUT_SECS,

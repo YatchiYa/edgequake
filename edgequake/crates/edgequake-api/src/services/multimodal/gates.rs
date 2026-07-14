@@ -4,7 +4,8 @@ use super::super::vision_content::MultimodalProcessOptions;
 
 /// Global kill-switch for inline image VLM analysis (LightRAG `VLM_PROCESS_ENABLE`).
 ///
-/// Default **false** when unset — matches LightRAG `env.example`.
+/// Default **true** when unset — chart/figure Vision analyze runs with `process_options=i`
+/// unless explicitly disabled (`VLM_PROCESS_ENABLE=false`).
 pub fn vlm_process_enabled() -> bool {
     match std::env::var("VLM_PROCESS_ENABLE")
         .ok()
@@ -12,7 +13,7 @@ pub fn vlm_process_enabled() -> bool {
         .map(str::trim)
         .filter(|s| !s.is_empty())
     {
-        None => false,
+        None => true,
         Some("0") | Some("false") | Some("no") | Some("off") => false,
         Some(_) => true,
     }
@@ -40,6 +41,16 @@ impl MultimodalFailMode {
             _ => Self::Strict,
         }
     }
+
+    /// SPEC-047 P1c: single policy for PDF stage + reanalyze (SOLID-O / DRY).
+    pub fn should_abort_on_hard_error(self) -> bool {
+        matches!(self, Self::Strict)
+    }
+}
+
+/// Whether a multimodal hard_error should fail the caller (SSOT).
+pub fn should_abort_multimodal_hard_error(hard_error: Option<&str>) -> bool {
+    hard_error.is_some() && MultimodalFailMode::from_env().should_abort_on_hard_error()
 }
 
 /// Whether inline image analysis should run for the given per-document flags.
@@ -52,9 +63,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn vlm_process_enable_defaults_off_like_lightrag() {
+    #[serial_test::serial]
+    fn vlm_process_enable_defaults_on() {
         std::env::remove_var("VLM_PROCESS_ENABLE");
-        assert!(!vlm_process_enabled());
+        assert!(vlm_process_enabled());
     }
 
     #[test]

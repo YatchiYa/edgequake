@@ -30,21 +30,27 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy workspace files
-COPY Cargo.toml Cargo.lock ./
-COPY crates/ crates/
-COPY src/ src/
-COPY migrations/ migrations/
-COPY .sqlx .sqlx/
+# WHY: Build context is the monorepo root (not edgequake/ subdir) so that the
+# edgequake-pdf2md path dep (../../edgequake-pdf2md) is accessible.
+# The edgequake workspace lives at /app/edgequake; pdf2md at /edgequake-pdf2md.
+# CI checks out edgequake-pdf2md to path edgequake-pdf2md/ (sibling of edgequake/).
+COPY edgequake-pdf2md/ /edgequake-pdf2md/
+
+# Copy workspace files (edgequake subdirectory)
+COPY edgequake/Cargo.toml edgequake/Cargo.lock ./
+COPY edgequake/crates/ crates/
+COPY edgequake/src/ src/
+COPY edgequake/migrations/ migrations/
+COPY edgequake/.sqlx .sqlx/
 # Cargo parses [[bench]] / [[example]] at manifest load — sources must exist even
 # though `cargo build --release` does not compile them (CD flake root-cause).
-COPY benches/ benches/
-COPY examples/ examples/
+COPY edgequake/benches/ benches/
+COPY edgequake/examples/ examples/
 # WHY: models.toml defines available LLM providers/models (gpt-5.4, claude-sonnet-4-6,
 # gemma4, etc.). The binary falls back to built-in defaults (edgequake-llm v0.5.1) which
 # only include gpt-4o and gpt-4o-mini — the new models are only in models.toml.
 # We copy it into the build layer so Stage 2 can retrieve it via --from=builder.
-COPY models.toml models.toml
+COPY edgequake/models.toml models.toml
 
 # Build release binary with SQLx offline mode (no database needed at build time).
 # pdfium-auto downloads and embeds the correct pdfium binary for TARGETPLATFORM.

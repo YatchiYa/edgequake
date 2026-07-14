@@ -87,9 +87,10 @@ pub use cache::{
 };
 pub use chunk_storage::build_chunk_kv_records;
 pub use chunker::{
-    calculate_line_numbers, default_recursive_separators, make_page_marker, parse_page_marker,
-    resolve_chunker, split_into_page_segments, CharacterBasedChunking, ChunkOptions, ChunkResult,
-    ChunkStrategy, Chunker, ChunkerConfig, ChunkingStrategy, MarkdownChunking, PageAwareChunking,
+    calculate_line_numbers, default_recursive_separators, is_mm_chunk_header, make_page_marker,
+    parse_page_marker, resolve_chunker, split_into_page_segments, split_preserving_atomic_regions,
+    AtomicKind, CharacterBasedChunking, ChunkOptions, ChunkResult, ChunkStrategy, Chunker,
+    ChunkerConfig, ChunkingStrategy, ContentRegion, MarkdownChunking, PageAwareChunking,
     ParagraphBoundaryChunking, RecursiveCharacterChunking, SectionMetadata,
     SentenceBoundaryChunking, TextChunk, TokenBasedChunking, PAGE_MARKER_PREFIX,
     PAGE_MARKER_SUFFIX,
@@ -119,13 +120,28 @@ pub use lineage::{
     ExtractionMetadata, LineageBuilder, RelationshipLineage, SourceSpan,
 };
 pub use merger::{
-    description_similarity, KnowledgeGraphMerger, LineageSink, MergeArtifacts, MergePhase,
-    MergeProgress, MergeProgressCallback, MergeStats, MergerConfig, NoopEntitySink,
-    NoopLineageSink, RelationLineageLink, RelationalEntitySink,
+    apply_source_ids_limit, approx_token_count, collect_unique_fragments, decide_description_merge,
+    description_similarity, document_id_from_chunk_id, document_ids_from_chunk_ids,
+    force_llm_summary_on_merge_from_env, insert_chunk_lineage_properties,
+    insert_document_lineage_properties, join_description_fragments,
+    max_source_ids_per_entity_from_env, max_source_ids_per_relation_from_env,
+    merge_and_insert_document_lineage, merge_document_ids, merge_max_async_from_env,
+    merge_source_ids, parse_max_source_ids, parse_merge_max_async, resolve_incoming_document_ids,
+    should_skip_description_update_keep, source_chunk_ids_from_properties,
+    source_document_ids_from_properties, source_ids_limit_method_from_env,
+    split_description_fragments, summary_max_tokens_from_env, truncate_keep_doc_diverse,
+    DescriptionMergeBackend, DescriptionMergeDecision, DescriptionMergePolicy, EntityLineageLink,
+    KnowledgeGraphMerger, LineageSink, MergeArtifacts, MergePhase, MergeProgress,
+    MergeProgressCallback, MergeStats, MergerConfig, NoopEntitySink, NoopLineageSink,
+    RelationLineageLink, RelationalEntitySink, SourceIdsLimitMethod,
+    DEFAULT_FORCE_LLM_SUMMARY_ON_MERGE, DEFAULT_MAX_SOURCE_IDS, DEFAULT_MERGE_MAX_ASYNC,
+    DEFAULT_SUMMARY_MAX_TOKENS, GRAPH_FIELD_SEP,
 };
 pub use multimodal::{
-    inject_modality_relations, parse_mm_display_name, MmChunkSidecarMeta, MmHeadingBlock,
-    MmSidecarBlock, MmSidecarRef,
+    inject_modality_relations, map_image_type_to_retrieval_modality, parse_mm_display_name,
+    resolve_retrieval_modality_from_content, stamp_retrieval_modality_on_chunks,
+    MmChunkSidecarMeta, MmHeadingBlock, MmSidecarBlock, MmSidecarRef, MODALITY_CHART,
+    MODALITY_EQUATION, MODALITY_FIGURE, MODALITY_TABLE,
 };
 pub use persistence::{
     build_chunk_vector_batch, persist_processing_result, ChunkVectorBuildOptions,
@@ -141,6 +157,7 @@ pub use pipeline::{
     CostBreakdownStats,
     EmbedProgressCallback,
     EmbedProgressUpdate,
+    IngestProfile,
     Pipeline,
     PipelineConfig,
     ProcessingResult,

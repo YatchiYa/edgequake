@@ -117,6 +117,7 @@ pub fn run_spec046_acc_report() -> AccReport {
         max_relation_tokens: 50,
         max_total_tokens: 100,
         buffer_tokens: 10,
+        min_chunk_budget_ratio: 0.0,
     };
     let entities = vec![RetrievedEntity::new("E", "T", "x")];
     let rels = vec![RetrievedRelationship::new("A", "B", "R")];

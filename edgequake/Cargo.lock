@@ -1789,7 +1789,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1814,7 +1814,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-api"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -1885,7 +1885,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-auth"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "argon2",
  "async-trait",
@@ -1903,7 +1903,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-core"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2000,7 +2000,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-observability"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "http 1.4.2",
  "metrics",
@@ -2018,16 +2018,19 @@ dependencies = [
 
 [[package]]
 name = "edgequake-pdf"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
  "edgeparse-core",
  "edgequake-llm 0.10.1",
  "edgequake-pdf2md",
+ "image",
  "once_cell",
  "regex",
  "serde",
+ "serde_json",
+ "serial_test",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
@@ -2036,9 +2039,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-pdf2md"
-version = "0.9.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c41109ad31d1bf006a493a9b39df7ceaefdc75fc8ecfb1e7f548e56a8c9a595"
+version = "0.9.7"
 dependencies = [
  "base64 0.22.1",
  "edgequake-llm 0.6.26",
@@ -2061,7 +2062,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-pipeline"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2082,7 +2083,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-query"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2127,7 +2128,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-storage"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4133,8 +4134,6 @@ dependencies = [
 [[package]]
 name = "pdfium-auto"
 version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32ec76821f3c4bdb31cb55e57f31508e6ff8d3e26c93e6705513412b6de7b515"
 dependencies = [
  "dirs",
  "flate2",

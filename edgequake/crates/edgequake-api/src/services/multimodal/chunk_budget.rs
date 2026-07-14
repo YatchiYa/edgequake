@@ -153,7 +153,7 @@ mod tests {
         );
         let text = render_mm_chunk_with_budget(&record, "drawing", &[]).unwrap();
         assert!(SurroundingTokenCounter::Char.count(&text) <= 80);
-        assert!(text.contains("[Image Name]chart"));
+        assert!(text.contains("[Chart Name]chart"));
         std::env::remove_var("EDGEQUAKE_MM_SURROUNDING_TOKENS");
         std::env::remove_var("MAX_EXTRACT_INPUT_TOKENS");
         std::env::remove_var("MM_CHUNK_DESCRIPTION_MIN_TOKENS");

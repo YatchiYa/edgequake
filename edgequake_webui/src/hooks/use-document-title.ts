@@ -17,8 +17,10 @@ import { useEffect } from "react";
 export interface UseDocumentTitleOptions {
   /** Total document count */
   totalCount: number;
-  /** Number of processing tasks (0 if none) */
+  /** Number of actively working documents (not queued) */
   processingCount: number;
+  /** Number of queued / waiting documents */
+  queuedCount?: number;
   /** Base title to use */
   baseTitle?: string;
 }
@@ -43,15 +45,19 @@ export function useDocumentTitle(options: UseDocumentTitleOptions): void {
   const {
     totalCount,
     processingCount,
+    queuedCount = 0,
     baseTitle = "Documents - EdgeQuake",
   } = options;
 
   useEffect(() => {
     const count = totalCount || 0;
     const processing = processingCount || 0;
+    const queued = queuedCount || 0;
 
     if (processing > 0) {
-      document.title = `⏳ Processing (${processing}) | Documents (${count}) - EdgeQuake`;
+      document.title = `⏳ Working (${processing}) | Documents (${count}) - EdgeQuake`;
+    } else if (queued > 0) {
+      document.title = `⏸ Queued (${queued}) | Documents (${count}) - EdgeQuake`;
     } else if (count > 0) {
       document.title = `Documents (${count}) - EdgeQuake`;
     } else {
@@ -61,7 +67,7 @@ export function useDocumentTitle(options: UseDocumentTitleOptions): void {
     return () => {
       document.title = baseTitle;
     };
-  }, [totalCount, processingCount, baseTitle]);
+  }, [totalCount, processingCount, queuedCount, baseTitle]);
 }
 
 export default useDocumentTitle;

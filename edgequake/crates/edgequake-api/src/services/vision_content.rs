@@ -103,14 +103,43 @@ pub fn parse_image_analysis_json(text: &str) -> ApiResult<ImageAnalysisResult> {
     Ok(parsed)
 }
 
-/// Convert structured analysis to markdown body for entity extraction.
+/// Convert structured analysis to markdown body for entity extraction + viewer.
+///
+/// Uses `### Vision analysis` (not `#`) so specialized figure/chart dumps sit
+/// under the page's Figure heading without stealing document H1 hierarchy.
 pub fn image_analysis_to_markdown(analysis: &ImageAnalysisResult) -> String {
-    format!(
-        "# {}\n\n**Type:** {}\n\n{}",
-        analysis.name.replace('_', " "),
-        analysis.image_type,
-        analysis.description.trim()
-    )
+    let name = analysis.name.replace('_', " ");
+    let desc = analysis.description.trim();
+    if desc.is_empty() {
+        format!(
+            "### Vision analysis: {name}\n\n**Type:** {}\n",
+            analysis.image_type
+        )
+    } else {
+        format!(
+            "### Vision analysis: {name}\n\n**Type:** {}\n\n{desc}",
+            analysis.image_type
+        )
+    }
+}
+
+/// Analysis markdown with a viewer-visible asset image kept on-page (MV-28).
+///
+/// When `asset_path` is set, emits `![alt](path)` before the analysis so the
+/// markdown viewer can render the page/crop PNG.
+pub fn image_analysis_to_markdown_with_asset(
+    analysis: &ImageAnalysisResult,
+    asset_path: Option<&str>,
+    alt: Option<&str>,
+) -> String {
+    let body = image_analysis_to_markdown(analysis);
+    match asset_path.filter(|p| !p.is_empty()) {
+        Some(path) => {
+            let img = edgequake_pdf::format_inline_asset_image(alt.unwrap_or("Page image"), path);
+            format!("{img}\n\n{body}")
+        }
+        None => body,
+    }
 }
 
 /// Extract structured image content via vision-capable LLM.
@@ -193,8 +222,9 @@ mod tests {
             description: "Research lead.".into(),
         };
         let md = image_analysis_to_markdown(&analysis);
-        assert!(md.starts_with("# sarah chen profile"));
+        assert!(md.starts_with("### Vision analysis: sarah chen profile"));
         assert!(md.contains("**Type:** Photo"));
+        assert!(md.contains("Research lead."));
     }
 
     #[test]

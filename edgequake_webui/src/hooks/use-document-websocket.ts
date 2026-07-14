@@ -26,6 +26,8 @@ const TERMINAL_DOCUMENT_STATUSES = new Set([
 function isActiveIngestionDocument(doc: Document): boolean {
   if (!doc.track_id) return false;
   const status = doc.status?.toLowerCase() ?? "";
+  // SPEC-050 GAP-FIX: "pending" documents are freshly queued (e.g. after reprocess).
+  // They have a track_id and need WS subscription so stage updates arrive immediately.
   return !TERMINAL_DOCUMENT_STATUSES.has(status);
 }
 
@@ -115,12 +117,26 @@ export function useDocumentWebSocket(
       }, 400);
     };
 
-    // Listen for all progress event types
+    // Listen for stage/ingestion progress events.
     const unsubProgress = wsClient.on("progress", handleProgressUpdate);
+
+    // SPEC-051 ROOT CAUSE FIX: Also listen for PDF page progress events.
+    // WHY: PdfPageProgress events are emitted as "pdf_progress" by the WebSocket
+    // manager (see progress-websocket.ts handleMessage). Without this listener,
+    // the documents query is NEVER invalidated during PDF conversion (the most
+    // expensive phase), so:
+    //   1. document.track_id stays as "reprocess_..." (stale) — liveTrackId in
+    //      ProgressPanelRow never updates to the actual task UUID
+    //   2. PdfUploadProgress polls a non-existent endpoint → 404 → blank panel
+    //   3. Document row badge shows "queued" indefinitely instead of "converting"
+    // Fix: trigger the same debounced invalidation for "pdf_progress" so the
+    // documents query catches the worker's track_id update within ~400ms.
+    const unsubPdfProgress = wsClient.on("pdf_progress", handleProgressUpdate);
 
     return () => {
       if (debounceTimer !== null) clearTimeout(debounceTimer);
       unsubProgress();
+      unsubPdfProgress();
     };
   }, [enabled, connected, queryClient, queryKey]);
 }

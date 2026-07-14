@@ -128,7 +128,7 @@ impl QueryIntent {
             return QueryIntent::Exploratory;
         }
 
-        // Factual indicators (L1)
+        // Factual indicators (L1) — include count/quantity (MMLongBench / GraphRAG L1)
         if trimmed.starts_with("what is ")
             || trimmed.starts_with("what are ")
             || trimmed.starts_with("who is ")
@@ -138,6 +138,10 @@ impl QueryIntent {
             || trimmed.starts_with("define ")
             || trimmed.starts_with("what's ")
             || trimmed.starts_with("whats ")
+            || trimmed.starts_with("how many ")
+            || trimmed.starts_with("how much ")
+            || trimmed.starts_with("which ")
+            || trimmed.starts_with("according to ")
         {
             return QueryIntent::Factual;
         }
@@ -174,6 +178,14 @@ mod tests {
         );
         assert_eq!(
             QueryIntent::classify_heuristic("What's Rust?"),
+            QueryIntent::Factual
+        );
+        assert_eq!(
+            QueryIntent::classify_heuristic("How many samples in MMMU?"),
+            QueryIntent::Factual
+        );
+        assert_eq!(
+            QueryIntent::classify_heuristic("According to this paper, which image type?"),
             QueryIntent::Factual
         );
     }

@@ -126,6 +126,70 @@ async fn test_checkpoint_save_load_roundtrip_returns_identical_result() {
     );
 }
 
+/// SPEC-047 P5: checkpoints omit embeddings so jsonb stays under ~256 MiB.
+/// Resume must signal `needs_reembed` while preserving extraction stats.
+#[tokio::test]
+async fn test_slim_checkpoint_strips_embeddings_and_signals_reembed() {
+    use edgequake_pipeline::TextChunk;
+
+    let kv = fresh_kv();
+    let doc_id = fresh_doc_id();
+
+    let mut chunk = TextChunk::new("c0", "hello world content", 0, 0, 19);
+    chunk.embedding = Some(vec![0.25; 8]);
+
+    let original = ProcessingResult {
+        document_id: doc_id.clone(),
+        chunks: vec![chunk],
+        extractions: vec![],
+        stats: ProcessingStats {
+            entity_count: 3,
+            chunk_count: 1,
+            successful_chunks: 1,
+            ..Default::default()
+        },
+        lineage: None,
+    };
+    assert!(
+        !original.needs_reembed(),
+        "in-memory result with embeddings must not need re-embed"
+    );
+
+    save_pipeline_checkpoint(
+        &kv,
+        &doc_id,
+        &original,
+        WORKSPACE_A,
+        PROVIDER_MOCK,
+        PROVIDER_MOCK,
+        SAMPLE_TEXT,
+    )
+    .await
+    .expect("slim save must succeed");
+
+    let loaded = load_pipeline_checkpoint(
+        &kv,
+        &doc_id,
+        WORKSPACE_A,
+        PROVIDER_MOCK,
+        PROVIDER_MOCK,
+        SAMPLE_TEXT,
+    )
+    .await
+    .expect("slim checkpoint must load");
+
+    assert!(
+        loaded.needs_reembed(),
+        "loaded slim checkpoint must require ensure_embeddings"
+    );
+    assert!(loaded.chunks[0].embedding.is_none());
+    assert_eq!(loaded.stats.entity_count, 3);
+    assert!(
+        original.chunks[0].embedding.is_some(),
+        "caller-owned result must keep embeddings for immediate persist"
+    );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Test 2 — No checkpoint → reprocess from scratch
 // ─────────────────────────────────────────────────────────────────────────────
