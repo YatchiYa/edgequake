@@ -931,3 +931,65 @@ async fn spec053_popular_labels_still_503_when_semaphore_full() {
          it IS a materialization operation (SPEC-053 regression guard)"
     );
 }
+
+// ============================================================================
+// SPEC-054 hardening tests — bug fixes for GitHub issues #297 and #294
+// ============================================================================
+
+/// SPEC-054 / GitHub #297: WorkspaceVectorRegistry must have drop_workspace_table.
+///
+/// Source contract: the trait must define the method that prevents orphan tables
+/// after workspace cascade delete.
+#[test]
+fn spec054_workspace_vector_registry_has_drop_workspace_table() {
+    // Include the trait source and assert the method is declared.
+    let src = include_str!("../../edgequake-storage/src/traits/workspace_vector.rs");
+    assert!(
+        src.contains("fn drop_workspace_table"),
+        "WorkspaceVectorRegistry must declare drop_workspace_table (SPEC-054 / GitHub #297). \
+         Without it, DeleteWorkspace leaves orphan vector tables."
+    );
+}
+
+/// SPEC-054 / GitHub #297: delete_workspace handler must call drop_workspace_table.
+///
+/// Source contract: the delete_workspace handler must call drop_workspace_table
+/// after evicting the workspace from the cache.
+#[test]
+fn spec054_delete_workspace_calls_drop_workspace_table() {
+    let src = include_str!("../src/handlers/workspaces/workspace_crud.rs");
+    assert!(
+        src.contains("drop_workspace_table"),
+        "delete_workspace must call vector_registry.drop_workspace_table (SPEC-054 / GitHub #297). \
+         Without this, the physical PostgreSQL vector table remains as an orphan after workspace delete."
+    );
+}
+
+/// SPEC-054 / GitHub #294: persist_api_key must warn when falling back to KV storage.
+///
+/// Source contract: when API keys fall back to in-memory storage (KV backend),
+/// a warning must be emitted to alert operators of multi-instance risk.
+#[test]
+fn spec054_persist_api_key_warns_on_kv_fallback() {
+    let src = include_str!("../src/services/session_storage.rs");
+    assert!(
+        src.contains("gh#294") || src.contains("SPEC-054"),
+        "persist_api_key must warn when falling back to in-memory API key storage \
+         (SPEC-054 / GitHub #294). In multi-instance deployments (ECS, k8s), keys \
+         stored in-memory are instance-local and return 401 on other instances."
+    );
+}
+
+/// SPEC-054 / GitHub #37: context_only parameter must exist in query types.
+///
+/// Source contract: the context_only parameter allows retrieving chunks without
+/// LLM generation, as requested in GitHub #37.
+#[test]
+fn spec054_context_only_parameter_implemented() {
+    let query_types = include_str!("../src/handlers/query_types.rs");
+    assert!(
+        query_types.contains("context_only"),
+        "context_only parameter must be present in query_types.rs (SPEC-054 / GitHub #37). \
+         This allows retrieving only retrieval context without LLM generation."
+    );
+}

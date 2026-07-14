@@ -183,6 +183,37 @@ impl WorkspaceVectorRegistry for PgWorkspaceVectorRegistry {
         );
     }
 
+    /// SPEC-054 / GitHub #297: Drop the per-workspace vector table after workspace delete.
+    ///
+    /// WHY: evict() only removes the in-memory cache entry. Without explicitly
+    /// dropping the physical table, `DELETE FROM workspaces` leaves behind an
+    /// orphan `eq_{ns}_ws_{id}_vectors` table that accumulates over time and can
+    /// interfere with workspace re-creation (same short-id collision risk).
+    async fn drop_workspace_table(&self, workspace_id: &Uuid) -> crate::error::Result<()> {
+        let short_id = &workspace_id.to_string()[..8];
+        let ns = &self.config.namespace;
+        // Table format mirrors WorkspaceVectorConfig::table_name():
+        //   eq_{namespace}_ws_{short_id}_vectors  (schema: public)
+        let table = format!("public.eq_{ns}_ws_{short_id}_vectors");
+
+        let pool = self.shared_pool.get().await?;
+        sqlx::query(&format!("DROP TABLE IF EXISTS {table}"))
+            .execute(&pool)
+            .await
+            .map_err(|e| {
+                crate::error::StorageError::Database(format!(
+                    "Failed to drop workspace vector table {table}: {e}"
+                ))
+            })?;
+
+        tracing::info!(
+            workspace_id = %workspace_id,
+            table = %table,
+            "Dropped workspace vector table (SPEC-054)"
+        );
+        Ok(())
+    }
+
     async fn clear_cache(&self) {
         let count = self.cache.list_workspaces().await.len();
         self.cache.clear().await;
