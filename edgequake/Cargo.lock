@@ -2040,7 +2040,8 @@ dependencies = [
 [[package]]
 name = "edgequake-pdf2md"
 version = "0.9.7"
-source = "git+https://github.com/raphaelmansuy/edgequake-pdf2md.git?rev=e05e4a8#e05e4a81f6e2588112d64d5458a96029f171d5ab"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cdf742c63615a2a97ae9a9103f6136e8d1160498433cc6fea682c9ea1b4ac0b0"
 dependencies = [
  "base64 0.22.1",
  "edgequake-llm 0.6.26",
@@ -4135,7 +4136,8 @@ dependencies = [
 [[package]]
 name = "pdfium-auto"
 version = "0.3.0"
-source = "git+https://github.com/raphaelmansuy/edgequake-pdf2md.git?rev=e05e4a8#e05e4a81f6e2588112d64d5458a96029f171d5ab"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32ec76821f3c4bdb31cb55e57f31508e6ff8d3e26c93e6705513412b6de7b515"
 dependencies = [
  "dirs",
  "flate2",
