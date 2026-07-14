@@ -46,7 +46,19 @@ impl KgChunkPickMethod {
 ///
 /// `related_chunk_number` mirrors LightRAG: max chunks contributed per entity
 /// or relationship. `0` means unlimited per source.
+///
+/// When `allowed_document_ids` is `Some`, only chunk ids whose derived document
+/// intersects the allowed set are returned (SPEC-047 / 021 L-A3).
 pub fn collect_kg_chunk_ids(context: &QueryContext, related_chunk_number: usize) -> Vec<String> {
+    collect_kg_chunk_ids_scoped(context, related_chunk_number, None)
+}
+
+/// Like [`collect_kg_chunk_ids`] with optional document scope (021 L-A3).
+pub fn collect_kg_chunk_ids_scoped(
+    context: &QueryContext,
+    related_chunk_number: usize,
+    allowed_document_ids: Option<&[String]>,
+) -> Vec<String> {
     let mut ids = HashSet::new();
 
     for entity in &context.entities {
@@ -62,14 +74,13 @@ pub fn collect_kg_chunk_ids(context: &QueryContext, related_chunk_number: usize)
 
     for rel in &context.relationships {
         if let Some(chunk_id) = &rel.source_chunk_id {
-            // Relations typically have a single source chunk; still respect cap
-            // by only inserting when under global uniqueness (set handles that).
-            let _ = related_chunk_number; // per-rel cap is 0/1 naturally
+            let _ = related_chunk_number;
             ids.insert(chunk_id.clone());
         }
     }
 
-    ids.into_iter().collect()
+    let collected: Vec<String> = ids.into_iter().collect();
+    crate::lineage_scope::filter_chunk_ids_by_allowed_docs(&collected, allowed_document_ids)
 }
 
 /// Rank chunk IDs by citation weight (entity/relation source frequency).
@@ -206,6 +217,17 @@ mod tests {
     use super::*;
     use crate::context::{QueryContext, RetrievedEntity, RetrievedRelationship};
     use std::collections::HashMap;
+
+    #[test]
+    fn scoped_collect_drops_foreign_chunk_ids() {
+        let mut ctx = QueryContext::new();
+        let mut e = RetrievedEntity::new("A", "PERSON", "desc");
+        e.source_chunk_ids = vec!["doc-a-chunk-0".into(), "doc-z-chunk-9".into()];
+        ctx.add_entity(e);
+        let allowed = vec!["doc-a".to_string()];
+        let ids = collect_kg_chunk_ids_scoped(&ctx, 0, Some(&allowed));
+        assert_eq!(ids, vec!["doc-a-chunk-0".to_string()]);
+    }
 
     #[test]
     fn related_chunk_number_caps_per_entity() {

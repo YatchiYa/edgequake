@@ -151,6 +151,9 @@ pub struct DocumentTaskProcessor {
     /// PDF storage for PDF document management (SPEC-007, postgres-only).
     #[cfg(feature = "postgres")]
     pdf_storage: Option<Arc<dyn edgequake_storage::PdfDocumentStorage>>,
+    /// Multimodal page/chart PNG durable storage (SPEC-047).
+    #[cfg(feature = "postgres")]
+    mm_asset_storage: Option<Arc<dyn edgequake_storage::DocumentMmAssetStorage>>,
     /// Pipeline state for progress tracking.
     pipeline_state: PipelineState,
     /// OODA-10: Progress broadcaster for WebSocket clients.
@@ -205,6 +208,8 @@ impl DocumentTaskProcessor {
             graph_storage,
             #[cfg(feature = "postgres")]
             pdf_storage: None,
+            #[cfg(feature = "postgres")]
+            mm_asset_storage: None,
             pipeline_state,
             progress_broadcaster: None, // OODA-10: Added for WebSocket clients
             workspace_service: None,
@@ -252,6 +257,8 @@ impl DocumentTaskProcessor {
             graph_storage,
             #[cfg(feature = "postgres")]
             pdf_storage: None,
+            #[cfg(feature = "postgres")]
+            mm_asset_storage: None,
             pipeline_state,
             progress_broadcaster: None, // OODA-10: Added for WebSocket clients
             workspace_service: Some(workspace_service),
@@ -296,6 +303,8 @@ impl DocumentTaskProcessor {
             graph_storage,
             #[cfg(feature = "postgres")]
             pdf_storage: None,
+            #[cfg(feature = "postgres")]
+            mm_asset_storage: None,
             pipeline_state,
             progress_broadcaster: None, // OODA-10: Added for WebSocket clients
             workspace_service: Some(workspace_service),
@@ -349,6 +358,16 @@ impl DocumentTaskProcessor {
         pdf_storage: Arc<dyn edgequake_storage::PdfDocumentStorage>,
     ) -> Self {
         self.pdf_storage = Some(pdf_storage);
+        self
+    }
+
+    /// Attach durable mm-asset storage (page PNGs / chart crops).
+    #[cfg(feature = "postgres")]
+    pub fn with_mm_asset_storage(
+        mut self,
+        mm_asset_storage: Arc<dyn edgequake_storage::DocumentMmAssetStorage>,
+    ) -> Self {
+        self.mm_asset_storage = Some(mm_asset_storage);
         self
     }
 

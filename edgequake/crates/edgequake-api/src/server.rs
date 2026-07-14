@@ -182,8 +182,10 @@ mod tests {
         assert!(config.enable_swagger);
     }
 
-    #[test]
-    fn test_build_router() {
+    #[tokio::test]
+    async fn test_build_router() {
+        // WHY tokio::test: build_router calls create_router which spawns a
+        // tokio task (pipeline_ws_bridge). A plain #[test] has no runtime.
         let config = ServerConfig::default();
         let state = AppState::test_state();
         let server = Server::new(config, state);

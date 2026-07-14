@@ -10,7 +10,8 @@ use crate::error::Result;
 use crate::keywords::ExtractedKeywords;
 use crate::mix_weights::{
     mix_arm_gate_enabled, resolve_arm_plan, ArmPlan, META_ARMS_GATED, META_ARMS_RUN,
-    META_ARM_GLOBAL_MS, META_ARM_LOCAL_MS, META_ARM_NAIVE_MS,
+    META_ARM_GLOBAL_CHUNKS, META_ARM_GLOBAL_MS, META_ARM_LOCAL_CHUNKS, META_ARM_LOCAL_MS,
+    META_ARM_NAIVE_CHUNKS, META_ARM_NAIVE_MS,
 };
 
 use edgequake_storage::traits::VectorStorage;
@@ -39,68 +40,73 @@ impl QueryEngine {
             mix_arm_gate_enabled(),
         );
 
-        let (local_res, global_res, naive_res) = tokio::join!(
-            run_arm_timed(
-                plan.run_local,
-                "local",
-                "mix",
-                query_text,
-                max_chunks,
-                || {
-                    self.query_local_with_vector_storage(
-                        query_text,
-                        keywords,
-                        embeddings,
-                        tenant_id.clone(),
-                        workspace_id.clone(),
-                        allowed_document_ids,
-                        vector_storage,
-                        max_chunks,
-                    )
-                }
-            ),
-            run_arm_timed(
-                plan.run_global,
-                "global",
-                "mix",
-                query_text,
-                max_chunks,
-                || {
-                    self.query_global_with_vector_storage(
-                        query_text,
-                        keywords,
-                        embeddings,
-                        tenant_id.clone(),
-                        workspace_id.clone(),
-                        allowed_document_ids,
-                        vector_storage,
-                        max_chunks,
-                    )
-                }
-            ),
-            run_arm_timed(
-                plan.run_naive,
-                "naive",
-                "mix",
-                query_text,
-                max_chunks,
-                || {
-                    self.query_naive_with_vector_storage(
-                        query_text,
-                        embeddings,
-                        tenant_id.clone(),
-                        workspace_id.clone(),
-                        allowed_document_ids,
-                        vector_storage,
-                        max_chunks,
-                    )
-                }
-            ),
-        );
+        // Box each arm so join! holds three pointers, not three full retrieval FSMs
+        // (same stack-overflow class as Hybrid — SPEC-047).
+        let local_fut = Box::pin(run_arm_timed(
+            plan.run_local,
+            "local",
+            "mix",
+            query_text,
+            max_chunks,
+            || {
+                self.query_local_with_vector_storage(
+                    query_text,
+                    keywords,
+                    embeddings,
+                    tenant_id.clone(),
+                    workspace_id.clone(),
+                    allowed_document_ids,
+                    vector_storage,
+                    max_chunks,
+                )
+            },
+        ));
+        let global_fut = Box::pin(run_arm_timed(
+            plan.run_global,
+            "global",
+            "mix",
+            query_text,
+            max_chunks,
+            || {
+                self.query_global_with_vector_storage(
+                    query_text,
+                    keywords,
+                    embeddings,
+                    tenant_id.clone(),
+                    workspace_id.clone(),
+                    allowed_document_ids,
+                    vector_storage,
+                    max_chunks,
+                )
+            },
+        ));
+        let naive_fut = Box::pin(run_arm_timed(
+            plan.run_naive,
+            "naive",
+            "mix",
+            query_text,
+            max_chunks,
+            || {
+                self.query_naive_with_vector_storage(
+                    query_text,
+                    embeddings,
+                    tenant_id.clone(),
+                    workspace_id.clone(),
+                    allowed_document_ids,
+                    vector_storage,
+                    max_chunks,
+                )
+            },
+        ));
+        let (local_res, global_res, naive_res) = tokio::join!(local_fut, global_fut, naive_fut);
 
         let (local_context, local_ms) = local_res?;
         let (global_context, global_ms) = global_res?;
         let (naive_context, naive_ms) = naive_res?;
+
+        let local_chunks = local_context.chunks.len();
+        let global_chunks = global_context.chunks.len();
+        let naive_chunks = naive_context.chunks.len();
 
         let mut merged = fuse_mix_contexts(
             &local_context,
@@ -110,7 +116,16 @@ impl QueryEngine {
             max_chunks,
         );
 
-        attach_arm_metadata(&mut merged, plan, local_ms, global_ms, naive_ms);
+        attach_arm_metadata(
+            &mut merged,
+            plan,
+            local_ms,
+            global_ms,
+            naive_ms,
+            local_chunks,
+            global_chunks,
+            naive_chunks,
+        );
 
         tracing::debug!(
             merged_chunks = merged.chunks.len(),
@@ -224,24 +239,40 @@ fn fuse_mix_contexts(
     merged
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn attach_arm_metadata(
     ctx: &mut QueryContext,
     plan: ArmPlan,
     local_ms: u64,
     global_ms: u64,
     naive_ms: u64,
+    local_chunks: usize,
+    global_chunks: usize,
+    naive_chunks: usize,
 ) {
     if plan.run_local {
         ctx.metadata
             .insert(META_ARM_LOCAL_MS.into(), serde_json::json!(local_ms));
+        ctx.metadata.insert(
+            META_ARM_LOCAL_CHUNKS.into(),
+            serde_json::json!(local_chunks as u64),
+        );
     }
     if plan.run_global {
         ctx.metadata
             .insert(META_ARM_GLOBAL_MS.into(), serde_json::json!(global_ms));
+        ctx.metadata.insert(
+            META_ARM_GLOBAL_CHUNKS.into(),
+            serde_json::json!(global_chunks as u64),
+        );
     }
     if plan.run_naive {
         ctx.metadata
             .insert(META_ARM_NAIVE_MS.into(), serde_json::json!(naive_ms));
+        ctx.metadata.insert(
+            META_ARM_NAIVE_CHUNKS.into(),
+            serde_json::json!(naive_chunks as u64),
+        );
     }
     let mut run = Vec::new();
     if plan.run_local {
@@ -298,11 +329,13 @@ mod tests {
             true,
         );
         let mut ctx = QueryContext::new();
-        attach_arm_metadata(&mut ctx, plan, 1, 2, 3);
+        attach_arm_metadata(&mut ctx, plan, 1, 2, 3, 0, 0, 4);
         assert_eq!(ctx.metadata.get(META_ARMS_RUN).unwrap(), "naive");
         assert_eq!(ctx.metadata.get(META_ARMS_GATED).unwrap(), true);
         assert!(ctx.metadata.get(META_ARM_NAIVE_MS).is_some());
+        assert_eq!(ctx.metadata.get(META_ARM_NAIVE_CHUNKS).unwrap(), 4);
         assert!(ctx.metadata.get(META_ARM_LOCAL_MS).is_none());
+        assert!(ctx.metadata.get(META_ARM_LOCAL_CHUNKS).is_none());
     }
 
     #[test]

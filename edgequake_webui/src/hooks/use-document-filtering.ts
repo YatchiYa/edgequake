@@ -14,12 +14,13 @@
 "use client";
 
 import type { Document } from "@/types";
+import {
+  sortDocuments,
+  type SortDirection,
+  type SortField,
+} from "@/lib/documents/document-sort";
 import { useMemo } from "react";
-import type {
-  DocStatus,
-  SortDirection,
-  SortField,
-} from "./use-document-preferences";
+import type { DocStatus } from "./use-document-preferences";
 
 /**
  * Options for useDocumentFiltering hook.
@@ -110,44 +111,6 @@ function filterDocuments(
   }
 
   return filtered;
-}
-
-/**
- * Sort documents by field and direction.
- */
-function sortDocuments(
-  docs: Document[],
-  sortField: SortField,
-  sortDirection: SortDirection,
-): Document[] {
-  return [...docs].sort((a, b) => {
-    let aVal: string | number | Date = "";
-    let bVal: string | number | Date = "";
-
-    switch (sortField) {
-      case "title":
-        aVal = a.title || a.file_name || a.id;
-        bVal = b.title || b.file_name || b.id;
-        break;
-      case "created_at":
-      case "updated_at":
-        aVal = new Date(a.created_at || 0);
-        bVal = new Date(b.created_at || 0);
-        break;
-      case "status":
-        aVal = a.status || "";
-        bVal = b.status || "";
-        break;
-      case "entity_count":
-        aVal = a.entity_count ?? a.chunk_count ?? 0;
-        bVal = b.entity_count ?? b.chunk_count ?? 0;
-        break;
-    }
-
-    if (aVal < bVal) return sortDirection === "asc" ? -1 : 1;
-    if (aVal > bVal) return sortDirection === "asc" ? 1 : -1;
-    return 0;
-  });
 }
 
 /**

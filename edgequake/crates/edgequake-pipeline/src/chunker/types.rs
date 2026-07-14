@@ -201,6 +201,10 @@ pub struct TextChunk {
     /// Always equal to `page_start` by construction.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub page_end: Option<u32>,
+
+    /// Retrieval filter modality (SPEC-047 MV-23): `chart|figure|table|equation`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modality: Option<String>,
 }
 
 impl TextChunk {
@@ -227,6 +231,7 @@ impl TextChunk {
             section: None,
             page_start: None,
             page_end: None,
+            modality: None,
         }
     }
 
@@ -255,6 +260,7 @@ impl TextChunk {
             section: None,
             page_start: None,
             page_end: None,
+            modality: None,
         }
     }
 

@@ -17,6 +17,8 @@
 | Chunk embeddings          | `eq_*_vectors`               | —                     | `metadata.type = "chunk"`              |
 | Entity embeddings         | `eq_*_vectors`               | —                     | `metadata.type = "entity"`             |
 | PDF raw bytes             | `pdf_documents.pdf_data`     | —                     | BYTEA + processing state               |
+| Vision page / chart PNGs  | `document_mm_assets`         | —                     | BYTEA; RLS in 085; `asset_id` REST; FK cascade |
+| Non-PDF originals         | `document_originals`         | —                     | BYTEA upload bytes                     |
 | Task queue                | `edgequake_tasks`            | —                     | Async background jobs                  |
 | Conversations             | `conversations` + `messages` | —                     | Chat history                           |
 | Workspace registry        | `workspaces` table           | —                     | Tenant isolation                       |

@@ -113,6 +113,6 @@ fn mm_chunk_labels_match_lightrag_contract() {
         "Distinctive multimodal retrieval phrase.".into(),
     );
     let text = render_mm_chunk(&record, "drawing", &[]);
-    assert!(text.contains("[Image Name]figure_a"));
+    assert!(text.contains("[Chart Name]figure_a"));
     assert!(text.contains("[Image Type]Chart"));
 }

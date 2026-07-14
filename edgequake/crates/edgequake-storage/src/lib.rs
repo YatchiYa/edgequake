@@ -73,6 +73,7 @@ pub mod graph_batch_dedupe;
 pub mod graph_metrics;
 pub mod kv_key_schema;
 pub mod metadata_filter_sql;
+pub mod mm_asset_storage;
 pub mod original_storage;
 pub mod pdf_storage;
 pub mod traits;
@@ -96,9 +97,9 @@ pub use community::{
     CommunityAlgorithm, CommunityConfig, CommunityDetectionResult,
 };
 pub use community_persist::{
-    backfill_communities_if_needed, community_features_enabled, detect_and_persist_communities,
-    needs_community_backfill, persist_community_labels, refresh_community_index,
-    spawn_community_backfill_if_needed,
+    backfill_communities_if_needed, community_auto_max_nodes, community_features_enabled,
+    detect_and_persist_communities, needs_community_backfill, persist_community_labels,
+    refresh_community_index, spawn_community_backfill_if_needed,
 };
 pub use community_reports::{
     build_community_report_records, build_extractive_community_report, community_report_vector_id,
@@ -111,12 +112,21 @@ pub use document_metadata_integrity::{
     repair_document_metadata_in_place, DOCUMENT_METADATA_SUFFIX,
 };
 pub use failed_chunks::{FailedChunkInsert, FailedChunkRecord, InMemoryFailedChunkStore};
-pub use graph_batch_dedupe::{dedupe_edges_by_endpoints, dedupe_nodes_by_id};
+pub use graph_batch_dedupe::{
+    dedupe_edges_by_endpoints, dedupe_nodes_by_id, graph_upsert_chunk_size,
+    parse_graph_upsert_chunk, resolve_graph_upsert_chunk, DEFAULT_GRAPH_UPSERT_CHUNK,
+};
 pub use graph_metrics::{
     collect_graph_quality_metrics, log_graph_quality, metrics_from_merge_delta, GraphQualityMetrics,
 };
 
 // Re-export PDF storage types
+pub use mm_asset_storage::{
+    asset_id_from_path, classify_mm_asset_path, guess_mm_asset_content_type, normalize_mm_asset_id,
+    normalize_mm_asset_path, validate_mm_asset_data, DocumentMmAsset, DocumentMmAssetStorage,
+    DocumentMmAssetSummary, StoreMmAssetRequest, ASSET_KIND_EMBEDDED_FIGURE,
+    ASSET_KIND_PAGE_CHART_CROP, ASSET_KIND_PAGE_FULL, ASSET_KIND_TABLE_CROP,
+};
 pub use original_storage::{
     validate_original_data, DocumentOriginal, DocumentOriginalStorage, StoreOriginalRequest,
 };
@@ -132,24 +142,24 @@ pub use conversation_types::{ConversationRow, FolderRow, MessageRow};
 // Re-export traits
 pub use error::StorageError;
 pub use traits::{
-    kv_key_matches_like, GraphEdge, GraphNode, GraphReadView, GraphStorage,
-    GraphStorageAnalyticsOps, GraphStorageMutateOps, GraphStorageReadOps, KVStorage,
+    kv_key_matches_like, vector_upsert_chunk_size, GraphEdge, GraphNode, GraphReadView,
+    GraphStorage, GraphStorageAnalyticsOps, GraphStorageMutateOps, GraphStorageReadOps, KVStorage,
     KnowledgeGraph, MetadataFilter, TextEmbedder, VectorSearchResult, VectorStorage,
-    WorkspaceVectorConfig, WorkspaceVectorRegistry,
+    WorkspaceVectorConfig, WorkspaceVectorRegistry, DEFAULT_VECTOR_UPSERT_CHUNK,
 };
 
 // Re-export adapters
 pub use adapters::memory::{
-    MemoryConversationStorage, MemoryGraphStorage, MemoryKVStorage, MemoryOriginalStorage,
-    MemoryPdfStorage, MemoryVectorStorage, MemoryWorkspaceVectorRegistry,
+    MemoryConversationStorage, MemoryGraphStorage, MemoryKVStorage, MemoryMmAssetStorage,
+    MemoryOriginalStorage, MemoryPdfStorage, MemoryVectorStorage, MemoryWorkspaceVectorRegistry,
 };
 
 // Conditionally export PostgreSQL adapters
 #[cfg(feature = "postgres")]
 pub use adapters::postgres::{
     PgVectorStorage, PgWorkspaceVectorRegistry, PostgresAGEGraphStorage, PostgresConfig,
-    PostgresConversationStorage, PostgresKVStorage, PostgresOriginalStorage, PostgresPdfStorage,
-    PostgresPool,
+    PostgresConversationStorage, PostgresKVStorage, PostgresMmAssetStorage,
+    PostgresOriginalStorage, PostgresPdfStorage, PostgresPool,
 };
 
 // Re-export KV key schema for use across all crates

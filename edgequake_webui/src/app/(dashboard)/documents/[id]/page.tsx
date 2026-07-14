@@ -2,18 +2,30 @@
 
 import { ContentRenderer } from '@/components/document/content-renderer';
 import { MetadataSidebar } from '@/components/document/metadata-sidebar';
+import { DocumentDownloadMenu } from '@/components/documents/document-download-menu';
+import { IngestionProgressPanel } from '@/components/documents/ingestion-progress-panel';
 import { PDFViewer } from '@/components/documents/pdf-viewer';
+import {
+    ReprocessDialog,
+    type ReprocessChoice,
+} from '@/components/documents/reprocess-dialog';
 import { SideBySideViewer } from '@/components/documents/side-by-side-viewer';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ResizablePanel } from '@/components/ui/resizable-panel';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { DocumentDownloadMenu } from '@/components/documents/document-download-menu';
-import { getDocument, getPdfContent, getPdfDownloadUrl } from '@/lib/api/edgequake';
+import {
+    cancelTask,
+    getDocument,
+    getPdfContent,
+    getPdfDownloadUrl,
+    includeDocumentAssetsFromPdf,
+    reprocessDocument,
+} from '@/lib/api/edgequake';
 import { getEffectiveErrorMessage } from '@/lib/utils/document-status';
 import { useTenantStore } from '@/stores/use-tenant-store';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     AlertCircle,
     ArrowLeft,
@@ -22,12 +34,14 @@ import {
     Loader2,
     Network,
     RefreshCw,
+    RotateCcw,
     StopCircle,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 
 type DocumentStatus =
   | 'pending'
@@ -45,6 +59,56 @@ export default function DocumentViewPage() {
   const searchParams = useSearchParams();
   const documentId = params.id as string;
   const { selectedWorkspaceId } = useTenantStore();
+  const queryClient = useQueryClient();
+
+  // SPEC-051 GAP-051-01: Reprocess dialog + progress panel state for the detail page.
+  // WHY: Previously the detail page had NO reprocess action for failed/cancelled docs —
+  // the cancelled message literally told users to go back to the list.
+  const [reprocessDialogOpen, setReprocessDialogOpen] = useState(false);
+  // Track the most-recent reprocess track_id so IngestionProgressPanel can
+  // show live stage progress inline on this page (GAP-051-03).
+  const [reprocessTrackId, setReprocessTrackId] = useState<string | null>(null);
+
+  // SPEC-051: Reprocess mutation for the detail page.
+  const reprocessMutationDetail = useMutation({
+    mutationFn: ({ mode }: { mode: 'entities' | 'full' }) =>
+      reprocessDocument(documentId, true, mode),
+    onSuccess: (data) => {
+      setReprocessTrackId(data.track_id);
+      toast.success(
+        t('documents.reprocess.success', 'Document queued for reprocessing'),
+        { duration: 4000 },
+      );
+      // Refresh document data after 2s so the backend has time to update status.
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['document', documentId] });
+      }, 2000);
+    },
+    onError: (error: Error) => {
+      toast.error(
+        t('documents.reprocess.failed', 'Reprocess failed'),
+        { description: error.message },
+      );
+    },
+  });
+
+  // SPEC-051: Cancel mutation for the detail page.
+  const cancelMutationDetail = useMutation({
+    mutationFn: (trackId: string) => cancelTask(trackId),
+    onSuccess: () => {
+      toast.success(
+        t('documents.cancel.success', 'Document processing cancelled'),
+        { duration: 4000 },
+      );
+      queryClient.invalidateQueries({ queryKey: ['document', documentId] });
+    },
+    onError: (error: Error) => {
+      toast.error(
+        t('documents.cancel.failed', 'Cancel failed'),
+        { description: error.message },
+      );
+    },
+  });
   
   // Get highlight parameters from URL
   const highlightText = searchParams.get('highlight') || undefined;
@@ -170,14 +234,49 @@ export default function DocumentViewPage() {
     });
   }, []);
 
-  // Fetch document details
+  // Fetch document details.
+  // SPEC-051 GAP-051-03: Use short staleTime when document is actively processing
+  // so the UI updates quickly after a reprocess is triggered.
+  // WHY: 30s staleTime means users see no updates for 30s after a reprocess — too long.
   const { data: document, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['document', documentId, selectedWorkspaceId],
     queryFn: () => getDocument(documentId),
     enabled: !!documentId && !!selectedWorkspaceId,
-    staleTime: 30 * 1000,
+    // Active processing: poll every 3s. Terminal states: 30s.
+    staleTime: reprocessTrackId ? 3 * 1000 : 30 * 1000,
+    refetchInterval: reprocessTrackId ? 3 * 1000 : false,
     refetchOnMount: 'always',
   });
+
+  // First principles: if a PDF has figure captions but no page assets yet, include
+  // extracted page PNGs from the stored PDF and enrich markdown (no VLM re-OCR).
+  const assetsIncludeAttempted = useRef<string | null>(null);
+  useEffect(() => {
+    if (!document?.id || document.source_type !== 'pdf') return;
+    if (assetsIncludeAttempted.current === document.id) return;
+    const md = document.content || '';
+    const needsAssets =
+      /figure\s+\d/i.test(md) &&
+      !md.includes('assets/') &&
+      !md.includes('/documents/') &&
+      Boolean(document.pdf_id);
+    if (!needsAssets) return;
+    assetsIncludeAttempted.current = document.id;
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await includeDocumentAssetsFromPdf(document.id);
+        if (!cancelled && (result.markdown_updated || result.assets_persisted > 0)) {
+          await refetch();
+        }
+      } catch {
+        // Soft-fail: viewer still shows caption text; user can refresh after backend upgrade.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [document, refetch]);
 
   // OODA-91: Derive PDF ID for content fetching
   // WHY: pdf_id may be in document.pdf_id or derived from source_type
@@ -324,6 +423,44 @@ export default function DocumentViewPage() {
             <Button variant="ghost" size="sm" className="h-8" onClick={handleViewInGraph}>
               <Network className="h-3.5 w-3.5" />
             </Button>
+            {/* SPEC-051 GAP-051-01: Reprocess button on detail page.
+                WHY: Previously only the documents list had a reprocess action.
+                Users with a failed/cancelled/completed doc open had to navigate away. */}
+            {(isFailed || isCancelled || status === 'completed') && !reprocessMutationDetail.isPending && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5"
+                onClick={() => setReprocessDialogOpen(true)}
+                data-testid="detail-page-reprocess-button"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                {t('documents.reprocess.action', 'Reprocess')}
+              </Button>
+            )}
+            {/* SPEC-051 GAP-051-01: Cancel button when document is processing.
+                WHY: The detail page imported StopCircle but never rendered a cancel button. */}
+            {(status === 'processing' || status === 'pending') && document?.track_id && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10"
+                onClick={() => {
+                  if (document.track_id) {
+                    cancelMutationDetail.mutate(document.track_id);
+                  }
+                }}
+                disabled={cancelMutationDetail.isPending}
+                data-testid="detail-page-cancel-button"
+              >
+                {cancelMutationDetail.isPending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <StopCircle className="h-3.5 w-3.5" />
+                )}
+                {t('documents.cancel.action', 'Cancel')}
+              </Button>
+            )}
           </div>
         </div>
 
@@ -337,11 +474,52 @@ export default function DocumentViewPage() {
         {isCancelled && (
           <div className="px-3 py-2 bg-muted/50 border-t">
             <p className="text-xs text-muted-foreground">
-              {t('documents.cancelled.message', 'Processing was cancelled. You can reprocess this document from the documents list.')}
+              {t('documents.cancelled.message', 'Processing was cancelled. Click Reprocess to retry.')}
             </p>
           </div>
         )}
+        {/* SPEC-051 GAP-051-03: Live progress panel after triggering a reprocess from this page.
+            WHY: Without this, the detail page shows no progress feedback during re-extraction.
+            The panel is identical to what the documents list shows for single-doc reprocess. */}
+        {reprocessTrackId && (
+          <div
+            className="px-3 py-2 border-t bg-card/80"
+            data-testid="detail-page-reprocess-progress"
+          >
+            <IngestionProgressPanel
+              trackId={reprocessTrackId}
+              documentName={document?.file_name || document?.title || documentId.slice(0, 8)}
+              compact={true}
+              onComplete={() => {
+                setReprocessTrackId(null);
+                // Refresh to show the completed document content.
+                void refetch();
+              }}
+              onFailed={() => setReprocessTrackId(null)}
+              onCancel={() => setReprocessTrackId(null)}
+            />
+          </div>
+        )}
       </header>
+
+      {/* SPEC-051: Reprocess choice dialog for the document detail page. */}
+      <ReprocessDialog
+        open={reprocessDialogOpen}
+        document={document ? {
+          id: document.id,
+          title: document.title,
+          file_name: document.file_name,
+          source_type: document.source_type as 'pdf' | 'text',
+          status: document.status,
+          document_type: document.document_type ?? undefined,
+          mime_type: document.mime_type ?? undefined,
+        } : null}
+        onConfirm={(choice: ReprocessChoice) => {
+          setReprocessDialogOpen(false);
+          reprocessMutationDetail.mutate({ mode: choice.mode });
+        }}
+        onCancel={() => setReprocessDialogOpen(false)}
+      />
 
       {/* Main Content Area - Two Column Layout */}
       <div className="flex-1 flex overflow-hidden">

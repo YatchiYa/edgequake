@@ -8,12 +8,16 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import {
+  nextDocumentSortState,
+  type SortDirection,
+  type SortField,
+} from '@/lib/documents/document-sort';
+import type { DocStatus } from '@/hooks/use-document-preferences';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
-export type DocStatus = 'all' | 'pending' | 'processing' | 'completed' | 'failed' | 'partial_failure' | 'cancelled';
-export type SortField = 'created_at' | 'updated_at' | 'title' | 'status' | 'entity_count';
-export type SortDirection = 'asc' | 'desc';
+export type { DocStatus, SortDirection, SortField };
 
 interface DocumentFiltersProps {
   status: DocStatus;
@@ -37,12 +41,9 @@ export function DocumentFilters({
   const { t } = useTranslation();
 
   const toggleSort = (field: SortField) => {
-    if (sortField === field) {
-      onSortDirectionChange(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      onSortFieldChange(field);
-      onSortDirectionChange('desc');
-    }
+    const next = nextDocumentSortState(sortField, sortDirection, field);
+    onSortFieldChange(next.field);
+    onSortDirectionChange(next.direction);
   };
 
   const getStatusLabel = (statusKey: DocStatus) => {
@@ -77,7 +78,7 @@ export function DocumentFilters({
       {/* Divider */}
       <div className="h-6 w-px bg-border hidden sm:block" />
 
-      {/* Sort Controls */}
+      {/* Sort Controls — date shortcuts; full column sort lives in table headers */}
       <div className="flex items-center gap-1.5">
         <span className="text-sm text-muted-foreground whitespace-nowrap">
           {t('documents.filter.sortBy')}
@@ -87,6 +88,7 @@ export function DocumentFilters({
           size="sm"
           onClick={() => toggleSort('created_at')}
           className="gap-1 h-9"
+          data-testid="toolbar-sort-created_at"
         >
           {t('documents.filter.created')}
           {sortField === 'created_at' && (
@@ -102,6 +104,7 @@ export function DocumentFilters({
           size="sm"
           onClick={() => toggleSort('updated_at')}
           className="gap-1 h-9"
+          data-testid="toolbar-sort-updated_at"
         >
           {t('documents.filter.updated')}
           {sortField === 'updated_at' && (

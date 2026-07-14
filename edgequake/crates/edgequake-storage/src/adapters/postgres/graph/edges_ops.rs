@@ -181,13 +181,14 @@ impl PostgresAGEGraphStorage {
                 + src.len()
                 + tgt.len()
                 + 24; // source_id + target_id + struct overhead
-            let cap = MAX_BODY_BYTES
+            let adaptive = MAX_BODY_BYTES
                 .checked_div(estimated_row)
                 .map(|n| n.clamp(MIN_CHUNK, MAX_CHUNK))
                 .unwrap_or(MAX_CHUNK);
-            return cap;
+            // SPEC-047 P7f: env-tunable cap over adaptive estimate.
+            return crate::graph_batch_dedupe::resolve_graph_upsert_chunk(adaptive);
         }
-        MAX_CHUNK
+        crate::graph_batch_dedupe::resolve_graph_upsert_chunk(MAX_CHUNK)
     }
 
     pub(super) async fn pg_delete_edge(&self, source: &str, target: &str) -> Result<()> {
@@ -224,10 +225,41 @@ impl PostgresAGEGraphStorage {
             .await
     }
 
-    /// Batch incident-edge lookup via native SQL on AGE catalog tables (SPEC-025 6.2).
+    /// Batch incident-edge lookup via indexed property scan on the "EDGE" child table
+    /// (SPEC-025 6.2 / SPEC-053 hardening / SPEC-053.1 json-equality fix).
     ///
-    /// Replaces Cypher `UNWIND … MATCH (n)-[r]-()` which times out on ~20k-node graphs
-    /// when hybrid local/global modes expand BFS frontiers in parallel.
+    /// # WHY: O(k log E) instead of O(V + E) (SPEC-053 root cause fix)
+    ///
+    /// The previous implementation joined the AGE parent edge table to the AGE parent
+    /// vertex table to resolve edge endpoints. M070 dropped all parent-table indexes
+    /// (they were confirmed "0 scans"), so that approach forced a full sequential scan
+    /// on every BFS frontier step, causing statement-timeout errors on large graphs.
+    ///
+    /// Every edge already stores `source_id` and `target_id` as explicit properties
+    /// (set by `pg_upsert_edge` / `pg_upsert_edges_batch`). The `"EDGE"` child table
+    /// has two btree expression indexes on exactly those columns:
+    ///   - `idx_edge_source_id`  ON "EDGE" ((agtype_to_json(properties)->>'source_id'))
+    ///   - `idx_edge_target_id`  ON "EDGE" ((agtype_to_json(properties)->>'target_id'))
+    ///
+    /// # WHY OR (not UNION)
+    ///
+    /// `UNION` (set union) requires PostgreSQL to compare rows for deduplication.
+    /// `agtype_to_json()` returns the PostgreSQL `json` type, which deliberately has
+    /// **no equality operator** (only `jsonb` has one — PG docs §9.16.1).
+    /// Using `UNION` on a `json` column produces:
+    ///   "could not identify an equality operator for type json"
+    ///
+    /// `OR` is the correct alternative: it is a single-scan predicate that never
+    /// needs to compare the `json` column values. PostgreSQL resolves `OR` predicates
+    /// across two different indexed columns via **Bitmap OR** — the planner issues
+    /// two BitmapIndexScans (one per property index) and merges the result bitmaps.
+    /// Expected plan:
+    ///   BitmapHeapScan("EDGE")
+    ///     → BitmapOr
+    ///         → BitmapIndexScan(idx_edge_source_id, source_id IN list)
+    ///         → BitmapIndexScan(idx_edge_target_id, target_id IN list)
+    ///
+    /// Each edge row is returned at most once (OR semantics — no duplicates).
     pub(super) async fn pg_get_incident_edges_batch(
         &self,
         node_ids: &[String],
@@ -245,7 +277,9 @@ impl PostgresAGEGraphStorage {
         unique.sort();
         unique.dedup();
 
-        const CHUNK: usize = 100;
+        // WHY 200 (was 100): each chunk now costs O(log E) not O(V), so we can
+        // double the batch size to halve the number of round-trips.
+        const CHUNK: usize = 200;
         let mut all_edges = Vec::new();
 
         for chunk in unique.chunks(CHUNK) {
@@ -255,16 +289,20 @@ impl PostgresAGEGraphStorage {
                 .collect::<Vec<_>>()
                 .join(", ");
 
+            // WHY "EDGE" child table (not "_ag_label_edge" parent):
+            //   idx_edge_source_id / idx_edge_target_id live on the child table.
+            //   Querying the parent forces a seq-scan because M070 dropped all
+            //   parent-table indexes.
+            // WHY OR (not UNION): agtype_to_json returns `json` (not `jsonb`).
+            //   `json` has no equality operator in PostgreSQL, so UNION (which
+            //   deduplicates via equality) raises "could not identify an equality
+            //   operator for type json". OR evaluates as a BitmapOr of two index
+            //   scans without ever comparing the json column values.
             let sql = format!(
-                "SELECT
-                    ag_catalog.agtype_to_json(e.properties) AS props,
-                    ag_catalog.agtype_to_json(sv.properties)->>'node_id' AS source_id,
-                    ag_catalog.agtype_to_json(tv.properties)->>'node_id' AS target_id
-                 FROM {graph}.\"_ag_label_edge\" e
-                 JOIN {graph}.\"_ag_label_vertex\" sv ON e.start_id::text = sv.id::text
-                 JOIN {graph}.\"_ag_label_vertex\" tv ON e.end_id::text = tv.id::text
-                 WHERE ag_catalog.agtype_to_json(sv.properties)->>'node_id' IN ({in_list})
-                    OR ag_catalog.agtype_to_json(tv.properties)->>'node_id' IN ({in_list})",
+                "SELECT ag_catalog.agtype_to_json(e.properties) AS props \
+                 FROM {graph}.\"EDGE\" e \
+                 WHERE ag_catalog.agtype_to_json(e.properties)->>'source_id' IN ({in_list}) \
+                    OR ag_catalog.agtype_to_json(e.properties)->>'target_id' IN ({in_list})",
                 graph = self.graph_name,
                 in_list = in_list
             );
@@ -273,18 +311,24 @@ impl PostgresAGEGraphStorage {
                 StorageError::Database(format!("Batch incident edges query failed: {}", e))
             })?;
 
-            all_edges.extend(Self::edges_from_sql_rows(&rows));
+            all_edges.extend(Self::edges_from_props_rows(&rows));
         }
 
         Ok(all_edges)
     }
 
-    fn edges_from_sql_rows(rows: &[sqlx::postgres::PgRow]) -> Vec<GraphEdge> {
+    /// Extract `GraphEdge` values from rows that expose a single `props` column
+    /// (the result of `ag_catalog.agtype_to_json(e.properties)`).
+    ///
+    /// WHY: `source_id` and `target_id` are stored as named properties on every
+    /// edge (invariant established by `pg_upsert_edge`). We read them from `props`
+    /// directly — no JOIN to the vertex table needed.
+    fn edges_from_props_rows(rows: &[sqlx::postgres::PgRow]) -> Vec<GraphEdge> {
         rows.iter()
             .filter_map(|row| {
                 let props: serde_json::Value = row.get("props");
-                let source: String = row.get("source_id");
-                let target: String = row.get("target_id");
+                let source = props.get("source_id")?.as_str()?.to_string();
+                let target = props.get("target_id")?.as_str()?.to_string();
                 let properties = props.as_object()?.clone().into_iter().collect();
                 Some(GraphEdge {
                     source,

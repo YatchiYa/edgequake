@@ -216,18 +216,21 @@ impl PostgresAGEGraphStorage {
                 .sum::<usize>()
                 + 16; // node_id + struct punctuation
 
-            let cap = MAX_BODY_BYTES
+            let adaptive = MAX_BODY_BYTES
                 .checked_div(estimated_row)
                 .map(|n| n.clamp(MIN_CHUNK, MAX_CHUNK))
                 .unwrap_or(MAX_CHUNK);
+            // SPEC-047 P7f: env-tunable cap over adaptive estimate.
+            let cap = crate::graph_batch_dedupe::resolve_graph_upsert_chunk(adaptive);
             tracing::trace!(
                 estimated_row_bytes = estimated_row,
-                adaptive_chunk = cap,
-                "UNWIND node chunk size (SPEC-032 W-05)"
+                adaptive_chunk = adaptive,
+                resolved_chunk = cap,
+                "UNWIND node chunk size (SPEC-032 W-05 / SPEC-047 P7f)"
             );
             return cap;
         }
-        MAX_CHUNK
+        crate::graph_batch_dedupe::resolve_graph_upsert_chunk(MAX_CHUNK)
     }
 
     pub(super) async fn pg_delete_node(&self, node_id: &str) -> Result<()> {
@@ -306,6 +309,21 @@ impl PostgresAGEGraphStorage {
     /// This is N times faster than calling node_degree() N times (1 query vs N queries).
     ///
     /// Performance: <100ms for 100 nodes (vs 5000ms+ with N separate queries)
+    /// SPEC-053 HARDENED: Batch degree via "EDGE" property indexes (O(k log E) not O(V+E)).
+    ///
+    /// # WHY: Replaced parent-table query with indexed property scan
+    ///
+    /// The previous implementation looked up graphids from `_ag_label_vertex`
+    /// (parent table — no indexes after M070) then joined `_ag_label_edge`
+    /// (same — all parent-table indexes dropped). This was O(V + E) per call.
+    ///
+    /// Edge properties already store `source_id` / `target_id` (set by every upsert
+    /// path). The `"EDGE"` child table has btree expression indexes on those columns:
+    ///   - `idx_edge_source_id`  ON "EDGE" ((agtype_to_json(properties)->>'source_id'))
+    ///   - `idx_edge_target_id`  ON "EDGE" ((agtype_to_json(properties)->>'target_id'))
+    ///
+    /// The new query counts edges from the indexed child table only. A VALUES CTE
+    /// preserves all input node IDs so that nodes with no edges return degree 0.
     pub(super) async fn pg_node_degrees_batch(
         &self,
         node_ids: &[String],
@@ -319,74 +337,80 @@ impl PostgresAGEGraphStorage {
             StorageError::Connection(format!("Failed to acquire connection: {}", e))
         })?;
 
-        // Build escaped ID list for SQL ANY clause
-        // Use SQL escaping (doubling single quotes) not Cypher escaping (backslash)
-        let ids_list: Vec<String> = node_ids
+        // SQL escaping (double single-quotes) for inline literals.
+        let escaped: Vec<String> = node_ids
             .iter()
             .map(|id| Self::escape_sql_string(id))
             .collect();
 
-        // WHY: Use ::text cast for graphid comparison - Apache AGE's graphid type
-        // lacks a native equality operator, but text comparison works correctly.
+        let in_list = escaped
+            .iter()
+            .map(|id| format!("'{}'", id))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        // VALUES list for the input CTE: ('id1'), ('id2'), …
+        // This preserves degree-0 nodes via LEFT JOIN without a vertex-table lookup.
+        let values_list = escaped
+            .iter()
+            .map(|id| format!("('{}')", id))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        // WHY "EDGE" child table (not "_ag_label_edge" parent):
+        //   idx_edge_source_id / idx_edge_target_id are defined on the child.
+        //   M070 dropped all parent-table indexes — querying the parent forces
+        //   a sequential scan.
+        // WHY VALUES CTE (not "_ag_label_vertex" lookup):
+        //   We don't need graphids; edge properties already hold the text node_id.
+        //   The VALUES CTE is a constant — zero DB I/O — and lets LEFT JOIN return
+        //   degree 0 for isolated nodes without a second table scan.
         let sql = format!(
-            "WITH target_nodes AS ( \
-                SELECT id::text as id_text, ag_catalog.agtype_to_json(properties)->>'node_id' as node_id \
-                FROM {}.\"_ag_label_vertex\" \
-                WHERE ag_catalog.agtype_to_json(properties)->>'node_id' IN ({}) \
+            "WITH input(node_id) AS ( VALUES {values_list} ), \
+             out_deg AS ( \
+               SELECT ag_catalog.agtype_to_json(e.properties)->>'source_id' AS node_id, \
+                      COUNT(*)::bigint AS cnt \
+               FROM {graph}.\"EDGE\" e \
+               WHERE ag_catalog.agtype_to_json(e.properties)->>'source_id' IN ({in_list}) \
+               GROUP BY node_id \
              ), \
-             out_degrees AS ( \
-                SELECT n.node_id, COUNT(*) as out_deg \
-                FROM {}.\"_ag_label_edge\" e \
-                JOIN target_nodes n ON e.start_id::text = n.id_text \
-                GROUP BY n.node_id \
-             ), \
-             in_degrees AS ( \
-                SELECT n.node_id, COUNT(*) as in_deg \
-                FROM {}.\"_ag_label_edge\" e \
-                JOIN target_nodes n ON e.end_id::text = n.id_text \
-                GROUP BY n.node_id \
+             in_deg AS ( \
+               SELECT ag_catalog.agtype_to_json(e.properties)->>'target_id' AS node_id, \
+                      COUNT(*)::bigint AS cnt \
+               FROM {graph}.\"EDGE\" e \
+               WHERE ag_catalog.agtype_to_json(e.properties)->>'target_id' IN ({in_list}) \
+               GROUP BY node_id \
              ) \
-             SELECT t.node_id, COALESCE(o.out_deg, 0) + COALESCE(i.in_deg, 0) as degree \
-             FROM target_nodes t \
-             LEFT JOIN out_degrees o ON o.node_id = t.node_id \
-             LEFT JOIN in_degrees i ON i.node_id = t.node_id",
-            self.graph_name,
-            ids_list
-                .iter()
-                .map(|id| format!("'{}'", id))
-                .collect::<Vec<_>>()
-                .join(", "),
-            self.graph_name,
-            self.graph_name
+             SELECT i.node_id, \
+                    COALESCE(o.cnt, 0) + COALESCE(d.cnt, 0) AS degree \
+             FROM input i \
+             LEFT JOIN out_deg o ON o.node_id = i.node_id \
+             LEFT JOIN in_deg  d ON d.node_id = i.node_id",
+            values_list = values_list,
+            graph = self.graph_name,
+            in_list = in_list
         );
 
-        // WHY: Truncate SQL for logging, but respect UTF-8 char boundaries.
-        // Direct byte slicing (&sql[..500]) can panic if it falls inside a multi-byte character.
-        // Instead, take chars up to a safe byte limit.
-        let sql_preview = sql.chars().take(500).collect::<String>();
-        tracing::debug!(target: "edgequake_storage", "Batch degree SQL: {}", sql_preview);
+        tracing::debug!(
+            target: "edgequake_storage",
+            node_count = node_ids.len(),
+            "Batch degree SQL (SPEC-053 indexed): {}",
+            sql.chars().take(300).collect::<String>()
+        );
 
         let rows = sqlx::query(&sql)
             .fetch_all(&mut *conn)
             .await
             .map_err(|e| StorageError::Database(format!("Batch degree query failed: {}", e)))?;
 
-        let mut results = Vec::new();
-        let mut found_ids = std::collections::HashSet::new();
-
-        for row in rows {
-            let node_id: String = row.get("node_id");
-            let degree: i64 = row.get("degree");
-            found_ids.insert(node_id.clone());
-            results.push((node_id, degree as usize));
-        }
-
-        // Add nodes with 0 degree (not in edge_counts CTE)
-        for node_id in node_ids {
-            if !found_ids.contains(node_id) {
-                results.push((node_id.clone(), 0));
-            }
-        }
+        let results = rows
+            .iter()
+            .map(|row| {
+                let node_id: String = row.get("node_id");
+                let degree: i64 = row.get("degree");
+                (node_id, degree as usize)
+            })
+            .collect();
 
         Ok(results)
     }

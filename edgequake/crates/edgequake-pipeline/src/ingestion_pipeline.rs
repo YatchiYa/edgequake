@@ -117,10 +117,12 @@ pub fn build_ingestion_pipeline(
         "Building ingestion pipeline"
     );
 
+    // Honour EDGEQUAKE_* extraction/embed tunables + EDGEQUAKE_INGEST_PROFILE
+    // (chunk_only / retrieve_only) so bench047 retrieve-only eval skips KG extract.
     let pipeline_config = PipelineConfig {
         chunker: chunker_config,
         chunk_strategy: options.chunk_strategy,
-        ..Default::default()
+        ..PipelineConfig::from_env()
     };
 
     let base_extractor: Arc<dyn EntityExtractor> =

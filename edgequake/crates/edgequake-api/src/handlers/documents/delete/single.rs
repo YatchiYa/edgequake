@@ -1,7 +1,9 @@
 //! Single document deletion handler.
 //!
 //! Cascade-deletes a document: KV entries, chunk embeddings, graph entities,
-//! graph edges, and content-hash duplicate-detection key (OODA-90).
+//! graph edges, and content-hash duplicate-detection key (OADA-90).
+//!
+//! @implements SPEC-050: Real-time deletion progress via WebSocket broadcast.
 
 use axum::{extract::State, Json};
 use uuid::Uuid;
@@ -10,6 +12,7 @@ use edgequake_audit::{AuditEventType, AuditResult};
 
 use crate::error::{ApiError, ApiResult};
 use crate::handlers::documents_types::*;
+use crate::handlers::websocket_types::DeletionPhaseKind;
 use crate::middleware::TenantContext;
 use crate::services::{
     cascade_remove_document_sources, record_compliance_event, CascadeStats, ContentHasher,
@@ -273,6 +276,17 @@ pub async fn delete_document(
     )
     .await;
 
+    // SPEC-050: Generate a transient track_id for this deletion operation.
+    // WHY: Allows WebSocket clients to correlate DeletionStarted / DeletionPhase /
+    // DeletionCompleted events to the specific delete request they triggered.
+    let deletion_track_id = Uuid::new_v4().to_string();
+
+    // SPEC-050: Broadcast deletion started so the frontend can show "Deleting…"
+    state
+        .tasks
+        .progress_broadcaster
+        .deletion_started(&document_id, &deletion_track_id);
+
     // SPEC-028: Collect chunk IDs for vector storage deletion
     // Clone chunk_ids before workspace_vector_storage operations
     let keys_to_delete_for_vectors: Vec<String> = chunk_ids.clone();
@@ -287,10 +301,22 @@ pub async fn delete_document(
 
     let chunks_deleted = chunk_ids.len();
     let mut embeddings_deleted = 0usize;
+    let mut partial_failure = false;
+    let mut partial_failure_reason: Option<String> = None;
 
     // SPEC-028: Delete chunk embeddings from vector storage first
     // WHY: Chunks are stored with IDs like "doc-xxx-chunk-0", delete them
     let chunk_embedding_ids: Vec<String> = keys_to_delete_for_vectors.clone();
+
+    // SPEC-050: Broadcast RemovingVectors phase.
+    state.tasks.progress_broadcaster.deletion_phase(
+        &document_id,
+        &deletion_track_id,
+        DeletionPhaseKind::RemovingVectors,
+        0,
+        chunk_embedding_ids.len() as u32,
+    );
+
     if !chunk_embedding_ids.is_empty() {
         if let Err(e) = workspace_vector_storage.delete(&chunk_embedding_ids).await {
             tracing::warn!(
@@ -311,6 +337,16 @@ pub async fn delete_document(
     // SPEC-006 P1: bounded document-scoped cascade (no get_all_nodes/edges)
     let scope =
         DocumentSourceScope::with_key_prefix(document_id.clone(), actual_key_prefix.clone());
+
+    // SPEC-050: Broadcast RemovingGraph phase.
+    state.tasks.progress_broadcaster.deletion_phase(
+        &document_id,
+        &deletion_track_id,
+        DeletionPhaseKind::RemovingGraph,
+        0,
+        0,
+    );
+
     // WHY non-fatal: the graph cascade cleans up derivative entities/edges. A
     // graph hiccup (AGE Cypher error, transient connection drop, lazy-label
     // table not yet created) must NOT block the user from deleting their
@@ -333,6 +369,9 @@ pub async fn delete_document(
                 error = %e,
                 "Graph cascade delete failed (non-fatal) — proceeding with KV/vector/relational cleanup"
             );
+            // SPEC-050: Track partial failure for response and completion event.
+            partial_failure = true;
+            partial_failure_reason = Some(format!("Graph cascade error: {}", e));
             CascadeStats::default()
         }
     };
@@ -413,8 +452,54 @@ pub async fn delete_document(
         );
     }
 
+    // SPEC-050: Broadcast RemovingKv phase before KV deletion.
+    state.tasks.progress_broadcaster.deletion_phase(
+        &document_id,
+        &deletion_track_id,
+        DeletionPhaseKind::RemovingKv,
+        0,
+        keys_to_delete.len() as u32,
+    );
+
     // Delete all document data from KV storage
     state.storage.kv_storage.delete(&keys_to_delete).await?;
+
+    // SPEC-047: explicit mm-asset cleanup (DB + FS). FK CASCADE also removes DB rows
+    // when the documents row is deleted; this covers memory mode and FS orphans.
+    #[cfg(feature = "postgres")]
+    {
+        let mm_storage = state.storage.mm_asset_storage.as_deref();
+        let workspace_uuid = uuid::Uuid::parse_str(&workspace_id_for_storage).ok();
+        match crate::services::delete_document_mm_assets(mm_storage, &document_id, workspace_uuid)
+            .await
+        {
+            Ok(n) => {
+                if n > 0 {
+                    tracing::debug!(
+                        document_id = %document_id,
+                        deleted = n,
+                        "Deleted document mm-assets"
+                    );
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    document_id = %document_id,
+                    error = %e,
+                    "Failed to delete document mm-assets (continuing cascade)"
+                );
+            }
+        }
+        // Also try actual_key_prefix when it differs (key/id mismatch).
+        if key_id_mismatch {
+            let _ = crate::services::delete_document_mm_assets(
+                mm_storage,
+                &actual_key_prefix,
+                workspace_uuid,
+            )
+            .await;
+        }
+    }
 
     // FIX-ISSUE-73: Cascade delete pdf_documents, chunks, and the documents row.
     // WHY: Previously only KV/graph/vector data was cleaned up, leaving orphaned rows
@@ -521,12 +606,27 @@ pub async fn delete_document(
         Some(("document".to_string(), document_id.clone())),
     );
 
+    // SPEC-050: Broadcast DeletionCompleted so the frontend can show final stats.
+    state.tasks.progress_broadcaster.deletion_completed(
+        &document_id,
+        &deletion_track_id,
+        chunks_deleted,
+        entities_removed,
+        relationships_removed,
+        embeddings_deleted,
+        partial_failure,
+        partial_failure_reason.clone(),
+    );
+
     Ok(Json(DeleteDocumentResponse {
         document_id,
         deleted: true,
         chunks_deleted,
         entities_affected: entities_removed + entities_updated,
         relationships_affected: relationships_removed + relationships_updated,
+        embeddings_deleted,
+        partial_failure,
+        partial_failure_reason,
     }))
 }
 

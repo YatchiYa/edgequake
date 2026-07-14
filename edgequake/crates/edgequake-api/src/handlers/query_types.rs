@@ -119,7 +119,12 @@ pub struct QueryRequest {
     /// The query text.
     pub query: String,
 
-    /// Query mode (naive, local, global, hybrid, mix).
+    /// Query mode: `naive` | `local` | `global` | `hybrid` | `mix` | `bypass`.
+    ///
+    /// EdgeQuake semantics (not identical to LightRAG namesakes):
+    /// - `hybrid` — local ∥ global ∥ naive (round-robin or RRF via env)
+    /// - `mix` — same three arms with weighted/RRF fusion + optional intent arm gate
+    ///   (production default). LightRAG `hybrid` is local+global only.
     #[serde(default)]
     pub mode: Option<String>,
 
@@ -447,7 +452,7 @@ pub struct SourceReference {
 /// Query statistics.
 ///
 /// @implements SPEC-032 Item 18, 22: Token metrics and model lineage
-#[derive(Debug, Clone, Serialize, ToSchema)]
+#[derive(Debug, Clone, Default, Serialize, ToSchema)]
 pub struct QueryStats {
     /// Embedding time in ms.
     pub embedding_time_ms: u64,
@@ -486,6 +491,49 @@ pub struct QueryStats {
     /// LLM model name used for generation (e.g., "gemma3:12b", "gpt-4o-mini").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub llm_model: Option<String>,
+
+    // ========================================================================
+    // SPEC-047 W0b: retrieval diagnostics (engine QueryStats projection)
+    // ========================================================================
+    /// True when retrieval returned no chunks/entities/relationships.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub context_empty: bool,
+
+    /// True when post-retrieval truncation removed context items.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub context_truncated: bool,
+
+    /// Per-arm wall time for Hybrid/Mix local retrieval (ms).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arm_local_ms: Option<u64>,
+
+    /// Per-arm wall time for Hybrid/Mix global retrieval (ms).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arm_global_ms: Option<u64>,
+
+    /// Per-arm wall time for Hybrid/Mix naive retrieval (ms).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arm_naive_ms: Option<u64>,
+
+    /// Chunks from the local arm before merge.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arm_local_chunks: Option<usize>,
+
+    /// Chunks from the global arm before merge.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arm_global_chunks: Option<usize>,
+
+    /// Chunks from the naive arm before merge.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arm_naive_chunks: Option<usize>,
+
+    /// Comma-separated arms that ran (e.g. `"local,global,naive"`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arms_run: Option<String>,
+
+    /// True when intent/weight gating skipped at least one arm.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arms_gated: Option<bool>,
 }
 
 // ============================================================================
@@ -616,6 +664,9 @@ mod tests {
             tokens_per_second: Some(248.0),
             llm_provider: Some("ollama".to_string()),
             llm_model: Some("gemma4:latest".to_string()),
+            context_empty: false,
+            arms_run: Some("local,global,naive".into()),
+            ..Default::default()
         };
         let json = serde_json::to_value(&stats).unwrap();
         assert_eq!(json["total_time_ms"], 650);
@@ -626,6 +677,8 @@ mod tests {
         assert_eq!(json["tokens_per_second"], 248.0);
         assert_eq!(json["llm_provider"], "ollama");
         assert_eq!(json["llm_model"], "gemma4:latest");
+        assert_eq!(json["arms_run"], "local,global,naive");
+        assert!(json.get("context_empty").is_none()); // skip_serializing_if false
     }
 
     #[test]
@@ -641,12 +694,7 @@ mod tests {
                 generation_time_ms: 100,
                 total_time_ms: 130,
                 sources_retrieved: 0,
-                rerank_time_ms: None,
-                // SPEC-032 Item 18, 22: Token metrics and model lineage (optional in test)
-                tokens_used: None,
-                tokens_per_second: None,
-                llm_provider: None,
-                llm_model: None,
+                ..Default::default()
             },
             conversation_id: None,
             reranked: false,

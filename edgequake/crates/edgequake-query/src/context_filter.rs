@@ -6,42 +6,42 @@
 //!
 //! @implements SPEC-005: Document date and pattern filters (Tier 1)
 //! @implements SPEC-031: Strict entity/relationship lineage filtering
+//! @implements SPEC-047 / 021 L2–L4: derive docs from chunk ids; fail-closed
 //!
 //! ## Filter strictness
 //!
 //! | Item type    | Has lineage data | Behavior                         |
 //! |--------------|-----------------|----------------------------------|
 //! | Chunk        | always (strict) | exclude if doc_id not in allowed |
-//! | Entity/Rel   | ids[] non-empty | keep if ANY id ∈ allowed         |
-//! | Entity/Rel   | single id only  | keep if id ∈ allowed             |
-//! | Entity/Rel   | NO lineage data | keep (truly unknown provenance)  |
+//! | Entity/Rel   | docs (any path) | keep if ANY id ∈ allowed         |
+//! | Entity/Rel   | NO lineage data | **drop** under active scope (L4) |
 //!
-//! Once ANY lineage data is present, it MUST match for the item to be kept.
-//! The lenient fallback (keep if no data) only applies to truly orphan items.
+//! Doc resolution (DRY via [`crate::lineage_scope`]): plural → singular →
+//! derive from `source_chunk_ids` / `source_chunk_id`.
 
 use std::collections::HashSet;
 
 use crate::context::QueryContext;
+use crate::lineage_scope::{lineage_intersects_allowed, resolve_lineage_document_ids};
 
 /// Filter a `QueryContext` to only keep items from the allowed document set.
 ///
-/// - **Chunks**: strict — excluded if `document_id` is absent or not in set.
-/// - **Entities**: checked in priority order:
-///   1. `source_document_ids[]` (plural union) — keep if ANY id ∈ allowed
-///   2. `source_document_id` (singular) — keep if id ∈ allowed
-///   3. No lineage data at all — kept (unknown provenance)
-/// - **Relationships**: same rule as entities.
+/// - **Chunks**: strict — must have a matching `document_id`.
+/// - **Entities / relationships**:
+///   1. `source_document_ids[]` (union)
+///   2. `source_document_id` (singular)
+///   3. docs derived from chunk id(s)
+///   4. still empty → **drop** (021 L4)
 ///
-/// @implements SPEC-031
+/// @implements SPEC-031 · SPEC-047 / 021
 pub fn filter_context_by_document_ids(context: &mut QueryContext, allowed_ids: Option<&[String]>) {
     let allowed = match allowed_ids {
         Some(ids) => ids,
-        None => return, // No filter active — keep everything
+        None => return,
     };
 
     let id_set: HashSet<&str> = allowed.iter().map(|s| s.as_str()).collect();
 
-    // Chunks: strict — must have a matching document_id
     context.chunks.retain(|chunk| {
         chunk
             .document_id
@@ -50,50 +50,24 @@ pub fn filter_context_by_document_ids(context: &mut QueryContext, allowed_ids: O
             .unwrap_or(false)
     });
 
-    // Entities: check source_document_ids (plural) first, then singular
     context.entities.retain(|entity| {
-        entity_or_rel_passes_filter(
+        let docs = resolve_lineage_document_ids(
             &entity.source_document_ids,
             entity.source_document_id.as_deref(),
-            &id_set,
-        )
+            &entity.source_chunk_ids,
+        );
+        lineage_intersects_allowed(&docs, &id_set)
     });
 
-    // Relationships: same rule as entities
     context.relationships.retain(|rel| {
-        entity_or_rel_passes_filter(
+        let chunk_ids: Vec<String> = rel.source_chunk_id.iter().cloned().collect();
+        let docs = resolve_lineage_document_ids(
             &rel.source_document_ids,
             rel.source_document_id.as_deref(),
-            &id_set,
-        )
+            &chunk_ids,
+        );
+        lineage_intersects_allowed(&docs, &id_set)
     });
-}
-
-/// Returns true if an entity/relationship should be kept given the allowed set.
-///
-/// Priority:
-/// 1. `source_document_ids[]` non-empty → ANY must match
-/// 2. `source_document_id` Some → must match
-/// 3. Both empty/None → keep (no provenance tracked; could be globally-derived)
-///
-/// @implements SPEC-031
-fn entity_or_rel_passes_filter(
-    source_document_ids: &[String],
-    source_document_id: Option<&str>,
-    id_set: &HashSet<&str>,
-) -> bool {
-    // Priority 1: plural union array (SPEC-031)
-    if !source_document_ids.is_empty() {
-        return source_document_ids
-            .iter()
-            .any(|id| id_set.contains(id.as_str()));
-    }
-    // Priority 2: singular legacy field
-    if let Some(id) = source_document_id {
-        return id_set.contains(id);
-    }
-    // Priority 3: no lineage data — keep (truly unknown provenance)
-    true
 }
 
 #[cfg(test)]
@@ -144,110 +118,76 @@ mod tests {
             make_chunk("c1", Some("doc-a")),
             make_chunk("c2", Some("doc-b")),
             make_chunk("c3", Some("doc-c")),
-            make_chunk("c4", None), // orphan chunk
+            make_chunk("c4", None),
         ];
         ctx.entities = vec![
             make_entity("Alice", Some("doc-a")),
             make_entity("Bob", Some("doc-b")),
-            make_entity("Charlie", None), // no provenance
+            make_entity("Charlie", None), // no provenance → drop under scope
         ];
         ctx.relationships = vec![
             make_relationship("Alice", "Bob", Some("doc-a")),
             make_relationship("Bob", "Charlie", Some("doc-c")),
-            make_relationship("X", "Y", None), // no provenance
+            make_relationship("X", "Y", None),
         ];
         ctx
     }
-
-    // ── Existing tests (updated for strict filter) ───────────────────────────
 
     #[test]
     fn test_none_filter_is_noop() {
         let mut ctx = sample_context();
         let original_chunks = ctx.chunks.len();
-        let original_entities = ctx.entities.len();
-        let original_rels = ctx.relationships.len();
-
         filter_context_by_document_ids(&mut ctx, None);
-
         assert_eq!(ctx.chunks.len(), original_chunks);
-        assert_eq!(ctx.entities.len(), original_entities);
-        assert_eq!(ctx.relationships.len(), original_rels);
+        assert_eq!(ctx.entities.len(), 3);
     }
 
     #[test]
     fn test_filter_keeps_matching_documents() {
         let mut ctx = sample_context();
         let allowed = vec!["doc-a".to_string(), "doc-b".to_string()];
-
         filter_context_by_document_ids(&mut ctx, Some(&allowed));
 
-        // Chunks: doc-a, doc-b kept; doc-c and orphan excluded
         assert_eq!(ctx.chunks.len(), 2);
-        assert!(ctx
-            .chunks
-            .iter()
-            .all(|c| c.document_id.as_deref() == Some("doc-a")
-                || c.document_id.as_deref() == Some("doc-b")));
-
-        // Entities: Alice (doc-a) ✓, Bob (doc-b) ✓, Charlie (no provenance) ✓
-        assert_eq!(ctx.entities.len(), 3);
-
-        // Relationships: Alice→Bob (doc-a) ✓, Bob→Charlie (doc-c) ✗, X→Y (no prov) ✓
-        assert_eq!(ctx.relationships.len(), 2);
+        // Alice + Bob; Charlie dropped (021 L4)
+        assert_eq!(ctx.entities.len(), 2);
+        // Alice→Bob kept; X→Y dropped
+        assert_eq!(ctx.relationships.len(), 1);
+        assert_eq!(ctx.relationships[0].source, "Alice");
     }
 
     #[test]
-    fn test_empty_filter_removes_all_chunks() {
+    fn test_empty_filter_removes_orphans() {
         let mut ctx = sample_context();
         let allowed: Vec<String> = vec![];
-
         filter_context_by_document_ids(&mut ctx, Some(&allowed));
-
-        // All chunks removed (none match empty set)
         assert_eq!(ctx.chunks.len(), 0);
-
-        // Entities without provenance still kept (lenient fallback)
-        assert_eq!(ctx.entities.len(), 1);
-        assert_eq!(ctx.entities[0].name, "Charlie");
-
-        // Relationships without provenance still kept
-        assert_eq!(ctx.relationships.len(), 1);
+        assert_eq!(ctx.entities.len(), 0);
+        assert_eq!(ctx.relationships.len(), 0);
     }
 
     #[test]
     fn test_filter_single_document() {
         let mut ctx = sample_context();
         let allowed = vec!["doc-c".to_string()];
-
         filter_context_by_document_ids(&mut ctx, Some(&allowed));
 
         assert_eq!(ctx.chunks.len(), 1);
-        assert_eq!(ctx.chunks[0].document_id.as_deref(), Some("doc-c"));
-
-        // Entities: Charlie (no prov) ✓; Alice (doc-a) ✗; Bob (doc-b) ✗
-        assert_eq!(ctx.entities.len(), 1);
-        assert_eq!(ctx.entities[0].name, "Charlie");
-
-        // Relationships: Bob→Charlie (doc-c) ✓; Alice→Bob (doc-a) ✗; X→Y (no prov) ✓
-        assert_eq!(ctx.relationships.len(), 2);
+        assert_eq!(ctx.entities.len(), 0); // Charlie has no lineage
+        assert_eq!(ctx.relationships.len(), 1);
+        assert_eq!(ctx.relationships[0].source, "Bob");
     }
-
-    // ── SPEC-031 new tests: source_document_ids (plural) ─────────────────────
 
     #[test]
     fn test_spec031_multi_doc_entity_kept_if_any_id_matches() {
-        // Entity appeared in both doc-a and doc-b — scope is doc-a
         let mut ctx = QueryContext::new();
         ctx.entities = vec![
-            make_entity_multi("MultiDoc", &["doc-a", "doc-b"]), // ANY in allowed
-            make_entity_multi("WrongDoc", &["doc-x", "doc-y"]), // NONE in allowed
+            make_entity_multi("MultiDoc", &["doc-a", "doc-b"]),
+            make_entity_multi("WrongDoc", &["doc-x", "doc-y"]),
         ];
-
         let allowed = vec!["doc-a".to_string()];
         filter_context_by_document_ids(&mut ctx, Some(&allowed));
-
-        assert_eq!(ctx.entities.len(), 1, "only MultiDoc should be kept");
+        assert_eq!(ctx.entities.len(), 1);
         assert_eq!(ctx.entities[0].name, "MultiDoc");
     }
 
@@ -255,82 +195,75 @@ mod tests {
     fn test_spec031_multi_doc_entity_excluded_if_no_id_matches() {
         let mut ctx = QueryContext::new();
         ctx.entities = vec![make_entity_multi("CrossDoc", &["doc-x", "doc-z"])];
-
         let allowed = vec!["doc-a".to_string()];
         filter_context_by_document_ids(&mut ctx, Some(&allowed));
-
-        assert_eq!(ctx.entities.len(), 0, "CrossDoc has no allowed source doc");
+        assert_eq!(ctx.entities.len(), 0);
     }
 
     #[test]
     fn test_spec031_source_document_ids_takes_priority_over_singular() {
-        // source_document_ids = ["doc-a"] but source_document_id = "doc-x"
-        // Plural should win — doc-a is in allowed set
         let entity = RetrievedEntity::new("Conflict", "PERSON", "desc")
-            .with_source_document_id("doc-x") // singular (wrong)
-            .with_source_document_ids(vec!["doc-a".to_string()]); // plural (correct)
-
+            .with_source_document_id("doc-x")
+            .with_source_document_ids(vec!["doc-a".to_string()]);
         let mut ctx = QueryContext::new();
         ctx.entities = vec![entity];
-
         let allowed = vec!["doc-a".to_string()];
         filter_context_by_document_ids(&mut ctx, Some(&allowed));
-
-        assert_eq!(
-            ctx.entities.len(),
-            1,
-            "plural source_document_ids takes priority"
-        );
+        assert_eq!(ctx.entities.len(), 1);
     }
 
     #[test]
     fn test_spec031_singular_fallback_when_plural_empty() {
-        // source_document_ids = [] but source_document_id = "doc-a" — use singular
         let entity =
-            RetrievedEntity::new("Fallback", "PERSON", "desc").with_source_document_id("doc-a"); // singular used when plural absent
-
+            RetrievedEntity::new("Fallback", "PERSON", "desc").with_source_document_id("doc-a");
         let mut ctx = QueryContext::new();
         ctx.entities = vec![entity];
-
         let allowed = vec!["doc-a".to_string()];
         filter_context_by_document_ids(&mut ctx, Some(&allowed));
-
-        assert_eq!(ctx.entities.len(), 1, "singular fallback works");
+        assert_eq!(ctx.entities.len(), 1);
     }
 
     #[test]
-    fn test_spec031_no_lineage_data_kept_always() {
-        // Truly no provenance (globally derived, no source tracked)
+    fn test_021_no_lineage_data_dropped_under_scope() {
         let entity = RetrievedEntity::new("Global", "CONCEPT", "global concept");
-        // source_document_id = None, source_document_ids = []
-
         let mut ctx = QueryContext::new();
         ctx.entities = vec![entity];
-
-        // Even with a strict scope, no-provenance entities are kept
         let allowed = vec!["doc-x".to_string()];
         filter_context_by_document_ids(&mut ctx, Some(&allowed));
+        assert_eq!(ctx.entities.len(), 0, "021 L4: unknown provenance drops");
+    }
 
-        assert_eq!(ctx.entities.len(), 1, "no-provenance entities always kept");
+    #[test]
+    fn test_021_derive_doc_from_chunk_ids() {
+        let entity = RetrievedEntity::new("FromChunk", "ORG", "d")
+            .with_source_chunk_ids(vec!["doc-a-chunk-7".into(), "doc-b-chunk-1".into()]);
+        let mut ctx = QueryContext::new();
+        ctx.entities = vec![entity];
+        let allowed = vec!["doc-b".to_string()];
+        filter_context_by_document_ids(&mut ctx, Some(&allowed));
+        assert_eq!(ctx.entities.len(), 1);
+        assert_eq!(ctx.entities[0].name, "FromChunk");
+    }
+
+    #[test]
+    fn test_021_foreign_chunk_lineage_excluded() {
+        let entity = RetrievedEntity::new("Foreign", "ORG", "d")
+            .with_source_chunk_ids(vec!["doc-z-chunk-0".into()]);
+        let mut ctx = QueryContext::new();
+        ctx.entities = vec![entity];
+        let allowed = vec!["doc-a".to_string()];
+        filter_context_by_document_ids(&mut ctx, Some(&allowed));
+        assert_eq!(ctx.entities.len(), 0);
     }
 
     #[test]
     fn test_spec031_strict_when_any_lineage_present() {
-        // Has source_document_id but it doesn't match — SHOULD be excluded
-        // Old lenient behavior: would keep this. New strict: exclude.
-        let entity = make_entity("TypicalEntity", Some("doc-z")); // doc-z NOT in allowed
-
+        let entity = make_entity("TypicalEntity", Some("doc-z"));
         let mut ctx = QueryContext::new();
         ctx.entities = vec![entity];
-
         let allowed = vec!["doc-a".to_string()];
         filter_context_by_document_ids(&mut ctx, Some(&allowed));
-
-        assert_eq!(
-            ctx.entities.len(),
-            0,
-            "entity with wrong source_document_id must be excluded (strict filter)"
-        );
+        assert_eq!(ctx.entities.len(), 0);
     }
 
     #[test]
@@ -340,11 +273,19 @@ mod tests {
             make_relationship_multi("A", "B", &["doc-a", "doc-b"]),
             make_relationship_multi("C", "D", &["doc-z"]),
         ];
-
         let allowed = vec!["doc-b".to_string()];
         filter_context_by_document_ids(&mut ctx, Some(&allowed));
-
         assert_eq!(ctx.relationships.len(), 1);
         assert_eq!(ctx.relationships[0].source, "A");
+    }
+
+    #[test]
+    fn test_021_rel_derive_from_source_chunk_id() {
+        let rel = RetrievedRelationship::new("A", "B", "REL").with_source_chunk_id("doc-a-chunk-2");
+        let mut ctx = QueryContext::new();
+        ctx.relationships = vec![rel];
+        let allowed = vec!["doc-a".to_string()];
+        filter_context_by_document_ids(&mut ctx, Some(&allowed));
+        assert_eq!(ctx.relationships.len(), 1);
     }
 }

@@ -1,0 +1,60 @@
+{
+  "pdf": "rem_2607.08716v1.pdf",
+  "total_regions": 3,
+  "figures": 3,
+  "tables": 0,
+  "extraction_ms": 148,
+  "regions": [
+    {
+      "page": 1,
+      "index": 1,
+      "kind": "Figure",
+      "source": "ObjectCluster",
+      "label": "Figure",
+      "bbox": [
+        64.789314,
+        397.4183,
+        547.2173,
+        732.807
+      ],
+      "width": 1217,
+      "height": 847,
+      "area_frac_px": 0.25769976,
+      "asset_path": "assets/p01-fig-01.png"
+    },
+    {
+      "page": 4,
+      "index": 1,
+      "kind": "Figure",
+      "source": "ObjectCluster",
+      "label": "Figure",
+      "bbox": [
+        64.866,
+        551.141,
+        302.5876,
+        734.2186
+      ],
+      "width": 600,
+      "height": 462,
+      "area_frac_px": 0.0693,
+      "asset_path": "assets/p04-fig-01.png"
+    },
+    {
+      "page": 4,
+      "index": 2,
+      "kind": "Figure",
+      "source": "ObjectCluster",
+      "label": "Figure",
+      "bbox": [
+        309.407,
+        551.141,
+        547.13184,
+        726.7915
+      ],
+      "width": 600,
+      "height": 443,
+      "area_frac_px": 0.06645,
+      "asset_path": "assets/p04-fig-02.png"
+    }
+  ]
+}

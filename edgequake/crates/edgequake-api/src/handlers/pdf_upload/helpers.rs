@@ -155,7 +155,7 @@ pub(super) async fn create_pdf_processing_task(
         pdf_parser_backend_explicit: backend_explicit,
         restart_from_scratch: intent.restart_from_scratch,
         reprocess_mode: intent.reprocess_mode,
-        multimodal_process_options: options.process_options.clone(),
+        multimodal_process_options: options.resolved_process_options(workspace),
     };
 
     let track_id = format!("pdf-{}", Uuid::new_v4());
@@ -268,33 +268,21 @@ pub(super) fn estimate_processing_time(
     profile.estimated_total_secs(backend, provider)
 }
 
-/// Clear derived data (graph/vector) for a document during re-indexing.
+/// Clear graph + chunk/entity vectors for a document during re-indexing (SPEC-047 P1a).
 ///
-/// OODA-08: Helper function to clear graph and vector data for a document
-/// without deleting the raw PDF or markdown content.
-///
-/// # WHY
-///
-/// When re-indexing a document, we want to:
-/// 1. Keep the raw PDF data (no need to re-upload)
-/// 2. Keep the markdown content (can be re-used or regenerated)
-/// 3. Clear graph entities/relationships (will be re-extracted)
-/// 4. Clear vector embeddings (will be re-computed)
-///
-/// This allows re-processing with updated LLM/config without re-uploading.
+/// Keeps raw PDF/markdown; clears graph entities/relationships and vector embeddings
+/// so they can be re-extracted. When `workspace_id` is provided, uses workspace-scoped
+/// vector storage; otherwise falls back to the default registry storage.
 ///
 /// # Arguments
 ///
 /// * `state` - Application state with graph and vector storage
 /// * `document_id` - Document ID to clear data for
-///
-/// # Returns
-///
-/// * `Ok(())` - Data cleared successfully
-/// * `Err(String)` - Error message if clearing failed
-pub(super) async fn clear_document_derived_data(
+/// * `workspace_id` - Optional workspace scope for vector cleanup
+pub(super) async fn clear_document_derived_data_in_workspace(
     state: &AppState,
     document_id: &str,
+    workspace_id: Option<&str>,
 ) -> Result<(), String> {
     info!(
         "OODA-08: Clearing derived data for document: {}",
@@ -315,15 +303,24 @@ pub(super) async fn clear_document_derived_data(
     let entities_cleared = stats.entities_removed + stats.entities_updated;
     let edges_cleared = stats.relationships_removed + stats.relationships_updated;
 
-    // 2. Clear vector data
-    // Note: Vector storage doesn't have a direct delete_by_document method,
-    // but vector cleanup happens automatically when entities are deleted
-    // because vectors are typically stored alongside entities or referenced by entity IDs.
-    // Future optimization: Add explicit delete_vectors_by_document() if needed.
+    // SPEC-047 P1a: explicit chunk/entity vector wipe (was a documented gap).
+    let vector_storage = match workspace_id {
+        Some(ws) => {
+            crate::services::document_vector_storage::get_workspace_vector_storage_for_delete(
+                state, ws,
+            )
+            .await
+        }
+        None => state.storage.vector_registry.default_storage(),
+    };
+    let vectors_cleared = vector_storage
+        .delete_by_document(document_id)
+        .await
+        .map_err(|e| format!("Failed to clear document vectors: {e}"))?;
 
     info!(
-        "OODA-08: Cleared derived data - entities={}, edges={}",
-        entities_cleared, edges_cleared
+        "OODA-08: Cleared derived data - entities={}, edges={}, vectors={}",
+        entities_cleared, edges_cleared, vectors_cleared
     );
 
     Ok(())

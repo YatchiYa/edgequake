@@ -25,9 +25,11 @@ import { useSelectedWorkspace, useTenantStore } from '@/stores/use-tenant-store'
 import type { Document } from '@/types';
 
 import { useRouter } from 'next/navigation';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { nextDocumentSortState } from '@/lib/documents/document-sort';
+import { buildIngestionRunViews } from '@/lib/pipeline/ingestion-run-view';
 import { resolvePipelineUiState } from '@/lib/pipeline/pipeline-document-state';
 
 import { useBulkSelection } from '@/hooks/use-bulk-selection';
@@ -41,7 +43,18 @@ import { useDocumentQueries } from '@/hooks/use-document-queries';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useDocumentWebSocket } from '@/hooks/use-document-websocket';
 import { useFileUpload } from '@/hooks/use-file-upload';
+import { useReprocessTracking } from '@/hooks/use-reprocess-tracking';
 import { useStuckDetection } from '@/hooks/use-stuck-detection';
+import type { PdfParserResolutionContext } from '@/lib/pdf/large-pdf-admission';
+import {
+    filterLargePdfFiles,
+    type LargePdfAdmissionPreview,
+    type PdfParserChoice,
+} from '@/lib/pdf/large-pdf-admission';
+import { ActiveRunsPanel } from './active-runs-panel';
+import { BulkDeleteConfirmDialog } from './bulk-delete-confirm-dialog';
+import { BulkReprocessDialog, type BulkReprocessChoice } from './bulk-reprocess-dialog';
+import { DeleteConfirmDialog } from './delete-confirm-dialog';
 import { DocumentErrorAlert } from './document-error-alert';
 import { DocumentHeader } from './document-header';
 import { DocumentPreviewRightPanel } from './document-preview-right-panel';
@@ -49,15 +62,9 @@ import { DocumentTableSection } from './document-table-section';
 import { DocumentToolbarSection } from './document-toolbar-section';
 import { DuplicateUploadDialog } from './duplicate-upload-dialog';
 import { LargePdfAdmissionDialog } from './large-pdf-admission-dialog';
-import { BulkReprocessDialog, type BulkReprocessChoice } from './bulk-reprocess-dialog';
+import { ProgressPanelRow } from './progress-panel-row';
 import { ReprocessDialog, type ReprocessChoice } from './reprocess-dialog';
-import { isProcessingStatus } from './status-badge';
-import {
-  filterLargePdfFiles,
-  type LargePdfAdmissionPreview,
-  type PdfParserChoice,
-} from '@/lib/pdf/large-pdf-admission';
-import type { PdfParserResolutionContext } from '@/lib/pdf/large-pdf-admission';
+import { UploadProgressList } from './upload-progress-list';
 
 export function DocumentManager() {
   const { t } = useTranslation();
@@ -83,6 +90,13 @@ export function DocumentManager() {
   // We show one choice dialog (full vs entities) whose mode applies to the
   // whole batch, instead of prompting per document.
   const [bulkReprocessOpen, setBulkReprocessOpen] = useState(false);
+
+  // SPEC-050 GAP-FIX: Delete confirm dialog state.
+  // WHY: Both single (preview panel) and bulk (toolbar) delete routes must
+  // open a confirmation dialog before deleting. This single state drives both.
+  const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<Document | null>(null);
+  const [bulkDeleteTargets, setBulkDeleteTargets] = useState<Document[]>([]);
+  const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
 
   // SPEC-002: Document viewer dialog state for PDF/Markdown side-by-side view
   const [viewerDialogOpen, setViewerDialogOpen] = useState(false);
@@ -114,6 +128,15 @@ export function DocumentManager() {
     sortDirection, setSortDirection,
   } = useDocumentPreferences();
 
+  const handleColumnSort = useCallback(
+    (field: typeof sortField) => {
+      const next = nextDocumentSortState(sortField, sortDirection, field);
+      setSortField(next.field);
+      setSortDirection(next.direction);
+    },
+    [sortField, sortDirection, setSortField, setSortDirection],
+  );
+
   // Pipeline status dialog state
   const [pipelineDialogOpen, setPipelineDialogOpen] = useState(false);
 
@@ -125,6 +148,7 @@ export function DocumentManager() {
     removeUploadingFile,
     handleUploadComplete,
     handleUploadFailed,
+    pruneTerminalUploads,
     pendingDuplicates,
     resolvePendingDuplicates,
   } = useFileUpload({
@@ -174,6 +198,17 @@ export function DocumentManager() {
     setLargePdfPreviews([]);
   }, []);
 
+  // SPEC-050-REPROCESS: Track reprocess operations to show IngestionProgressPanel
+  // — identical feedback to a fresh upload (stage list, cost, ETA, cancel).
+  // WHY SRP: This hook owns only state; the rendering and the mutation callback
+  // are wired below, keeping each concern in the right layer.
+  const {
+    reprocessEntries,
+    addReprocessEntry,
+    removeReprocessEntry,
+    pruneTerminalReprocessEntries,
+  } = useReprocessTracking();
+
   // OODA-14: Document mutations extracted to useDocumentMutations hook
   const {
     deleteMutation,
@@ -181,7 +216,37 @@ export function DocumentManager() {
     cancelMutation,
   } = useDocumentMutations({
     onReprocessSuccess: () => setPipelineDialogOpen(true),
+    // SPEC-051: Forward documentId + isPdf + mode so the tracking layer can
+    // use the stable document ID for prune logic and component selection.
+    onReprocessTriggered: (name, trackId, opts) =>
+      addReprocessEntry(name, trackId, opts),
   });
+
+  // SPEC-050: Track which document IDs are currently being deleted so rows can
+  // show "Deleting" visual state immediately on confirm (before query invalidation).
+  const [deletingDocumentIds, setDeletingDocumentIds] = useState<Set<string>>(new Set());
+
+  /**
+   * SPEC-050: Wrap deleteMutation.mutate to track in-progress deletion IDs.
+   * WHY: The row must show a "Deleting" state immediately after the user
+   * confirms the delete dialog — before the server responds and the documents
+   * query is invalidated.
+   */
+  const handleDeleteDocument = useCallback(
+    (id: string) => {
+      setDeletingDocumentIds((prev) => new Set([...prev, id]));
+      deleteMutation.mutate(id, {
+        onSettled: () => {
+          setDeletingDocumentIds((prev) => {
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+          });
+        },
+      });
+    },
+    [deleteMutation],
+  );
 
   // OODA-29: Document queries extracted to useDocumentQueries hook
   // VS-03: page=1 with large pageSize fetches everything at once for virtual scroll
@@ -221,12 +286,87 @@ export function DocumentManager() {
     serverStatusCounts: data?.status_counts,
   });
 
+  // SPEC-048: clear upload chrome when documents reach terminal state
+  useEffect(() => {
+    pruneTerminalUploads(documents ?? []);
+    // SPEC-050-REPROCESS: also prune reprocess progress panels on terminal state
+    pruneTerminalReprocessEntries(documents ?? []);
+  }, [documents, pruneTerminalUploads, pruneTerminalReprocessEntries]);
+
   const pipelineUi = useMemo(
     () => resolvePipelineUiState(documents, pipelineStatus),
     [documents, pipelineStatus],
   );
 
+  // Only mute siblings while a run is actively working (not merely queued)
+  const workingRunDocumentIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const run of buildIngestionRunViews(documents).values()) {
+      if (run.stageStatus === 'active') ids.add(run.documentId);
+    }
+    return ids;
+  }, [documents]);
+
+  // All active / pending runs — used for the unified feedback zone.
+  // WHY compute once: buildIngestionRunViews was called separately for
+  // workingRunDocumentIds and activeRunViews; this avoids the duplication.
+  const allRuns = useMemo(
+    () => [...buildIngestionRunViews(documents).values()],
+    [documents],
+  );
+
+  // All active / pending runs (kept for potential future use).
+  // NOTE: not used to auto-seed reprocessEntries — see WHY below.
+  const activeRunViews = useMemo(
+    () => allRuns.filter((r) => r.stageStatus === 'active' || r.stageStatus === 'pending'),
+    [allRuns],
+  );
+  // Unified feedback zone: visibility flags.
+  // showActiveRuns: hide when stuck (stuck CTA owns the narrative).
+  const showActiveRuns = allRuns.length > 0 && pipelineUi.alertMode !== 'stuck';
+
+  // Upload list split: client-only rows show always; tracked rows only when
+  // ActiveRunsPanel is hidden (it handles them visually when active).
+  const clientOnlyUploads = useMemo(
+    () => uploadingFiles.filter((f) => !f.trackId),
+    [uploadingFiles],
+  );
+  const trackedUploads = useMemo(
+    () => uploadingFiles.filter((f) => Boolean(f.trackId)),
+    [uploadingFiles],
+  );
+  const showUploadList =
+    clientOnlyUploads.length > 0 || (trackedUploads.length > 0 && !showActiveRuns);
+  const uploadFilesForList = showActiveRuns ? clientOnlyUploads : uploadingFiles;
+
+  // WHY the auto-seed useEffect was removed:
+  //
+  // The previous implementation called addReprocessEntry for every active run so
+  // IngestionProgressPanel would render after a page refresh. However, each
+  // IngestionProgressPanel polls GET /ingestion/{trackId}/progress every 5s.
+  // That handler calls load_scoped_document_metadata — a full PostgreSQL scan of
+  // ALL document metadata in the workspace. With N active documents, N scans fire
+  // every 5s in addition to all other processing queries. Result: connection pool
+  // exhaustion, health checks timing out (10+ s), cascade 500s on tenant endpoints.
+  //
+  // ActiveRunsPanel already shows all active runs from the documents cache with
+  // zero extra DB queries beyond the existing 2s document-list poll. That is
+  // sufficient feedback for background/post-refresh processing.
+  //
+  // IngestionProgressPanel is now reserved for documents explicitly reprocessed in
+  // the current session (addReprocessEntry is called from reprocessMutation and
+  // bulk reprocess — typically 1–3 docs, dismissed by the user on completion).
+
   // OODA-16: Bulk selection extracted to useBulkSelection hook
+  // SPEC-050 GAP-FIX: Bulk delete confirmation callback.
+  // WHY: useBulkSelection owns selection state; DocumentManager owns the
+  // confirmation dialog. The callback bridges them (SRP + DIP).
+  // Defined before useBulkSelection so it can be passed as onDeleteRequested.
+  const handleBulkDeleteRequested = useCallback((selectedDocuments: Document[]) => {
+    setBulkDeleteTargets(selectedDocuments);
+    setBulkDeleteDialogOpen(true);
+  }, []);
+
   const {
     selectedIds,
     selectedCount,
@@ -236,7 +376,28 @@ export function DocumentManager() {
     handleClearSelection,
     handleBulkDelete,
     handleBulkReprocess,
-  } = useBulkSelection({ documents });
+  } = useBulkSelection({
+    documents,
+    onDeleteRequested: handleBulkDeleteRequested,
+    // SPEC-051 GAP-051-02: wire bulk reprocess through IngestionProgressPanel.
+    // WHY: Previously bulk reprocess called reprocessDocument() directly and
+    // discarded the track_id — no progress panel appeared. Now each reprocessed
+    // document gets the same ProgressPanelRow as a single-doc reprocess.
+    onReprocessTriggered: (name, trackId, opts) =>
+      addReprocessEntry(name, trackId, opts),
+  });
+
+  // SPEC-050 GAP-FIX: Confirmed bulk delete — delete each document through
+  // handleDeleteDocument so the per-row dimming state also applies.
+  // Defined AFTER useBulkSelection because it uses handleClearSelection.
+  const handleBulkDeleteConfirmed = useCallback(() => {
+    for (const doc of bulkDeleteTargets) {
+      handleDeleteDocument(doc.id);
+    }
+    setBulkDeleteTargets([]);
+    setBulkDeleteDialogOpen(false);
+    handleClearSelection();
+  }, [bulkDeleteTargets, handleDeleteDocument, handleClearSelection]);
 
   // OODA-28: Document handlers extracted to useDocumentHandlers hook
   const {
@@ -273,16 +434,11 @@ export function DocumentManager() {
     t,
   });
 
-  // OODA-22: Dynamic page title with document count
-  // WHY: Use document-level processing count (not task count) so the title
-  // reflects what users see in the table. Tasks can be "processing" while
-  // their documents are already "failed" or "completed" (e.g., after restart).
-  const processingDocCount = documents?.filter(
-    (d: Document) => d.status && isProcessingStatus(d.status)
-  ).length ?? 0;
+  // OODA-22 / SPEC-048 DEF-06: Working vs Queued in tab title
   useDocumentTitle({
     totalCount,
-    processingCount: processingDocCount,
+    processingCount: pipelineUi.activeDocCount,
+    queuedCount: pipelineUi.waitingDocCount,
   });
 
   if (isError) {
@@ -300,6 +456,7 @@ export function DocumentManager() {
             failedCount={statusCounts.failed + statusCounts.cancelled}
             showPipelineIndicator={pipelineUi.showPipelineIndicator}
             pipelineAlertMode={pipelineUi.alertMode}
+            activeDocCount={pipelineUi.activeDocCount}
             pipelineWaitingOnly={pipelineUi.isQueuedOnly}
             pipelineDialogOpen={pipelineDialogOpen}
             onPipelineDialogChange={setPipelineDialogOpen}
@@ -344,14 +501,80 @@ export function DocumentManager() {
             }}
             onBulkDelete={handleBulkDelete}
             onClearSelection={handleClearSelection}
-            uploadingFiles={uploadingFiles}
-            isUploading={isUploading}
-            onRemoveUpload={removeUploadingFile}
-            onUploadComplete={handleUploadComplete}
-            onUploadFailed={handleUploadFailed}
           />
 
         </div>
+
+      {/* ─── Unified feedback zone ───────────────────────────────────────────
+          WHY one zone instead of two separate capped sections:
+          Previously ActiveRunsPanel was capped at 28 vh inside the toolbar and
+          reprocess panels were capped at 30 vh below it → combined worst-case
+          58 vh + toolbar ≈ 500 px, leaving the table with <50 px (1 row visible).
+
+          Now ALL variable-height feedback (active-run stepper, upload progress,
+          reprocess panels) shares a SINGLE 35 vh cap and a single scroll boundary.
+          Layout guarantee:
+            static toolbar  ≈ 150 px  (search + filters + banner + dropzone + batch)
+            feedback zone   ≤ 35 vh   (scrolls internally when full)
+            table           = flex-1  (always gets the remaining ≥65 vh − 150 px)
+          On 760 px viewport: table ≥ 760×0.65−150 ≈ 344 px → ~5 rows always visible.
+      ─────────────────────────────────────────────────────────────────────── */}
+      {(showActiveRuns || showUploadList || reprocessEntries.length > 0) && (
+        <div
+          className="shrink-0 overflow-y-auto border-b bg-background"
+          style={{ maxHeight: '35vh' }}
+          data-testid="spec051-feedback-zone"
+        >
+          <div className="px-4 py-2 space-y-2">
+            {/* Server-stage stepper for all active/pending ingestion runs */}
+            {showActiveRuns && <ActiveRunsPanel runs={allRuns} />}
+
+            {/* Upload progress: client-only rows always; tracked rows when
+                ActiveRunsPanel is hidden (it handles them when visible). */}
+            {showUploadList && (
+              <UploadProgressList
+                uploadingFiles={uploadFilesForList}
+                isUploading={isUploading}
+                onRemove={removeUploadingFile}
+                onComplete={handleUploadComplete}
+                onFailed={handleUploadFailed}
+              />
+            )}
+
+            {/* Per-document reprocess progress panels */}
+            {reprocessEntries.length > 0 && (
+              <div data-testid="spec051-reprocess-progress-panels">
+                <h4 className="text-sm font-semibold flex items-center gap-2 text-muted-foreground mb-1.5">
+                  <span className="h-2 w-2 rounded-full bg-sky-500 animate-pulse" />
+                  {t('documents.reprocess.progressHeader', 'Reprocessing {{count}} document(s)', {
+                    count: reprocessEntries.length,
+                  })}
+                </h4>
+                <div className="space-y-1.5">
+                  {reprocessEntries.map((entry) => {
+                    const liveDoc = documents.find((d) => d.id === entry.documentId);
+                    const liveTrackId = liveDoc?.track_id ?? entry.trackId;
+                    return (
+                      <ProgressPanelRow
+                        key={entry.trackId}
+                        trackId={liveTrackId}
+                        documentName={entry.documentName}
+                        isPdf={false}
+                        onRemove={() => removeReprocessEntry(entry.trackId)}
+                        onComplete={() => removeReprocessEntry(entry.trackId)}
+                        onFailed={() => removeReprocessEntry(entry.trackId)}
+                        onCancel={() => removeReprocessEntry(entry.trackId)}
+                        data-testid="spec051-reprocess-panel"
+                        data-track-id={entry.trackId}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* OODA-26: Table section extracted to DocumentTableSection */}
       <DocumentTableSection
@@ -363,6 +586,7 @@ export function DocumentManager() {
         searchQuery={searchQuery}
         statusFilter={statusFilter}
         isAllSelected={isAllSelected}
+        activeRunDocumentIds={workingRunDocumentIds}
         onSelectAll={handleSelectAll}
         onSelectOne={handleSelectOne}
         onRowClick={handleDocumentClick}
@@ -370,7 +594,12 @@ export function DocumentManager() {
         onViewDetails={handleViewDetails}
         onViewInGraph={handleViewInGraph}
         onViewPdf={handleViewPdf}
-        onRetry={(id) => reprocessMutation.mutate({ id })}
+        onRetry={(id) => {
+          // Pass document name + isPdf for ProgressPanelRow display
+          const doc = documents.find((d) => d.id === id);
+          const name = doc?.file_name || doc?.title || id.slice(0, 8);
+          reprocessMutation.mutate({ id, name, isPdf: doc?.source_type === 'pdf' });
+        }}
         onReprocess={(id) => {
           // WHY: Open the choice dialog for the target document so the user can
           // pick between full PDF re-conversion and entity-only re-extraction.
@@ -378,24 +607,38 @@ export function DocumentManager() {
           setReprocessTarget(target ?? ({ id } as Document));
         }}
         onCancel={(trackId) => cancelMutation.mutate(trackId)}
-        onDelete={(id) => deleteMutation.mutate(id)}
+        onDelete={handleDeleteDocument}
         isRetrying={reprocessMutation.isPending}
         isCancelling={cancelMutation.isPending}
+        deletingDocumentIds={deletingDocumentIds}
         onUploadClick={openFileDialog}
         onClearFilter={() => {
           setStatusFilter('all');
           setSearchQuery('');
         }}
+        sortField={sortField}
+        sortDirection={sortDirection}
+        onSort={handleColumnSort}
       />
       </div>
 
-      {/* OODA-27: Right panel extracted to DocumentPreviewRightPanel */}
+      {/* OADA-27: Right panel extracted to DocumentPreviewRightPanel */}
       <DocumentPreviewRightPanel
         isOpen={previewPanelOpen}
         onToggle={() => setPreviewPanelOpen(!previewPanelOpen)}
         onClose={handlePreviewClose}
         selectedDocument={selectedDocument}
-        onDelete={(id) => deleteMutation.mutate(id)}
+        onDelete={(id) => {
+          // SPEC-050 GAP-FIX: Route preview panel delete through confirm dialog.
+          // WHY: Previously called handleDeleteDocument directly — no impact preview.
+          const target = documents.find((d) => d.id === id) ?? selectedDocument;
+          if (target) {
+            setDeleteConfirmTarget(target);
+          } else {
+            // Fallback: direct delete if we can't find the document
+            handleDeleteDocument(id);
+          }
+        }}
         onReprocess={(id) => {
           // WHY: Open the choice dialog for the target document so the user can
           // pick between full re-conversion and entity-only re-extraction. For
@@ -434,7 +677,18 @@ export function DocumentManager() {
         document={reprocessTarget}
         onConfirm={(choice: ReprocessChoice) => {
           if (!reprocessTarget?.id) return;
-          reprocessMutation.mutate({ id: reprocessTarget.id, mode: choice.mode });
+          // SPEC-050-REPROCESS: Pass document name so IngestionProgressPanel shows
+          // a meaningful filename instead of a truncated ID.
+          const docName =
+            reprocessTarget.file_name ||
+            reprocessTarget.title ||
+            reprocessTarget.id.slice(0, 8);
+          reprocessMutation.mutate({
+            id: reprocessTarget.id,
+            mode: choice.mode,
+            name: docName,
+            isPdf: reprocessTarget.source_type === 'pdf',
+          });
           setReprocessTarget(null);
         }}
         onCancel={() => setReprocessTarget(null)}
@@ -449,6 +703,37 @@ export function DocumentManager() {
           void handleBulkReprocess(choice.mode);
         }}
         onCancel={() => setBulkReprocessOpen(false)}
+      />
+
+      {/* SPEC-050 GAP-FIX: Bulk delete confirmation (toolbar Delete button).
+          WHY: Previously the toolbar Delete fired deleteDocument() directly with
+          no confirmation or impact preview. This dialog gives the same quality
+          of experience as the per-row delete in DocumentActionsMenu. */}
+      <BulkDeleteConfirmDialog
+        open={bulkDeleteDialogOpen}
+        onOpenChange={(open) => {
+          setBulkDeleteDialogOpen(open);
+          if (!open) setBulkDeleteTargets([]);
+        }}
+        documents={bulkDeleteTargets}
+        onConfirm={handleBulkDeleteConfirmed}
+        isDeleting={deleteMutation.isPending}
+      />
+
+      {/* SPEC-050 GAP-FIX: Single delete confirm for preview panel.
+          WHY: The preview panel's Delete button previously called handleDeleteDocument()
+          directly — bypassing the confirm dialog. Now it opens this dialog first. */}
+      <DeleteConfirmDialog
+        open={deleteConfirmTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteConfirmTarget(null);
+        }}
+        document={deleteConfirmTarget}
+        onConfirm={(id) => {
+          handleDeleteDocument(id);
+          setDeleteConfirmTarget(null);
+        }}
+        isDeleting={deleteMutation.isPending}
       />
     </div>
   );

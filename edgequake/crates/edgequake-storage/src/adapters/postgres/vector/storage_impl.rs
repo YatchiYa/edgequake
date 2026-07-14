@@ -158,7 +158,8 @@ impl VectorStorage for PgVectorStorage {
         // large ingests; UNNEST keeps the bind-parameter count constant (3)
         // regardless of row count, so we are not limited by Postgres' 65535
         // parameter cap. All chunks run in ONE transaction for atomicity.
-        const CHUNK: usize = 1_000;
+        // SPEC-047 P3: tunable via EDGEQUAKE_VECTOR_UPSERT_CHUNK (default 1000).
+        let chunk_size = crate::vector_upsert_chunk_size();
 
         let emb_type = self.embedding_pg_type();
         let sql = format!(
@@ -187,7 +188,7 @@ impl VectorStorage for PgVectorStorage {
             .await
             .map_err(|e| StorageError::Database(format!("Failed to begin upsert tx: {}", e)))?;
 
-        for chunk in kept.chunks(CHUNK) {
+        for chunk in kept.chunks(chunk_size) {
             let mut ids: Vec<String> = Vec::with_capacity(chunk.len());
             let mut embeddings: Vec<String> = Vec::with_capacity(chunk.len());
             let mut metadatas: Vec<serde_json::Value> = Vec::with_capacity(chunk.len());
@@ -422,6 +423,35 @@ impl VectorStorage for PgVectorStorage {
         Ok(result.rows_affected() as usize)
     }
 
+    /// SPEC-047 P1a: wipe all vectors for a document on force_reindex / re-ingest.
+    ///
+    /// WHY both column and JSONB: dual-write era rows may only have one side set.
+    /// WHY id prefix: legacy chunk rows keyed `{doc}-chunk-N` without metadata.
+    async fn delete_by_document(&self, document_id: &str) -> Result<usize> {
+        if document_id.is_empty() {
+            return Ok(0);
+        }
+        let pool = self.pool.get().await?;
+        let chunk_prefix = format!("{document_id}-chunk-%");
+        let sql = format!(
+            r#"
+            DELETE FROM {}
+            WHERE document_id = $1
+               OR metadata->>'document_id' = $1
+               OR metadata->>'source_document_id' = $1
+               OR id LIKE $2
+            "#,
+            self.table_name
+        );
+        let result = sqlx::query(&sql)
+            .bind(document_id)
+            .bind(&chunk_prefix)
+            .execute(&pool)
+            .await
+            .map_err(|e| StorageError::Database(format!("Delete by document failed: {}", e)))?;
+        Ok(result.rows_affected() as usize)
+    }
+
     /// Query with metadata pre-filter (SPEC-007 Tier 2/3).
     ///
     /// Generates dynamic SQL WHERE clauses from MetadataFilter fields:
@@ -510,6 +540,12 @@ impl VectorStorage for PgVectorStorage {
             args.add(vtype).map_err(|e| {
                 StorageError::Database(format!("Failed to bind vector_type: {}", e))
             })?;
+        }
+
+        if let Some(modalities) = &mf.modalities {
+            let mods: Vec<String> = modalities.clone();
+            args.add(&mods)
+                .map_err(|e| StorageError::Database(format!("Failed to bind modalities: {}", e)))?;
         }
 
         args.add(top_k as i32)

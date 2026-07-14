@@ -1195,8 +1195,8 @@ impl StorageInspector {
                        AND NOT EXISTS (SELECT 1 FROM {kv} k WHERE k.key = {vec}.id)
                        AND NOT EXISTS (
                            SELECT 1 FROM documents d
-                           WHERE d.id::text = {vec}.metadata->>'document_id'
-                             AND d.status = 'indexed'
+                           WHERE d.id::text = COALESCE({vec}.document_id, {vec}.metadata->>'document_id')
+                             AND d.status IN ('indexed', 'completed', 'processing')
                        )"#,
                     vec = self.config.vector_table,
                     kv = self.config.kv_table,

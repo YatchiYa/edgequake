@@ -11,6 +11,7 @@ import {
     Dialog,
     DialogContent,
     DialogDescription,
+    DialogFooter,
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
@@ -172,7 +173,7 @@ export function ExportDialog({
         </div>
 
         {/* Actions */}
-        <div className="flex justify-end gap-2">
+        <DialogFooter className="gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             {t("common.cancel", "Cancel")}
           </Button>
@@ -189,7 +190,7 @@ export function ExportDialog({
               </>
             )}
           </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

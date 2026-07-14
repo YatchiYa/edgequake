@@ -326,6 +326,27 @@ impl PdfDocumentStorage for MemoryPdfStorage {
         Ok(())
     }
 
+    async fn touch_document_status(&self, document_id: &Uuid, status: &str) -> Result<()> {
+        let pg_status = if status == "completed" {
+            "indexed"
+        } else {
+            status
+        };
+        let mut documents = self.documents.write().map_err(map_lock_err)?;
+        match documents.get_mut(document_id) {
+            Some(rec) => {
+                rec.status = pg_status.to_string();
+            }
+            None => {
+                tracing::warn!(
+                    document_id = %document_id,
+                    "touch_document_status: documents row not found (memory) — non-fatal"
+                );
+            }
+        }
+        Ok(())
+    }
+
     async fn delete_document_record(&self, document_id: &Uuid) -> Result<()> {
         let mut documents = self.documents.write().map_err(map_lock_err)?;
         documents.remove(document_id);

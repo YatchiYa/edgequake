@@ -286,6 +286,9 @@ mod tests {
             chunks_deleted: 7,
             entities_affected: 2,
             relationships_affected: 1,
+            embeddings_deleted: 0,
+            partial_failure: false,
+            partial_failure_reason: None,
         };
 
         let json = serde_json::to_string(&response).unwrap();

@@ -21,6 +21,7 @@ export { DocumentManager } from "./document-manager";
 export { BatchProgressCard } from "./batch-progress-card";
 export { IngestionProgressPanel } from "./ingestion-progress-panel";
 export { PdfUploadProgress } from "./pdf-upload-progress";
+export { ProgressPanelRow } from "./progress-panel-row";
 
 // History and status
 export { ConnectionStatus } from "./connection-status";
@@ -35,6 +36,11 @@ export { DocumentDownloadMenu } from "./document-download-menu";
 export { DocumentPreviewPanel } from "./document-preview-panel";
 export { DocumentViewerDialog } from "./document-viewer-dialog";
 export { PipelineStatusDialog } from "./pipeline-status-dialog";
+// SPEC-050: Delete confirm dialog with impact preview
+export { DeleteConfirmDialog } from "./delete-confirm-dialog";
+export { DeletionImpactCard } from "./deletion-impact-card";
+// SPEC-050 GAP-FIX: Bulk delete confirm dialog for toolbar Delete button
+export { BulkDeleteConfirmDialog } from "./bulk-delete-confirm-dialog";
 
 // Viewer components (SPEC-002)
 export { MarkdownViewer } from "./markdown-viewer";

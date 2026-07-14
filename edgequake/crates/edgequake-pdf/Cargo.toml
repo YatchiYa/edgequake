@@ -20,6 +20,9 @@ edgeparse-core = { workspace = true }
 regex = "1"
 once_cell = "1"
 base64 = "0.22"
-
-[dev-dependencies]
+image = "0.25"
+serde_json = { workspace = true }
 tempfile = "3"
+# pdfium access goes through edgequake-pdf2md (shared singleton) — no direct pdfium deps.
+[dev-dependencies]
+serial_test = "3"

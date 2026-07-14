@@ -1,0 +1,136 @@
+{
+  "spec": "047",
+  "stage": "smoke",
+  "valid": true,
+  "invalid_reason": null,
+  "task_name": "MMLongBench-Doc/RAG-adaptation",
+  "banner": "EdgeQuake RAG adaptation of MMLongBench-Doc; not comparable to the LVLM leaderboard without caveats. Official LVLM GPT-4o F1\u224844.9% is a difficulty reference only. Provider stack: mistral-small-latest + mistral-embed (Postgres).",
+  "pins": {
+    "edgequake_version": "0.16.0",
+    "edgequake_git_sha": "9f17ca7d",
+    "dataset_id": "yubo2333/MMLongBench-Doc",
+    "dataset_revision": "parquet-train",
+    "fixture_id": "smoke_chart_doc_ids_v1",
+    "llm_provider": "mistral",
+    "llm_model": "mistral-small-latest",
+    "vision_provider": "mistral",
+    "vision_model": "mistral-small-latest",
+    "embedding_provider": "mistral",
+    "embedding_model": "mistral-embed",
+    "embedding_dim": 1024,
+    "query_mode": "hybrid",
+    "extractor_model": "mistral-small-latest",
+    "eval_score_sha": "cafa268358b08521cfc9a805c67d86732d943677e4408c5751f336123d09631f",
+    "system_prompt_sha": "server-default",
+    "profile_id": "P0_mm_ite",
+    "pdf_parser_backend": "vision",
+    "process_options": "ite"
+  },
+  "metrics": {
+    "n_docs": 8,
+    "n_questions": 117,
+    "n_scored": 117,
+    "n_skipped_ingest_failed": 0,
+    "accuracy": 0.4357230071515786,
+    "f1": 0.25533220807119844
+  },
+  "slices": {
+    "single_page_accuracy": 0.2815279958137101,
+    "cross_page_accuracy": 0.16666666666666666,
+    "unanswerable_accuracy": 0.8095238095238095,
+    "by_evidence_source": {
+      "Pure-text (Plain-text)": {
+        "accuracy": 0.19230769230769232,
+        "n": 26
+      },
+      "Chart": {
+        "accuracy": 0.18181818181818182,
+        "n": 22
+      },
+      "Generalized-text (Layout)": {
+        "accuracy": 0.27087198515769945,
+        "n": 11
+      },
+      "Figure": {
+        "accuracy": 0.23809523809523808,
+        "n": 21
+      },
+      "Table": {
+        "accuracy": 0.16666666666666666,
+        "n": 24
+      }
+    },
+    "by_doc_type": {
+      "Research report / Introduction": {
+        "accuracy": 0.42592592592592593,
+        "n": 54
+      },
+      "Academic paper": {
+        "accuracy": 0.375,
+        "n": 16
+      },
+      "Financial report": {
+        "accuracy": 0.4117647058823529,
+        "n": 17
+      },
+      "Administration/Industry file": {
+        "accuracy": 0.4433106575963719,
+        "n": 18
+      },
+      "Tutorial/Workshop": {
+        "accuracy": 0.5833333333333334,
+        "n": 12
+      }
+    }
+  },
+  "ops": {
+    "ingest_coverage": 1.0,
+    "cost_usd_total": null,
+    "p50_query_latency_ms": 4355.962038040161,
+    "p95_query_latency_ms": 9980.790662765503,
+    "answer_empty_rate": 0.0,
+    "extractor_fail_rate": 0.0,
+    "page_hit_rate": 0.7333333333333333,
+    "document_scope": true,
+    "query_workers": 2,
+    "retrieval": {
+      "n_with_retrieval_diag": 75,
+      "answerable_only": true,
+      "context_empty_rate": 0.013333333333333334,
+      "mean_n_chunk_sources": 15.453333333333333,
+      "page_hit@1": 0.48,
+      "page_recall@1": 0.34555555555555556,
+      "page_hit@3": 0.68,
+      "page_recall@3": 0.5408148148148147,
+      "page_hit@5": 0.7333333333333333,
+      "page_recall@5": 0.6168148148148148,
+      "page_hit@10": 0.7866666666666666,
+      "page_recall@10": 0.6954074074074075,
+      "mean_arm_local_chunks": 0.2,
+      "mean_arm_global_chunks": 0.2727272727272727,
+      "mean_arm_naive_chunks": 18.164383561643834
+    },
+    "arm_gates": {
+      "n_with_arm_diag": 117,
+      "arms_gated_rate": 0.8717948717948718,
+      "arm_local_present_rate": 0.02564102564102564,
+      "arm_global_present_rate": 0.03418803418803419,
+      "arm_graph_present_rate": 0.03418803418803419,
+      "naive_only_rate": 0.9572649572649573,
+      "n_with_arms_run": 117,
+      "planned_local_rate": 0.13675213675213677,
+      "planned_global_rate": 0.1452991452991453,
+      "planned_graph_rate": 0.1452991452991453,
+      "planned_naive_only_rate": 0.8547008547008547
+    },
+    "false_refusal": {
+      "n_answerable": 75,
+      "n_false_refusal": 25,
+      "false_refusal_rate": 0.3333333333333333,
+      "n_answerable_page_hit@5": 55,
+      "n_false_refusal_page_hit@5": 11,
+      "false_refusal_given_page_hit@5": 0.2
+    }
+  },
+  "created_at_utc": "2026-07-11T08:49:32Z"
+}

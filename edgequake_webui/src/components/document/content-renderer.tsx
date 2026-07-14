@@ -19,6 +19,7 @@ import {
     VirtualizedMarkdownContent,
 } from '@/components/query/markdown/VirtualizedMarkdownContent';
 import { Skeleton } from '@/components/ui/skeleton';
+import { rewriteMarkdownMmAssetUrls } from '@/lib/api/edgequake/documents';
 import type { Document } from '@/types';
 import { Suspense, useEffect, useMemo, useRef } from 'react';
 import { CodeRenderer } from './code-renderer';
@@ -81,7 +82,12 @@ export function ContentRenderer({ document, highlightText, startLine, endLine }:
 function getRendererForDocument(doc: Document, highlightText?: string, startLine?: number, endLine?: number) {
   const mimeType = doc.mime_type?.toLowerCase() || '';
   const fileName = doc.file_name?.toLowerCase() || '';
-  const content = doc.content || doc.content_summary || '';
+  // MV-28: rewrite `![…](assets/…)` to document-scoped API URLs so figures render
+  // in the detail view (ContentRenderer path — same SSOT as MarkdownViewer).
+  const content = rewriteMarkdownMmAssetUrls(
+    doc.content || doc.content_summary || '',
+    doc.id,
+  );
 
   // ---------------------------------------------------------------------------
   // Markdown documents — use token-level highlighting (not HTML injection).
@@ -118,7 +124,7 @@ function getRendererForDocument(doc: Document, highlightText?: string, startLine
         prose-headings:font-display prose-headings:font-semibold
         prose-h1:text-4xl prose-h1:mb-6 prose-h1:mt-8
         prose-h2:text-3xl prose-h2:mb-4 prose-h2:mt-6
-        prose-h3:text-2xl prose-h3:mb-3 prose-h3:mt-5
+        prose-h3:text-2xl prose-h3:mb-3 prose-h3:mt-5 prose-h3:scroll-mt-4
         prose-p:text-base prose-p:leading-relaxed prose-p:text-foreground/90
         prose-a:text-primary prose-a:no-underline prose-a:font-medium
         hover:prose-a:underline
@@ -130,7 +136,7 @@ function getRendererForDocument(doc: Document, highlightText?: string, startLine
         prose-blockquote:border-l-4 prose-blockquote:border-primary
         prose-blockquote:bg-muted/30 prose-blockquote:py-2 prose-blockquote:px-4
         prose-blockquote:rounded-r-lg prose-blockquote:italic
-        prose-img:rounded-xl prose-img:shadow-lg
+        prose-img:rounded-xl prose-img:shadow-lg prose-img:my-4 prose-img:mx-auto prose-img:max-h-[70vh]
         prose-hr:border-border prose-hr:my-8
         prose-table:border prose-table:rounded-lg
         prose-thead:bg-muted

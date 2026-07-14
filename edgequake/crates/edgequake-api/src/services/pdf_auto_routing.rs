@@ -25,6 +25,7 @@ pub async fn try_edgeparse_fast_path(
         table_method: None,
         filename: Some(filename.to_string()),
         vision: None,
+        page_drawing_assets: None,
     };
 
     let converter = edgequake_pdf::create_pdf_converter(PdfParserBackend::EdgeParse);

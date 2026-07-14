@@ -3,6 +3,8 @@
 //! Deletes all documents in the system, skipping those actively being processed
 //! unless they are detected as "stuck" (>1 hour at 100% progress).
 //! Also cleans up orphaned graph entities/edges and PDF table entries.
+//!
+//! @implements SPEC-050: Real-time bulk deletion progress via WebSocket broadcast.
 
 use crate::error::ApiResult;
 use crate::handlers::documents_types::*;
@@ -67,6 +69,13 @@ pub async fn delete_all_documents(
     let scoped_entries =
         load_scoped_document_metadata_entries(state.storage.kv_storage.as_ref(), &tenant_ctx)
             .await?;
+
+    // SPEC-050: Broadcast bulk deletion started so the frontend can show progress.
+    let total_to_delete = scoped_entries.len();
+    state
+        .tasks
+        .progress_broadcaster
+        .bulk_deletion_started(total_to_delete);
 
     let mut deleted_count = 0usize;
     let mut total_chunks_deleted = 0usize;
@@ -245,6 +254,35 @@ pub async fn delete_all_documents(
         total_chunks_deleted += chunk_ids.len();
         deleted_count += 1;
 
+        // SPEC-050: Broadcast per-document progress for the bulk deletion UI.
+        state
+            .tasks
+            .progress_broadcaster
+            .bulk_deletion_item_progress(
+                &document_id,
+                deleted_count,
+                total_to_delete,
+                total_entities_removed,
+                total_relationships_removed,
+            );
+
+        // SPEC-047: remove mm-assets (DB + FS) for each deleted document.
+        #[cfg(feature = "postgres")]
+        {
+            let mm_storage = state.storage.mm_asset_storage.as_deref();
+            let workspace_uuid = uuid::Uuid::parse_str(&tenant_ctx.workspace_id_or_default()).ok();
+            if let Err(e) =
+                crate::services::delete_document_mm_assets(mm_storage, &document_id, workspace_uuid)
+                    .await
+            {
+                tracing::warn!(
+                    document_id = %document_id,
+                    error = %e,
+                    "Failed to delete mm-assets during bulk delete"
+                );
+            }
+        }
+
         #[cfg(feature = "postgres")]
         if let Some(pdf_id) = pdf_id_for_delete {
             pdf_ids_to_delete.insert(pdf_id);
@@ -363,6 +401,14 @@ pub async fn delete_all_documents(
         relationships = total_relationships_removed,
         pdfs = total_pdfs_deleted,
         "Bulk delete complete"
+    );
+
+    // SPEC-050: Broadcast bulk deletion completed.
+    state.tasks.progress_broadcaster.bulk_deletion_completed(
+        deleted_count,
+        skipped_count,
+        total_entities_removed,
+        total_relationships_removed,
     );
 
     Ok(Json(DeleteAllDocumentsResponse {

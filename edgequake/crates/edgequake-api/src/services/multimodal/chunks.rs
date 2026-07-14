@@ -167,6 +167,17 @@ pub fn build_mm_chunks_from_manifest(
     collect_mm_chunks_from_manifest(manifest, opts)
 }
 
+/// Stable chunk head label by classified image type (SPEC-047 MV-15).
+fn drawing_name_label(image_type: &str) -> &'static str {
+    if super::prompts::is_chart_like_type(image_type) {
+        "Chart Name"
+    } else if super::prompts::is_figure_like_type(image_type) {
+        "Figure Name"
+    } else {
+        "Image Name"
+    }
+}
+
 /// LightRAG chunk label contract (`_render` in `pipeline.py`).
 pub fn render_mm_chunk(
     record: &MultimodalItemRecord,
@@ -191,8 +202,9 @@ pub fn render_mm_chunk_with_description(
         "drawing" => {
             let image_type =
                 sanitize_text_for_encoding(record.item_type.as_deref().unwrap_or("Other"));
+            let name_label = drawing_name_label(&image_type);
             (
-                format!("[Image Name]{name}\n[Image Type]{image_type}"),
+                format!("[{name_label}]{name}\n[Image Type]{image_type}"),
                 "Image Footnotes",
             )
         }
@@ -347,9 +359,34 @@ mod tests {
             "Revenue grew in Q4.".into(),
         );
         let text = render_mm_chunk(&record, "drawing", &[]);
-        assert!(text.starts_with("[Image Name]revenue_chart"));
+        assert!(text.starts_with("[Chart Name]revenue_chart"));
         assert!(text.contains("[Image Type]Chart"));
         assert!(text.contains("Revenue grew"));
+    }
+
+    #[test]
+    fn builds_figure_chunk_labels() {
+        let record = MultimodalItemRecord::success_image(
+            "im-2",
+            "arch_diagram".into(),
+            "Flowchart".into(),
+            "API connects to DB.".into(),
+        );
+        let text = render_mm_chunk(&record, "drawing", &[]);
+        assert!(text.starts_with("[Figure Name]arch_diagram"));
+        assert!(text.contains("[Image Type]Flowchart"));
+    }
+
+    #[test]
+    fn builds_generic_photo_chunk_labels() {
+        let record = MultimodalItemRecord::success_image(
+            "im-3",
+            "office_photo".into(),
+            "Photo".into(),
+            "A desk.".into(),
+        );
+        let text = render_mm_chunk(&record, "drawing", &[]);
+        assert!(text.starts_with("[Image Name]office_photo"));
     }
 
     #[test]
@@ -470,7 +507,7 @@ mod tests {
         };
         let chunks = build_mm_chunks_from_manifest(&manifest, &opts).unwrap();
         assert_eq!(chunks.len(), 1);
-        assert!(chunks[0].text.contains("[Image Name]chart"));
+        assert!(chunks[0].text.contains("[Chart Name]chart"));
         std::env::remove_var("EDGEQUAKE_MM_CHUNKS");
     }
 }

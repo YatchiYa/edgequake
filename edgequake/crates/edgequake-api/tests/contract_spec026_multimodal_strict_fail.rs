@@ -6,6 +6,35 @@ use serial_test::serial;
 
 #[tokio::test]
 #[serial]
+async fn vlm_disabled_degraded_strips_drawing_tags() {
+    std::env::set_var("VLM_PROCESS_ENABLE", "false");
+    std::env::set_var("EDGEQUAKE_MULTIMODAL_FAIL_MODE", "degraded");
+    let md = r#"Before
+<drawing id="im-1" format="png" path="assets/page-0001-fig-01.png" caption="Figure 1" />
+After"#;
+    let mock = MockProvider::new();
+    let out = analyze_multimodal_images(
+        md,
+        Some("i"),
+        "doc.pdf",
+        MultimodalProviders::single(&mock),
+        None,
+        None,
+    )
+    .await;
+    assert!(out.hard_error.is_none());
+    assert!(
+        !out.markdown.contains("<drawing"),
+        "orphan drawing tags must be stripped when Pass B cannot run"
+    );
+    assert!(out.markdown.contains("Before"));
+    assert!(out.markdown.contains("After"));
+    std::env::remove_var("VLM_PROCESS_ENABLE");
+    std::env::remove_var("EDGEQUAKE_MULTIMODAL_FAIL_MODE");
+}
+
+#[tokio::test]
+#[serial]
 async fn vlm_disabled_with_i_strict_returns_hard_error() {
     std::env::set_var("VLM_PROCESS_ENABLE", "false");
     std::env::set_var("EDGEQUAKE_MULTIMODAL_FAIL_MODE", "strict");

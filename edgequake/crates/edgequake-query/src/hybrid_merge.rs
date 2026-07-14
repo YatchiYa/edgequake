@@ -7,6 +7,9 @@
 //!
 //! Entities and relationships are unioned across local+global (scores are not
 //! cross-arm comparable). Chunks are truncated to `max_chunks`.
+//!
+//! SPEC-047 / 020 Acc recovery: arms that return **no chunks** do not inject
+//! entity/rel payloads (fail-open prune — empty graph must not pollute Gen).
 
 use std::collections::{HashMap, HashSet};
 
@@ -42,6 +45,24 @@ pub fn hybrid_fusion_mode_label(mode: HybridFusionMode) -> &'static str {
     }
 }
 
+/// Drop entity/relationship payloads from a graph arm that retrieved **no chunks**.
+///
+/// Law (020 post-B2): scheduling local/global is honest; injecting orphan KG text
+/// when the arm found no page-linked chunks is context pollution (Acc tax on
+/// unanswerable + factual). Fail-open: keep the arm's chunk list (empty) and clear graph.
+pub fn prune_empty_arm_graph(mut ctx: QueryContext) -> QueryContext {
+    if ctx.chunks.is_empty() && (!ctx.entities.is_empty() || !ctx.relationships.is_empty()) {
+        tracing::debug!(
+            entities = ctx.entities.len(),
+            relationships = ctx.relationships.len(),
+            "020: prune empty-arm graph payloads (no chunks)"
+        );
+        ctx.entities.clear();
+        ctx.relationships.clear();
+    }
+    ctx
+}
+
 /// Merge three retrieval contexts into one Hybrid context.
 pub fn merge_hybrid_contexts(
     local: QueryContext,
@@ -49,6 +70,9 @@ pub fn merge_hybrid_contexts(
     naive: QueryContext,
     max_chunks: usize,
 ) -> QueryContext {
+    let local = prune_empty_arm_graph(local);
+    let global = prune_empty_arm_graph(global);
+    // Naive is chunk-only by construction; no entity prune needed.
     let mut merged = QueryContext::new();
 
     let chunks = merge_hybrid_chunks(
@@ -196,11 +220,41 @@ mod tests {
     fn entities_union_dedup() {
         let mut local = QueryContext::new();
         local.add_entity(RetrievedEntity::new("A", "X", "a"));
+        local.add_chunk(chunk("l1", 0.9)); // non-empty arm keeps entities
         let mut global = QueryContext::new();
         global.add_entity(RetrievedEntity::new("A", "X", "a"));
         global.add_entity(RetrievedEntity::new("B", "X", "b"));
+        global.add_chunk(chunk("g1", 0.8));
 
         let merged = merge_hybrid_contexts(local, global, QueryContext::new(), 20);
         assert_eq!(merged.entities.len(), 2);
+    }
+
+    #[test]
+    fn empty_arm_graph_pruned_before_merge() {
+        let mut local = QueryContext::new();
+        local.add_entity(RetrievedEntity::new("ORPHAN", "X", "should drop"));
+        // no chunks
+        let mut naive = QueryContext::new();
+        naive.add_chunk(chunk("n1", 0.9));
+
+        let merged = merge_hybrid_contexts(local, QueryContext::new(), naive, 20);
+        assert!(
+            merged.entities.is_empty(),
+            "020: empty local must not inject entities; got {:?}",
+            merged.entities.iter().map(|e| &e.name).collect::<Vec<_>>()
+        );
+        assert_eq!(merged.chunks.len(), 1);
+        assert_eq!(merged.chunks[0].id, "n1");
+    }
+
+    #[test]
+    fn prune_empty_arm_graph_clears_orphans() {
+        let mut ctx = QueryContext::new();
+        ctx.add_entity(RetrievedEntity::new("E", "T", "d"));
+        ctx.add_relationship(RetrievedRelationship::new("A", "B", "REL"));
+        let pruned = prune_empty_arm_graph(ctx);
+        assert!(pruned.entities.is_empty());
+        assert!(pruned.relationships.is_empty());
     }
 }

@@ -171,9 +171,28 @@ impl DocumentTaskProcessor {
             crate::handlers::workspaces::invalidate_workspace_stats_cache(workspace_uuid).await;
         }
 
-        // CHECKPOINT-CLEAR: only on successful terminal outcomes.
-        // WHY: Clearing on `failed` drops resume state before the user reprocesses.
+        // CHECKPOINT-CLEAR + P7e snapshot: keep durable extractions for soft-reprocess.
+        // WHY: Clearing crash checkpoint frees mid-flight KV; snapshot enables merge-only
+        // without re-paying LLM extract (LightRAG-style reuse of stored tuples).
         if final_status == "completed" || final_status == "partial_failure" {
+            let prepared = &persisted.prepared;
+            if let Err(e) = super::pipeline_checkpoint::save_extraction_snapshot(
+                &self.kv_storage,
+                &document_id,
+                &result,
+                &prepared.data.workspace_id,
+                &prepared.provider_lineage.extraction_provider,
+                &prepared.provider_lineage.embedding_provider,
+                &prepared.processed_text,
+            )
+            .await
+            {
+                warn!(
+                    document_id = %document_id,
+                    error = %e,
+                    "P7e: failed to save extraction snapshot (non-fatal)"
+                );
+            }
             super::pipeline_checkpoint::clear_pipeline_checkpoint(&self.kv_storage, &document_id)
                 .await;
         }

@@ -23,7 +23,11 @@ pub struct DocumentUploadData {
 ///   explicitly wants re-conversion (Replace, or "Re-convert from PDF").
 /// - `EntitiesOnly`: reuse the existing cached markdown and only re-run the
 ///   knowledge-graph pipeline (chunk / extract / embed). This is the safe
-///   default for retries of failed mid-pipeline runs.
+///   default for retries of failed mid-pipeline runs. Prefer durable
+///   extraction snapshot when present (SPEC-047 P7e).
+/// - `MergeOnly`: reuse stored extractions (crash checkpoint or durable
+///   snapshot) and skip LLM extract entirely — merge (+ re-embed if slim).
+///   Fails closed if no snapshot exists (SPEC-047 P7e).
 ///
 /// WHY: `restart_from_scratch` alone was ambiguous and never set to `true` in
 /// production, so reprocessing silently reused stale markdown. Making intent
@@ -34,15 +38,24 @@ pub struct DocumentUploadData {
 pub enum ReprocessMode {
     /// Re-convert the PDF to markdown from scratch (vision tokens spent).
     Full,
-    /// Reuse cached markdown; only re-run entity extraction (default).
+    /// Reuse cached markdown; prefer extraction snapshot, else re-extract.
     #[default]
+    #[serde(rename = "entities")]
     EntitiesOnly,
+    /// SPEC-047 P7e: skip LLM extract — merge from durable snapshot only.
+    #[serde(rename = "merge")]
+    MergeOnly,
 }
 
 impl ReprocessMode {
     /// Returns `true` when the PDF -> markdown conversion must be re-run.
     pub fn restart_from_scratch(self) -> bool {
         matches!(self, ReprocessMode::Full)
+    }
+
+    /// Returns `true` when LLM entity extraction must not run (snapshot required).
+    pub fn merge_only(self) -> bool {
+        matches!(self, ReprocessMode::MergeOnly)
     }
 }
 
@@ -51,6 +64,7 @@ impl std::fmt::Display for ReprocessMode {
         match self {
             ReprocessMode::Full => write!(f, "full"),
             ReprocessMode::EntitiesOnly => write!(f, "entities"),
+            ReprocessMode::MergeOnly => write!(f, "merge"),
         }
     }
 }
@@ -61,6 +75,7 @@ impl std::str::FromStr for ReprocessMode {
         match s.to_ascii_lowercase().as_str() {
             "full" | "reconvert" | "re-convert" => Ok(ReprocessMode::Full),
             "entities" | "entities_only" | "extract" => Ok(ReprocessMode::EntitiesOnly),
+            "merge" | "merge_only" | "kg_only" => Ok(ReprocessMode::MergeOnly),
             other => Err(format!("unknown reprocess mode '{other}'")),
         }
     }
@@ -190,6 +205,18 @@ mod tests {
     #[test]
     fn entities_mode_reuses_markdown() {
         assert!(!ReprocessMode::EntitiesOnly.restart_from_scratch());
+        assert!(!ReprocessMode::EntitiesOnly.merge_only());
+    }
+
+    #[test]
+    fn merge_only_skips_extract_and_vision() {
+        assert!(!ReprocessMode::MergeOnly.restart_from_scratch());
+        assert!(ReprocessMode::MergeOnly.merge_only());
+        assert_eq!(
+            "merge_only".parse::<ReprocessMode>().unwrap(),
+            ReprocessMode::MergeOnly
+        );
+        assert_eq!(ReprocessMode::MergeOnly.to_string(), "merge");
     }
 
     #[test]

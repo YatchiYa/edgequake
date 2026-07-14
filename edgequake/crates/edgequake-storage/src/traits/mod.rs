@@ -48,5 +48,8 @@ pub use graph_scan_ops::{
     NodeListFilter, PagedGraphResult,
 };
 pub use kv::{kv_key_matches_like, KVStorage};
-pub use vector::{MetadataFilter, VectorSearchResult, VectorStorage};
+pub use vector::{
+    vector_upsert_chunk_size, MetadataFilter, VectorSearchResult, VectorStorage,
+    DEFAULT_VECTOR_UPSERT_CHUNK,
+};
 pub use workspace_vector::{WorkspaceVectorConfig, WorkspaceVectorRegistry};

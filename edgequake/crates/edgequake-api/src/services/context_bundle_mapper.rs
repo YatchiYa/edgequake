@@ -443,6 +443,7 @@ mod tests {
             chunk_index: None,
             page_start: None,
             page_end: None,
+            modality: None,
         });
 
         let bundle = map_query_context_to_bundle(

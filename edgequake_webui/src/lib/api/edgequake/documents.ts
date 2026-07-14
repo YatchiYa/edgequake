@@ -3,10 +3,10 @@
  */
 
 import { getRuntimeServerBaseUrl } from "@/lib/runtime-config";
-import { api } from "../client";
-import { buildQueryString, withQuery } from "../query-params";
 import { postMultipart, type MultipartUploadProgress } from "@/lib/upload/multipart-upload-client";
 import { buildPdfUploadFormData } from "@/lib/upload/pdf-upload-form-data";
+import { api } from "../client";
+import { buildQueryString, withQuery } from "../query-params";
 
 import type {
     Document,
@@ -263,6 +263,8 @@ export async function cancelPdfProcessing(
 export interface PdfContentResponse {
   /** PDF ID */
   pdf_id: string;
+  /** Linked document ID (mm-asset scope for the markdown viewer) */
+  document_id?: string | null;
   /** Original filename */
   filename: string;
   /** File size in bytes */
@@ -320,12 +322,249 @@ export function getDocumentMarkdownDownloadUrl(documentId: string): string {
   return `${baseUrl}/api/v1/documents/${documentId}/download/markdown`;
 }
 
+/**
+ * URL for a vision page / chart-crop PNG under the document.
+ * Prefer stable asset-id REST (`…/assets/{asset_id}`); path form remains for splat.
+ */
+export function getDocumentMmAssetUrl(documentId: string, assetRelPath: string): string {
+  const baseUrl = getRuntimeServerBaseUrl();
+  const cleaned = assetRelPath.replace(/^\/+/, "");
+  const stem = cleaned.split("/").pop()?.replace(/\.[^.]+$/, "") ?? cleaned;
+  if (stem && !stem.includes("..")) {
+    return `${baseUrl}/api/v1/documents/${documentId}/assets/${encodeURIComponent(stem)}`;
+  }
+  return `${baseUrl}/api/v1/documents/${documentId}/mm-assets/${cleaned}`;
+}
+
+/** List persisted mm-asset summaries for a document (no binary). */
+export async function listDocumentAssets(
+  documentId: string,
+): Promise<{ document_id: string; assets: Array<{ asset_id?: string; path?: string }> }> {
+  return api.get(`/documents/${documentId}/assets`);
+}
+
+/**
+ * First principles: render page PNGs from the linked PDF, persist mm-assets,
+ * and enrich markdown figure headings with `![…](assets/…)`.
+ */
+export async function includeDocumentAssetsFromPdf(
+  documentId: string,
+): Promise<{
+  document_id: string;
+  pages_rendered: number;
+  assets_persisted: number;
+  markdown_updated: boolean;
+}> {
+  return api.post(`/documents/${documentId}/assets/include-from-pdf`);
+}
+
+/** True when href already points at durable mm-assets (relative or API). */
+export function isDurableMmAssetHref(href: string): boolean {
+  const u = href.trim();
+  return (
+    u.startsWith("assets/") ||
+    u.includes("/mm-assets/") ||
+    /\/documents\/[^/]+\/assets\//.test(u)
+  );
+}
+
+/**
+ * Prefer existing figure/chart/table crops — never invent missing asset paths.
+ * Inventing `page-NNNN-fig-01.png` when the file was never extracted causes broken images.
+ */
+function preferredViewerAsset(page: number, chunk: string): string | null {
+  const durable = chunk.match(
+    /!?\[[^\]]*\]\((assets\/page-\d{4}-(?:fig-\d{2}|chart|table-\d{2})\.png)\)/i,
+  );
+  if (durable?.[1]) return durable[1];
+  void page;
+  return null;
+}
+
+/**
+ * Bind VLM-hallucinated / empty figure links to figure/chart crops using
+ * `<!-- edgequake-page:N -->` markers (DRY with edgequake_pdf::bind_figure_images_to_page_asset).
+ * Also injects images after `Figure N` headings that lack a nearby image.
+ * Never invents full-page `page-NNNN.png` images (PDF pane already shows pages).
+ */
+export function bindFigureImagesToPageAssets(markdown: string): string {
+  if (!markdown) return markdown;
+  const pageRe = /<!--\s*edgequake-page:(\d+)\s*-->/g;
+  const markers: { index: number; page: number }[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = pageRe.exec(markdown)) !== null) {
+    markers.push({ index: m.index, page: parseInt(m[1], 10) });
+  }
+  if (markers.length === 0) {
+    const asset = preferredViewerAsset(1, markdown);
+    if (!asset) return markdown;
+    return injectFigureLocalImages(
+      markdown.replace(
+        /!\[([^\]]*)\]\(([^)]*)\)/g,
+        (full, alt: string, href: string) => {
+          if (isDurableMmAssetHref(href)) return full;
+          return `![${alt}](${asset})`;
+        },
+      ),
+      asset,
+    );
+  }
+
+  let out = "";
+  for (let i = 0; i < markers.length; i++) {
+    const start = markers[i].index;
+    const end = i + 1 < markers.length ? markers[i + 1].index : markdown.length;
+    const page = markers[i].page;
+    const chunk = markdown.slice(start, end);
+    const asset = preferredViewerAsset(page, chunk);
+    if (!asset) {
+      out += chunk;
+      continue;
+    }
+    const bound = chunk.replace(
+      /!\[([^\]]*)\]\(([^)]*)\)/g,
+      (full, alt: string, href: string) => {
+        if (isDurableMmAssetHref(href)) return full;
+        return `![${alt || "Page image"}](${asset})`;
+      },
+    );
+    out += injectFigureLocalImages(bound, asset);
+  }
+  // Prefix before first page marker
+  if (markers[0].index > 0) {
+    out = markdown.slice(0, markers[0].index) + out;
+  }
+  return out;
+}
+
+function isFigureHeadingLine(line: string): boolean {
+  const stripped = line
+    .trim()
+    .replace(/^#+\s*/, "")
+    .replace(/^[*_]+/, "")
+    .replace(/[*_]+$/, "")
+    .trim();
+  return /^figure\s+\d/i.test(stripped);
+}
+
+function figureHeadingAlt(line: string): string {
+  const alt = line
+    .trim()
+    .replace(/^#+\s*/, "")
+    .replace(/^\*+|\*+$/g, "")
+    .trim()
+    .slice(0, 120)
+    .replaceAll("[", "")
+    .replaceAll("]", "");
+  return alt || "Figure";
+}
+
+/** Inject `![Figure…](assets/…)` after figure headings without a nearby image. */
+export function injectFigureLocalImages(
+  markdown: string,
+  assetRelPath: string,
+): string {
+  if (!markdown.trim()) return markdown;
+  const lines = markdown.split("\n");
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    out.push(line);
+    if (!isFigureHeadingLine(line)) continue;
+    let j = i + 1;
+    while (j < lines.length && lines[j].trim() === "") j++;
+    const next = j < lines.length ? lines[j].trimStart() : "";
+    const hasNearby =
+      next.startsWith("![") ||
+      next.includes("](assets/") ||
+      next.startsWith("<drawing");
+    if (!hasNearby) {
+      out.push("");
+      out.push(`![${figureHeadingAlt(line)}](${assetRelPath})`);
+    }
+  }
+  return out.join("\n");
+}
+
+/** Strip analyze-only `<drawing …/>` tags so they never leak into the viewer. */
+export function stripDrawingTags(markdown: string): string {
+  return markdown.replace(/<drawing\b[^>]*\/?\s*>/gi, "").replace(/\n{3,}/g, "\n\n");
+}
+
+/**
+ * Rewrite `![alt](assets/…)` to authenticated API URLs for the markdown viewer.
+ * Also binds hallucinated figure hrefs / injects figure-local images when page markers exist.
+ */
+export function rewriteMarkdownMmAssetUrls(
+  markdown: string,
+  documentId: string | null | undefined,
+): string {
+  if (!markdown || !documentId) return markdown;
+  const bound = stripDrawingTags(bindFigureImagesToPageAssets(markdown));
+  return bound.replace(
+    /!\[([^\]]*)\]\((assets\/[^)\s]+)\)/g,
+    (_m, alt: string, rel: string) => `![${alt}](${getDocumentMmAssetUrl(documentId, rel)})`,
+  );
+}
+
 export async function deleteDocument(documentId: string): Promise<void> {
   return api.delete<void>(`/documents/${documentId}`);
 }
 
 export async function deleteAllDocuments(): Promise<{ deleted_count: number }> {
   return api.delete<{ deleted_count: number }>("/documents");
+}
+
+// ---------------------------------------------------------------------------
+// Deletion Impact Analysis (SPEC-050)
+// ---------------------------------------------------------------------------
+
+/**
+ * Pre-delete impact analysis — shows what will be removed without actually deleting.
+ *
+ * @implements SPEC-050: Show impact before confirm.
+ * @implements SPEC-050/EC-2: Shared entity semantics.
+ */
+export interface DeletionImpact {
+  /** Document ID being analysed. */
+  document_id: string;
+  /** Number of chunks (KV records) that would be deleted. */
+  chunks_to_delete: number;
+  /**
+   * Entities that would be fully removed (no other source documents).
+   * SPEC-050/EC-1: These entities exist ONLY in this document → DELETED.
+   */
+  entities_to_remove: number;
+  /**
+   * Entities that would be updated (still referenced by other documents).
+   * SPEC-050/EC-2: These entities SURVIVE with pruned source_ids.
+   * They are NOT deleted — they persist in the graph with fewer supporting sources.
+   */
+  entities_to_update: number;
+  /**
+   * Relationships that would be fully removed.
+   * Includes exclusive relationships AND those whose endpoint entity is removed.
+   */
+  relationships_to_remove: number;
+  /**
+   * Relationships that would be updated (still referenced by other documents).
+   * SPEC-050/EC-6: These relationships SURVIVE with pruned source_ids.
+   */
+  relationships_to_update: number;
+  /** Always true — this endpoint is read-only. */
+  preview_only: boolean;
+}
+
+/**
+ * Fetch deletion impact for a document without deleting it.
+ *
+ * @implements SPEC-050: Pre-delete impact analysis.
+ * @param documentId The document to analyse.
+ */
+export async function getDeletionImpact(
+  documentId: string,
+): Promise<DeletionImpact> {
+  return api.get<DeletionImpact>(`/documents/${documentId}/deletion-impact`);
 }
 
 /**

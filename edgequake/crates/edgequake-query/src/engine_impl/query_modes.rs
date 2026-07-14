@@ -232,6 +232,99 @@ mod tests {
         assert_eq!(ctx.chunks[0].id, "chunk_t1");
     }
 
+    /// MV-32: numeric/chart queries pre-filter `modality=chart` before vector rank.
+    #[tokio::test]
+    async fn test_query_naive_prefers_chart_modality_for_numeric_query() {
+        std::env::set_var("EDGEQUAKE_CHART_MODALITY_FILTER", "true");
+        let storage = Arc::new(MemoryVectorStorage::new("test", 4));
+
+        storage
+            .upsert(&[
+                (
+                    "prose-chunk".to_string(),
+                    vec![0.99, 0.01, 0.0, 0.0],
+                    serde_json::json!({
+                        "type": "chunk",
+                        "content": "The company overview discusses revenue trends in general terms."
+                    }),
+                ),
+                (
+                    "chart-chunk".to_string(),
+                    vec![0.95, 0.05, 0.0, 0.0],
+                    serde_json::json!({
+                        "type": "chunk",
+                        "modality": "chart",
+                        "content": "Q4 Revenue: 42 million USD"
+                    }),
+                ),
+            ])
+            .await
+            .unwrap();
+
+        let engine = make_engine(storage);
+        let embeddings = QueryEmbeddings {
+            query: vec![1.0, 0.0, 0.0, 0.0],
+            high_level: vec![1.0, 0.0, 0.0, 0.0],
+            low_level: vec![1.0, 0.0, 0.0, 0.0],
+        };
+
+        let ctx = engine
+            .query_naive("What was Q4 revenue in USD?", &embeddings, None, None, 5)
+            .await
+            .expect("query_naive must not error");
+
+        assert!(!ctx.chunks.is_empty());
+        assert_eq!(ctx.chunks[0].id, "chart-chunk");
+        assert!(ctx.chunks[0].content.contains("42"));
+        assert_eq!(ctx.chunks[0].modality.as_deref(), Some("chart"));
+        assert_eq!(
+            ctx.metadata
+                .get("chart_modality_filter")
+                .and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            ctx.metadata
+                .get("retrieved_chart_chunks")
+                .and_then(|v| v.as_u64()),
+            Some(1)
+        );
+        std::env::remove_var("EDGEQUAKE_CHART_MODALITY_FILTER");
+    }
+
+    #[tokio::test]
+    async fn test_query_naive_chart_filter_fail_open_without_chart_chunks() {
+        std::env::set_var("EDGEQUAKE_CHART_MODALITY_FILTER", "true");
+        let storage = Arc::new(MemoryVectorStorage::new("test", 4));
+        storage
+            .upsert(&[(
+                "prose-only".to_string(),
+                vec![1.0, 0.0, 0.0, 0.0],
+                serde_json::json!({
+                    "type": "chunk",
+                    "content": "Q4 revenue rose according to the annual report narrative."
+                }),
+            )])
+            .await
+            .unwrap();
+
+        let engine = make_engine(storage);
+        let embeddings = QueryEmbeddings {
+            query: vec![1.0, 0.0, 0.0, 0.0],
+            high_level: vec![1.0, 0.0, 0.0, 0.0],
+            low_level: vec![1.0, 0.0, 0.0, 0.0],
+        };
+
+        let ctx = engine
+            .query_naive("What was Q4 revenue?", &embeddings, None, None, 5)
+            .await
+            .expect("query_naive must not error");
+
+        assert_eq!(ctx.chunks.len(), 1);
+        assert_eq!(ctx.chunks[0].id, "prose-only");
+        std::env::remove_var("EDGEQUAKE_CHART_MODALITY_FILTER");
+    }
+
     /// Default-path hybrid must use the same implementation as workspace override storage.
     #[tokio::test]
     async fn test_default_and_workspace_hybrid_use_same_retrieval() {

@@ -78,6 +78,14 @@ impl MetadataFilter {
             param_offset += 1;
         }
 
+        if self.modalities.is_some() {
+            conditions.push(format!(
+                "{}->>'modality' = ANY(${param_offset}::text[])",
+                q("metadata")
+            ));
+            param_offset += 1;
+        }
+
         MetadataFilterSql {
             conditions,
             next_param: param_offset,
@@ -96,13 +104,18 @@ mod tests {
             tenant_id: Some("t1".into()),
             workspace_id: Some("ws1".into()),
             vector_type: Some("chunk".into()),
+            modalities: Some(vec!["chart".into()]),
         };
         let sql = mf.build_sql(true, 2);
-        assert_eq!(sql.conditions.len(), 5);
+        assert_eq!(sql.conditions.len(), 6);
         assert!(sql.conditions[0].contains("ANY($2"));
         assert!(sql.conditions[1].contains("document_id"));
         assert!(sql.conditions[4].contains("metadata->>'type'"));
-        assert_eq!(sql.next_param, 7);
+        assert!(sql
+            .conditions
+            .iter()
+            .any(|c| c.contains("metadata->>'modality'")));
+        assert_eq!(sql.next_param, 8);
     }
 
     #[test]

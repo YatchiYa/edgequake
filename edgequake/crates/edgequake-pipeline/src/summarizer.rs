@@ -44,7 +44,10 @@ impl Default for SummarizerConfig {
             target_length: 512,
             preserve_entities: true,
             max_tokens_per_chunk: 4000,
-            force_llm_summary_threshold: 4,
+            // SPEC-047 P7a / LightRAG DEFAULT_FORCE_LLM_SUMMARY_ON_MERGE=8
+            // (SSOT for the merger gate lives in merger::description_merge;
+            // keep this aligned — do not import merger here to avoid a cycle.)
+            force_llm_summary_threshold: 8,
         }
     }
 }

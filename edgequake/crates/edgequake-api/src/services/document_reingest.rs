@@ -123,22 +123,24 @@ pub async fn delete_document_for_reingestion(
     )
     .await?;
 
+    // SPEC-047 P1a: SSOT wipe via VectorStorage::delete_by_document (column + JSONB + id prefix).
+    if let Err(e) = workspace_vector_storage
+        .delete_by_document(document_id)
+        .await
+    {
+        tracing::warn!(
+            document_id = %document_id,
+            error = %e,
+            "Failed to delete document vectors during re-ingestion"
+        );
+    }
+
     let chunk_prefix = format!("{}-chunk-", document_id);
     let chunk_ids = state
         .storage
         .kv_storage
         .keys_with_prefix(&chunk_prefix)
         .await?;
-
-    if !chunk_ids.is_empty() {
-        if let Err(e) = workspace_vector_storage.delete(&chunk_ids).await {
-            tracing::warn!(
-                document_id = %document_id,
-                error = %e,
-                "Failed to delete chunk embeddings during re-ingestion"
-            );
-        }
-    }
 
     let mut keys_to_delete: Vec<String> = chunk_ids;
     keys_to_delete.push(metadata_key);

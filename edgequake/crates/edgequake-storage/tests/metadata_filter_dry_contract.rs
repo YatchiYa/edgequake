@@ -9,6 +9,7 @@ fn build_sql_emits_condition_per_active_field() {
         tenant_id: Some("t1".into()),
         workspace_id: Some("ws1".into()),
         vector_type: Some("chunk".into()),
+        modalities: None,
     };
 
     let with_ids = mf.build_sql(true, 2);
@@ -29,6 +30,22 @@ fn build_sql_emits_condition_per_active_field() {
 
     let without_ids = mf.build_sql(false, 2);
     assert_eq!(without_ids.conditions.len(), 4);
+}
+
+#[test]
+fn build_sql_emits_modality_condition_with_alias() {
+    let mf = MetadataFilter {
+        vector_type: Some("chunk".into()),
+        modalities: Some(vec!["chart".into(), "table".into()]),
+        ..Default::default()
+    };
+    let sql = mf.build_sql_with_alias(false, 2, Some("v"));
+    assert!(
+        sql.conditions
+            .iter()
+            .any(|c| c.contains("v.metadata->>'modality'")),
+        "aliased SQL must filter modality"
+    );
 }
 
 #[test]

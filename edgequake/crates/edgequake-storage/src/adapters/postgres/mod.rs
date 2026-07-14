@@ -38,6 +38,7 @@ mod conversation;
 mod graph;
 mod id_allocation;
 mod kv;
+mod mm_asset_storage_impl;
 mod original_storage_impl;
 mod pdf_list_query;
 mod pdf_storage_impl;
@@ -59,6 +60,7 @@ pub use conversation::PostgresConversationStorage;
 pub use graph::PostgresAGEGraphStorage;
 pub use id_allocation::{allocate_document_id, is_uuidv7};
 pub use kv::PostgresKVStorage;
+pub use mm_asset_storage_impl::PostgresMmAssetStorage;
 pub use original_storage_impl::PostgresOriginalStorage;
 pub use pdf_storage_impl::PostgresPdfStorage;
 #[allow(deprecated)]

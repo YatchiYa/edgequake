@@ -30,6 +30,7 @@ use crate::middleware::TenantContext;
 use crate::state::AppState;
 
 // Re-export DTOs from pipeline_types for backwards compatibility
+pub use crate::handlers::ingestion_types::PipelineActivityResponse;
 pub use crate::handlers::pipeline_types::{
     CancelPipelineResponse, EnhancedPipelineStatusResponse, PipelineMessageResponse,
     QueueMetricsResponse,
@@ -85,6 +86,71 @@ pub async fn get_pipeline_status(
         completed_tasks: stats.indexed as usize,
         failed_tasks: stats.failed as usize,
     }))
+}
+
+/// SPEC-048: Pipeline activity — Busy SSOT (working docs + processing tasks).
+#[utoipa::path(
+    get,
+    path = "/api/v1/pipeline/activity",
+    tag = "Pipeline",
+    responses(
+        (status = 200, description = "Pipeline activity", body = PipelineActivityResponse)
+    )
+)]
+pub async fn get_pipeline_activity(
+    State(state): State<AppState>,
+    tenant_ctx: TenantContext,
+) -> ApiResult<Json<PipelineActivityResponse>> {
+    use crate::handlers::ingestion_types::PipelineActivityTask;
+    use crate::services::document_metadata_scan::load_scoped_document_metadata;
+    use crate::services::progress_facade::{assemble_pipeline_activity, classify_activity_doc};
+    use crate::services::tenant_guard::has_full_tenant_context;
+    use edgequake_tasks::storage::{Pagination, TaskFilter};
+    use edgequake_tasks::TaskStatus;
+
+    let mut classified = Vec::new();
+    if has_full_tenant_context(&tenant_ctx) {
+        let metadata_values =
+            load_scoped_document_metadata(state.storage.kv_storage.as_ref(), &tenant_ctx).await?;
+        for value in metadata_values {
+            if let Some(obj) = value.as_object() {
+                if let Some(pair) = classify_activity_doc(obj) {
+                    classified.push(pair);
+                }
+            }
+        }
+    }
+
+    let mut activity_tasks = Vec::new();
+    let mut filter = TaskFilter::default();
+    if let Some(ref tid) = tenant_ctx.tenant_id {
+        if let Ok(u) = uuid::Uuid::parse_str(tid) {
+            filter.tenant_id = Some(u);
+        }
+    }
+    if let Some(ref wid) = tenant_ctx.workspace_id {
+        if let Ok(u) = uuid::Uuid::parse_str(wid) {
+            filter.workspace_id = Some(u);
+        }
+    }
+    filter.status = Some(TaskStatus::Processing);
+
+    let pagination = Pagination {
+        page: 1,
+        page_size: 100,
+        ..Pagination::default()
+    };
+    if let Ok(task_list) = state.tasks.storage.list_tasks(filter, pagination).await {
+        for task in task_list.tasks {
+            activity_tasks.push(PipelineActivityTask {
+                id: task.track_id.clone(),
+                kind: format!("{:?}", task.task_type).to_lowercase(),
+                document_id: None,
+            });
+        }
+    }
+
+    Ok(Json(assemble_pipeline_activity(classified, activity_tasks)))
 }
 
 /// Request cancellation of the current pipeline job.

@@ -83,6 +83,7 @@ fn text_chunk_from_kv(document_id: &str, idx: usize, content: String) -> TextChu
         section: None,
         page_start: None,
         page_end: None,
+        modality: None,
     }
 }
 

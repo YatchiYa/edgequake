@@ -118,15 +118,62 @@ export function formatGraphMergeStageMessage(message: string): string | null {
 export function resolveBannerStageProgress(
   documents: Document[],
 ): number | undefined {
-  let max: number | undefined;
+  return resolveBannerProgressMeta(documents)?.progress01;
+}
+
+const GRAPH_SAVE_STAGES = new Set([
+  'merging',
+  'storing',
+  'indexing',
+]);
+
+const EXTRACTION_STAGES = new Set([
+  'extracting',
+  'gleaning',
+  'chunking',
+]);
+
+/** i18n key for banner progress label — stage-specific (SPEC-048 polish). */
+export function bannerProgressLabelKey(stage?: string | null): string {
+  const s = (stage || '').toLowerCase();
+  if (GRAPH_SAVE_STAGES.has(s)) return 'pipeline.graphMergeProgress';
+  if (EXTRACTION_STAGES.has(s)) return 'pipeline.extractionProgress';
+  if (s === 'embedding') return 'pipeline.embeddingProgress';
+  if (s === 'converting' || s === 'preprocessing' || s === 'uploading') {
+    return 'pipeline.conversionProgress';
+  }
+  return 'pipeline.stageProgress';
+}
+
+export interface BannerProgressMeta {
+  progress01: number;
+  stage: string;
+  labelKey: string;
+}
+
+/**
+ * Pick the best determinate progress for the banner, with a stage-aware label.
+ * Prefer the document that owns the max progress so the label matches the bar.
+ */
+export function resolveBannerProgressMeta(
+  documents: Document[],
+): BannerProgressMeta | undefined {
+  let best: BannerProgressMeta | undefined;
 
   for (const doc of documents) {
     const value = doc.stage_progress;
     if (typeof value !== 'number' || value <= 0) {
       continue;
     }
-    max = max === undefined ? value : Math.max(max, value);
+    const stage = (doc.current_stage || doc.status || '').toLowerCase();
+    if (!best || value > best.progress01) {
+      best = {
+        progress01: value,
+        stage,
+        labelKey: bannerProgressLabelKey(stage),
+      };
+    }
   }
 
-  return max;
+  return best;
 }

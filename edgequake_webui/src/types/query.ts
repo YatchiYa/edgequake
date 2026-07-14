@@ -24,12 +24,14 @@ export function isQueryMode(value: string): value is QueryMode {
   return (QUERY_MODES as readonly string[]).includes(value);
 }
 
-/** Modes exposed in the query page mode selector (mix/bypass are API/advanced). */
+/** Modes exposed in the query page mode selector (full backend parity). */
 export const QUERY_MODES_SELECTOR = [
   "local",
   "global",
   "hybrid",
+  "mix",
   "naive",
+  "bypass",
 ] as const satisfies readonly QueryMode[];
 
 export type QueryModeSelectorOption = (typeof QUERY_MODES_SELECTOR)[number];

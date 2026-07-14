@@ -47,6 +47,9 @@ type ListedDocument = DocumentsResult["items"][number];
 function isDocumentActivelyProcessing(doc: ListedDocument): boolean {
   return (
     doc.status === "processing" ||
+    // SPEC-050 GAP-FIX: "pending" documents are queued — activate 2s polling
+    // so the row updates as soon as the worker picks them up.
+    doc.status === "pending" ||
     doc.current_stage === "processing" ||
     doc.current_stage === "converting" ||
     doc.current_stage === "preprocessing" ||
@@ -69,12 +72,27 @@ function isDocumentTransitioning(doc: ListedDocument): boolean {
 }
 
 function hasProcessingStatus(doc: ListedDocument): boolean {
+  // Terminal status wins — do not keep polling on a stale current_stage.
+  const status = (doc.status || "").toLowerCase();
+  if (
+    status === "completed" ||
+    status === "indexed" ||
+    status === "failed" ||
+    status === "cancelled" ||
+    status === "partial_failure" ||
+    status === "partial_success"
+  ) {
+    return false;
+  }
   return (
-    doc.status === "processing" ||
+    status === "processing" ||
     doc.current_stage === "chunking" ||
     doc.current_stage === "extracting" ||
     doc.current_stage === "embedding" ||
-    doc.current_stage === "indexing"
+    doc.current_stage === "indexing" ||
+    doc.current_stage === "converting" ||
+    doc.current_stage === "merging" ||
+    doc.current_stage === "storing"
   );
 }
 

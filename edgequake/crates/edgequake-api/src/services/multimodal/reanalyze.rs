@@ -112,10 +112,19 @@ pub async fn reanalyze_document_multimodal(
     )
     .await;
 
-    if let Some(err) = outcome.hard_error.as_ref() {
+    if crate::services::multimodal::should_abort_multimodal_hard_error(
+        outcome.hard_error.as_deref(),
+    ) {
+        let err = outcome.hard_error.as_deref().unwrap_or("unknown");
         return Err(ApiError::ValidationError(format!(
             "Multimodal analyze failed: {err}"
         )));
+    } else if let Some(err) = outcome.hard_error.as_ref() {
+        info!(
+            document_id = %params.document_id,
+            error = %err,
+            "Multimodal analyze hard error in degraded mode — continuing"
+        );
     }
 
     persist_document_content(&kv, &params.document_id, &outcome.markdown)
