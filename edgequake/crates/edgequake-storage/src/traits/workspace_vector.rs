@@ -133,6 +133,18 @@ pub trait WorkspaceVectorRegistry: Send + Sync {
     /// the cached instance. Useful for forcing re-initialization.
     async fn evict(&self, workspace_id: &Uuid);
 
+    /// Drop the underlying PostgreSQL vector table for a workspace.
+    ///
+    /// WHY: `evict()` only clears the in-memory cache. After `delete_workspace`,
+    /// the physical table `eq_{ns}_ws_{id}_vectors` would otherwise remain as an
+    /// orphan, consuming disk space and potentially causing confusion on re-create
+    /// (SPEC-054 fix for GitHub #297).
+    ///
+    /// Default is a no-op (memory backend has no physical table to drop).
+    async fn drop_workspace_table(&self, _workspace_id: &Uuid) -> Result<()> {
+        Ok(())
+    }
+
     /// Clear all cached instances.
     async fn clear_cache(&self);
 

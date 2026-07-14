@@ -485,6 +485,17 @@ pub(crate) async fn persist_api_key(
                 persist_api_key_pg(pool, security, record).await?;
             }
         } else {
+            // SPEC-054 / GitHub #294: Warn when API keys fall back to in-memory storage.
+            // WHY: In-memory storage is instance-local. On multi-instance deployments
+            // (ECS, Kubernetes, etc.) a key created on instance A cannot be validated by
+            // instance B, causing the "new key returns 401 while old key works" symptom.
+            // Fix: set DATABASE_URL to share API key storage across all instances.
+            tracing::warn!(
+                key_prefix = %record.prefix,
+                "SPEC-054/gh#294: API key persisted to in-memory (instance-local) store. \
+                 In multi-instance deployments this key will return 401 on other instances. \
+                 Fix: ensure DATABASE_URL is set so PostgreSQL is used as the auth backend."
+            );
             persist_api_key_kv(storage, record).await?;
         }
 

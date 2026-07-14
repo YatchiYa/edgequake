@@ -10,13 +10,13 @@ Triggered by typing in the graph node search bar (≥2 chars) while the graph is
 
 ## 5 WHY Root Cause
 
-| # | WHY | Evidence |
-|---|-----|---------|
-| 1 | `search_nodes` returns 503 | `admit_graph_materialization` → `try_acquire_owned()` — zero-wait immediate fail when all slots occupied (`search.rs:75`) |
-| 2 | All 4 slots occupied at search time | `stream_graph` holds `_materialize_guard` for the **entire SSE stream duration** (~5-10s), not just the initial DB fetch (`graph_stream.rs:78`) |
-| 3 | Multiple slots consumed simultaneously | React StrictMode double-mount + workspace switch + manual refetch = 2-3 concurrent `stream_graph` calls at page load; `get_popular_labels` takes a 4th |
-| 4 | Every keystroke fires a server search | FEAT0405 removed the `isTruncated` guard → `searchNodes` called on every debounced keystroke ≥2 chars (`graph-search.tsx:239`) |
-| 5 | Wrong semaphore class for search | `GraphMaterializationSemaphore` designed for O(V+E) full-graph scans (3 DB connections × concurrent streams). `search_nodes` is an O(log N) indexed btree lookup (1 connection, ≤50ms). Misclassification. |
+| #   | WHY                                    | Evidence                                                                                                                                                                                                   |
+| --- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `search_nodes` returns 503             | `admit_graph_materialization` → `try_acquire_owned()` — zero-wait immediate fail when all slots occupied (`search.rs:75`)                                                                                  |
+| 2   | All 4 slots occupied at search time    | `stream_graph` holds `_materialize_guard` for the **entire SSE stream duration** (~5-10s), not just the initial DB fetch (`graph_stream.rs:78`)                                                            |
+| 3   | Multiple slots consumed simultaneously | React StrictMode double-mount + workspace switch + manual refetch = 2-3 concurrent `stream_graph` calls at page load; `get_popular_labels` takes a 4th                                                     |
+| 4   | Every keystroke fires a server search  | FEAT0405 removed the `isTruncated` guard → `searchNodes` called on every debounced keystroke ≥2 chars (`graph-search.tsx:239`)                                                                             |
+| 5   | Wrong semaphore class for search       | `GraphMaterializationSemaphore` designed for O(V+E) full-graph scans (3 DB connections × concurrent streams). `search_nodes` is an O(log N) indexed btree lookup (1 connection, ≤50ms). Misclassification. |
 
 ## Root Cause Statement (First Principles)
 
