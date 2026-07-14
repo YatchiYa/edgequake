@@ -69,8 +69,7 @@ mod tests {
         assert!(vision_figure_analyze_progress_01(0, 10) >= 0.98);
         assert!(vision_figure_analyze_progress_01(10, 10) <= 0.995);
         assert!(
-            vision_figure_analyze_progress_01(5, 10)
-                > vision_figure_analyze_progress_01(2, 10)
+            vision_figure_analyze_progress_01(5, 10) > vision_figure_analyze_progress_01(2, 10)
         );
     }
 

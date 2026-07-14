@@ -91,11 +91,11 @@ export function BulkDeleteConfirmDialog({
                 <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
                   {t('documents.bulkDeleteDialog.documentsLabel', 'Documents to delete')}
                 </div>
-                <ScrollArea className={count > 5 ? 'h-32' : undefined}>
+                <ScrollArea className={count > 5 ? 'h-32 min-w-0 w-full' : 'min-w-0 w-full'}>
                   {preview.map((doc) => (
                     <div
                       key={doc.id}
-                      className="flex items-center gap-2 py-1 text-sm"
+                      className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 py-1 text-sm"
                       data-testid={`bulk-delete-item-${doc.id}`}
                     >
                       <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />

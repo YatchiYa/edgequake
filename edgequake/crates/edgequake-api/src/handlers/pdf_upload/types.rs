@@ -104,10 +104,7 @@ mod tests {
             enable_vision: true,
             ..Default::default()
         };
-        assert_eq!(
-            opts.resolved_process_options(None).as_deref(),
-            Some("i")
-        );
+        assert_eq!(opts.resolved_process_options(None).as_deref(), Some("i"));
     }
 
     #[test]

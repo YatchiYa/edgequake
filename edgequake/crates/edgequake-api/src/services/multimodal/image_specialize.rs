@@ -349,10 +349,8 @@ pub async fn specialize_image_analysis(
                 }
                 // Ensure chunk renderer uses [Chart Name] even when classify said Illustration.
                 out.image_type = "Chart".into();
-                out.description = merge_pass_a_dump_when_sparse(
-                    &chart_analysis_to_description(&chart),
-                    ctx,
-                );
+                out.description =
+                    merge_pass_a_dump_when_sparse(&chart_analysis_to_description(&chart), ctx);
                 return out;
             }
             Err(e) => {
@@ -382,10 +380,8 @@ pub async fn specialize_image_analysis(
                 if !figure.image_type.trim().is_empty() {
                     let _ = figure.image_type;
                 }
-                out.description = merge_pass_a_dump_when_sparse(
-                    &figure_analysis_to_description(&figure),
-                    ctx,
-                );
+                out.description =
+                    merge_pass_a_dump_when_sparse(&figure_analysis_to_description(&figure), ctx);
                 return out;
             }
             Err(e) => {

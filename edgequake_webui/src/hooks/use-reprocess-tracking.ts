@@ -1,25 +1,29 @@
 /**
  * @module useReprocessTracking
  * @description Tracks in-progress reprocess operations so DocumentManager can
- * show IngestionProgressPanel per reprocessed document — identical feedback to a
- * fresh upload (SPEC-050-REPROCESS).
+ * show upload-parity progress panels per reprocessed document.
  *
  * WHY (First Principles):
- *   Fresh upload → UploadingFile state → IngestionProgressPanel (stages, cost, ETA, cancel)
- *   Reprocess     → No UploadingFile entry → only ActiveRunsPanel (compact stepper)
+ *   Fresh upload → UploadingFile { trackId: <task-uuid>, isPdf } → ProgressPanelRow
+ *   Reprocess     → ReprocessEntry { documentId, trackId: "reprocess_...", isPdf, mode }
  *
- *   The gap: after reprocess confirm, the user has NO dedicated stage panel.
- *   Fix: maintain a lightweight Map of { documentName, trackId } entries and expose
- *   them for IngestionProgressPanel rendering. When the document reaches a terminal
- *   state the entry is automatically pruned.
+ *   Critical bug fixed here:
+ *   - POST /documents/reprocess returns `track_id = "reprocess_YYYYMMDD_..."` (batch ID)
+ *   - After 2s the worker OVERWRITES `document.track_id` with the actual task UUID
+ *   - Old code keyed off the batch ID → pruneTerminalReprocessEntries never found the
+ *     document (wrong track_id) → panels never dismissed
+ *   - Old code passed the batch ID to IngestionProgressPanel → no WS events → blank panel
+ *
+ *   Fix: store `documentId` (stable, never changes) and use it for:
+ *     1. Document lookup in pruneTerminalReprocessEntries
+ *     2. Deriving the LIVE track_id from the documents cache in the render layer
  *
  * Design (SRP / DIP):
  *   - This hook owns ONLY the state for active reprocess progress entries.
- *   - It does NOT own rendering (IngestionProgressPanel is rendered by the caller).
- *   - It does NOT own the reprocess mutation (useDocumentMutations fires the callback).
+ *   - It does NOT own rendering (ProgressPanelRow is rendered by the caller).
  *   - Cleanup is driven by the documents list from the existing useDocumentQueries.
  *
- * @implements SPEC-050-REPROCESS: Reprocess feedback parity with fresh upload.
+ * @implements SPEC-051: Reprocess progress parity with fresh upload.
  */
 'use client';
 
@@ -35,44 +39,74 @@ import { useCallback, useState } from 'react';
 // ---------------------------------------------------------------------------
 
 /**
- * A single in-progress reprocess entry.
+ * Metadata about a reprocess in progress.
  */
 export interface ReprocessEntry {
-  /** Human-readable document name shown in IngestionProgressPanel. */
+  /**
+   * Stable document ID — never changes even after the worker rotates track_id.
+   * Used for document lookup in prune logic and the render layer.
+   */
+  documentId: string;
+  /** Human-readable document name shown in the progress panel. */
   documentName: string;
-  /** The new task tracking ID returned by POST /documents/reprocess. */
+  /**
+   * Batch track_id from POST /documents/reprocess response ("reprocess_...").
+   * Used as Map key for deduplication. NOT passed to progress components —
+   * callers must derive the live track_id from the documents cache instead.
+   */
   trackId: string;
+  /** True when source_type is "pdf". Drives PdfUploadProgress vs IngestionProgressPanel. */
+  isPdf: boolean;
+  /**
+   * Reprocess mode: "full" | "entities" | "merge".
+   * "full" + isPdf → PdfUploadProgress (shows PDF conversion phases).
+   * All others → IngestionProgressPanel.
+   */
+  mode: string;
+}
+
+/**
+ * Options passed when adding a reprocess entry.
+ */
+export interface AddReprocessEntryOptions {
+  /** Stable document ID. Required. */
+  documentId: string;
+  /** True when source_type is "pdf". */
+  isPdf?: boolean;
+  /** Reprocess mode. Defaults to "entities". */
+  mode?: string;
 }
 
 /**
  * Return type for useReprocessTracking.
  */
 export interface UseReprocessTrackingReturn {
-  /**
-   * All currently-active reprocess entries (unordered).
-   * Render IngestionProgressPanel for each one.
-   */
+  /** All currently-active reprocess entries (unordered). */
   reprocessEntries: ReprocessEntry[];
 
   /**
    * Add a new reprocess entry.
-   * Called from the onReprocessTriggered callback in useDocumentMutations.
-   * Idempotent: duplicate trackIds are de-duplicated.
+   * Idempotent: duplicate documentIds are de-duplicated.
+   *
+   * @param documentName - Display name for the progress panel.
+   * @param trackId      - Batch track_id from the reprocess API response.
+   * @param options      - documentId (required), isPdf, mode.
    */
-  addReprocessEntry: (documentName: string, trackId: string) => void;
+  addReprocessEntry: (
+    documentName: string,
+    trackId: string,
+    options: AddReprocessEntryOptions,
+  ) => void;
 
   /**
-   * Explicitly remove a single entry (e.g. on IngestionProgressPanel.onComplete).
+   * Explicitly remove a single entry by its batch trackId.
+   * Removal is deferred by 3s so the user sees the terminal state.
    */
   removeReprocessEntry: (trackId: string) => void;
 
   /**
    * Prune entries whose backing document has reached a terminal state.
-   * Call this in the same useEffect that drives pruneTerminalUploads.
-   *
-   * WHY: IngestionProgressPanel's onComplete fires reliably for the "completed"
-   * state, but for error/cancelled paths the panel may not fire onFailed.
-   * Pruning from the documents list is the safety net.
+   * Uses documentId (not trackId) for lookup — survives track_id rotation by worker.
    */
   pruneTerminalReprocessEntries: (docs: Document[]) => void;
 }
@@ -81,46 +115,31 @@ export interface UseReprocessTrackingReturn {
 // Hook
 // ---------------------------------------------------------------------------
 
-/**
- * Tracks in-progress reprocess operations for IngestionProgressPanel display.
- *
- * Usage:
- * ```tsx
- * const { reprocessEntries, addReprocessEntry, removeReprocessEntry, pruneTerminalReprocessEntries }
- *   = useReprocessTracking();
- *
- * // Wire addReprocessEntry into useDocumentMutations:
- * useDocumentMutations({ onReprocessTriggered: addReprocessEntry });
- *
- * // Prune when documents update:
- * useEffect(() => pruneTerminalReprocessEntries(documents), [documents]);
- *
- * // Render:
- * {reprocessEntries.map(e => (
- *   <IngestionProgressPanel
- *     key={e.trackId}
- *     trackId={e.trackId}
- *     documentName={e.documentName}
- *     compact
- *     onComplete={() => removeReprocessEntry(e.trackId)}
- *     onFailed={() => removeReprocessEntry(e.trackId)}
- *   />
- * ))}
- * ```
- */
 export function useReprocessTracking(): UseReprocessTrackingReturn {
-  // Use a Map internally for O(1) de-dup and removal; expose as array for rendering.
   const [entries, setEntries] = useState<Map<string, ReprocessEntry>>(
     () => new Map(),
   );
 
   const addReprocessEntry = useCallback(
-    (documentName: string, trackId: string) => {
+    (
+      documentName: string,
+      trackId: string,
+      options: AddReprocessEntryOptions,
+    ) => {
       setEntries((prev) => {
-        // Idempotent: don't add if already tracking this trackId.
-        if (prev.has(trackId)) return prev;
+        // Idempotent by documentId — handles re-trigger without duplicate panels.
+        const alreadyTracked = [...prev.values()].some(
+          (e) => e.documentId === options.documentId,
+        );
+        if (alreadyTracked) return prev;
         const next = new Map(prev);
-        next.set(trackId, { documentName, trackId });
+        next.set(trackId, {
+          documentId: options.documentId,
+          documentName,
+          trackId,
+          isPdf: options.isPdf ?? false,
+          mode: options.mode ?? 'entities',
+        });
         return next;
       });
     },
@@ -128,10 +147,7 @@ export function useReprocessTracking(): UseReprocessTrackingReturn {
   );
 
   const removeReprocessEntry = useCallback((trackId: string) => {
-    // SPEC-050-REPROCESS: Keep completed/failed panels visible for 3 seconds so
-    // the user can see the final state (same pattern as upload progress panels).
-    // WHY: Without this delay, the panel disappears instantly when processing
-    // completes quickly (< 1s on fast hardware), giving the user no feedback.
+    // Keep completed/failed panels visible for 3s (same pattern as upload).
     setTimeout(() => {
       setEntries((prev) => {
         if (!prev.has(trackId)) return prev;
@@ -144,19 +160,17 @@ export function useReprocessTracking(): UseReprocessTrackingReturn {
 
   const pruneTerminalReprocessEntries = useCallback((docs: Document[]) => {
     if (!docs.length) return;
-    // Collect terminal trackIds without mutating state inside the updater,
-    // then schedule deferred removal for each. This avoids calling setEntries
-    // inside a setEntries updater (which is prohibited in React).
     setEntries((prev) => {
       if (prev.size === 0) return prev;
-      for (const [trackId] of prev) {
-        const match = docs.find((d) => d.track_id === trackId);
+      for (const [trackId, entry] of prev) {
+        // FIX: look up by documentId, not by track_id.
+        // WHY: the worker overwrites document.track_id with the actual task UUID
+        // after 2s. Looking up by the original "reprocess_..." batch track_id
+        // would never find the document → panels stuck forever.
+        const match = docs.find((d) => d.id === entry.documentId);
         if (!match) continue;
         const displayStatus = getDocumentDisplayStatus(match);
         if (isTerminalStatus(displayStatus)) {
-          // Defer removal to maintain the 3-second visibility window.
-          // Use a closure-captured ref so this is safe even if the component
-          // re-renders between now and the timeout firing.
           const captured = trackId;
           setTimeout(() => {
             setEntries((p) => {
@@ -168,7 +182,7 @@ export function useReprocessTracking(): UseReprocessTrackingReturn {
           }, 3000);
         }
       }
-      return prev; // Synchronous state is unchanged; setTimeout handles removal.
+      return prev;
     });
   }, []);
 

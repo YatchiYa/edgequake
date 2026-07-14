@@ -282,7 +282,10 @@ pub async fn delete_document(
     let deletion_track_id = Uuid::new_v4().to_string();
 
     // SPEC-050: Broadcast deletion started so the frontend can show "Deleting…"
-    state.tasks.progress_broadcaster.deletion_started(&document_id, &deletion_track_id);
+    state
+        .tasks
+        .progress_broadcaster
+        .deletion_started(&document_id, &deletion_track_id);
 
     // SPEC-028: Collect chunk IDs for vector storage deletion
     // Clone chunk_ids before workspace_vector_storage operations

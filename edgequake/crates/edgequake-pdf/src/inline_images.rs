@@ -37,9 +37,8 @@ pub struct InlineImageRef {
 ///
 /// Allow `>` inside quoted attribute values (Pass A captions often embed
 /// `<sup>1</sup>` / HTML). A naïve `[^>]*` regex misses Figure 1 on papers.
-static DRAWING_TAG_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"(?i)<drawing\b(?:[^>"']|"[^"]*"|'[^']*')*\s*/>"#).unwrap()
-});
+static DRAWING_TAG_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?i)<drawing\b(?:[^>"']|"[^"]*"|'[^']*')*\s*/>"#).unwrap());
 
 static DRAWING_ID_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(?i)\bid="([^"]+)""#).unwrap());
 

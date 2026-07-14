@@ -12,15 +12,14 @@
  */
 'use client';
 
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { FileText, RefreshCw, SkipForward } from 'lucide-react';
@@ -171,9 +170,9 @@ export function DuplicateUploadDialog({
           </div>
         )}
 
-        {/* File list */}
-        <ScrollArea className="max-h-64">
-          <div className="space-y-3 pr-4">
+        {/* File list — min-w-0 w-full override CSS Grid item min-width:auto */}
+        <ScrollArea className="max-h-64 min-w-0 w-full">
+          <div className="w-full space-y-3 pr-4">
             {decisionEntries.map((entry) => (
               <DuplicateRow
                 key={entry.existingDocId}
@@ -228,9 +227,11 @@ function DuplicateRow({ entry, onDecision }: DuplicateRowProps) {
   const isReplace = entry.decision === 'replace';
 
   return (
-    <div className="flex items-start gap-3 p-3 rounded-lg border bg-muted/30">
-      <FileText className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
-      <div className="flex-1 min-w-0">
+    // Grid: auto | minmax(0,1fr) | auto — minmax(0,1fr) is bounded to
+    // (container - icon - buttons), preventing CSS Grid min-width:auto cascade.
+    <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 rounded-lg border bg-muted/30 p-3">
+      <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+      <div className="min-w-0">
         <p className="text-sm font-medium truncate">{entry.fileName}</p>
         <p className="text-xs text-muted-foreground">
           {t('documents.duplicateDialog.existingId', 'Existing: {{id}}', {
@@ -239,23 +240,25 @@ function DuplicateRow({ entry, onDecision }: DuplicateRowProps) {
         </p>
       </div>
       {/* Toggle: Replace / Skip */}
-      <div className="flex items-center gap-2 shrink-0">
-        <Badge
+      <div className="flex items-center gap-1">
+        <Button
           variant={isReplace ? 'default' : 'outline'}
-          className="cursor-pointer text-xs select-none"
+          size="sm"
+          className="h-7 px-2 text-xs"
           onClick={() => onDecision(entry.existingDocId, 'replace')}
         >
           <RefreshCw className="h-3 w-3 mr-1" />
           {t('documents.duplicateDialog.replace', 'Replace')}
-        </Badge>
-        <Badge
+        </Button>
+        <Button
           variant={!isReplace ? 'default' : 'outline'}
-          className="cursor-pointer text-xs select-none"
+          size="sm"
+          className="h-7 px-2 text-xs"
           onClick={() => onDecision(entry.existingDocId, 'skip')}
         >
           <SkipForward className="h-3 w-3 mr-1" />
           {t('documents.duplicateDialog.skip', 'Skip')}
-        </Badge>
+        </Button>
       </div>
     </div>
   );

@@ -11,7 +11,7 @@ use axum::{
 use crate::error::ApiResult;
 use crate::handlers::graph_types::*;
 use crate::middleware::TenantContext;
-use crate::services::{admit_graph_materialization, run_timed_graph_query};
+use crate::services::run_timed_graph_query;
 use crate::state::{GraphQueryRuntime, StorageRuntime};
 
 /// Search for node labels.
@@ -72,7 +72,13 @@ pub async fn search_nodes(
 ) -> ApiResult<Json<SearchNodesResponse>> {
     use std::collections::HashSet;
 
-    let _materialize_guard = admit_graph_materialization(&graph)?;
+    // WHY no materialization guard here (SPEC-053 B1):
+    //   search_nodes is an O(log N) indexed btree lookup (idx_node_prop_node_id_btree,
+    //   idx_node_tenant_id, etc.). It uses 1 DB connection for ≤50ms — a fundamentally
+    //   different resource class from full-graph O(V+E) materializations (3 parallel DB
+    //   connections held for 5-10s). Gating search on the materialization semaphore
+    //   caused 503s on every keystroke whenever the graph was loading.
+    //   The DB statement_timeout already provides backpressure for pathological queries.;
 
     // Get tenant/workspace context from middleware
     let tenant_id = tenant_ctx.tenant_id.clone();

@@ -48,8 +48,7 @@ export interface ReprocessVariables {
   name?: string;
   /**
    * Whether this is a PDF document.
-   * SPEC-050-REPROCESS: drives which progress panel to show (PdfUploadProgress
-   * vs IngestionProgressPanel — currently always IngestionProgressPanel).
+   * Drives ProgressPanelRow component selection: PdfUploadProgress vs IngestionProgressPanel.
    */
   isPdf?: boolean;
 }
@@ -64,17 +63,20 @@ export interface UseDocumentMutationsOptions {
    */
   onReprocessSuccess?: () => void;
   /**
-   * Callback invoked immediately when reprocess succeeds with the new track_id.
+   * Callback invoked immediately when reprocess succeeds.
    *
-   * SPEC-050-REPROCESS: Allows DocumentManager to show IngestionProgressPanel
-   * for the reprocessed document — identical feedback to a fresh upload.
    * WHY DIP: useDocumentMutations doesn't know about the UI layer; it delegates
    * the decision of what to show to its caller via this callback.
    *
    * @param documentName - Name to display in the progress panel.
-   * @param trackId      - New task tracking ID from the reprocess response.
+   * @param trackId      - Batch track_id from POST /documents/reprocess ("reprocess_...").
+   * @param options      - documentId (stable), isPdf, mode for panel selection.
    */
-  onReprocessTriggered?: (documentName: string, trackId: string) => void;
+  onReprocessTriggered?: (
+    documentName: string,
+    trackId: string,
+    options: { documentId: string; isPdf?: boolean; mode?: string },
+  ) => void;
 }
 
 /**
@@ -289,7 +291,7 @@ export function useDocumentMutations(
 
       return { previousDocuments, documentId };
     },
-    onSuccess: (data, { id: documentId, name }) => {
+    onSuccess: (data, { id: documentId, name, isPdf, mode }) => {
       // SPEC-050 GAP-FIX: Update the cache with the new track_id from the response.
       // WHY: The immediate queryClient.invalidateQueries() overrides the optimistic
       // state because the DB hasn't been updated yet (server still shows "completed").
@@ -318,11 +320,17 @@ export function useDocumentMutations(
         },
       );
 
-      // SPEC-050-REPROCESS: Fire the callback so DocumentManager can show
-      // IngestionProgressPanel — identical feedback to a fresh upload.
+      // SPEC-051: Fire the callback so DocumentManager can show ProgressPanelRow.
+      // Pass documentId (stable) + isPdf + mode so the caller can:
+      //   1. key prune logic by documentId (survives track_id rotation)
+      //   2. pick PdfUploadProgress vs IngestionProgressPanel
       if (onReprocessTriggered) {
         const displayName = name ?? documentId.slice(0, 8);
-        onReprocessTriggered(displayName, data.track_id);
+        onReprocessTriggered(displayName, data.track_id, {
+          documentId,
+          isPdf,
+          mode,
+        });
       }
 
       toast.success(

@@ -72,7 +72,10 @@ pub async fn delete_all_documents(
 
     // SPEC-050: Broadcast bulk deletion started so the frontend can show progress.
     let total_to_delete = scoped_entries.len();
-    state.tasks.progress_broadcaster.bulk_deletion_started(total_to_delete);
+    state
+        .tasks
+        .progress_broadcaster
+        .bulk_deletion_started(total_to_delete);
 
     let mut deleted_count = 0usize;
     let mut total_chunks_deleted = 0usize;
@@ -252,13 +255,16 @@ pub async fn delete_all_documents(
         deleted_count += 1;
 
         // SPEC-050: Broadcast per-document progress for the bulk deletion UI.
-        state.tasks.progress_broadcaster.bulk_deletion_item_progress(
-            &document_id,
-            deleted_count,
-            total_to_delete,
-            total_entities_removed,
-            total_relationships_removed,
-        );
+        state
+            .tasks
+            .progress_broadcaster
+            .bulk_deletion_item_progress(
+                &document_id,
+                deleted_count,
+                total_to_delete,
+                total_entities_removed,
+                total_relationships_removed,
+            );
 
         // SPEC-047: remove mm-assets (DB + FS) for each deleted document.
         #[cfg(feature = "postgres")]

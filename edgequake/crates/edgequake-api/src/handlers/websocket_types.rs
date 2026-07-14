@@ -189,7 +189,6 @@ pub enum ProgressEvent {
     // -----------------------------------------------------------------------
     // Deletion events (SPEC-050)
     // -----------------------------------------------------------------------
-
     /// Single-document deletion started.
     ///
     /// @implements SPEC-050: Delete progress broadcast.

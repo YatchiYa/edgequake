@@ -539,14 +539,6 @@ pub(crate) async fn run_reprocess_failed(
                 .await
                 .map_err(|e| ApiError::Internal(format!("Failed to list failed PDFs: {}", e)))?;
 
-            // DRY: Use the same resolution chain as PdfUploadOptions (types.rs).
-            // WHY: Previously this was a duplicated inline chain that could diverge
-            // from the upload path, causing reprocessed PDFs to use different
-            // provider/model than new uploads.
-            let vision_opts = crate::handlers::pdf_upload::types::PdfUploadOptions::default();
-            let vision_provider = vision_opts.resolved_vision_provider();
-            let vision_model: Option<String> = Some(vision_opts.vision_model());
-
             for pdf in failed_pdfs.items {
                 // Determine tenant_id: prefer from context, fall back to a
                 // workspace-scoped default (workspace_id itself as tenant proxy).
@@ -564,13 +556,36 @@ pub(crate) async fn run_reprocess_failed(
                         ApiError::Internal(format!("Failed to reset PDF status: {}", e))
                     })?;
 
-                let pdf_parser_backend = match state
+                // SPEC-051 GAP-051-04: Resolve ALL vision settings from workspace,
+                // not from PdfUploadOptions::default().
+                // WHY: Previously vision_provider and vision_model used default
+                // env-var resolution, ignoring workspace-level overrides. Only
+                // pdf_parser_backend was read from the workspace. Now all three
+                // come from the same workspace.get_workspace() call (DRY).
+                let (vision_provider, vision_model, pdf_parser_backend) = match state
                     .workspace_service
                     .get_workspace(pdf.workspace_id)
                     .await
                 {
-                    Ok(Some(workspace)) => workspace.resolved_pdf_parser_backend(),
-                    Ok(None) | Err(_) => PdfParserBackend::from_env().unwrap_or_default(),
+                    Ok(Some(ws)) => {
+                        let vp = ws
+                            .vision_llm_provider
+                            .as_deref()
+                            .filter(|p| !p.is_empty())
+                            .unwrap_or("ollama")
+                            .to_string();
+                        let vm = ws.vision_llm_model.clone().filter(|m| !m.is_empty());
+                        let backend = ws.resolved_pdf_parser_backend();
+                        (vp, vm, backend)
+                    }
+                    Ok(None) | Err(_) => {
+                        // Fallback: env-var defaults (same as upload path default).
+                        let opts = crate::handlers::pdf_upload::types::PdfUploadOptions::default();
+                        let vp = opts.resolved_vision_provider();
+                        let vm = Some(opts.vision_model());
+                        let backend = PdfParserBackend::from_env().unwrap_or_default();
+                        (vp, vm, backend)
+                    }
                 };
 
                 // Edge case: empty-markdown fallback for failed PDFs.

@@ -158,6 +158,15 @@ pub async fn stream_graph(
             }
         };
 
+        // WHY release the guard here (SPEC-053 B2):
+        // The materialization semaphore guards the DB-intensive initial fetch
+        // (the tokio::join! above: 3 parallel connections for node_count,
+        // edge_count, popular_nodes). Once the data is in memory, streaming
+        // SSE events to the client uses no additional DB connections.
+        // Holding the permit for the entire streaming loop (seconds) starves
+        // concurrent search_nodes, traversal, and popular_labels handlers.
+        drop(_materialize_guard);
+
         let nodes_to_stream = nodes_with_degrees.len();
         let total_batches = nodes_to_stream.div_ceil(params_clone.batch_size);
 
