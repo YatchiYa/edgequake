@@ -22,6 +22,20 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Checkout edgequake-pdf2md (path dep)
+        uses: actions/checkout@v6
+        with:
+          repository: raphaelmansuy/edgequake-pdf2md
+          path: edgequake-pdf2md
+          ref: main
+
+      - name: Create symlink for path dependency
+        run: |
+          # Cargo.toml expects ../../edgequake-pdf2md from edgequake/edgequake/
+          # This means edgequake-pdf2md should be a sibling of the workspace root
+          ln -s ${GITHUB_WORKSPACE}/edgequake-pdf2md ../edgequake-pdf2md
+          ls -la ../edgequake-pdf2md
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:
@@ -80,9 +94,9 @@ jobs:
       - uses: actions/checkout@v6
 
       # WHY: edgequake/Cargo.toml uses path = "../../edgequake-pdf2md".
-      # The Docker build context is edgequake/ so the path dep is outside it.
-      # We check out edgequake-pdf2md alongside (at ../../edgequake-pdf2md from
-      # the workspace root) so Cargo can resolve it during the Docker build.
+      # In Docker build: COPY edgequake-pdf2md/ /edgequake-pdf2md/, then from
+      # /app/edgequake/Cargo.toml, ../../edgequake-pdf2md resolves to /edgequake-pdf2md/.
+      # Must be in workspace for Docker COPY to include it in build context.
       - name: Checkout edgequake-pdf2md (path dep for Docker build)
         uses: actions/checkout@v6
         with:
