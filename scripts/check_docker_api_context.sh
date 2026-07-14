@@ -42,8 +42,9 @@ fi
 # WHY: Docker build context is repo root (.) so paths are prefixed with edgequake/
 DOCKERFILE="$EQ/docker/Dockerfile"
 [[ -f "$DOCKERFILE" ]] || fail "missing $DOCKERFILE"
-grep -qE 'COPY (edgequake/)?benches/ benches/' "$DOCKERFILE" || fail "Dockerfile missing: COPY [edgequake/]benches/ benches/"
-grep -qE 'COPY (edgequake/)?examples/ examples/' "$DOCKERFILE" || fail "Dockerfile missing: COPY [edgequake/]examples/ examples/"
+# Check for either "COPY benches/" or "COPY edgequake/benches/" (accept both patterns)
+grep -q 'COPY.*benches/ benches/' "$DOCKERFILE" || fail "Dockerfile missing: COPY benches/ (with or without edgequake/ prefix)"
+grep -q 'COPY.*examples/ examples/' "$DOCKERFILE" || fail "Dockerfile missing: COPY examples/ (with or without edgequake/ prefix)"
 
 # Parse-only check (no compile) — same failure mode as the Docker builder stage.
 (cd "$EQ" && cargo metadata --format-version 1 --no-deps >/dev/null)
