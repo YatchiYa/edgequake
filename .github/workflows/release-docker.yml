@@ -22,20 +22,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Checkout edgequake-pdf2md (path dep)
-        uses: actions/checkout@v6
-        with:
-          repository: raphaelmansuy/edgequake-pdf2md
-          path: edgequake-pdf2md
-          ref: main
-
-      - name: Create symlink for path dependency
-        run: |
-          # Cargo.toml expects ../../edgequake-pdf2md from edgequake/edgequake/
-          # This means edgequake-pdf2md should be a sibling of the workspace root
-          ln -s ${GITHUB_WORKSPACE}/edgequake-pdf2md ../edgequake-pdf2md
-          ls -la ../edgequake-pdf2md
-
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:
