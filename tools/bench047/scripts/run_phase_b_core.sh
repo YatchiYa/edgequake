@@ -37,22 +37,23 @@ fi
 N_DOCS=$(grep -c '\.pdf$' "$REPO_ROOT/specs/047-rag-evaluation/fixtures/core_doc_ids_v1.txt" || true)
 echo "core fixture n_docs=$N_DOCS"
 
-echo "=== cargo build (best-score stack) ==="
-(cd "$REPO_ROOT/edgequake" && cargo build -p edgequake >"$LOG_DIR/phase-b-build-$TAG.log" 2>&1)
-tail -15 "$LOG_DIR/phase-b-build-$TAG.log"
-
-echo "=== restart Small backend ==="
-"$ENSURE" restart-parallel
+# Fresh core run unless BENCH047_RESUME=1 / START_N>5
+if [ "${BENCH047_RESUME:-0}" != "1" ] && [ "${BENCH047_START_N:-5}" -le 5 ]; then
+  echo "=== cargo build (best-score stack) ==="
+  (cd "$REPO_ROOT/edgequake" && cargo build -p edgequake >"$LOG_DIR/phase-b-build-$TAG.log" 2>&1)
+  tail -15 "$LOG_DIR/phase-b-build-$TAG.log"
+  echo "=== restart Small backend ==="
+  "$ENSURE" restart-parallel
+  rm -rf "$CORE_DIR"
+  mkdir -p "$CORE_DIR/logs"
+else
+  echo "=== resume mode — keep core/ artifacts + workspace; ensure Small healthy ==="
+  "$ENSURE" status || "$ENSURE" restart-parallel
+fi
 python3 -m bench047.cli doctor --api "$EDGEQUAKE_API_URL" --profile P0_mm_ite
 
 echo "=== download core PDFs ==="
 python3 -m bench047.cli download-pdfs --fixture core_doc_ids_v1.txt
-
-# Fresh core run unless BENCH047_RESUME=1
-if [ "${BENCH047_RESUME:-0}" != "1" ]; then
-  rm -rf "$CORE_DIR"
-  mkdir -p "$CORE_DIR/logs"
-fi
 
 _assess_checkpoint() {
   local n="$1"
@@ -93,8 +94,13 @@ PY
 }
 
 echo "=== Phase B CORE: assess every 5 docs (tag=$TAG) ===" | tee "$LOG"
-RESUME_FLAG="--no-resume"
 START_N="${BENCH047_START_N:-5}"
+# Resume mid-ladder must keep workspace + skip force_reindex.
+if [ "${BENCH047_RESUME:-0}" = "1" ] || [ "$START_N" -gt 5 ]; then
+  RESUME_FLAG="--resume"
+else
+  RESUME_FLAG="--no-resume"
+fi
 for N in 5 10 15 20 25 30 35 40; do
   [ "$N" -gt "$N_DOCS" ] && break
   [ "$N" -lt "$START_N" ] && continue
