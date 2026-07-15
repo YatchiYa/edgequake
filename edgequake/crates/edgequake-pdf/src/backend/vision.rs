@@ -5,10 +5,11 @@ use edgequake_pdf2md::{convert_from_bytes, ConversionConfig, FileCheckpointStore
 use tracing::{info, warn};
 
 use super::{PdfConversionConfig, PdfConverter};
-use crate::chart_crop::{
-    chart_residual_candidate_pages, filter_chart_pages_by_page_png_ink, write_chart_crop_assets,
-    CHART_CROP_RENDER,
-};
+    use crate::chart_crop::{
+        chart_residual_alongside_fig_pages, chart_residual_candidate_pages,
+        filter_chart_pages_by_page_png_ink, write_chart_crop_assets, CropCoverageReport,
+        CHART_CROP_RENDER,
+    };
 use crate::embedded_images::{figures_by_page, write_embedded_figure_assets};
 use crate::error::PdfConversionError;
 use crate::page_assets::{write_page_png_assets, PageAssetRenderConfig};
@@ -104,6 +105,7 @@ impl PdfConverter for VisionPdfConverter {
         let mut chart_crop_paths = std::collections::HashMap::new();
         let mut figure_map = std::collections::HashMap::new();
         let mut table_map = std::collections::HashMap::new();
+        let mut crop_coverage_comment: Option<String> = None;
         if emit_viewer_images {
             if let Some(page_assets) = &config.page_drawing_assets {
                 let total_pages = output.stats.total_pages.max(output.pages.len()).max(1);
@@ -266,20 +268,25 @@ impl PdfConverter for VisionPdfConverter {
                     }
                 }
 
-                // 3) Chart ink-residual only for pages lacking figures AND tables.
-                // Proposal = ink geometry (page PNG prefilter + hi-res crop gates).
-                // Pass-A English is specialize routing only — never the proposer.
+                // 3) Chart ink-residual for pages without tables (W1-crop-expand:
+                // allow alongside fig). Proposal = ink geometry (page PNG prefilter
+                // + hi-res crop gates). Pass-A English is specialize routing only.
                 let page_nums: Vec<usize> = output.pages.iter().map(|p| p.page_num).collect();
+                let mut coverage =
+                    CropCoverageReport::from_pages(&page_nums, &figure_map, &table_map);
                 let candidates =
                     chart_residual_candidate_pages(&page_nums, &figure_map, &table_map);
                 let chart_pages =
                     filter_chart_pages_by_page_png_ink(&page_assets.assets_root, &candidates);
+                coverage = coverage.with_ink_filter_count(chart_pages.len());
                 if !chart_pages.is_empty() {
                     if let Some(hook) = status_hook {
                         hook(
                             &format!(
-                                "Rendering chart ink-crops ({} pages without fig/table)…",
-                                chart_pages.len()
+                                "Rendering chart ink-crops ({} pages; alongside_fig={}, table_skip={})…",
+                                chart_pages.len(),
+                                coverage.residual_alongside_fig,
+                                coverage.residual_skipped_due_to_fig_or_table,
                             ),
                             0.96,
                         );
@@ -303,6 +310,34 @@ impl PdfConverter for VisionPdfConverter {
                         }
                     }
                 }
+                // W1-fig-as-chart: alongside pages with empty residual ink → chart IS the fig.
+                let alongside =
+                    chart_residual_alongside_fig_pages(&page_nums, &figure_map, &table_map);
+                let promoted = crate::chart_crop::promote_fig_as_chart_when_ink_empty(
+                    &page_assets.assets_root,
+                    &alongside,
+                    &chart_crop_paths,
+                );
+                if !promoted.is_empty() {
+                    info!(
+                        promoted = promoted.len(),
+                        "W1-fig-as-chart: promoted fig assets to chart crops (ink residual empty)"
+                    );
+                    chart_crop_paths.extend(promoted);
+                }
+                coverage = coverage.with_crops_written(chart_crop_paths.len());
+                info!(
+                    total_pages = coverage.total_pages,
+                    pages_with_fig = coverage.pages_with_fig,
+                    pages_with_table = coverage.pages_with_table,
+                    residual_candidates = coverage.residual_candidates,
+                    residual_alongside_fig = coverage.residual_alongside_fig,
+                    residual_skipped = coverage.residual_skipped_due_to_fig_or_table,
+                    residual_after_ink = coverage.residual_after_ink_filter,
+                    residual_crops_written = coverage.residual_crops_written,
+                    "SPEC-047 crop coverage telemetry"
+                );
+                crop_coverage_comment = Some(coverage.to_html_comment());
             }
         }
 
@@ -336,7 +371,7 @@ impl PdfConverter for VisionPdfConverter {
         } else {
             Some(&table_map)
         };
-        let markdown = crate::vision_markdown::assemble_vision_markdown_with_figures(
+        let mut markdown = crate::vision_markdown::assemble_vision_markdown_with_figures(
             &normalized,
             emit_viewer_images,
             emit_analyze_tags,
@@ -345,6 +380,13 @@ impl PdfConverter for VisionPdfConverter {
             figures,
             tables,
         );
+        if let Some(comment) = crop_coverage_comment {
+            if !markdown.contains("edgequake-crop-coverage:") {
+                markdown.push('\n');
+                markdown.push_str(&comment);
+                markdown.push('\n');
+            }
+        }
 
         info!(
             pages = total_pages,

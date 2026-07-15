@@ -1,8 +1,9 @@
-//! Chart-region perception for specialize (SPEC-047 EQ-047-MV-24 / SPEC-049 P2).
+//! Chart-region perception for specialize (SPEC-047 EQ-047-MV-24 / SPEC-049 P2 / 026).
 //!
 //! First principles (no flaky chart **proposers**):
-//! - **Propose** chart crops from ink residual on pages that already lack fig/table
-//!   assets (deterministic geometry + area gates) — never from English keywords.
+//! - **Propose** chart crops from ink residual on pages that lack **table** assets
+//!   (W1-crop-expand: may run **alongside** fig assets; still ink-gated) — never from
+//!   English keywords.
 //! - Pass-A text (`text_suggests_chart`) may only **route** VLM specialize after a
 //!   crop exists on disk.
 //! - Re-render gated pages at higher pixel budget; trim near-white margins.
@@ -17,7 +18,10 @@ use edgequake_pdf2md::ConversionConfig;
 use image::{DynamicImage, GenericImageView, ImageFormat, Rgba};
 use tracing::{debug, info, warn};
 
-use crate::drawing_tags::{page_asset_filename, page_chart_crop_filename, ASSETS_SUBDIR};
+use crate::drawing_tags::{
+    page_asset_filename, page_chart_crop_filename, page_chart_crop_rel_path,
+    page_figure_asset_rel_path, ASSETS_SUBDIR,
+};
 use crate::embedded_images::WrittenFigureAsset;
 use crate::error::PdfConversionError;
 use crate::page_assets::PageAssetRenderConfig;
@@ -148,27 +152,151 @@ pub fn page_markdown_suggests_chart(markdown: &str) -> bool {
     text_suggests_chart(markdown)
 }
 
-/// Pages eligible for chart **residual** crops: no fig and no table assets yet.
+/// Pages eligible for chart **residual** crops (SPEC-047 / 026 W1-crop-expand).
 ///
-/// Proposal authority is ink geometry inside [`write_chart_crop_assets`] / page-PNG
-/// prefilter — not Pass-A English (SPEC-049 P2).
+/// Policy:
+/// - **Always** include pages with neither fig nor table (classic residual).
+/// - **Also** include up to [`MAX_ALONGSIDE_FIG_RESIDUAL`] pages that already have
+///   figure assets (no table) — fig presence previously blocked residual while Chart
+///   digits never entered markdown. Cap bounds hi-res re-render cost on long PDFs
+///   (chart-8 includes 117-page docs).
+/// - **Skip** pages that already have table assets (table specialize owns that channel).
+///
+/// Ink area gates in [`crop_png_to_ink_bbox`] / page-PNG prefilter still reject
+/// near-full-page junk (SPEC-049 Lever C). Proposal authority remains ink geometry —
+/// not Pass-A English (SPEC-049 P2).
+pub const MAX_ALONGSIDE_FIG_RESIDUAL: usize = 12;
+
 pub fn chart_residual_candidate_pages(
     page_nums: &[usize],
     figures_by_page: &HashMap<usize, Vec<WrittenFigureAsset>>,
     tables_by_page: &HashMap<usize, Vec<WrittenTableAsset>>,
 ) -> Vec<usize> {
-    let mut out: Vec<usize> = page_nums
-        .iter()
-        .copied()
-        .filter(|p| {
-            let no_fig = figures_by_page.get(p).is_none_or(|v| v.is_empty());
-            let no_table = tables_by_page.get(p).is_none_or(|v| v.is_empty());
-            no_fig && no_table
-        })
-        .collect();
+    let mut bare: Vec<usize> = Vec::new();
+    let mut alongside: Vec<usize> = Vec::new();
+    for &p in page_nums {
+        if tables_by_page.get(&p).is_some_and(|v| !v.is_empty()) {
+            continue;
+        }
+        let has_fig = figures_by_page.get(&p).is_some_and(|v| !v.is_empty());
+        if has_fig {
+            alongside.push(p);
+        } else {
+            bare.push(p);
+        }
+    }
+    bare.sort_unstable();
+    bare.dedup();
+    alongside.sort_unstable();
+    alongside.dedup();
+    // Prefer earlier pages for alongside (title/KPI charts often front-loaded).
+    if alongside.len() > MAX_ALONGSIDE_FIG_RESIDUAL {
+        alongside.truncate(MAX_ALONGSIDE_FIG_RESIDUAL);
+    }
+    let mut out = bare;
+    out.extend(alongside);
     out.sort_unstable();
     out.dedup();
     out
+}
+
+/// Pages that qualify for residual **because** a fig is present (alongside-fig expansion).
+///
+/// Diagnostic / telemetry only — candidates still pass through ink gates before write.
+pub fn chart_residual_alongside_fig_pages(
+    page_nums: &[usize],
+    figures_by_page: &HashMap<usize, Vec<WrittenFigureAsset>>,
+    tables_by_page: &HashMap<usize, Vec<WrittenTableAsset>>,
+) -> Vec<usize> {
+    chart_residual_candidate_pages(page_nums, figures_by_page, tables_by_page)
+        .into_iter()
+        .filter(|p| figures_by_page.get(p).is_some_and(|v| !v.is_empty()))
+        .collect()
+}
+
+/// SPEC-047 / 026 W1-crop-telemetry (+ W1-crop-expand accounting).
+///
+/// Pure report for ingest metadata / HTML comment — does not change crop policy.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CropCoverageReport {
+    pub total_pages: usize,
+    pub pages_with_fig: usize,
+    pub pages_with_table: usize,
+    /// Pages eligible for residual propose (no table; fig OK after W1-crop-expand).
+    pub residual_candidates: usize,
+    /// Subset of candidates that already have a fig asset (alongside-fig expansion).
+    pub residual_alongside_fig: usize,
+    /// Pages skipped because a table asset exists (residual still blocked on tables).
+    ///
+    /// Field name kept for HTML comment compatibility; after W1-crop-expand this is
+    /// table-only skips (fig pages are candidates).
+    pub residual_skipped_due_to_fig_or_table: usize,
+    /// After ink prefilter (optional; 0 when not computed).
+    pub residual_after_ink_filter: usize,
+    /// Successfully written chart crop files (optional; 0 when not computed).
+    pub residual_crops_written: usize,
+}
+
+impl CropCoverageReport {
+    /// Build coverage from page lists + asset maps (SRP: pure accounting).
+    pub fn from_pages(
+        page_nums: &[usize],
+        figures_by_page: &HashMap<usize, Vec<WrittenFigureAsset>>,
+        tables_by_page: &HashMap<usize, Vec<WrittenTableAsset>>,
+    ) -> Self {
+        let total_pages = page_nums.len();
+        let pages_with_fig = page_nums
+            .iter()
+            .filter(|p| figures_by_page.get(p).is_some_and(|v| !v.is_empty()))
+            .count();
+        let pages_with_table = page_nums
+            .iter()
+            .filter(|p| tables_by_page.get(p).is_some_and(|v| !v.is_empty()))
+            .count();
+        let candidates =
+            chart_residual_candidate_pages(page_nums, figures_by_page, tables_by_page);
+        let residual_candidates = candidates.len();
+        let residual_alongside_fig =
+            chart_residual_alongside_fig_pages(page_nums, figures_by_page, tables_by_page).len();
+        // After expand: only table pages are hard-skipped from residual propose.
+        let residual_skipped_due_to_fig_or_table =
+            total_pages.saturating_sub(residual_candidates);
+        Self {
+            total_pages,
+            pages_with_fig,
+            pages_with_table,
+            residual_candidates,
+            residual_alongside_fig,
+            residual_skipped_due_to_fig_or_table,
+            residual_after_ink_filter: 0,
+            residual_crops_written: 0,
+        }
+    }
+
+    pub fn with_ink_filter_count(mut self, n: usize) -> Self {
+        self.residual_after_ink_filter = n;
+        self
+    }
+
+    pub fn with_crops_written(mut self, n: usize) -> Self {
+        self.residual_crops_written = n;
+        self
+    }
+
+    /// Machine-readable HTML comment for markdown (bench/fidelity can parse).
+    pub fn to_html_comment(&self) -> String {
+        format!(
+            "<!-- edgequake-crop-coverage: total_pages={} pages_with_fig={} pages_with_table={} residual_candidates={} residual_alongside_fig={} residual_skipped_due_to_fig_or_table={} residual_after_ink_filter={} residual_crops_written={} -->",
+            self.total_pages,
+            self.pages_with_fig,
+            self.pages_with_table,
+            self.residual_candidates,
+            self.residual_alongside_fig,
+            self.residual_skipped_due_to_fig_or_table,
+            self.residual_after_ink_filter,
+            self.residual_crops_written
+        )
+    }
 }
 
 /// True when an on-disk page PNG has a lawful ink residual crop (area gates).
@@ -197,6 +325,64 @@ pub fn filter_chart_pages_by_page_png_ink(assets_root: &Path, candidates: &[usiz
             page_png_has_ink_residual(&path)
         })
         .collect()
+}
+
+/// When alongside-fig residual ink is empty, the chart **is** the embedded fig.
+///
+/// First principle (026 W1-fig-as-chart): layout/OCR residual after a full-bleed
+/// figure bbox is empty — promoting `page-NNNN-fig-01.png` → `page-NNNN-chart.png`
+/// lets W1-coexist emit a chart drawing so specialize can still land numeric text.
+///
+/// Skips pages that already have a residual chart crop in `already_written`.
+/// Copies at most [`MAX_ALONGSIDE_FIG_RESIDUAL`] pages (same cost bound as expand).
+pub fn promote_fig_as_chart_when_ink_empty(
+    assets_root: &Path,
+    alongside_pages: &[usize],
+    already_written: &HashMap<usize, String>,
+) -> HashMap<usize, String> {
+    let mut out = HashMap::new();
+    for &page in alongside_pages {
+        if out.len() >= MAX_ALONGSIDE_FIG_RESIDUAL {
+            break;
+        }
+        if already_written.contains_key(&page) {
+            continue;
+        }
+        let fig_rel = page_figure_asset_rel_path(page, 1);
+        let chart_rel = page_chart_crop_rel_path(page);
+        let fig_path = assets_root.join(&fig_rel);
+        let chart_path = assets_root.join(&chart_rel);
+        if !fig_path.is_file() {
+            continue;
+        }
+        if chart_path.is_file() {
+            // Chart already on disk (prior residual) — register path only.
+            out.insert(page, chart_rel);
+            continue;
+        }
+        if let Some(parent) = chart_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        match std::fs::copy(&fig_path, &chart_path) {
+            Ok(_) => {
+                debug!(
+                    page_num = page,
+                    from = %fig_rel,
+                    to = %chart_rel,
+                    "W1-fig-as-chart: promoted fig to chart crop (ink residual empty)"
+                );
+                out.insert(page, chart_rel);
+            }
+            Err(e) => {
+                warn!(
+                    page_num = page,
+                    error = %e,
+                    "W1-fig-as-chart: failed to copy fig to chart crop"
+                );
+            }
+        }
+    }
+    out
 }
 
 /// Axis-aligned ink bounding box (x0, y0, x1, y1) exclusive of x1/y1; `None` if empty.
@@ -420,7 +606,7 @@ mod tests {
     }
 
     #[test]
-    fn chart_residual_skips_pages_with_fig_or_table() {
+    fn chart_residual_allows_fig_pages_skips_table_pages() {
         let mut figs = HashMap::new();
         figs.insert(
             1,
@@ -445,8 +631,133 @@ mod tests {
                 label: "Table 1".into(),
             }],
         );
+        // W1-crop-expand: fig page 1 is a candidate; table page 2 is not.
         let pages = chart_residual_candidate_pages(&[1, 2, 3], &figs, &tables);
-        assert_eq!(pages, vec![3]);
+        assert_eq!(pages, vec![1, 3]);
+        assert_eq!(
+            chart_residual_alongside_fig_pages(&[1, 2, 3], &figs, &tables),
+            vec![1]
+        );
+    }
+
+    #[test]
+    fn chart_residual_alongside_fig_is_capped() {
+        let mut figs = HashMap::new();
+        let pages: Vec<usize> = (1..=40).collect();
+        for p in &pages {
+            figs.insert(
+                *p,
+                vec![WrittenFigureAsset {
+                    page_num: *p,
+                    index: 1,
+                    rel_path: format!("assets/page-{p:04}-fig-01.png"),
+                    width: 10,
+                    height: 10,
+                    bbox: None,
+                }],
+            );
+        }
+        let tables = HashMap::new();
+        let cand = chart_residual_candidate_pages(&pages, &figs, &tables);
+        let along = chart_residual_alongside_fig_pages(&pages, &figs, &tables);
+        assert_eq!(along.len(), MAX_ALONGSIDE_FIG_RESIDUAL);
+        assert_eq!(cand.len(), MAX_ALONGSIDE_FIG_RESIDUAL);
+        // earliest pages preferred
+        assert_eq!(along, (1..=MAX_ALONGSIDE_FIG_RESIDUAL).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn promote_fig_as_chart_copies_when_ink_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let assets = dir.path().join("assets");
+        std::fs::create_dir_all(&assets).unwrap();
+        std::fs::write(assets.join("page-0005-fig-01.png"), b"\x89PNG-fig").unwrap();
+        let alongside = vec![5usize];
+        let already = HashMap::new();
+        let promoted = promote_fig_as_chart_when_ink_empty(dir.path(), &alongside, &already);
+        assert_eq!(promoted.get(&5).map(String::as_str), Some("assets/page-0005-chart.png"));
+        let chart = assets.join("page-0005-chart.png");
+        assert!(chart.is_file());
+        assert_eq!(std::fs::read(&chart).unwrap(), b"\x89PNG-fig");
+    }
+
+    #[test]
+    fn promote_fig_as_chart_skips_already_written_residual() {
+        let dir = tempfile::tempdir().unwrap();
+        let assets = dir.path().join("assets");
+        std::fs::create_dir_all(&assets).unwrap();
+        std::fs::write(assets.join("page-0003-fig-01.png"), b"\x89PNG-fig").unwrap();
+        std::fs::write(assets.join("page-0003-chart.png"), b"\x89PNG-residual").unwrap();
+        let mut already = HashMap::new();
+        already.insert(3usize, "assets/page-0003-chart.png".into());
+        let promoted =
+            promote_fig_as_chart_when_ink_empty(dir.path(), &[3usize], &already);
+        assert!(promoted.is_empty());
+        // residual bytes untouched
+        assert_eq!(
+            std::fs::read(assets.join("page-0003-chart.png")).unwrap(),
+            b"\x89PNG-residual"
+        );
+    }
+
+    #[test]
+    fn promote_fig_as_chart_skips_missing_fig_and_respects_cap() {
+        let dir = tempfile::tempdir().unwrap();
+        let assets = dir.path().join("assets");
+        std::fs::create_dir_all(&assets).unwrap();
+        // pages 1..cap+2: only even pages have fig-01 (cap+1 eligible)
+        let alongside: Vec<usize> = (1..=MAX_ALONGSIDE_FIG_RESIDUAL + 2).collect();
+        for p in &alongside {
+            if p % 2 == 0 {
+                std::fs::write(
+                    assets.join(format!("page-{p:04}-fig-01.png")),
+                    format!("fig-{p}").as_bytes(),
+                )
+                .unwrap();
+            }
+        }
+        let promoted =
+            promote_fig_as_chart_when_ink_empty(dir.path(), &alongside, &HashMap::new());
+        assert!(promoted.len() <= MAX_ALONGSIDE_FIG_RESIDUAL);
+        // Odd pages skipped (no fig); even pages promoted until cap.
+        assert!(!promoted.contains_key(&1));
+        assert!(promoted.contains_key(&2));
+        for (p, rel) in &promoted {
+            assert_eq!(rel, &format!("assets/page-{p:04}-chart.png"));
+            assert!(dir.path().join(rel).is_file());
+        }
+    }
+
+    #[test]
+    fn crop_coverage_report_accounts_for_table_skips_and_alongside_fig() {
+        let mut figs = HashMap::new();
+        figs.insert(
+            1,
+            vec![WrittenFigureAsset {
+                page_num: 1,
+                index: 1,
+                rel_path: "assets/page-0001-fig-01.png".into(),
+                width: 10,
+                height: 10,
+                bbox: None,
+            }],
+        );
+        let tables = HashMap::new();
+        let report = CropCoverageReport::from_pages(&[1, 2], &figs, &tables)
+            .with_ink_filter_count(2)
+            .with_crops_written(1);
+        assert_eq!(report.total_pages, 2);
+        assert_eq!(report.pages_with_fig, 1);
+        // Both pages are candidates (no tables); page 1 is alongside-fig.
+        assert_eq!(report.residual_candidates, 2);
+        assert_eq!(report.residual_alongside_fig, 1);
+        assert_eq!(report.residual_skipped_due_to_fig_or_table, 0);
+        assert_eq!(report.residual_after_ink_filter, 2);
+        assert_eq!(report.residual_crops_written, 1);
+        let comment = report.to_html_comment();
+        assert!(comment.contains("edgequake-crop-coverage:"));
+        assert!(comment.contains("residual_alongside_fig=1"));
+        assert!(comment.contains("residual_skipped_due_to_fig_or_table=0"));
     }
 
     #[test]

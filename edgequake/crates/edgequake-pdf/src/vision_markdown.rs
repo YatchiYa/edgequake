@@ -8,6 +8,7 @@ use crate::drawing_tags::{
     format_inline_asset_image, inject_figure_local_images, insert_drawing_tag_after_first_image,
     is_drawing_eligible_asset_rel_path, markdown_has_durable_asset_image, page_chart_crop_rel_path,
     page_drawing_item_id, page_figure_asset_rel_path, page_figure_drawing_item_id,
+    page_chart_drawing_item_id,
     EMPTY_VISION_PAGE_PLACEHOLDER,
 };
 use crate::embedded_images::WrittenFigureAsset;
@@ -238,14 +239,13 @@ fn inject_page_disk_assets(page: usize, body: &str, assets_root: &std::path::Pat
     let looks_like_table =
         lower.contains("table ") || body.lines().filter(|l| l.contains('|')).count() >= 3;
 
-    // Prefer caption-anchored table crop over legacy chart PNGs (never replace a real fig).
-    let mut body = body;
-    if table_exists && body.contains(&chart_rel) {
-        body = rewrite_asset_hrefs(&body, &[&chart_rel], &table_rel);
-    }
-    if fig_exists && body.contains(&chart_rel) {
-        body = rewrite_asset_hrefs(&body, &[&chart_rel], &fig_rel);
-    }
+        // Prefer caption-anchored table crop over legacy chart PNGs.
+        // W1-coexist (026): do NOT rewrite chart→fig — residual chart crops must
+        // stay addressable so chart specialize can land numeric text alongside figs.
+        let mut body = body;
+        if table_exists && body.contains(&chart_rel) {
+            body = rewrite_asset_hrefs(&body, &[&chart_rel], &table_rel);
+        }
 
     if table_exists {
         if !markdown_has_durable_asset_image(&body) && looks_like_table {
@@ -474,9 +474,12 @@ pub fn assemble_vision_markdown_with_figures(
             .cloned()
             .unwrap_or_default();
         let override_path = drawing_path_overrides.and_then(|m| m.get(&page.page_num));
-        let is_chart_crop = override_path.is_some_and(|p| is_drawing_eligible_asset_rel_path(p));
+        let is_chart_crop = override_path.is_some_and(|p| {
+            p.contains("-chart") && is_drawing_eligible_asset_rel_path(p)
+        });
 
         // Viewer: figure → table → chart crop — never full-page PNG.
+        // Chart override stays available even when figs exist (W1-coexist).
         let viewer_rel: Option<String> = page_figures
             .first()
             .map(|f| f.rel_path.clone())
@@ -486,6 +489,9 @@ pub fn assemble_vision_markdown_with_figures(
                     .filter(|p| is_drawing_eligible_asset_rel_path(p))
                     .cloned()
             });
+        let chart_override_rel: Option<&str> = override_path
+            .filter(|p| p.contains("-chart") && is_drawing_eligible_asset_rel_path(p))
+            .map(|s| s.as_str());
 
         let raw_body = page.markdown.trim();
         let mut body = if raw_body.is_empty() {
@@ -507,6 +513,14 @@ pub fn assemble_vision_markdown_with_figures(
             if page_figures.is_empty() && page_tables.is_empty() {
                 if let Some(ref rel) = viewer_rel {
                     b = inject_figure_local_images(&b, rel);
+                }
+            } else if page_tables.is_empty() {
+                // W1-coexist: residual chart crop alongside figs (tables still win).
+                if let Some(chart_rel) = chart_override_rel {
+                    if !b.contains(chart_rel) {
+                        let alt = caption_with_page_context(page.page_num, &b, true);
+                        b = format!("{}\n\n{}", format_inline_asset_image(&alt, chart_rel), b);
+                    }
                 }
             }
             b
@@ -531,6 +545,12 @@ pub fn assemble_vision_markdown_with_figures(
         if let Some(ref rel) = viewer_rel {
             if !dedupe_rels.contains(&rel.as_str()) {
                 dedupe_rels.push(rel.as_str());
+            }
+        }
+        if let Some(chart_rel) = chart_override_rel {
+            // Tables own residual policy — do not keep chart in dedupe set.
+            if page_tables.is_empty() && !dedupe_rels.contains(&chart_rel) {
+                dedupe_rels.push(chart_rel);
             }
         }
         body = finalize_page_asset_images(&body, &dedupe_rels);
@@ -578,6 +598,22 @@ pub fn assemble_vision_markdown_with_figures(
                         Some(table.label.as_str()),
                     ));
                 }
+                // W1-coexist (026): residual chart crop must also be analyzed when
+                // figs are present — otherwise crop-expand writes are dead for Acc.
+                if let Some(crop_rel) = chart_override_rel {
+                    // Tables still own the page for residual policy; skip chart
+                    // analyze when a real table crop is already bound.
+                    if page_tables.is_empty() {
+                        let item_id = page_chart_drawing_item_id(page.page_num, id_prefix);
+                        let caption = caption_with_page_context(page.page_num, &body, true);
+                        body.push_str("\n\n");
+                        body.push_str(&format_drawing_tag(
+                            &item_id,
+                            crop_rel,
+                            Some(caption.as_str()),
+                        ));
+                    }
+                }
                 section.push_str(&body);
             } else if !page_tables.is_empty() {
                 for (i, table) in page_tables.iter().enumerate() {
@@ -615,7 +651,7 @@ pub fn assemble_vision_markdown_with_figures(
                 override_path.filter(|p| is_drawing_eligible_asset_rel_path(p))
             {
                 // Vector/chart page without ImageXObject: ink-cropped page region.
-                let item_id = page_drawing_item_id(page.page_num, id_prefix);
+                let item_id = page_chart_drawing_item_id(page.page_num, id_prefix);
                 let caption = caption_with_page_context(page.page_num, &body, true);
                 if let Some(with_tag) = insert_drawing_tag_after_first_image(
                     &body,
@@ -1098,7 +1134,9 @@ Figure 1: COLLEAGUE.SKILL architecture for automated person-grounded skill gener
     }
 
     #[test]
-    fn assemble_prefers_fig_over_chart_override() {
+    fn assemble_emits_chart_alongside_fig_override() {
+        // 026 W1-coexist: residual chart crop must get a drawing tag even when
+        // an embedded fig exists (crop-expand otherwise writes dead assets).
         let pages = vec![VisionPageSlice {
             page_num: 1,
             markdown: "## Figure 1: Overview\n\nBody.\n".into(),
@@ -1128,8 +1166,32 @@ Figure 1: COLLEAGUE.SKILL architecture for automated person-grounded skill gener
         );
         assert!(md.contains("assets/page-0001-fig-01.png"));
         assert!(
-            !md.contains("assets/page-0001-chart.png"),
-            "fig must win over chart override: {md}"
+            md.contains("assets/page-0001-chart.png"),
+            "chart crop must coexist with fig: {md}"
+        );
+        assert!(
+            md.contains("im-doc-page-0001-chart") || md.contains("page-0001-chart"),
+            "chart drawing item id must be present: {md}"
+        );
+    }
+
+    #[test]
+    fn inject_keeps_chart_alongside_fig() {
+        let dir = tempfile::tempdir().unwrap();
+        let assets = dir.path().join("assets");
+        std::fs::create_dir_all(&assets).unwrap();
+        // Minimal placeholders — inject only checks is_file().
+        std::fs::write(assets.join("page-0001-fig-01.png"), b"\x89PNG").unwrap();
+        std::fs::write(assets.join("page-0001-chart.png"), b"\x89PNG").unwrap();
+        let md = "<!-- edgequake-page:1 -->\n![Figure 1](assets/page-0001-fig-01.png)\n\n![Chart](assets/page-0001-chart.png)\n\nBody.\n";
+        let out = inject_on_disk_region_assets(md, dir.path());
+        assert!(
+            out.contains("assets/page-0001-fig-01.png"),
+            "fig kept: {out}"
+        );
+        assert!(
+            out.contains("assets/page-0001-chart.png"),
+            "chart must not be rewritten to fig: {out}"
         );
     }
 

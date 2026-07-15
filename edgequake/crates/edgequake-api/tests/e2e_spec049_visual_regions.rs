@@ -350,9 +350,9 @@ async fn e10_fig_page_drawing_not_chart_override() {
     std::env::remove_var("EDGEQUAKE_VISION_PROVIDER");
 }
 
-/// E20 — ink residual propose is keyword-free; fig pages are not chart candidates.
+/// E20 — ink residual propose is keyword-free; W1-crop-expand allows fig pages.
 #[test]
-fn e20_ink_residual_propose_excludes_fig_pages() {
+fn e20_ink_residual_propose_allows_fig_pages() {
     use edgequake_pdf::{chart_residual_candidate_pages, WrittenFigureAsset, WrittenTableAsset};
     use std::collections::HashMap;
 
@@ -371,6 +371,6 @@ fn e20_ink_residual_propose_excludes_fig_pages() {
     let tables: HashMap<usize, Vec<WrittenTableAsset>> = HashMap::new();
     assert_eq!(
         chart_residual_candidate_pages(&[1, 5], &figs, &tables),
-        vec![5]
+        vec![1, 5]
     );
 }

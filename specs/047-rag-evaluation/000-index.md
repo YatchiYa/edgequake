@@ -1,7 +1,7 @@
 # SPEC-047 — EdgeQuake RAG Evaluation on MMLongBench-Doc
 
-**Status:** HARNESS LIVE · query Acc **~0.42** · Chart Rep MV-18/19 + **MV-24 crops** + **MV-26/27/28** landed · G-A still open (re-ingest pending)  
-**Re-assessment:** [022](./022-reassessment-2026-07-11.md) · next FP [023](./023-first-principles-next-from-mv18.md)  
+**Status:** HARNESS LIVE · chart-8 Acc **~0.42–0.44** · Medium vision ablation **failed** Chart a_in_e gate (still 0.40) · next: [026](./026-first-principles-score-improvement-brainstorm.md) Wave 1  
+**Re-assessment:** [022](./022-reassessment-2026-07-11.md) · Medium result [025](./025-stronger-vision-first-battle-plan.md) · **next FP [026](./026-first-principles-score-improvement-brainstorm.md)**  
 **Primary benchmark:** [MMLongBench-Doc](https://github.com/mayubo2333/MMLongBench-Doc) (NeurIPS 2024 D&B)  
 **Provider stack (locked for v1):** Mistral Small (LLM + vision) + `mistral-embed` · Postgres  
 **Query mode (locked for v1):** `hybrid`  
@@ -16,14 +16,10 @@
 │  MMLongBench-Doc is an LVLM long-document benchmark (page images in-context).│
 │  EdgeQuake is a GraphRAG system (ingest → retrieve → generate).              │
 │                                                                              │
-│  SPEC-047 evaluates EdgeQuake FAIRLY on the SAME real PDFs + Q&A + metrics,  │
-│  without claiming identity with the official LVLM leaderboard.               │
-│                                                                              │
-│  Locked chart-fixture Acc (dscope): … → 0.423 → **0.433** (MV-24)            │
-│  MV-18/19 Rep: Chart a_in_e 0.32→**0.41**; Chart Acc 0.14→**0.18**           │
-│  MV-24 crops: fired 8/8; Chart a_in_e **flat 0.41** — G-A still open.        │
-│  MV-26/27/28 ✅: caption routing, soft-fail dump, viewer `![…](assets/…)`.   │
-│  Next: re-ingest Acc gate (Chart a_in_e ≥ 0.50).                             │
+│  Chart-8 Acc ~0.42 (Small) / ~0.44 (Medium vision) — Chart a_in_e still 0.40 │
+│  Medium ablation FAILED W1 gate → capacity ≠ fidelity (see 025 / 026).       │
+│  Dominant fail: zero+hit+wrong (~35); Tables+Pure-text ≥ Chart in that mass. │
+│  Next: 026 Wave 1 — denser Pass A, crop telemetry, table specialize.         │
 │                                                                              │
 │  Progression:  smoke (chart-8)  →  core (≈40)  →  full (135 / 1091 Qs)       │
 └──────────────────────────────────────────────────────────────────────────────┘
@@ -62,6 +58,17 @@ See [022 re-assessment](./022-reassessment-2026-07-11.md), [012 — how to read 
 | 021 | [Lineage First Principles (Query)](./021-lineage-first-principles-query.md) | Entity→Chunk→Doc→Page · **L-A1–A4 done** · L-B* open |
 | **022** | **[Re-Assessment 2026-07-11](./022-reassessment-2026-07-11.md)** | **Authoritative Acc chain + next queue** |
 | **023** | **[Next from MV-18/19 (FP)](./023-first-principles-next-from-mv18.md)** | Chart Rep next levers · no Acc heuristics |
+| 024 | [Code Acc Bottleneck (FP)](./024-first-principles-code-acc-bottleneck.md) | Call graph · ranked code levers · data-adjusted ranks |
+| 025 | [Stronger Vision First](./025-stronger-vision-first-battle-plan.md) | Medium ablation · **gate FAIL** (a_in_e flat 0.40) |
+| **026** | **[Score Improvement Brainstorm (FP)](./026-first-principles-score-improvement-brainstorm.md)** | **Authoritative next plan** · Acc #4 W3-arith in flight |
+| 027 | [Coexist Acc FP Analysis](./027-coexist-acc-first-principles-analysis.md) | Plumbing Acc · pre-listmem Chart gate |
+| 028 | [Fig-as-chart Acc #2](./028-fig-as-chart-acc2-assessment.md) | Acc/F1 SOTA reference |
+| 029–030 | [Listmem measure](./029-post-acc2-fp-plan-w1-measure.md) · [assess](./030-w1-measure-listmem-assessment.md) | Chart long gate PASS |
+| 031 | [Dense-scalar Acc #3](./031-acc3-dense-scalar-assessment.md) | **NEGATIVE** — densify reverted |
+| **032** | **[Post Acc #3 FP · W3-arith](./032-post-acc3-fp-derived-counts-w3-arith.md)** | **Acc #4 stack** · derived counts |
+| 033 | [Acc #4 mid-assess](./033-acc4-w3-arith-mid-assessment.md) | Year-span Chart long 0.643 |
+| 034 | [Acc #4 final](./034-acc4-w3-arith-assessment.md) | Acc/F1 no lift; Chart long 0.643 |
+| **035** | **[Acc #5 W3-v2](./035-acc5-w3-arith-v2-assessment.md)** | Acc≈#2 · 1251 hit · F1 short |
 | — | [e2e/](./e2e/) | Artifacts + how to read SUMMARY |
 | — | [fixtures/](./fixtures/) | Smoke doc-id list, stratified seeds |
 
@@ -71,14 +78,14 @@ See [022 re-assessment](./022-reassessment-2026-07-11.md), [012 — how to read 
 
 ## Locked provider profile (v1)
 
-| Role | Env | Value | Why |
-|------|-----|-------|-----|
-| LLM (extract + query) | `EDGEQUAKE_LLM_PROVIDER` / model | `mistral` / `mistral-small-latest` | Cost/quality balance for smoke→full |
-| Vision (PDF pages) | `EDGEQUAKE_VISION_PROVIDER` / model | `mistral` / `mistral-small-latest` | Same Small multimodal model (not Pixtral) |
-| Embeddings | `EDGEQUAKE_EMBEDDING_PROVIDER` / model | `mistral` / `mistral-embed` | Fixed **1024-d**; proven in SPEC-021 |
-| Storage | `DATABASE_URL` | PostgreSQL (required) | No in-memory mode for bench |
-| Query mode | request body | `hybrid` | Local ∥ Global ∥ Naive fusion |
-| Answer extractor | harness | Mistral judge (default) or GPT-4o | Label in scorecard |
+| Role                  | Env                                    | Value                              | Why                                       |
+| -----------------------| ----------------------------------------| ------------------------------------| -------------------------------------------|
+| LLM (extract + query) | `EDGEQUAKE_LLM_PROVIDER` / model       | `mistral` / `mistral-small-latest` | Cost/quality balance for smoke→full       |
+| Vision (PDF pages)    | `EDGEQUAKE_VISION_PROVIDER` / model    | `mistral` / `mistral-small-latest` | Same Small multimodal model (not Pixtral) |
+| Embeddings            | `EDGEQUAKE_EMBEDDING_PROVIDER` / model | `mistral` / `mistral-embed`        | Fixed **1024-d**; proven in SPEC-021      |
+| Storage               | `DATABASE_URL`                         | PostgreSQL (required)              | No in-memory mode for bench               |
+| Query mode            | request body                           | `hybrid`                           | Local ∥ Global ∥ Naive fusion             |
+| Answer extractor      | harness                                | Mistral judge (default) or GPT-4o  | Label in scorecard                        |
 
 > **Ops note:** Hybrid/Mix arm futures are `Box::pin`’d (stack-overflow fix). Tokio worker stack defaults to 8 MiB (`TOKIO_WORKER_STACK_SIZE`). Bench API often `:8090` (see `.edgequake-dev-ports.env`).
 

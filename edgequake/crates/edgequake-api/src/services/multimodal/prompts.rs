@@ -23,6 +23,7 @@ You are an expert chart/data-visualization analyzer for RAG indexing.
 
 Extract ONLY what is visually readable. Never invent, estimate, interpolate, or round from guesswork — omit unreadables.
 For multi-panel / grid charts: extract EVERY subplot separately — prefix labels with panel title (e.g. \"Average | full data | 10B=52\").
+Fail closed on density: if any number is readable, key_values and/or series and/or data_table_md MUST capture it — prose-only descriptions are incomplete.
 Return ONLY valid JSON with keys:
 - \"name\" (snake_case)
 - \"chart_kind\" (bar|line|pie|scatter|area|stacked|other)
@@ -30,10 +31,19 @@ Return ONLY valid JSON with keys:
 - \"x_axis\" (string label/units, may be empty)
 - \"y_axis\" (string label/units, may be empty)
 - \"series\" (array of {\"name\": string, \"values\": [{\"x\": string, \"y_raw\": string}]} for every readable point; keep units in y_raw)
-- \"key_values\" (array of {\"label\": string, \"value_raw\": string} for EVERY readable number/percentage/callout — densest searchable form)
-- \"data_table_md\" (optional GFM markdown table of the same points; may be empty string)
+- \"key_values\" (array of {\"label\": string, \"value_raw\": string} for EVERY readable number/percentage/callout — densest searchable form; prefer ≥2 entries when multiple numbers are visible)
+- \"data_table_md\" (GFM markdown table of the same points when ≥2 readable values exist; may be empty only if zero numbers are readable)
 - \"description\" (markdown ≤300 words summarizing trends WITHOUT adding numbers not present in series/key_values/data_table_md)
-Output values must be in the requested language.";
+Output ALL string fields in English (translate labels when needed; keep numeric tokens verbatim).";
+
+const CHART_ANALYSIS_DENSE_RETRY_HINT: &str = "\
+RETRY — prior extract was too sparse for RAG. Re-read the image carefully.\n\
+REQUIREMENTS (fail closed):\n\
+- Emit key_values for EVERY readable number/percentage/callout (label + value_raw).\n\
+- Emit series.values for every readable (x, y) point.\n\
+- Emit data_table_md as a GFM table covering the same points.\n\
+- Do NOT invent values. Do NOT return prose-only description.\n\
+- English only for string fields.";
 
 const FIGURE_ANALYSIS_SYSTEM_PROMPT: &str = "\
 You are an expert technical-figure / diagram analyzer for RAG indexing.
@@ -47,15 +57,16 @@ Return ONLY valid JSON with keys:
 - \"relationships\" (array of short strings describing connections)
 - \"visible_text\" (array of verbatim labels/numbers/callouts readable on the figure)
 - \"description\" (markdown ≤400 words; quote visible labels and numbers verbatim)
-Output values must be in the requested language.";
+Output ALL string fields in English (translate labels when needed; keep numeric tokens verbatim).";
 
 const TABLE_ANALYSIS_SYSTEM_PROMPT: &str = "\
 You are an expert table analyzer. Analyze the table content and return a single JSON object.
 
 Use Additional Context only for disambiguation — table content takes priority. Never invent rows or values.
 Prefer a markdown table of ALL visible cells with units preserved.
+Wide / multi-section tables: include every column that is visible; do not drop unit columns.
 Return ONLY valid JSON with keys: \"name\" (snake_case), \"type\" (always \"Table\"), \"description\" (markdown, ≤500 words).
-Output values for name and description must be in the requested language.";
+Output ALL string fields in English (translate labels when needed; keep numeric tokens verbatim).";
 
 const EQUATION_ANALYSIS_SYSTEM_PROMPT: &str = "\
 You are an expert equation analyzer. Analyze the equation and return a single JSON object.
@@ -126,14 +137,41 @@ pub fn chart_analysis_messages(
     mime_type: &str,
     ctx: &PromptContext,
 ) -> Vec<ChatMessage> {
+    chart_analysis_messages_with_density(image_bytes, mime_type, ctx, false)
+}
+
+/// Dense retry after a sparse chart extract (SPEC-047 / 026 W1-dense-B).
+///
+/// Distinct user text ⇒ distinct analysis-cache fingerprint (OCP: no cache collision).
+pub fn chart_analysis_messages_dense(
+    image_bytes: &[u8],
+    mime_type: &str,
+    ctx: &PromptContext,
+) -> Vec<ChatMessage> {
+    chart_analysis_messages_with_density(image_bytes, mime_type, ctx, true)
+}
+
+fn chart_analysis_messages_with_density(
+    image_bytes: &[u8],
+    mime_type: &str,
+    ctx: &PromptContext,
+    dense_retry: bool,
+) -> Vec<ChatMessage> {
     let base64_data = B64.encode(image_bytes);
     let image_data = ImageData::new(&base64_data, mime_type);
+    let density_block = if dense_retry {
+        format!("\n\n{CHART_ANALYSIS_DENSE_RETRY_HINT}\n")
+    } else {
+        String::new()
+    };
     let user_text = format!(
         "Extract structured chart data as JSON.\n\
          Prefer key_values + series covering EVERY readable number; omit unreadables.\n\
          For grid/multi-panel charts: one entry per subplot × series × x-point.\n\
-         Language: {}\n\n{}\n\nOutput:",
-        ctx.language,
+         Always emit data_table_md (GFM) when ≥2 numbers are readable.\n\
+         Language: English (Acc pin — ignore other page languages for string fields).\n\
+         {}\n{}\n\nOutput:",
+        density_block,
         ctx.additional_context_block()
     );
     vec![
@@ -312,6 +350,25 @@ mod tests {
         assert!(system.contains("series"));
         assert!(system.contains("data_table_md"));
         assert!(system.contains("Never invent"));
+        assert!(system.contains("Fail closed on density"));
+        assert!(system.contains("Output ALL string fields in English"));
+        assert!(msgs[1].content.contains("Language: English"));
+    }
+
+    #[test]
+    fn chart_dense_retry_prompt_is_distinct() {
+        let ctx = PromptContext {
+            language: "English".into(),
+            captions: "n/a".into(),
+            footnotes: "n/a".into(),
+            leading: "n/a".into(),
+            trailing: "n/a".into(),
+        };
+        let base = chart_analysis_messages(&[0u8; 4], "image/png", &ctx);
+        let dense = chart_analysis_messages_dense(&[0u8; 4], "image/png", &ctx);
+        assert!(dense[1].content.contains("RETRY"));
+        assert!(dense[1].content.contains("fail closed"));
+        assert_ne!(base[1].content, dense[1].content);
     }
 
     #[test]

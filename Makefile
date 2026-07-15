@@ -945,6 +945,7 @@ backend-bg: sync-dev-ports db-wait ## Run backend in background with PostgreSQL 
 		printf '%s\n' "export EDGEQUAKE_VISION_PROVIDER=\"mistral\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_VISION_MODEL=\"$${EDGEQUAKE_VISION_MODEL:-mistral-small-latest}\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_LLM_MODEL=\"$${EDGEQUAKE_LLM_MODEL:-mistral-small-latest}\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export MISTRAL_MODEL=\"$${MISTRAL_MODEL:-$${EDGEQUAKE_LLM_MODEL:-mistral-small-latest}}\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_EMBEDDING_BATCH_SIZE=\"16\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_ALLOWED_PROVIDERS=\"*\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "$$_RUN" >> /tmp/edgequake-start.sh; \
@@ -2405,7 +2406,7 @@ status: ## Show status of all services
 # SPEC-047 — MMLongBench-Doc RAG evaluation (tools/bench047)
 # ============================================================================
 
-.PHONY: bench047-install bench047-doctor bench047-freeze-smoke bench047-smoke bench047-core bench047-full
+.PHONY: bench047-install bench047-doctor bench047-freeze-smoke bench047-smoke bench047-smoke-vision-medium bench047-core bench047-full bench047-freeze-core bench047-phase-b-core
 
 bench047-install: ## Install SPEC-047 Python harness (editable)
 	@cd tools/bench047 && pip3 install -e . -q
@@ -2414,29 +2415,74 @@ bench047-install: ## Install SPEC-047 Python harness (editable)
 bench047-doctor: bench047-install ## Check API + Mistral profile for SPEC-047
 	@set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)"; set +a; \
 	EDGEQUAKE_API_URL="$${EDGEQUAKE_API_URL:-$(BACKEND_URL)}" \
-	python3 -m bench047.cli doctor --api "$${EDGEQUAKE_API_URL:-$(BACKEND_URL)}"
+	python3 -m bench047.cli doctor --api "$${EDGEQUAKE_API_URL:-$(BACKEND_URL)}" \
+		--profile "$${BENCH047_PROFILE:-P0_mm_ite}"
 
 bench047-freeze-smoke: bench047-install ## Freeze stratified 10-doc smoke fixture
 	@python3 -m bench047.cli download-qa
 	@python3 -m bench047.cli freeze-smoke
 	@python3 -m bench047.cli download-pdfs
 
-bench047-smoke: bench047-install ## Run SPEC-047 smoke (10 real PDFs, hybrid, Mistral Small LLM+vision + embed, Postgres)
+bench047-smoke: bench047-install ## SPEC-047 chart-8 smoke (locked Acc physics: P0_mm_ite + dscope + Small)
 	@set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)"; set +a; \
 	export EDGEQUAKE_API_URL="$${EDGEQUAKE_API_URL:-$(BACKEND_URL)}"; \
+	export MISTRAL_MODEL="$${MISTRAL_MODEL:-mistral-small-latest}"; \
 	export EDGEQUAKE_LLM_PROVIDER=mistral EDGEQUAKE_LLM_MODEL=mistral-small-latest; \
 	export EDGEQUAKE_EMBEDDING_PROVIDER=mistral MISTRAL_EMBEDDING_MODEL=mistral-embed; \
 	export EDGEQUAKE_VISION_PROVIDER=mistral EDGEQUAKE_VISION_MODEL=mistral-small-latest; \
-	export BENCH047_WORKERS="$${BENCH047_WORKERS:-30}"; \
-	python3 -m bench047.cli smoke --api "$$EDGEQUAKE_API_URL" --profile P0_primary --workers "$$BENCH047_WORKERS"; \
+	export VLM_PROCESS_ENABLE=true; \
+	export EDGEQUAKE_BENCH_FIXTURE="$${EDGEQUAKE_BENCH_FIXTURE:-smoke_chart_doc_ids_v1.txt}"; \
+	export BENCH047_WORKERS="$${BENCH047_WORKERS:-2}"; \
+	chmod +x tools/bench047/scripts/ensure_backend_small.sh tools/bench047/scripts/run_chart8_smoke.sh; \
+	tools/bench047/scripts/run_chart8_smoke.sh; \
+	echo "$(GREEN)→ SUMMARY:$(RESET) specs/047-rag-evaluation/e2e/artifacts/smoke/SUMMARY.md"
+
+bench047-smoke-vision-medium: bench047-install ## Chart-8 Acc physics + mistral-medium-3-5 vision (025 W1)
+	@set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)"; set +a; \
+	export EDGEQUAKE_API_URL="$${EDGEQUAKE_API_URL:-$(BACKEND_URL)}"; \
+	export MISTRAL_MODEL="$${MISTRAL_MODEL:-mistral-small-latest}"; \
+	export EDGEQUAKE_LLM_PROVIDER=mistral EDGEQUAKE_LLM_MODEL=mistral-small-latest; \
+	export EDGEQUAKE_EMBEDDING_PROVIDER=mistral MISTRAL_EMBEDDING_MODEL=mistral-embed; \
+	export EDGEQUAKE_VISION_PROVIDER=mistral EDGEQUAKE_VISION_MODEL=mistral-medium-3-5; \
+	export VLM_PROCESS_ENABLE=true; \
+	export EDGEQUAKE_BENCH_FIXTURE="$${EDGEQUAKE_BENCH_FIXTURE:-smoke_chart_doc_ids_v1.txt}"; \
+	export BENCH047_WORKERS="$${BENCH047_WORKERS:-2}"; \
+	chmod +x tools/bench047/scripts/ensure_backend_small.sh tools/bench047/scripts/run_chart8_vision_medium.sh; \
+	tools/bench047/scripts/run_chart8_vision_medium.sh; \
 	echo "$(GREEN)→ SUMMARY:$(RESET) specs/047-rag-evaluation/e2e/artifacts/smoke/SUMMARY.md"
 
 bench047-core: bench047-install ## Run SPEC-047 core (~40 docs) — requires --i-accept-cost
 	@set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)"; set +a; \
 	export EDGEQUAKE_API_URL="$${EDGEQUAKE_API_URL:-$(BACKEND_URL)}"; \
-	python3 -m bench047.cli core --api "$$EDGEQUAKE_API_URL" --i-accept-cost
+	python3 -m bench047.cli core --api "$$EDGEQUAKE_API_URL" --profile P0_mm_ite --document-scope --i-accept-cost
 
-bench047-full: bench047-install ## Run SPEC-047 full (135 docs) — requires --i-accept-cost
+bench047-freeze-core: bench047-install ## Freeze ~40-doc core fixture (Phase B)
+	@python3 -m bench047.cli download-qa
+	@python3 -m bench047.cli freeze-core -n 40
+	@python3 -m bench047.cli download-pdfs --fixture core_doc_ids_v1.txt
+
+bench047-phase-b-core: bench047-install ## Phase B core bench + checkpoint assess every 5 docs
 	@set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)"; set +a; \
 	export EDGEQUAKE_API_URL="$${EDGEQUAKE_API_URL:-$(BACKEND_URL)}"; \
-	python3 -m bench047.cli full --api "$$EDGEQUAKE_API_URL" --i-accept-cost
+	export MISTRAL_MODEL="$${MISTRAL_MODEL:-mistral-small-latest}"; \
+	export EDGEQUAKE_LLM_PROVIDER=mistral EDGEQUAKE_LLM_MODEL=mistral-small-latest; \
+	export EDGEQUAKE_EMBEDDING_PROVIDER=mistral MISTRAL_EMBEDDING_MODEL=mistral-embed; \
+	export EDGEQUAKE_VISION_PROVIDER=mistral EDGEQUAKE_VISION_MODEL=mistral-small-latest; \
+	export VLM_PROCESS_ENABLE=true; \
+	chmod +x tools/bench047/scripts/ensure_backend_small.sh tools/bench047/scripts/run_phase_b_core.sh; \
+	tools/bench047/scripts/run_phase_b_core.sh; \
+	echo "$(GREEN)→ checkpoints:$(RESET) specs/047-rag-evaluation/e2e/artifacts/core-checkpoints/"
+
+bench047-full: bench047-install ## SPEC-047 full (135 docs) ≥10 parallel ingest + Small pins
+	@set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)"; set +a; \
+	export EDGEQUAKE_API_URL="$${EDGEQUAKE_API_URL:-$(BACKEND_URL)}"; \
+	export MISTRAL_MODEL="$${MISTRAL_MODEL:-mistral-small-latest}"; \
+	export EDGEQUAKE_LLM_PROVIDER=mistral EDGEQUAKE_LLM_MODEL=mistral-small-latest; \
+	export EDGEQUAKE_EMBEDDING_PROVIDER=mistral MISTRAL_EMBEDDING_MODEL=mistral-embed; \
+	export EDGEQUAKE_VISION_PROVIDER=mistral EDGEQUAKE_VISION_MODEL=mistral-small-latest; \
+	export VLM_PROCESS_ENABLE=true; \
+	export BENCH047_INGEST_WORKERS="$${BENCH047_INGEST_WORKERS:-10}"; \
+	export BENCH047_WORKERS="$${BENCH047_WORKERS:-4}"; \
+	chmod +x tools/bench047/scripts/ensure_backend_small.sh tools/bench047/scripts/run_full_parallel.sh; \
+	tools/bench047/scripts/run_full_parallel.sh; \
+	echo "$(GREEN)→ SUMMARY:$(RESET) specs/047-rag-evaluation/e2e/artifacts/full/SUMMARY.md"

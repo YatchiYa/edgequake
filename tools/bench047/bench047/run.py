@@ -20,7 +20,7 @@ from .diagnostics import (
     build_retrieval_diagnostics,
 )
 from .download import download_pdfs, ensure_qa
-from .extract import extract_answer
+from .extract import extract_answer_detailed
 from .paths import documents_dir, stage_artifact_dir
 from .profiles import BenchProfile, get_profile
 from .score import append_jsonl, build_scorecard, load_jsonl, score_sample, write_summary
@@ -51,6 +51,40 @@ def _git_sha() -> str:
         )
     except Exception:
         return "unknown"
+
+
+def _models_toml_path() -> Path:
+    # tools/bench047/bench047/run.py → repo root
+    return Path(__file__).resolve().parents[3] / "edgequake" / "models.toml"
+
+
+def _models_toml_supports_vision(model_id: str) -> Optional[bool]:
+    """Return True/False if models.toml lists supports_vision for model_id; None if unreadable."""
+    path = _models_toml_path()
+    if not path.is_file():
+        return None
+    try:
+        import tomllib
+    except ImportError:  # pragma: no cover — py<3.11
+        try:
+            import tomli as tomllib  # type: ignore
+        except ImportError:
+            return None
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    providers = data.get("providers") or []
+    if isinstance(providers, dict):
+        providers = list(providers.values())
+    for provider in providers:
+        if not isinstance(provider, dict):
+            continue
+        for model in provider.get("models") or []:
+            if isinstance(model, dict) and model.get("name") == model_id:
+                caps = model.get("capabilities") or {}
+                return bool(caps.get("supports_vision"))
+    return False
 
 
 def doctor(base_url: Optional[str] = None, profile: Optional[BenchProfile] = None) -> int:
@@ -88,12 +122,27 @@ def doctor(base_url: Optional[str] = None, profile: Optional[BenchProfile] = Non
             f"WARN: server llm model={llm_model} (profile wants {profile.llm_model}); "
             "workspace create will pin the profile model for this run"
         )
-    # vision capability: models.toml must mark small as vision; env must match
+    # vision capability: models.toml must mark profile vision model as supports_vision
     vision_model = os.environ.get("EDGEQUAKE_VISION_MODEL", profile.vision_model)
     if vision_model != profile.vision_model:
         print(f"WARN: EDGEQUAKE_VISION_MODEL={vision_model} profile={profile.vision_model}")
     if profile.pdf_parser_backend == "vision":
         print(f"OK: vision model intended={profile.vision_model} (provider={profile.vision_provider})")
+        if profile.is_split_llm_vision():
+            print(
+                f"OK: split LLM/vision pin llm={profile.llm_model} vision={profile.vision_model} "
+                f"(stronger_vision={profile.uses_stronger_vision()})"
+            )
+        vision_ok = _models_toml_supports_vision(profile.vision_model)
+        if vision_ok is False:
+            print(
+                f"FAIL: models.toml does not mark supports_vision=true for {profile.vision_model!r}"
+            )
+            ok = False
+        elif vision_ok is True:
+            print(f"OK: models.toml supports_vision=true for {profile.vision_model}")
+        else:
+            print(f"WARN: could not verify models.toml vision flag for {profile.vision_model}")
     if profile.process_options:
         print(f"OK: process_options={profile.process_options}")
     if profile.requires_vlm_process:
@@ -132,6 +181,7 @@ def run_stage(
     query_only: bool = False,
     document_scope: bool = False,
     workers: int = 1,
+    ingest_workers: int = 10,
 ) -> int:
     profile = get_profile(profile_name)
     if stage in {"core", "full"} and not accept_cost:
@@ -244,26 +294,36 @@ def run_stage(
     }
 
     if not query_only:
+        # First principles: force_reindex wipes markdown + checkpoints and re-runs
+        # full vision+multimodal (117-page docs = hours). Only force on fresh runs
+        # (--no-resume). On --resume, allow checkpoint / stored-markdown shortcut.
+        force_reindex = not resume
+        ingest_workers = max(1, int(ingest_workers))
+        pending_ingest: list[tuple[int, str]] = []
         for i, doc_id in enumerate(doc_ids, 1):
             if resume and doc_id in completed_docs:
                 print(f"[{i}/{len(doc_ids)}] skip ingest {doc_id}")
                 continue
+            pending_ingest.append((i, doc_id))
+
+        ingest_lock = threading.Lock()
+
+        def _ingest_one(item: tuple[int, str]) -> dict[str, Any]:
+            i, doc_id = item
             path = pdf_paths.get(doc_id)
             if not path or not path.exists():
                 row = {"doc_id": doc_id, "status": "failed", "error": "pdf_missing"}
-                append_jsonl(ingest_path, row)
-                failed_docs[doc_id] = row
-                continue
-            # First principles: force_reindex wipes markdown + checkpoints and re-runs
-            # full vision+multimodal (117-page docs = hours). Only force on fresh runs
-            # (--no-resume). On --resume, allow checkpoint / stored-markdown shortcut.
-            force_reindex = not resume
+                with ingest_lock:
+                    append_jsonl(ingest_path, row)
+                    failed_docs[doc_id] = row
+                return row
+            worker = EdgeQuakeClient(base_url=base_url, workspace_id=run_workspace_id)
             print(
                 f"[{i}/{len(doc_ids)}] upload {doc_id} ({path.stat().st_size} bytes)"
-                f" force_reindex={force_reindex}"
+                f" force_reindex={force_reindex} (ingest-worker)"
             )
             try:
-                up = client.upload_pdf(
+                up = worker.upload_pdf(
                     path,
                     enable_vision=profile.pdf_parser_backend == "vision",
                     vision_provider=profile.vision_provider,
@@ -278,7 +338,7 @@ def run_stage(
                 # stored markdown — skips re-vision).
                 up_status = (up.get("status") or "").lower()
                 if resume and not force_reindex and up_status == "duplicate" and pdf_id:
-                    st0 = client.pdf_status(pdf_id)
+                    st0 = worker.pdf_status(pdf_id)
                     pdf_st = (st0.get("status") or "").lower()
                     eq_doc = st0.get("document_id")
                     if pdf_st in {"processing", "pending", "failed"}:
@@ -287,11 +347,11 @@ def run_stage(
                             f"(status={pdf_st}; keep markdown, skip re-vision)"
                         )
                         if pdf_st == "failed" and eq_doc:
-                            client.reprocess_failed(
+                            worker.reprocess_failed(
                                 document_id=str(eq_doc), mode="entities_only"
                             )
                         else:
-                            rec = client.recover_stuck(stuck_threshold_minutes=0)
+                            rec = worker.recover_stuck(stuck_threshold_minutes=0)
                             requeued = int(rec.get("requeued") or 0)
                             print(
                                 f"  recover_stuck requeued={requeued} "
@@ -304,13 +364,13 @@ def run_stage(
                                     f"  soft reprocess document {str(eq_doc)[:8]}… "
                                     "(entities_only force; no active worker)"
                                 )
-                                client.reprocess_failed(
+                                worker.reprocess_failed(
                                     document_id=str(eq_doc),
                                     mode="entities_only",
                                     max_documents=1,
                                     force=True,
                                 )
-                st = client.wait_pdf(pdf_id, timeout_s=10800)
+                st = worker.wait_pdf(pdf_id, timeout_s=10800)
                 status = (st.get("status") or "").lower()
                 row = {
                     "doc_id": doc_id,
@@ -320,16 +380,35 @@ def run_stage(
                     "raw_status": status,
                     "page_count": (st.get("metadata") or {}).get("page_count"),
                 }
-                append_jsonl(ingest_path, row)
-                if row["status"] == "completed":
-                    completed_docs[doc_id] = row
-                else:
-                    failed_docs[doc_id] = row
+                with ingest_lock:
+                    append_jsonl(ingest_path, row)
+                    if row["status"] == "completed":
+                        completed_docs[doc_id] = row
+                    else:
+                        failed_docs[doc_id] = row
+                print(f"  [{i}/{len(doc_ids)}] ingest {doc_id} → {row['status']}")
+                return row
             except Exception as e:
                 row = {"doc_id": doc_id, "status": "failed", "error": str(e)}
-                append_jsonl(ingest_path, row)
-                failed_docs[doc_id] = row
-                print(f"  ERROR: {e}")
+                with ingest_lock:
+                    append_jsonl(ingest_path, row)
+                    failed_docs[doc_id] = row
+                print(f"  [{i}/{len(doc_ids)}] ERROR {doc_id}: {e}")
+                return row
+
+        if pending_ingest:
+            print(
+                f"Ingest phase: {len(pending_ingest)} docs, "
+                f"ingest_workers={ingest_workers} force_reindex={force_reindex}"
+            )
+            if ingest_workers <= 1:
+                for item in pending_ingest:
+                    _ingest_one(item)
+            else:
+                with ThreadPoolExecutor(max_workers=ingest_workers) as pool:
+                    futures = [pool.submit(_ingest_one, item) for item in pending_ingest]
+                    for fut in as_completed(futures):
+                        fut.result()
 
     if ingest_only:
         print("ingest-only done")
@@ -402,10 +481,16 @@ def run_stage(
                 print(f"  query empty/error ({latency:.0f}ms): {query_error[:160]}")
             elif latency < 50:
                 print(f"  WARN: empty answer in {latency:.1f}ms (backend likely down or wrong field)")
+        pred_raw = ""
         try:
-            short = extract_answer(question, long_ans, extractor=profile.extractor)
+            parts = extract_answer_detailed(
+                question, long_ans, extractor=profile.extractor
+            )
+            short = parts["pred"]
+            pred_raw = parts["pred_raw"]
         except Exception as e:
             short = "Failed"
+            pred_raw = "Failed"
             with stats_lock:
                 extract_fails += 1
             print(f"  extract fail: {e}")
@@ -417,6 +502,7 @@ def run_stage(
             "question": question,
             "answer": row["answer"],
             "pred": short,
+            "pred_raw": pred_raw,
             "answer_long": long_ans,
             "answer_format": row["answer_format"],
             "evidence_pages": row["evidence_pages"],
@@ -471,6 +557,7 @@ def run_stage(
         "document_scope": document_scope,
         "page_hit_rate": retrieval_ops.get("page_hit@5"),
         "query_workers": workers,
+        "ingest_workers": ingest_workers,
         "retrieval": retrieval_ops,
         "false_refusal": refusal_ops,
         "arm_gates": arm_ops,

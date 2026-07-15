@@ -11,6 +11,12 @@ from typing import Any
 from . import mmlongbench_eval_score as ev
 from .paths import EVAL_SCORE_SHA
 from .profiles import BANNER, BenchProfile
+from .protocol import (
+    PROTOCOL_VERSION,
+    attribution_slices,
+    exclusive_source_accuracy,
+    gate_notes,
+)
 from .subset import parse_list_field
 
 
@@ -116,11 +122,16 @@ def build_scorecard(
                 k: {"accuracy": float(ev.eval_acc_and_f1(v)[0]), "n": len(v)}
                 for k, v in by_src.items()
             },
+            # Honest Chart/Table-only Acc (len(evidence_sources)==1). Official
+            # by_evidence_source multi-counts Chart∩Table questions into both.
+            "by_evidence_source_exclusive": exclusive_source_accuracy(listed),
             "by_doc_type": {
                 k: {"accuracy": float(ev.eval_acc_and_f1(v)[0]), "n": len(v)}
                 for k, v in by_type.items()
             },
+            "attribution": attribution_slices(listed),
         },
+        "protocol": gate_notes(),
         "ops": {
             "ingest_coverage": ops.get("ingest_coverage", 0.0),
             "cost_usd_total": ops.get("cost_usd_total"),
@@ -131,6 +142,7 @@ def build_scorecard(
             "page_hit_rate": ops.get("page_hit_rate"),
             "document_scope": ops.get("document_scope", False),
             "query_workers": ops.get("query_workers"),
+            "ingest_workers": ops.get("ingest_workers"),
             "retrieval": ops.get("retrieval") or {},
             "false_refusal": ops.get("false_refusal") or {},
             "arm_gates": ops.get("arm_gates") or {},
@@ -168,13 +180,21 @@ def write_summary(scorecard: dict[str, Any], path: Path) -> None:
             f" query_workers={ops['query_workers']}"
             if ops.get("query_workers") is not None
             else ""
+        )
+        + (
+            f" ingest_workers={ops['ingest_workers']}"
+            if ops.get("ingest_workers") is not None
+            else ""
         ),
         "",
         "## How to read this score",
+        f"- **protocol:** `{PROTOCOL_VERSION}` — Acc/F1 = official soft-score; W1 gates use long-needle a_in_e.",
         "- **valid=true** means ops gates passed (ingest + non-empty answers). It is not “beats GPT-4o.”",
         "- **Acc** = mean official short-answer score; **F1** balances answerable vs predicted-answerable.",
         "- **LVLM GPT-4o F1≈44.9%** is a difficulty reference only (page-screenshot task ≠ RAG).",
         "- Prefer slice gaps (chart / cross-page / unanswerable) over a single headline number.",
+        "- **by_evidence_source** multi-counts (official). **exclusive** = len(sources)==1 (honest Chart-only).",
+        "- **Acc ↑ ≠ W1 win** — require Chart exclusive Acc ↑ and Chart a_in_e_long ≥ 0.50.",
         "- **page_hit@k** (W0): gold `evidence_pages` ∩ retrieved chunk `page_start` — retrieval law, not Acc.",
         "- **false_refusal** (020 A2): answerable gold ∧ pred≈Not answerable; slice by page_hit@5.",
         "",
@@ -238,10 +258,24 @@ def write_summary(scorecard: dict[str, Any], path: Path) -> None:
         f"- Cross-page Acc: {s['cross_page_accuracy']:.4f}",
         f"- Unanswerable Acc: {s['unanswerable_accuracy']:.4f}",
         "",
-        "### By evidence source",
+        "### By evidence source (multi-label / official)",
     ]
     for k, v in sorted(s.get("by_evidence_source", {}).items()):
         lines.append(f"- {k}: Acc={v['accuracy']:.4f} (n={v['n']})")
+    lines += ["", "### By evidence source exclusive (len==1)"]
+    for k, v in sorted(s.get("by_evidence_source_exclusive", {}).items()):
+        lines.append(f"- {k}: Acc={v['accuracy']:.4f} (n={v['n']})")
+    attr = s.get("attribution") or {}
+    if attr:
+        lines += ["", "### Acc attribution (single-run mass)"]
+        for key in ("list_gold", "unanswerable", "other_answerable"):
+            block = attr.get(key) or {}
+            acc_v = block.get("accuracy")
+            acc_s = f"{acc_v:.4f}" if acc_v is not None else "—"
+            lines.append(
+                f"- {key}: Acc={acc_s} n={block.get('n', 0)} "
+                f"score_sum={block.get('score_sum', 0):.3f}"
+            )
     lines += ["", "### By document type"]
     for k, v in sorted(s.get("by_doc_type", {}).items()):
         lines.append(f"- {k}: Acc={v['accuracy']:.4f} (n={v['n']})")
