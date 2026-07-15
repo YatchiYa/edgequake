@@ -1,7 +1,44 @@
-# core_doc_ids_v1.txt — PLACEHOLDER
+# SPEC-047 core_doc_ids_v1 — FROZEN
+# seed=047-core-v1
+# includes smoke_doc_ids_v1
 
-# STATUS: NOT FROZEN — create during EQ-047-13 (extends smoke).
-# Seed: 047-core-v1
-# Target: ~40 documents including all smoke_doc_ids_v1 entries.
-
-PLACEHOLDER_PENDING_EQ_047_13
+e79deb02a0c0e87511080836c5d4347b.pdf
+afe620b9beac86c1027b96d31d396407.pdf
+germanwingsdigitalcrisisanalysis-150403064828-conversion-gate01_95.pdf
+2311.16502v3.pdf
+measuringsuccessonfacebooktwitterlinkedin-160317142140_95.pdf
+8dfc21ec151fb9d3578fc32d5c4e5df9.pdf
+GPL-Graduate-Studies-Professional-Learning-Brochure-Jul-2021.pdf
+indonesiamobilemarketresearch-ag-150106055934-conversion-gate02_95.pdf
+PIP_Seniors-and-Tech-Use_040314.pdf
+05-03-18-political-release.pdf
+ecommerceopportunityindia-141124010546-conversion-gate01_95.pdf
+earthlinkweb-150213112111-conversion-gate02_95.pdf
+finalmediafindingspdf-141228031149-conversion-gate02_95.pdf
+User_Manual_1500S_Classic_EN.pdf
+bigdatatrends-120723191058-phpapp02_95.pdf
+digitalmeasurementframework22feb2011v6novideo-110221233835-phpapp01_95.pdf
+nielsen2015musicbizpresentation-final-150526143534-lva1-app6891_95.pdf
+8e7c4cb542ad160f80fb3d795ada35d8.pdf
+earlybird-110722143746-phpapp02_95.pdf
+t480_ug_en.pdf
+2005.12872v3.pdf
+f86d073b0d735ac873a65d906ba82758.pdf
+2306.05425v1.pdf
+2210.02442v1.pdf
+2023.acl-long.386.pdf
+RAR.pdf
+amb-siteaudits-ds15-150204174043-conversion-gate01_95.pdf
+PS_2018.01.09_STEM_FINAL.pdf
+obs-productdesc-en.pdf
+91521110100M_4K_UHD_Display_User_Manual_V1.1.pdf
+2303.05039v2.pdf
+2310.07609v1.pdf
+STEPBACK.pdf
+2023.findings-emnlp.248.pdf
+2307.09288v2.pdf
+2405.09818v1.pdf
+SnapNTell.pdf
+2305.13186v3.pdf
+tacl_a_00660.pdf
+formwork-150318073913-conversion-gate01_95.pdf
