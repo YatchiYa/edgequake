@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 from huggingface_hub import hf_hub_download, list_repo_files
+from huggingface_hub.errors import HfHubHTTPError
 
 from .paths import dataset_root, documents_dir, qa_parquet_path
 
@@ -48,13 +49,11 @@ def download_pdfs(doc_ids: Optional[Iterable[str]] = None) -> list[Path]:
         name = Path(rel).name
         if wanted is not None and name not in wanted:
             continue
-        path = hf_hub_download(
-            repo_id=REPO_ID,
-            repo_type="dataset",
-            filename=rel,
-            local_dir=str(dataset_root()),
-        )
-        # huggingface may place under documents/
+        try:
+            path = _download_pdf_with_retry(rel, name)
+        except (HfHubHTTPError, OSError) as e:
+            print(f"  ERROR: skip {name}: {e}")
+            continue
         p = Path(path)
         if not p.exists():
             p = docs / name
@@ -62,6 +61,43 @@ def download_pdfs(doc_ids: Optional[Iterable[str]] = None) -> list[Path]:
         print(f"  pdf: {name}")
     _write_manifest(out)
     return out
+
+
+def _download_pdf_with_retry(rel: str, name: str, *, max_attempts: int = 3) -> str:
+    """Download one PDF; on HF 416 (stale partial), wipe local copy and retry."""
+    root = dataset_root()
+    local_candidates = [
+        root / rel,
+        documents_dir() / name,
+        root / "documents" / name,
+    ]
+    last_err: Exception | None = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return hf_hub_download(
+                repo_id=REPO_ID,
+                repo_type="dataset",
+                filename=rel,
+                local_dir=str(root),
+                force_download=attempt > 1,
+            )
+        except (HfHubHTTPError, OSError) as e:
+            last_err = e
+            msg = str(e).lower()
+            stale = (
+                "416" in msg
+                or "range not satisfiable" in msg
+                or "consistency check failed" in msg
+            )
+            if stale:
+                print(f"  WARN: stale/corrupt partial for {name} — clearing cache (attempt {attempt})")
+                for p in local_candidates:
+                    if p.exists():
+                        p.unlink()
+                continue
+            raise
+    assert last_err is not None
+    raise last_err
 
 
 def _write_manifest(paths: list[Path]) -> None:
