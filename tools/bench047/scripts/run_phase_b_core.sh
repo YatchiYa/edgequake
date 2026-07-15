@@ -63,26 +63,28 @@ _assess_checkpoint() {
     python3 -m bench047.cli fidelity core --api "$EDGEQUAKE_API_URL" \
       >"$cp/FIDELITY.md" 2>&1 || true
     [ -f "$CORE_DIR/fidelity.json" ] && cp "$CORE_DIR/fidelity.json" "$cp/" || true
+    # Shell-expand n into the heredoc (quoted <<'PY' would break $CORE_DIR/$cp).
     python3 <<PY
 import json
 from pathlib import Path
 from datetime import datetime, timezone
-sc=json.loads(Path("$CORE_DIR/scorecard.json").read_text())
-m=sc["metrics"]
-lines=[
-  f"# Phase B checkpoint — {n} docs",
-  f"",
-  f"**Time:** {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}",
-  f"**Stack:** P0_mm_ite · W3-arith-v2 · protocol 026-listmem",
-  f"",
-  f"- Acc: **{m['accuracy']:.4f}**",
-  f"- F1: **{m['f1']:.4f}**",
-  f"- valid: {sc.get('valid')}",
-  f"- ingest_coverage: {(sc.get('ops') or {}).get('ingest_coverage')}",
-  f"",
-  f"See SUMMARY.md / FIDELITY.md in this folder.",
+n = int("$n")
+sc = json.loads(Path("$CORE_DIR/scorecard.json").read_text())
+m = sc["metrics"]
+lines = [
+    f"# Phase B checkpoint — {n} docs",
+    "",
+    f"**Time:** {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}",
+    "**Stack:** P0_mm_ite · W3-arith-v2 · protocol 026-listmem",
+    "",
+    f"- Acc: **{m['accuracy']:.4f}**",
+    f"- F1: **{m['f1']:.4f}**",
+    f"- valid: {sc.get('valid')}",
+    f"- ingest_coverage: {(sc.get('ops') or {}).get('ingest_coverage')}",
+    "",
+    "See SUMMARY.md / FIDELITY.md in this folder.",
 ]
-Path("$cp/ASSESSMENT.md").write_text("\\n".join(lines)+ "\\n")
+Path("$cp/ASSESSMENT.md").write_text("\n".join(lines) + "\n")
 print(f"checkpoint at_{n}_docs Acc={m['accuracy']:.4f} F1={m['f1']:.4f}")
 PY
   else
@@ -92,8 +94,16 @@ PY
 
 echo "=== Phase B CORE: assess every 5 docs (tag=$TAG) ===" | tee "$LOG"
 RESUME_FLAG="--no-resume"
+START_N="${BENCH047_START_N:-5}"
 for N in 5 10 15 20 25 30 35 40; do
   [ "$N" -gt "$N_DOCS" ] && break
+  [ "$N" -lt "$START_N" ] && continue
+  # Skip re-run if checkpoint assessment already present (resume mid-ladder).
+  if [ "${BENCH047_RESUME:-0}" = "1" ] && [ -f "$CHECKPOINT_ROOT/at_${N}_docs/ASSESSMENT.md" ]; then
+    echo "--- skip max-docs=$N (checkpoint exists) ---" | tee -a "$LOG"
+    RESUME_FLAG="--resume"
+    continue
+  fi
   echo "--- batch max-docs=$N resume=$RESUME_FLAG ---" | tee -a "$LOG"
   python3 -m bench047.cli core \
     --api "$EDGEQUAKE_API_URL" \
