@@ -1,36 +1,24 @@
-# 036 — Phase B CORE checkpoint @ 5 docs
+# 036 — Phase B first attempt @ 5 docs — INVALID for CORE progression
 
 **Date:** 2026-07-15  
-**Artifact:** `e2e/artifacts/core-checkpoints/at_5_docs/`  
-**Workspace:** `1ec17559-816d-4ca7-b80c-4d0f8de3ca84`  
-**Stack:** Acc #5 / `BEST_SCORE_STACK` · `P0_mm_ite` · W3-arith-v2 · document-scope · Small  
-**Build:** `20260715.134954` (`5f32605a`)
+**Status:** **VOID as Phase B CORE** — inherited `EDGEQUAKE_BENCH_FIXTURE=smoke_chart_doc_ids_v1.txt`  
+**Artifact (archived):** `e2e/artifacts/core-checkpoints/at_5_docs_CHART8_FIXTURE_MISRUN/`  
+**Workspace:** `1ec17559-…` (chart-8 5-doc prefix only)
 
 ---
 
-## Scores (first 5 of 40 core docs)
+## What happened
 
-| Metric | Value |
-|---|---:|
-| Acc | **0.4847** |
-| F1 | **0.3472** |
-| valid | True |
-| ingest_coverage | 1.0 |
-| Chart `a_in_e_long` | **0.60 PASS** (n=10) |
-| Table `a_in_e_long` | **0.583 PASS** (n=12) |
+Shell env still had Acc-chain fixture override → `bench047 core --max-docs=5` ran **chart-8**, not `core_doc_ids_v1` (40).
 
-Docs: political · 2311 · PIP seniors · afe620 · e79deb (smoke-overlapping prefix of core fixture).
+Scores (chart-8 5-doc prefix only): Acc **0.4847** · F1 **0.3472** · Chart long **0.60 PASS**. Not a CORE milestone.
 
 ---
 
-## Honesty
+## Fix
 
-- 5-doc prefix is **not** comparable to chart-8 Acc #5 (0.562 / 0.480). Different Q mix.
-- Use this for Phase B progression tracking every 5 docs.
-- Checkpoint script bug (`n` undefined) fixed; resume from max-docs=10.
+- `run_phase_b_core.sh` now `unset EDGEQUAKE_BENCH_FIXTURE`
+- Restored frozen `smoke_doc_ids_v1.txt` (freeze-core had rewritten it)
+- Fresh Phase B CORE from max-docs=5 with true core fixture
 
----
-
-## Next
-
-Continue ladder: 10 → 15 → 20 → 25 → 30 → 35 → 40 with `BENCH047_RESUME=1`.
+Do **not** compare the archived at_5 misrun to Phase B ladder.

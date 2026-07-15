@@ -19,6 +19,9 @@ export EDGEQUAKE_LLM_MODEL=mistral-small-latest
 export EDGEQUAKE_VISION_MODEL=mistral-small-latest
 export VLM_PROCESS_ENABLE=true
 export BENCH047_PROFILE=P0_mm_ite
+# Phase B = Stage B CORE (~40 docs). Never inherit chart-8 Acc fixture overrides.
+unset EDGEQUAKE_BENCH_FIXTURE
+export EDGEQUAKE_BENCH_FIXTURE=
 
 ENSURE="$REPO_ROOT/tools/bench047/scripts/ensure_backend_small.sh"
 ART="$REPO_ROOT/specs/047-rag-evaluation/e2e/artifacts"
