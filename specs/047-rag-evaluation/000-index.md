@@ -69,6 +69,8 @@ See [022 re-assessment](./022-reassessment-2026-07-11.md), [012 — how to read 
 | 033 | [Acc #4 mid-assess](./033-acc4-w3-arith-mid-assessment.md) | Year-span Chart long 0.643 |
 | 034 | [Acc #4 final](./034-acc4-w3-arith-assessment.md) | Acc/F1 no lift; Chart long 0.643 |
 | **035** | **[Acc #5 W3-v2](./035-acc5-w3-arith-v2-assessment.md)** | Acc≈#2 · 1251 hit · F1 short |
+| 036–037 | Phase B fixture fix / status | chart-8 misrun VOID |
+| **038** | **[Phase B CORE @5](./038-phase-b-core-checkpoint-at5.md)** | Acc **0.549** · F1 **0.491** |
 | — | [e2e/](./e2e/) | Artifacts + how to read SUMMARY |
 | — | [fixtures/](./fixtures/) | Smoke doc-id list, stratified seeds |
 
