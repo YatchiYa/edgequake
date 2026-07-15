@@ -113,21 +113,28 @@ class EdgeQuakeClient:
             raise RuntimeError(f"upload_pdf failed: {r.status_code} {r.text[:500]}")
         return r.json()
 
+    def _get_json_retry(self, url: str, *, attempts: int = 5) -> dict[str, Any]:
+        """GET JSON with retries on transient 5xx / pool pressure (common during vision ingest)."""
+        last_err: Exception | None = None
+        for i in range(attempts):
+            try:
+                r = self.client.get(url, headers=self.headers())
+                if r.status_code >= 500:
+                    last_err = RuntimeError(f"{r.status_code} {r.text[:300]}")
+                    time.sleep(min(2.0 * (i + 1), 15.0))
+                    continue
+                r.raise_for_status()
+                return r.json()
+            except (httpx.TransportError, httpx.TimeoutException) as e:
+                last_err = e
+                time.sleep(min(2.0 * (i + 1), 15.0))
+        raise RuntimeError(f"GET {url} failed after {attempts} attempts: {last_err}")
+
     def pdf_status(self, pdf_id: str) -> dict[str, Any]:
-        r = self.client.get(
-            f"{self.base}/api/v1/documents/pdf/{pdf_id}",
-            headers=self.headers(),
-        )
-        r.raise_for_status()
-        return r.json()
+        return self._get_json_retry(f"{self.base}/api/v1/documents/pdf/{pdf_id}")
 
     def document_status(self, document_id: str) -> dict[str, Any]:
-        r = self.client.get(
-            f"{self.base}/api/v1/documents/{document_id}",
-            headers=self.headers(),
-        )
-        r.raise_for_status()
-        return r.json()
+        return self._get_json_retry(f"{self.base}/api/v1/documents/{document_id}")
 
     def recover_stuck(self, *, stuck_threshold_minutes: int = 1) -> dict[str, Any]:
         """Requeue documents stuck in processing (restart_from_scratch=false — keeps markdown)."""

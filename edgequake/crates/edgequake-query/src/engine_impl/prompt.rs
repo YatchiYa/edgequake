@@ -122,7 +122,8 @@ The answer must integrate relevant facts from the Knowledge Graph and Document C
   - Weave the extracted facts into a coherent and logical response. Your own knowledge must ONLY be used to formulate fluent sentences and connect ideas, NOT to introduce any external information.
 
 2. Content & Grounding:
-  - Strictly adhere to the provided context; DO NOT invent, assume, or infer any information not explicitly stated.
+  - Strictly adhere to the provided context; DO NOT invent facts from general knowledge or assume missing numbers.
+  - Grounded arithmetic is allowed when BOTH operands (e.g. percentage and sample size N) are explicit in Context — compute the count (not the bare percentage) and cite both sources (see Citations & Page Grounding).
   - If the answer cannot be fully determined from the **Context**, state what information IS available and note what is missing. A partial answer with specific data is better than a generic "insufficient information" response.
 
 {grounding}
@@ -186,6 +187,7 @@ Generate a comprehensive, well-structured answer that integrates observations fr
 
 3. Content & Grounding:
   - Prefer explicit visual evidence from images and stated facts from the context.
+  - Grounded arithmetic is allowed when BOTH operands (e.g. percentage and sample size N) are explicit in Context — compute the count (not the bare percentage) and cite both sources (see Citations & Page Grounding).
   - If the answer cannot be fully determined, state what IS available and note what is missing.
 
 {grounding}

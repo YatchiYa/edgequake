@@ -117,9 +117,9 @@ fn e18_form_figure_written_beside_embed() {
     ));
 }
 
-/// E20 — chart residual pages exclude fig/table pages (keyword-free propose).
+/// E20 — chart residual: table pages blocked; fig pages allowed (026 W1-crop-expand).
 #[test]
-fn e20_chart_residual_candidates_exclude_fig_table() {
+fn e20_chart_residual_candidates_allow_fig_skip_table() {
     use edgequake_pdf::chart_residual_candidate_pages;
     let mut figs = HashMap::new();
     figs.insert(
@@ -133,9 +133,20 @@ fn e20_chart_residual_candidates_exclude_fig_table() {
             bbox: None,
         }],
     );
-    let tables: HashMap<usize, Vec<WrittenTableAsset>> = HashMap::new();
+    let mut tables: HashMap<usize, Vec<WrittenTableAsset>> = HashMap::new();
+    tables.insert(
+        2,
+        vec![WrittenTableAsset {
+            page_num: 2,
+            index: 1,
+            rel_path: "assets/page-0002-table-01.png".into(),
+            width: 10,
+            height: 10,
+            label: "Table 1".into(),
+        }],
+    );
     assert_eq!(
         chart_residual_candidate_pages(&[1, 2, 3], &figs, &tables),
-        vec![2, 3]
+        vec![1, 3]
     );
 }

@@ -16,8 +16,8 @@ use super::cache::chat_json_with_analysis_cache;
 use super::json_recovery::parse_json_object;
 use super::prompt_context::PromptContext;
 use super::prompts::{
-    chart_analysis_messages, figure_analysis_messages, is_figure_like_type,
-    json_repair_user_message, should_specialize_as_chart,
+    chart_analysis_messages, chart_analysis_messages_dense, figure_analysis_messages,
+    is_figure_like_type, json_repair_user_message, should_specialize_as_chart,
 };
 
 #[derive(Debug, Deserialize)]
@@ -189,12 +189,54 @@ pub(crate) fn figure_analysis_to_description(f: &FigureAnalysisResult) -> String
     parts.join("\n\n")
 }
 
+/// Minimum non-empty key_values / series points for a dense chart extract (026 W1-dense-B).
+const MIN_NUMERIC_POINTS: usize = 2;
+
 /// True when description lacks any digit (sparse / prose-only chart extract).
 fn description_lacks_numeric_dump(description: &str) -> bool {
     !description.chars().any(|c| c.is_ascii_digit())
 }
 
+/// Count non-empty numeric value slots in a chart extract (SRP: pure density measure).
+pub(crate) fn chart_numeric_point_count(c: &ChartAnalysisResult) -> usize {
+    let kv = c
+        .key_values
+        .iter()
+        .filter(|kv| {
+            !kv.value_raw.trim().is_empty()
+                && kv.value_raw.chars().any(|ch| ch.is_ascii_digit())
+        })
+        .count();
+    let series = c
+        .series
+        .iter()
+        .flat_map(|s| s.values.iter())
+        .filter(|p| {
+            p.y_raw
+                .as_deref()
+                .map(|y| !y.trim().is_empty() && y.chars().any(|ch| ch.is_ascii_digit()))
+                .unwrap_or(false)
+        })
+        .count();
+    kv + series
+}
+
+/// Fail-closed density gate: enough structured numbers OR a digit-bearing data table.
+///
+/// Density ≠ correctness — a wrong digit dump still passes; sparse prose fails.
+pub(crate) fn chart_extract_has_numeric_density(c: &ChartAnalysisResult) -> bool {
+    if chart_numeric_point_count(c) >= MIN_NUMERIC_POINTS {
+        return true;
+    }
+    let table = c.data_table_md.trim();
+    !table.is_empty()
+        && table.contains('|')
+        && table.chars().any(|ch| ch.is_ascii_digit())
+}
+
 /// Merge Pass A numeric dumps when chart specialize omitted readable points (MV-27).
+///
+/// Triggers on zero digits **or** low structured density after fail-closed specialize.
 fn merge_pass_a_dump_when_sparse(description: &str, ctx: &PromptContext) -> String {
     if !description_lacks_numeric_dump(description) {
         return description.to_string();
@@ -208,6 +250,30 @@ fn merge_pass_a_dump_when_sparse(description: &str, ctx: &PromptContext) -> Stri
             }
         }
         _ => description.to_string(),
+    }
+}
+
+/// Prefer denser of specialize vs Pass A when specialize is sparse (026 W1-dense-B).
+fn merge_pass_a_when_low_density(description: &str, dense: bool, ctx: &PromptContext) -> String {
+    if dense && !description_lacks_numeric_dump(description) {
+        return description.to_string();
+    }
+    match pass_a_numeric_dump_from_context(ctx) {
+        Some(dump) if !dump.trim().is_empty() => {
+            info!(
+                dense,
+                dump_chars = dump.len(),
+                "W1-dense-B: merging Pass A dump after low-density specialize"
+            );
+            if description.trim().is_empty() {
+                dump
+            } else if description.contains(dump.trim()) {
+                description.to_string()
+            } else {
+                format!("{dump}\n\n{description}")
+            }
+        }
+        _ => merge_pass_a_dump_when_sparse(description, ctx),
     }
 }
 
@@ -318,6 +384,8 @@ fn soft_fail_chart_result(
 /// 1. Chart specialize if type is Chart/Infographic **or** caption/context suggests chart
 ///    (and type is not Photo/Icon/…).
 /// 2. Else figure specialize for Illustration/Flowchart/Wireframe.
+///
+/// Chart path (026 W1-dense-B): density fail-closed → one dense retry → Pass A merge.
 pub async fn specialize_image_analysis(
     item_id: &str,
     bytes: &[u8],
@@ -333,7 +401,7 @@ pub async fn specialize_image_analysis(
         let messages = chart_analysis_messages(&specialize_bytes, mime_type, ctx);
         match chat_json_with_analysis_cache(
             llm,
-            kv,
+            kv.clone(),
             item_id,
             "drawing_chart",
             messages,
@@ -343,14 +411,50 @@ pub async fn specialize_image_analysis(
         .await
         {
             Ok((chart, _)) => {
+                let chart = if chart_extract_has_numeric_density(&chart) {
+                    chart
+                } else {
+                    info!(
+                        %item_id,
+                        points = chart_numeric_point_count(&chart),
+                        "W1-dense-B: chart extract sparse — dense retry"
+                    );
+                    let dense_msgs =
+                        chart_analysis_messages_dense(&specialize_bytes, mime_type, ctx);
+                    match chat_json_with_analysis_cache(
+                        llm,
+                        kv,
+                        item_id,
+                        "drawing_chart_dense",
+                        dense_msgs,
+                        parse_chart_analysis,
+                        json_repair_user_message,
+                    )
+                    .await
+                    {
+                        Ok((retried, _)) => retried,
+                        Err(e) => {
+                            warn!(
+                                %item_id,
+                                error = %e,
+                                "W1-dense-B dense retry failed; keeping first extract"
+                            );
+                            chart
+                        }
+                    }
+                };
+                let dense = chart_extract_has_numeric_density(&chart);
                 let mut out = classified;
                 if !chart.name.trim().is_empty() {
                     out.name = chart.name.clone();
                 }
                 // Ensure chunk renderer uses [Chart Name] even when classify said Illustration.
                 out.image_type = "Chart".into();
-                out.description =
-                    merge_pass_a_dump_when_sparse(&chart_analysis_to_description(&chart), ctx);
+                out.description = merge_pass_a_when_low_density(
+                    &chart_analysis_to_description(&chart),
+                    dense,
+                    ctx,
+                );
                 return out;
             }
             Err(e) => {
@@ -417,6 +521,69 @@ mod tests {
         assert!(merged.contains("52"));
         assert!(merged.contains("full data"));
         assert!(merged.contains("Trend summary"));
+    }
+
+    #[test]
+    fn chart_extract_density_requires_structured_numbers() {
+        let sparse = ChartAnalysisResult {
+            name: "t".into(),
+            chart_kind: "bar".into(),
+            title: "Trends".into(),
+            x_axis: String::new(),
+            y_axis: String::new(),
+            key_values: vec![ChartKeyValue {
+                label: "only".into(),
+                value_raw: "7".into(),
+            }],
+            series: vec![],
+            data_table_md: String::new(),
+            description: "Upward.".into(),
+        };
+        assert!(!chart_extract_has_numeric_density(&sparse));
+        assert_eq!(chart_numeric_point_count(&sparse), 1);
+
+        let dense_kv = ChartAnalysisResult {
+            name: "t".into(),
+            chart_kind: "bar".into(),
+            title: "Trends".into(),
+            x_axis: String::new(),
+            y_axis: String::new(),
+            key_values: vec![
+                ChartKeyValue {
+                    label: "a".into(),
+                    value_raw: "7".into(),
+                },
+                ChartKeyValue {
+                    label: "b".into(),
+                    value_raw: "9".into(),
+                },
+            ],
+            series: vec![],
+            data_table_md: String::new(),
+            description: "Upward.".into(),
+        };
+        assert!(chart_extract_has_numeric_density(&dense_kv));
+
+        let via_table = ChartAnalysisResult {
+            name: "t".into(),
+            chart_kind: "bar".into(),
+            title: String::new(),
+            x_axis: String::new(),
+            y_axis: String::new(),
+            key_values: vec![],
+            series: vec![],
+            data_table_md: "| X | Y |\n|---|---|\n| Q1 | 12 |".into(),
+            description: String::new(),
+        };
+        assert!(chart_extract_has_numeric_density(&via_table));
+    }
+
+    #[test]
+    fn low_density_merge_prefers_pass_a_dump() {
+        let ctx = empty_ctx_with_leading("**Key values:**\n- Q4: 42\n- Q3: 31\n");
+        let merged = merge_pass_a_when_low_density("Score 7 only.", false, &ctx);
+        assert!(merged.contains("42"));
+        assert!(merged.contains("31"));
     }
 
     #[test]

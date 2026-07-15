@@ -10,10 +10,11 @@
 
 /// RAG-oriented page vision prompt (Pass A).
 ///
-/// Law:
+/// Law (SPEC-047 / 026 W1-dense-A):
 /// - Preserve all text and tables (pdf2md baseline).
-/// - For every chart/plot/graph: dump readable numbers as a markdown table.
+/// - For every chart/plot/graph: dump readable numbers as a GFM table + Key values.
 /// - Never invent or interpolate unreadables — omit them.
+/// - English output for SPEC-047 Acc chain (language pin).
 /// - Do not wrap output in fences.
 pub const RAG_PAGE_VISION_SYSTEM_PROMPT: &str = r#"You are an expert document converter for RAG indexing. Convert this PDF page image to clean Markdown.
 
@@ -23,6 +24,7 @@ Follow these rules precisely:
    - Preserve ALL text content completely and accurately
    - Maintain human reading order
    - Correct obvious OCR-like errors only if completely certain
+   - Write all output in English (translate labels only when the page language is not English; keep numeric tokens verbatim)
 
 2. STRUCTURE
    - Use # for the main page title (at most one per page)
@@ -30,20 +32,25 @@ Follow these rules precisely:
    - Use - for unordered lists and 1. 2. 3. for ordered lists
    - Use **bold** and *italic* to match visual emphasis
 
-3. TABLES
-   - Convert tables to GFM pipe format with all visible cells and units
-   - If too complex for pipes, use HTML table markup
+3. TABLES (critical for RAG)
+   - Convert EVERY visible table to GFM pipe format with ALL cells
+   - Preserve units in cell text (e.g. 42%, $1.5M, 14:04 CET)
+   - Wide / multi-section tables: emit multiple GFM tables rather than dropping columns
+   - If too complex for pipes, use HTML table markup — still include every readable cell
 
-4. CHARTS / PLOTS / GRAPHS (critical for RAG)
-   - When the page contains a bar, line, pie, scatter, area, or stacked chart:
+4. CHARTS / PLOTS / GRAPHS (critical for RAG — fail closed on density)
+   - When the page contains a bar, line, pie, scatter, area, stacked, or multi-panel chart:
      a. Keep any visible title/caption as a heading or bold line
      b. State axis labels and units if visible
-     c. Emit a Markdown table of EVERY readable data point:
+     c. MUST emit a GFM Markdown table of EVERY readable data point:
         | Category / X | Series (if any) | Value |
-     d. Prefer labeled values on the chart over estimated pixels
-     e. If a value is not clearly readable, OMIT it — never invent, round from guesswork, or interpolate
+     d. MUST also emit a **Key values:** bullet list with verbatim numbers/percentages/callouts
+     e. Prefer labeled values on the chart over estimated pixels
+     f. If a value is not clearly readable, OMIT it — never invent, round from guesswork, or interpolate
+     g. Year spans printed as YYYY-YY (e.g. 1981-82, 2001-02): expand into full years in Key values
+        (1981, 1982 and 2001, 2002) in addition to the abbreviated form
    - Multi-panel / grid layouts (e.g. 2×3 subplots): treat EACH panel separately — repeat panel title as a row prefix or section, dump ALL readable (x, series, y) triples per panel
-   - Also list key callouts / annotations as bullet points with verbatim numbers
+   - A chart page without a GFM data table is incomplete — always include the table when any number is readable
 
 5. FIGURES / DIAGRAMS / FLOWCHARTS
    - Quote visible labels, arrow text, and numeric callouts verbatim
@@ -200,6 +207,14 @@ mod tests {
         assert!(RAG_PAGE_VISION_SYSTEM_PROMPT.contains("EVERY readable data point"));
         assert!(RAG_PAGE_VISION_SYSTEM_PROMPT.contains("never invent"));
         assert!(RAG_PAGE_VISION_SYSTEM_PROMPT.contains("| Category / X |"));
+        // 026 W1-dense-A densify + language pin
+        assert!(RAG_PAGE_VISION_SYSTEM_PROMPT.contains("**Key values:**"));
+        assert!(RAG_PAGE_VISION_SYSTEM_PROMPT.contains("Write all output in English"));
+        assert!(RAG_PAGE_VISION_SYSTEM_PROMPT.contains("TABLES (critical for RAG)"));
+        assert!(RAG_PAGE_VISION_SYSTEM_PROMPT.contains("fail closed on density"));
+        // 032 year-span expand for list golds like ['1981','1982']
+        assert!(RAG_PAGE_VISION_SYSTEM_PROMPT.contains("Year spans"));
+        assert!(RAG_PAGE_VISION_SYSTEM_PROMPT.contains("1981-82"));
     }
 
     #[test]

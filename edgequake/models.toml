@@ -478,15 +478,15 @@ embedding_per_1k = 0.0
 image_per_unit = 0.0002
 
 [[providers.models]]
-name = "mistral-medium-latest"
-display_name = "Mistral Medium (latest)"
+name = "mistral-medium-3-5"
+display_name = "Mistral Medium 3.5"
 model_type = "llm"
-description = "Frontier multimodal Mistral model — best balance of capability and cost"
+description = "Frontier multimodal (SPEC-047 W1 stronger vision) — official API id mistral-medium-3-5; Pixtral Large replacement"
 deprecated = false
-tags = ["recommended", "multimodal", "tools"]
+tags = ["recommended", "multimodal", "tools", "vision", "spec047-w1"]
 
 [providers.models.capabilities]
-context_length = 131072
+context_length = 262144
 max_output_tokens = 4096
 supports_vision = true
 supports_function_calling = true
@@ -496,8 +496,32 @@ supports_system_message = true
 embedding_dimension = 0
 
 [providers.models.cost]
-input_per_1k = 0.0004
-output_per_1k = 0.002
+input_per_1k = 0.0015
+output_per_1k = 0.0075
+embedding_per_1k = 0.0
+image_per_unit = 0.0
+
+[[providers.models]]
+name = "mistral-medium-latest"
+display_name = "Mistral Medium (latest)"
+model_type = "llm"
+description = "Alias → Mistral Medium 3.5 (2604); prefer mistral-medium-3-5 for SPEC-047 scorecard pins"
+deprecated = false
+tags = ["recommended", "multimodal", "tools", "vision"]
+
+[providers.models.capabilities]
+context_length = 262144
+max_output_tokens = 4096
+supports_vision = true
+supports_function_calling = true
+supports_json_mode = true
+supports_streaming = true
+supports_system_message = true
+embedding_dimension = 0
+
+[providers.models.cost]
+input_per_1k = 0.0015
+output_per_1k = 0.0075
 embedding_per_1k = 0.0
 image_per_unit = 0.0
 

@@ -12,6 +12,19 @@ pub const ASSETS_SUBDIR: &str = "assets";
 /// Max chars of Pass A body embedded into drawing caption (MV-26 routing hints).
 const CAPTION_BODY_BUDGET: usize = 160;
 
+/// Parse 1-indexed page number from an mm-asset relative path (`assets/page-0003-fig-01.png`).
+///
+/// DRY with `edgequake_storage::classify_mm_asset_path` — same `page-NNNN` stem convention.
+pub fn page_num_from_asset_rel_path(asset_path: &str) -> Option<u32> {
+    let name = asset_path.rsplit('/').next().unwrap_or(asset_path).trim();
+    let rest = name.strip_prefix("page-")?;
+    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+    if digits.is_empty() {
+        return None;
+    }
+    digits.parse().ok()
+}
+
 /// Filename pattern for full-page vision renders (`page-0001.png`).
 pub fn page_asset_filename(page_num: usize) -> String {
     format!("page-{page_num:04}.png")
@@ -154,6 +167,34 @@ pub fn page_drawing_item_id(page_num: usize, id_prefix: Option<&str>) -> String 
             }
         }
         None => format!("im-page-{page_num:04}"),
+    }
+}
+
+/// Stable drawing item id for an MV-24 residual chart crop (`page-NNNN-chart.png`).
+///
+/// Distinct from [`page_drawing_item_id`] / fig ids so chart specialize can run
+/// **alongside** embedded figures (026 W1-coexist) without colliding.
+pub fn page_chart_drawing_item_id(page_num: usize, id_prefix: Option<&str>) -> String {
+    match id_prefix.filter(|p| !p.is_empty()) {
+        Some(prefix) => {
+            let slug: String = prefix
+                .chars()
+                .map(|c| {
+                    if c.is_ascii_alphanumeric() {
+                        c.to_ascii_lowercase()
+                    } else {
+                        '-'
+                    }
+                })
+                .collect();
+            let slug = slug.trim_matches('-');
+            if slug.is_empty() {
+                format!("im-page-{page_num:04}-chart")
+            } else {
+                format!("im-{slug}-page-{page_num:04}-chart")
+            }
+        }
+        None => format!("im-page-{page_num:04}-chart"),
     }
 }
 
@@ -556,6 +597,10 @@ mod tests {
 
     #[test]
     fn page_asset_paths_are_stable() {
+        assert_eq!(page_num_from_asset_rel_path("assets/page-0003-fig-01.png"), Some(3));
+        assert_eq!(page_num_from_asset_rel_path("assets/page-0012-chart.png"), Some(12));
+        assert_eq!(page_num_from_asset_rel_path("assets/page-0006-table-01.png"), Some(6));
+        assert_eq!(page_num_from_asset_rel_path("not-a-page.png"), None);
         assert_eq!(page_asset_rel_path(1), "assets/page-0001.png");
         assert_eq!(page_asset_rel_path(42), "assets/page-0042.png");
         assert_eq!(page_chart_crop_rel_path(1), "assets/page-0001-chart.png");
@@ -730,5 +775,10 @@ mod tests {
             page_drawing_item_id(2, Some("ABC-123")),
             "im-abc-123-page-0002"
         );
+        assert_eq!(
+            page_chart_drawing_item_id(2, Some("ABC-123")),
+            "im-abc-123-page-0002-chart"
+        );
+        assert_eq!(page_chart_drawing_item_id(7, None), "im-page-0007-chart");
     }
 }

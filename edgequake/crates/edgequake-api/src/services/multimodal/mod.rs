@@ -71,9 +71,9 @@ pub use metadata::{
 };
 pub use prompt_context::{table_content_format_label, PromptContext};
 pub use prompts::{
-    chart_analysis_messages, equation_analysis_messages, figure_analysis_messages,
-    image_analysis_messages, is_chart_like_type, is_figure_like_type, json_repair_user_message,
-    should_specialize_as_chart, table_analysis_messages,
+    chart_analysis_messages, chart_analysis_messages_dense, equation_analysis_messages,
+    figure_analysis_messages, image_analysis_messages, is_chart_like_type, is_figure_like_type,
+    json_repair_user_message, should_specialize_as_chart, table_analysis_messages,
 };
 pub use providers::MultimodalProviders;
 pub use reanalyze::{

@@ -33,7 +33,7 @@
 | E17 | LightRAG arXiv PDF (`lighrad_2410.05779v3.pdf`) | ≥5 figs; Figure 1,3–7; G3; ≥5 `-fig-`; **0** `-table-` (Fig 2 may be absent) |
 | E18 | Page has ImageXObject + Form figure | Form crop still written (IoU merge; no any-embed skip) |
 | E19 | Path-only cluster inside Form | suppressed (containment ≥ 0.8) |
-| E20 | Chart residual propose | Pages without fig/table only; ink gates — not `text_suggests_chart` |
+| E20 | Chart residual propose | Pages without **table**; fig OK (026 W1-crop-expand) + ink gates — not `text_suggests_chart` |
 
 ## Suites
 

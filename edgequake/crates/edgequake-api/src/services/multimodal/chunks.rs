@@ -94,6 +94,9 @@ pub struct MultimodalChunk {
     pub llm_cache_list: Vec<String>,
     #[serde(default)]
     pub chunk_order_index: u32,
+    /// PDF page (1-indexed) from asset path — stamped into markdown for page-aware chunking.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page_start: Option<u32>,
 }
 
 fn item_footnotes(item: &ManifestItem) -> Vec<String> {
@@ -150,6 +153,10 @@ pub fn collect_mm_chunks_from_manifest(
             heading: heading_for_item(item),
             llm_cache_list: record.llm_cache_list.clone(),
             chunk_order_index: order,
+            page_start: item
+                .asset_path
+                .as_deref()
+                .and_then(edgequake_pdf::page_num_from_asset_rel_path),
         });
         order += 1;
     }
@@ -232,6 +239,9 @@ pub fn render_mm_chunk_with_description(
 }
 
 /// Append multimodal chunks as markdown sections for pipeline indexing (Phase 4g).
+///
+/// SPEC-047 / 026 W2-mm-page: stamp `<!-- edgequake-page:N -->` from asset path so
+/// page-aware chunking does not inherit the document's last page.
 pub fn append_mm_chunks_to_text(text: &str, chunks: &[MultimodalChunk]) -> String {
     if chunks.is_empty() {
         return text.to_string();
@@ -240,6 +250,9 @@ pub fn append_mm_chunks_to_text(text: &str, chunks: &[MultimodalChunk]) -> Strin
     out.push_str("\n\n<!-- multimodal-chunks -->\n");
     for chunk in chunks {
         out.push_str("\n\n");
+        if let Some(page) = chunk.page_start {
+            out.push_str(&format!("<!-- edgequake-page:{page} -->\n"));
+        }
         out.push_str(&chunk.text);
     }
     out
@@ -285,17 +298,28 @@ mod tests {
     use super::*;
 
     fn manifest_with(records: Vec<(String, &str, MultimodalItemRecord)>) -> MultimodalManifest {
+        manifest_with_paths(
+            records
+                .into_iter()
+                .map(|(id, modality, record)| (id, modality, record, None))
+                .collect(),
+        )
+    }
+
+    fn manifest_with_paths(
+        records: Vec<(String, &str, MultimodalItemRecord, Option<&str>)>,
+    ) -> MultimodalManifest {
         MultimodalManifest {
             version: 1,
             items: records
                 .into_iter()
-                .map(|(id, modality, record)| ManifestItem {
+                .map(|(id, modality, record, asset_path)| ManifestItem {
                     item_id: id.clone(),
                     modality: modality.to_string(),
                     start: 0,
                     end: 0,
                     matched: String::new(),
-                    asset_path: None,
+                    asset_path: asset_path.map(|s| s.to_string()),
                     mime_type: None,
                     body: None,
                     caption: None,
@@ -509,5 +533,34 @@ mod tests {
         assert_eq!(chunks.len(), 1);
         assert!(chunks[0].text.contains("[Chart Name]chart"));
         std::env::remove_var("EDGEQUAKE_MM_CHUNKS");
+    }
+
+    #[test]
+    fn mm_chunk_stamps_page_from_asset_path() {
+        let record = MultimodalItemRecord::success_image(
+            "im-3",
+            "revenue".into(),
+            "Chart".into(),
+            "Q4=42".into(),
+        );
+        let manifest = manifest_with_paths(vec![(
+            "im-3".into(),
+            "drawing",
+            record,
+            Some("assets/page-0003-chart.png"),
+        )]);
+        let opts = MultimodalProcessOptions {
+            images: true,
+            ..Default::default()
+        };
+        let chunks = collect_mm_chunks_from_manifest(&manifest, &opts).unwrap();
+        assert_eq!(chunks[0].page_start, Some(3));
+        let body = "<!-- edgequake-page:9 -->\nDoc end page.\n";
+        let out = append_mm_chunks_to_text(body, &chunks);
+        assert!(out.contains("<!-- edgequake-page:3 -->\n"));
+        assert!(out.contains("Q4=42"));
+        // Sidecar page marker must appear after multimodal-chunks divider.
+        let after = out.split("<!-- multimodal-chunks -->").nth(1).unwrap();
+        assert!(after.contains("<!-- edgequake-page:3 -->"));
     }
 }

@@ -36,6 +36,21 @@ fn resolve_vlm_falls_back_to_vision_fields() {
     assert_eq!(resolved.model, "gpt-4.1-mini");
 }
 
+/// SPEC-047 / 025: stronger vision ablation pins Medium for VLM while query LLM stays Small.
+#[test]
+fn resolve_vlm_prefers_mistral_medium_3_5_vision_pin() {
+    let mut workspace = ws(HashMap::new());
+    workspace.llm_provider = "mistral".into();
+    workspace.llm_model = "mistral-small-latest".into();
+    workspace.vision_llm_provider = Some("mistral".into());
+    workspace.vision_llm_model = Some("mistral-medium-3-5".into());
+    let vlm = resolve_role_llm(&workspace, LlmRole::Vlm);
+    assert_eq!(vlm.provider, "mistral");
+    assert_eq!(vlm.model, "mistral-medium-3-5");
+    let query_llm = resolve_role_llm(&workspace, LlmRole::Query);
+    assert_eq!(query_llm.model, "mistral-small-latest");
+}
+
 #[test]
 fn resolve_vlm_falls_back_to_default_llm() {
     let resolved = resolve_role_llm(&ws(HashMap::new()), LlmRole::Vlm);

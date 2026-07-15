@@ -298,6 +298,9 @@ def test_summary_includes_false_refusal_and_arm_gates(tmp_path: Path):
         valid=True,
     )
     assert sc["ops"]["false_refusal"]["false_refusal_rate"] == 1.0
+    assert "by_evidence_source_exclusive" in sc["slices"]
+    assert "attribution" in sc["slices"]
+    assert sc.get("protocol", {}).get("protocol_version")
     out = tmp_path / "SUMMARY.md"
     write_summary(sc, out)
     text = out.read_text()
@@ -305,3 +308,6 @@ def test_summary_includes_false_refusal_and_arm_gates(tmp_path: Path):
     assert "false_refusal_rate: 1.0000" in text
     assert "## Arm-gate diagnostics (020 B1/B2)" in text
     assert "arms_gated_rate: 1.0" in text
+    assert "exclusive" in text
+    assert "Acc attribution" in text
+    assert "026-hardened" in text

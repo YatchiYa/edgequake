@@ -39,3 +39,24 @@ def test_run_py_force_reindex_only_on_fresh_runs():
     src = (Path(__file__).resolve().parents[1] / "bench047" / "run.py").read_text()
     assert "force_reindex = not resume" in src
     assert "force_reindex=True" not in src or "force_reindex = not resume" in src
+
+
+def test_run_py_parallel_ingest_uses_worker_clients():
+    """Full stage must upload/wait ≥10 docs in parallel via per-worker clients."""
+    src = (Path(__file__).resolve().parents[1] / "bench047" / "run.py").read_text()
+    assert "ingest_workers" in src
+    assert "Ingest phase:" in src
+    assert "worker = EdgeQuakeClient(base_url=base_url, workspace_id=run_workspace_id)" in src
+    assert 'pool.submit(_ingest_one' in src
+
+
+def test_build_scorecard_includes_ingest_workers():
+    profile = get_profile("P0_mm_ite")
+    card = build_scorecard(
+        stage="full",
+        profile=profile,
+        samples=[{"score": 1.0, "evidence_pages": "[]", "evidence_sources": "[]", "answer": "x", "doc_type": "t"}],
+        pins_extra={"fixture_id": "full"},
+        ops={"query_workers": 4, "ingest_workers": 10, "n_docs": 1, "ingest_coverage": 1.0},
+    )
+    assert card["ops"]["ingest_workers"] == 10
