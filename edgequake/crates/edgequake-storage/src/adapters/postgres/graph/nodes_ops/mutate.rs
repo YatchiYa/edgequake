@@ -6,12 +6,10 @@
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 
-
 use super::super::PostgresAGEGraphStorage;
 use crate::error::{Result, StorageError};
 
 impl PostgresAGEGraphStorage {
-
     /// Upsert a node into the graph.
     ///
     /// # WHY: MERGE-Based Upsert
@@ -74,7 +72,6 @@ impl PostgresAGEGraphStorage {
 
         Ok(())
     }
-
 
     /// SC1: batched node upsert using a single `UNWIND ... MERGE` per chunk.
     ///
@@ -217,13 +214,14 @@ impl PostgresAGEGraphStorage {
         crate::graph_batch_dedupe::resolve_graph_upsert_chunk(MAX_CHUNK)
     }
 
-
-    pub(in crate::adapters::postgres::graph) async fn pg_delete_node(&self, node_id: &str) -> Result<()> {
+    pub(in crate::adapters::postgres::graph) async fn pg_delete_node(
+        &self,
+        node_id: &str,
+    ) -> Result<()> {
         let cypher = "MATCH (n:Node {node_id: $node_id}) DETACH DELETE n";
         let params = serde_json::json!({ "node_id": node_id });
         self.cypher_execute_bound(cypher, &params).await
     }
-
 
     /// Tenant-scoped delete — atomic MATCH+WHERE+DELETE (no cross-tenant IDOR).
     pub(in crate::adapters::postgres::graph) async fn pg_delete_node_scoped(
@@ -244,7 +242,6 @@ impl PostgresAGEGraphStorage {
         let rows = self.cypher_query(&cypher, &["n"]).await?;
         Ok(!rows.is_empty())
     }
-
 
     /// SPEC-034 IMP-01: Native SQL batch node upsert — O(log G) per node.
     ///
@@ -376,5 +373,4 @@ impl PostgresAGEGraphStorage {
 
         Ok(())
     }
-
 }

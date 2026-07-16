@@ -149,7 +149,10 @@ async fn e2e_explain_snapshots_hot_paths() {
         prefixes.push(prefix.clone());
         let mut props = HashMap::new();
         props.insert("entity_type".to_string(), serde_json::json!("CONCEPT"));
-        props.insert("source_ids".to_string(), serde_json::json!([format!("{prefix}0")]));
+        props.insert(
+            "source_ids".to_string(),
+            serde_json::json!([format!("{prefix}0")]),
+        );
         props.insert("workspace_id".to_string(), serde_json::json!("ws-explain"));
         nodes.push((format!("EXPLAIN_NODE_{i}"), props));
     }

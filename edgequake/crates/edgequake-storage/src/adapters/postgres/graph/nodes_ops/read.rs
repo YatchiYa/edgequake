@@ -9,15 +9,20 @@ use crate::error::{Result, StorageError};
 use crate::traits::{GraphEdge, GraphNode};
 
 impl PostgresAGEGraphStorage {
-    pub(in crate::adapters::postgres::graph) async fn pg_has_node(&self, node_id: &str) -> Result<bool> {
+    pub(in crate::adapters::postgres::graph) async fn pg_has_node(
+        &self,
+        node_id: &str,
+    ) -> Result<bool> {
         let cypher = "MATCH (n:Node {node_id: $node_id}) RETURN n LIMIT 1";
         let params = serde_json::json!({ "node_id": node_id });
         let rows = self.cypher_query_bound(cypher, &["n"], &params).await?;
         Ok(!rows.is_empty())
     }
 
-
-    pub(in crate::adapters::postgres::graph) async fn pg_get_node(&self, node_id: &str) -> Result<Option<GraphNode>> {
+    pub(in crate::adapters::postgres::graph) async fn pg_get_node(
+        &self,
+        node_id: &str,
+    ) -> Result<Option<GraphNode>> {
         let cypher = "MATCH (n:Node {node_id: $node_id}) RETURN n";
         let params = serde_json::json!({ "node_id": node_id });
         let rows = self.cypher_query_bound(cypher, &["n"], &params).await?;
@@ -31,7 +36,6 @@ impl PostgresAGEGraphStorage {
         Ok(Self::parse_vertex(&agtype_str))
     }
 
-
     /// FAST OPTIMIZED: Get node degree using native SQL.
     ///
     /// Uses direct SQL query instead of slow Cypher OPTIONAL MATCH pattern.
@@ -39,7 +43,10 @@ impl PostgresAGEGraphStorage {
     /// Counts BOTH incoming and outgoing edges (total degree).
     ///
     /// Performance: <50ms for single node (vs 500ms+ with Cypher approach)
-    pub(in crate::adapters::postgres::graph) async fn pg_node_degree(&self, node_id: &str) -> Result<usize> {
+    pub(in crate::adapters::postgres::graph) async fn pg_node_degree(
+        &self,
+        node_id: &str,
+    ) -> Result<usize> {
         let pool = self.pool.get().await?;
         let mut conn = pool.acquire().await.map_err(|e| {
             StorageError::Connection(format!("Failed to acquire connection: {}", e))
@@ -75,7 +82,6 @@ impl PostgresAGEGraphStorage {
         let degree: i64 = row.get("degree");
         Ok(degree as usize)
     }
-
 
     /// FAST OPTIMIZED: Get degrees for multiple nodes in a single query.
     ///
@@ -189,8 +195,9 @@ impl PostgresAGEGraphStorage {
         Ok(results)
     }
 
-
-    pub(in crate::adapters::postgres::graph) async fn pg_get_all_nodes(&self) -> Result<Vec<GraphNode>> {
+    pub(in crate::adapters::postgres::graph) async fn pg_get_all_nodes(
+        &self,
+    ) -> Result<Vec<GraphNode>> {
         let cypher = "MATCH (n:Node) RETURN n";
         let rows = self.cypher_query(cypher, &["n"]).await?;
 
@@ -206,8 +213,10 @@ impl PostgresAGEGraphStorage {
         Ok(nodes)
     }
 
-
-    pub(in crate::adapters::postgres::graph) async fn pg_get_nodes_by_ids(&self, node_ids: &[String]) -> Result<Vec<GraphNode>> {
+    pub(in crate::adapters::postgres::graph) async fn pg_get_nodes_by_ids(
+        &self,
+        node_ids: &[String],
+    ) -> Result<Vec<GraphNode>> {
         if node_ids.is_empty() {
             return Ok(Vec::new());
         }
@@ -236,7 +245,6 @@ impl PostgresAGEGraphStorage {
 
         Ok(nodes)
     }
-
 
     /// OPTIMIZED: LightRAG-inspired batch node retrieval using UNNEST with ORDINALITY.
     ///
@@ -288,7 +296,6 @@ impl PostgresAGEGraphStorage {
 
         Ok(result)
     }
-
 
     /// OPTIMIZED: LightRAG-inspired batch edge retrieval for node set.
     ///
@@ -351,7 +358,6 @@ impl PostgresAGEGraphStorage {
 
         Ok(edges)
     }
-
 
     /// OPTIMIZED: LightRAG-inspired batch degree calculation.
     ///
@@ -428,5 +434,4 @@ impl PostgresAGEGraphStorage {
 
         Ok(result)
     }
-
 }

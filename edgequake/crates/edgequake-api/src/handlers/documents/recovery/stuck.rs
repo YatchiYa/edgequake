@@ -191,6 +191,14 @@ pub(crate) async fn run_recover_stuck(
             );
         }
 
+        // Persist recovery fields via wsdoc SSOT before enqueue (ensure_task re-reads KV).
+        crate::services::upsert_metadata_kv_with_index(
+            state.storage.kv_storage.as_ref(),
+            &metadata_key,
+            metadata.clone(),
+        )
+        .await?;
+
         let content_key = format!("{doc_id}-content");
         let content = state
             .storage

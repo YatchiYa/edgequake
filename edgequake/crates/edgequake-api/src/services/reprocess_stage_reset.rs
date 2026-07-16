@@ -199,10 +199,7 @@ mod tests {
             "reprocess_20260716_batch",
             ReprocessMode::Full,
         );
-        assert_eq!(
-            v.get("status").and_then(|x| x.as_str()),
-            Some("processing")
-        );
+        assert_eq!(v.get("status").and_then(|x| x.as_str()), Some("processing"));
         assert_eq!(
             v.get("current_stage").and_then(|x| x.as_str()),
             Some("cleaning")
@@ -245,7 +242,10 @@ mod tests {
             v.get("current_stage").and_then(|x| x.as_str()),
             Some("queued")
         );
-        let msg = v.get("stage_message").and_then(|x| x.as_str()).unwrap_or("");
+        let msg = v
+            .get("stage_message")
+            .and_then(|x| x.as_str())
+            .unwrap_or("");
         assert!(msg.contains("Waiting for a free worker"));
         assert!(msg.contains("10 entities"));
         assert!(msg.contains("3 relationships"));
@@ -254,11 +254,7 @@ mod tests {
     #[test]
     fn post_cleanup_merge_mode_goes_to_merging() {
         let mut v = json!({});
-        apply_post_cleanup_admission(
-            v.as_object_mut().unwrap(),
-            ReprocessMode::MergeOnly,
-            None,
-        );
+        apply_post_cleanup_admission(v.as_object_mut().unwrap(), ReprocessMode::MergeOnly, None);
         assert_eq!(
             v.get("current_stage").and_then(|x| x.as_str()),
             Some("merging")

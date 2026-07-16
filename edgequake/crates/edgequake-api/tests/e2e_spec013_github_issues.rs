@@ -269,7 +269,9 @@ async fn spec013_issue231_document_upload_workspace_header() {
     )
     .await;
     assert!(
-        status == StatusCode::CREATED || status == StatusCode::OK,
+        status == StatusCode::CREATED
+            || status == StatusCode::OK
+            || status == StatusCode::ACCEPTED,
         "upload failed: {status} {:?}",
         body
     );

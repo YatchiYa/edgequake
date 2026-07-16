@@ -8,6 +8,11 @@
 import { expect, test, type Page } from "@playwright/test";
 import { GOTO_OPTS, waitForAppReady } from "./helpers/app-ready";
 import { API_V1_URL } from "./helpers/backend-url";
+import { skipUnlessLiveStack } from "./helpers/live-stack";
+
+test.beforeEach(() => {
+  skipUnlessLiveStack();
+});
 
 /** Seeded from make-dev DB when present (raphael-article / Blue Owl workspace). */
 const SPEC054_TENANT =

@@ -159,13 +159,14 @@ pub(crate) async fn run_reprocess_failed(
                         .workspace_id
                         .as_deref()
                         .and_then(|s| uuid::Uuid::parse_str(s).ok());
-                    let has_task = crate::services::pending_doc_task_reconcile::has_active_task_for_document(
-                        state.tasks.storage.as_ref(),
-                        id,
-                        ws,
-                    )
-                    .await
-                    .unwrap_or(true);
+                    let has_task =
+                        crate::services::pending_doc_task_reconcile::has_active_task_for_document(
+                            state.tasks.storage.as_ref(),
+                            id,
+                            ws,
+                        )
+                        .await
+                        .unwrap_or(true);
                     include = !has_task;
                 }
             }
@@ -231,7 +232,9 @@ pub(crate) async fn run_reprocess_failed(
                     continue;
                 }
                 EnsureTaskOutcome::AlreadyScheduled => {
-                    *skip_reasons.entry("already_scheduled".to_string()).or_insert(0) += 1;
+                    *skip_reasons
+                        .entry("already_scheduled".to_string())
+                        .or_insert(0) += 1;
                     continue;
                 }
                 EnsureTaskOutcome::SkippedNoContent => {
@@ -271,7 +274,9 @@ pub(crate) async fn run_reprocess_failed(
                         track_id = %active.track_id,
                         "Single-flight: skipping soft reprocess; PDF task already in flight"
                     );
-                    *skip_reasons.entry("already_processing".to_string()).or_insert(0) += 1;
+                    *skip_reasons
+                        .entry("already_processing".to_string())
+                        .or_insert(0) += 1;
                     continue;
                 }
             }
@@ -341,35 +346,30 @@ pub(crate) async fn run_reprocess_failed(
         //   T4: Document reprocessed → entities A, B created fresh
         //   T5: source_ids correctly = [doc]
         //   T6: Delete document → entities properly deleted
-        let cleanup_admit_stats = match cleanup_document_graph_data(
-            doc_id,
-            &state.storage.graph_storage,
-            None,
-        )
-        .await
-        {
-            Ok(stats) => {
-                tracing::info!(
-                    document_id = %doc_id,
-                    entities_removed = stats.entities_removed,
-                    entities_updated = stats.entities_updated,
-                    relationships_removed = stats.relationships_removed,
-                    "Cleaned up partial data before reprocessing"
-                );
-                Some(crate::services::reprocess_stage_reset::CleanupAdmitStats {
-                    entities_removed: stats.entities_removed,
-                    relationships_removed: stats.relationships_removed,
-                })
-            }
-            Err(e) => {
-                tracing::warn!(
-                    document_id = %doc_id,
-                    error = %e,
-                    "Failed to cleanup partial data before reprocessing, continuing anyway"
-                );
-                None
-            }
-        };
+        let cleanup_admit_stats =
+            match cleanup_document_graph_data(doc_id, &state.storage.graph_storage, None).await {
+                Ok(stats) => {
+                    tracing::info!(
+                        document_id = %doc_id,
+                        entities_removed = stats.entities_removed,
+                        entities_updated = stats.entities_updated,
+                        relationships_removed = stats.relationships_removed,
+                        "Cleaned up partial data before reprocessing"
+                    );
+                    Some(crate::services::reprocess_stage_reset::CleanupAdmitStats {
+                        entities_removed: stats.entities_removed,
+                        relationships_removed: stats.relationships_removed,
+                    })
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        document_id = %doc_id,
+                        error = %e,
+                        "Failed to cleanup partial data before reprocessing, continuing anyway"
+                    );
+                    None
+                }
+            };
 
         // Transition cleaning → queued (or merging) once graph cleanup finishes.
         // True admission: waiting for a free worker / merge start.
@@ -381,10 +381,7 @@ pub(crate) async fn run_reprocess_failed(
                     cleanup_admit_stats,
                 );
                 // Keep provisional track_id until Task is created below.
-                obj.insert(
-                    "track_id".to_string(),
-                    serde_json::json!(new_track_id),
-                );
+                obj.insert("track_id".to_string(), serde_json::json!(new_track_id));
                 crate::services::upsert_metadata_kv_with_index(
                     state.storage.kv_storage.as_ref(),
                     &metadata_key,
@@ -573,10 +570,7 @@ pub(crate) async fn run_reprocess_failed(
                     // Progress SSOT: bind document.track_id to server task id (not batch id).
                     if let Some(mut metadata) = metadata_opt.clone() {
                         if let Some(obj) = metadata.as_object_mut() {
-                            obj.insert(
-                                "track_id".to_string(),
-                                serde_json::json!(task_track_id),
-                            );
+                            obj.insert("track_id".to_string(), serde_json::json!(task_track_id));
                             obj.insert(
                                 "retry_at".to_string(),
                                 serde_json::json!(Utc::now().to_rfc3339()),
@@ -679,10 +673,7 @@ pub(crate) async fn run_reprocess_failed(
                         state.storage.kv_storage.get_by_id(&metadata_key).await?
                     {
                         if let Some(obj) = metadata.as_object_mut() {
-                            obj.insert(
-                                "track_id".to_string(),
-                                serde_json::json!(task_track_id),
-                            );
+                            obj.insert("track_id".to_string(), serde_json::json!(task_track_id));
                             obj.insert(
                                 "retry_at".to_string(),
                                 serde_json::json!(Utc::now().to_rfc3339()),

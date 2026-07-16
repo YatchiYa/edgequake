@@ -273,8 +273,9 @@ pub(super) async fn require_authenticated_request(
     state: &AppState,
 ) -> Result<RequestAuthContext, ApiError> {
     if !state.auth.config.auth_enabled {
+        // Must be a real UUID that exists in `users` (seeded by AppState defaults).
         return Ok(RequestAuthContext {
-            user_id: "demo-user".to_string(),
+            user_id: crate::middleware::default_user_uuid().to_string(),
             role: Role::Admin,
         });
     }
@@ -290,7 +291,7 @@ pub(crate) async fn require_admin_request(
 ) -> Result<RequestAuthContext, ApiError> {
     if !state.auth.config.auth_enabled {
         return Ok(RequestAuthContext {
-            user_id: "demo-user".to_string(),
+            user_id: crate::middleware::default_user_uuid().to_string(),
             role: Role::Admin,
         });
     }

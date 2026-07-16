@@ -144,7 +144,10 @@ mod tests {
             heal_mock_provider_id("mock", Some("embeddinggemma:latest")),
             "ollama"
         );
-        assert_eq!(heal_mock_provider_id("mistral", Some("magistral-small-latest")), "mistral");
+        assert_eq!(
+            heal_mock_provider_id("mistral", Some("magistral-small-latest")),
+            "mistral"
+        );
     }
 
     #[test]

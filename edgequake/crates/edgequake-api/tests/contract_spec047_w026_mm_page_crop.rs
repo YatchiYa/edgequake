@@ -141,8 +141,7 @@ fn fig_as_chart_promotion_stamps_chart_asset_page_for_mm_sidecar() {
     let assets = dir.path().join("assets");
     std::fs::create_dir_all(&assets).unwrap();
     std::fs::write(assets.join("page-0008-fig-01.png"), b"\x89PNG-fig8").unwrap();
-    let promoted =
-        promote_fig_as_chart_when_ink_empty(dir.path(), &[8usize], &HashMap::new());
+    let promoted = promote_fig_as_chart_when_ink_empty(dir.path(), &[8usize], &HashMap::new());
     let chart_rel = promoted.get(&8).expect("page 8 promoted");
     assert_eq!(chart_rel, "assets/page-0008-chart.png");
     assert_eq!(page_num_from_asset_rel_path(chart_rel), Some(8));

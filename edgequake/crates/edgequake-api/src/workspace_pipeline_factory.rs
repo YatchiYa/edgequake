@@ -277,6 +277,11 @@ mod tests {
 
     #[tokio::test]
     async fn resolves_workspace_with_mock_providers() {
+        // Isolate from developer shells where mock is healed away without this flag.
+        unsafe {
+            std::env::set_var("EDGEQUAKE_ALLOW_MOCK_PROVIDER", "1");
+        }
+
         let global = Arc::new(Pipeline::default_pipeline());
         let ws_service = Arc::new(InMemoryWorkspaceService::new());
         let tenant = ws_service

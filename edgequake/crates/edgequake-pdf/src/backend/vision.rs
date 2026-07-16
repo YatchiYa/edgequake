@@ -5,11 +5,11 @@ use edgequake_pdf2md::{convert_from_bytes, ConversionConfig, FileCheckpointStore
 use tracing::{info, warn};
 
 use super::{PdfConversionConfig, PdfConverter};
-    use crate::chart_crop::{
-        chart_residual_alongside_fig_pages, chart_residual_candidate_pages,
-        filter_chart_pages_by_page_png_ink, write_chart_crop_assets, CropCoverageReport,
-        CHART_CROP_RENDER,
-    };
+use crate::chart_crop::{
+    chart_residual_alongside_fig_pages, chart_residual_candidate_pages,
+    filter_chart_pages_by_page_png_ink, write_chart_crop_assets, CropCoverageReport,
+    CHART_CROP_RENDER,
+};
 use crate::embedded_images::{figures_by_page, write_embedded_figure_assets};
 use crate::error::PdfConversionError;
 use crate::page_assets::{write_page_png_assets, PageAssetRenderConfig};

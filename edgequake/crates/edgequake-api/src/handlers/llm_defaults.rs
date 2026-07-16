@@ -95,6 +95,14 @@ fn empty_to_none(s: Option<String>) -> Option<String> {
 }
 
 /// GET /api/v1/settings/llm-defaults
+#[utoipa::path(
+    get,
+    path = "/api/v1/settings/llm-defaults",
+    responses(
+        (status = 200, description = "Server LLM defaults", body = LlmDefaultsResponse)
+    ),
+    tag = "settings"
+)]
 pub async fn get_llm_defaults(
     State(app_state): State<AppState>,
 ) -> ApiResult<Json<LlmDefaultsResponse>> {
@@ -128,6 +136,17 @@ pub async fn get_llm_defaults(
 }
 
 /// PATCH /api/v1/settings/llm-defaults (admin)
+#[utoipa::path(
+    patch,
+    path = "/api/v1/settings/llm-defaults",
+    request_body = UpdateLlmDefaultsRequest,
+    responses(
+        (status = 200, description = "LLM defaults updated", body = UpdateLlmDefaultsResponse),
+        (status = 400, description = "Persistence requires PostgreSQL"),
+        (status = 403, description = "Admin required")
+    ),
+    tag = "settings"
+)]
 pub async fn update_llm_defaults(
     State(app_state): State<AppState>,
     _admin: ApiRequireAdmin,

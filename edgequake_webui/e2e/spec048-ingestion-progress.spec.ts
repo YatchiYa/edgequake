@@ -463,21 +463,16 @@ test.describe("SPEC-048 ingestion progress screenshots", () => {
       processing: 1,
     });
     await gotoDocuments(page);
-    const banner = page.getByTestId("ingestion-status-banner");
-    await expect(banner).toBeVisible();
-    // Stage-specific headline (not generic "Processing N")
-    await expect(page.getByTestId("ingestion-alert-working")).toContainText(
+    // Feedback zone owns working narrative; toolbar banner is demoted.
+    await expect(page.getByTestId("spec048-active-runs-panel")).toBeVisible();
+    await expect(page.getByTestId("ingestion-status-banner")).toHaveCount(0);
+    await expect(page.getByTestId("spec048-run-headline")).toContainText(
       /Extracting Entities/i,
     );
-    const progress = page.getByTestId("ingestion-banner-progress");
-    await expect(progress).toHaveAttribute(
-      "data-progress-label",
-      "pipeline.extractionProgress",
+    await expect(page.getByTestId("spec048-stage-extracting")).toHaveAttribute(
+      "data-state",
+      "active",
     );
-    const bannerDetail = page.getByTestId("spec048-banner-run-detail").first();
-    await expect(bannerDetail).toBeVisible();
-    const bannerStage = await bannerDetail.getAttribute("data-stage");
-    expect(bannerStage).toBe("extracting");
     const rowStage = page.getByTestId("spec048-row-stage").first();
     await expect(rowStage).toBeVisible();
     expect(await rowStage.getAttribute("data-stage")).toBe("extracting");
@@ -489,9 +484,9 @@ test.describe("SPEC-048 ingestion progress screenshots", () => {
       "true",
     );
     await capture(page, "S02-working-parity", [
-      `Banner stage=${bannerStage}`,
+      "ActiveRunsPanel owns working narrative (banner demoted)",
       "Headline is stage-specific (Extracting Entities)",
-      "Progress label = Extraction progress (not Graph save)",
+      "Stepper extracting=active",
       "Row stage=extracting (parity AC-02)",
       "Working pill visible; completed row muted",
       "Dropzone quiet while Working",
@@ -583,10 +578,11 @@ test.describe("SPEC-048 ingestion progress screenshots", () => {
     await gotoDocuments(page);
     await expect(page.getByTestId("ingestion-status-banner")).toBeVisible();
     await expect(page.getByTestId("ingestion-alert-stuck")).toBeVisible();
-    await expect(page.getByTestId("spec048-active-runs-panel")).toHaveCount(0);
+    // Stuck CTA stays on the banner; per-doc cards remain in the feedback zone.
+    await expect(page.getByTestId("spec048-active-runs-panel")).toBeVisible();
     await capture(page, "S05-stuck", [
       "Stuck / needs attention banner when pending without workers",
-      "ActiveRunsPanel hidden — stuck owns the narrative",
+      "ActiveRunsPanel keeps stuck per-doc cards (SPEC-051 zone)",
       "Reprocess CTA may be present",
     ]);
   });
@@ -594,14 +590,15 @@ test.describe("SPEC-048 ingestion progress screenshots", () => {
   test("S05b fresh upload is Queued not Stuck", async ({ page }) => {
     await mockDocs(page, [FRESH_QUEUED_DOC], { pending: 0, processing: 0 });
     await gotoDocuments(page);
-    await expect(page.getByTestId("ingestion-status-banner")).toBeVisible();
-    await expect(page.getByTestId("ingestion-alert-queued")).toBeVisible();
+    await expect(page.getByTestId("spec048-active-runs-panel")).toBeVisible();
+    await expect(page.getByTestId("ingestion-status-banner")).toHaveCount(0);
     await expect(page.getByTestId("ingestion-alert-stuck")).toHaveCount(0);
     await expect(page.getByTestId("pipeline-header-button")).toContainText(
       /Queued/i,
     );
     await capture(page, "S05b-fresh-upload-queued", [
       "Fresh upload shows amber Queued — never red Needs attention",
+      "Feedback zone narrates queue; toolbar banner demoted",
       "Chanel_Loop-style pending without tasks yet is normal queue",
     ]);
   });

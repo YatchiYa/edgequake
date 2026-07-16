@@ -2073,7 +2073,7 @@ spec013-proof-pr: spec013-proof-preflight-pr ## Fast PR gate: mock API + vector 
 	@_DB=$$(cat /tmp/edgequake-db-url 2>/dev/null); \
 	[ -n "$$_DB" ] || _DB="$(DATABASE_URL)"; \
 	cd $(BACKEND_DIR) && DATABASE_URL="$$_DB" cargo test -p edgequake-api --features postgres \
-		--test e2e_spec013_github_issues -- $(SPEC013_CARGO_TEST_ARGS) --nocapture; \
+		--test e2e_spec013_github_issues -- $(SPEC013_CARGO_TEST_ARGS) --nocapture && \
 	cd $(BACKEND_DIR) && DATABASE_URL="$$_DB" EDGEQUAKE_REQUIRE_POSTGRES_TESTS=1 cargo test -p edgequake-storage --features postgres \
 		--test postgres_workspace_vector_stats -- $(SPEC013_CARGO_TEST_ARGS) --nocapture
 	@echo "$(GREEN)✓ SPEC-013 PR proof passed$(RESET)"

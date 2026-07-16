@@ -164,7 +164,6 @@ impl PostgresAGEGraphStorage {
         Ok(kg)
     }
 
-
     pub(in crate::adapters::postgres::graph) async fn pg_get_neighbors(
         &self,
         node_id: &str,
@@ -211,7 +210,6 @@ impl PostgresAGEGraphStorage {
 
         Ok(neighbors)
     }
-
 
     /// FAST OPTIMIZED: Get edges between nodes in a specified set using native SQL.
     ///
@@ -295,5 +293,4 @@ impl PostgresAGEGraphStorage {
 
         Ok(edges)
     }
-
 }

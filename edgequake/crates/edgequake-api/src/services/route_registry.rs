@@ -8,6 +8,11 @@ use std::collections::HashSet;
 /// Paths intentionally excluded from OpenAPI (infra / non-REST).
 const OPENAPI_EXEMPT: &[&str] = &[];
 
+/// Normalize Axum catch-all params (`{*name}`) to OpenAPI-style (`{name}`) for parity.
+fn normalize_path_for_openapi(path: &str) -> String {
+    path.replace("{*", "{")
+}
+
 /// Extract `.route("...")` path literals from a routes.rs function body.
 fn extract_route_literals(body: &str) -> Vec<String> {
     let mut paths = Vec::new();
@@ -74,6 +79,12 @@ pub fn all_axum_route_paths(routes_rs: &str) -> Vec<String> {
             }
         }
     }
+    // Root-level MCP + OAuth discovery (merged into create_router_inner).
+    if let Some(body) = function_body(routes_rs, "mcp_routes") {
+        for path in extract_route_literals(body) {
+            paths.insert(path);
+        }
+    }
     if let Some(body) = function_body(routes_rs, "ollama_api_routes") {
         for path in prefixed_paths(body, "/api") {
             paths.insert(path);
@@ -100,19 +111,24 @@ pub fn openapi_required_paths(routes_rs: &str) -> Vec<String> {
     let exempt: HashSet<&str> = OPENAPI_EXEMPT.iter().copied().collect();
     all_axum_route_paths(routes_rs)
         .into_iter()
+        .map(|path| normalize_path_for_openapi(&path))
         .filter(|path| !exempt.contains(path.as_str()))
         .collect()
 }
 
 /// OpenAPI paths with no matching Axum route (phantom spec entries — IMP-011 reverse).
 pub fn openapi_phantom_paths(routes_rs: &str, openapi_paths: &[String]) -> Vec<String> {
-    let router: HashSet<String> = all_axum_route_paths(routes_rs).into_iter().collect();
+    let router: HashSet<String> = all_axum_route_paths(routes_rs)
+        .into_iter()
+        .map(|path| normalize_path_for_openapi(&path))
+        .collect();
     let mut phantoms: Vec<String> = openapi_paths
         .iter()
-        .filter(|path| !router.contains(*path))
-        .cloned()
+        .map(|path| normalize_path_for_openapi(path))
+        .filter(|path| !router.contains(path))
         .collect();
     phantoms.sort();
+    phantoms.dedup();
     phantoms
 }
 

@@ -107,12 +107,10 @@ impl AppState {
         if crate::provider_visibility::is_mock_provider(llm_provider.name())
             && !crate::provider_visibility::mock_provider_allowed()
         {
-            return Err(
-                "Mock LLM provider is forbidden as the server default. \
+            return Err("Mock LLM provider is forbidden as the server default. \
                  Set EDGEQUAKE_LLM_PROVIDER to a real provider (ollama, openai, mistral, …) \
                  and ensure the corresponding credentials/host are available."
-                    .into(),
-            );
+                .into());
         }
         if crate::provider_visibility::is_mock_provider(embedding_provider.name())
             && !crate::provider_visibility::mock_provider_allowed()

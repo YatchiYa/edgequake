@@ -9,7 +9,7 @@ use edgequake_llm::{
     ModelCapability,
 };
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 
 use crate::error::ApiResult;
 use crate::model_catalog::discovery_source_label;
@@ -17,7 +17,7 @@ use crate::model_catalog::{active_provider_names, dynamic_discovery_enabled};
 use crate::provider_visibility::is_ui_visible_provider_id;
 use crate::state::AppState;
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ModelSearchQueryParams {
     pub q: Option<String>,
     pub provider: Option<String>,
@@ -107,6 +107,16 @@ fn dedupe_search_hits(hits: Vec<ModelSearchHitResponse>) -> Vec<ModelSearchHitRe
         .collect()
 }
 
+/// GET `/api/v1/models/search` — capability and name search with optional live discovery.
+#[utoipa::path(
+    get,
+    path = "/api/v1/models/search",
+    params(ModelSearchQueryParams),
+    responses(
+        (status = 200, description = "Model search hits", body = ModelSearchResponse)
+    ),
+    tag = "models"
+)]
 pub async fn search_models(
     State(state): State<AppState>,
     Query(params): Query<ModelSearchQueryParams>,
@@ -223,6 +233,14 @@ mod tests {
 }
 
 /// Invalidate discovery caches and force re-fetch on next catalog request.
+#[utoipa::path(
+    post,
+    path = "/api/v1/models/discover/refresh",
+    responses(
+        (status = 200, description = "Discovery cache invalidated")
+    ),
+    tag = "models"
+)]
 pub async fn refresh_model_discovery(
     State(state): State<AppState>,
 ) -> ApiResult<Json<serde_json::Value>> {

@@ -177,6 +177,9 @@ async fn migration_readiness_proof_ok_when_indexes_ready() {
     report.migration_038.missing_indexes.clear();
     report.migration_038.deferred_large_graphs.clear();
     report.migration_038.operator_action = None;
+    // CVE-2026-3172 floor: readiness also blocks pgvector < 0.8.2.
+    report.migration_042.extversion_before = Some("0.8.3".into());
+    report.migration_042.extversion_after = Some("0.8.3".into());
     state.migration_bootstrap = Some(report);
     let response = readiness_check(State(state)).await.into_response();
     assert_eq!(response.status(), StatusCode::OK);

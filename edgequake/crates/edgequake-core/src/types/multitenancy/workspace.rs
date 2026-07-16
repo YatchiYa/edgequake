@@ -240,8 +240,7 @@ impl Workspace {
                 Self::coerce_non_mock_provider(self.embedding_provider.clone());
             self.embedding_model =
                 Self::default_embedding_model_for_provider(&self.embedding_provider);
-            self.embedding_dimension =
-                Self::detect_dimension_from_model(&self.embedding_model);
+            self.embedding_dimension = Self::detect_dimension_from_model(&self.embedding_model);
             healed = true;
         }
         if let Some(ref vision_provider) = self.vision_llm_provider {

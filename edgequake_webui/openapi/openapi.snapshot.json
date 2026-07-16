@@ -9,7 +9,7 @@
     "license": {
       "name": "Apache-2.0"
     },
-    "version": "0.16.0"
+    "version": "0.18.0"
   },
   "servers": [
     {
@@ -2287,7 +2287,7 @@
           {
             "name": "track_id",
             "in": "path",
-            "description": "Upload tracking ID from upload response",
+            "description": "Server task_id from PdfUploadResponse (not client batch track_id)",
             "required": true,
             "schema": {
               "type": "string"
@@ -2329,13 +2329,13 @@
           "Documents"
         ],
         "summary": "Get PDF upload progress by track ID.",
-        "description": "@implements SPEC-001-upload-pdf: Progress query endpoint\n@implements OODA-14: GET progress endpoint\n\nReturns real-time progress data for a PDF upload, including:\n- Progress for all 6 pipeline phases\n- Overall completion percentage\n- Estimated time remaining\n- Error details if any phase failed\n\n# Arguments\n\n* `state` - Application state with PipelineState\n* `track_id` - Upload tracking ID (returned from upload response)\n\n# Returns\n\n* `Ok(Json)` - Progress data as JSON\n* `Err(404)` - Progress not found (upload completed or not started)",
+        "description": "@implements SPEC-001-upload-pdf: Progress query endpoint\n@implements OODA-14: GET progress endpoint\n\nReturns real-time progress data for a PDF upload, including:\n- Progress for all 6 pipeline phases\n- Overall completion percentage\n- Estimated time remaining\n- Error details if any phase failed\n\n# Arguments\n\n* `state` - Application state with PipelineState\n* `track_id` - Server job id (`PdfUploadResponse.task_id`). Not the optional\n  client batch `track_id` (SPEC-054 / GitHub #300).\n\n# Returns\n\n* `Ok(Json)` - Progress data as JSON\n* `Err(404)` - Progress not found (upload completed or not started)",
         "operationId": "get_pdf_progress",
         "parameters": [
           {
             "name": "track_id",
             "in": "path",
-            "description": "Upload tracking ID from upload response",
+            "description": "Server task_id from PdfUploadResponse (not client batch track_id)",
             "required": true,
             "schema": {
               "type": "string"
@@ -2728,8 +2728,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "recover_stuck",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "recover_stuck"
       }
     },
     "/api/v1/documents/reprocess": {
@@ -3192,6 +3192,142 @@
         ]
       }
     },
+    "/api/v1/documents/{document_id}/assets": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "GET `/api/v1/documents/{document_id}/assets` — list asset summaries (no binary).",
+        "operationId": "list_document_assets",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "description": "Document ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Asset summaries"
+          },
+          "404": {
+            "description": "Document not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/documents/{document_id}/assets/include-from-pdf": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "POST `/api/v1/documents/{document_id}/assets/include-from-pdf`",
+        "description": "First principles: the linked PDF is the source of visual truth — render page\nPNGs, persist mm-assets, and enrich markdown figure headings with `![…](assets/…)`.",
+        "operationId": "include_document_assets_from_pdf",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "description": "Document ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Assets included from PDF"
+          },
+          "400": {
+            "description": "No linked PDF"
+          },
+          "404": {
+            "description": "Document or PDF not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/documents/{document_id}/assets/{asset_id}": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "GET `/api/v1/documents/{document_id}/assets/{asset_id}` — binary by stable id.",
+        "operationId": "download_document_asset_by_id",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "description": "Document ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "asset_id",
+            "in": "path",
+            "description": "Stable asset id (filename stem, e.g. page-0001-chart)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Asset bytes",
+            "content": {
+              "image/png": {}
+            }
+          },
+          "404": {
+            "description": "Not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
     "/api/v1/documents/{document_id}/deletion-impact": {
       "get": {
         "tags": [
@@ -3506,6 +3642,58 @@
         ]
       }
     },
+    "/api/v1/documents/{document_id}/mm-assets/{asset_path}": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "GET `/api/v1/documents/{document_id}/mm-assets/{*asset_path}`",
+        "operationId": "download_document_mm_asset",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "description": "Document ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "asset_path",
+            "in": "path",
+            "description": "Relative path under mm-assets (e.g. assets/page-0001.png)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Asset bytes",
+            "content": {
+              "image/png": {}
+            }
+          },
+          "404": {
+            "description": "Not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
     "/api/v1/documents/{document_id}/reanalyze": {
       "post": {
         "tags": [
@@ -3574,8 +3762,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "reanalyze_multimodal"
+        "x-edgequake-v2-job-type": "reanalyze_multimodal",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/documents/{document_id}/retry-chunks": {
@@ -4971,6 +5159,99 @@
         ]
       }
     },
+    "/api/v1/ingestion/progress": {
+      "post": {
+        "tags": [
+          "Pipeline"
+        ],
+        "summary": "Batch progress for multiple tracks (FE getMultipleTrackProgress).",
+        "operationId": "post_ingestion_progress_batch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchIngestionProgressRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Track progress list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/IngestionProgressResponse"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ingestion/{track_id}/progress": {
+      "get": {
+        "tags": [
+          "Pipeline"
+        ],
+        "summary": "Get real-time ingestion progress for a track ID (SPEC-048 DEF-01).",
+        "operationId": "get_ingestion_progress",
+        "parameters": [
+          {
+            "name": "track_id",
+            "in": "path",
+            "description": "Ingestion track ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Track progress",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionProgressResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Track not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
     "/api/v1/lineage/documents/{document_id}": {
       "get": {
         "tags": [
@@ -5229,6 +5510,32 @@
         ]
       }
     },
+    "/api/v1/models/discover/refresh": {
+      "post": {
+        "tags": [
+          "models"
+        ],
+        "summary": "Invalidate discovery caches and force re-fetch on next catalog request.",
+        "operationId": "refresh_model_discovery",
+        "responses": {
+          "200": {
+            "description": "Discovery cache invalidated"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
     "/api/v1/models/embedding": {
       "get": {
         "tags": [
@@ -5315,6 +5622,155 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LlmModelsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/models/search": {
+      "get": {
+        "tags": [
+          "models"
+        ],
+        "summary": "GET `/api/v1/models/search` — capability and name search with optional live discovery.",
+        "operationId": "search_models",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "requires_vision",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "requires_tools",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "requires_thinking",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "min_context_length",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            }
+          },
+          {
+            "name": "max_output_tokens",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            }
+          },
+          {
+            "name": "fuzzy",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            }
+          },
+          {
+            "name": "dynamic",
+            "in": "query",
+            "description": "When false, search static registry only (default: true).",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Model search hits",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelSearchResponse"
                 }
               }
             }
@@ -5423,6 +5879,39 @@
           },
           "404": {
             "description": "Model not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/pipeline/activity": {
+      "get": {
+        "tags": [
+          "Pipeline"
+        ],
+        "summary": "SPEC-048: Pipeline activity — Busy SSOT (working docs + processing tasks).",
+        "operationId": "get_pipeline_activity",
+        "responses": {
+          "200": {
+            "description": "Pipeline activity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PipelineActivityResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -6055,6 +6544,86 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/settings/llm-defaults": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "GET /api/v1/settings/llm-defaults",
+        "operationId": "get_llm_defaults",
+        "responses": {
+          "200": {
+            "description": "Server LLM defaults",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmDefaultsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "PATCH /api/v1/settings/llm-defaults (admin)",
+        "operationId": "update_llm_defaults",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLlmDefaultsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "LLM defaults updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateLlmDefaultsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Persistence requires PostgreSQL"
+          },
+          "403": {
+            "description": "Admin required"
           }
         },
         "security": [
@@ -7837,8 +8406,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "rebuild_knowledge_graph",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "rebuild_knowledge_graph"
       }
     },
     "/api/v1/workspaces/{workspace_id}/reprocess-documents": {
@@ -8405,8 +8974,8 @@
             "description": "WebSocket upgrade failed"
           }
         },
-        "x-edgequake-transport": "websocket",
-        "x-edgequake-upgrade": "RFC6455"
+        "x-edgequake-upgrade": "RFC6455",
+        "x-edgequake-transport": "websocket"
       }
     },
     "/ws/progress/{track_id}": {
@@ -8436,8 +9005,8 @@
             "description": "WebSocket upgrade failed"
           }
         },
-        "x-edgequake-upgrade": "RFC6455",
-        "x-edgequake-transport": "websocket"
+        "x-edgequake-transport": "websocket",
+        "x-edgequake-upgrade": "RFC6455"
       }
     }
   },
@@ -8897,6 +9466,24 @@
           "error": {},
           "filename": {},
           "status": {}
+        }
+      },
+      "BatchIngestionProgressRequest": {
+        "type": "object",
+        "description": "Batch progress request (FE getMultipleTrackProgress).",
+        "required": [
+          "track_ids"
+        ],
+        "properties": {
+          "track_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "example": {
+          "track_ids": []
         }
       },
       "BatchUploadResponse": {
@@ -12069,10 +12656,26 @@
             "type": "string",
             "description": "Document ID."
           },
+          "embeddings_deleted": {
+            "type": "integer",
+            "description": "Number of vector embeddings deleted.\n\n@implements SPEC-050: Richer delete stats for UI feedback.",
+            "minimum": 0
+          },
           "entities_affected": {
             "type": "integer",
             "description": "Number of entities affected.",
             "minimum": 0
+          },
+          "partial_failure": {
+            "type": "boolean",
+            "description": "True when one or more non-fatal phases failed (e.g. graph cascade error).\n\n@implements SPEC-050: Partial failure visibility."
+          },
+          "partial_failure_reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable description of the partial failure, if any.\n\n@implements SPEC-050: Partial failure detail for UI."
           },
           "relationships_affected": {
             "type": "integer",
@@ -12084,7 +12687,10 @@
           "chunks_deleted": {},
           "deleted": {},
           "document_id": {},
+          "embeddings_deleted": {},
           "entities_affected": {},
+          "partial_failure": {},
+          "partial_failure_reason": {},
           "relationships_affected": {}
         }
       },
@@ -12239,12 +12845,12 @@
           },
           "entities_to_remove": {
             "type": "integer",
-            "description": "Number of entities that would be completely removed (no other sources).",
+            "description": "Number of entities that would be completely removed (no other sources).\n\nSPEC-050/EC-1: entities exclusive to this document → DELETED.",
             "minimum": 0
           },
           "entities_to_update": {
             "type": "integer",
-            "description": "Number of entities that would be updated (some sources remaining).",
+            "description": "Number of entities that would be updated (some sources remaining).\n\nSPEC-050/EC-2: entities shared with other documents → SURVIVE with pruned sources.\nThese entities are NOT deleted — they persist in the knowledge graph with\ntheir source_ids updated to exclude this document's chunks.",
             "minimum": 0
           },
           "preview_only": {
@@ -12253,12 +12859,12 @@
           },
           "relationships_to_remove": {
             "type": "integer",
-            "description": "Number of relationships that would be completely removed.",
+            "description": "Number of relationships that would be completely removed.\n\nIncludes: (a) relationships exclusive to this document, and\n(b) relationships whose source or target entity will be removed (EC-3).",
             "minimum": 0
           },
           "relationships_to_update": {
             "type": "integer",
-            "description": "Number of relationships that would be updated.",
+            "description": "Number of relationships that would be updated (some sources remaining).\n\nSPEC-050/EC-6: relationships shared with other documents → SURVIVE with pruned sources.",
             "minimum": 0
           }
         },
@@ -15151,6 +15757,245 @@
           "persist_ssot": {}
         }
       },
+      "IngestionProgressCounts": {
+        "type": "object",
+        "description": "Countable progress unit (pages, chunks, entities, relationships).",
+        "required": [
+          "current",
+          "total",
+          "unit"
+        ],
+        "properties": {
+          "current": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "unit": {
+            "type": "string",
+            "description": "Wire unit: `pages` | `chunks` | `entities` | `relationships`"
+          }
+        },
+        "example": {
+          "current": {},
+          "total": {},
+          "unit": {}
+        }
+      },
+      "IngestionProgressDetail": {
+        "type": "object",
+        "description": "Nested progress block expected by FE `TrackProgressResponse.progress`.",
+        "required": [
+          "current_stage",
+          "completion_percentage",
+          "latest_message",
+          "stages"
+        ],
+        "properties": {
+          "completion_percentage": {
+            "type": "number",
+            "format": "float",
+            "description": "0–100"
+          },
+          "current_stage": {
+            "type": "string"
+          },
+          "eta_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "latest_message": {
+            "type": "string"
+          },
+          "stages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IngestionStageProgressItem"
+            }
+          }
+        },
+        "example": {
+          "completion_percentage": {},
+          "current_stage": {},
+          "eta_seconds": {},
+          "latest_message": {},
+          "stages": []
+        }
+      },
+      "IngestionProgressResponse": {
+        "type": "object",
+        "description": "SPEC-048 IngestionProgress + FE TrackProgressResponse aliases.",
+        "required": [
+          "track_id",
+          "document_id",
+          "filename",
+          "stage",
+          "stage_status",
+          "message",
+          "updated_at",
+          "document_name",
+          "status",
+          "progress"
+        ],
+        "properties": {
+          "completed_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cost_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "counts": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/IngestionProgressCounts"
+              }
+            ]
+          },
+          "document_id": {
+            "type": "string"
+          },
+          "document_name": {
+            "type": "string",
+            "description": "Alias of `filename` for FE"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "progress": {
+            "$ref": "#/components/schemas/IngestionProgressDetail"
+          },
+          "progress_01": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "source_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stage": {
+            "type": "string"
+          },
+          "stage_status": {
+            "type": "string"
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "description": "Alias of `stage` for FE status field"
+          },
+          "track_id": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "completed_at": {},
+          "cost_usd": {},
+          "counts": {},
+          "document_id": {},
+          "document_name": {},
+          "filename": {},
+          "message": {},
+          "mode": {},
+          "progress": {},
+          "progress_01": {},
+          "source_type": {},
+          "stage": {},
+          "stage_status": {},
+          "started_at": {},
+          "status": {},
+          "track_id": {},
+          "updated_at": {}
+        }
+      },
+      "IngestionStageProgressItem": {
+        "type": "object",
+        "description": "Per-stage item for FE ProgressDetail.stages compatibility.",
+        "required": [
+          "stage",
+          "status",
+          "progress",
+          "total_items",
+          "completed_items"
+        ],
+        "properties": {
+          "completed_items": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "progress": {
+            "type": "number",
+            "format": "float",
+            "description": "0–100 for FE compatibility"
+          },
+          "stage": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "total_items": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "example": {
+          "completed_items": {},
+          "message": {},
+          "progress": {},
+          "stage": {},
+          "status": {},
+          "total_items": {}
+        }
+      },
       "InjectionDetailResponse": {
         "type": "object",
         "description": "Response for GET injection (single entry).",
@@ -16406,6 +17251,95 @@
           "users": []
         }
       },
+      "LlmDefaultsEffective": {
+        "type": "object",
+        "required": [
+          "llm_provider",
+          "llm_model",
+          "embedding_provider",
+          "embedding_model",
+          "vision_provider",
+          "vision_model"
+        ],
+        "properties": {
+          "embedding_model": {
+            "type": "string"
+          },
+          "embedding_provider": {
+            "type": "string"
+          },
+          "llm_model": {
+            "type": "string"
+          },
+          "llm_provider": {
+            "type": "string"
+          },
+          "vision_model": {
+            "type": "string"
+          },
+          "vision_provider": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "embedding_model": {},
+          "embedding_provider": {},
+          "llm_model": {},
+          "llm_provider": {},
+          "vision_model": {},
+          "vision_provider": {}
+        }
+      },
+      "LlmDefaultsResponse": {
+        "type": "object",
+        "required": [
+          "effective",
+          "sources",
+          "saved",
+          "priority_mode",
+          "editable",
+          "requires_restart",
+          "note"
+        ],
+        "properties": {
+          "editable": {
+            "type": "boolean"
+          },
+          "effective": {
+            "$ref": "#/components/schemas/LlmDefaultsEffective"
+          },
+          "note": {
+            "type": "string"
+          },
+          "priority_mode": {
+            "type": "string"
+          },
+          "requires_restart": {
+            "type": "boolean"
+          },
+          "saved": {
+            "$ref": "#/components/schemas/SavedLlmDefaults"
+          },
+          "sources": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        },
+        "example": {
+          "editable": {},
+          "effective": {},
+          "note": {},
+          "priority_mode": {},
+          "requires_restart": {},
+          "saved": {},
+          "sources": {}
+        }
+      },
       "LlmModelItem": {
         "allOf": [
           {
@@ -17248,6 +18182,193 @@
           "name": {},
           "replacement": {},
           "tags": []
+        }
+      },
+      "ModelSearchHitResponse": {
+        "type": "object",
+        "required": [
+          "provider",
+          "id",
+          "name",
+          "context_length",
+          "max_output_tokens",
+          "supports_vision",
+          "supports_tools",
+          "supports_thinking",
+          "model_type"
+        ],
+        "properties": {
+          "available": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "context_length": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "discovery_source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "model_type": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "score": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "supports_thinking": {
+            "type": "boolean"
+          },
+          "supports_tools": {
+            "type": "boolean"
+          },
+          "supports_vision": {
+            "type": "boolean"
+          }
+        },
+        "example": {
+          "available": {},
+          "context_length": {},
+          "discovery_source": {},
+          "id": {},
+          "max_output_tokens": {},
+          "model_type": {},
+          "name": {},
+          "provider": {},
+          "score": {},
+          "supports_thinking": {},
+          "supports_tools": {},
+          "supports_vision": {}
+        }
+      },
+      "ModelSearchQueryParams": {
+        "type": "object",
+        "properties": {
+          "dynamic": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "When false, search static registry only (default: true)."
+          },
+          "fuzzy": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "max_output_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "min_context_length": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "q": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requires_thinking": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "requires_tools": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "requires_vision": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "example": {
+          "dynamic": {},
+          "fuzzy": {},
+          "limit": {},
+          "max_output_tokens": {},
+          "min_context_length": {},
+          "provider": {},
+          "q": {},
+          "requires_thinking": {},
+          "requires_tools": {},
+          "requires_vision": {}
+        }
+      },
+      "ModelSearchResponse": {
+        "type": "object",
+        "required": [
+          "hits",
+          "total",
+          "dynamic"
+        ],
+        "properties": {
+          "dynamic": {
+            "type": "boolean"
+          },
+          "hits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelSearchHitResponse"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "example": {
+          "dynamic": {},
+          "hits": [],
+          "total": {}
         }
       },
       "ModelsListResponse": {
@@ -18464,6 +19585,13 @@
             "type": "string",
             "description": "MIME type."
           },
+          "document_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Linked document ID (mm-assets / markdown viewer scope)."
+          },
           "file_size_bytes": {
             "type": "integer",
             "format": "int64",
@@ -18491,6 +19619,7 @@
         },
         "example": {
           "content_type": {},
+          "document_id": {},
           "file_size_bytes": {},
           "filename": {},
           "is_processed": {},
@@ -18938,14 +20067,14 @@
           },
           "task_id": {
             "type": "string",
-            "description": "Background task ID."
+            "description": "Authoritative progress / cancel / retry identity (`pdf-<uuid>`).\n\nSPEC-054 / GitHub #300: clients MUST subscribe to this id for progress."
           },
           "track_id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Batch tracking ID (if provided)."
+            "description": "Optional client batch/request correlation ID (echoed if provided).\n\nNot a progress-store key — see `task_id`."
           }
         },
         "example": {
@@ -19103,6 +20232,115 @@
           "skipped"
         ],
         "example": {}
+      },
+      "PipelineActivityDoc": {
+        "type": "object",
+        "required": [
+          "document_id",
+          "filename",
+          "stage"
+        ],
+        "properties": {
+          "document_id": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stage": {
+            "type": "string"
+          },
+          "track_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "example": {
+          "document_id": {},
+          "filename": {},
+          "message": {},
+          "stage": {},
+          "track_id": {}
+        }
+      },
+      "PipelineActivityResponse": {
+        "type": "object",
+        "description": "SPEC-048 PipelineActivity — Busy SSOT.",
+        "required": [
+          "busy",
+          "working",
+          "queued",
+          "tasks",
+          "updated_at"
+        ],
+        "properties": {
+          "busy": {
+            "type": "boolean",
+            "description": "`busy == (working.len() + tasks.len() > 0)`"
+          },
+          "queued": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PipelineActivityDoc"
+            }
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PipelineActivityTask"
+            }
+          },
+          "updated_at": {
+            "type": "string"
+          },
+          "working": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PipelineActivityDoc"
+            }
+          }
+        },
+        "example": {
+          "busy": {},
+          "queued": [],
+          "tasks": [],
+          "updated_at": {},
+          "working": []
+        }
+      },
+      "PipelineActivityTask": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind"
+        ],
+        "properties": {
+          "document_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "document_id": {},
+          "id": {},
+          "kind": {}
+        }
       },
       "PipelineMessageResponse": {
         "type": "object",
@@ -19709,7 +20947,7 @@
               "string",
               "null"
             ],
-            "description": "Query mode (naive, local, global, hybrid, mix)."
+            "description": "Query mode: `naive` | `local` | `global` | `hybrid` | `mix` | `bypass`.\n\nEdgeQuake semantics (not identical to LightRAG namesakes):\n- `hybrid` — local ∥ global ∥ naive (round-robin or RRF via env)\n- `mix` — same three arms with weighted/RRF fusion + optional intent arm gate\n  (production default). LightRAG `hybrid` is local+global only."
           },
           "prompt_only": {
             "type": "boolean",
@@ -19820,6 +21058,79 @@
           "sources_retrieved"
         ],
         "properties": {
+          "arm_global_chunks": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Chunks from the global arm before merge.",
+            "minimum": 0
+          },
+          "arm_global_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Per-arm wall time for Hybrid/Mix global retrieval (ms).",
+            "minimum": 0
+          },
+          "arm_local_chunks": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Chunks from the local arm before merge.",
+            "minimum": 0
+          },
+          "arm_local_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Per-arm wall time for Hybrid/Mix local retrieval (ms).",
+            "minimum": 0
+          },
+          "arm_naive_chunks": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Chunks from the naive arm before merge.",
+            "minimum": 0
+          },
+          "arm_naive_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Per-arm wall time for Hybrid/Mix naive retrieval (ms).",
+            "minimum": 0
+          },
+          "arms_gated": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "True when intent/weight gating skipped at least one arm."
+          },
+          "arms_run": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Comma-separated arms that ran (e.g. `\"local,global,naive\"`)."
+          },
+          "context_empty": {
+            "type": "boolean",
+            "description": "True when retrieval returned no chunks/entities/relationships."
+          },
+          "context_truncated": {
+            "type": "boolean",
+            "description": "True when post-retrieval truncation removed context items."
+          },
           "embedding_time_ms": {
             "type": "integer",
             "format": "int64",
@@ -19890,6 +21201,16 @@
           }
         },
         "example": {
+          "arm_global_chunks": {},
+          "arm_global_ms": {},
+          "arm_local_chunks": {},
+          "arm_local_ms": {},
+          "arm_naive_chunks": {},
+          "arm_naive_ms": {},
+          "arms_gated": {},
+          "arms_run": {},
+          "context_empty": {},
+          "context_truncated": {},
           "embedding_time_ms": {},
           "generation_time_ms": {},
           "llm_model": {},
@@ -21301,6 +22622,28 @@
           "workspace_id": {}
         }
       },
+      "ReprocessDocumentTaskId": {
+        "type": "object",
+        "description": "Per-document progress identity after reprocess enqueue (SPEC-054 progress SSOT).",
+        "required": [
+          "document_id",
+          "task_id"
+        ],
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "description": "Document id that was requeued."
+          },
+          "task_id": {
+            "type": "string",
+            "description": "Server task track_id — sole progress / cancel / WS key."
+          }
+        },
+        "example": {
+          "document_id": {},
+          "task_id": {}
+        }
+      },
       "ReprocessFailedRequest": {
         "type": "object",
         "description": "Request to reprocess documents.\nCan filter by document_id (specific document), track_id (batch), or neither (all failed).",
@@ -21361,6 +22704,13 @@
             },
             "description": "List of document IDs being reprocessed."
           },
+          "document_task_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReprocessDocumentTaskId"
+            },
+            "description": "Per-document task ids for multi-doc reprocess (additive honesty)."
+          },
           "failed_found": {
             "type": "integer",
             "description": "Number of failed documents found.",
@@ -21371,9 +22721,32 @@
             "description": "Number of documents queued for reprocessing.",
             "minimum": 0
           },
+          "skip_reasons": {
+            "type": "object",
+            "description": "Counts by skip reason when `requeued` is less than `failed_found`.",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "skipped": {
+            "type": "integer",
+            "description": "Documents matched but not enqueued (SPEC-054/#298-C honesty).",
+            "minimum": 0
+          },
+          "task_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Progress key when exactly one document was requeued (DRY with upload `task_id`)."
+          },
           "track_id": {
             "type": "string",
-            "description": "Track ID for the reprocess batch."
+            "description": "Track ID for the reprocess batch (correlation only — not a progress key)."
           },
           "v2_migration": {
             "oneOf": [
@@ -21389,8 +22762,12 @@
         },
         "example": {
           "document_ids": [],
+          "document_task_ids": [],
           "failed_found": {},
           "requeued": {},
+          "skip_reasons": {},
+          "skipped": {},
+          "task_id": {},
           "track_id": {},
           "v2_migration": {}
         }
@@ -21513,6 +22890,55 @@
         "example": {
           "key_id": {},
           "message": {}
+        }
+      },
+      "SavedLlmDefaults": {
+        "type": "object",
+        "properties": {
+          "embedding_model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "embedding_provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "llm_model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "llm_provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vision_model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vision_provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "example": {
+          "embedding_model": {},
+          "embedding_provider": {},
+          "llm_model": {},
+          "llm_provider": {},
+          "vision_model": {},
+          "vision_provider": {}
         }
       },
       "ScanDirectoryRequest": {
@@ -23247,6 +24673,82 @@
           "name": {}
         }
       },
+      "UpdateLlmDefaultsRequest": {
+        "type": "object",
+        "properties": {
+          "embedding_model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "embedding_provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "llm_model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "llm_provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "priority_mode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`server` (DB wins) or `env` (env wins). Optional — keeps current when omitted."
+          },
+          "vision_model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vision_provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "example": {
+          "embedding_model": {},
+          "embedding_provider": {},
+          "llm_model": {},
+          "llm_provider": {},
+          "priority_mode": {},
+          "vision_model": {},
+          "vision_provider": {}
+        }
+      },
+      "UpdateLlmDefaultsResponse": {
+        "type": "object",
+        "required": [
+          "saved",
+          "note"
+        ],
+        "properties": {
+          "note": {
+            "type": "string"
+          },
+          "saved": {
+            "type": "boolean"
+          }
+        },
+        "example": {
+          "note": {},
+          "saved": {}
+        }
+      },
       "UpdateMessageApiRequest": {
         "type": "object",
         "description": "Update message request DTO.",
@@ -24377,7 +25879,7 @@
     "asyncapi": "2.6.0",
     "info": {
       "title": "EdgeQuake WebSocket Progress",
-      "version": "0.16.0",
+      "version": "0.18.0",
       "description": "Real-time pipeline and document processing progress over WebSocket (RFC 6455)."
     },
     "defaultContentType": "application/json",

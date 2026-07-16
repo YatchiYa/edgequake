@@ -7,7 +7,9 @@ This document describes how to cut a release, run quality gates, and verify the 
 ```bash
 make ops17-smoke            # PG pin SSOT (fast, no Docker)
 make spec046-acc            # SPEC-046 Hybrid RAG ACC + JSON artifact
-make release-gates          # fmt + workspace clippy + SPEC-006/018 + WebUI + version parity
+make codegen-openapi-refresh # OpenAPI snapshot + schema.d.ts from ApiDoc
+cd edgequake && cargo test -p edgequake-api --test spec027_api_contract && cd ..
+make release-gates          # fmt + workspace clippy + SPEC-006/018 + WebUI + version/OpenAPI parity
 make test-e2e-lint          # Playwright flake anti-patterns
 # Optional deeper proofs:
 make spec020-qc-proof-strict # SPEC-020 E2E (migration-038 strict)
@@ -20,6 +22,8 @@ cd .. && make backend-bg frontend-bg && make spec013-proof-ui
 ```
 
 `make release-gates` uses workspace clippy as SSOT. Set `RELEASE_SKIP_PER_CRATE_CLIPPY=0` locally if you want the slower O(N) per-crate loop. CI always sets `RELEASE_SKIP_LIB_TESTS=1` and `RELEASE_SKIP_PER_CRATE_CLIPPY=1` because `CI.yml` already owns the lib suite.
+
+**OpenAPI / Swagger (required before tag):** regenerate with `make codegen-openapi-refresh`, then run `cargo test -p edgequake-api --test spec027_api_contract`. Live check: `curl -s http://localhost:8080/api-docs/openapi.json | jq -r '.info.version'` must equal `VERSION`.
 
 ## 2) CI Validation (GitHub Actions)
 
@@ -36,13 +40,15 @@ cd .. && make backend-bg frontend-bg && make spec013-proof-ui
 - `scripts/check_docker_api_context.sh` — Cargo `[[bench]]`/`[[example]]` paths must exist; Dockerfile must `COPY` them; `.dockerignore` must not exclude them.
 - `next.config.ts` SizeLimit guard — `proxyClientMaxBodySize` must be numeric (`DEFAULT_MAX_UPLOAD_BYTES`).
 - README badge version must match `VERSION` / Cargo / package.json.
+- Per-crate package versions must be `version.workspace = true` or equal `VERSION`.
+- `edgequake_webui/openapi/openapi.snapshot.json` `info.version` must equal `VERSION`.
 
 ## 3) Cut Release (CD publish)
 
 ```bash
 # Example (current cut)
-git tag v0.16.0
-git push origin v0.16.0
+git tag v0.18.0
+git push origin v0.18.0
 ```
 
 This triggers `.github/workflows/release-docker.yml`, which:
@@ -52,12 +58,12 @@ This triggers `.github/workflows/release-docker.yml`, which:
 ## 4) Post-Publish Verification
 
 ```bash
-gh release view v0.16.0
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake:0.16.0
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-frontend:0.16.0
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.16.0
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.16.0-pg16
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.16.0-pg17
+gh release view v0.18.0
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake:0.18.0
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-frontend:0.18.0
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.18.0
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.18.0-pg16
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.18.0-pg17
 ```
 
 ## SPEC-042 Verification (before tag)
@@ -74,10 +80,10 @@ Docker images are built and published automatically via GitHub Actions (`.github
 
 ```bash
 # Tag a release — triggers multi-arch docker build + publish to ghcr.io
-git tag v0.16.0 && git push origin v0.16.0
+git tag v0.18.0 && git push origin v0.18.0
 ```
 
-Both `linux/amd64` (ubuntu-latest runner) and `linux/arm64` (native ARM64 runner — no QEMU) are built in parallel and merged into a single multi-arch manifest. The same image tag (`ghcr.io/raphaelmansuy/edgequake:0.16.0`) works on x86 servers, Apple Silicon Macs, and AWS Graviton instances.
+Both `linux/amd64` (ubuntu-latest runner) and `linux/arm64` (native ARM64 runner — no QEMU) are built in parallel and merged into a single multi-arch manifest. The same image tag (`ghcr.io/raphaelmansuy/edgequake:0.18.0`) works on x86 servers, Apple Silicon Macs, and AWS Graviton instances.
 
 You can also trigger a manual Docker build + publish without a tag via the `workflow_dispatch` input on GitHub Actions (`Actions -> Release -- Docker (GHCR) -> Run workflow`).
 

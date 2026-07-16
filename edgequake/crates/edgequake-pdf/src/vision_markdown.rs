@@ -7,9 +7,8 @@ use crate::drawing_tags::{
     finalize_page_asset_images, format_drawing_block, format_drawing_tag,
     format_inline_asset_image, inject_figure_local_images, insert_drawing_tag_after_first_image,
     is_drawing_eligible_asset_rel_path, markdown_has_durable_asset_image, page_chart_crop_rel_path,
-    page_drawing_item_id, page_figure_asset_rel_path, page_figure_drawing_item_id,
-    page_chart_drawing_item_id,
-    EMPTY_VISION_PAGE_PLACEHOLDER,
+    page_chart_drawing_item_id, page_drawing_item_id, page_figure_asset_rel_path,
+    page_figure_drawing_item_id, EMPTY_VISION_PAGE_PLACEHOLDER,
 };
 use crate::embedded_images::WrittenFigureAsset;
 use crate::region_assets::WrittenTableAsset;
@@ -239,13 +238,13 @@ fn inject_page_disk_assets(page: usize, body: &str, assets_root: &std::path::Pat
     let looks_like_table =
         lower.contains("table ") || body.lines().filter(|l| l.contains('|')).count() >= 3;
 
-        // Prefer caption-anchored table crop over legacy chart PNGs.
-        // W1-coexist (026): do NOT rewrite chart→fig — residual chart crops must
-        // stay addressable so chart specialize can land numeric text alongside figs.
-        let mut body = body;
-        if table_exists && body.contains(&chart_rel) {
-            body = rewrite_asset_hrefs(&body, &[&chart_rel], &table_rel);
-        }
+    // Prefer caption-anchored table crop over legacy chart PNGs.
+    // W1-coexist (026): do NOT rewrite chart→fig — residual chart crops must
+    // stay addressable so chart specialize can land numeric text alongside figs.
+    let mut body = body;
+    if table_exists && body.contains(&chart_rel) {
+        body = rewrite_asset_hrefs(&body, &[&chart_rel], &table_rel);
+    }
 
     if table_exists {
         if !markdown_has_durable_asset_image(&body) && looks_like_table {
@@ -474,9 +473,8 @@ pub fn assemble_vision_markdown_with_figures(
             .cloned()
             .unwrap_or_default();
         let override_path = drawing_path_overrides.and_then(|m| m.get(&page.page_num));
-        let is_chart_crop = override_path.is_some_and(|p| {
-            p.contains("-chart") && is_drawing_eligible_asset_rel_path(p)
-        });
+        let is_chart_crop = override_path
+            .is_some_and(|p| p.contains("-chart") && is_drawing_eligible_asset_rel_path(p));
 
         // Viewer: figure → table → chart crop — never full-page PNG.
         // Chart override stays available even when figs exist (W1-coexist).

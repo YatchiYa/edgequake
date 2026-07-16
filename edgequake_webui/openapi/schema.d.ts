@@ -876,7 +876,8 @@ export interface paths {
          *     # Arguments
          *
          *     * `state` - Application state with PipelineState
-         *     * `track_id` - Upload tracking ID (returned from upload response)
+         *     * `track_id` - Server job id (`PdfUploadResponse.task_id`). Not the optional
+         *       client batch `track_id` (SPEC-054 / GitHub #300).
          *
          *     # Returns
          *
@@ -1097,10 +1098,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Recover documents stuck in "processing" status.
-         * @description This endpoint finds documents that have been in "processing" status for longer
-         *     than the specified threshold and requeues them for processing. This is useful
-         *     for recovering from server restarts or crashes that left tasks in an incomplete state.
+         * Recover documents stuck in active processing statuses.
+         * @description Finds documents in any in-flight stage (`processing`, `indexing`, `storing`,
+         *     `chunking`, …) older than the threshold and requeues them. Useful after
+         *     server restarts or crashes that left tasks incomplete.
          */
         post: operations["recover_stuck"];
         delete?: never;
@@ -1242,6 +1243,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/{document_id}/assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** GET `/api/v1/documents/{document_id}/assets` — list asset summaries (no binary). */
+        get: operations["list_document_assets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/assets/include-from-pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * POST `/api/v1/documents/{document_id}/assets/include-from-pdf`
+         * @description First principles: the linked PDF is the source of visual truth — render page
+         *     PNGs, persist mm-assets, and enrich markdown figure headings with `![…](assets/…)`.
+         */
+        post: operations["include_document_assets_from_pdf"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/assets/{asset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** GET `/api/v1/documents/{document_id}/assets/{asset_id}` — binary by stable id. */
+        get: operations["download_document_asset_by_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{document_id}/deletion-impact": {
         parameters: {
             query?: never;
@@ -1264,6 +1320,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/{document_id}/download/markdown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download extracted markdown for a document. */
+        get: operations["download_document_markdown"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/download/original": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download the original document bytes (PDF delegation or stored upload). */
+        get: operations["download_document_original"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{document_id}/failed-chunks": {
         parameters: {
             query?: never;
@@ -1274,9 +1364,6 @@ export interface paths {
         /**
          * List failed chunks for a document.
          * @description @implements FEAT0409
-         *
-         *     Returns information about chunks that failed during extraction,
-         *     allowing the user to decide which to retry.
          */
         get: operations["list_failed_chunks"];
         put?: never;
@@ -1357,6 +1444,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/{document_id}/mm-assets/{asset_path}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** GET `/api/v1/documents/{document_id}/mm-assets/{*asset_path}` */
+        get: operations["download_document_mm_asset"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{document_id}/reanalyze": {
         parameters: {
             query?: never;
@@ -1386,20 +1490,6 @@ export interface paths {
         /**
          * Retry failed chunks for a specific document.
          * @description @implements FEAT0408 (Chunk retry handler)
-         *
-         *     # OODA-03: Chunk-Level Retry Queue
-         *
-         *     This endpoint allows retrying specific failed chunks without reprocessing the entire document.
-         *     Currently returns a placeholder response; full implementation pending chunk-level storage.
-         *
-         *     ## Architecture Note
-         *
-         *     Full implementation requires:
-         *     1. Storing individual chunk content in failed_chunks table
-         *     2. Re-running extraction on specific chunks
-         *     3. Merging results into existing graph data
-         *
-         *     This is a scaffolding endpoint to enable frontend integration while backend is developed.
          */
         post: operations["retry_failed_chunks"];
         delete?: never;
@@ -1751,6 +1841,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ingestion/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Batch progress for multiple tracks (FE getMultipleTrackProgress). */
+        post: operations["post_ingestion_progress_batch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ingestion/{track_id}/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get real-time ingestion progress for a track ID (SPEC-048 DEF-01). */
+        get: operations["get_ingestion_progress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lineage/documents/{document_id}": {
         parameters: {
             query?: never;
@@ -1854,6 +1978,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/models/discover/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Invalidate discovery caches and force re-fetch on next catalog request. */
+        post: operations["refresh_model_discovery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/models/embedding": {
         parameters: {
             query?: never;
@@ -1938,6 +2079,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/models/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** GET `/api/v1/models/search` — capability and name search with optional live discovery. */
+        get: operations["search_models"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/models/{provider}": {
         parameters: {
             query?: never;
@@ -1991,6 +2149,23 @@ export interface paths {
          *     Model card with capabilities and cost, or 404 if not found.
          */
         get: operations["get_model"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pipeline/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** SPEC-048: Pipeline activity — Busy SSOT (working docs + processing tasks). */
+        get: operations["get_pipeline_activity"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2241,6 +2416,24 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/llm-defaults": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** GET /api/v1/settings/llm-defaults */
+        get: operations["get_llm_defaults"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** PATCH /api/v1/settings/llm-defaults (admin) */
+        patch: operations["update_llm_defaults"];
         trace?: never;
     };
     "/api/v1/settings/provider/status": {
@@ -3355,6 +3548,15 @@ export interface components {
             filename: string;
             /** @description Status: processed, duplicate, or failed. */
             status: string;
+        };
+        /**
+         * @description Batch progress request (FE getMultipleTrackProgress).
+         * @example {
+         *       "track_ids": []
+         *     }
+         */
+        BatchIngestionProgressRequest: {
+            track_ids: string[];
         };
         /**
          * @description Batch file upload response.
@@ -4943,7 +5145,10 @@ export interface components {
          *       "chunks_deleted": {},
          *       "deleted": {},
          *       "document_id": {},
+         *       "embeddings_deleted": {},
          *       "entities_affected": {},
+         *       "partial_failure": {},
+         *       "partial_failure_reason": {},
          *       "relationships_affected": {}
          *     }
          */
@@ -4954,8 +5159,26 @@ export interface components {
             deleted: boolean;
             /** @description Document ID. */
             document_id: string;
+            /**
+             * @description Number of vector embeddings deleted.
+             *
+             *     @implements SPEC-050: Richer delete stats for UI feedback.
+             */
+            embeddings_deleted?: number;
             /** @description Number of entities affected. */
             entities_affected: number;
+            /**
+             * @description True when one or more non-fatal phases failed (e.g. graph cascade error).
+             *
+             *     @implements SPEC-050: Partial failure visibility.
+             */
+            partial_failure?: boolean;
+            /**
+             * @description Human-readable description of the partial failure, if any.
+             *
+             *     @implements SPEC-050: Partial failure detail for UI.
+             */
+            partial_failure_reason?: string | null;
             /** @description Number of relationships affected. */
             relationships_affected: number;
         };
@@ -5046,15 +5269,34 @@ export interface components {
             chunks_to_delete: number;
             /** @description Document ID. */
             document_id: string;
-            /** @description Number of entities that would be completely removed (no other sources). */
+            /**
+             * @description Number of entities that would be completely removed (no other sources).
+             *
+             *     SPEC-050/EC-1: entities exclusive to this document → DELETED.
+             */
             entities_to_remove: number;
-            /** @description Number of entities that would be updated (some sources remaining). */
+            /**
+             * @description Number of entities that would be updated (some sources remaining).
+             *
+             *     SPEC-050/EC-2: entities shared with other documents → SURVIVE with pruned sources.
+             *     These entities are NOT deleted — they persist in the knowledge graph with
+             *     their source_ids updated to exclude this document's chunks.
+             */
             entities_to_update: number;
             /** @description Preview is read-only; document NOT deleted. */
             preview_only: boolean;
-            /** @description Number of relationships that would be completely removed. */
+            /**
+             * @description Number of relationships that would be completely removed.
+             *
+             *     Includes: (a) relationships exclusive to this document, and
+             *     (b) relationships whose source or target entity will be removed (EC-3).
+             */
             relationships_to_remove: number;
-            /** @description Number of relationships that would be updated. */
+            /**
+             * @description Number of relationships that would be updated (some sources remaining).
+             *
+             *     SPEC-050/EC-6: relationships shared with other documents → SURVIVE with pruned sources.
+             */
             relationships_to_update: number;
         };
         /**
@@ -6497,6 +6739,114 @@ export interface components {
             persist_ssot: string;
         };
         /**
+         * @description Countable progress unit (pages, chunks, entities, relationships).
+         * @example {
+         *       "current": {},
+         *       "total": {},
+         *       "unit": {}
+         *     }
+         */
+        IngestionProgressCounts: {
+            /** Format: int64 */
+            current: number;
+            /** Format: int64 */
+            total: number;
+            /** @description Wire unit: `pages` | `chunks` | `entities` | `relationships` */
+            unit: string;
+        };
+        /**
+         * @description Nested progress block expected by FE `TrackProgressResponse.progress`.
+         * @example {
+         *       "completion_percentage": {},
+         *       "current_stage": {},
+         *       "eta_seconds": {},
+         *       "latest_message": {},
+         *       "stages": []
+         *     }
+         */
+        IngestionProgressDetail: {
+            /**
+             * Format: float
+             * @description 0–100
+             */
+            completion_percentage: number;
+            current_stage: string;
+            /** Format: int64 */
+            eta_seconds?: number | null;
+            latest_message: string;
+            stages: components["schemas"]["IngestionStageProgressItem"][];
+        };
+        /**
+         * @description SPEC-048 IngestionProgress + FE TrackProgressResponse aliases.
+         * @example {
+         *       "completed_at": {},
+         *       "cost_usd": {},
+         *       "counts": {},
+         *       "document_id": {},
+         *       "document_name": {},
+         *       "filename": {},
+         *       "message": {},
+         *       "mode": {},
+         *       "progress": {},
+         *       "progress_01": {},
+         *       "source_type": {},
+         *       "stage": {},
+         *       "stage_status": {},
+         *       "started_at": {},
+         *       "status": {},
+         *       "track_id": {},
+         *       "updated_at": {}
+         *     }
+         */
+        IngestionProgressResponse: {
+            completed_at?: string | null;
+            /** Format: double */
+            cost_usd?: number | null;
+            counts?: null | components["schemas"]["IngestionProgressCounts"];
+            document_id: string;
+            /** @description Alias of `filename` for FE */
+            document_name: string;
+            filename: string;
+            message: string;
+            mode?: string | null;
+            progress: components["schemas"]["IngestionProgressDetail"];
+            /** Format: float */
+            progress_01?: number | null;
+            source_type?: string | null;
+            stage: string;
+            stage_status: string;
+            started_at?: string | null;
+            /** @description Alias of `stage` for FE status field */
+            status: string;
+            track_id: string;
+            updated_at: string;
+        };
+        /**
+         * @description Per-stage item for FE ProgressDetail.stages compatibility.
+         * @example {
+         *       "completed_items": {},
+         *       "message": {},
+         *       "progress": {},
+         *       "stage": {},
+         *       "status": {},
+         *       "total_items": {}
+         *     }
+         */
+        IngestionStageProgressItem: {
+            /** Format: int64 */
+            completed_items: number;
+            message?: string | null;
+            /**
+             * Format: float
+             * @description 0–100 for FE compatibility
+             */
+            progress: number;
+            stage: string;
+            status: string;
+            /** Format: int64 */
+            total_items: number;
+        };
+        /**
          * @description Response for GET injection (single entry).
          * @example {
          *       "content": {},
@@ -7161,6 +7511,46 @@ export interface components {
             /** @description List of users. */
             users: components["schemas"]["UserInfo"][];
         };
+        /**
+         * @example {
+         *       "embedding_model": {},
+         *       "embedding_provider": {},
+         *       "llm_model": {},
+         *       "llm_provider": {},
+         *       "vision_model": {},
+         *       "vision_provider": {}
+         *     }
+         */
+        LlmDefaultsEffective: {
+            embedding_model: string;
+            embedding_provider: string;
+            llm_model: string;
+            llm_provider: string;
+            vision_model: string;
+            vision_provider: string;
+        };
+        /**
+         * @example {
+         *       "editable": {},
+         *       "effective": {},
+         *       "note": {},
+         *       "priority_mode": {},
+         *       "requires_restart": {},
+         *       "saved": {},
+         *       "sources": {}
+         *     }
+         */
+        LlmDefaultsResponse: {
+            editable: boolean;
+            effective: components["schemas"]["LlmDefaultsEffective"];
+            note: string;
+            priority_mode: string;
+            requires_restart: boolean;
+            saved: components["schemas"]["SavedLlmDefaults"];
+            sources: {
+                [key: string]: string;
+            };
+        };
         /** @description LLM model item with provider info. */
         LlmModelItem: components["schemas"]["ModelResponse"] & {
             /** @description Provider name. */
@@ -7465,7 +7855,9 @@ export interface components {
         /**
          * @example {
          *       "age_extversion": {},
+         *       "age_rls_applied": {},
          *       "age_shipped_version": {},
+         *       "halfvec_conversion_applied": {},
          *       "latest_version": {},
          *       "pgvector_extversion": {},
          *       "pgvector_iterative_scan_capable": {},
@@ -7476,7 +7868,11 @@ export interface components {
          */
         MigrationHealthSnapshot: {
             age_extversion?: string | null;
+            /** @description SPEC-045 SRE-M02: M081 AGE graph RLS applied this bootstrap. */
+            age_rls_applied?: boolean;
             age_shipped_version?: string | null;
+            /** @description SPEC-045 SRE-M02: M080 halfvec conversion applied this bootstrap. */
+            halfvec_conversion_applied?: boolean;
             /** Format: int64 */
             latest_version?: number | null;
             pgvector_extversion?: string | null;
@@ -7638,6 +8034,76 @@ export interface components {
             replacement?: string | null;
             /** @description Optional tags for categorization. */
             tags?: string[];
+        };
+        /**
+         * @example {
+         *       "available": {},
+         *       "context_length": {},
+         *       "discovery_source": {},
+         *       "id": {},
+         *       "max_output_tokens": {},
+         *       "model_type": {},
+         *       "name": {},
+         *       "provider": {},
+         *       "score": {},
+         *       "supports_thinking": {},
+         *       "supports_tools": {},
+         *       "supports_vision": {}
+         *     }
+         */
+        ModelSearchHitResponse: {
+            available?: boolean | null;
+            context_length: number;
+            discovery_source?: string | null;
+            id: string;
+            max_output_tokens: number;
+            model_type: string;
+            name: string;
+            provider: string;
+            /** Format: double */
+            score?: number | null;
+            supports_thinking: boolean;
+            supports_tools: boolean;
+            supports_vision: boolean;
+        };
+        /**
+         * @example {
+         *       "dynamic": {},
+         *       "fuzzy": {},
+         *       "limit": {},
+         *       "max_output_tokens": {},
+         *       "min_context_length": {},
+         *       "provider": {},
+         *       "q": {},
+         *       "requires_thinking": {},
+         *       "requires_tools": {},
+         *       "requires_vision": {}
+         *     }
+         */
+        ModelSearchQueryParams: {
+            /** @description When false, search static registry only (default: true). */
+            dynamic?: boolean | null;
+            fuzzy?: boolean | null;
+            limit?: number | null;
+            max_output_tokens?: number | null;
+            min_context_length?: number | null;
+            provider?: string | null;
+            q?: string | null;
+            requires_thinking?: boolean | null;
+            requires_tools?: boolean | null;
+            requires_vision?: boolean | null;
+        };
+        /**
+         * @example {
+         *       "dynamic": {},
+         *       "hits": [],
+         *       "total": {}
+         *     }
+         */
+        ModelSearchResponse: {
+            dynamic: boolean;
+            hits: components["schemas"]["ModelSearchHitResponse"][];
+            total: number;
         };
         /**
          * @description Response for listing all models and providers.
@@ -8291,6 +8757,7 @@ export interface components {
          * @description PDF download response.
          * @example {
          *       "content_type": {},
+         *       "document_id": {},
          *       "file_size_bytes": {},
          *       "filename": {},
          *       "is_processed": {},
@@ -8301,6 +8768,8 @@ export interface components {
         PdfContentResponse: {
             /** @description MIME type. */
             content_type: string;
+            /** @description Linked document ID (mm-assets / markdown viewer scope). */
+            document_id?: string | null;
             /**
              * Format: int64
              * @description File size in bytes.
@@ -8575,9 +9044,17 @@ export interface components {
             pdf_id: string;
             /** @description Processing status. */
             status: string;
-            /** @description Background task ID. */
+            /**
+             * @description Authoritative progress / cancel / retry identity (`pdf-<uuid>`).
+             *
+             *     SPEC-054 / GitHub #300: clients MUST subscribe to this id for progress.
+             */
             task_id: string;
-            /** @description Batch tracking ID (if provided). */
+            /**
+             * @description Optional client batch/request correlation ID (echoed if provided).
+             *
+             *     Not a progress-store key — see `task_id`.
+             */
             track_id?: string | null;
         };
         /**
@@ -8672,6 +9149,52 @@ export interface components {
          * @enum {string}
          */
         PhaseStatus: "pending" | "active" | "complete" | "failed" | "skipped";
+        /**
+         * @example {
+         *       "document_id": {},
+         *       "filename": {},
+         *       "message": {},
+         *       "stage": {},
+         *       "track_id": {}
+         *     }
+         */
+        PipelineActivityDoc: {
+            document_id: string;
+            filename: string;
+            message?: string | null;
+            stage: string;
+            track_id?: string | null;
+        };
+        /**
+         * @description SPEC-048 PipelineActivity — Busy SSOT.
+         * @example {
+         *       "busy": {},
+         *       "queued": [],
+         *       "tasks": [],
+         *       "updated_at": {},
+         *       "working": []
+         *     }
+         */
+        PipelineActivityResponse: {
+            /** @description `busy == (working.len() + tasks.len() > 0)` */
+            busy: boolean;
+            queued: components["schemas"]["PipelineActivityDoc"][];
+            tasks: components["schemas"]["PipelineActivityTask"][];
+            updated_at: string;
+            working: components["schemas"]["PipelineActivityDoc"][];
+        };
+        /**
+         * @example {
+         *       "document_id": {},
+         *       "id": {},
+         *       "kind": {}
+         *     }
+         */
+        PipelineActivityTask: {
+            document_id?: string | null;
+            id: string;
+            kind: string;
+        };
         /**
          * @description A pipeline message for the API response.
          * @example {
@@ -9006,7 +9529,14 @@ export interface components {
             /** @description Maximum number of results. */
             max_results?: number | null;
             mix_weights?: null | components["schemas"]["MixWeightRequest"];
-            /** @description Query mode (naive, local, global, hybrid, mix). */
+            /**
+             * @description Query mode: `naive` | `local` | `global` | `hybrid` | `mix` | `bypass`.
+             *
+             *     EdgeQuake semantics (not identical to LightRAG namesakes):
+             *     - `hybrid` — local ∥ global ∥ naive (round-robin or RRF via env)
+             *     - `mix` — same three arms with weighted/RRF fusion + optional intent arm gate
+             *       (production default). LightRAG `hybrid` is local+global only.
+             */
             mode?: string | null;
             /**
              * @description Return the formatted prompt instead of calling the LLM.
@@ -9057,6 +9587,16 @@ export interface components {
          *
          *     @implements SPEC-032 Item 18, 22: Token metrics and model lineage
          * @example {
+         *       "arm_global_chunks": {},
+         *       "arm_global_ms": {},
+         *       "arm_local_chunks": {},
+         *       "arm_local_ms": {},
+         *       "arm_naive_chunks": {},
+         *       "arm_naive_ms": {},
+         *       "arms_gated": {},
+         *       "arms_run": {},
+         *       "context_empty": {},
+         *       "context_truncated": {},
          *       "embedding_time_ms": {},
          *       "generation_time_ms": {},
          *       "llm_model": {},
@@ -9070,6 +9610,35 @@ export interface components {
          *     }
          */
         QueryStats: {
+            /** @description Chunks from the global arm before merge. */
+            arm_global_chunks?: number | null;
+            /**
+             * Format: int64
+             * @description Per-arm wall time for Hybrid/Mix global retrieval (ms).
+             */
+            arm_global_ms?: number | null;
+            /** @description Chunks from the local arm before merge. */
+            arm_local_chunks?: number | null;
+            /**
+             * Format: int64
+             * @description Per-arm wall time for Hybrid/Mix local retrieval (ms).
+             */
+            arm_local_ms?: number | null;
+            /** @description Chunks from the naive arm before merge. */
+            arm_naive_chunks?: number | null;
+            /**
+             * Format: int64
+             * @description Per-arm wall time for Hybrid/Mix naive retrieval (ms).
+             */
+            arm_naive_ms?: number | null;
+            /** @description True when intent/weight gating skipped at least one arm. */
+            arms_gated?: boolean | null;
+            /** @description Comma-separated arms that ran (e.g. `"local,global,naive"`). */
+            arms_run?: string | null;
+            /** @description True when retrieval returned no chunks/entities/relationships. */
+            context_empty?: boolean;
+            /** @description True when post-retrieval truncation removed context items. */
+            context_truncated?: boolean;
             /**
              * Format: int64
              * @description Embedding time in ms.
@@ -9858,6 +10427,19 @@ export interface components {
             workspace_id: string;
         };
         /**
+         * @description Per-document progress identity after reprocess enqueue (SPEC-054 progress SSOT).
+         * @example {
+         *       "document_id": {},
+         *       "task_id": {}
+         *     }
+         */
+        ReprocessDocumentTaskId: {
+            /** @description Document id that was requeued. */
+            document_id: string;
+            /** @description Server task track_id — sole progress / cancel / WS key. */
+            task_id: string;
+        };
+        /**
          * @description Request to reprocess documents.
          *     Can filter by document_id (specific document), track_id (batch), or neither (all failed).
          * @example {
@@ -9896,8 +10478,12 @@ export interface components {
          * @description Response from reprocess operation.
          * @example {
          *       "document_ids": [],
+         *       "document_task_ids": [],
          *       "failed_found": {},
          *       "requeued": {},
+         *       "skip_reasons": {},
+         *       "skipped": {},
+         *       "task_id": {},
          *       "track_id": {},
          *       "v2_migration": {}
          *     }
@@ -9905,11 +10491,21 @@ export interface components {
         ReprocessFailedResponse: {
             /** @description List of document IDs being reprocessed. */
             document_ids: string[];
+            /** @description Per-document task ids for multi-doc reprocess (additive honesty). */
+            document_task_ids?: components["schemas"]["ReprocessDocumentTaskId"][];
             /** @description Number of failed documents found. */
             failed_found: number;
             /** @description Number of documents queued for reprocessing. */
             requeued: number;
-            /** @description Track ID for the reprocess batch. */
+            /** @description Counts by skip reason when `requeued` is less than `failed_found`. */
+            skip_reasons?: {
+                [key: string]: number;
+            };
+            /** @description Documents matched but not enqueued (SPEC-054/#298-C honesty). */
+            skipped?: number;
+            /** @description Progress key when exactly one document was requeued (DRY with upload `task_id`). */
+            task_id?: string | null;
+            /** @description Track ID for the reprocess batch (correlation only — not a progress key). */
             track_id: string;
             v2_migration?: null | components["schemas"]["V2MigrationHint"];
         };
@@ -9988,6 +10584,24 @@ export interface components {
             message: string;
         };
         /**
+         * @example {
+         *       "embedding_model": {},
+         *       "embedding_provider": {},
+         *       "llm_model": {},
+         *       "llm_provider": {},
+         *       "vision_model": {},
+         *       "vision_provider": {}
+         *     }
+         */
+        SavedLlmDefaults: {
+            embedding_model?: string | null;
+            embedding_provider?: string | null;
+            llm_model?: string | null;
+            llm_provider?: string | null;
+            vision_model?: string | null;
+            vision_provider?: string | null;
+        };
+        /**
          * @description Request to scan a directory for documents.
          * @example {
          *       "async_processing": {},
@@ -10061,6 +10675,7 @@ export interface components {
          *     WHY: OODA-14 - Provides visibility into database migration state.
          *     Operators can verify schema is up-to-date before deployment.
          * @example {
+         *       "halfvec_conversion_applied": {},
          *       "last_applied_at": {},
          *       "latest_version": {},
          *       "migrations_applied": {},
@@ -10068,6 +10683,8 @@ export interface components {
          *     }
          */
         SchemaHealth: {
+            /** @description SPEC-045: M080 halfvec conversion applied at last bootstrap. */
+            halfvec_conversion_applied?: boolean | null;
             /** @description When the last migration was applied (ISO 8601 timestamp). */
             last_applied_at?: string | null;
             /**
@@ -10927,6 +11544,37 @@ export interface components {
             content?: string | null;
             /** @description New name (optional — keeps existing if omitted). */
             name?: string | null;
+        };
+        /**
+         * @example {
+         *       "embedding_model": {},
+         *       "embedding_provider": {},
+         *       "llm_model": {},
+         *       "llm_provider": {},
+         *       "priority_mode": {},
+         *       "vision_model": {},
+         *       "vision_provider": {}
+         *     }
+         */
+        UpdateLlmDefaultsRequest: {
+            embedding_model?: string | null;
+            embedding_provider?: string | null;
+            llm_model?: string | null;
+            llm_provider?: string | null;
+            /** @description `server` (DB wins) or `env` (env wins). Optional — keeps current when omitted. */
+            priority_mode?: string | null;
+            vision_model?: string | null;
+            vision_provider?: string | null;
+        };
+        /**
+         * @example {
+         *       "note": {},
+         *       "saved": {}
+         *     }
+         */
+        UpdateLlmDefaultsResponse: {
+            note: string;
+            saved: boolean;
         };
         /**
          * @description Update message request DTO.
@@ -12958,7 +13606,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Upload tracking ID from upload response */
+                /** @description Server task_id from PdfUploadResponse (not client batch track_id) */
                 track_id: string;
             };
             cookie?: never;
@@ -12988,7 +13636,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Upload tracking ID from upload response */
+                /** @description Server task_id from PdfUploadResponse (not client batch track_id) */
                 track_id: string;
             };
             cookie?: never;
@@ -13591,6 +14239,101 @@ export interface operations {
             };
         };
     };
+    list_document_assets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Document ID */
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Asset summaries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Document not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    include_document_assets_from_pdf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Document ID */
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Assets included from PDF */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No linked PDF */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Document or PDF not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    download_document_asset_by_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Document ID */
+                document_id: string;
+                /** @description Stable asset id (filename stem, e.g. page-0001-chart) */
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Asset bytes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": unknown;
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     analyze_deletion_impact: {
         parameters: {
             query?: never;
@@ -13613,6 +14356,71 @@ export interface operations {
                 };
             };
             /** @description Document not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    download_document_markdown: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Document identifier */
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Markdown file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/markdown": unknown;
+                };
+            };
+            /** @description Document or markdown not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    download_document_original: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Document identifier */
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Original file bytes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authorized */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Document or original not found */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -13738,6 +14546,38 @@ export interface operations {
             };
         };
     };
+    download_document_mm_asset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Document ID */
+                document_id: string;
+                /** @description Relative path under mm-assets (e.g. assets/page-0001.png) */
+                asset_path: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Asset bytes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": unknown;
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     reanalyze_multimodal: {
         parameters: {
             query?: never;
@@ -13820,8 +14660,8 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Chunk-level retry not yet implemented */
-            501: {
+            /** @description PostgreSQL required for chunk retry */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -14547,6 +15387,60 @@ export interface operations {
             };
         };
     };
+    post_ingestion_progress_batch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchIngestionProgressRequest"];
+            };
+        };
+        responses: {
+            /** @description Track progress list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestionProgressResponse"][];
+                };
+            };
+        };
+    };
+    get_ingestion_progress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Ingestion track ID */
+                track_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Track progress */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestionProgressResponse"];
+                };
+            };
+            /** @description Track not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     get_document_lineage: {
         parameters: {
             query?: never;
@@ -14704,6 +15598,24 @@ export interface operations {
             };
         };
     };
+    refresh_model_discovery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Discovery cache invalidated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     list_embedding_models: {
         parameters: {
             query?: never;
@@ -14760,6 +15672,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LlmModelsResponse"];
+                };
+            };
+        };
+    };
+    search_models: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                provider?: string | null;
+                requires_vision?: boolean | null;
+                requires_tools?: boolean | null;
+                requires_thinking?: boolean | null;
+                min_context_length?: number | null;
+                max_output_tokens?: number | null;
+                fuzzy?: boolean | null;
+                limit?: number | null;
+                /** @description When false, search static registry only (default: true). */
+                dynamic?: boolean | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Model search hits */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelSearchResponse"];
                 };
             };
         };
@@ -14823,6 +15767,26 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    get_pipeline_activity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pipeline activity */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelineActivityResponse"];
+                };
             };
         };
     };
@@ -15218,6 +16182,64 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AttributionSettingsResponse"];
                 };
+            };
+        };
+    };
+    get_llm_defaults: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Server LLM defaults */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmDefaultsResponse"];
+                };
+            };
+        };
+    };
+    update_llm_defaults: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateLlmDefaultsRequest"];
+            };
+        };
+        responses: {
+            /** @description LLM defaults updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateLlmDefaultsResponse"];
+                };
+            };
+            /** @description Persistence requires PostgreSQL */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Admin required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

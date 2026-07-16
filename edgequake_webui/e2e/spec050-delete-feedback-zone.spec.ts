@@ -7,6 +7,11 @@
 import { expect, test, type Page } from "@playwright/test";
 import { GOTO_OPTS, waitForAppReady } from "./helpers/app-ready";
 import { API_V1_URL } from "./helpers/backend-url";
+import { skipUnlessLiveStack } from "./helpers/live-stack";
+
+test.beforeEach(() => {
+  skipUnlessLiveStack();
+});
 
 const SPEC050_TENANT =
   process.env.E2E_TENANT_ID ?? "79d034a7-9b01-401b-b3c0-d898b5497766";
