@@ -183,13 +183,10 @@ pub(super) async fn create_pdf_processing_task(
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
     {
-        metadata
-            .as_object_mut()
-            .expect("metadata object")
-            .insert(
-                "client_track_id".to_string(),
-                serde_json::json!(client_track_id),
-            );
+        metadata.as_object_mut().expect("metadata object").insert(
+            "client_track_id".to_string(),
+            serde_json::json!(client_track_id),
+        );
     }
 
     let task = Task {

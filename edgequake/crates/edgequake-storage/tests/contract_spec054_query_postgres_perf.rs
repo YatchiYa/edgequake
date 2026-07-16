@@ -130,8 +130,7 @@ fn contract_escape_ssot_and_bound_cypher_hot_reads() {
 
 #[test]
 fn contract_bootstrap_skips_dedup_when_unique_valid() {
-    let lifecycle =
-        include_str!("../src/adapters/postgres/graph/helpers/graph_lifecycle.rs");
+    let lifecycle = include_str!("../src/adapters/postgres/graph/helpers/graph_lifecycle.rs");
     assert!(
         lifecycle.contains("index_validity"),
         "must probe pg_index.indisvalid before O(N) dedup"

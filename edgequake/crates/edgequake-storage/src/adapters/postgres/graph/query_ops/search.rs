@@ -9,7 +9,6 @@ use crate::error::{Result, StorageError};
 use crate::traits::{GraphNode, NodeListFilter};
 
 impl PostgresAGEGraphStorage {
-
     pub(in crate::adapters::postgres::graph) async fn pg_get_popular_labels(
         &self,
         limit: usize,
@@ -59,7 +58,6 @@ impl PostgresAGEGraphStorage {
             .filter_map(|row| row.get::<Option<String>, _>("label"))
             .collect())
     }
-
 
     /// FAST OPTIMIZED: Search node labels with full-text search and fuzzy matching.
     ///
@@ -188,7 +186,6 @@ impl PostgresAGEGraphStorage {
         Ok(labels)
     }
 
-
     /// Search for nodes with full text matching on label and description.
     ///
     /// Returns nodes with their degree, filtered by tenant/workspace context.
@@ -280,7 +277,6 @@ impl PostgresAGEGraphStorage {
         Ok(results)
     }
 
-
     pub(in crate::adapters::postgres::graph) async fn pg_get_popular_nodes_with_degree(
         &self,
         limit: usize,
@@ -365,5 +361,4 @@ impl PostgresAGEGraphStorage {
 
         Ok(results)
     }
-
 }

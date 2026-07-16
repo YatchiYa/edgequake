@@ -466,7 +466,7 @@ pub async fn reconcile_entity_counts_with_graph(
         }
     };
 
-    for ((idx, _doc_id), prefix) in candidates.into_iter().zip(prefixes.into_iter()) {
+    for ((idx, _doc_id), prefix) in candidates.into_iter().zip(prefixes) {
         if let Some(age_count) = counts.get(&prefix).copied() {
             if age_count > 0 {
                 documents[idx].entity_count = Some(age_count);

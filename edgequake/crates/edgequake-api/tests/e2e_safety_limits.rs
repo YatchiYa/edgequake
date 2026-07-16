@@ -73,7 +73,10 @@ async fn test_safety_limits_enforce_max_tokens() {
 
     // Create a safe provider via factory (mock allowed only for tests)
     let result = create_safe_llm_provider("mock", "test-model");
-    assert!(result.is_ok(), "Should create safe mock provider when allowed");
+    assert!(
+        result.is_ok(),
+        "Should create safe mock provider when allowed"
+    );
 
     let provider = result.unwrap();
 
@@ -99,7 +102,11 @@ fn test_mock_llm_healed_without_allow_flag() {
     assert!(
         result.is_ok(),
         "Mock should be healed to server runtime provider: {}",
-        result.as_ref().err().map(|e| e.to_string()).unwrap_or_default()
+        result
+            .as_ref()
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_default()
     );
     let provider = result.unwrap();
     assert_ne!(
@@ -126,7 +133,10 @@ fn test_factory_creates_safe_providers() {
 
     // Should work with mock provider when explicitly allowed for tests
     let result = create_safe_llm_provider("mock", "test-model");
-    assert!(result.is_ok(), "Should create safe mock provider when allowed");
+    assert!(
+        result.is_ok(),
+        "Should create safe mock provider when allowed"
+    );
 
     let provider = result.unwrap();
     assert_eq!(provider.name(), "mock");

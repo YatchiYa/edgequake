@@ -67,9 +67,7 @@ pub async fn create_tenant(
     );
 
     // SPEC-032: Apply LLM configuration if provided
-    if let (Some(model), Some(provider)) =
-        (&request.default_llm_model, &default_llm_provider)
-    {
+    if let (Some(model), Some(provider)) = (&request.default_llm_model, &default_llm_provider) {
         tenant = tenant.with_llm_config(model, provider);
     } else if let Some(model) = &request.default_llm_model {
         // Auto-detect provider from model name
@@ -94,9 +92,7 @@ pub async fn create_tenant(
             Some(model),
         );
         let dimension = edgequake_core::Workspace::detect_dimension_from_model(model);
-        let final_provider = default_embedding_provider
-            .clone()
-            .unwrap_or(provider);
+        let final_provider = default_embedding_provider.clone().unwrap_or(provider);
         let final_dimension = request.default_embedding_dimension.unwrap_or(dimension);
         tenant = tenant.with_embedding_config(model, final_provider, final_dimension);
     }

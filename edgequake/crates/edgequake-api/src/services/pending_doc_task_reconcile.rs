@@ -48,10 +48,7 @@ pub struct ReconcilePendingReport {
 
 /// Waiting statuses that can be stranded without a task (#298).
 pub fn is_orphan_waiting_status(status: &str) -> bool {
-    matches!(
-        status.to_lowercase().as_str(),
-        "pending" | "queued"
-    )
+    matches!(status.to_lowercase().as_str(), "pending" | "queued")
 }
 
 /// True when TaskStorage already has a pending/processing task for this document.
@@ -169,8 +166,13 @@ pub fn build_recovery_task_from_metadata(
 
     if source_type == Some("pdf") {
         if let Some(pdf_id) = pdf_id {
-            let task_data =
-                build_pdf_recovery_task_data(metadata, pdf_id, tenant_id, workspace_id, document_id);
+            let task_data = build_pdf_recovery_task_data(
+                metadata,
+                pdf_id,
+                tenant_id,
+                workspace_id,
+                document_id,
+            );
             let value = serde_json::to_value(&task_data).ok()?;
             return Some((TaskType::PdfProcessing, value, tenant_id, workspace_id));
         }
@@ -200,12 +202,7 @@ pub async fn ensure_task_for_pending_document(
     }
 
     let workspace_id = parse_uuid_field(metadata, "workspace_id");
-    if has_active_task_for_document(
-        state.tasks.storage.as_ref(),
-        document_id,
-        workspace_id,
-    )
-    .await?
+    if has_active_task_for_document(state.tasks.storage.as_ref(), document_id, workspace_id).await?
     {
         return Ok(EnsureTaskOutcome::AlreadyScheduled);
     }
@@ -252,17 +249,32 @@ pub async fn ensure_task_for_pending_document(
             );
             (
                 TaskType::PdfProcessing,
-                serde_json::to_value(&task_data).map_err(|e| {
-                    ApiError::Internal(format!("serialize PDF recovery task: {e}"))
-                })?,
+                serde_json::to_value(&task_data)
+                    .map_err(|e| ApiError::Internal(format!("serialize PDF recovery task: {e}")))?,
             )
         } else if let Some(text) = content.filter(|c| !c.trim().is_empty()) {
-            text_insert_task_value(document_id, &title, text, batch_track_id, reason, tenant_id, workspace_id)?
+            text_insert_task_value(
+                document_id,
+                &title,
+                text,
+                batch_track_id,
+                reason,
+                tenant_id,
+                workspace_id,
+            )?
         } else {
             return Ok(EnsureTaskOutcome::SkippedNoContent);
         }
     } else if let Some(text) = content.filter(|c| !c.trim().is_empty()) {
-        text_insert_task_value(document_id, &title, text, batch_track_id, reason, tenant_id, workspace_id)?
+        text_insert_task_value(
+            document_id,
+            &title,
+            text,
+            batch_track_id,
+            reason,
+            tenant_id,
+            workspace_id,
+        )?
     } else {
         return Ok(EnsureTaskOutcome::SkippedNoContent);
     };
@@ -580,7 +592,10 @@ mod tests {
         // Isolate from developer shells that may set the var.
         let prev = std::env::var("EDGEQUAKE_STARTUP_RECONCILE_MAX").ok();
         std::env::remove_var("EDGEQUAKE_STARTUP_RECONCILE_MAX");
-        assert_eq!(startup_reconcile_max_from_env(), DEFAULT_STARTUP_RECONCILE_MAX);
+        assert_eq!(
+            startup_reconcile_max_from_env(),
+            DEFAULT_STARTUP_RECONCILE_MAX
+        );
         if let Some(v) = prev {
             std::env::set_var("EDGEQUAKE_STARTUP_RECONCILE_MAX", v);
         }
@@ -606,9 +621,6 @@ mod tests {
             "doc-mistral",
         );
         assert_eq!(task.vision_provider, "mistral");
-        assert_eq!(
-            task.vision_model.as_deref(),
-            Some("mistral-small-latest")
-        );
+        assert_eq!(task.vision_model.as_deref(), Some("mistral-small-latest"));
     }
 }

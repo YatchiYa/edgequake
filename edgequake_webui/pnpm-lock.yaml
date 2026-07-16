@@ -219,7 +219,7 @@ importers:
         specifier: ^3.22.0
         version: 3.22.0
       sigma:
-        specifier: ^3.0.2
+        specifier: 3.0.2
         version: 3.0.2(graphology-types@0.24.8)
       sonner:
         specifier: ^2.0.7

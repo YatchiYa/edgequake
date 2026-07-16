@@ -12,8 +12,8 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use edgequake_api::server::{Server, ServerConfig};
 use edgequake_api::services::pending_doc_task_reconcile::{
-    build_pdf_recovery_task_data, ensure_task_for_pending_document,
-    has_active_task_for_document, reconcile_pending_documents_missing_tasks, EnsureTaskOutcome,
+    build_pdf_recovery_task_data, ensure_task_for_pending_document, has_active_task_for_document,
+    reconcile_pending_documents_missing_tasks, EnsureTaskOutcome,
 };
 use edgequake_api::state::AppState;
 use edgequake_tasks::storage::{Pagination, TaskFilter};
@@ -60,10 +60,7 @@ async fn seed_orphan_pending_doc(state: &AppState, doc_id: &str, content: &str) 
     state
         .storage
         .kv_storage
-        .upsert(&[(
-            format!("{doc_id}-content"),
-            json!({ "content": content }),
-        )])
+        .upsert(&[(format!("{doc_id}-content"), json!({ "content": content }))])
         .await
         .expect("seed content");
 }
@@ -126,13 +123,9 @@ async fn spec054_298_reconcile_enqueues_task_for_orphan_pending_doc() {
     );
     assert_eq!(count_pending_tasks(&state).await, 0);
 
-    let report = reconcile_pending_documents_missing_tasks(
-        &state,
-        100,
-        "e2e_spec054_298",
-    )
-    .await
-    .expect("reconcile");
+    let report = reconcile_pending_documents_missing_tasks(&state, 100, "e2e_spec054_298")
+        .await
+        .expect("reconcile");
 
     assert!(
         report.enqueued >= 1,
@@ -199,9 +192,11 @@ async fn spec054_298_recover_stuck_creates_task_for_aged_pending() {
     seed_orphan_pending_doc(&state, doc_id, "Recover stuck must enqueue me").await;
 
     let ws = Uuid::parse_str(TEST_WORKSPACE_ID).unwrap();
-    assert!(!has_active_task_for_document(state.tasks.storage.as_ref(), doc_id, Some(ws))
-        .await
-        .unwrap());
+    assert!(
+        !has_active_task_for_document(state.tasks.storage.as_ref(), doc_id, Some(ws))
+            .await
+            .unwrap()
+    );
 
     let response = app
         .oneshot(
@@ -223,10 +218,7 @@ async fn spec054_298_recover_stuck_creates_task_for_aged_pending() {
         .await
         .unwrap();
 
-    assert!(
-        response.status().is_success(),
-        "recover-stuck must succeed"
-    );
+    assert!(response.status().is_success(), "recover-stuck must succeed");
     let body = axum::body::to_bytes(response.into_body(), 1024 * 1024)
         .await
         .unwrap();
@@ -251,9 +243,11 @@ async fn spec054_298_reprocess_orphan_pending_without_force() {
     seed_orphan_pending_doc(&state, doc_id, "Reprocess without force must work").await;
 
     let ws = Uuid::parse_str(TEST_WORKSPACE_ID).unwrap();
-    assert!(!has_active_task_for_document(state.tasks.storage.as_ref(), doc_id, Some(ws))
-        .await
-        .unwrap());
+    assert!(
+        !has_active_task_for_document(state.tasks.storage.as_ref(), doc_id, Some(ws))
+            .await
+            .unwrap()
+    );
 
     let response = app
         .oneshot(
@@ -508,7 +502,9 @@ async fn spec054_298_pdf_reconcile_preserves_metadata_vision_provider() {
         })
         .expect("pdf recovery task must exist");
     assert_eq!(
-        task.task_data.get("vision_provider").and_then(|v| v.as_str()),
+        task.task_data
+            .get("vision_provider")
+            .and_then(|v| v.as_str()),
         Some("mistral"),
         "falsifiable: recovered PDF must keep metadata vision_provider, not hardcode ollama"
     );

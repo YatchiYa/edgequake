@@ -10,8 +10,8 @@
 
 pub mod content;
 mod helpers;
-pub mod progress_identity;
 pub mod operations;
+pub mod progress_identity;
 pub mod status;
 pub mod types;
 pub mod upload;

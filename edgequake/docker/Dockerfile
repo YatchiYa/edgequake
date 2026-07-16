@@ -30,12 +30,8 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# WHY: Build context is the monorepo root (not edgequake/ subdir) so that the
-# edgequake-pdf2md path dep (../../edgequake-pdf2md) is accessible.
-# The edgequake workspace lives at /app/edgequake; pdf2md at /edgequake-pdf2md.
-# CI checks out edgequake-pdf2md to path edgequake-pdf2md/ (sibling of edgequake/).
-COPY edgequake-pdf2md/ /edgequake-pdf2md/
-
+# WHY: Build context is the monorepo root. edgequake-pdf2md is a crates.io
+# dependency (see edgequake/Cargo.toml) — no sibling path checkout required.
 # Copy workspace files (edgequake subdirectory)
 COPY edgequake/Cargo.toml edgequake/Cargo.lock ./
 COPY edgequake/crates/ crates/

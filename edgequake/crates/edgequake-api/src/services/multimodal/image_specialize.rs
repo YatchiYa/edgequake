@@ -203,8 +203,7 @@ pub(crate) fn chart_numeric_point_count(c: &ChartAnalysisResult) -> usize {
         .key_values
         .iter()
         .filter(|kv| {
-            !kv.value_raw.trim().is_empty()
-                && kv.value_raw.chars().any(|ch| ch.is_ascii_digit())
+            !kv.value_raw.trim().is_empty() && kv.value_raw.chars().any(|ch| ch.is_ascii_digit())
         })
         .count();
     let series = c
@@ -229,9 +228,7 @@ pub(crate) fn chart_extract_has_numeric_density(c: &ChartAnalysisResult) -> bool
         return true;
     }
     let table = c.data_table_md.trim();
-    !table.is_empty()
-        && table.contains('|')
-        && table.chars().any(|ch| ch.is_ascii_digit())
+    !table.is_empty() && table.contains('|') && table.chars().any(|ch| ch.is_ascii_digit())
 }
 
 /// Merge Pass A numeric dumps when chart specialize omitted readable points (MV-27).

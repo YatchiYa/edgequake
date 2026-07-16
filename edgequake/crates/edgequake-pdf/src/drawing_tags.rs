@@ -597,9 +597,18 @@ mod tests {
 
     #[test]
     fn page_asset_paths_are_stable() {
-        assert_eq!(page_num_from_asset_rel_path("assets/page-0003-fig-01.png"), Some(3));
-        assert_eq!(page_num_from_asset_rel_path("assets/page-0012-chart.png"), Some(12));
-        assert_eq!(page_num_from_asset_rel_path("assets/page-0006-table-01.png"), Some(6));
+        assert_eq!(
+            page_num_from_asset_rel_path("assets/page-0003-fig-01.png"),
+            Some(3)
+        );
+        assert_eq!(
+            page_num_from_asset_rel_path("assets/page-0012-chart.png"),
+            Some(12)
+        );
+        assert_eq!(
+            page_num_from_asset_rel_path("assets/page-0006-table-01.png"),
+            Some(6)
+        );
         assert_eq!(page_num_from_asset_rel_path("not-a-page.png"), None);
         assert_eq!(page_asset_rel_path(1), "assets/page-0001.png");
         assert_eq!(page_asset_rel_path(42), "assets/page-0042.png");

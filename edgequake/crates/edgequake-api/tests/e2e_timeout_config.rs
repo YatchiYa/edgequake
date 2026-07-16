@@ -473,10 +473,7 @@ fn test_extraction_http_timeout_provider_aware() {
         extraction_http_timeout_secs("ollama"),
         LOCAL_EXTRACTION_HTTP_TIMEOUT_SECS
     );
-    assert_eq!(
-        extraction_http_timeout_secs("openai"),
-        DEFAULT_TIMEOUT_SECS
-    );
+    assert_eq!(extraction_http_timeout_secs("openai"), DEFAULT_TIMEOUT_SECS);
 
     unsafe { std::env::set_var("EDGEQUAKE_LLM_TIMEOUT_SECS", "1200") };
     assert_eq!(extraction_http_timeout_secs("ollama"), 1200);

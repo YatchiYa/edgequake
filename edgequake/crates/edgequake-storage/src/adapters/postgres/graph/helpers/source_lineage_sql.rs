@@ -36,10 +36,8 @@ pub(in crate::adapters::postgres::graph) fn source_chunk_id_candidates(
     limit: usize,
 ) -> Vec<String> {
     let chunk_prefix = normalize_doc_chunk_prefix(prefix);
-    let n = limit.max(1).min(SOURCE_CHUNK_PROBE_LIMIT);
-    (0..n)
-        .map(|i| format!("{chunk_prefix}{i}"))
-        .collect()
+    let n = limit.clamp(1, SOURCE_CHUNK_PROBE_LIMIT);
+    (0..n).map(|i| format!("{chunk_prefix}{i}")).collect()
 }
 
 /// Build a SQL predicate matching jsonb `properties` against one document prefix.

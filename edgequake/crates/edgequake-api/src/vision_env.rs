@@ -77,8 +77,7 @@ mod tests {
 
     #[test]
     fn models_toml_lists_mistral_medium_3_5_with_vision() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../models.toml");
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../models.toml");
         let text = std::fs::read_to_string(&root).expect("models.toml readable");
         assert!(
             text.contains("name = \"mistral-medium-3-5\""),

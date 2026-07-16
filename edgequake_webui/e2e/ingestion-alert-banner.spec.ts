@@ -238,11 +238,15 @@ test.describe("Ingestion alert banner", () => {
 
     await page.goto("/documents", GOTO_OPTS);
 
-    const banner = page.getByTestId("ingestion-status-banner");
-    await expect(banner).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByTestId("ingestion-alert-queued")).toBeVisible();
-    await expect(banner.getByText(/waiting to start/i)).toBeVisible();
-    await expect(page.getByTestId("ingestion-banner-reprocess")).not.toBeVisible();
+    // Non-stuck chrome is demoted when the feedback zone owns the narrative.
+    await expect(page.getByTestId("spec048-active-runs-panel")).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId("pipeline-header-button")).toContainText(
+      /Queued|Waiting/i,
+    );
+    await expect(page.getByTestId("ingestion-status-banner")).toHaveCount(0);
+    await expect(page.getByTestId("ingestion-banner-reprocess")).toHaveCount(0);
   });
 
   test("shows working state for actively extracting document", async ({
@@ -255,10 +259,16 @@ test.describe("Ingestion alert banner", () => {
 
     await page.goto("/documents", GOTO_OPTS);
 
-    const banner = page.getByTestId("ingestion-status-banner");
-    await expect(banner).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByTestId("ingestion-alert-working")).toBeVisible();
-    await expect(banner.getByText(/Processing 1 document/i)).toBeVisible();
+    await expect(page.getByTestId("spec048-active-runs-panel")).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId("spec048-run-headline")).toContainText(
+      /Extracting Entities/i,
+    );
+    await expect(page.getByTestId("pipeline-header-button")).toContainText(
+      /Working/i,
+    );
+    await expect(page.getByTestId("ingestion-status-banner")).toHaveCount(0);
   });
 
   test("shows live graph merge progress with bar and relationship counters", async ({
@@ -271,13 +281,19 @@ test.describe("Ingestion alert banner", () => {
 
     await page.goto("/documents", GOTO_OPTS);
 
-    const banner = page.getByTestId("ingestion-status-banner");
-    await expect(banner).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByTestId("ingestion-alert-working")).toBeVisible();
-    await expect(banner.getByText(/Saving relationships/i)).toBeVisible();
-    await expect(banner.getByText(/128/)).toBeVisible();
-    await expect(banner.getByText(/66%/)).toBeVisible();
-    await expect(page.getByTestId("ingestion-banner-progress")).toBeVisible();
+    const zone = page.getByTestId("spec048-active-runs-panel");
+    await expect(zone).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("spec048-run-headline")).toContainText(
+      /Storing/i,
+    );
+    const stageProgress = page.getByTestId("spec048-stage-progress");
+    await expect(stageProgress).toBeVisible();
+    await expect(stageProgress).toContainText(/relationships/i);
+    await expect(stageProgress).toContainText(/66%/);
+    await expect(page.getByTestId("pipeline-header-button")).toContainText(
+      /Working/i,
+    );
+    await expect(page.getByTestId("ingestion-status-banner")).toHaveCount(0);
   });
 
   test("opens stuck pipeline dialog from banner click", async ({ page }) => {

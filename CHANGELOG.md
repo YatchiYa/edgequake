@@ -6,6 +6,39 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.18.0] — 2026-07-16
+
+Storage/query performance gates (SPEC-054), ingestion progress reliability, OpenAPI snapshot freshness, and Docker CD lean-ups.
+
+### Added — SPEC-054 Query · Postgres · AGE · pgvector performance
+
+- **Documents list performance gate** — E2E budget for `GET /documents` under PostgreSQL AGE + pgvector (`e2e_spec054_documents_list_perf`).
+- **Mix-scale query performance** — Contract and E2E gates for Mix/Hybrid query paths at larger graph/vector scale.
+- **Batch lineage SQL helpers** — Indexed source-lineage paths for graph incident edges / degrees without O(V+E) parent-table scans.
+- **Migration bootstrap index reconcile** — Safer AGE/pgvector index reconcile on workspace bootstrap (boot vs query path separation).
+- **Nightly postgres matrix** — Extended SPEC-054 contract coverage in `postgres-matrix-nightly.yml`.
+
+### Fixed — Ingestion progress & reprocess UX
+
+- **Unified reprocess cleaning** — Reprocess and stuck-document recovery reset stages consistently and surface structured progress.
+- **Delete feedback** — Document delete progress stages (graph / vector / KV cleanup) report reliably to the client.
+- **Pending-doc task reconcile** — Startup and runtime reconcile for orphan/pending document tasks (issue #300 adjacency).
+- **PDF upload progress identity** — Stable `track_id` correlation across upload → pipeline → WebSocket progress.
+
+### Changed — CI/CD & OpenAPI
+
+- **OpenAPI snapshot refresh** — `openapi.snapshot.json` / `schema.d.ts` regenerated from `ApiDoc`; `info.version` tracks `CARGO_PKG_VERSION`.
+- **Release gates parity** — `release_gates.sh` fails on crate version drift and OpenAPI snapshot version ≠ `VERSION`.
+- **Docker CD** — Tag quality-gates use shared `setup-rust` cache; remove dead `edgequake-pdf2md` path checkout (crates.io `0.9.7` only).
+- **SPEC packs relocated** — `docs/054-*` / `docs/056-*` → `specs/054-fix-bugs-17/` / `specs/056-issue-release-17/`.
+
+### Performance
+
+- Graph query ops modularized (`nodes_ops` / `query_ops`) for maintainable indexed batch paths.
+- Documents list and Mix-scale query latencies gated under SPEC-054 budgets.
+
+---
+
 ## [0.17.0] — 2026-07-14
 
 Multi-modal vision ingest, real-time progress, graph reliability hardening, and 7 bug fixes.

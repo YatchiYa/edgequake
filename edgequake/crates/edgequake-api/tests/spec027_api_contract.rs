@@ -114,7 +114,8 @@ fn spec027_pipeline_checkpoint_cleanup_uses_suffix_scan() {
         "checkpoint cleanup must not use leading-wildcard keys_like"
     );
     assert!(
-        cp.contains("get_by_ids(&checkpoint_keys)"),
+        cp.contains("get_by_ids_ordered(&checkpoint_keys)")
+            || cp.contains("get_by_ids(&checkpoint_keys)"),
         "checkpoint cleanup must batch-read values"
     );
 }
@@ -297,9 +298,9 @@ fn spec027_traversal_pushes_tenant_scope_to_storage() {
     assert!(traversal.contains("workspace_for_kg.as_deref()"));
     let query_ops = std::fs::read_to_string(
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../edgequake-storage/src/adapters/postgres/graph/query_ops.rs"),
+            .join("../edgequake-storage/src/adapters/postgres/graph/query_ops/expand.rs"),
     )
-    .unwrap_or_else(|e| panic!("read query_ops.rs: {e}"));
+    .unwrap_or_else(|e| panic!("read query_ops/expand.rs: {e}"));
     assert!(query_ops.contains("pg_get_knowledge_graph_scoped"));
 }
 
@@ -1837,7 +1838,9 @@ fn spec027_metadata_write_paths_use_wsdoc_ssot() {
     ] {
         let src = read_crate_src(rel);
         assert!(
-            src.contains(ssot) || src.contains("upsert_metadata_with_wsdoc_index"),
+            src.contains(ssot)
+                || src.contains("upsert_metadata_with_wsdoc_index")
+                || src.contains("patch_document_metadata"),
             "{name} must route final metadata writes through wsdoc SSOT"
         );
     }

@@ -227,7 +227,10 @@ mod ann_index_policy_tests {
         assert!(!pgvector_meets_cve_floor("0.8.1"));
         assert!(pgvector_meets_cve_floor("0.8.2"));
         assert!(pgvector_meets_cve_floor(PGVECTOR_MIN_CVE_SAFE));
-        assert!(extension_version_at_least("0.8.5", PGVECTOR_MIN_ITERATIVE_SCAN));
+        assert!(extension_version_at_least(
+            "0.8.5",
+            PGVECTOR_MIN_ITERATIVE_SCAN
+        ));
     }
 
     #[test]

@@ -2,7 +2,7 @@
 #
 # SSOT extension pins: edgequake/docker/extension-pins.sh (EQ_POSTGRES_PROFILE=pg17)
 #   PostgreSQL 17 (bookworm)
-#   pgvector     v0.8.3  — https://pgxn.org/dist/vector
+#   pgvector     v0.8.5  — https://pgxn.org/dist/vector
 #   Apache AGE   1.7.0   — tag PG17/v1.7.0-rc0 (official PG17 1.7 release)
 #   contrib      pg_trgm, btree_gin, uuid-ossp (postgresql-contrib-17)
 
@@ -12,7 +12,7 @@ ARG PGVECTOR_VERSION=v0.8.5
 ARG AGE_GIT_REF=PG17/v1.7.0-rc0
 
 LABEL org.edgequake.postgres.version="17-bookworm" \
-      org.edgequake.pgvector.version="0.8.3" \
+      org.edgequake.pgvector.version="0.8.5" \
       org.edgequake.age.version="1.7.0" \
       org.edgequake.extensions="vector,age,pg_trgm,btree_gin,uuid-ossp"
 
@@ -58,7 +58,7 @@ RUN set -eux; \
     test -f /usr/share/postgresql/17/extension/pg_trgm.control; \
     test -f /usr/share/postgresql/17/extension/btree_gin.control; \
     test -f /usr/share/postgresql/17/extension/uuid-ossp.control; \
-    grep -q "default_version = '0.8.3'" /usr/share/postgresql/17/extension/vector.control; \
+    grep -q "default_version = '0.8.5'" /usr/share/postgresql/17/extension/vector.control; \
     grep -q "default_version = '1.7.0'" /usr/share/postgresql/17/extension/age.control
 
 EXPOSE 5432

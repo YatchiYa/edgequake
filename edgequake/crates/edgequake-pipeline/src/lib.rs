@@ -151,6 +151,10 @@ pub use persistence::{
 pub use pipeline::{
     clamp_max_concurrent_extractions,
     clamp_max_gleaning,
+    // Issue-194: configurable timeout / concurrency constants
+    default_chunk_timeout_for_provider,
+    default_max_concurrent_for_provider,
+    is_local_extraction_provider,
     ChunkErrorInfo,
     ChunkProgressCallback,
     ChunkProgressUpdate,
@@ -162,10 +166,6 @@ pub use pipeline::{
     PipelineConfig,
     ProcessingResult,
     ProcessingStats,
-    // Issue-194: configurable timeout / concurrency constants
-    default_chunk_timeout_for_provider,
-    default_max_concurrent_for_provider,
-    is_local_extraction_provider,
     DEFAULT_CHUNK_MAX_RETRIES,
     DEFAULT_CHUNK_TIMEOUT_SECS,
     DEFAULT_INITIAL_RETRY_DELAY_MS,

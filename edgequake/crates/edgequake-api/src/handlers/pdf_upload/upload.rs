@@ -473,7 +473,12 @@ async fn process_pdf_upload_parts(
                         obj.insert("error_message".to_string(), serde_json::Value::Null);
                         // SPEC-054: do not write client batch track_id into metadata.track_id.
                         // Progress/list SSOT is the server task id, set after enqueue below.
-                        if let Some(client_batch) = options.track_id.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                        if let Some(client_batch) = options
+                            .track_id
+                            .as_ref()
+                            .map(|s| s.trim())
+                            .filter(|s| !s.is_empty())
+                        {
                             obj.insert(
                                 "batch_track_id".to_string(),
                                 serde_json::json!(client_batch),
@@ -539,10 +544,7 @@ async fn process_pdf_upload_parts(
                     state.storage.kv_storage.get_by_id(&metadata_key).await
                 {
                     if let Some(obj) = metadata.as_object_mut() {
-                        obj.insert(
-                            "track_id".to_string(),
-                            serde_json::json!(enqueue.track_id),
-                        );
+                        obj.insert("track_id".to_string(), serde_json::json!(enqueue.track_id));
                     }
                     let _ = crate::services::upsert_metadata_kv_with_index(
                         state.storage.kv_storage.as_ref(),

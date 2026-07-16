@@ -205,9 +205,10 @@ test.describe("Document status notices", () => {
     await expect(spfRow).toBeVisible({ timeout: 15_000 });
 
     await expect(spfRow.getByText("Failed", { exact: true })).not.toBeVisible();
-    await expect(
-      spfRow.getByText(/Chunking|Processing|Preprocessing/i),
-    ).toBeVisible();
+    // Prefer status-badge test id — row stage label also contains "Chunking".
+    await expect(spfRow.getByTestId("status-badge")).toContainText(
+      /Chunking|Processing|Preprocessing/i,
+    );
   });
 
   test("terminal failed doc still shows Failed badge", async ({ page }) => {

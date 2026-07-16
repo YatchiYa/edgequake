@@ -738,7 +738,9 @@ pub fn readiness_operator_action(report: &Option<MigrationBootstrapReport>) -> O
                 r.migration_042.missing_ann_index_tables
             ));
         }
-        return Some("Upgrade pgvector to >= 0.8.2 and restart backend (make db-start)".to_string());
+        return Some(
+            "Upgrade pgvector to >= 0.8.2 and restart backend (make db-start)".to_string(),
+        );
     }
     None
 }

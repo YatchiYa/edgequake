@@ -253,14 +253,12 @@ impl CropCoverageReport {
             .iter()
             .filter(|p| tables_by_page.get(p).is_some_and(|v| !v.is_empty()))
             .count();
-        let candidates =
-            chart_residual_candidate_pages(page_nums, figures_by_page, tables_by_page);
+        let candidates = chart_residual_candidate_pages(page_nums, figures_by_page, tables_by_page);
         let residual_candidates = candidates.len();
         let residual_alongside_fig =
             chart_residual_alongside_fig_pages(page_nums, figures_by_page, tables_by_page).len();
         // After expand: only table pages are hard-skipped from residual propose.
-        let residual_skipped_due_to_fig_or_table =
-            total_pages.saturating_sub(residual_candidates);
+        let residual_skipped_due_to_fig_or_table = total_pages.saturating_sub(residual_candidates);
         Self {
             total_pages,
             pages_with_fig,
@@ -675,7 +673,10 @@ mod tests {
         let alongside = vec![5usize];
         let already = HashMap::new();
         let promoted = promote_fig_as_chart_when_ink_empty(dir.path(), &alongside, &already);
-        assert_eq!(promoted.get(&5).map(String::as_str), Some("assets/page-0005-chart.png"));
+        assert_eq!(
+            promoted.get(&5).map(String::as_str),
+            Some("assets/page-0005-chart.png")
+        );
         let chart = assets.join("page-0005-chart.png");
         assert!(chart.is_file());
         assert_eq!(std::fs::read(&chart).unwrap(), b"\x89PNG-fig");
@@ -690,8 +691,7 @@ mod tests {
         std::fs::write(assets.join("page-0003-chart.png"), b"\x89PNG-residual").unwrap();
         let mut already = HashMap::new();
         already.insert(3usize, "assets/page-0003-chart.png".into());
-        let promoted =
-            promote_fig_as_chart_when_ink_empty(dir.path(), &[3usize], &already);
+        let promoted = promote_fig_as_chart_when_ink_empty(dir.path(), &[3usize], &already);
         assert!(promoted.is_empty());
         // residual bytes untouched
         assert_eq!(
@@ -716,8 +716,7 @@ mod tests {
                 .unwrap();
             }
         }
-        let promoted =
-            promote_fig_as_chart_when_ink_empty(dir.path(), &alongside, &HashMap::new());
+        let promoted = promote_fig_as_chart_when_ink_empty(dir.path(), &alongside, &HashMap::new());
         assert!(promoted.len() <= MAX_ALONGSIDE_FIG_RESIDUAL);
         // Odd pages skipped (no fig); even pages promoted until cap.
         assert!(!promoted.contains_key(&1));

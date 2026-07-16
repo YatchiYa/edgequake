@@ -82,10 +82,8 @@ pub async fn create_workspace(
         .or_else(|| tenant.default_vision_llm_provider.clone());
 
     // Never persist Mock — heal stale SPEC-054 / test leftovers to a real provider.
-    let llm_provider = crate::provider_visibility::heal_optional_mock_provider(
-        llm_provider,
-        llm_model.as_deref(),
-    );
+    let llm_provider =
+        crate::provider_visibility::heal_optional_mock_provider(llm_provider, llm_model.as_deref());
     let embedding_provider = crate::provider_visibility::heal_optional_mock_provider(
         embedding_provider,
         embedding_model.as_deref(),

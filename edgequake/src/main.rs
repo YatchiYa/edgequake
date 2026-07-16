@@ -143,12 +143,13 @@ async fn recover_orphaned_tasks(
                 // Split-brain: task non-terminal but document already completed.
                 if let Some(doc_id) = edgequake_api::services::extract_document_id_from_task(&task)
                 {
-                    let meta_key =
-                        edgequake_api::services::resolve_document_metadata_key(&doc_id, &kv_storage)
-                            .await;
+                    let meta_key = edgequake_api::services::resolve_document_metadata_key(
+                        &doc_id,
+                        &kv_storage,
+                    )
+                    .await;
                     if let Ok(Some(meta)) = kv_storage.get_by_id(&meta_key).await {
-                        let doc_status =
-                            meta.get("status").and_then(|v| v.as_str()).unwrap_or("");
+                        let doc_status = meta.get("status").and_then(|v| v.as_str()).unwrap_or("");
                         if edgequake_api::document_metadata::is_terminal_success_status(doc_status)
                         {
                             task.status = TaskStatus::Indexed;
@@ -239,10 +240,7 @@ async fn recover_orphaned_tasks(
                             failed_for_manual_count += 1;
                         }
                         Err(e) => {
-                            warn!(
-                                "⚠️ Failed to mark orphaned task {}: {}",
-                                task.track_id, e
-                            );
+                            warn!("⚠️ Failed to mark orphaned task {}: {}", task.track_id, e);
                         }
                     }
                 }
@@ -857,8 +855,7 @@ async fn async_main() -> Result<()> {
 
     // SPEC-054: default = manual resume (no surprise LLM spend on every boot).
     // Opt in: EDGEQUAKE_STARTUP_AUTO_RESUME=1
-    let auto_resume =
-        edgequake_api::services::startup_task_hydrate::startup_auto_resume_enabled();
+    let auto_resume = edgequake_api::services::startup_task_hydrate::startup_auto_resume_enabled();
     if auto_resume {
         info!("Startup auto-resume ENABLED (EDGEQUAKE_STARTUP_AUTO_RESUME)");
     } else {
@@ -1165,7 +1162,8 @@ async fn async_main() -> Result<()> {
         info!(
             auto_resume,
             "Periodic document orphan recovery enabled (every {} min, min_age={} min)",
-            interval_mins, interval_mins
+            interval_mins,
+            interval_mins
         );
     }
 

@@ -247,22 +247,13 @@ pub async fn delete_document(
     if has_metadata {
         if let Ok(Some(mut metadata)) = state.storage.kv_storage.get_by_id(&metadata_key).await {
             if let Some(obj) = metadata.as_object_mut() {
-                obj.insert(
-                    "status".to_string(),
-                    serde_json::json!("deleting"),
-                );
-                obj.insert(
-                    "current_stage".to_string(),
-                    serde_json::json!("deleting"),
-                );
+                obj.insert("status".to_string(), serde_json::json!("deleting"));
+                obj.insert("current_stage".to_string(), serde_json::json!("deleting"));
                 obj.insert(
                     "stage_message".to_string(),
                     serde_json::json!("Removing document data…"),
                 );
-                obj.insert(
-                    "stage_progress".to_string(),
-                    serde_json::json!(0.0),
-                );
+                obj.insert("stage_progress".to_string(), serde_json::json!(0.0));
                 for key in [
                     "entity_count",
                     "entities_count",
@@ -301,7 +292,10 @@ pub async fn delete_document(
     //
     // SRP: the delete handler's only job is data removal; lifecycle management
     // belongs to the processor.  Blocking deletion here was the wrong layer.
-    if matches!(document_status.as_str(), "pending" | "processing" | "deleting") {
+    if matches!(
+        document_status.as_str(),
+        "pending" | "processing" | "deleting"
+    ) {
         match &track_id_opt {
             Some(track_id) => {
                 state.tasks.progress_broadcaster.deletion_phase(

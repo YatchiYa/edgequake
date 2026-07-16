@@ -7,9 +7,9 @@ use crate::handlers;
 /// OpenAPI documentation.
 #[derive(OpenApi)]
 #[openapi(
+    // version defaults to CARGO_PKG_VERSION via utoipa (enriched again at runtime)
     info(
         title = "EdgeQuake API",
-        version = "0.12.11",
         description = "High-performance RAG system with Knowledge Graph",
         license(name = "Apache-2.0"),
         contact(
@@ -68,6 +68,8 @@ use crate::handlers;
         handlers::list_models,
         handlers::list_llm_models,
         handlers::list_embedding_models,
+        handlers::search_models,
+        handlers::refresh_model_discovery,
         handlers::get_provider,
         handlers::get_model,
         handlers::check_providers_health,
@@ -182,6 +184,8 @@ use crate::handlers;
         handlers::update_user,
         handlers::get_provider_status,
         handlers::list_available_providers,
+        handlers::get_llm_defaults,
+        handlers::update_llm_defaults,
         handlers::get_effective_config,
         handlers::get_attribution_settings,
         handlers::get_app_attribution_settings,
@@ -443,6 +447,14 @@ use crate::handlers;
         handlers::EffectiveConfigResponse,
         handlers::ConfigAreaResponse,
         handlers::ConfigLevel,
+        handlers::LlmDefaultsResponse,
+        handlers::LlmDefaultsEffective,
+        handlers::SavedLlmDefaults,
+        handlers::UpdateLlmDefaultsRequest,
+        handlers::UpdateLlmDefaultsResponse,
+        handlers::ModelSearchQueryParams,
+        handlers::ModelSearchHitResponse,
+        handlers::ModelSearchResponse,
         crate::provider_types::ProviderStatusResponse,
         crate::provider_types::AvailableProvidersResponse,
         // Application attribution (SPEC-043)
