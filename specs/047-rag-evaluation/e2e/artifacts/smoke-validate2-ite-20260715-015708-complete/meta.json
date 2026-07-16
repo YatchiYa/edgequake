@@ -1,0 +1,13 @@
+{
+  "workspace_id": "2ae2d8ea-885b-4e25-ae7a-3f2987866321",
+  "workspace_slug": "bench047-smoke-11376355-p0_mm_ite-1784080286",
+  "stage": "smoke",
+  "profile": "P0_mm_ite",
+  "doc_ids": [
+    "05-03-18-political-release.pdf",
+    "measuringsuccessonfacebooktwitterlinkedin-160317142140_95.pdf"
+  ],
+  "api_base": "http://127.0.0.1:8090",
+  "document_scope": true,
+  "query_workers": 2
+}

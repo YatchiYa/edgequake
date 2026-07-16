@@ -16,6 +16,7 @@
 
 export type ErrorCategory =
   | "llm"
+  | "llm_timeout"
   | "embedding"
   | "storage"
   | "pipeline"
@@ -119,6 +120,22 @@ const ERROR_PATTERNS: ErrorPattern[] = [
     isTransient: true,
     suggestion: "Database may be temporarily unavailable. Try again shortly.",
   },
+  // LLM / extraction timeouts (must run before generic "format not supported" pipeline rules).
+  // Keep patterns specific so generic network "Request timeout" stays in `network`.
+  {
+    category: "llm_timeout",
+    patterns: [
+      /timeout after \d+s/i,
+      /extraction.*timeout/i,
+      /timeout.*attempt\s*\d+/i,
+      /chunks failed.*timeout/i,
+      /timeout.*chunks failed/i,
+      /vision extraction timed out/i,
+    ],
+    isTransient: true,
+    suggestion:
+      "The LLM timed out while extracting entities. Use a faster provider/model (e.g. mistral-small-latest), raise EDGEQUAKE_CHUNK_TIMEOUT_SECS, or reduce concurrent extractions — this is not a document-format problem.",
+  },
   // Pipeline/Parsing Errors
   {
     category: "pipeline",
@@ -159,6 +176,7 @@ const ERROR_PATTERNS: ErrorPattern[] = [
 
 const CATEGORY_LABELS: Record<ErrorCategory, string> = {
   llm: "LLM Provider",
+  llm_timeout: "LLM Timeout",
   embedding: "Embedding",
   storage: "Database",
   pipeline: "Processing",
@@ -231,6 +249,7 @@ function extractSummary(message: string): string {
 export function getCategoryIcon(category: ErrorCategory): string {
   switch (category) {
     case "llm":
+    case "llm_timeout":
       return "Brain";
     case "embedding":
       return "Cpu";
@@ -256,6 +275,7 @@ export function getCategoryColor(category: ErrorCategory): {
 } {
   switch (category) {
     case "llm":
+    case "llm_timeout":
       return {
         bg: "bg-purple-50 dark:bg-purple-950/50",
         text: "text-purple-700 dark:text-purple-400",

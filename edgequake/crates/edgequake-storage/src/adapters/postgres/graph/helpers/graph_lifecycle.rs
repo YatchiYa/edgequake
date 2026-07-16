@@ -406,26 +406,44 @@ impl PostgresAGEGraphStorage {
         );
 
         // ── Critical unique index for MERGE/ON CONFLICT performance ────────────
-        // WHY UNIQUE: Migration 074/083. Dedup first — CREATE UNIQUE fails on
-        // duplicates and leaves the graph without ON CONFLICT support (edge #3).
-        if let Err(e) = self.dedup_nodes_for_unique_index(&pool).await {
-            tracing::warn!(
-                graph = %self.graph_name,
-                error = %e,
-                "Bootstrap: node dedup before UNIQUE index failed (non-fatal)"
-            );
-        }
+        // First principles: if a VALID unique index already exists, skip the
+        // O(N) expression-based DELETE dedup on every boot. On a 140k-node graph
+        // that DELETE was blocking HTTP listen for minutes (make-dev hang).
+        // Dedup is only required when we are about to CREATE the unique index.
         let node_idx_name = "idx_node_prop_node_id_unique";
-        let node_idx_sql = format!(
-            r#"CREATE UNIQUE INDEX {concurrent} IF NOT EXISTS {name}
-               ON {graph}."Node"
-               ((ag_catalog.agtype_to_json(properties)->>'node_id'))"#,
-            concurrent = if use_concurrent { "CONCURRENTLY" } else { "" },
-            name = node_idx_name,
-            graph = self.graph_name,
-        );
-        self.ensure_critical_index_concurrent(&pool, node_idx_name, &node_idx_sql, use_concurrent)
+        let node_idx_state = self.index_validity(&pool, node_idx_name).await;
+        if node_idx_state == Some(true) {
+            tracing::debug!(
+                index = %node_idx_name,
+                graph = %self.graph_name,
+                "Bootstrap: node unique index already valid — skip dedup + create"
+            );
+        } else {
+            // WHY UNIQUE: Migration 074/083. Dedup first — CREATE UNIQUE fails on
+            // duplicates and leaves the graph without ON CONFLICT support (edge #3).
+            if let Err(e) = self.dedup_nodes_for_unique_index(&pool).await {
+                tracing::warn!(
+                    graph = %self.graph_name,
+                    error = %e,
+                    "Bootstrap: node dedup before UNIQUE index failed (non-fatal)"
+                );
+            }
+            let node_idx_sql = format!(
+                r#"CREATE UNIQUE INDEX {concurrent} IF NOT EXISTS {name}
+                   ON {graph}."Node"
+                   ((ag_catalog.agtype_to_json(properties)->>'node_id'))"#,
+                concurrent = if use_concurrent { "CONCURRENTLY" } else { "" },
+                name = node_idx_name,
+                graph = self.graph_name,
+            );
+            self.ensure_critical_index_concurrent(
+                &pool,
+                node_idx_name,
+                &node_idx_sql,
+                use_concurrent,
+            )
             .await;
+        }
 
         // EDGE source_id + target_id composite index
         let edge_table_exists: bool = sqlx::query_scalar(
@@ -441,33 +459,59 @@ impl PostgresAGEGraphStorage {
         .unwrap_or(false);
 
         if edge_table_exists {
-            if let Err(e) = self.dedup_edges_for_unique_index(&pool).await {
-                tracing::warn!(
+            let edge_idx_name = "idx_edge_source_target_unique";
+            let edge_idx_state = self.index_validity(&pool, edge_idx_name).await;
+            if edge_idx_state == Some(true) {
+                tracing::debug!(
+                    index = %edge_idx_name,
                     graph = %self.graph_name,
-                    error = %e,
-                    "Bootstrap: edge dedup before UNIQUE index failed (non-fatal)"
+                    "Bootstrap: edge unique index already valid — skip dedup + create"
                 );
+            } else {
+                if let Err(e) = self.dedup_edges_for_unique_index(&pool).await {
+                    tracing::warn!(
+                        graph = %self.graph_name,
+                        error = %e,
+                        "Bootstrap: edge dedup before UNIQUE index failed (non-fatal)"
+                    );
+                }
+                // WHY UNIQUE: Migration 074/083 for pg_upsert_edges_batch_native ON CONFLICT.
+                self.ensure_critical_index_concurrent(
+                    &pool,
+                    edge_idx_name,
+                    &format!(
+                        r#"CREATE UNIQUE INDEX {concurrent} IF NOT EXISTS {name}
+                           ON {graph}."EDGE"
+                           (
+                             (ag_catalog.agtype_to_json(properties)->>'source_id'),
+                             (ag_catalog.agtype_to_json(properties)->>'target_id')
+                           )"#,
+                        concurrent = if use_concurrent { "CONCURRENTLY" } else { "" },
+                        name = edge_idx_name,
+                        graph = self.graph_name,
+                    ),
+                    use_concurrent,
+                )
+                .await;
             }
-            // WHY UNIQUE: Migration 074/083 for pg_upsert_edges_batch_native ON CONFLICT.
-            self.ensure_critical_index_concurrent(
-                &pool,
-                "idx_edge_source_target_unique",
-                &format!(
-                    r#"CREATE UNIQUE INDEX {concurrent} IF NOT EXISTS idx_edge_source_target_unique
-                       ON {graph}."EDGE"
-                       (
-                         (ag_catalog.agtype_to_json(properties)->>'source_id'),
-                         (ag_catalog.agtype_to_json(properties)->>'target_id')
-                       )"#,
-                    concurrent = if use_concurrent { "CONCURRENTLY" } else { "" },
-                    graph = self.graph_name,
-                ),
-                use_concurrent,
-            )
-            .await;
         }
 
         Ok(())
+    }
+
+    /// `Some(true)` = valid index, `Some(false)` = INVALID, `None` = missing.
+    async fn index_validity(&self, pool: &sqlx::PgPool, index_name: &str) -> Option<bool> {
+        sqlx::query_scalar(
+            "SELECT i.indisvalid FROM pg_index i
+             JOIN pg_class c ON c.oid = i.indexrelid
+             JOIN pg_namespace n ON n.oid = c.relnamespace
+             WHERE c.relname = $1 AND n.nspname = $2",
+        )
+        .bind(index_name)
+        .bind(&self.graph_name)
+        .fetch_optional(pool)
+        .await
+        .unwrap_or(None)
     }
 
     /// Dedup Node rows by node_id (keep max ctid) + drop NULL/empty node_id.
@@ -514,6 +558,9 @@ impl PostgresAGEGraphStorage {
     }
 
     /// Create or repair one critical index, handling INVALID state.
+    ///
+    /// Caller must already have decided the index is missing/INVALID (and run
+    /// dedup if needed). This still re-checks validity for race safety.
     async fn ensure_critical_index_concurrent(
         &self,
         pool: &sqlx::PgPool,
@@ -523,17 +570,7 @@ impl PostgresAGEGraphStorage {
     ) {
         // Scope to this graph's schema — unqualified DROP can hit the wrong index
         // when multiple AGE graphs share the same index name (edge case #15).
-        let index_state: Option<bool> = sqlx::query_scalar(
-            "SELECT i.indisvalid FROM pg_index i
-             JOIN pg_class c ON c.oid = i.indexrelid
-             JOIN pg_namespace n ON n.oid = c.relnamespace
-             WHERE c.relname = $1 AND n.nspname = $2",
-        )
-        .bind(index_name)
-        .bind(&self.graph_name)
-        .fetch_optional(pool)
-        .await
-        .unwrap_or(None);
+        let index_state = self.index_validity(pool, index_name).await;
 
         match index_state {
             Some(true) => {

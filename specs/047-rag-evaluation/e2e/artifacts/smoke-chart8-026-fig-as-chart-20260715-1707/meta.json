@@ -1,0 +1,19 @@
+{
+  "workspace_id": "215b293d-2fbf-4a87-8a75-713025ba45cc",
+  "workspace_slug": "bench047-smoke-11376355-p0_mm_ite-1784106473",
+  "stage": "smoke",
+  "profile": "P0_mm_ite",
+  "doc_ids": [
+    "05-03-18-political-release.pdf",
+    "2311.16502v3.pdf",
+    "PIP_Seniors-and-Tech-Use_040314.pdf",
+    "afe620b9beac86c1027b96d31d396407.pdf",
+    "e79deb02a0c0e87511080836c5d4347b.pdf",
+    "germanwingsdigitalcrisisanalysis-150403064828-conversion-gate01_95.pdf",
+    "indonesiamobilemarketresearch-ag-150106055934-conversion-gate02_95.pdf",
+    "measuringsuccessonfacebooktwitterlinkedin-160317142140_95.pdf"
+  ],
+  "api_base": "http://127.0.0.1:8090",
+  "document_scope": true,
+  "query_workers": 1
+}

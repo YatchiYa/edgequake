@@ -114,6 +114,7 @@ jobs:
           chmod +x ./backend/edgequake
           DATABASE_URL="postgresql://postgres:postgres@localhost:5432/edgequake_test" \
           EDGEQUAKE_LLM_PROVIDER=mock \
+          EDGEQUAKE_ALLOW_MOCK_PROVIDER=1 \
           ./backend/edgequake &
           for i in {1..30}; do
             if curl -fsS http://localhost:8080/health >/dev/null 2>&1; then
@@ -203,6 +204,7 @@ jobs:
           chmod +x ./backend/edgequake
           DATABASE_URL="postgresql://postgres:postgres@localhost:5432/edgequake_test" \
           EDGEQUAKE_LLM_PROVIDER=mock \
+          EDGEQUAKE_ALLOW_MOCK_PROVIDER=1 \
           ./backend/edgequake &
           cd edgequake_webui && pnpm dev &
           for i in {1..30}; do
@@ -273,6 +275,7 @@ jobs:
           chmod +x ./backend/edgequake
           DATABASE_URL="postgresql://postgres:postgres@localhost:5432/edgequake_test" \
           EDGEQUAKE_LLM_PROVIDER=mock \
+          EDGEQUAKE_ALLOW_MOCK_PROVIDER=1 \
           ./backend/edgequake &
           cd edgequake_webui && pnpm dev &
           for i in {1..30}; do
@@ -372,6 +375,7 @@ jobs:
           chmod +x ./backend/edgequake
           DATABASE_URL="postgresql://postgres:postgres@localhost:5432/edgequake_test" \
           EDGEQUAKE_LLM_PROVIDER=mock \
+          EDGEQUAKE_ALLOW_MOCK_PROVIDER=1 \
           ./backend/edgequake &
           for i in $(seq 1 30); do
             curl -fsS http://localhost:8080/health >/dev/null 2>&1 && exit 0

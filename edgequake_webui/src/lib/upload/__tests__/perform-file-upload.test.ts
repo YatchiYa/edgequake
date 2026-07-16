@@ -45,14 +45,68 @@ describe("performFileUpload", () => {
     });
 
     const pdf = file("paper.pdf", "application/pdf");
-    await performFileUpload(pdf, { trackId: "batch-1" });
+    await performFileUpload(pdf, { batchTrackId: "batch-1" });
 
     expect(uploadPdfDocument).toHaveBeenCalledWith(
       pdf,
       expect.objectContaining({
         analyze_inline_images: true,
+        track_id: "batch-1",
       }),
     );
+  });
+
+  it("normalizes PDF progress track_id to server task_id (SPEC-054/#300)", async () => {
+    vi.mocked(uploadPdfDocument).mockResolvedValue({
+      pdf_id: "pdf-1",
+      document_id: "doc-1",
+      status: "queued",
+      task_id: "pdf-server-task",
+      track_id: "upload_client_batch",
+      message: "ok",
+      estimated_time_seconds: 60,
+      metadata: {
+        filename: "paper.pdf",
+        file_size_bytes: 100,
+        page_count: 1,
+        sha256_checksum: "abc",
+        vision_enabled: true,
+        vision_model: null,
+      },
+    });
+
+    const result = await performFileUpload(file("paper.pdf", "application/pdf"), {
+      batchTrackId: "upload_client_batch",
+    });
+
+    expect(result.task_id).toBe("pdf-server-task");
+    expect(result.track_id).toBe("pdf-server-task");
+  });
+
+  it("falls back to client track_id when legacy PDF response omits task_id", async () => {
+    vi.mocked(uploadPdfDocument).mockResolvedValue({
+      pdf_id: "pdf-1",
+      document_id: "doc-1",
+      status: "queued",
+      task_id: "",
+      track_id: "legacy-track",
+      message: "ok",
+      estimated_time_seconds: 60,
+      metadata: {
+        filename: "paper.pdf",
+        file_size_bytes: 100,
+        page_count: 1,
+        sha256_checksum: "abc",
+        vision_enabled: true,
+        vision_model: null,
+      },
+    });
+
+    const result = await performFileUpload(file("paper.pdf", "application/pdf"), {
+      batchTrackId: "legacy-track",
+    });
+
+    expect(result.track_id).toBe("legacy-track");
   });
 
   it("routes PNG to multipart uploadFile, not JSON uploadDocument", async () => {
@@ -64,23 +118,26 @@ describe("performFileUpload", () => {
     });
 
     const png = file("diagram.png", "image/png");
-    const result = await performFileUpload(png, { trackId: "batch-1" });
+    const result = await performFileUpload(png, { batchTrackId: "batch-1" });
 
-    expect(uploadFile).toHaveBeenCalledWith(png);
+    expect(uploadFile).toHaveBeenCalledWith(png, expect.anything());
     expect(uploadDocument).not.toHaveBeenCalled();
     expect(result.source_type).toBe("image");
     expect(result.document_id).toBe("img-doc-1");
+    // Progress SSOT: prefer task_id for all upload kinds.
+    expect(result.track_id).toBe("task-img");
   });
 
-  it("routes markdown to uploadDocument with text content", async () => {
+  it("routes markdown to uploadDocument and remaps progress to task_id", async () => {
     vi.mocked(uploadDocument).mockResolvedValue({
       document_id: "md-doc-1",
       status: "pending",
-      track_id: "track-md",
+      track_id: "batch-1",
+      task_id: "insert-task-md",
     });
 
     const md = new File(["# Hello"], "notes.md", { type: "text/markdown" });
-    const result = await performFileUpload(md, { trackId: "batch-1" });
+    const result = await performFileUpload(md, { batchTrackId: "batch-1" });
 
     expect(uploadDocument).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -91,6 +148,7 @@ describe("performFileUpload", () => {
     );
     expect(uploadFile).not.toHaveBeenCalled();
     expect(result.source_type).toBe("text");
+    expect(result.track_id).toBe("insert-task-md");
   });
 
   it("maps multipart duplicate_processing to duplicate_of", async () => {
@@ -101,7 +159,7 @@ describe("performFileUpload", () => {
     });
 
     const result = await performFileUpload(file("x.png", "image/png"), {
-      trackId: "batch-1",
+      batchTrackId: "batch-1",
     });
 
     expect(result.duplicate_of).toBe("existing-img");

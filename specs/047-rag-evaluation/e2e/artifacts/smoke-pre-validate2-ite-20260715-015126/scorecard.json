@@ -1,0 +1,72 @@
+{
+  "spec": "047",
+  "stage": "smoke",
+  "valid": false,
+  "invalid_reason": "PARTIAL_INGEST",
+  "task_name": "MMLongBench-Doc/RAG-adaptation",
+  "banner": "EdgeQuake RAG adaptation of MMLongBench-Doc; not comparable to the LVLM leaderboard without caveats. Official LVLM GPT-4o F1\u224844.9% is a difficulty reference only. Provider stack: mistral-small-latest + mistral-embed (Postgres).",
+  "pins": {
+    "edgequake_version": "0.17.0",
+    "edgequake_git_sha": "11376355",
+    "dataset_id": "yubo2333/MMLongBench-Doc",
+    "dataset_revision": "parquet-train",
+    "fixture_id": "smoke_validate_2_doc_ids",
+    "llm_provider": "mistral",
+    "llm_model": "mistral-small-latest",
+    "vision_provider": "mistral",
+    "vision_model": "mistral-small-latest",
+    "embedding_provider": "mistral",
+    "embedding_model": "mistral-embed",
+    "embedding_dim": 1024,
+    "query_mode": "hybrid",
+    "extractor_model": "mistral-small-latest",
+    "eval_score_sha": "cafa268358b08521cfc9a805c67d86732d943677e4408c5751f336123d09631f",
+    "system_prompt_sha": "server-default",
+    "profile_id": "P0_mm_ite",
+    "pdf_parser_backend": "vision",
+    "process_options": "ite"
+  },
+  "metrics": {
+    "n_docs": 2,
+    "n_questions": 0,
+    "n_scored": 0,
+    "n_skipped_ingest_failed": 2,
+    "accuracy": 0.0,
+    "f1": 0.0
+  },
+  "slices": {
+    "single_page_accuracy": 0.0,
+    "cross_page_accuracy": 0.0,
+    "unanswerable_accuracy": 0.0,
+    "by_evidence_source": {},
+    "by_doc_type": {}
+  },
+  "ops": {
+    "ingest_coverage": 0.0,
+    "cost_usd_total": null,
+    "p50_query_latency_ms": null,
+    "p95_query_latency_ms": null,
+    "answer_empty_rate": 0.0,
+    "extractor_fail_rate": 0.0,
+    "page_hit_rate": null,
+    "document_scope": true,
+    "query_workers": 2,
+    "ingest_workers": 2,
+    "retrieval": {
+      "n_with_retrieval_diag": 0,
+      "answerable_only": true
+    },
+    "false_refusal": {
+      "n_answerable": 0,
+      "n_false_refusal": 0,
+      "false_refusal_rate": null,
+      "n_answerable_page_hit@5": 0,
+      "n_false_refusal_page_hit@5": 0,
+      "false_refusal_given_page_hit@5": null
+    },
+    "arm_gates": {
+      "n_with_arm_diag": 0
+    }
+  },
+  "created_at_utc": "2026-07-14T16:19:56Z"
+}

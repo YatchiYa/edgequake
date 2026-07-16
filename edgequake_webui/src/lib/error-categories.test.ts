@@ -118,6 +118,29 @@ describe('categorizeError', () => {
     });
   });
 
+  describe('LLM extraction timeout errors', () => {
+    it('classifies pipeline chunk timeouts before generic format hints', () => {
+      const errors = [
+        'Timeout after 180s (attempt 3/3) — All 4 chunks failed extraction.',
+        'All 4 chunks failed extraction. Timeout after 180s',
+        'Entity extraction timeout while processing chunk',
+        'Vision extraction timed out after 120s',
+      ];
+
+      for (const msg of errors) {
+        const result = categorizeError(msg);
+        expect(result.category).toBe('llm_timeout');
+        expect(result.isTransient).toBe(true);
+        expect(result.suggestion).toMatch(/not a document-format problem/i);
+      }
+    });
+
+    it('does not steal generic network timeouts', () => {
+      const result = categorizeError('Request timeout');
+      expect(result.category).toBe('network');
+    });
+  });
+
   describe('pipeline/parsing errors', () => {
     it('detects parse errors', () => {
       const errors = [
@@ -205,6 +228,7 @@ describe('categorizeError', () => {
     it('provides appropriate suggestion for each category', () => {
       const categories: ErrorCategory[] = [
         'llm',
+        'llm_timeout',
         'embedding',
         'storage',
         'pipeline',
@@ -218,6 +242,9 @@ describe('categorizeError', () => {
         switch (cat) {
           case 'llm':
             msg = 'rate limit';
+            break;
+          case 'llm_timeout':
+            msg = 'Timeout after 180s (attempt 3/3)';
             break;
           case 'embedding':
             msg = 'embedding error';
@@ -247,6 +274,7 @@ describe('getCategoryColor', () => {
   it('returns colors for all categories', () => {
     const categories: ErrorCategory[] = [
       'llm',
+      'llm_timeout',
       'embedding',
       'storage',
       'pipeline',

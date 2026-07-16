@@ -23,7 +23,10 @@ pub struct PdfUploadOptions {
     pub title: Option<String>,
     /// Custom metadata (optional).
     pub metadata: Option<serde_json::Value>,
-    /// Batch tracking ID (optional).
+    /// Optional client batch/request correlation ID (SPEC-054 / #300).
+    ///
+    /// NOT the progress-store key — that is always the server `task_id`
+    /// (`pdf-<uuid>`). Shared across multi-file WebUI batches.
     pub track_id: Option<String>,
     /// Force re-indexing of duplicate PDF (default: false).
     /// WHY (OODA-08): When true, existing graph/vector data is cleared
@@ -139,10 +142,14 @@ pub struct PdfUploadResponse {
     /// Processing status.
     pub status: String,
 
-    /// Background task ID.
+    /// Authoritative progress / cancel / retry identity (`pdf-<uuid>`).
+    ///
+    /// SPEC-054 / GitHub #300: clients MUST subscribe to this id for progress.
     pub task_id: String,
 
-    /// Batch tracking ID (if provided).
+    /// Optional client batch/request correlation ID (echoed if provided).
+    ///
+    /// Not a progress-store key — see `task_id`.
     pub track_id: Option<String>,
 
     /// Human-readable message.

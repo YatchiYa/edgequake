@@ -69,10 +69,11 @@ fn test_safety_limits_from_env() {
 #[serial]
 async fn test_safety_limits_enforce_max_tokens() {
     clean_provider_env();
+    std::env::set_var("EDGEQUAKE_ALLOW_MOCK_PROVIDER", "1");
 
-    // Create a safe provider via factory
+    // Create a safe provider via factory (mock allowed only for tests)
     let result = create_safe_llm_provider("mock", "test-model");
-    assert!(result.is_ok(), "Should create safe mock provider");
+    assert!(result.is_ok(), "Should create safe mock provider when allowed");
 
     let provider = result.unwrap();
 
@@ -80,6 +81,35 @@ async fn test_safety_limits_enforce_max_tokens() {
     let response = provider.complete("Test prompt").await;
     assert!(response.is_ok(), "Provider should complete successfully");
 
+    std::env::remove_var("EDGEQUAKE_ALLOW_MOCK_PROVIDER");
+    clean_provider_env();
+}
+
+/// Application runtime must never *use* Mock — heal to a real server provider.
+#[test]
+#[serial]
+fn test_mock_llm_healed_without_allow_flag() {
+    clean_provider_env();
+    std::env::remove_var("EDGEQUAKE_ALLOW_MOCK_PROVIDER");
+    std::env::remove_var("EDGEQUAKE_ALLOW_TEST_PROVIDER_OVERRIDE");
+    std::env::set_var("EDGEQUAKE_LLM_PROVIDER", "ollama");
+    std::env::set_var("EDGEQUAKE_LLM_MODEL", "gemma4:latest");
+
+    let result = create_safe_llm_provider("mock", "test-model");
+    assert!(
+        result.is_ok(),
+        "Mock should be healed to server runtime provider: {}",
+        result.as_ref().err().map(|e| e.to_string()).unwrap_or_default()
+    );
+    let provider = result.unwrap();
+    assert_ne!(
+        provider.name().to_ascii_lowercase(),
+        "mock",
+        "application must not use Mock LLM"
+    );
+
+    std::env::remove_var("EDGEQUAKE_LLM_PROVIDER");
+    std::env::remove_var("EDGEQUAKE_LLM_MODEL");
     clean_provider_env();
 }
 
@@ -92,14 +122,16 @@ async fn test_safety_limits_enforce_max_tokens() {
 #[serial]
 fn test_factory_creates_safe_providers() {
     clean_provider_env();
+    std::env::set_var("EDGEQUAKE_ALLOW_MOCK_PROVIDER", "1");
 
-    // Should work with mock provider
+    // Should work with mock provider when explicitly allowed for tests
     let result = create_safe_llm_provider("mock", "test-model");
-    assert!(result.is_ok(), "Should create safe mock provider");
+    assert!(result.is_ok(), "Should create safe mock provider when allowed");
 
     let provider = result.unwrap();
     assert_eq!(provider.name(), "mock");
 
+    std::env::remove_var("EDGEQUAKE_ALLOW_MOCK_PROVIDER");
     clean_provider_env();
 }
 

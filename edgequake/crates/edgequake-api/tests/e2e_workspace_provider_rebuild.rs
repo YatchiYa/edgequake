@@ -239,6 +239,7 @@ async fn test_embedding_provider_accepts_dimension_param() {
 #[serial]
 async fn test_safe_embedding_provider_accepts_dimension_param() {
     clean_provider_env();
+    std::env::set_var("EDGEQUAKE_ALLOW_MOCK_PROVIDER", "1");
 
     // Create safe embedding provider with 768 dimension (Mock ignores it)
     let result_768 = create_safe_embedding_provider("mock", "mock-embed", 768);
@@ -257,6 +258,7 @@ async fn test_safe_embedding_provider_accepts_dimension_param() {
     let provider_1536 = result_1536.unwrap();
     assert_eq!(provider_1536.dimension(), 1536);
 
+    std::env::remove_var("EDGEQUAKE_ALLOW_MOCK_PROVIDER");
     clean_provider_env();
 }
 

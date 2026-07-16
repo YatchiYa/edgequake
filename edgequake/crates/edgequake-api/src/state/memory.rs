@@ -144,7 +144,8 @@ impl AppState {
     /// 1. EDGEQUAKE_LLM_PROVIDER environment variable
     /// 2. OLLAMA_HOST or OLLAMA_MODEL (selects Ollama)
     /// 3. OPENAI_API_KEY (selects OpenAI)
-    /// 4. Fallback to Mock provider
+    ///
+    /// Mock is forbidden as an application default — configure a real provider.
     pub fn new_memory(llm_api_key: Option<impl Into<String>>) -> Self {
         use edgequake_llm::ProviderFactory;
 
@@ -159,9 +160,20 @@ impl AppState {
         super::provider_setup::apply_chat_env_aliases();
         super::provider_setup::normalize_local_provider_hosts_for_docker();
 
-        // Use ProviderFactory for auto-detection
+        // Use ProviderFactory for auto-detection.
+        // NOTE: `new_memory` is a test/dev helper. Production boots via `new_postgres`,
+        // which rejects Mock. Prefer `AppState::test_state()` for intentional mocks.
         let (llm_provider, embedding_provider) =
             ProviderFactory::from_env().expect("Failed to create LLM provider from environment");
+
+        if crate::provider_visibility::is_mock_provider(llm_provider.name())
+            && !crate::provider_visibility::mock_provider_allowed()
+        {
+            tracing::warn!(
+                "new_memory() resolved Mock LLM — forbidden in application runtime. \
+                 Set EDGEQUAKE_LLM_PROVIDER (or EDGEQUAKE_ALLOW_MOCK_PROVIDER=1 for tests only)."
+            );
+        }
 
         // Allow a dedicated embedding provider / host to override the default
         // (OLLAMA_EMBEDDING_HOST, EDGEQUAKE_EMBEDDING_PROVIDER, etc.)

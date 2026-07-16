@@ -17,6 +17,9 @@ use crate::middleware::TenantContext;
 use crate::state::AppState;
 
 use crate::services::document_metadata_scan::load_scoped_document_metadata;
+use crate::services::pending_doc_task_reconcile::{
+    ensure_task_for_pending_document, is_orphan_waiting_status, EnsureTaskOutcome,
+};
 use crate::services::resolve_process_options_from_metadata;
 
 use super::super::storage_helpers::cleanup_document_graph_data;
@@ -91,6 +94,9 @@ pub(crate) async fn run_reprocess_failed(
 
     let mut docs_to_reprocess = Vec::new();
     let mut requeued_ids = Vec::new();
+    let mut document_task_ids: Vec<ReprocessDocumentTaskId> = Vec::new();
+    let mut skip_reasons: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
 
     for value in scoped_metadata {
         if docs_to_reprocess.len() >= request.max_documents {
@@ -107,10 +113,30 @@ pub(crate) async fn run_reprocess_failed(
                 if doc_id != Some(filter_doc_id.as_str()) {
                     continue;
                 }
-                // When document_id is specified with force=true, allow any status
-                // Otherwise, only reprocess if failed
-                if !request.force && status != Some("failed") {
-                    continue;
+                // When document_id is specified with force=true, allow any status.
+                // SPEC-054/#298: also allow orphan pending/queued without force
+                // (waiting docs with no active worker task).
+                if !request.force && status != Some("failed") && status != Some("cancelled") {
+                    let orphan_waiting = matches!(status, Some("pending") | Some("queued"));
+                    if !orphan_waiting {
+                        continue;
+                    }
+                    if let Some(id) = doc_id {
+                        let ws = tenant_ctx
+                            .workspace_id
+                            .as_deref()
+                            .and_then(|s| uuid::Uuid::parse_str(s).ok());
+                        let has_task = crate::services::pending_doc_task_reconcile::has_active_task_for_document(
+                            state.tasks.storage.as_ref(),
+                            id,
+                            ws,
+                        )
+                        .await
+                        .unwrap_or(true);
+                        if has_task {
+                            continue;
+                        }
+                    }
                 }
                 if let Some(id) = doc_id {
                     docs_to_reprocess.push((id.to_string(), id.to_string()));
@@ -125,8 +151,25 @@ pub(crate) async fn run_reprocess_failed(
                 }
             }
 
-            // Default behavior: reprocess failed and cancelled documents
-            if status == Some("failed") || status == Some("cancelled") {
+            // Default behavior: failed/cancelled, plus orphan pending/queued (#298).
+            let mut include = status == Some("failed") || status == Some("cancelled");
+            if !include && matches!(status, Some("pending") | Some("queued")) {
+                if let Some(id) = doc_id {
+                    let ws = tenant_ctx
+                        .workspace_id
+                        .as_deref()
+                        .and_then(|s| uuid::Uuid::parse_str(s).ok());
+                    let has_task = crate::services::pending_doc_task_reconcile::has_active_task_for_document(
+                        state.tasks.storage.as_ref(),
+                        id,
+                        ws,
+                    )
+                    .await
+                    .unwrap_or(true);
+                    include = !has_task;
+                }
+            }
+            if include {
                 if let Some(id) = doc_id {
                     docs_to_reprocess.push((id.to_string(), id.to_string()));
                 }
@@ -145,7 +188,63 @@ pub(crate) async fn run_reprocess_failed(
         // Read metadata early so soft single-flight can see pdf_id before any purge.
         let metadata_key =
             crate::services::document_metadata_scan::metadata_key_for_document(doc_id);
-        let metadata_opt = state.storage.kv_storage.get_by_id(&metadata_key).await?;
+        let mut metadata_opt = state.storage.kv_storage.get_by_id(&metadata_key).await?;
+        let doc_status = metadata_opt
+            .as_ref()
+            .and_then(|m| m.get("status"))
+            .and_then(|v| v.as_str());
+
+        // SPEC-054/#298 (DRY): orphan pending/queued without force → SSOT recovery.
+        // Avoids purge/cleanup/rebuild paths meant for failed re-runs.
+        let use_orphan_ssot = !request.force
+            && doc_status.is_some_and(is_orphan_waiting_status)
+            && metadata_opt.is_some();
+        if use_orphan_ssot {
+            let meta = metadata_opt.as_ref().expect("checked is_some");
+            let content_key = format!("{doc_id}-content");
+            let content = state
+                .storage
+                .kv_storage
+                .get_by_id(&content_key)
+                .await?
+                .and_then(|v| {
+                    v.get("content")
+                        .and_then(|c| c.as_str())
+                        .map(str::to_string)
+                });
+            match ensure_task_for_pending_document(
+                &state,
+                doc_id,
+                meta,
+                content.as_deref(),
+                &new_track_id,
+                "reprocess_orphan_pending",
+            )
+            .await?
+            {
+                EnsureTaskOutcome::Enqueued { task_id } => {
+                    document_task_ids.push(ReprocessDocumentTaskId {
+                        document_id: doc_id.clone(),
+                        task_id,
+                    });
+                    requeued_ids.push(doc_id.clone());
+                    continue;
+                }
+                EnsureTaskOutcome::AlreadyScheduled => {
+                    *skip_reasons.entry("already_scheduled".to_string()).or_insert(0) += 1;
+                    continue;
+                }
+                EnsureTaskOutcome::SkippedNoContent => {
+                    *skip_reasons.entry("no_content".to_string()).or_insert(0) += 1;
+                    continue;
+                }
+                EnsureTaskOutcome::SkippedNotEligible => {
+                    *skip_reasons.entry("not_eligible".to_string()).or_insert(0) += 1;
+                    continue;
+                }
+            }
+        }
+
         let pdf_id_for_flight = metadata_opt
             .as_ref()
             .and_then(|m| m.as_object())
@@ -172,8 +271,36 @@ pub(crate) async fn run_reprocess_failed(
                         track_id = %active.track_id,
                         "Single-flight: skipping soft reprocess; PDF task already in flight"
                     );
+                    *skip_reasons.entry("already_processing".to_string()).or_insert(0) += 1;
                     continue;
                 }
+            }
+        }
+
+        // Early admit: write processing/cleaning + provisional track_id BEFORE graph
+        // cleanup so list polls during the 5–10s cleanup window stay non-terminal
+        // and show honest "Cleaning" UX (not false "Queued — waiting for worker").
+        // Do not move cleanup after enqueue (race with worker); status-first is enough.
+        let previous_metadata_for_rollback = metadata_opt.clone();
+        if let Some(mut metadata) = metadata_opt.clone() {
+            if let Some(obj) = metadata.as_object_mut() {
+                crate::services::reprocess_stage_reset::apply_early_reprocess_admit(
+                    obj,
+                    &new_track_id,
+                    reprocess_mode,
+                );
+                crate::services::upsert_metadata_kv_with_index(
+                    state.storage.kv_storage.as_ref(),
+                    &metadata_key,
+                    metadata.clone(),
+                )
+                .await?;
+                metadata_opt = Some(metadata);
+                tracing::debug!(
+                    document_id = %doc_id,
+                    batch_track_id = %new_track_id,
+                    "Early reprocess cleaning stage written before graph cleanup"
+                );
             }
         }
 
@@ -214,7 +341,13 @@ pub(crate) async fn run_reprocess_failed(
         //   T4: Document reprocessed → entities A, B created fresh
         //   T5: source_ids correctly = [doc]
         //   T6: Delete document → entities properly deleted
-        match cleanup_document_graph_data(doc_id, &state.storage.graph_storage, None).await {
+        let cleanup_admit_stats = match cleanup_document_graph_data(
+            doc_id,
+            &state.storage.graph_storage,
+            None,
+        )
+        .await
+        {
             Ok(stats) => {
                 tracing::info!(
                     document_id = %doc_id,
@@ -223,6 +356,10 @@ pub(crate) async fn run_reprocess_failed(
                     relationships_removed = stats.relationships_removed,
                     "Cleaned up partial data before reprocessing"
                 );
+                Some(crate::services::reprocess_stage_reset::CleanupAdmitStats {
+                    entities_removed: stats.entities_removed,
+                    relationships_removed: stats.relationships_removed,
+                })
             }
             Err(e) => {
                 tracing::warn!(
@@ -230,6 +367,31 @@ pub(crate) async fn run_reprocess_failed(
                     error = %e,
                     "Failed to cleanup partial data before reprocessing, continuing anyway"
                 );
+                None
+            }
+        };
+
+        // Transition cleaning → queued (or merging) once graph cleanup finishes.
+        // True admission: waiting for a free worker / merge start.
+        if let Some(mut metadata) = metadata_opt.clone() {
+            if let Some(obj) = metadata.as_object_mut() {
+                crate::services::reprocess_stage_reset::apply_post_cleanup_admission(
+                    obj,
+                    reprocess_mode,
+                    cleanup_admit_stats,
+                );
+                // Keep provisional track_id until Task is created below.
+                obj.insert(
+                    "track_id".to_string(),
+                    serde_json::json!(new_track_id),
+                );
+                crate::services::upsert_metadata_kv_with_index(
+                    state.storage.kv_storage.as_ref(),
+                    &metadata_key,
+                    metadata.clone(),
+                )
+                .await?;
+                metadata_opt = Some(metadata);
             }
         }
         // Get document content
@@ -319,27 +481,6 @@ pub(crate) async fn run_reprocess_failed(
                         }
                     }
 
-                    // Update status for reprocess (SPEC-048: reset stage fields)
-                    if let Some(mut metadata) = metadata_opt.clone() {
-                        if let Some(obj) = metadata.as_object_mut() {
-                            obj.insert("track_id".to_string(), serde_json::json!(new_track_id));
-                            obj.insert(
-                                "retry_at".to_string(),
-                                serde_json::json!(Utc::now().to_rfc3339()),
-                            );
-                            crate::services::reprocess_stage_reset::apply_reprocess_stage_reset(
-                                obj,
-                                reprocess_mode,
-                            );
-                            crate::services::upsert_metadata_kv_with_index(
-                                state.storage.kv_storage.as_ref(),
-                                &metadata_key,
-                                metadata,
-                            )
-                            .await?;
-                        }
-                    }
-
                     // Look up workspace to get vision provider/model settings
                     let (vision_provider, vision_model, pdf_parser_backend) = if let Ok(ws_uuid) =
                         uuid::Uuid::parse_str(&workspace_id)
@@ -415,6 +556,7 @@ pub(crate) async fn run_reprocess_failed(
                         multimodal_process_options,
                     };
 
+                    // SPEC-054: create task first so document.track_id == progress key.
                     let task = Task::new(
                         uuid::Uuid::parse_str(&tenant_id).map_err(|_| {
                             ApiError::ValidationError("Invalid tenant ID".to_string())
@@ -425,35 +567,16 @@ pub(crate) async fn run_reprocess_failed(
                         TaskType::PdfProcessing,
                         serde_json::to_value(&pdf_task).unwrap(),
                     );
+                    let task_track_id = task.track_id.clone();
 
-                    state.enqueue_task(task).await?;
-
-                    tracing::info!(
-                        document_id = %doc_id,
-                        pdf_id = %pid_str,
-                        "Queued PDF reprocessing task (PdfProcessing) with existing document ID"
-                    );
-                    true
-                } else {
-                    false // Invalid pdf_id, fall through to text reprocess
-                }
-            } else {
-                false // No pdf_id, fall through to text reprocess
-            }
-        } else {
-            false // Not a PDF document
-        };
-
-        // Fallback: text/markdown documents or PDF without valid pdf_id
-        if !task_created {
-            if let Some(content_value) = state.storage.kv_storage.get_by_id(&content_key).await? {
-                if let Some(content) = content_value.get("content").and_then(|v| v.as_str()) {
                     // Update status for reprocess (SPEC-048: reset stage fields)
-                    if let Some(mut metadata) =
-                        state.storage.kv_storage.get_by_id(&metadata_key).await?
-                    {
+                    // Progress SSOT: bind document.track_id to server task id (not batch id).
+                    if let Some(mut metadata) = metadata_opt.clone() {
                         if let Some(obj) = metadata.as_object_mut() {
-                            obj.insert("track_id".to_string(), serde_json::json!(new_track_id));
+                            obj.insert(
+                                "track_id".to_string(),
+                                serde_json::json!(task_track_id),
+                            );
                             obj.insert(
                                 "retry_at".to_string(),
                                 serde_json::json!(Utc::now().to_rfc3339()),
@@ -471,10 +594,58 @@ pub(crate) async fn run_reprocess_failed(
                         }
                     }
 
-                    // Create new task
+                    let filename = metadata_opt
+                        .as_ref()
+                        .and_then(|m| m.as_object())
+                        .and_then(|obj| {
+                            obj.get("file_path")
+                                .or_else(|| obj.get("title"))
+                                .and_then(|v| v.as_str())
+                        })
+                        .unwrap_or(doc_id);
+                    crate::handlers::pdf_upload::seed_pdf_job_progress(
+                        &state,
+                        &task_track_id,
+                        pid_str,
+                        filename,
+                        Some(new_track_id.as_str()),
+                    )
+                    .await;
+
+                    state.enqueue_task(task).await?;
+
+                    document_task_ids.push(ReprocessDocumentTaskId {
+                        document_id: doc_id.clone(),
+                        task_id: task_track_id.clone(),
+                    });
+
+                    tracing::info!(
+                        document_id = %doc_id,
+                        pdf_id = %pid_str,
+                        task_id = %task_track_id,
+                        batch_track_id = %new_track_id,
+                        "Queued PDF reprocessing task (PdfProcessing) with existing document ID"
+                    );
+                    true
+                } else {
+                    false // Invalid pdf_id, fall through to text reprocess
+                }
+            } else {
+                false // No pdf_id, fall through to text reprocess
+            }
+        } else {
+            false // Not a PDF document
+        };
+
+        // Fallback: text/markdown documents or PDF without valid pdf_id
+        let mut requeued_this_doc = task_created;
+        if !task_created {
+            if let Some(content_value) = state.storage.kv_storage.get_by_id(&content_key).await? {
+                if let Some(content) = content_value.get("content").and_then(|v| v.as_str()) {
                     use edgequake_tasks::{Task, TaskType, TextInsertData};
 
                     let title = doc_id.clone();
+                    // Create task first so metadata.track_id matches the progress/WS key.
                     let task_data = TextInsertData {
                         text: content.to_string(),
                         file_source: title.clone(),
@@ -482,12 +653,12 @@ pub(crate) async fn run_reprocess_failed(
                         metadata: Some(serde_json::json!({
                             "document_id": doc_id,
                             "title": title,
-                            "track_id": new_track_id,
                             "is_retry": true,
                             "tenant_id": tenant_id,
                             "workspace_id": workspace_id,
                             "force_fresh_extraction": restart_from_scratch,
                             "merge_only": reprocess_mode.merge_only(),
+                            "batch_track_id": new_track_id,
                         })),
                     };
 
@@ -501,14 +672,60 @@ pub(crate) async fn run_reprocess_failed(
                         TaskType::Insert,
                         serde_json::to_value(task_data).unwrap(),
                     );
+                    let task_track_id = task.track_id.clone();
+
+                    // Update status for reprocess (SPEC-048: reset stage fields)
+                    if let Some(mut metadata) =
+                        state.storage.kv_storage.get_by_id(&metadata_key).await?
+                    {
+                        if let Some(obj) = metadata.as_object_mut() {
+                            obj.insert(
+                                "track_id".to_string(),
+                                serde_json::json!(task_track_id),
+                            );
+                            obj.insert(
+                                "retry_at".to_string(),
+                                serde_json::json!(Utc::now().to_rfc3339()),
+                            );
+                            crate::services::reprocess_stage_reset::apply_reprocess_stage_reset(
+                                obj,
+                                reprocess_mode,
+                            );
+                            crate::services::upsert_metadata_kv_with_index(
+                                state.storage.kv_storage.as_ref(),
+                                &metadata_key,
+                                metadata,
+                            )
+                            .await?;
+                        }
+                    }
 
                     state.enqueue_task(task).await?;
 
-                    requeued_ids.push(doc_id.clone());
+                    document_task_ids.push(ReprocessDocumentTaskId {
+                        document_id: doc_id.clone(),
+                        task_id: task_track_id,
+                    });
+                    requeued_this_doc = true;
                 }
             }
-        } else {
+        }
+
+        if requeued_this_doc {
             requeued_ids.push(doc_id.clone());
+        } else if let Some(prev) = previous_metadata_for_rollback {
+            // Early admit wrote processing; restore prior metadata when we could not enqueue.
+            let _ = crate::services::upsert_metadata_kv_with_index(
+                state.storage.kv_storage.as_ref(),
+                &metadata_key,
+                prev,
+            )
+            .await;
+            *skip_reasons.entry("no_content".to_string()).or_insert(0) += 1;
+            tracing::warn!(
+                document_id = %doc_id,
+                "Rolled back early reprocess status — no task created"
+            );
         }
     }
 
@@ -688,17 +905,70 @@ pub(crate) async fn run_reprocess_failed(
                     result: None,
                 };
 
+                // Bind KV document.track_id to task id when a document row exists.
+                if let Some(document_uuid) = pdf.document_id {
+                    let doc_id = document_uuid.to_string();
+                    let metadata_key = edgequake_storage::kv_keys::doc_metadata(&doc_id);
+                    if let Ok(Some(mut metadata)) =
+                        state.storage.kv_storage.get_by_id(&metadata_key).await
+                    {
+                        if let Some(obj) = metadata.as_object_mut() {
+                            obj.insert("track_id".to_string(), serde_json::json!(track_id));
+                            obj.insert(
+                                "retry_at".to_string(),
+                                serde_json::json!(Utc::now().to_rfc3339()),
+                            );
+                            crate::services::reprocess_stage_reset::apply_reprocess_stage_reset(
+                                obj,
+                                reprocess_mode,
+                            );
+                            let _ = crate::services::upsert_metadata_kv_with_index(
+                                state.storage.kv_storage.as_ref(),
+                                &metadata_key,
+                                metadata,
+                            )
+                            .await;
+                        }
+                    }
+                    document_task_ids.push(ReprocessDocumentTaskId {
+                        document_id: doc_id.clone(),
+                        task_id: track_id.clone(),
+                    });
+                    requeued_ids.push(doc_id);
+                } else {
+                    requeued_ids.push(pdf.pdf_id.to_string());
+                    document_task_ids.push(ReprocessDocumentTaskId {
+                        document_id: pdf.pdf_id.to_string(),
+                        task_id: track_id.clone(),
+                    });
+                }
+
+                crate::handlers::pdf_upload::seed_pdf_job_progress(
+                    &state,
+                    &track_id,
+                    &pdf.pdf_id.to_string(),
+                    &pdf.filename,
+                    Some(new_track_id.as_str()),
+                )
+                .await;
+
                 state.enqueue_task(task).await?;
 
-                requeued_ids.push(pdf.pdf_id.to_string());
                 tracing::info!(
                     pdf_id = %pdf.pdf_id,
-                    track_id = %track_id,
+                    task_id = %track_id,
+                    batch_track_id = %new_track_id,
                     "Re-enqueued failed PDF for reprocessing"
                 );
             }
         }
     }
+
+    let single_task_id = if document_task_ids.len() == 1 {
+        Some(document_task_ids[0].task_id.clone())
+    } else {
+        None
+    };
 
     let response = ReprocessFailedResponse {
         track_id: new_track_id,
@@ -708,7 +978,11 @@ pub(crate) async fn run_reprocess_failed(
             .map(|ws| crate::services::job_registry::v2_migration_hint("reprocess_failed", ws)),
         failed_found: docs_to_reprocess.len(),
         requeued: requeued_ids.len(),
+        skipped: docs_to_reprocess.len().saturating_sub(requeued_ids.len()),
+        skip_reasons,
         document_ids: requeued_ids,
+        task_id: single_task_id,
+        document_task_ids,
     };
     Ok(response)
 }

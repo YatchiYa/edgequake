@@ -19,6 +19,8 @@ export EDGEQUAKE_LLM_MODEL=mistral-small-latest
 export EDGEQUAKE_VISION_MODEL=mistral-small-latest
 export VLM_PROCESS_ENABLE=true
 export BENCH047_PROFILE=P0_mm_ite
+# Fail closed: Acc must cover every fixture doc (partial ingest drops Qs → biased Acc).
+export BENCH047_REQUIRE_FULL_INGEST="${BENCH047_REQUIRE_FULL_INGEST:-1}"
 # Phase B = Stage B CORE (~40 docs). Never inherit chart-8 Acc fixture overrides.
 unset EDGEQUAKE_BENCH_FIXTURE
 export EDGEQUAKE_BENCH_FIXTURE=

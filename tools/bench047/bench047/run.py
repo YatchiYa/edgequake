@@ -562,8 +562,31 @@ def run_stage(
         "false_refusal": refusal_ops,
         "arm_gates": arm_ops,
     }
-    valid = ingest_cov >= (0.9 if stage == "smoke" else 0.8) and len(samples) > 0
-    invalid_reason = None if valid else ("PARTIAL_INGEST" if ingest_cov < 0.9 else "NO_SAMPLES")
+    # Ingest coverage gate. Failed docs are dropped from the question set, which
+    # can inflate Acc if hard docs never ingest. Stage B CORE defaults to full
+    # ingest (cov==1.0); set BENCH047_REQUIRE_FULL_INGEST=0 to relax to 0.8.
+    # Smoke stays at 0.9 unless explicitly forced to 1.0.
+    full_env = (os.environ.get("BENCH047_REQUIRE_FULL_INGEST") or "").strip().lower()
+    if full_env in {"0", "false", "no", "off"}:
+        require_full = False
+    elif full_env in {"1", "true", "yes", "on"}:
+        require_full = True
+    else:
+        require_full = stage == "core"
+    if require_full:
+        min_cov = 1.0
+    elif stage == "smoke":
+        min_cov = 0.9
+    else:
+        min_cov = 0.8
+    valid = ingest_cov >= min_cov - 1e-12 and len(samples) > 0
+    invalid_reason = None if valid else ("PARTIAL_INGEST" if ingest_cov < min_cov else "NO_SAMPLES")
+    if require_full and ingest_cov < 1.0 - 1e-12:
+        print(
+            f"INVALID: ingest_coverage={ingest_cov:.4f} < 1.0 "
+            f"(n_skipped={len(doc_ids) - len(ok_docs)}; "
+            "full-ingest required for core Acc — omitted docs bias the score)"
+        )
     # Fail closed: empty RAG answers inflate Acc via "Not answerable" extractor default
     if valid and empty_rate > 0.2:
         valid = False

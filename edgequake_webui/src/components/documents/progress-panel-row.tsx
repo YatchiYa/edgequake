@@ -19,10 +19,14 @@
  *     not know whether the source was an upload or a reprocess.
  *
  * @implements SPEC-051: Upload-parity progress for reprocess.
+ * @implements SPEC-054: Admission cleaning vs queued presenters.
  */
 
+import { AdmissionPhaseRow } from '@/components/documents/admission-phase-row';
 import { Button } from '@/components/ui/button';
+import { shouldShowReprocessQueuingPanel } from '@/lib/documents/reprocess-cache';
 import { X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { IngestionProgressPanel } from './ingestion-progress-panel';
 import { PdfUploadProgress } from './pdf-upload-progress';
 
@@ -31,8 +35,9 @@ export interface ProgressPanelRowProps {
    * The LIVE task track_id to subscribe to for WebSocket progress events.
    *
    * For uploads this is always correct (returned by the upload endpoint).
-   * For reprocess this MUST be derived from the documents cache AFTER the
-   * worker updates it (not the "reprocess_..." batch ID from POST /reprocess).
+   * For reprocess this MUST be a pollable task key (e.g. pdf_processing-…).
+   * Client provisional (`reprocess_pending_*`) and batch (`reprocess_*`) keys
+   * render a static admission row — they have no progress seed.
    */
   trackId: string;
   /** Display name shown in the progress panel. */
@@ -45,6 +50,13 @@ export interface ProgressPanelRowProps {
    * user sees PDF conversion phases (page N/M, etc.).
    */
   isPdf?: boolean;
+  /**
+   * Live / pinned document stage for provisional admission UI.
+   * Prefer `cleaning` during graph cleanup; `queued` for worker wait.
+   */
+  currentStage?: string | null;
+  /** Live / pinned stage_message (may include cleanup stats). */
+  stageMessage?: string | null;
   /** Callback when the user clicks the dismiss (X) button. */
   onRemove?: () => void;
   /** Forwarded to the progress component. */
@@ -59,6 +71,14 @@ export interface ProgressPanelRowProps {
   'data-track-id'?: string;
 }
 
+function resolveAdmissionPhase(
+  currentStage?: string | null,
+): 'cleaning' | 'queued' {
+  return (currentStage || '').toLowerCase() === 'cleaning'
+    ? 'cleaning'
+    : 'queued';
+}
+
 /**
  * A single progress row used in both UploadProgressList and the reprocess
  * panels section in DocumentManager.
@@ -67,6 +87,8 @@ export function ProgressPanelRow({
   trackId,
   documentName,
   isPdf = false,
+  currentStage,
+  stageMessage,
   onRemove,
   onComplete,
   onFailed,
@@ -74,13 +96,42 @@ export function ProgressPanelRow({
   'data-testid': testId,
   'data-track-id': dataTrackId,
 }: ProgressPanelRowProps) {
+  const { t } = useTranslation();
+  const isAdmission = shouldShowReprocessQueuingPanel(trackId);
+  const admissionPhase = resolveAdmissionPhase(currentStage);
+  const dismissHint = t(
+    'documents.reprocess.dismissHint',
+    'Hides progress; processing continues.',
+  );
+
   return (
     <div
       className="relative p-2 rounded-lg border bg-card"
-      data-testid={testId ?? (isPdf ? 'pdf-progress-row' : 'text-ingestion-progress-row')}
+      data-testid={
+        testId ??
+        (isAdmission
+          ? 'reprocess-provisional-progress-row'
+          : isPdf
+            ? 'pdf-progress-row'
+            : 'text-ingestion-progress-row')
+      }
       data-track-id={dataTrackId ?? trackId}
+      data-provisional={isAdmission ? 'true' : undefined}
+      data-admission={isAdmission ? admissionPhase : undefined}
     >
-      {isPdf ? (
+      {isAdmission ? (
+        <AdmissionPhaseRow
+          phase={admissionPhase}
+          documentName={documentName}
+          stageMessage={stageMessage}
+          variant="row"
+          data-testid={
+            admissionPhase === 'cleaning'
+              ? 'reprocess-cleaning-row'
+              : 'reprocess-queuing-row'
+          }
+        />
+      ) : isPdf ? (
         <PdfUploadProgress
           trackId={trackId}
           filename={documentName}
@@ -102,11 +153,16 @@ export function ProgressPanelRow({
         <Button
           variant="ghost"
           size="icon"
-          className="absolute top-1 right-1 h-6 w-6"
+          className="absolute top-1 right-1 h-8 w-8"
           onClick={onRemove}
-          aria-label="Dismiss progress"
+          aria-label={t(
+            'documents.reprocess.dismissAria',
+            'Dismiss progress — hides progress; processing continues',
+          )}
+          title={dismissHint}
         >
-          <X className="h-3 w-3" />
+          <X className="h-4 w-4" />
+          <span className="sr-only">{dismissHint}</span>
         </Button>
       )}
     </div>

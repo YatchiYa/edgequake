@@ -24,9 +24,11 @@ use crate::chunker::{resolve_chunker, resolve_chunker_with_embedder, Chunker};
 use crate::extractor::EntityExtractor;
 
 pub use config::{
-    clamp_max_concurrent_extractions, clamp_max_gleaning, IngestProfile, PipelineConfig,
-    DEFAULT_CHUNK_MAX_RETRIES, DEFAULT_CHUNK_TIMEOUT_SECS, DEFAULT_INITIAL_RETRY_DELAY_MS,
-    DEFAULT_MAX_CONCURRENT_EXTRACTIONS, MAX_CHUNK_MAX_RETRIES, MAX_CONCURRENT_EXTRACTIONS_CAP,
+    clamp_max_concurrent_extractions, clamp_max_gleaning, default_chunk_timeout_for_provider,
+    default_max_concurrent_for_provider, is_local_extraction_provider, IngestProfile,
+    PipelineConfig, DEFAULT_CHUNK_MAX_RETRIES, DEFAULT_CHUNK_TIMEOUT_SECS,
+    DEFAULT_INITIAL_RETRY_DELAY_MS, DEFAULT_MAX_CONCURRENT_EXTRACTIONS, LOCAL_CHUNK_TIMEOUT_SECS,
+    LOCAL_MAX_CONCURRENT_EXTRACTIONS, MAX_CHUNK_MAX_RETRIES, MAX_CONCURRENT_EXTRACTIONS_CAP,
     MAX_GLEANING_CAP, MIN_CHUNK_TIMEOUT_SECS,
 };
 pub use types::{

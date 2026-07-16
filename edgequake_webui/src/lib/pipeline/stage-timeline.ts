@@ -45,13 +45,20 @@ export interface StageTimelineStep {
   detail?: StageStepDetail;
 }
 
+export type AdmissionPhase = "cleaning" | "queued" | null;
+
 export interface StageTimeline {
   steps: StageTimelineStep[];
   activeStepId: IngestionRunStage | null;
+  /** True when waiting for a free worker (post-cleanup admission). */
   admissionQueued: boolean;
+  /** True while sync-in-HTTP graph cleanup is in flight. */
+  admissionCleaning: boolean;
+  /** Unified admission phase for presenters (cleaning | queued | null). */
+  admissionPhase: AdmissionPhase;
   /**
    * Weighted overall estimate 0–1 (FP-03/04/10).
-   * Never 1.0 until terminal completed; queued → 0.
+   * Never 1.0 until terminal completed; admission → 0.
    */
   overallProgress01: number;
   /** True when overall % is an estimate (always, except terminal). */
@@ -113,12 +120,16 @@ function resolveActiveFraction(detail?: StageStepDetail): number {
  */
 export function computeWeightedOverallProgress(
   steps: StageTimelineStep[],
-  options: { isComplete: boolean; admissionQueued: boolean },
+  options: {
+    isComplete: boolean;
+    admissionQueued: boolean;
+    admissionCleaning?: boolean;
+  },
 ): { overall01: number; stageProgress01?: number; stageCountsLabel?: string } {
   if (options.isComplete) {
     return { overall01: 1 };
   }
-  if (options.admissionQueued) {
+  if (options.admissionQueued || options.admissionCleaning) {
     return { overall01: 0 };
   }
 
@@ -280,8 +291,15 @@ export function formatStepDetailLine(detail?: StageStepDetail): string | null {
  * Build per-step timeline for a run.
  */
 export function buildStageTimeline(run: IngestionRunView): StageTimeline {
-  // Admission only — never treat an in-flight stage as Queued
+  // Admission only — never treat an in-flight stage as Queued/Cleaning
+  const admissionCleaning = run.stage === "cleaning";
   const admissionQueued = run.stage === "queued";
+  const admissionPhase: AdmissionPhase = admissionCleaning
+    ? "cleaning"
+    : admissionQueued
+      ? "queued"
+      : null;
+  const isAdmission = admissionCleaning || admissionQueued;
 
   const steps = applicableSteps(run);
   const current = run.stage;
@@ -290,7 +308,7 @@ export function buildStageTimeline(run: IngestionRunView): StageTimeline {
   const isComplete =
     run.stageStatus === "complete" || current === "completed";
 
-  const detail = !admissionQueued ? formatDetail(run) : undefined;
+  const detail = !isAdmission ? formatDetail(run) : undefined;
 
   const timelineSteps: StageTimelineStep[] = steps.map((step) => {
     const skipped =
@@ -313,7 +331,7 @@ export function buildStageTimeline(run: IngestionRunView): StageTimeline {
       };
     }
 
-    if (admissionQueued) {
+    if (isAdmission) {
       return {
         id: step,
         label: stageDisplayName(step),
@@ -393,6 +411,7 @@ export function buildStageTimeline(run: IngestionRunView): StageTimeline {
   } = computeWeightedOverallProgress(timelineSteps, {
     isComplete,
     admissionQueued,
+    admissionCleaning,
   });
 
   const activeStepId =
@@ -403,6 +422,8 @@ export function buildStageTimeline(run: IngestionRunView): StageTimeline {
     steps: timelineSteps,
     activeStepId,
     admissionQueued,
+    admissionCleaning,
+    admissionPhase,
     overallProgress01: overall01,
     overallIsEstimate: !isComplete,
     stageProgress01,

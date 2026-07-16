@@ -172,6 +172,26 @@ pub(super) async fn create_pdf_processing_task(
         });
     }
 
+    // SPEC-054 / #300: client track_id is batch correlation metadata only —
+    // never replaces Task.track_id (the progress-store key).
+    let mut metadata = serde_json::json!({
+        "processing_timeout_secs": processing_timeout_secs,
+    });
+    if let Some(client_track_id) = options
+        .track_id
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
+        metadata
+            .as_object_mut()
+            .expect("metadata object")
+            .insert(
+                "client_track_id".to_string(),
+                serde_json::json!(client_track_id),
+            );
+    }
+
     let task = Task {
         track_id: track_id.clone(),
         tenant_id,
@@ -190,9 +210,7 @@ pub(super) async fn create_pdf_processing_task(
         circuit_breaker_tripped: false,
         task_data: serde_json::to_value(&task_data)
             .map_err(|e| ApiError::Internal(format!("Failed to serialize task data: {}", e)))?,
-        metadata: Some(serde_json::json!({
-            "processing_timeout_secs": processing_timeout_secs,
-        })),
+        metadata: Some(metadata),
         progress: None,
         result: None,
     };

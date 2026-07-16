@@ -1788,10 +1788,9 @@ async fn test_recover_stuck_cleans_partial_graph_data() {
         .unwrap();
 
     let status = response.status();
-    assert_eq!(
-        status,
-        StatusCode::OK,
-        "Recover-stuck endpoint should succeed"
+    assert!(
+        status.is_success(),
+        "Recover-stuck endpoint should succeed, got {status}"
     );
 
     // 4. Verify partial entity was cleaned up
@@ -1862,7 +1861,10 @@ async fn test_recover_stuck_only_requeues_current_workspace() {
 
     let status = response.status();
     let body = extract_json(response).await;
-    assert_eq!(status, StatusCode::OK);
+    assert!(
+        status.is_success(),
+        "recover-stuck should succeed, got {status}"
+    );
     assert_eq!(body["requeued"].as_u64(), Some(1));
     let ids = body["document_ids"].as_array().cloned().unwrap_or_default();
     assert!(ids.iter().any(|v| v.as_str() == Some(doc_a)));

@@ -54,8 +54,14 @@ pub struct PipelineConfig {
     pub initial_retry_delay_ms: u64,
 }
 
-/// Default per-chunk entity-extraction timeout (seconds).
+/// Default per-chunk entity-extraction timeout (seconds) — cloud providers.
 pub const DEFAULT_CHUNK_TIMEOUT_SECS: u64 = 180;
+
+/// Per-chunk entity-extraction timeout for local providers (Ollama / LM Studio).
+///
+/// WHY 600: Local GPUs are capacity-bound; gemma4-class models with wide context
+/// routinely exceed 180s under even modest concurrency. Matches vision local page budgets.
+pub const LOCAL_CHUNK_TIMEOUT_SECS: u64 = 600;
 
 /// Minimum acceptable per-chunk timeout (seconds).
 pub const MIN_CHUNK_TIMEOUT_SECS: u64 = 10;
@@ -69,11 +75,45 @@ pub const MAX_CHUNK_MAX_RETRIES: u32 = 20;
 /// Default initial exponential-backoff delay (milliseconds).
 pub const DEFAULT_INITIAL_RETRY_DELAY_MS: u64 = 1_000;
 
-/// Default maximum concurrent LLM extraction tasks.
+/// Default maximum concurrent LLM extraction tasks — cloud providers.
 pub const DEFAULT_MAX_CONCURRENT_EXTRACTIONS: usize = 16;
+
+/// Concurrent extractions for local providers (Ollama / LM Studio).
+///
+/// WHY 2: Local inference is typically single-slot (`-np 1`); 16-way fan-out
+/// queues work until every chunk exceeds the timeout. Vision/PDF already uses 1–2.
+pub const LOCAL_MAX_CONCURRENT_EXTRACTIONS: usize = 2;
 
 /// Hard cap on concurrent extractions (SPEC-046 OPS-P1.6 — OOM / LLM storm guard).
 pub const MAX_CONCURRENT_EXTRACTIONS_CAP: usize = 32;
+
+/// Returns true for capacity-bound local inference servers used for entity extraction.
+///
+/// Excludes `mock` (fast in-process) — only Ollama / LM Studio need the slow profile.
+pub fn is_local_extraction_provider(provider_name: &str) -> bool {
+    matches!(
+        provider_name.trim().to_ascii_lowercase().as_str(),
+        "ollama" | "lmstudio" | "lm-studio" | "lm_studio"
+    )
+}
+
+/// Default per-chunk timeout for a provider when `EDGEQUAKE_CHUNK_TIMEOUT_SECS` is unset.
+pub fn default_chunk_timeout_for_provider(provider_name: &str) -> u64 {
+    if is_local_extraction_provider(provider_name) {
+        LOCAL_CHUNK_TIMEOUT_SECS
+    } else {
+        DEFAULT_CHUNK_TIMEOUT_SECS
+    }
+}
+
+/// Default concurrent extractions for a provider when env override is unset.
+pub fn default_max_concurrent_for_provider(provider_name: &str) -> usize {
+    if is_local_extraction_provider(provider_name) {
+        LOCAL_MAX_CONCURRENT_EXTRACTIONS
+    } else {
+        DEFAULT_MAX_CONCURRENT_EXTRACTIONS
+    }
+}
 
 /// Hard cap on gleaning passes (SPEC-046 OPS-P1.6 — cost/latency bound).
 pub const MAX_GLEANING_CAP: usize = 2;
@@ -164,11 +204,25 @@ impl IngestProfile {
 }
 
 impl PipelineConfig {
-    /// Create a `PipelineConfig` from environment variables, falling back to defaults.
+    /// Create a `PipelineConfig` from environment variables, falling back to cloud defaults.
     pub fn from_env() -> Self {
+        Self::from_env_for_provider("")
+    }
+
+    /// Create a `PipelineConfig` with provider-aware defaults for unset env vars.
+    ///
+    /// - Cloud / unknown: 180s chunk timeout, 16 concurrent
+    /// - Ollama / LM Studio: 600s chunk timeout, 2 concurrent
+    ///
+    /// Explicit `EDGEQUAKE_CHUNK_TIMEOUT_SECS` / `EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS`
+    /// always win over provider defaults (no quality change for cloud when env unset).
+    pub fn from_env_for_provider(provider_name: &str) -> Self {
+        let default_timeout = default_chunk_timeout_for_provider(provider_name);
+        let default_concurrent = default_max_concurrent_for_provider(provider_name);
+
         let chunk_timeout = read_env_u64(
             "EDGEQUAKE_CHUNK_TIMEOUT_SECS",
-            DEFAULT_CHUNK_TIMEOUT_SECS,
+            default_timeout,
             MIN_CHUNK_TIMEOUT_SECS,
             u64::MAX,
         );
@@ -186,7 +240,7 @@ impl PipelineConfig {
         );
         let max_concurrent = clamp_max_concurrent_extractions(read_env_usize(
             "EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS",
-            DEFAULT_MAX_CONCURRENT_EXTRACTIONS,
+            default_concurrent,
             1,
             MAX_CONCURRENT_EXTRACTIONS_CAP,
         ));
@@ -200,6 +254,21 @@ impl PipelineConfig {
         };
         IngestProfile::from_env().apply_to(&mut config);
         config
+    }
+
+    /// Apply local/cloud extraction defaults in place when env overrides are absent.
+    pub fn with_provider_defaults(mut self, provider_name: &str) -> Self {
+        let tuned = Self::from_env_for_provider(provider_name);
+        self.chunk_extraction_timeout_secs = tuned.chunk_extraction_timeout_secs;
+        self.max_concurrent_extractions = tuned.max_concurrent_extractions;
+        self.chunk_max_retries = tuned.chunk_max_retries;
+        self.initial_retry_delay_ms = tuned.initial_retry_delay_ms;
+        self.enable_entity_extraction = tuned.enable_entity_extraction;
+        self.enable_relationship_extraction = tuned.enable_relationship_extraction;
+        self.enable_entity_embeddings = tuned.enable_entity_embeddings;
+        self.enable_relationship_embeddings = tuned.enable_relationship_embeddings;
+        self.enable_chunk_embeddings = tuned.enable_chunk_embeddings;
+        self
     }
 }
 
@@ -265,5 +334,34 @@ mod tests {
         assert!(!config.enable_entity_embeddings);
         assert!(!config.enable_relationship_embeddings);
         assert!(config.enable_chunk_embeddings);
+    }
+
+    #[test]
+    fn local_extraction_provider_detection() {
+        assert!(is_local_extraction_provider("ollama"));
+        assert!(is_local_extraction_provider("LMStudio"));
+        assert!(!is_local_extraction_provider("openai"));
+        assert!(!is_local_extraction_provider("mistral"));
+        assert!(!is_local_extraction_provider("mock"));
+    }
+
+    #[test]
+    fn provider_defaults_local_vs_cloud() {
+        assert_eq!(
+            default_chunk_timeout_for_provider("ollama"),
+            LOCAL_CHUNK_TIMEOUT_SECS
+        );
+        assert_eq!(
+            default_chunk_timeout_for_provider("mistral"),
+            DEFAULT_CHUNK_TIMEOUT_SECS
+        );
+        assert_eq!(
+            default_max_concurrent_for_provider("lmstudio"),
+            LOCAL_MAX_CONCURRENT_EXTRACTIONS
+        );
+        assert_eq!(
+            default_max_concurrent_for_provider("openai"),
+            DEFAULT_MAX_CONCURRENT_EXTRACTIONS
+        );
     }
 }

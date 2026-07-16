@@ -7,6 +7,7 @@
 
 "use client";
 
+import { AdmissionPhaseRow } from "@/components/documents/admission-phase-row";
 import { cn } from "@/lib/utils";
 import type { IngestionRunView } from "@/lib/pipeline/ingestion-run-view";
 import {
@@ -65,24 +66,22 @@ export function ServerStageStepper({
     (s) => s.status === "active" || s.status === "failed",
   );
   const detailLine = formatStepDetailLine(active?.detail);
+  const admissionPhase = timeline.admissionPhase;
 
   return (
     <div
       className={cn("space-y-2", className)}
       data-testid="spec048-server-stage-stepper"
       data-stage={run.stage}
-      data-admission={timeline.admissionQueued ? "queued" : "running"}
+      data-admission={admissionPhase ?? "running"}
       data-overall-progress={timeline.overallProgress01.toFixed(3)}
     >
-      {timeline.admissionQueued ? (
-        <div
-          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200"
-          data-testid="spec048-stage-queued"
-          data-state="pending"
-        >
-          <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
-          Queued — waiting for a free worker slot
-        </div>
+      {admissionPhase ? (
+        <AdmissionPhaseRow
+          phase={admissionPhase}
+          stageMessage={run.message}
+          variant="pill"
+        />
       ) : null}
 
       <div className="flex flex-wrap items-center gap-1.5 text-xs">

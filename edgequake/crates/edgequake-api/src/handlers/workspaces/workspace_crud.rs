@@ -81,6 +81,20 @@ pub async fn create_workspace(
         .clone()
         .or_else(|| tenant.default_vision_llm_provider.clone());
 
+    // Never persist Mock — heal stale SPEC-054 / test leftovers to a real provider.
+    let llm_provider = crate::provider_visibility::heal_optional_mock_provider(
+        llm_provider,
+        llm_model.as_deref(),
+    );
+    let embedding_provider = crate::provider_visibility::heal_optional_mock_provider(
+        embedding_provider,
+        embedding_model.as_deref(),
+    );
+    let vision_llm_provider = crate::provider_visibility::heal_optional_mock_provider(
+        vision_llm_provider,
+        vision_llm_model.as_deref(),
+    );
+
     // SPEC-032: Include LLM and embedding configuration in create request
     let create_request = CreateWorkspaceRequest {
         name: request.name.clone(),
@@ -272,6 +286,20 @@ pub async fn update_workspace(
     // BR0201: verify workspace belongs to requesting tenant before mutating
     verify_workspace_tenant_access(&state, workspace_id, &tenant_ctx).await?;
 
+    // Never persist Mock — heal stale leftovers (e.g. mock + embeddinggemma:latest).
+    let llm_provider = crate::provider_visibility::heal_optional_mock_provider(
+        request.llm_provider,
+        request.llm_model.as_deref(),
+    );
+    let embedding_provider = crate::provider_visibility::heal_optional_mock_provider(
+        request.embedding_provider,
+        request.embedding_model.as_deref(),
+    );
+    let vision_llm_provider = crate::provider_visibility::heal_optional_mock_provider(
+        request.vision_llm_provider,
+        request.vision_llm_model.as_deref(),
+    );
+
     // SPEC-032: Include LLM/embedding model configuration in update
     let update_request = UpdateWorkspaceRequest {
         name: request.name,
@@ -279,12 +307,12 @@ pub async fn update_workspace(
         is_active: request.is_active,
         max_documents: request.max_documents,
         llm_model: request.llm_model,
-        llm_provider: request.llm_provider,
+        llm_provider,
         embedding_model: request.embedding_model,
-        embedding_provider: request.embedding_provider,
+        embedding_provider,
         embedding_dimension: request.embedding_dimension,
         // SPEC-040: Vision LLM configuration
-        vision_llm_provider: request.vision_llm_provider,
+        vision_llm_provider,
         vision_llm_model: request.vision_llm_model,
         pdf_parser_backend: request.pdf_parser_backend,
         entity_types: request.entity_types,

@@ -27,12 +27,14 @@ import {
     Clock,
     Cpu,
     Database,
+    BrushCleaning,
     FileText,
     GitMerge,
     Loader2,
     Scissors,
     Search,
     StopCircle,
+    Trash2,
     Upload,
     XCircle,
 } from 'lucide-react';
@@ -56,7 +58,9 @@ import { memo, useMemo } from 'react';
  *   Orange → warning / partial outcomes
  */
 const statusConfig = {
-  // === PENDING ===
+  // === PENDING / ADMISSION / DELETE ===
+  cleaning: { icon: BrushCleaning, color: 'bg-rose-500', textColor: 'text-rose-600 dark:text-rose-400', label: 'Cleaning', animate: true },
+  deleting: { icon: Trash2, color: 'bg-rose-500', textColor: 'text-rose-600 dark:text-rose-400', label: 'Deleting', animate: true },
   queued: { icon: Clock, color: 'bg-amber-500', textColor: 'text-amber-600 dark:text-amber-400', label: 'Queued', animate: true },
   pending: { icon: Clock, color: 'bg-amber-500', textColor: 'text-amber-600 dark:text-amber-400', label: 'Pending', animate: false },
 
@@ -131,6 +135,8 @@ function getStageProgress(status: DocumentStatus): { current: number; total: num
  */
 export function isProcessingStatus(status: DocumentStatus): boolean {
   return [
+    'cleaning',
+    'deleting',
     'queued',
     'pending',
     'processing',

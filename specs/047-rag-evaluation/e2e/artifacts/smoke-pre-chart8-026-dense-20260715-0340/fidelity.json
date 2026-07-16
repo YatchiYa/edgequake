@@ -1,0 +1,941 @@
+{
+  "stage": "smoke",
+  "workspace_id": "c1ea6276-f24f-4f37-90ad-f487a35d695e",
+  "aggregate": {
+    "n": 25,
+    "answer_in_evidence_rate": 0.48,
+    "answer_in_document_rate": 0.6,
+    "by_evidence_source": {
+      "?": {
+        "rate": 0.0,
+        "n": 1
+      },
+      "Chart": {
+        "rate": 0.4,
+        "n": 15
+      },
+      "Figure": {
+        "rate": 1.0,
+        "n": 2
+      },
+      "Generalized-text (Layout)": {
+        "rate": 0.4,
+        "n": 5
+      },
+      "Pure-text (Plain-text)": {
+        "rate": 0.5333333333333333,
+        "n": 15
+      },
+      "Table": {
+        "rate": 0.45454545454545453,
+        "n": 11
+      }
+    }
+  },
+  "n_errors": 0,
+  "errors": [],
+  "samples": [
+    {
+      "gold_evidence_pages": [
+        3
+      ],
+      "answer_in_evidence_pages": true,
+      "answer_in_document": true,
+      "pages_with_answer": [
+        3,
+        9,
+        19
+      ],
+      "evidence_pages_present_in_markdown": [
+        3
+      ],
+      "n_pages_in_markdown": 117,
+      "evidence_sources": [
+        "Figure"
+      ],
+      "doc_id": "2311.16502v3.pdf",
+      "question": "How many samples in MMMU belong to sociology subject?",
+      "pred": "287",
+      "page_hit@5": false
+    },
+    {
+      "gold_evidence_pages": [
+        3,
+        20
+      ],
+      "answer_in_evidence_pages": true,
+      "answer_in_document": true,
+      "pages_with_answer": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        87,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94,
+        95,
+        96,
+        97,
+        98,
+        99,
+        100,
+        101,
+        102,
+        103,
+        104,
+        105,
+        106,
+        107,
+        108,
+        109,
+        110,
+        111,
+        112,
+        113,
+        114,
+        115,
+        116,
+        117
+      ],
+      "evidence_pages_present_in_markdown": [
+        3,
+        20
+      ],
+      "n_pages_in_markdown": 117,
+      "evidence_sources": [
+        "Generalized-text (Layout)",
+        "Figure"
+      ],
+      "doc_id": "2311.16502v3.pdf",
+      "question": "Among all samples belonging to 'Public Health' subject,  how many percentage samples showcased in this paper? Give me a ratio.",
+      "pred": "Not answerable",
+      "page_hit@5": false
+    },
+    {
+      "gold_evidence_pages": [
+        21
+      ],
+      "answer_in_evidence_pages": true,
+      "answer_in_document": true,
+      "pages_with_answer": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        50,
+        51,
+        52,
+        53,
+        54,
+        56,
+        57,
+        59,
+        60,
+        61,
+        62,
+        66,
+        69,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        81,
+        82,
+        83,
+        86,
+        88,
+        89,
+        90,
+        92,
+        94,
+        95,
+        96,
+        97,
+        98,
+        99,
+        100,
+        101,
+        102,
+        103,
+        104,
+        105,
+        106,
+        107,
+        108,
+        109,
+        110,
+        112,
+        113,
+        114,
+        115,
+        116,
+        117
+      ],
+      "evidence_pages_present_in_markdown": [
+        21
+      ],
+      "n_pages_in_markdown": 117,
+      "evidence_sources": [
+        "Table"
+      ],
+      "doc_id": "2311.16502v3.pdf",
+      "question": "How many Economics-related error cases fall into the Error Category of Perceptual Error? ",
+      "pred": "2",
+      "page_hit@5": false
+    },
+    {
+      "gold_evidence_pages": [
+        111
+      ],
+      "answer_in_evidence_pages": false,
+      "answer_in_document": false,
+      "pages_with_answer": [],
+      "evidence_pages_present_in_markdown": [
+        111
+      ],
+      "n_pages_in_markdown": 117,
+      "evidence_sources": [
+        "Table"
+      ],
+      "doc_id": "2311.16502v3.pdf",
+      "question": "Tell me all the subfields in Energy & Power subject for this dataset.",
+      "pred": "Thermodynamics, Heat Transfer, Fluid Mechanics",
+      "page_hit@5": true
+    },
+    {
+      "gold_evidence_pages": [
+        16,
+        19
+      ],
+      "answer_in_evidence_pages": true,
+      "answer_in_document": true,
+      "pages_with_answer": [
+        3,
+        4,
+        5,
+        6,
+        9,
+        10,
+        11,
+        12,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        26,
+        35,
+        40,
+        41,
+        45,
+        48,
+        53,
+        56,
+        59,
+        69,
+        77,
+        78,
+        83,
+        94,
+        96,
+        102,
+        103,
+        104,
+        106,
+        107,
+        110,
+        112,
+        116
+      ],
+      "evidence_pages_present_in_markdown": [
+        16,
+        19
+      ],
+      "n_pages_in_markdown": 117,
+      "evidence_sources": [
+        "Table"
+      ],
+      "doc_id": "2311.16502v3.pdf",
+      "question": "According to this paper,  What's the GPT-4V's performance difference between CS subject and math subject on MMMU datasets? ",
+      "pred": "Not answerable",
+      "page_hit@5": false
+    },
+    {
+      "gold_evidence_pages": [
+        3,
+        4
+      ],
+      "answer_in_evidence_pages": false,
+      "answer_in_document": false,
+      "pages_with_answer": [],
+      "evidence_pages_present_in_markdown": [
+        3,
+        4
+      ],
+      "n_pages_in_markdown": 17,
+      "evidence_sources": [
+        "Pure-text (Plain-text)",
+        "Chart"
+      ],
+      "doc_id": "05-03-18-political-release.pdf",
+      "question": "Among the adults conducted the survey on April 25 - May 1 2018, how many adults rated Trump's government ethical standards as poor? ",
+      "pred": "58",
+      "page_hit@5": true
+    },
+    {
+      "gold_evidence_pages": [
+        5
+      ],
+      "answer_in_evidence_pages": false,
+      "answer_in_document": false,
+      "pages_with_answer": [],
+      "evidence_pages_present_in_markdown": [
+        5
+      ],
+      "n_pages_in_markdown": 17,
+      "evidence_sources": [
+        "Chart"
+      ],
+      "doc_id": "05-03-18-political-release.pdf",
+      "question": "According to the survey on April 25 - May 1, 2018, what are the domains with the highest percentage that adults are very confident and not at all confident of Donald Trump's govenment? Please write the answer in the list format and with alphabetical order, e.g., [\"A\",\"B\"]",
+      "pred": "[\"Handle an international crisis\", \"Make wise decisions about immigration policy\", \"Work effectively with Congress\"]",
+      "page_hit@5": false
+    },
+    {
+      "gold_evidence_pages": [
+        11,
+        13
+      ],
+      "answer_in_evidence_pages": true,
+      "answer_in_document": true,
+      "pages_with_answer": [
+        3,
+        5,
+        6,
+        8,
+        13
+      ],
+      "evidence_pages_present_in_markdown": [
+        11,
+        13
+      ],
+      "n_pages_in_markdown": 17,
+      "evidence_sources": [
+        "Chart",
+        "Pure-text (Plain-text)"
+      ],
+      "doc_id": "05-03-18-political-release.pdf",
+      "question": "What percentage of the party that holds the highest total percentage of good policy ideas and high ethical standards reported that they followed the news about congressional elections in their state very closely in the survey of U.S. adults conducted from April 25 to May 1, 2018?",
+      "pred": "21%",
+      "page_hit@5": true
+    },
+    {
+      "gold_evidence_pages": [
+        11,
+        14
+      ],
+      "answer_in_evidence_pages": true,
+      "answer_in_document": true,
+      "pages_with_answer": [
+        14
+      ],
+      "evidence_pages_present_in_markdown": [
+        11,
+        14
+      ],
+      "n_pages_in_markdown": 17,
+      "evidence_sources": [
+        "Chart",
+        "Pure-text (Plain-text)"
+      ],
+      "doc_id": "05-03-18-political-release.pdf",
+      "question": "What is the percentage of registered voters who support or lean toward the candidate from the party with the higher total percentage of good policy ideas and high ethical standards and closely follow congressional elections in their district in the survey of U.S. adults conducted April 25 - May 1, 2018?",
+      "pred": "48%",
+      "page_hit@5": true
+    },
+    {
+      "gold_evidence_pages": [
+        8,
+        10
+      ],
+      "answer_in_evidence_pages": true,
+      "answer_in_document": true,
+      "pages_with_answer": [
+        1,
+        3,
+        4,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        16,
+        17
+      ],
+      "evidence_pages_present_in_markdown": [
+        8,
+        10
+      ],
+      "n_pages_in_markdown": 17,
+      "evidence_sources": [
+        "Pure-text (Plain-text)",
+        "Chart"
+      ],
+      "doc_id": "05-03-18-political-release.pdf",
+      "question": "What is the percentage gap between the youngest age group and the oldest age group that strongly disapproves of the way the president, who started his job in 2018, was handling his job in the survey of U.S. adults conducted April 25-May 1, 2018? Please write the answer in float format",
+      "pred": "16.0",
+      "page_hit@5": true
+    },
+    {
+      "gold_evidence_pages": [
+        12,
+        17
+      ],
+      "answer_in_evidence_pages": false,
+      "answer_in_document": false,
+      "pages_with_answer": [],
+      "evidence_pages_present_in_markdown": [
+        12,
+        17
+      ],
+      "n_pages_in_markdown": 17,
+      "evidence_sources": [
+        "Table",
+        "Chart"
+      ],
+      "doc_id": "05-03-18-political-release.pdf",
+      "question": "How many Demoncratic people in the survey of U.S. adults conducted April 25- May 1, 2019 said neither the Republican Party nor the Democratic Party  has ‘high ethical standards'?",
+      "pred": "18%",
+      "page_hit@5": true
+    },
+    {
+      "gold_evidence_pages": [
+        5
+      ],
+      "answer_in_evidence_pages": false,
+      "answer_in_document": true,
+      "pages_with_answer": [
+        1,
+        2,
+        6,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        26
+      ],
+      "evidence_pages_present_in_markdown": [
+        5
+      ],
+      "n_pages_in_markdown": 27,
+      "evidence_sources": [],
+      "doc_id": "PIP_Seniors-and-Tech-Use_040314.pdf",
+      "question": "What is the percentage of people who do not go online?",
+      "pred": "41%",
+      "page_hit@5": false
+    },
+    {
+      "gold_evidence_pages": [
+        6
+      ],
+      "answer_in_evidence_pages": false,
+      "answer_in_document": false,
+      "pages_with_answer": [],
+      "evidence_pages_present_in_markdown": [
+        6
+      ],
+      "n_pages_in_markdown": 27,
+      "evidence_sources": [
+        "Pure-text (Plain-text)",
+        "Chart"
+      ],
+      "doc_id": "PIP_Seniors-and-Tech-Use_040314.pdf",
+      "question": "How many people who do not go online or only use SNS in the Older Adults and Technology by Princeton Survey Research Associates International from July 18 to September 30, 2013?",
+      "pred": "73%",
+      "page_hit@5": true
+    },
+    {
+      "gold_evidence_pages": [
+        7,
+        8
+      ],
+      "answer_in_evidence_pages": true,
+      "answer_in_document": true,
+      "pages_with_answer": [
+        2,
+        7,
+        8,
+        10,
+        11,
+        12,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        24,
+        25,
+        27
+      ],
+      "evidence_pages_present_in_markdown": [
+        7,
+        8
+      ],
+      "n_pages_in_markdown": 27,
+      "evidence_sources": [
+        "Pure-text (Plain-text)",
+        "Table",
+        "Chart"
+      ],
+      "doc_id": "PIP_Seniors-and-Tech-Use_040314.pdf",
+      "question": "What is the percentage gap between male 65+ age group who use internet and  broadband at home in the Pew Research Center’s Internet Project July 18-September 30, 2013 tracking survey? Please write the answer into float format.",
+      "pred": "29.0",
+      "page_hit@5": true
+    },
+    {
+      "gold_evidence_pages": [
+        8,
+        9,
+        10
+      ],
+      "answer_in_evidence_pages": false,
+      "answer_in_document": false,
+      "pages_with_answer": [],
+      "evidence_pages_present_in_markdown": [
+        8,
+        9,
+        10
+      ],
+      "n_pages_in_markdown": 27,
+      "evidence_sources": [
+        "Table",
+        "Pure-text (Plain-text)"
+      ],
+      "doc_id": "PIP_Seniors-and-Tech-Use_040314.pdf",
+      "question": "Among the Higher-income seniors, what are the percentage of them go online, has smartphone phone, and own a tablet computer? Please write the answer in the list format and in descend order,e.g., [\"9%\",\"8%\"] in the Pew Research Center’s Internet Project July 18-September 30, 2013 tracking survey?",
+      "pred": "Not answerable",
+      "page_hit@5": false
+    },
+    {
+      "gold_evidence_pages": [
+        4,
+        16
+      ],
+      "answer_in_evidence_pages": false,
+      "answer_in_document": false,
+      "pages_with_answer": [],
+      "evidence_pages_present_in_markdown": [
+        4,
+        16
+      ],
+      "n_pages_in_markdown": 27,
+      "evidence_sources": [
+        "Pure-text (Plain-text)",
+        "Table",
+        "Chart"
+      ],
+      "doc_id": "PIP_Seniors-and-Tech-Use_040314.pdf",
+      "question": "How many 65+ age group people go online 3-5 times per week or Every day in the Pew Research Center’s Internet Project July 18-September 30, 2013 tracking survey?",
+      "pred": "82%",
+      "page_hit@5": true
+    },
+    {
+      "gold_evidence_pages": [
+        18,
+        20
+      ],
+      "answer_in_evidence_pages": false,
+      "answer_in_document": false,
+      "pages_with_answer": [],
+      "evidence_pages_present_in_markdown": [
+        18,
+        20
+      ],
+      "n_pages_in_markdown": 27,
+      "evidence_sources": [
+        "Table"
+      ],
+      "doc_id": "PIP_Seniors-and-Tech-Use_040314.pdf",
+      "question": "What is the gap of 65+ people with College graduate contain a cell phone and a tablet computer in the Pew Research Center’s Internet Project July 18-September 30, 2013 tracking survey. ? ",
+      "pred": "56%",
+      "page_hit@5": true
+    },
+    {
+      "gold_evidence_pages": [
+        16,
+        17
+      ],
+      "answer_in_evidence_pages": true,
+      "answer_in_document": true,
+      "pages_with_answer": [
+        8,
+        10,
+        11,
+        12,
+        17,
+        18,
+        22
+      ],
+      "evidence_pages_present_in_markdown": [
+        16,
+        17
+      ],
+      "n_pages_in_markdown": 27,
+      "evidence_sources": [
+        "Table",
+        "Pure-text (Plain-text)"
+      ],
+      "doc_id": "PIP_Seniors-and-Tech-Use_040314.pdf",
+      "question": "What is the gap between male 65+ age group who use internet and  broadband at home in the Pew Research Center’s Internet Project July 18-September 30, 2013 tracking survey? Please write the answer into float format. ",
+      "pred": "14.0",
+      "page_hit@5": false
+    },
+    {
+      "gold_evidence_pages": [
+        3
+      ],
+      "answer_in_evidence_pages": false,
+      "answer_in_document": true,
+      "pages_with_answer": [
+        4,
+        21,
+        23
+      ],
+      "evidence_pages_present_in_markdown": [
+        3
+      ],
+      "n_pages_in_markdown": 38,
+      "evidence_sources": [
+        "Pure-text (Plain-text)",
+        "Generalized-text (Layout)",
+        "Chart"
+      ],
+      "doc_id": "indonesiamobilemarketresearch-ag-150106055934-conversion-gate02_95.pdf",
+      "question": "On the slide that starts with the text Country Overview in the top-left corner and is followed with a bulleted list with the first entry in that list being Population: (July 2013 est.) 251,160,124, how much greater is the GDP per capita for 2012 than 2011?",
+      "pred": "$198",
+      "page_hit@5": true
+    },
+    {
+      "gold_evidence_pages": [
+        3
+      ],
+      "answer_in_evidence_pages": false,
+      "answer_in_document": true,
+      "pages_with_answer": [
+        4,
+        9,
+        21,
+        23,
+        26,
+        27,
+        28,
+        33,
+        34
+      ],
+      "evidence_pages_present_in_markdown": [
+        3
+      ],
+      "n_pages_in_markdown": 38,
+      "evidence_sources": [
+        "Pure-text (Plain-text)",
+        "Generalized-text (Layout)",
+        "Chart"
+      ],
+      "doc_id": "indonesiamobilemarketresearch-ag-150106055934-conversion-gate02_95.pdf",
+      "question": "Looking at the Slide of country overview, by what percent did \"Smartphone Penetration\" grow between 2013 and 2015?",
+      "pred": "108.33%",
+      "page_hit@5": true
+    },
+    {
+      "gold_evidence_pages": [
+        4
+      ],
+      "answer_in_evidence_pages": true,
+      "answer_in_document": true,
+      "pages_with_answer": [
+        4
+      ],
+      "evidence_pages_present_in_markdown": [
+        4
+      ],
+      "n_pages_in_markdown": 38,
+      "evidence_sources": [
+        "Table",
+        "Pure-text (Plain-text)"
+      ],
+      "doc_id": "indonesiamobilemarketresearch-ag-150106055934-conversion-gate02_95.pdf",
+      "question": "Which group accounts for the second largest share in terms of religious demographics in Slide 4 in 2014?",
+      "pred": "Christians",
+      "page_hit@5": true
+    },
+    {
+      "gold_evidence_pages": [
+        9
+      ],
+      "answer_in_evidence_pages": true,
+      "answer_in_document": true,
+      "pages_with_answer": [
+        7,
+        8,
+        9,
+        10,
+        11,
+        23,
+        25,
+        36
+      ],
+      "evidence_pages_present_in_markdown": [
+        9
+      ],
+      "n_pages_in_markdown": 38,
+      "evidence_sources": [
+        "Pure-text (Plain-text)",
+        "Chart"
+      ],
+      "doc_id": "indonesiamobilemarketresearch-ag-150106055934-conversion-gate02_95.pdf",
+      "question": "What is the name of the second largest telecom operator in terms of the number of subscribers in the period 2013-2014?",
+      "pred": "XL",
+      "page_hit@5": true
+    },
+    {
+      "gold_evidence_pages": [
+        9,
+        10
+      ],
+      "answer_in_evidence_pages": false,
+      "answer_in_document": false,
+      "pages_with_answer": [],
+      "evidence_pages_present_in_markdown": [
+        9,
+        10
+      ],
+      "n_pages_in_markdown": 38,
+      "evidence_sources": [
+        "Chart",
+        "Generalized-text (Layout)",
+        "Pure-text (Plain-text)"
+      ],
+      "doc_id": "indonesiamobilemarketresearch-ag-150106055934-conversion-gate02_95.pdf",
+      "question": "Comparing to the Telecom Operators in 2014 and 2013-2014, What are the Operators that are not in common? Please list the names in list format, e.g., [\"a\",\"b\"] ",
+      "pred": "[\"3 (atau 3 Indonesia)\", \"Smartfren\", \"Esia\"]",
+      "page_hit@5": true
+    },
+    {
+      "gold_evidence_pages": [
+        11,
+        17
+      ],
+      "answer_in_evidence_pages": false,
+      "answer_in_document": false,
+      "pages_with_answer": [],
+      "evidence_pages_present_in_markdown": [
+        11,
+        17
+      ],
+      "n_pages_in_markdown": 38,
+      "evidence_sources": [
+        "Table",
+        "Chart"
+      ],
+      "doc_id": "indonesiamobilemarketresearch-ag-150106055934-conversion-gate02_95.pdf",
+      "question": "What are the Online Games native major internet companies and the Telecom Operator name of the second largest Prepaid ARPU in 2008? Please list the answer in list with reverse alphabetical order.",
+      "pred": "- XL\n- Kotakgame.com\n- GameQQ.net",
+      "page_hit@5": true
+    },
+    {
+      "gold_evidence_pages": [
+        34
+      ],
+      "answer_in_evidence_pages": true,
+      "answer_in_document": true,
+      "pages_with_answer": [
+        3,
+        4,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        14,
+        15,
+        17,
+        18,
+        19,
+        21,
+        22,
+        23,
+        26,
+        27,
+        28,
+        32,
+        33,
+        34,
+        37
+      ],
+      "evidence_pages_present_in_markdown": [
+        34
+      ],
+      "n_pages_in_markdown": 38,
+      "evidence_sources": [
+        "Chart",
+        "Generalized-text (Layout)",
+        "Pure-text (Plain-text)"
+      ],
+      "doc_id": "indonesiamobilemarketresearch-ag-150106055934-conversion-gate02_95.pdf",
+      "question": "In the slide that includes Mobile Internet Demographics and Trends, how many colors are there in the chart in the top right corner?",
+      "pred": "Not answerable",
+      "page_hit@5": true
+    }
+  ],
+  "causal": {
+    "representation_miss_n": 13,
+    "retrieval_miss_given_rep_ok_n": 5,
+    "note": "If answer not in evidence-page markdown → W1 (ingest). If answer in markdown but page_hit@5 false → W2 (retrieve)."
+  }
+}

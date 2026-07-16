@@ -607,8 +607,25 @@ async fn spec013_mistral_pdf_ingestion_edge_cases_are_mitigated() {
         .as_str()
         .expect("pdf_id")
         .to_string();
+    let task_id = upload_ok_body["task_id"]
+        .as_str()
+        .expect("task_id")
+        .to_string();
+    assert!(
+        !task_id.is_empty(),
+        "admitted PDF must return non-empty task_id"
+    );
+    assert_ne!(
+        task_id, track_ok,
+        "SPEC-054/#300: server task_id must differ from client batch track_id"
+    );
+    assert_eq!(
+        upload_ok_body["track_id"].as_str(),
+        Some(track_ok.as_str()),
+        "response.track_id remains client batch correlation"
+    );
 
-    // Progress should be visible soon after accepted upload.
+    // SPEC-054/#300: progress is keyed by task_id, not the client batch id.
     let mut saw_progress = false;
     for _ in 0..6 {
         let p = app
@@ -616,7 +633,7 @@ async fn spec013_mistral_pdf_ingestion_edge_cases_are_mitigated() {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri(format!("/api/v1/documents/pdf/progress/{track_ok}"))
+                    .uri(format!("/api/v1/documents/pdf/progress/{task_id}"))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -630,7 +647,24 @@ async fn spec013_mistral_pdf_ingestion_edge_cases_are_mitigated() {
     }
     assert!(
         saw_progress,
-        "expected progress endpoint to eventually expose track_id"
+        "expected progress endpoint to expose server task_id"
+    );
+
+    let client_progress = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/v1/documents/pdf/progress/{track_ok}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        client_progress.status(),
+        StatusCode::NOT_FOUND,
+        "client batch track_id must not seed a pending progress skeleton"
     );
 
     let completed = wait_for_pdf_completed(

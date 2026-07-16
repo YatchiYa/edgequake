@@ -20,7 +20,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { FileSearch, RefreshCw, Zap } from 'lucide-react';
+import { FileSearch, Loader2, RefreshCw, Zap } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ReprocessMode } from '@/lib/api/edgequake';
@@ -34,6 +34,8 @@ interface BulkReprocessDialogProps {
   open: boolean;
   /** Number of selected documents the choice will apply to. */
   count: number;
+  /** When true, Confirm is disabled and shows a spinner (admit in flight). */
+  isBusy?: boolean;
   /** Called with the user's choice when they confirm. */
   onConfirm: (choice: BulkReprocessChoice) => void;
   /** Called when the user cancels or dismisses the dialog. */
@@ -43,6 +45,7 @@ interface BulkReprocessDialogProps {
 export function BulkReprocessDialog({
   open,
   count,
+  isBusy = false,
   onConfirm,
   onCancel,
 }: BulkReprocessDialogProps) {
@@ -112,11 +115,18 @@ export function BulkReprocessDialog({
         </RadioGroup>
 
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={onCancel}>
+          <Button variant="outline" onClick={onCancel} disabled={isBusy}>
             {t('documents.reprocessDialog.cancel', 'Cancel')}
           </Button>
-          <Button onClick={handleConfirm}>
-            {t('documents.reprocessDialog.confirm', 'Reprocess')}
+          <Button onClick={handleConfirm} disabled={isBusy}>
+            {isBusy ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                {t('documents.reprocess.queuing', 'Queuing reprocess…')}
+              </>
+            ) : (
+              t('documents.reprocessDialog.confirm', 'Reprocess')
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

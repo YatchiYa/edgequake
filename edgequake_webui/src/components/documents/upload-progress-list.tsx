@@ -31,6 +31,11 @@ interface UploadProgressListProps {
   onComplete: (index: number) => void;
   /** Callback when a PDF upload fails */
   onFailed: (index: number, error: string) => void;
+  /**
+   * When true (inside unified feedback zone), drop outer border/padding so the
+   * zone provides a single chrome layer.
+   */
+  embedded?: boolean;
 }
 
 /**
@@ -47,6 +52,7 @@ export function UploadProgressList({
   onRemove,
   onComplete,
   onFailed,
+  embedded = false,
 }: UploadProgressListProps) {
   const { t } = useTranslation();
 
@@ -62,8 +68,13 @@ export function UploadProgressList({
 
   return (
     <div
-      className="shrink-0 px-4 py-3 border-b space-y-2 bg-muted/20"
+      className={
+        embedded
+          ? 'space-y-2'
+          : 'shrink-0 px-4 py-3 border-b space-y-2 bg-muted/20'
+      }
       data-testid="spec038-upload-progress-list"
+      data-embedded={embedded ? 'true' : undefined}
     >
       {/* Overall Progress Header */}
       <div className="flex items-center justify-between">
@@ -182,10 +193,18 @@ export function UploadProgressList({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6 shrink-0"
+                  className="h-8 w-8 shrink-0"
                   onClick={() => onRemove(index)}
+                  aria-label={t(
+                    'documents.upload.removeFromList',
+                    'Remove from upload list',
+                  )}
+                  title={t(
+                    'documents.upload.removeFromList',
+                    'Remove from upload list',
+                  )}
                 >
-                  <X className="h-3 w-3" />
+                  <X className="h-4 w-4" />
                 </Button>
               </div>
             )

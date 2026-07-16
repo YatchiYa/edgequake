@@ -25,8 +25,9 @@
 
 use edgequake_pipeline::{
     PipelineConfig, DEFAULT_CHUNK_MAX_RETRIES, DEFAULT_CHUNK_TIMEOUT_SECS,
-    DEFAULT_INITIAL_RETRY_DELAY_MS, DEFAULT_MAX_CONCURRENT_EXTRACTIONS, MAX_CHUNK_MAX_RETRIES,
-    MAX_CONCURRENT_EXTRACTIONS_CAP, MIN_CHUNK_TIMEOUT_SECS,
+    DEFAULT_INITIAL_RETRY_DELAY_MS, DEFAULT_MAX_CONCURRENT_EXTRACTIONS, LOCAL_CHUNK_TIMEOUT_SECS,
+    LOCAL_MAX_CONCURRENT_EXTRACTIONS, MAX_CHUNK_MAX_RETRIES, MAX_CONCURRENT_EXTRACTIONS_CAP,
+    MIN_CHUNK_TIMEOUT_SECS,
 };
 use serial_test::serial;
 
@@ -389,4 +390,95 @@ fn test_pipeline_config_default_ignores_env_vars() {
         config.max_concurrent_extractions, DEFAULT_MAX_CONCURRENT_EXTRACTIONS,
         "PipelineConfig::default() must always return compile-time constants"
     );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Provider-aware local extraction profile (Ollama / LM Studio resilience)
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn clear_extraction_tuning_env() {
+    unsafe {
+        std::env::remove_var(CHUNK_TIMEOUT_VAR);
+        std::env::remove_var(MAX_RETRIES_VAR);
+        std::env::remove_var(RETRY_DELAY_VAR);
+        std::env::remove_var(MAX_CONCURRENT_VAR);
+        std::env::remove_var("EDGEQUAKE_LLM_TIMEOUT_SECS");
+    }
+}
+
+/// Local providers get 600s / concurrency 2 when env overrides are absent.
+#[test]
+#[serial]
+fn test_from_env_for_provider_local_defaults() {
+    clear_extraction_tuning_env();
+    let _guard = EnvGuard::set(&[]);
+
+    for provider in ["ollama", "lmstudio", "LMStudio", "lm-studio"] {
+        let config = PipelineConfig::from_env_for_provider(provider);
+        assert_eq!(
+            config.chunk_extraction_timeout_secs, LOCAL_CHUNK_TIMEOUT_SECS,
+            "local provider {provider} chunk timeout"
+        );
+        assert_eq!(
+            config.max_concurrent_extractions, LOCAL_MAX_CONCURRENT_EXTRACTIONS,
+            "local provider {provider} concurrency"
+        );
+    }
+}
+
+/// Cloud providers keep the historical 180s / 16 defaults.
+#[test]
+#[serial]
+fn test_from_env_for_provider_cloud_defaults_unchanged() {
+    clear_extraction_tuning_env();
+    let _guard = EnvGuard::set(&[]);
+
+    for provider in ["openai", "mistral", ""] {
+        let config = PipelineConfig::from_env_for_provider(provider);
+        assert_eq!(
+            config.chunk_extraction_timeout_secs, DEFAULT_CHUNK_TIMEOUT_SECS,
+            "cloud provider {provider:?} chunk timeout"
+        );
+        assert_eq!(
+            config.max_concurrent_extractions, DEFAULT_MAX_CONCURRENT_EXTRACTIONS,
+            "cloud provider {provider:?} concurrency"
+        );
+    }
+}
+
+/// Explicit env overrides still win over local provider defaults.
+#[test]
+#[serial]
+fn test_from_env_for_provider_env_overrides_win_for_local() {
+    let _guard = EnvGuard::set(&[(CHUNK_TIMEOUT_VAR, "120"), (MAX_CONCURRENT_VAR, "8")]);
+
+    let config = PipelineConfig::from_env_for_provider("ollama");
+
+    assert_eq!(config.chunk_extraction_timeout_secs, 120);
+    assert_eq!(config.max_concurrent_extractions, 8);
+}
+
+/// Extraction HTTP safety timeout: local 900s, cloud 600s; env wins.
+#[test]
+#[serial]
+fn test_extraction_http_timeout_provider_aware() {
+    use edgequake_api::safety_limits::{
+        extraction_http_timeout_secs, DEFAULT_TIMEOUT_SECS, LOCAL_EXTRACTION_HTTP_TIMEOUT_SECS,
+    };
+
+    clear_extraction_tuning_env();
+    let _guard = EnvGuard::set(&[]);
+
+    assert_eq!(
+        extraction_http_timeout_secs("ollama"),
+        LOCAL_EXTRACTION_HTTP_TIMEOUT_SECS
+    );
+    assert_eq!(
+        extraction_http_timeout_secs("openai"),
+        DEFAULT_TIMEOUT_SECS
+    );
+
+    unsafe { std::env::set_var("EDGEQUAKE_LLM_TIMEOUT_SECS", "1200") };
+    assert_eq!(extraction_http_timeout_secs("ollama"), 1200);
+    unsafe { std::env::remove_var("EDGEQUAKE_LLM_TIMEOUT_SECS") };
 }

@@ -17,7 +17,10 @@
  */
 "use client";
 
-import type { ReprocessMode } from "@/lib/api/edgequake";
+import type {
+    ReprocessFailedResponse,
+    ReprocessMode,
+} from "@/lib/api/edgequake";
 import {
     cancelTask,
     deleteAllDocuments,
@@ -26,7 +29,19 @@ import {
     retryTask,
 } from "@/lib/api/edgequake";
 import { invalidateKnowledgeGraph } from "@/lib/cache-manager";
-import type { Document } from "@/types";
+import {
+    applyDeletionFailed,
+    beginDeleteSession,
+    patchDocumentsDeletingOptimistic,
+} from "@/lib/documents/deletion-session";
+import {
+    abortAdmit,
+    admitQueuingToastId,
+    beginAdmit,
+    bindLiveTask,
+    formatReprocessSkipReasons,
+    scheduleDocumentsInvalidate,
+} from "@/lib/documents/progress-admit";
 import type { UseMutationResult } from "@tanstack/react-query";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -69,7 +84,7 @@ export interface UseDocumentMutationsOptions {
    * the decision of what to show to its caller via this callback.
    *
    * @param documentName - Name to display in the progress panel.
-   * @param trackId      - Batch track_id from POST /documents/reprocess ("reprocess_...").
+   * @param trackId      - Provisional or live progress track id.
    * @param options      - documentId (stable), isPdf, mode for panel selection.
    */
   onReprocessTriggered?: (
@@ -77,6 +92,9 @@ export interface UseDocumentMutationsOptions {
     trackId: string,
     options: { documentId: string; isPdf?: boolean; mode?: string },
   ) => void;
+
+  /** Remove provisional panel on skip/error. */
+  onReprocessDismissed?: (documentId: string) => void;
 }
 
 /**
@@ -103,13 +121,12 @@ export interface UseDocumentMutationsReturn {
   /**
    * Reprocess a document by ID.
    * Queues document for re-extraction.
-   * Returns track_id, message, and count.
    */
   reprocessMutation: UseMutationResult<
-    { track_id: string; message: string; count: number },
+    ReprocessFailedResponse,
     Error,
     ReprocessVariables,
-    unknown
+    { previousDocuments: [readonly unknown[], unknown][]; documentId: string }
   >;
 
   /**
@@ -161,30 +178,29 @@ export interface UseDocumentMutationsReturn {
 export function useDocumentMutations(
   options: UseDocumentMutationsOptions = {},
 ): UseDocumentMutationsReturn {
-  const { onReprocessSuccess } = options;
-  // SPEC-050-REPROCESS: Destructure the callback that fires when a reprocess task
-  // is accepted — lets DocumentManager show IngestionProgressPanel immediately.
-  const { onReprocessTriggered } = options;
+  const { onReprocessSuccess, onReprocessTriggered, onReprocessDismissed } =
+    options;
   const { t } = useTranslation();
   const queryClient = useQueryClient();
 
   /**
    * WHY: Delete mutation centralized for consistent UX.
-   * On success: Shows toast, invalidates cache.
-   * On error: Shows error toast with retry hint.
+   * Progress primary surface = feedback-zone delete session (SPEC-050).
+   * Loading toast demoted — zone + badge narrate phases via WS.
    */
   const deleteMutation = useMutation({
     mutationFn: deleteDocument,
-    onMutate: () => {
-      const toastId = toast.loading(
-        t("documents.delete.inProgress", "Deleting document…"),
-      );
-      return { toastId };
+    onMutate: (documentId: string) => {
+      // Paint-first fallback if caller did not begin a named session yet.
+      beginDeleteSession({
+        documentId,
+        documentName: documentId.slice(0, 8),
+      });
+      patchDocumentsDeletingOptimistic(queryClient, documentId);
     },
-    onSuccess: (_data, _documentId, context) => {
-      toast.dismiss(context?.toastId);
+    onSuccess: (_data, _documentId) => {
       toast.success(t("documents.delete.success", "Document deleted"), {
-        duration: 4000,
+        duration: 3000,
         description: t(
           "documents.delete.successDesc",
           "The document has been permanently removed.",
@@ -193,13 +209,14 @@ export function useDocumentMutations(
       queryClient.invalidateQueries({ queryKey: ["documents"] });
       invalidateKnowledgeGraph(queryClient);
     },
-    onError: (error: Error, _documentId, context) => {
-      toast.dismiss(context?.toastId);
+    onError: (error: Error, documentId) => {
+      const message =
+        error instanceof Error
+          ? error.message
+          : t("common.unknownError", "Unknown error");
+      applyDeletionFailed(documentId, message);
       toast.error(t("documents.delete.failed", "Delete failed"), {
-        description:
-          error instanceof Error
-            ? error.message
-            : t("common.unknownError", "Unknown error"),
+        description: message,
         action: {
           label: t("common.retry", "Retry"),
           onClick: () => {
@@ -254,79 +271,67 @@ export function useDocumentMutations(
   const reprocessMutation = useMutation({
     mutationFn: ({ id, mode }: ReprocessVariables) =>
       reprocessDocument(id, true, mode ?? "entities"),
-    onMutate: async ({ id: documentId }: ReprocessVariables) => {
-      // Cancel any outgoing refetches so they don't overwrite our optimistic update
-      await queryClient.cancelQueries({ queryKey: ["documents"] });
-
-      // Snapshot the previous value for rollback
+    onMutate: async ({
+      id: documentId,
+      name,
+      isPdf,
+      mode,
+    }: ReprocessVariables) => {
+      // Snapshot first, then sync provisional UI before any await.
       const previousDocuments = queryClient.getQueriesData({
         queryKey: ["documents"],
       });
 
-      // Optimistically update the document status to "pending" in all matching queries
-      // WHY: This gives immediate visual feedback — the document row changes from
-      // Failed/Cancelled badge to Pending badge, so the user knows their retry was accepted.
-      // SPEC-050: Set current_stage to "queued" so SPEC-048 stepper shows "Queued" badge
-      // immediately — no 2-5s gap while the task is picked up by a worker.
-      queryClient.setQueriesData(
-        { queryKey: ["documents"] },
-        (oldData: { items?: Document[] } | undefined) => {
-          if (!oldData?.items) return oldData;
-          return {
-            ...oldData,
-            items: oldData.items.map((doc: Document) =>
-              doc.id === documentId
-                ? {
-                    ...doc,
-                    status: "pending",
-                    current_stage: "queued",
-                    stage_progress: 0,
-                    error_message: undefined,
-                  }
-                : doc,
-            ),
-          };
-        },
+      const provisionalByDoc = beginAdmit(queryClient, documentId);
+      const provisional = provisionalByDoc.get(documentId);
+      if (provisional && onReprocessTriggered) {
+        onReprocessTriggered(name ?? documentId.slice(0, 8), provisional, {
+          documentId,
+          isPdf,
+          mode,
+        });
+      }
+      toast.loading(
+        t("documents.reprocess.queuing", "Queuing reprocess…"),
+        { id: admitQueuingToastId(documentId) },
       );
+
+      await queryClient.cancelQueries({ queryKey: ["documents"] });
 
       return { previousDocuments, documentId };
     },
     onSuccess: (data, { id: documentId, name, isPdf, mode }) => {
-      // SPEC-050 GAP-FIX: Update the cache with the new track_id from the response.
-      // WHY: The immediate queryClient.invalidateQueries() overrides the optimistic
-      // state because the DB hasn't been updated yet (server still shows "completed").
-      // Solution: update the cache with the new track_id so the WS subscription
-      // picks up the new task channel, then delay the server refetch by 2s to allow
-      // the backend to update the document status.
-      queryClient.setQueriesData(
-        { queryKey: ["documents"] },
-        (oldData: { items?: Document[] } | undefined) => {
-          if (!oldData?.items) return oldData;
-          return {
-            ...oldData,
-            items: oldData.items.map((doc: Document) =>
-              doc.id === documentId
-                ? {
-                    ...doc,
-                    status: "pending",
-                    current_stage: "queued",
-                    stage_progress: 0,
-                    track_id: data.track_id,  // Bind new track_id for WS subscription
-                    error_message: undefined,
-                  }
-                : doc,
-            ),
-          };
-        },
-      );
+      toast.dismiss(admitQueuingToastId(documentId));
+      const progressTrackId = bindLiveTask(queryClient, documentId, data);
 
-      // SPEC-051: Fire the callback so DocumentManager can show ProgressPanelRow.
-      // Pass documentId (stable) + isPdf + mode so the caller can:
-      //   1. key prune logic by documentId (survives track_id rotation)
-      //   2. pick PdfUploadProgress vs IngestionProgressPanel
+      if (!progressTrackId) {
+        abortAdmit(queryClient, documentId, undefined);
+        onReprocessDismissed?.(documentId);
+        const reasons = formatReprocessSkipReasons(data.skip_reasons);
+        toast.warning(
+          t(
+            "documents.reprocess.skipped",
+            "Document was not requeued for processing",
+          ),
+          {
+            description:
+              reasons ||
+              t(
+                "documents.reprocess.skippedHint",
+                "It may already be processing, or content is missing.",
+              ),
+            duration: 6000,
+          },
+        );
+        queryClient.invalidateQueries({ queryKey: ["documents"] });
+        queryClient.invalidateQueries({ queryKey: ["pipeline-status"] });
+        return;
+      }
+
+      // Upgrade provisional → live progress key.
       if (onReprocessTriggered) {
         const displayName = name ?? documentId.slice(0, 8);
-        onReprocessTriggered(displayName, data.track_id, {
+        onReprocessTriggered(displayName, progressTrackId, {
           documentId,
           isPdf,
           mode,
@@ -346,22 +351,13 @@ export function useDocumentMutations(
         },
       );
 
-      // WHY: Delay the server refetch by 2s so the backend has time to update
-      // the document status from "completed" to "pending" before we overwrite
-      // the optimistic state with stale server data.
-      // The WS subscription (using new track_id above) will update in real-time.
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ["documents"] });
-        queryClient.invalidateQueries({ queryKey: ["pipeline-status"] });
-      }, 2000);
+      scheduleDocumentsInvalidate(queryClient);
     },
-    onError: (error: Error, _documentId, context) => {
-      // Roll back to the previous value on error
-      if (context?.previousDocuments) {
-        for (const [queryKey, data] of context.previousDocuments) {
-          queryClient.setQueryData(queryKey, data);
-        }
-      }
+    onError: (error: Error, variables, context) => {
+      const documentId = context?.documentId ?? variables.id;
+      toast.dismiss(admitQueuingToastId(documentId));
+      abortAdmit(queryClient, documentId, context?.previousDocuments);
+      onReprocessDismissed?.(documentId);
       toast.error(t("documents.reprocess.failed", "Reprocess failed"), {
         description:
           error instanceof Error

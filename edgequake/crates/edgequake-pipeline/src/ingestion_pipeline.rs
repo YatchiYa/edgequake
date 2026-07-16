@@ -24,6 +24,11 @@ pub struct IngestionPipelineOptions {
     /// markdown content contains `<!-- edgequake-page:N -->` markers.
     /// This ensures **no chunk ever crosses a PDF page boundary**.
     pub is_pdf_source: bool,
+    /// Workspace extract LLM provider id (`ollama`, `mistral`, …).
+    ///
+    /// Used to apply local-vs-cloud extraction timeouts/concurrency without
+    /// changing cloud quality defaults.
+    pub llm_provider: Option<String>,
 }
 
 impl IngestionPipelineOptions {
@@ -35,7 +40,14 @@ impl IngestionPipelineOptions {
             chunk_strategy: ChunkStrategy::default(),
             chunk_options: None,
             is_pdf_source: false,
+            llm_provider: None,
         }
+    }
+
+    /// Bind the extract-role provider so pipeline knobs can be provider-aware.
+    pub fn with_llm_provider(mut self, provider: impl Into<String>) -> Self {
+        self.llm_provider = Some(provider.into());
+        self
     }
 
     /// Mark this document as a PDF source so the Pdf chunking strategy is
@@ -107,23 +119,27 @@ pub fn build_ingestion_pipeline(
         options.chunk_options.as_ref(),
     );
 
-    tracing::info!(
-        doc_size_bytes = options.document_size_bytes,
-        chunk_size = chunker_config.chunk_size,
-        chunk_overlap = chunker_config.chunk_overlap,
-        chunk_strategy = options.chunk_strategy.as_str(),
-        enable_gleaning = options.enable_gleaning,
-        max_gleaning = options.max_gleaning,
-        "Building ingestion pipeline"
-    );
-
-    // Honour EDGEQUAKE_* extraction/embed tunables + EDGEQUAKE_INGEST_PROFILE
-    // (chunk_only / retrieve_only) so bench047 retrieve-only eval skips KG extract.
+    let provider = options.llm_provider.as_deref().unwrap_or("");
     let pipeline_config = PipelineConfig {
         chunker: chunker_config,
         chunk_strategy: options.chunk_strategy,
-        ..PipelineConfig::from_env()
+        ..PipelineConfig::from_env_for_provider(provider)
     };
+
+    tracing::info!(
+        doc_size_bytes = options.document_size_bytes,
+        chunk_size = pipeline_config.chunker.chunk_size,
+        chunk_overlap = pipeline_config.chunker.chunk_overlap,
+        chunk_strategy = options.chunk_strategy.as_str(),
+        enable_gleaning = options.enable_gleaning,
+        max_gleaning = options.max_gleaning,
+        llm_provider = provider,
+        is_local_extraction = crate::pipeline::is_local_extraction_provider(provider),
+        chunk_timeout_secs = pipeline_config.chunk_extraction_timeout_secs,
+        max_concurrent_extractions = pipeline_config.max_concurrent_extractions,
+        ollama_context_length = %std::env::var("OLLAMA_CONTEXT_LENGTH").unwrap_or_else(|_| "(unset)".into()),
+        "Building ingestion pipeline"
+    );
 
     let base_extractor: Arc<dyn EntityExtractor> =
         Arc::new(LLMExtractor::new(llm.clone()).with_entity_schema(entity_schema.clone()));

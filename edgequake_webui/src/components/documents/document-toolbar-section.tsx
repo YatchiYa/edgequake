@@ -35,6 +35,12 @@ export interface DocumentToolbarSectionProps {
   onOpenPipelineDetails: () => void;
   onReprocessStuckDocuments?: (documents: Document[]) => void;
   isReprocessingStuck?: boolean;
+  /**
+   * When the unified feedback zone already narrates the same runs, hide the
+   * non-stuck processing banner to avoid duplicate headlines. Stuck banner
+   * (CTA) always stays visible.
+   */
+  demotePipelineBanner?: boolean;
   
   // Dropzone
   getRootProps: DocumentDropzoneProps['getRootProps'];
@@ -66,6 +72,7 @@ export function DocumentToolbarSection({
   onOpenPipelineDetails,
   onReprocessStuckDocuments,
   isReprocessingStuck,
+  demotePipelineBanner = false,
   getRootProps,
   getInputProps,
   isDragActive,
@@ -98,7 +105,10 @@ export function DocumentToolbarSection({
     [documents, pipelineStatus, primaryRun],
   );
   // Hide chrome once every document is terminal (ignore stale pipelineStatus).
-  const showBanner = pipelineUi.showPipelineIndicator;
+  // Demote non-stuck banners when the feedback zone already shows the same runs.
+  const showBanner =
+    pipelineUi.showPipelineIndicator &&
+    (pipelineUi.isStuck || !demotePipelineBanner);
   const quietDropzone =
     pipelineUi.isActivelyProcessing ||
     primaryRun?.stageStatus === 'active';
@@ -122,7 +132,7 @@ export function DocumentToolbarSection({
         />
       </div>
 
-      {/* Processing Status Summary */}
+      {/* Processing Status Summary — stuck CTA always; otherwise demote when zone owns narrative */}
       {showBanner && (
         <ProcessingStatusSummary
           pipelineStatus={

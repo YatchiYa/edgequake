@@ -499,37 +499,110 @@ fn create_vertex_llm_via_adc(
     Ok(Arc::new(provider))
 }
 
+/// Heal Mock → server-runtime provider when Mock is not explicitly allowed.
+fn heal_mock_llm_selection<'a>(provider_name: &'a str, model: &'a str) -> (String, String) {
+    if crate::provider_visibility::is_mock_provider(provider_name)
+        && !crate::provider_visibility::mock_provider_allowed()
+    {
+        let (healed_model, healed_provider) =
+            edgequake_core::Workspace::server_runtime_llm_config();
+        tracing::warn!(
+            requested_provider = provider_name,
+            requested_model = model,
+            healed_provider = %healed_provider,
+            healed_model = %healed_model,
+            "Mock LLM is forbidden in the application — using server runtime provider instead"
+        );
+        (healed_provider, healed_model)
+    } else {
+        (provider_name.to_string(), model.to_string())
+    }
+}
+
+fn heal_mock_embedding_selection(
+    provider_name: &str,
+    model: &str,
+    dimension: usize,
+) -> (String, String, usize) {
+    if crate::provider_visibility::is_mock_provider(provider_name)
+        && !crate::provider_visibility::mock_provider_allowed()
+    {
+        let (healed_model, healed_provider, healed_dim) =
+            edgequake_core::Workspace::server_runtime_embedding_config();
+        tracing::warn!(
+            requested_provider = provider_name,
+            requested_model = model,
+            healed_provider = %healed_provider,
+            healed_model = %healed_model,
+            healed_dimension = healed_dim,
+            "Mock embedding is forbidden in the application — using server runtime provider instead"
+        );
+        (healed_provider, healed_model, healed_dim)
+    } else {
+        (provider_name.to_string(), model.to_string(), dimension)
+    }
+}
+
 /// Create a safety-limited LLM provider from workspace configuration.
 pub fn create_safe_llm_provider(provider_name: &str, model: &str) -> Result<Arc<dyn LLMProvider>> {
+    build_safe_llm_provider(provider_name, model, false)
+}
+
+/// Create a safety-limited LLM for **entity extraction** with provider-aware HTTP timeout.
+///
+/// Local providers (Ollama / LM Studio) get a 900s HTTP budget so the pipeline's
+/// 600s per-chunk timeout remains the controlling deadline. Cloud stays at 600s.
+pub fn create_safe_extraction_llm_provider(
+    provider_name: &str,
+    model: &str,
+) -> Result<Arc<dyn LLMProvider>> {
+    build_safe_llm_provider(provider_name, model, true)
+}
+
+fn build_safe_llm_provider(
+    provider_name: &str,
+    model: &str,
+    extraction_profile: bool,
+) -> Result<Arc<dyn LLMProvider>> {
     if let Some((llm, _)) = test_provider_override() {
         return Ok(llm);
     }
 
-    check_api_key(provider_name)?;
+    let (provider_name, model) = heal_mock_llm_selection(provider_name, model);
+    crate::provider_visibility::ensure_non_mock_provider(&provider_name, "LLM")
+        .map_err(LlmError::ConfigError)?;
+    check_api_key(&provider_name)?;
 
     // WHY: Same compat guard as create_safe_vision_provider — entity extraction
     // tasks may also carry stale model names from a prior provider session.
-    let effective_model = if is_model_provider_mismatch(provider_name, model) {
-        let corrected = default_model_for_provider(provider_name);
+    let effective_model = if is_model_provider_mismatch(&provider_name, &model) {
+        let corrected = default_model_for_provider(&provider_name);
         tracing::warn!(
-            provider = provider_name,
-            requested_model = model,
+            provider = %provider_name,
+            requested_model = %model,
             corrected_model = corrected,
             "COMPAT-GUARD: LLM model/provider mismatch — auto-correcting to provider default."
         );
-        corrected
+        corrected.to_string()
     } else {
         model
     };
 
-    let inner = create_inner_llm_provider(provider_name, effective_model, None)?;
-    let config = SafetyLimitsConfig::from_env();
+    let config = if extraction_profile {
+        SafetyLimitsConfig::from_env_for_extraction(&provider_name)
+    } else {
+        SafetyLimitsConfig::from_env()
+    };
+
+    let inner = create_inner_llm_provider(&provider_name, &effective_model, None)?;
 
     tracing::info!(
-        provider = provider_name,
-        model = effective_model,
+        provider = %provider_name,
+        model = %effective_model,
         max_tokens = config.max_tokens,
         timeout_secs = config.timeout.as_secs(),
+        extraction_profile,
+        is_local = is_slow_local_provider(&provider_name),
         "Creating safety-limited LLM provider"
     );
 
@@ -546,22 +619,25 @@ pub fn create_safe_llm_provider_with_context(
         return Ok(llm);
     }
 
-    check_api_key(provider_name)?;
+    let (provider_name, model) = heal_mock_llm_selection(provider_name, model);
+    crate::provider_visibility::ensure_non_mock_provider(&provider_name, "LLM")
+        .map_err(LlmError::ConfigError)?;
+    check_api_key(&provider_name)?;
 
-    let effective_model = if is_model_provider_mismatch(provider_name, model) {
-        let corrected = default_model_for_provider(provider_name);
+    let effective_model = if is_model_provider_mismatch(&provider_name, &model) {
+        let corrected = default_model_for_provider(&provider_name);
         tracing::warn!(
-            provider = provider_name,
-            requested_model = model,
+            provider = %provider_name,
+            requested_model = %model,
             corrected_model = corrected,
             "COMPAT-GUARD: LLM model/provider mismatch — auto-correcting to provider default."
         );
-        corrected
+        corrected.to_string()
     } else {
         model
     };
 
-    let inner = create_inner_llm_provider(provider_name, effective_model, Some(ctx))?;
+    let inner = create_inner_llm_provider(&provider_name, &effective_model, Some(ctx))?;
     let config = SafetyLimitsConfig::from_env();
 
     Ok(Arc::new(SafetyLimitedProviderWrapper::new(inner, config)))
@@ -580,17 +656,24 @@ pub fn create_safe_llm_provider_with_headers(
     model: &str,
     extra_headers: Option<std::collections::HashMap<String, String>>,
 ) -> Result<Arc<dyn LLMProvider>> {
-    check_api_key(provider_name)?;
+    if let Some((llm, _)) = test_provider_override() {
+        return Ok(llm);
+    }
 
-    let effective_model = if is_model_provider_mismatch(provider_name, model) {
-        let corrected = default_model_for_provider(provider_name);
+    let (provider_name, model) = heal_mock_llm_selection(provider_name, model);
+    crate::provider_visibility::ensure_non_mock_provider(&provider_name, "LLM")
+        .map_err(LlmError::ConfigError)?;
+    check_api_key(&provider_name)?;
+
+    let effective_model = if is_model_provider_mismatch(&provider_name, &model) {
+        let corrected = default_model_for_provider(&provider_name);
         tracing::warn!(
-            provider = provider_name,
-            requested_model = model,
+            provider = %provider_name,
+            requested_model = %model,
             corrected_model = corrected,
             "COMPAT-GUARD: LLM model/provider mismatch — auto-correcting to provider default."
         );
-        corrected
+        corrected.to_string()
     } else {
         model
     };
@@ -601,13 +684,13 @@ pub fn create_safe_llm_provider_with_headers(
     let mut ctx = crate::attribution::baseline_application_context();
     ctx.extra_headers.extend(headers);
 
-    let inner = create_inner_llm_provider(provider_name, effective_model, Some(ctx))?;
+    let inner = create_inner_llm_provider(&provider_name, &effective_model, Some(ctx))?;
 
     let config = SafetyLimitsConfig::from_env();
 
     tracing::info!(
-        provider = provider_name,
-        model = effective_model,
+        provider = %provider_name,
+        model = %effective_model,
         max_tokens = config.max_tokens,
         timeout_secs = config.timeout.as_secs(),
         extra_header_count = header_count,
@@ -630,6 +713,11 @@ pub fn create_safe_embedding_provider(
         return Ok(embedding);
     }
 
+    let (provider_name, model, dimension) =
+        heal_mock_embedding_selection(provider_name, model, dimension);
+    crate::provider_visibility::ensure_non_mock_provider(&provider_name, "embedding")
+        .map_err(LlmError::ConfigError)?;
+
     // FIX #163: If embedding-specific env vars are set and provider is openai-compatible,
     // create the provider with dedicated credentials.
     let is_openai_compatible = matches!(
@@ -650,23 +738,23 @@ pub fn create_safe_embedding_provider(
             let provider: Arc<dyn EmbeddingProvider> = if let Some(base_url) = base_url {
                 Arc::new(
                     edgequake_llm::OpenAIProvider::compatible(api_key, base_url)
-                        .with_embedding_model(model),
+                        .with_embedding_model(&model),
                 )
             } else {
-                Arc::new(edgequake_llm::OpenAIProvider::new(api_key).with_embedding_model(model))
+                Arc::new(edgequake_llm::OpenAIProvider::new(api_key).with_embedding_model(&model))
             };
             provider
         } else {
-            ProviderFactory::create_embedding_provider(provider_name, model, dimension)?
+            ProviderFactory::create_embedding_provider(&provider_name, &model, dimension)?
         }
     } else {
-        ProviderFactory::create_embedding_provider(provider_name, model, dimension)?
+        ProviderFactory::create_embedding_provider(&provider_name, &model, dimension)?
     };
     let config = SafetyLimitsConfig::from_env();
 
     tracing::info!(
-        provider = provider_name,
-        model = model,
+        provider = %provider_name,
+        model = %model,
         dimension = dimension,
         timeout_secs = config.timeout.as_secs(),
         "Creating safety-limited embedding provider"
@@ -697,6 +785,55 @@ pub fn is_local_provider(provider_name: &str) -> bool {
         provider_name.to_ascii_lowercase().as_str(),
         "ollama" | "lmstudio" | "lm-studio" | "lm_studio" | "mock"
     )
+}
+
+/// Default HTTP safety timeout for entity-extraction LLM calls on local providers.
+///
+/// Must exceed [`edgequake_pipeline::LOCAL_CHUNK_TIMEOUT_SECS`] (600) so the
+/// pipeline chunk timeout remains the controlling deadline.
+pub const LOCAL_EXTRACTION_HTTP_TIMEOUT_SECS: u64 = 900;
+
+/// Per-chunk entity-extraction timeout for a provider (env override wins).
+pub fn chunk_extraction_timeout_secs(provider_name: &str) -> u64 {
+    edgequake_pipeline::PipelineConfig::from_env_for_provider(provider_name)
+        .chunk_extraction_timeout_secs
+}
+
+/// Max concurrent entity extractions for a provider (env override wins).
+pub fn max_concurrent_extractions_for_provider(provider_name: &str) -> usize {
+    edgequake_pipeline::PipelineConfig::from_env_for_provider(provider_name)
+        .max_concurrent_extractions
+}
+
+/// HTTP safety-wrapper timeout for entity extraction LLM calls.
+///
+/// - Explicit `EDGEQUAKE_LLM_TIMEOUT_SECS` always wins
+/// - Local (Ollama/LM Studio): 900s
+/// - Cloud: [`DEFAULT_TIMEOUT_SECS`] (600s)
+pub fn extraction_http_timeout_secs(provider_name: &str) -> u64 {
+    if let Ok(val) = std::env::var("EDGEQUAKE_LLM_TIMEOUT_SECS") {
+        if let Ok(n) = val.parse::<u64>() {
+            return n.clamp(MINIMUM_TIMEOUT_SECS, MAXIMUM_TIMEOUT_SECS);
+        }
+    }
+    if is_slow_local_provider(provider_name) {
+        LOCAL_EXTRACTION_HTTP_TIMEOUT_SECS.clamp(MINIMUM_TIMEOUT_SECS, MAXIMUM_TIMEOUT_SECS)
+    } else {
+        DEFAULT_TIMEOUT_SECS.clamp(MINIMUM_TIMEOUT_SECS, MAXIMUM_TIMEOUT_SECS)
+    }
+}
+
+impl SafetyLimitsConfig {
+    /// Safety config for entity-extraction LLM calls (provider-aware HTTP timeout).
+    pub fn from_env_for_extraction(provider_name: &str) -> Self {
+        let mut config = Self::from_env();
+        // from_env already applied EDGEQUAKE_LLM_TIMEOUT_SECS when set; only
+        // override the default cloud 600s with local 900s when env is absent.
+        if std::env::var("EDGEQUAKE_LLM_TIMEOUT_SECS").is_err() {
+            config.timeout = Duration::from_secs(extraction_http_timeout_secs(provider_name));
+        }
+        config
+    }
 }
 
 /// Returns the recommended default seconds-per-page for the given provider.
@@ -816,7 +953,10 @@ pub fn create_safe_vision_provider(
         return Ok(llm);
     }
 
-    check_api_key(provider_name)?;
+    let (provider_name, model) = heal_mock_llm_selection(provider_name, model);
+    crate::provider_visibility::ensure_non_mock_provider(&provider_name, "vision LLM")
+        .map_err(LlmError::ConfigError)?;
+    check_api_key(&provider_name)?;
 
     // WHY: Guard against stale task data where a model was stored at upload time
     // under one provider (e.g., OpenAI) and is later retried under a different
@@ -826,25 +966,25 @@ pub fn create_safe_vision_provider(
     // When a clear mismatch is detected (OpenAI model name with non-OpenAI provider),
     // we auto-correct to the provider's default model and log a warning so operators
     // can update stale workspace / task configurations.
-    let effective_model = if is_model_provider_mismatch(provider_name, model) {
-        let corrected = default_model_for_provider(provider_name);
+    let effective_model = if is_model_provider_mismatch(&provider_name, &model) {
+        let corrected = default_model_for_provider(&provider_name);
         tracing::warn!(
-            provider = provider_name,
-            requested_model = model,
+            provider = %provider_name,
+            requested_model = %model,
             corrected_model = corrected,
             "COMPAT-GUARD: Model/provider mismatch detected — auto-correcting to provider default. \
              This indicates stale task data or misconfigured workspace settings. \
              Update workspace vision_llm_model to a {}-compatible model to suppress this warning.",
             provider_name
         );
-        corrected
+        corrected.to_string()
     } else {
         model
     };
 
-    let inner = create_inner_llm_provider(provider_name, effective_model, None)?;
+    let inner = create_inner_llm_provider(&provider_name, &effective_model, None)?;
 
-    let timeout_secs = vision_page_timeout_secs(provider_name);
+    let timeout_secs = vision_page_timeout_secs(&provider_name);
     let config = SafetyLimitsConfig {
         max_tokens: DEFAULT_MAX_TOKENS,
         timeout: Duration::from_secs(timeout_secs),
@@ -853,10 +993,10 @@ pub fn create_safe_vision_provider(
     };
 
     tracing::info!(
-        provider = provider_name,
-        model = effective_model,
+        provider = %provider_name,
+        model = %effective_model,
         timeout_secs = timeout_secs,
-        is_local = is_local_provider(provider_name),
+        is_local = is_local_provider(&provider_name),
         "Creating safety-limited VISION LLM provider (provider-aware timeout)"
     );
 

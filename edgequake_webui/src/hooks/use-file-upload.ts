@@ -18,6 +18,10 @@ import {
   uploadPdfDocument,
   type DocumentsListResult,
 } from "@/lib/api/edgequake";
+import {
+  pinDocumentShell,
+  scheduleDeferredUnpin,
+} from "@/lib/documents/progress-admit";
 import { performFileUpload } from "@/lib/upload/perform-file-upload";
 import {
   ADMIT_PROGRESS_PERCENT,
@@ -133,8 +137,8 @@ export function useFileUpload(
 
       setIsUploading(true);
 
-      // Generate a shared track_id for this batch
-      const trackId = `upload_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+      // Client batch correlation id (shared across files). Progress keys are per-task.
+      const batchTrackId = `upload_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
       // Initialize upload state for all files
       const initialFiles: UploadingFile[] = files.map((file) => ({
@@ -237,7 +241,7 @@ export function useFileUpload(
           };
 
           const uploadResult = await performFileUpload(file, {
-            trackId,
+            batchTrackId,
             pdfParserBackend: uploadOptions?.pdfParserBackend ?? pdfParserBackend,
             onUploadProgress: applyUploadProgress,
           });
@@ -284,6 +288,8 @@ export function useFileUpload(
               workspace_id: workspaceId ?? undefined,
             };
 
+            pinDocumentShell(optimisticDoc);
+            scheduleDeferredUnpin(optimisticId);
             queryClient.setQueriesData<DocumentsListResult>(
               { predicate: (query) => query.queryKey[0] === "documents" },
               (old) => {
@@ -325,6 +331,8 @@ export function useFileUpload(
               workspace_id: workspaceId ?? undefined,
             };
 
+            pinDocumentShell(optimisticDoc);
+            scheduleDeferredUnpin(uploadResult.document_id);
             queryClient.setQueriesData<DocumentsListResult>(
               { predicate: (query) => query.queryKey[0] === "documents" },
               (old) => {
@@ -600,11 +608,11 @@ export function useFileUpload(
 
           if (isPdf) {
             try {
-              const trackId = `upload_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+              const batchTrackId = `upload_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
               await uploadPdfDocument(entry.file, {
                 title: entry.file.name,
                 enable_vision: true,
-                track_id: trackId,
+                track_id: batchTrackId,
                 force_reindex: true,
               });
               queryClient.invalidateQueries({ queryKey: ["documents"] });
@@ -614,7 +622,7 @@ export function useFileUpload(
           } else if (isImage) {
             try {
               await performFileUpload(entry.file, {
-                trackId: `upload_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+                batchTrackId: `upload_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
               });
               queryClient.invalidateQueries({ queryKey: ["documents"] });
             } catch (err) {

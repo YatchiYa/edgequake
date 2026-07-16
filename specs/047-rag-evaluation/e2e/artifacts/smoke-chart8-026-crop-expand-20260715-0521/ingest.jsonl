@@ -1,0 +1,8 @@
+{"doc_id": "2311.16502v3.pdf", "status": "failed", "error": "GET http://127.0.0.1:8090/api/v1/documents/pdf/252a2303-7627-4752-ad41-da5a1c2a5d8a failed after 5 attempts: [Errno 61] Connection refused"}
+{"doc_id": "e79deb02a0c0e87511080836c5d4347b.pdf", "status": "failed", "error": "[Errno 61] Connection refused"}
+{"doc_id": "germanwingsdigitalcrisisanalysis-150403064828-conversion-gate01_95.pdf", "status": "failed", "error": "[Errno 61] Connection refused"}
+{"doc_id": "indonesiamobilemarketresearch-ag-150106055934-conversion-gate02_95.pdf", "status": "failed", "error": "[Errno 61] Connection refused"}
+{"doc_id": "measuringsuccessonfacebooktwitterlinkedin-160317142140_95.pdf", "status": "failed", "error": "[Errno 61] Connection refused"}
+{"doc_id": "PIP_Seniors-and-Tech-Use_040314.pdf", "status": "failed", "error": "GET http://127.0.0.1:8090/api/v1/documents/pdf/0a62962e-4c05-4017-908e-17873be1cac8 failed after 5 attempts: [Errno 61] Connection refused"}
+{"doc_id": "afe620b9beac86c1027b96d31d396407.pdf", "status": "failed", "error": "GET http://127.0.0.1:8090/api/v1/documents/pdf/3d224c13-3846-48d2-8435-7a54fc1e7bc5 failed after 5 attempts: [Errno 61] Connection refused"}
+{"doc_id": "05-03-18-political-release.pdf", "status": "failed", "error": "GET http://127.0.0.1:8090/api/v1/documents/pdf/a5f17fee-41b8-41f0-90f2-55243c6ba8ac failed after 5 attempts: [Errno 61] Connection refused"}

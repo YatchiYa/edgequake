@@ -95,114 +95,170 @@ fn redact_database_url(url: &str) -> String {
 async fn recover_orphaned_tasks(
     task_storage: Arc<dyn TaskStorage>,
     kv_storage: Arc<dyn edgequake_storage::traits::KVStorage>,
+    auto_resume: bool,
 ) -> Result<()> {
-    info!("🔍 Checking for orphaned tasks from previous backend session...");
-
-    let filter = TaskFilter {
-        status: Some(TaskStatus::Processing),
-        ..Default::default()
-    };
+    info!(
+        auto_resume,
+        "🔍 Checking for orphaned tasks from previous backend session..."
+    );
 
     let now = Utc::now();
     let mut recovered_count = 0;
+    let mut failed_for_manual_count = 0;
     let mut completed_count = 0;
-    let mut page = 1;
-    let page_size = 500;
 
-    // WHY pagination loop: If >page_size tasks are stuck in "processing"
-    // (e.g., large batch upload interrupted), a single page misses the rest.
-    // Loop until we get an empty page or fewer results than page_size.
-    loop {
-        let pagination = Pagination {
-            page,
-            page_size,
+    // Statuses that cannot make progress with zero workers at boot.
+    let orphan_statuses: &[TaskStatus] = if auto_resume {
+        // Auto-resume only rewrites in-flight processing → pending (hydrate later).
+        &[TaskStatus::Processing]
+    } else {
+        // Manual resume: fail both processing and leftover pending so UI shows
+        // Reprocess instead of silent forever-pending rows.
+        &[TaskStatus::Processing, TaskStatus::Pending]
+    };
+
+    for status in orphan_statuses {
+        let filter = TaskFilter {
+            status: Some(*status),
             ..Default::default()
         };
+        let mut page = 1;
+        let page_size = 500;
 
-        let task_list = task_storage.list_tasks(filter.clone(), pagination).await?;
-        let batch_len = task_list.tasks.len();
+        // WHY pagination loop: If >page_size tasks are stuck (e.g., large batch
+        // upload interrupted), a single page misses the rest.
+        loop {
+            let pagination = Pagination {
+                page,
+                page_size,
+                ..Default::default()
+            };
 
-        // WHY unconditional recovery: At startup there are ZERO active workers.
-        // Every task with status "processing" is orphaned — there is no worker
-        // processing it. The heartbeat mechanism updates `updated_at` every 60s,
-        // which defeats any age-based threshold. Recovering unconditionally is
-        // both correct and safe (idempotent processing + checkpoint system).
-        for mut task in task_list.tasks {
-            let age = now.signed_duration_since(task.updated_at);
+            let task_list = task_storage.list_tasks(filter.clone(), pagination).await?;
+            let batch_len = task_list.tasks.len();
 
-            // Split-brain: task=processing but document already completed.
-            if let Some(doc_id) = edgequake_api::services::extract_document_id_from_task(&task) {
-                let meta_key =
-                    edgequake_api::services::resolve_document_metadata_key(&doc_id, &kv_storage)
-                        .await;
-                if let Ok(Some(meta)) = kv_storage.get_by_id(&meta_key).await {
-                    let status = meta.get("status").and_then(|v| v.as_str()).unwrap_or("");
-                    if edgequake_api::document_metadata::is_terminal_success_status(status) {
-                        task.status = TaskStatus::Indexed;
-                        task.error_message = Some(format!(
-                            "Auto-closed after restart: document already terminal ({status}); \
-                             task was still processing (age {} minutes).",
-                            age.num_minutes()
-                        ));
-                        task.updated_at = now;
-                        match task_storage.update_task(&task).await {
-                            Ok(_) => {
-                                info!(
-                                    "✅ Closed orphaned task against completed doc: {} → indexed",
-                                    task.track_id
-                                );
-                                completed_count += 1;
+            for mut task in task_list.tasks {
+                let age = now.signed_duration_since(task.updated_at);
+
+                // Split-brain: task non-terminal but document already completed.
+                if let Some(doc_id) = edgequake_api::services::extract_document_id_from_task(&task)
+                {
+                    let meta_key =
+                        edgequake_api::services::resolve_document_metadata_key(&doc_id, &kv_storage)
+                            .await;
+                    if let Ok(Some(meta)) = kv_storage.get_by_id(&meta_key).await {
+                        let doc_status =
+                            meta.get("status").and_then(|v| v.as_str()).unwrap_or("");
+                        if edgequake_api::document_metadata::is_terminal_success_status(doc_status)
+                        {
+                            task.status = TaskStatus::Indexed;
+                            task.error_message = Some(format!(
+                                "Auto-closed after restart: document already terminal ({doc_status}); \
+                                 task was still {status:?} (age {} minutes).",
+                                age.num_minutes()
+                            ));
+                            task.updated_at = now;
+                            match task_storage.update_task(&task).await {
+                                Ok(_) => {
+                                    info!(
+                                        "✅ Closed orphaned task against completed doc: {} → indexed",
+                                        task.track_id
+                                    );
+                                    completed_count += 1;
+                                }
+                                Err(e) => {
+                                    warn!(
+                                        "⚠️ Failed to close orphaned task {}: {}",
+                                        task.track_id, e
+                                    );
+                                }
                             }
-                            Err(e) => {
-                                warn!("⚠️ Failed to close orphaned task {}: {}", task.track_id, e);
-                            }
+                            continue;
                         }
-                        continue;
+                    }
+                }
+
+                if auto_resume {
+                    // Reset to pending for automatic retry via checkpoint system.
+                    task.status = TaskStatus::Pending;
+                    task.error_message = Some(format!(
+                        "Auto-recovered after backend restart (was processing for {} minutes). \
+                         Will resume from checkpoint if available.",
+                        age.num_minutes()
+                    ));
+                    task.updated_at = now;
+
+                    match task_storage.update_task(&task).await {
+                        Ok(_) => {
+                            info!(
+                                "✅ Recovered orphaned task: {} (age: {})",
+                                task.track_id,
+                                humanize_duration(age)
+                            );
+                            recovered_count += 1;
+                        }
+                        Err(e) => {
+                            warn!(
+                                "⚠️ Failed to recover orphaned task {}: {}",
+                                task.track_id, e
+                            );
+                        }
+                    }
+                } else {
+                    // Manual resume (default): fail so the user must Reprocess.
+                    let error_msg = format!(
+                        "Interrupted by server restart (was {status:?} for {} minutes). \
+                         Use Reprocess to resume from checkpoint if available.",
+                        age.num_minutes()
+                    );
+                    task.status = TaskStatus::Failed;
+                    task.error_message = Some(error_msg.clone());
+                    task.updated_at = now;
+
+                    match task_storage.update_task(&task).await {
+                        Ok(_) => {
+                            if let Err(e) =
+                                edgequake_api::services::sync_document_failed_on_orphan_heartbeat(
+                                    Arc::clone(&kv_storage),
+                                    &task,
+                                    &error_msg,
+                                )
+                                .await
+                            {
+                                warn!(
+                                    task_id = %task.track_id,
+                                    error = %e,
+                                    "Failed to sync document metadata after startup orphan fail"
+                                );
+                            }
+                            info!(
+                                "⏸️ Orphaned task marked failed for manual resume: {} (age: {})",
+                                task.track_id,
+                                humanize_duration(age)
+                            );
+                            failed_for_manual_count += 1;
+                        }
+                        Err(e) => {
+                            warn!(
+                                "⚠️ Failed to mark orphaned task {}: {}",
+                                task.track_id, e
+                            );
+                        }
                     }
                 }
             }
 
-            // Reset to pending for automatic retry via checkpoint system.
-            // WHY pending (not failed): The checkpoint system will resume from
-            // where the task left off. Marking as "failed" forces manual retry
-            // which is poor UX. Resetting to "pending" enables auto-recovery.
-            task.status = TaskStatus::Pending;
-            task.error_message = Some(format!(
-                "Auto-recovered after backend restart (was processing for {} minutes). \
-                 Will resume from checkpoint if available.",
-                age.num_minutes()
-            ));
-            task.updated_at = now;
-
-            match task_storage.update_task(&task).await {
-                Ok(_) => {
-                    info!(
-                        "✅ Recovered orphaned task: {} (age: {})",
-                        task.track_id,
-                        humanize_duration(age)
-                    );
-                    recovered_count += 1;
-                }
-                Err(e) => {
-                    warn!(
-                        "⚠️ Failed to recover orphaned task {}: {}",
-                        task.track_id, e
-                    );
-                }
+            if batch_len < page_size as usize {
+                break;
             }
+            page += 1;
         }
-
-        // Stop when we got fewer results than page_size (last page)
-        if batch_len < page_size as usize {
-            break;
-        }
-        page += 1;
     }
 
-    if recovered_count > 0 || completed_count > 0 {
+    if recovered_count > 0 || failed_for_manual_count > 0 || completed_count > 0 {
         info!(
-            "🔧 Orphaned task recovery complete: {} requeued, {} closed (doc already terminal)",
-            recovered_count, completed_count
+            "🔧 Orphaned task recovery complete: {} auto-requeued, {} failed for manual resume, {} closed (doc already terminal)",
+            recovered_count, failed_for_manual_count, completed_count
         );
     } else {
         info!("✅ No orphaned tasks found - clean startup");
@@ -213,18 +269,34 @@ async fn recover_orphaned_tasks(
 
 /// Normalize document metadata left in non-terminal states after a restart.
 ///
-/// Early upload stages are marked for re-upload, while later stages are reset to
-/// pending so checkpoint-aware processing can resume automatically.
+/// Early upload stages are marked for re-upload. Later stages:
+/// - `auto_resume=true`: reset to pending + enqueue (legacy)
+/// - `auto_resume=false` (default): mark failed; user reprocesses via API/UI
 ///
 /// `min_age`: when `Some`, only documents whose `updated_at` is older than this
 /// duration are recovered. Use `None` at startup (zero workers → all non-terminal
 /// docs are orphans). Periodic recovery MUST pass a positive age to avoid
 /// resetting documents that are actively being processed.
+/// Result of startup/periodic orphaned-document recovery.
+#[derive(Debug, Default)]
+struct RecoverOrphanedDocsReport {
+    /// Document IDs rewritten from in-flight stages → pending (need task enqueue).
+    auto_recovered_ids: Vec<String>,
+    needs_reupload_count: usize,
+    /// Mid-flight docs marked failed for user Reprocess (manual-resume mode).
+    awaiting_manual_resume_count: usize,
+}
+
 async fn recover_orphaned_documents(
     kv_storage: Arc<dyn edgequake_storage::traits::KVStorage>,
     min_age: Option<Duration>,
-) -> Result<()> {
-    info!("🔍 Checking for orphaned documents from previous backend session...");
+    auto_resume: bool,
+) -> Result<RecoverOrphanedDocsReport> {
+    info!(
+        auto_resume,
+        "🔍 Checking for orphaned documents from previous backend session..."
+    );
+    let mut report = RecoverOrphanedDocsReport::default();
 
     // Prefer suffix scan — full keys() is O(all KV) and slows large-tenant boot.
     let metadata_keys = match kv_storage.keys_with_suffix("-metadata").await {
@@ -240,7 +312,7 @@ async fn recover_orphaned_documents(
 
     if metadata_keys.is_empty() {
         info!("✅ No documents found - clean startup");
-        return Ok(());
+        return Ok(report);
     }
 
     let metadata_values = kv_storage.get_by_ids_ordered(&metadata_keys).await?;
@@ -258,8 +330,9 @@ async fn recover_orphaned_documents(
     // "Failed" but the backend actively processes the document.
     let needs_reupload_stages = ["uploading"];
 
-    // Stages where pipeline checkpoint or at least the text is in KV storage,
-    // so automatic retry is possible.
+    // In-flight stages that imply workers were mid-pipeline when the process died.
+    // SPEC-054/#298 stampede guard: do NOT rewrite docs already `pending`/`queued`
+    // — those are waiting shells handled by capped reconcile, not recover.
     let auto_retryable_statuses = [
         "converting",
         "preprocessing",
@@ -270,7 +343,6 @@ async fn recover_orphaned_documents(
         "summarizing",
         "embedding",
         "storing",
-        "pending",
         "processing",
         "indexing",
     ];
@@ -280,9 +352,6 @@ async fn recover_orphaned_documents(
         .chain(auto_retryable_statuses.iter())
         .copied()
         .collect();
-
-    let mut auto_recovered_count = 0;
-    let mut needs_reupload_count = 0;
 
     for (key, maybe_value) in metadata_keys.iter().zip(metadata_values.iter()) {
         // Never touch staging admission shells — mid-upload race (edge case #5).
@@ -300,7 +369,17 @@ async fn recover_orphaned_documents(
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
 
-            let is_stuck = non_terminal_statuses.contains(&status)
+            // Auto-resume: leave waiting shells alone (reconcile may enqueue with a cap).
+            // Manual-resume: treat waiting pending/queued as orphans → failed for Reprocess.
+            let is_waiting_shell = matches!(status, "pending" | "queued")
+                && (current_stage.is_empty()
+                    || matches!(current_stage, "pending" | "queued" | "uploading"));
+            if is_waiting_shell && auto_resume {
+                continue;
+            }
+
+            let is_stuck = is_waiting_shell
+                || non_terminal_statuses.contains(&status)
                 || non_terminal_statuses.contains(&current_stage);
 
             if !is_stuck {
@@ -336,6 +415,8 @@ async fn recover_orphaned_documents(
             let is_early_stage = needs_reupload_stages.contains(&stuck_stage);
 
             let mut updated = serde_json::Value::Object(obj.clone());
+            let document_id = edgequake_storage::document_id_from_metadata_key(key)
+                .unwrap_or_else(|| key.trim_end_matches("-metadata").to_string());
 
             if is_early_stage {
                 if let Some(obj) = updated.as_object_mut() {
@@ -358,8 +439,8 @@ async fn recover_orphaned_documents(
                         ),
                     );
                 }
-                needs_reupload_count += 1;
-            } else {
+                report.needs_reupload_count += 1;
+            } else if auto_resume {
                 if let Some(obj) = updated.as_object_mut() {
                     // Later stage: pipeline checkpoint likely exists, auto-retry.
                     obj.insert("status".to_string(), serde_json::json!("pending"));
@@ -374,7 +455,28 @@ async fn recover_orphaned_documents(
                     );
                     obj.remove("error_message");
                 }
-                auto_recovered_count += 1;
+                report.auto_recovered_ids.push(document_id);
+            } else {
+                if let Some(obj) = updated.as_object_mut() {
+                    // Manual resume (default): fail; user clicks Reprocess.
+                    obj.insert("status".to_string(), serde_json::json!("failed"));
+                    obj.insert("current_stage".to_string(), serde_json::json!("failed"));
+                    obj.insert(
+                        "stage_message".to_string(),
+                        serde_json::json!(format!(
+                            "Interrupted during '{}' stage by server restart. \
+                             Use Reprocess to resume from checkpoint.",
+                            stuck_stage
+                        )),
+                    );
+                    obj.insert(
+                        "error_message".to_string(),
+                        serde_json::json!(
+                            "Interrupted by server restart — use Reprocess to resume"
+                        ),
+                    );
+                }
+                report.awaiting_manual_resume_count += 1;
             }
 
             if let Some(obj) = updated.as_object_mut() {
@@ -401,9 +503,14 @@ async fn recover_orphaned_documents(
                             "⚠️ Document needs re-upload: {} (was stuck in '{}')",
                             key, stuck_stage
                         );
-                    } else {
+                    } else if auto_resume {
                         info!(
                             "✅ Auto-recovered document: {} (was in '{}' → pending, will resume from checkpoint)",
+                            key, stuck_stage
+                        );
+                    } else {
+                        info!(
+                            "⏸️ Document marked failed for manual resume: {} (was in '{}')",
                             key, stuck_stage
                         );
                     }
@@ -420,86 +527,21 @@ async fn recover_orphaned_documents(
         }
     }
 
-    let total_recovered = auto_recovered_count + needs_reupload_count;
-    if total_recovered > 0 {
+    let total_touched = report.auto_recovered_ids.len()
+        + report.needs_reupload_count
+        + report.awaiting_manual_resume_count;
+    if total_touched > 0 {
         info!(
-            "🔧 Orphaned document recovery complete: {} auto-recovered (pending), {} need re-upload (failed)",
-            auto_recovered_count, needs_reupload_count
+            "🔧 Orphaned document recovery complete: {} auto-recovered (pending), {} awaiting manual Reprocess, {} need re-upload (failed)",
+            report.auto_recovered_ids.len(),
+            report.awaiting_manual_resume_count,
+            report.needs_reupload_count
         );
     } else {
         info!("✅ No orphaned documents found - clean startup");
     }
 
-    Ok(())
-}
-
-/// Reload pending database tasks into the in-memory worker queue on startup.
-async fn requeue_pending_tasks(
-    task_storage: Arc<dyn TaskStorage>,
-    task_queue: Arc<dyn TaskQueue>,
-) -> Result<()> {
-    info!("🔄 Checking for pending tasks to requeue from database...");
-
-    let filter = TaskFilter {
-        status: Some(TaskStatus::Pending),
-        ..Default::default()
-    };
-
-    let mut requeued_count = 0;
-    let mut failed_count = 0;
-    let mut page = 1;
-    let page_size = 500;
-
-    // SPEC-045 SRE-I02: paginate — startup may have >1000 pending after outage.
-    loop {
-        let pagination = Pagination {
-            page,
-            page_size,
-            ..Default::default()
-        };
-
-        let task_list = task_storage.list_tasks(filter.clone(), pagination).await?;
-        let batch_len = task_list.tasks.len();
-
-        if batch_len == 0 && page == 1 {
-            info!("✅ No pending tasks to requeue");
-            return Ok(());
-        }
-
-        if page == 1 && batch_len > 0 {
-            info!("📋 Found pending task(s) in database, requeueing to worker pool...");
-        }
-
-        for task in task_list.tasks {
-            match task_queue.send(task.clone()).await {
-                Ok(_) => {
-                    info!("✅ Requeued task: {}", task.track_id);
-                    requeued_count += 1;
-                }
-                Err(e) => {
-                    ErrorEvent::log_domain_warn(
-                        "startup",
-                        "requeue_pending_task",
-                        &e.to_string(),
-                        json!({ "task_id": task.track_id, "non_fatal": true }),
-                    );
-                    failed_count += 1;
-                }
-            }
-        }
-
-        if batch_len < page_size as usize {
-            break;
-        }
-        page += 1;
-    }
-
-    info!(
-        "🔧 Pending task requeue complete: {} requeued, {} failed",
-        requeued_count, failed_count
-    );
-
-    Ok(())
+    Ok(report)
 }
 
 /// Mark processing tasks as failed if their heartbeat has been dead for too long.
@@ -813,11 +855,25 @@ async fn async_main() -> Result<()> {
         },
     };
 
+    // SPEC-054: default = manual resume (no surprise LLM spend on every boot).
+    // Opt in: EDGEQUAKE_STARTUP_AUTO_RESUME=1
+    let auto_resume =
+        edgequake_api::services::startup_task_hydrate::startup_auto_resume_enabled();
+    if auto_resume {
+        info!("Startup auto-resume ENABLED (EDGEQUAKE_STARTUP_AUTO_RESUME)");
+    } else {
+        info!(
+            "Startup auto-resume disabled (default) — orphaned work is marked failed; \
+             use Reprocess to resume. Set EDGEQUAKE_STARTUP_AUTO_RESUME=1 to restore automatic resume."
+        );
+    }
+
     // Recover orphaned tasks from previous backend session (PRODUCTION_BUG_FIX)
     // MUST run BEFORE starting workers to prevent race conditions
     if let Err(e) = recover_orphaned_tasks(
         Arc::clone(&state.tasks.storage) as Arc<dyn TaskStorage>,
         Arc::clone(&state.storage.kv_storage) as Arc<dyn edgequake_storage::traits::KVStorage>,
+        auto_resume,
     )
     .await
     {
@@ -847,34 +903,90 @@ async fn async_main() -> Result<()> {
         );
     }
 
-    if let Err(e) = recover_orphaned_documents(
+    let recovered_doc_ids = match recover_orphaned_documents(
         Arc::clone(&state.storage.kv_storage) as Arc<dyn edgequake_storage::traits::KVStorage>,
-        None, // startup: all non-terminal docs are orphans (no workers yet)
+        None, // startup: in-flight stages are orphans (no workers yet)
+        auto_resume,
     )
     .await
     {
-        ErrorEvent::log_domain_warn(
-            "startup",
-            "recover_orphaned_documents",
-            &e.to_string(),
-            json!({ "non_fatal": true }),
-        );
-    }
+        Ok(report) => report.auto_recovered_ids,
+        Err(e) => {
+            ErrorEvent::log_domain_warn(
+                "startup",
+                "recover_orphaned_documents",
+                &e.to_string(),
+                json!({ "non_fatal": true }),
+            );
+            Vec::new()
+        }
+    };
 
-    // Requeue pending tasks from database to in-memory queue (PRODUCTION_BUG_FIX)
-    // MUST run BEFORE starting workers so tasks are available when workers start polling
-    if let Err(e) = requeue_pending_tasks(
-        Arc::clone(&state.tasks.storage) as Arc<dyn TaskStorage>,
-        Arc::clone(&state.tasks.queue) as Arc<dyn TaskQueue>,
-    )
-    .await
-    {
-        ErrorEvent::log_domain_warn(
-            "startup",
-            "requeue_pending_tasks",
-            &e.to_string(),
-            json!({ "non_fatal": true }),
-        );
+    // Auto-resume only: enqueue tasks for recovered docs + capped backlog drain.
+    // Manual-resume default skips this — user Reprocess is the enqueue path.
+    if auto_resume {
+        // SPEC-054/#298 stampede guard: never enqueue tens of thousands of Mistral
+        // jobs on every `make dev`. Priority = docs recovered this boot; then a
+        // capped drain of historical orphan pending (env: EDGEQUAKE_STARTUP_RECONCILE_MAX).
+        let reconcile_budget =
+            edgequake_api::services::pending_doc_task_reconcile::startup_reconcile_max_from_env();
+        if !recovered_doc_ids.is_empty() {
+            match edgequake_api::services::pending_doc_task_reconcile::reconcile_pending_documents_by_ids(
+                &state,
+                &recovered_doc_ids,
+                reconcile_budget,
+                "startup_auto_recover",
+            )
+            .await
+            {
+                Ok(report) => {
+                    if report.enqueued > 0 || report.scanned > 0 {
+                        info!(
+                            scanned = report.scanned,
+                            enqueued = report.enqueued,
+                            already_scheduled = report.already_scheduled,
+                            budget = reconcile_budget,
+                            "SPEC-054/#298: startup reconcile (recovered-this-boot)"
+                        );
+                    }
+                }
+                Err(e) => {
+                    ErrorEvent::log_domain_warn(
+                        "startup",
+                        "reconcile_pending_documents_by_ids",
+                        &e.to_string(),
+                        json!({ "non_fatal": true }),
+                    );
+                }
+            }
+        }
+        match edgequake_api::services::pending_doc_task_reconcile::reconcile_pending_documents_missing_tasks(
+            &state,
+            reconcile_budget,
+            "startup_backlog_drain",
+        )
+        .await
+        {
+            Ok(report) => {
+                if report.enqueued > 0 || report.scanned > 0 {
+                    info!(
+                        scanned = report.scanned,
+                        enqueued = report.enqueued,
+                        already_scheduled = report.already_scheduled,
+                        budget = reconcile_budget,
+                        "SPEC-054/#298: startup reconcile (capped backlog drain)"
+                    );
+                }
+            }
+            Err(e) => {
+                ErrorEvent::log_domain_warn(
+                    "startup",
+                    "reconcile_pending_documents_missing_tasks",
+                    &e.to_string(),
+                    json!({ "non_fatal": true }),
+                );
+            }
+        }
     }
 
     // CHECKPOINT-CLEANUP: Remove pipeline checkpoints older than 24 hours.
@@ -886,7 +998,9 @@ async fn async_main() -> Result<()> {
     )
     .await;
 
-    // Create and start worker pool
+    // Create and start worker pool BEFORE hydrating the bounded channel.
+    // SPEC-054/#298-B: ChannelTaskQueue capacity is 100; await-send before
+    // workers exist deadlocks when Pending task count exceeds capacity.
     let mut worker_pool = WorkerPool::new(
         worker_config.clone(),
         Arc::clone(&state.tasks.queue) as Arc<dyn edgequake_tasks::TaskQueue>,
@@ -905,6 +1019,40 @@ async fn async_main() -> Result<()> {
         worker_config.num_workers, worker_config.processing_timeout_secs
     );
     worker_pool.start();
+
+    // SPEC-054/#298-B: background_requeue_pending_tasks — hydrate after workers
+    // without blocking HTTP bind on large Pending backlogs.
+    // Only when EDGEQUAKE_STARTUP_AUTO_RESUME=1 (default: manual Reprocess).
+    if auto_resume {
+        let hydrate_storage = Arc::clone(&state.tasks.storage) as Arc<dyn TaskStorage>;
+        let hydrate_queue = Arc::clone(&state.tasks.queue) as Arc<dyn TaskQueue>;
+        tokio::spawn(async move {
+            match edgequake_api::services::startup_task_hydrate::requeue_pending_tasks(
+                hydrate_storage,
+                hydrate_queue,
+            )
+            .await
+            {
+                Ok(report) => {
+                    if report.requeued > 0 || report.failed > 0 {
+                        info!(
+                            requeued = report.requeued,
+                            failed = report.failed,
+                            "SPEC-054/#298-B: background pending-task hydrate complete"
+                        );
+                    }
+                }
+                Err(e) => {
+                    ErrorEvent::log_domain_warn(
+                        "startup",
+                        "requeue_pending_tasks",
+                        &e.to_string(),
+                        json!({ "non_fatal": true }),
+                    );
+                }
+            }
+        });
+    }
 
     // PERIODIC ORPHAN RECOVERY: Background task that catches tasks whose heartbeat
     // stopped mid-runtime (e.g., worker panic, tokio task cancellation). Uses the
@@ -947,19 +1095,67 @@ async fn async_main() -> Result<()> {
     {
         let kv =
             Arc::clone(&state.storage.kv_storage) as Arc<dyn edgequake_storage::traits::KVStorage>;
+        let reconcile_state = state.clone();
         // Only recover docs stale longer than the interval itself (active workers
         // keep updating `updated_at` via progress patches).
         let min_age = Duration::minutes(interval_mins as i64);
+        let periodic_auto_resume = auto_resume;
         tokio::spawn(async move {
             let mut interval =
                 tokio::time::interval(tokio::time::Duration::from_secs(interval_mins * 60));
             interval.tick().await;
             loop {
                 interval.tick().await;
-                if let Err(e) = recover_orphaned_documents(Arc::clone(&kv), Some(min_age)).await {
+                let recovered_ids = match recover_orphaned_documents(
+                    Arc::clone(&kv),
+                    Some(min_age),
+                    periodic_auto_resume,
+                )
+                .await
+                {
+                    Ok(report) => report.auto_recovered_ids,
+                    Err(e) => {
+                        ErrorEvent::log_domain_warn(
+                            "startup",
+                            "periodic_recover_orphaned_documents",
+                            &e.to_string(),
+                            json!({ "non_fatal": true }),
+                        );
+                        Vec::new()
+                    }
+                };
+                if !periodic_auto_resume {
+                    continue;
+                }
+                let budget = edgequake_api::services::pending_doc_task_reconcile::startup_reconcile_max_from_env();
+                if !recovered_ids.is_empty() {
+                    if let Err(e) = edgequake_api::services::pending_doc_task_reconcile::reconcile_pending_documents_by_ids(
+                        &reconcile_state,
+                        &recovered_ids,
+                        budget,
+                        "periodic_auto_recover",
+                    )
+                    .await
+                    {
+                        ErrorEvent::log_domain_warn(
+                            "startup",
+                            "periodic_reconcile_pending_documents",
+                            &e.to_string(),
+                            json!({ "non_fatal": true }),
+                        );
+                    }
+                }
+                // SPEC-054/#298: capped drain of historical orphan pending.
+                if let Err(e) = edgequake_api::services::pending_doc_task_reconcile::reconcile_pending_documents_missing_tasks(
+                    &reconcile_state,
+                    budget,
+                    "periodic_backlog_drain",
+                )
+                .await
+                {
                     ErrorEvent::log_domain_warn(
                         "startup",
-                        "periodic_recover_orphaned_documents",
+                        "periodic_reconcile_pending_documents",
                         &e.to_string(),
                         json!({ "non_fatal": true }),
                     );
@@ -967,6 +1163,7 @@ async fn async_main() -> Result<()> {
             }
         });
         info!(
+            auto_resume,
             "Periodic document orphan recovery enabled (every {} min, min_age={} min)",
             interval_mins, interval_mins
         );

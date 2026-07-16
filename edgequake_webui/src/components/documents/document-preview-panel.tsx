@@ -79,7 +79,9 @@ type DocumentStatus = keyof typeof statusConfig;
  */
 function getCategoryIconComponent(category: ErrorCategory) {
   switch (category) {
-    case 'llm': return Brain;
+    case 'llm':
+    case 'llm_timeout':
+      return Brain;
     case 'embedding': return Cpu;
     case 'storage': return Database;
     case 'pipeline': return FileWarning;

@@ -239,3 +239,127 @@ This is a known architectural constraint. The pipeline uses tokio async tasks wh
 
 **Planned improvement:** Persistent task queue with resume-on-restart semantics is on the roadmap.
 ```
+
+---
+
+## Issue #298 — Pipeline idle while documents stay Pending
+
+**FIX READY COMMENT (post after patch release):**
+
+```
+✅ Fix tracked in SPEC-054 — ships in next patch after v0.17.0.
+
+### Root cause
+Document KV `pending` without matching Task rows → workers idle forever.
+Especially severe on v0.12.11 (MemoryTaskStorage lost tasks on ECS recycle).
+
+### What we fixed
+1. **#298-A** — `pending_doc_task_reconcile` SSOT: after startup recovery, enqueue PDF/text tasks for orphan pending docs
+2. **#298-B** — Workers start before channel hydrate; `startup_task_hydrate` runs in background (150-task soak test passes with capacity-100 channel)
+3. **#298-C** — Reprocess returns `skipped` + `skip_reasons`; orphan pending reprocessable without `force`; delegates to SSOT when status is pending/queued
+
+### Tests (local, live PostgreSQL where required)
+- `e2e_spec054_pending_task_reconcile` — 7/7
+- `startup_task_hydrate::requeue_over_channel_capacity_with_active_consumer` — 150 pending / capacity 100, no deadlock
+
+### Upgrade path
+Move off v0.12.11 once auth/build blockers cleared. Postgres task persistence is required for ECS durability.
+
+Refs: `specs/054-fix-bugs-17/CODE_IS_LAW_ASSESSMENT.md`
+```
+
+---
+
+## Issue #300 — v0.17.0 Vision upload stuck on loading
+
+**FIX READY COMMENT (post after patch release):**
+
+```
+✅ Fix tracked in SPEC-054 — ships in next patch after v0.17.0.
+
+### Root cause
+WebUI subscribed to client batch `track_id`; workers wrote progress under server `task_id` (`pdf-<uuid>`). Client id got a permanent 0% skeleton.
+
+### What we fixed
+- Backend: `progress_identity` SSOT — seed progress under `task_id` only
+- WebUI: `resolvePdfProgressTrackId()` — subscribe to `response.task_id`
+- Client `track_id` remains batch correlation only
+
+### Reproduced on published v0.17.0 + Mistral
+See `docs/056-issue-release-17/` — backend completes; UI spinner was identity mismatch.
+
+### Tests
+- `e2e_spec054_pdf_progress_identity` — 4/4 on live PostgreSQL
+- WebUI vitest upload — 9/9
+
+### After upgrade
+Upload response `task_id` is the progress key. Polling `response.track_id` alone will still show 0% (by design).
+
+Refs: `specs/054-fix-bugs-17/CODE_IS_LAW_ASSESSMENT.md`
+```
+
+---
+
+## Issue #298 — Pipeline idle (investigation comment — superseded by fix above)
+
+**INVESTIGATION COMMENT (archived):**
+
+```
+Thanks for the detailed report and screenshots — we reproduced the *identity model* against current code and the v0.12.11 constraints you called out.
+
+### What you are seeing is consistent with a document ↔ task desync
+
+EdgeQuake has three layers:
+
+1. **Document metadata** (KV) — can sit forever at `pending`
+2. **Task registry** — workers only process *tasks*
+3. **In-process delivery queue** — tasks must be loaded into the worker channel
+
+`GET /pipeline/status` / activity report **idle** when there are no *working* documents and no `processing` tasks. That is intentional (SPEC-048): **queued/pending metadata alone does not make the pipeline "busy"**. So idle + hundreds Pending is not a UI contradiction — it means nothing is scheduled.
+
+Your counters also mix scopes:
+- Documents page ≈ **workspace** document KV
+- Pipeline "1429 completed / 70 failed" ≈ **global** task statistics across tenants
+
+### Why this bites hard on v0.12.11 (ECS)
+
+On v0.12.11, task storage was still **in-memory**. After an ECS task recycle:
+
+1. Startup `recover_orphaned_documents` rewrites in-flight docs to `pending` ("Auto-recovered after server restart…")
+2. It does **not** create new tasks
+3. `requeue_pending_tasks` only reloads tasks that still exist in task storage → **0** after memory loss
+4. Workers start idle → Pending forever
+
+Current code persists tasks in **Postgres** (`PostgresTaskStorage`) specifically to fix that loss-on-restart bug. Staying on 0.12.11 because of #288/#296 is understandable; that also keeps you on the broken task durability path.
+
+### Why Reprocess can look like a no-op
+
+`POST /documents/reprocess` **defaults to failed/cancelled only**. Pending docs need `document_id` + `force=true`. Current WebUI always sends `force=true`; older clients/bulk paths may return HTTP 200 with `requeued=0` and no toast. Even with force, enqueue can skip if content/`pdf_id` is missing.
+
+### Immediate workaround on 0.12.11
+
+```bash
+# Prefer recover-stuck (recreates tasks for aged pending/processing)
+curl -X POST "$API/api/v1/documents/recover-stuck" \
+  -H "Content-Type: application/json" \
+  -H "X-Workspace-ID: $WS" -H "X-Tenant-ID: $TENANT" \
+  -d '{"stuck_threshold_minutes": 5, "max_documents": 100}'
+
+# Then force-reprocess specific IDs
+curl -X POST "$API/api/v1/documents/reprocess" \
+  -H "Content-Type: application/json" \
+  -H "X-Workspace-ID: $WS" -H "X-Tenant-ID: $TENANT" \
+  -d '{"document_id":"<doc-uuid>","force":true,"max_documents":1}'
+
+curl "$API/api/v1/tasks?status=pending"
+```
+
+### Planned fixes (SPEC-054)
+
+Tracked in `specs/054-fix-bugs-17/ANALYSIS.md` as **#298-A/B/C**:
+- After auto-recovery, **enqueue** PDF/text tasks (not metadata-only)
+- Harden startup hydrate vs bounded channel for large backlogs
+- Make reprocess/stuck UI report skip reasons when nothing was queued
+
+Upgrade path once auth/build blockers (#288/#294/#296) are clear: move off 0.12.11 so Postgres task persistence + SPEC-048 stuck banner apply.
+```

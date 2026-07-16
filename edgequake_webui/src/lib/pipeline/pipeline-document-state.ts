@@ -13,7 +13,7 @@ import {
 import type { Document } from '@/types';
 import type { IngestionAlertMode } from './ingestion-alert-presenter';
 
-export const WAITING_STATUSES: DocumentStatus[] = ['pending', 'queued'];
+export const WAITING_STATUSES: DocumentStatus[] = ['pending', 'queued', 'cleaning'];
 
 export function isWaitingStatus(status: DocumentStatus): boolean {
   return WAITING_STATUSES.includes(status);

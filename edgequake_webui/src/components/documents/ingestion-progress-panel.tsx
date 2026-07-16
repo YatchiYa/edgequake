@@ -67,7 +67,8 @@ export function IngestionProgressPanel({
   compact = false,
   className,
 }: IngestionProgressPanelProps) {
-  const { progress, isLive, isLoading, cost, cancel, refetch } = useIngestionProgress(trackId);
+  const { progress, isLive, isLoading, error, cost, cancel, refetch } =
+    useIngestionProgress(trackId);
   
   // SPEC-003: Get chunk-level progress including failed chunks
   const { getProgress, getFailedChunks, hasFailedChunks } = useChunkProgress();
@@ -196,10 +197,52 @@ export function IngestionProgressPanel({
     );
   }
 
+  if (error && !progress) {
+    if (compact) {
+      return (
+        <div
+          className={cn('flex flex-col gap-1 w-full pr-8', className)}
+          data-testid="ingestion-progress-load-error"
+          role="alert"
+        >
+          <p className="text-sm font-medium truncate">{documentName}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-xs text-red-600 dark:text-red-400 truncate flex-1 min-w-0">
+              Failed to load progress: {error.message}
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="shrink-0 h-7"
+              onClick={() => refetch()}
+            >
+              <RefreshCw className="h-3.5 w-3.5 mr-1" />
+              Retry
+            </Button>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <Card className={cn('', className)} data-testid="ingestion-progress-load-error">
+        <CardContent className="py-6 space-y-2" role="alert">
+          <p className="text-sm font-medium">Ingesting: {documentName}</p>
+          <p className="text-sm text-red-600 dark:text-red-400">
+            Failed to load progress: {error.message}
+          </p>
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
+            <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+            Retry
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
   // Compact variant — parity with PdfUploadProgress compact row
   if (compact) {
     return (
-      <div className={cn('flex flex-col gap-1 w-full', className)}>
+      <div className={cn('flex flex-col gap-1 w-full pr-8', className)}>
         <div className="flex items-center gap-3">
           {isLive && <WebSocketStatusDot className="shrink-0" />}
           <div className="flex-1 min-w-0">
@@ -217,12 +260,29 @@ export function IngestionProgressPanel({
           </div>
         </div>
         {isProcessing && currentMessage && (
-          <p className="text-xs text-blue-600 dark:text-blue-400 truncate pl-6">
+          <p className="text-xs text-blue-600 dark:text-blue-400 truncate">
             {currentMessage}
           </p>
         )}
         {isFailed && (
-          <p className="text-xs text-red-500 truncate pl-6">{currentMessage}</p>
+          <div
+            className="flex items-center gap-2"
+            data-testid="ingestion-progress-compact-error"
+            role="alert"
+          >
+            <p className="text-xs text-red-600 dark:text-red-400 truncate flex-1 min-w-0">
+              {currentMessage || 'Ingestion failed'}
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="shrink-0 h-7"
+              onClick={() => refetch()}
+            >
+              <RefreshCw className="h-3.5 w-3.5 mr-1" />
+              Retry
+            </Button>
+          </div>
         )}
       </div>
     );

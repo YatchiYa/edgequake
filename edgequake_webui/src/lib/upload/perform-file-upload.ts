@@ -11,9 +11,11 @@ import type { PdfUploadOptions } from "@/types";
 import type { MultipartUploadProgress } from "@/lib/upload/multipart-upload-client";
 
 import { classifyUploadFile } from "./file-kind";
+import { resolveProgressTrackId } from "./progress-track-id";
 
 export interface PerformFileUploadOptions {
-  trackId: string;
+  /** Client batch correlation id (multipart); not the progress-store key. */
+  batchTrackId: string;
   pdfParserBackend?: PdfUploadOptions["pdf_parser_backend"];
   /** Enable inline image VLM analysis on PDF markdown (LightRAG `process_options=i`). */
   analyzeInlineImages?: boolean;
@@ -58,7 +60,7 @@ export async function performFileUpload(
     const pdfResponse = await uploadPdfDocument(file, {
       title: file.name,
       enable_vision: true,
-      track_id: options.trackId,
+      track_id: options.batchTrackId,
       pdf_parser_backend: options.pdfParserBackend,
       analyze_inline_images: options.analyzeInlineImages ?? true,
       onUploadProgress: options.onUploadProgress,
@@ -70,7 +72,8 @@ export async function performFileUpload(
         pdfResponse.duplicate_of ??
         (pdfResponse.status === "duplicate" ? pdfResponse.pdf_id : undefined),
       task_id: pdfResponse.task_id,
-      track_id: pdfResponse.track_id,
+      // SPEC-054 / #300: subscribe to server task_id, not client batch id.
+      track_id: resolveProgressTrackId(pdfResponse),
       status: pdfResponse.status,
       isPdf: true,
       source_type: "pdf",
@@ -92,7 +95,8 @@ export async function performFileUpload(
         },
       ),
       task_id: fileResponse.task_id,
-      track_id: fileResponse.track_id,
+      // Same SSOT as PDF: prefer task_id for progress subscription.
+      track_id: resolveProgressTrackId(fileResponse),
       status: fileResponse.status,
       isPdf: false,
       source_type: "image",
@@ -105,14 +109,14 @@ export async function performFileUpload(
     source_type: "text",
     title: file.name,
     async_processing: true,
-    track_id: options.trackId,
+    track_id: options.batchTrackId,
   });
 
   return {
     document_id: textResponse.document_id,
     duplicate_of: textResponse.duplicate_of,
     task_id: textResponse.task_id,
-    track_id: textResponse.track_id,
+    track_id: resolveProgressTrackId(textResponse),
     status: textResponse.status,
     isPdf: false,
     source_type: "text",

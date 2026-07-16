@@ -10,7 +10,9 @@ use edgequake_core::WorkspaceService;
 use edgequake_pipeline::{build_ingestion_pipeline, IngestionPipelineOptions, Pipeline};
 use tracing::{error, info, warn};
 
-use crate::safety_limits::{create_safe_embedding_provider, create_safe_llm_provider};
+use crate::safety_limits::{
+    create_safe_embedding_provider, create_safe_extraction_llm_provider, is_slow_local_provider,
+};
 
 /// Policy when workspace provider resolution fails.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -89,7 +91,8 @@ impl WorkspacePipelineFactory {
         };
 
         let extract_role = edgequake_core::resolve_role_llm(&ws, edgequake_core::LlmRole::Extract);
-        let llm_provider = create_safe_llm_provider(&extract_role.provider, &extract_role.model);
+        let llm_provider =
+            create_safe_extraction_llm_provider(&extract_role.provider, &extract_role.model);
         let embedding_provider = create_safe_embedding_provider(
             &ws.embedding_provider,
             &ws.embedding_model,
@@ -98,10 +101,20 @@ impl WorkspacePipelineFactory {
 
         match (llm_provider, embedding_provider) {
             (Ok(llm), Ok(embedding)) => {
+                let options = options.with_llm_provider(&extract_role.provider);
+                let tuned = edgequake_pipeline::PipelineConfig::from_env_for_provider(
+                    &extract_role.provider,
+                );
                 info!(
                     workspace_id = workspace_id,
                     llm_model = %ws.llm_full_id(),
                     embedding_model = %ws.embedding_full_id(),
+                    extract_provider = %extract_role.provider,
+                    is_local = is_slow_local_provider(&extract_role.provider),
+                    chunk_timeout_secs = tuned.chunk_extraction_timeout_secs,
+                    max_concurrent_extractions = tuned.max_concurrent_extractions,
+                    ollama_context_length = %std::env::var("OLLAMA_CONTEXT_LENGTH")
+                        .unwrap_or_else(|_| "(unset)".into()),
                     "Resolved workspace-specific ingestion pipeline"
                 );
 

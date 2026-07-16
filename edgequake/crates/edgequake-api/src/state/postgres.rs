@@ -70,10 +70,11 @@ impl AppState {
     /// # Provider Selection
     ///
     /// LLM provider is automatically selected based on environment:
-    /// - `EDGEQUAKE_LLM_PROVIDER=ollama|lmstudio|mock` - explicit selection
+    /// - `EDGEQUAKE_LLM_PROVIDER=ollama|lmstudio|openai|…` - explicit selection
     /// - `OLLAMA_HOST` present → Ollama provider
     /// - `OPENAI_API_KEY` present → OpenAI provider
-    /// - Default → Mock provider
+    ///
+    /// Mock is forbidden as the server default.
     ///
     /// The `llm_api_key` parameter is kept for backward compatibility and will set `OPENAI_API_KEY`
     /// when provided. For Ollama/LM Studio, you can pass an empty string and use environment variables.
@@ -100,6 +101,28 @@ impl AppState {
         // Create providers via factory (auto-detects from environment)
         let (llm_provider, embedding_provider) =
             ProviderFactory::from_env().expect("Failed to create LLM provider from environment");
+
+        // Application runtime must never serve Mock as the process-wide default
+        // unless an explicit test escape hatch is set (EDGEQUAKE_ALLOW_MOCK_PROVIDER=1).
+        if crate::provider_visibility::is_mock_provider(llm_provider.name())
+            && !crate::provider_visibility::mock_provider_allowed()
+        {
+            return Err(
+                "Mock LLM provider is forbidden as the server default. \
+                 Set EDGEQUAKE_LLM_PROVIDER to a real provider (ollama, openai, mistral, …) \
+                 and ensure the corresponding credentials/host are available."
+                    .into(),
+            );
+        }
+        if crate::provider_visibility::is_mock_provider(embedding_provider.name())
+            && !crate::provider_visibility::mock_provider_allowed()
+        {
+            return Err(
+                "Mock embedding provider is forbidden as the server default. \
+                 Set EDGEQUAKE_EMBEDDING_PROVIDER to a real provider (ollama, openai, …)."
+                    .into(),
+            );
+        }
 
         // Allow a dedicated embedding provider / host to override the default
         // (OLLAMA_EMBEDDING_HOST, EDGEQUAKE_EMBEDDING_PROVIDER, etc.)

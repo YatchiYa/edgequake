@@ -1,0 +1,191 @@
+{
+  "spec": "047",
+  "stage": "smoke",
+  "valid": true,
+  "invalid_reason": null,
+  "task_name": "MMLongBench-Doc/RAG-adaptation",
+  "banner": "EdgeQuake RAG adaptation of MMLongBench-Doc; not comparable to the LVLM leaderboard without caveats. Official LVLM GPT-4o F1\u224844.9% is a difficulty reference only. Provider stack: mistral-small-latest + mistral-embed (Postgres). W1 ablation: P0_mm_ite_vision_medium pins mistral-medium-3-5 for vision only.",
+  "pins": {
+    "edgequake_version": "0.17.0",
+    "edgequake_git_sha": "11376355",
+    "dataset_id": "yubo2333/MMLongBench-Doc",
+    "dataset_revision": "parquet-train",
+    "fixture_id": "smoke_chart_doc_ids_v1",
+    "llm_provider": "mistral",
+    "llm_model": "mistral-small-latest",
+    "vision_provider": "mistral",
+    "vision_model": "mistral-small-latest",
+    "embedding_provider": "mistral",
+    "embedding_model": "mistral-embed",
+    "embedding_dim": 1024,
+    "query_mode": "hybrid",
+    "extractor_model": "mistral-small-latest",
+    "eval_score_sha": "cafa268358b08521cfc9a805c67d86732d943677e4408c5751f336123d09631f",
+    "system_prompt_sha": "server-default",
+    "profile_id": "P0_mm_ite",
+    "pdf_parser_backend": "vision",
+    "process_options": "ite"
+  },
+  "metrics": {
+    "n_docs": 8,
+    "n_questions": 117,
+    "n_scored": 117,
+    "n_skipped_ingest_failed": 0,
+    "accuracy": 0.5060314329545099,
+    "f1": 0.4028369331817607
+  },
+  "slices": {
+    "single_page_accuracy": 0.49245327322250393,
+    "cross_page_accuracy": 0.2777777777777778,
+    "unanswerable_accuracy": 0.7142857142857143,
+    "by_evidence_source": {
+      "Figure": {
+        "accuracy": 0.45714285714285713,
+        "n": 21
+      },
+      "Generalized-text (Layout)": {
+        "accuracy": 0.36363636363636365,
+        "n": 11
+      },
+      "Table": {
+        "accuracy": 0.44398656898656896,
+        "n": 24
+      },
+      "Pure-text (Plain-text)": {
+        "accuracy": 0.3057692307692308,
+        "n": 26
+      },
+      "Chart": {
+        "accuracy": 0.2727272727272727,
+        "n": 22
+      }
+    },
+    "by_evidence_source_exclusive": {
+      "Chart": {
+        "accuracy": 0.2857142857142857,
+        "n": 7
+      },
+      "Figure": {
+        "accuracy": 0.4125,
+        "n": 16
+      },
+      "Generalized-text (Layout)": {
+        "accuracy": 0.25,
+        "n": 4
+      },
+      "Pure-text (Plain-text)": {
+        "accuracy": 0.42142857142857143,
+        "n": 7
+      },
+      "Table": {
+        "accuracy": 0.577045177045177,
+        "n": 15
+      }
+    },
+    "by_doc_type": {
+      "Academic paper": {
+        "accuracy": 0.4375,
+        "n": 16
+      },
+      "Research report / Introduction": {
+        "accuracy": 0.46296296296296297,
+        "n": 54
+      },
+      "Financial report": {
+        "accuracy": 0.5062163326869209,
+        "n": 17
+      },
+      "Administration/Industry file": {
+        "accuracy": 0.5,
+        "n": 18
+      },
+      "Tutorial/Workshop": {
+        "accuracy": 0.7999999999999999,
+        "n": 12
+      }
+    },
+    "attribution": {
+      "protocol_version": "026-hardened-2026-07-15",
+      "list_gold": {
+        "n": 18,
+        "accuracy": 0.322008547008547,
+        "score_sum": 5.796153846153846
+      },
+      "unanswerable": {
+        "n": 42,
+        "accuracy": 0.7142857142857143,
+        "score_sum": 30.0
+      },
+      "other_answerable": {
+        "n": 57,
+        "accuracy": 0.41069340016708433,
+        "score_sum": 23.409523809523808
+      }
+    }
+  },
+  "protocol": {
+    "protocol_version": "026-hardened-2026-07-15",
+    "fidelity_gate_metric": "answer_in_evidence_rate_long",
+    "min_needle_len_gate": 3,
+    "fp_spread_threshold": 0.3,
+    "chart_a_in_e_long_min": 0.5,
+    "table_a_in_e_long_min": 0.55,
+    "require_full_answerable_audit": true,
+    "acc_claim_requires": [
+      "Chart exclusive Acc \u2191 or multi-label Chart Acc \u2191",
+      "Chart a_in_e_long \u2265 gate",
+      "paired attribution shows non-list_gold contribution if claiming W1"
+    ]
+  },
+  "ops": {
+    "ingest_coverage": 1.0,
+    "cost_usd_total": null,
+    "p50_query_latency_ms": 5457.911968231201,
+    "p95_query_latency_ms": 8372.151041030884,
+    "answer_empty_rate": 0.0,
+    "extractor_fail_rate": 0.0,
+    "page_hit_rate": 0.7466666666666667,
+    "document_scope": true,
+    "query_workers": 1,
+    "ingest_workers": 1,
+    "retrieval": {
+      "n_with_retrieval_diag": 75,
+      "answerable_only": true,
+      "context_empty_rate": 0.0,
+      "mean_n_chunk_sources": 17.52,
+      "page_hit@1": 0.49333333333333335,
+      "page_recall@1": 0.3548148148148148,
+      "page_hit@3": 0.6933333333333334,
+      "page_recall@3": 0.5701481481481482,
+      "page_hit@5": 0.7466666666666667,
+      "page_recall@5": 0.6538518518518519,
+      "page_hit@10": 0.8666666666666667,
+      "page_recall@10": 0.7851851851851851,
+      "mean_arm_local_chunks": 5.648648648648648,
+      "mean_arm_global_chunks": 7.7,
+      "mean_arm_naive_chunks": 19.12
+    },
+    "false_refusal": {
+      "n_answerable": 75,
+      "n_false_refusal": 17,
+      "false_refusal_rate": 0.22666666666666666,
+      "n_answerable_page_hit@5": 56,
+      "n_false_refusal_page_hit@5": 9,
+      "false_refusal_given_page_hit@5": 0.16071428571428573
+    },
+    "arm_gates": {
+      "n_with_arm_diag": 117,
+      "arms_gated_rate": 0.8717948717948718,
+      "arm_local_present_rate": 0.9914529914529915,
+      "arm_global_present_rate": 0.13675213675213677,
+      "arm_graph_present_rate": 1.0,
+      "naive_only_rate": 0.0,
+      "n_with_arms_run": 117,
+      "planned_local_rate": 0.9914529914529915,
+      "planned_global_rate": 0.13675213675213677,
+      "planned_graph_rate": 1.0,
+      "planned_naive_only_rate": 0.0
+    }
+  },
+  "created_at_utc": "2026-07-15T06:51:14Z"
+}
