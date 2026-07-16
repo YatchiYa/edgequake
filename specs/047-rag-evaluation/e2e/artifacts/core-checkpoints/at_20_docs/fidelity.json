@@ -1,0 +1,120 @@
+{
+  "stage": "core",
+  "workspace_id": "b994167c-180e-4708-96a1-a1778b450f15",
+  "protocol_version": "026-listmem-2026-07-15",
+  "gateable": false,
+  "n_answerable_total": 146,
+  "n_answerable_audited": 0,
+  "warnings": [
+    "audited 0/146 answerable (errors=146) — cross-run compare only if peer has same n"
+  ],
+  "protocol": {
+    "protocol_version": "026-listmem-2026-07-15",
+    "fidelity_gate_metric": "answer_in_evidence_rate_long",
+    "min_needle_len_gate": 3,
+    "fp_spread_threshold": 0.3,
+    "chart_a_in_e_long_min": 0.5,
+    "table_a_in_e_long_min": 0.55,
+    "require_full_answerable_audit": true,
+    "acc_claim_requires": [
+      "Chart exclusive Acc ↑ or multi-label Chart Acc ↑",
+      "Chart a_in_e_long ≥ gate",
+      "paired attribution shows non-list_gold contribution if claiming W1"
+    ]
+  },
+  "aggregate": {
+    "n": 0,
+    "protocol_version": "026-listmem-2026-07-15"
+  },
+  "n_errors": 146,
+  "errors": [
+    {
+      "doc_id": "2311.16502v3.pdf",
+      "error": "get_markdown failed: 500 {\"code\":\"STORAGE_ERROR\",\"message\":\"Storage error: Database error: KV get failed: pool timed out while waiting for an open connection\",\"details\":{\"request_id\":\"cacee73b-b54d-4238-b85a-13c17a23f0b0\",\"error_code\":\"STORAGE_ERROR\",\"http_status\":500,\"retryable\":true,\"source\":\"storage\",\"diagnostics\":{\"kind\":\"storage\",\"category\":\"database\",\"error\":\"Database error: KV get failed: pool timed out while waiting for an open connection\",\"retryable\":true}},\"type\":\"https://edgequake.dev/problems/storage-error\","
+    },
+    {
+      "doc_id": "2311.16502v3.pdf",
+      "error": "get_markdown failed: 500 {\"code\":\"STORAGE_ERROR\",\"message\":\"Storage error: Database error: KV get failed: pool timed out while waiting for an open connection\",\"details\":{\"request_id\":\"60083317-cdff-4bdf-919e-f658f5dc2aa9\",\"error_code\":\"STORAGE_ERROR\",\"http_status\":500,\"retryable\":true,\"source\":\"storage\",\"diagnostics\":{\"kind\":\"storage\",\"category\":\"database\",\"error\":\"Database error: KV get failed: pool timed out while waiting for an open connection\",\"retryable\":true}},\"type\":\"https://edgequake.dev/problems/storage-error\","
+    },
+    {
+      "doc_id": "2311.16502v3.pdf",
+      "error": "get_markdown failed: 500 {\"code\":\"STORAGE_ERROR\",\"message\":\"Storage error: Database error: KV get failed: pool timed out while waiting for an open connection\",\"details\":{\"request_id\":\"87a53263-791b-467e-878c-0644cf5011cb\",\"error_code\":\"STORAGE_ERROR\",\"http_status\":500,\"retryable\":true,\"source\":\"storage\",\"diagnostics\":{\"kind\":\"storage\",\"category\":\"database\",\"error\":\"Database error: KV get failed: pool timed out while waiting for an open connection\",\"retryable\":true}},\"type\":\"https://edgequake.dev/problems/storage-error\","
+    },
+    {
+      "doc_id": "2311.16502v3.pdf",
+      "error": "get_markdown failed: 500 {\"code\":\"STORAGE_ERROR\",\"message\":\"Storage error: Database error: KV get failed: pool timed out while waiting for an open connection\",\"details\":{\"request_id\":\"9434104d-5d58-4707-a9eb-24ae3d5bff42\",\"error_code\":\"STORAGE_ERROR\",\"http_status\":500,\"retryable\":true,\"source\":\"storage\",\"diagnostics\":{\"kind\":\"storage\",\"category\":\"database\",\"error\":\"Database error: KV get failed: pool timed out while waiting for an open connection\",\"retryable\":true}},\"type\":\"https://edgequake.dev/problems/storage-error\","
+    },
+    {
+      "doc_id": "2311.16502v3.pdf",
+      "error": "get_markdown failed: 500 {\"code\":\"STORAGE_ERROR\",\"message\":\"Storage error: Database error: KV get failed: pool timed out while waiting for an open connection\",\"details\":{\"request_id\":\"d9c3094b-e885-482b-a580-53f331912f18\",\"error_code\":\"STORAGE_ERROR\",\"http_status\":500,\"retryable\":true,\"source\":\"storage\",\"diagnostics\":{\"kind\":\"storage\",\"category\":\"database\",\"error\":\"Database error: KV get failed: pool timed out while waiting for an open connection\",\"retryable\":true}},\"type\":\"https://edgequake.dev/problems/storage-error\","
+    },
+    {
+      "doc_id": "afe620b9beac86c1027b96d31d396407.pdf",
+      "error": "get_markdown failed: 500 {\"code\":\"STORAGE_ERROR\",\"message\":\"Storage error: Database error: KV get failed: pool timed out while waiting for an open connection\",\"details\":{\"request_id\":\"df98268c-be17-457f-b1fb-1f3eb7536ded\",\"error_code\":\"STORAGE_ERROR\",\"http_status\":500,\"retryable\":true,\"source\":\"storage\",\"diagnostics\":{\"kind\":\"storage\",\"category\":\"database\",\"error\":\"Database error: KV get failed: pool timed out while waiting for an open connection\",\"retryable\":true}},\"type\":\"https://edgequake.dev/problems/storage-error\","
+    },
+    {
+      "doc_id": "afe620b9beac86c1027b96d31d396407.pdf",
+      "error": "get_markdown failed: 500 {\"code\":\"STORAGE_ERROR\",\"message\":\"Storage error: Database error: KV get failed: pool timed out while waiting for an open connection\",\"details\":{\"request_id\":\"3e1b6ad3-6a47-4510-bd7b-8d2da0af5bf0\",\"error_code\":\"STORAGE_ERROR\",\"http_status\":500,\"retryable\":true,\"source\":\"storage\",\"diagnostics\":{\"kind\":\"storage\",\"category\":\"database\",\"error\":\"Database error: KV get failed: pool timed out while waiting for an open connection\",\"retryable\":true}},\"type\":\"https://edgequake.dev/problems/storage-error\","
+    },
+    {
+      "doc_id": "afe620b9beac86c1027b96d31d396407.pdf",
+      "error": "get_markdown failed: 500 {\"code\":\"STORAGE_ERROR\",\"message\":\"Storage error: Database error: KV get failed: pool timed out while waiting for an open connection\",\"details\":{\"request_id\":\"82772e5d-5fd2-451a-987f-7675fad117d8\",\"error_code\":\"STORAGE_ERROR\",\"http_status\":500,\"retryable\":true,\"source\":\"storage\",\"diagnostics\":{\"kind\":\"storage\",\"category\":\"database\",\"error\":\"Database error: KV get failed: pool timed out while waiting for an open connection\",\"retryable\":true}},\"type\":\"https://edgequake.dev/problems/storage-error\","
+    },
+    {
+      "doc_id": "afe620b9beac86c1027b96d31d396407.pdf",
+      "error": "get_markdown failed: 500 {\"code\":\"STORAGE_ERROR\",\"message\":\"Storage error: Database error: KV get failed: pool timed out while waiting for an open connection\",\"details\":{\"request_id\":\"809cc9da-1e0c-43d8-8c1e-185978a602a6\",\"error_code\":\"STORAGE_ERROR\",\"http_status\":500,\"retryable\":true,\"source\":\"storage\",\"diagnostics\":{\"kind\":\"storage\",\"category\":\"database\",\"error\":\"Database error: KV get failed: pool timed out while waiting for an open connection\",\"retryable\":true}},\"type\":\"https://edgequake.dev/problems/storage-error\","
+    },
+    {
+      "doc_id": "afe620b9beac86c1027b96d31d396407.pdf",
+      "error": "get_markdown failed: 500 {\"code\":\"STORAGE_ERROR\",\"message\":\"Storage error: Database error: KV get failed: pool timed out while waiting for an open connection\",\"details\":{\"request_id\":\"b8b56346-a90b-4948-9a5d-120585269630\",\"error_code\":\"STORAGE_ERROR\",\"http_status\":500,\"retryable\":true,\"source\":\"storage\",\"diagnostics\":{\"kind\":\"storage\",\"category\":\"database\",\"error\":\"Database error: KV get failed: pool timed out while waiting for an open connection\",\"retryable\":true}},\"type\":\"https://edgequake.dev/problems/storage-error\","
+    },
+    {
+      "doc_id": "afe620b9beac86c1027b96d31d396407.pdf",
+      "error": "get_markdown failed: 500 {\"code\":\"STORAGE_ERROR\",\"message\":\"Storage error: Database error: KV get failed: pool timed out while waiting for an open connection\",\"details\":{\"request_id\":\"c1929de1-8e20-4df4-9836-0ce3bcc3c501\",\"error_code\":\"STORAGE_ERROR\",\"http_status\":500,\"retryable\":true,\"source\":\"storage\",\"diagnostics\":{\"kind\":\"storage\",\"category\":\"database\",\"error\":\"Database error: KV get failed: pool timed out while waiting for an open connection\",\"retryable\":true}},\"type\":\"https://edgequake.dev/problems/storage-error\","
+    },
+    {
+      "doc_id": "afe620b9beac86c1027b96d31d396407.pdf",
+      "error": "get_markdown failed: 500 {\"code\":\"STORAGE_ERROR\",\"message\":\"Storage error: Database error: KV get failed: pool timed out while waiting for an open connection\",\"details\":{\"request_id\":\"27579432-9efe-4dae-9b47-24b80d33f42c\",\"error_code\":\"STORAGE_ERROR\",\"http_status\":500,\"retryable\":true,\"source\":\"storage\",\"diagnostics\":{\"kind\":\"storage\",\"category\":\"database\",\"error\":\"Database error: KV get failed: pool timed out while waiting for an open connection\",\"retryable\":true}},\"type\":\"https://edgequake.dev/problems/storage-error\","
+    },
+    {
+      "doc_id": "afe620b9beac86c1027b96d31d396407.pdf",
+      "error": "get_markdown failed: 500 {\"code\":\"STORAGE_ERROR\",\"message\":\"Storage error: Database error: KV get failed: pool timed out while waiting for an open connection\",\"details\":{\"request_id\":\"dc0946b7-6db5-4ed6-9cb6-2889dfae00ed\",\"error_code\":\"STORAGE_ERROR\",\"http_status\":500,\"retryable\":true,\"source\":\"storage\",\"diagnostics\":{\"kind\":\"storage\",\"category\":\"database\",\"error\":\"Database error: KV get failed: pool timed out while waiting for an open connection\",\"retryable\":true}},\"type\":\"https://edgequake.dev/problems/storage-error\","
+    },
+    {
+      "doc_id": "afe620b9beac86c1027b96d31d396407.pdf",
+      "error": "get_markdown failed: 500 {\"code\":\"STORAGE_ERROR\",\"message\":\"Storage error: Database error: KV get failed: pool timed out while waiting for an open connection\",\"details\":{\"request_id\":\"37d29af3-4704-4ffc-b435-60c36022a73c\",\"error_code\":\"STORAGE_ERROR\",\"http_status\":500,\"retryable\":true,\"source\":\"storage\",\"diagnostics\":{\"kind\":\"storage\",\"category\":\"database\",\"error\":\"Database error: KV get failed: pool timed out while waiting for an open connection\",\"retryable\":true}},\"type\":\"https://edgequake.dev/problems/storage-error\","
+    },
+    {
+      "doc_id": "afe620b9beac86c1027b96d31d396407.pdf",
+      "error": "get_markdown failed: 500 {\"code\":\"STORAGE_ERROR\",\"message\":\"Storage error: Database error: KV get failed: pool timed out while waiting for an open connection\",\"details\":{\"request_id\":\"7681b7ac-f3f1-489b-97a7-1caba8c74c23\",\"error_code\":\"STORAGE_ERROR\",\"http_status\":500,\"retryable\":true,\"source\":\"storage\",\"diagnostics\":{\"kind\":\"storage\",\"category\":\"database\",\"error\":\"Database error: KV get failed: pool timed out while waiting for an open connection\",\"retryable\":true}},\"type\":\"https://edgequake.dev/problems/storage-error\","
+    },
+    {
+      "doc_id": "afe620b9beac86c1027b96d31d396407.pdf",
+      "error": "get_markdown failed: 500 {\"code\":\"STORAGE_ERROR\",\"message\":\"Storage error: Database error: KV get failed: pool timed out while waiting for an open connection\",\"details\":{\"request_id\":\"616fa579-d511-47dc-b58d-2f11dfd9f0d9\",\"error_code\":\"STORAGE_ERROR\",\"http_status\":500,\"retryable\":true,\"source\":\"storage\",\"diagnostics\":{\"kind\":\"storage\",\"category\":\"database\",\"error\":\"Database error: KV get failed: pool timed out while waiting for an open connection\",\"retryable\":true}},\"type\":\"https://edgequake.dev/problems/storage-error\","
+    },
+    {
+      "doc_id": "afe620b9beac86c1027b96d31d396407.pdf",
+      "error": "get_markdown failed: 500 {\"code\":\"STORAGE_ERROR\",\"message\":\"Storage error: Database error: KV get failed: pool timed out while waiting for an open connection\",\"details\":{\"request_id\":\"5b8b2aed-59b1-488d-b2fb-806fd22b56ea\",\"error_code\":\"STORAGE_ERROR\",\"http_status\":500,\"retryable\":true,\"source\":\"storage\",\"diagnostics\":{\"kind\":\"storage\",\"category\":\"database\",\"error\":\"Database error: KV get failed: pool timed out while waiting for an open connection\",\"retryable\":true}},\"type\":\"https://edgequake.dev/problems/storage-error\","
+    },
+    {
+      "doc_id": "e79deb02a0c0e87511080836c5d4347b.pdf",
+      "error": "get_markdown failed: 500 {\"code\":\"STORAGE_ERROR\",\"message\":\"Storage error: Database error: KV get failed: pool timed out while waiting for an open connection\",\"details\":{\"request_id\":\"68f95ed8-3101-4763-be3c-f0b543a9cae0\",\"error_code\":\"STORAGE_ERROR\",\"http_status\":500,\"retryable\":true,\"source\":\"storage\",\"diagnostics\":{\"kind\":\"storage\",\"category\":\"database\",\"error\":\"Database error: KV get failed: pool timed out while waiting for an open connection\",\"retryable\":true}},\"type\":\"https://edgequake.dev/problems/storage-error\","
+    },
+    {
+      "doc_id": "e79deb02a0c0e87511080836c5d4347b.pdf",
+      "error": "get_markdown failed: 500 {\"code\":\"STORAGE_ERROR\",\"message\":\"Storage error: Database error: KV get failed: pool timed out while waiting for an open connection\",\"details\":{\"request_id\":\"3f94567d-4a67-4985-b120-d945c213a277\",\"error_code\":\"STORAGE_ERROR\",\"http_status\":500,\"retryable\":true,\"source\":\"storage\",\"diagnostics\":{\"kind\":\"storage\",\"category\":\"database\",\"error\":\"Database error: KV get failed: pool timed out while waiting for an open connection\",\"retryable\":true}},\"type\":\"https://edgequake.dev/problems/storage-error\","
+    },
+    {
+      "doc_id": "e79deb02a0c0e87511080836c5d4347b.pdf",
+      "error": "get_markdown failed: 500 {\"code\":\"STORAGE_ERROR\",\"message\":\"Storage error: Database error: KV get failed: pool timed out while waiting for an open connection\",\"details\":{\"request_id\":\"913bf1c3-be6f-429d-aacb-3480ad342ee2\",\"error_code\":\"STORAGE_ERROR\",\"http_status\":500,\"retryable\":true,\"source\":\"storage\",\"diagnostics\":{\"kind\":\"storage\",\"category\":\"database\",\"error\":\"Database error: KV get failed: pool timed out while waiting for an open connection\",\"retryable\":true}},\"type\":\"https://edgequake.dev/problems/storage-error\","
+    }
+  ],
+  "samples": [],
+  "causal": {
+    "representation_miss_n": 0,
+    "representation_miss_long_n": 0,
+    "retrieval_miss_given_rep_ok_n": 0,
+    "short_needle_fp_suspect_n": 0,
+    "note": "If answer not in evidence-page markdown → W1 (ingest). If answer in markdown but page_hit@5 false → W2 (retrieve). Gate Wave 1 on long-needle rates, not raw short-needle rates."
+  }
+}

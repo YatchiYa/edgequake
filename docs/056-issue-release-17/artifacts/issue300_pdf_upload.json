@@ -1,0 +1,24 @@
+{
+  "pdf_id": "5b45fcf0-dee3-4132-8767-03c5f64169c0",
+  "document_id": "019f6905-9f6e-75f6-98ad-c04e9c1cbc26",
+  "status": "queued",
+  "task_id": "pdf-ba933e84-ab93-472c-9de4-12b1cdee3162",
+  "track_id": null,
+  "message": "PDF uploaded successfully. Processing in background.",
+  "estimated_time_seconds": 7200,
+  "ingestion_estimate": {
+    "backend": "vision",
+    "convert_seconds": 128,
+    "extract_seconds": 25,
+    "total_seconds_pessimistic": 7200,
+    "recommended_backend": "vision"
+  },
+  "metadata": {
+    "filename": "embedded_figure_sample.pdf",
+    "file_size_bytes": 729,
+    "page_count": 1,
+    "sha256_checksum": "8471193b58840a09f70ed8ca0498f05ac6a130dbf25768a4bcb3951e7ba27f2c",
+    "vision_enabled": true,
+    "vision_model": "mistral-small-latest"
+  }
+}

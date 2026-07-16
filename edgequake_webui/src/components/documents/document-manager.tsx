@@ -29,10 +29,27 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { nextDocumentSortState } from '@/lib/documents/document-sort';
-import { buildIngestionRunViews } from '@/lib/pipeline/ingestion-run-view';
+import {
+  beginDeleteSession,
+  dismissDeleteSession,
+  formatDeleteCountsLabel,
+  patchDocumentsDeletingOptimistic,
+} from '@/lib/documents/deletion-session';
+import {
+  documentIdsWithQueuingSession,
+  filterRunsExcludingQueuingSession,
+  resolveReprocessPanelTrackId,
+  shouldShowReprocessQueuingPanel,
+  unpinReprocessDocuments,
+} from '@/lib/documents/progress-admit';
+import {
+  buildIngestionRunViews,
+  stageDisplayName,
+} from '@/lib/pipeline/ingestion-run-view';
 import { resolvePipelineUiState } from '@/lib/pipeline/pipeline-document-state';
 
 import { useBulkSelection } from '@/hooks/use-bulk-selection';
+import { useDeletionSessions } from '@/hooks/use-deletion-progress';
 import { useDocumentDropzone } from '@/hooks/use-document-dropzone';
 import { useDocumentFiltering } from '@/hooks/use-document-filtering';
 import { useDocumentHandlers } from '@/hooks/use-document-handlers';
@@ -43,7 +60,10 @@ import { useDocumentQueries } from '@/hooks/use-document-queries';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useDocumentWebSocket } from '@/hooks/use-document-websocket';
 import { useFileUpload } from '@/hooks/use-file-upload';
-import { useReprocessTracking } from '@/hooks/use-reprocess-tracking';
+import {
+  shouldUsePdfReprocessPanel,
+  useReprocessTracking,
+} from '@/hooks/use-reprocess-tracking';
 import { useStuckDetection } from '@/hooks/use-stuck-detection';
 import type { PdfParserResolutionContext } from '@/lib/pdf/large-pdf-admission';
 import {
@@ -51,6 +71,7 @@ import {
     type LargePdfAdmissionPreview,
     type PdfParserChoice,
 } from '@/lib/pdf/large-pdf-admission';
+import { AdmissionPhaseRow } from './admission-phase-row';
 import { ActiveRunsPanel } from './active-runs-panel';
 import { BulkDeleteConfirmDialog } from './bulk-delete-confirm-dialog';
 import { BulkReprocessDialog, type BulkReprocessChoice } from './bulk-reprocess-dialog';
@@ -61,10 +82,13 @@ import { DocumentPreviewRightPanel } from './document-preview-right-panel';
 import { DocumentTableSection } from './document-table-section';
 import { DocumentToolbarSection } from './document-toolbar-section';
 import { DuplicateUploadDialog } from './duplicate-upload-dialog';
+import { FeedbackZoneLiveRegion } from './feedback-zone-live-region';
 import { LargePdfAdmissionDialog } from './large-pdf-admission-dialog';
 import { ProgressPanelRow } from './progress-panel-row';
 import { ReprocessDialog, type ReprocessChoice } from './reprocess-dialog';
+import { Button } from '@/components/ui/button';
 import { UploadProgressList } from './upload-progress-list';
+import { X } from 'lucide-react';
 
 export function DocumentManager() {
   const { t } = useTranslation();
@@ -206,6 +230,7 @@ export function DocumentManager() {
     reprocessEntries,
     addReprocessEntry,
     removeReprocessEntry,
+    removeReprocessEntryByDocumentId,
     pruneTerminalReprocessEntries,
   } = useReprocessTracking();
 
@@ -220,33 +245,16 @@ export function DocumentManager() {
     // use the stable document ID for prune logic and component selection.
     onReprocessTriggered: (name, trackId, opts) =>
       addReprocessEntry(name, trackId, opts),
+    onReprocessDismissed: (documentId) =>
+      removeReprocessEntryByDocumentId(documentId),
   });
 
   // SPEC-050: Track which document IDs are currently being deleted so rows can
   // show "Deleting" visual state immediately on confirm (before query invalidation).
   const [deletingDocumentIds, setDeletingDocumentIds] = useState<Set<string>>(new Set());
 
-  /**
-   * SPEC-050: Wrap deleteMutation.mutate to track in-progress deletion IDs.
-   * WHY: The row must show a "Deleting" state immediately after the user
-   * confirms the delete dialog — before the server responds and the documents
-   * query is invalidated.
-   */
-  const handleDeleteDocument = useCallback(
-    (id: string) => {
-      setDeletingDocumentIds((prev) => new Set([...prev, id]));
-      deleteMutation.mutate(id, {
-        onSettled: () => {
-          setDeletingDocumentIds((prev) => {
-            const next = new Set(prev);
-            next.delete(id);
-            return next;
-          });
-        },
-      });
-    },
-    [deleteMutation],
-  );
+  // Feedback-zone delete sessions (WS phase updates).
+  const deleteSessions = useDeletionSessions();
 
   // OODA-29: Document queries extracted to useDocumentQueries hook
   // VS-03: page=1 with large pageSize fetches everything at once for virtual scroll
@@ -258,6 +266,31 @@ export function DocumentManager() {
     pageSize: VIRTUAL_PAGE_SIZE,
     statusFilter,
   });
+
+  /**
+   * SPEC-050: Paint-first delete session + optimistic badge, then mutate.
+   * Feedback zone narrates WS phases; toast is no longer the primary surface.
+   */
+  const handleDeleteDocument = useCallback(
+    (id: string) => {
+      const items = (data as { items?: Document[] } | undefined)?.items;
+      const doc = items?.find((d) => d.id === id);
+      const name = doc?.file_name || doc?.title || id.slice(0, 8);
+      beginDeleteSession({ documentId: id, documentName: name });
+      patchDocumentsDeletingOptimistic(queryClient, id);
+      setDeletingDocumentIds((prev) => new Set([...prev, id]));
+      deleteMutation.mutate(id, {
+        onSettled: () => {
+          setDeletingDocumentIds((prev) => {
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+          });
+        },
+      });
+    },
+    [data, deleteMutation, queryClient],
+  );
 
   // OODA-05: WebSocket subscription for real-time document status updates
   // WHY: Extracted to useDocumentWebSocket hook for SRP compliance
@@ -315,15 +348,59 @@ export function DocumentManager() {
     [documents],
   );
 
+  // While a session panel is still provisional Queuing (not cleaning), hide the
+  // ActiveRuns card for that documentId. Cleaning keeps ActiveRuns so the
+  // stepper narrates graph cleanup alongside the session AdmissionPhaseRow.
+  const stagesByDocId = useMemo(() => {
+    const map = new Map<string, string | null | undefined>();
+    for (const doc of documents ?? []) {
+      map.set(doc.id, doc.current_stage);
+    }
+    return map;
+  }, [documents]);
+  const queuingSessionDocIds = useMemo(
+    () => documentIdsWithQueuingSession(reprocessEntries, stagesByDocId),
+    [reprocessEntries, stagesByDocId],
+  );
+  const activeRunsForPanel = useMemo(
+    () => filterRunsExcludingQueuingSession(allRuns, queuingSessionDocIds),
+    [allRuns, queuingSessionDocIds],
+  );
+
+  // Unified feedback zone: keep ActiveRuns even when stuck so per-doc cards
+  // remain visible; stuck toolbar banner still owns the recover CTA.
+  const showActiveRuns = activeRunsForPanel.length > 0;
+
+  // Prefer stuck docs in the zone when alertMode is stuck (more relevant).
+  const activeRunsDisplayed = useMemo(() => {
+    if (pipelineUi.alertMode !== 'stuck' || pipelineUi.stuckDocs.length === 0) {
+      return activeRunsForPanel;
+    }
+    const stuckIds = new Set(pipelineUi.stuckDocs.map((d) => d.id));
+    const stuckRuns = activeRunsForPanel.filter((r) => stuckIds.has(r.documentId));
+    return stuckRuns.length > 0 ? stuckRuns : activeRunsForPanel;
+  }, [activeRunsForPanel, pipelineUi.alertMode, pipelineUi.stuckDocs]);
+
+  // Session ProgressPanelRow: always show Queuing; keep PDF-full phase panels;
+  // hand off entities/merge only after ActiveRuns is actually painted for that doc.
+  const sessionReprocessEntries = useMemo(
+    () =>
+      reprocessEntries.filter((entry) => {
+        if (shouldShowReprocessQueuingPanel(entry.trackId)) return true;
+        if (shouldUsePdfReprocessPanel(entry.isPdf, entry.mode)) return true;
+        // Avoid empty gap: keep session row until ActiveRuns shows this documentId.
+        if (!showActiveRuns) return true;
+        return !activeRunsDisplayed.some((r) => r.documentId === entry.documentId);
+      }),
+    [reprocessEntries, showActiveRuns, activeRunsDisplayed],
+  );
+
   // All active / pending runs (kept for potential future use).
   // NOTE: not used to auto-seed reprocessEntries — see WHY below.
   const activeRunViews = useMemo(
     () => allRuns.filter((r) => r.stageStatus === 'active' || r.stageStatus === 'pending'),
     [allRuns],
   );
-  // Unified feedback zone: visibility flags.
-  // showActiveRuns: hide when stuck (stuck CTA owns the narrative).
-  const showActiveRuns = allRuns.length > 0 && pipelineUi.alertMode !== 'stuck';
 
   // Upload list split: client-only rows show always; tracked rows only when
   // ActiveRunsPanel is hidden (it handles them visually when active).
@@ -338,6 +415,54 @@ export function DocumentManager() {
   const showUploadList =
     clientOnlyUploads.length > 0 || (trackedUploads.length > 0 && !showActiveRuns);
   const uploadFilesForList = showActiveRuns ? clientOnlyUploads : uploadingFiles;
+
+  const feedbackZoneOpen =
+    showActiveRuns ||
+    showUploadList ||
+    sessionReprocessEntries.length > 0 ||
+    deleteSessions.length > 0;
+
+  // Debounced AT announcement: Deleting / Cleaning → Queued → live stages.
+  const feedbackAnnouncement = useMemo(() => {
+    const deleting = deleteSessions[0];
+    if (deleting) {
+      return `Deleting: ${deleting.documentName}${
+        deleting.phaseLabel ? ` — ${deleting.phaseLabel}` : ''
+      }`;
+    }
+    const admissionEntry = sessionReprocessEntries.find((e) =>
+      shouldShowReprocessQueuingPanel(e.trackId),
+    );
+    if (admissionEntry) {
+      const live = documents.find((d) => d.id === admissionEntry.documentId);
+      const stage = (live?.current_stage || 'cleaning').toLowerCase();
+      if (stage === 'cleaning') {
+        return `Cleaning: ${admissionEntry.documentName}`;
+      }
+      if (stage === 'queued') {
+        return `Queued: ${admissionEntry.documentName}`;
+      }
+      return `${admissionEntry.documentName}: ${stageDisplayName(stage)}`;
+    }
+    const primary = activeRunsDisplayed[0];
+    if (primary) {
+      if (primary.stage === 'cleaning') {
+        return `Cleaning: ${primary.filename}`;
+      }
+      if (primary.stage === 'queued') {
+        return `Queued: ${primary.filename}`;
+      }
+      const pct =
+        primary.progress01 != null
+          ? Math.round(primary.progress01 * 100)
+          : undefined;
+      const stage = stageDisplayName(String(primary.stage));
+      return pct != null
+        ? `${primary.filename}: ${stage}, ${pct}%`
+        : `${primary.filename}: ${stage}`;
+    }
+    return '';
+  }, [deleteSessions, sessionReprocessEntries, activeRunsDisplayed, documents]);
 
   // WHY the auto-seed useEffect was removed:
   //
@@ -376,6 +501,7 @@ export function DocumentManager() {
     handleClearSelection,
     handleBulkDelete,
     handleBulkReprocess,
+    isBulkReprocessing,
   } = useBulkSelection({
     documents,
     onDeleteRequested: handleBulkDeleteRequested,
@@ -385,6 +511,8 @@ export function DocumentManager() {
     // document gets the same ProgressPanelRow as a single-doc reprocess.
     onReprocessTriggered: (name, trackId, opts) =>
       addReprocessEntry(name, trackId, opts),
+    onReprocessDismissed: (documentId) =>
+      removeReprocessEntryByDocumentId(documentId),
   });
 
   // SPEC-050 GAP-FIX: Confirmed bulk delete — delete each document through
@@ -482,10 +610,24 @@ export function DocumentManager() {
             onOpenPipelineDetails={() => setPipelineDialogOpen(true)}
             onReprocessStuckDocuments={(stuckDocs) => {
               for (const doc of stuckDocs) {
-                reprocessMutation.mutate({ id: doc.id, mode: 'full' });
+                const name =
+                  doc.file_name?.trim() ||
+                  doc.title?.trim() ||
+                  doc.id.slice(0, 8);
+                const isPdf =
+                  doc.source_type === 'pdf' ||
+                  Boolean(doc.pdf_id) ||
+                  /\.pdf$/i.test(name);
+                reprocessMutation.mutate({
+                  id: doc.id,
+                  mode: 'full',
+                  name,
+                  isPdf,
+                });
               }
             }}
             isReprocessingStuck={reprocessMutation.isPending}
+            demotePipelineBanner={feedbackZoneOpen}
             getRootProps={getRootProps}
             getInputProps={getInputProps}
             isDragActive={isDragActive}
@@ -519,15 +661,20 @@ export function DocumentManager() {
             table           = flex-1  (always gets the remaining ≥65 vh − 150 px)
           On 760 px viewport: table ≥ 760×0.65−150 ≈ 344 px → ~5 rows always visible.
       ─────────────────────────────────────────────────────────────────────── */}
-      {(showActiveRuns || showUploadList || reprocessEntries.length > 0) && (
+      {feedbackZoneOpen && (
         <div
           className="shrink-0 overflow-y-auto border-b bg-background"
           style={{ maxHeight: '35vh' }}
           data-testid="spec051-feedback-zone"
+          aria-labelledby="spec051-feedback-zone-label"
         >
+          <span id="spec051-feedback-zone-label" className="sr-only">
+            Document processing progress
+          </span>
+          <FeedbackZoneLiveRegion announcement={feedbackAnnouncement} />
           <div className="px-4 py-2 space-y-2">
-            {/* Server-stage stepper for all active/pending ingestion runs */}
-            {showActiveRuns && <ActiveRunsPanel runs={allRuns} />}
+            {/* Server-stage stepper — includes stuck docs (per-doc cards stay visible) */}
+            {showActiveRuns && <ActiveRunsPanel runs={activeRunsDisplayed} />}
 
             {/* Upload progress: client-only rows always; tracked rows when
                 ActiveRunsPanel is hidden (it handles them when visible). */}
@@ -538,35 +685,109 @@ export function DocumentManager() {
                 onRemove={removeUploadingFile}
                 onComplete={handleUploadComplete}
                 onFailed={handleUploadFailed}
+                embedded
               />
             )}
 
             {/* Per-document reprocess progress panels */}
-            {reprocessEntries.length > 0 && (
+            {sessionReprocessEntries.length > 0 && (
               <div data-testid="spec051-reprocess-progress-panels">
                 <h4 className="text-sm font-semibold flex items-center gap-2 text-muted-foreground mb-1.5">
                   <span className="h-2 w-2 rounded-full bg-sky-500 animate-pulse" />
                   {t('documents.reprocess.progressHeader', 'Reprocessing {{count}} document(s)', {
-                    count: reprocessEntries.length,
+                    count: sessionReprocessEntries.length,
                   })}
                 </h4>
                 <div className="space-y-1.5">
-                  {reprocessEntries.map((entry) => {
+                  {sessionReprocessEntries.map((entry) => {
                     const liveDoc = documents.find((d) => d.id === entry.documentId);
-                    const liveTrackId = liveDoc?.track_id ?? entry.trackId;
+                    // Keep Queuing on provisional entry; never poll batch reprocess_*.
+                    // Prefer server track only when it is a live task progress key.
+                    const liveTrackId = resolveReprocessPanelTrackId(
+                      entry.trackId,
+                      liveDoc?.track_id,
+                    );
+                    const unpinRow = () => {
+                      unpinReprocessDocuments(entry.documentId);
+                    };
+                    // Dismiss/cancel: immediate remove + suppress bind re-add.
+                    const dismissSessionPanel = () => {
+                      unpinRow();
+                      removeReprocessEntryByDocumentId(entry.documentId);
+                    };
+                    // Terminal: brief visibility, then delayed remove (upload parity).
+                    const finishSessionPanel = () => {
+                      unpinRow();
+                      removeReprocessEntry(entry.trackId);
+                    };
                     return (
                       <ProgressPanelRow
-                        key={entry.trackId}
+                        key={entry.documentId}
                         trackId={liveTrackId}
                         documentName={entry.documentName}
-                        isPdf={false}
-                        onRemove={() => removeReprocessEntry(entry.trackId)}
-                        onComplete={() => removeReprocessEntry(entry.trackId)}
-                        onFailed={() => removeReprocessEntry(entry.trackId)}
-                        onCancel={() => removeReprocessEntry(entry.trackId)}
+                        isPdf={shouldUsePdfReprocessPanel(entry.isPdf, entry.mode)}
+                        currentStage={liveDoc?.current_stage ?? 'cleaning'}
+                        stageMessage={liveDoc?.stage_message}
+                        onRemove={dismissSessionPanel}
+                        onComplete={finishSessionPanel}
+                        onFailed={finishSessionPanel}
+                        onCancel={dismissSessionPanel}
                         data-testid="spec051-reprocess-panel"
-                        data-track-id={entry.trackId}
+                        data-track-id={liveTrackId}
                       />
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* SPEC-050: Per-document delete progress (WS phases) */}
+            {deleteSessions.length > 0 && (
+              <div data-testid="spec050-delete-progress-panels">
+                <h4 className="text-sm font-semibold flex items-center gap-2 text-muted-foreground mb-1.5">
+                  <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
+                  {t('documents.delete.progressHeader', 'Deleting {{count}} document(s)', {
+                    count: deleteSessions.length,
+                  })}
+                </h4>
+                <div className="space-y-1.5">
+                  {deleteSessions.map((entry) => {
+                    const dismissHint = t(
+                      'documents.delete.dismissHint',
+                      'Hides progress; deletion continues.',
+                    );
+                    return (
+                      <div
+                        key={entry.documentId}
+                        className="relative p-2 rounded-lg border bg-card"
+                        data-testid="spec050-delete-panel"
+                        data-document-id={entry.documentId}
+                        data-phase={entry.phase ?? 'starting'}
+                        data-status={entry.status}
+                      >
+                        <AdmissionPhaseRow
+                          phase="deleting"
+                          documentName={entry.documentName}
+                          stageMessage={entry.phaseLabel}
+                          countsLabel={formatDeleteCountsLabel(entry)}
+                          variant="row"
+                          data-testid="delete-progress-row"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="absolute top-1 right-1 h-8 w-8"
+                          onClick={() => dismissDeleteSession(entry.documentId)}
+                          aria-label={t(
+                            'documents.delete.dismissAria',
+                            'Dismiss progress — hides progress; deletion continues',
+                          )}
+                          title={dismissHint}
+                        >
+                          <X className="h-4 w-4" />
+                          <span className="sr-only">{dismissHint}</span>
+                        </Button>
+                      </div>
                     );
                   })}
                 </div>
@@ -698,11 +919,15 @@ export function DocumentManager() {
       <BulkReprocessDialog
         open={bulkReprocessOpen}
         count={selectedCount}
+        isBusy={isBulkReprocessing}
         onConfirm={(choice: BulkReprocessChoice) => {
-          setBulkReprocessOpen(false);
+          // Start first so sync provisional pin/panel paints before dialog close.
           void handleBulkReprocess(choice.mode);
+          setBulkReprocessOpen(false);
         }}
-        onCancel={() => setBulkReprocessOpen(false)}
+        onCancel={() => {
+          if (!isBulkReprocessing) setBulkReprocessOpen(false);
+        }}
       />
 
       {/* SPEC-050 GAP-FIX: Bulk delete confirmation (toolbar Delete button).

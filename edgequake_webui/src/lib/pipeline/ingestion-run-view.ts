@@ -13,7 +13,7 @@ import { isWaitingStatus } from "./pipeline-document-state";
 
 export type IngestionRunMode = "full" | "entities" | "merge";
 
-export type IngestionRunStage = IngestionStage | "queued";
+export type IngestionRunStage = IngestionStage | "queued" | "cleaning";
 
 export type IngestionCountUnit = "pages" | "chunks" | "entities" | "relationships" | "figures";
 
@@ -39,6 +39,7 @@ export interface IngestionRunView {
 }
 
 const STAGE_LABELS: Record<string, string> = {
+  cleaning: "Cleaning",
   queued: "Queued",
   uploading: "Uploading",
   converting: "Converting PDF",
@@ -57,8 +58,9 @@ const STAGE_LABELS: Record<string, string> = {
   processing: "Preprocessing",
 };
 
-/** Server UnifiedStage order (+ admission queued). */
+/** Server UnifiedStage order (+ admission cleaning → queued). */
 export const SERVER_STAGE_ORDER: IngestionRunStage[] = [
+  "cleaning",
   "queued",
   "uploading",
   "converting",
@@ -138,8 +140,8 @@ export function stageStatusFor(
   const s = status.toLowerCase();
   if (s === "failed" || stage === "failed") return "failed";
   if (s === "completed" || stage === "completed") return "complete";
-  // Admission only when the stage itself is queued
-  if (stage === "queued") return "pending";
+  // Admission only when the stage itself is cleaning/queued
+  if (stage === "cleaning" || stage === "queued") return "pending";
   // Fine stage already past admission → active even if coarse status lags as pending
   if (ACTIVE_PIPELINE_STAGES.has(stage)) return "active";
   if (isWaitingStatus(s as never)) return "pending";
@@ -157,6 +159,13 @@ function sourceTypeOf(doc: Document): IngestionRunView["sourceType"] {
 /** Build one run view from a document list row (KV poll SSOT). */
 export function buildIngestionRunView(doc: Document): IngestionRunView | null {
   const status = getDocumentDisplayStatus(doc);
+
+  // SPEC-050: delete is a terminal operation — feedback zone owns progress,
+  // not the ingest ActiveRuns stepper.
+  if (status === "deleting") {
+    return null;
+  }
+
   const isLive =
     isProcessingStatus(status) ||
     isWaitingStatus(status) ||

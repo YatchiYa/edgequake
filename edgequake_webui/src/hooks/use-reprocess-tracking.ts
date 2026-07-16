@@ -31,8 +31,9 @@ import {
     getDocumentDisplayStatus,
     isTerminalStatus,
 } from '@/components/documents/status-badge';
+import { isProvisionalReprocessTrackId } from '@/lib/documents/reprocess-cache';
 import type { Document } from '@/types';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -78,6 +79,17 @@ export interface AddReprocessEntryOptions {
 }
 
 /**
+ * Whether a reprocess entry should mount PdfUploadProgress (conversion phases).
+ * Entities-only and non-PDF always use IngestionProgressPanel.
+ */
+export function shouldUsePdfReprocessPanel(
+  isPdf: boolean,
+  mode: string | undefined,
+): boolean {
+  return isPdf && mode === 'full';
+}
+
+/**
  * Return type for useReprocessTracking.
  */
 export interface UseReprocessTrackingReturn {
@@ -86,10 +98,11 @@ export interface UseReprocessTrackingReturn {
 
   /**
    * Add a new reprocess entry.
-   * Idempotent: duplicate documentIds are de-duplicated.
+   * Idempotent by documentId: a second call with a new trackId upgrades the entry
+   * (provisional → live pdf_processing-…).
    *
    * @param documentName - Display name for the progress panel.
-   * @param trackId      - Batch track_id from the reprocess API response.
+   * @param trackId      - Provisional or live progress track id.
    * @param options      - documentId (required), isPdf, mode.
    */
   addReprocessEntry: (
@@ -103,6 +116,11 @@ export interface UseReprocessTrackingReturn {
    * Removal is deferred by 3s so the user sees the terminal state.
    */
   removeReprocessEntry: (trackId: string) => void;
+
+  /**
+   * Immediately remove an entry by documentId (skip/error rollback).
+   */
+  removeReprocessEntryByDocumentId: (documentId: string) => void;
 
   /**
    * Prune entries whose backing document has reached a terminal state.
@@ -119,6 +137,8 @@ export function useReprocessTracking(): UseReprocessTrackingReturn {
   const [entries, setEntries] = useState<Map<string, ReprocessEntry>>(
     () => new Map(),
   );
+  /** Docs the user dismissed — suppress bindLiveTask re-mount until a new admit. */
+  const dismissedDocIdsRef = useRef<Set<string>>(new Set());
 
   const addReprocessEntry = useCallback(
     (
@@ -126,12 +146,34 @@ export function useReprocessTracking(): UseReprocessTrackingReturn {
       trackId: string,
       options: AddReprocessEntryOptions,
     ) => {
+      const isProvisional = isProvisionalReprocessTrackId(trackId);
+      if (isProvisional) {
+        // New admit clears a prior dismiss for this document.
+        dismissedDocIdsRef.current.delete(options.documentId);
+      } else if (dismissedDocIdsRef.current.has(options.documentId)) {
+        // User dismissed during Queuing; do not re-add on HTTP success bind.
+        return;
+      }
+
       setEntries((prev) => {
-        // Idempotent by documentId — handles re-trigger without duplicate panels.
-        const alreadyTracked = [...prev.values()].some(
-          (e) => e.documentId === options.documentId,
+        const existing = [...prev.entries()].find(
+          ([, e]) => e.documentId === options.documentId,
         );
-        if (alreadyTracked) return prev;
+        if (existing) {
+          const [oldKey, oldEntry] = existing;
+          if (oldEntry.trackId === trackId) return prev;
+          // Upgrade provisional → live (or replace track id) without duplicate rows.
+          const next = new Map(prev);
+          next.delete(oldKey);
+          next.set(trackId, {
+            ...oldEntry,
+            documentName: documentName || oldEntry.documentName,
+            trackId,
+            isPdf: options.isPdf ?? oldEntry.isPdf,
+            mode: options.mode ?? oldEntry.mode,
+          });
+          return next;
+        }
         const next = new Map(prev);
         next.set(trackId, {
           documentId: options.documentId,
@@ -158,11 +200,27 @@ export function useReprocessTracking(): UseReprocessTrackingReturn {
     }, 3000);
   }, []);
 
+  const removeReprocessEntryByDocumentId = useCallback((documentId: string) => {
+    dismissedDocIdsRef.current.add(documentId);
+    setEntries((prev) => {
+      const match = [...prev.entries()].find(
+        ([, e]) => e.documentId === documentId,
+      );
+      if (!match) return prev;
+      const next = new Map(prev);
+      next.delete(match[0]);
+      return next;
+    });
+  }, []);
+
   const pruneTerminalReprocessEntries = useCallback((docs: Document[]) => {
     if (!docs.length) return;
     setEntries((prev) => {
       if (prev.size === 0) return prev;
       for (const [trackId, entry] of prev) {
+        // Never prune client-only "Queuing…" rows — admit may still be in flight
+        // while list status briefly looks terminal without pin protection.
+        if (isProvisionalReprocessTrackId(entry.trackId)) continue;
         // FIX: look up by documentId, not by track_id.
         // WHY: the worker overwrites document.track_id with the actual task UUID
         // after 2s. Looking up by the original "reprocess_..." batch track_id
@@ -190,6 +248,7 @@ export function useReprocessTracking(): UseReprocessTrackingReturn {
     reprocessEntries: [...entries.values()],
     addReprocessEntry,
     removeReprocessEntry,
+    removeReprocessEntryByDocumentId,
     pruneTerminalReprocessEntries,
   };
 }

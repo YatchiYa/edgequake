@@ -185,18 +185,119 @@ fn bt045_sre_metrics_wired() {
     assert!(metrics.contains("edgequake_compensation_quarantine_total"));
 }
 
-#[test]
-fn bt045_sre_requeue_pagination_wired() {
-    let src = include_str!("../../../src/main.rs");
+fn assert_requeue_hydrate_ssot_paginates() {
+    let src = include_str!("../src/services/startup_task_hydrate.rs");
     assert!(src.contains("SPEC-045 SRE-I02"));
+    assert!(src.contains("let page_size = 500"));
     assert!(!src.contains("page_size: 1000"));
 }
 
 #[test]
+fn bt045_sre_requeue_pagination_wired() {
+    assert_requeue_hydrate_ssot_paginates();
+}
+
+#[test]
+fn bt045_sre_requeue_hydrate_ssot_paginates() {
+    assert_requeue_hydrate_ssot_paginates();
+}
+
+#[test]
 fn bt045_sre_pdf_recover_stuck_wired() {
-    let src = include_str!("../src/handlers/documents/recovery/stuck.rs");
-    assert!(src.contains("PdfProcessing"));
-    assert!(src.contains("pdf_id"));
+    // SPEC-054/#298: PDF recovery routing lives in pending_doc_task_reconcile SSOT.
+    let ssot = include_str!("../src/services/pending_doc_task_reconcile.rs");
+    assert!(
+        ssot.contains("build_pdf_recovery_task_data"),
+        "PDF recovery SSOT must exist"
+    );
+    assert!(
+        ssot.contains("TaskType::PdfProcessing"),
+        "SSOT must route PDF docs to PdfProcessing"
+    );
+    assert!(
+        ssot.contains("pdf_id"),
+        "SSOT must bind pdf_id for PDF recovery"
+    );
+    assert!(
+        ssot.contains("seed_pdf_job_progress"),
+        "reconcile/stuck PDF enqueue must seed progress under task_id"
+    );
+    let stuck = include_str!("../src/handlers/documents/recovery/stuck.rs");
+    assert!(
+        stuck.contains("ensure_task_for_pending_document"),
+        "recover_stuck must delegate to reconcile SSOT"
+    );
+}
+
+#[test]
+fn bt045_spec054_force_reindex_metadata_uses_server_task_id() {
+    let upload = include_str!("../src/handlers/pdf_upload/upload.rs");
+    // Client batch id may live in batch_track_id, never as progress SSOT track_id.
+    assert!(
+        upload.contains("batch_track_id"),
+        "force_reindex must store client correlation as batch_track_id"
+    );
+    assert!(
+        upload.contains("SPEC-054: do not write client batch track_id into metadata.track_id"),
+        "force_reindex must not write client track_id into metadata.track_id"
+    );
+    assert!(
+        upload.contains("metadata.track_id and progress key are always server task_id"),
+        "force_reindex must stamp server task_id onto metadata after enqueue"
+    );
+}
+
+#[test]
+fn bt045_spec054_recover_skips_already_pending_stampede_guard() {
+    let src = include_str!("../../../src/main.rs");
+    // Auto-resume path must not treat waiting pending/queued as in-flight orphans.
+    assert!(
+        src.contains("leave waiting shells alone"),
+        "recover_orphaned_documents must skip already-pending docs when auto-resume"
+    );
+    assert!(
+        src.contains("startup_reconcile_max_from_env"),
+        "startup must use capped reconcile budget when auto-resume"
+    );
+    assert!(
+        src.contains("reconcile_pending_documents_by_ids"),
+        "startup must prioritize recovered-this-boot IDs when auto-resume"
+    );
+    assert!(
+        !src.contains("10_000"),
+        "startup must not hardcode 10_000 reconcile budget (stampede)"
+    );
+}
+
+#[test]
+fn bt045_spec054_manual_resume_default_no_auto_hydrate() {
+    let src = include_str!("../../../src/main.rs");
+    let hydrate = include_str!("../src/services/startup_task_hydrate.rs");
+    assert!(
+        hydrate.contains("startup_auto_resume_enabled"),
+        "auto-resume policy SSOT must exist"
+    );
+    assert!(
+        hydrate.contains("EDGEQUAKE_STARTUP_AUTO_RESUME"),
+        "auto-resume must be env-gated"
+    );
+    assert!(
+        src.contains("startup_auto_resume_enabled"),
+        "main must consult auto-resume policy"
+    );
+    assert!(
+        src.contains("if auto_resume"),
+        "hydrate/reconcile must be gated behind auto_resume"
+    );
+    // Opt-in hydrate still uses background spawn + SSOT when enabled.
+    assert!(
+        src.contains("background_requeue_pending_tasks"),
+        "SPEC-054/#298-B background requeue marker retained for opt-in path"
+    );
+    assert!(
+        src.contains("startup_task_hydrate::requeue_pending_tasks"),
+        "opt-in path must still call hydrate SSOT"
+    );
 }
 
 // ── Dual-store read model: cost from metadata JSONB (M041 safe) ───────────

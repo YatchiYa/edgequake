@@ -105,11 +105,16 @@ pub async fn list_documents(
         std::collections::HashMap::new();
 
     for (metadata_key, value) in metadata_entries {
-        debug!(metadata_key = %metadata_key, value = ?value, "Processing metadata entry");
+        // WHY: avoid DEBUG-dumping full metadata JSON on every list row — with
+        // large workspaces this floods logs and adds measurable latency.
+        tracing::trace!(metadata_key = %metadata_key, "Processing metadata entry");
         if let Some(obj) = value.as_object() {
             let id = canonical_document_id(&metadata_key, &value);
-            let title_val = obj.get("title");
-            debug!(doc_id = %id, title = ?title_val, "Extracted canonical ID and title");
+            tracing::trace!(
+                doc_id = %id,
+                title = ?obj.get("title"),
+                "Extracted canonical ID and title"
+            );
 
             // WHY: We build DocMetadata incrementally because fields are extracted
             // conditionally from JSON, and some fields depend on others (e.g., file_name

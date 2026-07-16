@@ -1,0 +1,199 @@
+{
+  "spec": "047",
+  "stage": "core",
+  "valid": true,
+  "invalid_reason": null,
+  "task_name": "MMLongBench-Doc/RAG-adaptation",
+  "banner": "EdgeQuake RAG adaptation of MMLongBench-Doc; not comparable to the LVLM leaderboard without caveats. Official LVLM GPT-4o F1\u224844.9% is a difficulty reference only. Provider stack: mistral-small-latest + mistral-embed (Postgres). W1 ablation: P0_mm_ite_vision_medium pins mistral-medium-3-5 for vision only.",
+  "pins": {
+    "edgequake_version": "0.17.0",
+    "edgequake_git_sha": "34913c9c",
+    "dataset_id": "yubo2333/MMLongBench-Doc",
+    "dataset_revision": "parquet-train",
+    "fixture_id": "core_doc_ids_v1",
+    "llm_provider": "mistral",
+    "llm_model": "mistral-small-latest",
+    "vision_provider": "mistral",
+    "vision_model": "mistral-small-latest",
+    "embedding_provider": "mistral",
+    "embedding_model": "mistral-embed",
+    "embedding_dim": 1024,
+    "query_mode": "hybrid",
+    "extractor_model": "mistral-small-latest",
+    "eval_score_sha": "cafa268358b08521cfc9a805c67d86732d943677e4408c5751f336123d09631f",
+    "system_prompt_sha": "server-default",
+    "profile_id": "P0_mm_ite",
+    "pdf_parser_backend": "vision",
+    "process_options": "ite"
+  },
+  "metrics": {
+    "n_docs": 25,
+    "n_questions": 268,
+    "n_scored": 268,
+    "n_skipped_ingest_failed": 1,
+    "accuracy": 0.4707714711202706,
+    "f1": 0.3730791430791431
+  },
+  "slices": {
+    "single_page_accuracy": 0.40347629716561756,
+    "cross_page_accuracy": 0.25925925925925924,
+    "unanswerable_accuracy": 0.7601023017902813,
+    "by_evidence_source": {
+      "Figure": {
+        "accuracy": 0.24285714285714285,
+        "n": 70
+      },
+      "Generalized-text (Layout)": {
+        "accuracy": 0.25044091710758376,
+        "n": 27
+      },
+      "Table": {
+        "accuracy": 0.4358974358974359,
+        "n": 57
+      },
+      "Pure-text (Plain-text)": {
+        "accuracy": 0.3158333333333333,
+        "n": 60
+      },
+      "Chart": {
+        "accuracy": 0.3333333333333333,
+        "n": 42
+      }
+    },
+    "by_evidence_source_exclusive": {
+      "Chart": {
+        "accuracy": 0.4375,
+        "n": 16
+      },
+      "Figure": {
+        "accuracy": 0.2653061224489796,
+        "n": 49
+      },
+      "Generalized-text (Layout)": {
+        "accuracy": 0.34523809523809523,
+        "n": 8
+      },
+      "Pure-text (Plain-text)": {
+        "accuracy": 0.6950000000000001,
+        "n": 10
+      },
+      "Table": {
+        "accuracy": 0.4498834498834499,
+        "n": 33
+      }
+    },
+    "by_doc_type": {
+      "Academic paper": {
+        "accuracy": 0.3673469387755102,
+        "n": 49
+      },
+      "Financial report": {
+        "accuracy": 0.5155711345510677,
+        "n": 26
+      },
+      "Administration/Industry file": {
+        "accuracy": 0.5,
+        "n": 18
+      },
+      "Tutorial/Workshop": {
+        "accuracy": 0.4666666666666667,
+        "n": 30
+      },
+      "Research report / Introduction": {
+        "accuracy": 0.49775381850853545,
+        "n": 106
+      },
+      "Brochure": {
+        "accuracy": 0.25,
+        "n": 8
+      },
+      "Guidebook": {
+        "accuracy": 0.5483870967741935,
+        "n": 31
+      }
+    },
+    "attribution": {
+      "protocol_version": "026-listmem-2026-07-15",
+      "list_gold": {
+        "n": 34,
+        "accuracy": 0.22929864253393664,
+        "score_sum": 7.796153846153846
+      },
+      "unanswerable": {
+        "n": 85,
+        "accuracy": 0.7601023017902813,
+        "score_sum": 64.6086956521739
+      },
+      "other_answerable": {
+        "n": 149,
+        "accuracy": 0.3608181527644615,
+        "score_sum": 53.76190476190476
+      }
+    }
+  },
+  "protocol": {
+    "protocol_version": "026-listmem-2026-07-15",
+    "fidelity_gate_metric": "answer_in_evidence_rate_long",
+    "min_needle_len_gate": 3,
+    "fp_spread_threshold": 0.3,
+    "chart_a_in_e_long_min": 0.5,
+    "table_a_in_e_long_min": 0.55,
+    "require_full_answerable_audit": true,
+    "acc_claim_requires": [
+      "Chart exclusive Acc \u2191 or multi-label Chart Acc \u2191",
+      "Chart a_in_e_long \u2265 gate",
+      "paired attribution shows non-list_gold contribution if claiming W1"
+    ]
+  },
+  "ops": {
+    "ingest_coverage": 0.96,
+    "cost_usd_total": null,
+    "p50_query_latency_ms": 6130.204200744629,
+    "p95_query_latency_ms": 9906.06336593628,
+    "answer_empty_rate": 0.10074626865671642,
+    "extractor_fail_rate": 0.0,
+    "page_hit_rate": 0.6939890710382514,
+    "document_scope": true,
+    "query_workers": 1,
+    "ingest_workers": 1,
+    "retrieval": {
+      "n_with_retrieval_diag": 183,
+      "answerable_only": true,
+      "context_empty_rate": 0.10382513661202186,
+      "mean_n_chunk_sources": 15.53551912568306,
+      "page_hit@1": 0.46994535519125685,
+      "page_recall@1": 0.3603825136612022,
+      "page_hit@3": 0.644808743169399,
+      "page_recall@3": 0.5660898603521555,
+      "page_hit@5": 0.6939890710382514,
+      "page_recall@5": 0.6407710989678203,
+      "page_hit@10": 0.7431693989071039,
+      "page_recall@10": 0.6891837973805187,
+      "mean_arm_local_chunks": 11.030674846625766,
+      "mean_arm_global_chunks": 11.210526315789474,
+      "mean_arm_naive_chunks": 18.847560975609756
+    },
+    "false_refusal": {
+      "n_answerable": 183,
+      "n_false_refusal": 57,
+      "false_refusal_rate": 0.3114754098360656,
+      "n_answerable_page_hit@5": 127,
+      "n_false_refusal_page_hit@5": 23,
+      "false_refusal_given_page_hit@5": 0.18110236220472442
+    },
+    "arm_gates": {
+      "n_with_arm_diag": 241,
+      "arms_gated_rate": 0.8962655601659751,
+      "arm_local_present_rate": 0.991701244813278,
+      "arm_global_present_rate": 0.1078838174273859,
+      "arm_graph_present_rate": 0.995850622406639,
+      "naive_only_rate": 0.004149377593360996,
+      "n_with_arms_run": 241,
+      "planned_local_rate": 0.995850622406639,
+      "planned_global_rate": 0.1078838174273859,
+      "planned_graph_rate": 1.0,
+      "planned_naive_only_rate": 0.0
+    }
+  },
+  "created_at_utc": "2026-07-16T02:09:48Z"
+}

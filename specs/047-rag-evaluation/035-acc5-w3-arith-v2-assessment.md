@@ -31,20 +31,27 @@
 
 ---
 
+
+
 ## Score ladder
 
+
 | Run              | Acc       | F1        | ChartEx | Chart long | Note                 |
-| ------------------| ----------:| ----------:| --------:| -----------:| ----------------------|
+| ---------------- | --------- | --------- | ------- | ---------- | -------------------- |
 | Acc #2           | **0.562** | **0.480** | 0.286   | 0.571      | Acc/F1 SOTA          |
 | Acc #3 densify   | 0.545     | 0.408     | 0.286   | 0.571      | negative             |
 | Acc #4 W3 soft   | 0.545     | 0.429     | 0.286   | **0.643**  | year-span measure    |
 | **Acc #5 W3-v2** | **0.562** | 0.457     | 0.286   | 0.643      | **1251 hit**; Acc≈#2 |
 
+
 ---
+
+
 
 ## First-principles next
 
-1. **Operand retrieval** for 541/128 — if Context lacks both % and N, prompt cannot help (W2 / page routing).  
-2. **Wrong-arith guard** — 872 / 1114 show model attempts math with wrong pairing; few-shot alone insufficient → consider deterministic %×N when both operands extracted.  
-3. **Years** — fidelity HIT but Gen still NA → quote-from-context / list expand at Gen (W3-quote), not more densify.  
+1. **Operand retrieval** for 541/128 — if Context lacks both % and N, prompt cannot help (W2 / page routing).
+2. **Wrong-arith guard** — 872 / 1114 show model attempts math with wrong pairing; few-shot alone insufficient → consider deterministic %×N when both operands extracted.
+3. **Years** — fidelity HIT but Gen still NA → quote-from-context / list expand at Gen (W3-quote), not more densify.
 4. Do **not** claim Wave 1 Acc product win from Acc #5.
+

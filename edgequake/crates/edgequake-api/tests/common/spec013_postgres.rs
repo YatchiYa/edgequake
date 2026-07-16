@@ -219,9 +219,20 @@ async fn build_postgres_router(mut state: AppState) -> axum::Router {
     router
 }
 
+/// Disable auth for SPEC-013 postgres e2e harness (matches `make` defaults).
+///
+/// `AuthConfig::from_env` defaults `auth_enabled=true` when unset, which
+/// 401s tenant/workspace bootstrap and masks the behaviors under test.
+fn configure_postgres_e2e_auth_env() {
+    if env::var("EDGEQUAKE_AUTH_ENABLED").is_err() && env::var("AUTH_ENABLED").is_err() {
+        env::set_var("EDGEQUAKE_AUTH_ENABLED", "false");
+    }
+}
+
 /// Build an Axum app backed by PostgreSQL with mock LLM (deterministic, no API keys).
 pub async fn create_postgres_mock_app() -> axum::Router {
     super::clear_provider_detection_env();
+    configure_postgres_e2e_auth_env();
     env::set_var("EDGEQUAKE_LLM_PROVIDER", "mock");
     env::set_var("EDGEQUAKE_EMBEDDING_PROVIDER", "mock");
 
@@ -237,6 +248,7 @@ pub async fn create_postgres_mock_app() -> axum::Router {
 /// configured, so callers can skip the test instead of panicking.
 pub async fn create_postgres_mock_app_or_skip() -> Option<axum::Router> {
     super::clear_provider_detection_env();
+    configure_postgres_e2e_auth_env();
     env::set_var("EDGEQUAKE_LLM_PROVIDER", "mock");
     env::set_var("EDGEQUAKE_EMBEDDING_PROVIDER", "mock");
 
@@ -253,6 +265,7 @@ pub async fn create_postgres_mistral_app() -> axum::Router {
     let mistral_key =
         env::var("MISTRAL_API_KEY").expect("MISTRAL_API_KEY required for Mistral live tests");
     super::clear_provider_detection_env();
+    configure_postgres_e2e_auth_env();
     env::set_var("MISTRAL_API_KEY", &mistral_key);
     env::set_var("EDGEQUAKE_LLM_PROVIDER", "mistral");
     env::set_var("EDGEQUAKE_EMBEDDING_PROVIDER", "mistral");
@@ -272,6 +285,7 @@ pub async fn create_postgres_mistral_app() -> axum::Router {
 pub async fn create_postgres_mistral_app_or_skip() -> Option<axum::Router> {
     let mistral_key = env::var("MISTRAL_API_KEY").ok()?;
     super::clear_provider_detection_env();
+    configure_postgres_e2e_auth_env();
     env::set_var("MISTRAL_API_KEY", &mistral_key);
     env::set_var("EDGEQUAKE_LLM_PROVIDER", "mistral");
     env::set_var("EDGEQUAKE_EMBEDDING_PROVIDER", "mistral");

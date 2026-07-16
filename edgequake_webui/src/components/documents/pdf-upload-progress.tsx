@@ -529,48 +529,63 @@ export function PdfUploadProgress({
   const isCompleted = progress?.status === "completed";
   const isProcessing = progress?.status === "processing";
 
-  // Compact mode: single line with progress bar
+  // Compact mode: progress bar + visible fail/retry (parity with ingestion compact).
   if (compact) {
+    const failMessage = progress?.error?.trim() || "Processing failed";
     return (
-      <div className={cn("flex items-center gap-4", className)}>
-        <div className="flex-1">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-sm font-medium truncate max-w-[200px]">
-              {displayFilename}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {overallPercent}%
-            </span>
+      <div className={cn("flex flex-col gap-1 w-full pr-8", className)}>
+        <div className="flex items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between mb-1 gap-2">
+              <span className="text-sm font-medium truncate">
+                {displayFilename}
+              </span>
+              <span className="text-xs text-muted-foreground shrink-0">
+                {overallPercent}%
+              </span>
+            </div>
+            <Progress value={overallPercent} className="h-2" />
           </div>
-          <Progress value={overallPercent} className="h-2" />
+          {isProcessing && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => cancel()}
+              disabled={isCancelling}
+              aria-label="Cancel processing"
+            >
+              {isCancelling ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <StopCircle className="h-4 w-4" />
+              )}
+            </Button>
+          )}
         </div>
         {isFailed && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => retry()}
-            disabled={isRetrying}
+          <div
+            className="flex items-center gap-2 pl-0"
+            data-testid="pdf-progress-compact-error"
+            role="alert"
           >
-            {isRetrying ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-          </Button>
-        )}
-        {isProcessing && (
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => cancel()}
-            disabled={isCancelling}
-          >
-            {isCancelling ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <StopCircle className="h-4 w-4" />
-            )}
-          </Button>
+            <p className="text-xs text-red-600 dark:text-red-400 truncate flex-1 min-w-0">
+              {failMessage}
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="shrink-0 h-7"
+              onClick={() => retry()}
+              disabled={isRetrying}
+            >
+              {isRetrying ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5 mr-1" />
+              )}
+              Retry
+            </Button>
+          </div>
         )}
       </div>
     );

@@ -3,7 +3,7 @@
 import { ContentRenderer } from '@/components/document/content-renderer';
 import { MetadataSidebar } from '@/components/document/metadata-sidebar';
 import { DocumentDownloadMenu } from '@/components/documents/document-download-menu';
-import { IngestionProgressPanel } from '@/components/documents/ingestion-progress-panel';
+import { ProgressPanelRow } from '@/components/documents/progress-panel-row';
 import { PDFViewer } from '@/components/documents/pdf-viewer';
 import {
     ReprocessDialog,
@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { ResizablePanel } from '@/components/ui/resizable-panel';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { shouldUsePdfReprocessPanel } from '@/hooks/use-reprocess-tracking';
 import {
     cancelTask,
     getDocument,
@@ -23,6 +24,13 @@ import {
     includeDocumentAssetsFromPdf,
     reprocessDocument,
 } from '@/lib/api/edgequake';
+import {
+  abortAdmit,
+  admitQueuingToastId,
+  beginAdmit,
+  bindLiveTask,
+  resolveReprocessPanelTrackId,
+} from '@/lib/documents/progress-admit';
 import { getEffectiveErrorMessage } from '@/lib/utils/document-status';
 import { useTenantStore } from '@/stores/use-tenant-store';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -65,26 +73,72 @@ export default function DocumentViewPage() {
   // WHY: Previously the detail page had NO reprocess action for failed/cancelled docs —
   // the cancelled message literally told users to go back to the list.
   const [reprocessDialogOpen, setReprocessDialogOpen] = useState(false);
-  // Track the most-recent reprocess track_id so IngestionProgressPanel can
-  // show live stage progress inline on this page (GAP-051-03).
+  // Progress SSOT: server task_id (not batch reprocess_*). GAP-051-03.
   const [reprocessTrackId, setReprocessTrackId] = useState<string | null>(null);
+  const [reprocessMode, setReprocessMode] = useState<'entities' | 'full'>('entities');
 
-  // SPEC-051: Reprocess mutation for the detail page.
+  // SPEC-051: Reprocess mutation for the detail page — same admit lifecycle as list.
   const reprocessMutationDetail = useMutation({
     mutationFn: ({ mode }: { mode: 'entities' | 'full' }) =>
       reprocessDocument(documentId, true, mode),
-    onSuccess: (data) => {
-      setReprocessTrackId(data.track_id);
+    onMutate: async ({ mode }) => {
+      const previousDocuments = queryClient.getQueriesData({
+        queryKey: ['documents'],
+      });
+      const provisionalByDoc = beginAdmit(queryClient, documentId);
+      const provisional = provisionalByDoc.get(documentId);
+      if (provisional) {
+        setReprocessMode(mode);
+        setReprocessTrackId(provisional);
+      }
+      toast.loading(t('documents.reprocess.queuing', 'Queuing reprocess…'), {
+        id: admitQueuingToastId(documentId),
+      });
+      await queryClient.cancelQueries({ queryKey: ['documents'] });
+      return { previousDocuments };
+    },
+    onSuccess: (data, { mode }) => {
+      toast.dismiss(admitQueuingToastId(documentId));
+      const progressTrackId = bindLiveTask(queryClient, documentId, data);
+      setReprocessMode(mode);
+
+      if (!progressTrackId) {
+        abortAdmit(queryClient, documentId);
+        setReprocessTrackId(null);
+        const reasons = data.skip_reasons
+          ? Object.entries(data.skip_reasons)
+              .map(([reason, count]) => `${reason} (${count})`)
+              .join(', ')
+          : '';
+        toast.warning(
+          t('documents.reprocess.skipped', 'Document was not requeued for processing'),
+          {
+            description:
+              reasons ||
+              t(
+                'documents.reprocess.skippedHint',
+                'It may already be processing, or content is missing.',
+              ),
+            duration: 6000,
+          },
+        );
+        queryClient.invalidateQueries({ queryKey: ['document', documentId] });
+        return;
+      }
+
+      setReprocessTrackId(progressTrackId);
       toast.success(
         t('documents.reprocess.success', 'Document queued for reprocessing'),
         { duration: 4000 },
       );
-      // Refresh document data after 2s so the backend has time to update status.
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ['document', documentId] });
       }, 2000);
     },
-    onError: (error: Error) => {
+    onError: (error: Error, _vars, context) => {
+      toast.dismiss(admitQueuingToastId(documentId));
+      abortAdmit(queryClient, documentId, context?.previousDocuments);
+      setReprocessTrackId(null);
       toast.error(
         t('documents.reprocess.failed', 'Reprocess failed'),
         { description: error.message },
@@ -486,17 +540,23 @@ export default function DocumentViewPage() {
             className="px-3 py-2 border-t bg-card/80"
             data-testid="detail-page-reprocess-progress"
           >
-            <IngestionProgressPanel
-              trackId={reprocessTrackId}
+            <ProgressPanelRow
+              trackId={resolveReprocessPanelTrackId(
+                reprocessTrackId,
+                document?.track_id,
+              )}
               documentName={document?.file_name || document?.title || documentId.slice(0, 8)}
-              compact={true}
+              isPdf={shouldUsePdfReprocessPanel(
+                document?.source_type === 'pdf',
+                reprocessMode,
+              )}
               onComplete={() => {
                 setReprocessTrackId(null);
-                // Refresh to show the completed document content.
                 void refetch();
               }}
               onFailed={() => setReprocessTrackId(null)}
               onCancel={() => setReprocessTrackId(null)}
+              data-testid="detail-page-reprocess-panel"
             />
           </div>
         )}

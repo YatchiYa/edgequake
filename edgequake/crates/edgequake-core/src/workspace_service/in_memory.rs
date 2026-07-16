@@ -74,6 +74,9 @@ impl InMemoryWorkspaceService {
             .is_none()
         {
             let now = chrono::Utc::now();
+            let (llm_model, llm_provider) = Workspace::default_llm_config();
+            let (embedding_model, embedding_provider, embedding_dimension) =
+                Workspace::default_embedding_config();
             let ws = Workspace {
                 workspace_id,
                 tenant_id,
@@ -84,11 +87,11 @@ impl InMemoryWorkspaceService {
                 created_at: now,
                 updated_at: now,
                 metadata: HashMap::new(),
-                llm_model: "mock".to_string(),
-                llm_provider: "mock".to_string(),
-                embedding_model: "mock".to_string(),
-                embedding_provider: "mock".to_string(),
-                embedding_dimension: 1536,
+                llm_model,
+                llm_provider,
+                embedding_model,
+                embedding_provider,
+                embedding_dimension,
                 vision_llm_provider: None,
                 vision_llm_model: None,
                 pdf_parser_backend: None,

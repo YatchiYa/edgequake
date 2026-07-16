@@ -10,7 +10,7 @@ use tracing::debug;
 use uuid::Uuid;
 
 use crate::document_metadata::is_active_processing_status;
-use crate::error::{ApiError, ApiResult};
+use crate::error::ApiResult;
 use crate::handlers::documents_types::*;
 use crate::middleware::TenantContext;
 use crate::services::document_metadata_scan::load_scoped_document_metadata;
@@ -133,7 +133,11 @@ pub(crate) async fn run_recover_stuck(
         }
     }
 
-    // Requeue stuck documents
+    // Requeue stuck documents via SPEC-054/#298 SSOT (DRY with startup reconcile).
+    use crate::services::pending_doc_task_reconcile::{
+        ensure_task_for_pending_document, EnsureTaskOutcome,
+    };
+
     for (doc_id, doc_title) in &stuck_docs {
         // OODA-08: Clean up partial graph data from interrupted processing BEFORE requeueing
         match cleanup_document_graph_data(doc_id, &state.storage.graph_storage, None).await {
@@ -157,151 +161,70 @@ pub(crate) async fn run_recover_stuck(
 
         let metadata_key =
             crate::services::document_metadata_scan::metadata_key_for_document(doc_id);
-        let metadata = state.storage.kv_storage.get_by_id(&metadata_key).await?;
+        let mut metadata = state
+            .storage
+            .kv_storage
+            .get_by_id(&metadata_key)
+            .await?
+            .unwrap_or_else(|| serde_json::json!({ "id": doc_id, "title": doc_title }));
 
-        let workspace_id = tenant_ctx
-            .workspace_id
-            .clone()
-            .unwrap_or_else(|| "default".to_string());
-        let tenant_id = tenant_ctx
-            .tenant_id
-            .clone()
-            .unwrap_or_else(|| "default".to_string());
-
-        let pdf_id_str = metadata
-            .as_ref()
-            .and_then(|m| m.get("pdf_id"))
-            .and_then(|v| v.as_str());
-        let source_type = metadata
-            .as_ref()
-            .and_then(|m| m.get("source_type"))
-            .and_then(|v| v.as_str());
-
-        // SPEC-045 SRE-I05: PDF stuck docs re-enqueue PdfProcessing when pdf_id present.
-        if source_type == Some("pdf") {
-            if let Some(pdf_id_str) = pdf_id_str {
-                if let Ok(pdf_id) = Uuid::parse_str(pdf_id_str) {
-                    if let Some(mut meta_val) = metadata {
-                        if let Some(obj) = meta_val.as_object_mut() {
-                            obj.insert("status".to_string(), serde_json::json!("pending"));
-                            obj.insert("track_id".to_string(), serde_json::json!(new_track_id));
-                            obj.insert(
-                                "recovered_at".to_string(),
-                                serde_json::json!(Utc::now().to_rfc3339()),
-                            );
-                            obj.insert(
-                                "recovery_reason".to_string(),
-                                serde_json::json!("stuck_in_processing"),
-                            );
-                            crate::services::upsert_metadata_kv_with_index(
-                                state.storage.kv_storage.as_ref(),
-                                &metadata_key,
-                                meta_val,
-                            )
-                            .await?;
-                        }
-                    }
-
-                    use edgequake_tasks::{PdfProcessingData, Task, TaskType};
-
-                    let tenant_uuid = Uuid::parse_str(&tenant_id)
-                        .map_err(|_| ApiError::ValidationError("Invalid tenant ID".to_string()))?;
-                    let workspace_uuid = Uuid::parse_str(&workspace_id).map_err(|_| {
-                        ApiError::ValidationError("Invalid workspace ID".to_string())
-                    })?;
-
-                    let task_data = PdfProcessingData {
-                        pdf_id,
-                        tenant_id: tenant_uuid,
-                        workspace_id: workspace_uuid,
-                        enable_vision: true,
-                        vision_provider: "ollama".to_string(),
-                        vision_model: None,
-                        existing_document_id: Some(doc_id.clone()),
-                        pdf_parser_backend: edgequake_pdf::PdfParserBackend::Vision,
-                        pdf_parser_backend_explicit: false,
-                        restart_from_scratch: false,
-                        reprocess_mode: None,
-                        multimodal_process_options: None,
-                    };
-
-                    let task = Task::new(
-                        tenant_uuid,
-                        workspace_uuid,
-                        TaskType::PdfProcessing,
-                        serde_json::to_value(task_data).map_err(|e| {
-                            ApiError::Internal(format!("Failed to serialize PDF task: {}", e))
-                        })?,
-                    );
-
-                    state.enqueue_task(task).await?;
-                    requeued_ids.push(doc_id.clone());
-                    requeued_titles.push(doc_title.clone());
-                    tracing::info!("Recovered stuck PDF document: {} ({})", doc_id, doc_title);
-                    continue;
+        // Ensure tenant/workspace ids are present for task construction.
+        if let Some(obj) = metadata.as_object_mut() {
+            if obj.get("tenant_id").and_then(|v| v.as_str()).is_none() {
+                if let Some(ref tid) = tenant_ctx.tenant_id {
+                    obj.insert("tenant_id".to_string(), serde_json::json!(tid));
                 }
             }
+            if obj.get("workspace_id").and_then(|v| v.as_str()).is_none() {
+                if let Some(ref wid) = tenant_ctx.workspace_id {
+                    obj.insert("workspace_id".to_string(), serde_json::json!(wid));
+                }
+            }
+            obj.insert("status".to_string(), serde_json::json!("pending"));
+            obj.insert(
+                "recovery_reason".to_string(),
+                serde_json::json!("stuck_in_processing"),
+            );
+            obj.insert(
+                "recovered_at".to_string(),
+                serde_json::json!(Utc::now().to_rfc3339()),
+            );
         }
 
-        // Text/markdown recovery path (content in KV)
-        let content_key = format!("{}-content", doc_id);
-        if let Some(content_value) = state.storage.kv_storage.get_by_id(&content_key).await? {
-            if let Some(content) = content_value.get("content").and_then(|v| v.as_str()) {
-                if let Some(mut meta_val) = metadata {
-                    if let Some(obj) = meta_val.as_object_mut() {
-                        obj.insert("status".to_string(), serde_json::json!("pending"));
-                        obj.insert("track_id".to_string(), serde_json::json!(new_track_id));
-                        obj.insert(
-                            "recovered_at".to_string(),
-                            serde_json::json!(Utc::now().to_rfc3339()),
-                        );
-                        obj.insert(
-                            "recovery_reason".to_string(),
-                            serde_json::json!("stuck_in_processing"),
-                        );
+        let content_key = format!("{doc_id}-content");
+        let content = state
+            .storage
+            .kv_storage
+            .get_by_id(&content_key)
+            .await?
+            .and_then(|v| {
+                v.get("content")
+                    .and_then(|c| c.as_str())
+                    .map(str::to_string)
+            });
 
-                        crate::services::upsert_metadata_kv_with_index(
-                            state.storage.kv_storage.as_ref(),
-                            &metadata_key,
-                            meta_val,
-                        )
-                        .await?;
-                    }
-                }
-
-                use edgequake_tasks::{Task, TaskType, TextInsertData};
-
-                let task_data = TextInsertData {
-                    text: content.to_string(),
-                    file_source: doc_title.clone(),
-                    workspace_id: workspace_id.clone(),
-                    metadata: Some(serde_json::json!({
-                        "document_id": doc_id,
-                        "title": doc_title,
-                        "track_id": new_track_id,
-                        "is_recovery": true,
-                        "tenant_id": tenant_id,
-                        "workspace_id": workspace_id,
-                    })),
-                };
-
-                let task = Task::new(
-                    uuid::Uuid::parse_str(&tenant_id)
-                        .map_err(|_| ApiError::ValidationError("Invalid tenant ID".to_string()))?,
-                    uuid::Uuid::parse_str(&workspace_id).map_err(|_| {
-                        ApiError::ValidationError("Invalid workspace ID".to_string())
-                    })?,
-                    TaskType::Insert,
-                    serde_json::to_value(task_data).unwrap(),
-                );
-
-                state.enqueue_task(task).await?;
-
+        match ensure_task_for_pending_document(
+            &state,
+            doc_id,
+            &metadata,
+            content.as_deref(),
+            &new_track_id,
+            "stuck_in_processing",
+        )
+        .await?
+        {
+            EnsureTaskOutcome::Enqueued { .. } | EnsureTaskOutcome::AlreadyScheduled => {
                 requeued_ids.push(doc_id.clone());
                 requeued_titles.push(doc_title.clone());
-
                 tracing::info!("Recovered stuck document: {} ({})", doc_id, doc_title);
             }
+            EnsureTaskOutcome::SkippedNoContent => {
+                tracing::warn!(
+                    document_id = %doc_id,
+                    "recover_stuck: no pdf_id/content — cannot enqueue"
+                );
+            }
+            EnsureTaskOutcome::SkippedNotEligible => {}
         }
     }
 

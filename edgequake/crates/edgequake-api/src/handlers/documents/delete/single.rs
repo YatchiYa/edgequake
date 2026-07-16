@@ -236,6 +236,61 @@ pub async fn delete_document(
             )
         };
 
+    // SPEC-050: Generate a transient track_id for this deletion operation.
+    // WHY: Allows WebSocket clients to correlate DeletionStarted / DeletionPhase /
+    // DeletionCompleted events to the specific delete request they triggered.
+    let deletion_track_id = Uuid::new_v4().to_string();
+
+    // Early admit: write status=deleting BEFORE expensive cascade so list polls
+    // during vectors/graph/kv removal show an honest "Deleting" badge (not stale
+    // Completed). Same spirit as reprocess early-admit cleaning.
+    if has_metadata {
+        if let Ok(Some(mut metadata)) = state.storage.kv_storage.get_by_id(&metadata_key).await {
+            if let Some(obj) = metadata.as_object_mut() {
+                obj.insert(
+                    "status".to_string(),
+                    serde_json::json!("deleting"),
+                );
+                obj.insert(
+                    "current_stage".to_string(),
+                    serde_json::json!("deleting"),
+                );
+                obj.insert(
+                    "stage_message".to_string(),
+                    serde_json::json!("Removing document data…"),
+                );
+                obj.insert(
+                    "stage_progress".to_string(),
+                    serde_json::json!(0.0),
+                );
+                for key in [
+                    "entity_count",
+                    "entities_count",
+                    "relationship_count",
+                    "relationships_count",
+                    "total_cost",
+                    "cost_usd",
+                ] {
+                    if obj.contains_key(key) {
+                        obj.insert(key.to_string(), serde_json::json!(0));
+                    }
+                }
+                let _ = crate::services::upsert_metadata_kv_with_index(
+                    state.storage.kv_storage.as_ref(),
+                    &metadata_key,
+                    metadata,
+                )
+                .await;
+            }
+        }
+    }
+
+    // SPEC-050: Broadcast deletion started so the frontend can show "Deleting…"
+    state
+        .tasks
+        .progress_broadcaster
+        .deletion_started(&document_id, &deletion_track_id);
+
     // First Principle: a user must always be able to delete their own document.
     //
     // If the document is still being processed (pending/processing), cancel its
@@ -246,9 +301,16 @@ pub async fn delete_document(
     //
     // SRP: the delete handler's only job is data removal; lifecycle management
     // belongs to the processor.  Blocking deletion here was the wrong layer.
-    if matches!(document_status.as_str(), "pending" | "processing") {
+    if matches!(document_status.as_str(), "pending" | "processing" | "deleting") {
         match &track_id_opt {
             Some(track_id) => {
+                state.tasks.progress_broadcaster.deletion_phase(
+                    &document_id,
+                    &deletion_track_id,
+                    DeletionPhaseKind::CancellingTask,
+                    0,
+                    1,
+                );
                 let cancelled = state.tasks.cancellation_registry.cancel(track_id).await;
                 tracing::info!(
                     document_id = %document_id,
@@ -275,17 +337,6 @@ pub async fn delete_document(
         Some(&workspace_id_for_storage),
     )
     .await;
-
-    // SPEC-050: Generate a transient track_id for this deletion operation.
-    // WHY: Allows WebSocket clients to correlate DeletionStarted / DeletionPhase /
-    // DeletionCompleted events to the specific delete request they triggered.
-    let deletion_track_id = Uuid::new_v4().to_string();
-
-    // SPEC-050: Broadcast deletion started so the frontend can show "Deleting…"
-    state
-        .tasks
-        .progress_broadcaster
-        .deletion_started(&document_id, &deletion_track_id);
 
     // SPEC-028: Collect chunk IDs for vector storage deletion
     // Clone chunk_ids before workspace_vector_storage operations
@@ -604,6 +655,15 @@ pub async fn delete_document(
         tenant_ctx.workspace_id.clone(),
         tenant_ctx.user_id.clone(),
         Some(("document".to_string(), document_id.clone())),
+    );
+
+    // SPEC-050: Finalizing phase before completion broadcast.
+    state.tasks.progress_broadcaster.deletion_phase(
+        &document_id,
+        &deletion_track_id,
+        DeletionPhaseKind::Finalizing,
+        0,
+        1,
     );
 
     // SPEC-050: Broadcast DeletionCompleted so the frontend can show final stats.

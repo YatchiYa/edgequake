@@ -414,11 +414,12 @@ async fn test_provider_factory_ollama_creation() {
 // OODA 191: Safe Provider Factory Tests
 // ============================================================================
 
-/// Test that safe provider factory wraps mock provider correctly.
+/// Test that safe provider factory wraps mock provider correctly when allowed.
 #[tokio::test]
 #[serial]
 async fn test_safe_provider_factory_mock() {
     clean_provider_env();
+    std::env::set_var("EDGEQUAKE_ALLOW_MOCK_PROVIDER", "1");
 
     let result = create_safe_llm_provider("mock", "test-model");
     assert!(result.is_ok());
@@ -427,6 +428,7 @@ async fn test_safe_provider_factory_mock() {
     // Safe wrapper should still report mock as the underlying provider
     assert_eq!(provider.name(), "mock");
 
+    std::env::remove_var("EDGEQUAKE_ALLOW_MOCK_PROVIDER");
     clean_provider_env();
 }
 

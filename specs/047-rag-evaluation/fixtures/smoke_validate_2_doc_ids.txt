@@ -1,0 +1,4 @@
+# SPEC-047 2-doc validate: chart-heavy + figure-heavy (skip 117-page PDF).
+# political-release: 6 Chart Qs; facebook metrics: 6 Figure Qs (~24 Qs total).
+05-03-18-political-release.pdf
+measuringsuccessonfacebooktwitterlinkedin-160317142140_95.pdf

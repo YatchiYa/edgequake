@@ -599,6 +599,7 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 			OLLAMA_HOST="http://localhost:11434" \
 			OLLAMA_MODEL="gemma4:latest" \
 			OLLAMA_EMBEDDING_MODEL="embeddinggemma:latest" \
+			OLLAMA_CONTEXT_LENGTH="$${OLLAMA_CONTEXT_LENGTH:-8192}" \
 			cargo run 2>&1 | sed 's/^/[backend] /') & \
 		BACKEND_PID=$$!; \
 	fi; \
@@ -862,6 +863,7 @@ backend-dev: db-wait ## Run backend in development mode with PostgreSQL (uses .e
 		OLLAMA_HOST="http://localhost:11434" \
 		OLLAMA_MODEL="gemma4:latest" \
 		OLLAMA_EMBEDDING_MODEL="embeddinggemma:latest" \
+		OLLAMA_CONTEXT_LENGTH="$${OLLAMA_CONTEXT_LENGTH:-8192}" \
 		cargo run
 
 backend-db: db-wait ## Run backend with PostgreSQL storage (uses .env configuration)
@@ -888,6 +890,7 @@ backend-db: db-wait ## Run backend with PostgreSQL storage (uses .env configurat
 		OLLAMA_HOST="http://localhost:11434" \
 		OLLAMA_MODEL="gemma4:latest" \
 		OLLAMA_EMBEDDING_MODEL="embeddinggemma:latest" \
+		OLLAMA_CONTEXT_LENGTH="$${OLLAMA_CONTEXT_LENGTH:-8192}" \
 		cargo run
 
 # OODA-03: In-memory storage has been REMOVED for production consistency.
@@ -983,6 +986,7 @@ backend-bg: sync-dev-ports db-wait ## Run backend in background with PostgreSQL 
 		printf '%s\n' "export OLLAMA_HOST=\"http://localhost:11434\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export OLLAMA_MODEL=\"gemma4:latest\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export OLLAMA_EMBEDDING_MODEL=\"embeddinggemma:latest\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export OLLAMA_CONTEXT_LENGTH=\"$${OLLAMA_CONTEXT_LENGTH:-8192}\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_ALLOWED_PROVIDERS=\"*\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "$$_RUN" >> /tmp/edgequake-start.sh; \
 		chmod +x /tmp/edgequake-start.sh; \

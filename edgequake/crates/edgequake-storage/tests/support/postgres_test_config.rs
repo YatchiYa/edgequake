@@ -11,7 +11,16 @@ use uuid::Uuid;
 /// Build a postgres config when `DATABASE_URL` or `POSTGRES_PASSWORD` is set; otherwise `None`.
 pub fn contract_postgres_config(namespace_prefix: &str) -> Option<PostgresConfig> {
     if let Ok(url) = env::var("DATABASE_URL") {
-        return postgres_config_from_database_url(&url, namespace_prefix);
+        if !url.trim().is_empty() {
+            return postgres_config_from_database_url(url.trim(), namespace_prefix);
+        }
+    }
+    // make-dev writes the effective URL here (password may differ from defaults).
+    if let Ok(url) = std::fs::read_to_string("/tmp/edgequake-db-url") {
+        let url = url.trim();
+        if !url.is_empty() {
+            return postgres_config_from_database_url(url, namespace_prefix);
+        }
     }
 
     let password = env::var("POSTGRES_PASSWORD").ok()?;

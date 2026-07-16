@@ -10,6 +10,7 @@
 
 pub mod content;
 mod helpers;
+pub mod progress_identity;
 pub mod operations;
 pub mod status;
 pub mod types;
@@ -21,6 +22,9 @@ pub use operations::*;
 pub use status::*;
 pub use types::*;
 pub use upload::*;
+
+// SPEC-054: reprocess shares upload progress-identity seeding (DRY).
+pub(crate) use progress_identity::seed_pdf_job_progress;
 
 #[cfg(test)]
 mod tests {

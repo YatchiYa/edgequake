@@ -194,6 +194,32 @@ impl Tenant {
         self.default_vision_llm_provider = Some(provider.into());
         self
     }
+
+    /// Heal persisted Mock default LLM/embedding/vision fields in place.
+    pub fn sanitize_mock_providers(&mut self) {
+        if super::workspace::is_mock_provider_id(&self.default_llm_provider) {
+            self.default_llm_provider =
+                Workspace::coerce_non_mock_provider(self.default_llm_provider.clone());
+            self.default_llm_model =
+                Workspace::default_model_for_provider(&self.default_llm_provider);
+        }
+        if super::workspace::is_mock_provider_id(&self.default_embedding_provider) {
+            self.default_embedding_provider =
+                Workspace::coerce_non_mock_provider(self.default_embedding_provider.clone());
+            self.default_embedding_model =
+                Workspace::default_embedding_model_for_provider(&self.default_embedding_provider);
+            self.default_embedding_dimension =
+                Workspace::detect_dimension_from_model(&self.default_embedding_model);
+        }
+        if let Some(ref vision_provider) = self.default_vision_llm_provider {
+            if super::workspace::is_mock_provider_id(vision_provider) {
+                let replacement = Workspace::coerce_non_mock_provider(vision_provider.clone());
+                self.default_vision_llm_model =
+                    Some(Workspace::default_model_for_provider(&replacement));
+                self.default_vision_llm_provider = Some(replacement);
+            }
+        }
+    }
 }
 
 /// Tenant subscription plans.

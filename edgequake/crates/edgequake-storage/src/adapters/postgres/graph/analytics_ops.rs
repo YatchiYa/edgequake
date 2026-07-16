@@ -149,34 +149,47 @@ impl PostgresAGEGraphStorage {
     /// Count nodes whose `source_ids` array (or legacy `source_id`) contains
     /// any entry starting with `prefix` (SPEC-021 P-A3).
     ///
-    /// WHY: per-document entity_count fallback for the Documents list. A
-    /// single aggregate Cypher avoids materializing the nodes. We check both
-    /// the modern `source_ids` array and the legacy `source_id` pipe-delimited
-    /// string to match `collect_source_references` semantics.
+    /// WHY: per-document entity_count fallback for the Documents list. The
+    /// previous LIKE/`jsonb_array_elements_text` predicate Seq-Scanned the
+    /// full AGE vertex table (~seconds per zero-count doc → UI "stuck" on
+    /// Documents). Production nodes store exact chunk ids in `source_ids`;
+    /// probing those with GIN `@>` uses `idx_*_source_ids_gin` (~ms).
     pub(super) async fn pg_node_count_by_source_prefix(&self, prefix: &str) -> Result<usize> {
-        // WHY: avoid Cypher's `any(s IN n.source_ids WHERE s STARTS WITH ...)`
-        // which this AGE version rejects with "syntax error at or near WHERE".
-        // Mirror scan_ops.rs and do the prefix match in SQL against the JSONB
-        // view of each node's properties — same semantics, AGE-version-safe.
         let pool = self.pool.get().await?;
         let mut conn = pool.acquire().await.map_err(|e| {
             StorageError::Connection(format!("Failed to acquire connection: {}", e))
         })?;
 
-        let props = format!("({})::jsonb", "ag_catalog.agtype_to_json(v.properties)");
-        let match_clause = super::helpers::jsonb_matches_doc_source_prefix(&props, prefix);
-        let sql = format!(
-            "SELECT count(*)::BIGINT FROM {graph}.\"_ag_label_vertex\" v \
-             WHERE {match_clause}",
-            graph = self.graph_name,
-            match_clause = match_clause,
+        let candidates = super::helpers::source_chunk_id_candidates(
+            prefix,
+            super::helpers::SOURCE_CHUNK_PROBE_LIMIT,
         );
 
-        let count: i64 = sqlx::query_scalar(&sql)
+        // GIN-only on `source_ids` (indexed). Do NOT OR `source_chunk_ids`
+        // here — that expression has no GIN and the planner falls back to a
+        // Nested Loop Seq Scan over all vertices.
+        let sql = format!(
+            "SELECT count(DISTINCT v.id)::BIGINT \
+             FROM {graph}.\"_ag_label_vertex\" v \
+             CROSS JOIN unnest($1::text[]) AS c(chunk_id) \
+             WHERE ((ag_catalog.agtype_to_json(v.properties))::jsonb -> 'source_ids') \
+                   @> to_jsonb(c.chunk_id)",
+            graph = self.graph_name,
+        );
+
+        let gin_count: i64 = sqlx::query_scalar(&sql)
+            .bind(&candidates)
             .fetch_one(&mut *conn)
             .await
-            .map_err(|e| StorageError::Database(format!("source-prefix node count failed: {e}")))?;
-        Ok(count as usize)
+            .map_err(|e| {
+                StorageError::Database(format!("source-prefix GIN node count failed: {e}"))
+            })?;
+        // WHY: do not fall back to `source_id LIKE …` here. On this AGE build
+        // that predicate Seq-Scans ~140k vertices (~300ms+) even when zero rows
+        // have scalar `source_id` (production stores arrays in `source_ids`).
+        // Returning 0 after a negative GIN probe keeps the Documents list
+        // interactive; scan/filter ops still use the LIKE helper when needed.
+        Ok(gin_count as usize)
     }
 
     pub(super) async fn pg_clear(&self) -> Result<()> {

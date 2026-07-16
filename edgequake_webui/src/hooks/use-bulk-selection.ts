@@ -22,6 +22,14 @@ import {
     type ReprocessMode,
 } from "@/lib/api/edgequake";
 import { invalidateKnowledgeGraph } from "@/lib/cache-manager";
+import {
+    abortAdmit,
+    beginAdmit,
+    bindLiveTask,
+    formatReprocessSkipReasons,
+    scheduleDocumentsInvalidate,
+    unpinReprocessDocuments,
+} from "@/lib/documents/progress-admit";
 import type { Document } from "@/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
@@ -47,15 +55,18 @@ export interface UseBulkSelectionOptions {
   onDeleteRequested?: (selectedDocuments: Document[]) => void;
 
   /**
-   * SPEC-051: Callback fired after each successful reprocess in a bulk operation.
-   * DIP: useBulkSelection does not know about ProgressPanelRow; it delegates
-   * the UI decision to its caller.
+   * SPEC-051: Callback fired when a reprocess panel should appear or upgrade
+   * (provisional admit → live task_id). DIP: useBulkSelection does not know
+   * about ProgressPanelRow; it delegates the UI decision to its caller.
    */
   onReprocessTriggered?: (
     documentName: string,
     trackId: string,
     options: { documentId: string; isPdf?: boolean; mode?: string },
   ) => void;
+
+  /** Remove a provisional/live panel when skip or per-doc error occurs. */
+  onReprocessDismissed?: (documentId: string) => void;
 }
 
 /**
@@ -155,6 +166,7 @@ export function useBulkSelection({
   documents,
   onDeleteRequested,
   onReprocessTriggered,
+  onReprocessDismissed,
 }: UseBulkSelectionOptions): UseBulkSelectionReturn {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -290,7 +302,8 @@ export function useBulkSelection({
   /**
    * Reprocess all selected documents.
    * WHY: Bulk reprocess is more efficient than one-by-one.
-   * Uses optimistic update to immediately show "pending" status for all selected docs.
+   * Sync admit (before any await): pin + provisional panel so Confirm → paint
+   * never waits on graph cleanup (5–10s HTTP dead zone).
    */
   const handleBulkReprocess = useCallback(
     async (mode: ReprocessMode = "entities") => {
@@ -300,75 +313,105 @@ export function useBulkSelection({
       setIsBulkReprocessing(true);
       let successCount = 0;
       let errorCount = 0;
+      let skippedCount = 0;
 
-      // Cancel outgoing refetches and snapshot for rollback
-      await queryClient.cancelQueries({ queryKey: ["documents"] });
+      // Snapshot before optimistic patch (rollback on hard failure).
       const previousDocuments = queryClient.getQueriesData({
         queryKey: ["documents"],
       });
 
-      // Optimistically update all selected documents to "pending"
-      const idsSet = new Set(idsToReprocess);
-      queryClient.setQueriesData(
-        { queryKey: ["documents"] },
-        (oldData: { items?: Document[] } | undefined) => {
-          if (!oldData?.items) return oldData;
-          return {
-            ...oldData,
-            items: oldData.items.map((doc: Document) =>
-              idsSet.has(doc.id)
-                ? {
-                    ...doc,
-                    status: "pending",
-                    error_message: undefined,
-                    current_stage: undefined,
-                  }
-                : doc,
-            ),
-          };
-        },
+      // SYNC: pin + optimistic processing + provisional Queuing panels (one paint).
+      const provisionalByDoc = beginAdmit(queryClient, idsToReprocess);
+      for (const id of idsToReprocess) {
+        const doc = documents.find((d) => d.id === id);
+        const provisional = provisionalByDoc.get(id);
+        if (!doc?.id || !provisional || !onReprocessTriggered) continue;
+        const docName = doc.file_name || doc.title || doc.id.slice(0, 8);
+        onReprocessTriggered(docName, provisional, {
+          documentId: doc.id,
+          isPdf: doc.source_type === "pdf",
+          mode,
+        });
+      }
+      const queuingToastId = toast.loading(
+        t("documents.reprocess.queuing", "Queuing reprocess…"),
       );
 
       try {
+        await queryClient.cancelQueries({ queryKey: ["documents"] });
+
         for (const id of idsToReprocess) {
           try {
             const doc = documents.find((d) => d.id === id);
             if (!doc?.id) {
               errorCount++;
+              abortAdmit(queryClient, id, previousDocuments);
+              onReprocessDismissed?.(id);
               continue;
             }
             // WHY: reprocessDocument expects the document's `id` (KV metadata key),
             // not its track_id.  Using track_id caused silent no-ops on the backend.
-            // mode propagates the bulk re-conversion intent to the backend.
             const response = await reprocessDocument(doc.id, true, mode);
-            // SPEC-051: pass documentId + isPdf + mode so the tracking layer
-            // can use the stable document ID (not the rotating track_id) for
-            // prune logic and component selection.
-            if (onReprocessTriggered && response.track_id) {
+            const progressTrackId = bindLiveTask(
+              queryClient,
+              doc.id,
+              response,
+            );
+
+            if (!progressTrackId) {
+              skippedCount++;
+              abortAdmit(queryClient, doc.id, previousDocuments);
+              onReprocessDismissed?.(doc.id);
+              const reasons = formatReprocessSkipReasons(response.skip_reasons);
+              toast.warning(
+                t(
+                  "documents.reprocess.skipped",
+                  "Document was not requeued for processing",
+                ),
+                {
+                  description:
+                    reasons ||
+                    t(
+                      "documents.reprocess.skippedHint",
+                      "It may already be processing, or content is missing.",
+                    ),
+                  duration: 6000,
+                },
+              );
+              continue;
+            }
+
+            // Upgrade provisional → live progress key (addReprocessEntry upgrades).
+            if (onReprocessTriggered) {
               const docName = doc.file_name || doc.title || doc.id.slice(0, 8);
-              onReprocessTriggered(docName, response.track_id, {
+              onReprocessTriggered(docName, progressTrackId, {
                 documentId: doc.id,
-                isPdf: doc.source_type === 'pdf',
+                isPdf: doc.source_type === "pdf",
                 mode,
               });
             }
             successCount++;
           } catch {
             errorCount++;
+            abortAdmit(queryClient, id, previousDocuments);
+            onReprocessDismissed?.(id);
           }
         }
+
+        toast.dismiss(queuingToastId);
 
         if (successCount > 0) {
           toast.success(
             t("documents.bulk.reprocessSuccess", { count: successCount }) ||
               `Queued ${successCount} document(s) for reprocessing`,
           );
+          // Delay invalidate so list merge cannot immediately restore stale Completed.
+          scheduleDocumentsInvalidate(queryClient);
+        } else if (skippedCount > 0 && errorCount === 0) {
           queryClient.invalidateQueries({ queryKey: ["documents"] });
           queryClient.invalidateQueries({ queryKey: ["pipeline-status"] });
         }
         if (errorCount > 0) {
-          // Partial failure: rollback optimistic update for failed ones
-          // and refetch to get accurate state
           toast.error(
             t("documents.bulk.reprocessFailed", { count: errorCount }) ||
               `Failed to queue ${errorCount} document(s)`,
@@ -376,6 +419,11 @@ export function useBulkSelection({
           queryClient.invalidateQueries({ queryKey: ["documents"] });
         }
       } catch {
+        toast.dismiss(queuingToastId);
+        unpinReprocessDocuments(idsToReprocess);
+        for (const id of idsToReprocess) {
+          onReprocessDismissed?.(id);
+        }
         // Full failure: rollback all optimistic updates
         for (const [queryKey, data] of previousDocuments) {
           queryClient.setQueryData(queryKey, data);
@@ -385,7 +433,14 @@ export function useBulkSelection({
         setSelectedIds(new Set());
       }
     },
-    [selectedIds, documents, queryClient, t, onReprocessTriggered],
+    [
+      selectedIds,
+      documents,
+      queryClient,
+      t,
+      onReprocessTriggered,
+      onReprocessDismissed,
+    ],
   );
 
   return {

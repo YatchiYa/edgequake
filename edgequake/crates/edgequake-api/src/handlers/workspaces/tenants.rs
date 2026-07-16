@@ -53,30 +53,48 @@ pub async fn create_tenant(
         tenant = tenant.with_description(desc);
     }
 
+    let default_llm_provider = crate::provider_visibility::heal_optional_mock_provider(
+        request.default_llm_provider.clone(),
+        request.default_llm_model.as_deref(),
+    );
+    let default_embedding_provider = crate::provider_visibility::heal_optional_mock_provider(
+        request.default_embedding_provider.clone(),
+        request.default_embedding_model.as_deref(),
+    );
+    let default_vision_llm_provider = crate::provider_visibility::heal_optional_mock_provider(
+        request.default_vision_llm_provider.clone(),
+        request.default_vision_llm_model.as_deref(),
+    );
+
     // SPEC-032: Apply LLM configuration if provided
     if let (Some(model), Some(provider)) =
-        (&request.default_llm_model, &request.default_llm_provider)
+        (&request.default_llm_model, &default_llm_provider)
     {
         tenant = tenant.with_llm_config(model, provider);
     } else if let Some(model) = &request.default_llm_model {
         // Auto-detect provider from model name
-        let provider = edgequake_core::Workspace::detect_provider_from_model(model);
+        let provider = crate::provider_visibility::heal_mock_provider_id(
+            &edgequake_core::Workspace::detect_provider_from_model(model),
+            Some(model),
+        );
         tenant = tenant.with_llm_config(model, provider);
     }
 
     // SPEC-032: Apply embedding configuration if provided
     if let (Some(model), Some(provider), Some(dimension)) = (
         &request.default_embedding_model,
-        &request.default_embedding_provider,
+        &default_embedding_provider,
         request.default_embedding_dimension,
     ) {
         tenant = tenant.with_embedding_config(model, provider, dimension);
     } else if let Some(model) = &request.default_embedding_model {
         // Auto-detect provider and dimension from model name
-        let provider = edgequake_core::Workspace::detect_provider_from_model(model);
+        let provider = crate::provider_visibility::heal_mock_provider_id(
+            &edgequake_core::Workspace::detect_provider_from_model(model),
+            Some(model),
+        );
         let dimension = edgequake_core::Workspace::detect_dimension_from_model(model);
-        let final_provider = request
-            .default_embedding_provider
+        let final_provider = default_embedding_provider
             .clone()
             .unwrap_or(provider);
         let final_dimension = request.default_embedding_dimension.unwrap_or(dimension);
@@ -86,12 +104,15 @@ pub async fn create_tenant(
     // SPEC-041: Apply default vision LLM configuration if provided
     if let (Some(model), Some(provider)) = (
         &request.default_vision_llm_model,
-        &request.default_vision_llm_provider,
+        &default_vision_llm_provider,
     ) {
         tenant = tenant.with_vision_config(model, provider);
     } else if let Some(model) = &request.default_vision_llm_model {
         // Auto-detect provider from model name
-        let provider = edgequake_core::Workspace::detect_provider_from_model(model);
+        let provider = crate::provider_visibility::heal_mock_provider_id(
+            &edgequake_core::Workspace::detect_provider_from_model(model),
+            Some(model),
+        );
         tenant = tenant.with_vision_config(model, provider);
     }
 

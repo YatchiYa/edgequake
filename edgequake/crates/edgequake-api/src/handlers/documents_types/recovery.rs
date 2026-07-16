@@ -58,10 +58,19 @@ impl Default for ReprocessFailedRequest {
     }
 }
 
+/// Per-document progress identity after reprocess enqueue (SPEC-054 progress SSOT).
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ReprocessDocumentTaskId {
+    /// Document id that was requeued.
+    pub document_id: String,
+    /// Server task track_id — sole progress / cancel / WS key.
+    pub task_id: String,
+}
+
 /// Response from reprocess operation.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ReprocessFailedResponse {
-    /// Track ID for the reprocess batch.
+    /// Track ID for the reprocess batch (correlation only — not a progress key).
     pub track_id: String,
 
     /// Level 4 v2 migration hint (additive).
@@ -74,8 +83,24 @@ pub struct ReprocessFailedResponse {
     /// Number of documents queued for reprocessing.
     pub requeued: usize,
 
+    /// Documents matched but not enqueued (SPEC-054/#298-C honesty).
+    #[serde(default)]
+    pub skipped: usize,
+
+    /// Counts by skip reason when `requeued` is less than `failed_found`.
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub skip_reasons: std::collections::HashMap<String, usize>,
+
     /// List of document IDs being reprocessed.
     pub document_ids: Vec<String>,
+
+    /// Progress key when exactly one document was requeued (DRY with upload `task_id`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub task_id: Option<String>,
+
+    /// Per-document task ids for multi-doc reprocess (additive honesty).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub document_task_ids: Vec<ReprocessDocumentTaskId>,
 }
 
 // ============================================================================

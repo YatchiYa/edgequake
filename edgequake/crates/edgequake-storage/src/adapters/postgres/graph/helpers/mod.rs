@@ -16,7 +16,9 @@ mod session;
 mod source_lineage_sql;
 mod vertex_filter;
 
-pub(in crate::adapters::postgres::graph) use source_lineage_sql::jsonb_matches_doc_source_prefix;
+pub(in crate::adapters::postgres::graph) use source_lineage_sql::{
+    jsonb_matches_doc_source_prefix, source_chunk_id_candidates, SOURCE_CHUNK_PROBE_LIMIT,
+};
 
 pub(in crate::adapters::postgres::graph) use vertex_filter::EdgeTenantFilterMode;
 

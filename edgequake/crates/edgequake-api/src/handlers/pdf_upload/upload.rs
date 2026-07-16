@@ -7,6 +7,7 @@ use super::helpers::{
     clear_document_derived_data_in_workspace, create_pdf_processing_task, estimate_processing_time,
     extract_page_count, get_pdf_storage,
 };
+use super::progress_identity::seed_pdf_job_progress;
 use super::types::*;
 use edgequake_audit::{AuditEventType, AuditResult};
 
@@ -470,8 +471,13 @@ async fn process_pdf_upload_parts(
                         obj.insert("current_stage".to_string(), serde_json::json!("converting"));
                         obj.insert("stage_progress".to_string(), serde_json::json!(0.0));
                         obj.insert("error_message".to_string(), serde_json::Value::Null);
-                        if let Some(track) = options.track_id.as_ref() {
-                            obj.insert("track_id".to_string(), serde_json::json!(track));
+                        // SPEC-054: do not write client batch track_id into metadata.track_id.
+                        // Progress/list SSOT is the server task id, set after enqueue below.
+                        if let Some(client_batch) = options.track_id.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                            obj.insert(
+                                "batch_track_id".to_string(),
+                                serde_json::json!(client_batch),
+                            );
                         }
                     }
                     let _ = crate::services::upsert_metadata_kv_with_index(
@@ -525,19 +531,36 @@ async fn process_pdf_upload_parts(
             )
             .await?;
 
-            let effective_track_id = options
-                .track_id
-                .clone()
-                .unwrap_or_else(|| enqueue.track_id.clone());
-            state
-                .tasks
-                .pipeline_state
-                .start_pdf_progress(
-                    &effective_track_id,
-                    &existing.pdf_id.to_string(),
-                    &existing.filename,
-                )
-                .await;
+            // SPEC-054 / #300: metadata.track_id and progress key are always server task_id.
+            if let Some(ref document_id) = existing_document_id {
+                let metadata_key =
+                    crate::services::document_metadata_scan::metadata_key_for_document(document_id);
+                if let Ok(Some(mut metadata)) =
+                    state.storage.kv_storage.get_by_id(&metadata_key).await
+                {
+                    if let Some(obj) = metadata.as_object_mut() {
+                        obj.insert(
+                            "track_id".to_string(),
+                            serde_json::json!(enqueue.track_id),
+                        );
+                    }
+                    let _ = crate::services::upsert_metadata_kv_with_index(
+                        state.storage.kv_storage.as_ref(),
+                        &metadata_key,
+                        metadata,
+                    )
+                    .await;
+                }
+            }
+
+            seed_pdf_job_progress(
+                state,
+                &enqueue.track_id,
+                &existing.pdf_id.to_string(),
+                &existing.filename,
+                options.track_id.as_deref(),
+            )
+            .await;
             let estimated_time = estimate_processing_time(
                 existing.file_size_bytes.max(0) as u64,
                 existing.page_count,
@@ -569,14 +592,7 @@ async fn process_pdf_upload_parts(
             });
         }
 
-        if let Some(ref track_id) = options.track_id {
-            state
-                .tasks
-                .pipeline_state
-                .start_pdf_progress(track_id, &existing.pdf_id.to_string(), &existing.filename)
-                .await;
-        }
-
+        // Duplicate without reindex: no new task → do not seed progress.
         let existing_pdf_id = existing.pdf_id.to_string();
         return Ok(PdfUploadResponse {
             pdf_id: existing_pdf_id.clone(),
@@ -697,15 +713,15 @@ async fn process_pdf_upload_parts(
     .await
     .map_err(|e| ApiError::Internal(format!("Failed to provision queued document: {e}")))?;
 
-    let effective_track_id = options
-        .track_id
-        .clone()
-        .unwrap_or_else(|| enqueue.track_id.clone());
-    state
-        .tasks
-        .pipeline_state
-        .start_pdf_progress(&effective_track_id, &pdf_id.to_string(), &filename)
-        .await;
+    // SPEC-054 / #300: seed progress under server task_id only.
+    seed_pdf_job_progress(
+        state,
+        &enqueue.track_id,
+        &pdf_id.to_string(),
+        &filename,
+        options.track_id.as_deref(),
+    )
+    .await;
 
     let estimated_time = estimate_processing_time(
         file_size_bytes,

@@ -239,7 +239,8 @@ pub async fn delete_pdf(
 /// # Arguments
 ///
 /// * `state` - Application state with PipelineState
-/// * `track_id` - Upload tracking ID (returned from upload response)
+/// * `track_id` - Server job id (`PdfUploadResponse.task_id`). Not the optional
+///   client batch `track_id` (SPEC-054 / GitHub #300).
 ///
 /// # Returns
 ///
@@ -249,7 +250,7 @@ pub async fn delete_pdf(
     get,
     path = "/api/v1/documents/pdf/progress/{track_id}",
     params(
-        ("track_id" = String, Path, description = "Upload tracking ID from upload response")
+        ("track_id" = String, Path, description = "Server task_id from PdfUploadResponse (not client batch track_id)")
     ),
     responses(
         (status = 200, description = "Progress data", body = PdfUploadProgress),
@@ -313,7 +314,7 @@ pub async fn get_pdf_progress(
     get,
     path = "/api/v1/documents/pdf/progress/stream/{track_id}",
     params(
-        ("track_id" = String, Path, description = "Upload tracking ID from upload response")
+        ("track_id" = String, Path, description = "Server task_id from PdfUploadResponse (not client batch track_id)")
     ),
     responses(
         (status = 200, description = "SSE stream of PdfUploadProgress events",

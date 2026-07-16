@@ -325,11 +325,36 @@ pub async fn delete_relational_documents_for_workspace<P>(
     Ok(0)
 }
 
+/// True when KV indicates the document is still moving through the pipeline.
+///
+/// Includes `current_stage=queued` (reprocess stage reset) which is not always
+/// mirrored into `status` helpers as a standalone status string.
+fn kv_summary_is_inflight(doc: &DocumentSummary) -> bool {
+    use crate::document_metadata::is_active_processing_status;
+
+    if doc
+        .status
+        .as_deref()
+        .is_some_and(is_active_processing_status)
+    {
+        return true;
+    }
+    doc.current_stage.as_deref().is_some_and(|stage| {
+        is_active_processing_status(stage) || stage.eq_ignore_ascii_case("queued")
+    })
+}
+
 /// Merge KV-derived documents with relational rows (relational fills gaps).
+///
+/// Status rule (SPEC-054 reprocess honesty): when KV is in-flight, do **not**
+/// let a stale relational terminal status (`completed`/`indexed`/`failed`)
+/// overwrite it. Reprocess accept updates KV only; relational lags until the
+/// worker mirrors status — unconditional overwrite made the list lie as Completed.
 pub fn merge_document_summaries(
     mut kv_documents: Vec<DocumentSummary>,
     relational_documents: Vec<DocumentSummary>,
 ) -> Vec<DocumentSummary> {
+    use crate::document_metadata::is_terminal_document_status;
     use std::collections::HashMap;
 
     let mut by_id: HashMap<String, usize> = HashMap::new();
@@ -345,8 +370,12 @@ pub fn merge_document_summaries(
                 kv.title = rel.title.clone();
                 kv.file_name = rel.file_name.clone();
             }
-            if rel.status.is_some() {
-                kv.status = rel.status.clone();
+            if let Some(rel_status) = rel.status.as_deref() {
+                let keep_kv_inflight =
+                    kv_summary_is_inflight(kv) && is_terminal_document_status(rel_status);
+                if !keep_kv_inflight {
+                    kv.status = rel.status.clone();
+                }
             }
             kv.chunk_count = kv.chunk_count.max(rel.chunk_count);
             if rel.entity_count.unwrap_or(0) > kv.entity_count.unwrap_or(0) {
@@ -399,10 +428,18 @@ pub async fn reconcile_entity_counts_with_graph(
 
     // Only reconcile rows that currently report 0 entities — the common
     // screenshot case. Rows with a non-zero count already come from KV (truth).
+    // Skip terminal failure / cancelled rows: AGE reconcile cannot help and
+    // previously paid a full-graph Seq Scan per zero-count document.
     let candidates: Vec<(usize, String)> = documents
         .iter()
         .enumerate()
-        .filter(|(_, d)| d.entity_count.unwrap_or(0) == 0)
+        .filter(|(_, d)| {
+            d.entity_count.unwrap_or(0) == 0
+                && !matches!(
+                    d.status.as_deref(),
+                    Some("failed" | "cancelled" | "pending" | "queued")
+                )
+        })
         .map(|(i, d)| (i, d.id.clone()))
         .collect();
 
@@ -587,5 +624,65 @@ mod tests {
         assert_eq!(merged.len(), 2);
         assert_eq!(merged[0].id, "b");
         assert_eq!(merged[1].id, "a");
+    }
+
+    fn summary(id: &str, status: &str, stage: Option<&str>) -> DocumentSummary {
+        DocumentSummary {
+            id: id.into(),
+            title: Some(id.into()),
+            file_name: None,
+            content_summary: None,
+            content_length: None,
+            chunk_count: 0,
+            entity_count: None,
+            status: Some(status.into()),
+            error_message: None,
+            warning_message: None,
+            track_id: None,
+            created_at: Some("2026-01-02T00:00:00Z".into()),
+            updated_at: None,
+            cost_usd: None,
+            input_tokens: None,
+            output_tokens: None,
+            total_tokens: None,
+            llm_model: None,
+            embedding_model: None,
+            source_type: None,
+            current_stage: stage.map(str::to_string),
+            stage_progress: None,
+            stage_message: None,
+            pdf_id: None,
+        }
+    }
+
+    #[test]
+    fn merge_keeps_kv_processing_over_stale_relational_completed() {
+        let kv = vec![summary("doc-1", "processing", Some("queued"))];
+        let pg = vec![summary("doc-1", "completed", Some("completed"))];
+        let merged = merge_document_summaries(kv, pg);
+        assert_eq!(merged.len(), 1);
+        assert_eq!(
+            merged[0].status.as_deref(),
+            Some("processing"),
+            "in-flight KV must win over stale relational completed"
+        );
+        assert_eq!(merged[0].current_stage.as_deref(), Some("queued"));
+    }
+
+    #[test]
+    fn merge_keeps_kv_processing_over_relational_indexed() {
+        let kv = vec![summary("doc-1", "processing", Some("extracting"))];
+        let pg = vec![summary("doc-1", "indexed", None)];
+        let merged = merge_document_summaries(kv, pg);
+        assert_eq!(merged[0].status.as_deref(), Some("processing"));
+    }
+
+    #[test]
+    fn merge_allows_relational_completed_when_kv_already_completed() {
+        let kv = vec![summary("doc-1", "completed", Some("completed"))];
+        let pg = vec![summary("doc-1", "indexed", None)];
+        let merged = merge_document_summaries(kv, pg);
+        // KV terminal → relational still wins (normalize happens upstream on PG load).
+        assert_eq!(merged[0].status.as_deref(), Some("indexed"));
     }
 }

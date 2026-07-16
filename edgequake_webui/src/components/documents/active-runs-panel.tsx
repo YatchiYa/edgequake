@@ -55,7 +55,8 @@ export function ActiveRunsPanel({ runs }: ActiveRunsPanelProps) {
       </div>
       {active.map((run) => {
         const timeline = buildStageTimeline(run);
-        const queued = timeline.admissionQueued;
+        const admission = timeline.admissionPhase;
+        const isAdmission = Boolean(admission);
         const overallPct = Math.round(timeline.overallProgress01 * 100);
         const stagePct =
           typeof timeline.stageProgress01 === "number"
@@ -73,7 +74,7 @@ export function ActiveRunsPanel({ runs }: ActiveRunsPanelProps) {
             data-document-id={run.documentId}
             data-stage={run.stage}
             data-mode={run.mode ?? "full"}
-            data-admission={queued ? "queued" : "running"}
+            data-admission={admission ?? "running"}
           >
             <div className="flex items-center justify-between gap-2 text-sm">
               <span className="truncate font-medium text-foreground">
@@ -90,12 +91,19 @@ export function ActiveRunsPanel({ runs }: ActiveRunsPanelProps) {
             </div>
             <ServerStageStepper run={run} />
 
-            {queued ? (
+            {isAdmission ? (
               <div
                 className="h-1.5 w-full overflow-hidden rounded bg-muted"
                 data-testid="spec048-run-progress-indeterminate"
+                data-admission={admission ?? undefined}
               >
-                <div className="h-full w-1/3 animate-pulse rounded bg-amber-400/70" />
+                <div
+                  className={
+                    admission === "cleaning"
+                      ? "h-full w-1/3 animate-pulse rounded bg-rose-400/70"
+                      : "h-full w-1/3 animate-pulse rounded bg-amber-400/70"
+                  }
+                />
               </div>
             ) : (
               <div className="space-y-1.5">

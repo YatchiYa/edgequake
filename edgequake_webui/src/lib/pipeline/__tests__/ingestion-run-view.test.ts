@@ -6,6 +6,8 @@ import {
   parseCountsFromMessage,
   selectPrimaryRun,
   buildIngestionRunViews,
+  SERVER_STAGE_ORDER,
+  stageDisplayName,
   stageStatusFor,
 } from "@/lib/pipeline/ingestion-run-view";
 import type { Document } from "@/types";
@@ -19,9 +21,32 @@ function doc(partial: Partial<Document> & { id: string }): Document {
 }
 
 describe("ingestion-run-view", () => {
+  it("places cleaning before queued in SERVER_STAGE_ORDER", () => {
+    expect(SERVER_STAGE_ORDER.indexOf("cleaning")).toBe(0);
+    expect(SERVER_STAGE_ORDER.indexOf("queued")).toBe(1);
+    expect(stageDisplayName("cleaning")).toBe("Cleaning");
+  });
+
   it("normalizes pending → queued and indexing → storing", () => {
     expect(normalizeRunStage("pending", "pending")).toBe("queued");
     expect(normalizeRunStage("indexing", "indexing")).toBe("storing");
+  });
+
+  it("builds cleaning admission run view", () => {
+    const view = buildIngestionRunView(
+      doc({
+        id: "d-clean",
+        file_name: "paper.pdf",
+        status: "processing",
+        current_stage: "cleaning",
+        stage_message: "Removing prior knowledge graph data…",
+        source_type: "pdf",
+        track_id: "reprocess_batch",
+      }),
+    );
+    expect(view?.stage).toBe("cleaning");
+    expect(view?.stageStatus).toBe("pending");
+    expect(stageStatusFor("cleaning", "processing")).toBe("pending");
   });
 
   it("parses chunk counts preferring chunk unit", () => {

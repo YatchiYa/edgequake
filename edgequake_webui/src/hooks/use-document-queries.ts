@@ -1,6 +1,7 @@
 "use client";
 
 import { getDocuments, getPipelineStatus } from "@/lib/api/edgequake";
+import { protectPinnedDocumentsInQueryData } from "@/lib/documents/progress-admit";
 import { getAutomationAwareRefetchInterval } from "@/lib/runtime/browser-detection";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
@@ -121,12 +122,15 @@ export function useDocumentQueries({
       pageSize,
       statusFilter,
     ],
-    queryFn: () =>
-      getDocuments({
+    queryFn: async () => {
+      const data = await getDocuments({
         page: currentPage,
         page_size: pageSize,
         status: statusFilter === "all" ? undefined : statusFilter,
-      }),
+      });
+      // Keep provisional reprocess rows as processing while POST admits (graph cleanup).
+      return protectPinnedDocumentsInQueryData(data);
+    },
     // Smart polling:
     // 1. Poll for documents currently processing (to catch real-time updates)
     // 2. Poll for documents that might be transitioning (stage complete but status not updated)

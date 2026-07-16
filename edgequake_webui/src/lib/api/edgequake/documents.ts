@@ -586,11 +586,13 @@ export async function reprocessDocument(
   documentId: string,
   force: boolean = true,
   mode: ReprocessMode = "entities",
-): Promise<{ track_id: string; message: string; count: number }> {
-  return api.post<{ track_id: string; message: string; count: number }>(
-    "/documents/reprocess",
-    { document_id: documentId, force, max_documents: 1, mode },
-  );
+): Promise<ReprocessFailedResponse> {
+  return api.post<ReprocessFailedResponse>("/documents/reprocess", {
+    document_id: documentId,
+    force,
+    max_documents: 1,
+    mode,
+  });
 }
 
 /**
@@ -608,19 +610,36 @@ export async function scanDocuments(
 }
 
 /**
+ * Per-document progress identity from a reprocess response (SPEC-054 SSOT).
+ */
+export interface ReprocessDocumentTaskId {
+  document_id: string;
+  /** Server task track_id — sole progress / cancel / WS key */
+  task_id: string;
+}
+
+/**
  * Response from reprocess failed documents endpoint.
  *
  * @implements OODA-37 - Fixed response type to match backend ReprocessFailedResponse
  */
 export interface ReprocessFailedResponse {
-  /** Track ID for the reprocess batch */
+  /** Batch correlation id (`reprocess_*`) — NOT a progress subscription key */
   track_id: string;
   /** Number of failed documents found */
   failed_found: number;
   /** Number of documents queued for reprocessing */
   requeued: number;
+  /** Documents matched but not enqueued */
+  skipped?: number;
+  /** Counts by skip reason when requeued is less than expected */
+  skip_reasons?: Record<string, number>;
   /** List of document IDs being reprocessed */
   document_ids: string[];
+  /** Progress key when exactly one document was requeued (DRY with upload task_id) */
+  task_id?: string | null;
+  /** Per-document task ids for multi-doc honesty */
+  document_task_ids?: ReprocessDocumentTaskId[];
 }
 
 /**

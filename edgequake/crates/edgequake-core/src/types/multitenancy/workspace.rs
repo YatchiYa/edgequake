@@ -56,6 +56,16 @@ pub const DEFAULT_EMBEDDING_MODEL: &str = "text-embedding-3-small";
 /// Synced with models.toml [defaults] section.
 pub const DEFAULT_EMBEDDING_PROVIDER: &str = "openai";
 
+/// Returns true when `provider` is the internal mock/test provider id.
+///
+/// Mock must never be selected for application LLM/embedding/vision work.
+pub fn is_mock_provider_id(provider: &str) -> bool {
+    matches!(
+        provider.trim().to_ascii_lowercase().as_str(),
+        "mock" | "mock-imagegen"
+    )
+}
+
 /// Default embedding dimension (OpenAI text-embedding-3-small).
 /// Synced with models.toml [defaults] section.
 pub const DEFAULT_EMBEDDING_DIMENSION: usize = 1536;
@@ -188,6 +198,96 @@ impl Workspace {
             .unwrap_or_default()
     }
 
+    /// Prefer a real local/cloud provider when Mock would otherwise be selected.
+    pub fn non_mock_fallback_provider() -> String {
+        if non_empty_env_var("OPENAI_API_KEY").is_some() {
+            "openai".to_string()
+        } else if non_empty_env_var("MISTRAL_API_KEY").is_some() {
+            "mistral".to_string()
+        } else {
+            "ollama".to_string()
+        }
+    }
+
+    /// Replace Mock with a real provider id (never returns `"mock"`).
+    pub fn coerce_non_mock_provider(provider: String) -> String {
+        if is_mock_provider_id(&provider) {
+            let replacement = Self::non_mock_fallback_provider();
+            tracing::warn!(
+                requested = %provider,
+                replacement = %replacement,
+                "Mock provider is forbidden; coercing to a real provider"
+            );
+            replacement
+        } else {
+            provider
+        }
+    }
+
+    /// Heal persisted Mock LLM/embedding/vision fields in place.
+    ///
+    /// Also rewrites `metadata` keys so PostgreSQL JSONB stays consistent with
+    /// the struct fields when the workspace is saved.
+    pub fn sanitize_mock_providers(&mut self) {
+        let mut healed = false;
+        if is_mock_provider_id(&self.llm_provider) {
+            self.llm_provider = Self::coerce_non_mock_provider(self.llm_provider.clone());
+            self.llm_model = Self::default_model_for_provider(&self.llm_provider);
+            healed = true;
+        }
+        if is_mock_provider_id(&self.embedding_provider) {
+            self.embedding_provider =
+                Self::coerce_non_mock_provider(self.embedding_provider.clone());
+            self.embedding_model =
+                Self::default_embedding_model_for_provider(&self.embedding_provider);
+            self.embedding_dimension =
+                Self::detect_dimension_from_model(&self.embedding_model);
+            healed = true;
+        }
+        if let Some(ref vision_provider) = self.vision_llm_provider {
+            if is_mock_provider_id(vision_provider) {
+                let replacement = Self::coerce_non_mock_provider(vision_provider.clone());
+                self.vision_llm_model = Some(Self::default_model_for_provider(&replacement));
+                self.vision_llm_provider = Some(replacement);
+                healed = true;
+            }
+        }
+        if healed {
+            self.metadata.insert(
+                "llm_provider".to_string(),
+                serde_json::Value::String(self.llm_provider.clone()),
+            );
+            self.metadata.insert(
+                "llm_model".to_string(),
+                serde_json::Value::String(self.llm_model.clone()),
+            );
+            self.metadata.insert(
+                "embedding_provider".to_string(),
+                serde_json::Value::String(self.embedding_provider.clone()),
+            );
+            self.metadata.insert(
+                "embedding_model".to_string(),
+                serde_json::Value::String(self.embedding_model.clone()),
+            );
+            self.metadata.insert(
+                "embedding_dimension".to_string(),
+                serde_json::Value::Number(self.embedding_dimension.into()),
+            );
+            if let Some(ref vision_provider) = self.vision_llm_provider {
+                self.metadata.insert(
+                    "vision_llm_provider".to_string(),
+                    serde_json::Value::String(vision_provider.clone()),
+                );
+            }
+            if let Some(ref vision_model) = self.vision_llm_model {
+                self.metadata.insert(
+                    "vision_llm_model".to_string(),
+                    serde_json::Value::String(vision_model.clone()),
+                );
+            }
+        }
+    }
+
     /// Get default LLM configuration from environment.
     ///
     /// Returns `(model, provider)`.  Resolution order (first non-empty wins):
@@ -201,6 +301,8 @@ impl Workspace {
     /// When only `EDGEQUAKE_LLM_PROVIDER` is set (typical single-env deployment
     /// with Docker / Portainer), the workspace is initialised with a sensible
     /// model for that provider instead of the hard-coded Ollama default.
+    ///
+    /// Mock is never returned — it is coerced to a real provider.
     pub fn default_llm_config() -> (String, String) {
         use crate::server_config_overrides::{
             current_defaults, current_priority_mode, merge_config_field,
@@ -225,18 +327,24 @@ impl Workspace {
         let priority = current_priority_mode();
         let server = current_defaults();
 
-        let provider = merge_config_field(
+        let raw_provider = merge_config_field(
             env_provider.clone(),
             server.llm_provider.clone(),
             compiled_provider,
             priority,
         );
-        let model = merge_config_field(
-            env_model,
-            server.llm_model.clone(),
-            Self::default_model_for_provider(&provider),
-            priority,
-        );
+        let was_mock = is_mock_provider_id(&raw_provider);
+        let provider = Self::coerce_non_mock_provider(raw_provider);
+        let model = if was_mock {
+            Self::default_model_for_provider(&provider)
+        } else {
+            merge_config_field(
+                env_model,
+                server.llm_model.clone(),
+                Self::default_model_for_provider(&provider),
+                priority,
+            )
+        };
 
         (model, provider)
     }
@@ -264,13 +372,19 @@ impl Workspace {
         let priority = current_priority_mode();
         let server = current_defaults();
 
-        let provider = merge_config_field(
+        let raw_provider = merge_config_field(
             env_provider,
             server.llm_provider.clone(),
             fallback.1,
             priority,
         );
-        let model = merge_config_field(env_model, server.llm_model.clone(), fallback.0, priority);
+        let was_mock = is_mock_provider_id(&raw_provider);
+        let provider = Self::coerce_non_mock_provider(raw_provider);
+        let model = if was_mock {
+            Self::default_model_for_provider(&provider)
+        } else {
+            merge_config_field(env_model, server.llm_model.clone(), fallback.0, priority)
+        };
 
         (model, provider)
     }
@@ -284,14 +398,20 @@ impl Workspace {
             ])
         });
         if let Some(provider) = provider {
-            let model = non_empty_env_var("EDGEQUAKE_EMBEDDING_MODEL")
-                .or_else(|| {
-                    first_non_empty_env_var(&[
-                        "EDGEQUAKE_EMBEDDING_MODEL",
-                        EMBEDDING_MODEL_ALIASES[0],
-                    ])
-                })
-                .unwrap_or_else(|| Self::default_embedding_model_for_provider(&provider));
+            let was_mock = is_mock_provider_id(&provider);
+            let provider = Self::coerce_non_mock_provider(provider);
+            let model = if was_mock {
+                Self::default_embedding_model_for_provider(&provider)
+            } else {
+                non_empty_env_var("EDGEQUAKE_EMBEDDING_MODEL")
+                    .or_else(|| {
+                        first_non_empty_env_var(&[
+                            "EDGEQUAKE_EMBEDDING_MODEL",
+                            EMBEDDING_MODEL_ALIASES[0],
+                        ])
+                    })
+                    .unwrap_or_else(|| Self::default_embedding_model_for_provider(&provider))
+            };
 
             let detected_dimension = Self::detect_dimension_from_model(&model);
             let known_model_dimension = Self::known_embedding_dimension(&model);
@@ -333,18 +453,24 @@ impl Workspace {
         let priority = current_priority_mode();
         let server = current_defaults();
 
-        let provider = merge_config_field(
+        let raw_provider = merge_config_field(
             env_provider.clone(),
             server.embedding_provider.clone(),
             compiled_provider,
             priority,
         );
-        let model = merge_config_field(
-            env_model.clone(),
-            server.embedding_model.clone(),
-            Self::default_embedding_model_for_provider(&provider),
-            priority,
-        );
+        let was_mock = is_mock_provider_id(&raw_provider);
+        let provider = Self::coerce_non_mock_provider(raw_provider);
+        let model = if was_mock {
+            Self::default_embedding_model_for_provider(&provider)
+        } else {
+            merge_config_field(
+                env_model.clone(),
+                server.embedding_model.clone(),
+                Self::default_embedding_model_for_provider(&provider),
+                priority,
+            )
+        };
 
         let detected_dimension = Self::detect_dimension_from_model(&model);
         let known_model_dimension = Self::known_embedding_dimension(&model);
@@ -785,6 +911,38 @@ mod tests {
 
         assert_eq!(provider, DEFAULT_LLM_PROVIDER);
         assert_eq!(model, DEFAULT_LLM_MODEL);
+    }
+
+    #[test]
+    fn test_default_llm_config_never_returns_mock() {
+        let _guard = lock_env_tests();
+        std::env::set_var("EDGEQUAKE_LLM_PROVIDER", "mock");
+        std::env::remove_var("EDGEQUAKE_DEFAULT_LLM_PROVIDER");
+        std::env::remove_var("OPENAI_API_KEY");
+        std::env::remove_var("MISTRAL_API_KEY");
+
+        let (model, provider) = Workspace::default_llm_config();
+        std::env::remove_var("EDGEQUAKE_LLM_PROVIDER");
+
+        assert!(!is_mock_provider_id(&provider), "provider={provider}");
+        assert_eq!(provider, "ollama");
+        assert_eq!(model, Workspace::default_model_for_provider("ollama"));
+    }
+
+    #[test]
+    fn test_sanitize_mock_providers_heals_workspace() {
+        let mut ws = Workspace::new(Uuid::new_v4(), "ws", "ws");
+        ws.llm_provider = "mock".into();
+        ws.llm_model = "anything".into();
+        ws.embedding_provider = "mock".into();
+        ws.embedding_model = "mock".into();
+        ws.sanitize_mock_providers();
+        assert!(!is_mock_provider_id(&ws.llm_provider));
+        assert!(!is_mock_provider_id(&ws.embedding_provider));
+        assert_eq!(
+            ws.metadata.get("llm_provider").and_then(|v| v.as_str()),
+            Some(ws.llm_provider.as_str())
+        );
     }
 
     // ── default_embedding_config env-var resolution ────────────────────────

@@ -65,6 +65,26 @@ describe("stage-timeline", () => {
       run({ stage: "queued", stageStatus: "pending", trackId: null }),
     );
     expect(tl.admissionQueued).toBe(true);
+    expect(tl.admissionCleaning).toBe(false);
+    expect(tl.admissionPhase).toBe("queued");
+    expect(tl.overallProgress01).toBe(0);
+    expect(tl.steps.every((s) => s.status === "pending" || s.status === "skipped")).toBe(
+      true,
+    );
+  });
+
+  it("cleaning admission: distinct from queued, progress stays 0", () => {
+    const tl = buildStageTimeline(
+      run({
+        stage: "cleaning",
+        stageStatus: "pending",
+        trackId: null,
+        message: "Removing prior knowledge graph data…",
+      }),
+    );
+    expect(tl.admissionCleaning).toBe(true);
+    expect(tl.admissionQueued).toBe(false);
+    expect(tl.admissionPhase).toBe("cleaning");
     expect(tl.overallProgress01).toBe(0);
     expect(tl.steps.every((s) => s.status === "pending" || s.status === "skipped")).toBe(
       true,

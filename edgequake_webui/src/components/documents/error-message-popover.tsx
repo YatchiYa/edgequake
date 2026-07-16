@@ -92,6 +92,7 @@ export function ErrorMessagePopover({
   const CategoryIcon = useMemo(() => {
     switch (categorized.category) {
       case 'llm':
+      case 'llm_timeout':
         return Brain;
       case 'embedding':
         return Cpu;

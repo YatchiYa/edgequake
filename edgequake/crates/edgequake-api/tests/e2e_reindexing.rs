@@ -239,10 +239,9 @@ async fn test_reprocess_specific_document() {
             .await
             .unwrap();
 
-        assert_eq!(
-            response.status(),
-            StatusCode::OK,
-            "Reprocess should return 200, got {}. Body: {:?}",
+        assert!(
+            response.status().is_success(),
+            "Reprocess should return 2xx, got {}. Body: {:?}",
             response.status(),
             {
                 let bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
@@ -270,18 +269,60 @@ async fn test_reprocess_specific_document() {
 
         let reprocess = extract_json(response2).await;
 
-        // Should have a track_id
+        // Batch correlation id (not the progress key)
         assert!(
             reprocess["track_id"].is_string(),
-            "Reprocess should return track_id"
+            "Reprocess should return batch track_id"
+        );
+        assert!(
+            reprocess["track_id"]
+                .as_str()
+                .unwrap_or("")
+                .starts_with("reprocess_"),
+            "batch track_id should use reprocess_ prefix"
         );
 
-        // Should show found=1, requeued=1 (or 0 if async not supported in mock)
-        // The important thing is the endpoint works
         assert!(
             reprocess["failed_found"].is_number(),
             "Should have failed_found count"
         );
+
+        // SPEC-054 progress SSOT: when a doc is requeued, task_id is the progress key.
+        let requeued = reprocess["requeued"].as_u64().unwrap_or(0);
+        if requeued >= 1 {
+            let task_id = reprocess["task_id"]
+                .as_str()
+                .expect("task_id for single-doc reprocess");
+            assert!(
+                !task_id.is_empty() && !task_id.starts_with("reprocess_"),
+                "task_id must be the server task key, not the batch id: {task_id}"
+            );
+            assert_eq!(
+                reprocess["document_task_ids"][0]["task_id"].as_str(),
+                Some(task_id),
+                "document_task_ids[0].task_id must match response.task_id"
+            );
+
+            let get_resp = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("GET")
+                        .uri(format!("/api/v1/documents/{}", doc_id))
+                        .header("X-Tenant-ID", TEST_TENANT_ID)
+                        .header("X-Workspace-ID", TEST_WORKSPACE_ID)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            let doc = extract_json(get_resp).await;
+            assert_eq!(
+                doc["track_id"].as_str(),
+                Some(task_id),
+                "document.track_id must equal server task_id for progress subscribe"
+            );
+        }
 
         reprocess
     })

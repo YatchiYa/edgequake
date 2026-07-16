@@ -59,6 +59,7 @@ pub mod pdf_admission_registry;
 pub mod pdf_auto_routing;
 pub mod pdf_lineage;
 pub mod pdf_workspace_dedup;
+pub mod pending_doc_task_reconcile;
 pub mod pipeline_ws_bridge;
 #[cfg(feature = "postgres")]
 pub mod postgres_chunk_lineage;
@@ -75,6 +76,7 @@ pub mod route_registry;
 pub mod session_storage;
 pub mod source_reference_builder;
 pub mod staging_admission;
+pub mod startup_task_hydrate;
 pub mod summary_role;
 pub mod task_document_sync;
 pub mod task_scope;
