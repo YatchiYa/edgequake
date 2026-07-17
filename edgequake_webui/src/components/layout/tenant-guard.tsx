@@ -76,6 +76,8 @@ export function TenantGuard({ children }: TenantGuardProps) {
   
   // Track if we're in the middle of context setup (prevents premature children render)
   const [isSettingUpContext, setIsSettingUpContext] = useState(false);
+  // After a long wait, surface the connection card instead of an indefinite spinner.
+  const [loadingTimedOut, setLoadingTimedOut] = useState(false);
 
   // Initialize from localStorage on mount
   useEffect(() => {
@@ -96,6 +98,22 @@ export function TenantGuard({ children }: TenantGuardProps) {
     enabled: !!selectedTenantId,
     staleTime: 60000,
   });
+
+  const isLoading =
+    isLoadingTenants ||
+    (!!selectedTenantId && isLoadingWorkspaces) ||
+    isSettingUpContext;
+
+  // WHY 8s: BackendStatusBanner already polls /health; a stuck TenantGuard
+  // spinner during DB pressure looked like a blank /documents page.
+  useEffect(() => {
+    if (!isLoading) {
+      setLoadingTimedOut(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setLoadingTimedOut(true), 8000);
+    return () => window.clearTimeout(timer);
+  }, [isLoading]);
 
   // Auto-select tenant and validate existing selection
   // WHY: Prevents stale tenant IDs from causing cascading workspace lookup failures
@@ -326,7 +344,47 @@ export function TenantGuard({ children }: TenantGuardProps) {
       selectedTenantId, parseModelValue, createWorkspaceMutation, 
       selectWorkspace, setWorkspaces, workspacesData, queryClient, t]);
 
-  const isLoading = isLoadingTenants || (selectedTenantId && isLoadingWorkspaces) || isSettingUpContext;
+  // Error / long-wait state — prefer connection card over indefinite blank spinner
+  if (tenantsError || (isLoading && loadingTimedOut && !isSettingUpContext)) {
+    return (
+      <div className="flex items-center justify-center h-full p-4">
+        <Card className="max-w-md w-full">
+          <CardHeader className="text-center pb-2">
+            <div className="mx-auto w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mb-3">
+              <AlertTriangle className="h-6 w-6 text-red-600 dark:text-red-400" />
+            </div>
+            <CardTitle>{t('tenant.connectionError', 'Connection Error')}</CardTitle>
+            <CardDescription>
+              {loadingTimedOut && !tenantsError
+                ? t(
+                    'tenant.connectionSlowDesc',
+                    'The backend is taking too long to respond. It may be busy with ingestion — check the status banner above, then retry.',
+                  )
+                : t(
+                    'tenant.connectionErrorDesc',
+                    'Unable to connect to the server. Please check your connection and try again.',
+                  )}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="text-center">
+            <Button
+              onClick={() => {
+                setLoadingTimedOut(false);
+                queryClient.invalidateQueries({ queryKey: ['tenants'] });
+                if (selectedTenantId) {
+                  queryClient.invalidateQueries({
+                    queryKey: ['workspaces', selectedTenantId],
+                  });
+                }
+              }}
+            >
+              {t('common.retry', 'Retry')}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   // Loading state (including context setup after tenant/workspace creation)
   if (isLoading) {
@@ -340,30 +398,6 @@ export function TenantGuard({ children }: TenantGuardProps) {
               : t('tenant.loading', 'Loading workspace...')}
           </p>
         </div>
-      </div>
-    );
-  }
-
-  // Error state
-  if (tenantsError) {
-    return (
-      <div className="flex items-center justify-center h-full p-4">
-        <Card className="max-w-md w-full">
-          <CardHeader className="text-center pb-2">
-            <div className="mx-auto w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mb-3">
-              <AlertTriangle className="h-6 w-6 text-red-600 dark:text-red-400" />
-            </div>
-            <CardTitle>{t('tenant.connectionError', 'Connection Error')}</CardTitle>
-            <CardDescription>
-              {t('tenant.connectionErrorDesc', 'Unable to connect to the server. Please check your connection and try again.')}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="text-center">
-            <Button onClick={() => queryClient.invalidateQueries({ queryKey: ['tenants'] })}>
-              {t('common.retry', 'Retry')}
-            </Button>
-          </CardContent>
-        </Card>
       </div>
     );
   }

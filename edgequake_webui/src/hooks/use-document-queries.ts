@@ -1,5 +1,6 @@
 "use client";
 
+import { useWebSocket } from "@/hooks/use-websocket";
 import { getDocuments, getPipelineStatus } from "@/lib/api/edgequake";
 import { protectPinnedDocumentsInQueryData } from "@/lib/documents/progress-admit";
 import { getAutomationAwareRefetchInterval } from "@/lib/runtime/browser-detection";
@@ -105,14 +106,14 @@ export function useDocumentQueries({
   statusFilter,
 }: UseDocumentQueriesOptions): UseDocumentQueriesReturn {
   const queryClient = useQueryClient();
+  const { connected: wsConnected } = useWebSocket();
 
   // OODA-42 COMPLETE: WebSocket-based real-time updates with transition-aware fallback
   // WHY: Users want instant document status updates without polling overhead
   // HOW: Subscribe to WebSocket events + smart polling for phase transitions
   //
-  // FIX: Ensure final refetch when transitioning from processing → completed
-  // WHY: Backend may complete processing, but UI cache still shows intermediate state
-  //      (e.g., "chunking") because WebSocket events stopped and polling disabled too early
+  // When WS is connected, slow list poll to 5s — stage patches + 5s safety-net
+  // cover Ollama chunk storms without refetching 500 docs every 2s.
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: [
       "documents",
@@ -131,11 +132,14 @@ export function useDocumentQueries({
       // Keep provisional reprocess rows as processing while POST admits (graph cleanup).
       return protectPinnedDocumentsInQueryData(data);
     },
+    // Retry policy comes from QueryProvider (TimeoutError / read_path_busy → 1;
+    // NetworkError cold-start → up to 4). Do not override with retry:1.
     // Smart polling:
     // 1. Poll for documents currently processing (to catch real-time updates)
     // 2. Poll for documents that might be transitioning (stage complete but status not updated)
     // 3. Stop polling once all documents reach terminal states (completed/failed/cancelled)
     // 4. Back off on errors — stop polling on 500s so we don't amplify pool exhaustion.
+    // 5. When WS connected: 5s active poll (WS patches + safety-net handle the rest).
     refetchInterval: (query) => {
       // Error backoff: stop polling when the server is struggling.
       // WHY: Continuing to poll on 500s exhausts the DB connection pool further,
@@ -151,12 +155,13 @@ export function useDocumentQueries({
       // Check for documents that completed a stage (might transition soon)
       const hasTransitioningDocs = documents.some(isDocumentTransitioning);
 
-      // Poll every 2s when documents are processing or transitioning.
       // WHY 30s fallback: After a server restart, orphan recovery may
       // temporarily mark documents as "failed" before the worker resumes
       // and sets them back to "processing". Without fallback polling the
       // frontend never picks up the status change and shows stale data.
-      const interval = hasProcessingDocs || hasTransitioningDocs ? 2000 : 30000;
+      const active = hasProcessingDocs || hasTransitioningDocs;
+      const activeInterval = wsConnected ? 5000 : 2000;
+      const interval = active ? activeInterval : 30000;
       return getAutomationAwareRefetchInterval(interval);
     },
   });
@@ -197,8 +202,9 @@ export function useDocumentQueries({
       if (query.state.status === "error") {
         return false;
       }
+      const activeInterval = wsConnected ? 5000 : 2000;
       return getAutomationAwareRefetchInterval(
-        hasProcessingDocuments ? 2000 : 30000,
+        hasProcessingDocuments ? activeInterval : 30000,
       );
     },
     // When not processing, data is stable – keep it fresh for 10s

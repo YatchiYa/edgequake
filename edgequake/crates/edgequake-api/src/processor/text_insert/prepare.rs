@@ -192,9 +192,17 @@ impl DocumentTaskProcessor {
             .as_ref()
             .and_then(|o| o.chunk_overlap_token_size);
 
+        let allow_local_gleaning = data
+            .metadata
+            .as_ref()
+            .and_then(|m| m.get("allow_local_gleaning"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
         let ingestion_options =
             edgequake_pipeline::IngestionPipelineOptions::from_document_size(text_content.len())
                 .with_gleaning(enable_gleaning, max_gleaning)
+                .with_allow_local_gleaning(allow_local_gleaning)
                 .with_chunk_strategy(chunk_strategy);
         // SPEC-032 W-09: auto-select Pdf chunking strategy for PDF sources so
         // chunks never cross page boundaries. Only applies when no explicit

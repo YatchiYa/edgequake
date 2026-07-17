@@ -296,6 +296,8 @@ export default function DocumentViewPage() {
     queryKey: ['document', documentId, selectedWorkspaceId],
     queryFn: () => getDocument(documentId),
     enabled: !!documentId && !!selectedWorkspaceId,
+    // Fail-fast under ingest load: surface Retry UI instead of infinite skeletons.
+    retry: 1,
     // Active processing: poll every 3s. Terminal states: 30s.
     staleTime: reprocessTrackId ? 3 * 1000 : 30 * 1000,
     refetchInterval: reprocessTrackId ? 3 * 1000 : false,

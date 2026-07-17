@@ -35,6 +35,7 @@ pub fn problem_title_for_code(code: &str) -> &'static str {
         "RATE_LIMITED" => "Too Many Requests",
         "REQUEST_TIMEOUT" => "Request Timeout",
         "SERVICE_UNAVAILABLE" => "Service Unavailable",
+        "read_path_busy" => "Read Path Busy",
         "NOT_IMPLEMENTED" => "Not Implemented",
         "INTERNAL_ERROR" => "Internal Server Error",
         "CONFIG_ERROR" => "Configuration Error",

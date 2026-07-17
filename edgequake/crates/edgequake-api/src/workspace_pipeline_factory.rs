@@ -105,6 +105,15 @@ impl WorkspacePipelineFactory {
                 let tuned = edgequake_pipeline::PipelineConfig::from_env_for_provider(
                     &extract_role.provider,
                 );
+                let requested_concurrent = std::env::var("EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS")
+                    .ok()
+                    .and_then(|s| s.parse::<usize>().ok())
+                    .unwrap_or(tuned.max_concurrent_extractions);
+                let (_, local_concurrency_clamped) =
+                    edgequake_pipeline::apply_local_concurrency_safety_clamp(
+                        &extract_role.provider,
+                        requested_concurrent,
+                    );
                 info!(
                     workspace_id = workspace_id,
                     llm_model = %ws.llm_full_id(),
@@ -113,6 +122,7 @@ impl WorkspacePipelineFactory {
                     is_local = is_slow_local_provider(&extract_role.provider),
                     chunk_timeout_secs = tuned.chunk_extraction_timeout_secs,
                     max_concurrent_extractions = tuned.max_concurrent_extractions,
+                    local_concurrency_clamped = local_concurrency_clamped,
                     ollama_context_length = %std::env::var("OLLAMA_CONTEXT_LENGTH")
                         .unwrap_or_else(|_| "(unset)".into()),
                     "Resolved workspace-specific ingestion pipeline"

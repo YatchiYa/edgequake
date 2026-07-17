@@ -93,6 +93,10 @@ pub struct ListDocumentsResponse {
 
     /// Status counts for all documents (not just current page).
     pub status_counts: StatusCounts,
+
+    /// True when the workspace metadata scan was truncated for latency.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub truncated: Option<bool>,
 }
 
 /// Document summary.

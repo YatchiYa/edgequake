@@ -1,0 +1,142 @@
+import { QueryClient } from "@tanstack/react-query";
+import { describe, expect, it } from "vitest";
+
+import type { Document } from "@/types";
+
+import {
+  DOCUMENTS_INVALIDATE_DEBOUNCE_MS,
+  DOCUMENTS_SAFETY_NET_INVALIDATE_MS,
+  isListNoiseProgressEvent,
+  patchDocumentsCacheFromProgress,
+  shouldInvalidateDocumentsList,
+  shouldPatchDocumentsCache,
+} from "../ws-documents-cache";
+
+function makeDoc(id: string, overrides: Partial<Document> = {}): Document {
+  return {
+    id,
+    title: id,
+    status: "processing",
+    track_id: `track-${id}`,
+    source_type: "pdf",
+    ...overrides,
+  } as Document;
+}
+
+describe("ws-documents-cache classification", () => {
+  it("treats ChunkProgress as list noise", () => {
+    expect(isListNoiseProgressEvent("ChunkProgress")).toBe(true);
+    expect(shouldPatchDocumentsCache("ChunkProgress")).toBe(false);
+    expect(shouldInvalidateDocumentsList("ChunkProgress")).toBe(false);
+  });
+
+  it("patches stage_progress without full invalidate", () => {
+    expect(shouldPatchDocumentsCache("stage_progress")).toBe(true);
+    expect(shouldInvalidateDocumentsList("stage_progress")).toBe(false);
+  });
+
+  it("invalidates on terminal / structural events", () => {
+    expect(shouldInvalidateDocumentsList("ingestion_completed")).toBe(true);
+    expect(shouldInvalidateDocumentsList("stage_completed")).toBe(true);
+    expect(shouldInvalidateDocumentsList("StatusSnapshot")).toBe(true);
+  });
+
+  it("exports quieter debounce / safety-net windows", () => {
+    expect(DOCUMENTS_INVALIDATE_DEBOUNCE_MS).toBe(1500);
+    expect(DOCUMENTS_SAFETY_NET_INVALIDATE_MS).toBe(5000);
+  });
+});
+
+describe("patchDocumentsCacheFromProgress", () => {
+  it("patches matching row by track_id without touching others", () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(["documents", "ws-1"], {
+      items: [makeDoc("a"), makeDoc("b")],
+    });
+
+    const patched = patchDocumentsCacheFromProgress(queryClient, {
+      type: "stage_progress",
+      track_id: "track-a",
+      stage: "extracting",
+      progress: 42,
+      message: "Chunk 3/10",
+    });
+
+    expect(patched).toBe(1);
+    const data = queryClient.getQueryData<{ items: Document[] }>([
+      "documents",
+      "ws-1",
+    ]);
+    expect(data?.items[0].current_stage).toBe("extracting");
+    expect(data?.items[0].stage_progress).toBe(42);
+    expect(data?.items[0].stage_message).toBe("Chunk 3/10");
+    expect(data?.items[1].current_stage).toBeUndefined();
+  });
+
+  it("ignores ChunkProgress for cache patches", () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(["documents", "ws-1"], {
+      items: [makeDoc("a")],
+    });
+
+    const patched = patchDocumentsCacheFromProgress(queryClient, {
+      type: "ChunkProgress",
+      track_id: "track-a",
+      progress: 99,
+    });
+
+    expect(patched).toBe(0);
+    const data = queryClient.getQueryData<{ items: Document[] }>([
+      "documents",
+      "ws-1",
+    ]);
+    expect(data?.items[0].stage_progress).toBeUndefined();
+  });
+
+  it("marks ingestion_completed as completed", () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(["documents", "ws-1"], {
+      items: [makeDoc("a", { status: "processing", current_stage: "merging" })],
+    });
+
+    patchDocumentsCacheFromProgress(queryClient, {
+      type: "ingestion_completed",
+      track_id: "track-a",
+      document_id: "a",
+    });
+
+    const data = queryClient.getQueryData<{ items: Document[] }>([
+      "documents",
+      "ws-1",
+    ]);
+    expect(data?.items[0].status).toBe("completed");
+    expect(data?.items[0].stage_message).toBe("Completed");
+  });
+
+  it("patches StatusSnapshot active_tasks", () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(["documents", "ws-1"], {
+      items: [makeDoc("a")],
+    });
+
+    const patched = patchDocumentsCacheFromProgress(queryClient, {
+      type: "StatusSnapshot",
+      active_tasks: [
+        {
+          track_id: "track-a",
+          document_id: "a",
+          status: "Extracting entities",
+          progress: 55,
+        },
+      ],
+    } as never);
+
+    expect(patched).toBe(1);
+    const data = queryClient.getQueryData<{ items: Document[] }>([
+      "documents",
+      "ws-1",
+    ]);
+    expect(data?.items[0].stage_progress).toBe(55);
+    expect(data?.items[0].stage_message).toBe("Extracting entities");
+  });
+});

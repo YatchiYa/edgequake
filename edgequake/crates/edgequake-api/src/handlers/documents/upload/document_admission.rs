@@ -341,20 +341,28 @@ pub async fn admit_document_for_processing(
 pub const ADMISSION_ACCEPTED_STATUS: StatusCode = StatusCode::ACCEPTED;
 
 /// Worker timeout for text ingest tasks (SPEC-045 SRE-I03).
+///
+/// Local providers (Ollama / LM Studio) use at least [`TASK_TIMEOUT_FLOOR_SECS`]
+/// so multi-chunk gemma4 runs are not killed by the legacy 600s sync budget.
 async fn resolve_text_ingest_timeout_secs(state: &AppState, workspace_id: &str) -> u64 {
-    let default = crate::services::large_document_profile::TASK_TIMEOUT_FLOOR_SECS;
+    let floor = crate::services::large_document_profile::TASK_TIMEOUT_FLOOR_SECS;
     let Ok(ws_uuid) = Uuid::parse_str(workspace_id) else {
-        return default;
+        return floor;
     };
     let Ok(Some(workspace)) = state.workspace_service.get_workspace(ws_uuid).await else {
-        return default;
+        return floor;
     };
     let provider = if workspace.llm_provider.is_empty() {
         "mock"
     } else {
         workspace.llm_provider.as_str()
     };
-    crate::safety_limits::sync_processing_timeout_secs(provider)
+    let sync_budget = crate::safety_limits::sync_processing_timeout_secs(provider);
+    if crate::safety_limits::is_slow_local_provider(provider) {
+        sync_budget.max(floor)
+    } else {
+        sync_budget
+    }
 }
 
 /// Parse chunk strategy + options from JSON upload fields (SSOT for all upload paths).

@@ -39,7 +39,7 @@ impl IngestionFailureClass {
             Self::DocumentTooLarge => "split_document",
             Self::EmbeddingLimit => "retry_or_support",
             Self::GraphMerge => "reprocess_full",
-            Self::ProviderUnavailable => "check_provider",
+            Self::ProviderUnavailable => "reduce_concurrency_or_check_provider",
             Self::Unknown => "retry",
         }
     }
@@ -146,6 +146,10 @@ mod tests {
         let class = classify_ingestion_failure(msg);
         assert_eq!(class, IngestionFailureClass::ProviderUnavailable);
         assert!(!class.is_permanent());
+        assert_eq!(
+            class.recommended_action(),
+            "reduce_concurrency_or_check_provider"
+        );
     }
 
     #[test]

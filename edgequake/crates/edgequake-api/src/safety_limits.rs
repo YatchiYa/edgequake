@@ -269,6 +269,7 @@ impl LLMProvider for SafetyLimitedProviderWrapper {
         options: &CompletionOptions,
     ) -> Result<LLMResponse> {
         let safe_options = self.apply_token_limit(options);
+        let _gate = crate::local_inference_gate::acquire_local_inference_permit(self.name()).await;
 
         let result = tokio::time::timeout(
             self.config.timeout,
@@ -304,6 +305,7 @@ impl LLMProvider for SafetyLimitedProviderWrapper {
             Some(opts) => self.apply_token_limit(opts),
             None => default_options,
         };
+        let _gate = crate::local_inference_gate::acquire_local_inference_permit(self.name()).await;
 
         let result = tokio::time::timeout(
             self.config.timeout,
@@ -327,6 +329,7 @@ impl LLMProvider for SafetyLimitedProviderWrapper {
     }
 
     async fn stream(&self, prompt: &str) -> Result<BoxStream<'static, Result<String>>> {
+        let _gate = crate::local_inference_gate::acquire_local_inference_permit(self.name()).await;
         let result = tokio::time::timeout(self.config.timeout, self.inner.stream(prompt)).await;
 
         match result {
@@ -405,6 +408,7 @@ impl EmbeddingProvider for SafetyLimitedEmbeddingProviderWrapper {
     }
 
     async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        let _gate = crate::local_inference_gate::acquire_local_inference_permit(self.name()).await;
         let result = tokio::time::timeout(self.config.timeout, self.inner.embed(texts)).await;
 
         match result {

@@ -110,6 +110,16 @@ impl PostgresKVStorage {
         );
         sqlx::query(&reverse_idx_sql).execute(&pool).await.ok();
 
+        // Local-ingest hardening: PK btree (default collation) cannot serve
+        // `LIKE 'prefix%'` under non-C locales (en_US.utf8 → Seq Scan over full KV).
+        // `text_pattern_ops` enables Index Only Scan + LIMIT short-circuit for
+        // `wsdoc:` workspace index enumeration (O(limit) not O(table)).
+        let key_pattern_idx_sql = format!(
+            "CREATE INDEX IF NOT EXISTS eq_{}_kv_key_pattern_idx ON {} (key text_pattern_ops)",
+            self.prefix, self.table_name
+        );
+        sqlx::query(&key_pattern_idx_sql).execute(&pool).await.ok();
+
         self.ensure_row_count_stats(&pool).await?;
 
         Ok(())
@@ -381,7 +391,7 @@ impl KVStorage for PostgresKVStorage {
 
     async fn keys_with_prefix(&self, prefix: &str) -> Result<Vec<String>> {
         let pool = self.pool.get().await?;
-        let like_pattern = format!("{prefix}%");
+        let like_pattern = format!("{}%", escape_like_meta(prefix));
 
         let sql = format!("SELECT key FROM {} WHERE key LIKE $1", self.table_name);
 
@@ -394,6 +404,44 @@ impl KVStorage for PostgresKVStorage {
         Ok(rows.into_iter().map(|(k,)| k).collect())
     }
 
+    async fn keys_with_prefix_limited(
+        &self,
+        prefix: &str,
+        limit: usize,
+    ) -> Result<(Vec<String>, bool)> {
+        // Clamp before i64 cast — usize::MAX as i64 is -1 on 64-bit targets.
+        let limit = limit.clamp(1, 1_000_000);
+        let pool = self.pool.get().await?;
+        let like_pattern = format!("{}%", escape_like_meta(prefix));
+        // Fetch limit+1 so we can report truncation without a second COUNT query.
+        let fetch_limit = i64::try_from(limit)
+            .unwrap_or(1_000_000)
+            .saturating_add(1);
+
+        // No ORDER BY: with `key text_pattern_ops` the planner can Index Scan
+        // and stop after LIMIT (O(limit)). ORDER BY key forced Sort/SeqScan
+        // under en_US.utf8 before the pattern index existed.
+        let sql = format!(
+            "SELECT key FROM {} WHERE key LIKE $1 LIMIT $2",
+            self.table_name
+        );
+
+        let rows: Vec<(String,)> = sqlx::query_as(&sql)
+            .bind(&like_pattern)
+            .bind(fetch_limit)
+            .fetch_all(&pool)
+            .await
+            .map_err(|e| {
+                StorageError::Database(format!("KV keys_with_prefix_limited failed: {}", e))
+            })?;
+
+        let truncated = rows.len() > limit;
+        Ok((
+            rows.into_iter().take(limit).map(|(k,)| k).collect(),
+            truncated,
+        ))
+    }
+
     async fn keys_with_suffix(&self, suffix: &str) -> Result<Vec<String>> {
         // SPEC-011 iter 02 Fix C: convert `WHERE key LIKE '%suffix'` into an
         // indexed prefix scan on the reverse-key expression index.
@@ -403,16 +451,7 @@ impl KVStorage for PostgresKVStorage {
         // `eq_{prefix}_kv_reverse_key_idx` (created in `create_table`).
         let pool = self.pool.get().await?;
 
-        // Escape LIKE meta-chars in the suffix to keep the prefix scan honest
-        // (defensive: today only literal suffixes like "-metadata" are passed).
-        let escaped: String = suffix
-            .chars()
-            .flat_map(|c| match c {
-                '%' | '_' | '\\' => vec!['\\', c],
-                _ => vec![c],
-            })
-            .collect();
-        let reversed: String = escaped.chars().rev().collect();
+        let reversed: String = escape_like_meta(suffix).chars().rev().collect();
         let like_pattern = format!("{reversed}%");
 
         let sql = format!(
@@ -427,6 +466,42 @@ impl KVStorage for PostgresKVStorage {
             .map_err(|e| StorageError::Database(format!("KV keys_with_suffix failed: {}", e)))?;
 
         Ok(rows.into_iter().map(|(k,)| k).collect())
+    }
+
+    async fn keys_with_suffix_limited(
+        &self,
+        suffix: &str,
+        limit: usize,
+    ) -> Result<(Vec<String>, bool)> {
+        let limit = limit.clamp(1, 1_000_000);
+        let pool = self.pool.get().await?;
+        let reversed: String = escape_like_meta(suffix).chars().rev().collect();
+        let like_pattern = format!("{reversed}%");
+        let fetch_limit = i64::try_from(limit)
+            .unwrap_or(1_000_000)
+            .saturating_add(1);
+
+        // No ORDER BY key: that forced Sort over the full reverse-index match
+        // set before LIMIT. Unordered LIMIT lets the bitmap/index path stop early.
+        let sql = format!(
+            "SELECT key FROM {} WHERE reverse(key) LIKE $1 LIMIT $2",
+            self.table_name
+        );
+
+        let rows: Vec<(String,)> = sqlx::query_as(&sql)
+            .bind(&like_pattern)
+            .bind(fetch_limit)
+            .fetch_all(&pool)
+            .await
+            .map_err(|e| {
+                StorageError::Database(format!("KV keys_with_suffix_limited failed: {}", e))
+            })?;
+
+        let truncated = rows.len() > limit;
+        Ok((
+            rows.into_iter().take(limit).map(|(k,)| k).collect(),
+            truncated,
+        ))
     }
 
     async fn keys(&self) -> Result<Vec<String>> {
@@ -516,6 +591,16 @@ impl std::fmt::Debug for PostgresKVStorage {
     }
 }
 
+/// Escape `%`, `_`, and `\` for PostgreSQL `LIKE` patterns (literal match).
+fn escape_like_meta(raw: &str) -> String {
+    raw.chars()
+        .flat_map(|c| match c {
+            '%' | '_' | '\\' => vec!['\\', c],
+            _ => vec![c],
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -527,5 +612,12 @@ mod tests {
 
         // Table name includes schema prefix for PostgreSQL
         assert_eq!(storage.table_name, "public.eq_eq_test_kv");
+    }
+
+    #[test]
+    fn escape_like_meta_escapes_wildcards() {
+        assert_eq!(escape_like_meta("wsdoc:ab"), "wsdoc:ab");
+        assert_eq!(escape_like_meta("a%b_c\\d"), "a\\%b\\_c\\\\d");
+        assert_eq!(escape_like_meta("-metadata"), "-metadata");
     }
 }

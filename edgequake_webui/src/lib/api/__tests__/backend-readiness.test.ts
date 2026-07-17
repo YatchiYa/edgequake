@@ -62,12 +62,39 @@ describe("SPEC-021 backend readiness", () => {
         });
       }),
     };
-    const { isBackendReady, _resetBackendReadinessCache } =
-      await import("../backend-readiness");
+    const {
+      isBackendReady,
+      getBackendReadinessSnapshot,
+      _resetBackendReadinessCache,
+    } = await import("../backend-readiness");
     _resetBackendReadinessCache();
 
     const ready = await isBackendReady(request);
     expect(ready).toBe(true);
+    _resetBackendReadinessCache();
+    const snapshot = await getBackendReadinessSnapshot(request);
+    expect(snapshot.state).toBe("degraded");
+  });
+
+  it("getBackendReadinessSnapshot caches API version from /health", async () => {
+    const request = {
+      get: vi.fn().mockImplementation((url: string) => {
+        if (url.endsWith("/live")) return Promise.resolve(liveOk());
+        return Promise.resolve({
+          ok: () => true,
+          status: () => 200,
+          text: async () => "",
+          json: async () => ({ status: "healthy", version: "0.18.0" }),
+        });
+      }),
+    };
+    const { getBackendReadinessSnapshot, _resetBackendReadinessCache } =
+      await import("../backend-readiness");
+    _resetBackendReadinessCache();
+
+    const snapshot = await getBackendReadinessSnapshot(request);
+    expect(snapshot.state).toBe("ready");
+    expect(snapshot.version).toBe("0.18.0");
   });
 
   it("probeBackendReadiness returns degraded when /live ok but /health throws", async () => {

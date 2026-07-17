@@ -1,9 +1,9 @@
 //! SPEC-047 P7b/P7d contract: merge concurrency + SOURCE_IDS KEEP (pure SSOT).
 
 use edgequake_pipeline::{
-    apply_source_ids_limit, merge_source_ids, parse_merge_max_async,
+    apply_local_merge_async_clamp, apply_source_ids_limit, merge_source_ids, parse_merge_max_async,
     should_skip_description_update_keep, SourceIdsLimitMethod, DEFAULT_MAX_SOURCE_IDS,
-    DEFAULT_MERGE_MAX_ASYNC,
+    DEFAULT_MERGE_MAX_ASYNC, LOCAL_MERGE_MAX_ASYNC,
 };
 
 #[test]
@@ -75,4 +75,14 @@ fn contract_parse_merge_max_async_clamps() {
     assert_eq!(parse_merge_max_async("999"), Some(64));
     assert_eq!(parse_merge_max_async("0"), None);
     assert_eq!(parse_merge_max_async(""), None);
+}
+
+#[test]
+fn contract_local_merge_async_clamp() {
+    assert_eq!(
+        apply_local_merge_async_clamp(8, "ollama"),
+        LOCAL_MERGE_MAX_ASYNC
+    );
+    assert_eq!(apply_local_merge_async_clamp(8, "openai"), 8);
+    assert_eq!(apply_local_merge_async_clamp(1, "ollama"), 1);
 }

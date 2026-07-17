@@ -214,50 +214,51 @@ pub async fn list_tenants(
     State(state): State<AppState>,
     Query(params): Query<PaginationParams>,
 ) -> Result<Json<TenantListResponse>, ApiError> {
-    let limit = params.limit.min(100);
+    crate::read_path::run_with_read_path_guard(&state.read_path_db, || async move {
+        let limit = params.limit.min(100);
 
-    let tenants = state
-        .workspace_service
-        .list_tenants(limit, params.offset)
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+        let tenants = state
+            .workspace_service
+            .list_tenants(limit, params.offset)
+            .await
+            .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    let items: Vec<TenantResponse> = tenants
-        .into_iter()
-        .map(|t| TenantResponse {
-            id: t.tenant_id,
-            name: t.name.clone(),
-            slug: t.slug.clone(),
-            plan: format!("{}", t.plan),
-            is_active: t.is_active,
-            max_workspaces: t.max_workspaces,
-            default_llm_model: t.default_llm_model.clone(),
-            default_llm_provider: t.default_llm_provider.clone(),
-            default_llm_full_id: format!("{}/{}", t.default_llm_provider, t.default_llm_model),
-            default_embedding_model: t.default_embedding_model.clone(),
-            default_embedding_provider: t.default_embedding_provider.clone(),
-            default_embedding_dimension: t.default_embedding_dimension,
-            default_embedding_full_id: format!(
-                "{}/{}",
-                t.default_embedding_provider, t.default_embedding_model
-            ),
-            default_vision_llm_model: t.default_vision_llm_model.clone(),
-            default_vision_llm_provider: t.default_vision_llm_provider.clone(),
-            created_at: t.created_at.to_rfc3339(),
-            updated_at: t.updated_at.to_rfc3339(),
-        })
-        .collect();
+        let items: Vec<TenantResponse> = tenants
+            .into_iter()
+            .map(|t| TenantResponse {
+                id: t.tenant_id,
+                name: t.name.clone(),
+                slug: t.slug.clone(),
+                plan: format!("{}", t.plan),
+                is_active: t.is_active,
+                max_workspaces: t.max_workspaces,
+                default_llm_model: t.default_llm_model.clone(),
+                default_llm_provider: t.default_llm_provider.clone(),
+                default_llm_full_id: format!("{}/{}", t.default_llm_provider, t.default_llm_model),
+                default_embedding_model: t.default_embedding_model.clone(),
+                default_embedding_provider: t.default_embedding_provider.clone(),
+                default_embedding_dimension: t.default_embedding_dimension,
+                default_embedding_full_id: format!(
+                    "{}/{}",
+                    t.default_embedding_provider, t.default_embedding_model
+                ),
+                default_vision_llm_model: t.default_vision_llm_model.clone(),
+                default_vision_llm_provider: t.default_vision_llm_provider.clone(),
+                created_at: t.created_at.to_rfc3339(),
+                updated_at: t.updated_at.to_rfc3339(),
+            })
+            .collect();
 
-    let total = items.len();
+        let total = items.len();
 
-    let response = TenantListResponse {
-        items,
-        total,
-        offset: params.offset,
-        limit,
-    };
-
-    Ok(Json(response))
+        Ok(Json(TenantListResponse {
+            items,
+            total,
+            offset: params.offset,
+            limit,
+        }))
+    })
+    .await
 }
 
 /// Get a tenant by ID.

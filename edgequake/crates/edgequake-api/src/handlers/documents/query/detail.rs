@@ -1,5 +1,7 @@
 //! Get single document detail handler.
 
+use std::sync::Arc;
+
 use axum::{extract::State, Json};
 use serde_json::Value;
 use tracing::debug;
@@ -7,6 +9,7 @@ use uuid::Uuid;
 
 use crate::error::{ApiError, ApiResult};
 use crate::middleware::TenantContext;
+use crate::read_path::{run_with_read_path_guard, ReadPathDbPermit};
 use crate::services::document_body_loader::load_document_body;
 use crate::services::tenant_isolation::PgIsolationScope;
 use crate::state::{ApiSecurityConfig, PostgresRuntime, StorageRuntime};
@@ -24,15 +27,30 @@ use crate::handlers::documents_types::*;
     responses(
         (status = 200, description = "Document found", body = DocumentDetailResponse),
         (status = 404, description = "Document not found"),
-        (status = 403, description = "Access denied - document belongs to different tenant")
+        (status = 403, description = "Access denied - document belongs to different tenant"),
+        (status = 503, description = "Read path busy under ingest load")
     )
 )]
 pub async fn get_document(
     State(storage): State<StorageRuntime>,
     State(pg_runtime): State<PostgresRuntime>,
     State(security): State<ApiSecurityConfig>,
+    State(read_path_db): State<Arc<ReadPathDbPermit>>,
     tenant_ctx: TenantContext,
     axum::extract::Path(document_id): axum::extract::Path<String>,
+) -> ApiResult<Json<DocumentDetailResponse>> {
+    run_with_read_path_guard(&read_path_db, || {
+        get_document_inner(storage, pg_runtime, security, tenant_ctx, document_id)
+    })
+    .await
+}
+
+async fn get_document_inner(
+    storage: StorageRuntime,
+    pg_runtime: PostgresRuntime,
+    security: ApiSecurityConfig,
+    tenant_ctx: TenantContext,
+    document_id: String,
 ) -> ApiResult<Json<DocumentDetailResponse>> {
     debug!(
         document_id = %document_id,

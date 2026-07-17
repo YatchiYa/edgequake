@@ -168,33 +168,34 @@ pub async fn list_workspaces(
     Path(tenant_id): Path<Uuid>,
     Query(params): Query<PaginationParams>,
 ) -> Result<Json<WorkspaceListResponse>, ApiError> {
-    let limit = params.limit.min(100);
+    crate::read_path::run_with_read_path_guard(&state.read_path_db, || async move {
+        let limit = params.limit.min(100);
 
-    tracing::debug!(tenant_id = %tenant_id, "Listing workspaces");
+        tracing::debug!(tenant_id = %tenant_id, "Listing workspaces");
 
-    let workspaces = state
-        .workspace_service
-        .list_workspaces(tenant_id)
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+        let workspaces = state
+            .workspace_service
+            .list_workspaces(tenant_id)
+            .await
+            .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    let items: Vec<WorkspaceResponse> = workspaces
-        .into_iter()
-        .skip(params.offset)
-        .take(limit)
-        .map(|ws| workspace_to_response(&ws))
-        .collect();
+        let items: Vec<WorkspaceResponse> = workspaces
+            .into_iter()
+            .skip(params.offset)
+            .take(limit)
+            .map(|ws| workspace_to_response(&ws))
+            .collect();
 
-    let total = items.len();
+        let total = items.len();
 
-    let response = WorkspaceListResponse {
-        items,
-        total,
-        offset: params.offset,
-        limit,
-    };
-
-    Ok(Json(response))
+        Ok(Json(WorkspaceListResponse {
+            items,
+            total,
+            offset: params.offset,
+            limit,
+        }))
+    })
+    .await
 }
 
 /// Get a workspace by ID.
