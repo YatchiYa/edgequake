@@ -123,6 +123,8 @@ pub mod provider_types;
 pub mod provider_visibility;
 pub mod providers;
 pub mod routes;
+pub mod local_inference_gate;
+pub mod read_path;
 pub mod safety_limits;
 pub mod server;
 pub mod server_config_store;

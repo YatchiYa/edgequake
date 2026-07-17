@@ -13,6 +13,10 @@ use serial_test::serial;
 async fn contract_vision_figure_analyze_reports_substep_milestones() {
     std::env::set_var("VLM_PROCESS_ENABLE", "true");
     std::env::set_var("VLM_MIN_IMAGE_PIXEL", "1");
+    // Pin cloud/mock profile so local never-stuck copy does not alter SSOT assertions.
+    std::env::set_var("EDGEQUAKE_VISION_PROVIDER", "mock");
+    std::env::remove_var("EDGEQUAKE_MM_LOCAL_CLASSIFY_ONLY");
+    std::env::remove_var("EDGEQUAKE_MM_MAX_FIGURES");
 
     let tag = format!(
         r#"<drawing id="im-1" format="png" path="assets/fig.png" caption="Figure 1" />
@@ -45,6 +49,7 @@ async fn contract_vision_figure_analyze_reports_substep_milestones() {
         None,
         None,
         Some(reporter),
+        None,
     )
     .await;
 
@@ -67,4 +72,5 @@ async fn contract_vision_figure_analyze_reports_substep_milestones() {
 
     std::env::remove_var("VLM_MIN_IMAGE_PIXEL");
     std::env::remove_var("VLM_PROCESS_ENABLE");
+    std::env::remove_var("EDGEQUAKE_VISION_PROVIDER");
 }

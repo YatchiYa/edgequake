@@ -229,76 +229,40 @@ OPENAI_API_KEY ?= $(shell echo $$OPENAI_API_KEY)
 # Hierarchy (outer → inner):
 #   WORKER_THREADS ⊃ MAX_TASKS_PER_TENANT ⊃ PDF_VISION_JOBS ⊃ PDF_CONCURRENCY
 #     ⊃ MM_IMAGE_CONCURRENCY ⊃ MAX_CONCURRENT_EXTRACTIONS
-# Peak vision in-flight ≈ PDF_VISION_JOBS × PDF_CONCURRENCY (here 4×4=16).
+# Peak vision in-flight ≈ PDF_VISION_JOBS × PDF_CONCURRENCY (cloud: 4×4=16).
 # Dial down if provider 429s or RSS climbs; set MEM_LIMIT so budget code is aware.
 # Low-RAM override example: WORKER_THREADS=4 MAX_TASKS_PER_TENANT=2 \
 #   EDGEQUAKE_PDF_VISION_JOBS=1 EDGEQUAKE_PDF_CONCURRENCY=1
-WORKER_THREADS ?= 16
-MAX_TASKS_PER_TENANT ?= 12
-EDGEQUAKE_PDF_CONCURRENCY ?= 4
-EDGEQUAKE_PDF_VISION_JOBS ?= 4
-EDGEQUAKE_MM_IMAGE_CONCURRENCY ?= 8
-EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS ?= 32
+# Local (Ollama) concurrency defaults are applied AFTER provider detection below.
+# Escape hatch: EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1 \
+#   EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS=8 make dev
+# WORKER_THREADS / MAX_TASKS_PER_TENANT / EMBED_MAX_ASYNC / MERGE_MAX_ASYNC
+# are set in the provider-aware block below (local vs cloud).
 EDGEQUAKE_MEM_LIMIT ?= 48g
 # SPEC-034: native SQL AGE upserts (~69× faster than Cypher MERGE).
 EDGEQUAKE_NATIVE_GRAPH_WRITES ?= 1
 # SPEC-047: skip Louvain tax in local/bench; fail-open MM for throughput.
 EDGEQUAKE_COMMUNITY_GLOBAL ?= false
 EDGEQUAKE_MULTIMODAL_FAIL_MODE ?= degraded
+# Local never-stuck Pass B: classify-only, figure cap, wall budget (cloud ignores defaults).
+EDGEQUAKE_MM_LOCAL_CLASSIFY_ONLY ?= 1
+EDGEQUAKE_MM_MAX_FIGURES ?= 12
+EDGEQUAKE_MM_PASS_B_TIMEOUT_SECS ?= 600
+EDGEQUAKE_MM_PASS_B_PAGE_TIMEOUT_SECS ?= 90
 # SPEC-026/047: inline chart/figure VLM analyze (Pass B). Opt out with false.
 VLM_PROCESS_ENABLE ?= true
 # SPEC-047 P5: HNSW upsert progress cadence (default 1000); chunk_only skips KG extract.
 EDGEQUAKE_VECTOR_UPSERT_CHUNK ?= 1000
 EDGEQUAKE_INGEST_PROFILE ?= full
-# SPEC-047 P6: parallel embed sub-batches (LightRAG embedding_func_max_async ≈ 8).
-EDGEQUAKE_EMBED_MAX_ASYNC ?= 8
 # SPEC-047 P7a: LightRAG FORCE_LLM_SUMMARY_ON_MERGE — join <N fragments with <SEP>, else LLM.
 EDGEQUAKE_FORCE_LLM_SUMMARY_ON_MERGE ?= 8
-# SPEC-047 P7b: LightRAG graph_max_async ≈ llm_max_async×2 — parallel unique entity/rel merges.
-EDGEQUAKE_MERGE_MAX_ASYNC ?= 8
 # SPEC-047 P7d: LightRAG SOURCE_IDS KEEP — skip description updates when saturated (default 200).
 EDGEQUAKE_MAX_SOURCE_IDS_PER_ENTITY ?= 200
 EDGEQUAKE_MAX_SOURCE_IDS_PER_RELATION ?= 200
 EDGEQUAKE_SOURCE_IDS_LIMIT_METHOD ?= KEEP
 # SPEC-047 P7f: native/Cypher graph upsert chunk size (rows per UNNEST/UNWIND statement).
 EDGEQUAKE_GRAPH_UPSERT_CHUNK ?= 500
-export WORKER_THREADS MAX_TASKS_PER_TENANT \
-	EDGEQUAKE_PDF_CONCURRENCY EDGEQUAKE_PDF_VISION_JOBS \
-	EDGEQUAKE_MM_IMAGE_CONCURRENCY EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS \
-	EDGEQUAKE_MEM_LIMIT EDGEQUAKE_NATIVE_GRAPH_WRITES \
-	EDGEQUAKE_COMMUNITY_GLOBAL EDGEQUAKE_MULTIMODAL_FAIL_MODE VLM_PROCESS_ENABLE \
-	EDGEQUAKE_VECTOR_UPSERT_CHUNK EDGEQUAKE_INGEST_PROFILE \
-	EDGEQUAKE_EMBED_MAX_ASYNC EDGEQUAKE_FORCE_LLM_SUMMARY_ON_MERGE \
-	EDGEQUAKE_MERGE_MAX_ASYNC EDGEQUAKE_MAX_SOURCE_IDS_PER_ENTITY \
-	EDGEQUAKE_MAX_SOURCE_IDS_PER_RELATION EDGEQUAKE_SOURCE_IDS_LIMIT_METHOD \
-	EDGEQUAKE_GRAPH_UPSERT_CHUNK
 
-# Shared exports appended to /tmp/edgequake-start.sh by backend-bg.
-# SPEC-047: also pin VLM + chart modality so bench restarts do not silently drop MV-32.
-define BACKEND_STABILITY_EXPORTS
-printf '%s\n' "export WORKER_THREADS=\"$(WORKER_THREADS)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export MAX_TASKS_PER_TENANT=\"$(MAX_TASKS_PER_TENANT)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_PDF_CONCURRENCY=\"$(EDGEQUAKE_PDF_CONCURRENCY)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_PDF_VISION_JOBS=\"$(EDGEQUAKE_PDF_VISION_JOBS)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_MM_IMAGE_CONCURRENCY=\"$(EDGEQUAKE_MM_IMAGE_CONCURRENCY)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS=\"$(EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_MEM_LIMIT=\"$(EDGEQUAKE_MEM_LIMIT)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_NATIVE_GRAPH_WRITES=\"$(EDGEQUAKE_NATIVE_GRAPH_WRITES)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_COMMUNITY_GLOBAL=\"$(EDGEQUAKE_COMMUNITY_GLOBAL)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_MULTIMODAL_FAIL_MODE=\"$(EDGEQUAKE_MULTIMODAL_FAIL_MODE)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_VECTOR_UPSERT_CHUNK=\"$(EDGEQUAKE_VECTOR_UPSERT_CHUNK)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_INGEST_PROFILE=\"$(EDGEQUAKE_INGEST_PROFILE)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_EMBED_MAX_ASYNC=\"$(EDGEQUAKE_EMBED_MAX_ASYNC)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_FORCE_LLM_SUMMARY_ON_MERGE=\"$(EDGEQUAKE_FORCE_LLM_SUMMARY_ON_MERGE)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_MERGE_MAX_ASYNC=\"$(EDGEQUAKE_MERGE_MAX_ASYNC)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_MAX_SOURCE_IDS_PER_ENTITY=\"$(EDGEQUAKE_MAX_SOURCE_IDS_PER_ENTITY)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_MAX_SOURCE_IDS_PER_RELATION=\"$(EDGEQUAKE_MAX_SOURCE_IDS_PER_RELATION)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_SOURCE_IDS_LIMIT_METHOD=\"$(EDGEQUAKE_SOURCE_IDS_LIMIT_METHOD)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_GRAPH_UPSERT_CHUNK=\"$(EDGEQUAKE_GRAPH_UPSERT_CHUNK)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export VLM_PROCESS_ENABLE=\"$(VLM_PROCESS_ENABLE)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_CHART_MODALITY_FILTER=\"true\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_MM_ANALYSIS_CACHE=\"true\"" >> /tmp/edgequake-start.sh;
-endef
 DEV_AUTH_ENABLED ?= false
 DEV_DISABLE_DEMO_LOGIN ?= false
 # SPEC-027 AC-4: frictionless local dev when DEV_AUTH_ENABLED=false (auth secure by default otherwise).
@@ -322,6 +286,80 @@ else
   EDGEQUAKE_DEFAULT_EMBEDDING_MODEL ?= embeddinggemma:latest
   EDGEQUAKE_DEFAULT_EMBEDDING_DIMENSION ?= 768
 endif
+
+# Provider-aware ingest concurrency (must follow DEFAULT_LLM_PROVIDER resolution).
+# Ollama ~1 parallel sequence — cloud-scale fan-out (32) causes connection storms.
+# Local profile also clamps workers / embed / merge (parity with extract=2).
+ifeq ($(EDGEQUAKE_DEFAULT_LLM_PROVIDER),$(filter $(EDGEQUAKE_DEFAULT_LLM_PROVIDER),ollama lmstudio lm-studio lm_studio))
+  WORKER_THREADS ?= 2
+  MAX_TASKS_PER_TENANT ?= 1
+  EDGEQUAKE_PDF_CONCURRENCY ?= 1
+  EDGEQUAKE_PDF_VISION_JOBS ?= 1
+  EDGEQUAKE_MM_IMAGE_CONCURRENCY ?= 1
+  EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS ?= 2
+  EDGEQUAKE_EMBED_MAX_ASYNC ?= 1
+  EDGEQUAKE_MERGE_MAX_ASYNC ?= 2
+  EDGEQUAKE_LOCAL_MAX_INFLIGHT ?= 2
+  # Leave headroom for interactive HTTP reads under gemma4 ingest.
+  DATABASE_POOL_SIZE ?= 16
+else
+  WORKER_THREADS ?= 16
+  MAX_TASKS_PER_TENANT ?= 12
+  EDGEQUAKE_PDF_CONCURRENCY ?= 4
+  EDGEQUAKE_PDF_VISION_JOBS ?= 4
+  EDGEQUAKE_MM_IMAGE_CONCURRENCY ?= 8
+  EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS ?= 32
+  EDGEQUAKE_EMBED_MAX_ASYNC ?= 8
+  EDGEQUAKE_MERGE_MAX_ASYNC ?= 8
+  EDGEQUAKE_LOCAL_MAX_INFLIGHT ?= 0
+  DATABASE_POOL_SIZE ?= 32
+endif
+
+export WORKER_THREADS MAX_TASKS_PER_TENANT \
+	EDGEQUAKE_PDF_CONCURRENCY EDGEQUAKE_PDF_VISION_JOBS \
+	EDGEQUAKE_MM_IMAGE_CONCURRENCY EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS \
+	EDGEQUAKE_MEM_LIMIT EDGEQUAKE_NATIVE_GRAPH_WRITES \
+	EDGEQUAKE_COMMUNITY_GLOBAL EDGEQUAKE_MULTIMODAL_FAIL_MODE VLM_PROCESS_ENABLE \
+	EDGEQUAKE_MM_LOCAL_CLASSIFY_ONLY EDGEQUAKE_MM_MAX_FIGURES \
+	EDGEQUAKE_MM_PASS_B_TIMEOUT_SECS EDGEQUAKE_MM_PASS_B_PAGE_TIMEOUT_SECS \
+	EDGEQUAKE_VECTOR_UPSERT_CHUNK EDGEQUAKE_INGEST_PROFILE \
+	EDGEQUAKE_EMBED_MAX_ASYNC EDGEQUAKE_FORCE_LLM_SUMMARY_ON_MERGE \
+	EDGEQUAKE_MERGE_MAX_ASYNC EDGEQUAKE_MAX_SOURCE_IDS_PER_ENTITY \
+	EDGEQUAKE_MAX_SOURCE_IDS_PER_RELATION EDGEQUAKE_SOURCE_IDS_LIMIT_METHOD \
+	EDGEQUAKE_GRAPH_UPSERT_CHUNK EDGEQUAKE_LOCAL_MAX_INFLIGHT DATABASE_POOL_SIZE
+
+# Shared exports appended to /tmp/edgequake-start.sh by backend-bg.
+# SPEC-047: also pin VLM + chart modality so bench restarts do not silently drop MV-32.
+define BACKEND_STABILITY_EXPORTS
+printf '%s\n' "export WORKER_THREADS=\"$(WORKER_THREADS)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export MAX_TASKS_PER_TENANT=\"$(MAX_TASKS_PER_TENANT)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_PDF_CONCURRENCY=\"$(EDGEQUAKE_PDF_CONCURRENCY)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_PDF_VISION_JOBS=\"$(EDGEQUAKE_PDF_VISION_JOBS)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MM_IMAGE_CONCURRENCY=\"$(EDGEQUAKE_MM_IMAGE_CONCURRENCY)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS=\"$(EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MEM_LIMIT=\"$(EDGEQUAKE_MEM_LIMIT)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_NATIVE_GRAPH_WRITES=\"$(EDGEQUAKE_NATIVE_GRAPH_WRITES)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_COMMUNITY_GLOBAL=\"$(EDGEQUAKE_COMMUNITY_GLOBAL)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MULTIMODAL_FAIL_MODE=\"$(EDGEQUAKE_MULTIMODAL_FAIL_MODE)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MM_LOCAL_CLASSIFY_ONLY=\"$(EDGEQUAKE_MM_LOCAL_CLASSIFY_ONLY)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MM_MAX_FIGURES=\"$(EDGEQUAKE_MM_MAX_FIGURES)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MM_PASS_B_TIMEOUT_SECS=\"$(EDGEQUAKE_MM_PASS_B_TIMEOUT_SECS)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MM_PASS_B_PAGE_TIMEOUT_SECS=\"$(EDGEQUAKE_MM_PASS_B_PAGE_TIMEOUT_SECS)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_VECTOR_UPSERT_CHUNK=\"$(EDGEQUAKE_VECTOR_UPSERT_CHUNK)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_INGEST_PROFILE=\"$(EDGEQUAKE_INGEST_PROFILE)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_EMBED_MAX_ASYNC=\"$(EDGEQUAKE_EMBED_MAX_ASYNC)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_FORCE_LLM_SUMMARY_ON_MERGE=\"$(EDGEQUAKE_FORCE_LLM_SUMMARY_ON_MERGE)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MERGE_MAX_ASYNC=\"$(EDGEQUAKE_MERGE_MAX_ASYNC)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MAX_SOURCE_IDS_PER_ENTITY=\"$(EDGEQUAKE_MAX_SOURCE_IDS_PER_ENTITY)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MAX_SOURCE_IDS_PER_RELATION=\"$(EDGEQUAKE_MAX_SOURCE_IDS_PER_RELATION)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_SOURCE_IDS_LIMIT_METHOD=\"$(EDGEQUAKE_SOURCE_IDS_LIMIT_METHOD)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_GRAPH_UPSERT_CHUNK=\"$(EDGEQUAKE_GRAPH_UPSERT_CHUNK)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_LOCAL_MAX_INFLIGHT=\"$(EDGEQUAKE_LOCAL_MAX_INFLIGHT)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export DATABASE_POOL_SIZE=\"$(DATABASE_POOL_SIZE)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export VLM_PROCESS_ENABLE=\"$(VLM_PROCESS_ENABLE)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_CHART_MODALITY_FILTER=\"true\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MM_ANALYSIS_CACHE=\"true\"" >> /tmp/edgequake-start.sh;
+endef
 
 # SPEC-040: Vision/VLM provider defaults for PDF-to-Markdown conversion
 # WHY: Vision provider MUST inherit from the resolved DEFAULT_LLM values (set above,
@@ -563,11 +601,28 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 		echo "  $(BLUE)Provider$(RESET): Ollama (http://localhost:11434)"; \
 	fi
 	@echo ""
-	@trap 'echo ""; echo "$(YELLOW)Stopping only the processes started by this make dev session...$(RESET)"; [ -n "$$BACKEND_PID" ] && kill "$$BACKEND_PID" 2>/dev/null || true; [ -n "$$FRONTEND_PID" ] && kill "$$FRONTEND_PID" 2>/dev/null || true; echo "$(GREEN)✓ App processes stopped. PostgreSQL is left running for faster restarts.$(RESET)"; exit 0' INT; \
+	@DEV_LOCK="/tmp/edgequake-make-dev.lock"; \
+	if ! mkdir "$$DEV_LOCK" 2>/dev/null; then \
+		OTHER=$$(cat "$$DEV_LOCK/pid" 2>/dev/null || true); \
+		if [ -n "$$OTHER" ] && kill -0 "$$OTHER" 2>/dev/null; then \
+			echo "$(RED)✗ Another make dev is already running (pid $$OTHER).$(RESET)"; \
+			echo "  Stop it with Ctrl+C in that terminal, or run $(GREEN)make kill-app$(RESET) then retry."; \
+			exit 1; \
+		fi; \
+		rm -rf "$$DEV_LOCK"; \
+		mkdir "$$DEV_LOCK" || exit 1; \
+	fi; \
+	echo "$$$$" > "$$DEV_LOCK/pid"; \
+	trap 'echo ""; echo "$(YELLOW)Stopping only the processes started by this make dev session...$(RESET)"; [ -n "$$BACKEND_PID" ] && kill "$$BACKEND_PID" 2>/dev/null || true; [ -n "$$FRONTEND_PID" ] && kill "$$FRONTEND_PID" 2>/dev/null || true; rm -rf /tmp/edgequake-make-dev.lock; echo "$(GREEN)✓ App processes stopped. PostgreSQL is left running for faster restarts.$(RESET)"; exit 0' INT; \
 	set -a && . $(DEV_PORTS_ENV) && set +a; \
 	BACKEND_PID=""; \
 	FRONTEND_PID=""; \
 	$(LOAD_EFF_DB_URL); \
+	for BPID in $$(lsof -nP -iTCP:$$BACKEND_PORT -sTCP:LISTEN -t 2>/dev/null || true); do \
+		echo "$(YELLOW)→ Freeing port $$BACKEND_PORT (PID $$BPID) before backend start$(RESET)"; \
+		kill -9 "$$BPID" 2>/dev/null || true; \
+	done; \
+	sleep 0.3; \
 	echo "$(YELLOW)→ Starting backend on port $$BACKEND_PORT (DATABASE_URL port: $$(printf '%s' $$_EFF_DB_URL | sed -E 's|.*:([0-9]+)/.*|\1|'))...$(RESET)"; \
 	if [ -n "$(OPENAI_API_KEY)" ]; then \
 		(cd $(BACKEND_DIR) && \
@@ -581,6 +636,10 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 			EDGEQUAKE_NATIVE_GRAPH_WRITES="$(EDGEQUAKE_NATIVE_GRAPH_WRITES)" \
 			VLM_PROCESS_ENABLE="$(VLM_PROCESS_ENABLE)" \
 			EDGEQUAKE_MULTIMODAL_FAIL_MODE="$(EDGEQUAKE_MULTIMODAL_FAIL_MODE)" \
+			EDGEQUAKE_MM_LOCAL_CLASSIFY_ONLY="$(EDGEQUAKE_MM_LOCAL_CLASSIFY_ONLY)" \
+			EDGEQUAKE_MM_MAX_FIGURES="$(EDGEQUAKE_MM_MAX_FIGURES)" \
+			EDGEQUAKE_MM_PASS_B_TIMEOUT_SECS="$(EDGEQUAKE_MM_PASS_B_TIMEOUT_SECS)" \
+			EDGEQUAKE_MM_PASS_B_PAGE_TIMEOUT_SECS="$(EDGEQUAKE_MM_PASS_B_PAGE_TIMEOUT_SECS)" \
 			EDGEQUAKE_MM_IMAGE_CONCURRENCY="$(EDGEQUAKE_MM_IMAGE_CONCURRENCY)" \
 			cargo run 2>&1 | sed 's/^/[backend] /') & \
 		BACKEND_PID=$$!; \
@@ -595,6 +654,10 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 			EDGEQUAKE_NATIVE_GRAPH_WRITES="$(EDGEQUAKE_NATIVE_GRAPH_WRITES)" \
 			VLM_PROCESS_ENABLE="$(VLM_PROCESS_ENABLE)" \
 			EDGEQUAKE_MULTIMODAL_FAIL_MODE="$(EDGEQUAKE_MULTIMODAL_FAIL_MODE)" \
+			EDGEQUAKE_MM_LOCAL_CLASSIFY_ONLY="$(EDGEQUAKE_MM_LOCAL_CLASSIFY_ONLY)" \
+			EDGEQUAKE_MM_MAX_FIGURES="$(EDGEQUAKE_MM_MAX_FIGURES)" \
+			EDGEQUAKE_MM_PASS_B_TIMEOUT_SECS="$(EDGEQUAKE_MM_PASS_B_TIMEOUT_SECS)" \
+			EDGEQUAKE_MM_PASS_B_PAGE_TIMEOUT_SECS="$(EDGEQUAKE_MM_PASS_B_PAGE_TIMEOUT_SECS)" \
 			EDGEQUAKE_MM_IMAGE_CONCURRENCY="$(EDGEQUAKE_MM_IMAGE_CONCURRENCY)" \
 			OLLAMA_HOST="http://localhost:11434" \
 			OLLAMA_MODEL="gemma4:latest" \
@@ -766,13 +829,25 @@ kill-app: ## Kill backend and frontend processes (leaves PostgreSQL running)
 	@-if [ -f /tmp/edgequake-backend.pid ]; then kill -9 $$(cat /tmp/edgequake-backend.pid) 2>/dev/null || true; rm -f /tmp/edgequake-backend.pid; fi
 	@-pkill -9 -f "target/debug/edgequake" 2>/dev/null || true
 	@-pkill -9 -f "target/release/edgequake" 2>/dev/null || true
-	@-BPID=$$(lsof -nP -iTCP:$(BACKEND_PORT) -sTCP:LISTEN -t 2>/dev/null | head -1); \
-	[ -n "$$BPID" ] && kill -9 "$$BPID" 2>/dev/null || true
+	@-pkill -9 -f "cargo run --bin edgequake" 2>/dev/null || true
+	@-set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)" && set +a; \
+	for port in "$${BACKEND_PORT:-$(BACKEND_PORT)}" "$(DEFAULT_BACKEND_PORT)" "$(BACKEND_PORT)"; do \
+		[ -z "$$port" ] && continue; \
+		for BPID in $$(lsof -nP -iTCP:$$port -sTCP:LISTEN -t 2>/dev/null || true); do \
+			kill -9 "$$BPID" 2>/dev/null || true; \
+		done; \
+	done
 	@echo "$(YELLOW)→ Killing existing frontend processes...$(RESET)"
 	@-if [ -f /tmp/edgequake-frontend.pid ]; then kill -9 $$(cat /tmp/edgequake-frontend.pid) 2>/dev/null || true; rm -f /tmp/edgequake-frontend.pid; fi
 	@-pkill -f "node.*edgequake_webui" 2>/dev/null || true
-	@-FPID=$$(lsof -nP -iTCP:$(FRONTEND_PORT) -sTCP:LISTEN -t 2>/dev/null | head -1); \
-	[ -n "$$FPID" ] && kill -9 "$$FPID" 2>/dev/null || true
+	@-set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)" && set +a; \
+	for port in "$${FRONTEND_PORT:-$(FRONTEND_PORT)}" "$(DEFAULT_FRONTEND_PORT)" "$(FRONTEND_PORT)"; do \
+		[ -z "$$port" ] && continue; \
+		for FPID in $$(lsof -nP -iTCP:$$port -sTCP:LISTEN -t 2>/dev/null || true); do \
+			kill -9 "$$FPID" 2>/dev/null || true; \
+		done; \
+	done
+	@rm -rf /tmp/edgequake-make-dev.lock
 	@echo "$(GREEN)✓ App processes cleared (PostgreSQL left running)$(RESET)"
 
 stop: ## Stop all development services
@@ -926,6 +1001,12 @@ backend-bg: sync-dev-ports db-wait ## Run backend in background with PostgreSQL 
 	@# Read the effective DATABASE_URL resolved by db-start (may differ in port
 	@# when another PostgreSQL occupies the default 5432).
 	@$(LOAD_EFF_DB_URL); \
+	set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)" && set +a; \
+	for BPID in $$(lsof -nP -iTCP:$${BACKEND_PORT:-$(BACKEND_PORT)} -sTCP:LISTEN -t 2>/dev/null || true); do \
+		echo "$(YELLOW)→ Freeing port $${BACKEND_PORT:-$(BACKEND_PORT)} (PID $$BPID) before backend-bg start$(RESET)"; \
+		kill -9 "$$BPID" 2>/dev/null || true; \
+	done; \
+	sleep 0.3; \
 	_BIN="$(BACKEND_DIR)/target/debug/edgequake"; \
 	if [ -x "$$_BIN" ]; then _RUN="exec $$_BIN"; else _RUN="cd $(BACKEND_DIR) && exec cargo run"; fi; \
 	if [ -n "$$MISTRAL_API_KEY" ] || [ -n "$(MISTRAL_API_KEY)" ]; then \

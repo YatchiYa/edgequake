@@ -402,18 +402,21 @@ impl DocumentTaskProcessor {
                         &early_doc_id,
                         data.multimodal_process_options.as_deref(),
                     );
-                    let mm_outcome = crate::services::run_multimodal_analyze_stage_outcome(
-                        stored_markdown,
-                        data.multimodal_process_options.as_deref(),
-                        &filename,
-                        self.workspace_service.as_ref(),
-                        data.workspace_id,
-                        Arc::clone(&self.llm_provider),
-                        mm_asset_base.as_deref(),
-                        Some(&early_doc_id),
-                        Some(Arc::clone(&self.kv_storage)),
-                    )
-                    .await;
+                    let mm_outcome =
+                        crate::services::run_multimodal_analyze_stage_outcome_with_cancel(
+                            stored_markdown,
+                            data.multimodal_process_options.as_deref(),
+                            &filename,
+                            self.workspace_service.as_ref(),
+                            data.workspace_id,
+                            Arc::clone(&self.llm_provider),
+                            mm_asset_base.as_deref(),
+                            Some(&early_doc_id),
+                            Some(Arc::clone(&self.kv_storage)),
+                            None,
+                            Some(cancel_token.clone()),
+                        )
+                        .await;
                     if crate::services::multimodal::should_abort_multimodal_hard_error(
                         mm_outcome.hard_error.as_deref(),
                     ) {
@@ -936,13 +939,24 @@ impl DocumentTaskProcessor {
                 let figure_total =
                     edgequake_pdf::inline_images::scan_inline_image_refs(&markdown).len();
                 if figure_total > 0 {
+                    let profile = crate::services::LocalMmProfile::resolve_from_env();
+                    let analyze_cap = profile.figures_to_analyze(figure_total);
+                    let start_msg = if profile.is_local && profile.classify_only {
+                        crate::services::vision_figure_analyze_message_local(
+                            0,
+                            analyze_cap,
+                            figure_total,
+                        )
+                    } else {
+                        crate::services::vision_figure_analyze_message(0, analyze_cap)
+                    };
                     progress_callback.report_converting_status(
-                        crate::services::vision_figure_analyze_message(0, figure_total),
-                        crate::services::vision_figure_analyze_progress_01(0, figure_total),
+                        start_msg,
+                        crate::services::vision_figure_analyze_progress_01(0, analyze_cap),
                     );
                 }
             }
-            let mm_outcome = crate::services::run_multimodal_analyze_stage_outcome_with_substep(
+            let mm_outcome = crate::services::run_multimodal_analyze_stage_outcome_with_cancel(
                 markdown,
                 data.multimodal_process_options.as_deref(),
                 &filename,
@@ -953,6 +967,7 @@ impl DocumentTaskProcessor {
                 Some(&early_doc_id),
                 Some(Arc::clone(&self.kv_storage)),
                 converting_substep,
+                Some(cancel_token.clone()),
             )
             .await;
             if crate::services::multimodal::should_abort_multimodal_hard_error(

@@ -36,12 +36,21 @@ interface QueryProviderProps {
  * overlay.
  */
 function retryPolicy(failureCount: number, error: unknown): boolean {
+  // Client-side deadline elapsed — at most one retry so skeletons cannot spin.
+  if (error instanceof Error && error.name === 'TimeoutError') {
+    return failureCount < 1;
+  }
   // NetworkError (transport) → up to 4 attempts
   if (error instanceof Error && error.name === 'NetworkError') {
     return failureCount < 4;
   }
   // ApiRequestError: retry 5xx up to 2 times; never retry 4xx
   const status = (error as { status?: number }).status;
+  const code = (error as { code?: string }).code;
+  // Read-path busy (503) — one quick retry then surface Retry UI.
+  if (status === 503 && code === 'read_path_busy') {
+    return failureCount < 1;
+  }
   if (typeof status === 'number') {
     if (status >= 500) return failureCount < 2;
     return false;

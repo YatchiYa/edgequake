@@ -51,10 +51,13 @@ export { streamClient } from "./stream-client";
 export {
   isBackendReady,
   getBackendReadinessState,
+  getBackendReadinessSnapshot,
   probeBackendReadiness,
+  probeBackendReadinessSnapshot,
   _resetBackendReadinessCache,
   type ReadinessProbeClient,
   type BackendReadinessState,
+  type BackendReadinessSnapshot,
 } from "./backend-readiness";
 
 // === Custom error classes =============================================
@@ -100,6 +103,12 @@ export interface ClientErrorLogOptions {
   silent?: boolean;
 }
 
+/** Default non-streaming request timeout (BR0701). Documents override lower. */
+export const DEFAULT_API_TIMEOUT_MS = 30_000;
+
+/** Interactive document list/detail timeout — fail before browser TCP hang. */
+export const DOCUMENTS_API_TIMEOUT_MS = 10_000;
+
 export interface ApiClientOptions extends RequestInit {
   /**
    * Suppress console.error on transport failures (default: false).
@@ -112,6 +121,43 @@ export interface ApiClientOptions extends RequestInit {
    * console.warn — visible in devtools but never promoted to the overlay.
    */
   silent?: boolean;
+  /**
+   * Abort the request after this many ms (default: {@link DEFAULT_API_TIMEOUT_MS}).
+   * Pass `0` to disable. Combined with any caller-provided `signal` via AbortSignal.any.
+   */
+  timeoutMs?: number;
+}
+
+/** Request aborted because the client-side deadline elapsed. */
+export class TimeoutError extends ApiRequestError {
+  constructor(message = "Request timed out") {
+    super(message, 504, "timeout");
+    this.name = "TimeoutError";
+  }
+}
+
+function isAbortTimeoutError(error: unknown): boolean {
+  // AbortSignal.timeout() rejects with DOMException name "TimeoutError".
+  // User/navigation AbortError is left alone (not remapped to our TimeoutError).
+  return (error as { name?: string })?.name === "TimeoutError";
+}
+
+function resolveFetchSignal(
+  timeoutMs: number | undefined,
+  userSignal: AbortSignal | null | undefined,
+): AbortSignal | undefined {
+  const effectiveTimeout =
+    timeoutMs === undefined ? DEFAULT_API_TIMEOUT_MS : timeoutMs;
+  const parts: AbortSignal[] = [];
+  if (effectiveTimeout > 0) {
+    parts.push(AbortSignal.timeout(effectiveTimeout));
+  }
+  if (userSignal) {
+    parts.push(userSignal);
+  }
+  if (parts.length === 0) return undefined;
+  if (parts.length === 1) return parts[0];
+  return AbortSignal.any(parts);
 }
 
 /** Structured payload for client-side error logging (explicit context). */
@@ -319,13 +365,16 @@ export async function apiClient<T>(
   endpoint: string,
   options: ApiClientOptions = {},
 ): Promise<T> {
-  const { silent = false, ...fetchOptions } = options;
+  const { silent = false, timeoutMs, signal: userSignal, ...fetchOptions } =
+    options;
   const url = endpoint.startsWith("http")
     ? endpoint
     : `${getRuntimeApiBaseUrl()}${endpoint}`;
 
+  const signal = resolveFetchSignal(timeoutMs, userSignal);
   const config: RequestInit = {
     ...fetchOptions,
+    signal,
     headers: buildHeaders(fetchOptions.headers, fetchOptions.body),
   };
 
@@ -337,6 +386,8 @@ export async function apiClient<T>(
       const refreshed = await tryRefreshToken();
       if (refreshed) {
         config.headers = buildHeaders(fetchOptions.headers, fetchOptions.body);
+        // Fresh deadline for the retry attempt.
+        config.signal = resolveFetchSignal(timeoutMs, userSignal);
         const retryResponse = await fetch(url, config);
         if (!retryResponse.ok) {
           throw await handleErrorResponse(retryResponse, { silent });
@@ -358,6 +409,11 @@ export async function apiClient<T>(
   } catch (error) {
     if (error instanceof ApiRequestError || error instanceof AuthError) {
       throw error;
+    }
+    if (isAbortTimeoutError(error)) {
+      const timeoutErr = new TimeoutError();
+      logClientApiError(timeoutErr, { silent, url });
+      throw timeoutErr;
     }
     if (error instanceof TypeError) {
       const networkErr = new NetworkError();

@@ -15,6 +15,7 @@ pub use edgequake_tasks::{
 use crate::safety_limits::{
     is_local_provider, vision_outer_timeout_secs, VISION_MAX_OUTER_TIMEOUT_SECS,
 };
+use super::multimodal::LocalMmProfile;
 
 /// Page-count threshold for large-PDF admission UX and gleaning policy.
 pub const LARGE_PDF_PAGE_THRESHOLD: usize = 100;
@@ -103,7 +104,10 @@ impl LargeDocumentProfile {
             PdfParserBackend::EdgeParse => self.edgeparse_convert_secs(),
             PdfParserBackend::Vision => self.vision_convert_secs(provider),
         };
+        // Local Pass B figure analyze wall/cap budget (never-stuck profile).
+        let pass_b = LocalMmProfile::resolve(provider).pass_b_task_budget_secs();
         let raw = convert
+            .saturating_add(pass_b)
             .saturating_add(self.extract_secs())
             .saturating_add(Self::PERSIST_BUFFER_SECS);
         let adjusted = match backend {
@@ -217,6 +221,23 @@ mod tests {
         assert!(LargeDocumentProfile::markdown_has_text_layer(
             &markdown, pages
         ));
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn local_task_timeout_includes_pass_b_budget() {
+        std::env::remove_var("TASK_PROCESSING_TIMEOUT_SECS");
+        std::env::set_var("EDGEQUAKE_MM_MAX_FIGURES", "12");
+        std::env::set_var("EDGEQUAKE_MM_PASS_B_TIMEOUT_SECS", "600");
+        let profile = LargeDocumentProfile::new(10, 1_000_000);
+        let local = profile.task_timeout_secs(PdfParserBackend::Vision, "ollama");
+        let cloud = profile.task_timeout_secs(PdfParserBackend::Vision, "openai");
+        assert!(
+            local >= cloud,
+            "local timeout should include Pass B budget: local={local} cloud={cloud}"
+        );
+        std::env::remove_var("EDGEQUAKE_MM_MAX_FIGURES");
+        std::env::remove_var("EDGEQUAKE_MM_PASS_B_TIMEOUT_SECS");
     }
 
     #[test]

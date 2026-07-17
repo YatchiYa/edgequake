@@ -5,7 +5,7 @@
 import { getRuntimeServerBaseUrl } from "@/lib/runtime-config";
 import { postMultipart, type MultipartUploadProgress } from "@/lib/upload/multipart-upload-client";
 import { buildPdfUploadFormData } from "@/lib/upload/pdf-upload-form-data";
-import { api } from "../client";
+import { api, DOCUMENTS_API_TIMEOUT_MS } from "../client";
 import { buildQueryString, withQuery } from "../query-params";
 
 import type {
@@ -48,8 +48,10 @@ export async function getDocuments(
   });
 
   // API now returns { documents: [...], total, page, page_size, total_pages, has_more, status_counts }
+  // Fail-fast: never spin skeletons until the browser TCP timeout under ingest load.
   const response = await api.get<ListDocumentsResponse>(
     withQuery("/documents", query),
+    { timeoutMs: DOCUMENTS_API_TIMEOUT_MS },
   );
 
   return {
@@ -72,7 +74,9 @@ export async function getDocuments(
 }
 
 export async function getDocument(documentId: string): Promise<Document> {
-  return api.get<Document>(`/documents/${documentId}`);
+  return api.get<Document>(`/documents/${documentId}`, {
+    timeoutMs: DOCUMENTS_API_TIMEOUT_MS,
+  });
 }
 
 export async function uploadDocument(

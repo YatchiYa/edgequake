@@ -925,6 +925,32 @@ pub fn vision_page_timeout_secs(provider_name: &str) -> u64 {
     }
 }
 
+/// Default per-VLM-call timeout for local Pass B figure analyze (classify-only).
+pub const LOCAL_PASS_B_VISION_TIMEOUT_SECS: u64 = 90;
+
+/// Per-call vision timeout for multimodal Pass B (figure analyze).
+///
+/// Distinct from page OCR ([`vision_page_timeout_secs`]): local Pass B uses a
+/// shorter default (90s) so one hung Ollama encode cannot burn 10 minutes.
+/// Override with `EDGEQUAKE_MM_PASS_B_PAGE_TIMEOUT_SECS`.
+pub fn vision_pass_b_timeout_secs(provider_name: &str) -> u64 {
+    if let Ok(val) = std::env::var("EDGEQUAKE_MM_PASS_B_PAGE_TIMEOUT_SECS") {
+        if let Ok(n) = val.parse::<u64>() {
+            return n.max(10);
+        }
+    }
+    // Keep this match local to avoid crate::services ↔ safety_limits cycles.
+    let is_local_vlm = matches!(
+        provider_name.trim().to_ascii_lowercase().as_str(),
+        "ollama" | "lmstudio" | "lm-studio" | "lm_studio"
+    );
+    if is_local_vlm {
+        LOCAL_PASS_B_VISION_TIMEOUT_SECS
+    } else {
+        vision_page_timeout_secs(provider_name)
+    }
+}
+
 /// Validate vision provider credentials before pdf2md factory resolution (SPEC-043).
 pub fn check_vision_provider_available(provider_name: &str, model: &str) -> Result<()> {
     check_api_key(provider_name)?;
@@ -1002,6 +1028,57 @@ pub fn create_safe_vision_provider(
         timeout_secs = timeout_secs,
         is_local = is_local_provider(&provider_name),
         "Creating safety-limited VISION LLM provider (provider-aware timeout)"
+    );
+
+    Ok(Arc::new(SafetyLimitedProviderWrapper::new(inner, config)))
+}
+
+/// Vision provider for multimodal Pass B (figure analyze) with shorter local timeout.
+///
+/// Pass A page OCR continues to use [`create_safe_vision_provider`] (600s local).
+pub fn create_safe_vision_provider_for_pass_b(
+    provider_name: &str,
+    model: &str,
+) -> Result<Arc<dyn LLMProvider>> {
+    if let Some((llm, _)) = test_provider_override() {
+        return Ok(llm);
+    }
+
+    let (provider_name, model) = heal_mock_llm_selection(provider_name, model);
+    crate::provider_visibility::ensure_non_mock_provider(&provider_name, "vision LLM")
+        .map_err(LlmError::ConfigError)?;
+    check_api_key(&provider_name)?;
+
+    let effective_model = if is_model_provider_mismatch(&provider_name, &model) {
+        let corrected = default_model_for_provider(&provider_name);
+        tracing::warn!(
+            provider = %provider_name,
+            requested_model = %model,
+            corrected_model = corrected,
+            "COMPAT-GUARD: Model/provider mismatch detected — auto-correcting to provider default \
+             (Pass B vision)."
+        );
+        corrected.to_string()
+    } else {
+        model
+    };
+
+    let inner = create_inner_llm_provider(&provider_name, &effective_model, None)?;
+
+    let timeout_secs = vision_pass_b_timeout_secs(&provider_name);
+    let config = SafetyLimitsConfig {
+        max_tokens: DEFAULT_MAX_TOKENS,
+        timeout: Duration::from_secs(timeout_secs),
+        log_enforcement: true,
+        max_embed_batch_size: SafetyLimitsConfig::env_embed_batch_size(),
+    };
+
+    tracing::info!(
+        provider = %provider_name,
+        model = %effective_model,
+        timeout_secs = timeout_secs,
+        is_local = is_local_provider(&provider_name),
+        "Creating safety-limited VISION LLM provider for Pass B (figure analyze)"
     );
 
     Ok(Arc::new(SafetyLimitedProviderWrapper::new(inner, config)))

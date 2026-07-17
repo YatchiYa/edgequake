@@ -14,6 +14,7 @@ mod gates;
 mod image_specialize;
 mod item_record;
 mod json_recovery;
+mod local_profile;
 mod manifest;
 mod manifest_store;
 mod metadata;
@@ -60,6 +61,7 @@ pub use gates::{
     should_abort_multimodal_hard_error, should_run_image_analysis, vlm_process_enabled,
     MultimodalFailMode,
 };
+pub use local_profile::{is_local_vlm, LocalMmProfile};
 pub use item_record::{MultimodalItemRecord, MultimodalItemStatus, MultimodalSummary};
 pub use json_recovery::{extract_json_object, parse_json_object};
 pub use manifest::{ManifestItem, MultimodalManifest};
@@ -85,6 +87,7 @@ pub use sidecar::{
 };
 pub use stage::{
     run_multimodal_analyze_stage, run_multimodal_analyze_stage_outcome,
+    run_multimodal_analyze_stage_outcome_with_cancel,
     run_multimodal_analyze_stage_outcome_with_substep,
 };
 pub use standalone::{analyze_standalone_image, StandaloneImageOutcome};
