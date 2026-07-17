@@ -46,8 +46,7 @@ pub async fn get_workspace_vector_storage_strict(
     })
 }
 
-/// Get workspace-specific vector storage with fallback (LEGACY — read paths only).
-#[allow(dead_code)]
+/// Get workspace-specific vector storage with fallback (read paths only).
 pub async fn get_workspace_vector_storage_with_fallback(
     state: &AppState,
     workspace_id: &str,

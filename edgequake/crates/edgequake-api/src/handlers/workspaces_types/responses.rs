@@ -194,6 +194,30 @@ pub struct WorkspaceStatsResponse {
     pub stale: bool,
 }
 
+/// A workspace with its statistics inlined.
+///
+/// WHY: listing workspaces and then fetching `/workspaces/{id}/stats` per row
+/// costs 1+N round-trips. Dashboards need both together, so this batches them
+/// into a single response. Workspace fields stay at the top level (flattened)
+/// so the shape is a superset of [`WorkspaceResponse`].
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WorkspaceWithStatsResponse {
+    /// All workspace configuration fields, inlined at the top level.
+    #[serde(flatten)]
+    pub workspace: WorkspaceResponse,
+    /// Document / entity / relationship / chunk counters for this workspace.
+    pub stats: WorkspaceStatsResponse,
+}
+
+/// Response for the batch workspaces-with-stats endpoint.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WorkspaceStatsListResponse {
+    /// Workspaces of the tenant, each with its stats.
+    pub items: Vec<WorkspaceWithStatsResponse>,
+    /// Number of workspaces returned.
+    pub total: usize,
+}
+
 /// Single metrics snapshot for historical data.
 ///
 /// OODA-22: Individual snapshot in metrics history response.

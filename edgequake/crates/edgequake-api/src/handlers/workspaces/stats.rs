@@ -3,6 +3,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use futures::StreamExt;
 use serde::Deserialize;
 use std::time::Instant;
 use uuid::Uuid;
@@ -42,17 +43,28 @@ pub async fn get_workspace_stats(
     // cached data for workspaces they do not own.
     verify_workspace_tenant_access(&state, workspace_id, &tenant_ctx).await?;
 
-    // HYBRID APPROACH WITH CACHING: 4-tier performance optimization
-    // See: logs/2026-01-26-18-00-storage-architecture-analysis.md
-    // See: specs/021-storage-study/06-first-principles/11-ux-zero-documents-root-cause-assessment.md
-    //
-    // Performance tiers:
-    // 0. Cache (<1ms) - FASTEST, 60s TTL
-    // 1. PostgreSQL documents table (1-5ms) - primary for document_count (SPEC-021 P5-01)
-    // 2. KV storage aggregation (15ms) - fallback for legacy uploads + chunk metrics
-    // 3. AGE graph queries (50-200ms) - authoritative for entity/relationship counts
+    Ok(Json(cached_workspace_stats(&state, workspace_id).await?))
+}
 
-    use std::time::Instant;
+/// Workspace stats with TTL cache and stale-if-error fallback.
+///
+/// Callers MUST have already authorized access to `workspace_id` — this helper
+/// performs no tenant check (it is shared by the single-workspace and batch
+/// endpoints, which authorize differently).
+///
+/// HYBRID APPROACH WITH CACHING: 4-tier performance optimization
+/// See: logs/2026-01-26-18-00-storage-architecture-analysis.md
+/// See: specs/021-storage-study/06-first-principles/11-ux-zero-documents-root-cause-assessment.md
+///
+/// Performance tiers:
+/// 0. Cache (<1ms) - FASTEST, 60s TTL
+/// 1. PostgreSQL documents table (1-5ms) - primary for document_count (SPEC-021 P5-01)
+/// 2. KV storage aggregation (15ms) - fallback for legacy uploads + chunk metrics
+/// 3. AGE graph queries (~3-6ms) - authoritative for entity/relationship counts
+pub(super) async fn cached_workspace_stats(
+    state: &AppState,
+    workspace_id: Uuid,
+) -> Result<WorkspaceStatsResponse, ApiError> {
     let start = Instant::now();
 
     // Tier 0: Check cache first (fastest path - <1ms)
@@ -68,7 +80,7 @@ pub async fn get_workspace_stats(
                     age_secs = cached.cached_at.elapsed().as_secs(),
                     "Workspace stats retrieved from cache (fastest path)"
                 );
-                return Ok(Json(cached.stats.clone()));
+                return Ok(cached.stats.clone());
             }
         }
     }
@@ -85,7 +97,7 @@ pub async fn get_workspace_stats(
 
     let fetch_result = tokio::time::timeout(
         STATS_FETCH_TIMEOUT,
-        fetch_workspace_stats_uncached(&state, workspace_id, start),
+        fetch_workspace_stats_uncached(state, workspace_id, start),
     )
     .await;
 
@@ -99,7 +111,7 @@ pub async fn get_workspace_stats(
                     error = %e,
                     "Workspace stats fetch failed — serving stale cache (P-G13)"
                 );
-                return Ok(Json(stale));
+                return Ok(stale);
             }
             return Err(e);
         }
@@ -111,7 +123,7 @@ pub async fn get_workspace_stats(
                     timeout_secs = STATS_FETCH_TIMEOUT.as_secs(),
                     "Workspace stats fetch timed out under load — serving stale cache (P-G13)"
                 );
-                return Ok(Json(stale));
+                return Ok(stale);
             }
             return Err(ApiError::Internal(
                 "Workspace stats temporarily unavailable — retry shortly".to_string(),
@@ -131,7 +143,109 @@ pub async fn get_workspace_stats(
         );
     }
 
-    Ok(Json(stats))
+    Ok(stats)
+}
+
+/// Max concurrent per-workspace stats fetches for the batch endpoint.
+///
+/// WHY bounded: each fetch holds DB pool slots (KV scan + 2 AGE queries + one
+/// O(1) vector counter). An unbounded fan-out over a tenant with hundreds of
+/// workspaces would starve ingestion of connections (SPEC-006 budget).
+const STATS_BATCH_CONCURRENCY: usize = 8;
+
+/// List every workspace of a tenant with its statistics, in one request.
+///
+/// GET /api/v1/tenants/{tenant_id}/workspaces/stats
+///
+/// # WHY
+///
+/// Dashboards need name + config + counters per workspace. Without this,
+/// clients pay 1 (list) + N (stats) round-trips. Stats reuse the same 60s TTL
+/// cache as the single-workspace endpoint, and are fetched concurrently.
+#[utoipa::path(
+    get,
+    path = "/api/v1/tenants/{tenant_id}/workspaces/stats",
+    params(
+        ("tenant_id" = Uuid, Path, description = "Tenant ID")
+    ),
+    responses(
+        (status = 200, description = "Workspaces with statistics", body = WorkspaceStatsListResponse),
+        (status = 404, description = "Tenant not found or not accessible"),
+    ),
+    tags = ["workspaces"]
+)]
+pub async fn list_workspaces_with_stats(
+    State(state): State<AppState>,
+    Path(tenant_id): Path<Uuid>,
+    tenant_ctx: TenantContext,
+) -> Result<Json<WorkspaceStatsListResponse>, ApiError> {
+    // BR0201: same contract as verify_workspace_tenant_access — 404 (not 403)
+    // so a caller cannot enumerate tenants it does not belong to.
+    if let Some(ref ctx_tid) = tenant_ctx.tenant_id {
+        if tenant_id.to_string() != *ctx_tid {
+            tracing::warn!(
+                requested_tenant_id = %tenant_id,
+                context_tenant_id = %ctx_tid,
+                "Tenant isolation: workspaces-with-stats for a different tenant — returning 404"
+            );
+            return Err(ApiError::NotFound(format!("Tenant {} not found", tenant_id)));
+        }
+    }
+
+    let start = Instant::now();
+
+    let workspaces = state
+        .workspace_service
+        .list_workspaces(tenant_id)
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    let items: Vec<WorkspaceWithStatsResponse> = futures::stream::iter(workspaces)
+        .map(|ws| {
+            let state = &state;
+            async move {
+                let workspace_id = ws.workspace_id;
+                // Degrade per-row instead of failing the whole page: one broken
+                // workspace must not blank the dashboard.
+                let stats = cached_workspace_stats(state, workspace_id)
+                    .await
+                    .unwrap_or_else(|e| {
+                        tracing::warn!(
+                            workspace_id = %workspace_id,
+                            error = %e,
+                            "Workspace stats unavailable in batch — returning zeros for this row"
+                        );
+                        WorkspaceStatsResponse {
+                            workspace_id,
+                            document_count: 0,
+                            entity_count: 0,
+                            relationship_count: 0,
+                            entity_type_count: 0,
+                            chunk_count: 0,
+                            embedding_count: 0,
+                            storage_bytes: 0,
+                            stale: true,
+                        }
+                    });
+                WorkspaceWithStatsResponse {
+                    workspace: super::helpers::workspace_to_response(&ws),
+                    stats,
+                }
+            }
+        })
+        .buffered(STATS_BATCH_CONCURRENCY)
+        .collect()
+        .await;
+
+    tracing::info!(
+        tenant_id = %tenant_id,
+        workspace_count = items.len(),
+        duration_ms = start.elapsed().as_millis(),
+        "Listed workspaces with stats (batched)"
+    );
+
+    let total = items.len();
+    Ok(Json(WorkspaceStatsListResponse { items, total }))
 }
 
 /// Fetch workspace stats from storage backends (uncached).
@@ -140,7 +254,9 @@ pub async fn get_workspace_stats(
 /// - **document_count / storage_bytes**: `max(postgresql, kv)` — relational primary,
 ///   KV fallback for legacy uploads that never dual-wrote.
 /// - **entity_count / relationship_count / entity_type_count**: AGE graph (always).
-/// - **chunk_count / embedding_count**: KV chunk keys for workspace documents.
+/// - **chunk_count**: KV document metadata (`chunk_count` field, summed).
+/// - **embedding_count**: O(1) row counter on the workspace vector table (all
+///   embedded objects — chunks, entities, relationships).
 async fn fetch_workspace_stats_uncached(
     state: &AppState,
     workspace_id: Uuid,
@@ -207,17 +323,11 @@ async fn try_kv_storage_stats(
     // Aggregate stats from documents belonging to this workspace
     let mut document_count = 0;
     let mut storage_bytes: u64 = 0;
-    let mut workspace_doc_ids = Vec::new();
     let mut chunk_count_from_metadata = 0usize;
 
     for value in metadata_values {
         if let Some(obj) = value.as_object() {
             document_count += 1;
-
-            // Collect document ID for per-doc chunk prefix scan
-            if let Some(id) = obj.get("id").and_then(|v| v.as_str()) {
-                workspace_doc_ids.push(id.to_string());
-            }
 
             chunk_count_from_metadata += obj
                 .get("chunk_count")
@@ -250,36 +360,24 @@ async fn try_kv_storage_stats(
         .await
         .unwrap_or(0);
 
-    // Embedding count requires chunk payloads; use per-doc prefix scan (no global keys_like).
     let chunk_count = chunk_count_from_metadata;
-    let mut embedding_count = 0;
 
-    for doc_id in &workspace_doc_ids {
-        let prefix = format!("{doc_id}-chunk-");
-        let doc_chunk_keys = state
-            .storage
-            .kv_storage
-            .keys_with_prefix(&prefix)
-            .await
-            .map_err(|e| ApiError::Internal(format!("Failed to list chunk keys: {}", e)))?;
-
-        if !doc_chunk_keys.is_empty() {
-            let chunk_values = state
-                .storage
-                .kv_storage
-                .get_by_ids(&doc_chunk_keys)
-                .await
-                .map_err(|e| ApiError::Internal(format!("Failed to get chunk data: {}", e)))?;
-
-            for chunk_value in chunk_values {
-                if let Some(obj) = chunk_value.as_object() {
-                    if obj.get("embedding").is_some() {
-                        embedding_count += 1;
-                    }
-                }
-            }
-        }
-    }
+    // Embeddings live in the per-workspace vector table, never in KV. Read the
+    // maintained O(1) row counter instead of walking chunk payloads.
+    //
+    // WHY: this used to prefix-scan + fetch every chunk payload per document
+    // (2N round-trips) to test `chunk["embedding"]`. KV chunk records have no
+    // `embedding` key, so the loop always computed 0 — 185ms per workspace to
+    // produce a constant. `count()` reads `{table}_stats.row_count` (SPEC-011).
+    let embedding_count =
+        crate::services::document_vector_storage::get_workspace_vector_storage_with_fallback(
+            state,
+            &workspace_id.to_string(),
+        )
+        .await
+        .count()
+        .await
+        .unwrap_or(0);
 
     // Get distinct entity type count from graph storage.
     // WHY: Dashboard EntityTypes KPI was extremely slow — it fetched ALL graph

@@ -267,6 +267,12 @@ fn api_v1_routes() -> Router<AppState> {
             "/tenants/{tenant_id}/workspaces",
             get(handlers::list_workspaces),
         )
+        // Batch: all workspaces of a tenant WITH their stats (avoids 1+N).
+        // Literal path — declared before any `/workspaces/{param}` sibling.
+        .route(
+            "/tenants/{tenant_id}/workspaces/stats",
+            get(handlers::list_workspaces_with_stats),
+        )
         // Get workspace by slug (for URL-based routing)
         .route(
             "/tenants/{tenant_id}/workspaces/by-slug/{slug}",
