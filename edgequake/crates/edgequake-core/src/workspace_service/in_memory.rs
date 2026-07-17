@@ -277,10 +277,9 @@ impl WorkspaceService for InMemoryWorkspaceService {
 
         if let Some(model) = request.vision_llm_model {
             workspace.vision_llm_model = Some(model.clone());
-            workspace.metadata.insert(
-                "vision_llm_model".to_string(),
-                serde_json::json!(model),
-            );
+            workspace
+                .metadata
+                .insert("vision_llm_model".to_string(), serde_json::json!(model));
         }
         if let Some(provider) = request.vision_llm_provider {
             workspace.vision_llm_provider = Some(provider.clone());
@@ -778,7 +777,10 @@ mod tests {
             "omitted pdf_parser_backend must persist vision"
         );
         assert_eq!(
-            workspace.metadata.get("pdf_parser_backend").and_then(|v| v.as_str()),
+            workspace
+                .metadata
+                .get("pdf_parser_backend")
+                .and_then(|v| v.as_str()),
             Some("vision")
         );
     }

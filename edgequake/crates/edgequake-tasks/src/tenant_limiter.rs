@@ -113,10 +113,7 @@ impl TenantConcurrencyLimiter {
     /// Try to acquire a processing slot for the given tenant (non-blocking).
     pub async fn try_acquire(&self, tenant_id: Uuid) -> Option<OwnedSemaphorePermit> {
         let semaphore = self.semaphore_for(tenant_id).await;
-        match semaphore.try_acquire_owned() {
-            Ok(permit) => Some(permit),
-            Err(_) => None,
-        }
+        semaphore.try_acquire_owned().ok()
     }
 
     /// Park until a processing slot is available for the tenant.
@@ -125,7 +122,7 @@ impl TenantConcurrencyLimiter {
     /// a single tenant has a large backlog under a low concurrency cap.
     ///
     /// Cancel-safe for waiter accounting: dropping this future (e.g. via
-    /// `select!`) decrements `park_waiters` via [`ParkWaitGuard`].
+    /// `select!`) decrements `park_waiters` via `ParkWaitGuard`.
     pub async fn acquire(
         &self,
         tenant_id: Uuid,

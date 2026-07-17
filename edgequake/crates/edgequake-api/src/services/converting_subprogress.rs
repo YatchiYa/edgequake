@@ -10,7 +10,7 @@ use std::sync::Arc;
 pub type ConvertingSubstepReporter = Arc<dyn Fn(String, f64) + Send + Sync>;
 
 /// Options for Pass B figure progress copy + emission cadence.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct VisionFigureProgressOpts {
     /// Emit on every completed figure (local / modest totals).
     pub every_figure: bool,
@@ -20,17 +20,6 @@ pub struct VisionFigureProgressOpts {
     pub discovered_total: usize,
     /// Figures scheduled for analysis (after local cap).
     pub analyzed_cap: usize,
-}
-
-impl Default for VisionFigureProgressOpts {
-    fn default() -> Self {
-        Self {
-            every_figure: false,
-            local_classify_only: false,
-            discovered_total: 0,
-            analyzed_cap: 0,
-        }
-    }
 }
 
 /// User-visible message while Vision LLM analyzes extracted figure/chart images.
@@ -76,7 +65,11 @@ pub fn should_emit_substep_milestone(completed: usize, total: usize) -> bool {
 }
 
 /// Milestone policy with explicit every-figure override.
-pub fn should_emit_substep_milestone_ex(completed: usize, total: usize, every_figure: bool) -> bool {
+pub fn should_emit_substep_milestone_ex(
+    completed: usize,
+    total: usize,
+    every_figure: bool,
+) -> bool {
     if total == 0 {
         return completed == 1;
     }

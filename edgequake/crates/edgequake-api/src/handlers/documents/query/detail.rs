@@ -41,7 +41,14 @@ pub async fn get_document(
     axum::extract::Path(document_id): axum::extract::Path<String>,
 ) -> ApiResult<Json<DocumentDetailResponse>> {
     run_with_read_path_guard(&read_path_db, || {
-        get_document_inner(storage, pg_runtime, security, tasks, tenant_ctx, document_id)
+        get_document_inner(
+            storage,
+            pg_runtime,
+            security,
+            tasks,
+            tenant_ctx,
+            document_id,
+        )
     })
     .await
 }
@@ -455,8 +462,8 @@ async fn get_document_inner(
         Some(tid) => tasks.cancellation_registry.has_cancel_intent(tid).await,
         None => false,
     };
-    let status_view = crate::services::map_ingestion_status(
-        crate::services::IngestionStatusInputs {
+    let status_view =
+        crate::services::map_ingestion_status(crate::services::IngestionStatusInputs {
             task_status: None,
             doc_status: Some(status.as_str()),
             current_stage: current_stage.as_deref(),
@@ -465,8 +472,7 @@ async fn get_document_inner(
             error_message: error_message.as_deref(),
             stage_message: stage_message_kv.as_deref(),
             cancel_intent,
-        },
-    );
+        });
 
     Ok(Json(DocumentDetailResponse {
         id: document_id,

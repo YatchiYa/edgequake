@@ -194,8 +194,8 @@ pub async fn list_relational_document_summaries(
                 stage_progress: None,
                 stage_message: None,
                 pdf_id: None,
-            display_status: None,
-            ui_phase: None,
+                display_status: None,
+                ui_phase: None,
             }
         })
         .collect())
@@ -423,12 +423,12 @@ pub fn merge_document_summaries(
 /// Only finished docs with a zero count — never in-progress extraction
 /// (those probes can exceed the interactive read deadline on large graphs).
 #[inline]
-pub(crate) fn should_reconcile_entity_count(status: Option<&str>, entity_count: Option<usize>) -> bool {
+pub(crate) fn should_reconcile_entity_count(
+    status: Option<&str>,
+    entity_count: Option<usize>,
+) -> bool {
     entity_count.unwrap_or(0) == 0
-        && matches!(
-            status,
-            Some("completed" | "indexed" | "partial_failure")
-        )
+        && matches!(status, Some("completed" | "indexed" | "partial_failure"))
 }
 
 /// Best-effort: AGE failures/timeouts are swallowed (counts stay as-is) so the
@@ -570,8 +570,8 @@ mod tests {
             stage_progress: None,
             stage_message: None,
             pdf_id: None,
-        display_status: None,
-        ui_phase: None,
+            display_status: None,
+            ui_phase: None,
         }];
 
         let pg = vec![DocumentSummary {
@@ -599,8 +599,8 @@ mod tests {
             stage_progress: None,
             stage_message: None,
             pdf_id: None,
-        display_status: None,
-        ui_phase: None,
+            display_status: None,
+            ui_phase: None,
         }];
 
         let merged = merge_document_summaries(kv, pg);
@@ -637,8 +637,8 @@ mod tests {
             stage_progress: None,
             stage_message: None,
             pdf_id: None,
-        display_status: None,
-        ui_phase: None,
+            display_status: None,
+            ui_phase: None,
         }];
 
         let pg = vec![DocumentSummary {
@@ -666,8 +666,8 @@ mod tests {
             stage_progress: None,
             stage_message: None,
             pdf_id: None,
-        display_status: None,
-        ui_phase: None,
+            display_status: None,
+            ui_phase: None,
         }];
 
         let merged = merge_document_summaries(kv, pg);
@@ -702,8 +702,8 @@ mod tests {
             stage_progress: None,
             stage_message: None,
             pdf_id: None,
-        display_status: None,
-        ui_phase: None,
+            display_status: None,
+            ui_phase: None,
         }
     }
 

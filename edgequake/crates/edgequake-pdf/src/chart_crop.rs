@@ -300,7 +300,7 @@ impl CropCoverageReport {
 /// True when an on-disk page PNG has a lawful ink residual crop (area gates).
 ///
 /// Used to skip hi-res chart renders for text-heavy pages where the page raster
-/// cannot shrink under [`MAX_CROP_AREA_FRAC`].
+/// cannot shrink under `MAX_CROP_AREA_FRAC`.
 pub fn page_png_has_ink_residual(page_png: &Path) -> bool {
     let Ok(bytes) = std::fs::read(page_png) else {
         return false;

@@ -102,9 +102,11 @@ pub async fn load_scoped_document_metadata_entries(
     if let Some(workspace_id) = tenant_ctx.workspace_id.as_deref() {
         let metadata_keys = list_workspace_metadata_keys(kv_storage, workspace_id).await?;
         if !metadata_keys.is_empty() {
-            return Ok(fetch_scoped_entries(kv_storage, tenant_ctx, metadata_keys, false)
-                .await?
-                .entries);
+            return Ok(
+                fetch_scoped_entries(kv_storage, tenant_ctx, metadata_keys, false)
+                    .await?
+                    .entries,
+            );
         }
     }
     let keys = kv_storage
@@ -160,10 +162,7 @@ async fn fetch_scoped_entries(
         .filter_map(|(key, value)| value.map(|v| (key, v)))
         .filter(|(_, value)| metadata_matches_tenant_context(value, tenant_ctx))
         .collect();
-    Ok(ScopedMetadataLoad {
-        entries,
-        truncated,
-    })
+    Ok(ScopedMetadataLoad { entries, truncated })
 }
 
 /// Load `(key, metadata)` for a workspace using `wsdoc:` index prefix scan.
@@ -618,13 +617,10 @@ mod tests {
         }
         kv.upsert(&upserts).await.unwrap();
 
-        let loaded = load_scoped_document_metadata_entries_limited(
-            kv.as_ref(),
-            &ctx(&tenant, &ws),
-            2,
-        )
-        .await
-        .unwrap();
+        let loaded =
+            load_scoped_document_metadata_entries_limited(kv.as_ref(), &ctx(&tenant, &ws), 2)
+                .await
+                .unwrap();
         assert!(loaded.truncated);
         assert!(loaded.entries.len() <= 2);
     }
@@ -652,13 +648,10 @@ mod tests {
         }
         kv.upsert(&upserts).await.unwrap();
 
-        let loaded = load_scoped_document_metadata_entries_limited(
-            kv.as_ref(),
-            &ctx(&tenant, &ws),
-            2,
-        )
-        .await
-        .unwrap();
+        let loaded =
+            load_scoped_document_metadata_entries_limited(kv.as_ref(), &ctx(&tenant, &ws), 2)
+                .await
+                .unwrap();
         assert!(!loaded.truncated, "exact fill must not report truncated");
         assert_eq!(loaded.entries.len(), 2);
     }

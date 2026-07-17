@@ -33,8 +33,8 @@ use tracing;
 
 use crate::error::{ApiError, ApiResult};
 use crate::middleware::TenantContext;
-use crate::services::document_metadata_scan::load_scoped_document_metadata_entries;
 use crate::services::cancel_track_with_doc_and_pdf_chain;
+use crate::services::document_metadata_scan::load_scoped_document_metadata_entries;
 use crate::services::task_scope::get_task_for_context;
 use crate::state::AppState;
 

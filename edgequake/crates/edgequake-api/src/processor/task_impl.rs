@@ -138,7 +138,7 @@ impl TaskProcessor for DocumentTaskProcessor {
                 if let Some(pdf_id_str) = task.task_data.get("pdf_id").and_then(|v| v.as_str()) {
                     if let Ok(pdf_id) = uuid::Uuid::parse_str(pdf_id_str) {
                         use edgequake_storage::PdfProcessingStatus;
-                        let pdf_status = if crate::services::is_cancel_error_message(&error_msg) {
+                        let pdf_status = if crate::services::is_cancel_error_message(error_msg) {
                             PdfProcessingStatus::Cancelled
                         } else {
                             PdfProcessingStatus::Failed

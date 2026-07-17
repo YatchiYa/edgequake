@@ -227,11 +227,7 @@ pub fn is_local_provider_overload_error(error: &str) -> bool {
 }
 
 /// Compute exponential backoff delay, stretching the base for local overload errors.
-pub fn retry_delay_ms_for_chunk_error(
-    initial_delay_ms: u64,
-    attempt: u32,
-    error: &str,
-) -> u64 {
+pub fn retry_delay_ms_for_chunk_error(initial_delay_ms: u64, attempt: u32, error: &str) -> u64 {
     let base = if is_local_provider_overload_error(error) {
         initial_delay_ms.max(LOCAL_OVERLOAD_RETRY_DELAY_MS)
     } else {

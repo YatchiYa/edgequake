@@ -205,11 +205,7 @@ impl DocumentTaskProcessor {
                         let error_msg = format!("Pipeline processing failed: {}", e);
                         if crate::services::task_cancel::is_cancel_error_message(&error_msg) {
                             let _ = self
-                                .update_document_status(
-                                    &document_id,
-                                    "cancelled",
-                                    Some(&error_msg),
-                                )
+                                .update_document_status(&document_id, "cancelled", Some(&error_msg))
                                 .await;
                             return Err(edgequake_tasks::TaskError::Cancelled(error_msg));
                         }

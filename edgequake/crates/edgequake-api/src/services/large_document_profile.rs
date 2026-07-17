@@ -12,10 +12,10 @@ pub use edgequake_tasks::{
     classify_ingestion_failure, is_permanent_ingestion_failure, IngestionFailureClass,
 };
 
+use super::multimodal::LocalMmProfile;
 use crate::safety_limits::{
     is_local_provider, vision_outer_timeout_secs, VISION_MAX_OUTER_TIMEOUT_SECS,
 };
-use super::multimodal::LocalMmProfile;
 
 /// Page-count threshold for large-PDF admission UX and gleaning policy.
 pub const LARGE_PDF_PAGE_THRESHOLD: usize = 100;
@@ -114,9 +114,7 @@ impl LargeDocumentProfile {
         let pass_b = LocalMmProfile::resolve(provider).pass_b_task_budget_secs();
         let raw = convert.saturating_add(pass_b).saturating_add(300);
         let adjusted = match backend {
-            PdfParserBackend::Vision if self.page_count >= 200 => {
-                raw.saturating_add(convert / 4)
-            }
+            PdfParserBackend::Vision if self.page_count >= 200 => raw.saturating_add(convert / 4),
             _ => raw,
         };
         adjusted.clamp(TASK_TIMEOUT_FLOOR_SECS, TASK_TIMEOUT_CEILING_SECS)
@@ -239,10 +237,12 @@ mod tests {
         let total = profile.task_timeout_secs(PdfParserBackend::EdgeParse, "mistral");
         assert!(convert >= TASK_TIMEOUT_FLOOR_SECS);
         assert!(ingest >= TASK_TIMEOUT_FLOOR_SECS);
-        assert_eq!(total, convert.saturating_add(ingest).clamp(
-            TASK_TIMEOUT_FLOOR_SECS,
-            TASK_TIMEOUT_CEILING_SECS,
-        ));
+        assert_eq!(
+            total,
+            convert
+                .saturating_add(ingest)
+                .clamp(TASK_TIMEOUT_FLOOR_SECS, TASK_TIMEOUT_CEILING_SECS,)
+        );
         // Convert budget must not include full extract waves (those are ingest).
         assert!(convert < total);
     }

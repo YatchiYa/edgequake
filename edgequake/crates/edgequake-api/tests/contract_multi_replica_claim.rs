@@ -107,9 +107,7 @@ async fn dual_worker_pool_processes_pending_task_exactly_once() {
 
 #[test]
 fn delivery_gate_rejects_local_with_replicas_gt_one() {
-    use edgequake_tasks::{
-        validate_delivery_for_replicas, TaskDeliveryMode,
-    };
+    use edgequake_tasks::{validate_delivery_for_replicas, TaskDeliveryMode};
     assert!(validate_delivery_for_replicas(TaskDeliveryMode::Local, 2).is_err());
     assert!(validate_delivery_for_replicas(TaskDeliveryMode::Bridged, 2).is_ok());
 }

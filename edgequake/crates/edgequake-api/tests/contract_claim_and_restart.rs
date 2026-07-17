@@ -50,10 +50,7 @@ async fn claim_next_returns_pending_without_channel_wake() {
         .claim_next("contract-worker-b", Duration::from_secs(120))
         .await
         .unwrap();
-    assert!(
-        second.is_none(),
-        "held lease must prevent a second claim"
-    );
+    assert!(second.is_none(), "held lease must prevent a second claim");
 }
 
 #[tokio::test]

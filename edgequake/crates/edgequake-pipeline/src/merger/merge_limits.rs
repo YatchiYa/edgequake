@@ -135,7 +135,7 @@ fn default_llm_provider_from_env() -> String {
 
 /// Cap merge fan-out for capacity-bound local providers.
 pub fn apply_local_merge_async_clamp(requested: usize, provider_name: &str) -> usize {
-    let bounded = requested.max(1).min(64);
+    let bounded = requested.clamp(1, 64);
     if !crate::pipeline::is_local_extraction_provider(provider_name)
         || crate::pipeline::allow_local_high_concurrency()
     {

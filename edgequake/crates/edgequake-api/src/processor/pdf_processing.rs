@@ -73,6 +73,7 @@ fn should_resume_pdf_conversion(has_existing_document: bool, restart_from_scratc
 
 /// DRY builder for the follow-on Insert payload after PDF convert (SPEC-057 P2).
 #[cfg(feature = "postgres")]
+#[allow(clippy::too_many_arguments)]
 fn build_text_insert_from_pdf_convert(
     markdown: String,
     filename: &str,
@@ -253,6 +254,7 @@ impl DocumentTaskProcessor {
 
     /// Persist convert barrier + link PDF, then enqueue Insert (no inline KG).
     #[cfg(feature = "postgres")]
+    #[allow(clippy::too_many_arguments)]
     async fn finish_pdf_convert_and_enqueue_ingest(
         &self,
         task: &mut Task,
@@ -663,7 +665,7 @@ impl DocumentTaskProcessor {
                         pdf_id: data.pdf_id,
                         processing_status: PdfProcessingStatus::Completed,
                         markdown_content: Some(stored_markdown.clone()),
-                        extraction_method: stored_extraction_method.clone(),
+                        extraction_method: stored_extraction_method,
                         extraction_errors: None,
                         document_id: None,
                         vision_model: stored_vision_model.clone(),
@@ -1272,10 +1274,7 @@ impl DocumentTaskProcessor {
             .map_err(|e| edgequake_tasks::TaskError::Storage(e.to_string()))?;
 
         // 6. End convert task; enqueue TaskType::Insert for KG ingest (SPEC-057 P2).
-        let extraction_method_str = update_req
-            .extraction_method
-            .as_ref()
-            .map(|m| m.as_str());
+        let extraction_method_str = update_req.extraction_method.as_ref().map(|m| m.as_str());
         self.finish_pdf_convert_and_enqueue_ingest(
             task,
             &data,
@@ -1431,16 +1430,14 @@ mod tests {
     async fn resume_convert_barrier_enqueues_insert_task() {
         use edgequake_pipeline::Pipeline;
         use edgequake_storage::{
-            MemoryGraphStorage, MemoryKVStorage, MemoryVectorStorage,
-            MemoryWorkspaceVectorRegistry,
+            MemoryGraphStorage, MemoryKVStorage, MemoryVectorStorage, MemoryWorkspaceVectorRegistry,
         };
         use edgequake_tasks::{PipelineState, Task, TaskProcessor};
 
         let pdf_storage = Arc::new(MemoryPdfStorage::new());
         let task_storage: Arc<dyn edgequake_tasks::TaskStorage> =
             Arc::new(MemoryTaskStorage::new());
-        let task_queue: Arc<dyn edgequake_tasks::TaskQueue> =
-            Arc::new(ChannelTaskQueue::new(16));
+        let task_queue: Arc<dyn edgequake_tasks::TaskQueue> = Arc::new(ChannelTaskQueue::new(16));
         let kv: Arc<dyn edgequake_storage::traits::KVStorage> =
             Arc::new(MemoryKVStorage::new("p2-resume-enqueue"));
         let vector: Arc<dyn edgequake_storage::traits::VectorStorage> =
@@ -1495,22 +1492,25 @@ mod tests {
         .await
         .unwrap();
 
-        let processor = DocumentTaskProcessor::new(
-            Arc::new(Pipeline::default_pipeline()),
-            Arc::new(edgequake_llm::MockProvider::new()),
-            Arc::clone(&kv),
-            vector,
-            vector_registry,
-            graph,
-            PipelineState::new(),
-        )
-        .with_pdf_storage(Arc::clone(&pdf_storage) as Arc<dyn edgequake_storage::PdfDocumentStorage>)
-        .with_task_enqueue(
-            Arc::clone(&task_storage) as edgequake_tasks::SharedTaskStorage,
-            Arc::clone(&task_queue) as edgequake_tasks::SharedTaskQueue,
-            Arc::new(NoopTaskNotifier) as edgequake_tasks::SharedTaskNotifier,
-            TaskDeliveryMode::Local,
-        );
+        let processor =
+            DocumentTaskProcessor::new(
+                Arc::new(Pipeline::default_pipeline()),
+                Arc::new(edgequake_llm::MockProvider::new()),
+                Arc::clone(&kv),
+                vector,
+                vector_registry,
+                graph,
+                PipelineState::new(),
+            )
+            .with_pdf_storage(
+                Arc::clone(&pdf_storage) as Arc<dyn edgequake_storage::PdfDocumentStorage>
+            )
+            .with_task_enqueue(
+                Arc::clone(&task_storage) as edgequake_tasks::SharedTaskStorage,
+                Arc::clone(&task_queue) as edgequake_tasks::SharedTaskQueue,
+                Arc::new(NoopTaskNotifier) as edgequake_tasks::SharedTaskNotifier,
+                TaskDeliveryMode::Local,
+            );
 
         let data = edgequake_tasks::PdfProcessingData {
             pdf_id,
@@ -1539,9 +1539,7 @@ mod tests {
             .expect("convert resume must succeed");
         assert_eq!(result["phase"], "convert_complete");
         assert_eq!(result["status"], "converted");
-        let ingest_track = result["ingest_track_id"]
-            .as_str()
-            .expect("ingest_track_id");
+        let ingest_track = result["ingest_track_id"].as_str().expect("ingest_track_id");
 
         let ingest = task_storage
             .get_task(ingest_track)
@@ -1555,13 +1553,12 @@ mod tests {
             .as_ref()
             .and_then(|m| m.get("processing_timeout_secs"))
             .and_then(|v| v.as_u64());
-        assert!(timeout.is_some(), "Insert must carry ingest timeout metadata");
+        assert!(
+            timeout.is_some(),
+            "Insert must carry ingest timeout metadata"
+        );
 
-        let pdf = pdf_storage
-            .get_pdf(&pdf_id)
-            .await
-            .unwrap()
-            .unwrap();
+        let pdf = pdf_storage.get_pdf(&pdf_id).await.unwrap().unwrap();
         assert_eq!(pdf.processing_status, PdfProcessingStatus::Completed);
         assert_eq!(pdf.markdown_content.as_deref(), Some(markdown));
     }

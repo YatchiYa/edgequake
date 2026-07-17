@@ -265,7 +265,7 @@ fn default_llm_provider_from_env() -> String {
 ///
 /// Returns the effective concurrency (may be lower than `requested`).
 pub fn apply_local_embed_async_clamp(requested: usize, provider_name: &str) -> usize {
-    let bounded = requested.max(1).min(32);
+    let bounded = requested.clamp(1, 32);
     if !crate::pipeline::is_local_extraction_provider(provider_name)
         || crate::pipeline::allow_local_high_concurrency()
     {
@@ -372,8 +372,7 @@ async fn embed_with_token_budget(
             let batch = texts_owned[start..end].to_vec();
             let cancel = cancel_owned.clone();
             async move {
-                let emb =
-                    embed_batched_with_retry(&provider, &batch, cancel.as_ref()).await?;
+                let emb = embed_batched_with_retry(&provider, &batch, cancel.as_ref()).await?;
                 Ok::<_, crate::error::PipelineError>((start, emb))
             }
         })
@@ -443,8 +442,7 @@ async fn safe_embed(
             "SPEC-046 OPS-P1.7: embedding inputs truncated under Truncate policy"
         );
     }
-    let embeddings =
-        embed_with_token_budget(provider, &guarded.texts, progress, cancel).await?;
+    let embeddings = embed_with_token_budget(provider, &guarded.texts, progress, cancel).await?;
     if embeddings.len() != texts.len() {
         tracing::warn!(
             expected = texts.len(),
@@ -877,7 +875,9 @@ mod tests {
         let (provider, call_sizes) = CountingEmbedProvider::new(8192);
         let provider: Arc<dyn edgequake_llm::traits::EmbeddingProvider> = Arc::new(provider);
 
-        let result = embed_with_token_budget(&provider, &[], None, None).await.unwrap();
+        let result = embed_with_token_budget(&provider, &[], None, None)
+            .await
+            .unwrap();
         assert!(result.is_empty());
         assert!(
             call_sizes.lock().unwrap().is_empty(),

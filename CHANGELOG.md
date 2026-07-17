@@ -6,6 +6,41 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.19.0] — 2026-07-17
+
+Pipeline reliability (SPEC-057 P0–P4): Postgres claim/lease delivery SSOT, cancel/status truth, convert→ingest stage split, multi-replica hardening, and migration tooling.
+
+### Added — SPEC-057 Pipeline reliability
+
+- **Claim/lease delivery SSOT** — Workers claim via `FOR UPDATE SKIP LOCKED` + leases; channel/NOTIFY is wake-only. Pending survives boot without `STARTUP_AUTO_RESUME`; Cancelled is never claimed; stale Processing → Interrupted/Failed (Reprocess).
+- **PDF `Cancelled` status** — `PdfProcessingStatus::Cancelled` (migration 087); cancel paths never map cancel → Failed.
+- **Task lease columns** — Migrations 088/089 add lease fields and refresh the tasks view for claim/reaper paths.
+- **`IngestionStatusMapper` SSOT** — Unified task / doc KV / PDF / stage → API `display_status` / `ui_phase` (Stopping… → Cancelled).
+- **Cancel facade + orphan recovery** — Restart-safe cancel sync across HTTP/WS/PDF/pipeline; boot + periodic orphan/pending reconcile.
+- **Convert → ingest split** — `PdfProcessing` is convert-only; KG ingest runs as `TaskType::Insert` with markdown checkpoint barrier (ingest fail keeps PDF Completed + markdown).
+- **Multi-replica claim** — `EDGEQUAKE_REPLICAS` + Bridged/NotifyOnly delivery; dual-pool contracts prove no double-process.
+- **Store contention + compensate observability** — Queue-metrics / `/ready` blockers; idempotent saga compensate + KV DLQ metrics.
+- **Contract suite** — `contract_cancel_and_fairness`, `contract_claim_and_restart`, `contract_pdf_convert_ingest_split`, `contract_ingestion_status_mapper`, `contract_multi_replica_claim`, `contract_compensate_observability`, `postgres_claim_lease`.
+- **Ops runbook** — [docs/ingestion-cancel-and-fairness.md](docs/ingestion-cancel-and-fairness.md) + `.env.example` lease/replicas knobs.
+
+### Fixed — Ingestion UX & fairness
+
+- **Cancel fairness park** — At worker-cap, release claim and park (no 500ms requeue storm).
+- **Vision parser defaults** — Default vision parser applied on document create paths.
+- **WebUI status readiness** — Document WS/cache updates, backend readiness, and cancelled excluded from failed-count chips.
+- **Lease view guard** — Tasks view refresh hardened so lease columns stay visible after migrate.
+
+### Changed — Migrations tooling
+
+- **Checksum gate hardening** — Migration checksum / hook install paths tightened for CI Layer 1 immutability.
+- **Migration e2e coverage** — Lease-view and checksum regression coverage in `scripts/test_migration_e2e.sh`.
+
+### Changed — Multimodal
+
+- **Local multimodal processing** — Stronger error handling and recovery around local vision/PDF convert paths.
+
+---
+
 ## [0.18.0] — 2026-07-16
 
 Storage/query performance gates (SPEC-054), ingestion progress reliability, OpenAPI snapshot freshness, and Docker CD lean-ups.

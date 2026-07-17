@@ -10,7 +10,7 @@ use common::{create_test_app, extract_json, TEST_TENANT_ID, TEST_USER_ID, TEST_W
 use edgequake_storage::{
     adapters::memory::{MemoryGraphStorage, MemoryKVStorage, MemoryVectorStorage},
     compensate_merge_failure_with_kv, compensation_quarantine_total, kv_keys, GraphStorage,
-    KVStorage, StorageError, VectorStorage, VectorSearchResult,
+    KVStorage, StorageError, VectorSearchResult, VectorStorage,
 };
 use std::sync::atomic::{AtomicBool, Ordering};
 use tower::ServiceExt;
@@ -118,11 +118,7 @@ async fn inject_quarantine_visible_on_queue_metrics() {
     };
     vector.initialize().await.unwrap();
     vector
-        .upsert(&[(
-            "c-chunk-0".to_string(),
-            vec![0.1; 4],
-            serde_json::json!({}),
-        )])
+        .upsert(&[("c-chunk-0".to_string(), vec![0.1; 4], serde_json::json!({}))])
         .await
         .unwrap();
     let kv = MemoryKVStorage::new("contract");
@@ -180,7 +176,9 @@ async fn inject_quarantine_visible_on_queue_metrics() {
     assert_eq!(json["store_contention"]["level"].as_str(), Some("critical"));
 
     // Assessor SSOT used by /ready (handlers only project).
-    assert!(edgequake_api::store_contention::readiness_blocked_by_store(None));
+    assert!(edgequake_api::store_contention::readiness_blocked_by_store(
+        None
+    ));
 
     #[cfg(feature = "postgres")]
     {

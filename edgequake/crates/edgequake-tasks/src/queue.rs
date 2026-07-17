@@ -100,9 +100,11 @@ impl TaskQueue for ChannelTaskQueue {
             .recv()
             .await
             .ok_or(crate::error::TaskError::QueueClosed)?;
-        let _ = self.depth.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
-            Some(v.saturating_sub(1))
-        });
+        let _ = self
+            .depth
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
+                Some(v.saturating_sub(1))
+            });
         Ok(task)
     }
 
@@ -111,9 +113,11 @@ impl TaskQueue for ChannelTaskQueue {
 
         match receiver.try_recv() {
             Ok(task) => {
-                let _ = self.depth.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
-                    Some(v.saturating_sub(1))
-                });
+                let _ = self
+                    .depth
+                    .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
+                        Some(v.saturating_sub(1))
+                    });
                 Ok(Some(task))
             }
             Err(mpsc::error::TryRecvError::Empty) => Ok(None),

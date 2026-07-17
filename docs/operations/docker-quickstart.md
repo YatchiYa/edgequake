@@ -55,7 +55,7 @@ make stack
 
 ```bash
 # Download a specific version's compose file
-EDGEQUAKE_VERSION=0.18.0
+EDGEQUAKE_VERSION=0.19.0
 curl -fsSL "https://raw.githubusercontent.com/raphaelmansuy/edgequake/edgequake-main/docker-compose.quickstart.yml" \
   -o docker-compose.quickstart.yml
 

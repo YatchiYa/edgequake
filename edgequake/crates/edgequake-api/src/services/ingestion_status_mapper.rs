@@ -91,11 +91,7 @@ fn is_cancelled_truth(inputs: &IngestionStatusInputs<'_>) -> bool {
         inputs.pdf_status,
         inputs.current_stage,
     ];
-    if checks
-        .into_iter()
-        .flatten()
-        .any(|s| eq_ci(s, "cancelled"))
-    {
+    if checks.into_iter().flatten().any(|s| eq_ci(s, "cancelled")) {
         return true;
     }
     if let Some(msg) = inputs.error_message {
@@ -219,10 +215,7 @@ pub fn map_ingestion_status(inputs: IngestionStatusInputs<'_>) -> IngestionStatu
         "stopping"
     } else if terminal {
         "terminal"
-    } else if matches!(
-        display_owned.as_str(),
-        "pending" | "queued" | "uploading"
-    ) {
+    } else if matches!(display_owned.as_str(), "pending" | "queued" | "uploading") {
         "idle"
     } else {
         "running"
@@ -487,7 +480,11 @@ mod tests {
                 row.name
             );
             assert_eq!(view.ui_phase, row.ui_phase, "{}: ui_phase", row.name);
-            assert_eq!(view.is_cancelled, row.cancelled, "{}: is_cancelled", row.name);
+            assert_eq!(
+                view.is_cancelled, row.cancelled,
+                "{}: is_cancelled",
+                row.name
+            );
             assert_eq!(view.is_terminal, row.terminal, "{}: is_terminal", row.name);
         }
     }
@@ -496,6 +493,9 @@ mod tests {
     fn legacy_status_mapping_matches_spec002() {
         assert_eq!(legacy_status_to_unified_stage("indexing"), "storing");
         assert_eq!(legacy_status_to_unified_stage("pending"), "uploading");
-        assert_eq!(legacy_status_to_unified_stage("re_embedding"), "re_embedding");
+        assert_eq!(
+            legacy_status_to_unified_stage("re_embedding"),
+            "re_embedding"
+        );
     }
 }

@@ -42,13 +42,11 @@ fn task_from_row(row: &PgRow) -> TaskResult<Task> {
         .get("task_data")
         .cloned()
         .unwrap_or(serde_json::json!({}));
-    let metadata = payload.get("metadata").cloned().and_then(|v| {
-        if v.is_null() {
-            None
-        } else {
-            Some(v)
-        }
-    });
+    let metadata =
+        payload
+            .get("metadata")
+            .cloned()
+            .and_then(|v| if v.is_null() { None } else { Some(v) });
     let progress = payload.get("progress").cloned().and_then(|v| {
         if v.is_null() {
             None
@@ -171,9 +169,7 @@ impl TaskStorage for PostgresTaskStorage {
     }
 
     async fn get_task(&self, track_id: &str) -> TaskResult<Option<Task>> {
-        let sql = format!(
-            "SELECT {TASK_SELECT_COLUMNS} FROM tasks WHERE track_id = $1"
-        );
+        let sql = format!("SELECT {TASK_SELECT_COLUMNS} FROM tasks WHERE track_id = $1");
         let row = sqlx::query(&sql)
             .bind(track_id)
             .fetch_optional(&*self.pool)
@@ -458,7 +454,9 @@ impl TaskStorage for PostgresTaskStorage {
             .bind(&pdf_id_str)
             .fetch_optional(&*self.pool)
             .await
-            .map_err(|e| TaskError::StorageError(format!("Failed to find active PDF task: {}", e)))?;
+            .map_err(|e| {
+                TaskError::StorageError(format!("Failed to find active PDF task: {}", e))
+            })?;
 
         match row {
             Some(row) => Ok(Some(task_from_row(&row)?)),
@@ -499,11 +497,7 @@ impl TaskStorage for PostgresTaskStorage {
         }
     }
 
-    async fn claim_next(
-        &self,
-        worker_id: &str,
-        lease_ttl: Duration,
-    ) -> TaskResult<Option<Task>> {
+    async fn claim_next(&self, worker_id: &str, lease_ttl: Duration) -> TaskResult<Option<Task>> {
         let lease_token = Uuid::new_v4();
         let lease_expires_at = crate::lease_expires_at(Utc::now(), lease_ttl);
 

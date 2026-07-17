@@ -441,12 +441,7 @@ async fn analyze_images_pass_b(
             )
             .await;
             completed += 1;
-            report_vision_figure_analyze_ex(
-                converting_substep,
-                completed,
-                total,
-                progress_opts,
-            );
+            report_vision_figure_analyze_ex(converting_substep, completed, total, progress_opts);
             if completed == 1 || completed == total || completed.is_multiple_of(5) {
                 info!(
                     completed,
@@ -558,7 +553,12 @@ async fn analyze_images_pass_b(
     if skipped > 0 {
         let notice = format!("\n\n<!-- mm: skipped {skipped} figures (local budget) -->\n");
         output.push_str(&notice);
-        info!(skipped, discovered, analyzed = total, "Pass B figure cap applied");
+        info!(
+            skipped,
+            discovered,
+            analyzed = total,
+            "Pass B figure cap applied"
+        );
     }
     None
 }

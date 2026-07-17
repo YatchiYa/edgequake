@@ -424,11 +424,11 @@ async fn get_schema_health_inner(state: &AppState) -> Option<SchemaHealth> {
 pub async fn readiness_check(State(state): State<AppState>) -> impl IntoResponse {
     #[cfg(feature = "postgres")]
     {
-        let mut blockers = crate::state::migration_bootstrap::readiness_blockers(
+        let mut blockers =
+            crate::state::migration_bootstrap::readiness_blockers(&state.migration_bootstrap);
+        let mut operator_action = crate::state::migration_bootstrap::readiness_operator_action(
             &state.migration_bootstrap,
         );
-        let mut operator_action =
-            crate::state::migration_bootstrap::readiness_operator_action(&state.migration_bootstrap);
         let mut ready =
             crate::state::migration_bootstrap::is_ready_for_traffic(&state.migration_bootstrap);
 
