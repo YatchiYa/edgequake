@@ -174,11 +174,32 @@ fn guard_for_embedding(
 async fn embed_batched_with_retry(
     provider: &Arc<dyn edgequake_llm::traits::EmbeddingProvider>,
     batch: &[String],
+    cancel: Option<&tokio_util::sync::CancellationToken>,
 ) -> crate::error::Result<Vec<Vec<f32>>> {
     const MAX_ATTEMPTS: u32 = 3;
     let mut attempt = 0u32;
     loop {
-        match provider.embed_batched(batch).await {
+        if cancel.map(|t| t.is_cancelled()).unwrap_or(false) {
+            return Err(crate::error::PipelineError::EmbeddingError(
+                "Task cancelled".to_string(),
+            ));
+        }
+
+        let result = if let Some(token) = cancel {
+            tokio::select! {
+                biased;
+                _ = token.cancelled() => {
+                    return Err(crate::error::PipelineError::EmbeddingError(
+                        "Task cancelled".to_string(),
+                    ));
+                }
+                result = provider.embed_batched(batch) => result,
+            }
+        } else {
+            provider.embed_batched(batch).await
+        };
+
+        match result {
             Ok(embeddings) => return Ok(embeddings),
             Err(e) => {
                 let msg = e.to_string();
@@ -306,6 +327,7 @@ async fn embed_with_token_budget(
     provider: &Arc<dyn edgequake_llm::traits::EmbeddingProvider>,
     texts: &[String],
     progress: Option<(&EmbedProgressCallback, &'static str)>,
+    cancel: Option<&tokio_util::sync::CancellationToken>,
 ) -> crate::error::Result<Vec<Vec<f32>>> {
     if texts.is_empty() {
         return Ok(Vec::new());
@@ -326,7 +348,7 @@ async fn embed_with_token_budget(
 
     // Single sub-batch: no fan-out overhead.
     if ranges.len() <= 1 {
-        let batch_result = embed_batched_with_retry(provider, texts).await?;
+        let batch_result = embed_batched_with_retry(provider, texts, cancel).await?;
         emit(batch_result.len());
         return Ok(batch_result);
     }
@@ -342,13 +364,16 @@ async fn embed_with_token_budget(
 
     let provider = Arc::clone(provider);
     let texts_owned: Vec<String> = texts.to_vec();
+    let cancel_owned = cancel.cloned();
     let mut completed = 0usize;
     let mut indexed: Vec<(usize, Vec<Vec<f32>>)> = stream::iter(ranges)
         .map(|(start, end)| {
             let provider = Arc::clone(&provider);
             let batch = texts_owned[start..end].to_vec();
+            let cancel = cancel_owned.clone();
             async move {
-                let emb = embed_batched_with_retry(&provider, &batch).await?;
+                let emb =
+                    embed_batched_with_retry(&provider, &batch, cancel.as_ref()).await?;
                 Ok::<_, crate::error::PipelineError>((start, emb))
             }
         })
@@ -400,9 +425,15 @@ async fn safe_embed(
     max_chars: usize,
     kind: &str,
     progress: Option<(&EmbedProgressCallback, &'static str)>,
+    cancel: Option<&tokio_util::sync::CancellationToken>,
 ) -> crate::error::Result<Vec<Vec<f32>>> {
     if texts.is_empty() {
         return Ok(Vec::new());
+    }
+    if cancel.map(|t| t.is_cancelled()).unwrap_or(false) {
+        return Err(crate::error::PipelineError::EmbeddingError(
+            "Task cancelled".to_string(),
+        ));
     }
     let guarded = guard_for_embedding(texts, max_chars, embedding_truncation_policy_from_env())?;
     if guarded.truncated {
@@ -412,7 +443,8 @@ async fn safe_embed(
             "SPEC-046 OPS-P1.7: embedding inputs truncated under Truncate policy"
         );
     }
-    let embeddings = embed_with_token_budget(provider, &guarded.texts, progress).await?;
+    let embeddings =
+        embed_with_token_budget(provider, &guarded.texts, progress, cancel).await?;
     if embeddings.len() != texts.len() {
         tracing::warn!(
             expected = texts.len(),
@@ -468,6 +500,7 @@ impl Pipeline {
         extractions: &mut [ExtractionResult],
         stats: &mut ProcessingStats,
         progress: Option<&EmbedProgressCallback>,
+        cancel: Option<&tokio_util::sync::CancellationToken>,
     ) -> Result<()> {
         let provider = match &self.embedding_provider {
             Some(p) => p,
@@ -496,6 +529,7 @@ impl Pipeline {
                 max_chars,
                 "Chunk",
                 progress.map(|cb| (cb, "chunks")),
+                cancel,
             )
             .await?;
             for (chunk, embedding) in chunks.iter_mut().zip(embeddings) {
@@ -530,6 +564,7 @@ impl Pipeline {
                 max_chars,
                 "Entity",
                 progress.map(|cb| (cb, "entities")),
+                cancel,
             )
             .await?;
             for (embedding, entry) in all_embeddings.into_iter().zip(unique.iter()) {
@@ -564,6 +599,7 @@ impl Pipeline {
                 max_chars,
                 "Relationship",
                 progress.map(|cb| (cb, "relationships")),
+                cancel,
             )
             .await?;
             for (embedding, entry) in all_embeddings.into_iter().zip(unique.iter()) {
@@ -635,6 +671,7 @@ impl Pipeline {
             &mut result.extractions,
             &mut result.stats,
             progress,
+            None,
         )
         .await
     }
@@ -798,7 +835,7 @@ mod tests {
         let (provider, call_sizes) = CountingEmbedProvider::new(8192);
         let provider: Arc<dyn edgequake_llm::traits::EmbeddingProvider> = Arc::new(provider);
 
-        let result = embed_with_token_budget(&provider, &texts, None)
+        let result = embed_with_token_budget(&provider, &texts, None, None)
             .await
             .unwrap();
         assert_eq!(result.len(), 10, "All 10 embeddings must be returned");
@@ -817,7 +854,7 @@ mod tests {
         let (provider, call_sizes) = CountingEmbedProvider::new(80); // tiny budget forces splits
         let provider: Arc<dyn edgequake_llm::traits::EmbeddingProvider> = Arc::new(provider);
 
-        let result = embed_with_token_budget(&provider, &texts, None)
+        let result = embed_with_token_budget(&provider, &texts, None, None)
             .await
             .unwrap();
         assert_eq!(result.len(), 20, "All 20 embeddings must be returned");
@@ -840,7 +877,7 @@ mod tests {
         let (provider, call_sizes) = CountingEmbedProvider::new(8192);
         let provider: Arc<dyn edgequake_llm::traits::EmbeddingProvider> = Arc::new(provider);
 
-        let result = embed_with_token_budget(&provider, &[], None).await.unwrap();
+        let result = embed_with_token_budget(&provider, &[], None, None).await.unwrap();
         assert!(result.is_empty());
         assert!(
             call_sizes.lock().unwrap().is_empty(),
@@ -855,7 +892,7 @@ mod tests {
         let (provider, call_sizes) = CountingEmbedProvider::new(0); // 0 = unknown limit
         let provider: Arc<dyn edgequake_llm::traits::EmbeddingProvider> = Arc::new(provider);
 
-        let result = embed_with_token_budget(&provider, &texts, None)
+        let result = embed_with_token_budget(&provider, &texts, None, None)
             .await
             .unwrap();
         assert_eq!(result.len(), 5);
@@ -883,7 +920,7 @@ mod tests {
         let (provider, call_sizes) = CountingEmbedProvider::new_with_batch(8192, 512);
         let provider: Arc<dyn edgequake_llm::traits::EmbeddingProvider> = Arc::new(provider);
 
-        let result = embed_with_token_budget(&provider, &texts, None)
+        let result = embed_with_token_budget(&provider, &texts, None, None)
             .await
             .unwrap();
         assert_eq!(result.len(), 600, "All 600 embeddings returned");
@@ -915,7 +952,7 @@ mod tests {
         let (provider, call_sizes) = CountingEmbedProvider::new_with_batch(8192, 512);
         let provider: Arc<dyn edgequake_llm::traits::EmbeddingProvider> = Arc::new(provider);
 
-        let result = embed_with_token_budget(&provider, &texts, None)
+        let result = embed_with_token_budget(&provider, &texts, None, None)
             .await
             .unwrap();
         assert_eq!(result.len(), 512);
@@ -932,7 +969,7 @@ mod tests {
         let (provider, call_sizes) = CountingEmbedProvider::new_with_batch(8192, 512);
         let provider: Arc<dyn edgequake_llm::traits::EmbeddingProvider> = Arc::new(provider);
 
-        let result = embed_with_token_budget(&provider, &texts, None)
+        let result = embed_with_token_budget(&provider, &texts, None, None)
             .await
             .unwrap();
         assert_eq!(result.len(), 513);
@@ -954,7 +991,7 @@ mod tests {
         let (provider, call_sizes) = CountingEmbedProvider::new_with_batch(8192, 5);
         let provider: Arc<dyn edgequake_llm::traits::EmbeddingProvider> = Arc::new(provider);
 
-        let result = embed_with_token_budget(&provider, &texts, None)
+        let result = embed_with_token_budget(&provider, &texts, None, None)
             .await
             .unwrap();
         assert_eq!(result.len(), 20);
@@ -988,7 +1025,7 @@ mod tests {
         let (provider, call_sizes) = CountingEmbedProvider::new_with_batch(100, 2048);
         let provider: Arc<dyn edgequake_llm::traits::EmbeddingProvider> = Arc::new(provider);
 
-        let result = embed_with_token_budget(&provider, &texts, None)
+        let result = embed_with_token_budget(&provider, &texts, None, None)
             .await
             .unwrap();
         assert_eq!(result.len(), 5);
@@ -1043,7 +1080,7 @@ mod tests {
         let (provider, call_sizes) = CountingEmbedProvider::new_with_batch(8_192, 5);
         let provider: Arc<dyn edgequake_llm::traits::EmbeddingProvider> = Arc::new(provider);
         // Force parallel path via env-independent concurrency (ranges > 1).
-        let result = embed_with_token_budget(&provider, &texts, None)
+        let result = embed_with_token_budget(&provider, &texts, None, None)
             .await
             .unwrap();
         assert_eq!(result.len(), 20);

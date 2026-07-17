@@ -5,6 +5,8 @@ use utoipa::ToSchema;
 
 use crate::error::{ApiError, ApiResult};
 use crate::middleware::TenantContext;
+#[cfg(feature = "postgres")]
+use crate::services::task_cancel::apply_task_row_cancel;
 use crate::state::AppState;
 
 // WHY: These imports are only used inside #[cfg(feature = "postgres")] blocks.
@@ -213,7 +215,7 @@ pub async fn cancel_pdf_processing(
         let pdf_uuid = Uuid::parse_str(&pdf_id)
             .map_err(|_| ApiError::BadRequest("Invalid PDF ID format".to_string()))?;
 
-        let _workspace_id = tenant
+        let workspace_id = tenant
             .workspace_id_uuid()
             .ok_or_else(|| ApiError::BadRequest("Workspace ID required".to_string()))?;
 
@@ -245,12 +247,42 @@ pub async fn cancel_pdf_processing(
             )));
         }
 
-        // OODA-17: Request cancellation via pipeline state
-        // WHY: This sets a flag that the worker checks periodically
+        // Prefer per-task CancellationRegistry (same path as POST /tasks/{id}/cancel).
+        // The legacy global pipeline_state flag is not observed by processors.
+        let active_task = state
+            .tasks
+            .storage
+            .find_active_pdf_processing_task(pdf_uuid, workspace_id)
+            .await
+            .map_err(|e| ApiError::Internal(format!("Failed to find PDF task: {}", e)))?;
+
+        let mut cancelled_track_id = None;
+        if let Some(task) = active_task {
+            match apply_task_row_cancel(
+                &state.tasks.storage,
+                &state.tasks.cancellation_registry,
+                &task.track_id,
+            )
+            .await
+            {
+                Ok(applied) if applied.cancelled => {
+                    cancelled_track_id = Some(task.track_id.clone());
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::warn!(
+                        track_id = %task.track_id,
+                        error = %e,
+                        "Failed to persist cancelled PDF task status"
+                    );
+                }
+            }
+        }
+
+        // Also flip the legacy flag for any older callers that still poll it.
         state.tasks.pipeline_state.request_cancellation().await;
 
-        // OODA-17: Update status to Failed with cancellation message
-        // WHY: UpdatePdfProcessingRequest requires pdf_id and processing_status as non-optional
+        // Align PDF row with document cancel semantics (Failed = cancelled for PDF table).
         pdf_storage
             .update_pdf_status(&pdf_uuid, PdfProcessingStatus::Failed)
             .await
@@ -258,14 +290,15 @@ pub async fn cancel_pdf_processing(
 
         info!(
             pdf_id = %pdf_id,
-            "PDF processing cancellation requested"
+            track_id = ?cancelled_track_id,
+            "PDF processing cancellation requested via per-task registry"
         );
 
         Ok(Json(PdfOperationResponse {
             success: true,
             pdf_id,
             message: "PDF processing cancellation requested".to_string(),
-            task_id: None,
+            task_id: cancelled_track_id,
         }))
     }
 }

@@ -139,6 +139,22 @@ pub struct QueueMetricsResponse {
     /// Operator guidance when backlog is elevated or critical.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub operator_action: Option<String>,
+
+    /// Tasks parked waiting for a per-tenant concurrency permit.
+    #[serde(default)]
+    pub tenant_park_waiters: u64,
+
+    /// Outstanding cancel intents (pending drain + in-flight).
+    #[serde(default)]
+    pub cancel_intent_count: u64,
+
+    /// Lifetime cancel intents recorded since process start.
+    #[serde(default)]
+    pub cancel_intent_total: u64,
+
+    /// Configured max concurrent tasks per tenant (`0` = unlimited / disabled).
+    #[serde(default)]
+    pub max_tasks_per_tenant: u64,
 }
 
 // ============================================================================
@@ -216,6 +232,10 @@ mod tests {
             pending_warn_threshold: 100,
             pending_critical_threshold: 500,
             operator_action: None,
+            tenant_park_waiters: 2,
+            cancel_intent_count: 1,
+            cancel_intent_total: 3,
+            max_tasks_per_tenant: 1,
         };
 
         let json = serde_json::to_string(&response).unwrap();
@@ -223,5 +243,6 @@ mod tests {
         assert!(json.contains("worker_utilization"));
         assert!(json.contains("throughput_per_minute"));
         assert!(json.contains("75")); // worker_utilization value
+        assert!(json.contains("tenant_park_waiters"));
     }
 }

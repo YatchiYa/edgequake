@@ -14,6 +14,8 @@ pub enum IngestionFailureClass {
     EmbeddingLimit,
     GraphMerge,
     ProviderUnavailable,
+    /// User/system cancel — terminal, never retry.
+    Cancelled,
     Unknown,
 }
 
@@ -27,6 +29,7 @@ impl IngestionFailureClass {
             Self::EmbeddingLimit => "embedding_limit",
             Self::GraphMerge => "graph_merge",
             Self::ProviderUnavailable => "provider_unavailable",
+            Self::Cancelled => "cancelled",
             Self::Unknown => "unknown",
         }
     }
@@ -40,6 +43,7 @@ impl IngestionFailureClass {
             Self::EmbeddingLimit => "retry_or_support",
             Self::GraphMerge => "reprocess_full",
             Self::ProviderUnavailable => "reduce_concurrency_or_check_provider",
+            Self::Cancelled => "none",
             Self::Unknown => "retry",
         }
     }
@@ -48,7 +52,11 @@ impl IngestionFailureClass {
     pub fn is_permanent(self) -> bool {
         matches!(
             self,
-            Self::CircuitBreaker | Self::DocumentTooLarge | Self::EmbeddingLimit | Self::GraphMerge
+            Self::CircuitBreaker
+                | Self::DocumentTooLarge
+                | Self::EmbeddingLimit
+                | Self::GraphMerge
+                | Self::Cancelled
         )
     }
 }
@@ -56,6 +64,9 @@ impl IngestionFailureClass {
 /// Classify a permanent failure message into a stable `failure_class` key.
 pub fn classify_ingestion_failure(error_msg: &str) -> IngestionFailureClass {
     let lower = error_msg.to_ascii_lowercase();
+    if lower.contains("task cancelled") || lower.contains("cancelled by user") {
+        return IngestionFailureClass::Cancelled;
+    }
     if lower.contains("circuit breaker") {
         return IngestionFailureClass::CircuitBreaker;
     }
@@ -115,6 +126,7 @@ pub fn failure_step(class: IngestionFailureClass) -> &'static str {
         }
         IngestionFailureClass::DocumentTooLarge => "admission",
         IngestionFailureClass::ProviderUnavailable => "extraction",
+        IngestionFailureClass::Cancelled => "cancelled",
         IngestionFailureClass::Unknown => "processing",
     }
 }
@@ -156,5 +168,14 @@ mod tests {
     fn spec045_rate_limit_not_classified_permanent() {
         let msg = "Embedding error: API error: rate limit exceeded (429)";
         assert!(!is_permanent_ingestion_failure(msg));
+    }
+
+    #[test]
+    fn cancel_is_permanent_non_retryable() {
+        let msg = "Task cancelled during 'pre-extraction' stage for document abc";
+        let class = classify_ingestion_failure(msg);
+        assert_eq!(class, IngestionFailureClass::Cancelled);
+        assert!(class.is_permanent());
+        assert!(is_permanent_ingestion_failure(msg));
     }
 }

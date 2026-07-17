@@ -766,12 +766,22 @@ impl DocumentTaskProcessor {
                         "Starting Vision PDF conversion"
                     );
 
-                    match tokio::time::timeout(
-                        vision_timeout,
-                        converter.convert(&pdf_data, &conversion_config),
-                    )
-                    .await
-                    {
+                    // Cooperative cancel: abort vision convert when the cancel
+                    // token fires (drops the convert future at the next .await).
+                    let convert_result = tokio::select! {
+                        biased;
+                        _ = cancel_token.cancelled() => {
+                            return Err(edgequake_tasks::TaskError::Cancelled(
+                                "Cancelled during vision PDF conversion".to_string(),
+                            ));
+                        }
+                        result = tokio::time::timeout(
+                            vision_timeout,
+                            converter.convert(&pdf_data, &conversion_config),
+                        ) => result,
+                    };
+
+                    match convert_result {
                         Ok(Ok(markdown)) => markdown,
                         Ok(Err(e)) => {
                             let error = edgequake_tasks::TaskError::Processing(format!(

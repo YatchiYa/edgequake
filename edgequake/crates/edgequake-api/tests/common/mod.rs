@@ -187,6 +187,8 @@ async fn install_test_background_workers(
         std::sync::Arc::clone(&processor),
     );
     state.tasks.cancellation_registry = worker_pool.cancellation_registry();
+    // Mirror production main.rs: share fairness limiter for queue-metrics / park tests.
+    state.tasks.tenant_limiter = worker_pool.tenant_limiter();
 
     if state.tasks.delivery_mode() == TaskDeliveryMode::NotifyOnly {
         let notifier = state
@@ -222,6 +224,10 @@ pub struct WorkerAppGuard {
     pub vector_registry: std::sync::Arc<dyn edgequake_storage::traits::WorkspaceVectorRegistry>,
     /// Production query engine (mirrors worker processor wiring for P-G9 E2E).
     pub query_engine: std::sync::Arc<edgequake_query::QueryEngine>,
+    /// Task storage for cancel/fairness contract assertions.
+    pub task_storage: edgequake_tasks::SharedTaskStorage,
+    /// Shared cancellation registry (same instance workers observe).
+    pub cancellation_registry: edgequake_tasks::CancellationRegistry,
 }
 
 impl Drop for WorkerAppGuard {
@@ -298,6 +304,8 @@ pub async fn create_test_app_with_workers() -> WorkerAppGuard {
     let query_engine = std::sync::Arc::clone(&state.query.engine_impl);
 
     install_test_background_workers(&mut state, std::sync::Arc::clone(&processor)).await;
+    let task_storage = std::sync::Arc::clone(&state.tasks.storage);
+    let cancellation_registry = state.tasks.cancellation_registry.clone();
 
     let server = Server::new(config, state);
     let router = server.build_router();
@@ -310,6 +318,8 @@ pub async fn create_test_app_with_workers() -> WorkerAppGuard {
         vector_storage,
         vector_registry,
         query_engine,
+        task_storage,
+        cancellation_registry,
     }
 }
 
@@ -365,6 +375,8 @@ pub async fn create_test_app_with_llm_responses(extra_responses: &[&str]) -> Wor
     let query_engine = std::sync::Arc::clone(&state.query.engine_impl);
 
     install_test_background_workers(&mut state, std::sync::Arc::clone(&processor)).await;
+    let task_storage = std::sync::Arc::clone(&state.tasks.storage);
+    let cancellation_registry = state.tasks.cancellation_registry.clone();
 
     let server = Server::new(config, state);
     let router = server.build_router();
@@ -377,6 +389,8 @@ pub async fn create_test_app_with_llm_responses(extra_responses: &[&str]) -> Wor
         vector_storage,
         vector_registry,
         query_engine,
+        task_storage,
+        cancellation_registry,
     }
 }
 
