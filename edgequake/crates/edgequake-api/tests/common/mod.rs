@@ -228,6 +228,9 @@ pub struct WorkerAppGuard {
     pub task_storage: edgequake_tasks::SharedTaskStorage,
     /// Shared cancellation registry (same instance workers observe).
     pub cancellation_registry: edgequake_tasks::CancellationRegistry,
+    /// PDF storage when postgres feature is enabled (SPEC-057 cancel contracts).
+    #[cfg(feature = "postgres")]
+    pub pdf_storage: Option<std::sync::Arc<dyn edgequake_storage::PdfDocumentStorage>>,
 }
 
 impl Drop for WorkerAppGuard {
@@ -287,6 +290,12 @@ pub async fn create_test_app_with_workers() -> WorkerAppGuard {
         std::sync::Arc::clone(&state.query.models_config),
     )
     .with_progress_broadcaster(state.tasks.progress_broadcaster.clone())
+    .with_task_enqueue(
+        std::sync::Arc::clone(&state.tasks.storage),
+        std::sync::Arc::clone(&state.tasks.queue),
+        state.tasks.task_notifier(),
+        state.tasks.delivery_mode(),
+    )
     .with_query_engine(std::sync::Arc::clone(&state.query.engine_impl));
     let processor = std::sync::Arc::new(processor);
 
@@ -306,6 +315,8 @@ pub async fn create_test_app_with_workers() -> WorkerAppGuard {
     install_test_background_workers(&mut state, std::sync::Arc::clone(&processor)).await;
     let task_storage = std::sync::Arc::clone(&state.tasks.storage);
     let cancellation_registry = state.tasks.cancellation_registry.clone();
+    #[cfg(feature = "postgres")]
+    let pdf_storage = state.storage.pdf_storage.clone();
 
     let server = Server::new(config, state);
     let router = server.build_router();
@@ -320,6 +331,8 @@ pub async fn create_test_app_with_workers() -> WorkerAppGuard {
         query_engine,
         task_storage,
         cancellation_registry,
+        #[cfg(feature = "postgres")]
+        pdf_storage,
     }
 }
 
@@ -358,6 +371,12 @@ pub async fn create_test_app_with_llm_responses(extra_responses: &[&str]) -> Wor
         std::sync::Arc::clone(&state.query.models_config),
     )
     .with_progress_broadcaster(state.tasks.progress_broadcaster.clone())
+    .with_task_enqueue(
+        std::sync::Arc::clone(&state.tasks.storage),
+        std::sync::Arc::clone(&state.tasks.queue),
+        state.tasks.task_notifier(),
+        state.tasks.delivery_mode(),
+    )
     .with_query_engine(std::sync::Arc::clone(&state.query.engine_impl));
     let processor = std::sync::Arc::new(processor);
 
@@ -377,6 +396,8 @@ pub async fn create_test_app_with_llm_responses(extra_responses: &[&str]) -> Wor
     install_test_background_workers(&mut state, std::sync::Arc::clone(&processor)).await;
     let task_storage = std::sync::Arc::clone(&state.tasks.storage);
     let cancellation_registry = state.tasks.cancellation_registry.clone();
+    #[cfg(feature = "postgres")]
+    let pdf_storage = state.storage.pdf_storage.clone();
 
     let server = Server::new(config, state);
     let router = server.build_router();
@@ -391,6 +412,8 @@ pub async fn create_test_app_with_llm_responses(extra_responses: &[&str]) -> Wor
         query_engine,
         task_storage,
         cancellation_registry,
+        #[cfg(feature = "postgres")]
+        pdf_storage,
     }
 }
 

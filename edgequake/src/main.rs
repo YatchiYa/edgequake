@@ -87,9 +87,8 @@ fn resolve_worker_pool_limits() -> (usize, usize) {
         .and_then(|s| s.parse().ok())
         .unwrap_or_else(|| (requested_workers * 3 / 4).max(1));
 
-    let provider = std::env::var("EDGEQUAKE_DEFAULT_LLM_PROVIDER")
-        .or_else(|_| std::env::var("EDGEQUAKE_LLM_PROVIDER"))
-        .unwrap_or_default();
+    // SPEC-057 P2: clamp from runtime extract provider (hybrid-aware), not LLM-only.
+    let provider = edgequake_pipeline::resolve_extract_provider_name_for_fairness();
 
     if !edgequake_pipeline::is_local_extraction_provider(&provider)
         || edgequake_pipeline::allow_local_high_concurrency()
@@ -109,12 +108,13 @@ fn resolve_worker_pool_limits() -> (usize, usize) {
 
     if workers != requested_workers || per_tenant != requested_per_tenant {
         warn!(
-            provider = %provider,
+            extract_provider = %provider,
             requested_workers,
             effective_workers = workers,
             requested_per_tenant,
             effective_per_tenant = per_tenant,
-            "Local worker pool clamped (set EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1 to override)"
+            "Local worker pool clamped from runtime extract provider \
+             (set EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1 to override)"
         );
     }
 
@@ -147,172 +147,18 @@ async fn recover_orphaned_tasks(
     kv_storage: Arc<dyn edgequake_storage::traits::KVStorage>,
     auto_resume: bool,
 ) -> Result<()> {
-    info!(
+    let mode = edgequake_tasks::delivery_mode_from_env();
+    let replicas = edgequake_tasks::replicas_from_env();
+    let multi_replica = edgequake_tasks::is_multi_replica_deployment(mode, replicas);
+    edgequake_api::services::recover_orphaned_tasks(
+        task_storage,
+        kv_storage,
         auto_resume,
-        "🔍 Checking for orphaned tasks from previous backend session..."
-    );
-
-    let now = Utc::now();
-    let mut recovered_count = 0;
-    let mut failed_for_manual_count = 0;
-    let mut completed_count = 0;
-
-    // Statuses that cannot make progress with zero workers at boot.
-    let orphan_statuses: &[TaskStatus] = if auto_resume {
-        // Auto-resume only rewrites in-flight processing → pending (hydrate later).
-        &[TaskStatus::Processing]
-    } else {
-        // Manual resume: fail both processing and leftover pending so UI shows
-        // Reprocess instead of silent forever-pending rows.
-        &[TaskStatus::Processing, TaskStatus::Pending]
-    };
-
-    for status in orphan_statuses {
-        let filter = TaskFilter {
-            status: Some(*status),
-            ..Default::default()
-        };
-        let mut page = 1;
-        let page_size = 500;
-
-        // WHY pagination loop: If >page_size tasks are stuck (e.g., large batch
-        // upload interrupted), a single page misses the rest.
-        loop {
-            let pagination = Pagination {
-                page,
-                page_size,
-                ..Default::default()
-            };
-
-            let task_list = task_storage.list_tasks(filter.clone(), pagination).await?;
-            let batch_len = task_list.tasks.len();
-
-            for mut task in task_list.tasks {
-                let age = now.signed_duration_since(task.updated_at);
-
-                // Split-brain: task non-terminal but document already completed.
-                if let Some(doc_id) = edgequake_api::services::extract_document_id_from_task(&task)
-                {
-                    let meta_key = edgequake_api::services::resolve_document_metadata_key(
-                        &doc_id,
-                        &kv_storage,
-                    )
-                    .await;
-                    if let Ok(Some(meta)) = kv_storage.get_by_id(&meta_key).await {
-                        let doc_status = meta.get("status").and_then(|v| v.as_str()).unwrap_or("");
-                        if edgequake_api::document_metadata::is_terminal_success_status(doc_status)
-                        {
-                            task.status = TaskStatus::Indexed;
-                            task.error_message = Some(format!(
-                                "Auto-closed after restart: document already terminal ({doc_status}); \
-                                 task was still {status:?} (age {} minutes).",
-                                age.num_minutes()
-                            ));
-                            task.updated_at = now;
-                            match task_storage.update_task(&task).await {
-                                Ok(_) => {
-                                    info!(
-                                        "✅ Closed orphaned task against completed doc: {} → indexed",
-                                        task.track_id
-                                    );
-                                    completed_count += 1;
-                                }
-                                Err(e) => {
-                                    warn!(
-                                        "⚠️ Failed to close orphaned task {}: {}",
-                                        task.track_id, e
-                                    );
-                                }
-                            }
-                            continue;
-                        }
-                    }
-                }
-
-                if auto_resume {
-                    // Reset to pending for automatic retry via checkpoint system.
-                    task.status = TaskStatus::Pending;
-                    task.error_message = Some(format!(
-                        "Auto-recovered after backend restart (was processing for {} minutes). \
-                         Will resume from checkpoint if available.",
-                        age.num_minutes()
-                    ));
-                    task.updated_at = now;
-
-                    match task_storage.update_task(&task).await {
-                        Ok(_) => {
-                            info!(
-                                "✅ Recovered orphaned task: {} (age: {})",
-                                task.track_id,
-                                humanize_duration(age)
-                            );
-                            recovered_count += 1;
-                        }
-                        Err(e) => {
-                            warn!(
-                                "⚠️ Failed to recover orphaned task {}: {}",
-                                task.track_id, e
-                            );
-                        }
-                    }
-                } else {
-                    // Manual resume (default): fail so the user must Reprocess.
-                    let error_msg = format!(
-                        "Interrupted by server restart (was {status:?} for {} minutes). \
-                         Use Reprocess to resume from checkpoint if available.",
-                        age.num_minutes()
-                    );
-                    task.status = TaskStatus::Failed;
-                    task.error_message = Some(error_msg.clone());
-                    task.updated_at = now;
-
-                    match task_storage.update_task(&task).await {
-                        Ok(_) => {
-                            if let Err(e) =
-                                edgequake_api::services::sync_document_failed_on_orphan_heartbeat(
-                                    Arc::clone(&kv_storage),
-                                    &task,
-                                    &error_msg,
-                                )
-                                .await
-                            {
-                                warn!(
-                                    task_id = %task.track_id,
-                                    error = %e,
-                                    "Failed to sync document metadata after startup orphan fail"
-                                );
-                            }
-                            info!(
-                                "⏸️ Orphaned task marked failed for manual resume: {} (age: {})",
-                                task.track_id,
-                                humanize_duration(age)
-                            );
-                            failed_for_manual_count += 1;
-                        }
-                        Err(e) => {
-                            warn!("⚠️ Failed to mark orphaned task {}: {}", task.track_id, e);
-                        }
-                    }
-                }
-            }
-
-            if batch_len < page_size as usize {
-                break;
-            }
-            page += 1;
-        }
-    }
-
-    if recovered_count > 0 || failed_for_manual_count > 0 || completed_count > 0 {
-        info!(
-            "🔧 Orphaned task recovery complete: {} auto-requeued, {} failed for manual resume, {} closed (doc already terminal)",
-            recovered_count, failed_for_manual_count, completed_count
-        );
-    } else {
-        info!("✅ No orphaned tasks found - clean startup");
-    }
-
-    Ok(())
+        multi_replica,
+    )
+    .await
+    .map(|_| ())
+    .map_err(|e| anyhow::anyhow!(e))
 }
 
 /// Normalize document metadata left in non-terminal states after a restart.
@@ -592,7 +438,10 @@ async fn recover_orphaned_documents(
     Ok(report)
 }
 
-/// Mark processing tasks as failed if their heartbeat has been dead for too long.
+/// Mark processing tasks as failed when their lease has expired (SPEC-057 P1).
+///
+/// Prefers `lease_expires_at < now()`. Falls back to 10m `updated_at` only when
+/// lease columns are null (pre-migration / legacy rows).
 async fn periodic_orphan_check(
     task_storage: Arc<dyn TaskStorage>,
     kv_storage: Arc<dyn edgequake_storage::traits::KVStorage>,
@@ -603,7 +452,7 @@ async fn periodic_orphan_check(
     };
 
     let now = Utc::now();
-    let orphan_threshold = Duration::minutes(10);
+    let legacy_heartbeat_threshold = Duration::minutes(10);
     let mut recovered_count = 0;
     let mut page = 1;
     let page_size = 500;
@@ -623,48 +472,62 @@ async fn periodic_orphan_check(
 
         for mut task in task_list.tasks {
             let age = now.signed_duration_since(task.updated_at);
+            let lease_expired = match task.lease_expires_at {
+                Some(exp) => exp <= now,
+                // Pre-migration rows: fall back to updated_at heartbeat age.
+                None => age > legacy_heartbeat_threshold,
+            };
 
-            if age > orphan_threshold {
-                let error_msg = format!(
-                    "Task heartbeat lost (no update for {} minutes). \
-                     The worker may have crashed. Please retry.",
+            if !lease_expired {
+                continue;
+            }
+
+            let error_msg = match task.lease_expires_at {
+                Some(_) => format!(
+                    "Interrupted — task lease expired (no refresh for ~{} minutes). \
+                     Use Reprocess to resume. The worker may have crashed.",
+                    age.num_minutes().max(1)
+                ),
+                None => format!(
+                    "Interrupted — task heartbeat lost (no update for {} minutes). \
+                     Use Reprocess to resume. The worker may have crashed.",
                     age.num_minutes()
-                );
-                // Heartbeat died — mark as failed so the user can see and retry
-                task.status = TaskStatus::Failed;
-                task.error_message = Some(error_msg.clone());
-                task.updated_at = now;
+                ),
+            };
+            task.status = TaskStatus::Failed;
+            task.clear_lease();
+            task.error_message = Some(error_msg.clone());
+            task.updated_at = now;
 
-                match task_storage.update_task(&task).await {
-                    Ok(_) => {
+            match task_storage.update_task(&task).await {
+                Ok(_) => {
+                    warn!(
+                        "⚠️ Periodic check: recovered stale-lease task {} (age: {})",
+                        task.track_id,
+                        humanize_duration(age)
+                    );
+                    // SPEC-045 SRE-I01: sync document KV so UI does not show processing
+                    if let Err(e) =
+                        edgequake_api::services::sync_document_failed_on_orphan_heartbeat(
+                            Arc::clone(&kv_storage),
+                            &task,
+                            &error_msg,
+                        )
+                        .await
+                    {
                         warn!(
-                            "⚠️ Periodic check: recovered dead-heartbeat task {} (age: {})",
-                            task.track_id,
-                            humanize_duration(age)
-                        );
-                        // SPEC-045 SRE-I01: sync document KV so UI does not show processing
-                        if let Err(e) =
-                            edgequake_api::services::sync_document_failed_on_orphan_heartbeat(
-                                Arc::clone(&kv_storage),
-                                &task,
-                                &error_msg,
-                            )
-                            .await
-                        {
-                            warn!(
-                                task_id = %task.track_id,
-                                error = %e,
-                                "Failed to sync document metadata after orphan heartbeat"
-                            );
-                        }
-                        recovered_count += 1;
-                    }
-                    Err(e) => {
-                        warn!(
-                            "⚠️ Failed to recover dead-heartbeat task {}: {}",
-                            task.track_id, e
+                            task_id = %task.track_id,
+                            error = %e,
+                            "Failed to sync document metadata after orphan heartbeat"
                         );
                     }
+                    recovered_count += 1;
+                }
+                Err(e) => {
+                    warn!(
+                        "⚠️ Failed to recover stale-lease task {}: {}",
+                        task.track_id, e
+                    );
                 }
             }
         }
@@ -708,6 +571,19 @@ async fn async_main() -> Result<()> {
 
     for var in ["OPENAI_BASE_URL", "OPENAI_API_KEY"] {
         clear_empty_env_var(var);
+    }
+
+    // SPEC-057 P3: fail boot when multi-replica is declared with Local delivery.
+    let delivery_mode = edgequake_tasks::delivery_mode_from_env();
+    let replicas = edgequake_tasks::replicas_from_env();
+    edgequake_tasks::validate_delivery_for_replicas(delivery_mode, replicas)
+        .map_err(|e| anyhow::anyhow!(e))?;
+    if edgequake_tasks::is_multi_replica_deployment(delivery_mode, replicas) {
+        info!(
+            ?delivery_mode,
+            replicas,
+            "Multi-replica task delivery enabled (claim/lease SSOT; channel is wake-only)"
+        );
     }
 
     // Get API key from environment (optional - Ollama doesn't need it)
@@ -810,7 +686,12 @@ async fn async_main() -> Result<()> {
         Arc::clone(&state.query.models_config),
     )
     .with_progress_broadcaster(state.tasks.progress_broadcaster.clone())
-    .with_task_storage(Arc::clone(&state.tasks.storage) as edgequake_tasks::SharedTaskStorage)
+    .with_task_enqueue(
+        Arc::clone(&state.tasks.storage) as edgequake_tasks::SharedTaskStorage,
+        Arc::clone(&state.tasks.queue),
+        state.tasks.task_notifier(),
+        state.tasks.delivery_mode(),
+    )
     .with_pdf_vision_semaphore(Arc::clone(&state.pdf_vision))
     .with_query_engine(Arc::clone(&state.query.engine_impl));
 

@@ -130,4 +130,24 @@ describe("resolveDocumentDisplayStatus", () => {
     });
     expect(resolveDocumentDisplayStatus(doc)).toBe("converting");
   });
+
+  it("SPEC-057 P4: prefers display_status from API", () => {
+    const doc = baseDoc({
+      status: "processing",
+      current_stage: "chunking",
+      display_status: "extracting",
+      ui_phase: "running",
+    });
+    expect(resolveDocumentDisplayStatus(doc)).toBe("extracting");
+  });
+
+  it("SPEC-057 P4: ui_phase stopping shows Stopping…", () => {
+    const doc = baseDoc({
+      status: "processing",
+      current_stage: "converting",
+      display_status: "converting",
+      ui_phase: "stopping",
+    });
+    expect(resolveDocumentDisplayStatus(doc)).toBe("stopping");
+  });
 });

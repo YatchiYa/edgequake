@@ -62,6 +62,10 @@ pub mod community_index_service;
 pub mod community_persist;
 pub mod community_reports;
 pub mod compensation;
+pub use compensation::{
+    compensate_merge_failure, compensate_merge_failure_with_kv, compensate_orphan_graph_writes,
+    compensate_orphan_kv, compensate_orphan_vectors, compensation_quarantine_total,
+};
 pub mod conversation_storage;
 pub mod conversation_types;
 pub mod document_metadata_integrity;

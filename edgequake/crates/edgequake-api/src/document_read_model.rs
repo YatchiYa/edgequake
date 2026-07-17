@@ -194,6 +194,8 @@ pub async fn list_relational_document_summaries(
                 stage_progress: None,
                 stage_message: None,
                 pdf_id: None,
+            display_status: None,
+            ui_phase: None,
             }
         })
         .collect())
@@ -568,6 +570,8 @@ mod tests {
             stage_progress: None,
             stage_message: None,
             pdf_id: None,
+        display_status: None,
+        ui_phase: None,
         }];
 
         let pg = vec![DocumentSummary {
@@ -595,6 +599,8 @@ mod tests {
             stage_progress: None,
             stage_message: None,
             pdf_id: None,
+        display_status: None,
+        ui_phase: None,
         }];
 
         let merged = merge_document_summaries(kv, pg);
@@ -631,6 +637,8 @@ mod tests {
             stage_progress: None,
             stage_message: None,
             pdf_id: None,
+        display_status: None,
+        ui_phase: None,
         }];
 
         let pg = vec![DocumentSummary {
@@ -658,6 +666,8 @@ mod tests {
             stage_progress: None,
             stage_message: None,
             pdf_id: None,
+        display_status: None,
+        ui_phase: None,
         }];
 
         let merged = merge_document_summaries(kv, pg);
@@ -692,6 +702,8 @@ mod tests {
             stage_progress: None,
             stage_message: None,
             pdf_id: None,
+        display_status: None,
+        ui_phase: None,
         }
     }
 

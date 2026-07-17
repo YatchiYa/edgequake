@@ -3,13 +3,16 @@
 use crate::{
     error::{TaskError, TaskResult},
     storage::*,
-    types::Task,
+    types::{Task, TaskStatus},
 };
 use async_trait::async_trait;
+use chrono::Utc;
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
+    time::Duration,
 };
+use uuid::Uuid;
 
 /// In-memory task storage
 #[derive(Debug, Clone)]
@@ -112,7 +115,35 @@ impl TaskStorage for MemoryTaskStorage {
             if task.workspace_id != workspace_id {
                 continue;
             }
-            if task.task_type != TaskType::PdfProcessing {
+            if !matches!(
+                task.task_type,
+                TaskType::PdfProcessing | TaskType::Insert
+            ) {
+                continue;
+            }
+            if !matches!(task.status, TaskStatus::Pending | TaskStatus::Processing) {
+                continue;
+            }
+            if task.pdf_id() == Some(pdf_id) {
+                return Ok(Some(task.clone()));
+            }
+        }
+        Ok(None)
+    }
+
+    async fn find_active_pdf_ingest_task(
+        &self,
+        pdf_id: uuid::Uuid,
+        workspace_id: uuid::Uuid,
+    ) -> TaskResult<Option<Task>> {
+        use crate::types::{TaskStatus, TaskType};
+
+        let tasks = self.tasks.read().unwrap();
+        for task in tasks.values() {
+            if task.workspace_id != workspace_id {
+                continue;
+            }
+            if task.task_type != TaskType::Insert {
                 continue;
             }
             if !matches!(task.status, TaskStatus::Pending | TaskStatus::Processing) {
@@ -198,14 +229,99 @@ impl TaskStorage for MemoryTaskStorage {
         Ok(stats)
     }
 
+    async fn claim_next(
+        &self,
+        worker_id: &str,
+        lease_ttl: Duration,
+    ) -> TaskResult<Option<Task>> {
+        let mut tasks = self.tasks.write().unwrap();
+        let now = Utc::now();
+
+        let mut candidates: Vec<(chrono::DateTime<Utc>, String)> = tasks
+            .values()
+            .filter(|t| match t.status {
+                TaskStatus::Pending => true,
+                TaskStatus::Processing => t.lease_is_expired(now),
+                _ => false,
+            })
+            .map(|t| (t.created_at, t.track_id.clone()))
+            .collect();
+        candidates.sort_by_key(|(created_at, _)| *created_at);
+
+        let track_id = match candidates.first() {
+            Some((_, id)) => id.clone(),
+            None => return Ok(None),
+        };
+
+        let lease_token = Uuid::new_v4();
+        let lease_expires_at = crate::lease_expires_at(now, lease_ttl);
+
+        let task = tasks.get_mut(&track_id).expect("candidate just selected");
+        task.status = TaskStatus::Processing;
+        if task.started_at.is_none() {
+            task.started_at = Some(now);
+        }
+        task.updated_at = now;
+        task.completed_at = None;
+        task.lease_owner = Some(worker_id.to_string());
+        task.lease_token = Some(lease_token);
+        task.lease_expires_at = Some(lease_expires_at);
+
+        Ok(Some(task.clone()))
+    }
+
+    async fn refresh_lease(
+        &self,
+        track_id: &str,
+        worker_id: &str,
+        lease_token: Uuid,
+        lease_ttl: Duration,
+    ) -> TaskResult<bool> {
+        let mut tasks = self.tasks.write().unwrap();
+        let Some(task) = tasks.get_mut(track_id) else {
+            return Ok(false);
+        };
+        if task.status != TaskStatus::Processing
+            || task.lease_owner.as_deref() != Some(worker_id)
+            || task.lease_token != Some(lease_token)
+        {
+            return Ok(false);
+        }
+        let now = Utc::now();
+        task.lease_expires_at = Some(crate::lease_expires_at(now, lease_ttl));
+        task.updated_at = now;
+        Ok(true)
+    }
+
+    async fn release_claim(
+        &self,
+        track_id: &str,
+        worker_id: &str,
+        lease_token: Uuid,
+    ) -> TaskResult<bool> {
+        let mut tasks = self.tasks.write().unwrap();
+        let Some(task) = tasks.get_mut(track_id) else {
+            return Ok(false);
+        };
+        if task.status != TaskStatus::Processing
+            || task.lease_owner.as_deref() != Some(worker_id)
+            || task.lease_token != Some(lease_token)
+        {
+            return Ok(false);
+        }
+        let now = Utc::now();
+        task.status = TaskStatus::Pending;
+        task.started_at = None;
+        task.updated_at = now;
+        task.clear_lease();
+        Ok(true)
+    }
+
     async fn get_queue_metrics_filtered(
         &self,
         tenant_id: Option<uuid::Uuid>,
         workspace_id: Option<uuid::Uuid>,
     ) -> TaskResult<QueueMetrics> {
-        use crate::types::TaskStatus;
-        use chrono::Utc;
-
         let tasks = self.tasks.read().unwrap();
         let now = Utc::now();
 
@@ -481,5 +597,147 @@ mod tests {
         assert_eq!(stats.pending, 1);
         assert_eq!(stats.processing, 1);
         assert_eq!(stats.indexed, 1);
+    }
+
+    #[tokio::test]
+    async fn claim_next_picks_oldest_pending_and_second_claim_is_none() {
+        let storage = MemoryTaskStorage::new();
+        let older = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::Insert,
+            serde_json::json!({"n": 1}),
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        let newer = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::Insert,
+            serde_json::json!({"n": 2}),
+        );
+        storage.create_task(&older).await.unwrap();
+        storage.create_task(&newer).await.unwrap();
+
+        let claimed = storage
+            .claim_next("worker-a", Duration::from_secs(120))
+            .await
+            .unwrap()
+            .expect("should claim");
+        assert_eq!(claimed.track_id, older.track_id);
+        assert_eq!(claimed.status, TaskStatus::Processing);
+        assert_eq!(claimed.lease_owner.as_deref(), Some("worker-a"));
+        assert!(claimed.lease_token.is_some());
+
+        let second = storage
+            .claim_next("worker-b", Duration::from_secs(120))
+            .await
+            .unwrap()
+            .expect("should claim newer");
+        assert_eq!(second.track_id, newer.track_id);
+
+        let none = storage
+            .claim_next("worker-c", Duration::from_secs(120))
+            .await
+            .unwrap();
+        assert!(none.is_none());
+    }
+
+    #[tokio::test]
+    async fn claim_next_skips_cancelled() {
+        let storage = MemoryTaskStorage::new();
+        let mut task = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::Insert,
+            serde_json::json!({}),
+        );
+        task.mark_cancelled();
+        storage.create_task(&task).await.unwrap();
+
+        let claimed = storage
+            .claim_next("worker-a", Duration::from_secs(120))
+            .await
+            .unwrap();
+        assert!(claimed.is_none());
+    }
+
+    #[tokio::test]
+    async fn refresh_lease_cas_and_release_claim() {
+        let storage = MemoryTaskStorage::new();
+        let task = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::Insert,
+            serde_json::json!({}),
+        );
+        storage.create_task(&task).await.unwrap();
+
+        let claimed = storage
+            .claim_next("worker-a", Duration::from_secs(120))
+            .await
+            .unwrap()
+            .unwrap();
+        let token = claimed.lease_token.unwrap();
+
+        assert!(storage
+            .refresh_lease(&claimed.track_id, "worker-a", token, Duration::from_secs(120))
+            .await
+            .unwrap());
+        assert!(!storage
+            .refresh_lease(
+                &claimed.track_id,
+                "worker-b",
+                token,
+                Duration::from_secs(120)
+            )
+            .await
+            .unwrap());
+        assert!(!storage
+            .refresh_lease(
+                &claimed.track_id,
+                "worker-a",
+                Uuid::new_v4(),
+                Duration::from_secs(120)
+            )
+            .await
+            .unwrap());
+
+        assert!(storage
+            .release_claim(&claimed.track_id, "worker-a", token)
+            .await
+            .unwrap());
+        let pending = storage.get_task(&claimed.track_id).await.unwrap().unwrap();
+        assert_eq!(pending.status, TaskStatus::Pending);
+        assert!(pending.lease_owner.is_none());
+        assert!(pending.lease_token.is_none());
+
+        // Wrong owner after release
+        assert!(!storage
+            .release_claim(&claimed.track_id, "worker-a", token)
+            .await
+            .unwrap());
+    }
+
+    #[tokio::test]
+    async fn claim_next_reclaims_expired_processing() {
+        let storage = MemoryTaskStorage::new();
+        let mut task = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::Insert,
+            serde_json::json!({}),
+        );
+        task.mark_processing();
+        task.lease_owner = Some("dead-worker".into());
+        task.lease_token = Some(Uuid::new_v4());
+        task.lease_expires_at = Some(Utc::now() - chrono::Duration::seconds(1));
+        storage.create_task(&task).await.unwrap();
+
+        let claimed = storage
+            .claim_next("worker-b", Duration::from_secs(120))
+            .await
+            .unwrap()
+            .expect("expired processing should be claimable");
+        assert_eq!(claimed.lease_owner.as_deref(), Some("worker-b"));
     }
 }

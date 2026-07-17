@@ -110,10 +110,49 @@ fn bt045_ec06_orphan_recovery_before_workers() {
     let recover_docs = src
         .find("recover_orphaned_documents")
         .expect("document recovery");
-    let worker_start = src.find("worker_pool.start()").expect("worker start");
+    let worker_start = src
+        .find("worker_pool.start")
+        .expect("worker start (start or start_on)");
     assert!(
         recover_tasks < worker_start && recover_docs < worker_start,
         "orphan recovery must run before workers"
+    );
+}
+
+#[test]
+fn bt045_spec057_p1_pending_survives_boot_claim_ssot() {
+    let recovery = include_str!("../src/services/orphan_task_recovery.rs");
+    assert!(
+        recovery.contains("Pending left claimable"),
+        "SPEC-057 P1: Pending must survive boot (not auto-Failed)"
+    );
+    assert!(
+        recovery.contains("status: Some(TaskStatus::Processing)"),
+        "SPEC-057 P1: boot recovery must only target Processing"
+    );
+    assert!(
+        !recovery.contains("TaskStatus::Processing, TaskStatus::Pending"),
+        "SPEC-057 P1: must not fail Pending alongside Processing on boot"
+    );
+
+    let main = include_str!("../../../src/main.rs");
+    assert!(
+        main.contains("edgequake_api::services::recover_orphaned_tasks"),
+        "main must delegate boot recovery to orphan_task_recovery SSOT"
+    );
+
+    let worker = include_str!("../../edgequake-tasks/src/worker.rs");
+    assert!(
+        worker.contains("claim_next"),
+        "SPEC-057 P1: worker must claim from storage SSOT"
+    );
+    assert!(
+        worker.contains("refresh_lease"),
+        "SPEC-057 P1: worker must heartbeat via refresh_lease"
+    );
+    assert!(
+        worker.contains("release_claim"),
+        "SPEC-057 P1: fairness park must release_claim"
     );
 }
 

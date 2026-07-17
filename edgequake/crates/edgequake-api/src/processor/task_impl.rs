@@ -130,17 +130,20 @@ impl TaskProcessor for DocumentTaskProcessor {
             }
         }
 
-        // For PDF tasks, also update the PDF processing status
+        // For PDF tasks, also update the PDF processing status.
+        // SPEC-057 P0: user/system cancel → Cancelled, never Failed.
         #[cfg(feature = "postgres")]
         if task.task_type == TaskType::PdfProcessing {
             if let Some(ref pdf_storage) = self.pdf_storage {
                 if let Some(pdf_id_str) = task.task_data.get("pdf_id").and_then(|v| v.as_str()) {
                     if let Ok(pdf_id) = uuid::Uuid::parse_str(pdf_id_str) {
                         use edgequake_storage::PdfProcessingStatus;
-                        if let Err(e) = pdf_storage
-                            .update_pdf_status(&pdf_id, PdfProcessingStatus::Failed)
-                            .await
-                        {
+                        let pdf_status = if crate::services::is_cancel_error_message(&error_msg) {
+                            PdfProcessingStatus::Cancelled
+                        } else {
+                            PdfProcessingStatus::Failed
+                        };
+                        if let Err(e) = pdf_storage.update_pdf_status(&pdf_id, pdf_status).await {
                             error!(
                                 pdf_id = %pdf_id,
                                 error = %e,

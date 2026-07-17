@@ -9,6 +9,7 @@ pub mod audit;
 pub mod auth_bootstrap;
 pub mod auth_memory_store;
 pub mod auth_validation;
+pub mod cancel_facade;
 pub mod content_granularity;
 pub mod content_hasher;
 pub mod context_bundle_mapper;
@@ -39,6 +40,8 @@ pub mod identity_storage;
 pub mod include_pdf_assets;
 pub mod ingest_admission;
 pub mod ingestion_persist;
+pub mod ingestion_status;
+pub mod ingestion_status_mapper;
 pub mod injection_list;
 pub mod injection_process;
 pub mod isolation_context;
@@ -78,6 +81,7 @@ pub mod source_reference_builder;
 pub mod staging_admission;
 pub mod startup_task_hydrate;
 pub mod summary_role;
+pub mod orphan_task_recovery;
 pub mod task_cancel;
 pub mod task_document_sync;
 pub mod task_scope;
@@ -213,11 +217,21 @@ pub use retrieval_id_cache::{global_retrieval_cache, new_retrieval_id, Retrieval
 pub use source_reference_builder::{build_sources_from_context, is_injection_source};
 pub use staging_admission::{promote_staging_to_final, rollback_staging};
 pub use summary_role::resolve_summary_llm_or_fallback;
+pub use ingestion_status::{apply_doc_cancelled_fields, pdf_status_for_cancel};
+pub use ingestion_status_mapper::{
+    enrich_document_summaries, enrich_document_summaries_with_cancel,
+    enrich_document_summary_status, legacy_status_to_unified_stage, map_ingestion_status,
+    IngestionStatusInputs, IngestionStatusView,
+};
+pub use orphan_task_recovery::{recover_orphaned_tasks, OrphanTaskRecoveryReport};
+pub use cancel_facade::cancel_track_with_doc_and_pdf_chain;
 pub use task_cancel::{
-    apply_cancel_all_active, apply_task_row_cancel, is_cancel_error_message, TaskCancelApplyResult,
+    apply_cancel_all_active, apply_cancel_pdf_pipeline_tasks, apply_task_row_cancel,
+    is_cancel_error_message, TaskCancelApplyResult,
 };
 pub use task_document_sync::{
-    extract_document_id_from_task, sync_document_failed_on_orphan_heartbeat,
+    extract_document_id_from_task, sync_doc_cancelled_by_document_id, sync_doc_cancelled_for_task,
+    sync_document_failed_on_orphan_heartbeat,
 };
 pub use text_insert_content::{
     patch_document_metadata, resolve_document_metadata_key, resolve_text_insert_content,

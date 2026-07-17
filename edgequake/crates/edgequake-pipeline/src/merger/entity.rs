@@ -224,9 +224,8 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
                 stats.entities_skipped_saturated += 1;
                 continue;
             }
-            if let Some(vid) = outcome.vector_id {
-                stats.artifacts.entity_vector_ids.push(vid);
-            }
+            // Entity vector IDs are recorded in upsert_vectors_chunked (SPEC-057 P3).
+            let _ = outcome.vector_id;
             if let Some(key) = outcome.graph_key_created {
                 stats.artifacts.graph_nodes_created.push(key);
             }

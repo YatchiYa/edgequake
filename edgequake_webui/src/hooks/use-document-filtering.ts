@@ -63,6 +63,25 @@ export interface StatusCounts {
 }
 
 /**
+ * Client-side status counts (SPEC-057 P0: failed excludes cancelled).
+ */
+export function countClientStatusCounts(
+  docs: Array<{ status?: string | null }>,
+): StatusCounts {
+  return {
+    all: docs.length,
+    pending: docs.filter((d) => d.status === "pending").length,
+    processing: docs.filter((d) => d.status === "processing").length,
+    completed: docs.filter(
+      (d) => !d.status || d.status === "completed" || d.status === "indexed",
+    ).length,
+    failed: docs.filter((d) => d.status === "failed").length,
+    partial_failure: docs.filter((d) => d.status === "partial_failure").length,
+    cancelled: docs.filter((d) => d.status === "cancelled").length,
+  };
+}
+
+/**
  * Return type for useDocumentFiltering hook.
  */
 export interface UseDocumentFilteringReturn {
@@ -165,20 +184,7 @@ export function useDocumentFiltering(
         cancelled: serverStatusCounts.cancelled || 0,
       };
     }
-    // Fallback to client-side calculation
-    return {
-      all: allDocuments.length,
-      pending: allDocuments.filter((d) => d.status === "pending").length,
-      processing: allDocuments.filter((d) => d.status === "processing").length,
-      completed: allDocuments.filter(
-        (d) => !d.status || d.status === "completed" || d.status === "indexed",
-      ).length,
-      failed: allDocuments.filter((d) => d.status === "failed").length,
-      partial_failure: allDocuments.filter(
-        (d) => d.status === "partial_failure",
-      ).length,
-      cancelled: allDocuments.filter((d) => d.status === "cancelled").length,
-    };
+    return countClientStatusCounts(allDocuments);
   }, [allDocuments, serverStatusCounts]);
 
   return {

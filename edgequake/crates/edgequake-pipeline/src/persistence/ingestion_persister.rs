@@ -419,6 +419,9 @@ async fn persist_processing_result_impl(
             Err(crate::error::PipelineError::GraphError(cause))
         }
         Err(merge_err) => {
+            // Hard Err is rare after SPEC-057 P3 (vector upserts return Ok+errors
+            // with partial artifacts). Keep defensive compensate; prefer Ok(errors)
+            // path which carries real MergeArtifacts.
             let cause = merge_err.to_string();
             compensate_merge_failure(
                 graph_storage.as_ref(),

@@ -1,7 +1,8 @@
 //! External task delivery for horizontal worker scale (SPEC-026 Phase 4 P-12).
 //!
-//! Postgres `TaskStorage` remains SSOT; delivery notifiers wake workers
-//! without duplicating task payloads on the wire.
+//! SPEC-057 P1: Postgres `TaskStorage` is the **delivery SSOT** (`claim_next`).
+//! Channel / NOTIFY payloads are **wake-only** — workers ignore the body and
+//! always authorize work via claim + lease.
 
 mod bridge;
 mod mode;
@@ -9,7 +10,10 @@ mod notifier;
 mod storage_hydrating;
 
 pub use bridge::BridgedTaskQueue;
-pub use mode::{delivery_mode_from_env, parse_delivery_mode, TaskDeliveryMode};
+pub use mode::{
+    delivery_mode_from_env, is_multi_replica_deployment, parse_delivery_mode, replicas_from_env,
+    validate_delivery_for_replicas, TaskDeliveryMode, REPLICAS_ENV,
+};
 pub use notifier::{ChannelTaskNotifier, NoopTaskNotifier, SharedTaskNotifier, TaskNotifier};
 pub use storage_hydrating::StorageHydratingTaskQueue;
 
@@ -18,7 +22,7 @@ use crate::queue::SharedTaskQueue;
 use crate::storage::SharedTaskStorage;
 use crate::types::Task;
 
-/// Enqueue path: persist then deliver per mode.
+/// Enqueue path: persist then **wake** per mode (channel payload is not authoritative).
 pub async fn enqueue_with_delivery(
     storage: &SharedTaskStorage,
     queue: &SharedTaskQueue,

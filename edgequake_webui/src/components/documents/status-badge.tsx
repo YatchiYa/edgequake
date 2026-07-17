@@ -70,6 +70,8 @@ const statusConfig = {
   preprocessing: { icon: Loader2, color: 'bg-blue-500', textColor: 'text-blue-600 dark:text-blue-400', label: 'Processing', animate: true },
   chunking: { icon: Scissors, color: 'bg-blue-500', textColor: 'text-blue-600 dark:text-blue-400', label: 'Chunking', animate: true },
   embedding: { icon: Cpu, color: 'bg-blue-500', textColor: 'text-blue-600 dark:text-blue-400', label: 'Embedding', animate: true },
+  // SPEC-057 P2: honest stage when slim-checkpoint resume re-embeds
+  re_embedding: { icon: Cpu, color: 'bg-cyan-500', textColor: 'text-cyan-600 dark:text-cyan-400', label: 'Re-embedding', animate: true },
   storing: { icon: Database, color: 'bg-blue-500', textColor: 'text-blue-600 dark:text-blue-400', label: 'Storing', animate: true },
   processing: { icon: Loader2, color: 'bg-blue-500', textColor: 'text-blue-600 dark:text-blue-400', label: 'Processing', animate: true },
   indexing: { icon: Database, color: 'bg-blue-500', textColor: 'text-blue-600 dark:text-blue-400', label: 'Indexing', animate: true },
@@ -91,6 +93,9 @@ const statusConfig = {
   // === WARNING / PARTIAL (Orange) ===
   partial_failure: { icon: XCircle, color: 'bg-orange-500', textColor: 'text-orange-600 dark:text-orange-400', label: 'Partial Failure', animate: false },
   cancelled: { icon: StopCircle, color: 'bg-orange-500', textColor: 'text-orange-600 dark:text-orange-400', label: 'Cancelled', animate: false },
+
+  // === CANCEL IN FLIGHT (SPEC-057 P4) ===
+  stopping: { icon: Loader2, color: 'bg-orange-500', textColor: 'text-orange-600 dark:text-orange-400', label: 'Stopping…', animate: true },
 } as const;
 
 export type DocumentStatus = keyof typeof statusConfig;
@@ -109,6 +114,7 @@ const PROCESSING_STAGES = [
   { key: 'merging', label: 'Merging', description: 'Merging into knowledge graph' },
   { key: 'summarizing', label: 'Summarizing', description: 'Generating descriptions' },
   { key: 'embedding', label: 'Embedding', description: 'Generating vector embeddings' },
+  { key: 're_embedding', label: 'Re-embedding', description: 'Re-generating embeddings after slim checkpoint' },
   { key: 'storing', label: 'Storing', description: 'Storing in graph & vector databases' },
 ] as const;
 
@@ -149,8 +155,10 @@ export function isProcessingStatus(status: DocumentStatus): boolean {
     'merging',
     'summarizing',
     'embedding',
+    're_embedding',
     'storing',
     'indexing',
+    'stopping',
   ].includes(status);
 }
 
@@ -178,6 +186,7 @@ export function normalizeStatus(status: string | undefined | null): DocumentStat
  * Get the best status to display for a document.
  *
  * @implements SPEC-002: Unified Ingestion Pipeline
+ * @implements SPEC-057 P4: prefer API `display_status` / `ui_phase=stopping`
  *
  * Prefer fine-grained `current_stage` while work is in flight.
  * Terminal `status` (completed / failed / …) always wins over a stale
@@ -186,7 +195,16 @@ export function normalizeStatus(status: string | undefined | null): DocumentStat
 export function getDocumentDisplayStatus(doc: {
   current_stage?: string | null;
   status?: string | null;
+  display_status?: string | null;
+  ui_phase?: string | null;
 }): DocumentStatus {
+  // SPEC-057 P4: API SSOT — Stopping… even when stage is still extracting/converting.
+  if (doc.ui_phase?.toLowerCase() === 'stopping') {
+    return 'stopping';
+  }
+  if (doc.display_status) {
+    return normalizeStatus(doc.display_status);
+  }
   const legacy = normalizeStatus(doc.status);
   // Completed/failed/cancelled beat leftover stage labels from the last run.
   if (isTerminalStatus(legacy)) {

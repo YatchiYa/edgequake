@@ -61,10 +61,18 @@ impl IngestionFailureClass {
     }
 }
 
+/// True when an error string represents user/system cancel (SPEC-057).
+pub fn is_cancel_failure_message(error_msg: &str) -> bool {
+    let lower = error_msg.to_ascii_lowercase();
+    lower.contains("task cancelled")
+        || lower.contains("cancelled by user")
+        || lower.contains("cancelled during")
+}
+
 /// Classify a permanent failure message into a stable `failure_class` key.
 pub fn classify_ingestion_failure(error_msg: &str) -> IngestionFailureClass {
     let lower = error_msg.to_ascii_lowercase();
-    if lower.contains("task cancelled") || lower.contains("cancelled by user") {
+    if is_cancel_failure_message(error_msg) {
         return IngestionFailureClass::Cancelled;
     }
     if lower.contains("circuit breaker") {
@@ -176,6 +184,17 @@ mod tests {
         let class = classify_ingestion_failure(msg);
         assert_eq!(class, IngestionFailureClass::Cancelled);
         assert!(class.is_permanent());
+        assert!(is_permanent_ingestion_failure(msg));
+    }
+
+    #[test]
+    fn vision_cancel_string_is_cancelled_class() {
+        let msg = "Cancelled during vision PDF conversion";
+        assert!(is_cancel_failure_message(msg));
+        assert_eq!(
+            classify_ingestion_failure(msg),
+            IngestionFailureClass::Cancelled
+        );
         assert!(is_permanent_ingestion_failure(msg));
     }
 }

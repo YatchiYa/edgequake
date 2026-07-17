@@ -476,6 +476,26 @@ pub async fn readiness_check(State(state): State<AppState>) -> impl IntoResponse
             }
         }
 
+        // SPEC-057 P3: store contention (pool util + compensation quarantine).
+        // DRY: reuse readiness_blocked_by_store / assess_store_contention SSOT.
+        let pool_util = state.pg_pool.as_ref().and_then(|pool| {
+            crate::store_contention::pool_utilization(
+                pool.size(),
+                pool.num_idle().min(u32::MAX as usize) as u32,
+            )
+        });
+        if crate::store_contention::readiness_blocked_by_store(pool_util) {
+            let store = crate::store_contention::assess_store_contention(pool_util);
+            ready = false;
+            blockers.push(format!(
+                "store_contention_critical(pool_util={:?},quarantine={})",
+                store.db_pool_utilization, store.compensation_quarantine_total
+            ));
+            if operator_action.is_none() {
+                operator_action = store.operator_action;
+            }
+        }
+
         let body = crate::handlers::health_types::ReadinessResponse {
             ready,
             blockers,

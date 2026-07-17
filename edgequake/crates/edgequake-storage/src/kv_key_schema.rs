@@ -125,6 +125,20 @@ pub mod kv_keys {
         format!("wsdoc:{workspace_id}:{document_id}")
     }
 
+    /// SPEC-057 P3: durable compensation quarantine DLQ record.
+    ///
+    /// Schema: `{kind, id, cause, ts}` — written when saga cleanup fails.
+    #[inline]
+    pub fn compensation_quarantine(document_id: &str, entry_id: &str) -> String {
+        format!("compensation_quarantine:{document_id}:{entry_id}")
+    }
+
+    /// Prefix scan for all quarantine records of a document.
+    #[inline]
+    pub fn compensation_quarantine_prefix(document_id: &str) -> String {
+        format!("compensation_quarantine:{document_id}:")
+    }
+
     /// Prefix for listing all document index entries in a workspace.
     #[inline]
     pub fn workspace_doc_index_prefix(workspace_id: &str) -> String {

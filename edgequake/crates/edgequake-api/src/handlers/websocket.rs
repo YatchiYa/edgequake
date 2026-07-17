@@ -39,8 +39,9 @@ use std::time::Duration;
 use tokio::sync::broadcast;
 use tracing::{debug, info};
 
-use crate::services::task_cancel::apply_task_row_cancel;
+use crate::services::cancel_track_with_doc_and_pdf_chain;
 use crate::state::AppState;
+use std::sync::Arc;
 
 /// Optional bearer token for WebSocket auth when `EDGEQUAKE_AUTH_ENABLED=true` (SPEC-027 IMP-006).
 #[derive(Debug, Default, Deserialize)]
@@ -196,9 +197,10 @@ async fn handle_pipeline_socket(socket: WebSocket, state: AppState) {
                                 if let Some(track_id) =
                                     cmd.get("track_id").and_then(|v| v.as_str())
                                 {
-                                    match apply_task_row_cancel(
+                                    match cancel_track_with_doc_and_pdf_chain(
                                         &state.tasks.storage,
                                         &state.tasks.cancellation_registry,
+                                        Arc::clone(&state.storage.kv_storage),
                                         track_id,
                                     )
                                     .await
@@ -451,9 +453,10 @@ async fn handle_filtered_progress_socket(socket: WebSocket, state: AppState, tra
                                     .get("track_id")
                                     .and_then(|v| v.as_str())
                                     .unwrap_or(track_id.as_str());
-                                match apply_task_row_cancel(
+                                match cancel_track_with_doc_and_pdf_chain(
                                     &state.tasks.storage,
                                     &state.tasks.cancellation_registry,
+                                    Arc::clone(&state.storage.kv_storage),
                                     id,
                                 )
                                 .await

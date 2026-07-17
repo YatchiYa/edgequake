@@ -93,6 +93,17 @@ export interface Document {
   stage_message?: string;
 
   /**
+   * SPEC-057 P4: API SSOT badge key (cancelled|failed|completed|extracting|…).
+   * Prefer over local stage/status derivation when present.
+   */
+  display_status?: string;
+
+  /**
+   * SPEC-057 P4: idle|running|stopping|terminal — Stopping… when `stopping`.
+   */
+  ui_phase?: string;
+
+  /**
    * Reprocess mode when this run was started via soft/hard reprocess (SPEC-048).
    * Wire: full | entities | merge
    */

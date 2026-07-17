@@ -46,6 +46,14 @@ pub struct DocumentDetailResponse {
     /// Document processing status.
     pub status: String,
 
+    /// SPEC-057 P4: badge key from IngestionStatusMapper.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_status: Option<String>,
+
+    /// SPEC-057 P4: `idle` | `running` | `stopping` | `terminal`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ui_phase: Option<String>,
+
     /// Error message if processing failed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_message: Option<String>,

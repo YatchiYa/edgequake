@@ -137,6 +137,8 @@ mod tests {
             stage_progress: Some(1.0),
             stage_message: None,
             pdf_id: None,
+        display_status: None,
+        ui_phase: None,
         };
 
         let json = serde_json::to_string(&summary).unwrap();
@@ -172,6 +174,8 @@ mod tests {
                 stage_progress: None,
                 stage_message: None,
                 pdf_id: None,
+            display_status: None,
+            ui_phase: None,
             }],
             total: 1,
             page: 1,
@@ -227,11 +231,15 @@ mod tests {
             pdf_id: None,
             multimodal_summary: None,
             multimodal_items: None,
+            display_status: Some("completed".to_string()),
+            ui_phase: Some("terminal".to_string()),
         };
 
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("doc-789"));
         assert!(json.contains("processed"));
+        assert!(json.contains("display_status"));
+        assert!(json.contains("ui_phase"));
     }
 
     #[test]
@@ -293,6 +301,8 @@ mod tests {
                 stage_progress: None,
                 stage_message: None,
                 pdf_id: None,
+            display_status: None,
+            ui_phase: None,
             }],
             total_count: 1,
             status_summary: StatusCounts {

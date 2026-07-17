@@ -209,35 +209,11 @@ impl DocumentTaskProcessor {
         let metadata_key =
             crate::services::resolve_document_metadata_key(document_id, &self.kv_storage).await;
 
-        // SPEC-002: Map legacy status names to unified stage names
-        let unified_stage = match status {
-            "pending" => "uploading",
-            "processing" => "preprocessing",
-            "chunking" => "chunking",
-            "extracting" => "extracting",
-            "embedding" => "embedding",
-            "indexing" => "storing",
-            "completed" | "indexed" => "completed",
-            "failed" => "failed",
-            "partial_failure" => "partial_failure",
-            "cancelled" => "cancelled",
-            other => other, // Pass through unknown statuses
-        };
-
-        // SPEC-002: Build stage message based on status
-        let stage_message = match status {
-            "pending" => "Document queued for processing",
-            "processing" | "preprocessing" => "Preprocessing document...",
-            "chunking" => "Splitting document into chunks...",
-            "extracting" => "Extracting entities and relationships...",
-            "embedding" => "Generating vector embeddings...",
-            "indexing" | "storing" => "Storing in knowledge graph...",
-            "completed" | "indexed" => "Processing complete",
-            "failed" => "Processing failed",
-            "partial_failure" => "Processing completed with issues",
-            "cancelled" => "Processing cancelled",
-            _ => "Processing...",
-        };
+        // SPEC-057 P4: SSOT for legacy→unified stage + default messages.
+        let unified_stage =
+            crate::services::ingestion_status_mapper::legacy_status_to_unified_stage(status);
+        let stage_message =
+            crate::services::ingestion_status_mapper::default_stage_message_for_status(status);
 
         // Get existing metadata or create new
         let existing = self
