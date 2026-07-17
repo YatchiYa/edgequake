@@ -726,6 +726,8 @@ export function TenantWorkspaceSelector({
                   embedding_model: selectedEmbedding?.model,
                   embedding_provider: selectedEmbedding?.provider,
                   embedding_dimension: selectedEmbedding?.dimension,
+                  // Persist vision parsing mode on create (matches backend default).
+                  pdf_parser_backend: 'vision',
                   // SPEC-085: Pass configured entity types
                   entity_types: workspaceEntityTypes.length > 0 ? workspaceEntityTypes : undefined,
                 })

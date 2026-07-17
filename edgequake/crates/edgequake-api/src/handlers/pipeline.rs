@@ -27,6 +27,7 @@ use utoipa::IntoParams;
 
 use crate::error::{ApiError, ApiResult};
 use crate::middleware::TenantContext;
+use crate::services::task_cancel::apply_cancel_all_active;
 use crate::state::AppState;
 
 // Re-export DTOs from pipeline_types for backwards compatibility
@@ -175,13 +176,23 @@ pub async fn cancel_pipeline(
         }));
     }
 
+    // Signal every in-flight task via the shared cancel helper (registry + task rows).
+    let results = apply_cancel_all_active(
+        &state.tasks.storage,
+        &state.tasks.cancellation_registry,
+    )
+    .await
+    .map_err(ApiError::Internal)?;
+
+    // Legacy flag retained for status snapshots / older clients.
     state.tasks.pipeline_state.request_cancellation().await;
 
     Ok(Json(CancelPipelineResponse {
         status: "cancellation_requested".to_string(),
-        message:
-            "Pipeline cancellation has been requested. Processing will stop after current document."
-                .to_string(),
+        message: format!(
+            "Pipeline cancellation requested for {} in-flight task(s). Cooperative stop at next checkpoint.",
+            results.len()
+        ),
     }))
 }
 
@@ -281,6 +292,14 @@ pub async fn get_queue_metrics(
         &pressure,
     );
 
+    let (tenant_park_waiters, max_tasks_per_tenant) = match &state.tasks.tenant_limiter {
+        Some(limiter) => {
+            let stats = limiter.stats().await;
+            (stats.park_waiters, stats.max_per_tenant as u64)
+        }
+        None => (0, 0),
+    };
+
     Ok(Json(QueueMetricsResponse {
         pending_count: metrics.pending_count,
         processing_count: metrics.processing_count,
@@ -297,5 +316,9 @@ pub async fn get_queue_metrics(
         pending_warn_threshold: pressure.pending_warn_threshold,
         pending_critical_threshold: pressure.pending_critical_threshold,
         operator_action: pressure.operator_action,
+        tenant_park_waiters,
+        cancel_intent_count: state.tasks.cancellation_registry.cancel_intent_count().await as u64,
+        cancel_intent_total: state.tasks.cancellation_registry.cancel_intent_total(),
+        max_tasks_per_tenant,
     }))
 }

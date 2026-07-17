@@ -40,9 +40,14 @@
 //! saturated. Override via the `WORKER_THREADS` environment variable.
 
 use crate::{
-    cancellation::CancellationRegistry, error::TaskResult, queue::TaskQueue, storage::TaskStorage,
-    tenant_limiter::TenantConcurrencyLimiter, types::Task,
+    cancellation::CancellationRegistry,
+    error::{TaskError, TaskResult},
+    queue::TaskQueue,
+    storage::TaskStorage,
+    tenant_limiter::TenantConcurrencyLimiter,
+    types::{Task, TaskStatus},
 };
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -134,11 +139,11 @@ pub struct WorkerPoolConfig {
     /// Maximum concurrent tasks per tenant.
     ///
     /// WHY: Prevents one tenant from monopolizing all workers. When a tenant
-    /// has `max_tasks_per_tenant` tasks in flight, new tasks from that tenant
-    /// are requeued with a short delay so workers can serve other tenants.
+    /// has `max_tasks_per_tenant` tasks in flight, excess tasks park on the
+    /// tenant semaphore until a slot frees (no channel requeue churn).
     ///
-    /// Default: `max(1, num_workers / 2)` — guarantees at least half the
-    /// workers remain available for other tenants.
+    /// Default: `max(1, num_workers * 3/4)` — most slots usable per tenant
+    /// while keeping headroom for others.
     ///
     /// Set to 0 to disable per-tenant limiting (all workers available to any tenant).
     pub max_tasks_per_tenant: usize,
@@ -209,6 +214,8 @@ pub struct WorkerPool {
     shutdown_tx: Option<tokio::sync::broadcast::Sender<()>>,
     tenant_limiter: Option<TenantConcurrencyLimiter>,
     cancellation_registry: CancellationRegistry,
+    /// Rate-limit fairness park DEBUG logs (one line per N parks).
+    fairness_park_logs: Arc<AtomicU64>,
 }
 
 impl WorkerPool {
@@ -235,6 +242,7 @@ impl WorkerPool {
             shutdown_tx: None,
             tenant_limiter,
             cancellation_registry: CancellationRegistry::new(),
+            fairness_park_logs: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -245,6 +253,11 @@ impl WorkerPool {
     /// your AppState and pass it to the cancel endpoint.
     pub fn cancellation_registry(&self) -> CancellationRegistry {
         self.cancellation_registry.clone()
+    }
+
+    /// Optional per-tenant limiter (None when `max_tasks_per_tenant == 0`).
+    pub fn tenant_limiter(&self) -> Option<TenantConcurrencyLimiter> {
+        self.tenant_limiter.clone()
     }
 
     /// Start the worker pool on the current Tokio runtime.
@@ -279,8 +292,10 @@ impl WorkerPool {
             let processor = Arc::clone(&self.processor);
             let config = self.config.clone();
             let mut shutdown_rx = shutdown_tx.subscribe();
+            let park_shutdown_tx = shutdown_tx.clone();
             let tenant_limiter = self.tenant_limiter.clone();
             let cancel_registry = self.cancellation_registry.clone();
+            let fairness_park_logs = Arc::clone(&self.fairness_park_logs);
 
             let handle = runtime.spawn(async move {
                 info!("Worker {} started", worker_id);
@@ -294,48 +309,48 @@ impl WorkerPool {
                         result = queue.receive() => {
                             match result {
                                 Ok(mut task) => {
-                                    // FEAT-TENANT-FAIRNESS: Check per-tenant concurrency limit
-                                    // before processing. If tenant is at capacity, requeue the
-                                    // task with a short delay so this worker can serve other tenants.
+                                    // FEAT-CANCEL: Drop terminal / cancel-intent tasks before
+                                    // claiming a tenant slot or marking processing.
+                                    if should_skip_task(&storage, &cancel_registry, &task).await {
+                                        debug!(
+                                            worker_id = worker_id,
+                                            task_id = %task.track_id,
+                                            "Skipping cancelled or terminal task"
+                                        );
+                                        cancel_registry.deregister(&task.track_id).await;
+                                        continue;
+                                    }
+
+                                    // FEAT-TENANT-FAIRNESS: try_acquire first so this worker can
+                                    // serve other tenants. On limit, park-until-permit in a
+                                    // background waiter (no 500ms channel requeue storm).
                                     let _tenant_permit = if let Some(ref limiter) = tenant_limiter {
                                         match limiter.try_acquire(task.tenant_id).await {
                                             Some(permit) => Some(permit),
                                             None => {
-                                                debug!(
-                                                    worker_id = worker_id,
-                                                    task_id = %task.track_id,
-                                                    tenant_id = %task.tenant_id,
-                                                    "Tenant at concurrency limit, requeueing task"
+                                                let n = fairness_park_logs
+                                                    .fetch_add(1, Ordering::Relaxed)
+                                                    + 1;
+                                                if n == 1 || n % 32 == 0 {
+                                                    info!(
+                                                        worker_id = worker_id,
+                                                        task_id = %task.track_id,
+                                                        tenant_id = %task.tenant_id,
+                                                        park_events = n,
+                                                        park_waiters = limiter.park_waiter_count(),
+                                                        "Tenant at concurrency limit — parking until permit (aggregated)"
+                                                    );
+                                                }
+                                                spawn_fairness_park(
+                                                    worker_id,
+                                                    task,
+                                                    Arc::clone(&queue),
+                                                    Arc::clone(&storage),
+                                                    limiter.clone(),
+                                                    cancel_registry.clone(),
+                                                    park_shutdown_tx.subscribe(),
                                                 );
-                                                // Requeue with delay so other tenants' tasks get
-                                                // picked up first. The delay is bounded: base 200ms
-                                                // to avoid busy-looping when many tasks hit the
-                                                // tenant limit simultaneously.
-                                                // WHY tokio::spawn: We don't want to block this
-                                                // worker — it should immediately pick up the next
-                                                // task (which may be for a different tenant).
-                                                // WHY bounded: The number of spawned requeue tasks
-                                                // is bounded by queue capacity (backpressure from
-                                                // the channel's send).
-                                                let requeue_task = task;
-                                                let requeue_queue = Arc::clone(&queue);
-                                                tokio::spawn(async move {
-                                                    tokio::time::sleep(
-                                                        tokio::time::Duration::from_millis(500)
-                                                    ).await;
-                                                    let track_id = requeue_task.track_id.clone();
-                                                    if let Err(e) = requeue_queue.send(requeue_task).await {
-                                                        error!(
-                                                            error.source = "task_worker",
-                                                            error.action = "requeue_tenant_limited",
-                                                            worker_id = worker_id,
-                                                            task_id = %track_id,
-                                                            error.message = %e,
-                                                            "Failed to requeue tenant-limited task"
-                                                        );
-                                                    }
-                                                });
-                                                continue; // Pick next task from queue
+                                                continue;
                                             }
                                         }
                                     } else {
@@ -432,6 +447,17 @@ impl WorkerPool {
                                             task.mark_success(result);
                                             info!("Worker {} completed task: {} (tenant: {})", worker_id, task.track_id, task.tenant_id);
                                         }
+                                        Ok(Err(TaskError::Cancelled(msg))) => {
+                                            // Cancel is a terminal user intent — never Failed+retry.
+                                            task.mark_cancelled();
+                                            info!(
+                                                worker_id = worker_id,
+                                                task_id = %task.track_id,
+                                                tenant_id = %task.tenant_id,
+                                                reason = %msg,
+                                                "Task cancelled — preserving Cancelled status (no retry)"
+                                            );
+                                        }
                                         Ok(Err(e)) => {
                                             // HeartbeatGuard aborts heartbeat on drop at end of scope
                                             let error_msg = format!("{}", e);
@@ -466,7 +492,8 @@ impl WorkerPool {
                                             // Check if task is permanently failed (no more retries)
                                             let will_retry = config.auto_retry
                                                 && task.can_retry()
-                                                && !task.circuit_breaker_tripped;
+                                                && !task.circuit_breaker_tripped
+                                                && !crate::is_permanent_ingestion_failure(&error_msg);
 
                                             if will_retry {
                                                 // Calculate exponential backoff delay
@@ -489,12 +516,27 @@ impl WorkerPool {
                                                 let retry_task = task.clone();
                                                 let retry_queue = Arc::clone(&queue);
 
+                                                let retry_cancel = cancel_registry.clone();
+                                                let retry_storage = Arc::clone(&storage);
                                                 tokio::spawn(async move {
                                                     tokio::time::sleep(
                                                         tokio::time::Duration::from_millis(retry_delay_ms)
                                                     ).await;
 
                                                     let track_id = retry_task.track_id.clone();
+                                                    if should_skip_task(
+                                                        &retry_storage,
+                                                        &retry_cancel,
+                                                        &retry_task,
+                                                    )
+                                                    .await
+                                                    {
+                                                        debug!(
+                                                            task_id = %track_id,
+                                                            "Skipping retry — task cancelled or terminal"
+                                                        );
+                                                        return;
+                                                    }
                                                     if let Err(e) = retry_queue.send(retry_task).await {
                                                         error!(
                                                             error.source = "task_worker",
@@ -632,6 +674,103 @@ impl WorkerPool {
     pub fn num_workers(&self) -> usize {
         self.config.num_workers
     }
+}
+
+/// True when the worker must not start (or requeue) this task.
+async fn should_skip_task(
+    storage: &Arc<dyn TaskStorage>,
+    cancel_registry: &CancellationRegistry,
+    task: &Task,
+) -> bool {
+    if cancel_registry.has_cancel_intent(&task.track_id).await {
+        return true;
+    }
+    if task.status == TaskStatus::Cancelled || task.status == TaskStatus::Indexed {
+        return true;
+    }
+    match storage.get_task(&task.track_id).await {
+        Ok(Some(stored)) => {
+            stored.status == TaskStatus::Cancelled
+                || stored.status == TaskStatus::Indexed
+                || stored.is_terminal()
+        }
+        Ok(None) => false,
+        Err(e) => {
+            warn!(
+                task_id = %task.track_id,
+                error = %e,
+                "Failed to load task status for cancel/terminal guard — proceeding cautiously"
+            );
+            false
+        }
+    }
+}
+
+/// Park until a tenant permit frees, then re-enqueue once (no polling storm).
+fn spawn_fairness_park(
+    worker_id: usize,
+    task: Task,
+    queue: Arc<dyn TaskQueue>,
+    storage: Arc<dyn TaskStorage>,
+    limiter: TenantConcurrencyLimiter,
+    cancel_registry: CancellationRegistry,
+    mut shutdown_rx: tokio::sync::broadcast::Receiver<()>,
+) {
+    tokio::spawn(async move {
+        let track_id = task.track_id.clone();
+        let tenant_id = task.tenant_id;
+
+        let permit = tokio::select! {
+            result = limiter.acquire(tenant_id) => {
+                match result {
+                    Ok(permit) => permit,
+                    Err(_) => {
+                        debug!(
+                            worker_id,
+                            task_id = %track_id,
+                            "Fairness park aborted — semaphore closed"
+                        );
+                        return;
+                    }
+                }
+            }
+            _ = shutdown_rx.recv() => {
+                debug!(
+                    worker_id,
+                    task_id = %track_id,
+                    "Fairness park aborted — worker pool shutting down"
+                );
+                // Return task to queue so hydrate/restart can recover if needed.
+                let _ = queue.send(task).await;
+                return;
+            }
+        };
+
+        // Release immediately — the worker will try_acquire when it dequeues.
+        // Park waiters are FIFO on the semaphore, so churn is O(completions), not O(polls).
+        drop(permit);
+
+        if should_skip_task(&storage, &cancel_registry, &task).await {
+            debug!(
+                worker_id,
+                task_id = %track_id,
+                "Fairness park complete — dropping cancelled/terminal task"
+            );
+            cancel_registry.deregister(&track_id).await;
+            return;
+        }
+
+        if let Err(e) = queue.send(task).await {
+            error!(
+                error.source = "task_worker",
+                error.action = "requeue_after_fairness_park",
+                worker_id,
+                task_id = %track_id,
+                error.message = %e,
+                "Failed to requeue task after fairness park"
+            );
+        }
+    });
 }
 
 /// Mock task processor for testing
@@ -916,6 +1055,162 @@ mod tests {
             stored.error_message
         );
 
+        pool.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn test_cancelled_error_preserves_cancelled_status_no_retry() {
+        struct CancelProcessor;
+
+        #[async_trait::async_trait]
+        impl TaskProcessor for CancelProcessor {
+            async fn process(
+                &self,
+                _task: &mut Task,
+                _cancel_token: CancellationToken,
+            ) -> TaskResult<serde_json::Value> {
+                Err(TaskError::Cancelled("user cancel".into()))
+            }
+        }
+
+        let queue = Arc::new(ChannelTaskQueue::new(10));
+        let storage = Arc::new(MemoryTaskStorage::new());
+        let processor: SharedTaskProcessor = Arc::new(CancelProcessor);
+
+        let config = WorkerPoolConfig {
+            num_workers: 1,
+            auto_retry: true,
+            initial_retry_delay_ms: 10,
+            max_retry_delay_ms: 50,
+            backoff_multiplier: 2.0,
+            max_tasks_per_tenant: 0,
+            processing_timeout_secs: 300,
+        };
+
+        let mut pool = WorkerPool::new(config, queue.clone(), storage.clone(), processor);
+        pool.start();
+
+        let task = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::Insert,
+            serde_json::json!({"test": "cancel"}),
+        );
+        let track_id = task.track_id.clone();
+        storage.create_task(&task).await.unwrap();
+        queue.send(task).await.unwrap();
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+
+        let stored = storage.get_task(&track_id).await.unwrap().unwrap();
+        assert_eq!(stored.status, TaskStatus::Cancelled);
+        assert!(!stored.can_retry());
+
+        pool.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn test_cancel_intent_skips_pending_task() {
+        let queue = Arc::new(ChannelTaskQueue::new(10));
+        let storage = Arc::new(MemoryTaskStorage::new());
+        let processor = Arc::new(MockTaskProcessor);
+
+        let config = WorkerPoolConfig {
+            num_workers: 1,
+            auto_retry: false,
+            initial_retry_delay_ms: 100,
+            max_retry_delay_ms: 5000,
+            backoff_multiplier: 2.0,
+            max_tasks_per_tenant: 0,
+            processing_timeout_secs: 300,
+        };
+
+        let mut pool = WorkerPool::new(config, queue.clone(), storage.clone(), processor);
+        let registry = pool.cancellation_registry();
+        pool.start();
+
+        let task = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::Insert,
+            serde_json::json!({"test": "pending-cancel"}),
+        );
+        let track_id = task.track_id.clone();
+        storage.create_task(&task).await.unwrap();
+        registry.mark_cancel_intent(&track_id).await;
+        queue.send(task).await.unwrap();
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
+
+        let stored = storage.get_task(&track_id).await.unwrap().unwrap();
+        // Never marked processing/indexed — skipped on dequeue.
+        assert_eq!(stored.status, TaskStatus::Pending);
+
+        pool.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn test_fairness_park_does_not_storm_queue() {
+        let queue = Arc::new(ChannelTaskQueue::new(50));
+        let storage = Arc::new(MemoryTaskStorage::new());
+
+        struct SlowProcessor;
+        #[async_trait::async_trait]
+        impl TaskProcessor for SlowProcessor {
+            async fn process(
+                &self,
+                _task: &mut Task,
+                _cancel_token: CancellationToken,
+            ) -> TaskResult<serde_json::Value> {
+                tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+                Ok(serde_json::json!({"ok": true}))
+            }
+        }
+
+        let config = WorkerPoolConfig {
+            num_workers: 2,
+            auto_retry: false,
+            initial_retry_delay_ms: 100,
+            max_retry_delay_ms: 5000,
+            backoff_multiplier: 2.0,
+            max_tasks_per_tenant: 1,
+            processing_timeout_secs: 300,
+        };
+
+        let mut pool = WorkerPool::new(
+            config,
+            queue.clone(),
+            storage.clone(),
+            Arc::new(SlowProcessor),
+        );
+        let limiter = pool.tenant_limiter().expect("limiter enabled");
+        pool.start();
+
+        for i in 0..5 {
+            let task = Task::new(
+                test_tenant_id(),
+                test_workspace_id(),
+                TaskType::Insert,
+                serde_json::json!({"i": i}),
+            );
+            storage.create_task(&task).await.unwrap();
+            queue.send(task).await.unwrap();
+        }
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        // Park waiters should absorb backlog instead of unbounded re-sends.
+        assert!(
+            limiter.park_waiter_count() <= 5,
+            "unexpected park waiter count {}",
+            limiter.park_waiter_count()
+        );
+        assert!(
+            queue.approximate_depth() <= 5,
+            "queue storm detected: depth={}",
+            queue.approximate_depth()
+        );
+
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
         pool.shutdown().await;
     }
 }

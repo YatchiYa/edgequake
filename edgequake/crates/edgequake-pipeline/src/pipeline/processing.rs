@@ -33,6 +33,7 @@ impl Pipeline {
         mut extractions: Vec<ExtractionResult>,
         mut stats: ProcessingStats,
         embed_progress: Option<&EmbedProgressCallback>,
+        cancel_token: Option<&CancellationToken>,
     ) -> Result<ProcessingResult> {
         if self.config.enable_entity_extraction || self.config.enable_relationship_extraction {
             if let Some(extractor) = &self.extractor {
@@ -41,8 +42,14 @@ impl Pipeline {
             }
         }
 
-        self.generate_all_embeddings(&mut chunks, &mut extractions, &mut stats, embed_progress)
-            .await?;
+        self.generate_all_embeddings(
+            &mut chunks,
+            &mut extractions,
+            &mut stats,
+            embed_progress,
+            cancel_token,
+        )
+        .await?;
 
         stats.processing_time_ms = start.elapsed().as_millis() as u64;
         let lineage = self.build_lineage(document_id, &chunks, &extractions, &stats);
@@ -72,8 +79,16 @@ impl Pipeline {
             }
         }
 
-        self.finish_document_processing(document_id, start, chunks, extractions, stats, None)
-            .await
+        self.finish_document_processing(
+            document_id,
+            start,
+            chunks,
+            extractions,
+            stats,
+            None,
+            None,
+        )
+        .await
     }
 
     /// Process a document with chunk-level progress callbacks.
@@ -97,8 +112,16 @@ impl Pipeline {
             }
         }
 
-        self.finish_document_processing(document_id, start, chunks, extractions, stats, None)
-            .await
+        self.finish_document_processing(
+            document_id,
+            start,
+            chunks,
+            extractions,
+            stats,
+            None,
+            None,
+        )
+        .await
     }
 
     /// Process a document with resilient chunk-level error handling.
@@ -205,6 +228,7 @@ impl Pipeline {
                 extractions,
                 stats,
                 embed_progress.as_ref(),
+                cancel_token.as_ref(),
             )
             .await?;
 

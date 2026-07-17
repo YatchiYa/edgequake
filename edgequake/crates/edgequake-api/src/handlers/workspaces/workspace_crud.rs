@@ -20,6 +20,9 @@ use edgequake_pdf::PdfParserBackend;
 /// Create a new workspace.
 ///
 /// POST /api/v1/tenants/{tenant_id}/workspaces
+///
+/// When `pdf_parser_backend` is omitted, the workspace persists `"vision"` so
+/// server env (`EDGEQUAKE_PDF_PARSER_BACKEND`) cannot silently override new workspaces.
 #[utoipa::path(
     post,
     path = "/api/v1/tenants/{tenant_id}/workspaces",
@@ -28,7 +31,7 @@ use edgequake_pdf::PdfParserBackend;
     ),
     request_body = CreateWorkspaceApiRequest,
     responses(
-        (status = 201, description = "Workspace created", body = WorkspaceResponse),
+        (status = 201, description = "Workspace created (pdf_parser_backend defaults to vision)", body = WorkspaceResponse),
         (status = 400, description = "Invalid request"),
         (status = 404, description = "Tenant not found"),
         (status = 409, description = "Workspace with this slug already exists"),

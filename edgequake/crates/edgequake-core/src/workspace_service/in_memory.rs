@@ -94,7 +94,7 @@ impl InMemoryWorkspaceService {
                 embedding_dimension,
                 vision_llm_provider: None,
                 vision_llm_model: None,
-                pdf_parser_backend: None,
+                pdf_parser_backend: Some(edgequake_pdf::PdfParserBackend::Vision),
             };
             self.workspaces.write().await.insert(workspace_id, ws);
         }
@@ -263,6 +263,31 @@ impl WorkspaceService for InMemoryWorkspaceService {
                 let detected = Workspace::detect_dimension_from_model(&model);
                 workspace = workspace.with_embedding_dimension(detected);
             }
+        }
+
+        // Persist vision by default when omitted (mirrors postgres create path).
+        let pdf_parser_backend = request
+            .pdf_parser_backend
+            .unwrap_or(edgequake_pdf::PdfParserBackend::Vision);
+        workspace.pdf_parser_backend = Some(pdf_parser_backend);
+        workspace.metadata.insert(
+            "pdf_parser_backend".to_string(),
+            serde_json::json!(pdf_parser_backend.as_str()),
+        );
+
+        if let Some(model) = request.vision_llm_model {
+            workspace.vision_llm_model = Some(model.clone());
+            workspace.metadata.insert(
+                "vision_llm_model".to_string(),
+                serde_json::json!(model),
+            );
+        }
+        if let Some(provider) = request.vision_llm_provider {
+            workspace.vision_llm_provider = Some(provider.clone());
+            workspace.metadata.insert(
+                "vision_llm_provider".to_string(),
+                serde_json::json!(provider),
+            );
         }
 
         let mut workspaces = self.workspaces.write().await;
@@ -747,6 +772,54 @@ mod tests {
         assert_eq!(workspace.name, "My Knowledge Base");
         assert_eq!(workspace.slug, "my-kb");
         assert_eq!(workspace.max_documents(), Some(1000));
+        assert_eq!(
+            workspace.pdf_parser_backend,
+            Some(edgequake_pdf::PdfParserBackend::Vision),
+            "omitted pdf_parser_backend must persist vision"
+        );
+        assert_eq!(
+            workspace.metadata.get("pdf_parser_backend").and_then(|v| v.as_str()),
+            Some("vision")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_create_workspace_explicit_edgeparse_overrides_default() {
+        let service = InMemoryWorkspaceService::new();
+        let tenant = service
+            .create_tenant(Tenant::new("Test Tenant", "test-edgeparse"))
+            .await
+            .unwrap();
+
+        let request = CreateWorkspaceRequest {
+            name: "EdgeParse WS".to_string(),
+            slug: Some("edgeparse-ws".to_string()),
+            pdf_parser_backend: Some(edgequake_pdf::PdfParserBackend::EdgeParse),
+            ..Default::default()
+        };
+        let workspace = service
+            .create_workspace(tenant.tenant_id, request)
+            .await
+            .unwrap();
+        assert_eq!(
+            workspace.pdf_parser_backend,
+            Some(edgequake_pdf::PdfParserBackend::EdgeParse)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_seed_default_workspace_persists_vision() {
+        let service = InMemoryWorkspaceService::new();
+        service.seed_default_workspace().await;
+        let workspace = service
+            .get_workspace(Uuid::from_u128(3))
+            .await
+            .unwrap()
+            .expect("seeded default workspace");
+        assert_eq!(
+            workspace.pdf_parser_backend,
+            Some(edgequake_pdf::PdfParserBackend::Vision)
+        );
     }
 
     #[tokio::test]

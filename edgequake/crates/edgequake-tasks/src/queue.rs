@@ -19,6 +19,7 @@
 
 use crate::{error::TaskResult, types::Task};
 use async_trait::async_trait;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::debug;
@@ -50,6 +51,8 @@ pub struct ChannelTaskQueue {
     sender: mpsc::Sender<Task>,
     receiver: Arc<tokio::sync::Mutex<mpsc::Receiver<Task>>>,
     capacity: usize,
+    /// Approximate depth (send +1, receive -1) for observability.
+    depth: Arc<AtomicUsize>,
 }
 
 impl ChannelTaskQueue {
@@ -61,12 +64,18 @@ impl ChannelTaskQueue {
             sender,
             receiver: Arc::new(tokio::sync::Mutex::new(receiver)),
             capacity,
+            depth: Arc::new(AtomicUsize::new(0)),
         }
     }
 
     /// Get the queue capacity
     pub fn capacity(&self) -> usize {
         self.capacity
+    }
+
+    /// Approximate in-channel task count (observability).
+    pub fn approximate_depth(&self) -> usize {
+        self.depth.load(Ordering::Relaxed)
     }
 }
 
@@ -79,6 +88,7 @@ impl TaskQueue for ChannelTaskQueue {
             .send(task)
             .await
             .map_err(|_| crate::error::TaskError::QueueClosed)?;
+        self.depth.fetch_add(1, Ordering::Relaxed);
 
         Ok(())
     }
@@ -86,17 +96,26 @@ impl TaskQueue for ChannelTaskQueue {
     async fn receive(&self) -> TaskResult<Task> {
         let mut receiver = self.receiver.lock().await;
 
-        receiver
+        let task = receiver
             .recv()
             .await
-            .ok_or(crate::error::TaskError::QueueClosed)
+            .ok_or(crate::error::TaskError::QueueClosed)?;
+        let _ = self.depth.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
+            Some(v.saturating_sub(1))
+        });
+        Ok(task)
     }
 
     async fn try_receive(&self) -> TaskResult<Option<Task>> {
         let mut receiver = self.receiver.lock().await;
 
         match receiver.try_recv() {
-            Ok(task) => Ok(Some(task)),
+            Ok(task) => {
+                let _ = self.depth.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
+                    Some(v.saturating_sub(1))
+                });
+                Ok(Some(task))
+            }
             Err(mpsc::error::TryRecvError::Empty) => Ok(None),
             Err(mpsc::error::TryRecvError::Disconnected) => {
                 Err(crate::error::TaskError::QueueClosed)
@@ -105,9 +124,7 @@ impl TaskQueue for ChannelTaskQueue {
     }
 
     async fn size(&self) -> TaskResult<usize> {
-        // For mpsc channels, we can't get exact size without draining
-        // Return 0 as approximation
-        Ok(0)
+        Ok(self.approximate_depth())
     }
 
     fn is_closed(&self) -> bool {

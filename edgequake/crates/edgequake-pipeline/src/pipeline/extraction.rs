@@ -311,7 +311,25 @@ impl Pipeline {
                         let extraction_future = extractor.extract(&chunk);
                         let timeout_duration = tokio::time::Duration::from_secs(timeout_secs);
 
-                        match tokio::time::timeout(timeout_duration, extraction_future).await {
+                        // Abort in-flight LLM extract when cancel fires (drops HTTP future).
+                        let timed = if let Some(ref token) = cancel_token {
+                            tokio::select! {
+                                biased;
+                                _ = token.cancelled() => None,
+                                result = tokio::time::timeout(timeout_duration, extraction_future) => {
+                                    Some(result)
+                                }
+                            }
+                        } else {
+                            Some(tokio::time::timeout(timeout_duration, extraction_future).await)
+                        };
+
+                        let Some(timed) = timed else {
+                            last_error = "Task cancelled".to_string();
+                            break;
+                        };
+
+                        match timed {
                             Ok(Ok(result)) => {
                                 // SUCCESS PATH
                                 let time_ms = result.extraction_time_ms;

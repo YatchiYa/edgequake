@@ -78,6 +78,7 @@ pub mod source_reference_builder;
 pub mod staging_admission;
 pub mod startup_task_hydrate;
 pub mod summary_role;
+pub mod task_cancel;
 pub mod task_document_sync;
 pub mod task_scope;
 pub mod tenant_guard;
@@ -212,6 +213,9 @@ pub use retrieval_id_cache::{global_retrieval_cache, new_retrieval_id, Retrieval
 pub use source_reference_builder::{build_sources_from_context, is_injection_source};
 pub use staging_admission::{promote_staging_to_final, rollback_staging};
 pub use summary_role::resolve_summary_llm_or_fallback;
+pub use task_cancel::{
+    apply_cancel_all_active, apply_task_row_cancel, is_cancel_error_message, TaskCancelApplyResult,
+};
 pub use task_document_sync::{
     extract_document_id_from_task, sync_document_failed_on_orphan_heartbeat,
 };

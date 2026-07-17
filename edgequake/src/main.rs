@@ -1056,6 +1056,15 @@ async fn async_main() -> Result<()> {
     // in WorkerPool.  Both must point to the *same* underlying Arc so that a
     // cancel request from the HTTP handler is visible to the running worker.
     state.tasks.cancellation_registry = worker_pool.cancellation_registry();
+    // Share tenant fairness limiter for queue-metrics observability (park waiters).
+    state.tasks.tenant_limiter = worker_pool.tenant_limiter();
+    if let Some(ref limiter) = state.tasks.tenant_limiter {
+        info!(
+            max_tasks_per_tenant = limiter.max_per_tenant(),
+            "Tenant fairness limiter active (excess tasks park until permit; \
+             local providers clamp to 1 unless EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1)"
+        );
+    }
 
     // Isolate ingest from Axum serving: PDF CPU + long Ollama awaits must not
     // starve interactive HTTP on the default (serving) Tokio runtime.

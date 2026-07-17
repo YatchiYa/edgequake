@@ -187,7 +187,8 @@ impl Workspace {
             embedding_dimension,
             vision_llm_provider: None,
             vision_llm_model: None,
-            pdf_parser_backend: None,
+            // Persist vision by default so new workspaces are not env-overridden.
+            pdf_parser_backend: Some(edgequake_pdf::PdfParserBackend::Vision),
         }
     }
 

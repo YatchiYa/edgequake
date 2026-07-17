@@ -202,8 +202,17 @@ impl DocumentTaskProcessor {
                         result
                     }
                     Err(e) => {
-                        // FIX-3: Comprehensive error logging with context
                         let error_msg = format!("Pipeline processing failed: {}", e);
+                        if crate::services::task_cancel::is_cancel_error_message(&error_msg) {
+                            let _ = self
+                                .update_document_status(
+                                    &document_id,
+                                    "cancelled",
+                                    Some(&error_msg),
+                                )
+                                .await;
+                            return Err(edgequake_tasks::TaskError::Cancelled(error_msg));
+                        }
                         error!(
                             document_id = %document_id,
                             workspace_id = ?workspace_id,
