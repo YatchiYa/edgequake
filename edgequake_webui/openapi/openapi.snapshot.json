@@ -9,7 +9,7 @@
     "license": {
       "name": "Apache-2.0"
     },
-    "version": "0.18.0"
+    "version": "0.19.0"
   },
   "servers": [
     {
@@ -1941,6 +1941,9 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Read path busy under ingest load"
           }
         },
         "security": [
@@ -2473,7 +2476,7 @@
           "handlers"
         ],
         "summary": "Cancel an in-progress PDF processing task.",
-        "description": "OODA-17: Request cancellation of an active PDF processing task.\n\n# Endpoint\n\n`DELETE /api/v1/documents/pdf/{pdf_id}/cancel`\n\n# Behavior\n\n1. Validate PDF exists and belongs to workspace\n2. Check status is Processing (cannot cancel Completed/Failed)\n3. Request cancellation via PipelineState\n4. Update status to Failed with cancellation message\n\n# Errors\n\n- 404 if PDF not found\n- 409 if PDF is not in cancellable state\n- 500 for internal errors",
+        "description": "OODA-17: Request cancellation of an active PDF processing task.\n\n# Endpoint\n\n`DELETE /api/v1/documents/pdf/{pdf_id}/cancel`\n\n# Behavior\n\n1. Validate PDF exists and belongs to workspace\n2. Check status is Processing or Pending (cannot cancel terminal)\n3. Request cancellation via CancellationRegistry / task row\n4. Update PDF status to Cancelled (SPEC-057 — not Failed)\n\n# Errors\n\n- 404 if PDF not found\n- 409 if PDF is not in cancellable state\n- 500 for internal errors",
         "operationId": "cancel_pdf_processing",
         "parameters": [
           {
@@ -2728,8 +2731,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "recover_stuck"
+        "x-edgequake-v2-job-type": "recover_stuck",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/documents/reprocess": {
@@ -3131,6 +3134,9 @@
           },
           "404": {
             "description": "Document not found"
+          },
+          "503": {
+            "description": "Read path busy under ingest load"
           }
         },
         "security": [
@@ -3762,8 +3768,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "reanalyze_multimodal",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "reanalyze_multimodal"
       }
     },
     "/api/v1/documents/{document_id}/retry-chunks": {
@@ -7304,7 +7310,7 @@
           "workspaces"
         ],
         "summary": "Create a new workspace.",
-        "description": "POST /api/v1/tenants/{tenant_id}/workspaces",
+        "description": "POST /api/v1/tenants/{tenant_id}/workspaces\n\nWhen `pdf_parser_backend` is omitted, the workspace persists `\"vision\"` so\nserver env (`EDGEQUAKE_PDF_PARSER_BACKEND`) cannot silently override new workspaces.",
         "operationId": "create_workspace",
         "parameters": [
           {
@@ -7330,7 +7336,7 @@
         },
         "responses": {
           "201": {
-            "description": "Workspace created",
+            "description": "Workspace created (pdf_parser_backend defaults to vision)",
             "content": {
               "application/json": {
                 "schema": {
@@ -8480,8 +8486,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "reprocess_all",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "reprocess_all"
       }
     },
     "/api/v1/workspaces/{workspace_id}/stats": {
@@ -8945,14 +8951,14 @@
           "Health"
         ],
         "summary": "Readiness check (for Kubernetes).",
-        "description": "Returns 503 when migration 038 indexes are required but missing on a large graph\n(AGE present, indexes not ready). Prevents routing traffic to slow-prefix nodes.",
+        "description": "Returns 503 when:\n- migration 038 indexes are required but missing on a large graph, or\n- storage component pings fail / time out, or\n- the task queue is at critical pressure.\n\nPrevents routing traffic to nodes that cannot serve ingest/query reliably.",
         "operationId": "readiness_check",
         "responses": {
           "200": {
             "description": "Service is ready"
           },
           "503": {
-            "description": "Migration 038 indexes pending — not ready for traffic"
+            "description": "Not ready for traffic (migration, storage, or queue pressure)"
           }
         },
         "security": []
@@ -9005,8 +9011,8 @@
             "description": "WebSocket upgrade failed"
           }
         },
-        "x-edgequake-transport": "websocket",
-        "x-edgequake-upgrade": "RFC6455"
+        "x-edgequake-upgrade": "RFC6455",
+        "x-edgequake-transport": "websocket"
       }
     }
   },
@@ -13025,6 +13031,13 @@
             ],
             "description": "Creation timestamp."
           },
+          "display_status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-057 P4: badge key from IngestionStatusMapper."
+          },
           "entity_count": {
             "type": [
               "integer",
@@ -13155,6 +13168,13 @@
             ],
             "description": "Track ID for batch grouping."
           },
+          "ui_phase": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-057 P4: `idle` | `running` | `stopping` | `terminal`."
+          },
           "updated_at": {
             "type": [
               "string",
@@ -13184,6 +13204,7 @@
           "content_length": {},
           "content_summary": {},
           "created_at": {},
+          "display_status": {},
           "entity_count": {},
           "error_message": {},
           "file_name": {},
@@ -13202,6 +13223,7 @@
           "tenant_id": {},
           "title": {},
           "track_id": {},
+          "ui_phase": {},
           "updated_at": {},
           "warning_message": {},
           "workspace_id": {}
@@ -13569,6 +13591,14 @@
             "description": "Current ingestion stage (aligned with UnifiedStage enum).\nStages: uploading, converting, preprocessing, chunking, extracting,\ngleaning, merging, summarizing, embedding, storing, completed, failed.\n@implements SPEC-002",
             "example": "extracting"
           },
+          "display_status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-057 P4: badge key from `IngestionStatusMapper` (prefer over status/stage).",
+            "example": "extracting"
+          },
           "embedding_model": {
             "type": [
               "string",
@@ -13687,6 +13717,14 @@
             ],
             "description": "Track ID for batch grouping."
           },
+          "ui_phase": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-057 P4: `idle` | `running` | `stopping` | `terminal`.",
+            "example": "running"
+          },
           "updated_at": {
             "type": [
               "string",
@@ -13709,6 +13747,7 @@
           "cost_usd": {},
           "created_at": {},
           "current_stage": {},
+          "display_status": {},
           "embedding_model": {},
           "entity_count": {},
           "error_message": {},
@@ -13725,6 +13764,7 @@
           "title": {},
           "total_tokens": {},
           "track_id": {},
+          "ui_phase": {},
           "updated_at": {},
           "warning_message": {}
         }
@@ -16813,6 +16853,13 @@
             "type": "integer",
             "description": "Total number of pages.",
             "minimum": 0
+          },
+          "truncated": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "True when the workspace metadata scan was truncated for latency."
           }
         },
         "example": {
@@ -16822,7 +16869,8 @@
           "page_size": {},
           "status_counts": {},
           "total": {},
-          "total_pages": {}
+          "total_pages": {},
+          "truncated": {}
         }
       },
       "ListEntitiesQuery": {
@@ -21477,10 +21525,28 @@
             "format": "double",
             "description": "Average wait time in seconds for recently started tasks."
           },
+          "cancel_intent_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Outstanding cancel intents (pending drain + in-flight).",
+            "minimum": 0
+          },
+          "cancel_intent_total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Lifetime cancel intents recorded since process start.",
+            "minimum": 0
+          },
           "estimated_queue_time_seconds": {
             "type": "number",
             "format": "double",
             "description": "Estimated time to clear the queue in seconds."
+          },
+          "max_tasks_per_tenant": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Configured max concurrent tasks per tenant (`0` = unlimited / disabled).",
+            "minimum": 0
           },
           "max_wait_time_seconds": {
             "type": "number",
@@ -21532,6 +21598,16 @@
             "type": "boolean",
             "description": "Whether the system is currently rate limited."
           },
+          "store_contention": {
+            "$ref": "#/components/schemas/StoreContentionMetrics",
+            "description": "SPEC-057 P3: store contention SLOs (pool util + compensation quarantine)."
+          },
+          "tenant_park_waiters": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Tasks parked waiting for a per-tenant concurrency permit.",
+            "minimum": 0
+          },
           "throughput_per_minute": {
             "type": "number",
             "format": "double",
@@ -21551,7 +21627,10 @@
         "example": {
           "active_workers": {},
           "avg_wait_time_seconds": {},
+          "cancel_intent_count": {},
+          "cancel_intent_total": {},
           "estimated_queue_time_seconds": {},
+          "max_tasks_per_tenant": {},
           "max_wait_time_seconds": {},
           "max_workers": {},
           "operator_action": {},
@@ -21561,6 +21640,8 @@
           "pressure": {},
           "processing_count": {},
           "rate_limited": {},
+          "store_contention": {},
+          "tenant_park_waiters": {},
           "throughput_per_minute": {},
           "timestamp": {},
           "worker_utilization": {}
@@ -23848,6 +23929,72 @@
           "type": {}
         }
       },
+      "StoreContentionMetrics": {
+        "type": "object",
+        "description": "Nested store contention projection for queue-metrics (SPEC-057 P3).",
+        "required": [
+          "level",
+          "db_pool_util_warn",
+          "db_pool_util_critical",
+          "compensation_quarantine_total",
+          "compensation_quarantine_warn",
+          "compensation_quarantine_critical"
+        ],
+        "properties": {
+          "compensation_quarantine_critical": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "compensation_quarantine_total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Process-local compensation quarantine total since boot.",
+            "minimum": 0
+          },
+          "compensation_quarantine_warn": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "db_pool_util_critical": {
+            "type": "number",
+            "format": "double"
+          },
+          "db_pool_util_warn": {
+            "type": "number",
+            "format": "double"
+          },
+          "db_pool_utilization": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Active/size pool utilization when a pool is available."
+          },
+          "level": {
+            "type": "string",
+            "description": "`normal` | `elevated` | `critical`"
+          },
+          "operator_action": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "example": {
+          "compensation_quarantine_critical": {},
+          "compensation_quarantine_total": {},
+          "compensation_quarantine_warn": {},
+          "db_pool_util_critical": {},
+          "db_pool_util_warn": {},
+          "db_pool_utilization": {},
+          "level": {},
+          "operator_action": {}
+        }
+      },
       "StreamQueryRequest": {
         "type": "object",
         "description": "Streaming query request.\n\n@implements SPEC-006: Unified streaming protocol",
@@ -25879,7 +26026,7 @@
     "asyncapi": "2.6.0",
     "info": {
       "title": "EdgeQuake WebSocket Progress",
-      "version": "0.18.0",
+      "version": "0.19.0",
       "description": "Real-time pipeline and document processing progress over WebSocket (RFC 6455)."
     },
     "defaultContentType": "application/json",

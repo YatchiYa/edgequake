@@ -252,8 +252,7 @@ pub async fn cancel_pdf_processing(
         let ingest_in_flight = active_before
             .as_ref()
             .is_some_and(|t| t.task_type == edgequake_tasks::TaskType::Insert)
-            || (pdf.processing_status == PdfProcessingStatus::Completed
-                && active_before.is_some());
+            || (pdf.processing_status == PdfProcessingStatus::Completed && active_before.is_some());
 
         if !convert_in_flight && !ingest_in_flight {
             return Err(ApiError::Conflict(format!(
@@ -303,10 +302,7 @@ pub async fn cancel_pdf_processing(
         // Completed, leave PDF Completed (convert artifact survives ingest cancel).
         if convert_in_flight {
             pdf_storage
-                .update_pdf_status(
-                    &pdf_uuid,
-                    crate::services::pdf_status_for_cancel(),
-                )
+                .update_pdf_status(&pdf_uuid, crate::services::pdf_status_for_cancel())
                 .await
                 .map_err(|e| ApiError::Internal(format!("Failed to update PDF status: {}", e)))?;
         }

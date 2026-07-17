@@ -428,8 +428,8 @@ export function DocumentManager() {
     documents.length === 0 &&
     (feedbackZoneOpen ||
       isUploading ||
-      (pipelineStatus?.processing_count ?? 0) > 0 ||
-      (pipelineStatus?.pending_count ?? 0) > 0);
+      (pipelineStatus?.running_tasks ?? 0) > 0 ||
+      (pipelineStatus?.queued_tasks ?? 0) > 0);
 
   // Debounced AT announcement: Deleting / Cleaning → Queued → live stages.
   const feedbackAnnouncement = useMemo(() => {

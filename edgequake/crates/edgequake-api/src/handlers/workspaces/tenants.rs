@@ -135,8 +135,7 @@ pub async fn create_tenant(
             );
     default_workspace_request.slug = Some("default".to_string());
     // Persist vision parsing mode on the auto-created Default Workspace.
-    default_workspace_request.pdf_parser_backend =
-        Some(edgequake_pdf::PdfParserBackend::Vision);
+    default_workspace_request.pdf_parser_backend = Some(edgequake_pdf::PdfParserBackend::Vision);
     // SPEC-041: Inherit vision LLM config if set on tenant
     if let (Some(model), Some(provider)) = (
         created_tenant.default_vision_llm_model.as_ref(),

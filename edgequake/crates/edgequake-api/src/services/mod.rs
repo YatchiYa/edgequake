@@ -58,6 +58,7 @@ pub mod multimodal_context;
 pub mod multimodal_markdown;
 pub mod oidc_flow;
 pub mod oidc_pending;
+pub mod orphan_task_recovery;
 pub mod pdf_admission_registry;
 pub mod pdf_auto_routing;
 pub mod pdf_lineage;
@@ -81,7 +82,6 @@ pub mod source_reference_builder;
 pub mod staging_admission;
 pub mod startup_task_hydrate;
 pub mod summary_role;
-pub mod orphan_task_recovery;
 pub mod task_cancel;
 pub mod task_document_sync;
 pub mod task_scope;
@@ -104,6 +104,7 @@ pub use crate::handlers::documents::upload::document_admission::{
     DocumentAdmissionAccepted, DocumentAdmissionDuplicateProcessing, DocumentAdmissionInput,
     DocumentAdmissionOutcome, GleaningAdmissionOptions,
 };
+pub use cancel_facade::cancel_track_with_doc_and_pdf_chain;
 pub use content_granularity::{
     ensure_debug_granularity_allowed, truncate_for_granularity, SNIPPET_LEN,
 };
@@ -159,6 +160,12 @@ pub use ingestion_persist::{
     persist_with_providers_and_progress, persist_with_providers_progress_and_embedder,
     resolve_relational_sink, tag_injection_sources, PersistIngestionParams,
 };
+pub use ingestion_status::{apply_doc_cancelled_fields, pdf_status_for_cancel};
+pub use ingestion_status_mapper::{
+    enrich_document_summaries, enrich_document_summaries_with_cancel,
+    enrich_document_summary_status, legacy_status_to_unified_stage, map_ingestion_status,
+    IngestionStatusInputs, IngestionStatusView,
+};
 pub use injection_list::{
     list_injections_paged, summary_from_meta, InjectionListPage, DEFAULT_INJECTION_LIST_LIMIT,
     MAX_INJECTION_LIST_LIMIT,
@@ -185,9 +192,9 @@ pub use multimodal::{
     persist_manifest, persist_mm_chunks, reanalyze_document_multimodal, render_mm_chunk,
     resolve_process_options_from_metadata, run_multimodal_analyze_stage,
     run_multimodal_analyze_stage_outcome, run_multimodal_analyze_stage_outcome_with_cancel,
-    run_multimodal_analyze_stage_outcome_with_substep, LocalMmProfile,
-    scan_manifest_items, should_run_image_analysis, summary_from_metadata, table_analysis_messages,
-    vlm_process_enabled, AnalyzeOutcome, ManifestItem, MmChunkBuildError, MultimodalChunk,
+    run_multimodal_analyze_stage_outcome_with_substep, scan_manifest_items,
+    should_run_image_analysis, summary_from_metadata, table_analysis_messages, vlm_process_enabled,
+    AnalyzeOutcome, LocalMmProfile, ManifestItem, MmChunkBuildError, MultimodalChunk,
     MultimodalHeading, MultimodalItemRecord, MultimodalItemStatusView, MultimodalManifest,
     MultimodalProviders, MultimodalReanalyzeOutcome, MultimodalReanalyzeParams, MultimodalSummary,
     PromptContext, SurroundingContext, SurroundingKind, SurroundingTokenCounter, METADATA_FIELD,
@@ -195,6 +202,7 @@ pub use multimodal::{
 pub use multimodal_admission::{
     resolve_upload_content, MultimodalAdmissionMeta, ResolvedUploadContent,
 };
+pub use orphan_task_recovery::{recover_orphaned_tasks, OrphanTaskRecoveryReport};
 pub use pdf_admission_registry::PdfAdmissionRegistry;
 pub use pdf_auto_routing::{should_try_edgeparse_before_vision, try_edgeparse_fast_path};
 pub use pdf_workspace_dedup::{
@@ -217,14 +225,6 @@ pub use retrieval_id_cache::{global_retrieval_cache, new_retrieval_id, Retrieval
 pub use source_reference_builder::{build_sources_from_context, is_injection_source};
 pub use staging_admission::{promote_staging_to_final, rollback_staging};
 pub use summary_role::resolve_summary_llm_or_fallback;
-pub use ingestion_status::{apply_doc_cancelled_fields, pdf_status_for_cancel};
-pub use ingestion_status_mapper::{
-    enrich_document_summaries, enrich_document_summaries_with_cancel,
-    enrich_document_summary_status, legacy_status_to_unified_stage, map_ingestion_status,
-    IngestionStatusInputs, IngestionStatusView,
-};
-pub use orphan_task_recovery::{recover_orphaned_tasks, OrphanTaskRecoveryReport};
-pub use cancel_facade::cancel_track_with_doc_and_pdf_chain;
 pub use task_cancel::{
     apply_cancel_all_active, apply_cancel_pdf_pipeline_tasks, apply_task_row_cancel,
     is_cancel_error_message, TaskCancelApplyResult,

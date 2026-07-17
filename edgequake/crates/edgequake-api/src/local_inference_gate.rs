@@ -31,9 +31,8 @@ pub struct LocalInferenceGate {
 impl LocalInferenceGate {
     /// Build from env (used once for the process singleton).
     pub fn from_env() -> Self {
-        let max = parse_local_max_inflight(
-            &std::env::var(LOCAL_MAX_INFLIGHT_ENV).unwrap_or_default(),
-        );
+        let max =
+            parse_local_max_inflight(&std::env::var(LOCAL_MAX_INFLIGHT_ENV).unwrap_or_default());
         Self::new(max)
     }
 
@@ -79,16 +78,11 @@ impl LocalInferenceGate {
     }
 
     /// Acquire a permit when the provider is local; no-op otherwise.
-    pub async fn acquire_for_provider(
-        &self,
-        provider_name: &str,
-    ) -> Option<OwnedSemaphorePermit> {
+    pub async fn acquire_for_provider(&self, provider_name: &str) -> Option<OwnedSemaphorePermit> {
         if !edgequake_pipeline::is_local_extraction_provider(provider_name) {
             return None;
         }
-        let Some(sem) = self.semaphore.clone() else {
-            return None;
-        };
+        let sem = self.semaphore.clone()?;
 
         if sem.available_permits() == 0 {
             self.maybe_log_saturated();
@@ -123,9 +117,7 @@ pub fn parse_local_max_inflight(raw: &str) -> usize {
 }
 
 /// Acquire a process-wide permit for a local provider call (drop to release).
-pub async fn acquire_local_inference_permit(
-    provider_name: &str,
-) -> Option<OwnedSemaphorePermit> {
+pub async fn acquire_local_inference_permit(provider_name: &str) -> Option<OwnedSemaphorePermit> {
     global_local_inference_gate()
         .acquire_for_provider(provider_name)
         .await

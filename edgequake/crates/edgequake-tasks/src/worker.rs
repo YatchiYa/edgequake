@@ -403,7 +403,7 @@ impl WorkerPool {
                             Some(permit) => Some(permit),
                             None => {
                                 let n = fairness_park_logs.fetch_add(1, Ordering::Relaxed) + 1;
-                                if n == 1 || n % 32 == 0 {
+                                if n == 1 || n.is_multiple_of(32) {
                                     info!(
                                         worker_id = worker_id,
                                         task_id = %task.track_id,

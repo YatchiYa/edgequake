@@ -45,7 +45,10 @@ mod tests {
         let mut meta = Map::new();
         meta.insert("workspace_id".to_string(), json!("ws-1"));
         apply_doc_cancelled_fields(&mut meta, "Task cancelled by user");
-        assert_eq!(meta.get("status").and_then(|v| v.as_str()), Some("cancelled"));
+        assert_eq!(
+            meta.get("status").and_then(|v| v.as_str()),
+            Some("cancelled")
+        );
         assert_eq!(
             meta.get("failure_class").and_then(|v| v.as_str()),
             Some("cancelled")

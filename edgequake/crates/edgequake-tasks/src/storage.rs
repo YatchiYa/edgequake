@@ -92,11 +92,7 @@ pub trait TaskStorage: Send + Sync {
     /// Eligible: `pending`, or `processing` with expired/missing lease.
     /// Never claims Cancelled / Indexed / Failed. Uses SKIP LOCKED semantics
     /// on Postgres; memory uses a single write-lock pick.
-    async fn claim_next(
-        &self,
-        worker_id: &str,
-        lease_ttl: Duration,
-    ) -> TaskResult<Option<Task>>;
+    async fn claim_next(&self, worker_id: &str, lease_ttl: Duration) -> TaskResult<Option<Task>>;
 
     /// Extend lease if `worker_id` + `lease_token` still own the task.
     /// Returns `false` when ownership was lost (abort processing).

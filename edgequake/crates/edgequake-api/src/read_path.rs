@@ -212,11 +212,9 @@ mod tests {
             .expect("hold");
 
         let started = Instant::now();
-        let err = run_with_read_path_guard(&permits, || async {
-            Ok::<_, ApiError>(())
-        })
-        .await
-        .expect_err("should busy under saturation");
+        let err = run_with_read_path_guard(&permits, || async { Ok::<_, ApiError>(()) })
+            .await
+            .expect_err("should busy under saturation");
         assert_eq!(err.code(), "read_path_busy");
         let elapsed = started.elapsed();
         assert!(

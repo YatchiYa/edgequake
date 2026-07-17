@@ -39,13 +39,8 @@ pub async fn cancel_track_with_doc_and_pdf_chain(
             }
 
             if let Some(pdf_id) = task.pdf_id() {
-                match apply_cancel_pdf_pipeline_tasks(
-                    storage,
-                    registry,
-                    pdf_id,
-                    task.workspace_id,
-                )
-                .await
+                match apply_cancel_pdf_pipeline_tasks(storage, registry, pdf_id, task.workspace_id)
+                    .await
                 {
                     Ok(linked) => {
                         for linked_applied in linked {
@@ -78,8 +73,8 @@ pub async fn cancel_track_with_doc_and_pdf_chain(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use edgequake_tasks::{memory::MemoryTaskStorage, Task, TaskStatus, TaskType};
     use edgequake_storage::MemoryKVStorage;
+    use edgequake_tasks::{memory::MemoryTaskStorage, Task, TaskStatus, TaskType};
     use uuid::Uuid;
 
     #[tokio::test]
@@ -114,22 +109,27 @@ mod tests {
         let insert_track = insert.track_id.clone();
         storage.create_task(&insert).await.unwrap();
 
-        let applied = cancel_track_with_doc_and_pdf_chain(
-            &storage,
-            &registry,
-            kv,
-            &convert_track,
-        )
-        .await
-        .unwrap();
+        let applied = cancel_track_with_doc_and_pdf_chain(&storage, &registry, kv, &convert_track)
+            .await
+            .unwrap();
         assert!(applied.cancelled);
 
         assert_eq!(
-            storage.get_task(&convert_track).await.unwrap().unwrap().status,
+            storage
+                .get_task(&convert_track)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
             TaskStatus::Cancelled
         );
         assert_eq!(
-            storage.get_task(&insert_track).await.unwrap().unwrap().status,
+            storage
+                .get_task(&insert_track)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
             TaskStatus::Cancelled
         );
     }

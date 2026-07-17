@@ -414,9 +414,7 @@ impl KVStorage for PostgresKVStorage {
         let pool = self.pool.get().await?;
         let like_pattern = format!("{}%", escape_like_meta(prefix));
         // Fetch limit+1 so we can report truncation without a second COUNT query.
-        let fetch_limit = i64::try_from(limit)
-            .unwrap_or(1_000_000)
-            .saturating_add(1);
+        let fetch_limit = i64::try_from(limit).unwrap_or(1_000_000).saturating_add(1);
 
         // No ORDER BY: with `key text_pattern_ops` the planner can Index Scan
         // and stop after LIMIT (O(limit)). ORDER BY key forced Sort/SeqScan
@@ -477,9 +475,7 @@ impl KVStorage for PostgresKVStorage {
         let pool = self.pool.get().await?;
         let reversed: String = escape_like_meta(suffix).chars().rev().collect();
         let like_pattern = format!("{reversed}%");
-        let fetch_limit = i64::try_from(limit)
-            .unwrap_or(1_000_000)
-            .saturating_add(1);
+        let fetch_limit = i64::try_from(limit).unwrap_or(1_000_000).saturating_add(1);
 
         // No ORDER BY key: that forced Sort over the full reverse-index match
         // set before LIMIT. Unordered LIMIT lets the bitmap/index path stop early.

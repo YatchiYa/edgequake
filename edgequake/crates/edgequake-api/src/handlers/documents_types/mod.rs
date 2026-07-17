@@ -137,8 +137,8 @@ mod tests {
             stage_progress: Some(1.0),
             stage_message: None,
             pdf_id: None,
-        display_status: None,
-        ui_phase: None,
+            display_status: None,
+            ui_phase: None,
         };
 
         let json = serde_json::to_string(&summary).unwrap();
@@ -174,8 +174,8 @@ mod tests {
                 stage_progress: None,
                 stage_message: None,
                 pdf_id: None,
-            display_status: None,
-            ui_phase: None,
+                display_status: None,
+                ui_phase: None,
             }],
             total: 1,
             page: 1,
@@ -301,8 +301,8 @@ mod tests {
                 stage_progress: None,
                 stage_message: None,
                 pdf_id: None,
-            display_status: None,
-            ui_phase: None,
+                display_status: None,
+                ui_phase: None,
             }],
             total_count: 1,
             status_summary: StatusCounts {

@@ -25,6 +25,7 @@ use super::{
 
 impl Pipeline {
     /// Shared tail: link extractions, embed, build lineage (SPEC-017 ISP dedupe).
+    #[allow(clippy::too_many_arguments)]
     async fn finish_document_processing(
         &self,
         document_id: &str,
@@ -79,16 +80,8 @@ impl Pipeline {
             }
         }
 
-        self.finish_document_processing(
-            document_id,
-            start,
-            chunks,
-            extractions,
-            stats,
-            None,
-            None,
-        )
-        .await
+        self.finish_document_processing(document_id, start, chunks, extractions, stats, None, None)
+            .await
     }
 
     /// Process a document with chunk-level progress callbacks.
@@ -112,16 +105,8 @@ impl Pipeline {
             }
         }
 
-        self.finish_document_processing(
-            document_id,
-            start,
-            chunks,
-            extractions,
-            stats,
-            None,
-            None,
-        )
-        .await
+        self.finish_document_processing(document_id, start, chunks, extractions, stats, None, None)
+            .await
     }
 
     /// Process a document with resilient chunk-level error handling.

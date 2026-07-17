@@ -208,7 +208,9 @@ mod tests {
     fn cancel_error_message_detection() {
         assert!(is_cancel_error_message("Task cancelled during embed"));
         assert!(is_cancel_error_message("Cancelled by user"));
-        assert!(is_cancel_error_message("Cancelled during vision PDF conversion"));
+        assert!(is_cancel_error_message(
+            "Cancelled during vision PDF conversion"
+        ));
         assert!(!is_cancel_error_message("Network error"));
     }
 }

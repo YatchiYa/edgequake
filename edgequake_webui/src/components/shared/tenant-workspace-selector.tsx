@@ -45,7 +45,7 @@ import {
 } from '@/lib/api/edgequake';
 import { useTenantStore } from '@/stores/use-tenant-store';
 import { useQueryUIStore } from '@/stores/use-query-ui-store';
-import type { Tenant, Workspace } from '@/types';
+import type { CreateWorkspaceRequest, Tenant, Workspace } from '@/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     Building2,
@@ -210,17 +210,7 @@ export function TenantWorkspaceSelector({
 
   // Create workspace mutation
   const createWorkspaceMutation = useMutation({
-    mutationFn: (data: { 
-      name: string; 
-      description?: string;
-      llm_model?: string;
-      llm_provider?: string;
-      embedding_model?: string;
-      embedding_provider?: string;
-      embedding_dimension?: number;
-      // SPEC-085: Custom entity types per workspace
-      entity_types?: string[];
-    }) =>
+    mutationFn: (data: CreateWorkspaceRequest) =>
       selectedTenantId
         ? createWorkspace(selectedTenantId, data)
         : Promise.reject(new Error('No tenant selected')),

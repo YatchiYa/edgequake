@@ -49,8 +49,7 @@ pub async fn recover_orphaned_tasks(
 ) -> Result<OrphanTaskRecoveryReport, String> {
     info!(
         auto_resume,
-        multi_replica,
-        "Checking for orphaned tasks from previous backend session..."
+        multi_replica, "Checking for orphaned tasks from previous backend session..."
     );
 
     let now = Utc::now();
@@ -101,10 +100,7 @@ pub async fn recover_orphaned_tasks(
                                 report.completed_count += 1;
                             }
                             Err(e) => {
-                                warn!(
-                                    "Failed to close orphaned task {}: {}",
-                                    task.track_id, e
-                                );
+                                warn!("Failed to close orphaned task {}: {}", task.track_id, e);
                             }
                         }
                         continue;
@@ -281,7 +277,11 @@ mod tests {
                 .status,
             TaskStatus::Failed
         );
-        let failed = task_storage.get_task(&processing_id).await.unwrap().unwrap();
+        let failed = task_storage
+            .get_task(&processing_id)
+            .await
+            .unwrap()
+            .unwrap();
         assert!(
             failed
                 .error_message

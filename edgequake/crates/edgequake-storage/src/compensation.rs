@@ -226,15 +226,7 @@ pub async fn compensate_orphan_graph_writes_with_kv(
 
     for node_id in nodes_created {
         if let Err(e) = graph_storage.delete_node(node_id).await {
-            quarantine(
-                kv_storage,
-                doc_id,
-                "node",
-                node_id,
-                cause,
-                &e.to_string(),
-            )
-            .await;
+            quarantine(kv_storage, doc_id, "node", node_id, cause, &e.to_string()).await;
         }
     }
 

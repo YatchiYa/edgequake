@@ -47,8 +47,8 @@ cd .. && make backend-bg frontend-bg && make spec013-proof-ui
 
 ```bash
 # Example (current cut)
-git tag v0.18.0
-git push origin v0.18.0
+git tag v0.19.0
+git push origin v0.19.0
 ```
 
 This triggers `.github/workflows/release-docker.yml`, which:
@@ -58,12 +58,12 @@ This triggers `.github/workflows/release-docker.yml`, which:
 ## 4) Post-Publish Verification
 
 ```bash
-gh release view v0.18.0
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake:0.18.0
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-frontend:0.18.0
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.18.0
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.18.0-pg16
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.18.0-pg17
+gh release view v0.19.0
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake:0.19.0
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-frontend:0.19.0
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.19.0
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.19.0-pg16
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.19.0-pg17
 ```
 
 ## SPEC-042 Verification (before tag)
@@ -80,10 +80,10 @@ Docker images are built and published automatically via GitHub Actions (`.github
 
 ```bash
 # Tag a release — triggers multi-arch docker build + publish to ghcr.io
-git tag v0.18.0 && git push origin v0.18.0
+git tag v0.19.0 && git push origin v0.19.0
 ```
 
-Both `linux/amd64` (ubuntu-latest runner) and `linux/arm64` (native ARM64 runner — no QEMU) are built in parallel and merged into a single multi-arch manifest. The same image tag (`ghcr.io/raphaelmansuy/edgequake:0.18.0`) works on x86 servers, Apple Silicon Macs, and AWS Graviton instances.
+Both `linux/amd64` (ubuntu-latest runner) and `linux/arm64` (native ARM64 runner — no QEMU) are built in parallel and merged into a single multi-arch manifest. The same image tag (`ghcr.io/raphaelmansuy/edgequake:0.19.0`) works on x86 servers, Apple Silicon Macs, and AWS Graviton instances.
 
 You can also trigger a manual Docker build + publish without a tag via the `workflow_dispatch` input on GitHub Actions (`Actions -> Release -- Docker (GHCR) -> Run workflow`).
 

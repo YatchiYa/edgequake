@@ -74,12 +74,13 @@ async fn list_documents_inner(
 
     // SPEC-027: scoped metadata scan SSOT — cap keys *before* value fetch so
     // large workspaces never pay unbounded get_by_ids under ingest load.
-    let scoped = crate::services::document_metadata_scan::load_scoped_document_metadata_entries_limited(
-        storage.kv_storage.as_ref(),
-        &tenant_ctx,
-        MAX_LIST_METADATA_ENTRIES,
-    )
-    .await?;
+    let scoped =
+        crate::services::document_metadata_scan::load_scoped_document_metadata_entries_limited(
+            storage.kv_storage.as_ref(),
+            &tenant_ctx,
+            MAX_LIST_METADATA_ENTRIES,
+        )
+        .await?;
     let metadata_entries = scoped.entries;
     let truncated = scoped.truncated;
     if truncated {
@@ -90,8 +91,7 @@ async fn list_documents_inner(
     }
     debug!(
         metadata_entries_count = metadata_entries.len(),
-        truncated,
-        "Scoped metadata entries retrieved"
+        truncated, "Scoped metadata entries retrieved"
     );
 
     // Store complete document metadata, keyed by document ID

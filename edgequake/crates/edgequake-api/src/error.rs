@@ -448,7 +448,7 @@ impl IntoResponse for ApiError {
         }
 
         if let Self::ReadPathBusy { retry_after_ms } = &self {
-            let retry_after_secs = ((*retry_after_ms + 999) / 1000).max(1);
+            let retry_after_secs = (*retry_after_ms).div_ceil(1000).max(1);
             // Surface machine-readable retry_after_ms in the top-level body too.
             error.details = Some(json!({
                 "retry_after_ms": retry_after_ms,
@@ -1131,10 +1131,7 @@ mod tests {
             let status = error.status_code();
             assert!(status.as_u16() >= 400 && status.as_u16() < 600);
         }
-        assert_eq!(
-            ApiError::read_path_busy(2000).code(),
-            "read_path_busy"
-        );
+        assert_eq!(ApiError::read_path_busy(2000).code(), "read_path_busy");
         assert_eq!(
             ApiError::read_path_busy(2000).status_code(),
             StatusCode::SERVICE_UNAVAILABLE

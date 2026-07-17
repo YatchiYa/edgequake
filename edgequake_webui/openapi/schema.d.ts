@@ -960,9 +960,9 @@ export interface paths {
          *     # Behavior
          *
          *     1. Validate PDF exists and belongs to workspace
-         *     2. Check status is Processing (cannot cancel Completed/Failed)
-         *     3. Request cancellation via PipelineState
-         *     4. Update status to Failed with cancellation message
+         *     2. Check status is Processing or Pending (cannot cancel terminal)
+         *     3. Request cancellation via CancellationRegistry / task row
+         *     4. Update PDF status to Cancelled (SPEC-057 — not Failed)
          *
          *     # Errors
          *
@@ -2646,6 +2646,9 @@ export interface paths {
         /**
          * Create a new workspace.
          * @description POST /api/v1/tenants/{tenant_id}/workspaces
+         *
+         *     When `pdf_parser_backend` is omitted, the workspace persists `"vision"` so
+         *     server env (`EDGEQUAKE_PDF_PARSER_BACKEND`) cannot silently override new workspaces.
          */
         post: operations["create_workspace"];
         delete?: never;
@@ -3203,8 +3206,12 @@ export interface paths {
         };
         /**
          * Readiness check (for Kubernetes).
-         * @description Returns 503 when migration 038 indexes are required but missing on a large graph
-         *     (AGE present, indexes not ready). Prevents routing traffic to slow-prefix nodes.
+         * @description Returns 503 when:
+         *     - migration 038 indexes are required but missing on a large graph, or
+         *     - storage component pings fail / time out, or
+         *     - the task queue is at critical pressure.
+         *
+         *     Prevents routing traffic to nodes that cannot serve ingest/query reliably.
          */
         get: operations["readiness_check"];
         put?: never;
@@ -5358,6 +5365,7 @@ export interface components {
          *       "content_length": {},
          *       "content_summary": {},
          *       "created_at": {},
+         *       "display_status": {},
          *       "entity_count": {},
          *       "error_message": {},
          *       "file_name": {},
@@ -5376,6 +5384,7 @@ export interface components {
          *       "tenant_id": {},
          *       "title": {},
          *       "track_id": {},
+         *       "ui_phase": {},
          *       "updated_at": {},
          *       "warning_message": {},
          *       "workspace_id": {}
@@ -5394,6 +5403,8 @@ export interface components {
             content_summary?: string | null;
             /** @description Creation timestamp. */
             created_at?: string | null;
+            /** @description SPEC-057 P4: badge key from IngestionStatusMapper. */
+            display_status?: string | null;
             /** @description Number of entities extracted. */
             entity_count?: number | null;
             /** @description Error message if processing failed. */
@@ -5432,6 +5443,8 @@ export interface components {
             title?: string | null;
             /** @description Track ID for batch grouping. */
             track_id?: string | null;
+            /** @description SPEC-057 P4: `idle` | `running` | `stopping` | `terminal`. */
+            ui_phase?: string | null;
             /** @description Last update timestamp. */
             updated_at?: string | null;
             /** @description Non-fatal processing notice (e.g. vision parser fallback). */
@@ -5621,6 +5634,7 @@ export interface components {
          *       "cost_usd": {},
          *       "created_at": {},
          *       "current_stage": {},
+         *       "display_status": {},
          *       "embedding_model": {},
          *       "entity_count": {},
          *       "error_message": {},
@@ -5637,6 +5651,7 @@ export interface components {
          *       "title": {},
          *       "total_tokens": {},
          *       "track_id": {},
+         *       "ui_phase": {},
          *       "updated_at": {},
          *       "warning_message": {}
          *     }
@@ -5663,6 +5678,11 @@ export interface components {
              * @example extracting
              */
             current_stage?: string | null;
+            /**
+             * @description SPEC-057 P4: badge key from `IngestionStatusMapper` (prefer over status/stage).
+             * @example extracting
+             */
+            display_status?: string | null;
             /** @description Embedding model used for processing. */
             embedding_model?: string | null;
             /** @description Number of entities extracted. */
@@ -5713,6 +5733,11 @@ export interface components {
             total_tokens?: number | null;
             /** @description Track ID for batch grouping. */
             track_id?: string | null;
+            /**
+             * @description SPEC-057 P4: `idle` | `running` | `stopping` | `terminal`.
+             * @example running
+             */
+            ui_phase?: string | null;
             /** @description Last update timestamp (ISO 8601 format). */
             updated_at?: string | null;
             /** @description Non-fatal processing notice (e.g. vision parser fallback). */
@@ -7248,7 +7273,8 @@ export interface components {
          *       "page_size": {},
          *       "status_counts": {},
          *       "total": {},
-         *       "total_pages": {}
+         *       "total_pages": {},
+         *       "truncated": {}
          *     }
          */
         ListDocumentsResponse: {
@@ -7266,6 +7292,8 @@ export interface components {
             total: number;
             /** @description Total number of pages. */
             total_pages: number;
+            /** @description True when the workspace metadata scan was truncated for latency. */
+            truncated?: boolean | null;
         };
         /**
          * @description List entities query parameters.
@@ -9781,7 +9809,10 @@ export interface components {
          * @example {
          *       "active_workers": {},
          *       "avg_wait_time_seconds": {},
+         *       "cancel_intent_count": {},
+         *       "cancel_intent_total": {},
          *       "estimated_queue_time_seconds": {},
+         *       "max_tasks_per_tenant": {},
          *       "max_wait_time_seconds": {},
          *       "max_workers": {},
          *       "operator_action": {},
@@ -9791,6 +9822,8 @@ export interface components {
          *       "pressure": {},
          *       "processing_count": {},
          *       "rate_limited": {},
+         *       "store_contention": {},
+         *       "tenant_park_waiters": {},
          *       "throughput_per_minute": {},
          *       "timestamp": {},
          *       "worker_utilization": {}
@@ -9808,10 +9841,25 @@ export interface components {
              */
             avg_wait_time_seconds: number;
             /**
+             * Format: int64
+             * @description Outstanding cancel intents (pending drain + in-flight).
+             */
+            cancel_intent_count?: number;
+            /**
+             * Format: int64
+             * @description Lifetime cancel intents recorded since process start.
+             */
+            cancel_intent_total?: number;
+            /**
              * Format: double
              * @description Estimated time to clear the queue in seconds.
              */
             estimated_queue_time_seconds: number;
+            /**
+             * Format: int64
+             * @description Configured max concurrent tasks per tenant (`0` = unlimited / disabled).
+             */
+            max_tasks_per_tenant?: number;
             /**
              * Format: double
              * @description Maximum wait time in seconds among pending tasks.
@@ -9848,6 +9896,13 @@ export interface components {
             processing_count: number;
             /** @description Whether the system is currently rate limited. */
             rate_limited: boolean;
+            /** @description SPEC-057 P3: store contention SLOs (pool util + compensation quarantine). */
+            store_contention?: components["schemas"]["StoreContentionMetrics"];
+            /**
+             * Format: int64
+             * @description Tasks parked waiting for a per-tenant concurrency permit.
+             */
+            tenant_park_waiters?: number;
             /**
              * Format: double
              * @description Current throughput in documents per minute.
@@ -11099,6 +11154,42 @@ export interface components {
             namespace: string;
             /** @description Storage type: "memory" or "postgres" */
             type: string;
+        };
+        /**
+         * @description Nested store contention projection for queue-metrics (SPEC-057 P3).
+         * @example {
+         *       "compensation_quarantine_critical": {},
+         *       "compensation_quarantine_total": {},
+         *       "compensation_quarantine_warn": {},
+         *       "db_pool_util_critical": {},
+         *       "db_pool_util_warn": {},
+         *       "db_pool_utilization": {},
+         *       "level": {},
+         *       "operator_action": {}
+         *     }
+         */
+        StoreContentionMetrics: {
+            /** Format: int64 */
+            compensation_quarantine_critical: number;
+            /**
+             * Format: int64
+             * @description Process-local compensation quarantine total since boot.
+             */
+            compensation_quarantine_total: number;
+            /** Format: int64 */
+            compensation_quarantine_warn: number;
+            /** Format: double */
+            db_pool_util_critical: number;
+            /** Format: double */
+            db_pool_util_warn: number;
+            /**
+             * Format: double
+             * @description Active/size pool utilization when a pool is available.
+             */
+            db_pool_utilization?: number | null;
+            /** @description `normal` | `elevated` | `critical` */
+            level: string;
+            operator_action?: string | null;
         };
         /**
          * @description Streaming query request.
@@ -13402,6 +13493,13 @@ export interface operations {
                     "application/json": components["schemas"]["ListDocumentsResponse"];
                 };
             };
+            /** @description Read path busy under ingest load */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     upload_document: {
@@ -14202,6 +14300,13 @@ export interface operations {
             };
             /** @description Document not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Read path busy under ingest load */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -16653,7 +16758,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Workspace created */
+            /** @description Workspace created (pdf_parser_backend defaults to vision) */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -17753,7 +17858,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Migration 038 indexes pending — not ready for traffic */
+            /** @description Not ready for traffic (migration, storage, or queue pressure) */
             503: {
                 headers: {
                     [name: string]: unknown;

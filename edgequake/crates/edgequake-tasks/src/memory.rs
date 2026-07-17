@@ -115,10 +115,7 @@ impl TaskStorage for MemoryTaskStorage {
             if task.workspace_id != workspace_id {
                 continue;
             }
-            if !matches!(
-                task.task_type,
-                TaskType::PdfProcessing | TaskType::Insert
-            ) {
+            if !matches!(task.task_type, TaskType::PdfProcessing | TaskType::Insert) {
                 continue;
             }
             if !matches!(task.status, TaskStatus::Pending | TaskStatus::Processing) {
@@ -229,11 +226,7 @@ impl TaskStorage for MemoryTaskStorage {
         Ok(stats)
     }
 
-    async fn claim_next(
-        &self,
-        worker_id: &str,
-        lease_ttl: Duration,
-    ) -> TaskResult<Option<Task>> {
+    async fn claim_next(&self, worker_id: &str, lease_ttl: Duration) -> TaskResult<Option<Task>> {
         let mut tasks = self.tasks.write().unwrap();
         let now = Utc::now();
 
@@ -680,7 +673,12 @@ mod tests {
         let token = claimed.lease_token.unwrap();
 
         assert!(storage
-            .refresh_lease(&claimed.track_id, "worker-a", token, Duration::from_secs(120))
+            .refresh_lease(
+                &claimed.track_id,
+                "worker-a",
+                token,
+                Duration::from_secs(120)
+            )
             .await
             .unwrap());
         assert!(!storage

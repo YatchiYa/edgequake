@@ -217,10 +217,7 @@ async fn contract_list_stopping_when_cancel_intent_active() {
     )
     .await;
 
-    workers
-        .cancellation_registry
-        .cancel(track_id)
-        .await;
+    workers.cancellation_registry.cancel(track_id).await;
 
     let list = list_documents(workers.app()).await;
     let doc = find_doc(&list, "p4-stopping");

@@ -174,8 +174,7 @@ pub fn build_ingestion_pipeline(
     let base_extractor: Arc<dyn EntityExtractor> =
         Arc::new(LLMExtractor::new(llm.clone()).with_entity_schema(entity_schema.clone()));
 
-    let extractor: Arc<dyn EntityExtractor> = if enable_gleaning && max_gleaning > 0
-    {
+    let extractor: Arc<dyn EntityExtractor> = if enable_gleaning && max_gleaning > 0 {
         Arc::new(
             GleaningExtractor::new(llm, base_extractor)
                 .with_entity_schema(entity_schema)

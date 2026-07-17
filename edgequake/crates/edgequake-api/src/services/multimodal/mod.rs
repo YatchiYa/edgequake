@@ -61,9 +61,9 @@ pub use gates::{
     should_abort_multimodal_hard_error, should_run_image_analysis, vlm_process_enabled,
     MultimodalFailMode,
 };
-pub use local_profile::{is_local_vlm, LocalMmProfile};
 pub use item_record::{MultimodalItemRecord, MultimodalItemStatus, MultimodalSummary};
 pub use json_recovery::{extract_json_object, parse_json_object};
+pub use local_profile::{is_local_vlm, LocalMmProfile};
 pub use manifest::{ManifestItem, MultimodalManifest};
 pub use manifest_store::{
     load_manifest, manifest_key, metadata_multimodal_patch, persist_manifest,

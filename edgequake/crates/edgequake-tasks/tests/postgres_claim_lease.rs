@@ -102,9 +102,53 @@ fn sample_task(status: TaskStatus) -> Task {
     task
 }
 
-async fn cleanup(pool: &PgPool, track_id: &str) {
+/// Seed tenant + workspace so `tasks_*_fkey` constraints pass on shared DBs.
+async fn ensure_tenant_workspace(pool: &PgPool, task: &Task) -> Result<(), sqlx::Error> {
+    let tenant_slug = format!("claim_t_{}", &task.tenant_id.to_string()[..8]);
+    sqlx::query(
+        r#"
+        INSERT INTO tenants (tenant_id, name, slug, is_active, metadata, settings, created_at, updated_at)
+        VALUES ($1, $2, $3, TRUE, '{}'::jsonb, '{}'::jsonb, NOW(), NOW())
+        ON CONFLICT (tenant_id) DO NOTHING
+        "#,
+    )
+    .bind(task.tenant_id)
+    .bind(format!("claim-lease tenant {}", task.tenant_id))
+    .bind(&tenant_slug)
+    .execute(pool)
+    .await?;
+
+    let ws_slug = format!("claim_w_{}", &task.workspace_id.to_string()[..8]);
+    sqlx::query(
+        r#"
+        INSERT INTO workspaces (
+            workspace_id, tenant_id, name, slug, is_active, metadata, settings, created_at, updated_at
+        )
+        VALUES ($1, $2, $3, $4, TRUE, '{}'::jsonb, '{}'::jsonb, NOW(), NOW())
+        ON CONFLICT (workspace_id) DO NOTHING
+        "#,
+    )
+    .bind(task.workspace_id)
+    .bind(task.tenant_id)
+    .bind(format!("claim-lease workspace {}", task.workspace_id))
+    .bind(&ws_slug)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+async fn cleanup(pool: &PgPool, task: &Task) {
     let _ = sqlx::query("DELETE FROM tasks WHERE track_id = $1")
-        .bind(track_id)
+        .bind(&task.track_id)
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("DELETE FROM workspaces WHERE workspace_id = $1")
+        .bind(task.workspace_id)
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("DELETE FROM tenants WHERE tenant_id = $1")
+        .bind(task.tenant_id)
         .execute(pool)
         .await;
 }
@@ -115,14 +159,26 @@ async fn release_if_held(storage: &PostgresTaskStorage, task: &Task, worker: &st
     }
 }
 
+async fn seed_create_oldest(
+    pool: &PgPool,
+    storage: &PostgresTaskStorage,
+    task: &Task,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ensure_tenant_workspace(pool, task).await?;
+    storage.create_task(task).await?;
+    make_oldest(pool, &task.track_id).await?;
+    Ok(())
+}
+
 #[tokio::test]
 async fn postgres_claim_next_pending_without_wake() {
     let pool = require_postgres!();
     let storage = PostgresTaskStorage::new(pool.clone());
     let task = sample_task(TaskStatus::Pending);
     let track_id = task.track_id.clone();
-    storage.create_task(&task).await.expect("create");
-    make_oldest(&pool, &track_id).await.expect("oldest");
+    seed_create_oldest(&pool, &storage, &task)
+        .await
+        .expect("seed+create");
 
     let claimed = storage
         .claim_next("pg-worker-a", Duration::from_secs(120))
@@ -134,7 +190,7 @@ async fn postgres_claim_next_pending_without_wake() {
     assert_eq!(claimed.lease_owner.as_deref(), Some("pg-worker-a"));
     assert!(claimed.lease_token.is_some());
 
-    cleanup(&pool, &track_id).await;
+    cleanup(&pool, &task).await;
 }
 
 #[tokio::test]
@@ -143,8 +199,9 @@ async fn postgres_dual_claim_next_race_one_winner() {
     let storage = Arc::new(PostgresTaskStorage::new(pool.clone()));
     let task = sample_task(TaskStatus::Pending);
     let track_id = task.track_id.clone();
-    storage.create_task(&task).await.expect("create");
-    make_oldest(&pool, &track_id).await.expect("oldest");
+    seed_create_oldest(&pool, storage.as_ref(), &task)
+        .await
+        .expect("seed+create");
 
     let s1 = Arc::clone(&storage);
     let s2 = Arc::clone(&storage);
@@ -174,7 +231,7 @@ async fn postgres_dual_claim_next_race_one_winner() {
         }
     }
 
-    cleanup(&pool, &track_id).await;
+    cleanup(&pool, &task).await;
 }
 
 #[tokio::test]
@@ -184,8 +241,9 @@ async fn postgres_cancelled_never_claimed() {
     let mut task = sample_task(TaskStatus::Cancelled);
     task.mark_cancelled();
     let track_id = task.track_id.clone();
-    storage.create_task(&task).await.expect("create");
-    make_oldest(&pool, &track_id).await.expect("oldest");
+    seed_create_oldest(&pool, &storage, &task)
+        .await
+        .expect("seed+create");
 
     // Oldest is Cancelled — claim must skip it (may return next Pending or None).
     let claimed = storage
@@ -200,7 +258,7 @@ async fn postgres_cancelled_never_claimed() {
         release_if_held(&storage, t, "pg-worker-c").await;
     }
 
-    cleanup(&pool, &track_id).await;
+    cleanup(&pool, &task).await;
 }
 
 #[tokio::test]
@@ -209,8 +267,9 @@ async fn postgres_refresh_lease_and_release_claim_cas() {
     let storage = PostgresTaskStorage::new(pool.clone());
     let task = sample_task(TaskStatus::Pending);
     let track_id = task.track_id.clone();
-    storage.create_task(&task).await.expect("create");
-    make_oldest(&pool, &track_id).await.expect("oldest");
+    seed_create_oldest(&pool, &storage, &task)
+        .await
+        .expect("seed+create");
 
     let claimed = storage
         .claim_next("owner", Duration::from_secs(120))
@@ -237,7 +296,7 @@ async fn postgres_refresh_lease_and_release_claim_cas() {
     assert_eq!(pending.status, TaskStatus::Pending);
     assert!(pending.lease_owner.is_none());
 
-    cleanup(&pool, &track_id).await;
+    cleanup(&pool, &task).await;
 }
 
 #[tokio::test]
@@ -250,8 +309,9 @@ async fn postgres_claim_reclaims_expired_processing() {
     task.lease_token = Some(Uuid::new_v4());
     task.lease_expires_at = Some(Utc::now() - chrono::Duration::seconds(5));
     let track_id = task.track_id.clone();
-    storage.create_task(&task).await.expect("create");
-    make_oldest(&pool, &track_id).await.expect("oldest");
+    seed_create_oldest(&pool, &storage, &task)
+        .await
+        .expect("seed+create");
 
     let claimed = storage
         .claim_next("alive-worker", Duration::from_secs(120))
@@ -261,7 +321,7 @@ async fn postgres_claim_reclaims_expired_processing() {
     assert_eq!(claimed.track_id, track_id);
     assert_eq!(claimed.lease_owner.as_deref(), Some("alive-worker"));
 
-    cleanup(&pool, &track_id).await;
+    cleanup(&pool, &task).await;
 }
 
 /// Migration 089 guard: `edgequake.tasks` must expose lease columns (stale-view class).
@@ -297,10 +357,8 @@ async fn edgequake_tasks_view_exposes_lease_columns() {
     );
 
     // Prove SELECT through the view (same relation workers hit under edgequake search_path).
-    sqlx::query(
-        "SELECT lease_owner, lease_token, lease_expires_at FROM edgequake.tasks LIMIT 0",
-    )
-    .execute(&pool)
-    .await
-    .expect("SELECT lease_* via edgequake.tasks must succeed");
+    sqlx::query("SELECT lease_owner, lease_token, lease_expires_at FROM edgequake.tasks LIMIT 0")
+        .execute(&pool)
+        .await
+        .expect("SELECT lease_* via edgequake.tasks must succeed");
 }
