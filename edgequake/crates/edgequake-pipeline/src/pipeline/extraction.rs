@@ -412,9 +412,21 @@ impl Pipeline {
                             }
                         }
 
-                        // Exponential backoff before retry
+                        // Exponential backoff before retry (longer for local overload)
                         if attempt < max_retries {
-                            let delay_ms = initial_delay_ms * 2_u64.pow(attempt - 1);
+                            let delay_ms = crate::pipeline::retry_delay_ms_for_chunk_error(
+                                initial_delay_ms,
+                                attempt,
+                                &last_error,
+                            );
+                            if crate::pipeline::is_local_provider_overload_error(&last_error) {
+                                tracing::warn!(
+                                    chunk_index = chunk_index,
+                                    delay_ms = delay_ms,
+                                    attempt = attempt,
+                                    "Local LLM overload detected — backing off before retry"
+                                );
+                            }
                             tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
                         }
                     }

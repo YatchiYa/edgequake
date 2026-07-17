@@ -80,7 +80,7 @@ impl AppState {
         workspace_service: SharedWorkspaceService,
     ) -> Self {
         let conversation_service = memory_conversation_service();
-        let (resource_guard, graph_materialize, pdf_vision) =
+        let (resource_guard, graph_materialize, pdf_vision, read_path_db) =
             super::resource_runtime::build_resource_runtime();
 
         Self {
@@ -122,6 +122,7 @@ impl AppState {
             resource_guard,
             graph_materialize,
             pdf_vision,
+            read_path_db,
             #[cfg(feature = "postgres")]
             migration_bootstrap: None,
             #[cfg(feature = "postgres")]
@@ -227,7 +228,7 @@ impl AppState {
 
         // Create auth services
         let auth = AuthRuntime::from_env();
-        let (resource_guard, graph_materialize, pdf_vision) =
+        let (resource_guard, graph_materialize, pdf_vision, read_path_db) =
             super::resource_runtime::build_resource_runtime();
 
         Self {
@@ -275,6 +276,7 @@ impl AppState {
             resource_guard,
             graph_materialize,
             pdf_vision,
+            read_path_db,
             #[cfg(feature = "postgres")]
             migration_bootstrap: None,
             #[cfg(feature = "postgres")]
@@ -339,7 +341,7 @@ impl AppState {
             dev_mode: true,
             ..AuthConfig::default()
         });
-        let (resource_guard, graph_materialize, pdf_vision) =
+        let (resource_guard, graph_materialize, pdf_vision, read_path_db) =
             super::resource_runtime::build_resource_runtime();
 
         Self {
@@ -389,6 +391,7 @@ impl AppState {
             resource_guard,
             graph_materialize,
             pdf_vision,
+            read_path_db,
             #[cfg(feature = "postgres")]
             migration_bootstrap: None,
             #[cfg(feature = "postgres")]

@@ -404,8 +404,14 @@ impl AppState {
         storage.validate_postgres_adapters()?;
 
         let audit_logger = AuditLogger::new(pool.clone());
-        let (resource_guard, graph_materialize, pdf_vision) =
+        let (resource_guard, graph_materialize, pdf_vision, read_path_db) =
             super::resource_runtime::build_resource_runtime();
+
+        let configured_pool_size: usize = std::env::var("DATABASE_POOL_SIZE")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(32);
+        crate::read_path::warn_if_local_pool_oversized(configured_pool_size, llm_provider.name());
 
         let app_state = Self {
             storage,
@@ -433,6 +439,7 @@ impl AppState {
             resource_guard,
             graph_materialize,
             pdf_vision,
+            read_path_db,
             migration_bootstrap: Some(migration_bootstrap),
             postgres_capabilities: Some(postgres_capabilities),
             security: ApiSecurityConfig::from_env(),

@@ -166,6 +166,9 @@ pub struct AppState {
     /// P-G13: caps concurrent vision PDF conversions process-wide.
     pub pdf_vision: Arc<PdfVisionSemaphore>,
 
+    /// Interactive HTTP read-path DB bulkhead (list/get docs, tenants, workspaces).
+    pub read_path_db: Arc<crate::read_path::ReadPathDbPermit>,
+
     /// Bootstrap migration report (PostgreSQL only).
     #[cfg(feature = "postgres")]
     pub migration_bootstrap: Option<crate::state::migration_bootstrap::MigrationBootstrapReport>,

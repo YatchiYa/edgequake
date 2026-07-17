@@ -95,6 +95,8 @@ export interface DocumentTableSectionProps {
   deletingDocumentIds?: Set<string>;
   onUploadClick: () => void;
   onClearFilter?: () => void;
+  /** True when ingest/upload is busy but the list is still empty */
+  isBusyUpdating?: boolean;
   /** Active sort field (shared with toolbar — DRY) */
   sortField: SortField;
   /** Active sort direction */
@@ -135,6 +137,7 @@ export const DocumentTableSection = memo(function DocumentTableSection({
   deletingDocumentIds,
   onUploadClick,
   onClearFilter,
+  isBusyUpdating = false,
   sortField,
   sortDirection,
   onSort,
@@ -256,6 +259,7 @@ export const DocumentTableSection = memo(function DocumentTableSection({
           statusFilter={statusFilter}
           searchQuery={searchQuery}
           onClearFilter={onClearFilter}
+          isBusyUpdating={isBusyUpdating}
         />
 
         {showTable && (

@@ -86,6 +86,7 @@ import { FeedbackZoneLiveRegion } from './feedback-zone-live-region';
 import { LargePdfAdmissionDialog } from './large-pdf-admission-dialog';
 import { ProgressPanelRow } from './progress-panel-row';
 import { ReprocessDialog, type ReprocessChoice } from './reprocess-dialog';
+import { ApiErrorBoundary } from '@/components/shared/api-error-boundary';
 import { Button } from '@/components/ui/button';
 import { UploadProgressList } from './upload-progress-list';
 import { X } from 'lucide-react';
@@ -422,6 +423,14 @@ export function DocumentManager() {
     sessionReprocessEntries.length > 0 ||
     deleteSessions.length > 0;
 
+  // Honest empty state while first ingest is in flight but list is still empty.
+  const isBusyUpdating =
+    documents.length === 0 &&
+    (feedbackZoneOpen ||
+      isUploading ||
+      (pipelineStatus?.processing_count ?? 0) > 0 ||
+      (pipelineStatus?.pending_count ?? 0) > 0);
+
   // Debounced AT announcement: Deleting / Cleaning → Queued → live stages.
   const feedbackAnnouncement = useMemo(() => {
     const deleting = deleteSessions[0];
@@ -662,6 +671,17 @@ export function DocumentManager() {
           On 760 px viewport: table ≥ 760×0.65−150 ≈ 344 px → ~5 rows always visible.
       ─────────────────────────────────────────────────────────────────────── */}
       {feedbackZoneOpen && (
+        <ApiErrorBoundary
+          fallback={() => (
+            <div
+              role="alert"
+              className="shrink-0 border-b px-4 py-2 text-sm text-muted-foreground"
+              data-testid="spec051-feedback-zone-fallback"
+            >
+              Progress unavailable — processing continues in the background.
+            </div>
+          )}
+        >
         <div
           className="shrink-0 overflow-y-auto border-b bg-background"
           style={{ maxHeight: '35vh' }}
@@ -795,6 +815,7 @@ export function DocumentManager() {
             )}
           </div>
         </div>
+        </ApiErrorBoundary>
       )}
 
       {/* OODA-26: Table section extracted to DocumentTableSection */}
@@ -802,6 +823,7 @@ export function DocumentManager() {
         documents={documents}
         totalCount={totalCount}
         isLoading={isLoading}
+        isBusyUpdating={isBusyUpdating}
         selectedIds={selectedIds}
         selectedDocument={selectedDocument}
         searchQuery={searchQuery}

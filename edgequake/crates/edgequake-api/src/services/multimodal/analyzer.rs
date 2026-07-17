@@ -3,11 +3,13 @@
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::Instant;
 
 use edgequake_llm::traits::LLMProvider;
 use edgequake_pdf::inline_images::scan_inline_image_refs;
 use edgequake_storage::traits::KVStorage;
 use futures::stream::{self, StreamExt};
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
 use serde::Deserialize;
@@ -25,6 +27,7 @@ use super::gates::{should_run_image_analysis, vlm_process_enabled, MultimodalFai
 use super::image_specialize::specialize_image_analysis;
 use super::item_record::{MultimodalItemRecord, MultimodalItemStatus, MultimodalSummary};
 use super::json_recovery::parse_json_object;
+use super::local_profile::LocalMmProfile;
 use super::manifest::{ManifestItem, MultimodalManifest};
 use super::prompt_context::PromptContext;
 use super::prompts::{
@@ -35,7 +38,7 @@ use super::providers::MultimodalProviders;
 use super::scan::scan_manifest_items;
 use super::surrounding::SurroundingKind;
 use crate::services::converting_subprogress::{
-    report_vision_figure_analyze, ConvertingSubstepReporter,
+    report_vision_figure_analyze_ex, ConvertingSubstepReporter, VisionFigureProgressOpts,
 };
 
 /// Remove `<drawing …/>` placeholders that Pass B did not replace (viewer hygiene).
@@ -79,11 +82,13 @@ pub async fn analyze_multimodal_images(
         asset_base_dir,
         kv_storage,
         None,
+        None,
     )
     .await
 }
 
 /// Same as [`analyze_multimodal_images`] with optional converting sub-step reporter (PDF Pass B).
+#[allow(clippy::too_many_arguments)]
 pub async fn analyze_multimodal_images_with_substep(
     markdown: &str,
     process_options: Option<&str>,
@@ -92,10 +97,14 @@ pub async fn analyze_multimodal_images_with_substep(
     asset_base_dir: Option<&Path>,
     kv_storage: Option<Arc<dyn KVStorage>>,
     converting_substep: Option<ConvertingSubstepReporter>,
+    cancel_token: Option<CancellationToken>,
 ) -> AnalyzeOutcome {
     let opts = process_options
         .map(MultimodalProcessOptions::from_option_str)
         .unwrap_or_default();
+
+    let mm_profile = LocalMmProfile::resolve_from_env();
+    let fail_mode = MultimodalFailMode::resolve(mm_profile.is_local);
 
     let mut manifest = MultimodalManifest {
         version: MultimodalManifest::CURRENT_VERSION,
@@ -117,7 +126,7 @@ pub async fn analyze_multimodal_images_with_substep(
 
     if !vlm_process_enabled() && opts.images {
         let msg = "VLM_PROCESS_ENABLE=false but process_options includes 'i'";
-        if MultimodalFailMode::from_env() == MultimodalFailMode::Strict {
+        if fail_mode == MultimodalFailMode::Strict {
             return AnalyzeOutcome {
                 markdown: markdown.to_string(),
                 manifest,
@@ -145,101 +154,27 @@ pub async fn analyze_multimodal_images_with_substep(
         };
     }
 
-    let fail_mode = MultimodalFailMode::from_env();
     let mut output = markdown.to_string();
     let mut records = Vec::new();
 
     if should_run_image_analysis(&opts) {
-        let refs = scan_inline_image_refs(markdown);
-        let total = refs.len();
-        let concurrency = mm_image_concurrency();
-        if total > 0 {
-            info!(
-                total_images = total,
-                concurrency, "multimodal image analyze starting (parallel VLM)"
-            );
-            report_vision_figure_analyze(converting_substep.as_ref(), 0, total);
-        }
-        // Analyze concurrently (I/O-bound VLM calls), then apply replacements in
-        // reverse document order so byte spans stay valid.
-        let jobs: Vec<_> = refs
-            .into_iter()
-            .map(|image_ref| {
-                let surrounding = manifest
-                    .items
-                    .iter()
-                    .find(|i| i.modality == "drawing" && i.item_id == image_ref.item_id)
-                    .map(|item| {
-                        SurroundingContext::from_item_with_blocks(markdown, item, &blocks_map)
-                    })
-                    .unwrap_or_else(|| {
-                        SurroundingContext::from_span(
-                            markdown,
-                            (image_ref.start, image_ref.end),
-                            SurroundingKind::Drawings,
-                        )
-                    });
-                (image_ref, surrounding)
-            })
-            .collect();
-
-        let completed = AtomicUsize::new(0);
-        type ImageAnalyzeOutcome = (
-            edgequake_pdf::inline_images::InlineImageRef,
-            Result<(MultimodalItemRecord, String), MultimodalItemRecord>,
-        );
-        let substep = converting_substep.clone();
-        let mut results: Vec<ImageAnalyzeOutcome> = stream::iter(jobs)
-            .map(|(image_ref, surrounding)| {
-                let kv = kv_storage.clone();
-                let asset_owned = asset_base_dir.map(|p| p.to_path_buf());
-                async move {
-                    let r = analyze_one_image(
-                        &image_ref,
-                        providers.vlm,
-                        asset_owned.as_deref(),
-                        &surrounding,
-                        kv,
-                    )
-                    .await;
-                    (image_ref, r)
-                }
-            })
-            .buffer_unordered(concurrency)
-            .inspect(move |_| {
-                let n = completed.fetch_add(1, Ordering::Relaxed) + 1;
-                report_vision_figure_analyze(substep.as_ref(), n, total);
-                if n == 1 || n == total || n.is_multiple_of(5) {
-                    info!(completed = n, total, "multimodal image analyze progress");
-                }
-            })
-            .collect()
-            .await;
-
-        results.sort_by_key(|b| std::cmp::Reverse(b.0.start));
-        for (image_ref, result) in results {
-            match result {
-                Ok((record, replacement)) => {
-                    if image_ref.start <= output.len() && image_ref.end <= output.len() {
-                        output.replace_range(image_ref.start..image_ref.end, &replacement);
-                    }
-                    attach_record(&mut manifest, &record);
-                    records.push(record);
-                }
-                Err(record) => {
-                    if let Some(fatal) = handle_item_failure(
-                        record.clone(),
-                        fail_mode,
-                        &mut records,
-                        &mut manifest,
-                        output.clone(),
-                    ) {
-                        return fatal;
-                    }
-                    attach_record(&mut manifest, &record);
-                    records.push(record);
-                }
-            }
+        if let Some(fatal) = analyze_images_pass_b(
+            markdown,
+            &mut output,
+            &mut manifest,
+            &mut records,
+            &blocks_map,
+            providers.vlm,
+            asset_base_dir,
+            kv_storage.clone(),
+            converting_substep.as_ref(),
+            cancel_token.as_ref(),
+            mm_profile,
+            fail_mode,
+        )
+        .await
+        {
+            return fatal;
         }
     }
 
@@ -396,6 +331,238 @@ pub async fn analyze_multimodal_images_with_substep(
     }
 }
 
+/// Pass B figure analyze with local budgets: figure cap, wall clock, cancel, progress.
+#[allow(clippy::too_many_arguments)]
+async fn analyze_images_pass_b(
+    markdown: &str,
+    output: &mut String,
+    manifest: &mut MultimodalManifest,
+    records: &mut Vec<MultimodalItemRecord>,
+    blocks_map: &std::collections::HashMap<String, String>,
+    vlm: &dyn LLMProvider,
+    asset_base_dir: Option<&Path>,
+    kv_storage: Option<Arc<dyn KVStorage>>,
+    converting_substep: Option<&ConvertingSubstepReporter>,
+    cancel_token: Option<&CancellationToken>,
+    mm_profile: LocalMmProfile,
+    fail_mode: MultimodalFailMode,
+) -> Option<AnalyzeOutcome> {
+    let all_refs = scan_inline_image_refs(markdown);
+    let discovered = all_refs.len();
+    if discovered == 0 {
+        return None;
+    }
+
+    let analyze_cap = mm_profile.figures_to_analyze(discovered);
+    let skipped = discovered.saturating_sub(analyze_cap);
+    let refs: Vec<_> = all_refs.into_iter().take(analyze_cap).collect();
+    let total = refs.len();
+    let concurrency = mm_image_concurrency();
+    let progress_opts = VisionFigureProgressOpts {
+        every_figure: mm_profile.emit_every_figure || total <= 50,
+        local_classify_only: mm_profile.is_local && mm_profile.classify_only,
+        discovered_total: discovered,
+        analyzed_cap: total,
+    };
+
+    info!(
+        discovered,
+        analyzing = total,
+        skipped,
+        concurrency,
+        classify_only = mm_profile.classify_only,
+        is_local = mm_profile.is_local,
+        pass_b_timeout_secs = mm_profile.pass_b_timeout.map(|d| d.as_secs()),
+        "multimodal image analyze starting (Pass B)"
+    );
+    report_vision_figure_analyze_ex(converting_substep, 0, total, progress_opts);
+
+    let jobs: Vec<_> = refs
+        .into_iter()
+        .map(|image_ref| {
+            let surrounding = manifest
+                .items
+                .iter()
+                .find(|i| i.modality == "drawing" && i.item_id == image_ref.item_id)
+                .map(|item| SurroundingContext::from_item_with_blocks(markdown, item, blocks_map))
+                .unwrap_or_else(|| {
+                    SurroundingContext::from_span(
+                        markdown,
+                        (image_ref.start, image_ref.end),
+                        SurroundingKind::Drawings,
+                    )
+                });
+            (image_ref, surrounding)
+        })
+        .collect();
+
+    // Local / wall-budget path: sequential so we can cancel between figures,
+    // honor wall budget, and apply replacements progressively.
+    // Cloud keeps parallel specialize when concurrency > 1 and no wall budget.
+    let use_sequential =
+        mm_profile.is_local || mm_profile.pass_b_timeout.is_some() || concurrency <= 1;
+
+    if use_sequential {
+        let pass_b_started = Instant::now();
+        // Reverse document order so each replace keeps later spans valid.
+        let mut ordered = jobs;
+        ordered.sort_by_key(|b| std::cmp::Reverse(b.0.start));
+        let mut completed = 0usize;
+        for (image_ref, surrounding) in ordered {
+            if cancel_token.is_some_and(|t| t.is_cancelled()) {
+                warn!(
+                    completed,
+                    total,
+                    discovered,
+                    "Pass B cancelled between figures — keeping analyzed markdown"
+                );
+                break;
+            }
+            if let Some(budget) = mm_profile.pass_b_timeout {
+                if pass_b_started.elapsed() >= budget {
+                    warn!(
+                        completed,
+                        total,
+                        discovered,
+                        budget_secs = budget.as_secs(),
+                        "pass_b_budget_exhausted — stopping remaining figures (degraded)"
+                    );
+                    break;
+                }
+            }
+
+            let result = analyze_one_image(
+                &image_ref,
+                vlm,
+                asset_base_dir,
+                &surrounding,
+                kv_storage.clone(),
+                mm_profile.classify_only,
+            )
+            .await;
+            completed += 1;
+            report_vision_figure_analyze_ex(
+                converting_substep,
+                completed,
+                total,
+                progress_opts,
+            );
+            if completed == 1 || completed == total || completed.is_multiple_of(5) {
+                info!(
+                    completed,
+                    total,
+                    discovered,
+                    elapsed_ms = pass_b_started.elapsed().as_millis() as u64,
+                    "multimodal image analyze progress"
+                );
+            }
+
+            match result {
+                Ok((record, replacement)) => {
+                    if image_ref.start <= output.len() && image_ref.end <= output.len() {
+                        output.replace_range(image_ref.start..image_ref.end, &replacement);
+                    }
+                    attach_record(manifest, &record);
+                    records.push(record);
+                }
+                Err(record) => {
+                    if let Some(fatal) = handle_item_failure(
+                        record.clone(),
+                        fail_mode,
+                        records,
+                        manifest,
+                        output.clone(),
+                    ) {
+                        return Some(fatal);
+                    }
+                    attach_record(manifest, &record);
+                    records.push(record);
+                }
+            }
+        }
+    } else {
+        let completed = AtomicUsize::new(0);
+        type ImageAnalyzeOutcome = (
+            edgequake_pdf::inline_images::InlineImageRef,
+            Result<(MultimodalItemRecord, String), MultimodalItemRecord>,
+        );
+        let classify_only = mm_profile.classify_only;
+        let cancel = cancel_token.cloned();
+        let mut results: Vec<ImageAnalyzeOutcome> = stream::iter(jobs)
+            .map(|(image_ref, surrounding)| {
+                let kv = kv_storage.clone();
+                let asset_owned = asset_base_dir.map(|p| p.to_path_buf());
+                let cancel = cancel.clone();
+                async move {
+                    if cancel.as_ref().is_some_and(|t| t.is_cancelled()) {
+                        let item_id = image_ref.item_id.clone();
+                        return (
+                            image_ref,
+                            Err(MultimodalItemRecord::skipped(
+                                &item_id,
+                                "drawing",
+                                "cancelled before figure analyze",
+                            )),
+                        );
+                    }
+                    let r = analyze_one_image(
+                        &image_ref,
+                        vlm,
+                        asset_owned.as_deref(),
+                        &surrounding,
+                        kv,
+                        classify_only,
+                    )
+                    .await;
+                    (image_ref, r)
+                }
+            })
+            .buffer_unordered(concurrency)
+            .inspect(|_| {
+                let n = completed.fetch_add(1, Ordering::Relaxed) + 1;
+                report_vision_figure_analyze_ex(converting_substep, n, total, progress_opts);
+                if n == 1 || n == total || n.is_multiple_of(5) {
+                    info!(completed = n, total, "multimodal image analyze progress");
+                }
+            })
+            .collect()
+            .await;
+
+        results.sort_by_key(|b| std::cmp::Reverse(b.0.start));
+        for (image_ref, result) in results {
+            match result {
+                Ok((record, replacement)) => {
+                    if image_ref.start <= output.len() && image_ref.end <= output.len() {
+                        output.replace_range(image_ref.start..image_ref.end, &replacement);
+                    }
+                    attach_record(manifest, &record);
+                    records.push(record);
+                }
+                Err(record) => {
+                    if let Some(fatal) = handle_item_failure(
+                        record.clone(),
+                        fail_mode,
+                        records,
+                        manifest,
+                        output.clone(),
+                    ) {
+                        return Some(fatal);
+                    }
+                    attach_record(manifest, &record);
+                    records.push(record);
+                }
+            }
+        }
+    }
+
+    if skipped > 0 {
+        let notice = format!("\n\n<!-- mm: skipped {skipped} figures (local budget) -->\n");
+        output.push_str(&notice);
+        info!(skipped, discovered, analyzed = total, "Pass B figure cap applied");
+    }
+    None
+}
+
 fn handle_item_failure(
     record: MultimodalItemRecord,
     fail_mode: MultimodalFailMode,
@@ -435,12 +602,25 @@ fn attach_record(manifest: &mut MultimodalManifest, record: &MultimodalItemRecor
 
 /// Parallel VLM item analyze concurrency (I/O-bound). Default 4; clamp 1..=16.
 /// Override with `EDGEQUAKE_MM_IMAGE_CONCURRENCY` (shared for images/tables/equations).
+///
+/// Local vision (Ollama / LM Studio) defaults to **1** unless
+/// `EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY` is set — gemma4 cannot absorb fan-out.
 fn mm_item_concurrency() -> usize {
-    std::env::var("EDGEQUAKE_MM_IMAGE_CONCURRENCY")
+    let requested = std::env::var("EDGEQUAKE_MM_IMAGE_CONCURRENCY")
         .ok()
         .and_then(|s| s.trim().parse::<usize>().ok())
         .unwrap_or(4)
-        .clamp(1, 16)
+        .clamp(1, 16);
+    let vision_provider = std::env::var("EDGEQUAKE_VISION_PROVIDER")
+        .or_else(|_| std::env::var("EDGEQUAKE_LLM_PROVIDER"))
+        .unwrap_or_default();
+    if edgequake_pipeline::is_local_extraction_provider(&vision_provider)
+        && !edgequake_pipeline::allow_local_high_concurrency()
+    {
+        requested.min(1)
+    } else {
+        requested
+    }
 }
 
 /// Backward-compatible alias used by the image path.
@@ -475,6 +655,33 @@ pub async fn analyze_image_bytes_with_asset(
     asset_path: Option<&str>,
     asset_alt: Option<&str>,
 ) -> Result<(MultimodalItemRecord, String), MultimodalItemRecord> {
+    analyze_image_bytes_with_asset_ex(
+        item_id,
+        bytes,
+        mime_type,
+        llm,
+        ctx,
+        kv,
+        asset_path,
+        asset_alt,
+        LocalMmProfile::resolve_from_env().classify_only,
+    )
+    .await
+}
+
+/// Image analyze with explicit classify-only (local Pass B skips specialize).
+#[allow(clippy::too_many_arguments)]
+pub async fn analyze_image_bytes_with_asset_ex(
+    item_id: &str,
+    bytes: &[u8],
+    mime_type: &str,
+    llm: &dyn LLMProvider,
+    ctx: &PromptContext,
+    kv: Option<Arc<dyn KVStorage>>,
+    asset_path: Option<&str>,
+    asset_alt: Option<&str>,
+    classify_only: bool,
+) -> Result<(MultimodalItemRecord, String), MultimodalItemRecord> {
     let (width, height) = match probe_image_dimensions(bytes, mime_type) {
         Some(d) => d,
         None => {
@@ -504,8 +711,12 @@ pub async fn analyze_image_bytes_with_asset(
     .map_err(|e| MultimodalItemRecord::failed(item_id, "drawing", e))?;
 
     // Phase B: classify → specialize Chart/Figure (MV-27 soft-fail to Pass A dump).
-    let analysis =
-        specialize_image_analysis(item_id, bytes, mime_type, llm, ctx, kv, classified).await;
+    // Local never-stuck profile: classify-only (skip specialize + dense retry).
+    let analysis = if classify_only {
+        classified
+    } else {
+        specialize_image_analysis(item_id, bytes, mime_type, llm, ctx, kv, classified).await
+    };
 
     let mut record = MultimodalItemRecord::success_image(
         item_id,
@@ -527,6 +738,7 @@ async fn analyze_one_image(
     asset_base_dir: Option<&Path>,
     surrounding: &SurroundingContext,
     kv: Option<Arc<dyn KVStorage>>,
+    classify_only: bool,
 ) -> Result<(MultimodalItemRecord, String), MultimodalItemRecord> {
     let asset = resolve_image_asset(image_ref, asset_base_dir)
         .map_err(|e| MultimodalItemRecord::skipped(&image_ref.item_id, "drawing", e))?;
@@ -538,7 +750,7 @@ async fn analyze_one_image(
     // MV-28: `format_drawing_block` already emits `![alt](assets/…)` above the
     // `<drawing/>` tag. Replace only the tag with analysis body so the viewer
     // image stays on-page without duplication.
-    analyze_image_bytes_with_asset(
+    analyze_image_bytes_with_asset_ex(
         &image_ref.item_id,
         &asset.bytes,
         &asset.mime_type,
@@ -547,6 +759,7 @@ async fn analyze_one_image(
         kv,
         None,
         None,
+        classify_only,
     )
     .await
 }
@@ -724,6 +937,19 @@ fn parse_image_analysis(text: &str) -> Result<ImageAnalysisResult, String> {
 mod tests {
     use super::*;
     use edgequake_llm::MockProvider;
+
+    #[test]
+    #[serial_test::serial]
+    fn mm_concurrency_caps_to_one_for_local_vision() {
+        std::env::remove_var("EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY");
+        std::env::set_var("EDGEQUAKE_VISION_PROVIDER", "ollama");
+        std::env::set_var("EDGEQUAKE_MM_IMAGE_CONCURRENCY", "4");
+        assert_eq!(mm_item_concurrency(), 1);
+        std::env::set_var("EDGEQUAKE_VISION_PROVIDER", "openai");
+        assert_eq!(mm_item_concurrency(), 4);
+        std::env::remove_var("EDGEQUAKE_VISION_PROVIDER");
+        std::env::remove_var("EDGEQUAKE_MM_IMAGE_CONCURRENCY");
+    }
 
     #[tokio::test]
     async fn skips_without_i_flag() {

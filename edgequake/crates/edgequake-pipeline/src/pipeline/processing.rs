@@ -242,7 +242,9 @@ impl Pipeline {
         &self,
         documents: &[(String, String)],
     ) -> Result<Vec<ProcessingResult>> {
-        let max_concurrent_docs = self.config.max_concurrent_extractions.max(4);
+        // Use clamped extract concurrency as-is — no artificial floor-of-4
+        // (local Ollama profiles set 1–2; a floor of 4 re-introduced fan-out storms).
+        let max_concurrent_docs = self.config.max_concurrent_extractions.max(1);
 
         let futures: Vec<_> = documents
             .iter()

@@ -53,11 +53,11 @@ pub use lineage::{
     resolve_incoming_document_ids, source_document_ids_from_properties,
 };
 pub use merge_limits::{
-    apply_source_ids_limit, max_source_ids_per_entity_from_env,
+    apply_local_merge_async_clamp, apply_source_ids_limit, max_source_ids_per_entity_from_env,
     max_source_ids_per_relation_from_env, merge_max_async_from_env, merge_source_ids,
     parse_max_source_ids, parse_merge_max_async, should_skip_description_update_keep,
     source_chunk_ids_from_properties, source_ids_limit_method_from_env, truncate_keep_doc_diverse,
-    SourceIdsLimitMethod, DEFAULT_MAX_SOURCE_IDS, DEFAULT_MERGE_MAX_ASYNC,
+    SourceIdsLimitMethod, DEFAULT_MAX_SOURCE_IDS, DEFAULT_MERGE_MAX_ASYNC, LOCAL_MERGE_MAX_ASYNC,
 };
 
 use std::sync::Arc;

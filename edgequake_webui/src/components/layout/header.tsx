@@ -32,7 +32,7 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { checkHealth } from '@/lib/api/edgequake';
+import { getBackendReadinessSnapshot } from '@/lib/api/client';
 import { getAutomationAwareRefetchInterval } from '@/lib/runtime/browser-detection';
 import { useAuthStore } from '@/stores/use-auth-store';
 import { Circle, LogOut, Monitor, Moon, Sun, User } from 'lucide-react';
@@ -50,19 +50,28 @@ export function Header() {
   const { t } = useTranslation();
   const { isAuthenticated, user, logout } = useAuthStore();
 
-  // PP-02: Use shared React Query cache (queryKey: ['health']) instead of a
-  // custom setInterval. BackendStatusBanner and SystemStatus card share the
-  // same cache entry so only ONE network request is issued every 30 seconds.
-  const { data: health, isError } = useQuery({
-    queryKey: ['health'],
-    queryFn: checkHealth,
-    refetchInterval: getAutomationAwareRefetchInterval(30_000),
-    staleTime: 15_000,
+  // SSOT with BackendStatusBanner / SystemStatus — same ['backend-ready'] cache
+  // (liveness-first). Never show stale green from a separate ['health'] poll.
+  const { data: readiness, isLoading } = useQuery({
+    queryKey: ['backend-ready'],
+    queryFn: () => getBackendReadinessSnapshot(),
+    refetchInterval: getAutomationAwareRefetchInterval(10_000),
+    staleTime: 5_000,
     retry: 1,
   });
 
-  const connectionStatus = isError ? 'disconnected' : health ? 'connected' : 'checking';
-  const version = health?.version ?? '';
+  const state = readiness?.state;
+  const connectionStatus =
+    isLoading && !state
+      ? 'checking'
+      : state === 'ready'
+        ? 'connected'
+        : state === 'degraded'
+          ? 'busy'
+          : state === 'unreachable' || state === 'misconfigured'
+            ? 'disconnected'
+            : 'checking';
+  const version = readiness?.version ?? '';
 
   // Smooth theme transition — briefly disables transitions to prevent color flash
   const handleThemeChange = useCallback((theme: string) => {
@@ -104,6 +113,8 @@ export function Header() {
                   className={`h-1.5 w-1.5 fill-current ${
                     connectionStatus === 'connected'
                       ? 'text-green-500'
+                      : connectionStatus === 'busy'
+                      ? 'text-amber-500'
                       : connectionStatus === 'disconnected'
                       ? 'text-red-500'
                       : 'text-yellow-500 animate-pulse'
@@ -111,7 +122,9 @@ export function Header() {
                 />
                 <span className="hidden sm:inline font-medium">
                   {connectionStatus === 'connected'
-                    ? t('header.apiVersion', { version })
+                    ? t('header.apiVersion', { version: version || '…' })
+                    : connectionStatus === 'busy'
+                    ? t('header.apiBusy', 'Busy')
                     : connectionStatus === 'disconnected'
                     ? 'Offline'
                     : '...'}
@@ -120,7 +133,9 @@ export function Header() {
             </TooltipTrigger>
             <TooltipContent>
               {connectionStatus === 'connected'
-                ? t('header.apiVersion', { version })
+                ? t('header.apiVersion', { version: version || '…' })
+                : connectionStatus === 'busy'
+                ? t('header.apiBusyHint', 'API is busy — document counts may lag')
                 : connectionStatus === 'disconnected'
                 ? 'Cannot connect to EdgeQuake API'
                 : 'Checking connection...'}

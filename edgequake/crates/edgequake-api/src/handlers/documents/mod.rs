@@ -232,6 +232,7 @@ mod tests {
                 cancelled: 0,
                 unknown: 0,
             },
+            truncated: None,
         };
 
         let json = serde_json::to_string(&response).unwrap();

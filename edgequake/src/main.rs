@@ -1256,6 +1256,7 @@ async fn async_main() -> Result<()> {
     ));
 
     // Run server (this blocks until shutdown) on the serving runtime.
+    let listen_port = config.port;
     let server = Server::new(config, state);
     let result = server.run().await;
 
@@ -1265,6 +1266,14 @@ async fn async_main() -> Result<()> {
     info!("Shutting down ingest Tokio runtime...");
     ingest_rt.shutdown_background();
 
-    result?;
+    if let Err(err) = result {
+        if err.kind() == std::io::ErrorKind::AddrInUse {
+            anyhow::bail!(
+                "Address already in use (port {listen_port}) — another EdgeQuake (or process) is still listening. \
+                 Run `make kill-app` (or `lsof -nP -iTCP:{listen_port} -sTCP:LISTEN`) then retry."
+            );
+        }
+        return Err(err.into());
+    }
     Ok(())
 }

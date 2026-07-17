@@ -104,8 +104,9 @@ pub use content_granularity::{
 };
 pub use content_hasher::ContentHasher;
 pub use converting_subprogress::{
-    report_vision_figure_analyze, vision_figure_analyze_message, vision_figure_analyze_progress_01,
-    ConvertingSubstepReporter,
+    report_vision_figure_analyze, report_vision_figure_analyze_ex, vision_figure_analyze_message,
+    vision_figure_analyze_message_local, vision_figure_analyze_progress_01,
+    ConvertingSubstepReporter, VisionFigureProgressOpts,
 };
 pub use document_assets::{
     document_mm_assets_root, mm_assets_base_dir, multimodal_asset_base_dir,
@@ -178,7 +179,8 @@ pub use multimodal::{
     metadata_multimodal_patch, mm_chunks_enabled, mm_chunks_key, parse_json_object,
     persist_manifest, persist_mm_chunks, reanalyze_document_multimodal, render_mm_chunk,
     resolve_process_options_from_metadata, run_multimodal_analyze_stage,
-    run_multimodal_analyze_stage_outcome, run_multimodal_analyze_stage_outcome_with_substep,
+    run_multimodal_analyze_stage_outcome, run_multimodal_analyze_stage_outcome_with_cancel,
+    run_multimodal_analyze_stage_outcome_with_substep, LocalMmProfile,
     scan_manifest_items, should_run_image_analysis, summary_from_metadata, table_analysis_messages,
     vlm_process_enabled, AnalyzeOutcome, ManifestItem, MmChunkBuildError, MultimodalChunk,
     MultimodalHeading, MultimodalItemRecord, MultimodalItemStatusView, MultimodalManifest,
