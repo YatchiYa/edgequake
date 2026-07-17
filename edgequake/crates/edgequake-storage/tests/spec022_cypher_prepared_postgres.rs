@@ -61,13 +61,15 @@ mod postgres_integration {
 
 #[test]
 fn spec022_nodes_ops_use_parameterized_cypher() {
-    let nodes = include_str!("../src/adapters/postgres/graph/nodes_ops.rs");
+    // nodes_ops split into read/mutate modules (SPEC-054 modularization).
+    let read = include_str!("../src/adapters/postgres/graph/nodes_ops/read.rs");
+    let mutate = include_str!("../src/adapters/postgres/graph/nodes_ops/mutate.rs");
     assert!(
-        nodes.matches("cypher_query_bound").count() >= 2,
+        read.matches("cypher_query_bound").count() >= 2,
         "pg_has_node and pg_get_node must use parameterized Cypher"
     );
     assert!(
-        nodes.contains("cypher_execute_bound"),
+        mutate.contains("cypher_execute_bound"),
         "pg_delete_node must use parameterized Cypher execute"
     );
 }
