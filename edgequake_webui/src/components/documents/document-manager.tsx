@@ -590,7 +590,7 @@ export function DocumentManager() {
         <div className="shrink-0 px-4 pt-4 space-y-3 bg-background">
           <DocumentHeader
             totalCount={totalCount}
-            failedCount={statusCounts.failed + statusCounts.cancelled}
+            failedCount={statusCounts.failed}
             showPipelineIndicator={pipelineUi.showPipelineIndicator}
             pipelineAlertMode={pipelineUi.alertMode}
             activeDocCount={pipelineUi.activeDocCount}

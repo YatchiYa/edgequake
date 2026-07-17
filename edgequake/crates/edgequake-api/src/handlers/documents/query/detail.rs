@@ -12,7 +12,7 @@ use crate::middleware::TenantContext;
 use crate::read_path::{run_with_read_path_guard, ReadPathDbPermit};
 use crate::services::document_body_loader::load_document_body;
 use crate::services::tenant_isolation::PgIsolationScope;
-use crate::state::{ApiSecurityConfig, PostgresRuntime, StorageRuntime};
+use crate::state::{ApiSecurityConfig, PostgresRuntime, StorageRuntime, TaskRuntime};
 
 use crate::handlers::documents_types::*;
 
@@ -35,12 +35,13 @@ pub async fn get_document(
     State(storage): State<StorageRuntime>,
     State(pg_runtime): State<PostgresRuntime>,
     State(security): State<ApiSecurityConfig>,
+    State(tasks): State<TaskRuntime>,
     State(read_path_db): State<Arc<ReadPathDbPermit>>,
     tenant_ctx: TenantContext,
     axum::extract::Path(document_id): axum::extract::Path<String>,
 ) -> ApiResult<Json<DocumentDetailResponse>> {
     run_with_read_path_guard(&read_path_db, || {
-        get_document_inner(storage, pg_runtime, security, tenant_ctx, document_id)
+        get_document_inner(storage, pg_runtime, security, tasks, tenant_ctx, document_id)
     })
     .await
 }
@@ -49,6 +50,7 @@ async fn get_document_inner(
     storage: StorageRuntime,
     pg_runtime: PostgresRuntime,
     security: ApiSecurityConfig,
+    tasks: TaskRuntime,
     tenant_ctx: TenantContext,
     document_id: String,
 ) -> ApiResult<Json<DocumentDetailResponse>> {
@@ -434,6 +436,38 @@ async fn get_document_inner(
             .await
             .map(|manifest| crate::services::manifest_item_status_views(&manifest));
 
+    let current_stage = meta_obj.and_then(|obj| {
+        obj.get("current_stage")
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+    });
+    let failure_class = meta_obj.and_then(|obj| {
+        obj.get("failure_class")
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+    });
+    let stage_message_kv = meta_obj.and_then(|obj| {
+        obj.get("stage_message")
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+    });
+    let cancel_intent = match track_id.as_deref() {
+        Some(tid) => tasks.cancellation_registry.has_cancel_intent(tid).await,
+        None => false,
+    };
+    let status_view = crate::services::map_ingestion_status(
+        crate::services::IngestionStatusInputs {
+            task_status: None,
+            doc_status: Some(status.as_str()),
+            current_stage: current_stage.as_deref(),
+            failure_class: failure_class.as_deref(),
+            pdf_status: None,
+            error_message: error_message.as_deref(),
+            stage_message: stage_message_kv.as_deref(),
+            cancel_intent,
+        },
+    );
+
     Ok(Json(DocumentDetailResponse {
         id: document_id,
         title,
@@ -446,6 +480,8 @@ async fn get_document_inner(
         entity_count,
         relationship_count,
         status,
+        display_status: Some(status_view.display_status),
+        ui_phase: Some(status_view.ui_phase),
         error_message,
         warning_message,
         source_type,

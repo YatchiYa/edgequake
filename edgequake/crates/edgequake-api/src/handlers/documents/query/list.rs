@@ -347,6 +347,8 @@ async fn list_documents_inner(
                 stage_progress: meta.stage_progress,
                 stage_message: meta.stage_message,
                 pdf_id: meta.pdf_id,
+                display_status: None,
+                ui_phase: None,
             }
         })
         .collect();
@@ -511,6 +513,13 @@ async fn list_documents_inner(
             })
             .count(),
     };
+
+    // SPEC-057 P4: project display_status / ui_phase SSOT before pagination.
+    crate::services::ingestion_status_mapper::enrich_document_summaries_with_cancel(
+        &mut documents,
+        &tasks.cancellation_registry,
+    )
+    .await;
 
     // SPEC-027 IMP-020: honor query pagination (status_counts remain over full filtered set).
     let page_size = budget.clamp_page_size(params.page_size.min(u32::MAX as usize) as u32) as usize;

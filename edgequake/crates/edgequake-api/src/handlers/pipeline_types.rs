@@ -155,6 +155,28 @@ pub struct QueueMetricsResponse {
     /// Configured max concurrent tasks per tenant (`0` = unlimited / disabled).
     #[serde(default)]
     pub max_tasks_per_tenant: u64,
+
+    /// SPEC-057 P3: store contention SLOs (pool util + compensation quarantine).
+    #[serde(default)]
+    pub store_contention: StoreContentionMetrics,
+}
+
+/// Nested store contention projection for queue-metrics (SPEC-057 P3).
+#[derive(Debug, Clone, Serialize, ToSchema, Default)]
+pub struct StoreContentionMetrics {
+    /// `normal` | `elevated` | `critical`
+    pub level: String,
+    /// Active/size pool utilization when a pool is available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub db_pool_utilization: Option<f64>,
+    pub db_pool_util_warn: f64,
+    pub db_pool_util_critical: f64,
+    /// Process-local compensation quarantine total since boot.
+    pub compensation_quarantine_total: u64,
+    pub compensation_quarantine_warn: u64,
+    pub compensation_quarantine_critical: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operator_action: Option<String>,
 }
 
 // ============================================================================
@@ -236,6 +258,16 @@ mod tests {
             cancel_intent_count: 1,
             cancel_intent_total: 3,
             max_tasks_per_tenant: 1,
+            store_contention: StoreContentionMetrics {
+                level: "normal".to_string(),
+                db_pool_utilization: Some(0.2),
+                db_pool_util_warn: 0.75,
+                db_pool_util_critical: 0.90,
+                compensation_quarantine_total: 0,
+                compensation_quarantine_warn: 1,
+                compensation_quarantine_critical: 5,
+                operator_action: None,
+            },
         };
 
         let json = serde_json::to_string(&response).unwrap();

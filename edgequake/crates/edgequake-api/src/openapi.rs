@@ -328,6 +328,7 @@ use crate::handlers;
         handlers::PipelineMessageResponse,
         handlers::CancelPipelineResponse,
         handlers::QueueMetricsResponse,
+        handlers::StoreContentionMetrics,
         handlers::PipelineActivityResponse,
         crate::handlers::ingestion_types::IngestionProgressResponse,
         crate::handlers::ingestion_types::IngestionProgressCounts,

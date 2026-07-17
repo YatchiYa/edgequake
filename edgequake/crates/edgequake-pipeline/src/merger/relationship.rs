@@ -255,9 +255,8 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
                     stats.relationships_skipped_saturated += 1;
                     continue;
                 }
-                if let Some(vid) = outcome.vector_id {
-                    stats.artifacts.relationship_vector_ids.push(vid);
-                }
+                // Relationship vector IDs are recorded in upsert_vectors_chunked (SPEC-057 P3).
+                let _ = outcome.vector_id;
                 if outcome.is_new {
                     stats
                         .artifacts

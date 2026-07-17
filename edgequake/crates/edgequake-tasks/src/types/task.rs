@@ -93,15 +93,37 @@ pub struct Task {
 
     /// Result data (on success)
     pub result: Option<serde_json::Value>,
+
+    /// Worker id holding the processing lease (SPEC-057 P1).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lease_owner: Option<String>,
+
+    /// CAS token for refresh_lease / release_claim (SPEC-057 P1).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lease_token: Option<Uuid>,
+
+    /// When the processing lease expires (SPEC-057 P1).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lease_expires_at: Option<DateTime<Utc>>,
 }
 
 impl Task {
-    /// PDF id from `task_data.pdf_id` when present (P-G14 admission).
+    /// PDF id from convert (`task_data.pdf_id`) or ingest (`metadata.pdf_id`).
+    ///
+    /// SPEC-057 P2: Insert follow-on tasks carry `pdf_id` under metadata so
+    /// single-flight / cancel chain can match Convert + Ingest for the same PDF.
     pub fn pdf_id(&self) -> Option<Uuid> {
         self.task_data
             .get("pdf_id")
             .and_then(|v| v.as_str())
             .and_then(|s| Uuid::parse_str(s).ok())
+            .or_else(|| {
+                self.task_data
+                    .get("metadata")
+                    .and_then(|m| m.get("pdf_id"))
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| Uuid::parse_str(s).ok())
+            })
     }
 
     /// Create a new task
@@ -134,6 +156,24 @@ impl Task {
             metadata: None,
             progress: None,
             result: None,
+            lease_owner: None,
+            lease_token: None,
+            lease_expires_at: None,
+        }
+    }
+
+    /// Clear lease fields (terminal status or release_claim).
+    pub fn clear_lease(&mut self) {
+        self.lease_owner = None;
+        self.lease_token = None;
+        self.lease_expires_at = None;
+    }
+
+    /// True when a Processing lease is missing or past expiry (claimable / orphan).
+    pub fn lease_is_expired(&self, now: DateTime<Utc>) -> bool {
+        match self.lease_expires_at {
+            None => true,
+            Some(exp) => exp <= now,
         }
     }
 
@@ -154,6 +194,7 @@ impl Task {
         self.error_message = None;
         // Reset timeout counter on success
         self.consecutive_timeout_failures = 0;
+        self.clear_lease();
     }
 
     /// Mark task as failed with simple error message (backward compatible)
@@ -162,6 +203,7 @@ impl Task {
         self.completed_at = Some(Utc::now());
         self.updated_at = Utc::now();
         self.error_message = Some(error.clone());
+        self.clear_lease();
         self.retry_count += 1;
 
         // Check if this is a timeout error
@@ -181,6 +223,7 @@ impl Task {
         self.completed_at = Some(Utc::now());
         self.updated_at = Utc::now();
         self.error_message = Some(error.message.clone());
+        self.clear_lease();
 
         // Set error FIRST so check_circuit_breaker can modify it
         self.error = Some(error.clone());
@@ -234,6 +277,7 @@ impl Task {
         self.status = TaskStatus::Cancelled;
         self.completed_at = Some(Utc::now());
         self.updated_at = Utc::now();
+        self.clear_lease();
     }
 
     /// Update task progress

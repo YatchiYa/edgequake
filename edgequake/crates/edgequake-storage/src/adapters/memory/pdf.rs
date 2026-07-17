@@ -132,10 +132,7 @@ impl PdfDocumentStorage for MemoryPdfStorage {
             .ok_or_else(|| StorageError::NotFound(format!("PDF {pdf_id} not found")))?;
 
         doc.processing_status = status;
-        if matches!(
-            status,
-            PdfProcessingStatus::Completed | PdfProcessingStatus::Failed
-        ) {
+        if status.is_terminal() {
             doc.processed_at = Some(Utc::now());
         }
         doc.updated_at = Utc::now();
@@ -164,10 +161,7 @@ impl PdfDocumentStorage for MemoryPdfStorage {
         if let Some(model) = request.vision_model {
             doc.vision_model = Some(model);
         }
-        if matches!(
-            request.processing_status,
-            PdfProcessingStatus::Completed | PdfProcessingStatus::Failed
-        ) {
+        if request.processing_status.is_terminal() {
             doc.processed_at = Some(Utc::now());
         }
         doc.updated_at = Utc::now();

@@ -894,6 +894,9 @@ pub(crate) async fn run_reprocess_failed(
                     metadata: None,
                     progress: None,
                     result: None,
+                    lease_owner: None,
+                    lease_token: None,
+                    lease_expires_at: None,
                 };
 
                 // Bind KV document.track_id to task id when a document row exists.

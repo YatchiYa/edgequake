@@ -4,14 +4,12 @@
 //! WebSocket) must:
 //! 1. Record a cancel intent + signal any in-flight token
 //! 2. Persist `TaskStatus::Cancelled` when the task row is cancellable
+//! 3. Sync linked document KV via `sync_doc_cancelled_for_task` (SPEC-057 P0)
 //!
-//! Document KV updates stay in the HTTP handler (tenant-scoped). This module
-//! owns only the task-row + registry half so WS/PDF/pipeline stay consistent.
+//! This module owns the task-row + registry half. Document KV sync lives in
+//! `task_document_sync` and is called by every cancel entry point.
 
-use edgequake_tasks::{
-    CancellationRegistry, SharedTaskStorage, Task, TaskStatus,
-    TaskStorage as _, // trait methods on SharedTaskStorage
-};
+use edgequake_tasks::{CancellationRegistry, SharedTaskStorage, Task, TaskStatus};
 
 /// Result of applying cancel to a single track_id's task row + registry.
 #[derive(Debug, Clone)]
@@ -97,10 +95,38 @@ pub async fn apply_cancel_all_active(
     Ok(results)
 }
 
+/// Cancel all active Convert + Insert tasks for a PDF (SPEC-057 P2 cancel chain).
+pub async fn apply_cancel_pdf_pipeline_tasks(
+    storage: &SharedTaskStorage,
+    registry: &CancellationRegistry,
+    pdf_id: uuid::Uuid,
+    workspace_id: uuid::Uuid,
+) -> Result<Vec<TaskCancelApplyResult>, String> {
+    let mut results = Vec::new();
+    // Bound iterations: Convert + Insert at most (plus races).
+    for _ in 0..8 {
+        let Some(task) = storage
+            .find_active_pdf_processing_task(pdf_id, workspace_id)
+            .await
+            .map_err(|e| format!("Failed to find PDF pipeline task: {e}"))?
+        else {
+            break;
+        };
+        let applied = apply_task_row_cancel(storage, registry, &task.track_id).await?;
+        let done = !applied.cancelled || applied.conflict_indexed;
+        results.push(applied);
+        if done {
+            break;
+        }
+    }
+    Ok(results)
+}
+
 /// True when a pipeline/processing error string represents user cancel.
+///
+/// DRY: delegates to `edgequake_tasks::is_cancel_failure_message` (SPEC-057).
 pub fn is_cancel_error_message(message: &str) -> bool {
-    let lower = message.to_ascii_lowercase();
-    lower.contains("task cancelled") || lower.contains("cancelled by user")
+    edgequake_tasks::is_cancel_failure_message(message)
 }
 
 #[cfg(test)]
@@ -182,6 +208,7 @@ mod tests {
     fn cancel_error_message_detection() {
         assert!(is_cancel_error_message("Task cancelled during embed"));
         assert!(is_cancel_error_message("Cancelled by user"));
+        assert!(is_cancel_error_message("Cancelled during vision PDF conversion"));
         assert!(!is_cancel_error_message("Network error"));
     }
 }

@@ -640,6 +640,19 @@ mod tests {
         assert!(!cp.embeddings_omitted);
     }
 
+    #[test]
+    fn re_embedding_stage_string_is_honest() {
+        // SPEC-057 P2: resume re-embed must surface a dedicated stage key.
+        assert!(
+            include_str!("text_insert/extraction.rs").contains("re_embedding"),
+            "extraction resume path must set document status re_embedding"
+        );
+        assert!(
+            include_str!("text_insert/extraction.rs").contains("embeddings_omitted"),
+            "extraction resume path must mention embeddings_omitted"
+        );
+    }
+
     #[tokio::test]
     async fn save_strips_embeddings_from_checkpoint() {
         use edgequake_pipeline::{ProcessingResult, ProcessingStats, TextChunk};

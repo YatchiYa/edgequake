@@ -181,6 +181,8 @@ mod tests {
             stage_progress: Some(1.0),
             stage_message: None,
             pdf_id: None,
+        display_status: None,
+        ui_phase: None,
         };
 
         let json = serde_json::to_string(&summary).unwrap();
@@ -217,6 +219,8 @@ mod tests {
                 stage_progress: None,
                 stage_message: None,
                 pdf_id: None,
+            display_status: None,
+            ui_phase: None,
             }],
             total: 1,
             page: 1,
@@ -256,6 +260,8 @@ mod tests {
             entity_count: None,
             relationship_count: None,
             status: "processed".to_string(),
+            display_status: Some("completed".to_string()),
+            ui_phase: Some("terminal".to_string()),
             error_message: None,
             warning_message: None,
             source_type: None,
@@ -339,6 +345,8 @@ mod tests {
                 stage_progress: None,
                 stage_message: None,
                 pdf_id: None,
+            display_status: None,
+            ui_phase: None,
             }],
             total_count: 1,
             status_summary: StatusCounts {

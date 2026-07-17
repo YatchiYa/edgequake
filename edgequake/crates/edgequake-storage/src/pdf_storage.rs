@@ -105,6 +105,8 @@ pub enum PdfProcessingStatus {
     Completed,
     /// Processing failed.
     Failed,
+    /// Cancelled by user/system (SPEC-057 P0 — not Failed).
+    Cancelled,
 }
 
 impl PdfProcessingStatus {
@@ -115,7 +117,13 @@ impl PdfProcessingStatus {
             Self::Processing => "processing",
             Self::Completed => "completed",
             Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
         }
+    }
+
+    /// Terminal statuses that should stamp `processed_at`.
+    pub fn is_terminal(self) -> bool {
+        matches!(self, Self::Completed | Self::Failed | Self::Cancelled)
     }
 }
 
@@ -129,6 +137,7 @@ impl std::str::FromStr for PdfProcessingStatus {
             "processing" => Ok(Self::Processing),
             "completed" => Ok(Self::Completed),
             "failed" => Ok(Self::Failed),
+            "cancelled" => Ok(Self::Cancelled),
             _ => Err(StorageError::InvalidData(format!(
                 "Invalid processing status: {}",
                 s
@@ -575,10 +584,17 @@ mod tests {
         assert_eq!(PdfProcessingStatus::Processing.as_str(), "processing");
         assert_eq!(PdfProcessingStatus::Completed.as_str(), "completed");
         assert_eq!(PdfProcessingStatus::Failed.as_str(), "failed");
+        assert_eq!(PdfProcessingStatus::Cancelled.as_str(), "cancelled");
+        assert!(PdfProcessingStatus::Cancelled.is_terminal());
+        assert!(!PdfProcessingStatus::Processing.is_terminal());
 
         assert_eq!(
             PdfProcessingStatus::from_str("pending").unwrap(),
             PdfProcessingStatus::Pending
+        );
+        assert_eq!(
+            PdfProcessingStatus::from_str("cancelled").unwrap(),
+            PdfProcessingStatus::Cancelled
         );
         assert!(PdfProcessingStatus::from_str("invalid").is_err());
     }

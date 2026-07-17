@@ -16,6 +16,7 @@ pub fn extract_document_id_from_task(task: &Task) -> Option<String> {
     task.task_data
         .get("existing_document_id")
         .and_then(|v| v.as_str())
+        .or_else(|| task.task_data.get("document_id").and_then(|v| v.as_str()))
         .or_else(|| {
             task.task_data
                 .get("metadata")
@@ -23,6 +24,54 @@ pub fn extract_document_id_from_task(task: &Task) -> Option<String> {
                 .and_then(|v| v.as_str())
         })
         .map(str::to_string)
+}
+
+/// After task cancel: sync linked document KV to `cancelled` + failure_class (SPEC-057 P0).
+///
+/// No-op when the task has no document id, metadata is missing, or the doc is
+/// already terminal-cancelled. Used by HTTP/WS/PDF/pipeline cancel paths.
+pub async fn sync_doc_cancelled_for_task(
+    kv: Arc<dyn KVStorage>,
+    task: &Task,
+    message: &str,
+) -> Result<bool, String> {
+    let Some(document_id) = extract_document_id_from_task(task) else {
+        return Ok(false);
+    };
+    sync_doc_cancelled_by_document_id(kv, &document_id, message).await
+}
+
+/// Sync a document metadata row to cancelled by document id.
+pub async fn sync_doc_cancelled_by_document_id(
+    kv: Arc<dyn KVStorage>,
+    document_id: &str,
+    message: &str,
+) -> Result<bool, String> {
+    let metadata_key = crate::services::resolve_document_metadata_key(document_id, &kv).await;
+    let existing = kv
+        .get_by_id(&metadata_key)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let Some(mut obj) = existing.and_then(|v| v.as_object().cloned()) else {
+        return Ok(false);
+    };
+
+    let status = obj.get("status").and_then(|v| v.as_str()).unwrap_or("");
+    if status.eq_ignore_ascii_case("cancelled") {
+        return Ok(false);
+    }
+
+    crate::services::apply_doc_cancelled_fields(&mut obj, message);
+    crate::services::upsert_metadata_kv_with_index(kv.as_ref(), &metadata_key, json!(obj))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    tracing::info!(
+        document_id = %document_id,
+        "Synced document metadata to cancelled after task cancel"
+    );
+    Ok(true)
 }
 
 /// Mark document metadata `failed` when a task dies from heartbeat loss.
@@ -118,6 +167,9 @@ mod tests {
             metadata: None,
             progress: None,
             result: None,
+            lease_owner: None,
+            lease_token: None,
+            lease_expires_at: None,
         };
         assert_eq!(
             extract_document_id_from_task(&task).as_deref(),
@@ -139,5 +191,43 @@ mod tests {
             extract_document_id_from_task(&task).as_deref(),
             Some("doc-xyz")
         );
+    }
+
+    #[tokio::test]
+    async fn sync_doc_cancelled_for_task_sets_failure_class() {
+        use edgequake_storage::kv_keys;
+        use edgequake_storage::MemoryKVStorage;
+
+        let kv: Arc<dyn KVStorage> = Arc::new(MemoryKVStorage::new("cancel-sync-test"));
+        let doc_id = "cancel-sync-doc";
+        let meta_key = kv_keys::doc_metadata(doc_id);
+        crate::services::upsert_metadata_kv_with_index(
+            kv.as_ref(),
+            &meta_key,
+            json!({
+                "id": doc_id,
+                "status": "processing",
+                "workspace_id": "ws-1",
+            }),
+        )
+        .await
+        .unwrap();
+
+        let task = Task::new(
+            uuid::Uuid::new_v4(),
+            uuid::Uuid::new_v4(),
+            TaskType::Insert,
+            json!({ "metadata": { "document_id": doc_id } }),
+        );
+
+        let updated = sync_doc_cancelled_for_task(Arc::clone(&kv), &task, "Task cancelled by user")
+            .await
+            .unwrap();
+        assert!(updated);
+
+        let stored = kv.get_by_id(&meta_key).await.unwrap().unwrap();
+        assert_eq!(stored["status"], "cancelled");
+        assert_eq!(stored["failure_class"], "cancelled");
+        assert_eq!(stored["recommended_action"], "none");
     }
 }

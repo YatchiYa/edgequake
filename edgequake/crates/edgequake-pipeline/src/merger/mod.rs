@@ -457,11 +457,21 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
         entities_created: usize,
         entities_updated: usize,
         count_as_entities: bool,
+        artifacts: &mut MergeArtifacts,
     ) -> Result<()> {
         let chunk = edgequake_storage::vector_upsert_chunk_size();
         let mut done = 0usize;
         for slice in batch.chunks(chunk) {
             self.vector_storage.upsert(slice).await?;
+            // SPEC-057 P3: record IDs after each successful chunk so compensate
+            // can roll back partial upserts when a later chunk fails.
+            for (id, _, _) in slice {
+                if count_as_entities {
+                    artifacts.entity_vector_ids.push(id.clone());
+                } else {
+                    artifacts.relationship_vector_ids.push(id.clone());
+                }
+            }
             done += slice.len();
             let (entities_processed, relationships_processed) = if count_as_entities {
                 (done.min(entities_total), 0)
@@ -659,17 +669,32 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
         // progress so UI does not freeze at "Embedding 100%".
         let entity_vector_batch = self.collect_entity_vector_batch(&results);
         if !entity_vector_batch.is_empty() {
-            self.upsert_vectors_chunked(
-                &entity_vector_batch,
-                progress,
-                MergePhase::EntityVectors,
-                total_entities,
-                total_relationships,
-                0,
-                0,
-                true,
-            )
-            .await?;
+            if let Err(e) = self
+                .upsert_vectors_chunked(
+                    &entity_vector_batch,
+                    progress,
+                    MergePhase::EntityVectors,
+                    total_entities,
+                    total_relationships,
+                    0,
+                    0,
+                    true,
+                    &mut stats.artifacts,
+                )
+                .await
+            {
+                // SPEC-057 P3: abort with partial artifacts (Ok + errors) so
+                // persister compensates written IDs instead of MergeArtifacts::default().
+                stats.errors += 1;
+                tracing::warn!(
+                    error.source = "pipeline_merger",
+                    error.action = "upsert_entity_vectors",
+                    error.message = %e,
+                    partial_entity_vectors = stats.artifacts.entity_vector_ids.len(),
+                    "Failed entity vector upsert; returning partial MergeArtifacts"
+                );
+                return Ok(stats);
+            }
         }
 
         emit_progress(
@@ -731,17 +756,31 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
             .collect();
         let all_rel_vectors = self.collect_relationship_vector_batch(&all_rels);
         if !all_rel_vectors.is_empty() {
-            self.upsert_vectors_chunked(
-                &all_rel_vectors,
-                progress,
-                MergePhase::RelationshipVectors,
-                total_entities,
-                total_relationships,
-                stats.entities_created,
-                stats.entities_updated,
-                false,
-            )
-            .await?;
+            if let Err(e) = self
+                .upsert_vectors_chunked(
+                    &all_rel_vectors,
+                    progress,
+                    MergePhase::RelationshipVectors,
+                    total_entities,
+                    total_relationships,
+                    stats.entities_created,
+                    stats.entities_updated,
+                    false,
+                    &mut stats.artifacts,
+                )
+                .await
+            {
+                stats.errors += 1;
+                tracing::warn!(
+                    error.source = "pipeline_merger",
+                    error.action = "upsert_relationship_vectors",
+                    error.message = %e,
+                    partial_relationship_vectors =
+                        stats.artifacts.relationship_vector_ids.len(),
+                    "Failed relationship vector upsert; returning partial MergeArtifacts"
+                );
+                return Ok(stats);
+            }
         }
 
         emit_progress(

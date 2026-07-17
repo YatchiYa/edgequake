@@ -149,8 +149,17 @@ export function resolveDocumentDisplayStatus(
     | "error_message"
     | "warning_message"
     | "entity_count"
+    | "display_status"
+    | "ui_phase"
   >,
 ): DocumentStatus {
+  // SPEC-057 P4: honor Stopping… / API display_status before stage heuristics.
+  if (doc.ui_phase?.toLowerCase() === "stopping") {
+    return "stopping";
+  }
+  if (doc.display_status) {
+    return getDocumentDisplayStatus(doc);
+  }
   const baseStatus = getDocumentDisplayStatus(doc);
   const legacyStatus = doc.status?.toLowerCase() as DocumentStatus | undefined;
 

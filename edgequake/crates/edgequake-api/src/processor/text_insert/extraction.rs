@@ -286,15 +286,21 @@ impl DocumentTaskProcessor {
             }
         };
 
-        // SPEC-047 P5: slim checkpoints omit embeddings — re-embed before persist.
+        // SPEC-047 P5 / SPEC-057 P2: slim checkpoints omit embeddings — re-embed
+        // before persist and surface an honest stage (not silent "embedding").
         if result.needs_reembed() {
             info!(
                 document_id = %document_id,
                 resumed = resumed_from_checkpoint,
+                embeddings_omitted = true,
                 "Re-generating embeddings (slim checkpoint or incomplete embed)"
             );
-            self.update_document_status(&document_id, "embedding", None)
-                .await?;
+            self.update_document_status(
+                &document_id,
+                "re_embedding",
+                Some("Re-generating embeddings after slim checkpoint (embeddings_omitted)"),
+            )
+            .await?;
             if let Err(e) = pipeline
                 .ensure_embeddings(&mut result, Some(&embed_progress_callback))
                 .await

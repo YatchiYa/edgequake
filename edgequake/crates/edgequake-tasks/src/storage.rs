@@ -5,6 +5,8 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use std::time::Duration;
+use uuid::Uuid;
 
 /// Trait for task storage backends
 #[async_trait]
@@ -85,10 +87,86 @@ pub trait TaskStorage: Send + Sync {
         workspace_id: Option<uuid::Uuid>,
     ) -> TaskResult<QueueMetrics>;
 
-    /// Find an in-flight PdfProcessing task for the same PDF (P-G14 single-flight).
+    /// Claim the next eligible task with a processing lease (SPEC-057 P1).
     ///
-    /// Default scans Pending + Processing pages; Postgres overrides with JSONB index-friendly query.
+    /// Eligible: `pending`, or `processing` with expired/missing lease.
+    /// Never claims Cancelled / Indexed / Failed. Uses SKIP LOCKED semantics
+    /// on Postgres; memory uses a single write-lock pick.
+    async fn claim_next(
+        &self,
+        worker_id: &str,
+        lease_ttl: Duration,
+    ) -> TaskResult<Option<Task>>;
+
+    /// Extend lease if `worker_id` + `lease_token` still own the task.
+    /// Returns `false` when ownership was lost (abort processing).
+    async fn refresh_lease(
+        &self,
+        track_id: &str,
+        worker_id: &str,
+        lease_token: Uuid,
+        lease_ttl: Duration,
+    ) -> TaskResult<bool>;
+
+    /// Return a claimed task to Pending and clear lease (fairness park).
+    async fn release_claim(
+        &self,
+        track_id: &str,
+        worker_id: &str,
+        lease_token: Uuid,
+    ) -> TaskResult<bool>;
+
+    /// Find an in-flight Convert or Ingest task for the same PDF (P-G14 / SPEC-057 P2).
+    ///
+    /// Matches `TaskType::PdfProcessing` (convert) **or** `TaskType::Insert` with the
+    /// same `pdf_id` so admission/single-flight and cancel cover the stage split.
+    ///
+    /// Default scans Pending + Processing pages; Postgres overrides with JSONB query.
     async fn find_active_pdf_processing_task(
+        &self,
+        pdf_id: uuid::Uuid,
+        workspace_id: uuid::Uuid,
+    ) -> TaskResult<Option<Task>> {
+        use crate::types::{TaskStatus, TaskType};
+
+        for task_type in [TaskType::PdfProcessing, TaskType::Insert] {
+            for status in [TaskStatus::Pending, TaskStatus::Processing] {
+                let mut page = 1u32;
+                loop {
+                    let list = self
+                        .list_tasks(
+                            TaskFilter {
+                                workspace_id: Some(workspace_id),
+                                status: Some(status),
+                                task_type: Some(task_type),
+                                ..Default::default()
+                            },
+                            Pagination {
+                                page,
+                                page_size: 100,
+                                ..Default::default()
+                            },
+                        )
+                        .await?;
+
+                    for task in list.tasks {
+                        if task.pdf_id() == Some(pdf_id) {
+                            return Ok(Some(task));
+                        }
+                    }
+
+                    if page >= list.total_pages.max(1) {
+                        break;
+                    }
+                    page += 1;
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    /// Find an in-flight Insert (KG ingest) for the same PDF (SPEC-057 P2).
+    async fn find_active_pdf_ingest_task(
         &self,
         pdf_id: uuid::Uuid,
         workspace_id: uuid::Uuid,
@@ -103,7 +181,7 @@ pub trait TaskStorage: Send + Sync {
                         TaskFilter {
                             workspace_id: Some(workspace_id),
                             status: Some(status),
-                            task_type: Some(TaskType::PdfProcessing),
+                            task_type: Some(TaskType::Insert),
                             ..Default::default()
                         },
                         Pagination {

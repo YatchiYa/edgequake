@@ -71,6 +71,47 @@ fn should_resume_pdf_conversion(has_existing_document: bool, restart_from_scratc
     has_existing_document && !restart_from_scratch
 }
 
+/// DRY builder for the follow-on Insert payload after PDF convert (SPEC-057 P2).
+#[cfg(feature = "postgres")]
+fn build_text_insert_from_pdf_convert(
+    markdown: String,
+    filename: &str,
+    data: &edgequake_tasks::PdfProcessingData,
+    document_id: &str,
+    page_count_opt: Option<i32>,
+    file_size_bytes: i64,
+    sha256_checksum: &str,
+    vision_model: Option<String>,
+    extraction_method: Option<&str>,
+    extraction_warning: Option<String>,
+) -> edgequake_tasks::TextInsertData {
+    edgequake_tasks::TextInsertData {
+        text: markdown,
+        file_source: filename.to_string(),
+        workspace_id: data.workspace_id.to_string(),
+        metadata: Some(json!({
+            "document_id": document_id,
+            "source": "pdf_upload",
+            "source_type": "pdf",
+            "document_type": "pdf",
+            "pdf_id": data.pdf_id.to_string(),
+            "filename": filename,
+            "page_count": page_count_opt,
+            "file_size_bytes": file_size_bytes,
+            "sha256_checksum": sha256_checksum,
+            "tenant_id": data.tenant_id.to_string(),
+            "workspace_id": data.workspace_id.to_string(),
+            "pdf_vision_model": vision_model,
+            "pdf_extraction_method": extraction_method,
+            "pdf_extraction_warning": extraction_warning,
+            "force_fresh_extraction": data.restart_from_scratch,
+            "merge_only": data.reprocess_mode
+                .map(|m| m.merge_only())
+                .unwrap_or(false),
+        })),
+    }
+}
+
 #[cfg(feature = "postgres")]
 fn should_restart_pdf_conversion(has_existing_document: bool, restart_from_scratch: bool) -> bool {
     has_existing_document && restart_from_scratch
@@ -128,6 +169,195 @@ fn compute_safe_pdf_resource_profile(
 }
 
 impl DocumentTaskProcessor {
+    /// Enqueue KG ingest as `TaskType::Insert` after durable convert (SPEC-057 P2).
+    ///
+    /// Idempotent: reuses an already-active Insert for the same `pdf_id`.
+    #[cfg(feature = "postgres")]
+    async fn enqueue_pdf_ingest_insert(
+        &self,
+        convert_task: &Task,
+        data: &edgequake_tasks::PdfProcessingData,
+        text_data: edgequake_tasks::TextInsertData,
+        ingest_timeout_secs: u64,
+    ) -> TaskResult<String> {
+        let storage = self.task_storage.as_ref().ok_or_else(|| {
+            edgequake_tasks::TaskError::Processing(
+                "Task storage required to enqueue PDF ingest Insert (SPEC-057 P2)".to_string(),
+            )
+        })?;
+        let queue = self.task_queue.as_ref().ok_or_else(|| {
+            edgequake_tasks::TaskError::Processing(
+                "Task queue required to enqueue PDF ingest Insert (SPEC-057 P2)".to_string(),
+            )
+        })?;
+
+        if let Some(existing) = storage
+            .find_active_pdf_ingest_task(data.pdf_id, data.workspace_id)
+            .await
+            .map_err(|e| edgequake_tasks::TaskError::Storage(e.to_string()))?
+        {
+            info!(
+                pdf_id = %data.pdf_id,
+                ingest_track_id = %existing.track_id,
+                "RESUME: Reusing active Insert for PDF ingest (idempotent)"
+            );
+            return Ok(existing.track_id);
+        }
+
+        let mut insert_task = Task::new(
+            convert_task.tenant_id,
+            convert_task.workspace_id,
+            TaskType::Insert,
+            serde_json::to_value(&text_data).map_err(|e| {
+                edgequake_tasks::TaskError::InvalidPayload(format!(
+                    "Failed to serialize TextInsertData: {e}"
+                ))
+            })?,
+        );
+        insert_task.metadata = Some(json!({
+            "processing_timeout_secs": ingest_timeout_secs,
+            "source": "pdf_convert_follow_on",
+            "pdf_id": data.pdf_id.to_string(),
+            "convert_track_id": convert_task.track_id,
+        }));
+
+        let ingest_track_id = insert_task.track_id.clone();
+        let notifier = self
+            .task_notifier
+            .as_ref()
+            .map(|n| n.as_ref() as &dyn edgequake_tasks::TaskNotifier);
+        let noop = edgequake_tasks::NoopTaskNotifier;
+        edgequake_tasks::enqueue_with_delivery(
+            storage,
+            queue,
+            notifier.unwrap_or(&noop),
+            self.task_delivery_mode,
+            insert_task,
+        )
+        .await
+        .map_err(|e| {
+            edgequake_tasks::TaskError::Processing(format!(
+                "Failed to enqueue PDF ingest Insert: {e}"
+            ))
+        })?;
+
+        info!(
+            pdf_id = %data.pdf_id,
+            convert_track_id = %convert_task.track_id,
+            ingest_track_id = %ingest_track_id,
+            ingest_timeout_secs,
+            "Enqueued TaskType::Insert for PDF knowledge-graph ingest (SPEC-057 P2)"
+        );
+        Ok(ingest_track_id)
+    }
+
+    /// Persist convert barrier + link PDF, then enqueue Insert (no inline KG).
+    #[cfg(feature = "postgres")]
+    async fn finish_pdf_convert_and_enqueue_ingest(
+        &self,
+        task: &mut Task,
+        data: &edgequake_tasks::PdfProcessingData,
+        pdf_storage: &dyn edgequake_storage::PdfDocumentStorage,
+        early_doc_id: &str,
+        filename: &str,
+        markdown: String,
+        page_count_opt: Option<i32>,
+        file_size_bytes: i64,
+        sha256_checksum: &str,
+        vision_model: Option<String>,
+        extraction_method_str: Option<&str>,
+        extraction_warning: Option<String>,
+        cancel_token: &CancellationToken,
+    ) -> TaskResult<serde_json::Value> {
+        self.check_cancelled(cancel_token, "pre-ingest-enqueue", early_doc_id)
+            .await?;
+
+        let _ = self
+            .update_document_status(
+                early_doc_id,
+                "processing",
+                Some("PDF converted — queueing knowledge-graph ingest"),
+            )
+            .await;
+
+        if let Ok(document_uuid) = uuid::Uuid::parse_str(early_doc_id) {
+            let truncate_at = markdown.len().min(65_536);
+            let safe_truncate = markdown[..truncate_at]
+                .char_indices()
+                .map(|(i, _)| i)
+                .take_while(|&i| i <= 65_536)
+                .last()
+                .unwrap_or(0);
+            let _ = pdf_storage
+                .ensure_document_record(
+                    &document_uuid,
+                    &data.workspace_id,
+                    Some(&data.tenant_id),
+                    filename,
+                    &markdown[..safe_truncate],
+                    "processing",
+                )
+                .await;
+            let _ = pdf_storage
+                .link_pdf_to_document(&data.pdf_id, &document_uuid)
+                .await;
+        }
+
+        let profile = crate::services::LargeDocumentProfile::new(
+            page_count_opt.unwrap_or(1).max(1) as usize,
+            file_size_bytes.max(0) as u64,
+        );
+        let ingest_timeout_secs = profile.ingest_timeout_secs();
+
+        let text_data = build_text_insert_from_pdf_convert(
+            markdown.clone(),
+            filename,
+            data,
+            early_doc_id,
+            page_count_opt,
+            file_size_bytes,
+            sha256_checksum,
+            vision_model,
+            extraction_method_str,
+            extraction_warning,
+        );
+
+        task.update_progress("enqueue_ingest".to_string(), 5, 90);
+        let ingest_track_id = self
+            .enqueue_pdf_ingest_insert(task, data, text_data, ingest_timeout_secs)
+            .await?;
+
+        task.update_progress("complete".to_string(), 6, 100);
+        info!(
+            pdf_id = %data.pdf_id,
+            document_id = %early_doc_id,
+            ingest_track_id = %ingest_track_id,
+            markdown_len = markdown.len(),
+            "PDF convert completed — ingest Insert enqueued (SPEC-057 P2)"
+        );
+        edgequake_observability::record_document_processing(
+            "pdf_processing",
+            "conversion",
+            "success",
+            0.0,
+        );
+
+        let state = self.pipeline_state.clone();
+        let track_id = task.track_id.clone();
+        tokio::spawn(async move {
+            state.remove_pdf_progress(&track_id).await;
+        });
+
+        Ok(json!({
+            "status": "converted",
+            "pdf_id": data.pdf_id.to_string(),
+            "document_id": early_doc_id,
+            "ingest_track_id": ingest_track_id,
+            "markdown_len": markdown.len(),
+            "phase": "convert_complete",
+        }))
+    }
+
     /// Process PDF processing task (SPEC-007).
     ///
     /// This method handles the complete PDF processing pipeline:
@@ -377,21 +607,12 @@ impl DocumentTaskProcessor {
                         document_id = %early_doc_id,
                         pdf_id = %data.pdf_id,
                         markdown_len = stored_markdown.len(),
-                        "RESUME: Markdown already stored — skipping PDF conversion, resuming at text_insert"
+                        "RESUME: Markdown already stored — skipping PDF conversion, enqueueing ingest Insert"
                     );
 
-                    // Update status so the UI shows we're resuming extraction, not reconverting.
-                    let _ = self
-                        .update_document_status(
-                            &early_doc_id,
-                            "processing",
-                            Some("Resuming entity extraction from previously converted markdown"),
-                        )
-                        .await;
+                    task.update_progress("resume_convert_barrier".to_string(), 3, 45);
 
-                    task.update_progress("entity_extraction".to_string(), 4, 50);
-
-                    self.check_cancelled(&cancel_token, "pre-text-insert-resume", &early_doc_id)
+                    self.check_cancelled(&cancel_token, "pre-ingest-enqueue-resume", &early_doc_id)
                         .await?;
 
                     let stored_extraction_method = pdf.extraction_method;
@@ -427,9 +648,6 @@ impl DocumentTaskProcessor {
                     }
                     let stored_markdown = mm_outcome.markdown;
 
-                    // Clone for linking step after process_text_insert consumes the string.
-                    let stored_markdown_for_link = stored_markdown.clone();
-
                     let doc_content_key = edgequake_storage::kv_keys::doc_content(&early_doc_id);
                     let doc_content = json!({ "content": stored_markdown.clone() });
                     self.kv_storage
@@ -437,64 +655,41 @@ impl DocumentTaskProcessor {
                         .await
                         .map_err(|e| edgequake_tasks::TaskError::Storage(e.to_string()))?;
 
-                    let text_data = edgequake_tasks::TextInsertData {
-                        text: stored_markdown,
-                        file_source: filename.clone(),
-                        workspace_id: data.workspace_id.to_string(),
-                        metadata: Some(json!({
-                            "document_id": early_doc_id.clone(),
-                            "source": "pdf_upload",
-                            "source_type": "pdf",
-                            "document_type": "pdf",
-                            "pdf_id": data.pdf_id.to_string(),
-                            "filename": filename.clone(),
-                            "page_count": page_count_opt,
-                            "file_size_bytes": file_size_bytes,
-                            "sha256_checksum": sha256_checksum.clone(),
-                            "tenant_id": data.tenant_id.to_string(),
-                            "workspace_id": data.workspace_id.to_string(),
-                            "pdf_vision_model": stored_vision_model,
-                            "pdf_extraction_method": stored_extraction_method.as_ref().map(|m| m.as_str()),
-                            "force_fresh_extraction": data.restart_from_scratch,
-                            "merge_only": data.reprocess_mode
-                                .map(|m| m.merge_only())
-                                .unwrap_or(false),
-                        })),
+                    // Re-affirm Completed: process start sets Processing, but convert
+                    // barrier SSOT must remain Completed when we skip reconvert (P2).
+                    let extraction_method_str =
+                        stored_extraction_method.as_ref().map(|m| m.as_str());
+                    let update_req = UpdatePdfProcessingRequest {
+                        pdf_id: data.pdf_id,
+                        processing_status: PdfProcessingStatus::Completed,
+                        markdown_content: Some(stored_markdown.clone()),
+                        extraction_method: stored_extraction_method.clone(),
+                        extraction_errors: None,
+                        document_id: None,
+                        vision_model: stored_vision_model.clone(),
                     };
+                    pdf_storage
+                        .update_pdf_processing(update_req)
+                        .await
+                        .map_err(|e| edgequake_tasks::TaskError::Storage(e.to_string()))?;
 
-                    let result = self
-                        .process_text_insert(task, text_data, cancel_token)
-                        .await?;
-
-                    // Link PDF to document (same as the normal path below).
-                    task.update_progress("linking".to_string(), 5, 95);
-                    if let Ok(document_uuid) = uuid::Uuid::parse_str(&early_doc_id) {
-                        let workspace_uuid = data.workspace_id;
-                        let tenant_uuid = Some(data.tenant_id);
-                        let truncate_at = stored_markdown_for_link.len().min(65_536);
-                        let safe_truncate = stored_markdown_for_link[..truncate_at]
-                            .char_indices()
-                            .map(|(i, _)| i)
-                            .take_while(|&i| i <= 65_536)
-                            .last()
-                            .unwrap_or(0);
-                        let _ = pdf_storage
-                            .ensure_document_record(
-                                &document_uuid,
-                                &workspace_uuid,
-                                tenant_uuid.as_ref(),
-                                &filename,
-                                &stored_markdown_for_link[..safe_truncate],
-                                "indexed",
-                            )
-                            .await;
-                        let _ = pdf_storage
-                            .link_pdf_to_document(&data.pdf_id, &document_uuid)
-                            .await;
-                    }
-
-                    task.update_progress("complete".to_string(), 6, 100);
-                    return Ok(result);
+                    return self
+                        .finish_pdf_convert_and_enqueue_ingest(
+                            task,
+                            &data,
+                            pdf_storage.as_ref(),
+                            &early_doc_id,
+                            &filename,
+                            stored_markdown,
+                            page_count_opt,
+                            file_size_bytes,
+                            &sha256_checksum,
+                            stored_vision_model,
+                            extraction_method_str,
+                            None,
+                            &cancel_token,
+                        )
+                        .await;
                 }
             }
         }
@@ -771,6 +966,15 @@ impl DocumentTaskProcessor {
                     let convert_result = tokio::select! {
                         biased;
                         _ = cancel_token.cancelled() => {
+                            // SPEC-057 P0: stamp PDF Cancelled before returning
+                            // (HTTP cancel path also writes Cancelled; this covers
+                            // in-flight vision abort when the worker observes the token).
+                            let _ = pdf_storage
+                                .update_pdf_status(
+                                    &data.pdf_id,
+                                    crate::services::pdf_status_for_cancel(),
+                                )
+                                .await;
                             return Err(edgequake_tasks::TaskError::Cancelled(
                                 "Cancelled during vision PDF conversion".to_string(),
                             ));
@@ -1042,14 +1246,14 @@ impl DocumentTaskProcessor {
         // == Progress: conversion done, storing markdown ==
         task.update_progress("storing_markdown".to_string(), 3, 45);
 
-        // 5. Store markdown in pdf_documents with extraction method
+        // 5. Store markdown in pdf_documents (convert barrier SSOT — SPEC-057 P2)
         let update_req = UpdatePdfProcessingRequest {
             pdf_id: data.pdf_id,
             processing_status: PdfProcessingStatus::Completed,
             markdown_content: Some(markdown.clone()),
             extraction_method: Some(extraction_method),
             extraction_errors: extraction_errors.clone(),
-            document_id: None, // Will be set after document creation
+            document_id: None, // Linked when enqueueing ingest
             vision_model: vision_model.clone(),
         };
 
@@ -1067,144 +1271,27 @@ impl DocumentTaskProcessor {
             .await
             .map_err(|e| edgequake_tasks::TaskError::Storage(e.to_string()))?;
 
-        // 6. Create document via standard pipeline
-        // == Progress: markdown stored, starting entity extraction + indexing ==
-        task.update_progress("entity_extraction".to_string(), 4, 50);
-
-        // ── CANCELLATION GATE: before handing off to text_insert pipeline ──
-        self.check_cancelled(&cancel_token, "pre-text-insert", &early_doc_id)
-            .await?;
-
-        // SPEC-002: Include source_type: "pdf" for unified pipeline tracking
-        // OODA-05: Include tenant_id/workspace_id for multi-tenant document visibility
-        // Pass the early_doc_id so we reuse the same document that's already showing in UI
-        // OODA-04: Include sha256_checksum for end-to-end lineage traceability
-        // WHY: Downstream ensure_document_source_type needs checksum for integrity verification
-        let text_data = edgequake_tasks::TextInsertData {
-            text: markdown.clone(),
-            file_source: filename.clone(),
-            workspace_id: data.workspace_id.to_string(),
-            metadata: Some(json!({
-                "document_id": early_doc_id.clone(),  // Reuse early document ID
-                "source": "pdf_upload",
-                "source_type": "pdf",
-                "document_type": "pdf",
-                "pdf_id": data.pdf_id.to_string(),
-                "filename": filename.clone(),
-                "page_count": page_count_opt,
-                "file_size_bytes": file_size_bytes,
-                "sha256_checksum": sha256_checksum.clone(),
-                "tenant_id": data.tenant_id.to_string(),
-                "workspace_id": data.workspace_id.to_string(),
-                // SPEC-040: Store PDF extraction lineage for document detail view
-                // WHY: The lineage builder in documents.rs reads from this metadata JSON.
-                // vision_model and extraction_method are stored in pdf_documents table but
-                // not in the KV document metadata, making them invisible in the lineage view.
-                "pdf_vision_model": vision_model,
-                "pdf_extraction_method": extraction_method.as_str(),
-                "pdf_extraction_warning": extraction_warning,
-                "force_fresh_extraction": data.restart_from_scratch,
-                "merge_only": data.reprocess_mode
-                    .map(|m| m.merge_only())
-                    .unwrap_or(false),
-            })),
-        };
-
-        let result = self
-            .process_text_insert(task, text_data, cancel_token)
-            .await?;
-
-        // == Progress: extraction complete, linking PDF ==
-        task.update_progress("linking".to_string(), 5, 95);
-
-        // 7. Link PDF to created document (use early_doc_id)
-        if let Ok(document_uuid) = uuid::Uuid::parse_str(&early_doc_id) {
-            // FIX-ISSUE-74: Ensure a row in the `documents` relational table exists
-            // BEFORE setting pdf_documents.document_id (which has a FK constraint).
-            // WHY: Without this, the UPDATE violates the foreign key constraint
-            // "pdf_documents_document_id_fkey" because no matching documents(id) row exists.
-            let workspace_uuid = data.workspace_id;
-            let tenant_uuid = Some(data.tenant_id);
-            // WHY: Truncate content to 64KB for the relational record to avoid bloat.
-            // Full content lives in KV storage. Use floor_char_boundary to avoid
-            // splitting a multi-byte UTF-8 codepoint, which would panic.
-            let truncate_at = if markdown.len() > 65_536 {
-                // Find the largest char boundary <= 65_536
-                markdown
-                    .char_indices()
-                    .map(|(i, _)| i)
-                    .take_while(|&i| i <= 65_536)
-                    .last()
-                    .unwrap_or(0)
-            } else {
-                markdown.len()
-            };
-            if let Err(e) = pdf_storage
-                .ensure_document_record(
-                    &document_uuid,
-                    &workspace_uuid,
-                    tenant_uuid.as_ref(),
-                    &filename,
-                    &markdown[..truncate_at],
-                    // WHY: The relational `documents` table has a CHECK constraint
-                    // that only allows 'pending', 'processing', 'indexed', 'failed'.
-                    // KV storage uses 'completed' but the relational table uses 'indexed'.
-                    "indexed",
-                )
-                .await
-            {
-                edgequake_observability::ErrorEvent::log_domain_warn(
-                    "task_processor",
-                    "ensure_document_record",
-                    &format!("Failed to ensure document record: {e}"),
-                    json!({
-                        "pdf_id": data.pdf_id,
-                        "document_id": data.existing_document_id,
-                        "error": e.to_string(),
-                    }),
-                );
-            }
-
-            if let Err(e) = pdf_storage
-                .link_pdf_to_document(&data.pdf_id, &document_uuid)
-                .await
-            {
-                edgequake_observability::ErrorEvent::log_domain_warn(
-                    "task_processor",
-                    "link_pdf_to_document",
-                    &format!("Failed to link PDF to document: {e}"),
-                    json!({
-                        "pdf_id": data.pdf_id,
-                        "document_id": data.existing_document_id,
-                        "error": e.to_string(),
-                    }),
-                );
-                // Non-fatal - PDF still processed successfully
-            }
-        }
-
-        // 8. Status already set to Completed in step 5 via update_pdf_processing
-        info!(
-            pdf_id = %data.pdf_id,
-            document_id = ?data.existing_document_id,
-            "PDF processing completed successfully"
-        );
-        edgequake_observability::record_document_processing(
-            "pdf_processing",
-            "conversion",
-            "success",
-            0.0,
-        );
-
-        // OODA-16: Clean up progress tracking (fire-and-forget)
-        // WHY: Free memory for completed uploads. GET endpoint will return 404.
-        let state = self.pipeline_state.clone();
-        let track_id = task.track_id.clone();
-        tokio::spawn(async move {
-            state.remove_pdf_progress(&track_id).await;
-        });
-
-        Ok(result)
+        // 6. End convert task; enqueue TaskType::Insert for KG ingest (SPEC-057 P2).
+        let extraction_method_str = update_req
+            .extraction_method
+            .as_ref()
+            .map(|m| m.as_str());
+        self.finish_pdf_convert_and_enqueue_ingest(
+            task,
+            &data,
+            pdf_storage.as_ref(),
+            &early_doc_id,
+            &filename,
+            markdown,
+            page_count_opt,
+            file_size_bytes,
+            &sha256_checksum,
+            vision_model,
+            extraction_method_str,
+            extraction_warning,
+            &cancel_token,
+        )
+        .await
     }
 
     #[cfg(not(feature = "postgres"))]
@@ -1228,7 +1315,17 @@ impl DocumentTaskProcessor {
 mod tests {
     use super::*;
     use edgequake_pdf::{PdfParserBackend, VisionFailureKind};
-    use edgequake_tasks::TaskError;
+    use edgequake_storage::{
+        CreatePdfRequest, ExtractionMethod, MemoryPdfStorage, PdfDocumentStorage,
+        PdfProcessingStatus, UpdatePdfProcessingRequest,
+    };
+    use edgequake_tasks::{
+        memory::MemoryTaskStorage, queue::ChannelTaskQueue, NoopTaskNotifier, TaskDeliveryMode,
+        TaskError, TaskType,
+    };
+    use std::sync::Arc;
+    use tokio_util::sync::CancellationToken;
+    use uuid::Uuid;
 
     #[test]
     fn vision_timeouts_trigger_edgeparse_fallback() {
@@ -1327,5 +1424,145 @@ mod tests {
         assert!(!restart, "Entities mode must reuse cached markdown");
         assert!(should_resume_pdf_conversion(true, restart));
         assert!(!should_restart_pdf_conversion(true, restart));
+    }
+
+    /// SPEC-057 P2 e2e: resume after convert barrier enqueues Insert (no inline KG).
+    #[tokio::test]
+    async fn resume_convert_barrier_enqueues_insert_task() {
+        use edgequake_pipeline::Pipeline;
+        use edgequake_storage::{
+            MemoryGraphStorage, MemoryKVStorage, MemoryVectorStorage,
+            MemoryWorkspaceVectorRegistry,
+        };
+        use edgequake_tasks::{PipelineState, Task, TaskProcessor};
+
+        let pdf_storage = Arc::new(MemoryPdfStorage::new());
+        let task_storage: Arc<dyn edgequake_tasks::TaskStorage> =
+            Arc::new(MemoryTaskStorage::new());
+        let task_queue: Arc<dyn edgequake_tasks::TaskQueue> =
+            Arc::new(ChannelTaskQueue::new(16));
+        let kv: Arc<dyn edgequake_storage::traits::KVStorage> =
+            Arc::new(MemoryKVStorage::new("p2-resume-enqueue"));
+        let vector: Arc<dyn edgequake_storage::traits::VectorStorage> =
+            Arc::new(MemoryVectorStorage::new("p2-resume-enqueue", 1536));
+        let vector_registry: Arc<dyn edgequake_storage::traits::WorkspaceVectorRegistry> =
+            Arc::new(MemoryWorkspaceVectorRegistry::new(Arc::clone(&vector)));
+        let graph: Arc<dyn edgequake_storage::traits::GraphStorage> =
+            Arc::new(MemoryGraphStorage::new("p2-resume-enqueue"));
+
+        let tenant_id = Uuid::new_v4();
+        let workspace_id = Uuid::new_v4();
+        let pdf_bytes = b"%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n";
+        let pdf_id = pdf_storage
+            .create_pdf(CreatePdfRequest {
+                workspace_id,
+                filename: "p2-resume.pdf".to_string(),
+                content_type: "application/pdf".to_string(),
+                file_size_bytes: pdf_bytes.len() as i64,
+                sha256_checksum: format!("p2-resume-{}", Uuid::new_v4()),
+                page_count: Some(1),
+                pdf_data: pdf_bytes.to_vec(),
+                vision_model: None,
+            })
+            .await
+            .unwrap();
+
+        let markdown = "# Barrier markdown from prior convert\n";
+        pdf_storage
+            .update_pdf_processing(UpdatePdfProcessingRequest {
+                pdf_id,
+                processing_status: PdfProcessingStatus::Completed,
+                markdown_content: Some(markdown.to_string()),
+                extraction_method: Some(ExtractionMethod::EdgeParse),
+                extraction_errors: None,
+                document_id: None,
+                vision_model: None,
+            })
+            .await
+            .unwrap();
+
+        let doc_id = format!("doc-{}", pdf_id);
+        let meta_key = edgequake_storage::kv_keys::doc_metadata(&doc_id);
+        kv.upsert(&[(
+            meta_key,
+            serde_json::json!({
+                "id": doc_id,
+                "status": "processing",
+                "tenant_id": tenant_id.to_string(),
+                "workspace_id": workspace_id.to_string(),
+            }),
+        )])
+        .await
+        .unwrap();
+
+        let processor = DocumentTaskProcessor::new(
+            Arc::new(Pipeline::default_pipeline()),
+            Arc::new(edgequake_llm::MockProvider::new()),
+            Arc::clone(&kv),
+            vector,
+            vector_registry,
+            graph,
+            PipelineState::new(),
+        )
+        .with_pdf_storage(Arc::clone(&pdf_storage) as Arc<dyn edgequake_storage::PdfDocumentStorage>)
+        .with_task_enqueue(
+            Arc::clone(&task_storage) as edgequake_tasks::SharedTaskStorage,
+            Arc::clone(&task_queue) as edgequake_tasks::SharedTaskQueue,
+            Arc::new(NoopTaskNotifier) as edgequake_tasks::SharedTaskNotifier,
+            TaskDeliveryMode::Local,
+        );
+
+        let data = edgequake_tasks::PdfProcessingData {
+            pdf_id,
+            tenant_id,
+            workspace_id,
+            enable_vision: false,
+            vision_provider: "mock".to_string(),
+            vision_model: None,
+            existing_document_id: Some(doc_id.clone()),
+            pdf_parser_backend: PdfParserBackend::EdgeParse,
+            pdf_parser_backend_explicit: true,
+            restart_from_scratch: false,
+            reprocess_mode: None,
+            multimodal_process_options: None,
+        };
+        let mut task = Task::new(
+            tenant_id,
+            workspace_id,
+            TaskType::PdfProcessing,
+            serde_json::to_value(&data).unwrap(),
+        );
+
+        let result = processor
+            .process(&mut task, CancellationToken::new())
+            .await
+            .expect("convert resume must succeed");
+        assert_eq!(result["phase"], "convert_complete");
+        assert_eq!(result["status"], "converted");
+        let ingest_track = result["ingest_track_id"]
+            .as_str()
+            .expect("ingest_track_id");
+
+        let ingest = task_storage
+            .get_task(ingest_track)
+            .await
+            .unwrap()
+            .expect("Insert task row");
+        assert_eq!(ingest.task_type, TaskType::Insert);
+        assert_eq!(ingest.pdf_id(), Some(pdf_id));
+        let timeout = ingest
+            .metadata
+            .as_ref()
+            .and_then(|m| m.get("processing_timeout_secs"))
+            .and_then(|v| v.as_u64());
+        assert!(timeout.is_some(), "Insert must carry ingest timeout metadata");
+
+        let pdf = pdf_storage
+            .get_pdf(&pdf_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(pdf.processing_status, PdfProcessingStatus::Completed);
+        assert_eq!(pdf.markdown_content.as_deref(), Some(markdown));
     }
 }

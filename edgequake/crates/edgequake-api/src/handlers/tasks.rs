@@ -28,12 +28,13 @@ use axum::{
 use chrono::Utc;
 use edgequake_tasks::{Pagination, SortField, SortOrder, TaskFilter, TaskStatus, TaskType};
 use serde_json::json;
+use std::sync::Arc;
 use tracing;
 
 use crate::error::{ApiError, ApiResult};
 use crate::middleware::TenantContext;
 use crate::services::document_metadata_scan::load_scoped_document_metadata_entries;
-use crate::services::task_cancel::apply_task_row_cancel;
+use crate::services::cancel_track_with_doc_and_pdf_chain;
 use crate::services::task_scope::get_task_for_context;
 use crate::state::AppState;
 
@@ -232,17 +233,18 @@ pub async fn cancel_task(
                 if let Some(doc_track_id) = obj.get("track_id").and_then(|v| v.as_str()) {
                     if doc_track_id == track_id {
                         let mut updated = obj.clone();
-                        updated.insert("status".to_string(), json!("cancelled"));
-                        updated.insert("current_stage".to_string(), json!("cancelled"));
-                        updated
-                            .insert("stage_message".to_string(), json!("Task cancelled by user"));
-                        updated.insert("updated_at".to_string(), json!(Utc::now().to_rfc3339()));
+                        // SPEC-057 P0: include failure_class=cancelled (not a bare status patch).
+                        crate::services::apply_doc_cancelled_fields(
+                            &mut updated,
+                            "Task cancelled by user",
+                        );
 
-                        match state
-                            .storage
-                            .kv_storage
-                            .upsert(&[(key.clone(), json!(updated))])
-                            .await
+                        match crate::services::upsert_metadata_kv_with_index(
+                            state.storage.kv_storage.as_ref(),
+                            &key,
+                            json!(updated),
+                        )
+                        .await
                         {
                             Ok(_) => {
                                 doc_updated = true;
@@ -280,9 +282,11 @@ pub async fn cancel_task(
         return Err(ApiError::NotFound(format!("Task not found: {}", track_id)));
     }
 
-    let applied = apply_task_row_cancel(
+    // SPEC-057: single facade — task row + doc KV + Convert∪Insert chain.
+    let applied = cancel_track_with_doc_and_pdf_chain(
         &state.tasks.storage,
         &state.tasks.cancellation_registry,
+        Arc::clone(&state.storage.kv_storage),
         &track_id,
     )
     .await

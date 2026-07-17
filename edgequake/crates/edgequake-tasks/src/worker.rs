@@ -44,12 +44,15 @@ use crate::{
     error::{TaskError, TaskResult},
     queue::TaskQueue,
     storage::TaskStorage,
+    task_lease_ttl_from_env,
     tenant_limiter::TenantConcurrencyLimiter,
     types::{Task, TaskStatus},
 };
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::task::JoinHandle;
+use tokio::time::MissedTickBehavior;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn, Instrument};
 
@@ -299,8 +302,15 @@ impl WorkerPool {
 
             let handle = runtime.spawn(async move {
                 info!("Worker {} started", worker_id);
+                let worker_name = format!("worker-{worker_id}");
+                let lease_ttl = task_lease_ttl_from_env();
+                let mut poll_interval = tokio::time::interval(Duration::from_secs(2));
+                poll_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+                // Skip the immediate first tick so we don't race startup hydrate.
+                poll_interval.tick().await;
 
                 loop {
+                    // SPEC-057 P1: channel is wake-only; Postgres/memory claim is SSOT.
                     tokio::select! {
                         _ = shutdown_rx.recv() => {
                             info!("Worker {} shutting down", worker_id);
@@ -308,316 +318,8 @@ impl WorkerPool {
                         }
                         result = queue.receive() => {
                             match result {
-                                Ok(mut task) => {
-                                    // FEAT-CANCEL: Drop terminal / cancel-intent tasks before
-                                    // claiming a tenant slot or marking processing.
-                                    if should_skip_task(&storage, &cancel_registry, &task).await {
-                                        debug!(
-                                            worker_id = worker_id,
-                                            task_id = %task.track_id,
-                                            "Skipping cancelled or terminal task"
-                                        );
-                                        cancel_registry.deregister(&task.track_id).await;
-                                        continue;
-                                    }
-
-                                    // FEAT-TENANT-FAIRNESS: try_acquire first so this worker can
-                                    // serve other tenants. On limit, park-until-permit in a
-                                    // background waiter (no 500ms channel requeue storm).
-                                    let _tenant_permit = if let Some(ref limiter) = tenant_limiter {
-                                        match limiter.try_acquire(task.tenant_id).await {
-                                            Some(permit) => Some(permit),
-                                            None => {
-                                                let n = fairness_park_logs
-                                                    .fetch_add(1, Ordering::Relaxed)
-                                                    + 1;
-                                                if n == 1 || n % 32 == 0 {
-                                                    info!(
-                                                        worker_id = worker_id,
-                                                        task_id = %task.track_id,
-                                                        tenant_id = %task.tenant_id,
-                                                        park_events = n,
-                                                        park_waiters = limiter.park_waiter_count(),
-                                                        "Tenant at concurrency limit — parking until permit (aggregated)"
-                                                    );
-                                                }
-                                                spawn_fairness_park(
-                                                    worker_id,
-                                                    task,
-                                                    Arc::clone(&queue),
-                                                    Arc::clone(&storage),
-                                                    limiter.clone(),
-                                                    cancel_registry.clone(),
-                                                    park_shutdown_tx.subscribe(),
-                                                );
-                                                continue;
-                                            }
-                                        }
-                                    } else {
-                                        None
-                                    };
-
-                                    info!("Worker {} processing task: {} (tenant: {})", worker_id, task.track_id, task.tenant_id);
-
-                                    // Mark as processing
-                                    task.mark_processing();
-                                    if let Err(e) = storage.update_task(&task).await {
-                                        error!(
-                                            error.source = "task_worker",
-                                            error.action = "mark_processing",
-                                            worker_id = worker_id,
-                                            task_id = %task.track_id,
-                                            error.message = %e,
-                                            "Failed to update task status to processing"
-                                        );
-                                    }
-
-                                    // FEAT-CANCEL: Register cancellation token for this task.
-                                    // WHY: The cancel API can now signal this specific task to stop
-                                    // at the next cooperative checkpoint in the pipeline.
-                                    let cancel_token = cancel_registry
-                                        .register(&task.track_id)
-                                        .await;
-
-                                    // HEARTBEAT: Spawn a background task that periodically
-                                    // touches the task's updated_at timestamp. This prevents
-                                    // the orphan-recovery logic from marking active tasks as
-                                    // orphaned during long-running LLM extraction (>5 min).
-                                    // The heartbeat is ONLY useful for periodic runtime orphan
-                                    // checks; startup recovery now ignores it (recovers all).
-                                    let heartbeat_track_id = task.track_id.clone();
-                                    let heartbeat_storage = Arc::clone(&storage);
-                                    // HeartbeatGuard ensures the heartbeat is aborted
-                                    // even if processor.process() panics. Without RAII,
-                                    // a panic leaves the heartbeat running forever —
-                                    // the task stays "processing" with a live heartbeat
-                                    // that defeats the periodic orphan check.
-                                    let _heartbeat_guard = HeartbeatGuard(tokio::spawn(async move {
-                                        let mut interval = tokio::time::interval(
-                                            tokio::time::Duration::from_secs(60),
-                                        );
-                                        interval.tick().await; // Skip first immediate tick
-                                        loop {
-                                            interval.tick().await;
-                                            if let Err(e) = heartbeat_storage
-                                                .touch_task(&heartbeat_track_id)
-                                                .await
-                                            {
-                                                debug!(
-                                                    "Heartbeat failed for task {}: {}",
-                                                    heartbeat_track_id, e
-                                                );
-                                            }
-                                        }
-                                    }));
-
-                                    // Process task with timeout.
-                                    // WHY: Without a timeout, processor.process() can hang
-                                    // forever (stuck LLM call, unresponsive PDF conversion)
-                                    // while the heartbeat keeps updating updated_at. The orphan
-                                    // recovery can never catch these "zombie" tasks. The timeout
-                                    // ensures every task eventually completes or fails.
-                                    let timeout_duration = tokio::time::Duration::from_secs(
-                                        task.metadata
-                                            .as_ref()
-                                            .and_then(|m| m.get("processing_timeout_secs"))
-                                            .and_then(|v| v.as_u64())
-                                            .unwrap_or(config.processing_timeout_secs),
-                                    );
-                                    let span_task_id = task.track_id.clone();
-                                    let span_tenant_id = task.tenant_id;
-                                    let span_task_type = task.task_type;
-                                    let process_result = tokio::time::timeout(
-                                        timeout_duration,
-                                        processor
-                                            .process(&mut task, cancel_token.clone())
-                                            .instrument(tracing::info_span!(
-                                                "task_process",
-                                                worker_id = worker_id,
-                                                task_id = %span_task_id,
-                                                tenant_id = %span_tenant_id,
-                                                task_type = ?span_task_type,
-                                            )),
-                                    )
-                                    .await;
-
-                                    match process_result {
-                                        Ok(Ok(result)) => {
-                                            // HeartbeatGuard aborts heartbeat on drop at end of scope
-                                            task.mark_success(result);
-                                            info!("Worker {} completed task: {} (tenant: {})", worker_id, task.track_id, task.tenant_id);
-                                        }
-                                        Ok(Err(TaskError::Cancelled(msg))) => {
-                                            // Cancel is a terminal user intent — never Failed+retry.
-                                            task.mark_cancelled();
-                                            info!(
-                                                worker_id = worker_id,
-                                                task_id = %task.track_id,
-                                                tenant_id = %task.tenant_id,
-                                                reason = %msg,
-                                                "Task cancelled — preserving Cancelled status (no retry)"
-                                            );
-                                        }
-                                        Ok(Err(e)) => {
-                                            // HeartbeatGuard aborts heartbeat on drop at end of scope
-                                            let error_msg = format!("{}", e);
-                                            task.mark_failed_with_details(
-                                                crate::types::TaskFailureInfo::from_processing_error(
-                                                    error_msg.clone(),
-                                                ),
-                                            );
-
-                                            // Log circuit breaker status
-                                            if task.circuit_breaker_tripped {
-                                                error!(
-                                                    worker_id = worker_id,
-                                                    task_id = %task.track_id,
-                                                    tenant_id = %task.tenant_id,
-                                                    consecutive_timeouts = task.consecutive_timeout_failures,
-                                                    "Task permanently failed: Circuit breaker tripped"
-                                                );
-                                            } else {
-                                                error!(
-                                                    worker_id = worker_id,
-                                                    task_id = %task.track_id,
-                                                    tenant_id = %task.tenant_id,
-                                                    retry_count = task.retry_count,
-                                                    max_retries = task.max_retries,
-                                                    consecutive_timeouts = task.consecutive_timeout_failures,
-                                                    error = %error_msg,
-                                                    "Task processing failed"
-                                                );
-                                            }
-
-                                            // Check if task is permanently failed (no more retries)
-                                            let will_retry = config.auto_retry
-                                                && task.can_retry()
-                                                && !task.circuit_breaker_tripped
-                                                && !crate::is_permanent_ingestion_failure(&error_msg);
-
-                                            if will_retry {
-                                                // Calculate exponential backoff delay
-                                                let retry_delay_ms = calculate_backoff_delay(
-                                                    task.retry_count as u32,
-                                                    config.initial_retry_delay_ms,
-                                                    config.max_retry_delay_ms,
-                                                    config.backoff_multiplier,
-                                                );
-
-                                                warn!(
-                                                    task_id = %task.track_id,
-                                                    attempt = task.retry_count,
-                                                    max_retries = task.max_retries,
-                                                    delay_ms = retry_delay_ms,
-                                                    "Scheduling retry with exponential backoff"
-                                                );
-
-                                                // Schedule retry after exponential backoff delay
-                                                let retry_task = task.clone();
-                                                let retry_queue = Arc::clone(&queue);
-
-                                                let retry_cancel = cancel_registry.clone();
-                                                let retry_storage = Arc::clone(&storage);
-                                                tokio::spawn(async move {
-                                                    tokio::time::sleep(
-                                                        tokio::time::Duration::from_millis(retry_delay_ms)
-                                                    ).await;
-
-                                                    let track_id = retry_task.track_id.clone();
-                                                    if should_skip_task(
-                                                        &retry_storage,
-                                                        &retry_cancel,
-                                                        &retry_task,
-                                                    )
-                                                    .await
-                                                    {
-                                                        debug!(
-                                                            task_id = %track_id,
-                                                            "Skipping retry — task cancelled or terminal"
-                                                        );
-                                                        return;
-                                                    }
-                                                    if let Err(e) = retry_queue.send(retry_task).await {
-                                                        error!(
-                                                            error.source = "task_worker",
-                                                            error.action = "requeue_retry",
-                                                            task_id = %track_id,
-                                                            error.message = %e,
-                                                            "Failed to requeue task for retry"
-                                                        );
-                                                    }
-                                                });
-                                            } else {
-                                                // PERMANENT FAILURE: No more retries or circuit breaker tripped.
-                                                // Notify processor to update document status, clean up resources.
-                                                // WHY: Without this, documents remain stuck in "processing"
-                                                // status forever after retry exhaustion.
-                                                let reason = if task.circuit_breaker_tripped {
-                                                    format!(
-                                                        "Circuit breaker tripped after {} consecutive timeouts. \
-                                                        Last error: {}",
-                                                        task.consecutive_timeout_failures, error_msg
-                                                    )
-                                                } else {
-                                                    format!(
-                                                        "Retries exhausted ({}/{} attempts). Last error: {}",
-                                                        task.retry_count, task.max_retries, error_msg
-                                                    )
-                                                };
-                                                error!(
-                                                    task_id = %task.track_id,
-                                                    tenant_id = %task.tenant_id,
-                                                    "Task permanently failed: {}", reason
-                                                );
-                                                processor.on_permanent_failure(&task, &reason).await;
-                                            }
-                                        }
-                                        Err(_elapsed) => {
-                                            // TIMEOUT: Task processing exceeded the configured
-                                            // time limit. This catches stuck LLM calls, hung
-                                            // PDF conversions, and other infinite-wait scenarios.
-                                            // HeartbeatGuard aborts heartbeat on drop at end of scope
-                                            let timeout_msg = format!(
-                                                "Task processing timed out after {} seconds",
-                                                config.processing_timeout_secs
-                                            );
-                                            task.mark_failed(timeout_msg.clone());
-
-                                            error!(
-                                                worker_id = worker_id,
-                                                task_id = %task.track_id,
-                                                tenant_id = %task.tenant_id,
-                                                timeout_secs = config.processing_timeout_secs,
-                                                "Task timed out — marking as permanently failed"
-                                            );
-
-                                            // Timeouts are treated as permanent failures (no retry).
-                                            // WHY: If a task timed out once, it's very likely to
-                                            // time out again. Retrying would just waste worker time
-                                            // and keep the "Processing" banner showing indefinitely.
-                                            processor.on_permanent_failure(&task, &timeout_msg).await;
-                                        }
-                                    }
-
-                                    // Deregister the cancellation token now that the task
-                                    // is done (success, failure, or timeout). This ensures
-                                    // the CancellationRegistry doesn't leak entries.
-                                    cancel_registry.deregister(&task.track_id).await;
-
-                                    // Update task in storage
-                                    if let Err(e) = storage.update_task(&task).await {
-                                        error!(
-                                            error.source = "task_worker",
-                                            error.action = "persist_task_result",
-                                            worker_id = worker_id,
-                                            task_id = %task.track_id,
-                                            task_status = ?task.status,
-                                            error.message = %e,
-                                            "Failed to persist task result"
-                                        );
-                                    }
-
-                                    // _tenant_permit is dropped here, releasing the slot
+                                Ok(_wake) => {
+                                    // Ignore payload — claim_next authorizes work.
                                 }
                                 Err(e) => {
                                     if queue.is_closed() {
@@ -626,16 +328,361 @@ impl WorkerPool {
                                     }
                                     error!(
                                         error.source = "task_worker",
-                                        error.action = "receive_task",
+                                        error.action = "receive_wake",
                                         worker_id = worker_id,
                                         error.message = %e,
-                                        "Worker failed to receive task from queue"
+                                        "Worker failed to receive wake from queue"
                                     );
-                                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                                    tokio::time::sleep(Duration::from_secs(1)).await;
+                                    continue;
                                 }
                             }
                         }
+                        _ = poll_interval.tick() => {
+                            // Periodic claim poll for Pending surviving restart / lost wakes.
+                        }
                     }
+
+                    let mut task = match storage.claim_next(&worker_name, lease_ttl).await {
+                        Ok(Some(t)) => t,
+                        Ok(None) => continue,
+                        Err(e) => {
+                            error!(
+                                error.source = "task_worker",
+                                error.action = "claim_next",
+                                worker_id = worker_id,
+                                error.message = %e,
+                                "Failed to claim next task"
+                            );
+                            continue;
+                        }
+                    };
+
+                    let lease_token = match task.lease_token {
+                        Some(token) => token,
+                        None => {
+                            warn!(
+                                worker_id = worker_id,
+                                task_id = %task.track_id,
+                                "Claimed task missing lease_token — releasing"
+                            );
+                            let _ = storage
+                                .release_claim(&task.track_id, &worker_name, uuid::Uuid::nil())
+                                .await;
+                            continue;
+                        }
+                    };
+
+                    // FEAT-CANCEL: Drop terminal / cancel-intent after claim.
+                    if should_skip_task(&storage, &cancel_registry, &task).await {
+                        debug!(
+                            worker_id = worker_id,
+                            task_id = %task.track_id,
+                            "Skipping cancelled or terminal task after claim"
+                        );
+                        if cancel_registry.has_cancel_intent(&task.track_id).await {
+                            task.mark_cancelled();
+                            let _ = storage.update_task(&task).await;
+                        } else if let Err(e) = storage
+                            .release_claim(&task.track_id, &worker_name, lease_token)
+                            .await
+                        {
+                            warn!(
+                                task_id = %task.track_id,
+                                error = %e,
+                                "Failed to release claim for skipped task"
+                            );
+                        }
+                        cancel_registry.deregister(&task.track_id).await;
+                        continue;
+                    }
+
+                    // FEAT-TENANT-FAIRNESS: release claim before park (no double-process).
+                    let _tenant_permit = if let Some(ref limiter) = tenant_limiter {
+                        match limiter.try_acquire(task.tenant_id).await {
+                            Some(permit) => Some(permit),
+                            None => {
+                                let n = fairness_park_logs.fetch_add(1, Ordering::Relaxed) + 1;
+                                if n == 1 || n % 32 == 0 {
+                                    info!(
+                                        worker_id = worker_id,
+                                        task_id = %task.track_id,
+                                        tenant_id = %task.tenant_id,
+                                        park_events = n,
+                                        park_waiters = limiter.park_waiter_count(),
+                                        "Tenant at concurrency limit — releasing claim and parking (aggregated)"
+                                    );
+                                }
+                                if let Err(e) = storage
+                                    .release_claim(&task.track_id, &worker_name, lease_token)
+                                    .await
+                                {
+                                    error!(
+                                        task_id = %task.track_id,
+                                        error = %e,
+                                        "Failed to release claim before fairness park"
+                                    );
+                                } else {
+                                    // Reload as Pending for park wake payload.
+                                    if let Ok(Some(pending)) =
+                                        storage.get_task(&task.track_id).await
+                                    {
+                                        task = pending;
+                                    } else {
+                                        task.status = TaskStatus::Pending;
+                                        task.clear_lease();
+                                    }
+                                    spawn_fairness_park(
+                                        worker_id,
+                                        task,
+                                        Arc::clone(&queue),
+                                        Arc::clone(&storage),
+                                        limiter.clone(),
+                                        cancel_registry.clone(),
+                                        park_shutdown_tx.subscribe(),
+                                    );
+                                }
+                                continue;
+                            }
+                        }
+                    } else {
+                        None
+                    };
+
+                    info!(
+                        "Worker {} processing task: {} (tenant: {})",
+                        worker_id, task.track_id, task.tenant_id
+                    );
+
+                    let cancel_token = cancel_registry.register(&task.track_id).await;
+
+                    // Lease heartbeat: refresh_lease CAS; lost ownership aborts via cancel.
+                    let heartbeat_track_id = task.track_id.clone();
+                    let heartbeat_storage = Arc::clone(&storage);
+                    let heartbeat_worker = worker_name.clone();
+                    let heartbeat_token = lease_token;
+                    let heartbeat_ttl = lease_ttl;
+                    let heartbeat_cancel = cancel_token.clone();
+                    let _heartbeat_guard = HeartbeatGuard(tokio::spawn(async move {
+                        let mut interval =
+                            tokio::time::interval(tokio::time::Duration::from_secs(60));
+                        interval.tick().await;
+                        loop {
+                            interval.tick().await;
+                            match heartbeat_storage
+                                .refresh_lease(
+                                    &heartbeat_track_id,
+                                    &heartbeat_worker,
+                                    heartbeat_token,
+                                    heartbeat_ttl,
+                                )
+                                .await
+                            {
+                                Ok(true) => {}
+                                Ok(false) => {
+                                    warn!(
+                                        task_id = %heartbeat_track_id,
+                                        "Lost task lease — aborting processing"
+                                    );
+                                    heartbeat_cancel.cancel();
+                                    break;
+                                }
+                                Err(e) => {
+                                    debug!(
+                                        "Lease refresh failed for task {}: {}",
+                                        heartbeat_track_id, e
+                                    );
+                                }
+                            }
+                        }
+                    }));
+
+                    let timeout_duration = tokio::time::Duration::from_secs(
+                        task.metadata
+                            .as_ref()
+                            .and_then(|m| m.get("processing_timeout_secs"))
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(config.processing_timeout_secs),
+                    );
+                    let span_task_id = task.track_id.clone();
+                    let span_tenant_id = task.tenant_id;
+                    let span_task_type = task.task_type;
+                    let process_result = tokio::time::timeout(
+                        timeout_duration,
+                        processor
+                            .process(&mut task, cancel_token.clone())
+                            .instrument(tracing::info_span!(
+                                "task_process",
+                                worker_id = worker_id,
+                                task_id = %span_task_id,
+                                tenant_id = %span_tenant_id,
+                                task_type = ?span_task_type,
+                            )),
+                    )
+                    .await;
+
+                    match process_result {
+                        Ok(Ok(result)) => {
+                            task.mark_success(result);
+                            info!(
+                                "Worker {} completed task: {} (tenant: {})",
+                                worker_id, task.track_id, task.tenant_id
+                            );
+                        }
+                        Ok(Err(TaskError::Cancelled(msg))) => {
+                            task.mark_cancelled();
+                            info!(
+                                worker_id = worker_id,
+                                task_id = %task.track_id,
+                                tenant_id = %task.tenant_id,
+                                reason = %msg,
+                                "Task cancelled — preserving Cancelled status (no retry)"
+                            );
+                        }
+                        Ok(Err(e)) => {
+                            let error_msg = format!("{}", e);
+                            task.mark_failed_with_details(
+                                crate::types::TaskFailureInfo::from_processing_error(
+                                    error_msg.clone(),
+                                ),
+                            );
+
+                            if task.circuit_breaker_tripped {
+                                error!(
+                                    worker_id = worker_id,
+                                    task_id = %task.track_id,
+                                    tenant_id = %task.tenant_id,
+                                    consecutive_timeouts = task.consecutive_timeout_failures,
+                                    "Task permanently failed: Circuit breaker tripped"
+                                );
+                            } else {
+                                error!(
+                                    worker_id = worker_id,
+                                    task_id = %task.track_id,
+                                    tenant_id = %task.tenant_id,
+                                    retry_count = task.retry_count,
+                                    max_retries = task.max_retries,
+                                    consecutive_timeouts = task.consecutive_timeout_failures,
+                                    error = %error_msg,
+                                    "Task processing failed"
+                                );
+                            }
+
+                            let will_retry = config.auto_retry
+                                && task.can_retry()
+                                && !task.circuit_breaker_tripped
+                                && !crate::is_permanent_ingestion_failure(&error_msg);
+
+                            if will_retry {
+                                let retry_delay_ms = calculate_backoff_delay(
+                                    task.retry_count as u32,
+                                    config.initial_retry_delay_ms,
+                                    config.max_retry_delay_ms,
+                                    config.backoff_multiplier,
+                                );
+
+                                warn!(
+                                    task_id = %task.track_id,
+                                    attempt = task.retry_count,
+                                    max_retries = task.max_retries,
+                                    delay_ms = retry_delay_ms,
+                                    "Scheduling retry with exponential backoff"
+                                );
+
+                                // Claim SSOT: retries must be Pending again (wake-only channel).
+                                task.status = TaskStatus::Pending;
+                                task.completed_at = None;
+                                task.clear_lease();
+
+                                let retry_task = task.clone();
+                                let retry_queue = Arc::clone(&queue);
+                                let retry_cancel = cancel_registry.clone();
+                                let retry_storage = Arc::clone(&storage);
+                                tokio::spawn(async move {
+                                    tokio::time::sleep(tokio::time::Duration::from_millis(
+                                        retry_delay_ms,
+                                    ))
+                                    .await;
+
+                                    let track_id = retry_task.track_id.clone();
+                                    if should_skip_task(
+                                        &retry_storage,
+                                        &retry_cancel,
+                                        &retry_task,
+                                    )
+                                    .await
+                                    {
+                                        debug!(
+                                            task_id = %track_id,
+                                            "Skipping retry — task cancelled or terminal"
+                                        );
+                                        return;
+                                    }
+                                    if let Err(e) = retry_queue.send(retry_task).await {
+                                        error!(
+                                            error.source = "task_worker",
+                                            error.action = "requeue_retry",
+                                            task_id = %track_id,
+                                            error.message = %e,
+                                            "Failed to wake queue for retry"
+                                        );
+                                    }
+                                });
+                            } else {
+                                let reason = if task.circuit_breaker_tripped {
+                                    format!(
+                                        "Circuit breaker tripped after {} consecutive timeouts. \
+                                        Last error: {}",
+                                        task.consecutive_timeout_failures, error_msg
+                                    )
+                                } else {
+                                    format!(
+                                        "Retries exhausted ({}/{} attempts). Last error: {}",
+                                        task.retry_count, task.max_retries, error_msg
+                                    )
+                                };
+                                error!(
+                                    task_id = %task.track_id,
+                                    tenant_id = %task.tenant_id,
+                                    "Task permanently failed: {}", reason
+                                );
+                                processor.on_permanent_failure(&task, &reason).await;
+                            }
+                        }
+                        Err(_elapsed) => {
+                            let timeout_msg = format!(
+                                "Task processing timed out after {} seconds",
+                                config.processing_timeout_secs
+                            );
+                            task.mark_failed(timeout_msg.clone());
+
+                            error!(
+                                worker_id = worker_id,
+                                task_id = %task.track_id,
+                                tenant_id = %task.tenant_id,
+                                timeout_secs = config.processing_timeout_secs,
+                                "Task timed out — marking as permanently failed"
+                            );
+
+                            processor.on_permanent_failure(&task, &timeout_msg).await;
+                        }
+                    }
+
+                    cancel_registry.deregister(&task.track_id).await;
+
+                    if let Err(e) = storage.update_task(&task).await {
+                        error!(
+                            error.source = "task_worker",
+                            error.action = "persist_task_result",
+                            worker_id = worker_id,
+                            task_id = %task.track_id,
+                            task_status = ?task.status,
+                            error.message = %e,
+                            "Failed to persist task result"
+                        );
+                    }
+
+                    // _tenant_permit dropped here
                 }
 
                 info!("Worker {} stopped", worker_id);
@@ -1143,8 +1190,8 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
 
         let stored = storage.get_task(&track_id).await.unwrap().unwrap();
-        // Never marked processing/indexed — skipped on dequeue.
-        assert_eq!(stored.status, TaskStatus::Pending);
+        // SPEC-057 P1: claim then cancel-intent → Cancelled (not left Pending).
+        assert_eq!(stored.status, TaskStatus::Cancelled);
 
         pool.shutdown().await;
     }

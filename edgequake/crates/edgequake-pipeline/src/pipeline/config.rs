@@ -106,6 +106,38 @@ pub fn is_local_extraction_provider(provider_name: &str) -> bool {
     )
 }
 
+/// Pure priority resolution for fairness clamp provider (SPEC-057 P2).
+pub fn resolve_extract_provider_name_for_fairness_from(
+    extract: Option<&str>,
+    default_extract: Option<&str>,
+    default_llm: Option<&str>,
+    llm: Option<&str>,
+) -> String {
+    for candidate in [extract, default_extract, default_llm, llm] {
+        if let Some(v) = candidate.map(str::trim).filter(|s| !s.is_empty()) {
+            return v.to_string();
+        }
+    }
+    String::new()
+}
+
+/// Resolve the extract provider name used for worker-pool fairness clamps (SPEC-057 P2).
+///
+/// Prefer explicit extract overrides so hybrid setups (e.g. OpenAI LLM + Ollama
+/// extract via `EDGEQUAKE_EXTRACT_PROVIDER`) clamp local concurrency correctly.
+pub fn resolve_extract_provider_name_for_fairness() -> String {
+    let extract = std::env::var("EDGEQUAKE_EXTRACT_PROVIDER").ok();
+    let default_extract = std::env::var("EDGEQUAKE_DEFAULT_EXTRACT_PROVIDER").ok();
+    let default_llm = std::env::var("EDGEQUAKE_DEFAULT_LLM_PROVIDER").ok();
+    let llm = std::env::var("EDGEQUAKE_LLM_PROVIDER").ok();
+    resolve_extract_provider_name_for_fairness_from(
+        extract.as_deref(),
+        default_extract.as_deref(),
+        default_llm.as_deref(),
+        llm.as_deref(),
+    )
+}
+
 /// Default per-chunk timeout for a provider when `EDGEQUAKE_CHUNK_TIMEOUT_SECS` is unset.
 pub fn default_chunk_timeout_for_provider(provider_name: &str) -> u64 {
     if is_local_extraction_provider(provider_name) {
@@ -477,6 +509,28 @@ mod tests {
         assert!(!is_local_extraction_provider("openai"));
         assert!(!is_local_extraction_provider("mistral"));
         assert!(!is_local_extraction_provider("mock"));
+    }
+
+    #[test]
+    fn hybrid_openai_llm_ollama_extract_fairness_uses_extract_provider() {
+        // Cloud LLM alone → not local.
+        let llm_only = resolve_extract_provider_name_for_fairness_from(
+            None,
+            None,
+            Some("openai"),
+            Some("openai"),
+        );
+        assert!(!is_local_extraction_provider(&llm_only));
+
+        // Hybrid: extract override is local even when LLM is cloud.
+        let hybrid = resolve_extract_provider_name_for_fairness_from(
+            Some("ollama"),
+            None,
+            Some("openai"),
+            Some("openai"),
+        );
+        assert_eq!(hybrid, "ollama");
+        assert!(is_local_extraction_provider(&hybrid));
     }
 
     #[test]

@@ -160,6 +160,8 @@ pub use pipeline::{
     default_max_concurrent_for_provider,
     is_local_extraction_provider,
     is_local_provider_overload_error,
+    resolve_extract_provider_name_for_fairness,
+    resolve_extract_provider_name_for_fairness_from,
     resolve_gleaning_for_provider,
     retry_delay_ms_for_chunk_error,
     ChunkErrorInfo,

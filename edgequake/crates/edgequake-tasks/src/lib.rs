@@ -75,6 +75,7 @@ pub mod cancellation;
 pub mod delivery;
 pub mod error;
 pub mod ingestion_reliability;
+pub mod lease;
 pub mod memory;
 pub mod pipeline_state;
 #[cfg(feature = "postgres")]
@@ -89,14 +90,17 @@ pub mod worker;
 // Re-export commonly used types
 pub use cancellation::CancellationRegistry;
 pub use delivery::{
-    delivery_mode_from_env, enqueue_with_delivery, parse_delivery_mode, BridgedTaskQueue,
+    delivery_mode_from_env, enqueue_with_delivery, is_multi_replica_deployment,
+    parse_delivery_mode, replicas_from_env, validate_delivery_for_replicas, BridgedTaskQueue,
     ChannelTaskNotifier, NoopTaskNotifier, SharedTaskNotifier, StorageHydratingTaskQueue,
-    TaskDeliveryMode, TaskNotifier,
+    TaskDeliveryMode, TaskNotifier, REPLICAS_ENV,
 };
 pub use error::{TaskError, TaskResult};
 pub use ingestion_reliability::{
-    classify_ingestion_failure, failure_step, is_permanent_ingestion_failure, IngestionFailureClass,
+    classify_ingestion_failure, failure_step, is_cancel_failure_message,
+    is_permanent_ingestion_failure, IngestionFailureClass,
 };
+pub use lease::{lease_expires_at, task_lease_ttl_from_env};
 pub use pipeline_state::{PipelineEvent, PipelineMessage, PipelineState, PipelineStatusSnapshot};
 pub use progress::{PdfUploadProgress, PhaseError, PhaseProgress, PhaseStatus, PipelinePhase};
 pub use queue::{ChannelTaskQueue, SharedTaskQueue, TaskQueue, UnboundedChannelTaskQueue};
