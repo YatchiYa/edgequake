@@ -38,14 +38,14 @@ Phase 3 — Local quality gates
 [x] 3-D  SPEC-057 postgres contracts + migration e2e + spec013-proof-pr
 
 Phase 4 — Commit + push
-[ ] 4-A  git commit -m "release: bump to v0.19.0"
-[ ] 4-B  git push origin edgequake-main (includes 5 prior unreleased commits)
-[ ] 4-C  Wait CI green
+[x] 4-A  git commit -m "release: bump to v0.19.0"
+[x] 4-B  git push origin edgequake-main (includes 5 prior unreleased commits)
+[x] 4-C  Wait CI green (CI + Quality Gates + Release Gates + Migration Guard + AGE)
 
 Phase 5 — Tag + CI/CD
-[ ] 5-A  git tag v0.19.0 && git push origin v0.19.0
-[ ] 5-B  gh release view v0.19.0
-[ ] 5-C  docker buildx imagetools inspect GHCR tags
+[x] 5-A  git tag v0.19.0 && git push origin v0.19.0
+[x] 5-B  gh release view v0.19.0 — https://github.com/raphaelmansuy/edgequake/releases/tag/v0.19.0
+[x] 5-C  docker buildx imagetools inspect GHCR tags (api/frontend/postgres + pg16/pg17/pg18)
 ```
 
 ---
