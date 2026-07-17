@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # scripts/install_migration_hooks.sh
 #
-# PURPOSE: Install a pre-commit git hook that blocks modification of existing
-# migration files. Protects against the class of bug fixed in issue #195.
+# PURPOSE: Install a pre-commit git hook that:
+#   1. Blocks modification of existing migration files (issue #195 class).
+#   2. Blocks adding new NNN_*.sql without staging checksums.lock (atomic lock rule).
 #
 # Usage:
 #   ./scripts/install_migration_hooks.sh
@@ -45,19 +46,27 @@ if [[ -n "$STAGED_MODIFIED" ]]; then
   exit 1
 fi
 
-# Also run the static checksum check if the lockfile was modified
+# New migrations must stage checksums.lock in the same commit (atomic lock rule).
 LOCKFILE_STAGED=$(git diff --cached --name-only -- '"'"'edgequake/migrations/checksums.lock'"'"')
-SQL_STAGED=$(git diff --cached --name-only --diff-filter=A -- '"'"'edgequake/migrations/*.sql'"'"')
-if [[ -n "$SQL_STAGED" ]]; then
-  if [[ -z "$LOCKFILE_STAGED" ]]; then
-    echo ""
-    echo "⚠️   WARNING: You are adding a new migration file but checksums.lock"
-    echo "    has not been updated. Run:"
-    echo "      ./scripts/update_migration_checksums.sh"
-    echo "    and stage the updated checksums.lock before committing."
-    echo ""
-    # This is a warning, not a block. The CI will catch it.
-  fi
+SQL_STAGED=$(git diff --cached --name-only --diff-filter=A -- '"'"'edgequake/migrations/*.sql'"'"' \
+  | grep -E '"'"'^edgequake/migrations/[0-9]+_.*\.sql$'"'"' || true)
+if [[ -n "$SQL_STAGED" && -z "$LOCKFILE_STAGED" ]]; then
+  echo ""
+  echo "⛔  BLOCKED: New migration file(s) staged without checksums.lock:"
+  echo ""
+  for f in $SQL_STAGED; do
+    echo "    $f"
+  done
+  echo ""
+  echo "  New migrations and checksums.lock must ship in the same commit."
+  echo "  Run:"
+  echo "    ./scripts/update_migration_checksums.sh"
+  echo "  then stage edgequake/migrations/checksums.lock and retry."
+  echo ""
+  echo "  To bypass this check (anti-pattern; CI will still fail):"
+  echo "    git commit --no-verify"
+  echo ""
+  exit 1
 fi
 
 exit 0
@@ -75,5 +84,6 @@ echo "$HOOK_CONTENT" > "$HOOK_FILE"
 chmod +x "$HOOK_FILE"
 echo "Installed pre-commit hook at: $HOOK_FILE"
 echo ""
-echo "The hook will now block modification of existing migration files."
-echo "New migration files (.sql additions) are allowed."
+echo "The hook will now:"
+echo "  - block modification of existing migration files"
+echo "  - block new NNN_*.sql without a staged checksums.lock"
