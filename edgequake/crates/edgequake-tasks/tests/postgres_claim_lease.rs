@@ -263,3 +263,44 @@ async fn postgres_claim_reclaims_expired_processing() {
 
     cleanup(&pool, &track_id).await;
 }
+
+/// Migration 089 guard: `edgequake.tasks` must expose lease columns (stale-view class).
+///
+/// `ALTER TABLE public.tasks` alone does not refresh the view; workers with
+/// `search_path ("$user", public)` hit the VIEW and fail with missing columns.
+#[tokio::test]
+async fn edgequake_tasks_view_exposes_lease_columns() {
+    let pool = require_postgres!();
+
+    let names: Vec<String> = sqlx::query_scalar(
+        r#"
+        SELECT column_name::text
+        FROM information_schema.columns
+        WHERE table_schema = 'edgequake'
+          AND table_name = 'tasks'
+          AND column_name IN ('lease_owner', 'lease_token', 'lease_expires_at')
+        ORDER BY column_name
+        "#,
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("query edgequake.tasks columns");
+
+    assert_eq!(
+        names,
+        vec![
+            "lease_expires_at".to_string(),
+            "lease_owner".to_string(),
+            "lease_token".to_string(),
+        ],
+        "edgequake.tasks must expose lease_* after migration 089 (got {names:?})"
+    );
+
+    // Prove SELECT through the view (same relation workers hit under edgequake search_path).
+    sqlx::query(
+        "SELECT lease_owner, lease_token, lease_expires_at FROM edgequake.tasks LIMIT 0",
+    )
+    .execute(&pool)
+    .await
+    .expect("SELECT lease_* via edgequake.tasks must succeed");
+}

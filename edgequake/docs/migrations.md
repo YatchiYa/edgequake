@@ -40,6 +40,7 @@ EdgeQuake uses [SQLx](https://github.com/launchbadge/sqlx) embedded migrations. 
 
 - **Never edit** a migration that has been deployed to production. Add a new numbered file instead.
 - **Append checksum** when adding a migration: `./scripts/update_migration_checksums.sh`
+- **Atomic commit:** stage new `NNN_*.sql` and `checksums.lock` together. The pre-commit hook (`./scripts/install_migration_hooks.sh`) hard-fails if either half is missing; bypass only with `--no-verify` (CI still fails).
 - **Auxiliary SQL** (preflight, rollback, CONCURRENTLY) lives under `migrations/support/` — not in the sqlx scan path.
 
 ## Migration 038 — source_ids Indexes (SPEC-006)
@@ -87,11 +88,33 @@ psql "$DATABASE_URL" -c "SELECT version, description FROM _sqlx_migrations WHERE
 psql "$DATABASE_URL" -f edgequake/migrations/support/078/concurrent.sql
 ```
 
+## Post-deploy verify (087–089 / SPEC-057)
+
+After upgrading an environment that applies migrations 087–089, confirm lockfile and view shape:
+
+```sql
+SELECT version, description, encode(checksum, 'hex')
+FROM _sqlx_migrations
+WHERE version IN (87, 88, 89)
+ORDER BY version;
+
+SELECT column_name
+FROM information_schema.columns
+WHERE table_schema = 'edgequake' AND table_name = 'tasks'
+  AND column_name LIKE 'lease%'
+ORDER BY column_name;
+```
+
+Checksum hex must match the three lines in `edgequake/migrations/checksums.lock`.
+Expect `lease_expires_at`, `lease_owner`, `lease_token` on `edgequake.tasks`.
+Repeat on staging/prod after each upgrade; local `make dev` already applies these on backend start.
+
 ## Troubleshooting
 
 | Symptom | Fix |
 |---------|-----|
 | `migration N was previously applied but has been modified` | Restore canonical SQL or create new migration; never edit deployed files |
+| `column "lease_expires_at" does not exist` on claim | Apply migration 089 (refresh `edgequake.tasks` view after 088); do not edit 088 |
 | Backend fails on migrate | Check `DATABASE_URL`, PostgreSQL version, AGE extension |
 | Slow stats / graph timeout on large workspace | Apply migration 078 (auto on upgrade); verify with `measure_graph_stats_perf.sh`; use `support/078/concurrent.sql` if >100k nodes |
 | OOM on list/delete (exit 137) | See [SPEC-006](../../specifications/006-ensure-perf/010-brutal-assessment.md); run `make resource-proof` |
