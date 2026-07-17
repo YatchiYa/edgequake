@@ -1,6 +1,14 @@
 "use client";
 
 import { useWebSocket } from "@/hooks/use-websocket";
+import {
+  DOCUMENTS_INVALIDATE_DEBOUNCE_MS,
+  DOCUMENTS_SAFETY_NET_INVALIDATE_MS,
+  isListNoiseProgressEvent,
+  patchDocumentsCacheFromProgress,
+  shouldInvalidateDocumentsList,
+  type ProgressCacheMessage,
+} from "@/lib/documents/ws-documents-cache";
 import { getWebSocketClient } from "@/lib/websocket";
 import type { Document } from "@/types";
 import { QueryClient } from "@tanstack/react-query";
@@ -34,19 +42,10 @@ function isActiveIngestionDocument(doc: Document): boolean {
 /**
  * Hook for real-time document status updates via WebSocket.
  *
- * Automatically subscribes to WebSocket updates for all documents that are
- * currently processing (have a track_id and processing status). When progress
- * updates are received, the specified query is invalidated to trigger a refetch.
- *
- * @param documents - Array of documents to monitor
- * @param queryClient - React Query client for cache invalidation
- * @param options - Configuration options
- *
- * @example
- * ```tsx
- * // In DocumentManager component
- * useDocumentWebSocket(data?.items, queryClient);
- * ```
+ * Subscribes to processing track_ids. High-frequency ChunkProgress events update
+ * the ingestion store only (via WebSocketProvider) — they do NOT refetch the
+ * documents list. Stage transitions patch the React Query cache in place; rare
+ * structural events debounce a full invalidate; a 5s safety-net keeps list honest.
  */
 export function useDocumentWebSocket(
   documents: Document[] | undefined,
@@ -96,47 +95,68 @@ export function useDocumentWebSocket(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, connected, trackIdsKey, subscribe, unsubscribe]);
 
-  // WHY: Invalidate the documents query on any progress update.
-  // We debounce by 400 ms so that rapid-fire progress events (stage_progress
-  // ticks, heartbeats, etc.) coalesce into a single network refetch instead of
-  // triggering one per message.  Without the debounce, a workspace with many
-  // concurrent documents can fire dozens of invalidations per second which
-  // hammers the API and causes visible UI jank.
+  // Patch cache on stage events; ignore ChunkProgress for list refetch.
+  // Safety-net full invalidate at most every 5s while any doc is active.
   useEffect(() => {
     if (!enabled || !connected) return;
 
     const wsClient = getWebSocketClient();
+    let invalidateTimer: ReturnType<typeof setTimeout> | null = null;
+    let safetyNetTimer: ReturnType<typeof setInterval> | null = null;
+    let lastSafetyNetAt = 0;
 
-    // Debounce timer ref — local per effect lifecycle so cleanup is safe.
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const handleProgressUpdate = () => {
-      if (debounceTimer !== null) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
+    const scheduleInvalidate = () => {
+      if (invalidateTimer !== null) clearTimeout(invalidateTimer);
+      invalidateTimer = setTimeout(() => {
         queryClient.invalidateQueries({ queryKey });
-      }, 400);
+        lastSafetyNetAt = Date.now();
+      }, DOCUMENTS_INVALIDATE_DEBOUNCE_MS);
     };
 
-    // Listen for stage/ingestion progress events.
-    const unsubProgress = wsClient.on("progress", handleProgressUpdate);
+    const handleProgressMessage = (...args: unknown[]) => {
+      const message = (args[0] ?? {}) as ProgressCacheMessage;
+      const type = message.type;
 
-    // SPEC-051 ROOT CAUSE FIX: Also listen for PDF page progress events.
-    // WHY: PdfPageProgress events are emitted as "pdf_progress" by the WebSocket
-    // manager (see progress-websocket.ts handleMessage). Without this listener,
-    // the documents query is NEVER invalidated during PDF conversion (the most
-    // expensive phase), so:
-    //   1. document.track_id stays as "reprocess_..." (stale) — liveTrackId in
-    //      ProgressPanelRow never updates to the actual task UUID
-    //   2. PdfUploadProgress polls a non-existent endpoint → 404 → blank panel
-    //   3. Document row badge shows "queued" indefinitely instead of "converting"
-    // Fix: trigger the same debounced invalidation for "pdf_progress" so the
-    // documents query catches the worker's track_id update within ~400ms.
-    const unsubPdfProgress = wsClient.on("pdf_progress", handleProgressUpdate);
+      // Chunk ticks stay in ingestion store — do not touch documents list.
+      if (isListNoiseProgressEvent(type)) {
+        return;
+      }
+
+      patchDocumentsCacheFromProgress(queryClient, message);
+
+      if (shouldInvalidateDocumentsList(type)) {
+        scheduleInvalidate();
+      }
+    };
+
+    // PdfPageProgress: patch converting progress; invalidate only via safety net
+    // unless phase is complete/start (track_id bind).
+    const handlePdfProgress = (...args: unknown[]) => {
+      const message = (args[0] ?? {}) as ProgressCacheMessage;
+      patchDocumentsCacheFromProgress(queryClient, message);
+      const phase = message.data?.phase;
+      if (phase === "start" || phase === "complete") {
+        scheduleInvalidate();
+      }
+    };
+
+    const unsubProgress = wsClient.on("progress", handleProgressMessage);
+    const unsubPdfProgress = wsClient.on("pdf_progress", handlePdfProgress);
+
+    if (trackIdsKey.length > 0) {
+      safetyNetTimer = setInterval(() => {
+        const now = Date.now();
+        if (now - lastSafetyNetAt < DOCUMENTS_SAFETY_NET_INVALIDATE_MS) return;
+        lastSafetyNetAt = now;
+        queryClient.invalidateQueries({ queryKey });
+      }, DOCUMENTS_SAFETY_NET_INVALIDATE_MS);
+    }
 
     return () => {
-      if (debounceTimer !== null) clearTimeout(debounceTimer);
+      if (invalidateTimer !== null) clearTimeout(invalidateTimer);
+      if (safetyNetTimer !== null) clearInterval(safetyNetTimer);
       unsubProgress();
       unsubPdfProgress();
     };
-  }, [enabled, connected, queryClient, queryKey]);
+  }, [enabled, connected, queryClient, queryKey, trackIdsKey]);
 }

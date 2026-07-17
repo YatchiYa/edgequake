@@ -96,6 +96,41 @@ pub async fn list_workspace_metadata_keys(
     Ok(metadata_keys)
 }
 
+/// Bounded workspace metadata-key listing for interactive list paths.
+///
+/// Complexity (Postgres + `key text_pattern_ops`): **O(limit)** index range
+/// scan — not O(table). Uses [`KVStorage::keys_with_prefix_limited`] so SQL
+/// `LIMIT` short-circuits before materializing an unbounded index-key Vec.
+/// Returns `(metadata_keys, truncated)`.
+///
+/// `max_entries` must be a finite interactive cap (not `usize::MAX`) — casting
+/// huge limits to `i64` for SQL is undefined for the unlimited path.
+pub async fn list_workspace_metadata_keys_limited(
+    kv: &dyn KVStorage,
+    workspace_id: &str,
+    max_entries: usize,
+) -> Result<(Vec<String>, bool), StorageError> {
+    let max_entries = max_entries.clamp(1, 1_000_000);
+    let prefix = kv_keys::workspace_doc_index_prefix(workspace_id);
+    // Fetch one extra index key so truncation is known without a COUNT.
+    let (index_keys, _) = kv
+        .keys_with_prefix_limited(&prefix, max_entries.saturating_add(1))
+        .await?;
+    let mut metadata_keys = Vec::with_capacity(max_entries.min(index_keys.len()));
+    for key in index_keys {
+        if let Some((ws, doc_id)) = kv_keys::parse_workspace_doc_index(&key) {
+            if ws == workspace_id {
+                metadata_keys.push(kv_keys::doc_metadata(doc_id));
+                if metadata_keys.len() > max_entries {
+                    metadata_keys.truncate(max_entries);
+                    return Ok((metadata_keys, true));
+                }
+            }
+        }
+    }
+    Ok((metadata_keys, false))
+}
+
 /// Document ids indexed under a workspace (prefix scan).
 pub async fn list_workspace_document_ids(
     kv: &dyn KVStorage,

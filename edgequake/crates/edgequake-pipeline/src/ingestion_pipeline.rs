@@ -29,6 +29,12 @@ pub struct IngestionPipelineOptions {
     /// Used to apply local-vs-cloud extraction timeouts/concurrency without
     /// changing cloud quality defaults.
     pub llm_provider: Option<String>,
+    /// When true, allow gleaning on local providers (Ollama / LM Studio).
+    ///
+    /// Local gleaning is off by default — it doubles LLM load and worsens
+    /// connection storms. Set via metadata `allow_local_gleaning` or env
+    /// `EDGEQUAKE_LOCAL_ENABLE_GLEANING=1`.
+    pub allow_local_gleaning: bool,
 }
 
 impl IngestionPipelineOptions {
@@ -41,6 +47,7 @@ impl IngestionPipelineOptions {
             chunk_options: None,
             is_pdf_source: false,
             llm_provider: None,
+            allow_local_gleaning: false,
         }
     }
 
@@ -65,6 +72,12 @@ impl IngestionPipelineOptions {
     pub fn with_gleaning(mut self, enabled: bool, max_passes: usize) -> Self {
         self.enable_gleaning = enabled;
         self.max_gleaning = max_passes;
+        self
+    }
+
+    /// Opt in to gleaning when the extract provider is local (Ollama / LM Studio).
+    pub fn with_allow_local_gleaning(mut self, allow: bool) -> Self {
+        self.allow_local_gleaning = allow;
         self
     }
 
@@ -126,13 +139,30 @@ pub fn build_ingestion_pipeline(
         ..PipelineConfig::from_env_for_provider(provider)
     };
 
+    let (enable_gleaning, max_gleaning) = crate::pipeline::resolve_gleaning_for_provider(
+        provider,
+        options.enable_gleaning,
+        options.max_gleaning,
+        options.allow_local_gleaning,
+    );
+    if options.enable_gleaning
+        && !enable_gleaning
+        && crate::pipeline::is_local_extraction_provider(provider)
+    {
+        tracing::info!(
+            llm_provider = provider,
+            "Disabled gleaning for local LLM to reduce Ollama load; set {}=1 or allow_local_gleaning to opt in",
+            crate::pipeline::LOCAL_ENABLE_GLEANING_ENV
+        );
+    }
+
     tracing::info!(
         doc_size_bytes = options.document_size_bytes,
         chunk_size = pipeline_config.chunker.chunk_size,
         chunk_overlap = pipeline_config.chunker.chunk_overlap,
         chunk_strategy = options.chunk_strategy.as_str(),
-        enable_gleaning = options.enable_gleaning,
-        max_gleaning = options.max_gleaning,
+        enable_gleaning = enable_gleaning,
+        max_gleaning = max_gleaning,
         llm_provider = provider,
         is_local_extraction = crate::pipeline::is_local_extraction_provider(provider),
         chunk_timeout_secs = pipeline_config.chunk_extraction_timeout_secs,
@@ -144,13 +174,13 @@ pub fn build_ingestion_pipeline(
     let base_extractor: Arc<dyn EntityExtractor> =
         Arc::new(LLMExtractor::new(llm.clone()).with_entity_schema(entity_schema.clone()));
 
-    let extractor: Arc<dyn EntityExtractor> = if options.enable_gleaning && options.max_gleaning > 0
+    let extractor: Arc<dyn EntityExtractor> = if enable_gleaning && max_gleaning > 0
     {
         Arc::new(
             GleaningExtractor::new(llm, base_extractor)
                 .with_entity_schema(entity_schema)
                 .with_config(GleaningConfig {
-                    max_gleaning: options.max_gleaning,
+                    max_gleaning,
                     always_glean: false,
                 }),
         )

@@ -75,6 +75,15 @@ pub const MAX_CHUNK_MAX_RETRIES: u32 = 20;
 /// Default initial exponential-backoff delay (milliseconds).
 pub const DEFAULT_INITIAL_RETRY_DELAY_MS: u64 = 1_000;
 
+/// Minimum backoff for local LLM overload / connection errors (milliseconds).
+///
+/// WHY 5000: Ollama connection storms need cool-down; 1s retries immediately
+/// re-flood the single-slot runner and look like stuck ingestion.
+pub const LOCAL_OVERLOAD_RETRY_DELAY_MS: u64 = 5_000;
+
+/// Cap on per-chunk retry backoff (milliseconds).
+pub const MAX_RETRY_DELAY_MS: u64 = 60_000;
+
 /// Default maximum concurrent LLM extraction tasks — cloud providers.
 pub const DEFAULT_MAX_CONCURRENT_EXTRACTIONS: usize = 16;
 
@@ -126,6 +135,116 @@ pub fn clamp_max_gleaning(raw: usize) -> usize {
 /// Clamp concurrent extractions to `[1, MAX_CONCURRENT_EXTRACTIONS_CAP]`.
 pub fn clamp_max_concurrent_extractions(raw: usize) -> usize {
     raw.clamp(1, MAX_CONCURRENT_EXTRACTIONS_CAP)
+}
+
+/// Env flag to opt out of the local-provider concurrency safety clamp.
+///
+/// When set to `1`/`true`/`yes`, operators may raise
+/// `EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS` above [`LOCAL_MAX_CONCURRENT_EXTRACTIONS`]
+/// for Ollama / LM Studio (e.g. multi-GPU benches).
+pub const ALLOW_LOCAL_HIGH_CONCURRENCY_ENV: &str = "EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY";
+
+/// Returns true when operators explicitly allow high concurrency on local LLMs.
+pub fn allow_local_high_concurrency() -> bool {
+    matches!(
+        std::env::var(ALLOW_LOCAL_HIGH_CONCURRENCY_ENV)
+            .ok()
+            .as_deref()
+            .map(str::trim)
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Some("1" | "true" | "yes" | "on")
+    )
+}
+
+/// Cap concurrent extractions for capacity-bound local providers.
+///
+/// Ollama defaults to ~1 parallel sequence (`OLLAMA_NUM_PARALLEL`). Cloud-scale
+/// fan-out (e.g. Makefile `EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS=32`) causes
+/// connection storms that look like stuck ingestion. Unless
+/// [`ALLOW_LOCAL_HIGH_CONCURRENCY_ENV`] is set, local providers are capped at
+/// [`LOCAL_MAX_CONCURRENT_EXTRACTIONS`].
+///
+/// Returns `(effective, clamped)` where `clamped` is true when the requested
+/// value was reduced.
+pub fn apply_local_concurrency_safety_clamp(
+    provider_name: &str,
+    requested: usize,
+) -> (usize, bool) {
+    let bounded = clamp_max_concurrent_extractions(requested);
+    if !is_local_extraction_provider(provider_name) || allow_local_high_concurrency() {
+        return (bounded, false);
+    }
+    if bounded > LOCAL_MAX_CONCURRENT_EXTRACTIONS {
+        (LOCAL_MAX_CONCURRENT_EXTRACTIONS, true)
+    } else {
+        (bounded, false)
+    }
+}
+
+/// True when a chunk extraction error looks like local LLM overload / unreachable.
+pub fn is_local_provider_overload_error(error: &str) -> bool {
+    let lower = error.to_ascii_lowercase();
+    lower.contains("network error")
+        || lower.contains("connection refused")
+        || lower.contains("error sending request")
+        || lower.contains("localhost:11434")
+        || lower.contains("server busy")
+        || lower.contains("503")
+        || lower.contains("too many requests")
+}
+
+/// Compute exponential backoff delay, stretching the base for local overload errors.
+pub fn retry_delay_ms_for_chunk_error(
+    initial_delay_ms: u64,
+    attempt: u32,
+    error: &str,
+) -> u64 {
+    let base = if is_local_provider_overload_error(error) {
+        initial_delay_ms.max(LOCAL_OVERLOAD_RETRY_DELAY_MS)
+    } else {
+        initial_delay_ms
+    };
+    let exp = attempt.saturating_sub(1).min(6);
+    base.saturating_mul(2_u64.pow(exp)).min(MAX_RETRY_DELAY_MS)
+}
+
+/// Env flag to keep gleaning enabled on local extract providers.
+pub const LOCAL_ENABLE_GLEANING_ENV: &str = "EDGEQUAKE_LOCAL_ENABLE_GLEANING";
+
+/// Returns true when operators opt in to gleaning on Ollama / LM Studio.
+pub fn allow_local_gleaning() -> bool {
+    matches!(
+        std::env::var(LOCAL_ENABLE_GLEANING_ENV)
+            .ok()
+            .as_deref()
+            .map(str::trim)
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Some("1" | "true" | "yes" | "on")
+    )
+}
+
+/// Resolve whether gleaning should run for a provider.
+///
+/// Local providers default to off (gleaning doubles Ollama load). Cloud keeps
+/// the caller’s `enable_gleaning` flag. Opt in locally via
+/// [`LOCAL_ENABLE_GLEANING_ENV`] or `allow_local_gleaning_flag`.
+pub fn resolve_gleaning_for_provider(
+    provider_name: &str,
+    enable_gleaning: bool,
+    max_gleaning: usize,
+    allow_local_gleaning_flag: bool,
+) -> (bool, usize) {
+    if !enable_gleaning || max_gleaning == 0 {
+        return (false, 0);
+    }
+    if is_local_extraction_provider(provider_name)
+        && !(allow_local_gleaning_flag || allow_local_gleaning())
+    {
+        return (false, 0);
+    }
+    (true, clamp_max_gleaning(max_gleaning))
 }
 
 fn default_chunk_timeout() -> u64 {
@@ -214,8 +333,10 @@ impl PipelineConfig {
     /// - Cloud / unknown: 180s chunk timeout, 16 concurrent
     /// - Ollama / LM Studio: 600s chunk timeout, 2 concurrent
     ///
-    /// Explicit `EDGEQUAKE_CHUNK_TIMEOUT_SECS` / `EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS`
-    /// always win over provider defaults (no quality change for cloud when env unset).
+    /// Explicit `EDGEQUAKE_CHUNK_TIMEOUT_SECS` wins over provider defaults.
+    /// `EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS` is honored for cloud; for local
+    /// providers it is capped at [`LOCAL_MAX_CONCURRENT_EXTRACTIONS`] unless
+    /// [`ALLOW_LOCAL_HIGH_CONCURRENCY_ENV`] is set.
     pub fn from_env_for_provider(provider_name: &str) -> Self {
         let default_timeout = default_chunk_timeout_for_provider(provider_name);
         let default_concurrent = default_max_concurrent_for_provider(provider_name);
@@ -238,12 +359,25 @@ impl PipelineConfig {
             0,
             60_000,
         );
-        let max_concurrent = clamp_max_concurrent_extractions(read_env_usize(
+        let requested_concurrent = clamp_max_concurrent_extractions(read_env_usize(
             "EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS",
             default_concurrent,
             1,
             MAX_CONCURRENT_EXTRACTIONS_CAP,
         ));
+        let (max_concurrent, local_clamped) =
+            apply_local_concurrency_safety_clamp(provider_name, requested_concurrent);
+        if local_clamped {
+            tracing::warn!(
+                provider = provider_name,
+                requested = requested_concurrent,
+                effective = max_concurrent,
+                allow_env = ALLOW_LOCAL_HIGH_CONCURRENCY_ENV,
+                "Capped concurrent extractions for local LLM to avoid Ollama connection storms; \
+                 set {}=1 to opt out",
+                ALLOW_LOCAL_HIGH_CONCURRENCY_ENV
+            );
+        }
 
         let mut config = Self {
             chunk_extraction_timeout_secs: chunk_timeout,
@@ -364,4 +498,107 @@ mod tests {
             DEFAULT_MAX_CONCURRENT_EXTRACTIONS
         );
     }
+
+    #[test]
+    fn local_concurrency_safety_clamp_caps_ollama() {
+        let (effective, clamped) = apply_local_concurrency_safety_clamp("ollama", 32);
+        assert_eq!(effective, LOCAL_MAX_CONCURRENT_EXTRACTIONS);
+        assert!(clamped);
+
+        let (effective, clamped) = apply_local_concurrency_safety_clamp("ollama", 2);
+        assert_eq!(effective, 2);
+        assert!(!clamped);
+
+        let (effective, clamped) = apply_local_concurrency_safety_clamp("openai", 32);
+        assert_eq!(effective, 32);
+        assert!(!clamped);
+    }
+
+    #[test]
+    fn local_concurrency_safety_clamp_respects_allow_flag() {
+        // Serialise env mutations — cargo test runs this module's tests in parallel otherwise.
+        let _lock = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let prev_allow = std::env::var(ALLOW_LOCAL_HIGH_CONCURRENCY_ENV).ok();
+        let prev_conc = std::env::var("EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS").ok();
+        let prev_profile = std::env::var("EDGEQUAKE_INGEST_PROFILE").ok();
+
+        unsafe {
+            std::env::remove_var(ALLOW_LOCAL_HIGH_CONCURRENCY_ENV);
+            std::env::set_var("EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS", "32");
+            std::env::remove_var("EDGEQUAKE_INGEST_PROFILE");
+        }
+        let capped = PipelineConfig::from_env_for_provider("ollama");
+        assert_eq!(
+            capped.max_concurrent_extractions,
+            LOCAL_MAX_CONCURRENT_EXTRACTIONS
+        );
+
+        unsafe {
+            std::env::set_var(ALLOW_LOCAL_HIGH_CONCURRENCY_ENV, "1");
+        }
+        let allowed = PipelineConfig::from_env_for_provider("ollama");
+        assert_eq!(allowed.max_concurrent_extractions, 32);
+
+        let cloud = PipelineConfig::from_env_for_provider("openai");
+        assert_eq!(cloud.max_concurrent_extractions, 32);
+
+        unsafe {
+            std::env::remove_var("EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS");
+            std::env::remove_var(ALLOW_LOCAL_HIGH_CONCURRENCY_ENV);
+        }
+        let unset_local = PipelineConfig::from_env_for_provider("ollama");
+        assert_eq!(
+            unset_local.max_concurrent_extractions,
+            LOCAL_MAX_CONCURRENT_EXTRACTIONS
+        );
+
+        // Restore prior env so other tests are not polluted.
+        unsafe {
+            match prev_allow {
+                Some(v) => std::env::set_var(ALLOW_LOCAL_HIGH_CONCURRENCY_ENV, v),
+                None => std::env::remove_var(ALLOW_LOCAL_HIGH_CONCURRENCY_ENV),
+            }
+            match prev_conc {
+                Some(v) => std::env::set_var("EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS", v),
+                None => std::env::remove_var("EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS"),
+            }
+            match prev_profile {
+                Some(v) => std::env::set_var("EDGEQUAKE_INGEST_PROFILE", v),
+                None => std::env::remove_var("EDGEQUAKE_INGEST_PROFILE"),
+            }
+        }
+    }
+
+    #[test]
+    fn overload_error_detection_and_backoff() {
+        assert!(is_local_provider_overload_error(
+            "Network error: error sending request for url (http://localhost:11434/api/chat)"
+        ));
+        assert!(is_local_provider_overload_error("HTTP 503 server busy"));
+        assert!(!is_local_provider_overload_error("Timeout after 600s"));
+
+        let delay = retry_delay_ms_for_chunk_error(1_000, 1, "Network error");
+        assert_eq!(delay, LOCAL_OVERLOAD_RETRY_DELAY_MS);
+        let delay2 = retry_delay_ms_for_chunk_error(1_000, 2, "Network error");
+        assert_eq!(delay2, LOCAL_OVERLOAD_RETRY_DELAY_MS * 2);
+        let normal = retry_delay_ms_for_chunk_error(1_000, 1, "parse error");
+        assert_eq!(normal, 1_000);
+    }
+
+    #[test]
+    fn local_gleaning_disabled_by_default() {
+        let (enable, max) = resolve_gleaning_for_provider("ollama", true, 1, false);
+        assert!(!enable);
+        assert_eq!(max, 0);
+
+        let (enable, max) = resolve_gleaning_for_provider("ollama", true, 1, true);
+        assert!(enable);
+        assert_eq!(max, 1);
+
+        let (enable, max) = resolve_gleaning_for_provider("openai", true, 1, false);
+        assert!(enable);
+        assert_eq!(max, 1);
+    }
+
+    static ENV_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 }

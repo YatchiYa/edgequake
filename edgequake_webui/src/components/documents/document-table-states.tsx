@@ -30,6 +30,12 @@ export interface DocumentTableStatesProps {
   searchQuery?: string;
   /** Callback to clear all active filters/search */
   onClearFilter?: () => void;
+  /**
+   * True when uploads/pipeline are busy but the list is still empty
+   * (e.g. first PDF ingest before the row appears). Shows an honest
+   * "Updating…" empty state instead of "No documents yet".
+   */
+  isBusyUpdating?: boolean;
 }
 
 /**
@@ -115,6 +121,30 @@ function EmptyState({ onUploadClick }: { onUploadClick: () => void }) {
   );
 }
 
+/** Honest empty state while list is catching up to an in-flight ingest. */
+function BusyUpdatingState() {
+  const { t } = useTranslation();
+  return (
+    <div
+      className="text-center py-16 text-muted-foreground border rounded-lg bg-muted/5"
+      role="status"
+      aria-live="polite"
+      data-testid="documents-busy-updating"
+    >
+      <FileText className="h-12 w-12 mx-auto mb-4 opacity-40 animate-pulse" />
+      <p className="font-medium text-lg text-foreground">
+        {t('documents.updatingList', 'Updating document list…')}
+      </p>
+      <p className="text-sm mt-2 max-w-sm mx-auto">
+        {t(
+          'documents.updatingListSubtitle',
+          'Processing is in progress. Documents will appear here shortly.',
+        )}
+      </p>
+    </div>
+  );
+}
+
 /**
  * DocumentTableStates - Conditional states for document table
  *
@@ -132,6 +162,7 @@ export function DocumentTableStates({
   statusFilter,
   searchQuery,
   onClearFilter,
+  isBusyUpdating = false,
 }: DocumentTableStatesProps) {
   if (isLoading) {
     return <LoadingSkeleton rowCount={rowCount} />;
@@ -142,6 +173,9 @@ export function DocumentTableStates({
     const hasActiveFilter = (statusFilter && statusFilter !== 'all') || !!searchQuery;
     if (hasActiveFilter) {
       return <FilteredEmptyState onClearFilter={onClearFilter} />;
+    }
+    if (isBusyUpdating) {
+      return <BusyUpdatingState />;
     }
     return <EmptyState onUploadClick={onUploadClick} />;
   }

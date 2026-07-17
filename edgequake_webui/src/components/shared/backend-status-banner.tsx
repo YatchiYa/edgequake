@@ -16,7 +16,7 @@
 import { Loader2, RefreshCw, WifiOff, X } from 'lucide-react';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getBackendReadinessState } from '@/lib/api/client';
+import { getBackendReadinessSnapshot } from '@/lib/api/client';
 import { getAutomationAwareRefetchInterval } from '@/lib/runtime/browser-detection';
 import { useTranslation } from 'react-i18next';
 
@@ -24,6 +24,7 @@ import { useTranslation } from 'react-i18next';
  * Banner shown when the backend is unreachable or degraded under load.
  *
  * - Polls `/live` + `/health` every 10s (paused under Playwright automation).
+ * - Shares React Query key `['backend-ready']` with Header and SystemStatus (SSOT).
  * - Auto-dismisses once the backend reports ready.
  * - User can dismiss manually; the banner stays dismissed until the next
  *   navigation (sessionStorage) to avoid reappearing on every refetch.
@@ -32,13 +33,14 @@ export function BackendStatusBanner() {
   const { t } = useTranslation();
   const [dismissed, setDismissed] = useState(false);
 
-  const { data: state, isLoading } = useQuery({
+  const { data: readiness, isLoading } = useQuery({
     queryKey: ['backend-ready'],
-    queryFn: () => getBackendReadinessState(),
+    queryFn: () => getBackendReadinessSnapshot(),
     refetchInterval: getAutomationAwareRefetchInterval(10_000),
     staleTime: 5_000,
   });
 
+  const state = readiness?.state;
   if (dismissed || isLoading || !state || state === 'ready') {
     return null;
   }

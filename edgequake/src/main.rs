@@ -71,6 +71,56 @@ fn clear_empty_env_var(name: &str) {
     }
 }
 
+/// Local Ollama/LM Studio worker ceilings (unless high-concurrency opt-out).
+const LOCAL_WORKER_THREADS_CAP: usize = 2;
+const LOCAL_MAX_TASKS_PER_TENANT_CAP: usize = 1;
+
+/// Resolve worker pool size + per-tenant limit with local-provider safety clamps.
+fn resolve_worker_pool_limits() -> (usize, usize) {
+    let requested_workers: usize = std::env::var("WORKER_THREADS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(|| (num_cpus::get() * 4).max(4));
+
+    let requested_per_tenant: usize = std::env::var("MAX_TASKS_PER_TENANT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(|| (requested_workers * 3 / 4).max(1));
+
+    let provider = std::env::var("EDGEQUAKE_DEFAULT_LLM_PROVIDER")
+        .or_else(|_| std::env::var("EDGEQUAKE_LLM_PROVIDER"))
+        .unwrap_or_default();
+
+    if !edgequake_pipeline::is_local_extraction_provider(&provider)
+        || edgequake_pipeline::allow_local_high_concurrency()
+    {
+        return (requested_workers, requested_per_tenant);
+    }
+
+    let workers = requested_workers.min(LOCAL_WORKER_THREADS_CAP).max(1);
+    // MAX_TASKS_PER_TENANT=0 means "unlimited" — preserve that opt-out.
+    let per_tenant = if requested_per_tenant == 0 {
+        0
+    } else {
+        requested_per_tenant
+            .min(LOCAL_MAX_TASKS_PER_TENANT_CAP)
+            .max(1)
+    };
+
+    if workers != requested_workers || per_tenant != requested_per_tenant {
+        warn!(
+            provider = %provider,
+            requested_workers,
+            effective_workers = workers,
+            requested_per_tenant,
+            effective_per_tenant = per_tenant,
+            "Local worker pool clamped (set EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1 to override)"
+        );
+    }
+
+    (workers, per_tenant)
+}
+
 fn redact_database_url(url: &str) -> String {
     let Some((prefix, host)) = url.rsplit_once('@') else {
         return url.to_string();
@@ -810,10 +860,9 @@ async fn async_main() -> Result<()> {
     // WHY num_cpus * 4: Pipeline processing is IO-bound (LLM API calls,
     // embedding generation). Workers mostly wait for network I/O, so we need
     // more workers than CPU cores to keep the pipeline saturated.
-    let num_workers: usize = std::env::var("WORKER_THREADS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or_else(|| (num_cpus::get() * 4).max(4));
+    // Local (Ollama) profile: clamp to 2 workers / 1 per-tenant unless
+    // EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1 (parity with extract clamp).
+    let (num_workers, max_tasks_per_tenant) = resolve_worker_pool_limits();
 
     let worker_config = WorkerPoolConfig {
         num_workers,
@@ -827,10 +876,7 @@ async fn async_main() -> Result<()> {
         // from higher per-tenant concurrency while still reserving 25%
         // capacity for other tenants.
         // Set MAX_TASKS_PER_TENANT=0 to disable.
-        max_tasks_per_tenant: std::env::var("MAX_TASKS_PER_TENANT")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or_else(|| (num_workers * 3 / 4).max(1)),
+        max_tasks_per_tenant,
         // WHY 2 hours (7200s): Large PDFs with vision LLM extraction can take
         // 3+ hours (1000+ pages × ~12s/page). 2 hours covers the vast majority
         // of real-world documents while still catching truly stuck tasks.
@@ -1011,11 +1057,26 @@ async fn async_main() -> Result<()> {
     // cancel request from the HTTP handler is visible to the running worker.
     state.tasks.cancellation_registry = worker_pool.cancellation_registry();
 
+    // Isolate ingest from Axum serving: PDF CPU + long Ollama awaits must not
+    // starve interactive HTTP on the default (serving) Tokio runtime.
+    let ingest_threads = worker_config.num_workers.max(1);
+    let ingest_rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(ingest_threads)
+        .thread_name("eq-ingest")
+        .enable_all()
+        .build()
+        .expect("failed to build ingest Tokio runtime");
+    info!(
+        serving_runtime = "current",
+        ingest_runtime = "eq-ingest",
+        ingest_worker_threads = ingest_threads,
+        "Tokio runtime split: Axum on serving_rt, WorkerPool on ingest_rt"
+    );
     info!(
         "Starting worker pool with {} workers (task timeout: {}s)",
         worker_config.num_workers, worker_config.processing_timeout_secs
     );
-    worker_pool.start();
+    worker_pool.start_on(ingest_rt.handle());
 
     // SPEC-054/#298-B: background_requeue_pending_tasks — hydrate after workers
     // without blocking HTTP bind on large Pending backlogs.
@@ -1194,13 +1255,15 @@ async fn async_main() -> Result<()> {
         &state.security,
     ));
 
-    // Run server (this blocks until shutdown)
+    // Run server (this blocks until shutdown) on the serving runtime.
     let server = Server::new(config, state);
     let result = server.run().await;
 
-    // Graceful shutdown of worker pool
+    // Drain ingest workers before tearing down their dedicated runtime.
     info!("Shutting down worker pool...");
     worker_pool.shutdown().await;
+    info!("Shutting down ingest Tokio runtime...");
+    ingest_rt.shutdown_background();
 
     result?;
     Ok(())

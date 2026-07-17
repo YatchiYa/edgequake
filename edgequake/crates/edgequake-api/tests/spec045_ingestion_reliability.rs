@@ -33,7 +33,10 @@ fn bt045_ec07_provider_unavailable_retriable() {
     let msg = "Entity extraction error: Network error: error sending request for url (http://localhost:11434/api/chat)";
     let class = classify_ingestion_failure(msg);
     assert_eq!(class, IngestionFailureClass::ProviderUnavailable);
-    assert_eq!(class.recommended_action(), "check_provider");
+    assert_eq!(
+        class.recommended_action(),
+        "reduce_concurrency_or_check_provider"
+    );
     assert!(!is_permanent_ingestion_failure(msg));
 }
 

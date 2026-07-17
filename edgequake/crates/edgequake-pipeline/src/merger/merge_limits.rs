@@ -88,11 +88,22 @@ pub fn parse_max_source_ids(raw: &str) -> usize {
         .unwrap_or(DEFAULT_MAX_SOURCE_IDS)
 }
 
+/// Local-provider ceiling for parallel unique entity/rel merges.
+pub const LOCAL_MERGE_MAX_ASYNC: usize = 2;
+
 /// Env: `EDGEQUAKE_MERGE_MAX_ASYNC`.
 ///
 /// Fallback: `EDGEQUAKE_LLM_MAX_ASYNC` / `MAX_ASYNC` × 2, else
 /// `EDGEQUAKE_EMBED_MAX_ASYNC` × 2, else [`DEFAULT_MERGE_MAX_ASYNC`].
+///
+/// For Ollama / LM Studio, caps at [`LOCAL_MERGE_MAX_ASYNC`] unless
+/// `EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1`.
 pub fn merge_max_async_from_env() -> usize {
+    let requested = merge_max_async_requested_from_env();
+    apply_local_merge_async_clamp(requested, &default_llm_provider_from_env())
+}
+
+fn merge_max_async_requested_from_env() -> usize {
     if let Ok(raw) = std::env::var("EDGEQUAKE_MERGE_MAX_ASYNC") {
         if let Some(n) = parse_merge_max_async(&raw) {
             return n;
@@ -114,6 +125,33 @@ pub fn merge_max_async_from_env() -> usize {
         return (n.saturating_mul(2)).clamp(1, 64);
     }
     DEFAULT_MERGE_MAX_ASYNC
+}
+
+fn default_llm_provider_from_env() -> String {
+    std::env::var("EDGEQUAKE_DEFAULT_LLM_PROVIDER")
+        .or_else(|_| std::env::var("EDGEQUAKE_LLM_PROVIDER"))
+        .unwrap_or_default()
+}
+
+/// Cap merge fan-out for capacity-bound local providers.
+pub fn apply_local_merge_async_clamp(requested: usize, provider_name: &str) -> usize {
+    let bounded = requested.max(1).min(64);
+    if !crate::pipeline::is_local_extraction_provider(provider_name)
+        || crate::pipeline::allow_local_high_concurrency()
+    {
+        return bounded;
+    }
+    if bounded > LOCAL_MERGE_MAX_ASYNC {
+        tracing::info!(
+            provider = provider_name,
+            requested = bounded,
+            effective = LOCAL_MERGE_MAX_ASYNC,
+            "Local merge concurrency clamped (set EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1 to override)"
+        );
+        LOCAL_MERGE_MAX_ASYNC
+    } else {
+        bounded
+    }
 }
 
 /// Pure parser for `EDGEQUAKE_MERGE_MAX_ASYNC` (clamped 1..=64).

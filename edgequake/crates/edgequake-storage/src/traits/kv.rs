@@ -194,6 +194,35 @@ pub trait KVStorage: Send + Sync {
         self.keys_like(&pattern).await
     }
 
+    /// Bounded prefix scan — at most `limit` keys.
+    ///
+    /// Returns `(keys, truncated)` where `truncated` is true when more keys
+    /// exist beyond `limit`. Default impl fetches all then truncates; Postgres
+    /// overrides with `LIMIT` so interactive list paths never materialize an
+    /// unbounded key Vec under large workspaces.
+    async fn keys_with_prefix_limited(
+        &self,
+        prefix: &str,
+        limit: usize,
+    ) -> Result<(Vec<String>, bool)> {
+        let limit = limit.max(1);
+        let keys = self.keys_with_prefix(prefix).await?;
+        let truncated = keys.len() > limit;
+        Ok((keys.into_iter().take(limit).collect(), truncated))
+    }
+
+    /// Bounded suffix scan — at most `limit` keys (see [`Self::keys_with_suffix`]).
+    async fn keys_with_suffix_limited(
+        &self,
+        suffix: &str,
+        limit: usize,
+    ) -> Result<(Vec<String>, bool)> {
+        let limit = limit.max(1);
+        let keys = self.keys_with_suffix(suffix).await?;
+        let truncated = keys.len() > limit;
+        Ok((keys.into_iter().take(limit).collect(), truncated))
+    }
+
     /// Return keys ending with the given suffix.
     ///
     /// # WHY (SPEC-011 iter 02 Fix C)

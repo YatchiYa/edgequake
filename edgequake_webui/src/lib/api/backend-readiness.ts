@@ -14,6 +14,9 @@
  * pool may be saturated; `/health` storage pings can exceed the old 2s probe
  * budget even though the process is alive (`/live` → "OK"). The banner must
  * distinguish *unreachable* (process down) from *degraded* (busy but serving).
+ *
+ * SSOT: Header, SystemStatus, and BackendStatusBanner all consume
+ * `getBackendReadinessSnapshot()` via React Query key `['backend-ready']`.
  */
 
 import { getRuntimeServerBaseUrl } from "@/lib/runtime-config";
@@ -42,12 +45,22 @@ export type BackendReadinessState =
   | "unreachable"
   | "misconfigured";
 
+/** Full readiness snapshot — state + last-known API version for the header. */
+export interface BackendReadinessSnapshot {
+  state: BackendReadinessState;
+  /** Version from last successful `/health` payload, if any. */
+  version: string | null;
+}
+
 interface ReadinessCacheState {
   state: BackendReadinessState;
+  version: string | null;
   checkedAt: number;
 }
 
 let backendReadinessCache: ReadinessCacheState | null = null;
+/** Survives unreachable windows so the header can still show last good version. */
+let lastKnownVersion: string | null = null;
 
 const SUCCESS_CACHE_MS = 10_000;
 const FAILURE_CACHE_MS = 2_000;
@@ -60,6 +73,42 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function cacheTtlMs(state: BackendReadinessState): number {
+  return state === "unreachable" ? FAILURE_CACHE_MS : SUCCESS_CACHE_MS;
+}
+
+function commitCache(
+  state: BackendReadinessState,
+  version: string | null,
+  checkedAt: number,
+): BackendReadinessSnapshot {
+  if (version) {
+    lastKnownVersion = version;
+  }
+  const snapshot: BackendReadinessSnapshot = {
+    state,
+    version: version ?? lastKnownVersion,
+  };
+  backendReadinessCache = {
+    state: snapshot.state,
+    version: snapshot.version,
+    checkedAt,
+  };
+  return snapshot;
+}
+
+function extractVersion(body: unknown): string | null {
+  if (
+    body &&
+    typeof body === "object" &&
+    "version" in body &&
+    typeof (body as { version: unknown }).version === "string"
+  ) {
+    return (body as { version: string }).version;
+  }
+  return null;
+}
+
 /**
  * Probe backend readiness with retries and liveness-first semantics.
  *
@@ -69,15 +118,26 @@ function sleep(ms: number): Promise<void> {
 export async function probeBackendReadiness(
   request: ReadinessProbeClient = nativeFetchAdapter(),
 ): Promise<BackendReadinessState> {
+  const snapshot = await probeBackendReadinessSnapshot(request);
+  return snapshot.state;
+}
+
+/**
+ * Full readiness snapshot (state + version) — SSOT for Header / banner / SystemStatus.
+ */
+export async function probeBackendReadinessSnapshot(
+  request: ReadinessProbeClient = nativeFetchAdapter(),
+): Promise<BackendReadinessSnapshot> {
   const now = Date.now();
   if (
     backendReadinessCache &&
     now - backendReadinessCache.checkedAt <
-      (backendReadinessCache.state === "unreachable"
-        ? FAILURE_CACHE_MS
-        : SUCCESS_CACHE_MS)
+      cacheTtlMs(backendReadinessCache.state)
   ) {
-    return backendReadinessCache.state;
+    return {
+      state: backendReadinessCache.state,
+      version: backendReadinessCache.version ?? lastKnownVersion,
+    };
   }
 
   const base = getRuntimeServerBaseUrl();
@@ -106,37 +166,39 @@ export async function probeBackendReadiness(
   }
 
   if (misconfigured) {
-    backendReadinessCache = { state: "misconfigured", checkedAt: now };
-    return "misconfigured";
+    return commitCache("misconfigured", null, now);
   }
 
   if (!liveOk) {
-    backendReadinessCache = { state: "unreachable", checkedAt: now };
-    return "unreachable";
+    return commitCache("unreachable", null, now);
   }
 
   try {
     const res = await request.get(`${base}/health`);
     if (res.ok()) {
-      const body = (await res.json()) as { status?: string };
+      const body = await res.json();
+      const version = extractVersion(body);
+      const healthStatus =
+        body &&
+        typeof body === "object" &&
+        "status" in body &&
+        typeof (body as { status: unknown }).status === "string"
+          ? (body as { status: string }).status
+          : undefined;
+      // healthy → ready; explicit degraded → degraded; anything else → degraded
       const state: BackendReadinessState =
-        body.status === "healthy" || body.status === "degraded"
-          ? "ready"
-          : "degraded";
-      backendReadinessCache = { state, checkedAt: now };
-      return state;
+        healthStatus === "healthy" ? "ready" : "degraded";
+      return commitCache(state, version, now);
     }
     const status = res.status();
     if (status === 401 || status === 403) {
-      backendReadinessCache = { state: "ready", checkedAt: now };
-      return "ready";
+      // Auth-gated /health still means the process is reachable.
+      return commitCache("ready", null, now);
     }
-    backendReadinessCache = { state: "degraded", checkedAt: now };
-    return "degraded";
+    return commitCache("degraded", null, now);
   } catch {
     // Live passed — backend is up but deep health timed out (ingestion load).
-    backendReadinessCache = { state: "degraded", checkedAt: now };
-    return "degraded";
+    return commitCache("degraded", null, now);
   }
 }
 
@@ -160,9 +222,17 @@ export async function getBackendReadinessState(
   return probeBackendReadiness(request);
 }
 
+/** SSOT snapshot for Header / SystemStatus / BackendStatusBanner. */
+export async function getBackendReadinessSnapshot(
+  request: ReadinessProbeClient = nativeFetchAdapter(),
+): Promise<BackendReadinessSnapshot> {
+  return probeBackendReadinessSnapshot(request);
+}
+
 /** Reset the cached readiness result (used by tests). */
 export function _resetBackendReadinessCache(): void {
   backendReadinessCache = null;
+  lastKnownVersion = null;
 }
 
 function nativeFetchAdapter(timeoutMs = LIVE_PROBE_TIMEOUT_MS): ReadinessProbeClient {

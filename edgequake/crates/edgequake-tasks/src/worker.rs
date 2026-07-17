@@ -247,8 +247,16 @@ impl WorkerPool {
         self.cancellation_registry.clone()
     }
 
-    /// Start the worker pool
+    /// Start the worker pool on the current Tokio runtime.
     pub fn start(&mut self) {
+        self.start_on(&tokio::runtime::Handle::current());
+    }
+
+    /// Start workers on a dedicated runtime (ingest isolation from Axum serving).
+    ///
+    /// Nested `tokio::spawn` calls inside worker loops inherit this runtime's
+    /// context once the worker task is polled.
+    pub fn start_on(&mut self, runtime: &tokio::runtime::Handle) {
         let (shutdown_tx, _) = tokio::sync::broadcast::channel(1);
         self.shutdown_tx = Some(shutdown_tx.clone());
 
@@ -274,7 +282,7 @@ impl WorkerPool {
             let tenant_limiter = self.tenant_limiter.clone();
             let cancel_registry = self.cancellation_registry.clone();
 
-            let handle = tokio::spawn(async move {
+            let handle = runtime.spawn(async move {
                 info!("Worker {} started", worker_id);
 
                 loop {
@@ -594,9 +602,9 @@ impl WorkerPool {
             self.handles.push(handle);
         }
 
-        // Spawn periodic cleanup task for tenant semaphores
+        // Spawn periodic cleanup task for tenant semaphores (same ingest runtime).
         if let Some(limiter) = self.tenant_limiter.clone() {
-            tokio::spawn(async move {
+            runtime.spawn(async move {
                 loop {
                     tokio::time::sleep(tokio::time::Duration::from_secs(300)).await;
                     limiter.cleanup_idle().await;
@@ -685,7 +693,8 @@ mod tests {
         };
 
         let mut pool = WorkerPool::new(config, queue.clone(), storage.clone(), processor);
-        pool.start();
+        // Smoke: workers can be started on an explicit Handle (ingest runtime split).
+        pool.start_on(&tokio::runtime::Handle::current());
 
         // Create and enqueue tasks
         let mut task_ids = Vec::new();

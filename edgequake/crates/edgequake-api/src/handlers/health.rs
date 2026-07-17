@@ -201,12 +201,26 @@ async fn build_operational_health(state: &AppState) -> Option<OperationalHealth>
         community_refresh_debounce_secs, pending_community_refresh_workspaces,
     };
 
-    let task_stats = state
-        .tasks
-        .storage
-        .get_statistics(edgequake_tasks::storage::TaskFilter::default())
-        .await
-        .ok()?;
+    // Bound task-queue stats so /health never blocks on a saturated PG pool.
+    let task_stats = match tokio::time::timeout(
+        super::health_probes::COMPONENT_PING_TIMEOUT,
+        state
+            .tasks
+            .storage
+            .get_statistics(edgequake_tasks::storage::TaskFilter::default()),
+    )
+    .await
+    {
+        Ok(Ok(stats)) => stats,
+        Ok(Err(err)) => {
+            tracing::warn!(error = %err, "Health: task queue statistics failed");
+            return None;
+        }
+        Err(_) => {
+            tracing::warn!("Health: task queue statistics timed out");
+            return None;
+        }
+    };
 
     let obs_cfg = ObservabilityConfig::from_env();
     let engine = &state.query.engine_impl;
@@ -327,77 +341,145 @@ fn build_migration_health_snapshot(_state: &AppState) -> Option<MigrationHealthS
 async fn get_schema_health(state: &AppState) -> Option<SchemaHealth> {
     #[cfg(feature = "postgres")]
     {
-        let pool = state.pg_pool.as_ref()?;
-
-        // WHY: Global ops table — see `services/health_schema.rs` (no tenant RLS).
-        let stats = crate::services::health_schema::fetch_sqlx_migration_stats(pool).await?;
-
-        let source_ids_indexes = state.migration_bootstrap.as_ref().map(|report| {
-            let m = &report.migration_038;
-            crate::handlers::health_types::SourceIdsIndexHealth {
-                ready: m.indexes_ready,
-                graphs_checked: m.graphs_checked,
-                indexes_repaired_at_bootstrap: m.indexes_repaired_inline,
-                deferred_large_graphs: if m.deferred_large_graphs.is_empty() {
-                    None
-                } else {
-                    Some(m.deferred_large_graphs.clone())
-                },
-                missing_indexes: if m.missing_indexes.is_empty() {
-                    None
-                } else {
-                    Some(m.missing_indexes.clone())
-                },
-                operator_action: m.operator_action.clone(),
+        // Bound migration stats the same way as storage pings (750ms).
+        match tokio::time::timeout(
+            super::health_probes::COMPONENT_PING_TIMEOUT,
+            get_schema_health_inner(state),
+        )
+        .await
+        {
+            Ok(result) => result,
+            Err(_) => {
+                tracing::warn!("Health: schema/migration stats timed out");
+                None
             }
-        });
-
-        let halfvec_conversion_applied = state
-            .migration_bootstrap
-            .as_ref()
-            .map(|r| r.migration_080.halfvec_conversion_applied);
-
-        Some(SchemaHealth {
-            latest_version: stats.latest_version,
-            migrations_applied: stats.applied_count as usize,
-            last_applied_at: stats.last_applied_at.map(|dt| dt.to_rfc3339()),
-            source_ids_indexes,
-            halfvec_conversion_applied,
-        })
+        }
     }
 
     #[cfg(not(feature = "postgres"))]
     {
+        let _ = state;
         None
     }
 }
 
+#[cfg(feature = "postgres")]
+async fn get_schema_health_inner(state: &AppState) -> Option<SchemaHealth> {
+    let pool = state.pg_pool.as_ref()?;
+
+    // WHY: Global ops table — see `services/health_schema.rs` (no tenant RLS).
+    let stats = crate::services::health_schema::fetch_sqlx_migration_stats(pool).await?;
+
+    let source_ids_indexes = state.migration_bootstrap.as_ref().map(|report| {
+        let m = &report.migration_038;
+        crate::handlers::health_types::SourceIdsIndexHealth {
+            ready: m.indexes_ready,
+            graphs_checked: m.graphs_checked,
+            indexes_repaired_at_bootstrap: m.indexes_repaired_inline,
+            deferred_large_graphs: if m.deferred_large_graphs.is_empty() {
+                None
+            } else {
+                Some(m.deferred_large_graphs.clone())
+            },
+            missing_indexes: if m.missing_indexes.is_empty() {
+                None
+            } else {
+                Some(m.missing_indexes.clone())
+            },
+            operator_action: m.operator_action.clone(),
+        }
+    });
+
+    let halfvec_conversion_applied = state
+        .migration_bootstrap
+        .as_ref()
+        .map(|r| r.migration_080.halfvec_conversion_applied);
+
+    Some(SchemaHealth {
+        latest_version: stats.latest_version,
+        migrations_applied: stats.applied_count as usize,
+        last_applied_at: stats.last_applied_at.map(|dt| dt.to_rfc3339()),
+        source_ids_indexes,
+        halfvec_conversion_applied,
+    })
+}
+
 /// Readiness check (for Kubernetes).
 ///
-/// Returns 503 when migration 038 indexes are required but missing on a large graph
-/// (AGE present, indexes not ready). Prevents routing traffic to slow-prefix nodes.
+/// Returns 503 when:
+/// - migration 038 indexes are required but missing on a large graph, or
+/// - storage component pings fail / time out, or
+/// - the task queue is at critical pressure.
+///
+/// Prevents routing traffic to nodes that cannot serve ingest/query reliably.
 #[utoipa::path(
     get,
     path = "/ready",
     tag = "Health",
     responses(
         (status = 200, description = "Service is ready"),
-        (status = 503, description = "Migration 038 indexes pending — not ready for traffic")
+        (status = 503, description = "Not ready for traffic (migration, storage, or queue pressure)")
     )
 )]
 pub async fn readiness_check(State(state): State<AppState>) -> impl IntoResponse {
     #[cfg(feature = "postgres")]
     {
-        let ready =
+        let mut blockers = crate::state::migration_bootstrap::readiness_blockers(
+            &state.migration_bootstrap,
+        );
+        let mut operator_action =
+            crate::state::migration_bootstrap::readiness_operator_action(&state.migration_bootstrap);
+        let mut ready =
             crate::state::migration_bootstrap::is_ready_for_traffic(&state.migration_bootstrap);
+
+        let (kv_ok, vector_ok, graph_ok) = super::health_probes::probe_storage_components(
+            Arc::clone(&state.storage.kv_storage),
+            Arc::clone(&state.storage.vector_storage),
+            Arc::clone(&state.storage.graph_storage),
+        )
+        .await;
+        if !kv_ok || !vector_ok || !graph_ok {
+            ready = false;
+            blockers.push(format!(
+                "storage_ping_failed(kv={kv_ok},vector={vector_ok},graph={graph_ok})"
+            ));
+            if operator_action.is_none() {
+                operator_action = Some(
+                    "Storage ping failed or timed out — check DATABASE_URL / pool saturation"
+                        .to_string(),
+                );
+            }
+        }
+
+        let queue_pending = match tokio::time::timeout(
+            super::health_probes::COMPONENT_PING_TIMEOUT,
+            state
+                .tasks
+                .storage
+                .get_statistics(edgequake_tasks::storage::TaskFilter::default()),
+        )
+        .await
+        {
+            Ok(Ok(stats)) => Some(stats.pending),
+            _ => None,
+        };
+        if let Some(pending) = queue_pending {
+            if crate::task_queue_pressure::health_degraded_by_queue(pending) {
+                ready = false;
+                blockers.push(format!("task_queue_critical(pending={pending})"));
+                if operator_action.is_none() {
+                    operator_action = Some(
+                        "Task queue backlog critical — scale WORKER_THREADS or reduce ingest rate"
+                            .to_string(),
+                    );
+                }
+            }
+        }
+
         let body = crate::handlers::health_types::ReadinessResponse {
             ready,
-            blockers: crate::state::migration_bootstrap::readiness_blockers(
-                &state.migration_bootstrap,
-            ),
-            operator_action: crate::state::migration_bootstrap::readiness_operator_action(
-                &state.migration_bootstrap,
-            ),
+            blockers,
+            operator_action,
         };
         let status = if ready {
             StatusCode::OK

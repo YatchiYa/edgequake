@@ -13,8 +13,9 @@
 'use client';
 
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { getBackendReadinessSnapshot } from '@/lib/api/client';
 import { checkHealth } from '@/lib/api/edgequake';
 import { getAutomationAwareRefetchInterval } from '@/lib/runtime/browser-detection';
 import { useQuery } from '@tanstack/react-query';
@@ -24,46 +25,28 @@ import { useTranslation } from 'react-i18next';
 export function SystemStatus() {
   const { t } = useTranslation();
 
-  const { data: health, isLoading, isError } = useQuery({
-    queryKey: ['health'],
-    queryFn: checkHealth,
-    refetchInterval: getAutomationAwareRefetchInterval(30000),
-    retry: 2,
+  // SSOT with Header / BackendStatusBanner — connection truth from readiness.
+  const { data: readiness, isLoading: isReadinessLoading } = useQuery({
+    queryKey: ['backend-ready'],
+    queryFn: () => getBackendReadinessSnapshot(),
+    refetchInterval: getAutomationAwareRefetchInterval(10_000),
+    staleTime: 5_000,
+    retry: 1,
   });
 
-  if (isLoading) {
-    return (
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Server className="h-5 w-5" />
-            {t('dashboard.system.title', 'System Status')}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            <Skeleton className="h-6 w-32" />
-            <Skeleton className="h-4 w-48" />
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
+  const state = readiness?.state;
+  const isReachable = state === 'ready' || state === 'degraded';
 
-  const isConnected = !isError && health;
+  // Component details only when process is reachable (avoid hung /health).
+  const { data: health, isLoading: isHealthLoading } = useQuery({
+    queryKey: ['health'],
+    queryFn: checkHealth,
+    refetchInterval: getAutomationAwareRefetchInterval(30_000),
+    retry: 1,
+    enabled: isReachable,
+  });
 
-  // IH-03: Only show the full card when something is degraded or disconnected.
-  // WHY: When everything is healthy, the card occupies prime dashboard real estate
-  // without communicating anything actionable. The header already shows connection
-  // status via the health polling in header.tsx. Collapse to a compact badge when
-  // healthy; expand to a full card only when the user needs to act.
-  const allHealthy =
-    isConnected &&
-    (health?.components?.graph_storage === true || health?.components?.storage === 'up' || health?.components?.storage === true) &&
-    (health?.components?.llm_provider === true || health?.components?.llm_provider === 'up');
-
-  if (isLoading) {
-    // Minimal skeleton so it doesn't take up much space
+  if (isReadinessLoading && !state) {
     return (
       <div className="flex items-center gap-2 px-4 py-2 rounded-lg border bg-muted/20 text-sm text-muted-foreground">
         <Skeleton className="h-3.5 w-3.5 rounded-full" />
@@ -72,7 +55,19 @@ export function SystemStatus() {
     );
   }
 
-  // Compact healthy indicator — SS-01: animated pulse gives the badge life
+  const isConnected = isReachable;
+  const isBusy = state === 'degraded';
+
+  // IH-03: Only show the full card when something is degraded or disconnected.
+  const allHealthy =
+    state === 'ready' &&
+    !isHealthLoading &&
+    (health?.components?.graph_storage === true ||
+      health?.components?.storage === 'up' ||
+      health?.components?.storage === true) &&
+    (health?.components?.llm_provider === true ||
+      health?.components?.llm_provider === 'up');
+
   if (allHealthy) {
     return (
       <div
@@ -80,7 +75,6 @@ export function SystemStatus() {
         role="status"
         aria-label={t('dashboard.system.healthy', 'All systems operational')}
       >
-        {/* Pulse animation on the green dot communicates "live / monitored" */}
         <span className="relative flex h-2 w-2 shrink-0" aria-hidden="true">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75 motion-safe:animate-ping" />
           <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
@@ -105,19 +99,22 @@ export function SystemStatus() {
       </CardHeader>
       <CardContent className="pt-0">
         <div className="space-y-2.5">
-          {/* Connection Status */}
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">{t('dashboard.system.apiStatus', 'API')}</span>
-            <Badge variant={isConnected ? 'default' : 'destructive'} className="gap-1 h-5 text-xs">
-              {isConnected ? (
-                <><CheckCircle className="h-3 w-3" />{t('dashboard.system.connected', 'Connected')}</>
-              ) : (
+            <Badge
+              variant={isConnected ? (isBusy ? 'secondary' : 'default') : 'destructive'}
+              className="gap-1 h-5 text-xs"
+            >
+              {!isConnected ? (
                 <><XCircle className="h-3 w-3" />{t('dashboard.system.disconnected', 'Disconnected')}</>
+              ) : isBusy ? (
+                <><Circle className="h-3 w-3 fill-amber-500 text-amber-500" />{t('dashboard.system.busy', 'Busy')}</>
+              ) : (
+                <><CheckCircle className="h-3 w-3" />{t('dashboard.system.connected', 'Connected')}</>
               )}
             </Badge>
           </div>
 
-          {/* LLM Status — only when degraded */}
           {isConnected && health?.llm_provider_name && (
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">{t('dashboard.system.llmProvider', 'LLM')}</span>

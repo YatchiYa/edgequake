@@ -210,11 +210,18 @@ fn is_transient_embedding_error(message: &str) -> bool {
         || lower.contains("temporarily unavailable")
 }
 
+/// Local-provider ceiling for parallel embed sub-batches (unless opt-out).
+pub const LOCAL_EMBED_MAX_ASYNC: usize = 1;
+
 /// Max concurrent embedding API sub-batches (LightRAG `embedding_func_max_async` ≈ 8).
 ///
 /// Override with `EDGEQUAKE_EMBED_MAX_ASYNC` (clamped 1..=32).
+/// For Ollama / LM Studio, caps at [`LOCAL_EMBED_MAX_ASYNC`] unless
+/// `EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1`.
 pub fn embed_max_async() -> usize {
-    parse_embed_max_async(&std::env::var("EDGEQUAKE_EMBED_MAX_ASYNC").unwrap_or_default())
+    let requested =
+        parse_embed_max_async(&std::env::var("EDGEQUAKE_EMBED_MAX_ASYNC").unwrap_or_default());
+    apply_local_embed_async_clamp(requested, &default_llm_provider_from_env())
 }
 
 /// Pure parser for `EDGEQUAKE_EMBED_MAX_ASYNC` (testable without env mutation).
@@ -225,6 +232,35 @@ pub fn parse_embed_max_async(raw: &str) -> usize {
         .filter(|&n| n > 0)
         .map(|n| n.min(32))
         .unwrap_or(8)
+}
+
+fn default_llm_provider_from_env() -> String {
+    std::env::var("EDGEQUAKE_DEFAULT_LLM_PROVIDER")
+        .or_else(|_| std::env::var("EDGEQUAKE_LLM_PROVIDER"))
+        .unwrap_or_default()
+}
+
+/// Cap embed fan-out for capacity-bound local providers.
+///
+/// Returns the effective concurrency (may be lower than `requested`).
+pub fn apply_local_embed_async_clamp(requested: usize, provider_name: &str) -> usize {
+    let bounded = requested.max(1).min(32);
+    if !crate::pipeline::is_local_extraction_provider(provider_name)
+        || crate::pipeline::allow_local_high_concurrency()
+    {
+        return bounded;
+    }
+    if bounded > LOCAL_EMBED_MAX_ASYNC {
+        tracing::info!(
+            provider = provider_name,
+            requested = bounded,
+            effective = LOCAL_EMBED_MAX_ASYNC,
+            "Local embed concurrency clamped (set EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1 to override)"
+        );
+        LOCAL_EMBED_MAX_ASYNC
+    } else {
+        bounded
+    }
 }
 
 /// Plan token/count-aware sub-batches as `(start_index, end_index)` half-open ranges.
@@ -977,6 +1013,16 @@ mod tests {
         assert_eq!(parse_embed_max_async("0"), 8);
         assert_eq!(parse_embed_max_async("99"), 32);
         assert_eq!(parse_embed_max_async("nope"), 8);
+    }
+
+    #[test]
+    fn local_embed_async_clamp_caps_ollama() {
+        assert_eq!(
+            apply_local_embed_async_clamp(8, "ollama"),
+            LOCAL_EMBED_MAX_ASYNC
+        );
+        assert_eq!(apply_local_embed_async_clamp(8, "openai"), 8);
+        assert_eq!(apply_local_embed_async_clamp(1, "lmstudio"), 1);
     }
 
     #[test]

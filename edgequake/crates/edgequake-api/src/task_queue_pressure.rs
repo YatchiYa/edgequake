@@ -55,7 +55,7 @@ pub fn assess_queue_pressure(pending: u64) -> QueuePressureSnapshot {
             QueuePressureLevel::Critical,
             Some(format!(
                 "Task queue backlog critical ({pending} pending >= {critical}). \
-                 Scale workers (EDGEQUAKE_WORKER_COUNT) or reduce ingest rate; \
+                 Scale workers (WORKER_THREADS) or reduce ingest rate; \
                  monitor /api/v1/pipeline/queue-metrics"
             )),
         )
