@@ -4,6 +4,8 @@ title: 'EdgeQuake vs Microsoft GraphRAG'
 
 # EdgeQuake vs Microsoft GraphRAG
 
+> **Product: v0.19.0**
+
 > **Two Approaches to Graph-Enhanced RAG**
 
 Both EdgeQuake and Microsoft GraphRAG use knowledge graphs to enhance retrieval quality. They share similar goals but differ significantly in implementation, architecture, and operational characteristics.
@@ -20,7 +22,10 @@ Both EdgeQuake and Microsoft GraphRAG use knowledge graphs to enhance retrieval 
 | **Algorithm Origin**    | Original research (arxiv:2404.16130) | LightRAG paper (arxiv:2410.05779)             |
 | **Community Detection** | Leiden (hierarchical)                | Louvain (flat)                                |
 | **Query Modes**         | 4 (Global, Local, DRIFT, Basic)      | 6 (naive, local, global, hybrid, mix, bypass) |
-| **Multi-tenant**        | ❌                                   | ✅ Built-in                                   |
+| **Multi-tenant**        | ❌                                   | ✅ Built-in + PG RLS                          |
+| **PDF vision**          | ❌                                   | ✅ Vision LLM pipeline                        |
+| **Ingestion cancel**    | N/A                                  | ✅ SPEC-057 cooperative cancel                |
+| **Multi-replica**       | N/A                                  | ✅ `EDGEQUAKE_REPLICAS` + claim/lease           |
 | **Async Runtime**       | asyncio                              | Tokio                                         |
 | **Indexing Cost**       | Very high ($$$)                      | Moderate ($$)                                 |
 
@@ -249,6 +254,9 @@ Uses Tokio's concurrent task execution for parallel context retrieval, generally
 | Gleaning (multi-pass)   |       ❌       |     ✅      |
 | Entity normalization    |    ⚠️ Basic    | ✅ Advanced |
 | Source lineage          |    ⚠️ Basic    |   ✅ Full   |
+| PDF vision ingestion    |       ❌       |     ✅      |
+| Ingestion cancel        |       ❌       |     ✅      |
+| Multi-replica workers   |       ❌       |     ✅      |
 | Multi-tenant            |       ❌       |     ✅      |
 | REST API                |       ❌       |     ✅      |
 | Streaming responses     |       ⚠️       |   ✅ SSE    |
@@ -275,15 +283,15 @@ Uses Tokio's concurrent task execution for parallel context retrieval, generally
 
 | Backend                     | Vector | Graph | Status   |
 | --------------------------- | ------ | ----- | -------- |
-| PostgreSQL + pgvector + AGE | ✅     | ✅    | Default  |
-| In-Memory (tests only)      | ✅     | ✅    | Unit/integration tests only |
+| PostgreSQL 16–18 + pgvector + AGE | ✅     | ✅    | Required |
+| In-memory                   | —      | —     | Removed (tests use mocks) |
 
 **EdgeQuake's unified PostgreSQL:**
 
-- Single database for all storage needs
-- Transactional consistency
-- Simpler deployment
-- Enterprise-ready (backup, replication, etc.)
+- `DATABASE_URL` required — no production in-memory fallback
+- Official images: `ghcr.io/raphaelmansuy/edgequake-postgres:0.19.0-pg16|pg17|pg18`
+- Transactional consistency + RLS tenant isolation
+- Simpler deployment than split Parquet + LanceDB stacks
 
 ---
 
@@ -310,13 +318,14 @@ multi_tenant: Manual implementation required
 ```yaml
 # EdgeQuake deployment needs:
 dependencies:
-  - Rust runtime (compiled binary)
-  - PostgreSQL 15+ with extensions
-  - LLM API (OpenAI/Ollama)
+  - Rust runtime (compiled binary or GHCR image)
+  - PostgreSQL 16–18 with pgvector + AGE (required)
+  - LLM API (OpenAI/Ollama/Vertex OAuth2)
 
-deployment_model: Docker/Container
+deployment_model: Docker/Container (ghcr.io/raphaelmansuy/edgequake)
 production_ready: Yes
-multi_tenant: Built-in via workspaces
+multi_tenant: Built-in via workspaces + RLS
+multi_replica: EDGEQUAKE_REPLICAS>1 requires bridged/notify_only delivery
 ```
 
 ---

@@ -4,520 +4,275 @@ title: 'Deep Dive: Pipeline Progress Tracking'
 
 # Deep Dive: Pipeline Progress Tracking
 
-> **Real-Time Monitoring of Document Ingestion**
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
-EdgeQuake provides comprehensive progress tracking for document ingestion, enabling real-time UI updates, error handling, and ETA estimation.
+> Real-time monitoring of document ingestion, PDF conversion, and deletion.
 
----
+EdgeQuake exposes progress through **WebSocket streams**, **REST polling**, and **SSE**. All examples use `http://localhost:8080` (default backend port).
 
-## Overview
-
-The progress tracking system monitors each stage of the ingestion pipeline:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    PIPELINE PROGRESS FLOW                       │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  Document Upload                                                │
-│       │                                                         │
-│       ▼                                                         │
-│  ┌─────────────────────────────────────────────────────────────┐│
-│  │ 1. Preprocessing    ████████████████░░░░  80%  [Running]    ││
-│  │    Parsing PDF, extracting text...                          ││
-│  └─────────────────────────────────────────────────────────────┘│
-│       │                                                         │
-│       ▼                                                         │
-│  ┌─────────────────────────────────────────────────────────────┐│
-│  │ 2. Chunking         ░░░░░░░░░░░░░░░░░░░░   0%  [Pending]    ││
-│  │    Waiting...                                               ││
-│  └─────────────────────────────────────────────────────────────┘│
-│       │                                                         │
-│       ▼                                                         │
-│  ┌─────────────────────────────────────────────────────────────┐│
-│  │ 3. Extracting       ░░░░░░░░░░░░░░░░░░░░   0%  [Pending]    ││
-│  │    Waiting...                                               ││
-│  └─────────────────────────────────────────────────────────────┘│
-│                                                                 │
-│  Overall: ████░░░░░░░░░░░░░░░░  20%   ETA: ~45 seconds          │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
+**Authoritative contract:** [`edgequake_webui/openapi/openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) (version `0.19.0`).
 
 ---
 
-## Why Progress Tracking?
+## Progress identity (SPEC-054)
 
-| Purpose             | Benefit                                |
-| ------------------- | -------------------------------------- |
-| **User Experience** | Visual feedback during long operations |
-| **Error Recovery**  | Know where failures occurred           |
-| **Debugging**       | Detailed logs per stage                |
-| **Optimization**    | Identify slow stages                   |
-| **SLA Monitoring**  | Track processing times                 |
+Every async operation has a server-issued **`task_id`** (also called `track_id` in progress stores). This is the sole key for progress, cancel, retry, and WebSocket subscription.
+
+| Field | Source | Use |
+| ----- | ------ | --- |
+| `task_id` | Upload / PDF / reprocess response | **Subscribe here** |
+| `track_id` (optional) | Client batch correlation | Echo only — **not** a progress key |
+
+PDF upload returns `PdfUploadResponse.task_id` (format `pdf-<uuid>`). Text/file upload returns `FileUploadResponse.task_id` when async.
 
 ---
 
-## Core Data Structures
+## Endpoints at a glance
 
-### IngestionStatus
+| Channel | Path | Scope |
+| ------- | ---- | ----- |
+| WebSocket (global) | `ws://localhost:8080/ws/pipeline/progress` | All pipeline events in workspace context |
+| WebSocket (filtered) | `ws://localhost:8080/ws/progress/{track_id}` | Single upload track (PDF page progress, snapshots) |
+| REST (ingestion) | `GET /api/v1/ingestion/{track_id}/progress` | Full ingest stage breakdown (SPEC-048) |
+| REST (batch) | `POST /api/v1/ingestion/progress` | Multiple tracks in one call |
+| REST (PDF poll) | `GET /api/v1/documents/pdf/progress/{track_id}` | PDF phase progress (6 phases) |
+| SSE (PDF stream) | `GET /api/v1/documents/pdf/progress/stream/{track_id}` | Push PDF progress until complete/fail |
+| REST (task) | `GET /api/v1/tasks/{track_id}` | Task row status + metadata |
+| Cancel | `POST /api/v1/tasks/{track_id}/cancel` | Canonical cancel (see [ingestion cancel doc](../ingestion-cancel-and-fairness.md)) |
 
-Overall job status:
+> **Removed:** `/api/v1/rag/progress/*` — do not use. All progress moved to the paths above.
 
-```rust
-/// Overall ingestion status.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IngestionStatus {
-    /// Waiting to start
-    Pending,
-    /// Currently processing
-    Running,
-    /// Successfully completed
-    Completed,
-    /// Failed with errors
-    Failed,
-    /// Cancelled by user
-    Cancelled,
-}
+---
+
+## Convert → ingest (SPEC-057 P2)
+
+PDF admission is a **two-task pipeline**:
+
+```
+┌───────────────────────────────────────────────────────┐
+│ Convert then ingest (SPEC-057)                        │
+│                                                       │
+│  POST /documents/pdf  -->  admit task_id              │
+│              |                                        │
+│              v                                        │
+│  [1] PdfProcessing (convert only)                     │
+│      vision / edgeparse --> markdown                  │
+│      PDF row --> Completed (artifact)                 │
+│              |                                        │
+│              v  markdown barrier                      │
+│  [2] Insert (KG ingest, new lease)                    │
+│      chunk --> extract --> embed --> store            │
+│              |                                        │
+│              v                                        │
+│  document display_status = completed                  │
+└───────────────────────────────────────────────────────┘
 ```
 
-### PipelineStage
-
-The 9 stages of document processing:
-
-```rust
-/// Pipeline processing stage.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PipelineStage {
-    Preprocessing,  // Validation, parsing
-    Chunking,       // Text segmentation
-    Extracting,     // Entity/relationship extraction
-    Gleaning,       // Re-extraction for completeness
-    Merging,        // Graph integration
-    Summarizing,    // Description generation
-    Embedding,      // Vector generation
-    Storing,        // Database persistence
-    Finalizing,     // Cleanup and completion
-}
+```
+┌─────────────────────────────────────────────────────┐
+│ Progress channels (port 8080)                       │
+│                                                     │
+│  WS  /ws/pipeline/progress      (global)            │
+│  WS  /ws/progress/{track_id}    (filtered)          │
+│  GET /ingestion/{id}/progress                       │
+│  GET /documents/pdf/progress/{id}                   │
+│  SSE /documents/pdf/progress/stream/{id}            │
+│  POST /tasks/{id}/cancel        (canonical)         │
+└─────────────────────────────────────────────────────┘
 ```
 
-### StageProgress
+| Phase | Task type | Timeout key | PDF row on success |
+| ----- | --------- | ----------- | ------------------ |
+| Convert | `pdf_processing` | `LargeDocumentProfile::convert_timeout_secs` | `Completed` + markdown |
+| Ingest | `insert` | `LargeDocumentProfile::ingest_timeout_secs` | unchanged |
 
-Progress within a single stage:
+**UI implication:** PDF `Completed` means convert finished, **not** full ingestion. Doc `current_stage` may still be `extracting` while PDF is `Completed`. `IngestionStatusMapper` keeps showing the doc stage (see below).
 
-```rust
-/// Progress for a single pipeline stage.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StageProgress {
-    /// The stage
-    pub stage: PipelineStage,
+Cancel of convert **or** PDF cancel cancels both linked Pending/Processing tasks for the same `pdf_id`.
 
-    /// Current status
-    pub status: StageStatus,
+---
 
-    /// Total items to process
-    pub total_items: usize,
+## Document status: `display_status` / `ui_phase` (SPEC-057 P4)
 
-    /// Items completed
-    pub completed_items: usize,
+List and detail responses include presentation fields from `IngestionStatusMapper`. **Prefer these over re-deriving from raw `status`.**
 
-    /// Completion percentage (0-100)
-    pub completion_percentage: f32,
+| Field | Values | Meaning |
+| ----- | ------ | ------- |
+| `display_status` | `uploading`, `converting`, `extracting`, `embedding`, `storing`, `completed`, `indexed`, `failed`, `cancelled`, … | Badge key |
+| `ui_phase` | `idle` \| `running` \| `stopping` \| `terminal` | Lifecycle phase for spinners |
 
-    /// When stage started
-    pub started_at: Option<DateTime<Utc>>,
+### Stopping → Cancelled
 
-    /// When stage completed
-    pub completed_at: Option<DateTime<Utc>>,
-}
+When the user cancels:
+
+1. `POST /api/v1/tasks/{track_id}/cancel` sets cancel intent in `CancellationRegistry`.
+2. While cooperative shutdown runs: `ui_phase=stopping`, `display_status` may still show the active stage (e.g. `extracting`). UI shows **"Stopping…"**.
+3. When task/doc/PDF reach terminal cancel truth: `display_status=cancelled`, `ui_phase=terminal`.
+
+Cancel is cooperative — expect a short delay until the current LLM/vision round-trip aborts.
+
+---
+
+## WebSocket: global pipeline stream
+
+`ws://localhost:8080/ws/pipeline/progress`
+
+Receives workspace-scoped `ProgressEvent` JSON (`type` + `data`):
+
+| Event | When |
+| ----- | ---- |
+| `Connected` | Handshake complete |
+| `StatusSnapshot` | Initial state on connect |
+| `JobStarted` | Batch job begins |
+| `DocumentProgress` | Per-document counts |
+| `ChunkProgress` | Chunk-level ingest (SPEC-048 DEF-02) |
+| `GraphStorageProgress` | Merge/store sub-phases |
+| `PdfPageProgress` | PDF page extraction |
+| `ChunkFailure` | Recoverable chunk error |
+| `DocumentFailed` | Document terminal failure |
+| `BatchCompleted` / `JobFinished` | Job completion |
+| `DeletionStarted` / `DeletionPhase` / `DeletionCompleted` | Single-doc delete (SPEC-050) |
+| `BulkDeletionStarted` / `BulkDeletionItemProgress` / `BulkDeletionCompleted` | Bulk delete |
+| `Heartbeat` | Keepalive (~30s) |
+| `CancellationRequested` | Cancel acknowledged |
+
+```javascript
+const ws = new WebSocket('ws://localhost:8080/ws/pipeline/progress');
+ws.onmessage = (event) => {
+  const { type, data } = JSON.parse(event.data);
+  if (type === 'ChunkProgress') {
+    console.log(`Chunk ${data.chunk_index + 1}/${data.total_chunks}`);
+  }
+};
 ```
 
-### IngestionProgress
+Clients may send `{ "type": "cancel", "track_id": "..." }` — equivalent to `POST /tasks/{track_id}/cancel`.
 
-Complete job snapshot:
+---
 
-```rust
-/// Complete ingestion progress snapshot.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct IngestionProgress {
-    /// Job identifier
-    pub job_id: String,
+## WebSocket: per-track filter
 
-    /// Document identifier
-    pub document_id: String,
+`ws://localhost:8080/ws/progress/{track_id}`
 
-    /// Overall status
-    pub status: IngestionStatus,
+Streams only events for the given `track_id` (typically the upload `task_id`). Ideal for single PDF upload pages.
 
-    /// Current stage
-    pub current_stage: PipelineStage,
+Messages: `Connected`, `StatusSnapshot`, `PdfPageProgress`, `Heartbeat`.
 
-    /// Progress for each stage
-    pub stages: Vec<StageProgress>,
-
-    /// Overall completion percentage
-    pub completion_percentage: f32,
-
-    /// Estimated time remaining (seconds)
-    pub eta_seconds: Option<u64>,
-
-    /// Latest status message
-    pub latest_message: String,
-
-    /// Message history
-    pub history_messages: Vec<ProgressMessage>,
-
-    /// Errors encountered
-    pub errors: Vec<IngestionError>,
-
-    /// Timestamps
-    pub started_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-    pub completed_at: Option<DateTime<Utc>>,
-}
+```javascript
+const taskId = uploadResponse.task_id; // NOT optional client track_id
+const ws = new WebSocket(`ws://localhost:8080/ws/progress/${taskId}`);
+ws.onmessage = (event) => {
+  const { type, data } = JSON.parse(event.data);
+  if (type === 'PdfPageProgress') {
+    console.log(`Page ${data.page_num}/${data.total_pages}: ${data.phase}`);
+  }
+};
 ```
 
 ---
 
-## The Progress Tracker
+## REST: ingestion progress
 
-Thread-safe wrapper for concurrent updates:
-
-```rust
-/// Thread-safe progress tracker.
-pub struct ProgressTracker {
-    inner: Arc<RwLock<IngestionProgress>>,
-}
-
-impl ProgressTracker {
-    /// Create a new progress tracker
-    pub fn new(job_id: String, document_id: String) -> Self;
-
-    /// Start the job
-    pub async fn start(&self);
-
-    /// Set current stage and item count
-    pub async fn set_stage(&self, stage: PipelineStage, total_items: usize);
-
-    /// Update stage progress
-    pub async fn update_stage(&self, stage: PipelineStage, completed: usize);
-
-    /// Complete a stage
-    pub async fn complete_stage(&self, stage: PipelineStage);
-
-    /// Skip a stage
-    pub async fn skip_stage(&self, stage: PipelineStage);
-
-    /// Add a message
-    pub async fn add_message(&self, message: String, level: MessageLevel);
-
-    /// Add an error
-    pub async fn add_error(&self, error: IngestionError);
-
-    /// Complete the job
-    pub async fn complete(&self);
-
-    /// Fail the job
-    pub async fn fail(&self, error: IngestionError);
-
-    /// Get current snapshot
-    pub async fn snapshot(&self) -> IngestionProgress;
-}
-```
-
----
-
-## Usage
-
-### Basic Progress Tracking
-
-```rust
-use edgequake_pipeline::progress::{ProgressTracker, PipelineStage, MessageLevel};
-
-// Create tracker for a job
-let tracker = ProgressTracker::new("job-123", "doc-456");
-
-// Start the job
-tracker.start().await;
-
-// Set current stage
-tracker.set_stage(PipelineStage::Chunking, 10).await;
-tracker.add_message("Chunking document into 10 segments", MessageLevel::Info).await;
-
-// Update progress as chunks are processed
-for i in 0..10 {
-    process_chunk(i).await;
-    tracker.update_stage(PipelineStage::Chunking, i + 1).await;
-}
-
-// Complete the stage
-tracker.complete_stage(PipelineStage::Chunking).await;
-
-// Move to next stage
-tracker.set_stage(PipelineStage::Extracting, 10).await;
-```
-
-### Error Handling
-
-```rust
-use edgequake_pipeline::progress::{IngestionError, PipelineStage};
-
-// Create an error
-let error = IngestionError::new(
-    "E001",
-    "LLM rate limit exceeded",
-    PipelineStage::Extracting,
-)
-.with_details("429 Too Many Requests")
-.with_item_id("chunk-7")
-.recoverable();
-
-// Add to tracker
-tracker.add_error(error).await;
-
-// Or fail the entire job
-tracker.fail(error).await;
-```
-
-### Get Progress Snapshot
-
-```rust
-// Get current state for API response
-let progress = tracker.snapshot().await;
-
-println!("Job: {}", progress.job_id);
-println!("Status: {:?}", progress.status);
-println!("Stage: {:?}", progress.current_stage);
-println!("Overall: {:.1}%", progress.completion_percentage);
-
-// Check individual stages
-for stage in &progress.stages {
-    println!("{}: {:?} ({:.1}%)",
-             stage.stage.name(),
-             stage.status,
-             stage.completion_percentage);
-}
-```
-
----
-
-## Message Levels
-
-```rust
-/// Message severity level.
-pub enum MessageLevel {
-    Debug,    // Verbose debugging
-    Info,     // Normal progress
-    Warning,  // Non-fatal issues
-    Error,    // Errors (job may continue)
-}
-```
-
-**Examples:**
-
-```rust
-// Info: Normal progress
-tracker.add_message("Processing chunk 5 of 10", MessageLevel::Info).await;
-
-// Warning: Non-critical issue
-tracker.add_message("Duplicate entity detected, merging", MessageLevel::Warning).await;
-
-// Error: Problem but continuing
-tracker.add_message("Failed to extract from chunk 7, skipping", MessageLevel::Error).await;
-```
-
----
-
-## Completion Percentage Calculation
-
-Overall progress is calculated across all stages:
-
-```rust
-impl IngestionProgress {
-    pub fn calculate_completion(&mut self) {
-        let total_stages = self.stages.len() as f32;
-
-        let completed: f32 = self.stages.iter().map(|s| {
-            match s.status {
-                StageStatus::Completed | StageStatus::Skipped => 1.0,
-                StageStatus::Running => s.completion_percentage / 100.0,
-                _ => 0.0,
-            }
-        }).sum();
-
-        self.completion_percentage = (completed / total_stages) * 100.0;
-    }
-}
-```
-
-**Example:**
-
-- 3 stages completed (3.0)
-- 1 stage at 50% (0.5)
-- 5 stages pending (0.0)
-- Total: (3.5 / 9) × 100 = 38.9%
-
----
-
-## API Integration
-
-### Progress Streaming (SSE)
+### Single track
 
 ```bash
-# Subscribe to progress updates
-curl -N "http://localhost:8080/api/v1/rag/progress/job-123/stream"
-
-# Receives events:
-data: {"job_id":"job-123","status":"Running","completion_percentage":25.5}
-
-data: {"job_id":"job-123","status":"Running","completion_percentage":50.0}
-
-data: {"job_id":"job-123","status":"Completed","completion_percentage":100.0}
+curl -H "X-Workspace-ID: {workspace_id}" \
+     -H "Authorization: Bearer {token}" \
+     "http://localhost:8080/api/v1/ingestion/{track_id}/progress"
 ```
 
-### Polling Endpoint
+Returns `IngestionProgressResponse`: `track_id`, `document_id`, `stage`, `stage_status`, nested `progress` (stages array, `completion_percentage`, `eta_seconds`), optional `counts` (`pages` \| `chunks` \| `entities` \| `relationships`), optional `cost_usd`.
+
+### Batch
 
 ```bash
-# Get current progress
-curl "http://localhost:8080/api/v1/rag/progress/job-123"
-
-{
-  "job_id": "job-123",
-  "status": "Running",
-  "current_stage": "Extracting",
-  "completion_percentage": 45.2,
-  "eta_seconds": 30,
-  "latest_message": "Extracting entities from chunk 5 of 10",
-  "stages": [
-    {"stage": "Preprocessing", "status": "Completed", "completion_percentage": 100.0},
-    {"stage": "Chunking", "status": "Completed", "completion_percentage": 100.0},
-    {"stage": "Extracting", "status": "Running", "completion_percentage": 50.0},
-    ...
-  ],
-  "errors": []
-}
+curl -X POST "http://localhost:8080/api/v1/ingestion/progress" \
+  -H "Content-Type: application/json" \
+  -H "X-Workspace-ID: {workspace_id}" \
+  -d '{"track_ids": ["pdf-abc", "insert-def"]}'
 ```
 
 ---
 
-## Frontend Integration
+## REST / SSE: PDF progress
 
-### React Progress Component
+### Poll
 
-```tsx
-function IngestionProgress({ jobId }: { jobId: string }) {
-  const [progress, setProgress] = useState<Progress | null>(null);
+```bash
+curl "http://localhost:8080/api/v1/documents/pdf/progress/{track_id}" \
+  -H "X-Workspace-ID: {workspace_id}"
+```
 
-  useEffect(() => {
-    // SSE subscription
-    const eventSource = new EventSource(`/api/v1/rag/progress/${jobId}/stream`);
+Returns `PdfUploadProgress`: `phases[]`, `overall_percentage`, `is_complete`, `is_failed`.
 
-    eventSource.onmessage = (event) => {
-      setProgress(JSON.parse(event.data));
-    };
+Use **`PdfUploadResponse.task_id`** as `{track_id}` — not the optional client batch `track_id`.
 
-    return () => eventSource.close();
-  }, [jobId]);
+### SSE stream
 
-  if (!progress) return <Loading />;
+```bash
+curl -N "http://localhost:8080/api/v1/documents/pdf/progress/stream/{track_id}" \
+  -H "X-Workspace-ID: {workspace_id}"
+```
 
-  return (
-    <div className="progress-container">
-      <h3>Processing: {progress.document_id}</h3>
+Stream closes when `is_complete` or `is_failed`, client disconnects, or no progress for 60 seconds.
 
-      {/* Overall progress bar */}
-      <ProgressBar value={progress.completion_percentage} max={100} />
-
-      {/* Stage breakdown */}
-      {progress.stages.map((stage) => (
-        <StageRow key={stage.stage} stage={stage} />
-      ))}
-
-      {/* Latest message */}
-      <p className="status-message">{progress.latest_message}</p>
-
-      {/* ETA */}
-      {progress.eta_seconds && (
-        <p>ETA: {formatDuration(progress.eta_seconds)}</p>
-      )}
-    </div>
-  );
-}
+```javascript
+const es = new EventSource(
+  `/api/v1/documents/pdf/progress/stream/${taskId}`,
+  { withCredentials: true }
+);
+es.onmessage = (e) => {
+  const p = JSON.parse(e.data);
+  console.log(`${p.overall_percentage}%`);
+  if (p.is_complete || p.is_failed) es.close();
+};
 ```
 
 ---
 
-## Best Practices
+## Deletion progress (SPEC-050)
 
-1. **Update Frequently** - Call `update_stage()` after each item
-2. **Meaningful Messages** - Include counts ("Processing 5 of 10")
-3. **Handle Skipped Stages** - Mark as skipped, not just skip
-4. **Log Errors** - Even for recoverable errors
-5. **Clean Up** - Always call `complete()` or `fail()`
+Document delete broadcasts phase-granular events on **`/ws/pipeline/progress`** (same global socket):
 
----
+| Phase | Label |
+| ----- | ----- |
+| `cancelling_task` | Cancelling in-flight ingestion (if processing) |
+| `removing_vectors` | pgvector embeddings |
+| `removing_graph` | AGE entities/edges cascade |
+| `removing_kv` | Chunks, content, metadata |
+| `finalizing` | Content-hash cleanup |
 
-## Performance Considerations
+Event sequence: `DeletionStarted` → `DeletionPhase` (repeat) → `DeletionCompleted`.
 
-### RwLock Contention
+Preview impact before delete: `GET /api/v1/documents/{document_id}/deletion-impact`.
 
-```rust
-// Good: Few writes, many reads
-tracker.update_stage(stage, completed).await;  // Brief write lock
+Delete response (`200`) includes `chunks_deleted`, `entities_affected`, `relationships_affected`, `embeddings_deleted`, `partial_failure` — not `204`.
 
-let snapshot = tracker.snapshot().await;  // Read lock (concurrent OK)
-```
-
-### Message History Size
-
-```rust
-// Consider trimming old messages for long jobs
-if progress.history_messages.len() > 100 {
-    progress.history_messages.drain(0..50);
-}
-```
+Bulk delete (`DELETE /api/v1/documents` or workspace clear) emits `BulkDeletionStarted` → `BulkDeletionItemProgress` → `BulkDeletionCompleted`.
 
 ---
 
-## Troubleshooting
+## Recommended client patterns
 
-### Progress Not Updating
+| Scenario | Pattern |
+| -------- | ------- |
+| Documents list badges | Poll list/detail; read `display_status` + `ui_phase` |
+| Single PDF upload page | `ws://…/ws/progress/{task_id}` or PDF SSE |
+| Pipeline dashboard | `ws://…/ws/pipeline/progress` |
+| Background poller | `GET /ingestion/{track_id}/progress` or `GET /tasks/{track_id}` |
+| Cancel button | `POST /tasks/{track_id}/cancel`; show Stopping until `ui_phase=terminal` |
 
-**Check:**
+---
 
-1. Tracker is shared across tasks (use `Arc<ProgressTracker>`)
-2. `update_stage()` is called after each item
-3. No deadlocks on the RwLock
+## Observability
 
-### Missing Stages
-
-**Cause:** Stage skipped without notification
-
-**Solution:**
-
-```rust
-// Always mark skipped stages
-if !needs_gleaning {
-    tracker.skip_stage(PipelineStage::Gleaning).await;
-}
-```
-
-### Incorrect Completion %
-
-**Cause:** Total items set incorrectly
-
-**Solution:**
-
-```rust
-// Set correct total before starting stage
-let chunk_count = chunker.estimate_chunks(&content);
-tracker.set_stage(PipelineStage::Chunking, chunk_count).await;
-```
+`GET /api/v1/pipeline/queue-metrics` — tenant park waiters, cancel intent counts, store contention SLOs. See [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md).
 
 ---
 
 ## See Also
 
-- [Cost Tracking](/docs/deep-dives/cost-tracking/) - LLM cost monitoring
-- [Operations: Monitoring](/docs/operations/monitoring/) - Production observability
-- [REST API](/docs/api-reference/rest-api/) - Progress endpoints
+- [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md) — cancel SSOT, fairness, restart
+- [Cost Tracking](/docs/deep-dives/cost-tracking/) — token/cost in progress payloads
+- [REST API](/docs/api-reference/rest-api/) — guided API overlay
+- [OpenAPI snapshot](../../edgequake_webui/openapi/openapi.snapshot.json) — full schema

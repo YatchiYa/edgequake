@@ -2,6 +2,8 @@
 title: 'Graph-RAG: The Foundation'
 ---
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 # Graph-RAG: The Foundation
 
 > **Graph-RAG enhances Retrieval-Augmented Generation by using knowledge graphs
@@ -100,8 +102,9 @@ EdgeQuake implements Graph-RAG with these components:
 | **Entity Extraction**       | Find entities in text | LLM-based with tuple parsing  |
 | **Relationship Extraction** | Find connections      | Same LLM call, explicit edges |
 | **Knowledge Graph**         | Store structure       | PostgreSQL + Apache AGE       |
-| **Vector Embeddings**       | Semantic search       | pgvector                      |
-| **Hybrid Retrieval**        | Query both            | 6 query modes                 |
+| **Vector Embeddings**       | Semantic search       | pgvector (vector / halfvec)   |
+| **Multimodal assets**       | PDF figures/charts    | mm-assets + vision ingest     |
+| **Hybrid Retrieval**        | Query both            | 6 query modes (default: mix)  |
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐

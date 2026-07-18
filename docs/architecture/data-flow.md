@@ -4,7 +4,40 @@ title: 'EdgeQuake Data Flow'
 
 # EdgeQuake Data Flow
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 > How documents flow through ingestion and how queries are processed
+
+---
+
+## v0.19.0 PDF Ingestion Sequence (SPEC-057)
+
+End-to-end flow for `POST /api/v1/documents/pdf`: **admit → claim → convert → markdown barrier → Insert → query**. Progress and cancel use server `task_id` (`pdf-<uuid>`).
+
+```
+┌───────────────────────────────────────────────────────────────────────┐
+│ PDF upload sequence (v0.19.0)                                         │
+│                                                                       │
+│  Client --POST /documents/pdf--> API --enqueue--> Tasks               │
+│  Client <--task_id-------------- API                                  │
+│     |                                                                 │
+│     |  ws://localhost:8080/ws/progress/{task_id}                      │
+│     v                                                                 │
+│  Worker claim+lease --> edgequake-pdf convert --> Storage             │
+│                              |                                        │
+│                              v PDF Completed + markdown               │
+│  Worker claim+lease --> Insert pipeline --> KG + vectors              │
+│                              |                                        │
+│                              v doc completed                          │
+│  Client --POST /query--> Query engine --> answer + sources            │
+│                                                                       │
+│  Optional: POST /tasks/{task_id}/cancel --> Cancelled chain           │
+└───────────────────────────────────────────────────────────────────────┘
+```
+
+**Markdown barrier:** Insert runs only after durable `pdf_documents.markdown_content` and PDF status `Completed`. Cancelling ingest after convert completes leaves PDF `Completed` (artifact kept).
+
+**Progress channels:** `ws://localhost:8080/ws/progress/{task_id}`, `GET /api/v1/ingestion/{task_id}/progress`, `GET /api/v1/documents/pdf/progress/{task_id}`. Cancel SSOT: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md).
 
 ---
 
@@ -16,38 +49,28 @@ EdgeQuake has two main data flows:
 2. **Query Flow**: Question → Hybrid Retrieval → Answer
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        EdgeQuake Data Flow                          │
-│                                                                     │
-│  INGESTION                              QUERY                       │
-│  ─────────                              ─────                       │
-│                                                                     │
-│  Document ─┐                            Question ─┐                 │
-│            │                                      │                 │
-│            ▼                                      ▼                 │
-│    ┌──────────────┐                      ┌──────────────┐           │
-│    │   Pipeline   │                      │ QueryEngine  │           │
-│    └──────┬───────┘                      └──────┬───────┘           │
-│           │                                     │                   │
-│           ▼                                     ▼                   │
-│    ┌──────────────┐                      ┌──────────────┐           │
-│    │  Knowledge   │◄────────────────────▶│   Hybrid     │           │
-│    │    Graph     │                      │  Retrieval   │           │
-│    └──────────────┘                      └──────┬───────┘           │
-│                                                 │                   │
-│                                                 ▼                   │
-│                                          ┌──────────────┐           │
-│                                          │   Answer     │           │
-│                                          └──────────────┘           │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────────┐
+│ EdgeQuake data flow                                                   │
+│                                                                       │
+│  INGESTION                         QUERY                              │
+│  ---------                         -----                              │
+│  Document --> Pipeline             Question --> QueryEngine           │
+│                   |                                  |                │
+│                   v                                  v                │
+│            Knowledge Graph <--------------------> Hybrid Retrieval    │
+│                                                          |            │
+│                                                          v            │
+│                                                       Answer          │
+└───────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## Document Ingestion Pipeline
 
-### Sequence Diagram
+> **Note:** The diagram below describes the **Insert** (KG) phase internals. PDF uploads add an upstream **PdfProcessing** convert task and task-queue admit/claim/lease — see [v0.19.0 PDF sequence](#v0190-pdf-ingestion-sequence-spec-057) above.
+
+### Sequence Diagram (Insert phase — text or post-convert markdown)
 
 ```
 ┌────────┐    ┌────────┐    ┌────────┐    ┌────────┐    ┌────────┐    ┌────────┐
@@ -534,6 +557,8 @@ After retrieval, context is assembled and truncated to fit LLM limits:
 
 ## Next Steps
 
-- **[Architecture Overview](/docs/architecture/overview/)** — System design
+- **[Architecture Overview](/docs/architecture/overview/)** — System design and 11 crates
+- **[Ingestion cancel & fairness](/docs/ingestion-cancel-and-fairness.md)** — Cancel, claim/lease, queue-metrics
 - **[Query Modes Deep Dive](/docs/deep-dives/query-modes/)** — Choosing the right mode
+- **[Pipeline Progress](/docs/deep-dives/pipeline-progress/)** — WebSocket and REST progress
 - **[API Reference](/docs/api-reference/rest-api/)** — Endpoint documentation

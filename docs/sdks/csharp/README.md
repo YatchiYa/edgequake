@@ -1,5 +1,7 @@
 # C# / .NET SDK
 
+> **Product: v0.19.0** · SDK package **~0.4.0** (decoupled from server)
+
 **Location:** `sdks/csharp`
 
 ## Example
@@ -23,6 +25,8 @@ Console.WriteLine(bulk.Affected);
 ```
 
 `BulkDeleteAsync` posts a body with **`conversation_ids`**.
+
+Task cancel and PDF progress: verify against OpenAPI or use raw HTTP — see [Ingestion cancel & fairness](../../ingestion-cancel-and-fairness.md).
 
 ## Test
 

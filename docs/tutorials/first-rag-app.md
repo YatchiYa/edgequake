@@ -2,6 +2,8 @@
 title: "Tutorial: Building Your First RAG App"
 ---
 
+> **Product: v0.19.0** · Contract: [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 # Tutorial: Building Your First RAG App
 
 > **End-to-End Guide: From Documents to Intelligent Q&A**
@@ -11,6 +13,8 @@ In this tutorial, you'll build a complete RAG application that can answer questi
 **Time**: ~30 minutes  
 **Level**: Beginner  
 **Prerequisites**: EdgeQuake running ([Quick Start](/docs/getting-started/quick-start/))
+
+`make dev` sets `EDGEQUAKE_DEV_MODE=true` (open API). Production deployments require auth — see [Authentication headers](/docs/getting-started/quick-start/#authentication-headers).
 
 ---
 
@@ -59,7 +63,7 @@ curl http://localhost:8080/health
 Expected response:
 
 ```json
-{ "status": "healthy", "version": "0.10.x", "storage_mode": "postgresql" }
+{ "status": "healthy", "version": "0.19.0", "storage_mode": "postgresql" }
 ```
 
 ---
@@ -159,21 +163,26 @@ all customer deployments.
 
 ## Step 4: Upload Documents
 
-Upload each document to your workspace:
+Upload each document to your workspace (async — returns **202** with `track_id`):
 
 ```bash
-# Upload doc1.txt
-curl -X POST "http://localhost:8080/api/v1/documents?workspace_id=$WORKSPACE_ID" \
-  -F "file=@doc1.txt" \
-  -F "title=Company Overview"
+# Upload doc1.txt (JSON text ingest)
+curl -X POST "http://localhost:8080/api/v1/documents" \
+  -H "Content-Type: application/json" \
+  -H "X-Workspace-ID: $WORKSPACE_ID" \
+  -d '{
+    "content": "'"$(cat doc1.txt)"'",
+    "title": "Company Overview"
+  }'
 
-# Upload doc2.txt
-curl -X POST "http://localhost:8080/api/v1/documents?workspace_id=$WORKSPACE_ID" \
+# Or multipart file upload
+curl -X POST "http://localhost:8080/api/v1/documents/upload" \
+  -H "X-Workspace-ID: $WORKSPACE_ID" \
   -F "file=@doc2.txt" \
   -F "title=Series B Announcement"
 
-# Upload doc3.txt
-curl -X POST "http://localhost:8080/api/v1/documents?workspace_id=$WORKSPACE_ID" \
+curl -X POST "http://localhost:8080/api/v1/documents/upload" \
+  -H "X-Workspace-ID: $WORKSPACE_ID" \
   -F "file=@doc3.txt" \
   -F "title=Product Features"
 ```
@@ -182,10 +191,10 @@ Each upload returns a document ID and triggers background processing:
 
 ```json
 {
-  "id": "doc_xyz789",
+  "document_id": "doc_xyz789",
+  "track_id": "f6fa9cad-bbff-4892-a855-3bd7d70da044",
   "title": "Company Overview",
-  "status": "processing",
-  "workspace_id": "ws_abc123"
+  "status": "processing"
 }
 ```
 
@@ -193,10 +202,11 @@ Each upload returns a document ID and triggers background processing:
 
 ## Step 5: Monitor Processing
 
-Check document processing status:
+Check document processing status (prefer `display_status` over raw `status`):
 
 ```bash
-curl "http://localhost:8080/api/v1/documents?workspace_id=$WORKSPACE_ID"
+curl "http://localhost:8080/api/v1/documents" \
+  -H "X-Workspace-ID: $WORKSPACE_ID"
 ```
 
 **Response:**
@@ -207,17 +217,19 @@ curl "http://localhost:8080/api/v1/documents?workspace_id=$WORKSPACE_ID"
     {
       "id": "doc_xyz789",
       "title": "Company Overview",
-      "status": "completed",
+      "display_status": "completed",
+      "ui_phase": "terminal",
+      "current_stage": "completed",
+      "track_id": "f6fa9cad-bbff-4892-a855-3bd7d70da044",
       "chunk_count": 3,
       "entity_count": 8,
       "created_at": "2024-01-15T10:05:00Z"
-    },
-    ...
+    }
   ]
 }
 ```
 
-Wait until all documents show `status: "completed"`.
+Wait until all documents show `display_status: "completed"`.
 
 ---
 
@@ -304,15 +316,16 @@ Now the fun part! Ask questions about your documents:
 ### Simple Question
 
 ```bash
-curl -X POST "http://localhost:8080/api/v1/query?workspace_id=$WORKSPACE_ID" \
+curl -X POST "http://localhost:8080/api/v1/query" \
   -H "Content-Type: application/json" \
+  -H "X-Workspace-ID: $WORKSPACE_ID" \
   -d '{
     "query": "Who founded TechCorp?",
     "mode": "hybrid"
   }'
 ```
 
-**Response:**
+**Response** (`QueryResponse` — `answer` + `sources`, no top-level `chunks`):
 
 ```json
 {
@@ -320,24 +333,24 @@ curl -X POST "http://localhost:8080/api/v1/query?workspace_id=$WORKSPACE_ID" \
   "sources": [
     {
       "document_id": "doc_xyz789",
-      "title": "Company Overview",
-      "chunk": "TechCorp Innovation Labs was founded in 2020 by Sarah Chen and Marcus Williams..."
+      "snippet": "TechCorp Innovation Labs was founded in 2020 by Sarah Chen and Marcus Williams...",
+      "score": 0.92,
+      "file_path": "Company Overview.txt"
     }
   ],
-  "entities_used": [
-    "SARAH_CHEN",
-    "MARCUS_WILLIAMS",
-    "TECHCORP_INNOVATION_LABS"
-  ],
-  "mode": "hybrid"
+  "mode": "hybrid",
+  "stats": {
+    "total_time_ms": 2400
+  }
 }
 ```
 
 ### Relationship Question
 
 ```bash
-curl -X POST "http://localhost:8080/api/v1/query?workspace_id=$WORKSPACE_ID" \
+curl -X POST "http://localhost:8080/api/v1/query" \
   -H "Content-Type: application/json" \
+  -H "X-Workspace-ID: $WORKSPACE_ID" \
   -d '{
     "query": "What is the relationship between Sarah Chen and Google?",
     "mode": "local"
@@ -357,8 +370,9 @@ curl -X POST "http://localhost:8080/api/v1/query?workspace_id=$WORKSPACE_ID" \
 ### Overview Question
 
 ```bash
-curl -X POST "http://localhost:8080/api/v1/query?workspace_id=$WORKSPACE_ID" \
+curl -X POST "http://localhost:8080/api/v1/query" \
   -H "Content-Type: application/json" \
+  -H "X-Workspace-ID: $WORKSPACE_ID" \
   -d '{
     "query": "What are the main themes across these documents?",
     "mode": "global"
@@ -383,23 +397,27 @@ Try the same question with different modes:
 
 ```bash
 # Naive mode (vector search only)
-curl -X POST "http://localhost:8080/api/v1/query?workspace_id=$WORKSPACE_ID" \
+curl -X POST "http://localhost:8080/api/v1/query" \
   -H "Content-Type: application/json" \
+  -H "X-Workspace-ID: $WORKSPACE_ID" \
   -d '{"query": "Tell me about NeuralSearch", "mode": "naive"}'
 
 # Local mode (entity-focused)
-curl -X POST "http://localhost:8080/api/v1/query?workspace_id=$WORKSPACE_ID" \
+curl -X POST "http://localhost:8080/api/v1/query" \
   -H "Content-Type: application/json" \
+  -H "X-Workspace-ID: $WORKSPACE_ID" \
   -d '{"query": "Tell me about NeuralSearch", "mode": "local"}'
 
 # Global mode (community summaries)
-curl -X POST "http://localhost:8080/api/v1/query?workspace_id=$WORKSPACE_ID" \
+curl -X POST "http://localhost:8080/api/v1/query" \
   -H "Content-Type: application/json" \
+  -H "X-Workspace-ID: $WORKSPACE_ID" \
   -d '{"query": "Tell me about NeuralSearch", "mode": "global"}'
 
 # Hybrid mode (combined - default)
-curl -X POST "http://localhost:8080/api/v1/query?workspace_id=$WORKSPACE_ID" \
+curl -X POST "http://localhost:8080/api/v1/query" \
   -H "Content-Type: application/json" \
+  -H "X-Workspace-ID: $WORKSPACE_ID" \
   -d '{"query": "Tell me about NeuralSearch", "mode": "hybrid"}'
 ```
 
@@ -508,12 +526,13 @@ import time
 BASE_URL = "http://localhost:8080/api/v1"
 
 # Step 1: Create workspace
-resp = requests.post(f"{BASE_URL}/workspaces", json={
+resp = requests.post(f"{BASE_URL}/tenants/default/workspaces", json={
     "name": "Python Tutorial",
     "description": "Created from Python script"
 })
 workspace = resp.json()
 workspace_id = workspace["id"]
+headers = {"X-Workspace-ID": workspace_id}
 print(f"Created workspace: {workspace_id}")
 
 # Step 2: Upload documents
@@ -526,18 +545,19 @@ documents = [
 for title, filename in documents:
     with open(filename, "rb") as f:
         resp = requests.post(
-            f"{BASE_URL}/documents?workspace_id={workspace_id}",
+            f"{BASE_URL}/documents/upload",
             files={"file": f},
-            data={"title": title}
+            data={"title": title},
+            headers=headers,
         )
-        print(f"Uploaded: {title} -> {resp.json()['id']}")
+        print(f"Uploaded: {title} -> {resp.json().get('document_id') or resp.json().get('id')}")
 
 # Step 3: Wait for processing
 print("Waiting for processing...")
 while True:
-    resp = requests.get(f"{BASE_URL}/documents?workspace_id={workspace_id}")
+    resp = requests.get(f"{BASE_URL}/documents", headers=headers)
     docs = resp.json()["documents"]
-    if all(d["status"] == "completed" for d in docs):
+    if all(d.get("display_status") == "completed" for d in docs):
         break
     time.sleep(2)
 print("All documents processed!")
@@ -551,12 +571,14 @@ questions = [
 
 for question in questions:
     resp = requests.post(
-        f"{BASE_URL}/query?workspace_id={workspace_id}",
-        json={"query": question, "mode": "hybrid"}
+        f"{BASE_URL}/query",
+        json={"query": question, "mode": "hybrid"},
+        headers=headers,
     )
     answer = resp.json()["answer"]
+    sources = len(resp.json().get("sources", []))
     print(f"\nQ: {question}")
-    print(f"A: {answer[:200]}...")
+    print(f"A: {answer[:200]}... ({sources} sources)")
 ```
 
 ---

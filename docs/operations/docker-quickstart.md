@@ -2,6 +2,8 @@
 title: 'Docker Quickstart'
 ---
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 # Docker Quickstart — Full Stack in One Command
 
 > **Zero prerequisites beyond Docker.**  
@@ -22,6 +24,8 @@ curl -fsSL https://raw.githubusercontent.com/raphaelmansuy/edgequake/edgequake-m
 That's it. Three versioned images (API, Web UI, PostgreSQL) are pulled from GitHub Container Registry and started.
 
 **Then open:** http://localhost:3000
+
+> **Auth note:** Product default is auth **on**. Quickstart compose sets `EDGEQUAKE_DEV_MODE=true` (open API, no login) for frictionless demos — **do not use in production**. For production, set `EDGEQUAKE_DEV_MODE=false`, `EDGEQUAKE_AUTH_ENABLED=true`, and `EDGEQUAKE_BOOTSTRAP_ADMIN_PASSWORD`.
 
 ---
 
@@ -121,6 +125,8 @@ OPENAI_BASE_URL=http://localhost:1234/v1 \
 | `OPENAI_BASE_URL`              | _(empty)_                           | Override OpenAI base URL               |
 | `OLLAMA_HOST`                  | `http://host.docker.internal:11434` | Ollama server address                  |
 | `EDGEQUAKE_VERSION`            | `latest`                            | Pin to a specific release tag          |
+| `EDGEQUAKE_POSTGRES_TAG`       | same as `EDGEQUAKE_VERSION`         | PG image tag (`0.19.0-pg16\|pg17\|pg18`) |
+| `EDGEQUAKE_DEV_MODE`           | `true` (quickstart)                 | Open API without login — not for prod  |
 | `EDGEQUAKE_PORT`               | `8080`                              | API port                               |
 | `FRONTEND_PORT`                | `3000`                              | Web UI port                            |
 | `POSTGRES_PASSWORD`            | `edgequake_secret`                  | PostgreSQL password                    |
@@ -174,17 +180,32 @@ docker compose -f docker-compose.quickstart.yml restart api
 
 All images are multi-arch (`linux/amd64`, `linux/arm64`) and published to GitHub Container Registry on every tagged release.
 
-| Image                                      | Tag                 | Description                        |
-| ------------------------------------------ | ------------------- | ---------------------------------- |
-| `ghcr.io/raphaelmansuy/edgequake`          | `latest` / `0.10.3` | Rust API server                    |
-| `ghcr.io/raphaelmansuy/edgequake-frontend` | `latest` / `0.10.3` | Next.js Web UI                     |
-| `ghcr.io/raphaelmansuy/edgequake-postgres` | `latest` / `0.10.3` | PostgreSQL + pgvector + Apache AGE |
+| Image                                      | Tag                                      | Description                        |
+| ------------------------------------------ | ---------------------------------------- | ---------------------------------- |
+| `ghcr.io/raphaelmansuy/edgequake`          | `latest` / `0.19.0`                      | Rust API server                    |
+| `ghcr.io/raphaelmansuy/edgequake-frontend` | `latest` / `0.19.0`                      | Next.js Web UI                     |
+| `ghcr.io/raphaelmansuy/edgequake-postgres` | `latest` / `0.19.0` / `0.19.0-pg16\|pg17\|pg18` | PostgreSQL + pgvector + Apache AGE |
+
+**PostgreSQL major tags** (extension pins: pgvector **0.8.3**, AGE **1.6.0** on PG16 / **1.7.0** on PG17+):
+
+| Tag | PostgreSQL |
+| --- | ---------- |
+| `0.19.0` / `latest` / `0.19.0-pg18` / `latest-pg18` | PG18 (default) |
+| `0.19.0-pg17` / `latest-pg17` | PG17 |
+| `0.19.0-pg16` / `latest-pg16` | PG16 |
+
+Pin PostgreSQL major when starting:
+
+```bash
+EDGEQUAKE_VERSION=0.19.0 EDGEQUAKE_POSTGRES_TAG=0.19.0-pg16 \
+  docker compose -f docker-compose.quickstart.yml up -d
+```
 
 Pull an image manually:
 ```bash
-docker pull ghcr.io/raphaelmansuy/edgequake:latest
-docker pull ghcr.io/raphaelmansuy/edgequake-frontend:latest
-docker pull ghcr.io/raphaelmansuy/edgequake-postgres:latest
+docker pull ghcr.io/raphaelmansuy/edgequake:0.19.0
+docker pull ghcr.io/raphaelmansuy/edgequake-frontend:0.19.0
+docker pull ghcr.io/raphaelmansuy/edgequake-postgres:0.19.0
 ```
 
 ---

@@ -4,6 +4,8 @@ title: 'EdgeQuake Architecture Overview'
 
 # EdgeQuake Architecture Overview
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 > Understanding the system design through first principles
 
 ---
@@ -11,78 +13,35 @@ title: 'EdgeQuake Architecture Overview'
 ## System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                              EdgeQuake System                                   │
-│                                                                                 │
-│  ┌─────────────────────────────────────────────────────────────────────────────┐│
-│  │                            Client Layer                                     ││
-│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐              ││
-│  │  │    WebUI        │  │   REST API      │  │   Rust SDK      │              ││
-│  │  │   (Next.js)     │  │   (HTTP/JSON)   │  │   (Native)      │              ││
-│  │  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘              ││
-│  └───────────┼────────────────────┼────────────────────┼───────────────────────┘│
-│              │                    │                    │                        │
-│              └────────────────────┼────────────────────┘                        │
-│                                   │                                             │
-│  ┌────────────────────────────────▼────────────────────────────────────────────┐│
-│  │                          API Layer (Axum)                                   ││
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         ││
-│  │  │   Routes    │  │  Handlers   │  │  Middleware │  │   OpenAPI   │         ││
-│  │  │             │  │             │  │  (Auth,Rate)│  │   (Docs)    │         ││
-│  │  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘         ││
-│  └────────────────────────────────┬────────────────────────────────────────────┘│
-│                                   │                                             │
-│  ┌────────────────────────────────▼────────────────────────────────────────────┐│
-│  │                      Core Orchestration Layer                               ││
-│  │                                                                             ││
-│  │  ┌───────────────────────────────────────────────────────────────────────┐  ││
-│  │  │                         EdgeQuake                                     │  ││
-│  │  │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐                │  ││
-│  │  │  │  insert()   │    │   query()   │    │  delete()   │                │  ││
-│  │  │  └──────┬──────┘    └──────┬──────┘    └──────┬──────┘                │  ││
-│  │  │         │                  │                  │                       │  ││
-│  │  │         ▼                  ▼                  ▼                       │  ││
-│  │  │  ┌──────────────────────────────────────────────────────────────────┐ │  ││
-│  │  │  │              Processing Components                               │ │  ││
-│  │  │  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐               │ │  ││
-│  │  │  │  │  Pipeline   │  │ QueryEngine │  │   Tasks     │               │ │  ││
-│  │  │  │  │ (ingest)    │  │ (6 modes)   │  │ (async)     │               │ │  ││
-│  │  │  │  └─────────────┘  └─────────────┘  └─────────────┘               │ │  ││
-│  │  │  └──────────────────────────────────────────────────────────────────┘ │  ││
-│  │  └───────────────────────────────────────────────────────────────────────┘  ││
-│  └─────────────────────────────────────────────────────────────────────────────┘│
-│                                   │                                             │
-│         ┌─────────────────────────┼─────────────────────────┐                   │
-│         │                         │                         │                   │
-│         ▼                         ▼                         ▼                   │
-│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐              │
-│  │   LLM Layer     │    │  Storage Layer  │    │  PDF Processor  │              │
-│  │                 │    │                 │    │                 │              │
-│  │ ┌─────────────┐ │    │ ┌─────────────┐ │    │ ┌─────────────┐ │              │
-│  │ │  Providers  │ │    │ │   Traits    │ │    │ │  Extractor  │ │              │
-│  │ │ ─────────── │ │    │ │ ─────────── │ │    │ │ ─────────── │ │              │
-│  │ │ • OpenAI    │ │    │ │ • KV        │ │    │ │ • Text      │ │              │
-│  │ │ • Ollama    │ │    │ │ • Vector    │ │    │ │ • Tables    │ │              │
-│  │ │ • LM Studio │ │    │ │ • Graph     │ │    │ │ • Layout    │ │              │
-│  │ │ • Mock      │ │    │ │             │ │    │ │             │ │              │
-│  │ └─────────────┘ │    │ └─────────────┘ │    │ └─────────────┘ │              │
-│  └─────────────────┘    └────────┬────────┘    └─────────────────┘              │
-│                                  │                                              │
-│                    ┌─────────────┴─────────────┐                                │
-│                    │                           │                                │
-│                    ▼                           ▼                                │
-│         ┌─────────────────────┐                                                │
-│         │ PostgreSQL (required)│                                                │
-│         │                     │                                                │
-│         │ • pgvector (vectors)│                                                │
-│         │ • Apache AGE (graph)│                                                │
-│         │ • Required since    │                                                │
-│         │   v0.4.0 (no server │                                                │
-│         │   in-memory mode)   │                                                │
-│         └─────────────────────┘                                                │
-│                                                                                 │
-└─────────────────────────────────────────────────────────────────────────────────┘
-```
+┌─────────────────────────────────────────────────────────────────────────┐
+│ EdgeQuake v0.19.0                                                       │
+│                                                                         │
+│  Client: WebUI :3000  |  REST/WS :8080  |  SDKs                         │
+│                      |                                                  │
+│                      v                                                  │
+│  edgequake-api (Axum, OpenAPI, auth, WS progress)                       │
+│       |                  |                  |                           │
+│       v                  v                  v                           │
+│  edgequake-tasks    edgequake-core     edgequake-pdf                    │
+│  claim/lease        orchestrate        vision convert                   │
+│  cancel/fairness    insert / query    + mm-assets                       │
+│       |                  |                  |                           │
+│       |           +------+------+           |                           │
+│       |           v             v           |                           │
+│       |      pipeline        query          |                           │
+│       |   chunk/extract    6 RAG modes      |                           │
+│       |           +------+------+           |                           │
+│       |                  v                  |                           │
+│       +--------> edgequake-storage <--------+                           │
+│                  KV | pgvector | AGE                                    │
+│                         |                                               │
+│                         v                                               │
+│                   PostgreSQL 16-18                                      │
+│            (required; no server in-memory mode)                         │
+│                                                                         │
+│  Cross-cutting: auth | audit | rate-limiter | observability             │
+│  LLM providers composed in core (no edgequake-llm crate)                │
+└─────────────────────────────────────────────────────────────────────────┘```
 
 ---
 
@@ -100,33 +59,23 @@ title: 'EdgeQuake Architecture Overview'
 
 ### Why 11 Crates?
 
-**Single Responsibility Principle**:
+**Single Responsibility Principle** — workspace crates under `edgequake/crates/`:
 
 ```
-┌──────────────┐  Each crate does ONE thing well
-│  API        │◄─ HTTP handling
-├──────────────┤
-│  Core        │◄─ Orchestration
-├──────────────┤
-│  Pipeline    │◄─ Document processing
-├──────────────┤
-│  Query       │◄─ Search and retrieval
-├──────────────┤
-│  Storage     │◄─ Persistence abstraction
-├──────────────┤
-│  LLM         │◄─ AI provider abstraction
-├──────────────┤
-│  PDF         │◄─ Document extraction
-├──────────────┤
-│  Auth        │◄─ Authentication
-├──────────────┤
-│  Audit       │◄─ Compliance logging
-├──────────────┤
-│  Tasks       │◄─ Background processing
-├──────────────┤
-│  Rate Limiter│◄─ Throttling
-└──────────────┘
+edgequake-api           HTTP + WebSocket + OpenAPI
+edgequake-core          Orchestration (EdgeQuake facade, LLM provider wiring)
+edgequake-pipeline      Chunk · extract · embed · merge
+edgequake-query         RAG query engine (6 modes)
+edgequake-storage       PostgreSQL + pgvector + Apache AGE
+edgequake-pdf           PDF → markdown (vision / EdgeParse) + mm-assets
+edgequake-tasks         Task queue, workers, claim/lease, cancel, fairness
+edgequake-auth          JWT, API keys, OIDC, tenant context
+edgequake-audit         Compliance audit events
+edgequake-rate-limiter  Tenant throttling
+edgequake-observability Tracing, metrics, correlation
 ```
+
+There is **no** `edgequake-llm` or `edgequake-graph` crate — LLM and graph logic live inside `core`, `pipeline`, `query`, and `storage`.
 
 **Benefits**:
 
@@ -139,10 +88,10 @@ title: 'EdgeQuake Architecture Overview'
 ### Why Trait-Based Abstraction?
 
 ```rust
-// The CORE never knows about concrete implementations
+// Core orchestrator — concrete LLM/storage wired at startup
 pub struct EdgeQuake {
-    llm: Arc<dyn LLMProvider>,        // Could be OpenAI, Ollama, or Mock
-    storage: Arc<dyn GraphStorage>,    // PostgreSQL (server mode; in-memory adapters for tests only)
+    // LLM + embedding: Arc<dyn …> from edgequake-core provider factory
+    // Storage: Arc<dyn KVStorage>, VectorStorage, GraphStorage
 }
 ```
 
@@ -157,59 +106,48 @@ pub struct EdgeQuake {
 ## Crate Dependency Graph
 
 ```
-                                   ┌────────────────┐
-                                   │  edgequake-api │ ← HTTP Server
-                                   │   (37,400 LOC) │
-                                   └───────┬────────┘
-                                           │
-                                           ▼
-                                   ┌────────────────┐
-                                   │ edgequake-core │ ← Orchestration
-                                   │   (15,500 LOC) │
-                                   └───────┬────────┘
-                                           │
-                    ┌──────────────────────┼──────────────────────┐
-                    │                      │                      │
-                    ▼                      ▼                      ▼
-          ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-          │edgequake-pipeline    │ edgequake-query │    │  edgequake-llm  │
-          │   (10,500 LOC)  │    │   (11,900 LOC)  │    │   (8,500 LOC)   │
-          └────────┬────────┘    └────────┬────────┘    └─────────────────┘
-                   │                      │                      │
-                   └──────────────────────┼──────────────────────┘
-                                          │
-                                          ▼
-                                 ┌─────────────────┐
-                                 │edgequake-storage│ ← Persistence
-                                 │   (11,900 LOC)  │
-                                 └─────────────────┘
-
-  Specialized Crates (Optional):
-  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
-  │  edgequake-pdf  │  │  edgequake-auth │  │ edgequake-tasks │
-  │   (26,000 LOC)  │  │   (2,900 LOC)   │  │   (3,400 LOC)   │
-  └─────────────────┘  └─────────────────┘  └─────────────────┘
+┌─────────────────────────────────────────────────┐
+│ Crate dependency (simplified)                   │
+│                                                 │
+│           edgequake-api                         │
+│                 |                               │
+│     +-----------+-----------+                   │
+│     v           v           v                   │
+│   core        tasks       auth                  │
+│     |           |       audit/obs               │
+│     +-----+-----+                               │
+│     v     v                                     │
+│ pipeline query                                  │
+│     |     |                                     │
+│     v     |                                     │
+│    pdf    |                                     │
+│     +--+--+                                     │
+│        v                                        │
+│     storage --> PostgreSQL                      │
+└─────────────────────────────────────────────────┘
 ```
+
+**Task delivery (SPEC-057):** API admits work → Postgres `Pending` row → worker `claim_next` + lease → `PdfProcessing` or `Insert` handlers. In-memory channel is wake-only.
 
 ---
 
 ## The 11 Crates Explained
 
-| Crate                      | Purpose                 | Key Types                                      | LOC    |
-| -------------------------- | ----------------------- | ---------------------------------------------- | ------ |
-| **edgequake-core**         | Central orchestration   | `EdgeQuake`, `EdgeQuakeConfig`, `InsertResult` | 15,500 |
-| **edgequake-pipeline**     | Document processing     | `Pipeline`, `Chunker`, `LLMExtractor`          | 10,500 |
-| **edgequake-query**        | Search and retrieval    | `QueryEngine`, `QueryMode`, `QueryContext`     | 11,900 |
-| **edgequake-storage**      | Persistence abstraction | `KVStorage`, `VectorStorage`, `GraphStorage`   | 11,900 |
-| **edgequake-llm**          | AI provider abstraction | `LLMProvider`, `EmbeddingProvider`             | 8,500  |
-| **edgequake-api**          | HTTP REST API           | `Server`, `Router`, handlers                   | 37,400 |
-| **edgequake-pdf**          | PDF extraction          | `PdfExtractor`, `TableExtractor`               | 26,000 |
-| **edgequake-auth**         | Authentication          | `AuthMiddleware`, `JwtValidator`               | 2,900  |
-| **edgequake-audit**        | Compliance logging      | `AuditLog`, `AuditEvent`                       | 580    |
-| **edgequake-tasks**        | Background jobs         | `TaskRunner`, `Task`, `TaskStatus`             | 3,400  |
-| **edgequake-rate-limiter** | Request throttling      | `RateLimiter`, `TenantQuota`                   | 1,000  |
+| Crate | Purpose | Key types / notes |
+| ----- | ------- | ----------------- |
+| **edgequake-api** | HTTP REST, WebSocket progress, OpenAPI | `Router`, handlers, `/ws/progress/{track_id}` |
+| **edgequake-core** | Central orchestration + LLM provider factory | `EdgeQuake`, `EdgeQuakeConfig`, provider wiring |
+| **edgequake-pipeline** | Document processing | `Pipeline`, chunker, extractor, merge |
+| **edgequake-query** | Search and retrieval | `QueryEngine`, `QueryMode` (6 modes) |
+| **edgequake-storage** | Persistence | `KVStorage`, `VectorStorage`, `GraphStorage`, Postgres |
+| **edgequake-pdf** | PDF → markdown, vision LLM, mm-assets | Convert phase for `TaskType::PdfProcessing` |
+| **edgequake-tasks** | Background jobs | `claim_next`, lease, cancel registry, tenant fairness |
+| **edgequake-auth** | Authentication | JWT, API keys, tenant/workspace context |
+| **edgequake-audit** | Compliance logging | Audit events |
+| **edgequake-rate-limiter** | Request throttling | Tenant quotas |
+| **edgequake-observability** | Ops | Tracing, metrics, store contention signals |
 
-**Total**: ~130,000 lines of Rust
+See [Crate Reference](/docs/architecture/crates/) for per-crate detail.
 
 ---
 
@@ -262,24 +200,29 @@ Six different query strategies, selected at runtime:
 
 ### 3. Pipeline Pattern (Document Processing)
 
-Sequential processing with configurable stages:
+PDF and async text admission use a **two-phase** task pipeline (SPEC-057 P2):
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Pipeline                             │
-│                                                         │
-│  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌───────┐ │
-│  │  Chunk   │──▶│ Extract  │──▶│  Merge   │──▶│ Store │ │
-│  │          │   │ (LLM)    │   │ (dedup)  │   │       │ │
-│  └──────────┘   └──────────┘   └──────────┘   └───────┘ │
-│       │              │              │              │    │
-│       ▼              ▼              ▼              ▼    │
-│   [config]       [config]       [config]       [config] │
-│   chunk_size     batch_size     threshold      backend  │
-│   overlap        timeout        strategy       namespace│
-│                                                         │
-└─────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────┐
+│ Convert then ingest (SPEC-057)                        │
+│                                                       │
+│  POST /documents/pdf  -->  admit task_id              │
+│              |                                        │
+│              v                                        │
+│  [1] PdfProcessing (convert only)                     │
+│      vision / edgeparse --> markdown                  │
+│      PDF row --> Completed (artifact)                 │
+│              |                                        │
+│              v  markdown barrier                      │
+│  [2] Insert (KG ingest, new lease)                    │
+│      chunk --> extract --> embed --> store            │
+│              |                                        │
+│              v                                        │
+│  document display_status = completed                  │
+└───────────────────────────────────────────────────────┘
 ```
+
+Cancel, fairness park, and lease refresh are handled in `edgequake-tasks`. Operational detail: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md).
 
 ### 4. Adapter Pattern (Storage)
 
@@ -328,8 +271,9 @@ Isolation enforced at storage layer:
 
 ## Next Steps
 
-- **[Data Flow](/docs/architecture/data-flow/)** — Detailed ingestion and query flows
+- **[Data Flow](/docs/architecture/data-flow/)** — Admit → claim → convert → Insert → query
 - **[Crate Details](/docs/architecture/crates/)** — Deep dive into each crate
+- **[Ingestion cancel & fairness](/docs/ingestion-cancel-and-fairness.md)** — Cancel SSOT, claim/lease
 - **[API Reference](/docs/api-reference/rest-api/)** — REST endpoint documentation
 
 ---

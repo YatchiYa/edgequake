@@ -2,6 +2,8 @@
 title: 'Metadata Debugging Guide'
 ---
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 # Metadata Debugging Guide
 
 > How to diagnose and fix lineage issues in EdgeQuake
@@ -19,13 +21,40 @@ This guide helps operators troubleshoot common lineage and metadata issues in th
 When metadata or lineage appears incorrect, work through these checks in order:
 
 ```
-1. ✅ Is the document status "Completed"?
-2. ✅ Does the metadata KV entry exist?
-3. ✅ Are chunks stored with position data?
-4. ✅ Is the lineage KV entry populated?
-5. ✅ Do entities reference valid chunk IDs?
-6. ✅ Are model names recorded?
+1. ✅ Check display_status / ui_phase (not raw status alone)
+2. ✅ Is the document terminal (completed / failed / cancelled)?
+3. ✅ For PDFs: distinguish convert (pdf_processing) vs ingest (insert)
+4. ✅ Does the metadata KV entry exist?
+5. ✅ Are chunks stored with position data?
+6. ✅ Is the lineage KV entry populated?
+7. ✅ Do entities reference valid chunk IDs?
+8. ✅ Are model names recorded?
 ```
+
+---
+
+## Document Status SSOT (SPEC-057 P4)
+
+Document list/detail JSON includes presentation fields from `IngestionStatusMapper`. Prefer these over re-deriving from legacy `status` / `current_stage`:
+
+| Field | Meaning |
+| ----- | ------- |
+| `display_status` | Badge key: `cancelled`, `failed`, `completed`, `converting`, `extracting`, … |
+| `ui_phase` | `idle` \| `running` \| `stopping` \| `terminal` — show **Stopping…** when `stopping` |
+
+### Convert vs ingest
+
+PDF admission runs **convert only** (`TaskType::PdfProcessing`). After durable markdown + PDF row `Completed`, a separate **insert** task runs KG extraction. PDF `Completed` means convert artifact only — doc KV may still show `extracting` during ingest.
+
+### Cancel terminals
+
+| Terminal | Task row | Doc KV | PDF row (when applicable) |
+| -------- | -------- | ------ | ------------------------- |
+| Cancelled | `Cancelled` | `cancelled`, `failure_class=cancelled` | `Cancelled` (not `Failed`) |
+| Interrupted (boot, no auto-resume) | `Failed` | Reprocess-eligible | unchanged |
+| Completed | ingest done | `completed` | `Completed` + markdown |
+
+Cancel API: `POST /api/v1/tasks/{track_id}/cancel`. Full semantics: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md).
 
 ---
 

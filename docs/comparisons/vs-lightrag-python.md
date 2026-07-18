@@ -4,6 +4,8 @@ title: 'EdgeQuake vs LightRAG (Python)'
 
 # EdgeQuake vs LightRAG (Python)
 
+> **Product: v0.19.0**
+
 > **A Rust reimplementation with production-grade enhancements**
 
 EdgeQuake is a Rust-native reimplementation of the LightRAG algorithm from HKU. This document compares the two implementations to help you choose the right tool for your needs.
@@ -25,7 +27,10 @@ EdgeQuake is a Rust-native reimplementation of the LightRAG algorithm from HKU. 
 | **Query Modes**   | 6 (naive, local, global, hybrid, mix, bypass) | 6 (same)               |
 | **Streaming**     | ✅ Native SSE                                 | ✅ Via streaming       |
 | **Multi-tenant**  | ✅ Built-in                                   | ⚠️ Workspace isolation |
-| **Database**      | PostgreSQL + pgvector + AGE                   | Multiple options       |
+| **Database**      | PostgreSQL 16–18 + pgvector + AGE (required) | Multiple options       |
+| **PDF / vision**  | ✅ Built-in vision LLM pipeline              | ⚠️ Via RAG-Anything    |
+| **Task cancel**   | ✅ Cooperative cancel (SPEC-057)             | ⚠️ Varies              |
+| **Multi-replica** | ✅ `EDGEQUAKE_REPLICAS` + claim/lease        | ❌ Single-process bias |
 | **Type Safety**   | ✅ Compile-time                               | Runtime only           |
 | **Async**         | Tokio-based                                   | asyncio-based          |
 | **Memory Safety** | ✅ Guaranteed                                 | ❌ GC-managed          |
@@ -56,7 +61,10 @@ EdgeQuake adds production features not in the original LightRAG:
 | Enhancement                | Description                                               |
 | -------------------------- | --------------------------------------------------------- |
 | **Multi-tenant Isolation** | Full workspace/tenant isolation with header-based routing |
-| **PostgreSQL Integration** | Unified storage with pgvector + Apache AGE                |
+| **PostgreSQL Integration** | Unified storage (PG 16–18); `DATABASE_URL` required | Optional backend |
+| **PDF vision ingestion**   | Native vision LLM + embedded pdfium               | RAG-Anything / external |
+| **Ingestion cancel**       | `POST /tasks/{track_id}/cancel`, `display_status` | Not equivalent   |
+| **Multi-replica workers**  | `EDGEQUAKE_REPLICAS` + bridged delivery           | N/A              |
 | **REST API**               | Production-ready Axum-based HTTP API                      |
 | **Type-Safe Crate System** | 11 modular Rust crates for maintainability                |
 | **Cost Tracking**          | Token usage and cost metrics per query                    |
@@ -125,11 +133,11 @@ Both implementations support the same 6 query modes:
 
 | Type               | Options                            |
 | ------------------ | ---------------------------------- |
-| **KV Storage**     | PostgreSQL                         |
+| **KV Storage**     | PostgreSQL (required)              |
 | **Vector Storage** | PostgreSQL (pgvector)              |
-| **Graph Storage**  | PostgreSQL (Apache AGE)              |
+| **Graph Storage**  | PostgreSQL (Apache AGE)            |
 
-**Key Difference**: EdgeQuake uses PostgreSQL as a unified backend, simplifying deployment. LightRAG offers more flexibility with multiple backend options.
+**Key Difference**: EdgeQuake requires PostgreSQL 16–18 (`ghcr.io/raphaelmansuy/edgequake-postgres`). There is no production in-memory mode. LightRAG offers more backend flexibility (Neo4j, MongoDB, Milvus, file-based).
 
 ---
 
@@ -267,7 +275,10 @@ curl -X POST http://localhost:8080/api/v1/documents/import \
 | Source Citations          |    ✅     |    ✅    |
 | Document Deletion         |    ✅     |    ✅    |
 | Entity Merging            |    ✅     |    ✅    |
-| Multimodal (RAG-Anything) |    ❌     |    ✅    |
+| PDF vision pipeline       |    ✅     |    ⚠️    |
+| Ingestion cancel / lease  |    ✅     |    ⚠️    |
+| Multi-replica deployment  |    ✅     |    ❌    |
+| Multimodal (RAG-Anything) |    ⚠️     |    ✅    |
 | Langfuse Tracing          |    ⚠️     |    ✅    |
 
 ---

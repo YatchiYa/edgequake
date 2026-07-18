@@ -2,11 +2,17 @@
 title: 'EdgeQuake Cookbook'
 ---
 
+> **Product: v0.19.0** · Contract: [`openapi.snapshot.json`](../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](ingestion-cancel-and-fairness.md)
+
 # EdgeQuake Cookbook
 
 > **Practical Recipes for Common Tasks**
 
 This cookbook provides copy-paste solutions for common EdgeQuake operations. Each recipe includes complete code examples and expected outputs.
+
+**Headers**: `make dev` sets `EDGEQUAKE_DEV_MODE=true` (no auth). Production requires `Authorization: Bearer $TOKEN` or `X-API-Key`. Scope requests with `X-Workspace-ID`.
+
+**Status fields**: Prefer `DocumentSummary.display_status` / `ui_phase` / `current_stage` / `track_id` over legacy `status` alone.
 
 ---
 
@@ -26,18 +32,21 @@ RESPONSE=$(curl -s -X POST http://localhost:8080/api/v1/documents/upload \
 DOC_ID=$(echo $RESPONSE | jq -r '.id')
 echo "Uploaded document: $DOC_ID"
 
-# Poll for completion
+# Poll for completion (DocumentSummary SSOT)
 while true; do
-  STATUS=$(curl -s "http://localhost:8080/api/v1/documents/$DOC_ID" \
-    -H "X-Workspace-ID: default" | jq -r '.status')
+  ROW=$(curl -s "http://localhost:8080/api/v1/documents/$DOC_ID" \
+    -H "X-Workspace-ID: default")
 
-  echo "Status: $STATUS"
+  DISPLAY=$(echo "$ROW" | jq -r '.display_status')
+  PHASE=$(echo "$ROW" | jq -r '.ui_phase')
 
-  if [ "$STATUS" = "completed" ]; then
+  echo "display_status: $DISPLAY (ui_phase: $PHASE)"
+
+  if [ "$DISPLAY" = "completed" ]; then
     echo "Document processed successfully!"
     break
-  elif [ "$STATUS" = "failed" ]; then
-    echo "Document processing failed!"
+  elif [ "$DISPLAY" = "failed" ] || [ "$DISPLAY" = "cancelled" ]; then
+    echo "Document processing ended: $DISPLAY"
     exit 1
   fi
 
@@ -130,7 +139,7 @@ curl -X POST http://localhost:8080/api/v1/query \
     "include_sources": true
   }' | jq '{
     answer: .answer,
-    sources: [.chunks[] | {doc: .document_id, score: .score}]
+    sources: [.sources[] | {doc: .document_id, score: .score, snippet: .snippet[:80]}]
   }'
 ```
 
@@ -154,8 +163,7 @@ for MODE in naive local global hybrid; do
 
   echo "$RESPONSE" | jq '{
     mode: "'$MODE'",
-    entities: .entities | length,
-    chunks: .chunks | length,
+    source_count: (.sources | length),
     answer_preview: .answer[:100]
   }'
   echo ""
@@ -212,6 +220,75 @@ curl -X POST http://localhost:8080/api/v1/query \
     "top_k": 10
   }'
 ```
+
+---
+
+### Recipe: Cancel In-Flight Processing
+
+```bash
+# task_id from PDF upload (PdfUploadResponse.task_id) or document track_id
+TASK_ID="pdf-550e8400-e29b-41d4-a716-446655440000"
+
+curl -X POST "http://localhost:8080/api/v1/tasks/${TASK_ID}/cancel" \
+  -H "X-Workspace-ID: default"
+
+# Poll until display_status=cancelled, ui_phase=terminal
+curl -s "http://localhost:8080/api/v1/documents/$DOC_ID" \
+  -H "X-Workspace-ID: default" | jq '{display_status, ui_phase}'
+```
+
+See [Ingestion cancel & fairness](ingestion-cancel-and-fairness.md).
+
+---
+
+### Recipe: PDF Convert → Ingest (Two Phases)
+
+PDF admission runs **convert** (`TaskType::PdfProcessing`) first; after markdown is stored, a separate **ingest** task (`TaskType::Insert`) builds the knowledge graph. Ingest failure keeps PDF `Completed` + markdown checkpoint.
+
+```bash
+# Upload PDF (returns task_id for convert phase)
+UPLOAD=$(curl -s -X POST http://localhost:8080/api/v1/documents/pdf \
+  -H "X-Workspace-ID: default" \
+  -F "file=@report.pdf" \
+  -F "title=Q3 Report")
+
+TASK_ID=$(echo "$UPLOAD" | jq -r .task_id)
+PDF_ID=$(echo "$UPLOAD" | jq -r .pdf_id)
+
+# Poll convert progress
+curl -s "http://localhost:8080/api/v1/documents/pdf/progress/${TASK_ID}" \
+  -H "X-Workspace-ID: default" | jq '{stage, percent, message}'
+
+# After convert completes, watch document row for ingest (display_status → completed)
+```
+
+Details: [PDF Ingestion Tutorial](/docs/tutorials/pdf-ingestion/).
+
+---
+
+### Recipe: Search Models (SPEC-043)
+
+```bash
+# Server-side model search for picker / integrations
+curl -s "http://localhost:8080/api/v1/models/search?q=gpt&capability=chat" \
+  -H "Authorization: Bearer $TOKEN" | jq '.models[:5] | .[] | {id, provider, capabilities}'
+```
+
+---
+
+### Recipe: Pipeline Queue Metrics
+
+```bash
+# Worker queue depth, claim/lease health (SPEC-057 observability)
+curl -s http://localhost:8080/api/v1/pipeline/queue-metrics \
+  -H "Authorization: Bearer $TOKEN" | jq '{
+    pending: .pending_count,
+    processing: .processing_count,
+    blocked: .readiness_blockers
+  }'
+```
+
+Also check `GET /ready` for traffic-blocking readiness blockers.
 
 ---
 
@@ -461,7 +538,7 @@ services:
       - ./data:/app/data
 
   postgres:
-    image: ghcr.io/edgequake/postgres-age:16
+    image: ghcr.io/raphaelmansuy/edgequake-postgres:0.19.0
     environment:
       POSTGRES_USER: edgequake
       POSTGRES_PASSWORD: edgequake
@@ -573,11 +650,12 @@ curl -s "http://localhost:8080/api/v1/documents/$DOC_ID" \
   -H "X-Workspace-ID: default" | jq '{
     id: .id,
     name: .name,
-    status: .status,
+    display_status: .display_status,
+    ui_phase: .ui_phase,
+    current_stage: .current_stage,
+    track_id: .track_id,
     chunks: .chunk_count,
     entities: .entity_count,
-    relationships: .relationship_count,
-    processing_time_ms: .processing_time_ms,
     error: .error_message
   }'
 ```
@@ -618,8 +696,7 @@ echo ""
 echo "Query result:"
 echo "$RESPONSE" | jq '{
   has_answer: (.answer | length > 0),
-  chunks_found: .chunks | length,
-  entities_found: .entities | length
+  sources_found: (.sources | length)
 }'
 ```
 

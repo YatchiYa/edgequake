@@ -2,6 +2,8 @@
 title: 'Migration Guide: LightRAG Python → EdgeQuake Rust'
 ---
 
+> **Product: v0.19.0** · Contract: [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 # Migration Guide: LightRAG Python → EdgeQuake Rust
 
 > **Transitioning from LightRAG Python to EdgeQuake**
@@ -21,7 +23,7 @@ EdgeQuake is a **production-grade Rust implementation** of the LightRAG algorith
 | Multi-tenant | Not built-in      | Native support       |
 | Deployment   | Complex           | Single binary        |
 | Storage      | Multiple backends | PostgreSQL optimized |
-| API          | Class-based       | REST + WebSocket     |
+| API          | Class-based       | REST + WebSocket (`/ws/progress/{track_id}`) |
 
 ---
 
@@ -105,12 +107,13 @@ LightRAG uses `working_dir`. EdgeQuake uses workspaces:
 lightrag = LightRAG(working_dir="./my_project")
 ```
 
-**EdgeQuake**:
+**EdgeQuake** (auth on by default — use `EDGEQUAKE_DEV_MODE=true` locally or pass `X-API-Key` / Bearer token):
 
 ```bash
 # Create workspace (equivalent to working_dir)
 curl -X POST http://localhost:8080/api/v1/tenants/default/workspaces \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $EDGEQUAKE_MASTER_API_KEY" \
   -d '{
     "name": "my-project",
     "slug": "my-project",
@@ -425,10 +428,9 @@ curl -X POST http://localhost:8080/api/v1/query \
   "sources": [
     {
       "source_type": "chunk",
-      "id": "chunk-uuid",
-      "score": 0.89,
+      "document_id": "doc-uuid",
       "snippet": "...",
-      "document_id": "doc-uuid"
+      "score": 0.89
     }
   ],
   "stats": {
@@ -455,7 +457,8 @@ Features available in EdgeQuake but not LightRAG Python:
 | Graph visualization | Real-time graph UI             |
 | Cost tracking       | Token usage and costs          |
 | Batch upload        | Multiple files at once         |
-| Task queue          | Background processing          |
+| Task queue          | Background processing (claim/lease SSOT, SPEC-057) |
+| PDF convert→ingest  | Separate convert + ingest tasks (SPEC-057)         |
 | Lineage             | Document-to-entity tracing     |
 | Reranking           | Cross-encoder reranking        |
 
@@ -492,13 +495,20 @@ lightrag.insert(large_document)  # Blocks until complete
 **EdgeQuake**: Async by default
 
 ```bash
-# Returns immediately with task_id
+# Returns immediately with track_id (async)
 curl -X POST http://localhost:8080/api/v1/documents \
-  -d '{"content": "large document..."}'
-# Response: {"task_id": "...", "status": "processing"}
+  -H "Content-Type: application/json" \
+  -H "X-Workspace-ID: your-workspace-id" \
+  -d '{"content": "large document...", "title": "Doc"}'
+# Response: {"document_id":"...","track_id":"...","status":"processing"}
 
-# Check status
-curl http://localhost:8080/api/v1/tasks/$TASK_ID
+# Poll DocumentSummary until display_status=completed
+curl http://localhost:8080/api/v1/documents/doc-id \
+  -H "X-Workspace-ID: your-workspace-id" | jq '{display_status, ui_phase, current_stage, track_id}'
+
+# Or cancel in flight
+curl -X POST http://localhost:8080/api/v1/tasks/$TASK_ID/cancel \
+  -H "X-Workspace-ID: your-workspace-id"
 ```
 
 ---

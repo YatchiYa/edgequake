@@ -4,9 +4,11 @@ title: 'Extended API Reference'
 
 # Extended API Reference
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 > **Additional Endpoints for Tasks, Pipeline, Costs, and Lineage**
 
-This document covers advanced API endpoints not included in the main [REST API Reference](/docs/api-reference/rest-api/).
+This document covers advanced API endpoints not included in the main [REST API Reference](/docs/api-reference/rest-api/). Schemas and Try-it-out: [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) and [`/swagger-ui/`](http://localhost:8080/swagger-ui/).
 
 ---
 
@@ -14,6 +16,7 @@ This document covers advanced API endpoints not included in the main [REST API R
 
 - [Ollama Emulation API](#ollama-emulation-api)
 - [Tasks API](#tasks-api)
+- [WebSocket Progress](#websocket-progress)
 - [Pipeline API](#pipeline-api)
 - [Cost Tracking API](#cost-tracking-api)
 - [Lineage API](#lineage-api)
@@ -166,11 +169,13 @@ curl -X POST http://localhost:8080/api/chat \
 
 ## Tasks API
 
-Background task management for long-running operations.
+Background task management for long-running ingestion. Path parameter is **`track_id`** (server task identity), not an opaque internal id.
+
+**Delivery model (SPEC-057 P1):** Postgres task rows are the delivery SSOT. Workers wake (channel or ~2s poll) → `claim_next` (`FOR UPDATE SKIP LOCKED`) → lease (`EDGEQUAKE_TASK_LEASE_TTL_SECS`, default 120s) → `refresh_lease` heartbeat every 60s. Fairness park **releases** the claim before waiting on a tenant permit. See [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md#restart-semantics-spec-057-p1-claim--lease).
 
 ### GET /api/v1/tasks
 
-List all tasks.
+List tasks (tenant/workspace scoped via headers).
 
 **Query Parameters**:
 
@@ -180,115 +185,89 @@ List all tasks.
 | `limit`   | integer | 50      | Max results       |
 | `offset`  | integer | 0       | Pagination offset |
 
-**Task Status Values**:
-
-- `pending` - Waiting to start
-- `running` - Currently executing
-- `completed` - Successfully finished
-- `failed` - Failed with error
-- `cancelled` - User cancelled
+**Task status values**: `pending`, `processing`, `completed`, `failed`, `cancelled`.
 
 ```bash
-curl http://localhost:8080/api/v1/tasks?status=running \
+curl http://localhost:8080/api/v1/tasks?status=processing \
+  -H "X-Tenant-ID: tenant-uuid" \
   -H "X-Workspace-ID: workspace-uuid"
 ```
 
-**Response**:
+**Task types (v0.19.0):** `pdf_processing` (convert only), `insert` (KG ingest), and legacy insert paths for text/file admission.
 
-```json
-{
-  "tasks": [
-    {
-      "id": "task-uuid",
-      "type": "document_processing",
-      "status": "running",
-      "progress": 65,
-      "document_id": "doc-uuid",
-      "started_at": "2024-01-15T10:30:00Z",
-      "updated_at": "2024-01-15T10:31:00Z"
-    }
-  ],
-  "total": 1
-}
-```
+### GET /api/v1/tasks/{track_id}
 
-### GET /api/v1/tasks/:id
-
-Get task details.
+Get task row + metadata for a single track.
 
 ```bash
-curl http://localhost:8080/api/v1/tasks/task-uuid
+curl http://localhost:8080/api/v1/tasks/pdf-550e8400-e29b-41d4-a716-446655440000 \
+  -H "X-Workspace-ID: workspace-uuid"
 ```
 
-**Response**:
+### POST /api/v1/tasks/{track_id}/cancel
 
-```json
-{
-  "id": "task-uuid",
-  "type": "document_processing",
-  "status": "running",
-  "progress": 65,
-  "document_id": "doc-uuid",
-  "stages": {
-    "chunking": "completed",
-    "extraction": "running",
-    "merging": "pending",
-    "embedding": "pending"
-  },
-  "stats": {
-    "chunks_processed": 13,
-    "chunks_total": 20,
-    "entities_found": 45,
-    "relationships_found": 32
-  },
-  "started_at": "2024-01-15T10:30:00Z",
-  "updated_at": "2024-01-15T10:31:00Z"
-}
-```
+**Canonical cancel** (FEAT-0562). All cancel entry points converge here:
 
-### POST /api/v1/tasks/:id/cancel
+1. Task row → `Cancelled` (terminal; no auto-retry)
+2. `CancellationRegistry` signals in-flight work
+3. Document KV → `cancelled` + `failure_class=cancelled`
+4. PDF row (when linked) → `Cancelled` (SPEC-057 — **not** `Failed`)
+5. Pending / fairness-parked copies of the same `track_id` are dropped
 
-Cancel a running task.
+Also supported: `DELETE /api/v2/workspaces/{id}/jobs/{job_id}`, `DELETE /api/v1/documents/pdf/{pdf_id}/cancel`, `POST /api/v1/pipeline/cancel`, WebSocket `{ "type": "cancel", "track_id": "..." }`.
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/tasks/task-uuid/cancel
+curl -X POST http://localhost:8080/api/v1/tasks/pdf-550e8400-e29b-41d4-a716-446655440000/cancel \
+  -H "X-Workspace-ID: workspace-uuid"
 ```
 
-**Response**:
+Cancel is **cooperative** — expect a short delay until the current LLM/vision round-trip aborts. UI should show **Stopping…** (`ui_phase=stopping`) until terminal. Full SSOT: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md).
 
-```json
-{
-  "id": "task-uuid",
-  "status": "cancelled",
-  "message": "Task cancellation requested"
-}
-```
+### POST /api/v1/tasks/{track_id}/retry
 
-### POST /api/v1/tasks/:id/retry
-
-Retry a failed task.
+Retry a failed task (409 if not retry-eligible).
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/tasks/task-uuid/retry
+curl -X POST http://localhost:8080/api/v1/tasks/track-uuid/retry \
+  -H "X-Workspace-ID: workspace-uuid"
 ```
 
-**Response**:
+### GET /api/v1/documents/track/{track_id}
 
-```json
-{
-  "id": "new-task-uuid",
-  "status": "pending",
-  "message": "Task queued for retry"
-}
-```
-
-### GET /api/v1/documents/track/:track_id
-
-Track document processing status (alias for task status).
+List documents uploaded under a client batch `track_id` (correlation — not the progress key for PDF uploads; use response `task_id`).
 
 ```bash
-curl http://localhost:8080/api/v1/documents/track/task-uuid
+curl http://localhost:8080/api/v1/documents/track/batch-correlation-id \
+  -H "X-Workspace-ID: workspace-uuid"
 ```
+
+---
+
+## WebSocket Progress
+
+Real-time ingestion and PDF progress (SPEC-048). Subscribe using the server **`task_id`** from upload responses (`pdf-<uuid>` for PDF).
+
+| Channel | Path | Scope |
+| ------- | ---- | ----- |
+| Global pipeline | `ws://localhost:8080/ws/pipeline/progress` | All pipeline events (ingest, delete, batch) |
+| Per-track filtered | `ws://localhost:8080/ws/progress/{track_id}` | Single upload (PDF page progress, snapshots) |
+
+**Client → server cancel** on per-track WebSocket:
+
+```json
+{ "type": "cancel", "track_id": "pdf-550e8400-e29b-41d4-a716-446655440000" }
+```
+
+**REST alternatives:**
+
+| Purpose | Endpoint |
+| ------- | -------- |
+| Ingest progress (poll) | `GET /api/v1/ingestion/{track_id}/progress` |
+| Ingest progress (batch) | `POST /api/v1/ingestion/progress` |
+| PDF progress (poll) | `GET /api/v1/documents/pdf/progress/{track_id}` |
+| PDF progress (SSE) | `GET /api/v1/documents/pdf/progress/stream/{track_id}` |
+
+See [Pipeline Progress deep dive](/docs/deep-dives/pipeline-progress/).
 
 ---
 
@@ -327,49 +306,61 @@ curl http://localhost:8080/api/v1/pipeline/status \
 
 ### POST /api/v1/pipeline/cancel
 
-Cancel all pending tasks in the workspace.
+Cancel all registered in-flight tasks in scope (same cancel chain as task cancel + doc KV sync). Returns idle if nothing to cancel.
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/pipeline/cancel \
   -H "X-Workspace-ID: workspace-uuid"
 ```
 
-**Response**:
+### DELETE /api/v1/documents/pdf/{pdf_id}/cancel
 
-```json
-{
-  "cancelled": 5,
-  "message": "5 tasks cancelled"
-}
-```
-
-### GET /api/v1/pipeline/queue-metrics
-
-Get queue metrics (for monitoring dashboards).
+PDF-scoped cancel: task cancel + PDF row → `Cancelled` + doc KV sync. Cancels linked **convert and ingest** tasks for the same `pdf_id` when both are pending/processing.
 
 ```bash
-curl http://localhost:8080/api/v1/pipeline/queue-metrics \
+curl -X DELETE http://localhost:8080/api/v1/documents/pdf/{pdf_id}/cancel \
   -H "X-Workspace-ID: workspace-uuid"
 ```
 
-**Response**:
+409 when PDF is already terminal. See [convert → ingest](../ingestion-cancel-and-fairness.md#convert-then-ingest-spec-057-p2).
+
+### GET /api/v1/pipeline/queue-metrics
+
+Queue visibility for Pipeline Monitor (FEAT-0570). Tenant/workspace filtered.
+
+```bash
+curl http://localhost:8080/api/v1/pipeline/queue-metrics \
+  -H "X-Tenant-ID: tenant-uuid" \
+  -H "X-Workspace-ID: workspace-uuid"
+```
+
+**Key fields (OpenAPI `QueueMetricsResponse`):**
+
+| Field | Meaning |
+| ----- | ------- |
+| `pending_count`, `processing_count` | Queue depth |
+| `pressure` | `normal` \| `elevated` \| `critical` (scale workers when critical) |
+| `tenant_park_waiters` | Tasks waiting for tenant fairness permit (expected under local LLM clamp) |
+| `max_tasks_per_tenant` | Fairness cap (~¾ of `WORKER_THREADS`; local providers clamp to 1) |
+| `cancel_intent_count`, `cancel_intent_total` | Cancel registry observability |
+| `store_contention` | Nested SLO: `db_pool_utilization`, `compensation_quarantine_total`, `level` |
+
+**Store contention (SPEC-057 P3):** `/ready` returns 503 when `store_contention.level` is **critical** (same thresholds as queue-metrics). Rising `compensation_quarantine_total` indicates merge cleanup failures — inspect KV DLQ keys `compensation_quarantine:{document_id}:*`, not a fairness park issue.
 
 ```json
 {
-  "queue": {
-    "pending": 10,
-    "running": 3,
-    "failed": 1
-  },
-  "throughput": {
-    "last_minute": 5,
-    "last_hour": 120,
-    "last_day": 2500
-  },
-  "latency": {
-    "p50_ms": 500,
-    "p95_ms": 2000,
-    "p99_ms": 5000
+  "pending_count": 10,
+  "processing_count": 3,
+  "active_workers": 3,
+  "max_workers": 4,
+  "pressure": "normal",
+  "tenant_park_waiters": 2,
+  "max_tasks_per_tenant": 3,
+  "cancel_intent_count": 0,
+  "store_contention": {
+    "level": "normal",
+    "db_pool_utilization": 0.42,
+    "compensation_quarantine_total": 0
   }
 }
 ```
@@ -941,6 +932,9 @@ Read/save `app_id`, `app_name`, `app_url` to PostgreSQL `server_config` (PATCH r
 
 ## See Also
 
-- [REST API Reference](/docs/api-reference/rest-api/) - Core endpoints
-- [Configuration Reference](/docs/operations/configuration/) - Environment variables
-- [Troubleshooting](/docs/troubleshooting/common-issues/) - Debugging API issues
+- [REST API Reference](/docs/api-reference/rest-api/) — Core endpoints
+- [Ingestion cancel & fairness](/docs/ingestion-cancel-and-fairness.md) — Cancel SSOT, claim/lease, fairness
+- [Pipeline Progress](/docs/deep-dives/pipeline-progress/) — WebSocket and REST progress
+- [OpenAPI snapshot](../../edgequake_webui/openapi/openapi.snapshot.json) — Full schemas
+- [Configuration Reference](/docs/operations/configuration/) — Environment variables
+- [Troubleshooting](/docs/troubleshooting/common-issues/) — Debugging API issues

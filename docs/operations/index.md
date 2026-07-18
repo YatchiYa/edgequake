@@ -3,6 +3,8 @@ title: Operations
 description: Deploy, monitor, and tune EdgeQuake in production.
 ---
 
+> **Product: v0.19.0** · Contract: OpenAPI
+
 Production deployment and operations guides.
 
 ## Reliability-first operating model
@@ -17,8 +19,12 @@ EdgeQuake now documents and follows a few simple operational invariants:
 
 ## Guides
 
+- **[Docker Quickstart](/docs/operations/docker-quickstart/)** — Full stack from GHCR images (no local build).
 - **[Deployment](/docs/operations/deployment/)** — Docker, Kubernetes, and bare-metal deployment.
 - **[Configuration](/docs/operations/configuration/)** — Environment variables and runtime settings.
 - **[Monitoring](/docs/operations/monitoring/)** — Health checks, metrics, and observability.
 - **[Performance Tuning](/docs/operations/performance-tuning/)** — Optimize throughput and latency.
 - **[Metadata Debugging](/docs/operations/metadata-debugging/)** — Inspect and debug extracted metadata.
+- **[Runtime auth hardening](/docs/operations/runtime-auth-hardening/)** — Production auth and bootstrap.
+- **[Release & CD](/docs/operations/release-and-cd/)** — Tag, gates, and Docker publish cycle.
+- **[Ingestion cancel & fairness](/docs/ingestion-cancel-and-fairness/)** — Cancel, lease, fairness, multi-replica.

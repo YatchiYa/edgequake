@@ -1,5 +1,9 @@
 # TypeScript SDK — quickstart
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../../ingestion-cancel-and-fairness.md)
+
+> **SDK package: ~0.4.0** (≠ product version)
+
 ## Run tests
 
 ```bash
@@ -24,6 +28,15 @@ const list = await client.documents.list({ page: 1, page_size: 10 });
 ## Conversations bulk delete
 
 The client sends `{ conversation_ids: [...] }` and expects `{ affected: number }` from the API.
+
+## Progress / cancel
+
+```typescript
+await client.tasks.cancel(trackId);
+// WebSocket: ws://host/ws/progress/{track_id}
+```
+
+See [Ingestion cancel & fairness](../../ingestion-cancel-and-fairness.md).
 
 ## Costs / pipeline pricing
 

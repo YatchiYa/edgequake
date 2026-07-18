@@ -2,6 +2,8 @@
 title: 'Quick Start Guide'
 ---
 
+> **Product: v0.19.0** · Contract: [OpenAPI snapshot](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 # Quick Start Guide
 
 > From zero to your first knowledge graph query in 10 minutes
@@ -12,8 +14,8 @@ title: 'Quick Start Guide'
 
 By the end of this guide, you will have:
 
-1. ✅ Ingested a document into EdgeQuake
-2. ✅ Built a knowledge graph from extracted entities
+1. ✅ Ingested a document into EdgeQuake (async pipeline)
+2. ✅ Polled until entity extraction completes
 3. ✅ Queried the graph using natural language
 4. ✅ Visualized the knowledge graph in the WebUI
 
@@ -21,17 +23,12 @@ By the end of this guide, you will have:
 ┌─────────────────────────────────────────────────────────────┐
 │                      Your First Flow                        │
 │                                                             │
-│   Document ───▶ [EdgeQuake] ───▶ Knowledge Graph            │
-│   "Marie Curie       │          ┌───────────────┐           │
-│    discovered        │          │ MARIE_CURIE   │           │
-│    radium..."        │          │      │        │           │
-│                      │          │      ▼        │           │
-│                      │          │   RADIUM      │           │
-│                      │          └───────────────┘           │
-│                      │                                      │
-│   Query ─────────────┴───▶ "Marie Curie discovered radium   │
-│   "Who discovered            in 1898..."                    │
-│    radium?"                                                 │
+│   Document ───▶ POST /documents (202) ───▶ track_id         │
+│                      │                         │            │
+│                      │    poll / WS / SSE      ▼            │
+│                      └──────────────▶ Knowledge Graph       │
+│                                                             │
+│   Query ───────────────────────────▶ Natural language answer│
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -42,110 +39,143 @@ By the end of this guide, you will have:
 Ensure EdgeQuake is running:
 
 ```bash
-# Check health
 curl http://localhost:8080/health
 # Expected: JSON containing "status":"healthy"
 ```
 
+- **API:** port **8080**
+- **WebUI:** port **3000** (`make dev`)
+
 If not running, see [Installation Guide](/docs/getting-started/installation/).
+
+### Authentication headers
+
+`make dev` sets `EDGEQUAKE_DEV_MODE=true` (open API — no auth headers needed).
+
+For deployments **without** `EDGEQUAKE_DEV_MODE`, obtain a token or API key first:
+
+```bash
+# Login (when bootstrap admin is configured)
+TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"ChangeMe123!"}' | jq -r .access_token)
+
+AUTH_HEADER="Authorization: Bearer $TOKEN"
+# Or: AUTH_HEADER="X-API-Key: $EDGEQUAKE_MASTER_API_KEY"
+```
+
+Use `$AUTH_HEADER` on all examples below when auth is enabled. See [Runtime auth hardening](../operations/runtime-auth-hardening.md).
 
 ---
 
 ## Step 1: Ingest Your First Document
 
+Uploads are **asynchronous**: the API returns **HTTP 202 Accepted** with a `document_id` and `track_id`. Entity counts are **not** returned synchronously.
+
 ### Option A: Via REST API
 
 ```bash
-# Create a simple document about a famous scientist
-curl -X POST http://localhost:8080/api/v1/documents \
+RESPONSE=$(curl -s -X POST http://localhost:8080/api/v1/documents \
   -H "Content-Type: application/json" \
+  -H "$AUTH_HEADER" \
   -d '{
     "content": "Marie Curie was a Polish-French physicist and chemist who conducted pioneering research on radioactivity. She was the first woman to win a Nobel Prize, and the only person to win Nobel Prizes in two different sciences (Physics in 1903, Chemistry in 1911). Curie discovered two elements: polonium (named after Poland) and radium. She worked at the University of Paris with her husband Pierre Curie. Their daughter, Irène Joliot-Curie, also won a Nobel Prize in Chemistry in 1935.",
     "title": "Marie Curie Biography"
-  }'
+  }')
+
+echo "$RESPONSE" | jq
+TRACK_ID=$(echo "$RESPONSE" | jq -r .track_id)
+DOC_ID=$(echo "$RESPONSE" | jq -r .document_id)
 ```
 
-**Expected Response**:
+**Expected Response** (202):
 
 ```json
 {
   "document_id": "doc_abc123",
-  "entities_extracted": 8,
-  "relationships_extracted": 6,
-  "chunks_created": 1,
-  "processing_time_ms": 2500
+  "track_id": "f6fa9cad-bbff-4892-a855-3bd7d70da044",
+  "status": "processing"
 }
 ```
 
+> There is no `entities_extracted` field on async admit. Poll for completion (Step 1b).
+
 ### Option B: Via WebUI
 
-1. Open <http://localhost:3000> when using `make dev` locally
+1. Open <http://localhost:3000>
 2. Navigate to **Documents** → **Upload**
 3. Paste the text above or upload a file
-4. Click **Process**
+4. Watch progress in the UI (WebSocket/SSE)
+
+---
+
+## Step 1b: Wait for Processing
+
+Poll task status until terminal:
+
+```bash
+# Poll until completed or failed
+until STATUS=$(curl -s -H "$AUTH_HEADER" \
+  "http://localhost:8080/api/v1/tasks/$TRACK_ID" | jq -r .status) && \
+  [ "$STATUS" = "completed" ] || [ "$STATUS" = "failed" ] || [ "$STATUS" = "cancelled" ]; do
+  echo "Status: $STATUS — waiting..."
+  sleep 3
+done
+echo "Final status: $STATUS"
+```
+
+Alternative progress endpoints:
+
+| Method | Endpoint |
+| ------ | -------- |
+| Poll   | `GET /api/v1/ingestion/{track_id}/progress` |
+| Poll   | `GET /api/v1/documents/{document_id}` (check `display_status`) |
+| SSE    | `GET /api/v1/documents/pdf/progress/stream/{track_id}` (PDF) |
+| WebSocket | `ws://localhost:8080/ws/progress/{track_id}` |
+
+To cancel: `POST /api/v1/tasks/{track_id}/cancel` — see [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md).
 
 ---
 
 ## Step 2: Explore the Knowledge Graph
 
+Graph entities and relationships live under the **`/api/v1/graph/`** namespace (not `/api/v1/entities`).
+
 ### View Extracted Entities
 
 ```bash
-curl http://localhost:8080/api/v1/entities | jq '.entities[:5]'
+curl -s -H "$AUTH_HEADER" \
+  "http://localhost:8080/api/v1/graph/entities" | jq '.entities[:5]'
 ```
 
-**Expected Entities**:
+**Expected entities** (names normalized to UPPERCASE_WITH_UNDERSCORES):
 
 ```
-┌─────────────────────────────────────────────────┐
-│ Extracted Knowledge Graph                       │
-├─────────────────────────────────────────────────┤
-│                                                 │
-│   ┌─────────────┐       ┌─────────────┐         │
-│   │MARIE_CURIE  │──────▶│NOBEL_PRIZE  │         │
-│   │  (PERSON)   │       │  (EVENT)    │         │
-│   └──────┬──────┘       └─────────────┘         │
-│          │                                      │
-│          │ married_to                           │
-│          ▼                                      │
-│   ┌─────────────┐       ┌─────────────┐         │
-│   │PIERRE_CURIE │       │  POLAND     │         │
-│   │  (PERSON)   │       │ (LOCATION)  │         │
-│   └─────────────┘       └─────────────┘         │
-│          │                    ▲                 │
-│          │                    │ named_after     │
-│          ▼                    │                 │
-│   ┌─────────────┐       ┌─────────────┐         │
-│   │UNIV_PARIS   │       │  POLONIUM   │         │
-│   │(ORGANIZATION│       │ (CONCEPT)   │         │
-│   └─────────────┘       └─────────────┘         │
-│                                                 │
-└─────────────────────────────────────────────────┘
+MARIE_CURIE, PIERRE_CURIE, RADIUM, POLONIUM, NOBEL_PRIZE, …
 ```
 
 ### View Relationships
 
 ```bash
-curl http://localhost:8080/api/v1/relationships | jq '.relationships[:5]'
+curl -s -H "$AUTH_HEADER" \
+  "http://localhost:8080/api/v1/graph/relationships" | jq '.relationships[:5]'
 ```
 
-**Sample Relationships**:
+**Sample relationship**:
 
 ```json
-[
-  {
-    "source": "MARIE_CURIE",
-    "target": "NOBEL_PRIZE",
-    "keywords": ["won", "received", "awarded"],
-    "description": "Marie Curie won Nobel Prizes in Physics and Chemistry"
-  },
-  {
-    "source": "MARIE_CURIE",
-    "target": "PIERRE_CURIE",
-    "keywords": ["married", "worked_with", "collaborated"],
-    "description": "Marie Curie was married to and collaborated with Pierre Curie"
-  }
-]
+{
+  "source": "MARIE_CURIE",
+  "target": "RADIUM",
+  "keywords": ["discovered"],
+  "description": "Marie Curie discovered radium"
+}
+```
+
+### Graph statistics
+
+```bash
+curl -s -H "$AUTH_HEADER" http://localhost:8080/api/v1/graph/stats | jq
 ```
 
 ---
@@ -155,113 +185,69 @@ curl http://localhost:8080/api/v1/relationships | jq '.relationships[:5]'
 ### Simple Query
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/query \
+curl -s -X POST http://localhost:8080/api/v1/query \
   -H "Content-Type: application/json" \
+  -H "$AUTH_HEADER" \
   -d '{
     "query": "Who discovered radium and when?",
     "mode": "hybrid"
-  }'
+  }' | jq
 ```
 
-**Expected Response**:
-
-```json
-{
-  "response": "Marie Curie discovered radium. She was a Polish-French physicist and chemist who conducted pioneering research on radioactivity. Curie also discovered polonium, which was named after Poland.",
-  "sources": [
-    {
-      "type": "entity",
-      "name": "MARIE_CURIE",
-      "relevance": 0.95
-    },
-    {
-      "type": "entity",
-      "name": "RADIUM",
-      "relevance": 0.92
-    }
-  ],
-  "mode": "hybrid",
-  "context_tokens": 450
-}
-```
+The response includes a natural-language answer and source references (entities/chunks used).
 
 ### Try Different Query Modes
 
 ```bash
-# Local mode: Entity-focused (best for specific facts)
-curl -X POST http://localhost:8080/api/v1/query \
-  -H "Content-Type: application/json" \
-  -d '{"query": "What is radium?", "mode": "local"}'
+# Local: entity-focused
+curl -s -X POST http://localhost:8080/api/v1/query \
+  -H "Content-Type: application/json" -H "$AUTH_HEADER" \
+  -d '{"query": "What is radium?", "mode": "local"}' | jq .response
 
-# Global mode: Community-based (best for overview questions)
-curl -X POST http://localhost:8080/api/v1/query \
-  -H "Content-Type: application/json" \
-  -d '{"query": "Summarize the Curie family achievements", "mode": "global"}'
+# Global: overview
+curl -s -X POST http://localhost:8080/api/v1/query \
+  -H "Content-Type: application/json" -H "$AUTH_HEADER" \
+  -d '{"query": "Summarize the Curie family achievements", "mode": "global"}' | jq .response
 
-# Naive mode: Vector search only (traditional RAG)
-curl -X POST http://localhost:8080/api/v1/query \
-  -H "Content-Type: application/json" \
-  -d '{"query": "Who won Nobel Prizes?", "mode": "naive"}'
+# Naive: vector search only
+curl -s -X POST http://localhost:8080/api/v1/query \
+  -H "Content-Type: application/json" -H "$AUTH_HEADER" \
+  -d '{"query": "Who won Nobel Prizes?", "mode": "naive"}' | jq .response
 ```
 
 ---
 
 ## Step 4: Visualize in WebUI
 
-1. Open <http://localhost:3000> when using `make dev` locally
+1. Open <http://localhost:3000>
 2. Navigate to **Graph** (left sidebar)
-3. See your knowledge graph visualization
+3. Explore nodes and edges interactively
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    WebUI Graph View                         │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │                     ○ NOBEL_PRIZE                     │  │
-│  │                    ╱                                  │  │
-│  │         ○ MARIE_CURIE ──────○ RADIUM                  │  │
-│  │        ╱│╲                                            │  │
-│  │       ╱ │ ╲                                           │  │
-│  │      ○  ○  ○                                          │  │
-│  │   PIERRE POLAND POLONIUM                              │  │
-│  │                                                       │  │
-│  │  [Zoom] [Pan] [Reset] [Filter: PERSON ▼]              │  │
-│  └───────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-```
-
-**WebUI Features**:
-
-- 🔍 **Zoom & Pan**: Mouse wheel and drag
-- 🎯 **Click nodes**: See entity details
-- 🔗 **Click edges**: See relationship details
-- 📊 **Filter**: By entity type
-- 🔎 **Search**: Find specific entities
+**WebUI features**: zoom/pan, click nodes for details, filter by entity type, search.
 
 ---
 
 ## Step 5: Add More Documents
 
-Build a richer knowledge graph:
+Each upload is async — save the new `track_id` and poll again:
 
 ```bash
-# Add a related document
-curl -X POST http://localhost:8080/api/v1/documents \
-  -H "Content-Type: application/json" \
+RESPONSE=$(curl -s -X POST http://localhost:8080/api/v1/documents \
+  -H "Content-Type: application/json" -H "$AUTH_HEADER" \
   -d '{
     "content": "Albert Einstein developed the theory of relativity while working at the Swiss Patent Office in Bern. He won the Nobel Prize in Physics in 1921 for his explanation of the photoelectric effect. Einstein corresponded with Marie Curie and they became friends. Both attended the famous Solvay Conference in 1911.",
     "title": "Albert Einstein"
-  }'
+  }')
+echo "$RESPONSE" | jq .track_id
 ```
 
-Now query across both documents:
+Query across both documents:
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/query \
-  -H "Content-Type: application/json" \
-  -d '{"query": "What connections existed between Einstein and Curie?"}'
+curl -s -X POST http://localhost:8080/api/v1/query \
+  -H "Content-Type: application/json" -H "$AUTH_HEADER" \
+  -d '{"query": "What connections existed between Einstein and Curie?", "mode": "hybrid"}' | jq .response
 ```
-
-**Expected**: The response should mention their friendship, the Solvay Conference, and both winning Nobel Prizes.
 
 ---
 
@@ -269,83 +255,75 @@ curl -X POST http://localhost:8080/api/v1/query \
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    Processing Pipeline                      │
+│                    Processing Pipeline (async)                │
 │                                                             │
-│  1. CHUNKING                                                │
-│     └─ Document split into 1200-token chunks                │
+│  1. ADMIT          POST /documents → 202 + track_id         │
+│  2. CHUNKING       Worker splits into ~1200-token chunks    │
+│  3. EXTRACTION     LLM identifies entities & relationships  │
+│  4. EMBEDDING      Vectors for chunks, entities, relations  │
+│  5. GRAPH WRITE    Nodes + edges → PostgreSQL (AGE)         │
+│  6. DEDUP          Similar entities merged                  │
 │                                                             │
-│  2. ENTITY EXTRACTION                                       │
-│     └─ LLM identifies: MARIE_CURIE, PIERRE_CURIE, etc.      │
-│                                                             │
-│  3. RELATIONSHIP EXTRACTION                                 │
-│     └─ LLM finds: "married_to", "discovered", etc.          │
-│                                                             │
-│  4. EMBEDDING                                               │
-│     └─ Vector embeddings for chunks, entities, relations    │
-│                                                             │
-│  5. GRAPH CONSTRUCTION                                      │
-│     └─ Nodes + Edges stored in knowledge graph              │
-│                                                             │
-│  6. DEDUPLICATION                                           │
-│     └─ Similar entities merged (MARIE_CURIE = Curie)        │
-│                                                             │
+│  PDFs: convert (vision) → ingest (Insert task) — two phases │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+Workers claim tasks via Postgres `claim_next` + lease. See [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md) for cancel, fairness, and multi-replica semantics.
 
 ---
 
 ## Quick Reference: API Endpoints
 
-| Endpoint                | Method | Purpose               |
-| ----------------------- | ------ | --------------------- |
-| `/health`               | GET    | Check server status   |
-| `/api/v1/documents`     | POST   | Ingest document       |
-| `/api/v1/documents`     | GET    | List documents        |
-| `/api/v1/query`         | POST   | Query knowledge graph |
-| `/api/v1/entities`      | GET    | List entities         |
-| `/api/v1/relationships` | GET    | List relationships    |
-| `/api/v1/graph/stats`   | GET    | Graph statistics      |
+| Endpoint                              | Method | Purpose                    |
+| ------------------------------------- | ------ | -------------------------- |
+| `/health`                             | GET    | Check server status (no auth) |
+| `/api/v1/documents`                   | POST   | Ingest document (202 async) |
+| `/api/v1/documents`                   | GET    | List documents             |
+| `/api/v1/tasks/{track_id}`            | GET    | Task status                |
+| `/api/v1/tasks/{track_id}/cancel`     | POST   | Cancel task                |
+| `/api/v1/ingestion/{track_id}/progress` | GET  | Ingestion progress         |
+| `/api/v1/query`                       | POST   | Query knowledge graph      |
+| `/api/v1/graph/entities`              | GET    | List entities              |
+| `/api/v1/graph/relationships`       | GET    | List relationships         |
+| `/api/v1/graph/stats`                 | GET    | Graph statistics           |
+
+Contract: [OpenAPI snapshot](../../edgequake_webui/openapi/openapi.snapshot.json).
 
 ---
 
 ## Next Steps
 
-Now that you've completed the quick start:
-
-1. **[Document Ingestion Deep Dive](/docs/tutorials/document-ingestion/)** — Understanding the pipeline
+1. **[Document Ingestion Deep Dive](/docs/tutorials/document-ingestion/)** — Pipeline details
 2. **[Architecture Overview](/docs/architecture/overview/)** — System design
 3. **[Query Modes](/docs/deep-dives/query-modes/)** — Choosing the right mode
-4. **[API Reference](/docs/api-reference/rest-api/)** — Full API documentation
+4. **[Runtime auth hardening](../operations/runtime-auth-hardening.md)** — Production auth
 
 ---
 
 ## Troubleshooting
 
-### No entities extracted
+### No entities after upload
 
 ```bash
-# Check LLM provider is responding
-curl http://localhost:8080/api/v1/config/effective | jq '.llm'
+# Check task finished
+curl -s -H "$AUTH_HEADER" "http://localhost:8080/api/v1/tasks/$TRACK_ID" | jq
 
-# If using Ollama, verify model is available
-ollama list
+# Check LLM config
+curl -s http://localhost:8080/api/v1/config/effective | jq '.llm'
+ollama list   # if using Ollama
 ```
+
+### 401 Unauthorized
+
+Auth is on by default outside `EDGEQUAKE_DEV_MODE`. Login or set `X-API-Key` (see [Authentication headers](#authentication-headers)).
 
 ### Slow processing
 
-```bash
-# Check if using local (Ollama) vs cloud (OpenAI)
-# OpenAI is typically faster for small documents
-export OPENAI_API_KEY="sk-..."
-# Restart backend
-```
+Local Ollama is limited to **1 concurrent task per tenant** by default. Cloud LLMs are faster for small documents. Check `GET /api/v1/pipeline/queue-metrics`.
 
 ### Empty query results
 
 ```bash
-# Verify documents exist
-curl http://localhost:8080/api/v1/documents | jq '.documents | length'
-
-# Check graph has nodes
-curl http://localhost:8080/api/v1/graph/stats
+curl -s -H "$AUTH_HEADER" http://localhost:8080/api/v1/documents | jq '.documents | length'
+curl -s -H "$AUTH_HEADER" http://localhost:8080/api/v1/graph/stats | jq
 ```

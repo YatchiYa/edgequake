@@ -4,380 +4,235 @@ title: 'Integration: Open WebUI'
 
 # Integration: Open WebUI
 
-> **Using EdgeQuake as an Ollama Backend for Open WebUI**
+> **Product: v0.19.0** · Contract: [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
-This guide shows how to connect [Open WebUI](https://github.com/open-webui/open-webui) to EdgeQuake for a ChatGPT-like interface with Graph-RAG capabilities.
+Connect [Open WebUI](https://github.com/open-webui/open-webui) to EdgeQuake's **Ollama-compatible API** for a ChatGPT-style UI backed by Graph-RAG.
 
----
+**Ports (v0.19.0)**:
 
-## Overview
-
-Open WebUI is a popular ChatGPT-style interface that connects to Ollama. EdgeQuake provides **Ollama API emulation**, allowing it to work as a drop-in replacement.
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                 OPEN WEBUI + EDGEQUAKE                          │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │                    Open WebUI                           │    │
-│  │  ┌─────────────────────────────────────────────────┐    │    │
-│  │  │ User: "What is the relationship between X and Y?"    │    │
-│  │  │                                                      │    │
-│  │  │ Assistant: Based on the documents, X and Y...   │    │    │
-│  │  └─────────────────────────────────────────────────┘    │    │
-│  └────────────────────────┬────────────────────────────────┘    │
-│                           │                                     │
-│                     Ollama API                                  │
-│                    (POST /api/chat)                             │
-│                           │                                     │
-│                           ↓                                     │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │                    EdgeQuake                            │    │
-│  │                                                         │    │
-│  │  • Ollama API Emulation                                 │    │
-│  │  • Graph-RAG Query Processing                           │    │
-│  │  • Knowledge Graph Retrieval                            │    │
-│  │  • LLM Response Generation                              │    │
-│  └─────────────────────────────────────────────────────────┘    │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
+| Service | URL |
+| ------- | --- |
+| EdgeQuake WebUI | `http://localhost:3000` |
+| EdgeQuake API | `http://localhost:8080` |
+| Open WebUI (this guide) | `http://localhost:8081` — avoids conflict with EdgeQuake WebUI on `:3000` |
 
 ---
 
-## Quick Start
+## Architecture
 
-### 1. Start EdgeQuake
-
-```bash
-# Start EdgeQuake
-make dev
-
-# Or with Docker
-docker compose up -d
+```
+Open WebUI (:8081)
+       │  Ollama API (POST /api/chat)
+       ▼
+EdgeQuake API (:8080)
+       │  Graph-RAG + knowledge graph
+       ▼
+PostgreSQL (pgvector + AGE)
 ```
 
-EdgeQuake runs on `http://localhost:8080` by default.
+Upload documents via EdgeQuake WebUI (`:3000`) or REST — not through Open WebUI's file UI (not integrated).
 
-### 2. Start Open WebUI
+---
+
+## Quick start
+
+### 1. Start EdgeQuake (GHCR 0.19.0)
 
 ```bash
-# Docker (simplest)
+EDGEQUAKE_VERSION=0.19.0 docker compose -f docker-compose.quickstart.yml up -d
+```
+
+Images (SSOT from release CI):
+
+```
+ghcr.io/raphaelmansuy/edgequake:0.19.0
+ghcr.io/raphaelmansuy/edgequake-frontend:0.19.0
+ghcr.io/raphaelmansuy/edgequake-postgres:0.19.0
+```
+
+Verify:
+
+```bash
+curl -s http://localhost:8080/health | jq .status    # "healthy"
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3000   # 200
+```
+
+Or local dev: `make dev` (same ports).
+
+Ensure an LLM is reachable (default: Ollama on host `:11434`).
+
+### 2. Upload documents
+
+```bash
+curl -X POST http://localhost:8080/api/v1/documents/pdf \
+  -H "X-Workspace-ID: default" \
+  -F "file=@document.pdf" \
+  -F "title=My Document"
+```
+
+Wait for `display_status: completed` in EdgeQuake WebUI or via `GET /api/v1/documents`. See [PDF Ingestion Tutorial](/docs/tutorials/pdf-ingestion/).
+
+### 3. Start Open WebUI
+
+```bash
 docker run -d \
-  -p 3000:8080 \
+  -p 8081:8080 \
   -e OLLAMA_BASE_URL=http://host.docker.internal:8080 \
   --name open-webui \
   ghcr.io/open-webui/open-webui:main
 ```
 
-For Linux, replace `host.docker.internal` with your host IP:
+Linux (no `host.docker.internal` by default):
 
 ```bash
 docker run -d \
-  -p 3000:8080 \
+  -p 8081:8080 \
   -e OLLAMA_BASE_URL=http://172.17.0.1:8080 \
+  --add-host=host.docker.internal:host-gateway \
   --name open-webui \
   ghcr.io/open-webui/open-webui:main
 ```
 
-### 3. Access Open WebUI
-
-Open `http://localhost:3000` in your browser.
-
-**First Time Setup**:
-
-1. Create an admin account
-2. EdgeQuake appears as model "edgequake:latest"
-3. Start chatting with your documents!
+Open **`http://localhost:8081`**, create an admin account, select model **`edgequake:latest`**.
 
 ---
 
-## Configuration
-
-### Open WebUI Settings
-
-Navigate to **Settings → Connections** in Open WebUI:
-
-| Setting          | Value                   |
-| ---------------- | ----------------------- |
-| Ollama Base URL  | `http://localhost:8080` |
-| Enable Streaming | ✅ Enabled              |
-
-### EdgeQuake Model
-
-In the model selector, you'll see:
-
-- **edgequake:latest** - Graph-RAG with your documents
-
----
-
-## Query Modes via Prefixes
-
-EdgeQuake supports special **prefixes** in your messages to control query behavior:
-
-| Prefix    | Mode   | Description                    |
-| --------- | ------ | ------------------------------ |
-| `/local`  | Local  | Entity-focused retrieval       |
-| `/global` | Global | Relationship-focused retrieval |
-| `/naive`  | Naive  | Vector search only (fastest)   |
-| `/hybrid` | Hybrid | Combined mode (default)        |
-| `/mix`    | Mix    | Adaptive blending              |
-| `/bypass` | Bypass | Skip RAG, direct LLM           |
-
-### Example Usage
-
-```
-User: /local Tell me about John Smith
-
-User: /global What are the main themes in the documents?
-
-User: /naive Find mentions of "climate change"
-
-User: /bypass Just chat without using documents
-```
-
-The prefix is automatically stripped from the query.
-
----
-
-## Docker Compose Setup
-
-For a complete stack with Open WebUI + EdgeQuake:
+## Docker Compose (EdgeQuake + Open WebUI)
 
 ```yaml
-# docker-compose.yml
-version: "3.8"
-
+# docker-compose.open-webui.yml — pin 0.19.0
 services:
-  edgequake:
-    image: ghcr.io/edgequake/edgequake:latest
+  postgres:
+    image: ghcr.io/raphaelmansuy/edgequake-postgres:0.19.0
+    environment:
+      POSTGRES_USER: edgequake
+      POSTGRES_PASSWORD: edgequake_secret
+      POSTGRES_DB: edgequake
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U edgequake -d edgequake"]
+      interval: 10s
+      retries: 5
+
+  api:
+    image: ghcr.io/raphaelmansuy/edgequake:0.19.0
     ports:
       - "8080:8080"
     environment:
-      - DATABASE_URL=postgresql://edgequake:edgequake@postgres:5432/edgequake
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      DATABASE_URL: postgres://edgequake:edgequake_secret@postgres:5432/edgequake
+      EDGEQUAKE_LLM_PROVIDER: ollama
+      OLLAMA_HOST: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
 
-  postgres:
-    image: ghcr.io/edgequake/postgres-age:16
+  frontend:
+    image: ghcr.io/raphaelmansuy/edgequake-frontend:0.19.0
+    ports:
+      - "3000:3000"
     environment:
-      POSTGRES_USER: edgequake
-      POSTGRES_PASSWORD: edgequake
-      POSTGRES_DB: edgequake
-    volumes:
-      - postgres_data:/var/lib/postgresql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U edgequake"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      EDGEQUAKE_API_URL: http://localhost:8080
+    depends_on:
+      api:
+        condition: service_healthy
 
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
     ports:
-      - "3000:8080"
+      - "8081:8080"
     environment:
-      - OLLAMA_BASE_URL=http://edgequake:8080
+      OLLAMA_BASE_URL: http://api:8080
     depends_on:
-      - edgequake
+      - api
 
 volumes:
   postgres_data:
 ```
 
-Start everything:
-
 ```bash
-docker compose up -d
+docker compose -f docker-compose.open-webui.yml up -d
 ```
 
 ---
 
-## Uploading Documents
+## Open WebUI settings
 
-Before chatting, upload documents to EdgeQuake:
-
-### Via API
-
-```bash
-# Upload a document
-curl -X POST http://localhost:8080/api/v1/documents/upload \
-  -H "X-Workspace-ID: default" \
-  -F "file=@document.pdf"
-```
-
-### Via EdgeQuake WebUI
-
-1. Open `http://localhost:8080` (EdgeQuake native UI)
-2. Navigate to Documents
-3. Drag and drop files
-
-### Via Open WebUI (Future)
-
-Open WebUI's document upload feature is not yet integrated with EdgeQuake's RAG pipeline. Use the EdgeQuake API or WebUI for document uploads.
+| Setting | Value |
+| ------- | ----- |
+| Ollama Base URL | `http://localhost:8080` (host) or `http://api:8080` (compose network) |
+| Streaming | Enabled (recommended) |
 
 ---
 
-## Streaming
+## Query mode prefixes
 
-EdgeQuake supports real-time streaming responses:
+Prefix messages to control retrieval (prefix stripped before query):
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                 STREAMING FLOW                                  │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  Open WebUI → POST /api/chat {"stream": true}                   │
-│                                                                 │
-│  EdgeQuake Response (newline-delimited JSON):                   │
-│                                                                 │
-│  {"message":{"content":"Based"},"done":false}                   │
-│  {"message":{"content":" on"},"done":false}                     │
-│  {"message":{"content":" the"},"done":false}                    │
-│  {"message":{"content":" documents"},"done":false}              │
-│  ...                                                            │
-│  {"message":{"content":""},"done":true,"total_duration":1234}   │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
+| Prefix | Mode |
+| ------ | ---- |
+| `/local` | Entity-focused |
+| `/global` | Relationship / theme |
+| `/naive` | Vector only |
+| `/hybrid` | Default combined |
+| `/mix` | Adaptive blend |
+| `/bypass` | Skip RAG |
+
+Example: `/local Who is mentioned in the contracts?`
 
 ---
 
-## Ollama API Endpoints
+## Ollama endpoints implemented
 
-EdgeQuake implements these Ollama-compatible endpoints:
-
-| Endpoint        | Method | Description           |
-| --------------- | ------ | --------------------- |
-| `/api/version`  | GET    | API version info      |
-| `/api/tags`     | GET    | List available models |
-| `/api/ps`       | GET    | List running models   |
-| `/api/generate` | POST   | Text completion       |
-| `/api/chat`     | POST   | Chat completion       |
-
-### Example: List Models
+| Endpoint | Description |
+| -------- | ----------- |
+| `GET /api/version` | Version info |
+| `GET /api/tags` | Lists `edgequake:latest` |
+| `GET /api/ps` | Running models |
+| `POST /api/generate` | Completion |
+| `POST /api/chat` | Chat (streaming supported) |
 
 ```bash
-curl http://localhost:8080/api/tags
-```
-
-```json
-{
-  "models": [
-    {
-      "name": "edgequake:latest",
-      "model": "edgequake:latest",
-      "size": 7000000000,
-      "digest": "sha256:edgequake-rag-v1",
-      "modified_at": "2024-01-15T10:30:00.000000Z",
-      "details": {
-        "format": "gguf",
-        "family": "edgequake",
-        "parameter_size": "7B",
-        "quantization_level": "Q4_0"
-      }
-    }
-  ]
-}
-```
-
-### Example: Chat Completion
-
-```bash
+curl -s http://localhost:8080/api/tags | jq '.models[].name'
 curl -X POST http://localhost:8080/api/chat \
   -H "Content-Type: application/json" \
-  -d '{
-    "model": "edgequake:latest",
-    "messages": [
-      {"role": "user", "content": "What are the main topics?"}
-    ],
-    "stream": false
-  }'
+  -d '{"model":"edgequake:latest","messages":[{"role":"user","content":"Summarize the docs"}],"stream":false}'
 ```
 
 ---
 
 ## Troubleshooting
 
-### Open WebUI Can't Connect
+| Symptom | Fix |
+| ------- | --- |
+| Connection error in Open WebUI | `curl http://localhost:8080/health`; fix `OLLAMA_BASE_URL` |
+| Port 3000 already in use | EdgeQuake WebUI owns `:3000` — run Open WebUI on `:8081` |
+| Empty / generic answers | Upload docs; wait for `display_status: completed` |
+| Slow first reply | Enable streaming; warm up Ollama |
+| Wrong GHCR org | Use `ghcr.io/raphaelmansuy/edgequake*` — not `ghcr.io/edgequake/*` |
 
-**Symptom**: "Connection Error" in Open WebUI
-
-**Check**:
-
-1. EdgeQuake is running: `curl http://localhost:8080/health`
-2. OLLAMA_BASE_URL is correct
-3. Firewall allows connection
-
-**Solution** (Docker):
+List documents:
 
 ```bash
-# Use host.docker.internal on Mac/Windows
-OLLAMA_BASE_URL=http://host.docker.internal:8080
-
-# Use host IP on Linux
-OLLAMA_BASE_URL=http://172.17.0.1:8080
+curl -s "http://localhost:8080/api/v1/documents" \
+  -H "X-Workspace-ID: default" | jq '.documents[] | {title, display_status}'
 ```
-
-### No Models Showing
-
-**Symptom**: Model dropdown is empty
-
-**Check**:
-
-```bash
-curl http://localhost:8080/api/tags
-```
-
-Should return `edgequake:latest`.
-
-### Slow Responses
-
-**Cause**: First query triggers LLM warm-up
-
-**Solution**: Use streaming (`stream: true`) for perceived faster responses.
-
-### Empty Responses
-
-**Symptom**: Assistant returns empty or generic responses
-
-**Check**: Documents are uploaded and processed:
-
-```bash
-curl http://localhost:8080/api/v1/documents?workspace_id=default
-```
-
----
-
-## Best Practices
-
-1. **Upload Documents First**: Chat is only useful with document context
-2. **Use Query Prefixes**: `/local` for entities, `/global` for themes
-3. **Enable Streaming**: Better user experience
-4. **Monitor Costs**: Check EdgeQuake cost dashboard for LLM usage
-5. **Use Workspaces**: Organize documents by project/topic
 
 ---
 
 ## Limitations
 
-| Feature                        | Status                  
-| ------------------------------ | ----------------------- 
-| Chat completions               | ✅ Full support         |
-| Streaming                      | ✅ Full support         |
-| Query modes                    | ✅ Via prefixes         |
-| Document upload via Open WebUI | ❌ Not integrated       |
-| Multiple models                | ⚠️ Shows edgequake only |
-| Model pull                     | ❌ Not applicable       |
-| Model creation                 | ❌ Not applicable       |
+| Feature | Status |
+| ------- | ------ |
+| Chat + streaming | ✅ |
+| Query mode prefixes | ✅ |
+| Document upload via Open WebUI | ❌ Use API or EdgeQuake WebUI `:3000` |
+| Model pull / create | ❌ N/A (single emulated model) |
 
 ---
 
-## See Also
+## See also
 
-- [REST API Reference](/docs/api-reference/rest-api/) - Full API documentation
-- [Extended API Reference](/docs/api-reference/extended-api/) - Ollama emulation details
-- [Quick Start Guide](/docs/getting-started/quick-start/) - Getting started with EdgeQuake
+- [Extended API — Ollama emulation](/docs/api-reference/extended-api/)
+- [PDF Ingestion Tutorial](/docs/tutorials/pdf-ingestion/)
+- [Quick Start](/docs/getting-started/quick-start/)

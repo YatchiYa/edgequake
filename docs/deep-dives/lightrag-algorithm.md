@@ -2,6 +2,8 @@
 title: 'LightRAG Algorithm Deep-Dive'
 ---
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 # LightRAG Algorithm Deep-Dive
 
 > **Understanding Graph-Augmented Retrieval: From First Principles to Implementation**
@@ -738,7 +740,7 @@ QueryRequest::new("What is AI?")
 | Error handling | Basic           | Adaptive retry              |
 | Multi-tenant   | No              | Yes                         |
 | Streaming      | Limited         | Full SSE                    |
-| Storage        | Neo4j           | PostgreSQL + AGE + pgvector |
+| Storage        | Multiple backends | PostgreSQL + AGE + pgvector |
 
 ### LightRAG vs GraphRAG
 
@@ -772,7 +774,7 @@ QueryRequest::new("What is AI?")
    - [entity_extraction.rs](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pipeline/src/prompts/entity_extraction.rs)
    - [normalizer.rs](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pipeline/src/prompts/normalizer.rs)
    - [parser.rs](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pipeline/src/prompts/parser.rs)
-   - [modes.rs](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-query/src/modes.rs)
+   - [engine_impl/modes/](https://github.com/raphaelmansuy/edgequake/tree/edgequake-main/edgequake/crates/edgequake-query/src/engine_impl/modes/)
 
 ---
 

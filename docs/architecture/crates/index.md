@@ -5,31 +5,41 @@ description: EdgeQuake is organized into 11 focused Rust crates, each with a sin
 
 ## EdgeQuake Crate Architecture
 
-EdgeQuake is organized into **11 focused Rust crates**, each with a single responsibility. This modular design enables independent testing, clear dependency boundaries, and flexible composition.
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../../ingestion-cancel-and-fairness.md)
 
-### Core Crates
+> EdgeQuake ships **11 workspace crates** under `edgequake/crates/`. There is no separate `edgequake-llm` or `edgequake-graph` crate; LLM providers and graph logic live inside `edgequake-core`, `edgequake-pipeline`, `edgequake-query`, and `edgequake-storage`.
+
+### Crate inventory
 
 | Crate | Purpose |
-|-------|---------|
-| `edgequake-api` | HTTP entry point (Axum server) |
-| `edgequake-core` | Orchestration and public API |
-| `edgequake-pipeline` | Document processing pipeline |
-| `edgequake-query` | Query engine for knowledge graph |
-| `edgequake-storage` | Storage adapters (PostgreSQL + pgvector + AGE; in-memory adapters for tests only) |
-| `edgequake-llm` | LLM providers (OpenAI, Anthropic, Mistral, Gemini, Vertex AI, Ollama, LM Studio, OpenRouter, xAI, mock, …) |
-| `edgequake-pdf` | PDF extraction and processing |
-| `edgequake-graph` | Graph data structures and algorithms |
+| ----- | ------- |
+| `edgequake-api` | HTTP entry point (Axum), WebSocket progress, OpenAPI |
+| `edgequake-core` | Orchestration layer and public `EdgeQuake` API |
+| `edgequake-pipeline` | Document processing (chunk, extract, embed, merge) |
+| `edgequake-query` | RAG query engine (naive/local/global/hybrid modes) |
+| `edgequake-storage` | PostgreSQL + pgvector + Apache AGE adapters |
+| `edgequake-pdf` | PDF → markdown conversion (vision LLM) |
+| `edgequake-tasks` | Background task queue, workers, cancel/fairness |
+| `edgequake-auth` | JWT, API keys, OIDC, tenant context |
+| `edgequake-audit` | Audit event logging |
+| `edgequake-rate-limiter` | Tenant rate limiting (token bucket) |
+| `edgequake-observability` | Tracing, metrics, request correlation |
 
-### Dependency Flow
+### Dependency flow
 
 ```
 edgequake-api
-  └── edgequake-core
-        ├── edgequake-pipeline
-        │     └── edgequake-pdf
-        ├── edgequake-query
-        ├── edgequake-storage
-        └── edgequake-llm
+  ├── edgequake-core
+  │     ├── edgequake-pipeline → edgequake-pdf
+  │     ├── edgequake-query
+  │     └── edgequake-storage
+  ├── edgequake-tasks
+  ├── edgequake-auth
+  ├── edgequake-audit
+  ├── edgequake-rate-limiter
+  └── edgequake-observability
 ```
 
-See the [Architecture Overview](/docs/architecture/overview/) for the full architectural picture.
+LLM provider implementations (OpenAI, Ollama, mock, …) are composed at runtime via `edgequake-core` — not a standalone crate.
+
+See the [Architecture Overview](/docs/architecture/overview/) for the full picture and [Crate Reference (detailed)](/docs/architecture/crates/README/) for per-crate notes.

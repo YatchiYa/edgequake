@@ -1,5 +1,7 @@
 # Rust SDK
 
+> **Product: v0.19.0** · Crate **~0.4.0** (decoupled from server)
+
 **Location:** `sdks/rust`  
 **Authority:** Same headers and `/api/v1` paths as the Axum server.
 
@@ -43,6 +45,7 @@ async fn main() -> edgequake_sdk::Result<()> {
 | List documents with filters | `documents().list_with_query(&DocumentListQuery { page: Some(2), document_pattern: Some("report".into()), ..Default::default() })` |
 | List conversations with API filters | `conversations().list_with_query(&ConversationListQuery { .. })` |
 | Bulk delete conversations | POST body uses `conversation_ids` via SDK helpers |
+| Cancel ingestion task | `tasks().cancel(track_id)` — see [Ingestion cancel & fairness](../../ingestion-cancel-and-fairness.md) |
 
 ## Next
 
