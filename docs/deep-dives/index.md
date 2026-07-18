@@ -9,6 +9,7 @@ Detailed technical deep dives into EdgeQuake's implementation.
 
 **Recently rewritten for v0.19.0:** [Pipeline Progress](/docs/deep-dives/pipeline-progress/) and [PDF Processing](/docs/deep-dives/pdf-processing/) reflect SPEC-047 vision ingest, mm-assets, convert→ingest split, and SPEC-057 cancel/status SSOT.
 
+- **[Data Layer](/docs/deep-dives/data-layer/)** — PostgreSQL ER, KV SSOT, AGE, pgvector, FTS, and query×store matrix (code is law).
 - **[LightRAG Algorithm](/docs/deep-dives/lightrag-algorithm/)** — The algorithm behind entity extraction and graph construction.
 - **[Entity Extraction](/docs/deep-dives/entity-extraction/)** — How LLMs extract entities from text.
 - **[Entity Normalization](/docs/deep-dives/entity-normalization/)** — Deduplication and canonicalization of entities.

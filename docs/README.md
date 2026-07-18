@@ -54,6 +54,7 @@ High-performance Graph-Enhanced RAG in Rust. PostgreSQL (pgvector + Apache AGE) 
 
 | Article                                                  | Description                                  |
 | -------------------------------------------------------- | -------------------------------------------- |
+| [Data Layer](deep-dives/data-layer.md)                   | Postgres ER, KV, AGE, pgvector, FTS          |
 | [LightRAG Algorithm](deep-dives/lightrag-algorithm.md)   | Core algorithm: extraction, graph, retrieval |
 | [Query Modes](deep-dives/query-modes.md)                 | 6 modes with trade-offs                      |
 | [Pipeline Progress](deep-dives/pipeline-progress.md)     | WebSocket / SSE progress (SPEC-048/057)      |
