@@ -4,11 +4,89 @@ title: "EdgeQuake REST API Reference"
 
 # EdgeQuake REST API Reference
 
-> **Version**: 0.10.x  
-> **Base URL**: `http://localhost:8080/api/v1`  
-> **OpenAPI**: Available at `/api-docs/openapi.json`
+> **Product: v0.19.0** · Contract: [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
-This reference documents all EdgeQuake REST API endpoints for document ingestion, knowledge graph queries, and chat interactions.
+> **Base URL**: `http://localhost:8080` (API under `/api/v1`)  
+> **Interactive docs**: `/swagger-ui/` when the backend is running
+
+This page is a **guided overlay** for v0.19.0. For the full endpoint catalog, request/response schemas, and Try-it-out, use OpenAPI — it is regenerated on every release and matches the running server.
+
+---
+
+## v0.19.0 quick reference
+
+### Authentication
+
+Most `/api/v1/*` routes require:
+
+- `Authorization: Bearer <JWT>` (from `POST /api/v1/auth/login`), **or**
+- `X-API-Key: <key>` (from `POST /api/v1/api-keys`)
+
+Multi-tenant context (required for document/query operations):
+
+| Header | Purpose |
+| ------ | ------- |
+| `X-Tenant-ID` | Tenant UUID |
+| `X-Workspace-ID` | Workspace UUID |
+
+Public (no auth): `/health`, `/ready`, `/live`, `/swagger-ui/*`, `/api-docs/*`.
+
+### Async admission model
+
+Uploads are **accepted asynchronously** — they return `202 Accepted` with a `task_id`, not a synchronous `completed` body.
+
+| Upload | Endpoint | Progress key |
+| ------ | -------- | ------------ |
+| File (PDF/TXT/MD) | `POST /api/v1/documents/upload` | `FileUploadResponse.task_id` |
+| PDF (vision pipeline) | `POST /api/v1/documents/pdf` | `PdfUploadResponse.task_id` |
+| JSON text | `POST /api/v1/documents` | track via list/detail `track_id` |
+
+PDF flow is **convert then ingest** (two tasks). See [Pipeline Progress](/docs/deep-dives/pipeline-progress/).
+
+### Status presentation (SPEC-057 P4)
+
+Document list/detail includes `display_status` and `ui_phase` from `IngestionStatusMapper`. **Use these for UI badges** instead of re-deriving from raw `status`.
+
+| `ui_phase` | UI behavior |
+| ---------- | ----------- |
+| `idle` | Queued / not yet running |
+| `running` | Active stage (`display_status`: `converting`, `extracting`, …) |
+| `stopping` | Cancel in flight — show **"Stopping…"** even if stage unchanged |
+| `terminal` | Done (`completed`, `failed`, `cancelled`, …) |
+
+### Progress, cancel, delete
+
+| Action | Endpoint |
+| ------ | -------- |
+| Ingest progress (poll) | `GET /api/v1/ingestion/{track_id}/progress` |
+| Ingest progress (batch) | `POST /api/v1/ingestion/progress` |
+| PDF progress (poll) | `GET /api/v1/documents/pdf/progress/{track_id}` |
+| PDF progress (SSE) | `GET /api/v1/documents/pdf/progress/stream/{track_id}` |
+| Global WS | `ws://localhost:8080/ws/pipeline/progress` |
+| Per-track WS | `ws://localhost:8080/ws/progress/{track_id}` |
+| Cancel task | `POST /api/v1/tasks/{track_id}/cancel` |
+| PDF cancel | `DELETE /api/v1/documents/pdf/{pdf_id}/cancel` |
+| Delete impact preview | `GET /api/v1/documents/{document_id}/deletion-impact` |
+| Queue metrics | `GET /api/v1/pipeline/queue-metrics` |
+
+Deletion broadcasts phase events on `/ws/pipeline/progress` (SPEC-050). Details: [Pipeline Progress](/docs/deep-dives/pipeline-progress/) and [Ingestion cancel & fairness](/docs/ingestion-cancel-and-fairness.md).
+
+> **Removed paths:** `/api/v1/rag/upload`, `/api/v1/rag/progress/*` — do not use.
+
+### Entity routes
+
+Entities live under **`/api/v1/graph/entities`**, not `/api/v1/entities`:
+
+- `GET /api/v1/graph/entities` — list
+- `GET /api/v1/graph/entities/{entity_name}` — detail
+- Provenance: `GET /api/v1/entities/{entity_id}/provenance` (separate lineage route)
+
+### Cost endpoints
+
+- `GET /api/v1/pipeline/costs/pricing`
+- `GET /api/v1/costs/summary`, `/costs/history`, `/costs/budget`
+
+See [Cost Tracking](/docs/deep-dives/cost-tracking/).
 
 ---
 
@@ -88,7 +166,7 @@ Deep health check with component status for monitoring dashboards.
 ```json
 {
   "status": "healthy",
-  "version": "0.10.x",
+  "version": "0.19.0",
   "storage_mode": "postgresql",
   "workspace_id": "default",
   "components": {
@@ -174,33 +252,26 @@ curl -X POST http://localhost:8080/api/v1/documents/upload \
 | `.md`     | text/markdown    | 10 MB    |
 | `.json`   | application/json | 10 MB    |
 
-**Response** (Sync processing):
+**Response** (`202 Accepted` — async processing):
 
 ```json
 {
-  "id": "doc-uuid",
-  "title": "Document Title",
-  "status": "completed",
+  "document_id": "doc-uuid",
+  "filename": "document.pdf",
+  "size": 1024000,
   "content_hash": "sha256:...",
-  "chunk_count": 15,
-  "entity_count": 23,
-  "relationship_count": 18,
-  "created_at": "2024-01-15T10:30:00Z",
-  "processing_time_ms": 2340
+  "status": "pending",
+  "chunk_count": 0,
+  "entity_count": 0,
+  "relationship_count": 0,
+  "is_duplicate": false,
+  "task_id": "insert-uuid"
 }
 ```
 
-**Response** (Async processing for large files):
+Poll progress via `GET /api/v1/ingestion/{task_id}/progress` or subscribe on `ws://localhost:8080/ws/progress/{task_id}`. When complete, list/detail includes `display_status` and `ui_phase`.
 
-```json
-{
-  "id": "doc-uuid",
-  "title": "Large Document",
-  "status": "processing",
-  "task_id": "task-uuid",
-  "message": "Document queued for processing"
-}
-```
+**PDF upload** — use `POST /api/v1/documents/pdf` instead; returns `PdfUploadResponse` with `task_id` (progress key) and optional client `track_id` (correlation only).
 
 ### GET /api/v1/documents
 
@@ -231,6 +302,8 @@ curl http://localhost:8080/api/v1/documents?limit=10&status=completed \
       "id": "doc-uuid-1",
       "title": "Document 1",
       "status": "completed",
+      "display_status": "completed",
+      "ui_phase": "terminal",
       "chunk_count": 15,
       "created_at": "2024-01-15T10:30:00Z"
     }
@@ -257,6 +330,8 @@ curl http://localhost:8080/api/v1/documents/doc-uuid \
   "id": "doc-uuid",
   "title": "Document Title",
   "status": "completed",
+  "display_status": "completed",
+  "ui_phase": "terminal",
   "content_hash": "sha256:...",
   "chunk_count": 15,
   "entity_count": 23,
@@ -270,14 +345,28 @@ curl http://localhost:8080/api/v1/documents/doc-uuid \
 
 ### DELETE /api/v1/documents/:id
 
-Delete a document and all associated data (chunks, entities, relationships).
+Delete a document and all associated data (chunks, entities, relationships). Emits SPEC-050 deletion progress on `/ws/pipeline/progress`.
+
+Preview impact first: `GET /api/v1/documents/{document_id}/deletion-impact`.
 
 ```bash
 curl -X DELETE http://localhost:8080/api/v1/documents/doc-uuid \
   -H "X-Workspace-ID: workspace-uuid"
 ```
 
-**Response**: `204 No Content`
+**Response** (`200 OK`):
+
+```json
+{
+  "document_id": "doc-uuid",
+  "deleted": true,
+  "chunks_deleted": 15,
+  "entities_affected": 8,
+  "relationships_affected": 12,
+  "embeddings_deleted": 15,
+  "partial_failure": false
+}
+```
 
 ---
 
@@ -831,7 +920,7 @@ curl http://localhost:8080/api/v1/settings/attribution \
 | Field | Description |
 | ----- | ----------- |
 | `effective_context.active` | `true` when at least one of `app_id`, `app_name`, or `app_url` is set |
-| `providers[].attribution_support` | `full`, `passthrough`, `observability_only`, or `none` (from edgequake-llm catalog) |
+| `providers[].attribution_support` | `full`, `passthrough`, `observability_only`, or `none` (from provider catalog in edgequake-core) |
 | `providers[].headers` | HTTP headers injected on upstream LLM requests for that provider |
 | `providers[].body_fields` | JSON body fields set for attribution (e.g. OpenAI `user`) |
 | `ingress_headers` | Request headers clients may send to override attribution per call |
@@ -1005,7 +1094,7 @@ Knowledge injection lets you enrich a workspace's knowledge graph with acronym d
 ### List Injections
 
 ```http
-GET /api/v1/workspaces/{workspace_id}/injection
+GET /api/v1/workspaces/{workspace_id}/injections
 X-Workspace-ID: {workspace_id}
 ```
 
@@ -1068,7 +1157,7 @@ Accepted MIME types: `text/plain`, `text/markdown`, `application/octet-stream` (
 ### Get Injection Detail
 
 ```http
-GET /api/v1/workspaces/{workspace_id}/injection/{injection_id}
+GET /api/v1/workspaces/{workspace_id}/injections/{injection_id}
 X-Workspace-ID: {workspace_id}
 ```
 
@@ -1107,7 +1196,7 @@ Updating `content` re-triggers the pipeline (old entities are deleted first). Up
 ### Delete Injection
 
 ```http
-DELETE /api/v1/workspaces/{workspace_id}/injection/{injection_id}
+DELETE /api/v1/workspaces/{workspace_id}/injections/{injection_id}
 X-Workspace-ID: {workspace_id}
 ```
 
@@ -1133,6 +1222,9 @@ Injection entries enrich the knowledge graph and improve retrieval but are filte
 
 ## See Also
 
+- [OpenAPI snapshot](../../edgequake_webui/openapi/openapi.snapshot.json) — full endpoint catalog (v0.19.0)
+- [Pipeline Progress](/docs/deep-dives/pipeline-progress/) — progress WS/REST/SSE
+- [Ingestion cancel & fairness](/docs/ingestion-cancel-and-fairness.md) — cancel SSOT
 - [Quick Start Guide](/docs/getting-started/quick-start/) - Get running in 5 minutes
 - [Query Modes](/docs/deep-dives/lightrag-algorithm/#query-modes) - Detailed mode comparison
 - [Architecture Overview](/docs/architecture/overview/) - System design

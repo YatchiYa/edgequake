@@ -4,7 +4,7 @@ description: Complete documentation for EdgeQuake — the Graph-RAG framework Bu
 template: splash
 hero:
   title: EdgeQuake Documentation
-  tagline: Everything you need to build, deploy, and scale Graph-RAG applications with EdgeQuake.
+  tagline: Everything you need to build, deploy, and scale Graph-RAG applications with EdgeQuake v0.19.0.
   actions:
     - text: Get Started
       link: /docs/getting-started/
@@ -15,16 +15,20 @@ hero:
       variant: minimal
 ---
 
+> **Product: v0.19.0** · Contract: OpenAPI snapshot · Spec ops: [Ingestion cancel & fairness](/docs/ingestion-cancel-and-fairness/)
+
 ## Explore the Documentation
 
 - **[Getting Started](/docs/getting-started/)** — Install EdgeQuake, run your first pipeline, and understand the basics.
 - **[Core Concepts](/docs/concepts/)** — Knowledge graphs, entity extraction, and Graph-RAG patterns.
-- **[Architecture](/docs/architecture/)** — Modular crate architecture and storage backends.
+- **[Architecture](/docs/architecture/)** — Modular crate architecture (incl. tasks, auth) and storage backends.
 - **[Tutorials](/docs/tutorials/)** — Step-by-step guides for common EdgeQuake workflows.
-- **[API Reference](/docs/api-reference/)** — Complete REST API documentation with examples.
-- **[Deep Dives](/docs/deep-dives/)** — In-depth technical explorations.
-- **[Operations](/docs/operations/)** — Deployment, monitoring, deterministic toolchain guidance, and no-flake CI/CD practices.
-- **[Integrations](/docs/integrations/)** — Connect EdgeQuake with your existing stack.
-- **[Comparisons](/docs/comparisons/)** — See how EdgeQuake compares to other solutions.
-- **[Security](/docs/security/)** — Best practices for securing EdgeQuake deployments.
-- **[Troubleshooting](/docs/troubleshooting/)** — Diagnose and resolve common issues.
+- **[API Reference](/docs/api-reference/)** — Guided REST overlays; full contract in OpenAPI.
+- **[Deep Dives](/docs/deep-dives/)** — In-depth technical explorations (progress, PDF vision, storage).
+- **[Operations](/docs/operations/)** — Docker quickstart, deployment, auth, cancel/lease, release CD.
+- **[SDKs](/docs/sdks/)** — Official clients (SDK package version ≠ product version).
+- **[Integrations](/docs/integrations/)** — Open WebUI, LangChain, thin custom HTTP.
+- **[Comparisons](/docs/comparisons/)** — LightRAG, GraphRAG, traditional RAG.
+- **[Security](/docs/security/)** — Auth-on-by-default and hardening.
+- **[Troubleshooting](/docs/troubleshooting/)** — Common issues, claim/lease, cancel≠Failed.
+- **[Changelog](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/CHANGELOG.md)** — Product release history.

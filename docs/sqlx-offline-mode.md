@@ -4,6 +4,8 @@ title: 'SQLx Offline Mode'
 
 # SQLx Offline Mode
 
+> **Product: v0.19.0** · Related: [Migration checksum gate](#migration-checksum-gate-adjacency)
+
 ## Overview
 
 EdgeQuake uses SQLx's compile-time query verification, which by default requires a live database connection during compilation. This document explains how we've configured offline mode to allow builds without a running PostgreSQL instance.
@@ -23,14 +25,14 @@ We use **SQLx offline mode**, which pre-generates query metadata when the databa
 
 ### Configuration
 
-1. **`.cargo/config.toml`** - Sets SQLx offline mode by default:
+1. **`edgequake/.cargo/config.toml`** — Sets SQLx offline mode by default:
 
    ```toml
    [env]
    SQLX_OFFLINE = "true"
    ```
 
-2. **`.sqlx/` directory** - Contains pre-generated query metadata (committed to git)
+2. **`edgequake/.sqlx/`** — Contains pre-generated query metadata (committed to git)
 
 ### Workflow
 
@@ -39,14 +41,14 @@ We use **SQLx offline mode**, which pre-generates query metadata when the databa
 Generate SQLx metadata when you have database access:
 
 ```bash
-# Start PostgreSQL
+# Start PostgreSQL (from repo root)
 make db-start
 
-# Generate SQLx metadata
+# Generate SQLx metadata (from repo root)
 make backend-sqlx-prepare
 
-# Commit the .sqlx/ directory to git
-git add .sqlx/
+# Commit the metadata directory
+git add edgequake/.sqlx/
 git commit -m "chore: add SQLx offline metadata"
 ```
 
@@ -55,11 +57,11 @@ git commit -m "chore: add SQLx offline metadata"
 With offline mode configured, you can build without a database:
 
 ```bash
-# Build works WITHOUT database running
+# Build works WITHOUT database running (from repo root)
 make backend-build
 
 # Or use cargo directly
-cd edgequake && cargo build --release
+cd edgequake && SQLX_OFFLINE=true cargo build --release
 ```
 
 #### When to Regenerate Metadata
@@ -71,11 +73,13 @@ Regenerate SQLx metadata whenever you:
 - Change database schema (migrations)
 
 ```bash
-# Regenerate metadata
+# Regenerate metadata (from repo root)
 make backend-sqlx-prepare
 ```
 
 ### Available Make Targets
+
+All targets live in the **repo-root** [Makefile](../Makefile):
 
 | Command                     | Description                               |
 | --------------------------- | ----------------------------------------- |
@@ -83,17 +87,39 @@ make backend-sqlx-prepare
 | `make backend-build-online` | Build with live database verification     |
 | `make backend-sqlx-prepare` | Generate SQLx metadata for offline builds |
 
+`backend-sqlx-prepare` runs `cargo sqlx prepare --workspace` inside `edgequake/` with `DATABASE_URL` pointed at the local Postgres container.
+
 ## How It Works
 
-1. **Offline Mode Enabled**: `SQLX_OFFLINE=true` tells SQLx macros to read from `.sqlx/` instead of querying the database
+1. **Offline Mode Enabled**: `SQLX_OFFLINE=true` tells SQLx macros to read from `edgequake/.sqlx/` instead of querying the database
 
-2. **Metadata Files**: Each `sqlx::query!` invocation gets a JSON file in `.sqlx/` containing:
+2. **Metadata Files**: Each `sqlx::query!` invocation gets a JSON file in `edgequake/.sqlx/` containing:
    - Query text
    - Parameter types
    - Result column types
    - Nullability information
 
 3. **Compile-Time Verification**: SQLx still validates queries at compile time, but uses cached metadata instead of live database connection
+
+## Migration checksum gate (adjacency)
+
+SQLx offline metadata and migration immutability are separate but related gates:
+
+| Gate | Path / command | What it catches |
+| ---- | -------------- | --------------- |
+| **SQLx offline** | `edgequake/.sqlx/` + `make backend-sqlx-prepare` | Compile-time query/type drift without a live DB |
+| **Migration checksum** | `edgequake/migrations/checksums.lock` + `./scripts/check_migration_checksums.sh` | Byte changes to already-deployed migration SQL (startup would fail with "migration N was previously applied but has been modified") |
+
+When you **add or edit migration SQL**, you must:
+
+1. Apply migrations locally (`make db-start` then restart backend, or run migrations manually)
+2. Regenerate SQLx metadata if queries changed: `make backend-sqlx-prepare`
+3. Update the checksum lockfile: `./scripts/update_migration_checksums.sh`
+4. Commit `edgequake/.sqlx/`, `edgequake/migrations/checksums.lock`, and the migration file together
+
+CI runs `check_migration_checksums.sh` in the **migration-checksum-guard** job. Install local hooks with `./scripts/install_migration_hooks.sh` to catch checksum drift before push.
+
+Regression coverage: `scripts/test_migration_e2e.sh` (lease-view + checksum paths).
 
 ## Benefits
 
@@ -130,7 +156,7 @@ make backend-sqlx-prepare
 
 ### Build fails with "Connection refused" even with SQLX_OFFLINE=true
 
-**Cause**: Environment variable not set or `.sqlx/` directory missing
+**Cause**: Environment variable not set or `edgequake/.sqlx/` directory missing
 
 **Fix**:
 
@@ -139,14 +165,26 @@ make backend-sqlx-prepare
 cat edgequake/.cargo/config.toml | grep SQLX_OFFLINE
 
 # Verify .sqlx/ exists
-ls -la .sqlx/
+ls -la edgequake/.sqlx/
 
 # Regenerate if missing
 make backend-sqlx-prepare
 ```
 
+### CI fails migration-checksum-guard after editing SQL
+
+**Cause**: Migration file bytes changed but `checksums.lock` not updated
+
+**Fix**:
+
+```bash
+./scripts/update_migration_checksums.sh
+git add edgequake/migrations/checksums.lock
+```
+
 ## References
 
 - [SQLx Offline Mode Documentation](https://github.com/launchbadge/sqlx/blob/main/sqlx-cli/README.md#enable-building-in-offline-mode-with-query)
-- [EdgeQuake Makefile](../Makefile) - See backend-sqlx-prepare target
-- [.cargo/config.toml](../edgequake/.cargo/config.toml) - SQLx configuration
+- [EdgeQuake Makefile](../Makefile) — `backend-sqlx-prepare` target
+- [edgequake/.cargo/config.toml](../edgequake/.cargo/config.toml) — SQLx configuration
+- [scripts/check_migration_checksums.sh](../scripts/check_migration_checksums.sh) — CI immutability gate

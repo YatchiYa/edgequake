@@ -1,5 +1,7 @@
 # Release & CD Cycle
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 This document describes how to cut a release, run quality gates, and verify the published Docker images.
 
 ## 1) Local Release Gates (must pass before tag)
@@ -91,16 +93,16 @@ You can also trigger a manual Docker build + publish without a tag via the `work
 
 ## Building the Image Locally
 
-The Dockerfile lives at `edgequake/docker/Dockerfile` and uses a two-stage build (Rust builder -> Debian slim runtime). pdfium is embedded at compile time via `pdfium-auto` -- no external shared library is needed.
+The Dockerfile lives at `edgequake/docker/Dockerfile` and uses a two-stage build (Rust builder → Debian slim runtime). **Build context is the monorepo root** — `edgequake-pdf2md` is pulled from crates.io at compile time (no sibling checkout). pdfium is embedded via `pdfium-auto`; no external shared library is needed.
 
 ```bash
-# Build for host architecture
-docker build -f edgequake/docker/Dockerfile edgequake -t edgequake:local
+# Build for host architecture (from repo root)
+docker build -f edgequake/docker/Dockerfile . -t edgequake:local
 
 # Multi-platform build (requires docker buildx)
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
-  -f edgequake/docker/Dockerfile edgequake \
+  -f edgequake/docker/Dockerfile . \
   -t edgequake:local --load
 ```
 
@@ -127,4 +129,4 @@ See [AGENTS.md](../../AGENTS.md) for the full developer workflow, including:
 | PG17 | 17.x | 0.8.3 | 1.7.0 | Modern, recommended for most users |
 | PG18 | 18.x | 0.8.3 | 1.7.0 | Default, includes `uuidv7()` |
 
-See [PostgreSQL migration guide](../migrations/postgres-triple-track-spec042.md) for tier details.
+See [PostgreSQL migration guide](../../edgequake/docs/migrations/postgres-triple-track-spec042.md) for tier details.

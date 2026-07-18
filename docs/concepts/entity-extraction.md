@@ -2,6 +2,8 @@
 title: 'Entity Extraction'
 ---
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 # Entity Extraction
 
 > **Entity extraction uses LLMs to identify people, organizations, concepts, and
@@ -186,7 +188,9 @@ Pass 2: "What entities did you miss? Already found: SARAH_CHEN, QUANTUM_LAB"
 Result: NEURAL_NETWORKS, AI_RESEARCH (missed in first pass)
 ```
 
-Research shows 1-2 gleaning iterations improve recall by 15-25%.
+Research shows 1-2 gleaning iterations improve recall by 15-25%. Cancel mid-extract via task cancel — see [Ingestion cancel & fairness](/docs/ingestion-cancel-and-fairness.md).
+
+**PDF multimodal:** After vision convert, figure/chart assets can become entity nodes linked to text extractions — see [PDF Processing](/docs/deep-dives/pdf-processing/).
 
 ---
 

@@ -2,11 +2,13 @@
 title: 'Deep Dive: Graph Storage'
 ---
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 # Deep Dive: Graph Storage
 
 > **How EdgeQuake Stores and Queries Knowledge Graphs**
 
-Graph storage is the foundation of EdgeQuake's knowledge management. This document explains how entities and relationships are stored, the property graph model, and available storage backends.
+Graph storage is the foundation of EdgeQuake's knowledge management. **Production uses PostgreSQL + Apache AGE exclusively** — there is no Neo4j or alternate graph backend in the shipping stack.
 
 ---
 
@@ -64,7 +66,7 @@ EdgeQuake uses a property graph model to store extracted knowledge:
 | **Rich Metadata**        | Store descriptions, weights, timestamps, sources |
 | **Flexible Schema**      | Adapt to different domains without migration     |
 | **Graph Traversal**      | Efficient neighbor and path queries              |
-| **Compatibility**        | Works with Apache AGE, Neo4j, SurrealDB          |
+| **Cypher compatibility** | Apache AGE property graph on PostgreSQL          |
 
 ---
 
@@ -227,40 +229,9 @@ pub trait GraphStorage: Send + Sync {
 
 ## Storage Backends
 
-### MemoryGraphStorage
+### PostgresAGEStorage (production)
 
-In-memory implementation for development and testing:
-
-```rust
-/// In-memory graph storage using DashMap.
-pub struct MemoryGraphStorage {
-    namespace: String,
-    nodes: DashMap<String, GraphNode>,
-    edges: DashMap<(String, String), GraphEdge>,
-}
-```
-
-**Characteristics:**
-
-| Attribute   | Value                                |
-| ----------- | ------------------------------------ |
-| Persistence | ❌ None (data lost on restart)       |
-| Speed       | ⚡ Very fast (O(1) lookups)          |
-| Scalability | Limited by memory                    |
-| Use Case    | Development, testing, small datasets |
-
-**Usage:**
-
-```rust
-let storage = MemoryGraphStorage::new("my_workspace");
-storage.initialize().await?;
-```
-
----
-
-### PostgresAGEStorage
-
-Production-grade storage using PostgreSQL with Apache AGE extension:
+Production graph storage using PostgreSQL with the Apache AGE extension. Implementation: [`edgequake-storage/src/adapters/postgres/`](https://github.com/raphaelmansuy/edgequake/tree/edgequake-main/edgequake/crates/edgequake-storage/src/adapters/postgres/).
 
 ```rust
 /// PostgreSQL Apache AGE graph storage.
@@ -282,10 +253,19 @@ pub struct PostgresAGEStorage {
 
 **Features:**
 
-- Native graph queries via Cypher
-- Automatic index creation
-- Transaction support
-- Connection pooling
+- Native graph queries via Cypher (`ag_catalog`)
+- BFS traversal indexes on EDGE `src` / `tgt` (Migration **086**, SPEC-053)
+- Transaction support and connection pooling
+- Per-workspace AGE graph namespace
+
+### BFS edge indexes (Migration 086)
+
+Migration `086_edge_bfs_index_reconcile.sql` ensures property indexes exist on AGE EDGE tables for batch neighbor fetch (used by Local/Hybrid graph arms):
+
+- `{graph}_edge_src_idx` on `(src)`
+- `{graph}_edge_tgt_idx` on `(tgt)`
+
+Reconcile runs idempotently at migration time; graphs created later get indexes via bootstrap. Without these, multi-hop queries degrade to sequential edge scans at scale.
 
 **Schema:**
 
@@ -444,11 +424,11 @@ assert!(tenant_b.get_node(&node.id).await?.is_none());
 
 ### Indexing
 
-PostgreSQL AGE automatically creates indexes on:
+PostgreSQL AGE uses:
 
-- Node ID (primary key)
-- Entity type (for type filtering)
-- Edge source/target (for traversal)
+- Node ID property indexes (per-graph bootstrap)
+- **M086** EDGE `src` / `tgt` property indexes for BFS batch fetch
+- Entity-type filters via Cypher `MATCH` patterns
 
 ### Query Optimization
 

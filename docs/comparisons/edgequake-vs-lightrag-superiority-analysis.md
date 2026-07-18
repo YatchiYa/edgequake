@@ -4,6 +4,8 @@ title: 'EdgeQuake vs LightRAG: Comprehensive Superiority Analysis'
 
 # EdgeQuake vs LightRAG: Comprehensive Superiority Analysis
 
+> **Historical document.** Written Feb 2026 against a fixed evaluation dataset. Product and API have moved on (v0.19.0: SPEC-057 cancel/lease, multi-replica, PG 16–18). For current comparisons, see [vs LightRAG (Python)](/docs/comparisons/vs-lightrag-python/) and [Comparisons index](/docs/comparisons/).
+
 **Date**: 2026-02-08
 **Evaluation Dataset**: Emil Frey (100 French business questions, 200 markdown documents)
 **Method**: First-principles code audit + E2E test validation

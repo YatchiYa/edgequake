@@ -3,9 +3,14 @@ title: API Reference
 description: Complete REST API documentation for EdgeQuake.
 ---
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 Full reference for the EdgeQuake REST API.
 
-- **[REST API](/docs/api-reference/rest-api/)** — Complete endpoint reference with request/response examples.
-- **[Extended API](/docs/api-reference/extended-api/)** — Advanced endpoints for power users.
-- **[Document Upload](/docs/api-reference/document-upload-quick-reference/)** — Quick reference for document ingestion.
-- **[Lineage Endpoints](/docs/api-reference/lineage-endpoints/)** — Query provenance and data lineage.
+**Authoritative contract:** [`edgequake_webui/openapi/openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) (version `0.19.0`). **Interactive Try-it-out:** [`/swagger-ui/`](http://localhost:8080/swagger-ui/) when the backend is running.
+
+- **[REST API](/docs/api-reference/rest-api/)** — v0.19.0 guided overlay (progress, cancel, status fields).
+- **[Extended API](/docs/api-reference/extended-api/)** — Tasks, pipeline queue-metrics, WebSocket progress, PDF cancel.
+- **[Document Upload](/docs/api-reference/document-upload-quick-reference/)** — JSON vs file vs PDF vs batch decision tree.
+- **[Lineage Endpoints](/docs/api-reference/lineage-endpoints/)** — Provenance, mm-assets, convert vs ingest.
+- **[Ingestion cancel & fairness](/docs/ingestion-cancel-and-fairness.md)** — Cancel SSOT, claim/lease, tenant fairness, store contention.

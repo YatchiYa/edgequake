@@ -3,6 +3,9 @@ title: Security
 description: Security best practices and hardening guidelines for EdgeQuake deployments.
 ---
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 Security guidance for EdgeQuake deployments.
 
-- **[Security Best Practices](/docs/security/best-practices/)** — Harden your EdgeQuake installation, manage secrets, and protect sensitive data.
+- **[Security Best Practices](/docs/security/best-practices/)** — JWT/API-key auth, workspace RLS, Vertex OAuth2, multi-replica risks, production checklist.
+- **[Runtime auth hardening](/docs/operations/runtime-auth-hardening/)** — Enable auth, bootstrap admin, WebUI fail-closed behavior.

@@ -1,5 +1,9 @@
 # Rust SDK — quickstart
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../../ingestion-cancel-and-fairness.md)
+
+> **Crate: ~0.4.0** (≠ product version)
+
 ## 1. Configure once
 
 ```rust
@@ -49,7 +53,15 @@ let q = ConversationListQuery {
 let convos = client.conversations().list_with_query(&q).await?;
 ```
 
-## 5. Run tests (when hacking the SDK)
+## 5. Cancel task
+
+```rust
+client.tasks().cancel(&track_id).await?;
+```
+
+See [Ingestion cancel & fairness](../../ingestion-cancel-and-fairness.md).
+
+## 6. Run tests (when hacking the SDK)
 
 ```bash
 cd sdks/rust && cargo test

@@ -2,6 +2,8 @@
 title: 'Tutorial: Query Optimization'
 ---
 
+> **Product: v0.19.0** · Contract: [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 # Tutorial: Query Optimization
 
 > **Choosing and Tuning Query Modes for Best Results**
@@ -11,6 +13,8 @@ This tutorial teaches you how to select the right query mode for different quest
 **Time**: ~20 minutes  
 **Level**: Intermediate  
 **Prerequisites**: Completed [First RAG App](/docs/tutorials/first-rag-app/)
+
+All query examples return **`QueryResponse`**: top-level `answer` + `sources` (not `chunks` / `entities_used`). Use `X-Workspace-ID` for scoping.
 
 ---
 
@@ -59,8 +63,9 @@ Query ──▶ [Embed] ──▶ [Vector Search] ──▶ Top K Chunks ──�
 ### Example
 
 ```bash
-curl -X POST "http://localhost:8080/api/v1/query?workspace_id=$WORKSPACE_ID" \
+curl -X POST "http://localhost:8080/api/v1/query" \
   -H "Content-Type: application/json" \
+  -H "X-Workspace-ID: $WORKSPACE_ID" \
   -d '{
     "query": "funding announcement",
     "mode": "naive"
@@ -108,8 +113,9 @@ Query ──▶ [Extract Entities] ──▶ [Graph Traversal] ──▶ Related
 ### Example
 
 ```bash
-curl -X POST "http://localhost:8080/api/v1/query?workspace_id=$WORKSPACE_ID" \
+curl -X POST "http://localhost:8080/api/v1/query" \
   -H "Content-Type: application/json" \
+  -H "X-Workspace-ID: $WORKSPACE_ID" \
   -d '{
     "query": "What is Sarah Chen'\''s background and role?",
     "mode": "local"
@@ -156,8 +162,9 @@ Query ──▶ [Match Communities] ──▶ [Community Summaries] ──▶ LL
 ### Example
 
 ```bash
-curl -X POST "http://localhost:8080/api/v1/query?workspace_id=$WORKSPACE_ID" \
+curl -X POST "http://localhost:8080/api/v1/query" \
   -H "Content-Type: application/json" \
+  -H "X-Workspace-ID: $WORKSPACE_ID" \
   -d '{
     "query": "What are the main themes and topics across all documents?",
     "mode": "global"
@@ -201,8 +208,9 @@ Query ──▶ [Parallel] ─────────┼──▶ [Entity Looku
 ### Example
 
 ```bash
-curl -X POST "http://localhost:8080/api/v1/query?workspace_id=$WORKSPACE_ID" \
+curl -X POST "http://localhost:8080/api/v1/query" \
   -H "Content-Type: application/json" \
+  -H "X-Workspace-ID: $WORKSPACE_ID" \
   -d '{
     "query": "How has TechCorp evolved since its founding?",
     "mode": "hybrid"
@@ -247,8 +255,9 @@ Query ──▶ [Parallel] ─────────┤                       
 ### Example
 
 ```bash
-curl -X POST "http://localhost:8080/api/v1/query?workspace_id=$WORKSPACE_ID" \
+curl -X POST "http://localhost:8080/api/v1/query" \
   -H "Content-Type: application/json" \
+  -H "X-Workspace-ID: $WORKSPACE_ID" \
   -d '{
     "query": "NeuralSearch capabilities and key people",
     "mode": "mix",
@@ -292,8 +301,9 @@ Query ──▶ [Direct LLM Call] ──▶ Answer
 ### Example
 
 ```bash
-curl -X POST "http://localhost:8080/api/v1/query?workspace_id=$WORKSPACE_ID" \
+curl -X POST "http://localhost:8080/api/v1/query" \
   -H "Content-Type: application/json" \
+  -H "X-Workspace-ID: $WORKSPACE_ID" \
   -d '{
     "query": "What is the capital of France?",
     "mode": "bypass"

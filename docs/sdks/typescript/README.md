@@ -1,5 +1,7 @@
 # TypeScript / Node SDK
 
+> **Product: v0.19.0** · Package **~0.4.0** (decoupled from server)
+
 **Location:** `sdks/typescript`
 
 ## Install
@@ -35,6 +37,10 @@ console.log(docs.documents.length, docs.status_counts);
 ## Lawful document list filters
 
 `ListDocumentsQuery` supports: `page`, `page_size`, `date_from`, `date_to`, `document_pattern` — matching the Rust `ListDocumentsRequest`.
+
+## Progress / cancel (v0.19)
+
+Use `client.tasks.cancel(trackId)` or raw `POST /api/v1/tasks/{track_id}/cancel`. WebSocket progress: `/ws/progress/{track_id}`. See [Ingestion cancel & fairness](../../ingestion-cancel-and-fairness.md).
 
 ## See also
 

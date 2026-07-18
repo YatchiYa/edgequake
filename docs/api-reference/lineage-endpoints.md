@@ -4,7 +4,11 @@ title: 'Lineage API Reference'
 
 # Lineage API Reference
 
-> REST API endpoints for document lineage, chunk provenance, and entity traceability
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
+> REST API endpoints for document lineage, chunk provenance, entity traceability, and multimodal assets
+
+**Convert vs ingest:** PDF-sourced documents link `pdf_id` at admission. Lineage reflects the **Insert** (KG) phase — chunk/entity provenance is stamped after convert completes and Insert runs. PDF row `Completed` with doc still `extracting` is expected mid-pipeline. See [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md#convert-then-ingest-spec-057-p2).
 
 ---
 
@@ -22,6 +26,8 @@ http://localhost:8080/api/v1
 | ------ | ------------------------------------------ | ------------------------------------ |
 | GET    | `/documents/{id}/lineage`                  | Complete document lineage tree       |
 | GET    | `/documents/{id}/metadata`                 | Document metadata (flat KV)          |
+| GET    | `/documents/{document_id}/assets/{asset_id}` | Multimodal PNG by stable asset id  |
+| GET    | `/documents/{document_id}/mm-assets/{*asset_path}` | Multimodal asset by relative path |
 | GET    | `/chunks/{chunk_id}`                       | Chunk detail with entities           |
 | GET    | `/chunks/{chunk_id}/lineage`               | Chunk lineage with parent refs       |
 | GET    | `/entities/{entity_id}/provenance`         | Entity source traceability           |
@@ -118,7 +124,35 @@ Returns all stored metadata for a document as a flat JSON object. This data is f
 }
 ```
 
-**Notes**: Fields vary depending on document source (PDF vs. text/markdown). The response includes all metadata stored during ingestion.
+**Notes**: Fields vary depending on document source (PDF vs. text/markdown). PDF documents include `pdf_id` and modality fields when vision convert persisted mm-assets. The response includes all metadata stored during ingestion.
+
+---
+
+## Multimodal Assets (mm-assets)
+
+Vision PDF convert can persist page/chart PNGs and rewrite markdown figure links to `![alt](assets/page-0001.png)`. Assets are served under the linked **document_id** (set after convert links PDF → document).
+
+### `GET /api/v1/documents/{document_id}/assets/{asset_id}`
+
+Binary PNG (or other image) by stable **`asset_id`** — filename stem from relative path (e.g. `page-0001` from `assets/page-0001.png`).
+
+```bash
+curl -o page-0001.png \
+  "http://localhost:8080/api/v1/documents/{document_id}/assets/page-0001" \
+  -H "X-Workspace-ID: workspace-uuid"
+```
+
+### `GET /api/v1/documents/{document_id}/mm-assets/{*asset_path}`
+
+Same bytes by relative path under the document mm-assets root (e.g. `assets/page-0001.png`).
+
+```bash
+curl -o page-0001.png \
+  "http://localhost:8080/api/v1/documents/{document_id}/mm-assets/assets/page-0001.png" \
+  -H "X-Workspace-ID: workspace-uuid"
+```
+
+**Lineage implication:** chunk content may reference `assets/…` URLs; provenance traces back to PDF page via `pdf_id` + asset path. See [Lineage Tracking Architecture](/docs/architecture/lineage-tracking/#modality-and-mm-assets).
 
 ---
 
@@ -425,10 +459,7 @@ All endpoints return standard error responses:
 
 ## OpenAPI Documentation
 
-Interactive API docs are available at:
+Interactive API docs: [`http://localhost:8080/swagger-ui/`](http://localhost:8080/swagger-ui/)  
+Machine-readable SSOT: [`edgequake_webui/openapi/openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json)
 
-```
-http://localhost:8080/swagger-ui/
-```
-
-All lineage endpoints are tagged under the "Lineage" group with utoipa annotations.
+All lineage and asset endpoints are tagged in OpenAPI (Lineage, Documents).

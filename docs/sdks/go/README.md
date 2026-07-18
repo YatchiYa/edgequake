@@ -1,12 +1,18 @@
 # Go SDK
 
+> **Product: v0.19.0** · SDK package: **~0.4.0** (decoupled from server)
+
 **Location:** `sdks/go`
 
-## Use as module
+## Install honesty
+
+The module path is `github.com/edgequake/edgequake-go`, but **this repo does not publish to pkg.go.dev yet**. Use a monorepo path in your `go.mod`:
 
 ```go
-import "github.com/edgequake/edgequake-go"
+replace github.com/edgequake/edgequake-go => ../sdks/go
 ```
+
+Or vendor `sdks/go` directly. Do not assume `go get github.com/edgequake/edgequake-go` resolves until a publish workflow exists.
 
 ## Example
 
@@ -31,8 +37,18 @@ log.Println(out.Affected)
 
 `BulkDelete` sends `conversation_ids` in the POST body.
 
+## v0.19 notes
+
+- Task cancel: `c.Tasks.Cancel(ctx, trackID)` — verify against [Ingestion cancel & fairness](../../ingestion-cancel-and-fairness.md).
+- PDF progress SSE and `display_status` fields may require raw HTTP; Tier 1 SDKs lead on typed helpers.
+
 ## Test
 
 ```bash
 cd sdks/go && go test ./...
 ```
+
+## See also
+
+- In-repo reference: `sdks/go/README.md`
+- [Brutal assessment](../BRUTAL-ASSESSMENT.md)

@@ -2,6 +2,8 @@
 title: "Installation Guide"
 ---
 
+> **Product: v0.19.0** · Contract: [OpenAPI snapshot](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 # Installation Guide
 
 > Get EdgeQuake running on your machine in 5 minutes
@@ -14,11 +16,54 @@ Before installing, ensure you have:
 
 | Requirement | Version    | Check Command      | Purpose                                  |
 | ----------- | ---------- | ------------------ | ---------------------------------------- |
-| **Rust**    | 1.95.x     | `rustc --version`  | Build backend with the pinned toolchain  |
+| **Rust**    | 1.95+      | `rustc --version`  | Build backend with the pinned toolchain  |
 | **Cargo**   | via rustup | `cargo --version`  | Package manager and workspace tooling    |
 | **Docker**  | 24+        | `docker --version` | Recommended path for required PostgreSQL |
 | **Node.js** | 20+        | `node --version`   | WebUI and Playwright                     |
 | **pnpm**    | 10+        | `pnpm --version`   | Frontend package manager                 |
+
+### PostgreSQL (required)
+
+EdgeQuake requires PostgreSQL **16, 17, or 18** with **pgvector** and **Apache AGE**. The Makefile default profile is **PG18** (`EQ_POSTGRES_PROFILE=pg18`); override with `make dev-pg16`, `make dev-pg17`, or `EQ_POSTGRES_PROFILE=pg17 make dev`.
+
+Credentials must match across Docker and `DATABASE_URL`:
+
+| Variable            | Value              |
+| ------------------- | ------------------ |
+| `POSTGRES_USER`     | `edgequake`        |
+| `POSTGRES_PASSWORD` | `edgequake_secret` |
+| `POSTGRES_DB`       | `edgequake`        |
+
+```bash
+export DATABASE_URL="postgresql://edgequake:edgequake_secret@localhost:5432/edgequake?options=-c%20search_path%3Dpublic"
+```
+
+### Authentication (production vs local dev)
+
+| Mode | Auth | Setup |
+| ---- | ---- | ----- |
+| **`make dev`** (default) | Off (open API) | Makefile sets `EDGEQUAKE_DEV_MODE=true` when `DEV_AUTH_ENABLED=false` |
+| **Production / `make dev-auth`** | On (default secure) | Set `JWT_SECRET`, bootstrap admin credentials, `NEXT_PUBLIC_DISABLE_DEMO_LOGIN=true` |
+
+See [Runtime auth hardening](../operations/runtime-auth-hardening.md).
+
+### Vision LLM (PDF ingestion)
+
+PDF uploads require a **vision-capable** model. Set explicitly or let resolution fall back from your LLM provider:
+
+```bash
+# Cloud (recommended for PDF quality)
+EDGEQUAKE_VISION_PROVIDER=openai
+EDGEQUAKE_VISION_MODEL=gpt-4.1-nano
+OPENAI_API_KEY=sk-...
+
+# Local (Ollama — pull a vision model)
+ollama pull gemma4:latest
+EDGEQUAKE_VISION_PROVIDER=ollama
+EDGEQUAKE_VISION_MODEL=gemma4:latest
+```
+
+Verify after start: `GET /api/v1/config/effective` → Vision area (check `has_mismatch`).
 
 ---
 
@@ -38,8 +83,8 @@ Before installing, ensure you have:
        └────┬─────┘      └────┬─────┘      └────┬─────┘
             │                 │                 │
             ▼                 ▼                 ▼
-       make dev         make dev-bg       Docker Compose
-       (interactive)    (background)      (see Deployment)
+       make dev         make dev-bg       docker-compose
+       (interactive)    (background)      .quickstart.yml
 ```
 
 ---
@@ -49,50 +94,59 @@ Before installing, ensure you have:
 ### Option 1: Full Stack with Make (Recommended)
 
 ```bash
-# Clone the repository
 git clone https://github.com/raphaelmansuy/edgequake.git
 cd edgequake
-
-# Start everything (PostgreSQL + Backend + Frontend)
 make dev
 ```
 
 **What happens**:
 
-1. Ensures PostgreSQL is reachable on port 5432
+1. Starts PostgreSQL (profile `pg18` by default) with password `edgequake_secret`
 2. Runs database migrations
-3. Builds and starts the Rust backend on port 8080
-4. Starts the Next.js frontend on port 3000 by default and automatically shifts only if that port is already in use
+3. Builds and starts the Rust backend on port **8080**
+4. Starts the Next.js frontend on port **3000** (shifts only if 3000 is taken)
 
 **Verify**:
 
 ```bash
-# In a new terminal
 curl http://localhost:8080/health
 # Expected: JSON containing "status":"healthy"
 
-# Open WebUI (default local Make-based port)
-open <http://localhost:3000>
+open http://localhost:3000
 ```
 
-> If another stack is already using 3000, run `make status` to see the exact frontend URL that was selected.
+> Run `make status` if another stack is using port 3000.
 
 ---
 
-### Option 2: Backend Only (For API Development)
+### Option 2: Prebuilt GHCR Stack (No Rust/Node toolchain)
 
 ```bash
-# Clone and enter
 git clone https://github.com/raphaelmansuy/edgequake.git
 cd edgequake
 
-# Start backend with PostgreSQL (required since v0.4.0)
+EDGEQUAKE_VERSION=0.19.0 docker compose -f docker-compose.quickstart.yml up -d
+```
+
+| Service    | Image                                              | Port |
+| ---------- | -------------------------------------------------- | ---- |
+| API        | `ghcr.io/raphaelmansuy/edgequake:0.19.0`           | 8080 |
+| WebUI      | `ghcr.io/raphaelmansuy/edgequake-frontend:0.19.0`  | 3000 |
+| PostgreSQL | `ghcr.io/raphaelmansuy/edgequake-postgres:0.19.0-pg18` | 5432 |
+
+Pin PostgreSQL major: `EDGEQUAKE_POSTGRES_TAG=0.19.0-pg16` (or `-pg17`, `-pg18`).
+
+---
+
+### Option 3: Backend Only (For API Development)
+
+```bash
+git clone https://github.com/raphaelmansuy/edgequake.git
+cd edgequake
 make backend-bg
 ```
 
-> **Note**: Starting with v0.4.0, `DATABASE_URL` is required for all server modes.
-> In-memory storage was removed to ensure reliable, production-grade behavior.
-> Use the Docker-based PostgreSQL setup above (`make dev`) for the fastest path.
+> `DATABASE_URL` is required. `make backend-bg` sets it to `postgresql://edgequake:edgequake_secret@localhost:5432/edgequake`.
 
 **Verify**:
 
@@ -102,40 +156,30 @@ curl http://localhost:8080/health
 
 ---
 
-### Option 3: Build from Source
+### Option 4: Build from Source
 
 ```bash
-# Clone
 git clone https://github.com/raphaelmansuy/edgequake.git
-cd edgequake
-
-# Build release binary
-cd edgequake
+cd edgequake/edgequake
 cargo build --release
 
-# Binary location
-ls target/release/edgequake
-
-# Run directly (PostgreSQL is required)
-export DATABASE_URL="postgresql://edgequake:edgequake_secret@localhost:5432/edgequake"
+export DATABASE_URL="postgresql://edgequake:edgequake_secret@localhost:5432/edgequake?options=-c%20search_path%3Dpublic"
 ./target/release/edgequake
 ```
 
 ---
 
-### Option 4: Development Mode (Watch + Hot Reload)
-
-> Principle: prefer explicit health checks and the repository-pinned toolchain over ad-hoc local variations. That keeps local behavior consistent with CI.
+### Option 5: Development Mode (Watch + Hot Reload)
 
 ```bash
-# Terminal 1: Start PostgreSQL
+# Terminal 1: PostgreSQL
 make db-start
 
-# Terminal 2: Run backend with cargo-watch
+# Terminal 2: Backend with cargo-watch
 cd edgequake
 cargo watch -x run
 
-# Terminal 3: Run frontend with hot reload
+# Terminal 3: Frontend
 cd edgequake_webui
 pnpm dev
 ```
@@ -144,132 +188,99 @@ pnpm dev
 
 ## LLM Provider Configuration
 
-EdgeQuake supports multiple LLM providers:
+EdgeQuake supports multiple LLM providers. Set canonical `EDGEQUAKE_DEFAULT_*` vars (see `.env.example`).
 
-### Ollama (Free, Local) — Default
+### Ollama (Free, Local) — Default for `make dev`
 
 ```bash
-# Install Ollama
-brew install ollama  # macOS
-# or: curl -fsSL https://ollama.com/install.sh | sh
-
-# Pull models (Makefile defaults when no OPENAI_API_KEY)
+brew install ollama   # macOS
 ollama pull gemma4:latest
 ollama pull embeddinggemma:latest
-
-# Start Ollama (if not running)
 ollama serve
-
-# Start EdgeQuake (auto-detects Ollama)
 make dev
 ```
 
 ### OpenAI (Paid, Cloud)
 
 ```bash
-# Set API key
 export OPENAI_API_KEY="sk-your-key"
-
-# Start EdgeQuake (auto-selects OpenAI when key is present)
 make dev
 ```
 
 ### Google Vertex AI (Enterprise)
 
-Vertex AI uses **IAM identity auth** (ADC or service account), not a static API key. Do not confuse with the Gemini Developer API (`GEMINI_API_KEY`).
+Uses IAM identity (ADC or service account), not `GEMINI_API_KEY`:
 
 ```bash
 gcloud auth application-default login
 export GOOGLE_CLOUD_PROJECT=your-gcp-project
-export GOOGLE_CLOUD_REGION=europe-west1   # optional
-
-# Use bundled catalog if ~/.edgequake/models.toml omits vertexai:
-export EDGEQUAKE_MODELS_CONFIG=edgequake/models.toml
-
 make dev
 ```
 
-Verify in Settings → Provider Status Hub: Vertex AI should show **Identity (ADC)** when configured. See [Configuration — Vertex AI](/docs/operations/configuration#google-vertex-ai-enterprise).
+See [Configuration — Vertex AI](/docs/operations/configuration#google-vertex-ai-enterprise).
 
 ### Provider Switching at Runtime
 
-Once running, you can switch providers via API:
-
 ```bash
-# Check current effective LLM configuration
 curl http://localhost:8080/api/v1/config/effective | jq '.llm'
-
-# Provider is auto-selected based on OPENAI_API_KEY
 ```
 
 ---
 
 ## Storage Configuration
 
-EdgeQuake uses PostgreSQL as its storage backend for all modes (since v0.4.0):
+EdgeQuake uses PostgreSQL for all storage modes (since v0.4.0):
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                     Storage (PostgreSQL)                    │
 ├─────────────────────────────────────────────────────────────┤
-│                                                             │
 │         ┌─────────────────────────────────────┐            │
-│         │          PostgreSQL 15+              │            │
-│         │                                     │            │
+│         │     PostgreSQL 16 / 17 / 18          │            │
 │         │  ┌──────────┐  ┌──────────────────┐ │            │
 │         │  │ pgvector  │  │   Apache AGE     │ │            │
-│         │  │ (vectors) │  │   (graph DB)     │ │            │
 │         │  └──────────┘  └──────────────────┘ │            │
-│         │                                     │            │
 │         └─────────────────────────────────────┘            │
-│                                                             │
-│  DATABASE_URL required for all server modes.               │
-│  Use Docker for the easiest PostgreSQL setup.              │
+│  DATABASE_URL required. Password: edgequake_secret         │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### PostgreSQL Setup
+### PostgreSQL Setup (Docker)
 
 ```bash
-# Using Docker (recommended)
 docker run -d \
   --name edgequake-postgres \
-  -e POSTGRES_PASSWORD=edgequake \
+  -e POSTGRES_USER=edgequake \
+  -e POSTGRES_PASSWORD=edgequake_secret \
   -e POSTGRES_DB=edgequake \
   -p 5432:5432 \
-  ghcr.io/raphaelmansuy/edgequake-postgres:latest
+  ghcr.io/raphaelmansuy/edgequake-postgres:0.19.0-pg18
 
-# Set connection string
-export DATABASE_URL="postgresql://edgequake:edgequake_secret@localhost:5432/edgequake"
+export DATABASE_URL="postgresql://edgequake:edgequake_secret@localhost:5432/edgequake?options=-c%20search_path%3Dpublic"
 
-# Run migrations
 cd edgequake && sqlx database setup
 ```
+
+> **Important:** `POSTGRES_PASSWORD` must be `edgequake_secret` to match `DATABASE_URL` used by Make, docker-compose, and `.env.example`.
 
 ---
 
 ## Verification Checklist
 
-Run these commands to verify your installation:
-
 ```bash
-# 1. Confirm the pinned compiler is active
-cd edgequake
-cargo --version
-rustc --version
+# 1. Toolchain
+cd edgequake && rustc --version   # 1.95+
 
-# 2. Check backend health
+# 2. Backend health
 curl -s http://localhost:8080/health | jq
-# ✅ Expected: JSON containing "status":"healthy" and "storage_mode":"postgresql"
 
-# 3. Check API docs
+# 3. OpenAPI contract
 curl -s http://localhost:8080/api-docs/openapi.json | jq .info.title
-# ✅ Expected: "EdgeQuake API"
 
-# 4. Check Ollama if using the local provider
+# 4. Ollama (if local provider)
 curl -s http://localhost:11434/api/tags | jq
 
-# 5. Let the repo verify itself
+# 5. Repo checks
 cargo fmt --all --check
 cargo clippy --workspace --lib -- -D warnings
 cargo test --workspace --lib --no-fail-fast
@@ -277,15 +288,12 @@ cargo test --workspace --lib --no-fail-fast
 
 ### No-flake local workflow
 
-For the most reproducible local setup:
-
 ```bash
-cd edgequake
-rustup show active-toolchain
 make status
+rustup show active-toolchain
 ```
 
-If PostgreSQL is unavailable, EdgeQuake now exits with a clear startup error instead of crashing later in a harder-to-debug state.
+If PostgreSQL is unavailable, EdgeQuake exits at startup with a clear error instead of failing mid-request.
 
 ---
 
@@ -294,48 +302,35 @@ If PostgreSQL is unavailable, EdgeQuake now exits with a clear startup error ins
 ### Docker Issues
 
 ```bash
-# Problem: Docker not running
-docker info
-# Solution: Start Docker Desktop or systemctl start docker
-
-# Problem: Port 5432 in use
-lsof -i :5432
-# Solution: Stop conflicting service or use different port
+docker info                    # Docker running?
+lsof -i :5432                  # Port conflict?
+lsof -i :8080                  # API port
+lsof -i :3000                  # WebUI port
 ```
 
 ### Rust Build Issues
 
 ```bash
-# Problem: Rust version too old
 rustup update stable
-
-# Problem: Missing dependencies on Linux
+# Linux deps:
 sudo apt-get install pkg-config libssl-dev libpq-dev
-
-# Problem: Slow compilation
-# Solution: Use faster linker
-# In .cargo/config.toml:
-[target.x86_64-unknown-linux-gnu]
-linker = "clang"
-rustflags = ["-C", "link-arg=-fuse-ld=lld"]
 ```
 
-### LLM Issues
+### LLM / Vision Issues
 
 ```bash
-# Problem: Ollama not responding
-ollama serve  # Start if not running
-ollama list   # Check available models
-
-# Problem: OpenAI rate limit
-# Solution: Check your API usage at platform.openai.com
+ollama serve && ollama list
+curl -s http://localhost:8080/api/v1/config/effective | jq '.areas[] | select(.name == "Vision")'
 ```
+
+### Auth Issues
+
+- **401 on API calls after deploy:** Auth is on by default — add `Authorization: Bearer …` or `X-API-Key`, or use `EDGEQUAKE_DEV_MODE=true` locally only.
+- **No login on first start:** Set `EDGEQUAKE_BOOTSTRAP_ADMIN_*` env vars before boot (see [runtime auth hardening](../operations/runtime-auth-hardening.md)).
 
 ---
 
 ## Next Steps
-
-Now that EdgeQuake is running:
 
 1. **[Quick Start](/docs/getting-started/quick-start/)** — Ingest your first document
 2. **[Architecture Overview](/docs/architecture/overview/)** — Understand the system

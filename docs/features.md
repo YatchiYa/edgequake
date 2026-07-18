@@ -2,24 +2,39 @@
 title: 'EdgeQuake Feature Registry'
 ---
 
+> **Product: v0.19.0** · Contract: [`openapi.snapshot.json`](../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](ingestion-cancel-and-fairness.md)
+
 # EdgeQuake Feature Registry
 
-This file maintains traceability between code features and business requirements.
+This file maintains traceability between code features, business requirements, and shipped releases (v0.11–v0.19).
 
 ## Index
 
-| Feature ID | Description                                        | Status    | Spec / Issue         |
-| ---------- | -------------------------------------------------- | --------- | -------------------- |
-| FEAT-0001  | Tenant Workspace Quota Management                  | Completed | SPEC-0001 / #133     |
-| FEAT-0002  | Knowledge Injection (Glossaries & Synonyms)        | Completed | SPEC-0002 / #131     |
-| FEAT-0003  | Explainability                                     | Planned   | SPEC-0003 / #128     |
-| FEAT-0004  | Graph Edge Labels                                  | Planned   | SPEC-0004 / #91      |
-| FEAT-0005  | Custom Entity Configuration                        | Completed | SPEC-0005 / #85      |
-| FEAT-006   | Unified Streaming Response Protocol                | Completed | SPEC-006 / #56       |
-| FEAT-007   | Vector Storage SQL Pre-Filtering                   | Completed | SPEC-007             |
-| FEAT-008   | Explicit Provider/Model Transparency in UI          | Completed | MISSION-01 / v0.9.19 |
-| FEAT-009   | Document Deletion Correctness                       | Completed | MISSION-02 / v0.9.19 |
-| FEAT-010   | Configurable PDF Parser Backend (Vision/EdgeParse) | Completed | MISSION-03 / v0.10.0 |
+| Feature ID | Description | Status | Spec / Release |
+| ---------- | ----------- | ------ | -------------- |
+| FEAT-0001 | Tenant Workspace Quota Management | Completed | SPEC-0001 / #133 |
+| FEAT-0002 | Knowledge Injection (Glossaries & Synonyms) | Completed | [SPEC-0002](../specifications/0002_knowledge_injection_issue_131/) / v0.8.0 |
+| FEAT-0003 | Explainability & Model Picker (config chain) | Completed | [SPEC-043](../specs/043-update-edgequake-llm/000-index.md) / v0.17.0 |
+| FEAT-0004 | Graph Edge Labels | Planned | SPEC-0004 / #91 |
+| FEAT-0005 | Custom Entity Configuration | Completed | [SPEC-0005](../specifications/0005_custom_entity_config_issue_85/) / v0.8.0 |
+| FEAT-006 | Unified Streaming Response Protocol | Completed | SPEC-006 / #56 |
+| FEAT-007 | Vector Storage SQL Pre-Filtering | Completed | SPEC-007 |
+| FEAT-008 | Explicit Provider/Model Transparency in UI | Completed | MISSION-01 / v0.9.19 |
+| FEAT-009 | Document Deletion Correctness | Completed | MISSION-02 / v0.9.19 |
+| FEAT-010 | Configurable PDF Parser Backend (Vision/EdgeParse) | Completed | MISSION-03 / v0.10.0 |
+| FEAT-011 | Vision PDF Ingest & Side-by-Side Viewer | Completed | [SPEC-047](../specs/047-rag-evaluation/000-index.md) / v0.17.0 |
+| FEAT-012 | Real-Time Pipeline Progress (WS bridge) | Completed | [SPEC-048](../specs/048-improve-ux/000-index.md) / v0.17.0 |
+| FEAT-013 | Deletion & Reprocess Progress Parity | Completed | [SPEC-050](../specs/050-pipeline-and-delete/README.md) / v0.17.0 |
+| FEAT-014 | GraphRAG / Hybrid RAG Ops & ACC Science | Completed | [SPEC-046](../specs/046-graphrag-study/00-INDEX.md) / v0.16.0 |
+| FEAT-015 | OpenAPI-Native API Explorer | Completed | [SPEC-035](../specs/035-api-explorer/) / v0.15.x |
+| FEAT-016 | Mistral First-Class Provider | Completed | v0.11.0 |
+| FEAT-017 | Embedding Progress Reporting | Completed | #197 / v0.11.3 |
+| FEAT-018 | Runtime Auth Secure by Default | Completed | SPEC-027 / v0.13.x |
+| FEAT-019 | Documents List & Mix-Scale Perf Gates | Completed | [SPEC-054](../specs/054-fix-bugs-17/) / v0.18.0 |
+| FEAT-020 | Claim/Lease Delivery & Convert→Ingest SSOT | Completed | [SPEC-057](../specs/057-pipeline-reliability/000-index.md) / v0.19.0 |
+| FEAT-035 | OpenAPI Explorer (WebUI implementation) | Completed | [SPEC-035](../specs/035-api-explorer/) — code marker |
+
+---
 
 ## Feature Definitions
 
@@ -38,13 +53,29 @@ This file maintains traceability between code features and business requirements
 - `PUT /api/v1/workspaces/:id/injection` — create/replace text injection
 - `PUT /api/v1/workspaces/:id/injection/file` — upload file injection
 - `GET /api/v1/workspaces/:id/injections` — list all entries
-- `GET /api/v1/workspaces/:id/injections/:injection_id` — get detail
+- `GET /api/v1/workspaces/:id/injections/:injection_id` — get detail (**plural** path)
 - `PATCH /api/v1/workspaces/:id/injections/:injection_id` — update name/content
 - `DELETE /api/v1/workspaces/:id/injections/:injection_id` — delete + cascade cleanup
 
 **UI**: `/knowledge` page with list, add dialog (text/file tabs), detail page, inline edit, delete confirmation.
 
-**Test Coverage**: 1 000+ line Rust E2E suite + 5 Playwright browser tests.
+---
+
+### FEAT-0003 — Explainability & Model Picker (SPEC-043)
+
+**Spec**: [specs/043-update-edgequake-llm](../specs/043-update-edgequake-llm/000-index.md)  
+**Released**: v0.17.0 (2026-07-14)  
+**Status**: ✅ Completed (was Planned under legacy SPEC-0003)
+
+**Capabilities**:
+- Unified `ModelPickerPanel` across workspace, query, and settings
+- Server-side model search: `GET /api/v1/models/search`
+- Provider Status Hub with `auth_kind` and remediation hints
+- Config explainability panel — effective provider/model resolution chain
+- Application attribution API for downstream LLM request labeling
+- Bundled `models.toml` with runtime override paths
+
+**API Surface**: `/api/v1/models/search`, `/api/v1/settings/*`, `/api/v1/config/effective`
 
 ---
 
@@ -55,64 +86,132 @@ This file maintains traceability between code features and business requirements
 **Released**: v0.8.0 (2026-04-03)  
 **Status**: ✅ Completed
 
-**Problem**: Default generic entity types are insufficient for domain-specific corpora (manufacturing, healthcare, legal, research, finance), reducing extraction recall and graph quality.
-
-**Solution**: Workspace creation supports `entity_types` with preset-driven and custom configuration. Types are normalized and stored in workspace metadata, then automatically injected into extraction prompts per workspace.
-
-**Capabilities**:
-- Workspace-scoped `entity_types` in create-workspace API payload.
-- Validation and normalization: trim, uppercase, space/hyphen to underscore, dedupe, max 50.
-- Pipeline fallback to server defaults when no custom entity types are configured.
-- Frontend selector with presets (General, Manufacturing, Healthcare, Legal, Research, Finance) and custom add/remove chips.
-- Workspace detail page displays configured entity types.
-- Full i18n labels in en/fr/zh.
-
-**API Surface**:
-- `POST /api/v1/tenants/:tenant_id/workspaces` accepts `entity_types`.
-- Workspace response surfaces `entity_types` (from metadata JSONB).
-
-**Test Coverage**:
-- Rust integration coverage for workspace request/metadata threading.
-- Playwright coverage for selector UX edge cases and workspace detail display.
+Workspace-scoped `entity_types` with preset-driven and custom configuration, normalized and injected into extraction prompts per workspace.
 
 ---
 
 ### FEAT-010 — Configurable PDF Parser Backend
 
-**Spec**: [mission/03-pdf-parser.md](../mission/03-pdf-parser.md)  
 **Released**: v0.10.0 (2026-04-10)  
 **Status**: ✅ Completed
 
-**Problem**: Vision-only PDF extraction is expensive, slower on digital-native PDFs, and
-unnecessarily dependent on an LLM for documents that already contain structured text.
-
-**Solution**: EdgeQuake now supports two runtime PDF extraction backends:
-- `vision` for scanned, image-heavy, or layout-complex PDFs.
-- `edgeparse` for fast CPU-only extraction of digital-native PDFs.
-
-**Resolution order**:
-- Per-upload multipart override `pdf_parser_backend`
-- Workspace default `workspace.pdf_parser_backend`
-- Environment variable `EDGEQUAKE_PDF_PARSER_BACKEND`
-- Fallback default `vision`
-
-**Capabilities**:
-- New `edgequake-pdf` abstraction crate with a backend strategy pattern.
-- EdgeParse integration via `edgeparse-core` without temp files.
-- Workspace-level default parser setting on the workspace configuration page (`/workspace` and
-  `/w/[slug]/workspace`).
-- Per-upload parser selection in the document upload flow via the `Parser for this upload`
-  selector, including a `Workspace Default` option.
-- Extraction lineage includes parser method and low-content warnings for image-only PDFs.
-- EdgeParse markdown is sanitized before persistence to remove embedded NUL bytes that PostgreSQL
-  rejects as invalid UTF-8 payload.
-- Storage now records `extraction_method = edgeparse`.
-
-**Operational note**:
-- EdgeParse does not auto-fallback to Vision. If output is low-content, the UI surfaces a warning
-  so the user can explicitly retry with Vision.
+Runtime PDF extraction backends: `vision` (VLM) and `edgeparse` (CPU). Resolution: per-upload → workspace default → `EDGEQUAKE_PDF_PARSER_BACKEND` env → `vision`.
 
 ---
 
-**Last Updated**: 2026-04-10
-**Total Features**: 10
+### FEAT-011 — Vision PDF Ingest (SPEC-047)
+
+**Spec**: [specs/047-rag-evaluation](../specs/047-rag-evaluation/000-index.md)  
+**Released**: v0.17.0  
+**Status**: ✅ Completed
+
+- PDF → Markdown via vision LLM (page-level rendering)
+- Per-page progress via WebSocket `/ws/progress/{track_id}`
+- Side-by-side PDF + Markdown viewer
+- Visual asset extraction (`document_mm_assets`, migrations 084/085)
+
+---
+
+### FEAT-012 — Real-Time Pipeline Progress (SPEC-048)
+
+**Spec**: [specs/048-improve-ux](../specs/048-improve-ux/000-index.md)  
+**Released**: v0.17.0  
+**Status**: ✅ Completed
+
+- `spawn_pipeline_ws_bridge` forwards pipeline events to WS/SSE clients
+- Pipeline status dialog with per-stage timing
+- `track_id` correlation upload → pipeline → completion
+- Progress endpoint: `/ws/progress/{track_id}` (**not** legacy `/rag/*`)
+
+---
+
+### FEAT-013 — Deletion & Reprocess Progress (SPEC-050)
+
+**Spec**: [specs/050-pipeline-and-delete](../specs/050-pipeline-and-delete/README.md)  
+**Released**: v0.17.0  
+**Status**: ✅ Completed
+
+- Delete document shows stage-by-stage progress (graph / vector / KV cleanup)
+- Reprocess parity with structured progress feedback
+- All pipeline stages surfaced with human-readable labels
+
+---
+
+### FEAT-014 — GraphRAG / Hybrid RAG Ops (SPEC-046)
+
+**Spec**: [specs/046-graphrag-study](../specs/046-graphrag-study/00-INDEX.md)  
+**Released**: v0.16.0  
+**Status**: ✅ Completed
+
+Fail-closed HNSW readiness, PPR-default graph walks, bipartite dual-node retrieval, ACC CI gate, ops runbooks.
+
+---
+
+### FEAT-018 — Runtime Auth Secure by Default
+
+**Released**: v0.13.x (SPEC-027 hardening)  
+**Status**: ✅ Completed
+
+- `auth_enabled: true` by default when unset
+- `EDGEQUAKE_DEV_MODE=true` opt-out for local `make dev`
+- Fail-closed middleware on versioned API when auth enabled
+- WebSocket auth rejects missing token when auth enabled
+
+---
+
+### FEAT-019 — Storage/Query Performance Gates (SPEC-054)
+
+**Spec**: [specs/054-fix-bugs-17](../specs/054-fix-bugs-17/)  
+**Released**: v0.18.0  
+**Status**: ✅ Completed
+
+Documents list perf gate, Mix-scale query budgets, batch lineage SQL, stable `track_id` across upload → WS progress.
+
+---
+
+### FEAT-020 — Claim/Lease Delivery & Convert→Ingest (SPEC-057)
+
+**Spec**: [specs/057-pipeline-reliability](../specs/057-pipeline-reliability/000-index.md)  
+**Released**: v0.19.0 (2026-07-17)  
+**Status**: ✅ Completed
+
+**Delivery SSOT**:
+- Workers claim via `FOR UPDATE SKIP LOCKED` + leases; NOTIFY is wake-only
+- `IngestionStatusMapper` → API `display_status` / `ui_phase` on `DocumentSummary`
+- PDF `Cancelled` status (never maps cancel → Failed)
+- Convert (`TaskType::PdfProcessing`) then ingest (`TaskType::Insert`) with markdown checkpoint
+- Cancel facade: `POST /api/v1/tasks/{track_id}/cancel`
+- Multi-replica: `EDGEQUAKE_REPLICAS` + queue-metrics observability
+
+**Ops**: [Ingestion cancel & fairness](ingestion-cancel-and-fairness.md)
+
+---
+
+### FEAT-035 — OpenAPI-Native API Explorer
+
+**Spec**: [specs/035-api-explorer](../specs/035-api-explorer/)  
+**Status**: ✅ Completed
+
+WebUI `/api-explorer` driven by OpenAPI snapshot with auth token and workspace base URL injection (`@implements FEAT-035` in code).
+
+---
+
+## Release Map (v0.11 → v0.19)
+
+| Version | Date | Highlights |
+| ------- | ---- | ---------- |
+| 0.11.0 | 2026-04-27 | Mistral first-class provider |
+| 0.11.3 | 2026-05-06 | Embedding progress; B2B header propagation; pipeline timeout env vars |
+| 0.12.0 | 2026-05-06 | Vision image attachments; auth token expiry UX |
+| 0.13.x | 2026-07 | Auth secure by default; OIDC paths |
+| 0.14–0.15 | 2026-07 | OpenAPI explorer; migration tooling |
+| 0.16.0 | 2026-07-10 | SPEC-046 GraphRAG ops + ACC science |
+| 0.17.0 | 2026-07-14 | SPEC-043 model picker; SPEC-047 vision; SPEC-048/050 progress |
+| 0.18.0 | 2026-07-16 | SPEC-054 perf gates; OpenAPI snapshot freshness |
+| 0.19.0 | 2026-07-17 | SPEC-057 claim/lease; convert→ingest; cancel fairness |
+
+---
+
+**Last Updated**: 2026-07-18  
+**Total Features (indexed)**: 21  
+**OpenAPI SSOT**: [`edgequake_webui/openapi/openapi.snapshot.json`](../edgequake_webui/openapi/openapi.snapshot.json)

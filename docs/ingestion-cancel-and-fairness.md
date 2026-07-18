@@ -1,5 +1,7 @@
 # Ingestion cancel, fairness, and restart semantics
 
+> **Product: v0.19.0** · Contract: [OpenAPI snapshot](../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: this document (SPEC-057 SSOT)
+
 Operational notes for the task worker pool (P0–P3 remediation).
 
 ## Cancel a task (canonical)
@@ -27,6 +29,23 @@ Also supported (task cancel + doc KV sync; PDF path also stamps PDF Cancelled):
 
 UI should call `POST /tasks/{track_id}/cancel` and show “Stopping…” until status is terminal.
 
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Cancel SSOT (all entry points)                              │
+│                                                             │
+│  POST /api/v1/tasks/{track_id}/cancel                       │
+│              |                                              │
+│    +---------+---------+---------+                          │
+│    v         v         v         v                          │
+│  task row  cancel   doc KV    PDF row                       │
+│  Cancelled intent  cancelled  Cancelled                     │
+│            |                                                │
+│            v                                                │
+│  ui_phase: stopping --> terminal                            │
+│  display_status: cancelled                                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
 ### Status SSOT (SPEC-057 P4)
 
 Document list/detail JSON includes presentation fields from `IngestionStatusMapper`:
@@ -53,6 +72,26 @@ Local providers (`ollama` / `lmstudio`) clamp to **1** concurrent task per tenan
 ## Convert then ingest (SPEC-057 P2)
 
 PDF admission enqueues `TaskType::PdfProcessing` (**convert only**). After durable `pdf_documents.markdown_content` + PDF `Completed`, the worker enqueues `TaskType::Insert` for KG ingest under a separate lease/timeout/fairness permit.
+
+```
+┌───────────────────────────────────────────────────────┐
+│ Convert then ingest (SPEC-057)                        │
+│                                                       │
+│  POST /documents/pdf  -->  admit task_id              │
+│              |                                        │
+│              v                                        │
+│  [1] PdfProcessing (convert only)                     │
+│      vision / edgeparse --> markdown                  │
+│      PDF row --> Completed (artifact)                 │
+│              |                                        │
+│              v  markdown barrier                      │
+│  [2] Insert (KG ingest, new lease)                    │
+│      chunk --> extract --> embed --> store            │
+│              |                                        │
+│              v                                        │
+│  document display_status = completed                  │
+└───────────────────────────────────────────────────────┘
+```
 
 | Phase | Task type | Timeout metadata key | PDF row on success |
 | ----- | --------- | -------------------- | ------------------ |
@@ -98,6 +137,25 @@ When `EDGEQUAKE_REPLICAS>1` and delivery is `local`, **boot fails** — set `bri
 ## Restart semantics (SPEC-057 P1 claim / lease)
 
 Postgres task rows are the **delivery SSOT**. The in-memory channel is a **wake signal only**.
+
+```
+┌───────────────────────────────────────────────────────────┐
+│ Task delivery SSOT (Postgres)                             │
+│                                                           │
+│  admit --> Pending row (wake channel optional)            │
+│              |                                            │
+│              v                                            │
+│  worker: FOR UPDATE SKIP LOCKED claim                     │
+│              |                                            │
+│              v                                            │
+│  lease + heartbeat (TTL default 120s)                     │
+│              |                                            │
+│       +------+------+                                     │
+│       v             v                                     │
+│   run handler    fairness park                            │
+│                  (release claim)                          │
+└───────────────────────────────────────────────────────────┘
+```
 
 | Status at boot | Default (`AUTO_RESUME` off) | `EDGEQUAKE_STARTUP_AUTO_RESUME=1` |
 | -------------- | --------------------------- | --------------------------------- |

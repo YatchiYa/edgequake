@@ -4,6 +4,8 @@ title: 'Troubleshooting Guide'
 
 # Troubleshooting Guide
 
+> **Product: v0.19.0** · Ingestion SSOT: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 > **Diagnosing and Resolving Common EdgeQuake Issues**
 
 This guide helps you identify and fix common problems when running EdgeQuake.
@@ -184,6 +186,9 @@ docker compose up -d
 **Diagnosis**:
 
 ```bash
+# Queue pressure + store contention (v0.19 SSOT)
+curl -s http://localhost:8080/api/v1/pipeline/queue-metrics | jq
+
 # Check pending tasks
 curl http://localhost:8080/api/v1/tasks?status=pending
 
@@ -202,6 +207,8 @@ tail -f /tmp/edgequake-backend.log
 | Invalid API key    | Check `OPENAI_API_KEY`       |
 | Ollama not running | Start Ollama: `ollama serve` |
 | Worker crash       | Restart backend              |
+| Lease expired      | See **Interrupted / Reprocess** below |
+| Tenant fairness park | Normal under local LLM clamp; check `tenant_park_waiters` in queue-metrics |
 
 **Solution**:
 
@@ -215,6 +222,102 @@ curl -X POST "http://localhost:8080/api/v1/documents/$DOC_ID/reprocess"
 ```
 
 **Reliability note**: delete, reprocess, and recovery flows are workspace-scoped and restart-safe. A deleted document should not be resurrected by stale task recovery after a backend restart.
+
+Full cancel, fairness, lease, and multi-replica semantics: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md).
+
+---
+
+### 3.1 Interrupted / Reprocess (v0.19)
+
+#### Symptom: Document shows **Failed** with message containing "Interrupted — use Reprocess"
+
+**Cause**: A task was in `Processing` when the server restarted or its lease expired. With default settings (`EDGEQUAKE_STARTUP_AUTO_RESUME` off), stale `Processing` rows become **Failed** with an Interrupted message — not silently resumed.
+
+**Solution**:
+
+```bash
+# Reprocess from checkpoint when available
+curl -X POST "http://localhost:8080/api/v1/documents/$DOC_ID/reprocess"
+```
+
+**Optional auto-resume** (reclaim stale Processing as Pending on boot):
+
+```bash
+export EDGEQUAKE_STARTUP_AUTO_RESUME=1
+```
+
+Product default remains **off** so operators see an explicit Reprocess CTA. Pending tasks survive restart without auto-resume — workers claim via `FOR UPDATE SKIP LOCKED`.
+
+---
+
+### 3.2 Lease stuck in Processing
+
+#### Symptom: Task row stays `Processing` for longer than expected; no progress updates
+
+**Diagnosis**:
+
+```bash
+# Inspect queue depth and pressure
+curl -s http://localhost:8080/api/v1/pipeline/queue-metrics | jq '{pending, processing, pressure, store_contention}'
+
+# Check for lease reaper messages
+grep -i "lease expired\|heartbeat lost\|Interrupted" /tmp/edgequake-backend.log | tail -20
+```
+
+**Cause**: Worker died without releasing lease, or LLM call blocked past the lease TTL. Leases refresh every ~60s; TTL defaults to 120s (`EDGEQUAKE_TASK_LEASE_TTL_SECS`).
+
+**Solution**:
+
+1. Wait for the lease reaper to mark the task Failed (Interrupted) — then **Reprocess**
+2. Or restart backend to trigger orphan recovery
+3. If recurring, reduce ingest concurrency or raise lease TTL for slow local LLMs
+
+Fairness park **releases** the claim before waiting on tenant capacity — a parked task should not hold a lease indefinitely.
+
+---
+
+### 3.3 Cancel is not Failed (v0.19)
+
+#### Symptom: User cancelled ingestion but UI or API still shows **Failed** instead of **Cancelled**
+
+**Cause (pre-v0.19)**: Cancel paths sometimes mapped to `Failed`. v0.19 adds `PdfProcessingStatus::Cancelled`, `display_status=cancelled`, and `ui_phase=terminal`.
+
+**Solution**:
+
+```bash
+# Canonical cancel
+curl -X POST "http://localhost:8080/api/v1/tasks/$TRACK_ID/cancel"
+```
+
+Check presentation fields (prefer over raw `status`):
+
+```bash
+curl -s "http://localhost:8080/api/v1/documents/$DOC_ID" | jq '{display_status, ui_phase, status, failure_class}'
+```
+
+Expected after cancel: `display_status=cancelled`, `ui_phase=terminal` (or `stopping` briefly while cooperative abort completes). Cancelled documents are **excluded** from failed-count chips in the WebUI.
+
+See [Ingestion cancel & fairness — Status SSOT](../ingestion-cancel-and-fairness.md#status-ssot-spec-057-p4).
+
+---
+
+### 3.4 Multi-replica boot failure (`EDGEQUAKE_REPLICAS>1`)
+
+#### Symptom: Server exits at startup with a task-delivery validation error
+
+**Cause**: `EDGEQUAKE_REPLICAS` is set above `1` but `EDGEQUAKE_TASK_DELIVERY=local` (default). Local delivery is single-process only.
+
+**Solution**:
+
+```bash
+export EDGEQUAKE_REPLICAS=2
+export EDGEQUAKE_TASK_DELIVERY=bridged   # or notify_only
+make dev-bg
+```
+
+Correctness always comes from Postgres `claim_next` + lease — `bridged` / `notify_only` are **wake signals only**. Never process a task from a channel payload without claiming it in the database.
+
+Details: [Multi-replica delivery](../ingestion-cancel-and-fairness.md#multi-replica-delivery-spec-057-p3).
 
 ---
 
@@ -710,39 +813,42 @@ helps you fix the env vars permanently.
 
 ### PDF Troubleshooting Decision Tree
 
-Use this flowchart to quickly diagnose PDF issues:
+Use this ASCII decision tree to diagnose PDF issues:
 
 ```
-PDF Upload Issue?
-  │
-  ├─ chunk_count = 0
-  │   ├─ Retry with Vision → {"pdf_parser_backend":"vision"}
-  │   ├─ Still 0? → Check if PDF encrypted/protected
-  │   └─ Still 0? → File GitHub issue with sample
-  │
-  ├─ Tables not detected / malformed
-  │   ├─ Enable table enhancement → {"enhance_tables": true}
-  │   ├─ Still bad? → Try Vision + enhance → {"pdf_parser_backend":"vision", "enhance_tables": true}
-  │   └─ Complex table? → Known limitation (file issue)
-  │
-  ├─ Text order wrong
-  │   ├─ Enable column detection → {"layout": {"detect_columns": true}}
-  │   └─ Still wrong? → Adjust column_gap_threshold
-  │
-  ├─ Encoding errors (�, ?)
-  │   ├─ Retry with Vision → {"pdf_parser_backend":"vision"}
-  │   └─ Still bad? → Check PDF font embedding (pdffonts)
-  │
-  ├─ Upload fails / timeout
-  │   ├─ File > 50MB? → Split PDF or increase limit
-  │   ├─ Timeout? → Test with max_pages: 10
-  │   ├─ Vision timeout + circuit breaker? → Check provider/model mismatch (Issue 3.7)
-  │   └─ Error 500? → Repair PDF (ghostscript, pdftk)
-  │
-  └─ Poor quality chunks
-      ├─ Enable readability → {"enhance_readability": true}
-      ├─ Normalize spacing → {"normalize_spacing": true}
-      └─ Adjust chunk_size → chunk_size=1024
+┌───────────────────────────────────────────────────┐
+│ PDF troubleshooting decision tree                 │
+│                                                   │
+│ PDF upload issue?                                 │
+│   |                                               │
+│   +-- chunk_count = 0                             │
+│   |     +-- Retry with pdf_parser_backend=vision  │
+│   |     +-- Still 0? Check encrypted/protected PDF│
+│   |     +-- Still 0? File GitHub issue with sample│
+│   |                                               │
+│   +-- Tables malformed                            │
+│   |     +-- enhance_tables=true                   │
+│   |     +-- vision + enhance_tables               │
+│   |     +-- Complex table? known limitation       │
+│   |                                               │
+│   +-- Text order wrong                            │
+│   |     +-- layout.detect_columns=true            │
+│   |     +-- adjust column_gap_threshold           │
+│   |                                               │
+│   +-- Encoding errors                             │
+│   |     +-- Retry vision                          │
+│   |     +-- Check fonts (pdffonts)                │
+│   |                                               │
+│   +-- Upload fails / timeout                      │
+│   |     +-- Split if >50MB / max_pages=10         │
+│   |     +-- Check vision provider mismatch        │
+│   |     +-- Repair PDF (ghostscript/pdftk)        │
+│   |                                               │
+│   +-- Poor quality chunks                         │
+│         +-- enhance_readability=true              │
+│         +-- normalize_spacing=true                │
+│         +-- chunk_size=1024                       │
+└───────────────────────────────────────────────────┘
 ```
 
 ---
@@ -1232,6 +1338,8 @@ Include in your report:
 
 ## See Also
 
+- [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md) — cancel SSOT, leases, multi-replica, queue-metrics
+- [Observability](../OBSERVABILITY.md) — Prometheus metrics, GenAI spans, queue pressure
 - [Configuration Reference](/docs/operations/configuration/) - All settings
 - [Monitoring Guide](/docs/operations/monitoring/) - Observability setup
 - [Deployment Guide](/docs/operations/deployment/) - Production setup

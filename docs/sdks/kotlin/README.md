@@ -1,13 +1,24 @@
 # Kotlin SDK
 
-**Location:** `sdks/kotlin`
+> **Product: v0.19.0** · Contract: [`openapi.snapshot.json`](../../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../../ingestion-cancel-and-fairness.md)
 
-## Gradle (Kotlin DSL)
+**Location:** `sdks/kotlin`  
+**Build:** Maven only (`pom.xml`) — no Gradle wrapper in this repo.
 
-```kotlin
-dependencies {
-    implementation("io.edgequake:edgequake-sdk:VERSION") // or composite build / mavenLocal
-}
+## Maven dependency
+
+```xml
+<dependency>
+    <groupId>io.edgequake</groupId>
+    <artifactId>edgequake-sdk-kotlin</artifactId>
+    <version>0.4.0</version>
+</dependency>
+```
+
+Install to local Maven repo from source:
+
+```bash
+cd sdks/kotlin && mvn install -DskipTests
 ```
 
 ## Example
@@ -17,34 +28,47 @@ import io.edgequake.sdk.EdgeQuakeClient
 import io.edgequake.sdk.EdgeQuakeConfig
 
 fun main() {
-    val cfg = EdgeQuakeConfig(
-        baseUrl = "http://localhost:8080",
-        apiKey = System.getenv("EDGEQUAKE_API_KEY"),
-        tenantId = System.getenv("EDGEQUAKE_TENANT_ID"),
-        userId = System.getenv("EDGEQUAKE_USER_ID"),
-        workspaceId = System.getenv("EDGEQUAKE_WORKSPACE_ID"),
+    val client = EdgeQuakeClient(
+        EdgeQuakeConfig(
+            baseUrl = "http://localhost:8080",
+            apiKey = System.getenv("EDGEQUAKE_API_KEY"),
+            tenantId = System.getenv("EDGEQUAKE_TENANT_ID"),
+            userId = System.getenv("EDGEQUAKE_USER_ID"),
+            workspaceId = System.getenv("EDGEQUAKE_WORKSPACE_ID") ?: "default",
+        )
     )
-    val client = EdgeQuakeClient(cfg)
 
     val health = client.health.check()
-    println(health.status)
+    println(health.status)  // healthy
 
-    val convos = client.conversations.list()
-    println(convos.size)
-
-    val bulk = client.conversations.bulkDelete(listOf("id-1", "id-2"))
-    println(bulk.affected)
+    val result = client.query.execute("What is EdgeQuake?")
+    println(result.answer)
+    result.sources.forEach { src ->
+        println("${src.score} ${src.snippet?.take(80)}")
+    }
 }
 ```
 
-## Lawful bulk delete
-
-`bulkDelete` posts `{"conversation_ids":[...]}` and deserializes `affected` from the JSON body.
+Query responses expose **`answer`** and **`sources`** (not top-level chunks/entities).
 
 ## Build & test
 
 ```bash
-cd sdks/kotlin && ./gradlew test
+cd sdks/kotlin && mvn test
 ```
 
-See `sdks/kotlin/README.md` for the full feature list.
+E2E tests (requires running API):
+
+```bash
+cd sdks/kotlin && mvn test -Pe2e
+```
+
+## Lawful bulk delete
+
+`client.conversations.bulkDelete(listOf("id-1", "id-2"))` posts `{"conversation_ids":[...]}` and reads `affected` from the JSON body.
+
+## See also
+
+- Full feature list: `sdks/kotlin/README.md`
+- [SDK index](../README.md)
+- [Custom Clients](../../integrations/custom-clients.md)

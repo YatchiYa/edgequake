@@ -2,6 +2,8 @@
 title: "Tutorial: Multi-Tenant Setup"
 ---
 
+> **Product: v0.19.0** · Contract: [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 # Tutorial: Multi-Tenant Setup
 
 > **Building a SaaS Application with EdgeQuake**
@@ -11,6 +13,8 @@ This tutorial shows how to use EdgeQuake's built-in multi-tenancy to build appli
 **Time**: ~25 minutes  
 **Level**: Intermediate  
 **Prerequisites**: Completed [First RAG App](/docs/tutorials/first-rag-app/)
+
+Auth is **on by default** outside `EDGEQUAKE_DEV_MODE`. Your SaaS wrapper must forward `Authorization` or `X-API-Key` to EdgeQuake on every business call. See [Runtime auth hardening](/docs/operations/runtime-auth-hardening.md).
 
 ---
 
@@ -185,11 +189,13 @@ Documents are automatically isolated by workspace:
 
 ```bash
 # Upload to HR workspace
-curl -X POST "http://localhost:8080/api/v1/documents?workspace_id=ws_hr" \
+curl -X POST "http://localhost:8080/api/v1/documents/upload" \
+  -H "X-Workspace-ID: ws_hr" \
   -F "file=@employee_handbook.pdf"
 
 # Upload to Legal workspace
-curl -X POST "http://localhost:8080/api/v1/documents?workspace_id=ws_legal" \
+curl -X POST "http://localhost:8080/api/v1/documents/upload" \
+  -H "X-Workspace-ID: ws_legal" \
   -F "file=@nda_template.pdf"
 ```
 
@@ -199,13 +205,15 @@ Queries only access data within their workspace:
 
 ```bash
 # Query HR workspace - won't see Legal docs
-curl -X POST "http://localhost:8080/api/v1/query?workspace_id=ws_hr" \
+curl -X POST "http://localhost:8080/api/v1/query" \
   -H "Content-Type: application/json" \
+  -H "X-Workspace-ID: ws_hr" \
   -d '{"query": "What is the vacation policy?"}'
 
 # Query Legal workspace - won't see HR docs
-curl -X POST "http://localhost:8080/api/v1/query?workspace_id=ws_legal" \
+curl -X POST "http://localhost:8080/api/v1/query" \
   -H "Content-Type: application/json" \
+  -H "X-Workspace-ID: ws_legal" \
   -d '{"query": "What are the NDA terms?"}'
 ```
 
@@ -279,8 +287,9 @@ function extractTenant(req, res, next) {
 app.post("/api/query", extractTenant, async (req, res) => {
   try {
     const response = await axios.post(
-      `${EDGEQUAKE_URL}/api/v1/query?workspace_id=${req.workspaceId}`,
+      `${EDGEQUAKE_URL}/api/v1/query`,
       req.body,
+      { headers: { "X-Workspace-ID": req.workspaceId, Authorization: req.headers.authorization } },
     );
     res.json(response.data);
   } catch (err) {
@@ -292,9 +301,9 @@ app.post("/api/query", extractTenant, async (req, res) => {
 app.post("/api/documents", extractTenant, async (req, res) => {
   try {
     const response = await axios.post(
-      `${EDGEQUAKE_URL}/api/v1/documents?workspace_id=${req.workspaceId}`,
+      `${EDGEQUAKE_URL}/api/v1/documents/upload`,
       req.body,
-      { headers: { "Content-Type": req.headers["content-type"] } },
+      { headers: { "Content-Type": req.headers["content-type"], "X-Workspace-ID": req.workspaceId } },
     );
     res.json(response.data);
   } catch (err) {
@@ -328,8 +337,9 @@ def get_workspace(token: str = Depends(security)):
 async def query(body: dict, workspace_id: str = Depends(get_workspace)):
     async with httpx.AsyncClient() as client:
         response = await client.post(
-            f"{EDGEQUAKE_URL}/api/v1/query?workspace_id={workspace_id}",
-            json=body
+            f"{EDGEQUAKE_URL}/api/v1/query",
+            json=body,
+            headers={"X-Workspace-ID": workspace_id},
         )
         return response.json()
 
@@ -340,8 +350,9 @@ async def upload_document(
 ):
     async with httpx.AsyncClient() as client:
         response = await client.post(
-            f"{EDGEQUAKE_URL}/api/v1/documents?workspace_id={workspace_id}",
-            files={"file": file.file}
+            f"{EDGEQUAKE_URL}/api/v1/documents/upload",
+            files={"file": file.file},
+            headers={"X-Workspace-ID": workspace_id},
         )
         return response.json()
 ```
@@ -413,13 +424,15 @@ Cross-workspace query in a single API call is **not currently exposed**. Query e
 
 ```bash
 # Query HR workspace
-curl -X POST "http://localhost:8080/api/v1/query?workspace_id=ws_hr" \
+curl -X POST "http://localhost:8080/api/v1/query" \
   -H "Content-Type: application/json" \
+  -H "X-Workspace-ID: ws_hr" \
   -d '{"query": "Company policies overview", "mode": "global"}'
 
 # Query Legal workspace
-curl -X POST "http://localhost:8080/api/v1/query?workspace_id=ws_legal" \
+curl -X POST "http://localhost:8080/api/v1/query" \
   -H "Content-Type: application/json" \
+  -H "X-Workspace-ID: ws_legal" \
   -d '{"query": "Company policies overview", "mode": "global"}'
 ```
 

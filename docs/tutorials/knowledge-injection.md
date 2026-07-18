@@ -3,9 +3,13 @@ title: "Knowledge Injection — Tutorial"
 description: "Enrich your workspace with domain glossaries that improve retrieval without polluting citations"
 ---
 
+> **Product: v0.19.0** · Contract: [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 # Knowledge Injection
 
 > **Available since v0.8.0** · Issue [#131](https://github.com/raphaelmansuy/edgequake/issues/131) · Spec [SPEC-0002](../../specifications/0002_knowledge_injection_issue_131/)
+
+Auth is **on by default** outside `EDGEQUAKE_DEV_MODE`. Add `Authorization: Bearer $TOKEN` or `X-API-Key` to curl examples when auth is enabled (see [Quick Start — Authentication headers](/docs/getting-started/quick-start/#authentication-headers)).
 
 ## What It Is
 
@@ -43,7 +47,7 @@ Response:
 ### 2. Poll until complete
 
 ```bash
-curl http://localhost:8080/api/v1/workspaces/default/injection/a1b2c3d4-e5f6-... \
+curl http://localhost:8080/api/v1/workspaces/default/injections/a1b2c3d4-e5f6-... \
   -H "X-Workspace-ID: default"
 ```
 
@@ -104,7 +108,7 @@ Accepted formats: `.txt`, `.md`, plain text.
 | List all       | `GET`    | `/api/v1/workspaces/:id/injections`                              |
 | Create (text)  | `PUT`    | `/api/v1/workspaces/:id/injection`                              |
 | Create (file)  | `PUT`    | `/api/v1/workspaces/:id/injection/file`                       |
-| Get detail     | `GET`    | `/api/v1/workspaces/:id/injection/:injection_id`                |
+| Get detail     | `GET`    | `/api/v1/workspaces/:id/injections/:injection_id`               |
 | Update         | `PATCH`  | `/api/v1/workspaces/:id/injections/:injection_id`                |
 | Delete         | `DELETE` | `/api/v1/workspaces/:id/injection/:injection_id`                |
 

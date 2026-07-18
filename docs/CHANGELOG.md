@@ -2,24 +2,10 @@
 title: 'Changelog (docs)'
 ---
 
-# Changelog (docs)
+# Changelog
 
-All notable changes to the EdgeQuake documentation are tracked here. See the root CHANGELOG.md for workspace-wide changes.
+Product and documentation release history lives in the **root** changelog — do not maintain a second list here.
 
-## [Unreleased]
+→ **[CHANGELOG.md](../CHANGELOG.md)** (current product line: **v0.19.0**)
 
-### Added
-
-- **edgequake/docs/migrations.md** — SQLx migration overview, immutability rules, troubleshooting.
-- **edgequake/docs/migrations/038-source-ids-indexes.md** — Migration 038 rollout, FAQ, edge-case matrix, verification commands.
-
-### Changed
-
-- Added Sigma graph-viewer performance tuning guidance to
-  `docs/operations/performance-tuning.md`.
-- Recast `mission/05-improve-performance-sigma.md` as an accepted ADR with
-  explicit decision rules, alternatives, consequences, and verification.
-- Aligned pinned quickstart and release examples with the April 2026 release
-  line, finalized as official version `0.10.1`.
-- Promoted the official publish target to `0.10.1` after matching the exact CI
-  formatting gate used on GitHub Actions.
+When a docs-only change ships without a product bump, note it under `[Unreleased]` or the next version section in that file.

@@ -2,11 +2,13 @@
 title: 'Deep Dive: Community Detection'
 ---
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 # Deep Dive: Community Detection
 
 > **How EdgeQuake Discovers Structure in Knowledge Graphs**
 
-Community detection identifies clusters of densely connected entities in the knowledge graph. This enables the Global Query strategy to reason about themes and topics rather than individual entities.
+Community detection identifies clusters of densely connected entities in the knowledge graph. **Global query mode today** uses relationship-vector search + degree fallback (SPEC-023), not community-report retrieval — communities here support optional `EDGEQUAKE_COMMUNITY_REPORTS` and analytics.
 
 ---
 

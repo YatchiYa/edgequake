@@ -4,6 +4,8 @@ title: 'Fix: Embedding API Validation Error'
 
 # Fix: Embedding API Validation Error
 
+> **Historical document.** Incident note from **2026-02-10**. Current product is **v0.19.0**. Prefer [Troubleshooting](../troubleshooting/common-issues.md) and root [CHANGELOG](../../CHANGELOG.md) for living guidance. Not part of the living docs nav.
+
 **Date**: 2026-02-10  
 **Issue**: Pipeline processing failed: Embedding error: API error: '$.input' is invalid  
 **Status**: ✅ Fixed  
@@ -79,7 +81,9 @@ All 201 tests pass:
 
 ```bash
 cd edgequake
-cargo test --package edgequake-llm --lib
+# Historical command from 2026-02 (crate layout has since changed).
+# Prefer: cargo test -p edgequake-pipeline --lib
+cargo test --workspace --lib
 # Result: ok. 201 passed; 0 failed; 0 ignored
 ```
 

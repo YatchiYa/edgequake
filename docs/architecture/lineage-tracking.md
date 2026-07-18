@@ -4,6 +4,8 @@ title: 'Lineage Tracking Architecture'
 
 # Lineage Tracking Architecture
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 > Complete traceability from source documents to extracted entities
 
 ---
@@ -31,11 +33,11 @@ EdgeQuake implements a comprehensive lineage tracking system that records the fu
 │  PDF Upload (file, sha256, size)                                    │
 │    │                                                                │
 │    ▼                                                                │
-│  PdfDocument (pdf_id, document_id, filename, page_count)            │
-│    │                                                                │
+│  PdfDocument (pdf_id, task_id, markdown_content after convert)      │
+│    │  optional mm-assets: assets/page-NNNN.png                      │
 │    ▼                                                                │
 │  Document (document_id, pdf_id, document_type, llm_model,          │
-│            embedding_model, file_size, sha256_checksum)             │
+│            embedding_model, modality metadata)                      │
 │    │                                                                │
 │    ▼                                                                │
 │  Chunk (chunk_id, full_doc_id, chunk_order_index,                   │
@@ -59,13 +61,46 @@ EdgeQuake implements a comprehensive lineage tracking system that records the fu
 
 | Level        | Fields                                                                              |
 | ------------ | ------------------------------------------------------------------------------------ |
-| **PDF**      | pdf_id, document_id, filename, file_size_bytes, sha256_checksum, page_count          |
+| **PDF**      | pdf_id, document_id, filename, file_size_bytes, sha256_checksum, page_count, markdown after convert |
+| **mm-asset** | document_id, asset_id (path stem), relative path under `assets/`, served via REST |
 | **Document** | document_id, file_path, file_size, document_type, sha256_checksum, pdf_id,           |
 |              | llm_model, embedding_model, processed_at, created_at, updated_at                    |
 | **Chunk**    | chunk_id, full_doc_id, chunk_order_index, start_line, end_line,                      |
 |              | start_offset, end_offset, llm_model, embedding_model, embedding_dimension, tokens    |
 | **Lineage**  | extraction_provider, extraction_model, embedding_provider, embedding_model, dims     |
 | **Entity**   | entity_id, chunk_ids[], source_documents[], extraction_metadata                      |
+
+---
+
+## Modality and mm-assets
+
+Vision PDF convert (SPEC-047 / modality-aware ingestion) can persist page and chart-crop PNGs alongside markdown:
+
+```
+PDF bytes
+   │
+   ▼
+edgequake-pdf (vision convert)
+   ├─ markdown_content → pdf_documents (markdown barrier for Insert)
+   ├─ figure links → ![caption](assets/page-0001.png)
+   └─ PNG bytes → document_mm_assets (Postgres) + filesystem cache
+         │
+         ▼
+REST: GET /documents/{document_id}/assets/{asset_id}
+      GET /documents/{document_id}/mm-assets/{*asset_path}
+```
+
+**Identity rules:**
+
+| Concept | Rule |
+| ------- | ---- |
+| `asset_id` | Stable stem from relative path (`page-0001` from `assets/page-0001.png`) |
+| `document_id` | Scope for asset URLs — set when PDF links to document after convert |
+| Lineage | Chunks may reference `assets/…`; trace to PDF page via `pdf_id` + asset path |
+
+**Convert vs ingest:** Lineage fields on chunks/entities are stamped during **Insert**, not during PdfProcessing. A PDF row can be `Completed` while the document is still `converting`/`extracting` — convert artifact only. See [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md#convert-then-ingest-spec-057-p2).
+
+API reference: [Lineage endpoints — mm-assets](/docs/api-reference/lineage-endpoints/#multimodal-assets-mm-assets).
 
 ---
 
@@ -175,28 +210,21 @@ Lineage data is persisted in KV storage alongside documents and chunks:
 PDF Upload
   │
   ▼
-processor.rs ─── process_task()
+TaskType::PdfProcessing (convert) ─── edgequake-pdf
   │
-  ├─ 1. Extract text from PDF (pdfium)
-  ├─ 2. Create Document with lineage metadata:
-  │     - document_type = "pdf"
-  │     - file_size = PDF file size
-  │     - sha256_checksum = SHA-256 of PDF bytes
-  │     - pdf_id = PdfDocument ID
-  ├─ 3. Store metadata: KV.set("{doc_id}-metadata", metadata_json)
-  ├─ 4. Chunk document with position tracking:
-  │     - start_line, end_line per chunk
-  │     - chunk_order_index
-  ├─ 5. Store each chunk:
-  │     - KV.set("{doc_id}-chunk-{N}", chunk_json)
-  │     - Vector.upsert(chunk_id, embedding, metadata)
-  ├─ 6. Entity extraction (LLM):
-  │     - llm_model stamped on each chunk
-  │     - embedding_model stamped on each chunk
-  ├─ 7. Persist lineage:
-  │     - KV.set("{doc_id}-lineage", lineage_json)
+  ├─ 1. Vision / EdgeParse → markdown + optional mm-assets
+  ├─ 2. Persist pdf_documents.markdown_content (barrier)
+  ├─ 3. PDF status → Completed
   │
-  └─ 8. Update document status → Completed
+  ▼
+TaskType::Insert (ingest) ─── edgequake-pipeline
+  │
+  ├─ 4. Chunk with position tracking (start_line, end_line)
+  ├─ 5. Entity extraction — llm_model on chunks
+  ├─ 6. Embed + merge + store (KV, pgvector, AGE)
+  ├─ 7. Persist lineage: KV `{doc_id}-lineage`
+  │
+  └─ 8. Document status → completed
 ```
 
 ---
@@ -404,7 +432,8 @@ All lineage fields are `Option<T>` with `#[serde(default)]`:
 
 ## Related Specifications
 
-- **SPEC-002**: Unified Ingestion Pipeline
+- **SPEC-057**: Task delivery, convert → ingest, cancel semantics
+- **SPEC-047**: Modality-aware vision / mm-assets
 - **SPEC-007**: PDF Upload Support with Vision LLM
 - **SPEC-032**: Workspace-specific LLM/embedding providers
 - **SPEC-033**: Hybrid provider mode

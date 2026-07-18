@@ -2,6 +2,8 @@
 title: "Tutorial: Document Ingestion Deep-Dive"
 ---
 
+> **Product: v0.19.0** · Contract: [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 # Tutorial: Document Ingestion Deep-Dive
 
 > **Understanding and Customizing the Document Pipeline**
@@ -11,6 +13,16 @@ This tutorial explores EdgeQuake's document processing pipeline in depth, coveri
 **Time**: ~25 minutes  
 **Level**: Intermediate  
 **Prerequisites**: Completed [First RAG App](/docs/tutorials/first-rag-app/)
+
+### API truth (v0.19.0)
+
+| Concept | SSOT |
+| ------- | ---- |
+| Document list/detail | `DocumentSummary`: `display_status`, `ui_phase`, `track_id`, `current_stage` |
+| PDF pipeline | **Convert** (`TaskType::PdfProcessing`) then **ingest** (`TaskType::Insert`) — see [PDF Ingestion](/docs/tutorials/pdf-ingestion/) |
+| Progress | WebSocket `/ws/progress/{track_id}` or HTTP poll — **not** legacy `/rag/*` |
+| Query | `QueryResponse`: `answer` + `sources` |
+| Auth | On by default; `make dev` sets `EDGEQUAKE_DEV_MODE=true` |
 
 ---
 
@@ -607,11 +619,13 @@ Default: 1 gleaning iteration (good balance).
 
 ## Step 6: Monitor Processing
 
+Use `DocumentSummary` presentation fields (SPEC-057) instead of inferring state from legacy `status` alone.
+
 ### Real-Time Status
 
 ```bash
-# Get processing status
-curl "http://localhost:8080/api/v1/documents/doc_xyz789"
+curl "http://localhost:8080/api/v1/documents/doc_xyz789" \
+  -H "X-Workspace-ID: $WORKSPACE_ID"
 ```
 
 **Response:**
@@ -620,21 +634,30 @@ curl "http://localhost:8080/api/v1/documents/doc_xyz789"
 {
   "id": "doc_xyz789",
   "title": "Research Paper",
-  "status": "processing",
-  "progress": {
-    "phase": "extracting",
-    "chunks_total": 45,
-    "chunks_processed": 23,
-    "percent": 51
-  },
-  "metrics": {
-    "parse_time_ms": 234,
-    "chunk_time_ms": 156,
-    "extract_time_ms": 12400,
-    "tokens_used": 15600
-  }
+  "display_status": "extracting",
+  "ui_phase": "running",
+  "current_stage": "entity_extraction",
+  "track_id": "f6fa9cad-bbff-4892-a855-3bd7d70da044",
+  "chunk_count": 45,
+  "entity_count": 12
 }
 ```
+
+| Field | Meaning |
+| ----- | ------- |
+| `display_status` | Badge key: `converting`, `extracting`, `embedding`, `completed`, `failed`, `cancelled`, … |
+| `ui_phase` | `idle` \| `running` \| `stopping` \| `terminal` — show **Stopping…** when `stopping` |
+| `current_stage` | Pipeline stage SSOT (prefer over legacy `status`) |
+| `track_id` | Correlate upload → progress WebSocket `/ws/progress/{track_id}` |
+
+### WebSocket progress
+
+```javascript
+const ws = new WebSocket(`ws://localhost:8080/ws/progress/${trackId}`);
+ws.onmessage = (e) => console.log(JSON.parse(e.data));
+```
+
+Cancel in flight: `POST /api/v1/tasks/{track_id}/cancel` (see [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)).
 
 ### Processing Phases
 

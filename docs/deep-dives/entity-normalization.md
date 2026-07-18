@@ -2,6 +2,8 @@
 title: 'Entity Normalization Deep-Dive'
 ---
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 # Entity Normalization Deep-Dive
 
 > **Deduplication and Merging for Clean Knowledge Graphs**
