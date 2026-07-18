@@ -10,6 +10,8 @@ title: 'Deep Dive: Vector Storage'
 
 Vector storage powers EdgeQuake's semantic search capabilities. This document explains how embeddings are stored, indexed, and queried for similarity.
 
+**See also:** [Data Layer](data-layer.md) — physical `eq_eq_*_vectors` / workspace tables, halfvec policy, FTS→KV join, and the query×store matrix.
+
 ---
 
 ## Overview

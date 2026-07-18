@@ -10,6 +10,8 @@ title: 'Deep Dive: Graph Storage'
 
 Graph storage is the foundation of EdgeQuake's knowledge management. **Production uses PostgreSQL + Apache AGE exclusively** — there is no Neo4j or alternate graph backend in the shipping stack.
 
+**See also:** [Data Layer](data-layer.md) — physical naming (`eq_eq_*_graph`), child-table indexes (M038/M086), and how Local/Global query modes expand AGE then re-score vectors.
+
 ---
 
 ## Overview

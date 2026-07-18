@@ -10,6 +10,8 @@ title: 'Query Modes Deep-Dive'
 
 EdgeQuake provides **6 query modes** (`naive`, `local`, `global`, `hybrid`, `mix`, `bypass`), each optimized for different question types. **Production default:** `mix` (RRF-weighted fusion). API handlers fall back to `mix` when `mode` is omitted.
 
+**Storage touchpoints:** which modes hit pgvector vs AGE vs KV is documented in [Data Layer — How information is queried](data-layer.md#8-how-information-is-queried).
+
 ---
 
 ## Table of Contents
