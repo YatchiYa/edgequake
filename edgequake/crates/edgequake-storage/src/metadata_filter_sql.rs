@@ -2,6 +2,7 @@
 //!
 //! Encodes the same semantics as [`MetadataFilter::matches`] for postgres pgvector queries.
 
+use crate::filter_column_policy::prefer_denorm_filter_columns;
 use crate::traits::MetadataFilter;
 
 /// Dynamic SQL fragments for filtered vector search.
@@ -53,23 +54,36 @@ impl MetadataFilter {
             param_offset += 1;
         }
 
+        // SPEC-064: partial HNSW `WHERE workspace_id = $ws` is only usable when the
+        // query implies that predicate. The legacy OR JSONB fallback blocks implication.
+        // Opt-in via EDGEQUAKE_HNSW_PARTIAL_BY_WORKSPACE / EDGEQUAKE_METADATA_FILTER_COLUMNS_ONLY.
+        let columns_only = prefer_denorm_filter_columns();
+
         if self.tenant_id.is_some() {
-            conditions.push(format!(
-                "({tenant} = ${p} OR {meta}->>'tenant_id' = ${p})",
-                tenant = q("tenant_id"),
-                meta = q("metadata"),
-                p = param_offset
-            ));
+            if columns_only {
+                conditions.push(format!("{} = ${param_offset}", q("tenant_id")));
+            } else {
+                conditions.push(format!(
+                    "({tenant} = ${p} OR {meta}->>'tenant_id' = ${p})",
+                    tenant = q("tenant_id"),
+                    meta = q("metadata"),
+                    p = param_offset
+                ));
+            }
             param_offset += 1;
         }
 
         if self.workspace_id.is_some() {
-            conditions.push(format!(
-                "({workspace} = ${p} OR {meta}->>'workspace_id' = ${p})",
-                workspace = q("workspace_id"),
-                meta = q("metadata"),
-                p = param_offset
-            ));
+            if columns_only {
+                conditions.push(format!("{} = ${param_offset}", q("workspace_id")));
+            } else {
+                conditions.push(format!(
+                    "({workspace} = ${p} OR {meta}->>'workspace_id' = ${p})",
+                    workspace = q("workspace_id"),
+                    meta = q("metadata"),
+                    p = param_offset
+                ));
+            }
             param_offset += 1;
         }
 
@@ -96,6 +110,23 @@ impl MetadataFilter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn columns_only_omits_jsonb_or_for_workspace() {
+        std::env::set_var("EDGEQUAKE_HNSW_PARTIAL_BY_WORKSPACE", "1");
+        let mf = MetadataFilter {
+            workspace_id: Some("ws-a".into()),
+            tenant_id: Some("t1".into()),
+            document_ids: None,
+            vector_type: None,
+            modalities: None,
+        };
+        let sql = mf.build_sql(false, 2);
+        assert!(sql.conditions.iter().any(|c| c == "workspace_id = $3"));
+        assert!(sql.conditions.iter().any(|c| c == "tenant_id = $2"));
+        assert!(!sql.conditions.iter().any(|c| c.contains("metadata")));
+        std::env::remove_var("EDGEQUAKE_HNSW_PARTIAL_BY_WORKSPACE");
+    }
 
     #[test]
     fn build_sql_matches_predicate_fields() {

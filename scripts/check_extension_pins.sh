@@ -12,6 +12,7 @@ verify_profile() {
     pg16) dockerfile="$ROOT/edgequake/docker/Dockerfile.postgres" ;;
     pg17) dockerfile="$ROOT/edgequake/docker/Dockerfile.postgres.pg17" ;;
     pg18) dockerfile="$ROOT/edgequake/docker/Dockerfile.postgres.pg18" ;;
+    pg18-vectorscale) dockerfile="$ROOT/edgequake/docker/Dockerfile.postgres.pg18-vectorscale" ;;
     *) echo "Unknown profile: $profile"; return 1 ;;
   esac
 
@@ -35,17 +36,21 @@ verify_profile() {
   check "PGVECTOR default_version='${EQ_PGVECTOR_MIN}'" "default_version = '${EQ_PGVECTOR_MIN}'"
   check "AGE_GIT_REF=${EQ_AGE_GIT_REF}" "AGE_GIT_REF=${EQ_AGE_GIT_REF}"
   check "AGE default_version='${EQ_AGE_MIN}'" "default_version = '${EQ_AGE_MIN}'"
+  if [ -n "${EQ_PGVECTORSCALE_MIN:-}" ]; then
+    check "PGVECTORSCALE_VERSION=${EQ_PGVECTORSCALE_VERSION}" "PGVECTORSCALE_VERSION=${EQ_PGVECTORSCALE_VERSION}"
+    check "vectorscale default_version='${EQ_PGVECTORSCALE_MIN}'" "default_version = '${EQ_PGVECTORSCALE_MIN}'"
+  fi
   [ "$fail" -eq 0 ] || return 1
   echo "✓ Extension pins consistent ($profile ↔ $(basename "$dockerfile"))"
 }
 
 case "$PROFILE" in
   all)
-    verify_profile pg16 && verify_profile pg17 && verify_profile pg18
+    verify_profile pg16 && verify_profile pg17 && verify_profile pg18 && verify_profile pg18-vectorscale
     ;;
-  pg16|pg17|pg18)
+  pg16|pg17|pg18|pg18-vectorscale)
     verify_profile "$PROFILE"
     ;;
   *)
-    echo "Usage: $0 [pg16|pg17|pg18|all]"; exit 1 ;;
+    echo "Usage: $0 [pg16|pg17|pg18|pg18-vectorscale|all]"; exit 1 ;;
 esac

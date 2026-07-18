@@ -527,7 +527,9 @@ storage.upsert(&data).await?;
 
 ## Benchmarks
 
-Performance on typical workloads (pgvector with HNSW, 100K vectors, 1536 dimensions):
+> **Honesty (SPEC-065):** Illustrative unfiltered/warm numbers below are **not** the product claim table. For proven floors, cold cliffs, and 100k Q1-d (Wave-2 opt-in), see [`docs/product-limits.md`](../product-limits.md).
+
+Performance on typical workloads (pgvector with HNSW, 100K vectors, 1536 dimensions) — **illustrative / warm / often unfiltered**:
 
 | Operation      | Latency | Notes         |
 | -------------- | ------- | ------------- |
@@ -537,7 +539,7 @@ Performance on typical workloads (pgvector with HNSW, 100K vectors, 1536 dimensi
 | `upsert(100)`  | ~50ms   | Batch insert  |
 | Index build    | ~30s    | 100K vectors  |
 
-**Memory Usage:**
+**Memory Usage (order-of-magnitude):**
 
 - 1536-dim vector: ~6KB (with overhead)
 - 100K vectors: ~600MB

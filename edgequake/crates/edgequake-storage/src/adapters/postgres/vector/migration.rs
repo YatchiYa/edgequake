@@ -74,7 +74,11 @@ impl PgVectorStorage {
         }
     }
 
-    /// Ensure the table has the correct dimension, recreating if necessary.
+    /// Ensure the table has the correct dimension.
+    ///
+    /// SPEC-058: dimension mismatch **fails closed** by default (no silent
+    /// `DROP TABLE`). Set `EDGEQUAKE_ALLOW_VECTOR_TABLE_REBUILD=1` to restore
+    /// the destructive recreate path (operator-driven re-embed / new workspace).
     pub async fn ensure_dimension(&self, required_dimension: usize) -> Result<bool> {
         self.pool.initialize().await?;
 
@@ -90,11 +94,21 @@ impl PgVectorStorage {
                 Ok(false)
             }
             Some(dim) => {
+                if !allow_vector_table_rebuild() {
+                    crate::compensation::record_vector_dim_mismatch_rejected();
+                    return Err(StorageError::InvalidQuery(format!(
+                        "Vector dimension mismatch on {}: stored={dim}, required={required_dimension}. \
+                         Refusing DROP TABLE (SPEC-058). Re-embed into a new workspace, or set \
+                         EDGEQUAKE_ALLOW_VECTOR_TABLE_REBUILD=1 to wipe and recreate.",
+                        self.table_name
+                    )));
+                }
+
                 tracing::warn!(
                     table = %self.table_name,
                     old_dimension = dim,
                     new_dimension = required_dimension,
-                    "Vector dimension mismatch detected, recreating table"
+                    "Vector dimension mismatch — EDGEQUAKE_ALLOW_VECTOR_TABLE_REBUILD=1, recreating table"
                 );
 
                 self.drop_table().await?;
@@ -118,4 +132,15 @@ impl PgVectorStorage {
             }
         }
     }
+}
+
+/// Opt-in destructive recreate on embedding dimension mismatch (SPEC-058).
+pub fn allow_vector_table_rebuild() -> bool {
+    matches!(
+        std::env::var("EDGEQUAKE_ALLOW_VECTOR_TABLE_REBUILD")
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .as_str(),
+        "1" | "true" | "yes" | "on"
+    )
 }

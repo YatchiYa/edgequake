@@ -33,11 +33,12 @@ impl QueryEngine {
         let retrieval_config = self.config_with_max_chunks(max_chunks);
         let mut context = QueryContext::new();
         // SPEC-031: push document scope filter to SQL layer (Tier 1 pre-filter)
+        // SPEC-058: push vector_type=entity to SQL (Naive already pushes chunk).
         let mf = make_scope_metadata_filter(
             tenant_id.clone(),
             workspace_id.clone(),
             allowed_document_ids,
-            None,
+            Some("entity"),
         );
 
         let vector_results = vector_storage
@@ -112,6 +113,8 @@ impl QueryEngine {
                     self.config.graph_depth,
                     self.config.max_relationships,
                     self.config.graph_walk,
+                    tenant_id.as_deref(),
+                    workspace_id.as_deref(),
                 )
                 .await?;
                 for edge in edges {
@@ -145,6 +148,8 @@ impl QueryEngine {
                 self.config.graph_depth,
                 self.config.max_relationships,
                 self.config.graph_walk,
+                tenant_id.as_deref(),
+                workspace_id.as_deref(),
             )
             .await?;
 

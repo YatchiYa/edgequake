@@ -17,6 +17,12 @@ An Architecture Decision Record captures an important architectural decision alo
 | [ADR-0005](0005-async-openai-integration.md)   | Async OpenAI for LLM Integration       | Accepted | 2024-02 |
 | [ADR-0006](0006-graph-centric-knowledge.md)    | Graph-Centric Knowledge Representation | Accepted | 2024-02 |
 
+### Spec-pack ADRs (capacity / data layout)
+
+| ADR | Title | Status | Date |
+| --- | ----- | ------ | ---- |
+| [ADR-073](../../specs/073-relational-rag-layout/007-adr-relational-rag-layout.md) | Relational RAG layout (multi-lens) | Accepted | 2026-07 |
+
 ## ADR Template
 
 ```markdown

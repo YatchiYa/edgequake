@@ -459,6 +459,7 @@ impl DocumentTaskProcessor {
                 data: &data,
                 task_storage: self.task_storage.as_ref(),
                 tenant_ctx: Some(&tenant_ctx),
+                workspace_service: self.workspace_service.as_deref(),
                 #[cfg(feature = "postgres")]
                 pg_pool: self.pg_pool.as_ref(),
                 #[cfg(feature = "postgres")]

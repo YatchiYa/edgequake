@@ -25,6 +25,8 @@ pub struct OrphanTaskRecoveryReport {
     pub failed_for_manual_count: u64,
     pub completed_count: u64,
     pub skipped_live_lease: u64,
+    /// SPEC-059: document IDs to retract when task failed (manual resume path).
+    pub retract_document_ids: Vec<String>,
 }
 
 fn humanize_minutes(minutes: i64) -> String {
@@ -165,6 +167,9 @@ pub async fn recover_orphaned_tasks(
                                 error = %e,
                                 "Failed to sync document metadata after startup orphan fail"
                             );
+                        }
+                        if let Some(doc_id) = extract_document_id_from_task(&task) {
+                            report.retract_document_ids.push(doc_id);
                         }
                         info!(
                             "Orphaned task marked failed for manual resume: {} (age: {})",

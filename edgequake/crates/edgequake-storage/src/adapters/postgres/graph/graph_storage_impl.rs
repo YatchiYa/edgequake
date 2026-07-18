@@ -78,8 +78,16 @@ impl GraphStorageReadOps for PostgresAGEGraphStorage {
         self.pg_get_node_edges(node_id).await
     }
 
-    async fn get_incident_edges_batch(&self, node_ids: &[String]) -> Result<Vec<GraphEdge>> {
-        self.pg_get_incident_edges_batch(node_ids).await
+    async fn get_incident_edges_batch(
+        &self,
+        node_ids: &[String],
+        tenant_id: Option<&str>,
+        workspace_id: Option<&str>,
+    ) -> Result<Vec<GraphEdge>> {
+        // SPEC-060: storage op histogram (op label only)
+        let _timed = crate::TimedStorageOp::start("incident_edges");
+        self.pg_get_incident_edges_batch(node_ids, tenant_id, workspace_id)
+            .await
     }
 
     async fn get_all_edges(&self) -> Result<Vec<GraphEdge>> {
@@ -190,6 +198,10 @@ impl GraphStorageMutateOps for PostgresAGEGraphStorage {
 
     async fn delete_node(&self, node_id: &str) -> Result<()> {
         self.pg_delete_node(node_id).await
+    }
+
+    async fn delete_nodes_batch(&self, node_ids: &[String]) -> Result<()> {
+        self.pg_delete_nodes_batch(node_ids).await
     }
 
     async fn delete_node_scoped(

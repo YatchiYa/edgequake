@@ -30,6 +30,29 @@ pub fn edge_matches_tenant_workspace(
     node_matches_tenant_workspace(properties, tenant_id, workspace_id)
 }
 
+/// SPEC-058: match SQL `edge_and_clause` Strict — each provided dimension must
+/// equal the property (missing property → exclude). Allows tenant-only or
+/// workspace-only filters used by RAG expand.
+pub fn edge_matches_scope_dims(
+    properties: &HashMap<String, serde_json::Value>,
+    tenant_id: Option<&str>,
+    workspace_id: Option<&str>,
+) -> bool {
+    if let Some(tid) = tenant_id {
+        match properties.get("tenant_id").and_then(|v| v.as_str()) {
+            Some(t) if t == tid => {}
+            _ => return false,
+        }
+    }
+    if let Some(wid) = workspace_id {
+        match properties.get("workspace_id").and_then(|v| v.as_str()) {
+            Some(w) if w == wid => {}
+            _ => return false,
+        }
+    }
+    true
+}
+
 /// Returns true when a node satisfies list filter criteria.
 pub fn node_matches_list_filter(node: &GraphNode, filter: &NodeListFilter) -> bool {
     match (filter.tenant_id.as_deref(), filter.workspace_id.as_deref()) {

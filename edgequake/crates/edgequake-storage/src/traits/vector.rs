@@ -273,6 +273,29 @@ pub trait VectorStorage: Send + Sync {
     /// * `data` - Vector of (id, embedding, metadata) tuples
     async fn upsert(&self, data: &[(String, Vec<f32>, serde_json::Value)]) -> Result<()>;
 
+    /// Upsert and return IDs that were **inserted** (not updated).
+    ///
+    /// SPEC-059: compensate artifacts must use this — not a preflight `get_by_ids`
+    /// (TOCTOU). Postgres uses `RETURNING (xmax = 0) AS inserted` atomically with
+    /// the write. Memory holds the map lock across existence check + insert.
+    ///
+    /// Default falls back to check-then-upsert (TOCTOU) for thin test doubles;
+    /// production adapters override.
+    async fn upsert_report_created(
+        &self,
+        data: &[(String, Vec<f32>, serde_json::Value)],
+    ) -> Result<Vec<String>> {
+        let ids: Vec<String> = data.iter().map(|(id, _, _)| id.clone()).collect();
+        let existing = self.get_by_ids(&ids).await?;
+        let existing_set: std::collections::HashSet<&str> =
+            existing.iter().map(|(id, _)| id.as_str()).collect();
+        self.upsert(data).await?;
+        Ok(ids
+            .into_iter()
+            .filter(|id| !existing_set.contains(id.as_str()))
+            .collect())
+    }
+
     /// Delete vectors by IDs.
     async fn delete(&self, ids: &[String]) -> Result<()>;
 
@@ -393,6 +416,16 @@ pub trait VectorStorage: Send + Sync {
     ) -> Result<Vec<VectorSearchResult>> {
         let _ = (query_text, top_k, filter_ids, metadata_filter);
         Ok(Vec::new())
+    }
+
+    /// SPEC-071: warm Wave-2 partial HNSW for a workspace (ops/admin path).
+    ///
+    /// Default: no-op (`Ok(false)`). Postgres shared-table adapters create a
+    /// workspace partial when `EDGEQUAKE_HNSW_PARTIAL_BY_WORKSPACE=1` and the
+    /// row threshold is met. Dedicated `*_ws_*` tables are a no-op.
+    async fn warmup_workspace_ann(&self, workspace_id: &str) -> Result<bool> {
+        let _ = workspace_id;
+        Ok(false)
     }
 }
 

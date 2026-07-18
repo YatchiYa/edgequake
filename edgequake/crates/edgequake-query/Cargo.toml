@@ -9,12 +9,12 @@ description = "Query engine for EdgeQuake RAG system"
 
 [features]
 default = []
-postgres = ["dep:sqlx"]
+postgres = ["dep:sqlx", "edgequake-storage/postgres"]
 
 [dependencies]
 edgequake-storage = { path = "../edgequake-storage", default-features = false }
 edgequake-llm = { workspace = true }
-edgequake-observability = { path = "../edgequake-observability", default-features = false }
+edgequake-observability = { path = "../edgequake-observability", features = ["metrics"] }
 
 async-trait.workspace = true
 tokio = { workspace = true, features = ["full"] }

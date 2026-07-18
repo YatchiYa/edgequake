@@ -7,15 +7,21 @@
 use crate::context::QueryContext;
 use crate::error::Result;
 use edgequake_observability::{
-    query_preview, record_rag_retrieval_outcome, with_rag_retrieval_span, RagRetrievalAttrs,
+    query_preview, record_query_arm_duration, record_rag_retrieval_outcome, with_rag_retrieval_span,
+    RagRetrievalAttrs,
 };
 use std::time::Instant;
+
+use super::arm_concurrency::acquire_arm_permit;
 
 /// Run an arm or return empty context; always records wall time (skipped arms ≈ 0).
 ///
 /// When `run` is true, the arm future executes inside a `rag.retrieval` span
 /// labeled with `arm` / `mode`. Outcome flags (`empty_result`) are recorded
 /// after the arm completes.
+///
+/// SPEC-058: acquires a process-wide arm permit before running so Mix/Hybrid
+/// connection fan-out stays bounded (`EDGEQUAKE_QUERY_ARM_CONCURRENCY`).
 ///
 /// WHY `Box::pin`: Mix/Hybrid `tokio::join!` three arms. Without boxing, the
 /// combined Future state machine (local+global+naive retrieval) overflows the
@@ -34,6 +40,7 @@ where
 {
     let start = Instant::now();
     let ctx = if run {
+        let _permit = acquire_arm_permit().await;
         Box::pin(with_rag_retrieval_span(
             RagRetrievalAttrs {
                 data_source_id: Some("edgequake"),
@@ -56,5 +63,10 @@ where
     } else {
         QueryContext::new()
     };
-    Ok((ctx, start.elapsed().as_millis() as u64))
+    let elapsed_ms = start.elapsed().as_millis() as u64;
+    // SPEC-060: Prometheus arm wall histogram (seconds); meta still uses ms.
+    if run {
+        record_query_arm_duration(arm, start.elapsed().as_secs_f64());
+    }
+    Ok((ctx, elapsed_ms))
 }

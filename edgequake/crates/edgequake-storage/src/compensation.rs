@@ -22,14 +22,53 @@ use crate::traits::{GraphStorage, KVStorage, VectorStorage};
 /// Process-local quarantine counter (SSOT for store_contention assessor + tests).
 static COMPENSATION_QUARANTINE_TOTAL: AtomicU64 = AtomicU64::new(0);
 
+/// SPEC-058: entity/rel vectors that already existed and were skipped from
+/// compensate artifact lists (shared across documents).
+static COMPENSATE_SHARED_ENTITY_SKIPPED_TOTAL: AtomicU64 = AtomicU64::new(0);
+
+/// SPEC-058: dimension mismatch rejected (fail-closed, no DROP).
+static VECTOR_DIM_MISMATCH_REJECTED_TOTAL: AtomicU64 = AtomicU64::new(0);
+
 /// Snapshot of compensation quarantine events since process start.
 pub fn compensation_quarantine_total() -> u64 {
     COMPENSATION_QUARANTINE_TOTAL.load(Ordering::Relaxed)
 }
 
+/// Snapshot of shared-entity vector IDs excluded from compensate delete lists.
+pub fn compensate_shared_entity_skipped_total() -> u64 {
+    COMPENSATE_SHARED_ENTITY_SKIPPED_TOTAL.load(Ordering::Relaxed)
+}
+
+/// Record N shared entity/rel vectors that pre-existed (not compensatable).
+pub fn record_compensate_shared_entity_skipped(n: usize) {
+    if n == 0 {
+        return;
+    }
+    COMPENSATE_SHARED_ENTITY_SKIPPED_TOTAL.fetch_add(n as u64, Ordering::Relaxed);
+    #[cfg(feature = "observability")]
+    edgequake_observability::record_compensate_shared_entity_skipped(n as u64);
+}
+
+/// Snapshot of fail-closed dimension mismatch rejections.
+pub fn vector_dim_mismatch_rejected_total() -> u64 {
+    VECTOR_DIM_MISMATCH_REJECTED_TOTAL.load(Ordering::Relaxed)
+}
+
+/// Record a refused vector table rebuild due to dimension mismatch.
+pub fn record_vector_dim_mismatch_rejected() {
+    VECTOR_DIM_MISMATCH_REJECTED_TOTAL.fetch_add(1, Ordering::Relaxed);
+    #[cfg(feature = "observability")]
+    edgequake_observability::record_vector_dim_mismatch_rejected();
+}
+
 #[cfg(test)]
 pub fn reset_compensation_quarantine_total_for_tests() {
     COMPENSATION_QUARANTINE_TOTAL.store(0, Ordering::Relaxed);
+}
+
+#[cfg(test)]
+pub fn reset_compensate_shared_entity_skipped_for_tests() {
+    COMPENSATE_SHARED_ENTITY_SKIPPED_TOTAL.store(0, Ordering::Relaxed);
 }
 
 /// Record quarantine metric when observability feature is enabled (SPEC-045 SRE-I07).
@@ -224,10 +263,17 @@ pub async fn compensate_orphan_graph_writes_with_kv(
         }
     }
 
-    for node_id in nodes_created {
-        if let Err(e) = graph_storage.delete_node(node_id).await {
-            quarantine(kv_storage, doc_id, "node", node_id, cause, &e.to_string()).await;
-        }
+    // SPEC-060: batch delete (native ANY) — per-node Cypher DETACH was O(K) RTs.
+    if let Err(e) = graph_storage.delete_nodes_batch(nodes_created).await {
+        quarantine(
+            kv_storage,
+            doc_id,
+            "node",
+            &nodes_created.join(","),
+            cause,
+            &e.to_string(),
+        )
+        .await;
     }
 
     if !nodes_created.is_empty() || !edges_created.is_empty() {
@@ -562,6 +608,53 @@ mod tests {
             .await;
 
         assert!(kv.get_by_id("doc1-chunk-0").await.unwrap().is_none());
+    }
+
+    /// SPEC-058: compensate must not delete a shared entity vector that was
+    /// only *updated* (absent from created artifact list).
+    #[tokio::test]
+    async fn spec058_compensate_preserves_shared_entity_vector() {
+        let graph = MemoryGraphStorage::new("test");
+        graph.initialize().await.unwrap();
+        let vector = MemoryVectorStorage::new("test", 4);
+        vector.initialize().await.unwrap();
+
+        vector
+            .upsert(&[
+                (
+                    "doc-b-chunk-0".to_string(),
+                    vec![0.1; 4],
+                    serde_json::json!({"type": "chunk"}),
+                ),
+                (
+                    "entity:SHARED".to_string(),
+                    vec![0.9; 4],
+                    serde_json::json!({"type": "entity"}),
+                ),
+            ])
+            .await
+            .unwrap();
+
+        // Only chunk + *new* node were created for doc B; SHARED entity vector
+        // is omitted from the compensate list (pre-existed from doc A).
+        super::compensate_merge_failure(
+            &graph,
+            &vector,
+            "doc-b",
+            &["doc-b-chunk-0".to_string()],
+            &[], // no created entity vectors
+            &[],
+            &["ONLY_IN_B".to_string()],
+            &[],
+            "doc-b merge failed",
+        )
+        .await;
+
+        assert!(vector.get_by_id("doc-b-chunk-0").await.unwrap().is_none());
+        assert!(
+            vector.get_by_id("entity:SHARED").await.unwrap().is_some(),
+            "shared entity embedding must survive compensate"
+        );
     }
 
     #[tokio::test]

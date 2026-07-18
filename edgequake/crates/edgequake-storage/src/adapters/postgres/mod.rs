@@ -31,11 +31,16 @@
 //! - [`BR0350`]: Each workspace has isolated vector storage
 
 mod age_csv_loader;
+mod ann_exact_reorder_policy;
+mod binary_quantize_policy;
 mod capabilities;
 mod config;
 mod connection;
 mod conversation;
 mod graph;
+mod diskann_runtime_policy;
+mod filtered_diskann_label_policy;
+mod hnsw_runtime_policy;
 mod id_allocation;
 mod kv;
 mod mm_asset_storage_impl;
@@ -55,8 +60,27 @@ pub use capabilities::{
     PostgresCapabilities, VectorStorageMode, HNSW_MAX_DIM_HALFVEC, HNSW_MAX_DIM_VECTOR,
     PGVECTOR_MIN_CVE_SAFE, PGVECTOR_MIN_ITERATIVE_SCAN,
 };
-pub use config::{hnsw_ef_construction_from_env, PostgresConfig};
+pub use config::{hnsw_ef_construction_from_env, PostgresConfig, VectorIndexType};
 pub use connection::PostgresPool;
+pub use ann_exact_reorder_policy::{
+    build_ann_select_sql, AnnExactReorderPolicy, DEFAULT_ANN_REORDER_CANDIDATE_K,
+};
+pub use binary_quantize_policy::{
+    build_binary_hnsw_index_sql, build_binary_rerank_select_sql, BinaryQuantizePolicy,
+    DEFAULT_BINARY_CANDIDATE_K,
+};
+pub use diskann_runtime_policy::{
+    diskann_optin_recipe_statements, diskann_query_tuning_statements, diskann_rescore_for_list,
+    DISKANN_OPTIN_RESCORE, DISKANN_OPTIN_SEARCH_LIST,
+};
+pub use filtered_diskann_label_policy::{
+    build_diskann_embedding_only_index_sql, build_diskann_labels_index_sql,
+    build_filtered_diskann_label_select_sql, build_postfilter_diskann_select_sql,
+    FilteredDiskannLabelPolicy, WorkspaceLabelMap, MAX_WORKSPACE_LABELS,
+};
+pub use hnsw_runtime_policy::{
+    hnsw_partial_by_workspace_enabled, HnswRuntimePolicy, parse_hnsw_iterative_scan_mode,
+};
 pub use conversation::PostgresConversationStorage;
 pub use graph::PostgresAGEGraphStorage;
 pub use id_allocation::{allocate_document_id, is_uuidv7};

@@ -20,6 +20,7 @@
 //! - [`BR0320`]: Dimension consistency validation
 //! - [`BR0321`]: Index type selection based on dataset size
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use tokio::sync::OnceCell;
@@ -36,6 +37,7 @@ mod fts;
 mod migration;
 mod search_tuning;
 mod storage_impl;
+
 
 /// PostgreSQL vector storage using pgvector.
 ///
@@ -63,6 +65,9 @@ pub struct PgVectorStorage {
     pub(crate) chunk_kv_table_name: String,
     pub(crate) chunk_kv_table_exists: Arc<OnceCell<bool>>,
     pub(crate) iterative_scan_supported: Arc<OnceCell<bool>>,
+    /// Set by `ensure_ann_index` / partial HNSW so deferred `VectorIndexType::None`
+    /// still applies HNSW search GUCs at query time (SPEC-062 / SPEC-064).
+    pub(crate) deferred_ann_ready: Arc<AtomicBool>,
 }
 
 impl PgVectorStorage {
@@ -88,6 +93,7 @@ impl PgVectorStorage {
             chunk_kv_table_name,
             chunk_kv_table_exists: Arc::new(OnceCell::new()),
             iterative_scan_supported: Arc::new(OnceCell::new()),
+            deferred_ann_ready: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -123,6 +129,41 @@ impl PgVectorStorage {
         dimension: usize,
     ) -> Self {
         Self::with_pool(pool, config, dimension)
+    }
+
+    /// Override column storage mode (SPEC-064 A/B — ignore `EDGEQUAKE_VECTOR_STORAGE`).
+    pub fn with_storage_mode(mut self, mode: VectorStorageMode) -> Self {
+        self.storage_mode = mode;
+        self
+    }
+
+    /// Qualified vectors table name (EXPLAIN / battle harness).
+    pub fn vectors_table_name(&self) -> &str {
+        &self.table_name
+    }
+
+    /// SQL embedding type (`vector` / `halfvec`) for this storage.
+    pub fn embedding_sql_type(&self) -> &'static str {
+        self.embedding_pg_type()
+    }
+
+    /// Active storage mode (`full` / `halfvec`).
+    pub fn storage_mode(&self) -> VectorStorageMode {
+        self.storage_mode
+    }
+
+    /// Index type used for search GUC tuning (promotes deferred None → HNSW when ready).
+    pub(crate) fn effective_index_type(&self) -> VectorIndexType {
+        match self.index_type {
+            VectorIndexType::None if self.deferred_ann_ready.load(Ordering::Acquire) => {
+                VectorIndexType::HNSW
+            }
+            other => other,
+        }
+    }
+
+    pub(crate) fn mark_deferred_ann_ready(&self) {
+        self.deferred_ann_ready.store(true, Ordering::Release);
     }
 }
 

@@ -20,6 +20,7 @@ use uuid::Uuid;
 
 use super::config::{PostgresConfig, VectorIndexType};
 use super::connection::PostgresPool;
+use super::hnsw_runtime_policy::HnswRuntimePolicy;
 use super::vector::PgVectorStorage;
 use crate::adapters::workspace_vector_cache::WorkspaceVectorInstanceCache;
 use crate::error::{Result, StorageError};
@@ -121,6 +122,16 @@ impl PgWorkspaceVectorRegistry {
 
         // Initialize the storage (creates table if not exists)
         storage.initialize().await?;
+
+        // SPEC-065: dedicated per-workspace tables skip partial HNSW (already isolated).
+        // Shared/default multi-WS tables create partials via query_filtered / ensure_hot_workspace_ann.
+        if HnswRuntimePolicy::from_env().partial_by_workspace && storage.is_dedicated_workspace_table()
+        {
+            tracing::debug!(
+                workspace_id = %config.workspace_id,
+                "Partial HNSW opt-in ignored for dedicated workspace table"
+            );
+        }
 
         tracing::info!(
             workspace_id = %config.workspace_id,

@@ -123,7 +123,13 @@ impl PostgresAGEGraphStorage {
 
             let current_frontier: Vec<String> = frontier.drain(..).collect();
             let frontier_set: HashSet<&str> = current_frontier.iter().map(String::as_str).collect();
-            let edges = self.pg_get_incident_edges_batch(&current_frontier).await?;
+            let edges = self
+                .pg_get_incident_edges_batch(
+                    &current_frontier,
+                    edge_filter.tenant_id.as_deref(),
+                    edge_filter.workspace_id.as_deref(),
+                )
+                .await?;
 
             for edge in edges {
                 if !edge_matches_list_filter(&edge, &edge_filter) {

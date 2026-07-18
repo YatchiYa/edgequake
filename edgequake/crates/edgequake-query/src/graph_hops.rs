@@ -15,6 +15,8 @@ pub async fn edges_within_depth(
     seed_ids: &[String],
     depth: usize,
     max_edges: usize,
+    tenant_id: Option<&str>,
+    workspace_id: Option<&str>,
 ) -> edgequake_storage::error::Result<Vec<GraphEdge>> {
     if depth == 0 || seed_ids.is_empty() || max_edges == 0 {
         return Ok(Vec::new());
@@ -30,7 +32,9 @@ pub async fn edges_within_depth(
             break;
         }
 
-        let batch = graph.get_incident_edges_batch(&frontier).await?;
+        let batch = graph
+            .get_incident_edges_batch(&frontier, tenant_id, workspace_id)
+            .await?;
         let mut next_frontier = Vec::new();
 
         for edge in batch {
@@ -76,7 +80,7 @@ mod tests {
         graph.upsert_edge("B", "C", HashMap::new()).await.unwrap();
 
         let view = GraphReadView::new(&graph);
-        let edges = edges_within_depth(&view, &["A".to_string()], 1, 10)
+        let edges = edges_within_depth(&view, &["A".to_string()], 1, 10, None, None)
             .await
             .unwrap();
         assert_eq!(edges.len(), 1);
@@ -91,7 +95,7 @@ mod tests {
         graph.upsert_edge("B", "C", HashMap::new()).await.unwrap();
 
         let view = GraphReadView::new(&graph);
-        let edges = edges_within_depth(&view, &["A".to_string()], 2, 10)
+        let edges = edges_within_depth(&view, &["A".to_string()], 2, 10, None, None)
             .await
             .unwrap();
         assert_eq!(edges.len(), 2);
@@ -109,9 +113,38 @@ mod tests {
         }
 
         let view = GraphReadView::new(&graph);
-        let edges = edges_within_depth(&view, &["HUB".to_string()], 1, 10)
+        let edges = edges_within_depth(&view, &["HUB".to_string()], 1, 10, None, None)
             .await
             .unwrap();
         assert_eq!(edges.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn spec058_workspace_filter_excludes_foreign_edges() {
+        let graph = MemoryGraphStorage::new("ws-iso");
+        graph.initialize().await.unwrap();
+        graph
+            .upsert_edge(
+                "A",
+                "B",
+                HashMap::from([("workspace_id".into(), serde_json::json!("ws-a"))]),
+            )
+            .await
+            .unwrap();
+        graph
+            .upsert_edge(
+                "A",
+                "C",
+                HashMap::from([("workspace_id".into(), serde_json::json!("ws-b"))]),
+            )
+            .await
+            .unwrap();
+
+        let view = GraphReadView::new(&graph);
+        let edges = edges_within_depth(&view, &["A".to_string()], 1, 10, None, Some("ws-a"))
+            .await
+            .unwrap();
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0].target, "B");
     }
 }

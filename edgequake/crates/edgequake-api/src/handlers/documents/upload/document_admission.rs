@@ -124,6 +124,9 @@ pub async fn admit_document_for_processing(
     let workspace_id = tenant_ctx.workspace_id_or_default();
     let tenant_id = tenant_ctx.tenant_id_or_default();
 
+    // SPEC-066: fail-closed when workspace declares max_documents.
+    crate::services::document_quota::enforce_max_documents_admission(state, &workspace_id).await?;
+
     let hash_key = ContentHasher::workspace_hash_key(&workspace_id, &input.content_hash);
     let staging_hash_key = kv_keys::staging_workspace_hash(&workspace_id, &input.content_hash);
 

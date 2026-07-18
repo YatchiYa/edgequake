@@ -496,6 +496,38 @@ pub async fn readiness_check(State(state): State<AppState>) -> impl IntoResponse
             }
         }
 
+        // SPEC-066: Wave-2 opt-in — fail-closed when vector tables lack global/partial HNSW.
+        if let Some(ref pool) = state.pg_pool {
+            match crate::services::ann_readiness::wave2_ann_readiness_blocker(pool).await {
+                Ok(Some(blocker)) => {
+                    ready = false;
+                    blockers.push(blocker);
+                    if operator_action.is_none() {
+                        operator_action = Some(
+                            "Wave-2 catalog ANN missing on existing vector tables (empty DB is ready). \
+                             Warmup: POST /api/v1/admin/ann/warmup or ./scripts/wave2_warmup.sh <workspace_id>; \
+                             first filtered query also warms. /ready ≠ plan-shape check."
+                                .to_string(),
+                        );
+                    }
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    // SPEC-067: Wave-2 probe errors fail-closed (ops-real floors).
+                    tracing::warn!(error = %e, "Wave-2 ANN readiness probe failed");
+                    ready = false;
+                    blockers.push(format!("wave2_ann_probe_error({e})"));
+                    if operator_action.is_none() {
+                        operator_action = Some(
+                            "Wave-2 ANN readiness probe Err (not empty-DB / not missing-index) — \
+                             check DATABASE_URL / pgvector catalog access, then retry /ready"
+                                .to_string(),
+                        );
+                    }
+                }
+            }
+        }
+
         let body = crate::handlers::health_types::ReadinessResponse {
             ready,
             blockers,

@@ -27,6 +27,9 @@ const INGESTION_CHUNK_STRATEGY: &str = "edgequake_ingestion_chunk_strategy_total
 const INGESTION_SECTION_CONTEXT: &str = "edgequake_ingestion_section_context_total";
 const INGESTION_FAILURES: &str = "edgequake_ingestion_failures_total";
 const COMPENSATION_QUARANTINE: &str = "edgequake_compensation_quarantine_total";
+const COMPENSATE_SHARED_SKIPPED: &str = "edgequake_compensate_shared_entity_skipped_total";
+const RETRACT_ON_CANCEL: &str = "edgequake_retract_on_cancel_total";
+const VECTOR_DIM_MISMATCH_REJECTED: &str = "edgequake_vector_dim_mismatch_rejected_total";
 const CHUNK_STRATEGY_DEGRADED: &str = "edgequake_ingestion_chunk_strategy_degraded_total";
 const VECTOR_ANN_INDEX_MISSING: &str = "edgequake_vector_ann_index_missing";
 const COMMUNITY_SAMPLED: &str = "edgequake_community_detection_sampled_total";
@@ -42,6 +45,9 @@ const GRAPH_QUALITY_AVG_DEGREE: &str = "edgequake_graph_quality_avg_degree";
 const GRAPH_QUALITY_ORPHAN_RATE: &str = "edgequake_graph_quality_orphan_rate";
 const GRAPH_QUALITY_EMPTY_DESC_RATE: &str = "edgequake_graph_quality_empty_description_rate";
 const GRAPH_QUALITY_SPARSE: &str = "edgequake_graph_quality_sparse";
+const INGEST_STAGE_DURATION: &str = "edgequake_ingest_stage_duration_seconds";
+const QUERY_ARM_DURATION: &str = "edgequake_query_arm_duration_seconds";
+const STORAGE_OP_DURATION: &str = "edgequake_storage_op_duration_seconds";
 
 /// Pre-register metric metadata so `/metrics` is never an empty body before first request.
 fn describe_http_metrics() {
@@ -113,6 +119,18 @@ fn describe_http_metrics() {
         "Saga compensation cleanup failures requiring operator quarantine"
     );
     describe_counter!(
+        COMPENSATE_SHARED_SKIPPED,
+        "SPEC-059: shared entity/rel vectors excluded from compensate delete lists"
+    );
+    describe_counter!(
+        RETRACT_ON_CANCEL,
+        "SPEC-059: document index retract operations (cancel/orphan)"
+    );
+    describe_counter!(
+        VECTOR_DIM_MISMATCH_REJECTED,
+        "SPEC-059: vector dimension mismatch rejected (fail-closed, no DROP)"
+    );
+    describe_counter!(
         CHUNK_STRATEGY_DEGRADED,
         "Semantic (or other) chunk strategy degraded to fallback"
     );
@@ -168,6 +186,21 @@ fn describe_http_metrics() {
     describe_gauge!(
         GRAPH_QUALITY_SPARSE,
         "1 when graph quality sample is sparse (avg_degree < 2 on ≥10 nodes)"
+    );
+    describe_histogram!(
+        INGEST_STAGE_DURATION,
+        Unit::Seconds,
+        "SPEC-060: ingest persist stage wall time (kv, vector, merge, compensate)"
+    );
+    describe_histogram!(
+        QUERY_ARM_DURATION,
+        Unit::Seconds,
+        "SPEC-060: Mix/Hybrid arm wall time (local, global, naive)"
+    );
+    describe_histogram!(
+        STORAGE_OP_DURATION,
+        Unit::Seconds,
+        "SPEC-060: storage op wall time (query_filtered, text_search, expand)"
     );
 }
 
@@ -393,6 +426,45 @@ pub fn record_compensation_quarantine(kind: &str) {
     counter!(COMPENSATION_QUARANTINE, "kind" => kind.to_string()).increment(1);
 }
 
+/// Record shared-entity compensate skips (SPEC-058/059).
+pub fn record_compensate_shared_entity_skipped(n: u64) {
+    if n == 0 {
+        return;
+    }
+    init_metrics();
+    counter!(COMPENSATE_SHARED_SKIPPED).increment(n);
+}
+
+/// Record document index retract (cancel / orphan) (SPEC-059).
+pub fn record_retract_on_cancel() {
+    init_metrics();
+    counter!(RETRACT_ON_CANCEL).increment(1);
+}
+
+/// Record fail-closed vector dimension mismatch (SPEC-058/059).
+pub fn record_vector_dim_mismatch_rejected() {
+    init_metrics();
+    counter!(VECTOR_DIM_MISMATCH_REJECTED).increment(1);
+}
+
+/// SPEC-060: record ingest persist stage duration (`kv`, `chunk_vector`, `merge`, `compensate`).
+pub fn record_ingest_stage_duration(stage: &str, duration_secs: f64) {
+    init_metrics();
+    histogram!(INGEST_STAGE_DURATION, "stage" => stage.to_string()).record(duration_secs.max(0.0));
+}
+
+/// SPEC-060: record Mix/Hybrid arm wall time (`local`, `global`, `naive`).
+pub fn record_query_arm_duration(arm: &str, duration_secs: f64) {
+    init_metrics();
+    histogram!(QUERY_ARM_DURATION, "arm" => arm.to_string()).record(duration_secs.max(0.0));
+}
+
+/// SPEC-060: record storage op duration (`query_filtered`, `text_search_filtered`, `incident_edges`).
+pub fn record_storage_op_duration(op: &str, duration_secs: f64) {
+    init_metrics();
+    histogram!(STORAGE_OP_DURATION, "op" => op.to_string()).record(duration_secs.max(0.0));
+}
+
 /// Record chunk strategy degradation (SPEC-046 OPS-P0.1).
 pub fn record_chunk_strategy_degraded(requested: &str, effective: &str) {
     init_metrics();
@@ -579,6 +651,26 @@ mod tests {
         assert!(
             body.contains(INGESTION_CHUNK_STRATEGY),
             "metrics scrape should list ingestion chunk strategy counter: {body:?}"
+        );
+    }
+
+    #[test]
+    fn spec060_stage_and_arm_helpers_record() {
+        record_ingest_stage_duration("kv_upsert", 0.012);
+        record_query_arm_duration("local", 0.045);
+        record_storage_op_duration("query_filtered", 0.008);
+        let body = render_prometheus_metrics();
+        assert!(
+            body.contains(INGEST_STAGE_DURATION),
+            "ingest stage histogram missing: {body:?}"
+        );
+        assert!(
+            body.contains(QUERY_ARM_DURATION),
+            "query arm histogram missing: {body:?}"
+        );
+        assert!(
+            body.contains(STORAGE_OP_DURATION),
+            "storage op histogram missing: {body:?}"
         );
     }
 }

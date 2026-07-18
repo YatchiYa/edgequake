@@ -25,6 +25,14 @@ impl PostgresAGEGraphStorage {
         node_id: &str,
         properties: HashMap<String, serde_json::Value>,
     ) -> Result<()> {
+        // SPEC-059: single-node path must use native ON CONFLICT + eq_merge when
+        // enabled — Cypher MERGE races UNIQUE under concurrent upserts.
+        if super::super::native_graph_writes_enabled() {
+            return self
+                .pg_upsert_nodes_batch(&[(node_id.to_string(), properties)])
+                .await;
+        }
+
         let escaped_id = Self::escape_cypher_string(node_id);
 
         // Build properties with node_id included
@@ -218,9 +226,64 @@ impl PostgresAGEGraphStorage {
         &self,
         node_id: &str,
     ) -> Result<()> {
+        if super::super::native_graph_writes_enabled() {
+            return self.pg_delete_nodes_batch(&[node_id.to_string()]).await;
+        }
         let cypher = "MATCH (n:Node {node_id: $node_id}) DETACH DELETE n";
         let params = serde_json::json!({ "node_id": node_id });
         self.cypher_execute_bound(cypher, &params).await
+    }
+
+    /// SPEC-060: native DETACH-equivalent — delete incident EDGE rows then Node rows
+    /// via UNIQUE `node_id` expression index (`ANY($1)`), not per-id Cypher.
+    pub(in crate::adapters::postgres::graph) async fn pg_delete_nodes_batch(
+        &self,
+        node_ids: &[String],
+    ) -> Result<()> {
+        if node_ids.is_empty() {
+            return Ok(());
+        }
+        if !super::super::native_graph_writes_enabled() {
+            for id in node_ids {
+                let cypher = "MATCH (n:Node {node_id: $node_id}) DETACH DELETE n";
+                let params = serde_json::json!({ "node_id": id });
+                self.cypher_execute_bound(cypher, &params).await?;
+            }
+            return Ok(());
+        }
+
+        let pool = self.pool.get().await?;
+        let graph = &self.graph_name;
+        let mut unique = node_ids.to_vec();
+        unique.sort();
+        unique.dedup();
+
+        // Detach: edges where either end is in the delete set.
+        let del_edges = format!(
+            r#"DELETE FROM {graph}."EDGE" e
+               WHERE ag_catalog.agtype_to_json(e.properties)->>'source_id' = ANY($1::text[])
+                  OR ag_catalog.agtype_to_json(e.properties)->>'target_id' = ANY($1::text[])"#
+        );
+        sqlx::query(&del_edges)
+            .bind(&unique)
+            .execute(&pool)
+            .await
+            .map_err(|e| {
+                StorageError::Database(format!("native batch edge detach failed: {e}"))
+            })?;
+
+        let del_nodes = format!(
+            r#"DELETE FROM {graph}."Node" n
+               WHERE ag_catalog.agtype_to_json(n.properties)->>'node_id' = ANY($1::text[])"#
+        );
+        sqlx::query(&del_nodes)
+            .bind(&unique)
+            .execute(&pool)
+            .await
+            .map_err(|e| {
+                StorageError::Database(format!("native batch node delete failed: {e}"))
+            })?;
+        Ok(())
     }
 
     /// Tenant-scoped delete — atomic MATCH+WHERE+DELETE (no cross-tenant IDOR).
@@ -286,19 +349,18 @@ impl PostgresAGEGraphStorage {
         let nodes = crate::graph_batch_dedupe::dedupe_nodes_by_id(nodes);
         let nodes = nodes.as_slice();
         let start = std::time::Instant::now();
+        // SPEC-062: eq_node_id columns/indexes must exist before native INSERT.
+        if !self.indexes_verified.load(Ordering::Relaxed) {
+            self.ensure_indexes().await?;
+            self.indexes_verified.store(true, Ordering::Relaxed);
+            tracing::info!("Created AGE indexes before first native node batch");
+        }
         // Mirror Cypher adaptive chunking — large unnest() statements lock longer
         // and risk statement-size / planner blowups on multi-thousand entity docs.
         let chunk_size = Self::adaptive_unwind_chunk_size(nodes);
 
         for chunk in nodes.chunks(chunk_size) {
             self.pg_upsert_nodes_batch_native_chunk(chunk).await?;
-        }
-
-        // Lazily create indexes (mirrors the Cypher path).
-        if !self.indexes_verified.load(Ordering::Relaxed) {
-            self.ensure_indexes().await?;
-            self.indexes_verified.store(true, Ordering::Relaxed);
-            tracing::info!("Created AGE indexes after first native node batch");
         }
 
         let elapsed = start.elapsed();
@@ -339,12 +401,15 @@ impl PostgresAGEGraphStorage {
 
         // Conflict target matches idx_node_prop_node_id_unique (Migration 074/083).
         // DISTINCT ON is a SQL safety net (same policy as edge native upsert).
+        // SPEC-062: prefer eq_node_id arbiter when column exists (ensure_eq_id_columns).
+        // Fallback to expression unique if denormalized columns not yet present.
         let sql = format!(
             r#"
-            INSERT INTO {graph}."Node" (id, properties)
+            INSERT INTO {graph}."Node" (id, properties, eq_node_id)
             SELECT
                 eq_next_node_id('{graph}'),
-                d.props_text::ag_catalog.agtype
+                d.props_text::ag_catalog.agtype,
+                d.node_id_val
             FROM (
                 SELECT DISTINCT ON (node_id_val)
                     node_id_val,
@@ -353,11 +418,10 @@ impl PostgresAGEGraphStorage {
                        WITH ORDINALITY AS p(node_id_val, props_text, ord)
                 ORDER BY node_id_val, ord DESC
             ) AS d
-            ON CONFLICT (
-                (ag_catalog.agtype_to_json(properties)->>'node_id')
-            )
+            ON CONFLICT (eq_node_id) WHERE eq_node_id IS NOT NULL
             DO UPDATE SET
-                properties = EXCLUDED.properties
+                properties = EXCLUDED.properties,
+                eq_node_id = EXCLUDED.eq_node_id
             "#,
             graph = graph
         );

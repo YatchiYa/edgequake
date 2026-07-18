@@ -460,3 +460,90 @@ pub async fn entity_reconcile_execute(
     );
     Ok(Json(ReconcileExecuteResponse { result }))
 }
+
+// ── Wave-2 ANN warmup (SPEC-071) ─────────────────────────────────────────────
+
+/// Request body for admin ANN warmup.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct AnnWarmupRequest {
+    /// Workspace IDs to warm (partial HNSW when Wave-2 flag is on).
+    pub workspace_ids: Vec<String>,
+}
+
+/// Per-workspace warmup result.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AnnWarmupItem {
+    pub workspace_id: String,
+    /// True when a new partial HNSW was created.
+    pub created: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Response for POST /api/v1/admin/ann/warmup.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AnnWarmupResponse {
+    pub results: Vec<AnnWarmupItem>,
+    /// Operator note: /ready is catalog-only; first filtered query also warms.
+    pub note: String,
+}
+
+/// POST /api/v1/admin/ann/warmup — create Wave-2 partial HNSW for hot workspaces.
+///
+/// No-op when `EDGEQUAKE_HNSW_PARTIAL_BY_WORKSPACE` is off, table is dedicated,
+/// or row count is below threshold. Prefer this over chat UX for ops warmup.
+#[utoipa::path(
+    post,
+    path = "/api/v1/admin/ann/warmup",
+    request_body = AnnWarmupRequest,
+    responses(
+        (status = 200, description = "Warmup results", body = AnnWarmupResponse),
+        (status = 400, description = "Empty workspace_ids"),
+    ),
+    tags = ["admin"]
+)]
+pub async fn ann_warmup(
+    State(state): State<AppState>,
+    _admin: ApiRequireAdmin,
+    Json(request): Json<AnnWarmupRequest>,
+) -> Result<Json<AnnWarmupResponse>, ApiError> {
+    if request.workspace_ids.is_empty() {
+        return Err(ApiError::BadRequest(
+            "workspace_ids must be non-empty — pass known hot workspace UUIDs".into(),
+        ));
+    }
+
+    let vector = state.storage.vector_storage.as_ref();
+    let mut results = Vec::with_capacity(request.workspace_ids.len());
+    for workspace_id in &request.workspace_ids {
+        let ws = workspace_id.trim();
+        if ws.is_empty() {
+            results.push(AnnWarmupItem {
+                workspace_id: workspace_id.clone(),
+                created: false,
+                error: Some("empty workspace_id".into()),
+            });
+            continue;
+        }
+        match vector.warmup_workspace_ann(ws).await {
+            Ok(created) => results.push(AnnWarmupItem {
+                workspace_id: ws.to_string(),
+                created,
+                error: None,
+            }),
+            Err(e) => results.push(AnnWarmupItem {
+                workspace_id: ws.to_string(),
+                created: false,
+                error: Some(e.to_string()),
+            }),
+        }
+    }
+
+    Ok(Json(AnnWarmupResponse {
+        results,
+        note: "Wave-2 warmup: created=true means a new partial HNSW was built. \
+               /ready checks catalog ANN when EDGEQUAKE_HNSW_PARTIAL_BY_WORKSPACE=1 \
+               (not plan-shape). First filtered query also warms if this step is skipped."
+            .into(),
+    }))
+}

@@ -15,8 +15,10 @@
 //!
 //! # Policy
 //!
-//! Last-write-wins on the full property map (matches Cypher `SET` / native
-//! `DO UPDATE SET properties = EXCLUDED.properties`).
+//! Within a single batch: last-write-wins on the full property map (matches
+//! Cypher `SET` / pre-SPEC-058 native LWW). Across concurrent statements,
+//! Postgres native upsert uses `eq_merge_graph_properties` (SPEC-058) so
+//! `source_ids` / `source_chunk_ids` are unioned rather than replaced.
 
 use std::collections::HashMap;
 

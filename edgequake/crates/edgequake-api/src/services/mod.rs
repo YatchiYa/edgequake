@@ -3,6 +3,8 @@
 //! WHY-OODA83: Extracted services follow SRP and DRY principles.
 //! Consolidates repeated logic into single, testable modules.
 
+#[cfg(feature = "postgres")]
+pub mod ann_readiness;
 pub mod artifact_retrieval;
 pub mod audit;
 #[cfg(feature = "postgres")]
@@ -21,6 +23,7 @@ pub mod document_graph_cascade;
 pub mod document_graph_lineage;
 pub mod document_metadata_repair;
 pub mod document_metadata_scan;
+pub mod document_quota;
 #[cfg(feature = "postgres")]
 pub mod document_mm_asset_persist;
 #[cfg(feature = "postgres")]
@@ -58,6 +61,7 @@ pub mod multimodal_context;
 pub mod multimodal_markdown;
 pub mod oidc_flow;
 pub mod oidc_pending;
+pub mod orphan_index_retract;
 pub mod orphan_task_recovery;
 pub mod pdf_admission_registry;
 pub mod pdf_auto_routing;
@@ -75,6 +79,8 @@ pub mod query_generation;
 pub mod query_request_builder;
 pub mod query_stats_mapper;
 pub mod reprocess_stage_reset;
+pub mod cancel_retract;
+pub mod retract_document_indexes;
 pub mod retrieval_id_cache;
 pub mod route_registry;
 pub mod session_storage;
@@ -104,7 +110,8 @@ pub use crate::handlers::documents::upload::document_admission::{
     DocumentAdmissionAccepted, DocumentAdmissionDuplicateProcessing, DocumentAdmissionInput,
     DocumentAdmissionOutcome, GleaningAdmissionOptions,
 };
-pub use cancel_facade::cancel_track_with_doc_and_pdf_chain;
+pub use cancel_facade::{cancel_track_with_doc_and_pdf_chain, retract_indexes_for_document_id};
+pub use cancel_retract::{retract_indexes_for_document, retract_indexes_for_task};
 pub use content_granularity::{
     ensure_debug_granularity_allowed, truncate_for_granularity, SNIPPET_LEN,
 };
@@ -221,6 +228,11 @@ pub use query_execution::{
 pub use query_generation::{execute_full_query, execute_legacy_query_response};
 pub use query_request_builder::{build_engine_request, QueryExecutionParams};
 pub use query_stats_mapper::from_engine_stats as map_engine_query_stats;
+pub use orphan_index_retract::{
+    is_post_graph_incomplete_stage, orphan_retract_on_recover_enabled,
+    retract_indexes_for_orphan_docs,
+};
+pub use retract_document_indexes::{retract_document_indexes, retract_on_cancel_total};
 pub use retrieval_id_cache::{global_retrieval_cache, new_retrieval_id, RetrievalIdCache};
 pub use source_reference_builder::{build_sources_from_context, is_injection_source};
 pub use staging_admission::{promote_staging_to_final, rollback_staging};

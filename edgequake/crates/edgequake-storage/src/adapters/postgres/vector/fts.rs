@@ -11,12 +11,13 @@ use crate::adapters::postgres::schema;
 use crate::error::{Result, StorageError};
 use crate::traits::{MetadataFilter, VectorSearchResult};
 
-const FTS_CONTENT_WITH_KV: &str = "coalesce(v.content_tsv, to_tsvector('english', coalesce(v.metadata->>'content', k.value->>'content', '')))";
+/// SPEC-058: NULLIF empty tsvector so coalesce reaches KV for legacy rows.
+const FTS_CONTENT_WITH_KV: &str = "coalesce(NULLIF(v.content_tsv, ''::tsvector), to_tsvector('english', coalesce(v.metadata->>'content', k.value->>'content', '')))";
 const FTS_CONTENT_METADATA_ONLY: &str =
-    "coalesce(v.content_tsv, to_tsvector('english', coalesce(v.metadata->>'content', '')))";
+    "coalesce(NULLIF(v.content_tsv, ''::tsvector), to_tsvector('english', coalesce(v.metadata->>'content', '')))";
 
 impl PgVectorStorage {
-    async fn chunk_kv_table_exists_cached(&self) -> Result<bool> {
+    pub(crate) async fn chunk_kv_table_exists_cached(&self) -> Result<bool> {
         if let Some(exists) = self.chunk_kv_table_exists.get() {
             return Ok(*exists);
         }
@@ -62,7 +63,10 @@ impl PgVectorStorage {
         let where_clause = format!("WHERE {}", conditions.join(" AND "));
 
         let kv_join = if join_kv {
-            format!("LEFT JOIN {} k ON k.key = v.id", self.chunk_kv_table_name)
+            format!(
+                "LEFT JOIN {} k ON k.key = coalesce(v.metadata->>'content_ref', v.id)",
+                self.chunk_kv_table_name
+            )
         } else {
             String::new()
         };

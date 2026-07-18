@@ -145,21 +145,20 @@ impl PostgresAGEGraphStorage {
         //   We don't need graphids; edge properties already hold the text node_id.
         //   The VALUES CTE is a constant — zero DB I/O — and lets LEFT JOIN return
         //   degree 0 for isolated nodes without a second table scan.
+        // SPEC-062: aggregate on denormalized eq_source_id / eq_target_id (btree).
         let sql = format!(
             "WITH input(node_id) AS ( VALUES {values_list} ), \
              out_deg AS ( \
-               SELECT ag_catalog.agtype_to_json(e.properties)->>'source_id' AS node_id, \
-                      COUNT(*)::bigint AS cnt \
+               SELECT e.eq_source_id AS node_id, COUNT(*)::bigint AS cnt \
                FROM {graph}.\"EDGE\" e \
-               WHERE ag_catalog.agtype_to_json(e.properties)->>'source_id' IN ({in_list}) \
-               GROUP BY node_id \
+               WHERE e.eq_source_id IN ({in_list}) \
+               GROUP BY e.eq_source_id \
              ), \
              in_deg AS ( \
-               SELECT ag_catalog.agtype_to_json(e.properties)->>'target_id' AS node_id, \
-                      COUNT(*)::bigint AS cnt \
+               SELECT e.eq_target_id AS node_id, COUNT(*)::bigint AS cnt \
                FROM {graph}.\"EDGE\" e \
-               WHERE ag_catalog.agtype_to_json(e.properties)->>'target_id' IN ({in_list}) \
-               GROUP BY node_id \
+               WHERE e.eq_target_id IN ({in_list}) \
+               GROUP BY e.eq_target_id \
              ) \
              SELECT i.node_id, \
                     COALESCE(o.cnt, 0) + COALESCE(d.cnt, 0) AS degree \

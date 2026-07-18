@@ -8,6 +8,25 @@ use std::env;
 use std::time::Duration;
 use uuid::Uuid;
 
+/// Soft-skip unless `EDGEQUAKE_REQUIRE_POSTGRES_TESTS=1` (SPEC-060: nightly hard gate).
+pub fn require_or_skip_postgres(namespace_prefix: &str) -> Option<PostgresConfig> {
+    if let Some(cfg) = contract_postgres_config(namespace_prefix) {
+        return Some(cfg);
+    }
+    let strict = env::var("EDGEQUAKE_REQUIRE_POSTGRES_TESTS")
+        .ok()
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    if strict {
+        panic!(
+            "EDGEQUAKE_REQUIRE_POSTGRES_TESTS=1 but DATABASE_URL/POSTGRES_PASSWORD missing \
+             (also checked /tmp/edgequake-db-url)"
+        );
+    }
+    eprintln!("SKIP: no DATABASE_URL / POSTGRES_PASSWORD");
+    None
+}
+
 /// Build a postgres config when `DATABASE_URL` or `POSTGRES_PASSWORD` is set; otherwise `None`.
 pub fn contract_postgres_config(namespace_prefix: &str) -> Option<PostgresConfig> {
     if let Ok(url) = env::var("DATABASE_URL") {
