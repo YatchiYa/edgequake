@@ -272,6 +272,12 @@ pub async fn cancel_pdf_processing(
         .map_err(ApiError::Internal)?;
 
         let mut cancelled_track_id = None;
+        let workspace_key = workspace_id.to_string();
+        let vector = crate::services::get_workspace_vector_storage_for_delete(
+            &state,
+            &workspace_key,
+        )
+        .await;
         for applied in &cancel_results {
             if applied.cancelled {
                 if cancelled_track_id.is_none() {
@@ -291,6 +297,12 @@ pub async fn cancel_pdf_processing(
                             "PDF cancel: doc KV sync from task failed"
                         );
                     }
+                    crate::services::retract_indexes_for_task(
+                        &state.storage.graph_storage,
+                        &vector,
+                        cancelled_task,
+                    )
+                    .await;
                 }
             }
         }
@@ -309,9 +321,10 @@ pub async fn cancel_pdf_processing(
 
         // Sync doc KV from PDF.document_id when task payload had no link.
         if let Some(document_uuid) = pdf.document_id {
+            let doc_id = document_uuid.to_string();
             if let Err(e) = sync_doc_cancelled_by_document_id(
                 Arc::clone(&state.storage.kv_storage),
-                &document_uuid.to_string(),
+                &doc_id,
                 "Task cancelled by user",
             )
             .await
@@ -323,6 +336,12 @@ pub async fn cancel_pdf_processing(
                     "PDF cancel: doc KV sync by pdf.document_id failed"
                 );
             }
+            crate::services::retract_indexes_for_document_id(
+                &state.storage.graph_storage,
+                &vector,
+                &doc_id,
+            )
+            .await;
         }
 
         info!(

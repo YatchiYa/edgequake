@@ -21,7 +21,7 @@ fn contract_p7f_resolve_without_env_clamps_adaptive() {
 
 #[test]
 fn contract_p7f_native_path_uses_resolve_ssot() {
-    let nodes = include_str!("../src/adapters/postgres/graph/nodes_ops.rs");
+    let nodes = include_str!("../src/adapters/postgres/graph/nodes_ops/mutate.rs");
     let edges = include_str!("../src/adapters/postgres/graph/edges_ops.rs");
     assert!(
         nodes.contains("resolve_graph_upsert_chunk"),
@@ -38,5 +38,25 @@ fn contract_p7f_native_path_uses_resolve_ssot() {
     assert!(
         edges.contains("pg_upsert_edges_batch_native"),
         "native edge batch path must exist"
+    );
+}
+
+/// SPEC-058: native upsert must merge properties via eq_merge_graph_properties.
+#[test]
+fn contract_spec058_native_upsert_uses_eq_merge_graph_properties() {
+    let nodes = include_str!("../src/adapters/postgres/graph/nodes_ops/mutate.rs");
+    let edges = include_str!("../src/adapters/postgres/graph/edges_ops.rs");
+    let migration = include_str!("../../../migrations/090_eq_merge_graph_properties.sql");
+    assert!(
+        nodes.contains("eq_merge_graph_properties"),
+        "node native upsert must call eq_merge_graph_properties"
+    );
+    assert!(
+        edges.contains("eq_merge_graph_properties"),
+        "edge native upsert must call eq_merge_graph_properties"
+    );
+    assert!(
+        migration.contains("CREATE OR REPLACE FUNCTION eq_merge_graph_properties"),
+        "migration 090 must define eq_merge_graph_properties"
     );
 }

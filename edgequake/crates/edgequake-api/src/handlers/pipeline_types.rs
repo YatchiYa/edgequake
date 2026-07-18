@@ -175,6 +175,15 @@ pub struct StoreContentionMetrics {
     pub compensation_quarantine_total: u64,
     pub compensation_quarantine_warn: u64,
     pub compensation_quarantine_critical: u64,
+    /// SPEC-059: shared entity/rel vectors skipped from compensate deletes.
+    #[serde(default)]
+    pub compensate_shared_entity_skipped_total: u64,
+    /// SPEC-059: cancel/orphan index retract operations.
+    #[serde(default)]
+    pub retract_on_cancel_total: u64,
+    /// SPEC-059: fail-closed dimension mismatch rejections.
+    #[serde(default)]
+    pub vector_dim_mismatch_rejected_total: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub operator_action: Option<String>,
 }
@@ -266,6 +275,9 @@ mod tests {
                 compensation_quarantine_total: 0,
                 compensation_quarantine_warn: 1,
                 compensation_quarantine_critical: 5,
+                compensate_shared_entity_skipped_total: 0,
+                retract_on_cancel_total: 0,
+                vector_dim_mismatch_rejected_total: 0,
                 operator_action: None,
             },
         };

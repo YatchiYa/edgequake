@@ -55,9 +55,10 @@ Key differences:
 - Rust 1.95+
 - PostgreSQL **16, 17, or 18** with pgvector and Apache AGE (Docker image: `ghcr.io/raphaelmansuy/edgequake-postgres:0.19.0`)
 
-**Production**:
+**Production (minimum to boot)**:
 
-- 8+ GB RAM
+- **8+ GB RAM** is enough to *start* the stack — **not** enough for Proven 50k / Supported 100k filtered ANN
+- Floors: [Product limits — Pick your size](product-limits.md) — ≥**16 GB** for ≤50k (**Proven**); ≥**32 GB** preferred for 100k Wave-2 (**Supported**); `shared_buffers` ≥**2 GB**
 - 4+ CPU cores
 - PostgreSQL 16+ with pgvector + AGE
 - LLM provider (OpenAI, Ollama, or other supported provider)
@@ -157,22 +158,88 @@ Uploads are **async**: the API accepts the document immediately; poll `GET /api/
 
 ### How does it scale?
 
-EdgeQuake handles:
+**SSOT:** [Product limits](product-limits.md) — start with **TL;DR** and **Pick your size**.
 
-- **Documents**: 100,000+ per workspace
-- **Entities**: 1,000,000+ per workspace
-- **Concurrent users**: 100+ with connection pooling
-- **Query throughput**: 50+ queries/second (without LLM bottleneck)
+| Status | What you can promise | Recipe |
+|--------|----------------------|--------|
+| **Proven** | ≤**50k** chunk vectors @1536 under prod stress; Louvain gated at **50k** nodes | Defaults + `shared_buffers` ≥2 GB; host ≥16 GB |
+| **Supported** (default) | **100k** filtered ANN @1536 (Q1-d) | **Wave-2**: `halfvec` + `EDGEQUAKE_HNSW_PARTIAL_BY_WORKSPACE=1` + residency (host ≥32 GB preferred) |
+| **Supported opt-in** | **150k** on dedicated DiskANN | `query_search_list_size≥400` + `query_rescore≈list/2` (pg18-vectorscale) — not a silent default |
+| **Not promoted** | Wave-2 above 100k (250k+) | Mid-scale wall — do not sell |
+| **Aspirational** | 100k+ documents / 1M+ entities per workspace | Not a latency-gated claim |
+
+Hard caps: **50 MiB**/upload, HNSW dim ≤2000/4000. Concurrent tip @100k Wave-2: `EDGEQUAKE_HNSW_EF_SEARCH=240`. Mix/hybrid seeds ≪ ANN ladder.
+
+There is **no** enforced per-workspace storage-GB quota. Workspace `max_documents` (when set) is fail-closed at upload / new PDF mint (SPEC-066). Size disk/RAM from [product-limits](product-limits.md). Ceiling ladder: `make ceiling-proof` ([SPEC-066](../specs/066-ceiling-proof/000-index.md)).
 
 For multi-replica worker deployments, see [Ingestion, replicas & leases](#ingestion-cancel-fairness-replicas--convert--ingest).
 
 ### How can I speed up queries?
 
-1. **Use `naive` mode** for simple queries (vector-only, no graph)
-2. **Reduce `max_chunks`** from 20 to 5–10
-3. **Use faster LLM** (`gpt-5-mini` vs larger models)
-4. **Pre-warm embeddings** with a test query
-5. **Use GPU** for Ollama embedding
+**Data plane (often the real cliff before LLM):**
+
+1. **Wave-2 for ~100k filtered ANN** — `EDGEQUAKE_VECTOR_STORAGE=halfvec` + `EDGEQUAKE_HNSW_PARTIAL_BY_WORKSPACE=1` (greenfield only); see [Product limits](product-limits.md)
+2. **Residency** — keep `shared_buffers` ≥2 GB (4 GB class for large lab); cold ~1.5 s @100k default path is expected without this
+3. **Warm** a filtered query after deploy so partial HNSW exists (or `./scripts/wave2_warmup.sh` / `POST /api/v1/admin/ann/warmup`)
+3b. **Filtered recall underfill** — EdgeQuake sets `hnsw.iterative_scan=relaxed_order` + `max_scan_tuples` on filtered queries only; tune `EDGEQUAKE_HNSW_MAX_SCAN_TUPLES` / `EDGEQUAKE_HNSW_SCAN_MEM_MULTIPLIER` if needed ([SPEC-075](../specs/075-filtered-recall-gates/000-index.md)). Promote with **filtered** recall@20 (`make filtered-recall-gate`), never unfiltered-only.
+
+**Query / LLM:**
+
+4. **Use `naive` mode** for simple queries (vector-only, no graph)
+5. **Reduce `max_chunks`** from 20 to 5–10
+6. **Use faster LLM** (`gpt-5-mini` vs larger models)
+7. **Use GPU** for Ollama embedding
+
+### How do I enable the supported 100k shape?
+
+Use the **Turnkey greenfield** recipe in [Product limits](product-limits.md):
+
+```bash
+eval "$(make -s wave2-greenfield-env)"
+# or: WAVE2_GREENFIELD=1 make backend-bg
+./scripts/wave2_warmup.sh <workspace_uuid>
+```
+
+That sets `halfvec` + workspace partial HNSW + optional `EDGEQUAKE_HNSW_EF_SEARCH=240` (concurrent tip — not a silent default). Do **not** silent-flip existing vector DBs. Dedicated `*_ws_*` + HNSW is dimension isolation only — not the 100k concurrent path.
+
+### How do I enable opt-in DiskANN @150k / @250k?
+
+See [Product limits — Opt-in DiskANN recipe](product-limits.md): `pg18-vectorscale` image, dedicated table + `USING diskann`. **@150k:** `query_search_list_size ≥ 400` + `query_rescore ≈ list/2`. **@250k (SPEC-082 floor):** list ≥ **800**, rescore ≈ **400**, prefer a higher-quality DiskANN build (`num_neighbors=64`, `search_list_size=200`). Wave-2 remains the default; DiskANN is opt-in only (`make diskann-recall-pareto` / `make push-scale-ladder` / `make diskann-rescore-smoke`).
+
+### How do I gate filtered recall@20?
+
+Use `make filtered-recall-gate` (SPEC-075). It archives **workspace-filtered** recall@20 for Wave-2 (+ iterative_scan-only compare). Soft-fails product floors; does not raise the 100k Wave-2 floor. See [Product limits — Filtered recall + iterative_scan](product-limits.md).
+
+### How do I improve ranking precision without raising floors?
+
+See [Product limits — Precision tips (SPEC-076)](product-limits.md):
+
+1. **Opt-in ANN→exact reorder** — `EDGEQUAKE_ANN_EXACT_REORDER=1` + optional `EDGEQUAKE_ANN_REORDER_CANDIDATE_K=50` (default OFF; not a silent flip).
+2. **Sparse FTS+ANN RRF tip** for codes/names — `EDGEQUAKE_SPARSE_FUSION=rrf` (default remains sparse-first weighted).
+
+Gate: `make precision-layers-gate`. Mix/RRF does **not** raise the Wave-2 / DiskANN ANN floors.
+
+### What about binary quantization for larger corpora?
+
+Study-only (SPEC-077): `make binary-quantize-bakeoff` compares Wave-2 halfvec HNSW to pgvector `binary_quantize` + Hamming ANN + exact rerank under a **workspace filter**. Default remains Wave-2; do **not** silent-flip (`EDGEQUAKE_BINARY_QUANTIZE` stays off). See [Product limits — Binary quantize study](product-limits.md).
+
+### What about Filtered-DiskANN labels for shared tables?
+
+Study-only (SPEC-078): `make filtered-diskann-labels-bakeoff` compares Wave-2 to post-filter DiskANN and to pgvectorscale **Filtered-DiskANN** (`labels smallint[]` + `labels && …`) under a **workspace filter**. Default remains Wave-2; dedicated DiskANN @150k unchanged; do **not** silent-flip (`EDGEQUAKE_FILTERED_DISKANN_LABELS` stays off; no product labels migration). See [Product limits — Filtered-DiskANN labels study](product-limits.md).
+
+Mid-scale archive: `make midscale-quantize-labels` (SPEC-079) — tips stay **Not promoted** unless a full concurrent gate says otherwise.
+
+### Why are tiny workspaces forced onto HNSW?
+
+They should not be. SPEC-080 skips Wave-2 `enable_seqscan=off` bias when workspace rows ≤ `EDGEQUAKE_ANN_EXACT_MAX_ROWS` (default 2000). Gate: `make tiny-slice-exact-gate`.
+
+### Is there a serving view for “chunks that have vectors”?
+
+Admin/debug only (SPEC-081): `eq_serving_chunk_presence` / `eq_serving_vector_presence`. This is **not** the RAG ANN path and does **not** unify dual-SSOT stores. Gate: `make serving-view-check`.
+
+### How do we push performance tests / floors further?
+
+`make push-scale-ladder` (SPEC-082) archives A6 Filtered-DiskANN @150k/250k, Wave-2 filtered spot @150k, and DiskANN **primary** full-gate @250k. Floors rise **only** when the full-gate is green; Wave-2 default stays 100k unless a separate full-gate says otherwise. Silent flip remains forbidden. See [Product limits](product-limits.md).
 
 ---
 

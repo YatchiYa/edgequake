@@ -4,7 +4,7 @@
 # Profiles (multi-major — SPEC-042-C):
 #   pg16  — legacy supported: AGE 1.6.0 (existing deployments)
 #   pg17  — modern supported: AGE 1.7.0 (managed PG17, full #161)
-#   pg18  — recommended:      AGE 1.7.0 (new installs, longest support runway)
+#   pg18  — recommended:      AGE 1.8.0 (new installs, longest support runway)
 #
 # Usage:
 #   source extension-pins.sh                    # defaults to pg18 (recommended)
@@ -27,11 +27,28 @@ case "$_profile" in
     export EQ_POSTGRES_IMAGE="postgres:18-bookworm"
     export EQ_PGVECTOR_VERSION="v0.8.5"
     export EQ_PGVECTOR_MIN="0.8.5"
-    export EQ_AGE_GIT_REF="PG18/v1.7.0-rc0"
-    export EQ_AGE_MIN="1.7.0"
+    # SPEC-068: AGE 1.8 — VLE/hash-adjacency, index scan, contsel restore (#2417)
+    export EQ_AGE_GIT_REF="PG18/v1.8.0-rc0"
+    export EQ_AGE_MIN="1.8.0"
     export EQ_POSTGRES_DOCKERFILE="Dockerfile.postgres.pg18"
     export EQ_POSTGRES_IMAGE_TAG="edgequake-postgres:local"
     export EQ_POSTGRES_GHCR_SUFFIX="pg18"
+    export EQ_PGVECTORSCALE_VERSION=""
+    export EQ_PGVECTORSCALE_MIN=""
+    ;;
+  pg18-vectorscale)
+    # SPEC-070 — opt-in DiskANN study image (not product default)
+    export EQ_POSTGRES_MAJOR="18"
+    export EQ_POSTGRES_IMAGE="postgres:18-bookworm"
+    export EQ_PGVECTOR_VERSION="v0.8.5"
+    export EQ_PGVECTOR_MIN="0.8.5"
+    export EQ_AGE_GIT_REF="PG18/v1.8.0-rc0"
+    export EQ_AGE_MIN="1.8.0"
+    export EQ_PGVECTORSCALE_VERSION="0.9.0"
+    export EQ_PGVECTORSCALE_MIN="0.9.0"
+    export EQ_POSTGRES_DOCKERFILE="Dockerfile.postgres.pg18-vectorscale"
+    export EQ_POSTGRES_IMAGE_TAG="edgequake-postgres:pg18-vectorscale"
+    export EQ_POSTGRES_GHCR_SUFFIX="pg18-vectorscale"
     ;;
   pg17)
     export EQ_POSTGRES_MAJOR="17"
@@ -43,6 +60,8 @@ case "$_profile" in
     export EQ_POSTGRES_DOCKERFILE="Dockerfile.postgres.pg17"
     export EQ_POSTGRES_IMAGE_TAG="edgequake-postgres:pg17"
     export EQ_POSTGRES_GHCR_SUFFIX="pg17"
+    export EQ_PGVECTORSCALE_VERSION=""
+    export EQ_PGVECTORSCALE_MIN=""
     ;;
   pg16)
     export EQ_POSTGRES_MAJOR="16"
@@ -54,9 +73,11 @@ case "$_profile" in
     export EQ_POSTGRES_DOCKERFILE="Dockerfile.postgres"
     export EQ_POSTGRES_IMAGE_TAG="edgequake-postgres:pg16"
     export EQ_POSTGRES_GHCR_SUFFIX="pg16"
+    export EQ_PGVECTORSCALE_VERSION=""
+    export EQ_PGVECTORSCALE_MIN=""
     ;;
   *)
-    echo "Unknown EQ_POSTGRES_PROFILE: $_profile (expected pg16|pg17|pg18)" >&2
+    echo "Unknown EQ_POSTGRES_PROFILE: $_profile (expected pg16|pg17|pg18|pg18-vectorscale)" >&2
     exit 1
     ;;
 esac

@@ -594,7 +594,8 @@ impl QueryEngine {
     }
 }
 
-mod modes;
+/// SPEC-059: public for arm concurrency load tests.
+pub mod modes;
 mod prompt;
 mod query_entry;
 mod query_modes;

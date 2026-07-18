@@ -125,8 +125,8 @@ See [AGENTS.md](../../AGENTS.md) for the full developer workflow, including:
 
 | Tier | PostgreSQL | pgvector | Apache AGE | Notes |
 |------|-----------|----------|-----------|-------|
-| PG16 | 16.x | 0.8.3 | 1.6.0 | Legacy, stable |
-| PG17 | 17.x | 0.8.3 | 1.7.0 | Modern, recommended for most users |
-| PG18 | 18.x | 0.8.3 | 1.7.0 | Default, includes `uuidv7()` |
+| PG16 | 16.x | 0.8.5 | 1.6.0 | Legacy, stable |
+| PG17 | 17.x | 0.8.5 | 1.7.0 | Modern supported |
+| PG18 | 18.x | 0.8.5 | 1.8.0 | Default / recommended (SPEC-068 pin) |
 
 See [PostgreSQL migration guide](../../edgequake/docs/migrations/postgres-triple-track-spec042.md) for tier details.

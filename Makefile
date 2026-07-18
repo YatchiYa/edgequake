@@ -131,12 +131,13 @@ release: ## Bump all crate versions and tag release using cargo-release (uses VE
 
 
 .PHONY: help install dev dev-auth dev-bg dev-auth-bg dev-memory kill-app stop clean build test lint format sync-dev-ports \
-        ops17-smoke spec046-acc \
+        ops17-smoke spec046-acc data-access-perf-matrix data-access-perf-matrix-release data-access-perf-matrix-prod data-access-perf-capacity-ladder ann-scale-battle ceiling-proof recall-pareto dedicated-midscale diskann-battle diskann-recall-pareto diskann-rescore-smoke filtered-recall-gate precision-layers-gate binary-quantize-bakeoff filtered-diskann-labels-bakeoff midscale-quantize-labels tiny-slice-exact-gate serving-view-check push-scale-ladder wave2-greenfield-env product-limits-check compare-eq-perf \
+        postgres-image-build-pg18-vectorscale \
         dev-pg16 dev-pg17 dev-pg18 dev-bg-pg16 dev-bg-pg17 dev-bg-pg18 \
         backend-dev backend-db backend-memory backend-bg backend-build backend-build-online backend-sqlx-prepare backend-test backend-run \
         frontend-dev frontend-bg frontend-build frontend-test frontend-lint \
         openapi-snapshot codegen-openapi codegen-openapi-refresh codegen-openapi-live \
-        db-start db-start-pg16 db-start-pg17 db-start-pg18 db-stop db-wait db-logs db-shell postgres-image-build postgres-image-build-pg17 postgres-image-build-pg18 postgres-image-build-unified check-extension-pins postgres-battle-test hnsw-dimension-battle-test spec042-battle-test-all spec044-battle-test-all dev-e2e-proof dev-e2e-proof-all docker-network-diagnose stop-docker-services \
+        db-start db-start-pg16 db-start-pg17 db-start-pg18 db-stop db-wait db-logs db-shell postgres-image-build postgres-image-build-pg17 postgres-image-build-pg18 postgres-image-build-pg18-vectorscale postgres-image-build-unified check-extension-pins postgres-battle-test hnsw-dimension-battle-test spec042-battle-test-all spec044-battle-test-all dev-e2e-proof dev-e2e-proof-all docker-network-diagnose stop-docker-services \
         docker-build docker-up docker-prebuilt docker-prebuilt-down docker-prebuilt-logs docker-ps-prebuilt docker-api-only docker-down docker-logs \
         stack stack-down stack-logs stack-status stack-restart stack-pull \
         check-deps status \
@@ -358,8 +359,17 @@ printf '%s\n' "export EDGEQUAKE_LOCAL_MAX_INFLIGHT=\"$(EDGEQUAKE_LOCAL_MAX_INFLI
 printf '%s\n' "export DATABASE_POOL_SIZE=\"$(DATABASE_POOL_SIZE)\"" >> /tmp/edgequake-start.sh; \
 printf '%s\n' "export VLM_PROCESS_ENABLE=\"$(VLM_PROCESS_ENABLE)\"" >> /tmp/edgequake-start.sh; \
 printf '%s\n' "export EDGEQUAKE_CHART_MODALITY_FILTER=\"true\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_MM_ANALYSIS_CACHE=\"true\"" >> /tmp/edgequake-start.sh;
+printf '%s\n' "export EDGEQUAKE_MM_ANALYSIS_CACHE=\"true\"" >> /tmp/edgequake-start.sh; \
+if [ "$${WAVE2_GREENFIELD:-$(WAVE2_GREENFIELD)}" = "1" ]; then \
+  printf '%s\n' "export EDGEQUAKE_VECTOR_STORAGE=halfvec" >> /tmp/edgequake-start.sh; \
+  printf '%s\n' "export EDGEQUAKE_HNSW_PARTIAL_BY_WORKSPACE=1" >> /tmp/edgequake-start.sh; \
+  printf '%s\n' "export EDGEQUAKE_HNSW_EF_SEARCH=240" >> /tmp/edgequake-start.sh; \
+  echo "$(YELLOW)→ WAVE2_GREENFIELD=1 — halfvec + partial HNSW + ef_search=240 (SPEC-071 turnkey)$(RESET)"; \
+fi;
 endef
+
+# SPEC-071: opt-in Wave-2 greenfield (empty = off; set WAVE2_GREENFIELD=1 for make dev / backend-bg)
+WAVE2_GREENFIELD ?=
 
 # SPEC-040: Vision/VLM provider defaults for PDF-to-Markdown conversion
 # WHY: Vision provider MUST inherit from the resolved DEFAULT_LLM values (set above,
@@ -435,6 +445,8 @@ help: ## Show this help message
 	@echo "  $(GREEN)make db-shell$(RESET)     Open psql shell"
 	@echo "  $(GREEN)make db-clean$(RESET)     Clean all data (non-interactive)"
 	@echo "  $(GREEN)make db-clean-force$(RESET) Destroy and recreate DB container"
+	@echo "  $(GREEN)make wave2-greenfield-env$(RESET)  Print Wave-2 100k turnkey exports (claim gates ≠ day-2 sizing; docs/product-limits.md)"
+	@echo "  $(GREEN)WAVE2_GREENFIELD=1 make backend-bg$(RESET)  Opt-in Wave-2 recipe for greenfield installs"
 	@echo ""
 	@echo "$(BOLD)$(BLUE)🐳 Docker$(RESET)"
 	@echo "  $(GREEN)make docker-up$(RESET)               Start full stack via Docker (build from source)"
@@ -1498,7 +1510,7 @@ postgres-image-build-pg17: ## Build and verify edgequake-postgres PG17 image (pg
 	@EQ_POSTGRES_PROFILE=pg17 bash $(DOCKER_DIR)/verify-postgres-extensions.sh edgequake-postgres:pg17
 	@echo "$(GREEN)✓ edgequake-postgres:pg17 ready$(RESET)"
 
-postgres-image-build-pg18: ## Build and verify edgequake-postgres PG18 image (pgvector 0.8.3 + AGE 1.7.0) — default dev profile
+postgres-image-build-pg18: ## Build and verify edgequake-postgres PG18 image (pgvector 0.8.5 + AGE 1.8.0) — default dev profile
 	@echo "$(BLUE)Building edgequake-postgres image (PG18 / SPEC-042-B)...$(RESET)"
 	@cd $(DOCKER_DIR) && docker build -f Dockerfile.postgres.pg18 -t edgequake-postgres:pg18 -t edgequake-postgres:local .
 	@chmod +x $(DOCKER_DIR)/verify-postgres-extensions.sh
@@ -1526,6 +1538,106 @@ check-extension-pins: ## Verify Dockerfile pins match extension-pins.sh SSOT (SP
 ops17-smoke: ## SPEC-046 OPS-17: pin smoke for pg16/pg17/pg18 (non-flaky; add --battle for Docker)
 	@chmod +x specs/046-graphrag-study/e2e/run_ops17_perf_smoke.sh
 	@./specs/046-graphrag-study/e2e/run_ops17_perf_smoke.sh
+
+data-access-perf-matrix: ## SPEC-061/062: inviolable DataAccess p95/EXPLAIN/stress on PG16/17/18
+	@chmod +x specs/061-multi-version-data-access-perf/e2e/run_data_access_perf_matrix.sh
+	@./specs/061-multi-version-data-access-perf/e2e/run_data_access_perf_matrix.sh $${EQ_PERF_PROFILES:-all}
+
+data-access-perf-matrix-release: ## SPEC-062: same matrix with cargo --release
+	@chmod +x specs/061-multi-version-data-access-perf/e2e/run_data_access_perf_matrix.sh
+	@EDGEQUAKE_PERF_RELEASE=1 ./specs/061-multi-version-data-access-perf/e2e/run_data_access_perf_matrix.sh $${EQ_PERF_PROFILES:-all}
+
+data-access-perf-matrix-prod: ## SPEC-062: release + EDGEQUAKE_PERF_SCALE=prod (50k ANN/FTS, Mix 5k)
+	@chmod +x specs/061-multi-version-data-access-perf/e2e/run_data_access_perf_matrix.sh
+	@EDGEQUAKE_PERF_RELEASE=1 EDGEQUAKE_PERF_SCALE=prod ./specs/061-multi-version-data-access-perf/e2e/run_data_access_perf_matrix.sh $${EQ_PERF_PROFILES:-all}
+
+data-access-perf-capacity-ladder: ## SPEC-063: L1/L2/L3 ANN soak on pg18 (EDGEQUAKE_CAPACITY_LADDER=L1|L2|L3)
+	@chmod +x specs/063-architecture-capacity-assessment/e2e/run_capacity_ladder.sh
+	@./specs/063-architecture-capacity-assessment/e2e/run_capacity_ladder.sh $${EQ_PERF_PROFILES:-pg18}
+
+ann-scale-battle: ## SPEC-064: filtered ANN scale battle (halfvec / partial HNSW / GUC) @100k on pg18
+	@chmod +x specs/064-filtered-ann-scale-battle/e2e/run_ann_scale_battle.sh
+	@./specs/064-filtered-ann-scale-battle/e2e/run_ann_scale_battle.sh $${EQ_PERF_PROFILES:-pg18}
+
+ceiling-proof: ## SPEC-066/067 claim gate (not day-2 sizing; see docs/product-limits.md). EQ_CEILING_STEP=L2|L3|SEEK|G1
+	@chmod +x specs/066-ceiling-proof/e2e/run_ceiling_ladder.sh
+	@./specs/066-ceiling-proof/e2e/run_ceiling_ladder.sh $${EQ_PERF_PROFILES:-pg18}
+
+recall-pareto: ## SPEC-068 recall×latency claim gate (not day-2 sizing). EQ_PARETO_ROWS_LIST / EQ_PARETO_EF_LIST / EQ_PARETO_REBUILD
+	@chmod +x specs/068-recall-quality-scale/e2e/run_recall_pareto.sh
+	@./specs/068-recall-quality-scale/e2e/run_recall_pareto.sh $${EQ_PERF_PROFILES:-pg18}
+
+dedicated-midscale: ## SPEC-069 dedicated WS table mid-scale claim gate (not day-2 sizing)
+	@chmod +x specs/069-dedicated-midscale/e2e/run_dedicated_midscale.sh
+	@./specs/069-dedicated-midscale/e2e/run_dedicated_midscale.sh $${EQ_PERF_PROFILES:-pg18}
+
+wave2-greenfield-env: ## SPEC-071: print Wave-2 turnkey exports (claim gates ≠ day-2 sizing; see docs/product-limits.md)
+	@chmod +x scripts/wave2_greenfield_env.sh scripts/wave2_warmup.sh
+	@./scripts/wave2_greenfield_env.sh
+	@echo "Apply: eval \"\$$(make -s wave2-greenfield-env)\"  or  WAVE2_GREENFIELD=1 make backend-bg" >&2
+	@echo "Warmup: ./scripts/wave2_warmup.sh <workspace_uuid>  (or POST /api/v1/admin/ann/warmup)" >&2
+	@echo "Claim gates (not day-2 sizing): make ceiling-proof · make recall-pareto · make filtered-recall-gate · make product-limits-check — docs/product-limits.md" >&2
+
+postgres-image-build-pg18-vectorscale: ## SPEC-070: build/verify pg18 + pgvectorscale (DiskANN) opt-in image
+	@echo "$(BLUE)Building edgequake-postgres:pg18-vectorscale (SPEC-070)...$(RESET)"
+	@cd $(DOCKER_DIR) && docker build -f Dockerfile.postgres.pg18-vectorscale \
+		-t edgequake-postgres:pg18-vectorscale .
+	@chmod +x $(DOCKER_DIR)/verify-postgres-extensions.sh
+	@EQ_POSTGRES_PROFILE=pg18-vectorscale bash $(DOCKER_DIR)/verify-postgres-extensions.sh edgequake-postgres:pg18-vectorscale
+	@echo "$(GREEN)✓ edgequake-postgres:pg18-vectorscale ready$(RESET)"
+
+diskann-battle: ## SPEC-070 DiskANN vs HNSW dedicated battle (claim gate; not day-2 sizing)
+	@chmod +x specs/070-diskann-study/e2e/run_diskann_battle.sh
+	@./specs/070-diskann-study/e2e/run_diskann_battle.sh $${EQ_PERF_PROFILES:-pg18-vectorscale}
+
+diskann-recall-pareto: ## SPEC-072 DiskANN recall×latency Pareto @150k (claim gate; not day-2 sizing)
+	@chmod +x specs/072-diskann-recall-pareto/e2e/run_diskann_recall_pareto.sh
+	@./specs/072-diskann-recall-pareto/e2e/run_diskann_recall_pareto.sh $${EQ_PERF_PROFILES:-pg18-vectorscale}
+
+diskann-rescore-smoke: ## SPEC-074 DiskANN list=400 + rescore=200 smoke (opt-in recipe; not silent default)
+	@chmod +x specs/074-storage-p0-hardening/e2e/run_diskann_rescore_smoke.sh
+	@./specs/074-storage-p0-hardening/e2e/run_diskann_rescore_smoke.sh $${EQ_PERF_PROFILES:-pg18-vectorscale}
+
+filtered-recall-gate: ## SPEC-075 filtered recall@20 claim gate (Wave-2 smoke; not day-2 sizing). EQ_FILTERED_RECALL_ROWS
+	@chmod +x specs/075-filtered-recall-gates/e2e/run_filtered_recall_gate.sh
+	@./specs/075-filtered-recall-gates/e2e/run_filtered_recall_gate.sh $${EQ_PERF_PROFILES:-pg18}
+
+precision-layers-gate: ## SPEC-076 A3 exact-reorder + A4 sparse RRF tip (contracts; EQ_PRECISION_SMOKE=1 for DB)
+	@chmod +x specs/076-precision-reorder-rrf/e2e/run_precision_layers_gate.sh
+	@./specs/076-precision-reorder-rrf/e2e/run_precision_layers_gate.sh
+
+binary-quantize-bakeoff: ## SPEC-077 binary_quantize+rerank vs Wave-2 (study; not silent default). EQ_BQ_ROWS
+	@chmod +x specs/077-binary-quantize-bakeoff/e2e/run_binary_quantize_bakeoff.sh
+	@./specs/077-binary-quantize-bakeoff/e2e/run_binary_quantize_bakeoff.sh $${EQ_PERF_PROFILES:-pg18}
+
+filtered-diskann-labels-bakeoff: ## SPEC-078 Filtered-DiskANN labels vs Wave-2 (study; not silent default). EQ_FDL_ROWS
+	@chmod +x specs/078-filtered-diskann-labels/e2e/run_filtered_diskann_labels.sh
+	@./specs/078-filtered-diskann-labels/e2e/run_filtered_diskann_labels.sh $${EQ_PERF_PROFILES:-pg18-vectorscale}
+
+midscale-quantize-labels: ## SPEC-079 mid-scale B2+A6 @50k/100k (study archive; not silent default)
+	@chmod +x specs/079-midscale-quantize-labels/e2e/run_midscale_quantize_labels.sh
+	@./specs/079-midscale-quantize-labels/e2e/run_midscale_quantize_labels.sh
+
+tiny-slice-exact-gate: ## SPEC-080 B3 tiny-slice exact (skip Wave-2 planner bias below EDGEQUAKE_ANN_EXACT_MAX_ROWS)
+	@chmod +x specs/080-tiny-slice-exact/e2e/run_tiny_slice_exact_gate.sh
+	@./specs/080-tiny-slice-exact/e2e/run_tiny_slice_exact_gate.sh
+
+serving-view-check: ## SPEC-081 C5 serving-view dual-SSOT (migrate + contract)
+	@chmod +x specs/081-serving-view-dual-ssot/e2e/run_serving_view_check.sh
+	@./specs/081-serving-view-dual-ssot/e2e/run_serving_view_check.sh
+
+push-scale-ladder: ## SPEC-082 A6@150/250 + Wave-2@150 spot + DiskANN@250 full-gate (raise floors only if green)
+	@chmod +x specs/082-push-scale-floors/e2e/run_push_scale_ladder.sh
+	@./specs/082-push-scale-floors/e2e/run_push_scale_ladder.sh
+
+product-limits-check: ## SPEC-065–082 honesty gate for docs/product-limits.md vs FAQ/envelope
+	@python3 scripts/product_limits_check.py
+
+compare-eq-perf: ## SPEC-062: cross-major 2× gate on archived JSONL (or ARGS=a.jsonl b.jsonl)
+	@python3 scripts/compare_eq_perf_jsonl.py --cross-major \
+		specs/061-multi-version-data-access-perf/e2e/artifacts/eq-perf-pg16.jsonl \
+		specs/061-multi-version-data-access-perf/e2e/artifacts/eq-perf-pg17.jsonl \
+		specs/061-multi-version-data-access-perf/e2e/artifacts/eq-perf-pg18.jsonl
 
 spec046-acc: ## SPEC-046 science ACC gate + JSON artifact (deterministic; no API key)
 	@chmod +x specs/046-graphrag-study/e2e/run_spec046_acc.sh

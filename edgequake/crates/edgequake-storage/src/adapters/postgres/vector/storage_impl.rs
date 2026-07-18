@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use sqlx::Row;
 
 use super::PgVectorStorage;
+use super::super::ann_exact_reorder_policy::{build_ann_select_sql, AnnExactReorderPolicy};
 use crate::error::{Result, StorageError};
 use crate::traits::{MetadataFilter, VectorSearchResult, VectorStorage};
 
@@ -34,31 +35,24 @@ impl VectorStorage for PgVectorStorage {
         let pool = self.pool.get().await?;
         let embedding_str = Self::format_embedding(query_embedding);
         let emb_type = self.embedding_pg_type();
+        let reorder = AnnExactReorderPolicy::from_env();
+        // When reorder is on, tune ef_search against the wider candidate pool.
+        let tune_k = reorder.effective_candidate_k(top_k);
 
         let sql = if let Some(ids) = filter_ids {
             if ids.is_empty() {
                 return Ok(Vec::new());
             }
-            format!(
-                r#"
-                SELECT id, metadata, 1 - (embedding <=> $1::{emb_type}) as score
-                FROM {}
-                WHERE id = ANY($2)
-                ORDER BY embedding <=> $1::{emb_type}
-                LIMIT $3
-                "#,
-                self.table_name
+            build_ann_select_sql(
+                &self.table_name,
+                emb_type,
+                "WHERE id = ANY($2)",
+                3,
+                top_k,
+                &reorder,
             )
         } else {
-            format!(
-                r#"
-                SELECT id, metadata, 1 - (embedding <=> $1::{emb_type}) as score
-                FROM {}
-                ORDER BY embedding <=> $1::{emb_type}
-                LIMIT $2
-                "#,
-                self.table_name
-            )
+            build_ann_select_sql(&self.table_name, emb_type, "", 2, top_k, &reorder)
         };
 
         // QW3: run inside a short transaction so we can raise recall via
@@ -70,7 +64,8 @@ impl VectorStorage for PgVectorStorage {
             .await
             .map_err(|e| StorageError::Database(format!("Failed to begin query tx: {}", e)))?;
 
-        for stmt in Self::search_tuning_statements(self.index_type, top_k, false, false) {
+        for stmt in Self::search_tuning_statements(self.effective_index_type(), tune_k, false, false)
+        {
             sqlx::query(&stmt)
                 .execute(&mut *tx)
                 .await
@@ -117,8 +112,16 @@ impl VectorStorage for PgVectorStorage {
     }
 
     async fn upsert(&self, data: &[(String, Vec<f32>, serde_json::Value)]) -> Result<()> {
+        self.upsert_report_created(data).await.map(|_| ())
+    }
+
+    /// SPEC-059: `RETURNING (xmax = 0) AS inserted` — atomic insert detection.
+    async fn upsert_report_created(
+        &self,
+        data: &[(String, Vec<f32>, serde_json::Value)],
+    ) -> Result<Vec<String>> {
         if data.is_empty() {
-            return Ok(());
+            return Ok(Vec::new());
         }
 
         // QW2 edge case #1: validate EVERY embedding dimension up front (fail
@@ -162,25 +165,55 @@ impl VectorStorage for PgVectorStorage {
         let chunk_size = crate::vector_upsert_chunk_size();
 
         let emb_type = self.embedding_pg_type();
+        // SPEC-058: populate writable content_tsv from metadata content or KV
+        // (content_ref SSOT). Entity/rel rows get empty tsvector (fine — FTS
+        // filters by vector_type=chunk).
+        let join_kv = self.chunk_kv_table_exists_cached().await.unwrap_or(false);
+        let content_tsv_expr = if join_kv {
+            format!(
+                r#"to_tsvector(
+                    'english',
+                    coalesce(
+                        t.metadata->>'content',
+                        (
+                            SELECT k.value->>'content'
+                            FROM {kv} k
+                            WHERE k.key = coalesce(t.metadata->>'content_ref', t.id)
+                            LIMIT 1
+                        ),
+                        ''
+                    )
+                )"#,
+                kv = self.chunk_kv_table_name
+            )
+        } else {
+            "to_tsvector('english', coalesce(t.metadata->>'content', ''))".to_string()
+        };
+        // SPEC-059: xmax=0 means freshly inserted; non-zero means ON CONFLICT update.
         let sql = format!(
             r#"
-            INSERT INTO {} (id, embedding, metadata, document_id, tenant_id, workspace_id)
+            INSERT INTO {table} (id, embedding, metadata, document_id, tenant_id, workspace_id, content_tsv)
             SELECT
                 t.id,
                 t.embedding::{emb_type},
                 t.metadata,
                 COALESCE(t.metadata->>'document_id', t.metadata->>'source_document_id'),
                 t.metadata->>'tenant_id',
-                t.metadata->>'workspace_id'
+                t.metadata->>'workspace_id',
+                {content_tsv_expr}
             FROM UNNEST($1::text[], $2::text[], $3::jsonb[]) AS t(id, embedding, metadata)
             ON CONFLICT (id) DO UPDATE SET
                 embedding = EXCLUDED.embedding,
                 metadata = EXCLUDED.metadata,
                 document_id = EXCLUDED.document_id,
                 tenant_id = EXCLUDED.tenant_id,
-                workspace_id = EXCLUDED.workspace_id
+                workspace_id = EXCLUDED.workspace_id,
+                content_tsv = EXCLUDED.content_tsv
+            RETURNING id, (xmax = 0) AS inserted
             "#,
-            self.table_name
+            table = self.table_name,
+            emb_type = emb_type,
+            content_tsv_expr = content_tsv_expr
         );
 
         let mut tx = pool
@@ -188,6 +221,7 @@ impl VectorStorage for PgVectorStorage {
             .await
             .map_err(|e| StorageError::Database(format!("Failed to begin upsert tx: {}", e)))?;
 
+        let mut created: Vec<String> = Vec::new();
         for chunk in kept.chunks(chunk_size) {
             let mut ids: Vec<String> = Vec::with_capacity(chunk.len());
             let mut embeddings: Vec<String> = Vec::with_capacity(chunk.len());
@@ -199,20 +233,27 @@ impl VectorStorage for PgVectorStorage {
                 metadatas.push(metadata.clone());
             }
 
-            sqlx::query(&sql)
+            let rows = sqlx::query(&sql)
                 .bind(&ids)
                 .bind(&embeddings)
                 .bind(&metadatas)
-                .execute(&mut *tx)
+                .fetch_all(&mut *tx)
                 .await
                 .map_err(|e| StorageError::Database(format!("Batch upsert failed: {}", e)))?;
+            for row in rows {
+                let id: String = row.get("id");
+                let inserted: bool = row.get("inserted");
+                if inserted {
+                    created.push(id);
+                }
+            }
         }
 
         tx.commit()
             .await
             .map_err(|e| StorageError::Database(format!("Failed to commit upsert tx: {}", e)))?;
 
-        Ok(())
+        Ok(created)
     }
 
     async fn delete(&self, ids: &[String]) -> Result<()> {
@@ -470,11 +511,26 @@ impl VectorStorage for PgVectorStorage {
         filter_ids: Option<&[String]>,
         metadata_filter: Option<&MetadataFilter>,
     ) -> Result<Vec<VectorSearchResult>> {
+        // SPEC-060: storage op histogram (op label only)
+        let _timed = crate::TimedStorageOp::start("query_filtered");
         // Fast path: if no metadata filter, delegate to standard query
         let mf = match metadata_filter {
             Some(mf) if !mf.is_empty() => mf,
             _ => return self.query(query_embedding, top_k, filter_ids).await,
         };
+
+        // SPEC-065: productize Wave-2 — create hot-workspace partial HNSW when opt-in.
+        // Fail-closed: DDL errors propagate (no silent seq-scan).
+        let mut wave2_partial_ready = false;
+        // SPEC-080: count before begin() — avoids second pool acquire while holding a tx.
+        let mut workspace_row_count: Option<u64> = None;
+        if let Some(ws) = mf.workspace_id.as_deref() {
+            workspace_row_count = Some(self.count_workspace_rows(ws).await?);
+            if crate::hnsw_partial_by_workspace_enabled() {
+                let _created = self.ensure_hot_workspace_ann(ws).await?;
+                wave2_partial_ready = self.partial_ann_index_exists(ws).await?;
+            }
+        }
 
         let pool = self.pool.get().await?;
         let embedding_str = Self::format_embedding(query_embedding);
@@ -488,15 +544,16 @@ impl VectorStorage for PgVectorStorage {
             format!("WHERE {}", filter_sql.conditions.join(" AND "))
         };
 
-        let sql = format!(
-            r#"
-            SELECT id, metadata, 1 - (embedding <=> $1::{emb_type}) as score
-            FROM {}
-            {}
-            ORDER BY embedding <=> $1::{emb_type}
-            LIMIT ${}
-            "#,
-            self.table_name, where_clause, filter_sql.next_param
+        // SPEC-076 A3: opt-in ANN → exact reorder (default OFF).
+        let reorder = AnnExactReorderPolicy::from_env();
+        let tune_k = reorder.effective_candidate_k(top_k);
+        let sql = build_ann_select_sql(
+            &self.table_name,
+            emb_type,
+            &where_clause,
+            filter_sql.next_param,
+            top_k,
+            &reorder,
         );
 
         // Dynamic parameter binding using raw query + manual bind chain
@@ -551,18 +608,44 @@ impl VectorStorage for PgVectorStorage {
         args.add(top_k as i32)
             .map_err(|e| StorageError::Database(format!("Failed to bind top_k: {}", e)))?;
 
+        // Resolve capability BEFORE begin(): supports_iterative_scan may acquire a
+        // second pool connection (OnceCell init). Doing that while holding a tx
+        // deadlocks when pool is saturated (clients ≥ max_connections).
+        let iterative_scan = self.supports_iterative_scan().await;
+
         // QW3: metadata pre-filter present -> raise recall AND enable iterative
         // scan (scoped to this transaction) so the post-filter LIMIT is met.
         let mut tx = pool.begin().await.map_err(|e| {
             StorageError::Database(format!("Failed to begin filtered query tx: {}", e))
         })?;
 
-        let iterative_scan = self.supports_iterative_scan().await;
-        for stmt in Self::search_tuning_statements(self.index_type, top_k, true, iterative_scan) {
+        for stmt in Self::search_tuning_statements(
+            self.effective_index_type(),
+            tune_k,
+            true,
+            iterative_scan,
+        ) {
             sqlx::query(&stmt)
                 .execute(&mut *tx)
                 .await
                 .map_err(|e| StorageError::Database(format!("Failed to set search GUC: {}", e)))?;
+        }
+
+        // SPEC-067: prefer partial/HNSW over filter+Sort when Wave-2 columns-only applies.
+        // SPEC-080 B3: skip bias on tiny workspace slices (let planner choose exact).
+        let prefer_columns = crate::filter_column_policy::prefer_denorm_filter_columns();
+        for stmt in Self::wave2_planner_bias_statements(
+            prefer_columns,
+            wave2_partial_ready,
+            mf,
+            workspace_row_count,
+        ) {
+            sqlx::query(&stmt)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| {
+                    StorageError::Database(format!("Failed to set Wave-2 planner bias: {e}"))
+                })?;
         }
 
         let rows = sqlx::query_with(&sql, args)
@@ -602,7 +685,14 @@ impl VectorStorage for PgVectorStorage {
         filter_ids: Option<&[String]>,
         metadata_filter: Option<&MetadataFilter>,
     ) -> Result<Vec<VectorSearchResult>> {
+        // SPEC-060: storage op histogram (op label only)
+        let _timed = crate::TimedStorageOp::start("text_search_filtered");
         self.postgres_text_search_filtered(query_text, top_k, filter_ids, metadata_filter)
             .await
+    }
+
+    async fn warmup_workspace_ann(&self, workspace_id: &str) -> Result<bool> {
+        // Inherent method on PgVectorStorage (ddl.rs) — avoid trait recursion.
+        PgVectorStorage::ensure_hot_workspace_ann(self, workspace_id).await
     }
 }

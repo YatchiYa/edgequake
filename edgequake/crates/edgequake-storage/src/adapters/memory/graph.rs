@@ -24,10 +24,10 @@ use std::sync::RwLock;
 
 use crate::error::Result;
 use crate::traits::{
-    edge_matches_list_filter, edge_matches_relationship_id, node_matches_list_filter,
-    sources_match_prefixes, EdgeListFilter, GraphEdge, GraphNode, GraphScanOps, GraphStorage,
-    GraphStorageAnalyticsOps, GraphStorageMutateOps, GraphStorageReadOps, KnowledgeGraph,
-    NodeListFilter, PagedGraphResult,
+    edge_matches_list_filter, edge_matches_relationship_id, edge_matches_scope_dims,
+    node_matches_list_filter, sources_match_prefixes, EdgeListFilter, GraphEdge, GraphNode,
+    GraphScanOps, GraphStorage, GraphStorageAnalyticsOps, GraphStorageMutateOps,
+    GraphStorageReadOps, KnowledgeGraph, NodeListFilter, PagedGraphResult,
 };
 
 /// In-memory graph storage implementation.
@@ -232,7 +232,12 @@ impl GraphStorageReadOps for MemoryGraphStorage {
             .collect())
     }
 
-    async fn get_incident_edges_batch(&self, node_ids: &[String]) -> Result<Vec<GraphEdge>> {
+    async fn get_incident_edges_batch(
+        &self,
+        node_ids: &[String],
+        tenant_id: Option<&str>,
+        workspace_id: Option<&str>,
+    ) -> Result<Vec<GraphEdge>> {
         if node_ids.is_empty() {
             return Ok(Vec::new());
         }
@@ -240,7 +245,6 @@ impl GraphStorageReadOps for MemoryGraphStorage {
         let node_set: std::collections::HashSet<&str> =
             node_ids.iter().map(|s| s.as_str()).collect();
         let edges = self.edges.read().map_err(super::lock::map_lock_err)?;
-
         Ok(edges
             .iter()
             .filter(|((s, t), _)| node_set.contains(s.as_str()) || node_set.contains(t.as_str()))
@@ -249,6 +253,7 @@ impl GraphStorageReadOps for MemoryGraphStorage {
                 target: t.clone(),
                 properties: props.clone(),
             })
+            .filter(|e| edge_matches_scope_dims(&e.properties, tenant_id, workspace_id))
             .collect())
     }
 
@@ -662,27 +667,33 @@ impl GraphStorageMutateOps for MemoryGraphStorage {
     }
 
     async fn delete_node(&self, node_id: &str) -> Result<()> {
+        self.delete_nodes_batch(&[node_id.to_string()]).await
+    }
+
+    async fn delete_nodes_batch(&self, node_ids: &[String]) -> Result<()> {
+        if node_ids.is_empty() {
+            return Ok(());
+        }
         let mut nodes = self.nodes.write().map_err(super::lock::map_lock_err)?;
         let mut edges = self.edges.write().map_err(super::lock::map_lock_err)?;
         let mut adjacency = self.adjacency.write().map_err(super::lock::map_lock_err)?;
 
-        nodes.remove(node_id);
+        for node_id in node_ids {
+            nodes.remove(node_id);
 
-        // Remove all edges involving this node
-        let to_remove: Vec<(String, String)> = edges
-            .keys()
-            .filter(|(s, t)| s == node_id || t == node_id)
-            .cloned()
-            .collect();
+            let to_remove: Vec<(String, String)> = edges
+                .keys()
+                .filter(|(s, t)| s == node_id || t == node_id)
+                .cloned()
+                .collect();
+            for key in to_remove {
+                edges.remove(&key);
+            }
 
-        for key in to_remove {
-            edges.remove(&key);
-        }
-
-        // Update adjacency
-        adjacency.remove(node_id);
-        for neighbors in adjacency.values_mut() {
-            neighbors.remove(node_id);
+            adjacency.remove(node_id);
+            for neighbors in adjacency.values_mut() {
+                neighbors.remove(node_id);
+            }
         }
 
         Ok(())

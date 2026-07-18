@@ -146,7 +146,7 @@ async fn recover_orphaned_tasks(
     task_storage: Arc<dyn TaskStorage>,
     kv_storage: Arc<dyn edgequake_storage::traits::KVStorage>,
     auto_resume: bool,
-) -> Result<()> {
+) -> Result<Vec<String>> {
     let mode = edgequake_tasks::delivery_mode_from_env();
     let replicas = edgequake_tasks::replicas_from_env();
     let multi_replica = edgequake_tasks::is_multi_replica_deployment(mode, replicas);
@@ -157,7 +157,7 @@ async fn recover_orphaned_tasks(
         multi_replica,
     )
     .await
-    .map(|_| ())
+    .map(|r| r.retract_document_ids)
     .map_err(|e| anyhow::anyhow!(e))
 }
 
@@ -179,6 +179,8 @@ struct RecoverOrphanedDocsReport {
     needs_reupload_count: usize,
     /// Mid-flight docs marked failed for user Reprocess (manual-resume mode).
     awaiting_manual_resume_count: usize,
+    /// SPEC-059: post-graph incomplete docs marked failed — retract indexes.
+    retract_ids: Vec<String>,
 }
 
 async fn recover_orphaned_documents(
@@ -371,6 +373,10 @@ async fn recover_orphaned_documents(
                     );
                 }
                 report.awaiting_manual_resume_count += 1;
+                // SPEC-059: may have written ANN/graph — retract when not auto-resuming.
+                if edgequake_api::services::is_post_graph_incomplete_stage(stuck_stage) {
+                    report.retract_ids.push(document_id);
+                }
             }
 
             if let Some(obj) = updated.as_object_mut() {
@@ -794,19 +800,23 @@ async fn async_main() -> Result<()> {
 
     // Recover orphaned tasks from previous backend session (PRODUCTION_BUG_FIX)
     // MUST run BEFORE starting workers to prevent race conditions
-    if let Err(e) = recover_orphaned_tasks(
+    let mut orphan_task_retract_ids = Vec::new();
+    match recover_orphaned_tasks(
         Arc::clone(&state.tasks.storage) as Arc<dyn TaskStorage>,
         Arc::clone(&state.storage.kv_storage) as Arc<dyn edgequake_storage::traits::KVStorage>,
         auto_resume,
     )
     .await
     {
-        ErrorEvent::log_domain_warn(
-            "startup",
-            "recover_orphaned_tasks",
-            &e.to_string(),
-            json!({ "non_fatal": true }),
-        );
+        Ok(ids) => orphan_task_retract_ids = ids,
+        Err(e) => {
+            ErrorEvent::log_domain_warn(
+                "startup",
+                "recover_orphaned_tasks",
+                &e.to_string(),
+                json!({ "non_fatal": true }),
+            );
+        }
     }
 
     // Recover orphaned documents stuck in non-terminal states (uploading, pending, etc.)
@@ -827,14 +837,14 @@ async fn async_main() -> Result<()> {
         );
     }
 
-    let recovered_doc_ids = match recover_orphaned_documents(
+    let (recovered_doc_ids, orphan_retract_ids) = match recover_orphaned_documents(
         Arc::clone(&state.storage.kv_storage) as Arc<dyn edgequake_storage::traits::KVStorage>,
         None, // startup: in-flight stages are orphans (no workers yet)
         auto_resume,
     )
     .await
     {
-        Ok(report) => report.auto_recovered_ids,
+        Ok(report) => (report.auto_recovered_ids, report.retract_ids),
         Err(e) => {
             ErrorEvent::log_domain_warn(
                 "startup",
@@ -842,9 +852,30 @@ async fn async_main() -> Result<()> {
                 &e.to_string(),
                 json!({ "non_fatal": true }),
             );
-            Vec::new()
+            (Vec::new(), Vec::new())
         }
     };
+
+    // SPEC-059: unindex failed mid-saga docs so orphaned content is not searchable.
+    let mut all_retract = orphan_retract_ids;
+    all_retract.extend(orphan_task_retract_ids);
+    all_retract.sort();
+    all_retract.dedup();
+    if !all_retract.is_empty() {
+        let vector = state.storage.vector_registry.default_storage();
+        let n = edgequake_api::services::retract_indexes_for_orphan_docs(
+            &state.storage.graph_storage,
+            &vector,
+            &all_retract,
+        )
+        .await;
+        if n > 0 {
+            info!(
+                retracted = n,
+                "SPEC-059: retracted indexes for orphaned incomplete documents"
+            );
+        }
+    }
 
     // Auto-resume only: enqueue tasks for recovered docs + capped backlog drain.
     // Manual-resume default skips this — user Reprocess is the enqueue path.
@@ -1044,6 +1075,8 @@ async fn async_main() -> Result<()> {
         let kv =
             Arc::clone(&state.storage.kv_storage) as Arc<dyn edgequake_storage::traits::KVStorage>;
         let reconcile_state = state.clone();
+        let periodic_graph = Arc::clone(&state.storage.graph_storage);
+        let periodic_vector = state.storage.vector_registry.default_storage();
         // Only recover docs stale longer than the interval itself (active workers
         // keep updating `updated_at` via progress patches).
         let min_age = Duration::minutes(interval_mins as i64);
@@ -1061,7 +1094,17 @@ async fn async_main() -> Result<()> {
                 )
                 .await
                 {
-                    Ok(report) => report.auto_recovered_ids,
+                    Ok(report) => {
+                        if !report.retract_ids.is_empty() {
+                            let _ = edgequake_api::services::retract_indexes_for_orphan_docs(
+                                &periodic_graph,
+                                &periodic_vector,
+                                &report.retract_ids,
+                            )
+                            .await;
+                        }
+                        report.auto_recovered_ids
+                    }
                     Err(e) => {
                         ErrorEvent::log_domain_warn(
                             "startup",

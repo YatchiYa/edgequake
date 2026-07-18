@@ -132,6 +132,7 @@ use crate::handlers;
         handlers::update_server_defaults,
         handlers::storage_inspect,
         handlers::storage_repair,
+        handlers::ann_warmup,
         handlers::entity_reconcile_plan,
         handlers::entity_reconcile_execute,
         handlers::delete_all_documents,

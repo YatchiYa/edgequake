@@ -2069,6 +2069,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "edgequake-llm 0.10.1",
+ "edgequake-observability",
  "edgequake-storage",
  "futures",
  "regex",

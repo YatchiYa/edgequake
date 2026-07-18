@@ -346,19 +346,44 @@ pub(crate) async fn run_reprocess_failed(
         //   T4: Document reprocessed → entities A, B created fresh
         //   T5: source_ids correctly = [doc]
         //   T6: Delete document → entities properly deleted
+        let vector = crate::services::get_workspace_vector_storage_for_delete(
+            &state,
+            &workspace_id_for_tasks,
+        )
+        .await;
+        // SPEC-059: full retract (vectors + graph sources) before reprocess.
+        let retract_stats = crate::services::retract_document_indexes(
+            &state.storage.graph_storage,
+            &vector,
+            None,
+            doc_id,
+        )
+        .await;
         let cleanup_admit_stats =
-            match cleanup_document_graph_data(doc_id, &state.storage.graph_storage, None).await {
+            match cleanup_document_graph_data(
+                doc_id,
+                &state.storage.graph_storage,
+                Some(&vector),
+            )
+            .await {
                 Ok(stats) => {
                     tracing::info!(
                         document_id = %doc_id,
-                        entities_removed = stats.entities_removed,
+                        entities_removed = stats.entities_removed.max(retract_stats.entities_removed),
                         entities_updated = stats.entities_updated,
-                        relationships_removed = stats.relationships_removed,
+                        relationships_removed = stats
+                            .relationships_removed
+                            .max(retract_stats.relationships_removed),
+                        embeddings_deleted = retract_stats.embeddings_deleted,
                         "Cleaned up partial data before reprocessing"
                     );
                     Some(crate::services::reprocess_stage_reset::CleanupAdmitStats {
-                        entities_removed: stats.entities_removed,
-                        relationships_removed: stats.relationships_removed,
+                        entities_removed: stats
+                            .entities_removed
+                            .max(retract_stats.entities_removed),
+                        relationships_removed: stats
+                            .relationships_removed
+                            .max(retract_stats.relationships_removed),
                     })
                 }
                 Err(e) => {

@@ -1,5 +1,7 @@
 //! Per-mode vector query implementations (SPEC-024 2.8).
 
+/// SPEC-059: exposed for arm concurrency load tests.
+pub mod arm_concurrency;
 mod arm_timed;
 mod chunk_retrieval;
 mod global;

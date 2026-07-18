@@ -55,7 +55,7 @@ fn contract_incident_edges_batch_uses_edge_child_table() {
 /// SPEC-053: node_degrees_batch must also use "EDGE" child table, not parent tables.
 #[test]
 fn contract_node_degrees_batch_uses_edge_child_table() {
-    let nodes = include_str!("../src/adapters/postgres/graph/nodes_ops.rs");
+    let nodes = include_str!("../src/adapters/postgres/graph/nodes_ops/read.rs");
 
     // Must query "EDGE" child table for degree counting.
     assert!(
@@ -80,7 +80,10 @@ async fn contract_spec025_incident_edges_batch_matches_per_node_union() {
 
     let view = GraphReadView::new(&graph);
     let node_ids = vec!["A".to_string(), "B".to_string()];
-    let batch = view.get_incident_edges_batch(&node_ids).await.unwrap();
+    let batch = view
+        .get_incident_edges_batch(&node_ids, None, None)
+        .await
+        .unwrap();
 
     let mut per_node = Vec::new();
     for id in &node_ids {

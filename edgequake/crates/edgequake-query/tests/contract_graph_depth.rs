@@ -13,16 +13,28 @@ async fn contract_graph_depth_two_reaches_second_hop() {
     graph.upsert_edge("B", "C", HashMap::new()).await.unwrap();
 
     let view = GraphReadView::new(&graph);
-    let depth_one =
-        edgequake_query::graph_hops::edges_within_depth(&view, &["A".to_string()], 1, 10)
-            .await
-            .unwrap();
+    let depth_one = edgequake_query::graph_hops::edges_within_depth(
+        &view,
+        &["A".to_string()],
+        1,
+        10,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
     assert_eq!(depth_one.len(), 1);
 
-    let depth_two =
-        edgequake_query::graph_hops::edges_within_depth(&view, &["A".to_string()], 2, 10)
-            .await
-            .unwrap();
+    let depth_two = edgequake_query::graph_hops::edges_within_depth(
+        &view,
+        &["A".to_string()],
+        2,
+        10,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
     assert_eq!(depth_two.len(), 2, "depth=2 must include A→B and B→C");
 }
 
@@ -35,8 +47,15 @@ async fn contract_graph_depth_respects_max_edges() {
     }
 
     let view = GraphReadView::new(&graph);
-    let edges = edgequake_query::graph_hops::edges_within_depth(&view, &["A".to_string()], 1, 2)
-        .await
-        .unwrap();
+    let edges = edgequake_query::graph_hops::edges_within_depth(
+        &view,
+        &["A".to_string()],
+        1,
+        2,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
     assert_eq!(edges.len(), 2);
 }

@@ -30,7 +30,13 @@ pub async fn build_entity_neighborhood(
         }
 
         let batch_edges = filter_edges_by_tenant_context(
-            graph_storage.get_incident_edges_batch(&frontier).await?,
+            graph_storage
+                .get_incident_edges_batch(
+                    &frontier,
+                    tenant_ctx.tenant_id.as_deref(),
+                    tenant_ctx.workspace_id.as_deref(),
+                )
+                .await?,
             tenant_ctx,
         );
 

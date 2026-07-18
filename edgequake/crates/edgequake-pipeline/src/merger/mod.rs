@@ -61,8 +61,10 @@ pub use merge_limits::{
 };
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use async_trait::async_trait;
+use edgequake_observability::record_ingest_stage_duration;
 use edgequake_storage::{GraphStorage, VectorStorage};
 
 use crate::error::Result;
@@ -446,6 +448,10 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
     ///
     /// `count_as_entities`: when true, `done` advances `entities_processed`;
     /// otherwise advances `relationships_processed` (entity totals stay complete).
+    ///
+    /// SPEC-059: only IDs returned by [`VectorStorage::upsert_report_created`]
+    /// (atomic insert detection) are recorded in [`MergeArtifacts`] so compensate
+    /// never deletes shared entity/rel vectors — no preflight TOCTOU.
     #[allow(clippy::too_many_arguments)]
     async fn upsert_vectors_chunked(
         &self,
@@ -462,14 +468,26 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
         let chunk = edgequake_storage::vector_upsert_chunk_size();
         let mut done = 0usize;
         for slice in batch.chunks(chunk) {
-            self.vector_storage.upsert(slice).await?;
-            // SPEC-057 P3: record IDs after each successful chunk so compensate
-            // can roll back partial upserts when a later chunk fails.
-            for (id, _, _) in slice {
+            // SPEC-059: atomic insert report (Postgres xmax / memory write-lock).
+            let created = self.vector_storage.upsert_report_created(slice).await?;
+            let created_set: std::collections::HashSet<&str> =
+                created.iter().map(|id| id.as_str()).collect();
+            let skipped_shared = slice
+                .iter()
+                .filter(|(id, _, _)| !created_set.contains(id.as_str()))
+                .count();
+            if skipped_shared > 0 {
+                edgequake_storage::record_compensate_shared_entity_skipped(skipped_shared);
+            }
+
+            // SPEC-057 P3 + SPEC-059: record only *created* IDs after each
+            // successful chunk so compensate rolls back orphans without wiping
+            // embeddings for entities shared across documents.
+            for id in created {
                 if count_as_entities {
-                    artifacts.entity_vector_ids.push(id.clone());
+                    artifacts.entity_vector_ids.push(id);
                 } else {
-                    artifacts.relationship_vector_ids.push(id.clone());
+                    artifacts.relationship_vector_ids.push(id);
                 }
             }
             done += slice.len();
@@ -669,7 +687,8 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
         // progress so UI does not freeze at "Embedding 100%".
         let entity_vector_batch = self.collect_entity_vector_batch(&results);
         if !entity_vector_batch.is_empty() {
-            if let Err(e) = self
+            let stage_start = Instant::now();
+            let entity_vec_result = self
                 .upsert_vectors_chunked(
                     &entity_vector_batch,
                     progress,
@@ -681,8 +700,13 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
                     true,
                     &mut stats.artifacts,
                 )
-                .await
-            {
+                .await;
+            // SPEC-060: entity vector upsert stage
+            record_ingest_stage_duration(
+                "entity_vector_upsert",
+                stage_start.elapsed().as_secs_f64(),
+            );
+            if let Err(e) = entity_vec_result {
                 // SPEC-057 P3: abort with partial artifacts (Ok + errors) so
                 // persister compensates written IDs instead of MergeArtifacts::default().
                 stats.errors += 1;
@@ -721,14 +745,21 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
             .collect();
 
         if !all_entities.is_empty() {
-            if let Err(e) = self.merge_entities_batch(all_entities, &mut stats).await {
+            let stage_start = Instant::now();
+            let entity_graph_result = self.merge_entities_batch(all_entities, &mut stats).await;
+            // SPEC-060: AGE node upsert stage
+            record_ingest_stage_duration("age_node_upsert", stage_start.elapsed().as_secs_f64());
+            if let Err(e) = entity_graph_result {
+                // SPEC-058: fail-fast — do not amplify partial state by continuing
+                // into relationship vector/graph phases after entity AGE failure.
                 stats.errors += 1;
                 tracing::warn!(
                     error.source = "pipeline_merger",
                     error.action = "merge_entities_batch_global",
                     error.message = %e,
-                    "Failed to merge global entity batch"
+                    "Failed to merge global entity batch; aborting remaining merge phases"
                 );
+                return Ok(stats);
             }
         }
 
@@ -756,7 +787,8 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
             .collect();
         let all_rel_vectors = self.collect_relationship_vector_batch(&all_rels);
         if !all_rel_vectors.is_empty() {
-            if let Err(e) = self
+            let stage_start = Instant::now();
+            let rel_vec_result = self
                 .upsert_vectors_chunked(
                     &all_rel_vectors,
                     progress,
@@ -768,8 +800,13 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
                     false,
                     &mut stats.artifacts,
                 )
-                .await
-            {
+                .await;
+            // SPEC-060: relationship vector upsert stage
+            record_ingest_stage_duration(
+                "rel_vector_upsert",
+                stage_start.elapsed().as_secs_f64(),
+            );
+            if let Err(e) = rel_vec_result {
                 stats.errors += 1;
                 tracing::warn!(
                     error.source = "pipeline_merger",
@@ -814,17 +851,22 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
                 entities_updated: stats.entities_updated,
             });
 
-            if let Err(e) = self
+            let stage_start = Instant::now();
+            let rel_graph_result = self
                 .merge_relationships_batch(all_relationships, &mut stats, progress_ctx)
-                .await
-            {
+                .await;
+            // SPEC-060: AGE edge upsert stage
+            record_ingest_stage_duration("age_edge_upsert", stage_start.elapsed().as_secs_f64());
+            if let Err(e) = rel_graph_result {
+                // SPEC-058: fail-fast on relationship AGE errors.
                 stats.errors += 1;
                 tracing::warn!(
                     error.source = "pipeline_merger",
                     error.action = "merge_relationships_batch_global",
                     error.message = %e,
-                    "Failed to merge global relationship batch"
+                    "Failed to merge global relationship batch; aborting finalize"
                 );
+                return Ok(stats);
             }
         }
 
@@ -942,12 +984,16 @@ pub struct MergeStats {
     pub artifacts: MergeArtifacts,
 }
 
-/// IDs created during a single merge attempt (for rollback on failure).
+/// IDs **created** during a single merge attempt (for rollback on failure).
+///
+/// SPEC-059: vector ID lists contain only rows **inserted** by this merge's
+/// `upsert_report_created` (atomic). Shared entity/relationship vectors that
+/// were updated must never appear here — compensate must not delete them.
 #[derive(Debug, Clone, Default)]
 pub struct MergeArtifacts {
-    /// Entity vector IDs upserted for newly created graph nodes.
+    /// Entity vector IDs created (not updated) in this session.
     pub entity_vector_ids: Vec<String>,
-    /// Relationship vector IDs upserted for newly created edges.
+    /// Relationship vector IDs created (not updated) in this session.
     pub relationship_vector_ids: Vec<String>,
     /// Graph node IDs created (not updated) in this session.
     pub graph_nodes_created: Vec<String>,
@@ -1592,4 +1638,87 @@ mod tests {
             "last-write-wins relation_type"
         );
     }
+
+    /// SPEC-058: shared entity vector must not appear in compensate artifacts.
+    #[tokio::test]
+    async fn spec058_shared_entity_vector_excluded_from_compensate_artifacts() {
+        let graph = Arc::new(edgequake_storage::MemoryGraphStorage::new("spec058-share"));
+        let vector = Arc::new(edgequake_storage::MemoryVectorStorage::new(
+            "spec058-share",
+            4,
+        ));
+        graph.initialize().await.unwrap();
+        vector.initialize().await.unwrap();
+
+        let emb = vec![0.1, 0.2, 0.3, 0.4];
+        let entity_id = edgequake_storage::EntityId::new("Shared Person");
+        let vector_id = entity_id.as_vector_id();
+
+        // Doc A already wrote the shared entity embedding.
+        vector
+            .upsert(&[(
+                vector_id.clone(),
+                emb.clone(),
+                serde_json::json!({"type": "entity"}),
+            )])
+            .await
+            .unwrap();
+
+        let merger = KnowledgeGraphMerger::new(MergerConfig::default(), graph, vector.clone());
+        let mut r = crate::extractor::ExtractionResult::new("chunk-b");
+        r.entities.push(ExtractedEntity {
+            name: "Shared Person".to_string(),
+            entity_type: "PERSON".to_string(),
+            description: "From doc B".to_string(),
+            importance: 0.9,
+            source_spans: vec![],
+            source_chunk_ids: vec!["chunk-b".to_string()],
+            embedding: Some(emb),
+            source_document_id: Some("doc-b".to_string()),
+            source_file_path: None,
+        });
+
+        let stats = merger.merge(vec![r]).await.expect("merge");
+        assert!(
+            !stats.artifacts.entity_vector_ids.contains(&vector_id),
+            "shared entity vector must not be in compensate list: {:?}",
+            stats.artifacts.entity_vector_ids
+        );
+        assert!(
+            vector.get_by_id(&vector_id).await.unwrap().is_some(),
+            "shared entity embedding must remain after merge"
+        );
+    }
+
+    /// SPEC-059: second upsert_report_created of same ID returns empty created list.
+    #[tokio::test]
+    async fn spec059_upsert_report_created_second_call_empty() {
+        use edgequake_storage::VectorStorage;
+        let vector = edgequake_storage::MemoryVectorStorage::new("spec059-report", 4);
+        vector.initialize().await.unwrap();
+        let emb = vec![0.1, 0.2, 0.3, 0.4];
+        let id = "ent-shared".to_string();
+        let first = vector
+            .upsert_report_created(&[(
+                id.clone(),
+                emb.clone(),
+                serde_json::json!({"type": "entity"}),
+            )])
+            .await
+            .unwrap();
+        assert_eq!(first, vec![id.clone()]);
+        let second = vector
+            .upsert_report_created(&[(
+                id.clone(),
+                emb,
+                serde_json::json!({"type": "entity", "v": 2}),
+            )])
+            .await
+            .unwrap();
+        assert!(
+            second.is_empty(),
+            "update must not report as created: {second:?}"
+        );
+    }
+
 }

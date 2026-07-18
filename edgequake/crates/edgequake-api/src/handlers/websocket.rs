@@ -197,10 +197,13 @@ async fn handle_pipeline_socket(socket: WebSocket, state: AppState) {
                                 if let Some(track_id) =
                                     cmd.get("track_id").and_then(|v| v.as_str())
                                 {
+                                    let vector = state.storage.vector_registry.default_storage();
                                     match cancel_track_with_doc_and_pdf_chain(
                                         &state.tasks.storage,
                                         &state.tasks.cancellation_registry,
                                         Arc::clone(&state.storage.kv_storage),
+                                        &state.storage.graph_storage,
+                                        &vector,
                                         track_id,
                                     )
                                     .await
@@ -453,10 +456,13 @@ async fn handle_filtered_progress_socket(socket: WebSocket, state: AppState, tra
                                     .get("track_id")
                                     .and_then(|v| v.as_str())
                                     .unwrap_or(track_id.as_str());
+                                let vector = state.storage.vector_registry.default_storage();
                                 match cancel_track_with_doc_and_pdf_chain(
                                     &state.tasks.storage,
                                     &state.tasks.cancellation_registry,
                                     Arc::clone(&state.storage.kv_storage),
+                                    &state.storage.graph_storage,
+                                    &vector,
                                     id,
                                 )
                                 .await

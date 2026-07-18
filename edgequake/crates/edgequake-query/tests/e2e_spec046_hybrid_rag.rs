@@ -79,9 +79,17 @@ async fn e2e_ppr_walk_expands_seed_neighborhood() {
         graph.upsert_edge(a, b, HashMap::new()).await.unwrap();
     }
     let view = GraphReadView::new(&graph);
-    let edges = expand_neighborhood_edges(&view, &["SEED".into()], 2, 10, GraphWalkMode::Ppr)
-        .await
-        .unwrap();
+    let edges = expand_neighborhood_edges(
+        &view,
+        &["SEED".into()],
+        2,
+        10,
+        GraphWalkMode::Ppr,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
     assert!(!edges.is_empty());
     assert!(
         edges

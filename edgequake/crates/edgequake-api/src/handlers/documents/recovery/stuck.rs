@@ -138,26 +138,32 @@ pub(crate) async fn run_recover_stuck(
         ensure_task_for_pending_document, EnsureTaskOutcome,
     };
 
+    let vector = crate::services::get_workspace_vector_storage_for_delete(
+        &state,
+        tenant_ctx.workspace_id.as_deref().unwrap_or("default"),
+    )
+    .await;
+
     for (doc_id, doc_title) in &stuck_docs {
-        // OODA-08: Clean up partial graph data from interrupted processing BEFORE requeueing
-        match cleanup_document_graph_data(doc_id, &state.storage.graph_storage, None).await {
-            Ok(stats) => {
-                tracing::info!(
-                    document_id = %doc_id,
-                    entities_removed = stats.entities_removed,
-                    entities_updated = stats.entities_updated,
-                    relationships_removed = stats.relationships_removed,
-                    "Cleaned up partial data before recovery"
-                );
-            }
-            Err(e) => {
-                tracing::warn!(
-                    document_id = %doc_id,
-                    error = %e,
-                    "Failed to cleanup partial data before recovery, continuing anyway"
-                );
-            }
-        }
+        // OODA-08 / SPEC-059: retract vectors + prune graph sources BEFORE requeueing
+        let stats = crate::services::retract_document_indexes(
+            &state.storage.graph_storage,
+            &vector,
+            Some(&tenant_ctx),
+            doc_id,
+        )
+        .await;
+        tracing::info!(
+            document_id = %doc_id,
+            entities_removed = stats.entities_removed,
+            entities_updated = stats.entities_updated,
+            relationships_removed = stats.relationships_removed,
+            embeddings_deleted = stats.embeddings_deleted,
+            "SPEC-059: retracted indexes before stuck recovery"
+        );
+        // Keep cleanup path for graph-only edge cases (idempotent with retract).
+        let _ = cleanup_document_graph_data(doc_id, &state.storage.graph_storage, Some(&vector))
+            .await;
 
         let metadata_key =
             crate::services::document_metadata_scan::metadata_key_for_document(doc_id);

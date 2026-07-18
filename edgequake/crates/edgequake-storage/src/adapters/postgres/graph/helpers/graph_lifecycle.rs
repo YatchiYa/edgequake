@@ -309,6 +309,103 @@ impl PostgresAGEGraphStorage {
             );
         }
 
+        // SPEC-062: denormalized text id columns — avoid per-row agtype_to_json on hot paths.
+        self.ensure_eq_id_columns(&mut conn).await?;
+
+        Ok(())
+    }
+
+    /// Add `eq_node_id` / `eq_source_id` / `eq_target_id` + btree UNIQUE + sync triggers.
+    ///
+    /// AGE label tables remain the source of truth for `properties`; these columns are
+    /// maintained for native SQL JOIN / ON CONFLICT / degree aggregates (Wave 1).
+    pub(in crate::adapters::postgres::graph) async fn ensure_eq_id_columns(
+        &self,
+        conn: &mut sqlx::pool::PoolConnection<sqlx::Postgres>,
+    ) -> Result<()> {
+        let g = &self.graph_name;
+        let stmts = [
+            format!(r#"ALTER TABLE {g}."Node" ADD COLUMN IF NOT EXISTS eq_node_id text"#),
+            format!(r#"ALTER TABLE {g}."EDGE" ADD COLUMN IF NOT EXISTS eq_source_id text"#),
+            format!(r#"ALTER TABLE {g}."EDGE" ADD COLUMN IF NOT EXISTS eq_target_id text"#),
+            format!(
+                r#"UPDATE {g}."Node" SET eq_node_id = ag_catalog.agtype_to_json(properties)->>'node_id'
+                   WHERE eq_node_id IS NULL"#
+            ),
+            format!(
+                r#"UPDATE {g}."EDGE" SET
+                     eq_source_id = ag_catalog.agtype_to_json(properties)->>'source_id',
+                     eq_target_id = ag_catalog.agtype_to_json(properties)->>'target_id'
+                   WHERE eq_source_id IS NULL OR eq_target_id IS NULL"#
+            ),
+            format!(
+                r#"CREATE UNIQUE INDEX IF NOT EXISTS idx_node_eq_node_id
+                   ON {g}."Node" (eq_node_id) WHERE eq_node_id IS NOT NULL"#
+            ),
+            format!(
+                r#"CREATE UNIQUE INDEX IF NOT EXISTS idx_edge_eq_source_target
+                   ON {g}."EDGE" (eq_source_id, eq_target_id)
+                   WHERE eq_source_id IS NOT NULL AND eq_target_id IS NOT NULL"#
+            ),
+            format!(
+                r#"CREATE INDEX IF NOT EXISTS idx_edge_eq_source_id
+                   ON {g}."EDGE" (eq_source_id) WHERE eq_source_id IS NOT NULL"#
+            ),
+            format!(
+                r#"CREATE INDEX IF NOT EXISTS idx_edge_eq_target_id
+                   ON {g}."EDGE" (eq_target_id) WHERE eq_target_id IS NOT NULL"#
+            ),
+            // Triggers keep columns in sync when Cypher or legacy paths touch properties only.
+            format!(
+                r#"CREATE OR REPLACE FUNCTION {g}_eq_sync_node_id() RETURNS trigger AS $$
+                   BEGIN
+                     NEW.eq_node_id := ag_catalog.agtype_to_json(NEW.properties)->>'node_id';
+                     RETURN NEW;
+                   END;
+                   $$ LANGUAGE plpgsql"#
+            ),
+            format!(
+                r#"DROP TRIGGER IF EXISTS trg_eq_sync_node_id ON {g}."Node""#
+            ),
+            format!(
+                r#"CREATE TRIGGER trg_eq_sync_node_id
+                   BEFORE INSERT OR UPDATE OF properties ON {g}."Node"
+                   FOR EACH ROW EXECUTE PROCEDURE {g}_eq_sync_node_id()"#
+            ),
+            format!(
+                r#"CREATE OR REPLACE FUNCTION {g}_eq_sync_edge_ids() RETURNS trigger AS $$
+                   BEGIN
+                     NEW.eq_source_id := ag_catalog.agtype_to_json(NEW.properties)->>'source_id';
+                     NEW.eq_target_id := ag_catalog.agtype_to_json(NEW.properties)->>'target_id';
+                     RETURN NEW;
+                   END;
+                   $$ LANGUAGE plpgsql"#
+            ),
+            format!(
+                r#"DROP TRIGGER IF EXISTS trg_eq_sync_edge_ids ON {g}."EDGE""#
+            ),
+            format!(
+                r#"CREATE TRIGGER trg_eq_sync_edge_ids
+                   BEFORE INSERT OR UPDATE OF properties ON {g}."EDGE"
+                   FOR EACH ROW EXECUTE PROCEDURE {g}_eq_sync_edge_ids()"#
+            ),
+        ];
+
+        for sql in &stmts {
+            if let Err(e) = sqlx::query(sql).execute(&mut **conn).await {
+                let msg = e.to_string();
+                // Graph label tables may not exist yet on brand-new empty DBs.
+                if msg.contains("does not exist") || msg.contains("undefined_table") {
+                    tracing::debug!(error = %e, "SPEC-062 eq_id columns skipped (table pending)");
+                    return Ok(());
+                }
+                tracing::warn!(
+                    error = %e,
+                    sql = %sql.chars().take(80).collect::<String>(),
+                    "SPEC-062 eq_id DDL warning"
+                );
+            }
+        }
         Ok(())
     }
 

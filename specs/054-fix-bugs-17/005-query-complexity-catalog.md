@@ -15,14 +15,14 @@ Cross-ref: [001-first-principles](./001-first-principles.md), [002-crossref](./0
 
 ## 1. KV (`eq_{ns}_kv`)
 
-| Op | Impl | Index | Complexity | Path |
-| --- | --- | --- | --- | --- |
-| `get_by_id` | PK lookup | `PRIMARY KEY (key)` | O(log N) | OK |
-| `get_by_ids` / `_ordered` | `UNNEST` + PK | PK | O(K log N) one RT | OK |
-| `upsert` | `UNNEST` + `ON CONFLICT` | PK | O(K log N) | OK |
-| `delete` | `ANY($1)` | PK | O(K log N) | OK |
-| `count` | `*_kv_stats` (+ trigger) | stats | **O(1)**; fallback COUNT\* O(N) | OK (prefer stats) |
-| `keys_with_prefix` | `LIKE 'p%'` | PK text_pattern | O(M) | OK |
+| Op | Impl | Index | Complexity | Path | Proof (matrixed SPEC-061) |
+| --- | --- | --- | --- | --- | --- |
+| `get_by_id` | PK lookup | `PRIMARY KEY (key)` | O(log N) | OK | via `get_by_ids` |
+| `get_by_ids` / `_ordered` | `UNNEST` + PK | PK | O(K log N) one RT | OK | `e2e_spec061_kv_access_perf` |
+| `upsert` | `UNNEST` + `ON CONFLICT` | PK | O(K log N) | OK | ingest + kv_access |
+| `delete` | `ANY($1)` | PK | O(K log N) | OK | `e2e_spec061_kv_access_perf` |
+| `count` | `*_kv_stats` (+ trigger) | stats | **O(1)**; fallback COUNT\* O(N) | OK (prefer stats) | `e2e_spec061_kv_access_perf` |
+| `keys_with_prefix` | `LIKE 'p%'` | PK text_pattern | O(M) | OK | `e2e_spec061_kv_access_perf` |
 | `keys_with_suffix` | `reverse(key)` | `*_kv_reverse_key_idx` | O(M) | OK |
 | `keys` / mid-wildcard LIKE | pattern scan | none | **O(N)** | ADMIN |
 | `transition_if_status` | atomic UPDATE | PK | O(log N) | OK |
@@ -33,13 +33,13 @@ Cross-ref: [001-first-principles](./001-first-principles.md), [002-crossref](./0
 
 ## 2. Vectors (`eq_{ns}_vectors` / pgvector)
 
-| Op | Impl | Index | Complexity | Path |
-| --- | --- | --- | --- | --- |
-| `query` (unfiltered ANN) | `ORDER BY embedding <=>` + HNSW GUCs | HNSW/IVF | ~O(ef × log N) | OK |
-| `query_filtered` | same + tenant/ws/doc filter + `iterative_scan` | HNSW + btree filters | ~O(ef × log N) + iterative | OK (**required** for scoped RAG) |
-| `text_search_filtered` | `ts_rank_cd` + GIN | `content_tsv` GIN | O(log N + candidates) | OK |
-| `upsert` | UNNEST chunks (~1000) | PK + HNSW insert | O(K log N) + graph insert | OK |
-| `delete` / `delete_by_document` | PK / `document_id` | PK / `*_doc_id_idx` | O(K log N) | OK |
+| Op | Impl | Index | Complexity | Path | Proof (matrixed SPEC-061) |
+| --- | --- | --- | --- | --- | --- |
+| `query` (unfiltered ANN) | `ORDER BY embedding <=>` + HNSW GUCs | HNSW/IVF | ~O(ef × log N) | OK | `e2e_spec061_vector_unfiltered_ann` |
+| `query_filtered` | same + tenant/ws/doc filter + `iterative_scan` | HNSW + btree filters | ~O(ef × log N) + iterative | OK (**required** for scoped RAG) | Q1-c/d + stress_ann |
+| `text_search_filtered` | `ts_rank_cd` + GIN | `content_tsv` GIN | O(log N + candidates) | OK | `e2e_spec060_fts` + stress_fts |
+| `upsert` / `upsert_report_created` | UNNEST chunks (~1000) | PK + HNSW insert | O(K log N) + graph insert | OK | `e2e_spec060_ingest_stage_perf` |
+| `delete` / `delete_by_document` | PK / `document_id` | PK / `*_doc_id_idx` | O(K log N) | OK | compensate |
 | `count` | `*_vectors_stats` | stats | **O(1)** | OK |
 | `clear` | `DELETE` | — | **O(N)** | ADMIN |
 
@@ -58,7 +58,7 @@ Cross-ref: [001-first-principles](./001-first-principles.md), [002-crossref](./0
 | `get_nodes_by_ids` | Cypher `IN` | may ignore GIN | O(K log N) best-effort | OK (prefer batch SQL) |
 | `get_all_nodes` / `get_all_edges` | full scan | — | **O(N)** | **FORBIDDEN** |
 | `node_degree` | Native SQL | edge ends | O(deg) | OK |
-| `node_degrees_batch` | Native aggregate | edge props | O(K + E′) | OK |
+| `node_degrees_batch` | Native aggregate | edge props | O(K + E′) | OK (`e2e_spec061_degrees_batch_perf`) |
 | `get_edges_for_node_set` | Native `ANY` | edge property indexes | O(K + E′) | OK |
 | `get_knowledge_graph` / `get_neighbors` | Bounded Cypher expand | start/end + labels | O(branch^depth) | OK (depth-bounded) |
 | `list_nodes/edges_filtered` | Paginated scan | filters | COUNT O(N) filtered + page O(limit) | OK (paginated) |
@@ -76,9 +76,11 @@ Cross-ref: [001-first-principles](./001-first-principles.md), [002-crossref](./0
 | Op | Impl | Index | Complexity | Path |
 | --- | --- | --- | --- | --- |
 | Native `upsert_nodes_batch` | `INSERT … ON CONFLICT (node_id expr)` | UNIQUE | O(K log N) | OK (**production**) |
-| Native `upsert_edges_batch` | `ON CONFLICT (source,target)` | UNIQUE | O(K log N) | OK (**production**) |
+| Native `upsert_edges_batch` | `ON CONFLICT (source,target)` | UNIQUE | O(K log N) | OK (**production**, `e2e_spec061_edge_upsert_perf`) |
 | Cypher `MERGE` upsert | Cypher | often unused | higher latency/locks | OK debug only (`EDGEQUAKE_NATIVE_GRAPH_WRITES=0`) |
-| `delete_node` | Cypher DETACH | — | O(1 + deg) | OK |
+| `delete_node` | Native batch-of-1 when `NATIVE_GRAPH_WRITES`; else Cypher DETACH | UNIQUE / edge ends | O(1 + deg) | OK |
+| `delete_nodes_batch` | Native `DELETE … ANY($1)` edges then nodes (SPEC-060) | UNIQUE / edge ends | O(K log N) one RT | OK (**compensate**) |
+| Cypher per-id DETACH loop | Cypher | — | O(K) RTs | OK debug only (`EDGEQUAKE_NATIVE_GRAPH_WRITES=0`) |
 | `clear` / `clear_workspace` | Cypher delete | — | **O(N)** | ADMIN |
 
 ---

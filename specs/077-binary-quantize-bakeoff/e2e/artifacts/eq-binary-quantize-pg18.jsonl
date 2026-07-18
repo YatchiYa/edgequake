@@ -1,0 +1,4 @@
+{"detail":"rows=2000 FILTERED bake-off","op":"bq077_seed","p95_ms":597.571042,"pass":true,"plan_class":"wave2_halfvec","profile":"pg18"}
+{"detail":"FILTERED recall@20 binary_vs_wave2=1.0000 soft=0.9 wave2_ms=3.4 bq_ms=1.2 candidate_k=200 rows=2000","op":"bq077_filtered_recall","p95_ms":1000.0,"pass":true,"plan_class":"binary_vs_wave2","profile":"pg18"}
+{"detail":"wave2_hits=20 bq_hits=20 recall=1.0000 (soft-fail; Wave-2 remains default)","op":"bq077_cell","p95_ms":1.2374580000000002,"pass":true,"plan_class":"binary_rerank","profile":"pg18"}
+{"detail":"binary+rerank is opt-in study; Wave-2 default + floors unchanged; promote only after full gate (not this smoke)","op":"bq077_decision","p95_ms":0.0,"pass":true,"plan_class":"honesty","profile":"pg18"}

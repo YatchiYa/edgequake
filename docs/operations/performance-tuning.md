@@ -8,7 +8,11 @@ title: 'Performance Tuning Guide'
 
 > **Optimizing EdgeQuake for Production Workloads**
 
-This guide covers performance tuning strategies for EdgeQuake deployments.
+**Capacity / sizing SSOT:** [Product limits](../product-limits.md) — pick host RAM, `shared_buffers`, and Wave-2 env from the sizing table before tuning LLM knobs.
+
+**Vector search (pgvector):** For ~100k filtered ANN, use the Wave-2 greenfield recipe (`halfvec` + `EDGEQUAKE_HNSW_PARTIAL_BY_WORKSPACE=1`). SPEC-067 applies session-local planner bias (`enable_seqscan=off`, `random_page_cost=1.1`) when a workspace partial HNSW is ready and filters are column-only. Do **not** invent ad-hoc `CREATE INDEX … ON embeddings` SQL — EdgeQuake owns `eq_*_vectors` DDL.
+
+Claim ladders (`make ceiling-proof`) are honesty gates, not day-2 sizing.
 
 ---
 

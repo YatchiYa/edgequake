@@ -156,4 +156,19 @@ async fn e2e_l1a_documents_list_under_500ms_warm() {
         "L1-a FAIL: documents list worst {worst:?} exceeds 500ms in-process budget (samples={samples:?})"
     );
     eprintln!("OK L1-a: GET /api/v1/documents warm samples={samples:?} max={worst:?}");
+    let p95_idx = ((samples.len() as f64) * 0.95).ceil() as usize - 1;
+    let p95 = samples[p95_idx.min(samples.len() - 1)];
+    println!(
+        "PERF_REPORT {}",
+        serde_json::json!({
+            "profile": std::env::var("EQ_POSTGRES_PROFILE").unwrap_or_else(|_| "unknown".into()),
+            "pg_major": std::env::var("EQ_POSTGRES_MAJOR").unwrap_or_default(),
+            "op": "documents_list_reconcile",
+            "p95_ms": p95.as_secs_f64() * 1000.0,
+            "samples_ms": samples.iter().map(|d| d.as_secs_f64() * 1000.0).collect::<Vec<_>>(),
+            "plan_class": "list_api",
+            "pass": true,
+            "detail": "L1-a in-process",
+        })
+    );
 }

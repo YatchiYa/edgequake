@@ -112,7 +112,7 @@ pub(super) async fn create_pdf_processing_task(
             intent.existing_document_id.clone(),
             context,
         )
-        .await;
+        .await?;
         return Ok(PdfProcessingEnqueueResult {
             track_id: existing_track_id,
             document_id,
@@ -125,7 +125,7 @@ pub(super) async fn create_pdf_processing_task(
         intent.existing_document_id.clone(),
         context,
     )
-    .await;
+    .await?;
 
     let resolved_backend = options.resolved_backend(workspace);
     let backend_explicit = options.pdf_parser_backend.is_some()

@@ -183,7 +183,7 @@ pub async fn cancel_pipeline(
         .await
         .map_err(ApiError::Internal)?;
 
-    // SPEC-057 P0: sync linked doc KV for each cancelled task.
+    // SPEC-057 P0 + SPEC-059: sync linked doc KV and retract indexes.
     for applied in &results {
         if applied.cancelled {
             if let Some(ref task) = applied.task {
@@ -200,6 +200,15 @@ pub async fn cancel_pipeline(
                         "Pipeline cancel: doc KV sync failed"
                     );
                 }
+                let ws = task.workspace_id.to_string();
+                let vector = crate::services::get_workspace_vector_storage_for_delete(&state, &ws)
+                    .await;
+                crate::services::retract_indexes_for_task(
+                    &state.storage.graph_storage,
+                    &vector,
+                    task,
+                )
+                .await;
             }
         }
     }
@@ -335,6 +344,11 @@ pub async fn get_queue_metrics(
         compensation_quarantine_total: store.compensation_quarantine_total,
         compensation_quarantine_warn: store.compensation_quarantine_warn,
         compensation_quarantine_critical: store.compensation_quarantine_critical,
+        compensate_shared_entity_skipped_total:
+            edgequake_storage::compensate_shared_entity_skipped_total(),
+        retract_on_cancel_total: crate::services::retract_on_cancel_total(),
+        vector_dim_mismatch_rejected_total:
+            edgequake_storage::vector_dim_mismatch_rejected_total(),
         operator_action: store.operator_action.clone(),
     };
     // Prefer queue pressure action; surface store action when queue is normal.

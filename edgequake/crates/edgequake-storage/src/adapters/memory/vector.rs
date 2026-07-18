@@ -143,8 +143,17 @@ impl VectorStorage for MemoryVectorStorage {
     }
 
     async fn upsert(&self, data: &[(String, Vec<f32>, serde_json::Value)]) -> Result<()> {
+        self.upsert_report_created(data).await.map(|_| ())
+    }
+
+    /// SPEC-059: existence check under the same write lock as insert (no TOCTOU).
+    async fn upsert_report_created(
+        &self,
+        data: &[(String, Vec<f32>, serde_json::Value)],
+    ) -> Result<Vec<String>> {
         let mut vectors = self.vectors.write().map_err(super::lock::map_lock_err)?;
         let mut metadata = self.metadata.write().map_err(super::lock::map_lock_err)?;
+        let mut created = Vec::new();
 
         for (id, vec, meta) in data {
             if vec.len() != self.dimension {
@@ -154,11 +163,14 @@ impl VectorStorage for MemoryVectorStorage {
                     self.dimension
                 )));
             }
+            if !vectors.contains_key(id) {
+                created.push(id.clone());
+            }
             vectors.insert(id.clone(), vec.clone());
             metadata.insert(id.clone(), meta.clone());
         }
 
-        Ok(())
+        Ok(created)
     }
 
     async fn delete(&self, ids: &[String]) -> Result<()> {

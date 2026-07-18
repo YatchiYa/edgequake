@@ -282,11 +282,22 @@ pub async fn cancel_task(
         return Err(ApiError::NotFound(format!("Task not found: {}", track_id)));
     }
 
-    // SPEC-057: single facade — task row + doc KV + Convert∪Insert chain.
+    // SPEC-057/059: facade — task row + doc KV + Convert∪Insert chain + retract.
+    let workspace_key = existing
+        .as_ref()
+        .map(|t| t.workspace_id.to_string())
+        .unwrap_or_else(|| "default".to_string());
+    let vector = crate::services::get_workspace_vector_storage_for_delete(
+        &state,
+        &workspace_key,
+    )
+    .await;
     let applied = cancel_track_with_doc_and_pdf_chain(
         &state.tasks.storage,
         &state.tasks.cancellation_registry,
         Arc::clone(&state.storage.kv_storage),
+        &state.storage.graph_storage,
+        &vector,
         &track_id,
     )
     .await

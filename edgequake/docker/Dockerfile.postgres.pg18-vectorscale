@@ -1,0 +1,91 @@
+# EdgeQuake PostgreSQL 18 + pgvectorscale (StreamingDiskANN) — SPEC-070 opt-in
+#
+# NOT the default product image. Wave-2 HNSW remains the supported 100k path.
+# Pins: extension-pins.sh EQ_POSTGRES_PROFILE=pg18-vectorscale
+#
+# Build:
+#   make postgres-image-build-pg18-vectorscale
+#
+# Prebuilt pgvectorscale 0.9.0 debs (amd64/arm64) from GitHub releases.
+
+FROM postgres:18-bookworm
+
+ARG PGVECTOR_VERSION=v0.8.5
+ARG AGE_GIT_REF=PG18/v1.8.0-rc0
+ARG PGVECTORSCALE_VERSION=0.9.0
+ARG TARGETARCH
+
+LABEL org.edgequake.postgres.version="18-bookworm" \
+      org.edgequake.pgvector.version="0.8.5" \
+      org.edgequake.age.version="1.8.0" \
+      org.edgequake.pgvectorscale.version="0.9.0" \
+      org.edgequake.extensions="vector,age,vectorscale,pg_trgm,btree_gin,uuid-ossp" \
+      org.edgequake.profile="pg18-vectorscale"
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    postgresql-server-dev-18 \
+    postgresql-contrib-18 \
+    ca-certificates \
+    curl \
+    git \
+    flex \
+    bison \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN set -eux; \
+    cd /tmp; \
+    git clone --depth 1 --branch "${PGVECTOR_VERSION}" https://github.com/pgvector/pgvector.git; \
+    cd pgvector; \
+    make OPTFLAGS=""; \
+    make install; \
+    rm -rf /tmp/pgvector
+
+RUN set -eux; \
+    cd /tmp; \
+    git clone --depth 1 --branch "${AGE_GIT_REF}" https://github.com/apache/age.git; \
+    cd age; \
+    make; \
+    make install; \
+    rm -rf /tmp/age
+
+# pgvectorscale prebuilt .deb for PG18 (arm64/amd64)
+RUN set -eux; \
+    arch="${TARGETARCH:-}"; \
+    if [ -z "$arch" ]; then arch="$(dpkg --print-architecture)"; fi; \
+    case "$arch" in \
+      amd64|x86_64) zip_arch=amd64 ;; \
+      arm64|aarch64) zip_arch=arm64 ;; \
+      *) echo "unsupported arch: $arch" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /tmp/pgvs.zip \
+      "https://github.com/timescale/pgvectorscale/releases/download/${PGVECTORSCALE_VERSION}/pgvectorscale-${PGVECTORSCALE_VERSION}-pg18-${zip_arch}.zip"; \
+    mkdir -p /tmp/pgvs; \
+    unzip -o /tmp/pgvs.zip -d /tmp/pgvs; \
+    dpkg -i /tmp/pgvs/pgvectorscale-postgresql-18_${PGVECTORSCALE_VERSION}-Linux_${zip_arch}.deb; \
+    rm -rf /tmp/pgvs /tmp/pgvs.zip
+
+RUN apt-get purge -y --auto-remove \
+    build-essential \
+    postgresql-server-dev-18 \
+    git \
+    curl \
+    flex \
+    bison \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN set -eux; \
+    test -f /usr/share/postgresql/18/extension/vector.control; \
+    test -f /usr/share/postgresql/18/extension/age.control; \
+    test -f /usr/share/postgresql/18/extension/vectorscale.control; \
+    test -f /usr/share/postgresql/18/extension/pg_trgm.control; \
+    test -f /usr/share/postgresql/18/extension/btree_gin.control; \
+    test -f /usr/share/postgresql/18/extension/uuid-ossp.control; \
+    grep -q "default_version = '0.8.5'" /usr/share/postgresql/18/extension/vector.control; \
+    grep -q "default_version = '1.8.0'" /usr/share/postgresql/18/extension/age.control; \
+    grep -q "default_version = '0.9.0'" /usr/share/postgresql/18/extension/vectorscale.control
+
+EXPOSE 5432
+CMD ["postgres"]
