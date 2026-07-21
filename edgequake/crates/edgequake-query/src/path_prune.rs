@@ -214,10 +214,7 @@ pub fn prune_orphan_entities(
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| b.degree.cmp(&a.degree))
     });
-    let mut seen: HashSet<String> = kept
-        .iter()
-        .map(|e| e.name.to_ascii_uppercase())
-        .collect();
+    let mut seen: HashSet<String> = kept.iter().map(|e| e.name.to_ascii_uppercase()).collect();
     for e in ranked {
         if kept.len() >= config.entity_min_keep {
             break;
@@ -308,9 +305,7 @@ mod tests {
             .collect::<Vec<_>>()
             .join(" ");
         assert!(
-            names.contains("DIABETES")
-                && names.contains("INSULIN")
-                && names.contains("METFORMIN"),
+            names.contains("DIABETES") && names.contains("INSULIN") && names.contains("METFORMIN"),
             "expected medical endpoints kept, got {names}"
         );
         assert!(

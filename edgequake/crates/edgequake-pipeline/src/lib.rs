@@ -146,9 +146,11 @@ pub use merger::{
     DEFAULT_SUMMARY_MAX_TOKENS, GRAPH_FIELD_SEP, LOCAL_MERGE_MAX_ASYNC,
 };
 pub use multimodal::{
-    inject_modality_relations, map_image_type_to_retrieval_modality, parse_mm_display_name,
-    resolve_retrieval_modality_from_content, stamp_retrieval_modality_on_chunks,
-    MmChunkSidecarMeta, MmHeadingBlock, MmSidecarBlock, MmSidecarRef, MODALITY_CHART,
+    bare_entity_id, inject_modality_relations, map_image_type_to_retrieval_modality,
+    parse_drawing_item_locus, parse_mm_display_name, resolve_mm_display_from_node_props,
+    resolve_mm_entity_display, resolve_retrieval_modality_from_content,
+    stamp_retrieval_modality_on_chunks, DrawingItemKind, DrawingItemLocus, MmChunkSidecarMeta,
+    MmDisplayInput, MmDisplayLabel, MmHeadingBlock, MmSidecarBlock, MmSidecarRef, MODALITY_CHART,
     MODALITY_EQUATION, MODALITY_FIGURE, MODALITY_TABLE,
 };
 pub use persistence::{

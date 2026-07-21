@@ -45,10 +45,7 @@ use edgequake_storage::traits::VectorSearchResult;
 /// SPEC-032 / B3b: when `workspace_id` is set, writers store
 /// `{workspace_id}::{NORMALIZED}`; query must use the same key for
 /// `get_nodes_batch` / neighborhood expand.
-pub(crate) fn graph_entity_id_for_workspace(
-    bare_name: &str,
-    workspace_id: Option<&str>,
-) -> String {
+pub(crate) fn graph_entity_id_for_workspace(bare_name: &str, workspace_id: Option<&str>) -> String {
     use edgequake_storage::EntityId;
     let id = EntityId::new(bare_name);
     if id.is_empty() {
@@ -303,15 +300,30 @@ pub fn build_entity_from_node(
         .unwrap_or("")
         .to_string();
 
-    // Prefer bare `label` over scoped AGE node_id (`{ws}::NAME`) for prompts.
-    let display_name = props
-        .get("label")
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| {
-            edgequake_storage::EntityId::bare_name_from_graph_node_id(node_id).to_string()
-        });
+    // 066: prefer human `display_name` (mm entities) over opaque IM-… identity.
+    // Fall back to bare `label`, then scoped-id strip for prompts.
+    let existing_display = props.get("display_name").and_then(|v| v.as_str());
+    let stored_label = props.get("label").and_then(|v| v.as_str());
+    let description_ref = props.get("description").and_then(|v| v.as_str());
+    let entity_type_ref = props.get("entity_type").and_then(|v| v.as_str());
+    let is_mm = matches!(
+        entity_type_ref.map(|s| s.to_ascii_lowercase()).as_deref(),
+        Some("drawing" | "table" | "equation")
+    );
+    let display_name = if is_mm {
+        edgequake_pipeline::resolve_mm_display_from_node_props(
+            node_id,
+            description_ref,
+            entity_type_ref,
+            existing_display.or(stored_label),
+        )
+    } else if let Some(d) = existing_display.map(str::trim).filter(|s| !s.is_empty()) {
+        d.to_string()
+    } else if let Some(l) = stored_label.map(str::trim).filter(|s| !s.is_empty()) {
+        l.to_string()
+    } else {
+        edgequake_storage::EntityId::bare_name_from_graph_node_id(node_id).to_string()
+    };
 
     let source_tracking = extract_entity_source_tracking(props);
 

@@ -1,0 +1,76 @@
+{
+  "judge": "generation_eval",
+  "judge_model": "mistral-medium-latest",
+  "judge_provider": "mistral",
+  "judge_base_url": "https://api.mistral.ai/v1",
+  "judge_embedding_model": "mistral-embed",
+  "judge_temperature": 0.0,
+  "judge_acc_factuality_weight": 0.75,
+  "judge_embed_backend": "auto",
+  "answer_style": "gold",
+  "recommended_mistral_judge": "mistral-medium-latest",
+  "acc_formula": "0.75*F1 + 0.25*embed_cosine (weights overridable)",
+  "acc_lift_note": "Closer Acc under Mistral judge: answer_style=gold (SUT) + judge_model=mistral-medium-latest; keep L2 gates",
+  "overall_acc": 0.24106754442716213,
+  "by_type": {
+    "Fact Retrieval": {
+      "rouge_score": 0.3867064147709309,
+      "answer_correctness": 0.2389000026244036
+    },
+    "Complex Reasoning": {
+      "rouge_score": 0.3449462426632322,
+      "answer_correctness": 0.2416167794557484
+    },
+    "Contextual Summarize": {
+      "answer_correctness": 0.24309208945370395,
+      "coverage_score": 0.8032051282051281
+    },
+    "Creative Generation": {
+      "answer_correctness": 0.24066130617479256,
+      "coverage_score": 0.4445999373863151,
+      "faithfulness": 0.48202957536290864
+    }
+  },
+  "raw": {
+    "Fact Retrieval": {
+      "rouge_score": 0.3867064147709309,
+      "answer_correctness": 0.2389000026244036
+    },
+    "Complex Reasoning": {
+      "rouge_score": 0.3449462426632322,
+      "answer_correctness": 0.2416167794557484
+    },
+    "Contextual Summarize": {
+      "answer_correctness": 0.24309208945370395,
+      "coverage_score": 0.8032051282051281
+    },
+    "Creative Generation": {
+      "answer_correctness": 0.24066130617479256,
+      "coverage_score": 0.4445999373863151,
+      "faithfulness": 0.48202957536290864
+    }
+  },
+  "retrieval": {
+    "overall_context_relevancy": 0.76875,
+    "overall_evidence_recall": 0.8566552197802197,
+    "by_type": {
+      "Fact Retrieval": {
+        "context_relevancy": 0.85,
+        "evidence_recall": 0.9
+      },
+      "Complex Reasoning": {
+        "context_relevancy": 0.75,
+        "evidence_recall": 0.875
+      },
+      "Contextual Summarize": {
+        "context_relevancy": 0.9,
+        "evidence_recall": 0.905
+      },
+      "Creative Generation": {
+        "context_relevancy": 0.575,
+        "evidence_recall": 0.746620879120879
+      }
+    }
+  },
+  "l2_retrieval": true
+}

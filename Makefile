@@ -243,7 +243,8 @@ EDGEQUAKE_MEM_LIMIT ?= 48g
 # SPEC-034: native SQL AGE upserts (~69× faster than Cypher MERGE).
 EDGEQUAKE_NATIVE_GRAPH_WRITES ?= 1
 # Mix intent arm gate (default on = production). Bench001 Acc fairness uses false (LR-like 3 arms).
-EDGEQUAKE_MIX_ARM_GATE ?= true
+# Product Smart = LightRAG mix: always local∥global∥naive (065). Acc pins false too.
+EDGEQUAKE_MIX_ARM_GATE ?= false
 # SPEC-047: skip Louvain tax in local/bench; fail-open MM for throughput.
 EDGEQUAKE_COMMUNITY_GLOBAL ?= false
 EDGEQUAKE_MULTIMODAL_FAIL_MODE ?= degraded

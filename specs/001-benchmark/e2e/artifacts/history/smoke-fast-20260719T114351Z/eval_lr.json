@@ -1,0 +1,27 @@
+{
+  "judge": "rouge_proxy",
+  "overall_acc": 0.15,
+  "by_type": {
+    "Fact Retrieval": {
+      "rouge_score": 0.3771826052471214,
+      "answer_correctness": 0.3
+    },
+    "Complex Reasoning": {
+      "rouge_score": 0.3360016104309288,
+      "answer_correctness": 0.2
+    },
+    "Contextual Summarize": {
+      "rouge_score": 0.3883929322521261,
+      "answer_correctness": 0.1,
+      "coverage_score": 0.3883929322521261
+    },
+    "Creative Generation": {
+      "rouge_score": 0.24216981636694776,
+      "answer_correctness": 0.0,
+      "coverage_score": 0.24216981636694776,
+      "faithfulness": 0.24216981636694776
+    }
+  },
+  "n": 40,
+  "l2_retrieval": false
+}

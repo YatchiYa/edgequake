@@ -83,7 +83,7 @@ fn mm_chunks_and_modality_relations_from_sidecars() {
         output_tokens: 0,
         extraction_time_ms: 0,
     }];
-    inject_modality_relations(&mut extractions, &text_chunks, &[meta], "demo.pdf");
+    inject_modality_relations(&mut extractions, &text_chunks, &[meta], "demo.pdf", None);
     assert!(extractions[0].entities.iter().any(|e| e.name == "d1"));
     assert_eq!(extractions[0].relationships.len(), 1);
 }

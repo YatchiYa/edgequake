@@ -95,14 +95,10 @@ impl QueryEngine {
                 .unwrap_or("");
 
             if !src_id.is_empty() && !tgt_id.is_empty() {
-                let src_graph = crate::helpers::graph_entity_id_for_workspace(
-                    src_id,
-                    workspace_id.as_deref(),
-                );
-                let tgt_graph = crate::helpers::graph_entity_id_for_workspace(
-                    tgt_id,
-                    workspace_id.as_deref(),
-                );
+                let src_graph =
+                    crate::helpers::graph_entity_id_for_workspace(src_id, workspace_id.as_deref());
+                let tgt_graph =
+                    crate::helpers::graph_entity_id_for_workspace(tgt_id, workspace_id.as_deref());
                 let rel_key = format!("{}->{}:{}", src_id, tgt_id, rel_type);
                 if seen_relationships.insert(rel_key) {
                     let source_chunk_ids: Vec<String> = result
@@ -248,6 +244,7 @@ impl QueryEngine {
         )
         .await?;
 
+        // Chunk fetch SSOT uses vector_type=chunk (not the relationship ANN `mf` above).
         let (chunks, sparse_outcome) = append_score_ranked_chunks(
             self,
             &context,
@@ -257,7 +254,6 @@ impl QueryEngine {
             workspace_id,
             vector_storage,
             &retrieval_config,
-            mf.as_ref(),
             allowed_document_ids,
             "global",
         )

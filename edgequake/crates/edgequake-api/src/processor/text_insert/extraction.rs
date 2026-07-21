@@ -330,11 +330,20 @@ impl DocumentTaskProcessor {
 
         if !mm_metas.is_empty() {
             let file_path = data.file_source.as_str();
+            // Prefer metadata title; fall back to file stem (066 Drawing display_name).
+            let doc_title = data
+                .metadata
+                .as_ref()
+                .and_then(|m| m.get("title"))
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or(file_path);
             edgequake_pipeline::inject_modality_relations(
                 &mut result.extractions,
                 &result.chunks,
                 &mm_metas,
                 file_path,
+                Some(doc_title),
             );
         }
         edgequake_pipeline::stamp_retrieval_modality_on_chunks(&mut result.chunks, &mm_metas);

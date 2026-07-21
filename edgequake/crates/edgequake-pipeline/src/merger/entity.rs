@@ -299,10 +299,7 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
 
         // Foreign-workspace hit on a legacy bare node_id: never merge across WS.
         let existing = existing.filter(|n| {
-            let node_ws = n
-                .properties
-                .get("workspace_id")
-                .and_then(|v| v.as_str());
+            let node_ws = n.properties.get("workspace_id").and_then(|v| v.as_str());
             match (self.workspace_id.as_deref(), node_ws) {
                 (Some(w), Some(nw)) => w == nw,
                 (Some(_), None) => false,
@@ -445,6 +442,38 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
             }
         }
 
+        // 066: refresh multimodal display props when present on the incoming entity.
+        if let Some(ref display_name) = entity.display_name {
+            node.properties.insert(
+                "display_name".to_string(),
+                serde_json::Value::String(display_name.clone()),
+            );
+        }
+        if let Some(page) = entity.page_num {
+            node.properties.insert(
+                "page_num".to_string(),
+                serde_json::Value::Number(serde_json::Number::from(page)),
+            );
+        }
+        if let Some(fig) = entity.figure_index {
+            node.properties.insert(
+                "figure_index".to_string(),
+                serde_json::Value::Number(serde_json::Number::from(fig)),
+            );
+        }
+        if let Some(ref asset_id) = entity.asset_id {
+            node.properties.insert(
+                "asset_id".to_string(),
+                serde_json::Value::String(asset_id.clone()),
+            );
+        }
+        if let Some(ref mm_subtype) = entity.mm_subtype {
+            node.properties.insert(
+                "mm_subtype".to_string(),
+                serde_json::Value::String(mm_subtype.clone()),
+            );
+        }
+
         Ok(true)
     }
 
@@ -452,7 +481,8 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
     fn create_entity_node(&self, entity: &ExtractedEntity) -> Result<GraphNode> {
         let entity_id = EntityId::new(&entity.name);
         let entity_key = entity_id.graph_node_id_for_workspace(self.workspace_id.as_deref());
-        // Display / keyword label stays bare normalized name (not the scoped id).
+        // Identity label stays bare normalized name (not the scoped id).
+        // Human surface uses `display_name` when set (066 multimodal entities).
         let label = entity_id.as_str().to_string();
 
         let mut properties = HashMap::new();
@@ -474,10 +504,37 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
             "sources".to_string(),
             serde_json::json!(entity.source_spans),
         );
-        properties.insert(
-            "label".to_string(),
-            serde_json::Value::String(label),
-        );
+        properties.insert("label".to_string(), serde_json::Value::String(label));
+        if let Some(ref display_name) = entity.display_name {
+            properties.insert(
+                "display_name".to_string(),
+                serde_json::Value::String(display_name.clone()),
+            );
+        }
+        if let Some(page) = entity.page_num {
+            properties.insert(
+                "page_num".to_string(),
+                serde_json::Value::Number(serde_json::Number::from(page)),
+            );
+        }
+        if let Some(fig) = entity.figure_index {
+            properties.insert(
+                "figure_index".to_string(),
+                serde_json::Value::Number(serde_json::Number::from(fig)),
+            );
+        }
+        if let Some(ref asset_id) = entity.asset_id {
+            properties.insert(
+                "asset_id".to_string(),
+                serde_json::Value::String(asset_id.clone()),
+            );
+        }
+        if let Some(ref mm_subtype) = entity.mm_subtype {
+            properties.insert(
+                "mm_subtype".to_string(),
+                serde_json::Value::String(mm_subtype.clone()),
+            );
+        }
 
         // Source tracking for citations (LightRAG parity) + analytics reconcile
         let capped = apply_source_ids_limit(

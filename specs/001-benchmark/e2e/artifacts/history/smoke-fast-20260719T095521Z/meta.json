@@ -1,0 +1,45 @@
+{
+  "stage": "smoke-fast",
+  "fixture_id": "smoke_fast_question_ids_v1",
+  "n_questions": 8,
+  "n_corpus_chunks": 1,
+  "dry_run": false,
+  "query_only": true,
+  "eq_only": false,
+  "lr_only": false,
+  "query_concurrency": 4,
+  "eval_concurrency": 24,
+  "lineage": {
+    "sut_llm": "mistral/mistral-medium-latest",
+    "sut_vision": "mistral/mistral-small-latest",
+    "sut_embed": "mistral/mistral-embed@1024d",
+    "judge_llm": "mistral/mistral-medium-latest",
+    "judge_metric_embed": "mistral-embed",
+    "llm_base_url": "https://api.mistral.ai/v1",
+    "judge_base_url": "https://api.mistral.ai/v1"
+  },
+  "provider_pins": {
+    "profile_id": "P0_mistral_medium_mix_chunk1200_v1_lrlike_arms_v2",
+    "llm_provider": "mistral",
+    "llm_model": "mistral-medium-latest",
+    "vision_provider": "mistral",
+    "vision_model": "mistral-small-latest",
+    "embedding_provider": "mistral",
+    "embedding_model": "mistral-embed",
+    "embedding_dim": 1024,
+    "llm_base_url": "https://api.mistral.ai/v1",
+    "judge_provider": "mistral",
+    "judge_model": "mistral-medium-latest",
+    "judge_base_url": "https://api.mistral.ai/v1",
+    "judge_embedding_model": "mistral-embed",
+    "lineage": {
+      "sut_llm": "mistral/mistral-medium-latest",
+      "sut_vision": "mistral/mistral-small-latest",
+      "sut_embed": "mistral/mistral-embed@1024d",
+      "judge_llm": "mistral/mistral-medium-latest",
+      "judge_metric_embed": "mistral-embed",
+      "llm_base_url": "https://api.mistral.ai/v1",
+      "judge_base_url": "https://api.mistral.ai/v1"
+    }
+  }
+}

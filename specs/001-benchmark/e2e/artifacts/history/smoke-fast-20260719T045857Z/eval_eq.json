@@ -1,0 +1,232 @@
+{
+  "judge": "generation_eval",
+  "judge_model": "mistral-medium-latest",
+  "judge_provider": "mistral",
+  "judge_base_url": "https://api.mistral.ai/v1",
+  "judge_embedding_model": "mistral-embed",
+  "judge_temperature": 0.0,
+  "judge_acc_factuality_weight": 0.75,
+  "judge_embed_backend": "auto",
+  "answer_style": "gold",
+  "recommended_mistral_judge": "mistral-medium-latest",
+  "acc_formula": "0.75*F1 + 0.25*embed_cosine (weights overridable)",
+  "acc_lift_note": "Closer Acc under Mistral judge: answer_style=gold (SUT) + judge_model=mistral-medium-latest; keep L2 gates",
+  "overall_acc": 0.2636136486092468,
+  "by_type": {
+    "Fact Retrieval": {
+      "rouge_score": 0.0,
+      "answer_correctness": 0.21924036742723851,
+      "factuality_f1": 0.0,
+      "embed_cosine": 0.8769614697089541
+    },
+    "Complex Reasoning": {
+      "rouge_score": 0.0,
+      "answer_correctness": 0.21775636232426399,
+      "factuality_f1": 0.0,
+      "embed_cosine": 0.8710254492970559
+    },
+    "Contextual Summarize": {
+      "answer_correctness": 0.21539957186375464,
+      "coverage_score": 0.0,
+      "factuality_f1": 0.0,
+      "embed_cosine": 0.8615982874550185
+    },
+    "Creative Generation": {
+      "answer_correctness": 0.40205829282173,
+      "coverage_score": 0.0,
+      "faithfulness": 1.0,
+      "factuality_f1": 0.23821339947302972,
+      "embed_cosine": 0.8935929728678309
+    }
+  },
+  "raw": {
+    "Fact Retrieval": {
+      "average_scores": {
+        "rouge_score": 0.0,
+        "answer_correctness": 0.21924036742723851,
+        "factuality_f1": 0.0,
+        "embed_cosine": 0.8769614697089541
+      },
+      "detailed": [
+        {
+          "id": "Medical-0cbbd549",
+          "question": "What diagnostic method is required for MGZL?",
+          "ground_truth": "Diagnosis of MGZL requires expert hematopathologist review.",
+          "generated_answer": "",
+          "contexts": [
+            "error: query failed: 404 {\"code\":\"NOT_FOUND\",\"message\":\"Not found: Workspace not found: 50254b9b-8acc-4798-9701-c5584970061b\",\"details\":{\"request_id\":\"a5615ede-f20c-4fb0-b24a-d436ebf9cc9e\",\"error_code\":\"NOT_FOUND\",\"http_status\":404,\"retryable\":false,\"source\":\"api\",\"diagnostics\":{\"kind\":\"not_found\",\"resource\":\"Workspace not found: 50254b9b-8acc-4798-9701-c5584970061b\"}},\"type\":\"https://edgequake.dev/problems/not-found\",\"title\":\"Not Found\",\"status\":404}"
+          ],
+          "metrics": {
+            "rouge_score": 0.0,
+            "answer_correctness": 0.2208854473551648,
+            "factuality_f1": 0.0,
+            "embed_cosine": 0.8835417894206592
+          }
+        },
+        {
+          "id": "Medical-e7b5ec54",
+          "question": "Which lymphoma is a subtype of gray zone lymphomas?",
+          "ground_truth": "Mediastinal gray zone lymphoma (MGZL) is a subtype of gray zone lymphomas.",
+          "generated_answer": "",
+          "contexts": [
+            "error: query failed: 404 {\"code\":\"NOT_FOUND\",\"message\":\"Not found: Workspace not found: 50254b9b-8acc-4798-9701-c5584970061b\",\"details\":{\"request_id\":\"3d0090e2-2e35-4259-86fa-7386bde90b0f\",\"error_code\":\"NOT_FOUND\",\"http_status\":404,\"retryable\":false,\"source\":\"api\",\"diagnostics\":{\"kind\":\"not_found\",\"resource\":\"Workspace not found: 50254b9b-8acc-4798-9701-c5584970061b\"}},\"type\":\"https://edgequake.dev/problems/not-found\",\"title\":\"Not Found\",\"status\":404}"
+          ],
+          "metrics": {
+            "rouge_score": 0.0,
+            "answer_correctness": 0.21759528749931223,
+            "factuality_f1": 0.0,
+            "embed_cosine": 0.8703811499972489
+          }
+        }
+      ]
+    },
+    "Complex Reasoning": {
+      "average_scores": {
+        "rouge_score": 0.0,
+        "answer_correctness": 0.21775636232426399,
+        "factuality_f1": 0.0,
+        "embed_cosine": 0.8710254492970559
+      },
+      "detailed": [
+        {
+          "id": "Medical-54a3a465",
+          "question": "Which maintenance therapies are recommended for a patient with advanced ovarian cancer who is BRCA-mutated after initial treatment?",
+          "ground_truth": "PARP inhibitors such as olaparib, niraparib, or rucaparib are recommended as maintenance therapy for advanced or BRCA-mutated ovarian cancer after initial treatment.",
+          "generated_answer": "",
+          "contexts": [
+            "error: query failed: 404 {\"code\":\"NOT_FOUND\",\"message\":\"Not found: Workspace not found: 50254b9b-8acc-4798-9701-c5584970061b\",\"details\":{\"request_id\":\"0a52f700-26c6-45a9-a9eb-05e0b245d8e0\",\"error_code\":\"NOT_FOUND\",\"http_status\":404,\"retryable\":false,\"source\":\"api\",\"diagnostics\":{\"kind\":\"not_found\",\"resource\":\"Workspace not found: 50254b9b-8acc-4798-9701-c5584970061b\"}},\"type\":\"https://edgequake.dev/problems/not-found\",\"title\":\"Not Found\",\"status\":404}"
+          ],
+          "metrics": {
+            "rouge_score": 0.0,
+            "answer_correctness": 0.21699220435802435,
+            "factuality_f1": 0.0,
+            "embed_cosine": 0.8679688174320974
+          }
+        },
+        {
+          "id": "Medical-2ca88e8f",
+          "question": "What factors determine the specific treatment regimen for a pediatric ALL patient?",
+          "ground_truth": "Treatment for ALL depends on subtype, age at diagnosis, and other factors such as biomarkers and genetic alterations.",
+          "generated_answer": "",
+          "contexts": [
+            "error: query failed: 404 {\"code\":\"NOT_FOUND\",\"message\":\"Not found: Workspace not found: 50254b9b-8acc-4798-9701-c5584970061b\",\"details\":{\"request_id\":\"a7eed2f8-b8a0-41a5-bc2a-ab6c170d8721\",\"error_code\":\"NOT_FOUND\",\"http_status\":404,\"retryable\":false,\"source\":\"api\",\"diagnostics\":{\"kind\":\"not_found\",\"resource\":\"Workspace not found: 50254b9b-8acc-4798-9701-c5584970061b\"}},\"type\":\"https://edgequake.dev/problems/not-found\",\"title\":\"Not Found\",\"status\":404}"
+          ],
+          "metrics": {
+            "rouge_score": 0.0,
+            "answer_correctness": 0.21852052029050364,
+            "factuality_f1": 0.0,
+            "embed_cosine": 0.8740820811620146
+          }
+        }
+      ]
+    },
+    "Contextual Summarize": {
+      "average_scores": {
+        "answer_correctness": 0.21539957186375464,
+        "coverage_score": 0.0,
+        "factuality_f1": 0.0,
+        "embed_cosine": 0.8615982874550185
+      },
+      "detailed": [
+        {
+          "id": "Medical-296c7595",
+          "question": "How are the stages of esophageal cancer defined and what are their distinguishing features?",
+          "ground_truth": "Esophageal cancer stages include early-stage (confined to the esophagus and not in lymph nodes), locoregional (invading the esophagus wall and/or nearby lymph nodes or organs), and metastatic (spread to distant organs such as liver, lung, bone, and brain).",
+          "generated_answer": "",
+          "contexts": [
+            "error: query failed: 404 {\"code\":\"NOT_FOUND\",\"message\":\"Not found: Workspace not found: 50254b9b-8acc-4798-9701-c5584970061b\",\"details\":{\"request_id\":\"e948fecf-0de0-4210-bced-ed946f303ee2\",\"error_code\":\"NOT_FOUND\",\"http_status\":404,\"retryable\":false,\"source\":\"api\",\"diagnostics\":{\"kind\":\"not_found\",\"resource\":\"Workspace not found: 50254b9b-8acc-4798-9701-c5584970061b\"}},\"type\":\"https://edgequake.dev/problems/not-found\",\"title\":\"Not Found\",\"status\":404}"
+          ],
+          "metrics": {
+            "answer_correctness": 0.21462983497744442,
+            "factuality_f1": 0.0,
+            "embed_cosine": 0.8585193399097777,
+            "coverage_score": 0.0
+          }
+        },
+        {
+          "id": "Medical-0002d2de",
+          "question": "How are bone cancers staged and what factors are considered in determining the stage?",
+          "ground_truth": "Bone cancers are staged using the TNM system, which considers tumor size/location (T), lymph node involvement (N), metastasis (M), and tumor grade (G), with the final stage determined by combining these scores.",
+          "generated_answer": "",
+          "contexts": [
+            "error: query failed: 404 {\"code\":\"NOT_FOUND\",\"message\":\"Not found: Workspace not found: 50254b9b-8acc-4798-9701-c5584970061b\",\"details\":{\"request_id\":\"4ebd63af-19d8-44b7-b4ba-9b359d2eaa13\",\"error_code\":\"NOT_FOUND\",\"http_status\":404,\"retryable\":false,\"source\":\"api\",\"diagnostics\":{\"kind\":\"not_found\",\"resource\":\"Workspace not found: 50254b9b-8acc-4798-9701-c5584970061b\"}},\"type\":\"https://edgequake.dev/problems/not-found\",\"title\":\"Not Found\",\"status\":404}"
+          ],
+          "metrics": {
+            "answer_correctness": 0.21616930875006488,
+            "factuality_f1": 0.0,
+            "embed_cosine": 0.8646772350002595,
+            "coverage_score": 0.0
+          }
+        }
+      ]
+    },
+    "Creative Generation": {
+      "average_scores": {
+        "answer_correctness": 0.40205829282173,
+        "coverage_score": 0.0,
+        "faithfulness": 1.0,
+        "factuality_f1": 0.23821339947302972,
+        "embed_cosine": 0.8935929728678309
+      },
+      "detailed": [
+        {
+          "id": "Medical-a5356e35",
+          "question": "You are a medical oncologist tasked with drafting a referral letter to a tertiary cancer center for a patient with suspected chondrosarcoma. Transform the clinical findings into a formal referral note, including relevant diagnostics, biomarkers, and potential targeted therapies based on the provided guidelines.",
+          "ground_truth": "Dear Colleagues,\n\nI am referring a 54-year-old patient with a cartilage-forming bone lesion, radiographically and histologically consistent with chondrosarcoma. Imaging with X-ray, CT, and MRI revealed a lobulated mass originating in cartilage-forming cells. Core needle biopsy confirmed diagnosis. Laboratory evaluation included alkaline phosphatase, CBC, CMP, and LDH. Next-generation sequencing identified an IDH1 mutation. Staging was performed using the TNM system, and tumor grade was determined histologically. Given the presence of IDH1 mutation, consideration for ivosidenib as a targeted therapy is warranted. The patient\u2019s ECOG performance status is 1. Fertility preservation has been discussed given the potential impact of systemic therapy.",
+          "generated_answer": "",
+          "contexts": [
+            "error: query failed: 404 {\"code\":\"NOT_FOUND\",\"message\":\"Not found: Workspace not found: 50254b9b-8acc-4798-9701-c5584970061b\",\"details\":{\"request_id\":\"8c0c20b4-7b02-4a1f-b2cb-57d58f7f4e56\",\"error_code\":\"NOT_FOUND\",\"http_status\":404,\"retryable\":false,\"source\":\"api\",\"diagnostics\":{\"kind\":\"not_found\",\"resource\":\"Workspace not found: 50254b9b-8acc-4798-9701-c5584970061b\"}},\"type\":\"https://edgequake.dev/problems/not-found\",\"title\":\"Not Found\",\"status\":404}"
+          ],
+          "metrics": {
+            "answer_correctness": 0.46812722563441056,
+            "factuality_f1": 0.32258064513215406,
+            "embed_cosine": 0.90476696714118,
+            "coverage_score": 0.0,
+            "faithfulness": 1.0
+          }
+        },
+        {
+          "id": "Medical-7b694381",
+          "question": "Imagine you are a public health officer tasked with drafting a community advisory about the importance of recognizing symptoms and hereditary risk factors for adrenal tumors. Your advisory should integrate at least five key points from the guidelines.",
+          "ground_truth": "**Community Health Advisory: Awareness of Adrenal Tumors**\n\nAdrenal tumors, which can be benign or malignant, are sometimes found incidentally during imaging tests. Early recognition of symptoms such as unexplained weight gain or loss, muscle weakness, abdominal bloating, and changes in blood pressure is crucial. Some adrenal tumors produce excess hormones, leading to specific syndromes like Cushing syndrome or high blood pressure. Individuals with a family history of hereditary syndromes (e.g., Li-Fraumeni, MEN 1/2, Lynch syndrome) may be at higher risk. If you or your relatives experience these symptoms or have a relevant family history, consult your healthcare provider for appropriate blood, biochemical, and genetic testing. Early detection and monitoring can improve outcomes.",
+          "generated_answer": "",
+          "contexts": [
+            "error: query failed: 404 {\"code\":\"NOT_FOUND\",\"message\":\"Not found: Workspace not found: 50254b9b-8acc-4798-9701-c5584970061b\",\"details\":{\"request_id\":\"307c3253-8456-468e-b595-dfa299b6ec18\",\"error_code\":\"NOT_FOUND\",\"http_status\":404,\"retryable\":false,\"source\":\"api\",\"diagnostics\":{\"kind\":\"not_found\",\"resource\":\"Workspace not found: 50254b9b-8acc-4798-9701-c5584970061b\"}},\"type\":\"https://edgequake.dev/problems/not-found\",\"title\":\"Not Found\",\"status\":404}"
+          ],
+          "metrics": {
+            "answer_correctness": 0.33598936000904944,
+            "factuality_f1": 0.15384615381390535,
+            "embed_cosine": 0.8824189785944818,
+            "coverage_score": 0.0,
+            "faithfulness": 1.0
+          }
+        }
+      ]
+    }
+  },
+  "overall_f1": 0.05955334986825743,
+  "overall_cos": 0.8757945448322149,
+  "retrieval": {
+    "overall_context_relevancy": 0.0,
+    "overall_evidence_recall": 0.0,
+    "by_type": {
+      "Fact Retrieval": {
+        "context_relevancy": 0.0,
+        "evidence_recall": 0.0
+      },
+      "Complex Reasoning": {
+        "context_relevancy": 0.0,
+        "evidence_recall": 0.0
+      },
+      "Contextual Summarize": {
+        "context_relevancy": 0.0,
+        "evidence_recall": 0.0
+      },
+      "Creative Generation": {
+        "context_relevancy": 0.0,
+        "evidence_recall": 0.0
+      }
+    }
+  },
+  "l2_retrieval": true
+}

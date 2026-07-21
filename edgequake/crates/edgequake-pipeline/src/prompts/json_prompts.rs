@@ -116,10 +116,7 @@ mod tests {
     #[test]
     fn json_gleaning_prompt_includes_strict_entity_types() {
         let schema = EntityExtractionSchema {
-            types: vec![
-                "API_OR_INTERFACE".into(),
-                "OTHER".into(),
-            ],
+            types: vec!["API_OR_INTERFACE".into(), "OTHER".into()],
             strict: true,
         };
         let prompt = json_gleaning_prompt("x", &[], &schema);

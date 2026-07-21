@@ -468,11 +468,7 @@ impl QueryEngine {
         self.with_answer_cache_config(1_000, std::time::Duration::from_secs(3600))
     }
 
-    pub fn with_answer_cache_config(
-        mut self,
-        max_size: usize,
-        ttl: std::time::Duration,
-    ) -> Self {
+    pub fn with_answer_cache_config(mut self, max_size: usize, ttl: std::time::Duration) -> Self {
         self.answer_cache = Some(Arc::new(crate::cache::InMemoryAnswerCache::new(
             max_size, ttl,
         )));
@@ -852,8 +848,7 @@ mod tests {
                 None,
             );
             assert!(
-                prompt.contains("specific named items")
-                    || prompt.contains("name those members"),
+                prompt.contains("specific named items") || prompt.contains("name those members"),
                 "specific prompt missing specificity instructions"
             );
             assert!(

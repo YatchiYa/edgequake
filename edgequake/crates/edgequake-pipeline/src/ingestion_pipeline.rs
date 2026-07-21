@@ -101,9 +101,7 @@ pub fn build_chunker_config(
     strategy: ChunkStrategy,
     chunk_options: Option<&ChunkOptions>,
 ) -> ChunkerConfig {
-    use crate::adaptive_chunking::{
-        adaptive_chunking_enabled, resolve_base_chunk_size_overlap,
-    };
+    use crate::adaptive_chunking::{adaptive_chunking_enabled, resolve_base_chunk_size_overlap};
 
     let (mut chunk_size, chunk_overlap) = resolve_base_chunk_size_overlap(document_size_bytes);
 

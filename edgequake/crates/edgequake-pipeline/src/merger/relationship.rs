@@ -39,11 +39,7 @@ struct PlaceholderVdbSpec {
 }
 
 /// Keep the longest incident relation description (LightRAG node_description).
-fn retain_longest_description(
-    map: &mut HashMap<String, String>,
-    key: &str,
-    candidate: &str,
-) {
+fn retain_longest_description(map: &mut HashMap<String, String>, key: &str, candidate: &str) {
     if candidate.is_empty() {
         return;
     }
@@ -232,11 +228,7 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         let mut new_placeholder_specs: Vec<PlaceholderVdbSpec> = Vec::new();
         for (key, raw_label) in placeholders {
             let label = EntityId::new(&raw_label).as_str().to_string();
-            let label = if label.is_empty() {
-                raw_label
-            } else {
-                label
-            };
+            let label = if label.is_empty() { raw_label } else { label };
             let chunk_ids = placeholder_chunk_ids.get(&key).cloned().unwrap_or_default();
             let description = placeholder_descriptions
                 .get(&key)
@@ -431,10 +423,7 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
     /// LightRAG writes `{name}\n{relation_description}` into entities_vdb when
     /// creating UNKNOWN relation endpoints. Without this, Local/Mix cannot
     /// retrieve AGE-only stubs (age_over_vectors ≫ 1).
-    async fn upsert_placeholder_entity_vectors(
-        &self,
-        specs: &[PlaceholderVdbSpec],
-    ) -> Result<()> {
+    async fn upsert_placeholder_entity_vectors(&self, specs: &[PlaceholderVdbSpec]) -> Result<()> {
         let Some(embedder) = self.text_embedder.as_ref() else {
             tracing::debug!(
                 count = specs.len(),
@@ -449,10 +438,7 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         let texts: Vec<String> = specs
             .iter()
             .map(|s| {
-                crate::pipeline::helpers::unique_embed::entity_embed_text(
-                    &s.label,
-                    &s.description,
-                )
+                crate::pipeline::helpers::unique_embed::entity_embed_text(&s.label, &s.description)
             })
             .collect();
         let embeddings = embedder
@@ -473,11 +459,8 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
             if entity_id.is_empty() {
                 continue;
             }
-            let mut entity = crate::extractor::ExtractedEntity::new(
-                &spec.label,
-                "UNKNOWN",
-                &spec.description,
-            );
+            let mut entity =
+                crate::extractor::ExtractedEntity::new(&spec.label, "UNKNOWN", &spec.description);
             entity.source_chunk_ids = spec.chunk_ids.clone();
             let scope = metadata::TenantScope {
                 tenant_id: &self.tenant_id,
@@ -846,10 +829,8 @@ mod tests {
     fn test_merger() -> KnowledgeGraphMerger<MemoryGraphStorage, MemoryVectorStorage> {
         let graph = Arc::new(MemoryGraphStorage::new("b5-placeholder"));
         let vector = Arc::new(MemoryVectorStorage::new("b5-placeholder", 4));
-        KnowledgeGraphMerger::new(MergerConfig::default(), graph, vector).with_tenant_context(
-            Some("tenant-b5".to_string()),
-            Some("ws-b5".to_string()),
-        )
+        KnowledgeGraphMerger::new(MergerConfig::default(), graph, vector)
+            .with_tenant_context(Some("tenant-b5".to_string()), Some("ws-b5".to_string()))
     }
 
     struct FixedEmbedder;
@@ -913,7 +894,10 @@ mod tests {
         retain_longest_description(&mut map, "AJCC", "short");
         retain_longest_description(&mut map, "AJCC", "a much longer description");
         retain_longest_description(&mut map, "AJCC", "mid");
-        assert_eq!(map.get("AJCC").map(String::as_str), Some("a much longer description"));
+        assert_eq!(
+            map.get("AJCC").map(String::as_str),
+            Some("a much longer description")
+        );
     }
 
     #[tokio::test]

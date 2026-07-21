@@ -190,8 +190,7 @@ impl QueryEngine {
         if crate::topic_entity_admit::topic_materialize_enabled()
             && crate::topic_entity_admit::topic_materialize_types_allow(request.question_type())
         {
-            let topic_ids =
-                crate::topic_entity_admit::topic_chunk_ids_from_context(&context);
+            let topic_ids = crate::topic_entity_admit::topic_chunk_ids_from_context(&context);
             let max_n = crate::topic_entity_admit::topic_materialize_max();
             let max_mix = request
                 .rerank_top_k
@@ -220,15 +219,10 @@ impl QueryEngine {
         let intent = intent_for_truncation(request, &context);
 
         // 035: Fact BM25 first-stage for protect_first (CE still ranks; no dual-list).
-        if crate::intent_rerank::use_bm25_protect_for_intent(intent) && !context.chunks.is_empty()
-        {
+        if crate::intent_rerank::use_bm25_protect_for_intent(intent) && !context.chunks.is_empty() {
             let n = context.chunks.len();
-            let bm25_mix = crate::l2_bm25_union::bm25_order_chunks(
-                &request.query,
-                &context.chunks,
-                n,
-            )
-            .await;
+            let bm25_mix =
+                crate::l2_bm25_union::bm25_order_chunks(&request.query, &context.chunks, n).await;
             if !bm25_mix.is_empty() {
                 tracing::debug!(
                     mix = n,
@@ -322,10 +316,8 @@ impl QueryEngine {
         if crate::topic_entity_admit::topic_trunc_protect_enabled()
             || crate::topic_entity_admit::topic_materialize_enabled()
         {
-            let topic_ids =
-                crate::topic_entity_admit::topic_chunk_ids_from_context(&context);
-            let max_n = if crate::topic_entity_admit::topic_materialize_enabled()
-            {
+            let topic_ids = crate::topic_entity_admit::topic_chunk_ids_from_context(&context);
+            let max_n = if crate::topic_entity_admit::topic_materialize_enabled() {
                 crate::topic_entity_admit::topic_materialize_max()
             } else {
                 crate::topic_entity_admit::topic_trunc_protect_max()
@@ -366,16 +358,11 @@ impl QueryEngine {
                     let intent = intent_for_truncation(request, &context);
                     let is_fact = matches!(intent, QueryIntent::Factual);
                     if !is_fact {
-                        tracing::debug!(
-                            ?intent,
-                            "027d L2 FactReplace: non-fact → CE sources"
-                        );
+                        tracing::debug!(?intent, "027d L2 FactReplace: non-fact → CE sources");
                         context.chunks.clone()
                     } else {
-                        let bm25_mix = crate::l2_bm25_union::bm25_order_chunks(
-                            &request.query, &mix, k,
-                        )
-                        .await;
+                        let bm25_mix =
+                            crate::l2_bm25_union::bm25_order_chunks(&request.query, &mix, k).await;
                         let citation = crate::l2_bm25_union::union_bm25_ce_chunks(
                             &bm25_mix,
                             &context.chunks,
@@ -390,8 +377,7 @@ impl QueryEngine {
                     }
                 } else {
                     let bm25_mix =
-                        crate::l2_bm25_union::bm25_order_chunks(&request.query, &mix, k)
-                            .await;
+                        crate::l2_bm25_union::bm25_order_chunks(&request.query, &mix, k).await;
                     let citation = crate::l2_bm25_union::union_bm25_ce_chunks(
                         &bm25_mix,
                         &context.chunks,
@@ -457,7 +443,9 @@ impl QueryEngine {
                     ))
                 } else if matches!(keyword_mode, crate::keywords::KeywordMode::Heuristic) {
                     tracing::debug!("060 KEYWORD_MODE=heuristic — skip keyword LLM");
-                    Ok(crate::keywords::heuristic_extracted_keywords(&keyword_query))
+                    Ok(crate::keywords::heuristic_extracted_keywords(
+                        &keyword_query,
+                    ))
                 } else if let Some(llm) = keyword_llm {
                     self.keyword_extractor
                         .extract_with_llm_override(&keyword_query, Some(llm))
@@ -924,10 +912,7 @@ mod intent_truncation_tests {
         // Heuristic would call this Factual ("What are …"), LLM says exploratory.
         attach_query_intent_metadata(&mut ctx, QueryIntent::Exploratory);
         let req = QueryRequest::new("What are the main diagnostic methods for AML?");
-        assert_eq!(
-            intent_for_truncation(&req, &ctx),
-            QueryIntent::Exploratory
-        );
+        assert_eq!(intent_for_truncation(&req, &ctx), QueryIntent::Exploratory);
     }
 
     #[test]

@@ -77,7 +77,7 @@ pub async fn get_popular_labels(
                 .to_string();
 
             PopularLabel {
-                label: node.id,
+                label: crate::handlers::graph::graph_node_label(&node),
                 entity_type,
                 degree,
                 description,

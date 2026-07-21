@@ -65,13 +65,11 @@ pub fn sort_edges_by_rank_weight(edges: &mut [GraphEdge], degrees: &HashMap<Stri
             + degrees.get(&a.target).copied().unwrap_or(0);
         let rank_b = degrees.get(&b.source).copied().unwrap_or(0)
             + degrees.get(&b.target).copied().unwrap_or(0);
-        rank_b
-            .cmp(&rank_a)
-            .then_with(|| {
-                edge_weight(&b.properties)
-                    .partial_cmp(&edge_weight(&a.properties))
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
+        rank_b.cmp(&rank_a).then_with(|| {
+            edge_weight(&b.properties)
+                .partial_cmp(&edge_weight(&a.properties))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
     });
 }
 
@@ -148,10 +146,7 @@ mod tests {
             parse_relation_select_mode("rank_weight"),
             RelationSelectMode::LightRag
         );
-        assert_eq!(
-            parse_relation_select_mode(""),
-            RelationSelectMode::Default
-        );
+        assert_eq!(parse_relation_select_mode(""), RelationSelectMode::Default);
     }
 
     #[test]

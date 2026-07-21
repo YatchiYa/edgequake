@@ -1,0 +1,891 @@
+[
+  {
+    "id": "Medical-0cbbd549",
+    "question": "What diagnostic method is required for MGZL?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Diagnosis of MGZL requires expert hematopathologist review."
+    ],
+    "question_type": "Fact Retrieval",
+    "generated_answer": "",
+    "ground_truth": "Diagnosis of MGZL requires expert hematopathologist review.",
+    "gold_answer": "Diagnosis of MGZL requires expert hematopathologist review.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-e7b5ec54",
+    "question": "Which lymphoma is a subtype of gray zone lymphomas?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Mediastinal gray zone lymphoma (MGZL) is a subtype of gray zone lymphomas."
+    ],
+    "question_type": "Fact Retrieval",
+    "generated_answer": "",
+    "ground_truth": "Mediastinal gray zone lymphoma (MGZL) is a subtype of gray zone lymphomas.",
+    "gold_answer": "Mediastinal gray zone lymphoma (MGZL) is a subtype of gray zone lymphomas.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-13fe78ff",
+    "question": "What is the typical genetic alteration found in almost all FL cases?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Almost all follicular lymphoma cases have a chromosome translocation.",
+      "Almost all follicular lymphoma cases have excess BCL2 protein."
+    ],
+    "question_type": "Fact Retrieval",
+    "generated_answer": "",
+    "ground_truth": "Almost all FL cases have a chromosome translocation or excess BCL2 protein.",
+    "gold_answer": "Almost all FL cases have a chromosome translocation or excess BCL2 protein.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-73b1e8c2",
+    "question": "What is the indication for groin dissection in anal cancer?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Groin dissection is indicated for lymph node recurrence in anal cancer."
+    ],
+    "question_type": "Fact Retrieval",
+    "generated_answer": "",
+    "ground_truth": "Groin dissection is indicated for lymph node recurrence.",
+    "gold_answer": "Groin dissection is indicated for lymph node recurrence.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-c6d69844",
+    "question": "For which patients is germline genetic testing recommended in prostate cancer?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Germline genetic testing is recommended for patients with high-risk prostate cancer.",
+      "Germline genetic testing is recommended for patients with very-high-risk prostate cancer.",
+      "Germline genetic testing is recommended for patients with regional prostate cancer.",
+      "Germline genetic testing is recommended for patients with metastatic prostate cancer."
+    ],
+    "question_type": "Fact Retrieval",
+    "generated_answer": "",
+    "ground_truth": "Germline genetic testing is recommended for patients with high-risk, very-high-risk, regional, or metastatic prostate cancer.",
+    "gold_answer": "Germline genetic testing is recommended for patients with high-risk, very-high-risk, regional, or metastatic prostate cancer.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-973bc3d0",
+    "question": "How are pMMR/MSS colon cancers generally treated?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "pMMR/MSS colon cancers are generally treated with chemotherapy."
+    ],
+    "question_type": "Fact Retrieval",
+    "generated_answer": "",
+    "ground_truth": "pMMR/MSS cancers are treated with chemotherapy.",
+    "gold_answer": "pMMR/MSS cancers are treated with chemotherapy.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-189210ec",
+    "question": "Which adrenal tumor originates from the adrenal medulla?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Pheochromocytoma originates from the adrenal medulla."
+    ],
+    "question_type": "Fact Retrieval",
+    "generated_answer": "",
+    "ground_truth": "Pheochromocytoma originates from the adrenal medulla.",
+    "gold_answer": "Pheochromocytoma originates from the adrenal medulla.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-d587c0c2",
+    "question": "Which chemotherapy regimens are used for bladder cancer?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Chemotherapy regimens include cisplatin-based combinations.",
+      "Chemotherapy regimens include ddMVAC."
+    ],
+    "question_type": "Fact Retrieval",
+    "generated_answer": "",
+    "ground_truth": "Chemotherapy regimens include cisplatin-based combinations such as ddMVAC.",
+    "gold_answer": "Chemotherapy regimens include cisplatin-based combinations such as ddMVAC.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-3785154c",
+    "question": "What treatment is an option for some patients with stage I, II, or III pancreatic cancer?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Surgery is a treatment option for some patients with stage I pancreatic cancer.",
+      "Surgery is a treatment option for some patients with stage II pancreatic cancer.",
+      "Surgery is a treatment option for some patients with stage III pancreatic cancer."
+    ],
+    "question_type": "Fact Retrieval",
+    "generated_answer": "",
+    "ground_truth": "Surgery is a treatment option for some patients with stage I, II, or III pancreatic cancer.",
+    "gold_answer": "Surgery is a treatment option for some patients with stage I, II, or III pancreatic cancer.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-ba2c8007",
+    "question": "Is autoimmune disease associated with increased BCC risk?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Autoimmune disease is a risk factor for BCC."
+    ],
+    "question_type": "Fact Retrieval",
+    "generated_answer": "",
+    "ground_truth": "Autoimmune disease is a risk factor for BCC.",
+    "gold_answer": "Autoimmune disease is a risk factor for BCC.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-2ca88e8f",
+    "question": "What factors determine the specific treatment regimen for a pediatric ALL patient?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Treatment for pediatric ALL depends on subtype.",
+      "Treatment for pediatric ALL depends on age at diagnosis.",
+      "Treatment for pediatric ALL depends on biomarkers.",
+      "Treatment for pediatric ALL depends on genetic alterations."
+    ],
+    "question_type": "Complex Reasoning",
+    "generated_answer": "",
+    "ground_truth": "Treatment for ALL depends on subtype, age at diagnosis, and other factors such as biomarkers and genetic alterations.",
+    "gold_answer": "Treatment for ALL depends on subtype, age at diagnosis, and other factors such as biomarkers and genetic alterations.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-54a3a465",
+    "question": "Which maintenance therapies are recommended for a patient with advanced ovarian cancer who is BRCA-mutated after initial treatment?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "PARP inhibitors are recommended as maintenance therapy for advanced ovarian cancer.",
+      "Olaparib is a recommended PARP inhibitor for advanced or BRCA-mutated ovarian cancer.",
+      "Niraparib is a recommended PARP inhibitor for advanced or BRCA-mutated ovarian cancer.",
+      "Rucaparib is a recommended PARP inhibitor for advanced or BRCA-mutated ovarian cancer.",
+      "Maintenance therapy is recommended after initial treatment for advanced or BRCA-mutated ovarian cancer."
+    ],
+    "question_type": "Complex Reasoning",
+    "generated_answer": "",
+    "ground_truth": "PARP inhibitors such as olaparib, niraparib, or rucaparib are recommended as maintenance therapy for advanced or BRCA-mutated ovarian cancer after initial treatment.",
+    "gold_answer": "PARP inhibitors such as olaparib, niraparib, or rucaparib are recommended as maintenance therapy for advanced or BRCA-mutated ovarian cancer after initial treatment.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-ee49f3e8",
+    "question": "Why is surgery not typically a treatment option for Stage 4 NSCLC?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Stage 4 NSCLC is metastatic at diagnosis.",
+      "Local treatments like surgery are ineffective for Stage 4 NSCLC."
+    ],
+    "question_type": "Complex Reasoning",
+    "generated_answer": "",
+    "ground_truth": "Because Stage 4 NSCLC is metastatic at diagnosis, making local treatments like surgery ineffective.",
+    "gold_answer": "Because Stage 4 NSCLC is metastatic at diagnosis, making local treatments like surgery ineffective.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-32b9ef93",
+    "question": "If a patient presents with seizures and cognitive changes, what diagnostic methods should be prioritized and why?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "A neurological exam should be prioritized for patients with seizures and cognitive changes.",
+      "An MRI should be prioritized for patients with seizures and cognitive changes.",
+      "Seizures and cognitive changes are common symptoms in glioma.",
+      "MRI is the best imaging test for glioma."
+    ],
+    "question_type": "Complex Reasoning",
+    "generated_answer": "",
+    "ground_truth": "A neurological exam and MRI should be prioritized because these symptoms are common in glioma and MRI is the best imaging test.",
+    "gold_answer": "A neurological exam and MRI should be prioritized because these symptoms are common in glioma and MRI is the best imaging test.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-641dcaf5",
+    "question": "What distinguishes primary bone cancer from secondary bone malignancy in terms of origin and common cancer types?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Primary bone cancer originates in bone or cartilage.",
+      "Primary bone cancer includes sarcomas.",
+      "Secondary bone malignancies are metastases from other organs.",
+      "Common organs for secondary bone malignancies include breast, lung, or kidney."
+    ],
+    "question_type": "Complex Reasoning",
+    "generated_answer": "",
+    "ground_truth": "Primary bone cancer originates in bone or cartilage and includes sarcomas, while secondary bone malignancies are metastases from other organs such as breast, lung, or kidney.",
+    "gold_answer": "Primary bone cancer originates in bone or cartilage and includes sarcomas, while secondary bone malignancies are metastases from other organs such as breast, lung, or kidney.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-8b16a7bd",
+    "question": "What is the rationale for targeting BCR::ABL1 protein activity in CML treatment?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "CML is caused by the BCR::ABL1 fusion gene.",
+      "Targeting BCR::ABL1 protein activity addresses the underlying cause of CML."
+    ],
+    "question_type": "Complex Reasoning",
+    "generated_answer": "",
+    "ground_truth": "Since CML is caused by the BCR::ABL1 fusion gene, inhibiting its protein product addresses the underlying cause.",
+    "gold_answer": "Since CML is caused by the BCR::ABL1 fusion gene, inhibiting its protein product addresses the underlying cause.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-2d14639d",
+    "question": "How does the grade of follicular lymphoma influence its classification and treatment approach?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Grades 1 and 2 of follicular lymphoma are classified as classic FL.",
+      "Grades 1 and 2 of follicular lymphoma are treated accordingly.",
+      "Grade 3B of follicular lymphoma is classified and treated as DLBCL."
+    ],
+    "question_type": "Complex Reasoning",
+    "generated_answer": "",
+    "ground_truth": "Grades 1 and 2 are classified as classic FL and treated accordingly, while grade 3B is classified and treated as DLBCL.",
+    "gold_answer": "Grades 1 and 2 are classified as classic FL and treated accordingly, while grade 3B is classified and treated as DLBCL.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-219da1ba",
+    "question": "Why should fertility preservation be discussed before chemoradiation in a young patient with Stage II anal cancer?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Fertility preservation should be discussed before chemoradiation in a young patient with Stage II anal cancer.",
+      "Chemoradiation can cause infertility.",
+      "Stage II anal cancer is treated with chemoradiation.",
+      "Fertility preservation options should be considered."
+    ],
+    "question_type": "Complex Reasoning",
+    "generated_answer": "",
+    "ground_truth": "Because chemoradiation can cause infertility and Stage II anal cancer is treated with chemoradiation, so fertility preservation options should be considered.",
+    "gold_answer": "Because chemoradiation can cause infertility and Stage II anal cancer is treated with chemoradiation, so fertility preservation options should be considered.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-31580ac0",
+    "question": "Which liver cancer subtype is most likely to be found in younger patients, and what are the main risk factors for its parent cancer type?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Fibrolamellar hepatocellular carcinoma (FLHC) is found in younger patients.",
+      "The parent type of FLHC is hepatocellular carcinoma (HCC).",
+      "Cirrhosis is a main risk factor for HCC.",
+      "Hepatitis B is a main risk factor for HCC.",
+      "Hepatitis C is a main risk factor for HCC."
+    ],
+    "question_type": "Complex Reasoning",
+    "generated_answer": "",
+    "ground_truth": "Fibrolamellar hepatocellular carcinoma (FLHC) is found in younger patients, and its parent type, HCC, is mainly associated with cirrhosis, hepatitis B, and hepatitis C.",
+    "gold_answer": "Fibrolamellar hepatocellular carcinoma (FLHC) is found in younger patients, and its parent type, HCC, is mainly associated with cirrhosis, hepatitis B, and hepatitis C.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-7b682af7",
+    "question": "Which additional therapy may be used alongside chemotherapy for localized MGZL, and under what circumstance?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Involved-site radiation therapy (ISRT) may be used alongside chemotherapy for localized MGZL.",
+      "ISRT is added to chemotherapy under the circumstance of localized MGZL."
+    ],
+    "question_type": "Complex Reasoning",
+    "generated_answer": "",
+    "ground_truth": "Involved-site radiation therapy (ISRT) may be added to chemotherapy in localized MGZL.",
+    "gold_answer": "Involved-site radiation therapy (ISRT) may be added to chemotherapy in localized MGZL.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-296c7595",
+    "question": "How are the stages of esophageal cancer defined and what are their distinguishing features?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Esophageal cancer stages include early-stage.",
+      "Early-stage esophageal cancer is confined to the esophagus.",
+      "Early-stage esophageal cancer is not in lymph nodes.",
+      "Esophageal cancer stages include locoregional.",
+      "Locoregional esophageal cancer invades the esophagus wall.",
+      "Locoregional esophageal cancer may involve nearby lymph nodes or organs.",
+      "Esophageal cancer stages include metastatic.",
+      "Metastatic esophageal cancer spreads to distant organs."
+    ],
+    "question_type": "Contextual Summarize",
+    "generated_answer": "",
+    "ground_truth": "Esophageal cancer stages include early-stage (confined to the esophagus and not in lymph nodes), locoregional (invading the esophagus wall and/or nearby lymph nodes or organs), and metastatic (spread to distant organs such as liver, lung, bone, and brain).",
+    "gold_answer": "Esophageal cancer stages include early-stage (confined to the esophagus and not in lymph nodes), locoregional (invading the esophagus wall and/or nearby lymph nodes or organs), and metastatic (spread to distant organs such as liver, lung, bone, and brain).",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-0002d2de",
+    "question": "How are bone cancers staged and what factors are considered in determining the stage?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Bone cancers are staged using the TNM system.",
+      "The TNM system considers tumor size and location (T).",
+      "The TNM system considers lymph node involvement (N).",
+      "The TNM system considers metastasis (M).",
+      "The TNM system considers tumor grade (G).",
+      "The final stage of bone cancer is determined by combining TNM scores."
+    ],
+    "question_type": "Contextual Summarize",
+    "generated_answer": "",
+    "ground_truth": "Bone cancers are staged using the TNM system, which considers tumor size/location (T), lymph node involvement (N), metastasis (M), and tumor grade (G), with the final stage determined by combining these scores.",
+    "gold_answer": "Bone cancers are staged using the TNM system, which considers tumor size/location (T), lymph node involvement (N), metastasis (M), and tumor grade (G), with the final stage determined by combining these scores.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-e168b4d3",
+    "question": "Which risk factors and geographic regions are most associated with nasopharyngeal carcinoma (NPC)?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "NPC is most often associated with Epstein-Barr virus infection.",
+      "NPC is associated with tobacco use.",
+      "NPC is associated with alcohol use.",
+      "NPC occurs more frequently in people from Asia.",
+      "NPC occurs more frequently in Native Americans.",
+      "NPC occurs more frequently in people from North Africa."
+    ],
+    "question_type": "Contextual Summarize",
+    "generated_answer": "",
+    "ground_truth": "NPC is most often associated with Epstein-Barr virus infection, tobacco and alcohol use, and occurs more frequently in people from Asia, Native America, and North Africa.",
+    "gold_answer": "NPC is most often associated with Epstein-Barr virus infection, tobacco and alcohol use, and occurs more frequently in people from Asia, Native America, and North Africa.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-b5a3c96e",
+    "question": "How do the sites of involvement and epidemiology differ between mediastinal and non-mediastinal gray zone lymphomas?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Mediastinal gray zone lymphoma primarily involves the mediastinum.",
+      "Mediastinal gray zone lymphoma primarily involves supraclavicular lymph nodes.",
+      "Mediastinal gray zone lymphoma primarily affects younger males.",
+      "Non-mediastinal gray zone lymphomas occur in older persons.",
+      "Non-mediastinal gray zone lymphomas are associated with bone marrow involvement.",
+      "Non-mediastinal gray zone lymphomas are associated with extranodal involvement."
+    ],
+    "question_type": "Contextual Summarize",
+    "generated_answer": "",
+    "ground_truth": "Mediastinal gray zone lymphoma primarily involves the mediastinum and supraclavicular lymph nodes in younger males, while non-mediastinal gray zone lymphomas occur in older persons and are associated with bone marrow and extranodal involvement.",
+    "gold_answer": "Mediastinal gray zone lymphoma primarily involves the mediastinum and supraclavicular lymph nodes in younger males, while non-mediastinal gray zone lymphomas occur in older persons and are associated with bone marrow and extranodal involvement.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-6809b810",
+    "question": "What are the main types and subtypes of throat cancer and how are they classified within head and neck cancers?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Throat cancer is classified as a subtype of head and neck cancer.",
+      "Oropharyngeal cancer is a further subtype of throat cancer.",
+      "Squamous cell carcinoma is the most common type of throat cancer.",
+      "Squamous cell carcinoma often arises in the oropharynx."
+    ],
+    "question_type": "Contextual Summarize",
+    "generated_answer": "",
+    "ground_truth": "Throat cancer is classified as a subtype of head and neck cancer, with oropharyngeal cancer as a further subtype; squamous cell carcinoma is the most common type of throat cancer, often arising in the oropharynx.",
+    "gold_answer": "Throat cancer is classified as a subtype of head and neck cancer, with oropharyngeal cancer as a further subtype; squamous cell carcinoma is the most common type of throat cancer, often arising in the oropharynx.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-c2a36052",
+    "question": "How do biomarkers influence treatment selection in colon cancer?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Biomarker testing for dMMR/MSI-H guides the use of immunotherapy with checkpoint inhibitors.",
+      "pMMR/MSS cancers are treated with chemotherapy.",
+      "CEA is used for disease monitoring in colon cancer."
+    ],
+    "question_type": "Contextual Summarize",
+    "generated_answer": "",
+    "ground_truth": "Biomarker testing for dMMR/MSI-H guides the use of immunotherapy with checkpoint inhibitors, while pMMR/MSS cancers are treated with chemotherapy and CEA is used for disease monitoring.",
+    "gold_answer": "Biomarker testing for dMMR/MSI-H guides the use of immunotherapy with checkpoint inhibitors, while pMMR/MSS cancers are treated with chemotherapy and CEA is used for disease monitoring.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-00bf955d",
+    "question": "What is the role of clinical trials in the treatment of specific ALL subtypes?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Clinical trials are preferred for certain ALL subtypes.",
+      "BCR::ABL1-negative B-ALL is one of the ALL subtypes for which clinical trials are preferred.",
+      "BCR::ABL1-like B-ALL is another ALL subtype for which clinical trials are preferred.",
+      "Clinical trials are an option for T-ALL.",
+      "Clinical trials provide access to novel therapies."
+    ],
+    "question_type": "Contextual Summarize",
+    "generated_answer": "",
+    "ground_truth": "Clinical trials are preferred for certain ALL subtypes such as BCR::ABL1-negative or BCR::ABL1-like B-ALL and are also an option for T-ALL, providing access to novel therapies.",
+    "gold_answer": "Clinical trials are preferred for certain ALL subtypes such as BCR::ABL1-negative or BCR::ABL1-like B-ALL and are also an option for T-ALL, providing access to novel therapies.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-25f9adbb",
+    "question": "What are the main diagnostic methods and laboratory tests used to diagnose AML?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "AML diagnosis involves laboratory tests such as CBC.",
+      "AML diagnosis involves laboratory tests such as CMP.",
+      "AML diagnosis involves laboratory tests such as LDH.",
+      "AML diagnosis involves blood clotting tests.",
+      "AML diagnosis involves bone marrow aspirate and biopsy.",
+      "AML diagnosis involves flow cytometry and immunophenotyping.",
+      "AML diagnosis involves molecular and cytogenetic testing.",
+      "AML diagnosis involves imaging studies like CT.",
+      "AML diagnosis involves imaging studies like MRI.",
+      "AML diagnosis involves imaging studies like PET/CT."
+    ],
+    "question_type": "Contextual Summarize",
+    "generated_answer": "",
+    "ground_truth": "AML diagnosis involves laboratory tests such as CBC, CMP, LDH, and blood clotting tests, bone marrow aspirate and biopsy, flow cytometry and immunophenotyping, molecular and cytogenetic testing, and imaging studies like CT, MRI, and PET/CT.",
+    "gold_answer": "AML diagnosis involves laboratory tests such as CBC, CMP, LDH, and blood clotting tests, bone marrow aspirate and biopsy, flow cytometry and immunophenotyping, molecular and cytogenetic testing, and imaging studies like CT, MRI, and PET/CT.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-1991db28",
+    "question": "How is follow-up care managed in patients with glioma?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Follow-up care for glioma patients involves periodic imaging.",
+      "Follow-up MRI is especially important for glioma patients.",
+      "Periodic imaging is used to monitor for recurrence after initial treatment."
+    ],
+    "question_type": "Contextual Summarize",
+    "generated_answer": "",
+    "ground_truth": "Follow-up care for glioma patients involves periodic imaging, especially follow-up MRI, to monitor for recurrence after initial treatment.",
+    "gold_answer": "Follow-up care for glioma patients involves periodic imaging, especially follow-up MRI, to monitor for recurrence after initial treatment.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-8f9d5dde",
+    "question": "What are the main diagnostic methods and biomarkers used for prostate cancer across its stages?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Prostate cancer diagnosis commonly involves PSA testing.",
+      "Digital rectal exam is a method used to diagnose prostate cancer.",
+      "Biopsy is a common diagnostic method for prostate cancer.",
+      "Imaging modalities such as MRI are used in prostate cancer diagnosis.",
+      "CT scans are used in the diagnosis of prostate cancer.",
+      "PET scans are used in the diagnosis of prostate cancer.",
+      "Bone scans are used in the diagnosis of prostate cancer.",
+      "Ultrasound is used in the diagnosis of prostate cancer.",
+      "Biomarkers used for prostate cancer include PSA.",
+      "Gleason score is a biomarker used for prostate cancer.",
+      "Grade Group is a biomarker used for prostate cancer.",
+      "Molecular biomarker tests are used throughout all stages of prostate cancer."
+    ],
+    "question_type": "Contextual Summarize",
+    "generated_answer": "",
+    "ground_truth": "Prostate cancer diagnosis commonly involves PSA testing, digital rectal exam, biopsy, and imaging modalities such as MRI, CT, PET, bone scan, and ultrasound, with biomarkers including PSA, Gleason score, Grade Group, and molecular biomarker tests used throughout all stages.",
+    "gold_answer": "Prostate cancer diagnosis commonly involves PSA testing, digital rectal exam, biopsy, and imaging modalities such as MRI, CT, PET, bone scan, and ultrasound, with biomarkers including PSA, Gleason score, Grade Group, and molecular biomarker tests used throughout all stages.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-7b694381",
+    "question": "Imagine you are a public health officer tasked with drafting a community advisory about the importance of recognizing symptoms and hereditary risk factors for adrenal tumors. Your advisory should integrate at least five key points from the guidelines.",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Adrenal tumors can be benign or malignant.",
+      "Adrenal tumors are sometimes found incidentally during imaging tests.",
+      "Early recognition of symptoms is crucial for adrenal tumors.",
+      "Symptoms include unexplained weight gain or loss, muscle weakness, abdominal bloating, and changes in blood pressure.",
+      "Some adrenal tumors produce excess hormones.",
+      "Excess hormones can lead to specific syndromes like Cushing syndrome or high blood pressure.",
+      "Individuals with a family history of hereditary syndromes may be at higher risk for adrenal tumors.",
+      "Hereditary syndromes include Li-Fraumeni, MEN 1/2, and Lynch syndrome.",
+      "Consulting a healthcare provider is important if symptoms or relevant family history are present.",
+      "Appropriate blood, biochemical, and genetic testing may be necessary.",
+      "Early detection and monitoring can improve outcomes."
+    ],
+    "question_type": "Creative Generation",
+    "generated_answer": "",
+    "ground_truth": "**Community Health Advisory: Awareness of Adrenal Tumors**\n\nAdrenal tumors, which can be benign or malignant, are sometimes found incidentally during imaging tests. Early recognition of symptoms such as unexplained weight gain or loss, muscle weakness, abdominal bloating, and changes in blood pressure is crucial. Some adrenal tumors produce excess hormones, leading to specific syndromes like Cushing syndrome or high blood pressure. Individuals with a family history of hereditary syndromes (e.g., Li-Fraumeni, MEN 1/2, Lynch syndrome) may be at higher risk. If you or your relatives experience these symptoms or have a relevant family history, consult your healthcare provider for appropriate blood, biochemical, and genetic testing. Early detection and monitoring can improve outcomes.",
+    "gold_answer": "**Community Health Advisory: Awareness of Adrenal Tumors**\n\nAdrenal tumors, which can be benign or malignant, are sometimes found incidentally during imaging tests. Early recognition of symptoms such as unexplained weight gain or loss, muscle weakness, abdominal bloating, and changes in blood pressure is crucial. Some adrenal tumors produce excess hormones, leading to specific syndromes like Cushing syndrome or high blood pressure. Individuals with a family history of hereditary syndromes (e.g., Li-Fraumeni, MEN 1/2, Lynch syndrome) may be at higher risk. If you or your relatives experience these symptoms or have a relevant family history, consult your healthcare provider for appropriate blood, biochemical, and genetic testing. Early detection and monitoring can improve outcomes.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-a5356e35",
+    "question": "You are a medical oncologist tasked with drafting a referral letter to a tertiary cancer center for a patient with suspected chondrosarcoma. Transform the clinical findings into a formal referral note, including relevant diagnostics, biomarkers, and potential targeted therapies based on the provided guidelines.",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "The patient is a 54-year-old with a cartilage-forming bone lesion.",
+      "The lesion is radiographically and histologically consistent with chondrosarcoma.",
+      "Imaging with X-ray, CT, and MRI revealed a lobulated mass originating in cartilage-forming cells.",
+      "Core needle biopsy confirmed the diagnosis of chondrosarcoma.",
+      "Laboratory evaluation included alkaline phosphatase, CBC, CMP, and LDH.",
+      "Next-generation sequencing identified an IDH1 mutation.",
+      "Staging was performed using the TNM system.",
+      "Tumor grade was determined histologically.",
+      "The patient's ECOG performance status is 1.",
+      "Fertility preservation has been discussed due to the potential impact of systemic therapy."
+    ],
+    "question_type": "Creative Generation",
+    "generated_answer": "",
+    "ground_truth": "Dear Colleagues,\n\nI am referring a 54-year-old patient with a cartilage-forming bone lesion, radiographically and histologically consistent with chondrosarcoma. Imaging with X-ray, CT, and MRI revealed a lobulated mass originating in cartilage-forming cells. Core needle biopsy confirmed diagnosis. Laboratory evaluation included alkaline phosphatase, CBC, CMP, and LDH. Next-generation sequencing identified an IDH1 mutation. Staging was performed using the TNM system, and tumor grade was determined histologically. Given the presence of IDH1 mutation, consideration for ivosidenib as a targeted therapy is warranted. The patient\u2019s ECOG performance status is 1. Fertility preservation has been discussed given the potential impact of systemic therapy.",
+    "gold_answer": "Dear Colleagues,\n\nI am referring a 54-year-old patient with a cartilage-forming bone lesion, radiographically and histologically consistent with chondrosarcoma. Imaging with X-ray, CT, and MRI revealed a lobulated mass originating in cartilage-forming cells. Core needle biopsy confirmed diagnosis. Laboratory evaluation included alkaline phosphatase, CBC, CMP, and LDH. Next-generation sequencing identified an IDH1 mutation. Staging was performed using the TNM system, and tumor grade was determined histologically. Given the presence of IDH1 mutation, consideration for ivosidenib as a targeted therapy is warranted. The patient\u2019s ECOG performance status is 1. Fertility preservation has been discussed given the potential impact of systemic therapy.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-a2771279",
+    "question": "Assume the role of a clinical pathologist and write a detailed report on the laboratory and molecular diagnostic steps necessary to establish an AML diagnosis and subtype, referencing the guideline\u2019s recommendations.",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "A diagnosis of AML requires identification of \u226520% myeloblasts in bone marrow or blood.",
+      "The diagnostic process begins with a complete blood count (CBC).",
+      "A comprehensive metabolic panel (CMP) is performed during the diagnostic process.",
+      "Lactate dehydrogenase (LDH) is evaluated to assess cell turnover.",
+      "Bone marrow aspirate and biopsy are performed.",
+      "Histopathology confirms increased blasts in the bone marrow.",
+      "Flow cytometry is used to define the immunologic profile of the blasts.",
+      "Immunophenotyping is part of the diagnostic process for AML.",
+      "Cytogenetic analysis, including karyotype and FISH, is conducted.",
+      "Molecular testing, such as next-generation sequencing and PCR, is performed.",
+      "Genetic alterations such as FLT3-ITD, inv(16), t(8;21), del(5q), and PML::RARA are identified.",
+      "These findings are essential for AML subtype classification.",
+      "The findings guide therapy for AML."
+    ],
+    "question_type": "Creative Generation",
+    "generated_answer": "",
+    "ground_truth": "Laboratory and Molecular Diagnostic Report:\n\nA diagnosis of AML requires identification of \u226520% myeloblasts in bone marrow or blood. The diagnostic process began with complete blood count (CBC), comprehensive metabolic panel (CMP), and lactate dehydrogenase (LDH) to evaluate cytopenias and cell turnover. Bone marrow aspirate and biopsy were performed, with histopathology confirming increased blasts. Flow cytometry and immunophenotyping defined the immunologic profile of the blasts. Cytogenetic analysis (karyotype, FISH) and molecular testing (next-generation sequencing, PCR) were conducted to identify genetic alterations such as FLT3-ITD, inv(16), t(8;21), del(5q), and PML::RARA. These findings are essential for AML subtype classification and to guide therapy.",
+    "gold_answer": "Laboratory and Molecular Diagnostic Report:\n\nA diagnosis of AML requires identification of \u226520% myeloblasts in bone marrow or blood. The diagnostic process began with complete blood count (CBC), comprehensive metabolic panel (CMP), and lactate dehydrogenase (LDH) to evaluate cytopenias and cell turnover. Bone marrow aspirate and biopsy were performed, with histopathology confirming increased blasts. Flow cytometry and immunophenotyping defined the immunologic profile of the blasts. Cytogenetic analysis (karyotype, FISH) and molecular testing (next-generation sequencing, PCR) were conducted to identify genetic alterations such as FLT3-ITD, inv(16), t(8;21), del(5q), and PML::RARA. These findings are essential for AML subtype classification and to guide therapy.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-4654807f",
+    "question": "Imagine you are a patient navigator counseling a newly diagnosed mouth cancer patient who is concerned about treatment side effects and fertility. Write an educational summary explaining the diagnostic process, risk factors, potential treatment impacts, and available supportive services, using evidence from the guideline.",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Mouth cancer is most often a type called squamous cell carcinoma.",
+      "Mouth cancer can occur in areas like the lips, gums, and tongue.",
+      "Diagnosis involves imaging tests such as CT, MRI, or PET/CT.",
+      "Imaging tests are used to see the tumor's size and whether it has spread.",
+      "A biopsy is performed to confirm the type of cancer.",
+      "The patient's history of tobacco and alcohol use are risk factors for mouth cancer.",
+      "Quitting tobacco and alcohol can improve treatment outcomes.",
+      "Treatments are planned based on the tumor's location and stage.",
+      "Treatments may affect dental health.",
+      "Treatments may affect speech and swallowing.",
+      "Fertility preservation options are discussed for patients of reproductive age.",
+      "Some treatments can impact fertility.",
+      "Supportive services include dental, speech, and nutrition assessments."
+    ],
+    "question_type": "Creative Generation",
+    "generated_answer": "",
+    "ground_truth": "As your patient navigator, I want to guide you through what to expect. Mouth cancer, most often a type called squamous cell carcinoma, can occur in areas like the lips, gums, tongue, and more. Diagnosis involves imaging tests such as CT, MRI, or PET/CT to see the tumor's size and whether it has spread, and a biopsy to confirm the type of cancer. Your history of tobacco and alcohol use are risk factors for mouth cancer, and quitting can improve treatment outcomes. Treatments are planned based on the tumor's location and stage, and may affect dental health as well as speech and swallowing. For patients of reproductive age, we discuss fertility preservation options, as some treatments can impact fertility. We offer dental, speech, and nutrition assessments to support you throughout your care.",
+    "gold_answer": "As your patient navigator, I want to guide you through what to expect. Mouth cancer, most often a type called squamous cell carcinoma, can occur in areas like the lips, gums, tongue, and more. Diagnosis involves imaging tests such as CT, MRI, or PET/CT to see the tumor's size and whether it has spread, and a biopsy to confirm the type of cancer. Your history of tobacco and alcohol use are risk factors for mouth cancer, and quitting can improve treatment outcomes. Treatments are planned based on the tumor's location and stage, and may affect dental health as well as speech and swallowing. For patients of reproductive age, we discuss fertility preservation options, as some treatments can impact fertility. We offer dental, speech, and nutrition assessments to support you throughout your care.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-d96c57fa",
+    "question": "You are a medical intern tasked with writing a SOAP (Subjective, Objective, Assessment, Plan) note for a patient newly diagnosed with Stage II nasopharyngeal carcinoma. Incorporate relevant history, exam findings, diagnostic results, and initial management steps.",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "The patient is a 38-year-old male of North African descent.",
+      "The patient presents with a painless neck mass.",
+      "The patient reports occasional hearing loss.",
+      "The patient has no other significant symptoms.",
+      "The patient's past history includes moderate tobacco use.",
+      "The patient's past history includes alcohol use.",
+      "Physical examination reveals a 2-cm firm, non-tender lymph node in the left cervical chain.",
+      "No oral or pharyngeal lesions are visible on examination.",
+      "Imaging with CT and MRI shows a nasopharyngeal mass with ipsilateral lymphadenopathy.",
+      "A biopsy confirms squamous cell carcinoma.",
+      "EBV DNA is detected in the patient's plasma.",
+      "The patient's performance status is ECOG 1.",
+      "Dental and nutritional evaluations have been completed.",
+      "The diagnosis is Stage II nasopharyngeal carcinoma (NPC).",
+      "The subtype of NPC is squamous cell carcinoma.",
+      "The NPC is EBV-associated with cervical lymph node involvement.",
+      "The patient has a good performance status.",
+      "A multidisciplinary tumor board discussion is planned.",
+      "Definitive therapy will begin per guidelines.",
+      "The patient will be counseled regarding potential effects on fertility and oral health.",
+      "Baseline and surveillance EBV DNA testing will be scheduled.",
+      "Nutritional and speech/swallowing support will continue as indicated."
+    ],
+    "question_type": "Creative Generation",
+    "generated_answer": "",
+    "ground_truth": "**S:** 38-year-old male of North African descent presents with a painless neck mass and occasional hearing loss. Reports no other significant symptoms. Past history notable for moderate tobacco and alcohol use.\n\n**O:** Physical exam reveals a 2-cm firm, non-tender lymph node in the left cervical chain. No oral or pharyngeal lesions visible. Imaging with CT and MRI shows a nasopharyngeal mass with ipsilateral lymphadenopathy. Biopsy confirms squamous cell carcinoma. EBV DNA detected in plasma. Performance status is ECOG 1. Dental and nutritional evaluations completed.\n\n**A:** Stage II nasopharyngeal carcinoma (NPC), squamous cell carcinoma subtype, EBV-associated, with cervical lymph node involvement. Risk factors include geographic origin and substance use. Good performance status.\n\n**P:** Multidisciplinary tumor board discussion. Begin definitive therapy per guidelines. Counsel patient regarding potential effects on fertility and oral health. Schedule baseline and surveillance EBV DNA testing. Continue nutritional and speech/swallowing support as indicated.",
+    "gold_answer": "**S:** 38-year-old male of North African descent presents with a painless neck mass and occasional hearing loss. Reports no other significant symptoms. Past history notable for moderate tobacco and alcohol use.\n\n**O:** Physical exam reveals a 2-cm firm, non-tender lymph node in the left cervical chain. No oral or pharyngeal lesions visible. Imaging with CT and MRI shows a nasopharyngeal mass with ipsilateral lymphadenopathy. Biopsy confirms squamous cell carcinoma. EBV DNA detected in plasma. Performance status is ECOG 1. Dental and nutritional evaluations completed.\n\n**A:** Stage II nasopharyngeal carcinoma (NPC), squamous cell carcinoma subtype, EBV-associated, with cervical lymph node involvement. Risk factors include geographic origin and substance use. Good performance status.\n\n**P:** Multidisciplinary tumor board discussion. Begin definitive therapy per guidelines. Counsel patient regarding potential effects on fertility and oral health. Schedule baseline and surveillance EBV DNA testing. Continue nutritional and speech/swallowing support as indicated.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-0c5272d1",
+    "question": "Rewrite the core clinical recommendations for the management of non\u2013muscle-invasive bladder cancer (NMIBC) into a concise public health advisory aimed at primary care providers. Highlight risk factors, diagnostic approach, treatment options, and the importance of surveillance.",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Non-muscle-invasive bladder cancer (NMIBC) is a type of bladder cancer.",
+      "Primary care providers should be vigilant for bladder cancer in patients presenting with hematuria.",
+      "Risk factors for bladder cancer include smoking.",
+      "Risk factors for bladder cancer include age over 55.",
+      "Risk factors for bladder cancer include family history.",
+      "Risk factors for bladder cancer include Lynch syndrome.",
+      "Risk factors for bladder cancer include chemical exposure.",
+      "Early diagnosis relies on prompt referral for cystoscopy.",
+      "Early diagnosis relies on urine cytology.",
+      "Early diagnosis relies on imaging.",
+      "Most NMIBC cases (Stages 0 and 1) are managed with transurethral resection (TURBT).",
+      "Intravesical therapy options include BCG or chemotherapy.",
+      "Ongoing surveillance with regular cystoscopy is essential due to high recurrence rates.",
+      "Ongoing surveillance includes urine cytology and biomarker monitoring.",
+      "Smoking cessation should be encouraged.",
+      "Eligible patients should be considered for clinical trials."
+    ],
+    "question_type": "Creative Generation",
+    "generated_answer": "",
+    "ground_truth": "**Public Health Advisory: Early Detection and Management of Non\u2013Muscle-Invasive Bladder Cancer (NMIBC)**\n\nPrimary care providers should be vigilant for bladder cancer in patients presenting with hematuria, especially those with risk factors such as smoking, age over 55, family history, Lynch syndrome, or chemical exposure. Early diagnosis relies on prompt referral for cystoscopy, urine cytology, and imaging. Most NMIBC cases (Stages 0 and 1) are managed with transurethral resection (TURBT) followed by intravesical therapy (BCG or chemotherapy). Due to high recurrence rates, ongoing surveillance with regular cystoscopy, urine cytology, and biomarker monitoring is essential. Encourage smoking cessation and consider referring eligible patients for clinical trials.",
+    "gold_answer": "**Public Health Advisory: Early Detection and Management of Non\u2013Muscle-Invasive Bladder Cancer (NMIBC)**\n\nPrimary care providers should be vigilant for bladder cancer in patients presenting with hematuria, especially those with risk factors such as smoking, age over 55, family history, Lynch syndrome, or chemical exposure. Early diagnosis relies on prompt referral for cystoscopy, urine cytology, and imaging. Most NMIBC cases (Stages 0 and 1) are managed with transurethral resection (TURBT) followed by intravesical therapy (BCG or chemotherapy). Due to high recurrence rates, ongoing surveillance with regular cystoscopy, urine cytology, and biomarker monitoring is essential. Encourage smoking cessation and consider referring eligible patients for clinical trials.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-5242d398",
+    "question": "You are an oncologist tasked with drafting an initial treatment plan for a patient newly diagnosed with non-clear cell RCC (papillary subtype) confined to the kidney, with no evidence of metastasis. Outline your diagnostic confirmation, staging, and treatment strategy.",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "The patient has a new diagnosis of papillary renal cell carcinoma (PRCC).",
+      "The PRCC is confined to the kidney.",
+      "The diagnosis will be confirmed using imaging tests such as CT or MRI.",
+      "Blood and urine tests will be performed for diagnostic confirmation.",
+      "A percutaneous biopsy will be conducted for histologic subtyping.",
+      "Biomarker and genetic risk testing will identify actionable alterations.",
+      "Staging will ensure there is no local spread to surrounding fat.",
+      "Staging will ensure there is no local spread to blood vessels.",
+      "Staging will ensure there is no local spread to lymph nodes.",
+      "Staging will ensure there is no distant metastasis.",
+      "Surgical resection is the mainstay of treatment.",
+      "The surgical resection may be partial or radical nephrectomy.",
+      "The type of nephrectomy depends on tumor size and location.",
+      "Further management will be determined by final pathology and risk assessment."
+    ],
+    "question_type": "Creative Generation",
+    "generated_answer": "",
+    "ground_truth": "For this patient with a new diagnosis of papillary renal cell carcinoma (PRCC) confined to the kidney, I would first confirm the diagnosis using imaging tests (such as CT or MRI), blood and urine tests, and a percutaneous biopsy for histologic subtyping. Biomarker and genetic risk testing would be performed to identify any actionable alterations. Staging would ensure there is no local spread to surrounding fat, blood vessels, lymph nodes, or distant metastasis. Given the localized nature and non-clear cell histology, surgical resection (partial or radical nephrectomy depending on tumor size and location) is the mainstay of treatment. Further management would be determined by final pathology and risk assessment.",
+    "gold_answer": "For this patient with a new diagnosis of papillary renal cell carcinoma (PRCC) confined to the kidney, I would first confirm the diagnosis using imaging tests (such as CT or MRI), blood and urine tests, and a percutaneous biopsy for histologic subtyping. Biomarker and genetic risk testing would be performed to identify any actionable alterations. Staging would ensure there is no local spread to surrounding fat, blood vessels, lymph nodes, or distant metastasis. Given the localized nature and non-clear cell histology, surgical resection (partial or radical nephrectomy depending on tumor size and location) is the mainstay of treatment. Further management would be determined by final pathology and risk assessment.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-deadc13d",
+    "question": "You are a pediatric oncologist drafting a referral letter for a 3-month-old infant with newly diagnosed ALL to a tertiary care center. Summarize the unique considerations for this age group, diagnostic findings, and the rationale for specialized management.",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "The patient is a 3-month-old infant diagnosed with acute lymphoblastic leukemia (ALL).",
+      "Diagnostic workup included blood and bone marrow testing.",
+      "The testing confirmed more than 20% lymphoblasts.",
+      "This case is classified as infant ALL due to the patient's age.",
+      "Infant ALL requires a distinct treatment approach compared to older children.",
+      "Subtype analysis is underway for the infant's leukemia.",
+      "Biomarker and genetic testing are being performed to guide therapy.",
+      "The infant is currently stable.",
+      "No CNS or testicular involvement was detected on imaging and lumbar puncture.",
+      "Infants with ALL are managed differently due to unique biology and treatment response.",
+      "Specialized protocols and multidisciplinary care are necessary for this age group.",
+      "Clinical trial enrollment is recommended for infants with ALL."
+    ],
+    "question_type": "Creative Generation",
+    "generated_answer": "",
+    "ground_truth": "Referral Letter: Dear Colleagues, I am referring a 3-month-old infant recently diagnosed with acute lymphoblastic leukemia (ALL). Diagnostic workup included blood and bone marrow testing, confirming >20% lymphoblasts. Given the patient's age, this is classified as infant ALL, which requires a distinct treatment approach compared to older children. Subtype analysis is underway, and biomarker/genetic testing is being performed to guide therapy. The infant is currently stable, with no CNS or testicular involvement on imaging and lumbar puncture. As per guidelines, infants with ALL are managed differently due to unique biology and treatment response, necessitating specialized protocols and multidisciplinary care. I recommend consideration for clinical trial enrollment as preferred for this age group. Please see attached records for full diagnostic details.",
+    "gold_answer": "Referral Letter: Dear Colleagues, I am referring a 3-month-old infant recently diagnosed with acute lymphoblastic leukemia (ALL). Diagnostic workup included blood and bone marrow testing, confirming >20% lymphoblasts. Given the patient's age, this is classified as infant ALL, which requires a distinct treatment approach compared to older children. Subtype analysis is underway, and biomarker/genetic testing is being performed to guide therapy. The infant is currently stable, with no CNS or testicular involvement on imaging and lumbar puncture. As per guidelines, infants with ALL are managed differently due to unique biology and treatment response, necessitating specialized protocols and multidisciplinary care. I recommend consideration for clinical trial enrollment as preferred for this age group. Please see attached records for full diagnostic details.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-c8a65fec",
+    "question": "You are a hematology fellow evaluating a 28-year-old patient who presents with painless cervical lymphadenopathy. Based on the clinical practice guideline for Hodgkin lymphoma, compose a detailed diagnostic summary outlining the steps and rationale for confirming the diagnosis and differentiating between classic Hodgkin lymphoma (CHL) and nodular lymphocyte-predominant Hodgkin lymphoma (NLPHL).",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "The initial diagnostic approach begins with a thorough health history and physical examination.",
+      "The focus is on lymph node regions and systemic symptoms.",
+      "Laboratory assessment with blood tests and imaging studies is necessary to evaluate the extent of disease.",
+      "A tissue sample is required for definitive diagnosis.",
+      "Excisional lymph node biopsy is the gold standard for diagnosis.",
+      "Core needle biopsy may be considered if excisional biopsy is not feasible.",
+      "Histopathological analysis is crucial to distinguish between classic Hodgkin lymphoma and nodular lymphocyte-predominant Hodgkin lymphoma.",
+      "Classic Hodgkin lymphoma is characterized by Reed-Sternberg cells.",
+      "Nodular lymphocyte-predominant Hodgkin lymphoma is characterized by popcorn-shaped cells.",
+      "Accurate subtyping guides prognosis and treatment planning."
+    ],
+    "question_type": "Creative Generation",
+    "generated_answer": "",
+    "ground_truth": "The initial diagnostic approach to a 28-year-old with painless cervical lymphadenopathy should begin with a thorough health history and physical examination, focusing on lymph node regions and systemic symptoms. Laboratory assessment with blood tests and imaging studies are necessary to evaluate the extent of disease. Definitive diagnosis requires a tissue sample, with excisional lymph node biopsy as the gold standard; core needle biopsy may be considered if excisional biopsy is not feasible. Histopathological analysis is crucial to distinguish between classic Hodgkin lymphoma (characterized by Reed-Sternberg cells) and nodular lymphocyte-predominant Hodgkin lymphoma (characterized by popcorn-shaped cells). Accurate subtyping guides prognosis and treatment planning, as NLPHL can transform into diffuse large B-cell lymphoma, impacting long-term management.",
+    "gold_answer": "The initial diagnostic approach to a 28-year-old with painless cervical lymphadenopathy should begin with a thorough health history and physical examination, focusing on lymph node regions and systemic symptoms. Laboratory assessment with blood tests and imaging studies are necessary to evaluate the extent of disease. Definitive diagnosis requires a tissue sample, with excisional lymph node biopsy as the gold standard; core needle biopsy may be considered if excisional biopsy is not feasible. Histopathological analysis is crucial to distinguish between classic Hodgkin lymphoma (characterized by Reed-Sternberg cells) and nodular lymphocyte-predominant Hodgkin lymphoma (characterized by popcorn-shaped cells). Accurate subtyping guides prognosis and treatment planning, as NLPHL can transform into diffuse large B-cell lymphoma, impacting long-term management.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-fa8b9196",
+    "question": "Imagine you are an ENT specialist evaluating a new patient presenting with persistent sore throat, difficulty swallowing, and recent voice changes. Using the clinical practice guidelines, synthesize a comprehensive diagnostic workup and initial staging plan for suspected oropharyngeal squamous cell carcinoma, including biomarker and imaging strategies.",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "The initial diagnostic approach begins with a thorough medical history.",
+      "The initial diagnostic approach includes a physical exam focusing on the oropharynx.",
+      "The exam focuses on the tonsils, base of tongue, and lateral/posterior pharyngeal walls.",
+      "Risk factors assessed include tobacco and alcohol use.",
+      "Risk factors assessed include possible HPV exposure.",
+      "Endoscopic evaluation (nasolaryngoscopy or panendoscopy) is performed to visualize the tumor.",
+      "A biopsy of the suspicious lesion is essential for histopathological confirmation.",
+      "Endoscopic biopsy or fine-needle aspiration (FNA) is used if lymphadenopathy is present.",
+      "Biomarker testing for p16 (HPV) status is recommended for all oropharyngeal cancers.",
+      "Imaging with contrast-enhanced CT scan or MRI of the neck is critical for accurate staging.",
+      "PET/CT is used to evaluate local extension and distant metastasis.",
+      "A dental health assessment and panoramic dental x-ray should be completed prior to treatment.",
+      "Staging will use the AJCC TNM system."
+    ],
+    "question_type": "Creative Generation",
+    "generated_answer": "",
+    "ground_truth": "As an ENT specialist, my initial diagnostic approach would begin with a thorough medical history and physical exam, focusing on the oropharynx, tonsils, base of tongue, and lateral/posterior pharyngeal walls. I would assess for risk factors including tobacco, alcohol use, and possible HPV exposure. Next, I would perform endoscopic evaluation (nasolaryngoscopy or panendoscopy) to visualize the tumor and adjacent sites. Biopsy of the suspicious lesion is essential for histopathological confirmation, utilizing endoscopic biopsy or, if lymphadenopathy is present, fine-needle aspiration (FNA) or core needle biopsy (CNB). Biomarker testing for p16 (HPV) status is recommended for all oropharyngeal cancers, as p16 overexpression serves as a surrogate for HPV-mediated disease. Imaging with contrast-enhanced CT scan or MRI of the neck, and PET/CT to evaluate both local extension and distant metastasis (lungs, liver, spine), is critical for accurate staging. Dental health assessment and panoramic dental x-ray (Panorex) should be completed prior to treatment. Staging will use the AJCC TNM system, integrating tumor size, nodal involvement, and distant metastasis.",
+    "gold_answer": "As an ENT specialist, my initial diagnostic approach would begin with a thorough medical history and physical exam, focusing on the oropharynx, tonsils, base of tongue, and lateral/posterior pharyngeal walls. I would assess for risk factors including tobacco, alcohol use, and possible HPV exposure. Next, I would perform endoscopic evaluation (nasolaryngoscopy or panendoscopy) to visualize the tumor and adjacent sites. Biopsy of the suspicious lesion is essential for histopathological confirmation, utilizing endoscopic biopsy or, if lymphadenopathy is present, fine-needle aspiration (FNA) or core needle biopsy (CNB). Biomarker testing for p16 (HPV) status is recommended for all oropharyngeal cancers, as p16 overexpression serves as a surrogate for HPV-mediated disease. Imaging with contrast-enhanced CT scan or MRI of the neck, and PET/CT to evaluate both local extension and distant metastasis (lungs, liver, spine), is critical for accurate staging. Dental health assessment and panoramic dental x-ray (Panorex) should be completed prior to treatment. Staging will use the AJCC TNM system, integrating tumor size, nodal involvement, and distant metastasis.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  }
+]

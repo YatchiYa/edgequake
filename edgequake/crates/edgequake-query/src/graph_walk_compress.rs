@@ -128,10 +128,7 @@ fn chunk_mentions_entity(chunk: &RetrievedChunk, entities: &HashSet<String>) -> 
 }
 
 /// Apply graph-walk compression to a retrieved context.
-pub fn apply_graph_walk_compress(
-    mut context: QueryContext,
-    keywords: &[String],
-) -> QueryContext {
+pub fn apply_graph_walk_compress(mut context: QueryContext, keywords: &[String]) -> QueryContext {
     if context.entities.is_empty() && context.relationships.is_empty() {
         return context;
     }

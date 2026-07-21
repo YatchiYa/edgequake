@@ -812,10 +812,7 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
                 )
                 .await;
             // SPEC-060: relationship vector upsert stage
-            record_ingest_stage_duration(
-                "rel_vector_upsert",
-                stage_start.elapsed().as_secs_f64(),
-            );
+            record_ingest_stage_duration("rel_vector_upsert", stage_start.elapsed().as_secs_f64());
             if let Err(e) = rel_vec_result {
                 stats.errors += 1;
                 tracing::warn!(
@@ -1378,6 +1375,11 @@ mod tests {
             embedding: None,
             source_document_id: None,
             source_file_path: None,
+            display_name: None,
+            page_num: None,
+            figure_index: None,
+            asset_id: None,
+            mm_subtype: None,
         };
 
         let mut stats = super::MergeStats::default();
@@ -1432,6 +1434,11 @@ mod tests {
                 embedding: None,
                 source_document_id: None,
                 source_file_path: None,
+                display_name: None,
+                page_num: None,
+                figure_index: None,
+                asset_id: None,
+                mm_subtype: None,
             });
             r
         };
@@ -1494,6 +1501,11 @@ mod tests {
             embedding: None,
             source_document_id: None,
             source_file_path: None,
+            display_name: None,
+            page_num: None,
+            figure_index: None,
+            asset_id: None,
+            mm_subtype: None,
         };
 
         let mut result = crate::extractor::ExtractionResult::new("c-0");
@@ -1596,6 +1608,11 @@ mod tests {
             embedding: None,
             source_document_id: None,
             source_file_path: None,
+            display_name: None,
+            page_num: None,
+            figure_index: None,
+            asset_id: None,
+            mm_subtype: None,
         });
         r0.entities.push(ExtractedEntity {
             name: "Bob".to_string(),
@@ -1607,6 +1624,11 @@ mod tests {
             embedding: None,
             source_document_id: None,
             source_file_path: None,
+            display_name: None,
+            page_num: None,
+            figure_index: None,
+            asset_id: None,
+            mm_subtype: None,
         });
         r0.relationships.push(
             ExtractedRelationship::new("Alice", "Bob", "KNOWS")
@@ -1651,7 +1673,8 @@ mod tests {
         // 049: within-batch endpoint collapse must union chunk lineage (not last-write).
         let chunk_ids = crate::merger::source_chunk_ids_from_properties(&edge.properties);
         assert!(
-            chunk_ids.contains(&"chunk-0".to_string()) && chunk_ids.contains(&"chunk-1".to_string()),
+            chunk_ids.contains(&"chunk-0".to_string())
+                && chunk_ids.contains(&"chunk-1".to_string()),
             "expected unioned source_chunk_ids {{chunk-0, chunk-1}}, got {chunk_ids:?}"
         );
     }
@@ -1693,6 +1716,11 @@ mod tests {
             embedding: Some(emb),
             source_document_id: Some("doc-b".to_string()),
             source_file_path: None,
+            display_name: None,
+            page_num: None,
+            figure_index: None,
+            asset_id: None,
+            mm_subtype: None,
         });
 
         let stats = merger.merge(vec![r]).await.expect("merge");
@@ -1737,5 +1765,4 @@ mod tests {
             "update must not report as created: {second:?}"
         );
     }
-
 }

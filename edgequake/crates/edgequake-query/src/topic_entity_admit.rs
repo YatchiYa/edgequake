@@ -396,12 +396,63 @@ fn intent_allows(intent: QueryIntent) -> bool {
 
 /// Closed-class WH stopwords for content-word extraction (not domain needles).
 const Q_STOP: &[&str] = &[
-    "how", "are", "what", "which", "the", "and", "for", "with", "in", "of", "to", "a",
-    "an", "is", "their", "this", "that", "from", "into", "used", "most", "main", "does",
-    "do", "can", "when", "where", "who", "why", "was", "were", "been", "being", "have",
-    "has", "had", "will", "would", "should", "could", "may", "might", "must", "about",
-    "into", "onto", "over", "under", "than", "then", "also", "just", "only", "such",
-    "considered", "determining", "factors",
+    "how",
+    "are",
+    "what",
+    "which",
+    "the",
+    "and",
+    "for",
+    "with",
+    "in",
+    "of",
+    "to",
+    "a",
+    "an",
+    "is",
+    "their",
+    "this",
+    "that",
+    "from",
+    "into",
+    "used",
+    "most",
+    "main",
+    "does",
+    "do",
+    "can",
+    "when",
+    "where",
+    "who",
+    "why",
+    "was",
+    "were",
+    "been",
+    "being",
+    "have",
+    "has",
+    "had",
+    "will",
+    "would",
+    "should",
+    "could",
+    "may",
+    "might",
+    "must",
+    "about",
+    "into",
+    "onto",
+    "over",
+    "under",
+    "than",
+    "then",
+    "also",
+    "just",
+    "only",
+    "such",
+    "considered",
+    "determining",
+    "factors",
 ];
 
 fn norm_entity_token(s: &str) -> String {
@@ -610,11 +661,8 @@ pub async fn admit_topic_entities(
 }
 
 /// Prefer topic-admitted chunk ids in a VECTOR result list (stable pin).
-pub fn pin_topic_chunks_in_results<T, F>(
-    results: &mut Vec<T>,
-    topic_chunk_ids: &[String],
-    id_of: F,
-) where
+pub fn pin_topic_chunks_in_results<T, F>(results: &mut Vec<T>, topic_chunk_ids: &[String], id_of: F)
+where
     F: Fn(&T) -> &str,
 {
     if topic_chunk_ids.is_empty() || results.is_empty() {
@@ -661,7 +709,8 @@ mod tests {
         );
         assert!(c.iter().any(|n| n == "BONE_CANCER"), "{c:?}");
         assert!(
-            !c.iter().any(|n| n == "CANCER" || n == "STAGE" || n == "BONE"),
+            !c.iter()
+                .any(|n| n == "CANCER" || n == "STAGE" || n == "BONE"),
             "hub unigrams must not be candidates: {c:?}"
         );
     }
@@ -695,11 +744,7 @@ mod tests {
             crate::context::RetrievedChunk::new("t2", "T2", 0.7),
             crate::context::RetrievedChunk::new("t3", "T3", 0.6),
         ];
-        prefer_topic_chunks_for_trunc(
-            &mut chunks,
-            &["t2".into(), "t1".into(), "t3".into()],
-            2,
-        );
+        prefer_topic_chunks_for_trunc(&mut chunks, &["t2".into(), "t1".into(), "t3".into()], 2);
         assert_eq!(
             chunks.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(),
             vec!["t1", "t2", "a", "b", "t3"]

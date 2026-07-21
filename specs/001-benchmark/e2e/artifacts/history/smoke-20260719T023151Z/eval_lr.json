@@ -1,0 +1,74 @@
+{
+  "judge": "generation_eval",
+  "judge_model": "mistral-small-latest",
+  "judge_provider": "mistral",
+  "judge_base_url": "https://api.mistral.ai/v1",
+  "judge_embedding_model": "mistral-embed",
+  "judge_temperature": 0.0,
+  "judge_acc_factuality_weight": 0.75,
+  "judge_embed_backend": "auto",
+  "answer_style": "concise",
+  "acc_formula": "0.75*F1 + 0.25*embed_cosine (weights overridable)",
+  "overall_acc": 0.24067932309942136,
+  "by_type": {
+    "Fact Retrieval": {
+      "rouge_score": 0.24757028807483664,
+      "answer_correctness": 0.23982665297820044
+    },
+    "Complex Reasoning": {
+      "rouge_score": 0.20101108323511782,
+      "answer_correctness": 0.24051166650812403
+    },
+    "Contextual Summarize": {
+      "answer_correctness": 0.24101100956372323,
+      "coverage_score": 0.8173076923076923
+    },
+    "Creative Generation": {
+      "answer_correctness": 0.24136796334763772,
+      "coverage_score": 0.6717006604506605,
+      "faithfulness": 0.7908827961780999
+    }
+  },
+  "raw": {
+    "Fact Retrieval": {
+      "rouge_score": 0.24757028807483664,
+      "answer_correctness": 0.23982665297820044
+    },
+    "Complex Reasoning": {
+      "rouge_score": 0.20101108323511782,
+      "answer_correctness": 0.24051166650812403
+    },
+    "Contextual Summarize": {
+      "answer_correctness": 0.24101100956372323,
+      "coverage_score": 0.8173076923076923
+    },
+    "Creative Generation": {
+      "answer_correctness": 0.24136796334763772,
+      "coverage_score": 0.6717006604506605,
+      "faithfulness": 0.7908827961780999
+    }
+  },
+  "l2_retrieval": true,
+  "retrieval": {
+    "overall_context_relevancy": 0.53125,
+    "overall_evidence_recall": 0.9624708624708624,
+    "by_type": {
+      "Fact Retrieval": {
+        "context_relevancy": 0.575,
+        "evidence_recall": 0.9
+      },
+      "Complex Reasoning": {
+        "context_relevancy": 0.5,
+        "evidence_recall": 1.0
+      },
+      "Contextual Summarize": {
+        "context_relevancy": 0.6,
+        "evidence_recall": 0.9833333333333334
+      },
+      "Creative Generation": {
+        "context_relevancy": 0.45,
+        "evidence_recall": 0.9665501165501166
+      }
+    }
+  }
+}

@@ -59,15 +59,13 @@ fn lexical_bakeoff_rrf_beats_ann_only() {
 #[test]
 fn content_tsv_upsert_honesty_still_wired() {
     // Cross-crate honesty: storage upsert must keep writing content_tsv (SPEC-058/076).
-    let impl_src = include_str!(
-        "../../edgequake-storage/src/adapters/postgres/vector/storage_impl.rs"
-    );
+    let impl_src =
+        include_str!("../../edgequake-storage/src/adapters/postgres/vector/storage_impl.rs");
     assert!(
         impl_src.contains("content_tsv = EXCLUDED.content_tsv"),
         "vector upsert must sync content_tsv for FTS+ANN RRF"
     );
-    let fts_src =
-        include_str!("../../edgequake-storage/src/adapters/postgres/vector/fts.rs");
+    let fts_src = include_str!("../../edgequake-storage/src/adapters/postgres/vector/fts.rs");
     assert!(
         fts_src.contains("content_tsv"),
         "native FTS must read content_tsv"

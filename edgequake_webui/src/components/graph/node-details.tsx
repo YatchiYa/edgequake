@@ -36,8 +36,18 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { deleteEntity } from '@/lib/api/edgequake';
-import { formatEntityLabel, formatEntityType, getEntityTypeColor } from '@/lib/graph/label-utils';
+import { AuthenticatedMarkdownImage } from '@/components/query/markdown/AuthenticatedMarkdownImage';
+import { deleteEntity, getDocumentMmAssetUrl } from '@/lib/api/edgequake';
+import {
+    bareGraphId,
+    formatEntityLabel,
+    formatEntityType,
+    formatMmEntitySubtitle,
+    getEntityTypeColor,
+    graphPropString,
+    graphSourceDocumentId,
+    isMmItemId,
+} from '@/lib/graph/label-utils';
 import { cn } from '@/lib/utils';
 import { useGraphStore } from '@/stores/use-graph-store';
 import { useSelectedWorkspace } from '@/stores/use-tenant-store';
@@ -61,7 +71,7 @@ import {
     Sparkles,
     Trash2
 } from 'lucide-react';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { EntityEditDialog } from './entity-edit-dialog';
 import { RelationshipEditDialog } from './relationship-edit-dialog';
@@ -195,6 +205,20 @@ export function NodeDetails({ node }: NodeDetailsProps) {
   };
 
   const typeColor = getEntityTypeColor(node.node_type);
+  const mmSubtitle = formatMmEntitySubtitle(node.node_type, node.properties);
+  const identityId = bareGraphId(node.id);
+  const showIdentityRow =
+    isMmItemId(identityId) ||
+    (node.label && identityId && node.label.trim() !== identityId);
+
+  const mmThumbSrc = useMemo(() => {
+    const t = (node.node_type || '').toLowerCase();
+    if (!['drawing', 'table', 'equation'].includes(t)) return null;
+    const docId = graphSourceDocumentId(node.properties);
+    const assetId = graphPropString(node.properties, 'asset_id');
+    if (!docId || !assetId) return null;
+    return getDocumentMmAssetUrl(docId, `assets/${assetId}.png`);
+  }, [node.node_type, node.properties]);
 
   return (
     <div className="space-y-2.5">
@@ -206,8 +230,8 @@ export function NodeDetails({ node }: NodeDetailsProps) {
               className="w-2.5 h-2.5 rounded-full shrink-0 ring-2 ring-background shadow-sm"
               style={{ backgroundColor: typeColor }}
             />
-            <h4 className="text-sm font-semibold truncate">
-              {formatEntityLabel(node.label)}
+            <h4 className="text-sm font-semibold truncate" title={node.label}>
+              {formatEntityLabel(node.label, 80)}
             </h4>
             <TooltipProvider>
               <Tooltip>
@@ -226,18 +250,37 @@ export function NodeDetails({ node }: NodeDetailsProps) {
               </Tooltip>
             </TooltipProvider>
           </div>
-          <Badge 
-            variant="outline" 
-            className="text-[10px] font-medium px-2 py-0.5"
-            style={{ borderColor: typeColor, color: typeColor, backgroundColor: `${typeColor}10` }}
-          >
-            {formatEntityType(node.node_type || 'ENTITY')}
-          </Badge>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Badge 
+              variant="outline" 
+              className="text-[10px] font-medium px-2 py-0.5"
+              style={{ borderColor: typeColor, color: typeColor, backgroundColor: `${typeColor}10` }}
+            >
+              {formatEntityType(node.node_type || 'ENTITY')}
+            </Badge>
+            {mmSubtitle && (
+              <span className="text-[10px] text-muted-foreground truncate">
+                {mmSubtitle}
+              </span>
+            )}
+          </div>
+          {showIdentityRow && (
+            <PropertyValue label="Identity" value={identityId} />
+          )}
         </div>
       </div>
       
       {/* Content - Inherits scrolling from parent ScrollArea */}
       <div className="space-y-2.5">
+            {mmThumbSrc && (
+              <div className="rounded-md border border-border/40 bg-muted/20 overflow-hidden">
+                <AuthenticatedMarkdownImage
+                  src={mmThumbSrc}
+                  alt={node.label || 'Drawing'}
+                  className="w-full max-h-48 object-contain bg-background"
+                />
+              </div>
+            )}
             {/* Description */}
             {node.description && (
               <div className="bg-muted/30 rounded-md p-2 border border-border/30">

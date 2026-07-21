@@ -158,8 +158,8 @@ pub fn env_keyword_role_llm() -> Option<ResolvedRoleLlm> {
         (None, None) => None,
         (Some(provider), Some(model)) => Some(ResolvedRoleLlm { provider, model }),
         (None, Some(model)) => {
-            let provider = non_empty_env("EDGEQUAKE_LLM_PROVIDER")
-                .unwrap_or_else(|| "mistral".to_string());
+            let provider =
+                non_empty_env("EDGEQUAKE_LLM_PROVIDER").unwrap_or_else(|| "mistral".to_string());
             Some(ResolvedRoleLlm { provider, model })
         }
         (Some(provider), None) => {

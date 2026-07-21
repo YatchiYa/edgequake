@@ -81,7 +81,10 @@ async fn content_gate_skips_offtopic_and_keeps_phrase_hit() {
 
     assert_eq!(injected, vec!["ontopic".to_string()]);
     assert_eq!(chunks[0].id, "ontopic");
-    assert!(chunks[0].content.to_ascii_lowercase().contains("bone cancer"));
+    assert!(chunks[0]
+        .content
+        .to_ascii_lowercase()
+        .contains("bone cancer"));
 
     std::env::remove_var("EDGEQUAKE_TOPIC_MATERIALIZE");
     std::env::remove_var("EDGEQUAKE_TOPIC_MATERIALIZE_CONTENT");

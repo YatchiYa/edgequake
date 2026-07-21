@@ -379,10 +379,7 @@ impl RetrievedRelationship {
         if !self.source_chunk_ids.is_empty() {
             return self.source_chunk_ids.clone();
         }
-        self.source_chunk_id
-            .iter()
-            .cloned()
-            .collect()
+        self.source_chunk_id.iter().cloned().collect()
     }
 
     /// Set source document ID.
