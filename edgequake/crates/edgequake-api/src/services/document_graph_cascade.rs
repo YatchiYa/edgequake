@@ -431,17 +431,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cascade_discovery_filter_is_workspace_only() {
+    fn cascade_discovery_filter_sets_tenant_and_workspace() {
         let ctx = TenantContext {
             tenant_id: Some("tenant-a".into()),
             workspace_id: Some("ws-a".into()),
             user_id: None,
         };
+        // Tenant is set for SPEC-006 isolation; missing props still match via
+        // LegacyNullAsWildcard / scope_dim_matches_legacy_null.
         let filter = node_list_filter_for_document_scope(Some(&ctx));
-        assert!(filter.tenant_id.is_none());
+        assert_eq!(filter.tenant_id.as_deref(), Some("tenant-a"));
         assert_eq!(filter.workspace_id.as_deref(), Some("ws-a"));
         let edge = edge_list_filter_for_document_scope(Some(&ctx));
-        assert!(edge.tenant_id.is_none());
+        assert_eq!(edge.tenant_id.as_deref(), Some("tenant-a"));
         assert_eq!(edge.workspace_id.as_deref(), Some("ws-a"));
     }
 
