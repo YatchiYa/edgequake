@@ -38,13 +38,13 @@ Phase 3 — Local quality gates
 [x] 3-B  package dry-runs + vitest label-utils + targeted lib tests
 
 Phase 4 — Commit + push
-[ ] 4-A  git commit -m "release: bump to v0.20.0"
-[ ] 4-B  git push origin edgequake-main
+[x] 4-A  git commit -m "release: bump to v0.20.0"
+[x] 4-B  git push origin edgequake-main
 
 Phase 5 — Tag + CI/CD
-[ ] 5-A  git tag v0.20.0 && git push origin v0.20.0
-[ ] 5-B  gh release view v0.20.0
-[ ] 5-C  docker buildx imagetools inspect GHCR tags
+[x] 5-A  git tag v0.20.0 && git push origin v0.20.0
+[x] 5-B  gh release view v0.20.0
+[x] 5-C  docker buildx imagetools inspect GHCR tags
 ```
 
 ---
