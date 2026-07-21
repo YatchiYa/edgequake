@@ -273,6 +273,6 @@ mod tests {
 
         let merged = merge_edge_properties(None, &incoming, "SOURCE_A");
         assert_eq!(merged.get("weight").and_then(|v| v.as_f64()), Some(2.0));
-        assert!(merged.get("merged_from").is_some());
+        assert!(merged.contains_key("merged_from"));
     }
 }

@@ -391,6 +391,7 @@ struct Cell {
     stress_p95: f64,
 }
 
+#[allow(clippy::too_many_arguments)] // diskann pareto cell knobs stay explicit for emit
 async fn run_query_cell(
     seeded: &Seeded,
     rows: u32,

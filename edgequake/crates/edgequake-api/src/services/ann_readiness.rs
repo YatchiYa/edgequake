@@ -40,8 +40,6 @@ pub async fn wave2_ann_readiness_blocker(_pool: &()) -> Result<Option<String>, S
 
 #[cfg(all(test, feature = "postgres"))]
 mod tests {
-    use super::*;
-
     #[test]
     fn blocker_message_mentions_warmup_and_catalog() {
         // Compile-time documentation of message contract used by product_limits / ops docs.

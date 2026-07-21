@@ -18,6 +18,7 @@
 "use client";
 
 import type {
+    DeleteDocumentAccepted,
     ReprocessFailedResponse,
     ReprocessMode,
 } from "@/lib/api/edgequake";
@@ -105,7 +106,12 @@ export interface UseDocumentMutationsReturn {
    * Delete a single document by ID.
    * Invalidates documents query cache on success.
    */
-  deleteMutation: UseMutationResult<void, Error, string, unknown>;
+  deleteMutation: UseMutationResult<
+    DeleteDocumentAccepted,
+    Error,
+    string,
+    unknown
+  >;
 
   /**
    * Delete all documents in the current workspace.

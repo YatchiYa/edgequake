@@ -33,7 +33,9 @@ mod tests {
     #[test]
     fn default_ttl_is_at_least_min() {
         // Do not mutate env in parallel tests — just validate constants.
-        assert!(DEFAULT_TASK_LEASE_TTL_SECS >= MIN_TASK_LEASE_TTL_SECS);
+        const {
+            assert!(DEFAULT_TASK_LEASE_TTL_SECS >= MIN_TASK_LEASE_TTL_SECS);
+        }
         assert_eq!(DEFAULT_TASK_LEASE_TTL_SECS, 120);
     }
 }

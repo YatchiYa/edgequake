@@ -101,6 +101,7 @@ async fn measure_recall_vs_ref(
     recalls.iter().sum::<f64>() / recalls.len() as f64
 }
 
+#[allow(clippy::too_many_arguments)] // pareto cell knobs stay explicit for emit labels
 async fn run_cell(
     storage: &Arc<PgVectorStorage>,
     rows: u32,

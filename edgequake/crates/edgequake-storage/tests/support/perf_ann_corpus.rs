@@ -49,6 +49,7 @@ pub async fn seed_single_ws(
 }
 
 /// Seed rows with 20% `hot_ws` / 80% `cold_ws` (ladder filter shape).
+#[allow(clippy::too_many_arguments)] // corpus seed knobs stay flat for call-site clarity
 pub async fn seed_ws_split(
     storage: &PgVectorStorage,
     rows: usize,

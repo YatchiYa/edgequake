@@ -1,6 +1,7 @@
 //! SPEC-060 Wave 0 — FORBIDDEN APIs must not appear on request-path crates.
 
 /// Strip line/block comments for crude call-site scanning.
+#[allow(clippy::while_let_on_iterator)] // char scanner needs nested peek/break control
 fn strip_comments(src: &str) -> String {
     let mut out = String::with_capacity(src.len());
     let mut chars = src.chars().peekable();

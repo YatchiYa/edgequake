@@ -495,7 +495,6 @@ mod tests {
 
     #[tokio::test]
     async fn lineage_relationships_include_entity_adjacency_without_edge_source_ids() {
-        use edgequake_storage::traits::GraphStorageMutateOps;
         use edgequake_storage::MemoryGraphStorage;
 
         let graph: Arc<dyn GraphStorage> = Arc::new(MemoryGraphStorage::new("lineage-test"));

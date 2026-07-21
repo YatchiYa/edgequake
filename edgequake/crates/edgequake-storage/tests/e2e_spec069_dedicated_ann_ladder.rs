@@ -158,6 +158,7 @@ struct CellResult {
     stress_p95: f64,
 }
 
+#[allow(clippy::too_many_arguments)] // dedicated ANN ladder cell knobs stay explicit
 async fn run_cell(
     storage: &Arc<PgVectorStorage>,
     rows: u32,

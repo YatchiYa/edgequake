@@ -230,12 +230,13 @@ mod tests {
     #[test]
     fn trim_content_row_aware_for_table_wrapper() {
         std::env::set_var("EDGEQUAKE_MM_SURROUNDING_TOKENS", "char");
-        let rows = (0..20)
+        let rows = (0..80)
             .map(|i| format!("<tr><td>{i}</td></tr>"))
             .collect::<Vec<_>>()
             .join("");
         let table = format!(r#"<table format="html">{rows}</table>"#);
-        let (text, trimmed) = trim_content_to_budget(&table, 120, SurroundingKind::Tables);
+        // Tiny budget so both Char and Estimate modes must trim.
+        let (text, trimmed) = trim_content_to_budget(&table, 40, SurroundingKind::Tables);
         assert!(trimmed);
         assert!(text.contains("<tr>"));
         assert!(text.contains("truncated"));

@@ -86,6 +86,7 @@ impl PgVectorStorage {
     }
 
     /// Pure GUC builder (SPEC-064 Wave 3 — injectable overrides for battle grid / tests).
+    #[allow(clippy::too_many_arguments)] // injectable override grid mirrors HnswRuntimePolicy fields
     pub(crate) fn search_tuning_statements_with_overrides(
         index_type: VectorIndexType,
         top_k: usize,

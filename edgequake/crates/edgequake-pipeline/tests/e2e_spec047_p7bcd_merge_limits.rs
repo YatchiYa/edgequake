@@ -82,16 +82,17 @@ async fn setup_merger(
 }
 
 fn base_config() -> MergerConfig {
-    let mut config = MergerConfig::default();
-    config.use_llm_summarization = true;
-    config.force_llm_summary_on_merge = 8;
-    config.summary_max_tokens = 12_000;
-    config.description_similarity_threshold = 1.01;
-    config.merge_max_async = 4;
-    config.source_ids_limit_method = SourceIdsLimitMethod::Keep;
-    config.max_source_ids_per_entity = 200;
-    config.max_source_ids_per_relation = 200;
-    config
+    MergerConfig {
+        use_llm_summarization: true,
+        force_llm_summary_on_merge: 8,
+        summary_max_tokens: 12_000,
+        description_similarity_threshold: 1.01,
+        merge_max_async: 4,
+        source_ids_limit_method: SourceIdsLimitMethod::Keep,
+        max_source_ids_per_entity: 200,
+        max_source_ids_per_relation: 200,
+        ..MergerConfig::default()
+    }
 }
 
 /// P7c: soft-resume with existing edge + <8 fragments → 0 LLM calls.
@@ -282,7 +283,10 @@ async fn e2e_p7b_parallel_unique_entity_merge_correct() {
 
     for i in 0..16 {
         let key = format!("TOPIC{i}");
-        let nodes = graph.get_nodes_batch(&[key.clone()]).await.unwrap();
+        let nodes = graph
+            .get_nodes_batch(std::slice::from_ref(&key))
+            .await
+            .unwrap();
         let desc = nodes
             .get(&key)
             .expect("node")

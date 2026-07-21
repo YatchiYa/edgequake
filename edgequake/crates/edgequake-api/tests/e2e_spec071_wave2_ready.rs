@@ -9,6 +9,8 @@
 //!   cargo test -p edgequake-api --features postgres e2e_spec071 -- --nocapture
 
 #![cfg(feature = "postgres")]
+// Env serialization requires the mutex across the whole async test body.
+#![allow(clippy::await_holding_lock)]
 
 mod common;
 

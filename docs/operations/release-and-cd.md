@@ -1,8 +1,10 @@
 # Release & CD Cycle
 
-> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.20.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 This document describes how to cut a release, run quality gates, and verify the published Docker images.
+
+**CD model:** workspace crates are **not** published to crates.io (`cargo-release --no-publish`). Product delivery is **GHCR Docker** via `git tag vX.Y.Z` → `release-docker.yml`. Use `cargo package` / `publish --dry-run` only to prove packaging readiness.
 
 ## 1) Local Release Gates (must pass before tag)
 
@@ -27,6 +29,17 @@ cd .. && make backend-bg frontend-bg && make spec013-proof-ui
 
 **OpenAPI / Swagger (required before tag):** regenerate with `make codegen-openapi-refresh`, then run `cargo test -p edgequake-api --test spec027_api_contract`. Live check: `curl -s http://localhost:8080/api-docs/openapi.json | jq -r '.info.version'` must equal `VERSION`.
 
+**Package dry-run (not crates.io upload):**
+
+```bash
+cd edgequake
+for c in edgequake-observability edgequake-storage edgequake-pdf edgequake-pipeline \
+         edgequake-query edgequake-tasks edgequake-auth edgequake-audit \
+         edgequake-rate-limiter edgequake-core edgequake-api; do
+  cargo package -p "$c" --allow-dirty --no-verify 2>/dev/null || cargo package -p "$c" --list >/dev/null
+done
+```
+
 ## 2) CI Validation (GitHub Actions)
 
 - `CI` (fmt/clippy/nextest lib/docs/build) must be green.
@@ -49,8 +62,8 @@ cd .. && make backend-bg frontend-bg && make spec013-proof-ui
 
 ```bash
 # Example (current cut)
-git tag v0.19.0
-git push origin v0.19.0
+git tag v0.20.0
+git push origin v0.20.0
 ```
 
 This triggers `.github/workflows/release-docker.yml`, which:
@@ -60,12 +73,12 @@ This triggers `.github/workflows/release-docker.yml`, which:
 ## 4) Post-Publish Verification
 
 ```bash
-gh release view v0.19.0
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake:0.19.0
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-frontend:0.19.0
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.19.0
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.19.0-pg16
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.19.0-pg17
+gh release view v0.20.0
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake:0.20.0
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-frontend:0.20.0
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.20.0
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.20.0-pg16
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.20.0-pg17
 ```
 
 ## SPEC-042 Verification (before tag)
@@ -82,10 +95,10 @@ Docker images are built and published automatically via GitHub Actions (`.github
 
 ```bash
 # Tag a release — triggers multi-arch docker build + publish to ghcr.io
-git tag v0.19.0 && git push origin v0.19.0
+git tag v0.20.0 && git push origin v0.20.0
 ```
 
-Both `linux/amd64` (ubuntu-latest runner) and `linux/arm64` (native ARM64 runner — no QEMU) are built in parallel and merged into a single multi-arch manifest. The same image tag (`ghcr.io/raphaelmansuy/edgequake:0.19.0`) works on x86 servers, Apple Silicon Macs, and AWS Graviton instances.
+Both `linux/amd64` (ubuntu-latest runner) and `linux/arm64` (native ARM64 runner — no QEMU) are built in parallel and merged into a single multi-arch manifest. The same image tag (`ghcr.io/raphaelmansuy/edgequake:0.20.0`) works on x86 servers, Apple Silicon Macs, and AWS Graviton instances.
 
 You can also trigger a manual Docker build + publish without a tag via the `workflow_dispatch` input on GitHub Actions (`Actions -> Release -- Docker (GHCR) -> Run workflow`).
 
@@ -130,3 +143,10 @@ See [AGENTS.md](../../AGENTS.md) for the full developer workflow, including:
 | PG18 | 18.x | 0.8.5 | 1.8.0 | Default / recommended (SPEC-068 pin) |
 
 See [PostgreSQL migration guide](../../edgequake/docs/migrations/postgres-triple-track-spec042.md) for tier details.
+
+## Lessons from 0.20.0 cut
+
+- **OpenAPI refresh is mandatory** after `version-bump` — `openapi.snapshot.json` `info.version` must equal `VERSION` or release-gates fail.
+- **Workspace ≠ crates.io** — bump all members together; dry-run `cargo package`; ship via GHCR tag only.
+- **Benchmark JSON** — smoke eval/prediction artifacts may be committed when operators want reproduceability; still prefer publish-pack pointers for Acc claims.
+- **Acc language** — cite statistical tie / fair cold ~1.01×; do not claim Acc Beat win; warm LR “speed” was cache ([063](../../specs/001-benchmark/001-edgquake-improvements/063-why-lightrag-faster-cache-fairness.md)).

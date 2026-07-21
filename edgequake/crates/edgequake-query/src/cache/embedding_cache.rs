@@ -167,7 +167,7 @@ impl EmbeddingProvider for CachingEmbeddingProvider {
             self.evict_if_needed();
             let mut cache = self.cache.write().unwrap();
             let store_at = Instant::now();
-            for ((i, text), embedding) in missing.into_iter().zip(vectors.into_iter()) {
+            for ((i, text), embedding) in missing.into_iter().zip(vectors) {
                 let key = cache_key(&self.version, &text);
                 cache.insert(
                     key,

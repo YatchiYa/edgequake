@@ -18,11 +18,10 @@ async fn contract_vision_figure_analyze_reports_substep_milestones() {
     std::env::remove_var("EDGEQUAKE_MM_LOCAL_CLASSIFY_ONLY");
     std::env::remove_var("EDGEQUAKE_MM_MAX_FIGURES");
 
-    let tag = format!(
-        r#"<drawing id="im-1" format="png" path="assets/fig.png" caption="Figure 1" />
+    let tag = r#"<drawing id="im-1" format="png" path="assets/fig.png" caption="Figure 1" />
 <drawing id="im-2" format="png" path="assets/fig2.png" caption="Figure 2" />
 <drawing id="im-3" format="png" path="assets/fig3.png" caption="Figure 3" />"#
-    );
+        .to_string();
     let md = format!("Intro\n{tag}\nBody");
 
     let mock = MockProvider::new();

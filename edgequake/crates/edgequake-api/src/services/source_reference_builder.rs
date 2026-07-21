@@ -34,8 +34,7 @@ pub fn build_sources_from_context(
     let dual_list = context.citation_chunks.is_some();
     let chunk_iter = context
         .citation_chunks
-        .as_ref()
-        .map(|c| c.as_slice())
+        .as_deref()
         .unwrap_or(context.chunks.as_slice());
 
     let mut chunk_sources: Vec<SourceReference> = chunk_iter

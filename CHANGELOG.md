@@ -6,6 +6,37 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.20.0] — 2026-07-21
+
+Smart query = LightRAG Mix arms, Drawing entity human labels, Vision ingestion reliability, and honest Acc/latency publish evidence.
+
+### Added
+
+- **Drawing `display_name` (066)** — Multimodal Drawing/Table/Equation entities keep stable `im-…` / `IM-…` identity and gain a human `display_name` (VLM → heading → `Fig n · p.m` fallback). Spec: [066](specs/001-benchmark/001-edgquake-improvements/066-drawing-entity-display-name.md).
+- **Graph `graph_node_label`** — Stream/search/traversal/node/popular APIs prefer `display_name` for graph `label` without rewriting node ids.
+- **WebUI graph identity** — DRAWING/TABLE/EQUATION colors, label-utils, node details Identity + thumbnail.
+- **Vision ingestion reliability** — Accurate pdfium page count, phase-aware budget, stall watchdog, durable checkpoints, progress-aware breaker, startup auto-resume (shipped in `ebf384c0`).
+
+### Changed
+
+- **Smart / Mix = LightRAG three arms (065)** — `intent_arm_mask` always runs local + global + naive; product `EDGEQUAKE_MIX_ARM_GATE` defaults **false**. Spec: [065](specs/001-benchmark/001-edgquake-improvements/065-smart-lightrag-mix-arms.md).
+- **Chunk hydration SSOT** — Local/global chunk fetch uses `vector_type=chunk` (no entity/relationship metadata filter on chunk rows).
+
+### Performance testing
+
+Honest Acc/latency vs LightRAG (do **not** claim Acc Beat / SOTA win):
+
+| Claim | Evidence |
+|-------|----------|
+| Statistical Acc **tie** (cold publish) | EQ Acc **0.731** vs LR **0.760** (CI includes 0) |
+| Fair cold query p50 | ratio **1.013×** (`smoke-20260721T022103Z`) |
+| Acc Fact peer | EQ Acc **0.801** (`smoke-20260720T120315Z`) |
+| Warm ~4× LR “faster” | **LR LLM cache**, not engine ([063](specs/001-benchmark/001-edgquake-improvements/063-why-lightrag-faster-cache-fairness.md)) |
+
+Publish pack: [BUSINESS_REPORT.md](specs/001-benchmark/e2e/artifacts/publish/latest/BUSINESS_REPORT.md) · [EXEC_SUMMARY.txt](specs/001-benchmark/e2e/artifacts/publish/latest/EXEC_SUMMARY.txt) · [peers.json](specs/001-benchmark/e2e/artifacts/peers.json). Soft Mix Acc fishing stopped ([055](specs/001-benchmark/001-edgquake-improvements/055-post-acc-ceiling-first-principles.md)).
+
+---
+
 ## [0.19.0] — 2026-07-17
 
 Pipeline reliability (SPEC-057 P0–P4): Postgres claim/lease delivery SSOT, cancel/status truth, convert→ingest stage split, multi-replica hardening, and migration tooling.

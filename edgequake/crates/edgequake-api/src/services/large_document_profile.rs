@@ -288,7 +288,7 @@ mod tests {
     fn sparse_markdown_not_born_digital() {
         let markdown = "short";
         assert!(!LargeDocumentProfile::markdown_has_text_layer(
-            &markdown, 603
+            markdown, 603
         ));
     }
 
