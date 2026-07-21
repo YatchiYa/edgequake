@@ -992,7 +992,19 @@ mod tests {
     #[tokio::test]
     #[serial_test::serial]
     async fn chart_classify_then_specialize_lands_key_values() {
-        std::env::set_var("VLM_MIN_IMAGE_PIXEL", "1");
+        // Isolate from operator / `make dev` env (ollama + MM_LOCAL_CLASSIFY_ONLY=1
+        // would skip specialize via LocalMmProfile::resolve_from_env).
+        let prev_mm = std::env::var("EDGEQUAKE_MM_LOCAL_CLASSIFY_ONLY").ok();
+        let prev_vision = std::env::var("EDGEQUAKE_VISION_PROVIDER").ok();
+        let prev_llm = std::env::var("EDGEQUAKE_LLM_PROVIDER").ok();
+        let prev_vlm_min = std::env::var("VLM_MIN_IMAGE_PIXEL").ok();
+        // SAFETY: #[serial]; restore in cleanup below.
+        unsafe {
+            std::env::remove_var("EDGEQUAKE_MM_LOCAL_CLASSIFY_ONLY");
+            std::env::remove_var("EDGEQUAKE_VISION_PROVIDER");
+            std::env::set_var("EDGEQUAKE_LLM_PROVIDER", "mock");
+            std::env::set_var("VLM_MIN_IMAGE_PIXEL", "1");
+        }
         let png: &[u8] = &[
             0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48,
             0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00,
@@ -1012,10 +1024,26 @@ mod tests {
             leading: "n/a".into(),
             trailing: "n/a".into(),
         };
-        let (record, replacement) =
-            analyze_image_bytes("im-chart", png, "image/png", &mock, &ctx, None)
-                .await
-                .expect("chart specialize path");
+        let result = analyze_image_bytes("im-chart", png, "image/png", &mock, &ctx, None).await;
+        unsafe {
+            match prev_mm {
+                Some(v) => std::env::set_var("EDGEQUAKE_MM_LOCAL_CLASSIFY_ONLY", v),
+                None => std::env::remove_var("EDGEQUAKE_MM_LOCAL_CLASSIFY_ONLY"),
+            }
+            match prev_vision {
+                Some(v) => std::env::set_var("EDGEQUAKE_VISION_PROVIDER", v),
+                None => std::env::remove_var("EDGEQUAKE_VISION_PROVIDER"),
+            }
+            match prev_llm {
+                Some(v) => std::env::set_var("EDGEQUAKE_LLM_PROVIDER", v),
+                None => std::env::remove_var("EDGEQUAKE_LLM_PROVIDER"),
+            }
+            match prev_vlm_min {
+                Some(v) => std::env::set_var("VLM_MIN_IMAGE_PIXEL", v),
+                None => std::env::remove_var("VLM_MIN_IMAGE_PIXEL"),
+            }
+        }
+        let (record, replacement) = result.expect("chart specialize path");
         let desc = record.description.as_deref().unwrap_or("");
         assert!(
             desc.contains("42"),
@@ -1024,6 +1052,5 @@ mod tests {
         assert!(desc.contains("bar"));
         assert_eq!(record.item_type.as_deref(), Some("Chart"));
         assert!(replacement.contains("42"));
-        std::env::remove_var("VLM_MIN_IMAGE_PIXEL");
     }
 }

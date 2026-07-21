@@ -1434,17 +1434,44 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn large_local_pdfs_are_throttled_aggressively() {
+        // Operator shells / `make dev` may export EDGEQUAKE_PDF_CONCURRENCY=1.
+        let prev = std::env::var("EDGEQUAKE_PDF_CONCURRENCY").ok();
+        // SAFETY: serialised; restore below.
+        unsafe {
+            std::env::remove_var("EDGEQUAKE_PDF_CONCURRENCY");
+        }
         let (concurrency, dpi) = compute_safe_pdf_resource_profile(250, 60 * 1024 * 1024, "ollama");
         assert_eq!(concurrency, 1);
         assert_eq!(dpi, 96);
+        unsafe {
+            match prev {
+                Some(v) => std::env::set_var("EDGEQUAKE_PDF_CONCURRENCY", v),
+                None => std::env::remove_var("EDGEQUAKE_PDF_CONCURRENCY"),
+            }
+        }
     }
 
     #[test]
+    #[serial_test::serial]
     fn small_cloud_pdfs_keep_reasonable_parallelism() {
+        // Operator shells / `make dev` may export EDGEQUAKE_PDF_CONCURRENCY=1 for
+        // local Ollama; this contract asserts the uncapped cloud default.
+        let prev = std::env::var("EDGEQUAKE_PDF_CONCURRENCY").ok();
+        // SAFETY: serialised; restore below.
+        unsafe {
+            std::env::remove_var("EDGEQUAKE_PDF_CONCURRENCY");
+        }
         let (concurrency, dpi) = compute_safe_pdf_resource_profile(40, 4 * 1024 * 1024, "openai");
         assert_eq!(concurrency, 2);
         assert_eq!(dpi, 150);
+        unsafe {
+            match prev {
+                Some(v) => std::env::set_var("EDGEQUAKE_PDF_CONCURRENCY", v),
+                None => std::env::remove_var("EDGEQUAKE_PDF_CONCURRENCY"),
+            }
+        }
     }
 
     // ── Resume-shortcut logic tests ──────────────────────────────────────────

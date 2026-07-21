@@ -6,6 +6,25 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.20.1] — 2026-07-22
+
+Patch: durable workspace wipe, graph-first cascade with tenant isolation, and structured Interrupted restart recovery ([#312](https://github.com/raphaelmansuy/edgequake/pull/312)).
+
+### Added
+
+- **Durable workspace wipe (#309)** — `WorkspaceWipe` task type (migration `095`), HTTP 202 + `wipe_track_id` / `planned_delete_count`, WebSocket bulk deletion progress, process-local admission so upload/reprocess cannot race mid-admit.
+- **Graph-first cascade (#305)** — Prefix-safe modern+legacy source discovery (chunk probe to `SOURCE_CHUNK_PROBE_LIMIT`), legacy-null workspace/tenant matching, high-chunk-index coverage, fail-closed wipe PDF/mm deletes.
+- **Structured Interrupted (#304)** — `failure_code=server_restart_interrupted` from task orphan sync and `recover_orphaned_documents`; WebUI Interrupted → default Full reprocess (entities force); narrow SSOT (no broad terminal-recoverable hijack).
+- **Contracts / SDKs / WebUI** — OpenAPI/AsyncAPI wipe fields; typed `DeleteAllResponse` / `wipe_track_id` across TS/Python/Go/Java/Rust/PHP; Playwright `issue309-wipe-all-async.spec.ts`.
+
+### Fixed
+
+- SPEC-006 tenant isolation on cascade list filters (explicit different tenant must not cascade; legacy-null tenant still matches).
+- Wipe admission race: in-flight slot held across `try_register` → `enqueue_task`.
+- Op-count scale proof: workspace wipe uses exactly one `clear_workspace` and zero prefix scans at 200 docs (memory + PG).
+
+---
+
 ## [0.20.0] — 2026-07-21
 
 Smart query = LightRAG Mix arms, Drawing entity human labels, Vision ingestion reliability, and honest Acc/latency publish evidence.
