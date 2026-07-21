@@ -235,10 +235,14 @@ mod tests {
             .collect::<Vec<_>>()
             .join("");
         let table = format!(r#"<table format="html">{rows}</table>"#);
-        // Tiny budget so both Char and Estimate modes must trim.
-        let (text, trimmed) = trim_content_to_budget(&table, 40, SurroundingKind::Tables);
+        // Budget fits table chrome + ≥1 row + truncation marker (40 was too
+        // small and dropped all rows while still marking truncated).
+        let (text, trimmed) = trim_content_to_budget(&table, 200, SurroundingKind::Tables);
         assert!(trimmed);
-        assert!(text.contains("<tr>"));
+        assert!(
+            text.contains("<tr>"),
+            "row-aware trim must keep at least one row; got {text:?}"
+        );
         assert!(text.contains("truncated"));
         std::env::remove_var("EDGEQUAKE_MM_SURROUNDING_TOKENS");
     }
