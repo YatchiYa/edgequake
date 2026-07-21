@@ -5,7 +5,7 @@
 > **High-Performance Graph-RAG Framework in Rust**  
 > Transform documents into intelligent knowledge graphs for superior retrieval and generation
 
-[![Version](https://img.shields.io/badge/version-0.20.0-blue.svg?style=flat)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.20.1-blue.svg?style=flat)](CHANGELOG.md)
 [![Rust](https://img.shields.io/badge/rust-1.95+-orange.svg?style=flat&logo=rust)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat)](LICENSE)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg?style=flat)](https://github.com/raphaelmansuy/edgequake)
@@ -66,13 +66,15 @@ EDGEQUAKE_LLM_PROVIDER=ollama \
 curl -s http://localhost:8080/health | python3 -m json.tool
 ```
 
-> Pin a version: `EDGEQUAKE_VERSION=0.20.0 sh quickstart.sh`
+> Pin a version: `EDGEQUAKE_VERSION=0.20.1 sh quickstart.sh`
 
-### What's new in 0.20.0
+### What's new in 0.20.1
 
-- **Smart = LightRAG Mix** — local + global + naive arms always on; `EDGEQUAKE_MIX_ARM_GATE` defaults off ([065](specs/001-benchmark/001-edgquake-improvements/065-smart-lightrag-mix-arms.md)).
-- **Drawing KG labels** — stable `im-…` ids with human `display_name` on Graph API + WebUI ([066](specs/001-benchmark/001-edgquake-improvements/066-drawing-entity-display-name.md)).
-- **Vision reliability** — accurate page count, phase-aware budget, stall watchdog, durable checkpoints.
+- **Durable workspace wipe (#309)** — async `WorkspaceWipe` (HTTP 202 + `wipe_track_id`), WebSocket progress, admission that blocks upload/reprocess races.
+- **Graph-first cascade (#305)** — legacy-null-safe discovery with SPEC-006 tenant isolation preserved.
+- **Interrupted restart (#304)** — `failure_code=server_restart_interrupted`; WebUI Interrupted → Full reprocess default.
+
+Also in **0.20.0**: Smart = LightRAG Mix ([065](specs/001-benchmark/001-edgquake-improvements/065-smart-lightrag-mix-arms.md)), Drawing `display_name` ([066](specs/001-benchmark/001-edgquake-improvements/066-drawing-entity-display-name.md)), vision reliability.
 
 ### Performance testing
 
@@ -273,24 +275,24 @@ docker compose -f docker-compose.prebuilt.yml up -d
 
 | Service | Port | Image |
 |---------|------|-------|
-| API | 8080 | `ghcr.io/raphaelmansuy/edgequake:0.20.0` (`:latest`) |
-| Frontend | 3000 | `ghcr.io/raphaelmansuy/edgequake-frontend:0.20.0` (`:latest`) |
-| PostgreSQL | 5432 | `ghcr.io/raphaelmansuy/edgequake-postgres:0.20.0` (**PG18** default) |
+| API | 8080 | `ghcr.io/raphaelmansuy/edgequake:0.20.1` (`:latest`) |
+| Frontend | 3000 | `ghcr.io/raphaelmansuy/edgequake-frontend:0.20.1` (`:latest`) |
+| PostgreSQL | 5432 | `ghcr.io/raphaelmansuy/edgequake-postgres:0.20.1` (**PG18** default) |
 
 **PostgreSQL major tags (multi-arch amd64 + arm64):**
 
 | Tag | PostgreSQL |
 |-----|------------|
-| `0.20.0` / `latest` / `0.20.0-pg18` / `latest-pg18` | PG18 |
-| `0.20.0-pg17` / `latest-pg17` | PG17 |
-| `0.20.0-pg16` / `latest-pg16` | PG16 |
+| `0.20.1` / `latest` / `0.20.1-pg18` / `latest-pg18` | PG18 |
+| `0.20.1-pg17` / `latest-pg17` | PG17 |
+| `0.20.1-pg16` / `latest-pg16` | PG16 |
 
 ```bash
 # Pin full stack to this release
-EDGEQUAKE_VERSION=0.20.0 docker compose -f docker-compose.quickstart.yml up -d
+EDGEQUAKE_VERSION=0.20.1 docker compose -f docker-compose.quickstart.yml up -d
 
 # Pin PostgreSQL major (optional; default tag follows EDGEQUAKE_VERSION → PG18)
-EDGEQUAKE_VERSION=0.20.0 EDGEQUAKE_POSTGRES_TAG=0.20.0-pg16 \
+EDGEQUAKE_VERSION=0.20.1 EDGEQUAKE_POSTGRES_TAG=0.20.1-pg16 \
   docker compose -f docker-compose.quickstart.yml up -d
 ```
 
