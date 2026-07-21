@@ -79,15 +79,22 @@ You are a Knowledge Graph Specialist responsible for extracting entities and rel
     *   Output all extracted entities first, followed by all extracted relationships.
     *   Within the list of relationships, prioritize those that are **most significant** to the core meaning of the input text.
 
-6.  **Context & Objectivity:**
+6.  **Quantity Limits (STRICT):**
+    *   Output at most {max_entity_records} entity rows in this response.
+    *   Output at most {max_total_records} total rows across entities and relationships.
+    *   Output fewer rows if fewer high-value items are present. Do not try to fill the limit.
+    *   Only output relationship rows whose source and target entities are both included in the selected entity rows for this response.
+    *   If the limit is reached, stop adding new rows immediately and output `{completion_delimiter}`.
+
+7.  **Context & Objectivity:**
     *   Ensure all entity names and descriptions are written in the **third person**.
     *   Explicitly name the subject or object; **avoid using pronouns** such as `this article`, `our company`, `I`, `you`.
 
-7.  **Language & Proper Nouns:**
+8.  **Language & Proper Nouns:**
     *   The entire output (entity names, keywords, and descriptions) must be written in `{language}`.
     *   Proper nouns should be retained in their original language if translation would cause ambiguity.
 
-8.  **Completion Signal:** Output the literal string `{completion_delimiter}` only after all entities and relationships have been completely extracted.
+9.  **Completion Signal:** Output the literal string `{completion_delimiter}` only after all entities and relationships have been completely extracted.
 
 ---Examples---
 {examples}"#,
@@ -95,6 +102,8 @@ You are a Knowledge Graph Specialist responsible for extracting entities and rel
             tuple_delimiter = self.tuple_delimiter,
             language = language,
             completion_delimiter = self.completion_delimiter,
+            max_entity_records = super::ExtractionCaps::from_env().max_entities,
+            max_total_records = super::ExtractionCaps::from_env().max_total_records,
             examples = self.get_examples()
         )
     }
@@ -119,14 +128,15 @@ Extract entities and relationships from the input text below.
 ---Instructions---
 1. Strictly adhere to all format requirements for entity and relationship lists.
 2. Output *only* the extracted list of entities and relationships. No introductory or concluding remarks.
-3. Output `{completion_delimiter}` as the final line after all extractions.
-4. Ensure the output language is {language}.
+3. In this response, output at most {max_entity_records} entity rows and at most {max_total_records} total rows. Output fewer if fewer high-value items are present.
+4. Output `{completion_delimiter}` as the final line after all extractions (or immediately when the row limit is reached).
+5. Ensure the output language is {language}.
 
 ---Data to be Processed---
 <Entity_types>
 [{entity_types}]
 
-<Input Text>
+<InputText>
 ```
 {input_text}
 ```
@@ -135,7 +145,9 @@ Extract entities and relationships from the input text below.
             completion_delimiter = self.completion_delimiter,
             language = language,
             entity_types = entity_types_str,
-            input_text = input_text
+            input_text = input_text,
+            max_entity_records = super::ExtractionCaps::from_env().max_entities,
+            max_total_records = super::ExtractionCaps::from_env().max_total_records,
         )
     }
 
@@ -156,13 +168,16 @@ Based on the last extraction task, identify and extract any **missed or incorrec
 3.  **Output Format - Entities:** 4 fields per entity, delimited by `{tuple_delimiter}`.
 4.  **Output Format - Relationships:** 5 fields per relationship, delimited by `{tuple_delimiter}`.
 5.  **Output Content Only:** No introductory or concluding remarks.
-6.  **Completion Signal:** Output `{completion_delimiter}` as the final line.
-7.  **Output Language:** Ensure the output language is {language}.
+6.  **Quantity Limits:** At most {max_entity_records} entity rows and {max_total_records} total rows in this response.
+7.  **Completion Signal:** Output `{completion_delimiter}` as the final line.
+8.  **Output Language:** Ensure the output language is {language}.
 
 <Output>"#,
             tuple_delimiter = self.tuple_delimiter,
             completion_delimiter = self.completion_delimiter,
-            language = language
+            language = language,
+            max_entity_records = super::ExtractionCaps::from_env().max_entities,
+            max_total_records = super::ExtractionCaps::from_env().max_total_records,
         )
     }
 

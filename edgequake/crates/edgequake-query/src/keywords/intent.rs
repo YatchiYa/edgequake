@@ -101,13 +101,45 @@ impl QueryIntent {
             return QueryIntent::Comparative;
         }
 
+        // Yes/no / closed Factoid (GraphRAG Fact Retrieval) — before relational
+        // so "Is X associated with Y?" is not swallowed by "associated with".
+        // 028 A2: keep multi-aspect "is … and how …" as exploratory later.
+        if (trimmed.starts_with("is ")
+            || trimmed.starts_with("are ")
+            || trimmed.starts_with("does ")
+            || trimmed.starts_with("do ")
+            || trimmed.starts_with("can ")
+            || trimmed.starts_with("was ")
+            || trimmed.starts_with("were "))
+            && !trimmed.contains(" and how ")
+            && !trimmed.contains("stages")
+            && !trimmed.contains("types of")
+        {
+            return QueryIntent::Factual;
+        }
+
+        // GraphRAG Contextual Summarize: "How are the stages… distinguishing features?"
+        // must not be swallowed by relational "how are …" below.
+        if (trimmed.starts_with("how are ") || trimmed.starts_with("how is "))
+            && (trimmed.contains("stages")
+                || trimmed.contains("distinguishing features")
+                || trimmed.contains("classified")
+                || trimmed.contains("types of")
+                || trimmed.contains("main types"))
+        {
+            return QueryIntent::Exploratory;
+        }
+
         // Relational indicators
+        // Include bare "how do …" (GraphRAG Summarize/Complex) after procedural
+        // "how do i/you" already returned above.
         if trimmed.contains(" relate ")
             || trimmed.contains("relationship between")
             || trimmed.contains("connection between")
             || trimmed.contains("linked to")
             || trimmed.contains("associated with")
             || trimmed.starts_with("how does ")
+            || trimmed.starts_with("how do ")
             || trimmed.starts_with("how are ")
             || trimmed.starts_with("how is ")
         {
@@ -116,21 +148,29 @@ impl QueryIntent {
 
         // Exploratory / thematic (L3) — before factual so
         // "What are the main themes?" is not misclassified as L1.
+        // 021 F1: GraphRAG Contextual Summarize cues → chunk floor via truncation.
         if trimmed.starts_with("tell me about")
             || trimmed.starts_with("explain ")
             || trimmed.starts_with("describe ")
             || trimmed.contains("overview")
             || trimmed.contains("summary of")
+            || trimmed.contains("summarize ")
+            || trimmed.contains("summarise ")
             || trimmed.contains("main themes")
             || trimmed.contains("key themes")
+            || trimmed.contains("key points")
+            || trimmed.contains("distinguishing features")
             || trimmed.contains("broader")
         {
             return QueryIntent::Exploratory;
         }
 
-        // Factual indicators (L1) — include count/quantity (MMLongBench / GraphRAG L1)
+        // Factual indicators (L1) — include count/quantity (MMLongBench / GraphRAG L1).
+        // 028 A2: bare "What <noun>…?" / "Which …?" closed lookups after exploratory
+        // multi-aspect cues above ("main themes", stages, …).
         if trimmed.starts_with("what is ")
             || trimmed.starts_with("what are ")
+            || trimmed.starts_with("what ")
             || trimmed.starts_with("who is ")
             || trimmed.starts_with("who are ")
             || trimmed.starts_with("when ")
@@ -188,6 +228,13 @@ mod tests {
             QueryIntent::classify_heuristic("According to this paper, which image type?"),
             QueryIntent::Factual
         );
+        // 028 A2: yes/no Factoid before "associated with" → relational
+        assert_eq!(
+            QueryIntent::classify_heuristic(
+                "Is autoimmune disease associated with increased BCC risk?"
+            ),
+            QueryIntent::Factual
+        );
     }
 
     #[test]
@@ -199,6 +246,23 @@ mod tests {
         assert_eq!(
             QueryIntent::classify_heuristic("What is the relationship between A and B?"),
             QueryIntent::Relational
+        );
+        // GraphRAG Contextual Summarize / Complex often use bare "How do …".
+        assert_eq!(
+            QueryIntent::classify_heuristic(
+                "How do biomarkers influence treatment selection in colon cancer?"
+            ),
+            QueryIntent::Relational
+        );
+    }
+
+    #[test]
+    fn test_summarize_cues_exploratory() {
+        assert_eq!(
+            QueryIntent::classify_heuristic(
+                "How are the stages of esophageal cancer defined and what are their distinguishing features?"
+            ),
+            QueryIntent::Exploratory
         );
     }
 

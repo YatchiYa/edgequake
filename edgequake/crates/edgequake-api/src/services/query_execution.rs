@@ -3,7 +3,7 @@
 //! Single routing matrix for workspace embedding/vector/LLM overrides.
 //! Used by `/query`, `/chat/completions`, and streaming handlers.
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use edgequake_llm::traits::{EmbeddingProvider, LLMProvider};
 use edgequake_query::{QueryContext, QueryMode, QueryRequest as EngineQueryRequest, QueryResponse};
@@ -32,17 +32,21 @@ pub struct WorkspaceQueryResources {
 ///
 /// Returns defaults when `workspace_id` is `None`. Fails closed when a workspace
 /// is explicitly requested but provider resolution fails.
+/// Env KEYWORD role still applies without a workspace (LightRAG process-env law).
 pub async fn resolve_workspace_query_resources(
     state: &AppState,
     workspace_id: Option<&str>,
 ) -> ApiResult<WorkspaceQueryResources> {
+    let keyword_llm = resolve_keyword_llm(state, workspace_id).await;
     let Some(workspace_id) = workspace_id else {
-        return Ok(WorkspaceQueryResources::default());
+        return Ok(WorkspaceQueryResources {
+            keyword_llm,
+            ..Default::default()
+        });
     };
 
     let embedding = get_workspace_embedding_provider(state, workspace_id).await?;
     let vector_storage = get_workspace_vector_storage(state, workspace_id).await?;
-    let keyword_llm = resolve_workspace_keyword_llm(state, workspace_id).await;
     Ok(WorkspaceQueryResources {
         embedding,
         vector_storage,
@@ -50,11 +54,50 @@ pub async fn resolve_workspace_query_resources(
     })
 }
 
-/// Resolve KEYWORD-role LLM for a workspace (non-fatal — None falls back to Query).
-async fn resolve_workspace_keyword_llm(
+/// Process-env KEYWORD LLM, cached for the process lifetime (env set at boot).
+fn env_keyword_llm_cached() -> Option<Arc<dyn LLMProvider>> {
+    static CACHE: OnceLock<Option<Arc<dyn LLMProvider>>> = OnceLock::new();
+    CACHE
+        .get_or_init(|| {
+            let role = edgequake_core::env_keyword_role_llm()?;
+            match crate::safety_limits::create_safe_llm_provider(&role.provider, &role.model) {
+                Ok(llm) => {
+                    tracing::info!(
+                        provider = %role.provider,
+                        model = %role.model,
+                        "KEYWORD role LLM cached from EDGEQUAKE_KEYWORD_LLM_* env"
+                    );
+                    Some(llm)
+                }
+                Err(e) => {
+                    warn!(
+                        provider = %role.provider,
+                        model = %role.model,
+                        error = %e,
+                        "KEYWORD env LLM failed; falling back to workspace/Query"
+                    );
+                    None
+                }
+            }
+        })
+        .clone()
+}
+
+/// Resolve KEYWORD-role LLM (non-fatal — None falls back to Query).
+///
+/// Precedence (LightRAG KEYWORD role law / 061 Idea A):
+/// 1. Process env `EDGEQUAKE_KEYWORD_LLM_*` (product / Acc latency packs)
+/// 2. Workspace metadata `llm_roles.keyword`
+/// 3. `None` → Query LLM (no silent double-create of the same model)
+async fn resolve_keyword_llm(
     state: &AppState,
-    workspace_id: &str,
+    workspace_id: Option<&str>,
 ) -> Option<Arc<dyn LLMProvider>> {
+    if let Some(llm) = env_keyword_llm_cached() {
+        return Some(llm);
+    }
+
+    let workspace_id = workspace_id?;
     let ws_uuid = crate::middleware::resolve_workspace_uuid(Some(workspace_id))?;
     let ws = state
         .workspace_service

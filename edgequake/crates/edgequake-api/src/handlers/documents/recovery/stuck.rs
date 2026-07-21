@@ -162,8 +162,8 @@ pub(crate) async fn run_recover_stuck(
             "SPEC-059: retracted indexes before stuck recovery"
         );
         // Keep cleanup path for graph-only edge cases (idempotent with retract).
-        let _ = cleanup_document_graph_data(doc_id, &state.storage.graph_storage, Some(&vector))
-            .await;
+        let _ =
+            cleanup_document_graph_data(doc_id, &state.storage.graph_storage, Some(&vector)).await;
 
         let metadata_key =
             crate::services::document_metadata_scan::metadata_key_for_document(doc_id);

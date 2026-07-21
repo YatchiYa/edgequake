@@ -1,7 +1,21 @@
 //! Dimension migration helpers for [`super::PgVectorStorage`].
+//!
+//! # First principles (pgvector + SPEC-058)
+//!
+//! 1. **Schema is truth** — a `vector(n)` column cannot hold another model's width.
+//! 2. **Empty ≠ data** — recreating an empty table is schema heal, not wipe.
+//! 3. **Non-empty mismatch** — never silent `DROP` (SPEC-058) unless the operator
+//!    sets `EDGEQUAKE_ALLOW_VECTOR_TABLE_REBUILD=1`.
+//! 4. **Boot ≠ workspace write** — server start may **keep** an existing default
+//!    table (`PreferExisting`) so Acc/other workspace tables stay reachable while
+//!    the global embedding provider differs; workspace open stays **fail-closed**.
+
+use crate::dimension_policy::{
+    decide_dimension_action, DimensionAction, DimensionEnsureOutcome, DimensionReconcilePolicy,
+};
+use crate::error::{Result, StorageError};
 
 use super::PgVectorStorage;
-use crate::error::{Result, StorageError};
 
 impl PgVectorStorage {
     /// Get the dimension of the vector column in the database table.
@@ -74,61 +88,127 @@ impl PgVectorStorage {
         }
     }
 
-    /// Ensure the table has the correct dimension.
-    ///
-    /// SPEC-058: dimension mismatch **fails closed** by default (no silent
-    /// `DROP TABLE`). Set `EDGEQUAKE_ALLOW_VECTOR_TABLE_REBUILD=1` to restore
-    /// the destructive recreate path (operator-driven re-embed / new workspace).
-    pub async fn ensure_dimension(&self, required_dimension: usize) -> Result<bool> {
+    /// True when the vectors table is missing or has zero rows (safe to recreate).
+    pub async fn vector_table_is_empty(&self) -> Result<bool> {
+        if !self.table_exists().await? {
+            return Ok(true);
+        }
+        let pool = self.pool.get().await?;
+        let sql = format!("SELECT COUNT(*)::bigint FROM {}", self.table_name);
+        let count: i64 = sqlx::query_scalar(&sql)
+            .fetch_one(&pool)
+            .await
+            .map_err(|e| {
+                StorageError::Database(format!(
+                    "Failed to count rows on {}: {}",
+                    self.table_name, e
+                ))
+            })?;
+        Ok(count == 0)
+    }
+
+    /// Reconcile stored vs required dimension under a policy (DRY entry point).
+    pub async fn reconcile_dimension(
+        &self,
+        required_dimension: usize,
+        policy: DimensionReconcilePolicy,
+    ) -> Result<DimensionEnsureOutcome> {
         self.pool.initialize().await?;
 
         let stored_dim = self.get_stored_dimension().await?;
+        let table_empty = match stored_dim {
+            Some(dim) if dim != required_dimension => self.vector_table_is_empty().await?,
+            _ => true,
+        };
+        let allow_rebuild = allow_vector_table_rebuild();
+        let action = decide_dimension_action(
+            stored_dim,
+            required_dimension,
+            table_empty,
+            allow_rebuild,
+            policy,
+        );
 
-        match stored_dim {
-            Some(dim) if dim == required_dimension => {
+        match action {
+            DimensionAction::Match => {
                 tracing::debug!(
                     table = %self.table_name,
                     dimension = required_dimension,
                     "Vector table dimension matches, no recreation needed"
                 );
-                Ok(false)
+                Ok(DimensionEnsureOutcome::Matched)
             }
-            Some(dim) => {
-                if !allow_vector_table_rebuild() {
-                    crate::compensation::record_vector_dim_mismatch_rejected();
-                    return Err(StorageError::InvalidQuery(format!(
-                        "Vector dimension mismatch on {}: stored={dim}, required={required_dimension}. \
-                         Refusing DROP TABLE (SPEC-058). Re-embed into a new workspace, or set \
-                         EDGEQUAKE_ALLOW_VECTOR_TABLE_REBUILD=1 to wipe and recreate.",
-                        self.table_name
-                    )));
-                }
-
-                tracing::warn!(
-                    table = %self.table_name,
-                    old_dimension = dim,
-                    new_dimension = required_dimension,
-                    "Vector dimension mismatch — EDGEQUAKE_ALLOW_VECTOR_TABLE_REBUILD=1, recreating table"
-                );
-
-                self.drop_table().await?;
-                self.create_table().await?;
-
-                tracing::info!(
-                    table = %self.table_name,
-                    dimension = required_dimension,
-                    "Vector table recreated with new dimension"
-                );
-
-                Ok(true)
-            }
-            None => {
+            DimensionAction::CreateLater => {
                 tracing::debug!(
                     table = %self.table_name,
                     dimension = required_dimension,
                     "Vector table empty or not exists, will create on initialize"
                 );
-                Ok(false)
+                Ok(DimensionEnsureOutcome::Matched)
+            }
+            DimensionAction::RecreateEmpty | DimensionAction::RecreateAllowed => {
+                let stored = stored_dim.expect("recreate requires stored dim");
+                tracing::warn!(
+                    table = %self.table_name,
+                    old_dimension = stored,
+                    new_dimension = required_dimension,
+                    empty = matches!(action, DimensionAction::RecreateEmpty),
+                    allow_rebuild = matches!(action, DimensionAction::RecreateAllowed),
+                    "Vector dimension mismatch — recreating table"
+                );
+                self.drop_table().await?;
+                self.create_table().await?;
+                tracing::info!(
+                    table = %self.table_name,
+                    dimension = required_dimension,
+                    "Vector table recreated with new dimension"
+                );
+                Ok(DimensionEnsureOutcome::Recreated)
+            }
+            DimensionAction::KeepExisting => {
+                let stored = stored_dim.expect("keep-existing requires stored dim");
+                tracing::warn!(
+                    table = %self.table_name,
+                    stored_dimension = stored,
+                    required_dimension,
+                    "Vector dimension mismatch — keeping existing schema (PreferExisting / SPEC-058). \
+                     Rebind default storage to stored dim; switch embedding provider to match, \
+                     re-embed into a new workspace, or set EDGEQUAKE_ALLOW_VECTOR_TABLE_REBUILD=1."
+                );
+                Ok(DimensionEnsureOutcome::KeptExisting {
+                    stored,
+                    required: required_dimension,
+                })
+            }
+            DimensionAction::FailClosed => {
+                let stored = stored_dim.expect("fail-closed requires stored dim");
+                crate::compensation::record_vector_dim_mismatch_rejected();
+                Err(StorageError::InvalidQuery(format!(
+                    "Vector dimension mismatch on {}: stored={stored}, required={required_dimension}. \
+                     Refusing DROP TABLE (SPEC-058). Re-embed into a new workspace, or set \
+                     EDGEQUAKE_ALLOW_VECTOR_TABLE_REBUILD=1 to wipe and recreate.",
+                    self.table_name
+                )))
+            }
+        }
+    }
+
+    /// Workspace / write path: fail-closed on non-empty mismatch (SPEC-058).
+    ///
+    /// Empty schema-only mismatch recreates without the allow flag.
+    /// Returns `true` when the table was recreated.
+    pub async fn ensure_dimension(&self, required_dimension: usize) -> Result<bool> {
+        match self
+            .reconcile_dimension(required_dimension, DimensionReconcilePolicy::FailClosed)
+            .await?
+        {
+            DimensionEnsureOutcome::Recreated => Ok(true),
+            DimensionEnsureOutcome::Matched => Ok(false),
+            DimensionEnsureOutcome::KeptExisting { stored, required } => {
+                Err(StorageError::InvalidConfig(format!(
+                    "internal invariant: FailClosed returned KeptExisting \
+                     (stored={stored}, required={required})"
+                )))
             }
         }
     }

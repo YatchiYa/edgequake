@@ -67,7 +67,9 @@ pub async fn upload_document(
             text_content: request.content,
             title: title.clone(),
             source_type: "markdown",
-            mime_type: None,
+            // 028 B2: mime drives ChunkStrategy::Markdown → heading breadcrumbs
+            // (title alone is often "bench001-…" without a .md suffix).
+            mime_type: Some("text/markdown".to_string()),
             raw_byte_size: content_length,
             content_hash,
             custom_metadata: request.metadata,

@@ -40,6 +40,23 @@ use edgequake_storage::traits::VectorSearchResult;
 /// P-G6a: moved here from the deleted `strategies/mod.rs`; the query engine is
 /// the only remaining caller, so the helper lives with the other shared
 /// retrieval helpers rather than in a dead strategies module.
+/// Map a bare entity name (from vector metadata) to the AGE graph node id.
+///
+/// SPEC-032 / B3b: when `workspace_id` is set, writers store
+/// `{workspace_id}::{NORMALIZED}`; query must use the same key for
+/// `get_nodes_batch` / neighborhood expand.
+pub(crate) fn graph_entity_id_for_workspace(
+    bare_name: &str,
+    workspace_id: Option<&str>,
+) -> String {
+    use edgequake_storage::EntityId;
+    let id = EntityId::new(bare_name);
+    if id.is_empty() {
+        return String::new();
+    }
+    id.graph_node_id_for_workspace(workspace_id)
+}
+
 pub(crate) fn decode_entity_name_from_result(
     storage_id: &str,
     metadata: &serde_json::Value,
@@ -89,11 +106,14 @@ pub struct EntitySourceTracking {
 
 /// Source tracking information extracted from relationship edges.
 ///
-/// WHY: Relationships also track provenance, but typically have
-/// a single source chunk (relationships are extracted from one place).
+/// WHY: LightRAG joins all relation chunk ids in `source_id` and admits every
+/// part into the Mix pool. EQ edges store the same as `source_chunk_ids[]`
+/// (049 union) plus legacy singular `source_chunk_id`.
 #[derive(Debug, Default, Clone)]
 pub struct RelationshipSourceTracking {
-    /// Single chunk ID that contributed this relationship.
+    /// All chunk IDs that contributed this relationship (LightRAG parity / 052).
+    pub source_chunk_ids: Vec<String>,
+    /// Primary / first chunk ID (legacy singular field).
     pub source_chunk_id: Option<String>,
     /// Primary source document ID.
     pub source_document_id: Option<String>,
@@ -162,17 +182,28 @@ pub fn extract_entity_source_tracking(props: &HashMap<String, Value>) -> EntityS
 
 /// Extract source tracking from relationship edge properties.
 ///
-/// # WHY: Relationships Have Single Source
-///
-/// Unlike entities (which may appear in multiple chunks), relationships
-/// typically originate from a single chunk where the connection was stated.
+/// Prefers plural `source_chunk_ids` (049 merger union). Falls back to singular
+/// `source_chunk_id` so pre-B6 edges still cite one chunk.
 pub fn extract_relationship_source_tracking(
     props: &HashMap<String, Value>,
 ) -> RelationshipSourceTracking {
+    let mut source_chunk_ids: Vec<String> = props
+        .get("source_chunk_ids")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
+
     let source_chunk_id = props
         .get("source_chunk_id")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
+
+    if let Some(ref singular) = source_chunk_id {
+        if !source_chunk_ids.iter().any(|id| id == singular) {
+            source_chunk_ids.insert(0, singular.clone());
+        }
+    }
+    // Keep singular = first plural for callers that still read Option.
+    let source_chunk_id = source_chunk_id.or_else(|| source_chunk_ids.first().cloned());
 
     let source_document_id = props
         .get("source_document_id")
@@ -185,6 +216,7 @@ pub fn extract_relationship_source_tracking(
         .map(|s| s.to_string());
 
     RelationshipSourceTracking {
+        source_chunk_ids,
         source_chunk_id,
         source_document_id,
         source_file_path,
@@ -271,9 +303,19 @@ pub fn build_entity_from_node(
         .unwrap_or("")
         .to_string();
 
+    // Prefer bare `label` over scoped AGE node_id (`{ws}::NAME`) for prompts.
+    let display_name = props
+        .get("label")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| {
+            edgequake_storage::EntityId::bare_name_from_graph_node_id(node_id).to_string()
+        });
+
     let source_tracking = extract_entity_source_tracking(props);
 
-    let mut entity = RetrievedEntity::new(node_id, entity_type, description)
+    let mut entity = RetrievedEntity::new(display_name, entity_type, description)
         .with_degree(degree)
         .with_score(score);
 
@@ -323,7 +365,9 @@ pub fn build_relationship_from_edge(
     if let Some(desc) = description {
         rel = rel.with_description(desc);
     }
-    if let Some(chunk_id) = source_tracking.source_chunk_id {
+    if !source_tracking.source_chunk_ids.is_empty() {
+        rel = rel.with_source_chunk_ids(source_tracking.source_chunk_ids);
+    } else if let Some(chunk_id) = source_tracking.source_chunk_id {
         rel = rel.with_source_chunk_id(chunk_id);
     }
     if let Some(doc_id) = source_tracking.source_document_id {
@@ -427,7 +471,25 @@ mod tests {
         let tracking = extract_relationship_source_tracking(&props);
 
         assert_eq!(tracking.source_chunk_id, Some("chunk-1".to_string()));
+        assert_eq!(tracking.source_chunk_ids, vec!["chunk-1".to_string()]);
         assert_eq!(tracking.source_document_id, Some("doc-123".to_string()));
+    }
+
+    #[test]
+    fn test_extract_relationship_source_tracking_plural_union() {
+        let mut props = HashMap::new();
+        props.insert(
+            "source_chunk_ids".to_string(),
+            serde_json::json!(["chunk-0", "chunk-1"]),
+        );
+        props.insert("source_chunk_id".to_string(), serde_json::json!("chunk-0"));
+
+        let tracking = extract_relationship_source_tracking(&props);
+        assert_eq!(
+            tracking.source_chunk_ids,
+            vec!["chunk-0".to_string(), "chunk-1".to_string()]
+        );
+        assert_eq!(tracking.source_chunk_id, Some("chunk-0".to_string()));
     }
 
     #[test]
@@ -461,6 +523,10 @@ mod tests {
             "description".to_string(),
             serde_json::json!("Employment relationship"),
         );
+        props.insert(
+            "source_chunk_ids".to_string(),
+            serde_json::json!(["chunk-1", "chunk-7"]),
+        );
         props.insert("source_chunk_id".to_string(), serde_json::json!("chunk-1"));
 
         let rel = build_relationship_from_edge("JOHN_DOE", "ACME_CORP", &props);
@@ -469,5 +535,9 @@ mod tests {
         assert_eq!(rel.target, "ACME_CORP");
         assert_eq!(rel.relation_type, "WORKS_FOR");
         assert_eq!(rel.source_chunk_id, Some("chunk-1".to_string()));
+        assert_eq!(
+            rel.all_source_chunk_ids(),
+            vec!["chunk-1".to_string(), "chunk-7".to_string()]
+        );
     }
 }

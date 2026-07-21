@@ -4,9 +4,11 @@
 //! in-process `ChannelTaskQueue`. Must run **after** workers are polling so
 //! bounded-channel backpressure can drain instead of blocking HTTP bind.
 //!
-//! Default policy (SPEC-054): **manual resume**. Boot does not hydrate or
-//! auto-enqueue LLM work. Operators reprocess via the API/UI. Opt in to the
-//! legacy automatic resume with `EDGEQUAKE_STARTUP_AUTO_RESUME=1`.
+//! Default policy (reliable Vision ingestion): **auto-resume on**. Interrupted
+//! Processing tasks become Pending and resume from durable checkpoints so a
+//! restart does not strand docs as "Task heartbeat lost". Opt out with
+//! `EDGEQUAKE_STARTUP_AUTO_RESUME=0` (or `false` / `off` / `no`) to require
+//! manual reprocess (avoids surprise spend on every deploy if desired).
 
 use std::sync::Arc;
 
@@ -16,16 +18,18 @@ use tracing::info;
 
 /// When `true`, boot recovers orphans to `pending` and hydrates the queue.
 ///
-/// Default `false`: mark orphans `failed` and let the user reprocess (avoids
-/// surprise Mistral spend on every `make dev` / deploy restart).
+/// Default `true`: resume interrupted work from checkpoints (fail-closed Vision
+/// reliability). Set `EDGEQUAKE_STARTUP_AUTO_RESUME=0` to mark orphans failed
+/// and require manual reprocess.
 pub fn startup_auto_resume_enabled() -> bool {
-    matches!(
-        std::env::var("EDGEQUAKE_STARTUP_AUTO_RESUME")
-            .unwrap_or_default()
-            .to_ascii_lowercase()
-            .as_str(),
-        "1" | "true" | "yes" | "on"
-    )
+    match std::env::var("EDGEQUAKE_STARTUP_AUTO_RESUME") {
+        Ok(v) => {
+            let lower = v.to_ascii_lowercase();
+            !matches!(lower.as_str(), "0" | "false" | "no" | "off")
+        }
+        // Unset → default ON (reliable resume).
+        Err(_) => true,
+    }
 }
 
 /// Report from a startup (or periodic) pending-task hydrate pass.
@@ -114,9 +118,13 @@ mod tests {
     use uuid::Uuid;
 
     #[test]
-    fn startup_auto_resume_defaults_off() {
+    fn startup_auto_resume_defaults_on() {
         let prev = std::env::var("EDGEQUAKE_STARTUP_AUTO_RESUME").ok();
         std::env::remove_var("EDGEQUAKE_STARTUP_AUTO_RESUME");
+        assert!(startup_auto_resume_enabled());
+        std::env::set_var("EDGEQUAKE_STARTUP_AUTO_RESUME", "0");
+        assert!(!startup_auto_resume_enabled());
+        std::env::set_var("EDGEQUAKE_STARTUP_AUTO_RESUME", "false");
         assert!(!startup_auto_resume_enabled());
         std::env::set_var("EDGEQUAKE_STARTUP_AUTO_RESUME", "1");
         assert!(startup_auto_resume_enabled());

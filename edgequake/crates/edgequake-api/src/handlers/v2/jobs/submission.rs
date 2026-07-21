@@ -62,6 +62,7 @@ fn parse_task_type(raw: &str) -> ApiResult<TaskType> {
         "reindex" => Ok(TaskType::Reindex),
         "pdf_processing" => Ok(TaskType::PdfProcessing),
         "knowledge_injection" => Ok(TaskType::KnowledgeInjection),
+        "deletion" => Ok(TaskType::Deletion),
         other => Err(ApiError::BadRequest(format!("Unknown job_type '{other}'"))),
     }
 }

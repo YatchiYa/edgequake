@@ -9,7 +9,8 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 pub use edgequake_tasks::{
-    classify_ingestion_failure, is_permanent_ingestion_failure, IngestionFailureClass,
+    classify_ingestion_failure, is_permanent_ingestion_failure, is_provider_misconfig_message,
+    IngestionFailureClass,
 };
 
 use super::multimodal::LocalMmProfile;

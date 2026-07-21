@@ -357,6 +357,56 @@ mod tests {
     }
 
     #[test]
+    fn test_progress_aware_timeout_does_not_advance_breaker() {
+        let data = serde_json::json!({"test": "data"});
+        let mut task = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::Insert,
+            data,
+        );
+        task.max_retries = 10;
+
+        // Seed one no-progress timeout
+        task.mark_failed_with_details(TaskFailureInfo::timeout("vision", "timeout hang"));
+        assert_eq!(task.consecutive_timeout_failures, 1);
+
+        // Progressing stall must NOT advance the breaker
+        let progressing =
+            TaskFailureInfo::timeout("vision", "Vision extraction stalled … [vision_progress=1]")
+                .with_made_progress(true);
+        task.mark_failed_with_details(progressing);
+        assert_eq!(task.consecutive_timeout_failures, 1);
+        assert!(!task.circuit_breaker_tripped);
+
+        // from_processing_error must parse the marker
+        let parsed =
+            TaskFailureInfo::from_processing_error("Timeout: Vision stalled [vision_progress=1]");
+        assert!(parsed.made_progress);
+        assert!(parsed.is_timeout());
+    }
+
+    #[test]
+    fn test_no_progress_timeouts_still_trip_breaker() {
+        let data = serde_json::json!({"test": "data"});
+        let mut task = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::Insert,
+            data,
+        );
+        task.max_retries = 10;
+
+        for i in 1..=3 {
+            let err = TaskFailureInfo::timeout("vision", format!("stall {i} [vision_progress=0]"));
+            assert!(!err.made_progress);
+            task.mark_failed_with_details(err);
+        }
+        assert!(task.circuit_breaker_tripped);
+        assert!(!task.can_retry());
+    }
+
+    #[test]
     fn test_can_retry_respects_circuit_breaker() {
         // GIVEN: A task with circuit breaker tripped
         let data = serde_json::json!({"test": "data"});

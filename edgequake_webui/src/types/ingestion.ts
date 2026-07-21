@@ -393,6 +393,7 @@ export type WebSocketProgressMessage =
   | DeletionStartedEvent
   | DeletionPhaseEvent
   | DeletionCompletedEvent
+  | DeletionFailedEvent
   | BulkDeletionStartedEvent
   | BulkDeletionItemProgressEvent
   | BulkDeletionCompletedEvent;
@@ -444,6 +445,18 @@ export interface DeletionCompletedEvent {
     embeddings_deleted: number;
     partial_failure: boolean;
     error: string | null;
+  };
+}
+
+/**
+ * Emitted when a single-document deletion fails hard (status reset off deleting).
+ */
+export interface DeletionFailedEvent {
+  type: 'DeletionFailed';
+  data: {
+    document_id: string;
+    track_id: string;
+    error: string;
   };
 }
 

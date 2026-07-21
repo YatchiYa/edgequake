@@ -98,7 +98,7 @@ pub use delivery::{
 pub use error::{TaskError, TaskResult};
 pub use ingestion_reliability::{
     classify_ingestion_failure, failure_step, is_cancel_failure_message,
-    is_permanent_ingestion_failure, IngestionFailureClass,
+    is_permanent_ingestion_failure, is_provider_misconfig_message, IngestionFailureClass,
 };
 pub use lease::{lease_expires_at, task_lease_ttl_from_env};
 pub use pipeline_state::{PipelineEvent, PipelineMessage, PipelineState, PipelineStatusSnapshot};
@@ -110,7 +110,7 @@ pub use storage::{
 };
 pub use tenant_limiter::{TenantConcurrencyLimiter, TenantLimiterStats};
 pub use types::{
-    ChunkProgress, DirectoryScanData, DocumentUploadData, KnowledgeInjectionData,
+    ChunkProgress, DeletionTaskData, DirectoryScanData, DocumentUploadData, KnowledgeInjectionData,
     PdfProcessingData, ReindexData, ReprocessMode, Task, TaskFailureInfo, TaskProgress, TaskStatus,
     TaskType, TextInsertData,
 };

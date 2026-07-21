@@ -511,8 +511,25 @@ export function rewriteMarkdownMmAssetUrls(
   );
 }
 
-export async function deleteDocument(documentId: string): Promise<void> {
-  return api.delete<void>(`/documents/${documentId}`);
+/** Async delete admit response (HTTP 202). Terminal state arrives via WebSocket. */
+export interface DeleteDocumentAccepted {
+  document_id: string;
+  deleted: boolean;
+  accepted: boolean;
+  track_id?: string | null;
+  chunks_deleted: number;
+  entities_affected: number;
+  relationships_affected: number;
+  embeddings_deleted?: number;
+  partial_failure?: boolean;
+  partial_failure_reason?: string | null;
+}
+
+export async function deleteDocument(
+  documentId: string,
+): Promise<DeleteDocumentAccepted> {
+  // Fast admit — cascade runs as a background job; do not wait on graph size.
+  return api.delete<DeleteDocumentAccepted>(`/documents/${documentId}`);
 }
 
 export async function deleteAllDocuments(): Promise<{ deleted_count: number }> {

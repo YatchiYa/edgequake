@@ -53,9 +53,7 @@ fn reorder_off_sql_matches_single_stage_shape() {
 
 #[test]
 fn storage_impl_wires_build_ann_select_sql() {
-    let src = include_str!(
-        "../src/adapters/postgres/vector/storage_impl.rs"
-    );
+    let src = include_str!("../src/adapters/postgres/vector/storage_impl.rs");
     assert!(
         src.contains("build_ann_select_sql"),
         "query paths must use shared SQL builder"

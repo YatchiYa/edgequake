@@ -304,6 +304,22 @@ pub trait VectorStorage: Send + Sync {
     /// This is used when deleting an entity to clean up its embeddings.
     async fn delete_entity(&self, entity_name: &str) -> Result<()>;
 
+    /// Batch-delete entity embeddings by name.
+    ///
+    /// Default loops `delete_entity`. Postgres uses one `ANY($1)` round-trip so
+    /// document cascade stays O(1) vector ops for exclusive entities.
+    ///
+    /// # Returns
+    ///
+    /// Number of entity names requested (callers treat as embeddings_deleted count
+    /// for CascadeStats parity with the historical per-entity loop).
+    async fn delete_entities_batch(&self, entity_names: &[String]) -> Result<usize> {
+        for name in entity_names {
+            self.delete_entity(name).await?;
+        }
+        Ok(entity_names.len())
+    }
+
     /// Delete all relationship vectors involving an entity.
     ///
     /// Used when cascading entity deletion.

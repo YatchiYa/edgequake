@@ -163,6 +163,16 @@ pub fn sota_entity_type_instruction(
 mod tests {
     use super::*;
 
+    #[test]
+    fn lightrag_natural_object_folds_to_schema() {
+        let schema = EntityExtractionSchema::server_default();
+        let (t, remapped) = enforce_entity_type("NaturalObject", &schema);
+        assert_eq!(t, "NATURALOBJECT");
+        assert!(!remapped);
+        let (other, _) = enforce_entity_type("DATE", &schema);
+        assert_eq!(other, "OTHER");
+    }
+
     fn strict_types() -> EntityExtractionSchema {
         EntityExtractionSchema {
             types: vec![

@@ -4,9 +4,7 @@ use edgequake_api::services::{
     is_post_graph_incomplete_stage, orphan_retract_on_recover_enabled,
     retract_indexes_for_orphan_docs,
 };
-use edgequake_storage::{
-    GraphStorage, MemoryGraphStorage, MemoryVectorStorage, VectorStorage,
-};
+use edgequake_storage::{GraphStorage, MemoryGraphStorage, MemoryVectorStorage, VectorStorage};
 use std::sync::Arc;
 
 #[tokio::test]

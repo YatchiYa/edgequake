@@ -131,8 +131,7 @@ mod tests {
     #[tokio::test]
     async fn retract_preserves_shared_entity_with_other_sources() {
         let graph: Arc<dyn GraphStorage> = Arc::new(MemoryGraphStorage::new("retract-share"));
-        let vector: Arc<dyn VectorStorage> =
-            Arc::new(MemoryVectorStorage::new("retract-share", 4));
+        let vector: Arc<dyn VectorStorage> = Arc::new(MemoryVectorStorage::new("retract-share", 4));
         graph.initialize().await.unwrap();
         vector.initialize().await.unwrap();
 
@@ -141,10 +140,7 @@ mod tests {
                 "SHARED",
                 HashMap::from([
                     ("entity_type".into(), serde_json::json!("PERSON")),
-                    (
-                        "source_ids".into(),
-                        serde_json::json!(["doc-a", "doc-b"]),
-                    ),
+                    ("source_ids".into(), serde_json::json!(["doc-a", "doc-b"])),
                 ]),
             )
             .await

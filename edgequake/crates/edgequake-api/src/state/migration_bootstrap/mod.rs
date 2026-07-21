@@ -2050,11 +2050,16 @@ mod tests {
     fn m083_apply_sql_is_idempotent_ssot() {
         assert!(SQL_083_APPLY.contains("idx_node_prop_node_id_unique"));
         assert!(SQL_083_APPLY.contains("idx_edge_source_target_unique"));
-        assert!(SQL_083_APPLY.contains("IF NOT EXISTS"));
         assert!(SQL_083_APPLY.contains("node_id"));
-        // Fast-boot guard: skip O(N) dedup when UNIQUE index already present.
-        assert!(SQL_083_APPLY.contains("already exists"));
-        assert!(SQL_083_APPLY.contains("skip dedup"));
+        // SPEC-062: drop legacy expression UNIQUEs when eq_* arbiters exist.
+        assert!(SQL_083_APPLY.contains("idx_node_eq_node_id"));
+        assert!(SQL_083_APPLY.contains("idx_edge_eq_source_target"));
+        assert!(SQL_083_APPLY.contains("DROP INDEX IF EXISTS"));
+        // Fast-boot guard: skip O(N) dedup when a UNIQUE index already present.
+        assert!(
+            SQL_083_APPLY.contains("already exists") || SQL_083_APPLY.contains("already present")
+        );
+        assert!(SQL_083_APPLY.contains("skip dedup") || SQL_083_APPLY.contains("skip"));
         assert!(SQL_083_STATS_BACKFILL.contains("relationship_count"));
         assert!(SQL_083_STATS_BACKFILL.contains("metadata->>'relationship_count'"));
     }

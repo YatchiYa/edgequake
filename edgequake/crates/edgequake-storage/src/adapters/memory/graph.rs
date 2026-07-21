@@ -790,6 +790,25 @@ impl GraphStorageMutateOps for MemoryGraphStorage {
         Ok(())
     }
 
+    async fn delete_edges_batch(&self, edges: &[(String, String)]) -> Result<()> {
+        if edges.is_empty() {
+            return Ok(());
+        }
+        let mut edge_store = self.edges.write().map_err(super::lock::map_lock_err)?;
+        let mut adjacency = self.adjacency.write().map_err(super::lock::map_lock_err)?;
+        for (source, target) in edges {
+            let key = Self::edge_key(source, target);
+            edge_store.remove(&key);
+            if let Some(neighbors) = adjacency.get_mut(source) {
+                neighbors.remove(target);
+            }
+            if let Some(neighbors) = adjacency.get_mut(target) {
+                neighbors.remove(source);
+            }
+        }
+        Ok(())
+    }
+
     async fn delete_edge_scoped(
         &self,
         source: &str,
@@ -1225,5 +1244,27 @@ mod tests {
 
         assert!(!storage.has_node("A").await.unwrap());
         assert_eq!(storage.edge_count().await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_delete_edges_batch() {
+        use crate::traits::GraphStorageMutateOps;
+        let storage = MemoryGraphStorage::new("edges-batch");
+        storage.upsert_node("A", HashMap::new()).await.unwrap();
+        storage.upsert_node("B", HashMap::new()).await.unwrap();
+        storage.upsert_node("C", HashMap::new()).await.unwrap();
+        storage.upsert_edge("A", "B", HashMap::new()).await.unwrap();
+        storage.upsert_edge("B", "C", HashMap::new()).await.unwrap();
+
+        storage
+            .delete_edges_batch(&[
+                ("A".to_string(), "B".to_string()),
+                ("B".to_string(), "C".to_string()),
+            ])
+            .await
+            .unwrap();
+
+        assert_eq!(storage.edge_count().await.unwrap(), 0);
+        assert!(storage.has_node("A").await.unwrap());
     }
 }

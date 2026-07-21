@@ -305,9 +305,7 @@ impl PgVectorStorage {
             .bind(workspace_id)
             .fetch_one(&pool)
             .await
-            .map_err(|e| {
-                StorageError::Database(format!("count_workspace_rows failed: {e}"))
-            })?;
+            .map_err(|e| StorageError::Database(format!("count_workspace_rows failed: {e}")))?;
         Ok(n.max(0) as u64)
     }
 

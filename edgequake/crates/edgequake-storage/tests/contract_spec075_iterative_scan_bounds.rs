@@ -10,7 +10,10 @@ use edgequake_storage::{parse_hnsw_iterative_scan_mode, PgVectorStorage, VectorI
 #[test]
 fn iterative_scan_mode_parsing_ssot() {
     assert_eq!(parse_hnsw_iterative_scan_mode(""), "relaxed_order");
-    assert_eq!(parse_hnsw_iterative_scan_mode("strict_order"), "strict_order");
+    assert_eq!(
+        parse_hnsw_iterative_scan_mode("strict_order"),
+        "strict_order"
+    );
     assert_eq!(parse_hnsw_iterative_scan_mode("off"), "off");
 }
 

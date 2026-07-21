@@ -37,10 +37,12 @@ fn task_error_to_vision_failure(
 fn vision_fallback_allowed(
     requested_backend: edgequake_pdf::PdfParserBackend,
     error: &edgequake_tasks::TaskError,
+    backend_explicit: bool,
 ) -> bool {
     edgequake_pdf::should_fallback_to_edgeparse(
         requested_backend,
         task_error_to_vision_failure(error),
+        backend_explicit,
     )
 }
 
@@ -422,7 +424,31 @@ impl DocumentTaskProcessor {
 
         let filename = pdf.filename.clone();
         let file_size_bytes = pdf.file_size_bytes;
-        let page_count_opt = pdf.page_count;
+        // Heal missing page_count: pdfium SSOT first, byte-scan last resort.
+        // Accurate pages drive vision_outer_timeout_secs (avoid 520s under-budget).
+        let page_count_opt = match pdf.page_count.filter(|&n| n > 0) {
+            Some(n) => Some(n),
+            None => {
+                let healed = crate::handlers::pdf_upload::extract_page_count(&pdf.pdf_data).await;
+                if let Some(n) = healed.filter(|&n| n > 0) {
+                    info!(
+                        pdf_id = %data.pdf_id,
+                        page_count = n,
+                        "Healed missing pdf_documents.page_count from PDF bytes (pdfium/heuristic)"
+                    );
+                    if let Err(e) = pdf_storage.update_pdf_page_count(&data.pdf_id, n).await {
+                        warn!(
+                            pdf_id = %data.pdf_id,
+                            error = %e,
+                            "Failed to persist healed page_count (non-fatal)"
+                        );
+                    }
+                    Some(n)
+                } else {
+                    None
+                }
+            }
+        };
         let sha256_checksum = pdf.sha256_checksum.clone();
         let pdf_data = pdf.pdf_data;
 
@@ -705,6 +731,9 @@ impl DocumentTaskProcessor {
             .await?;
 
         let backend = data.pdf_parser_backend;
+        // Pass 0 when unknown — vision_outer_timeout_secs applies the
+        // deterministic UNKNOWN_PAGE_COUNT_VISION_BUDGET_ASSUMPTION (50).
+        // Do NOT coerce to 1: that under-budgets large PDFs with missing metadata.
         let page_count = page_count_opt.unwrap_or(0) as usize;
         let mut extraction_method = match backend {
             edgequake_pdf::PdfParserBackend::Vision => ExtractionMethod::Vision,
@@ -793,7 +822,11 @@ impl DocumentTaskProcessor {
                                         "Failed to create vision provider '{}': {e}",
                                         data.vision_provider
                                     ));
-                                    if !vision_fallback_allowed(backend, &error) {
+                                    if !vision_fallback_allowed(
+                                        backend,
+                                        &error,
+                                        data.pdf_parser_backend_explicit,
+                                    ) {
                                         return Err(error);
                                     }
                                     let message = build_edgeparse_fallback_message(
@@ -868,11 +901,8 @@ impl DocumentTaskProcessor {
             .and_then(|v| v.parse::<u32>().ok())
             .unwrap_or(safe_dpi)
             .clamp(96, safe_dpi.max(96));
-        let checkpoint_dir = std::env::var("EDGEQUAKE_CHECKPOINT_DIR").unwrap_or_else(|_| {
-            let mut dir = std::env::temp_dir();
-            dir.push("edgequake-checkpoints");
-            dir.to_string_lossy().to_string()
-        });
+        let checkpoint_dir =
+            crate::services::durable_vision_checkpoint_dir(&data.pdf_id.to_string());
         let page_drawing_assets = match extraction_method {
             ExtractionMethod::Vision => {
                 Some(crate::services::page_drawing_assets_config_for_vision(
@@ -885,26 +915,39 @@ impl DocumentTaskProcessor {
                 data.multimodal_process_options.as_deref(),
             ),
         };
+        // Stall-watchdog heartbeat: resets on every page/status progress signal so
+        // slow-but-progressing Vision conversions are not killed by a fixed wall clock.
+        let vision_heartbeat = crate::services::VisionProgressHeartbeat::new();
         let conversion_config = edgequake_pdf::PdfConversionConfig {
             page_count_hint: page_count_opt.map(|count| count as usize),
             table_method: None,
             filename: Some(filename.clone()),
             page_drawing_assets,
             vision: vision_model.clone().map(|model| {
+                let hb = Arc::clone(&vision_heartbeat);
                 let status_hook: edgequake_pdf::VisionStatusHook = {
                     let cb = progress_callback.clone();
+                    let hb_status = Arc::clone(&hb);
                     Arc::new(move |message: &str, progress: f64| {
+                        hb_status.touch();
                         cb.report_converting_status(message, progress);
                     })
                 };
+                let wrapped_progress = crate::services::HeartbeatProgressCallback::new(
+                    progress_callback.clone()
+                        as Arc<dyn edgequake_pdf2md::ConversionProgressCallback>,
+                    Arc::clone(&hb),
+                );
                 edgequake_pdf::VisionConversionConfig {
                     provider_name: Some(data.vision_provider.clone()),
                     model: Some(model),
                     concurrency: Some(concurrency),
                     dpi: Some(dpi),
                     checkpoint_dir: Some(checkpoint_dir),
+                    // Retries must resume from durable checkpoints so pages accumulate.
+                    // Fresh restart (`restart_from_scratch`) still clears via no_resume.
                     no_resume: should_cleanup_existing_content,
-                    progress_callback: Some(progress_callback.clone()),
+                    progress_callback: Some(wrapped_progress),
                     status_hook: Some(status_hook),
                 }
             }),
@@ -920,23 +963,28 @@ impl DocumentTaskProcessor {
         } else {
             match extraction_method {
                 ExtractionMethod::Vision => {
-                    // WHY: EDGEQUAKE_VISION_TIMEOUT_SECS is kept for backwards
-                    // compatibility. When not set, use the provider-aware formula:
-                    //   120 + (page_count × secs_per_page_for_provider)
-                    // This gives ~3 720s for 120 pages with Ollama vs the previous
-                    // 660s, matching the real hardware requirement.
-                    // See ADR-04-002 in mission/04-heavy-pdf.md.
+                    // Absolute budget (backstop). Primary hang detection is the
+                    // progress/stall watchdog — slow-but-progressing docs complete.
+                    // EDGEQUAKE_VISION_TIMEOUT_SECS overrides the computed budget.
                     let base_timeout_secs: u64 = std::env::var("EDGEQUAKE_VISION_TIMEOUT_SECS")
                         .ok()
                         .and_then(|v| v.parse().ok())
                         .unwrap_or(0);
-                    let vision_timeout_secs = if base_timeout_secs > 0 {
+                    let vision_budget_secs = if base_timeout_secs > 0 {
                         base_timeout_secs
                     } else {
                         use crate::safety_limits::vision_outer_timeout_secs;
                         vision_outer_timeout_secs(&data.vision_provider, page_count)
                     };
-                    let vision_timeout = std::time::Duration::from_secs(vision_timeout_secs);
+                    // Absolute backstop: env override OR 24h — never kill a progressing doc
+                    // solely because the soft page budget elapsed.
+                    use crate::safety_limits::VISION_MAX_OUTER_TIMEOUT_SECS;
+                    let absolute_secs = if base_timeout_secs > 0 {
+                        base_timeout_secs
+                    } else {
+                        VISION_MAX_OUTER_TIMEOUT_SECS
+                    };
+                    let stall_secs = crate::services::vision_stall_timeout_secs();
 
                     let _vision_job_permit = if let Some(semaphore) = &self.pdf_vision {
                         info!(
@@ -960,18 +1008,17 @@ impl DocumentTaskProcessor {
                         page_count = page_count,
                         concurrency = concurrency,
                         dpi = dpi,
-                        timeout_secs = vision_timeout_secs,
-                        "Starting Vision PDF conversion"
+                        budget_secs = vision_budget_secs,
+                        stall_secs = stall_secs,
+                        absolute_secs = absolute_secs,
+                        checkpoint_dir = %crate::services::durable_vision_checkpoint_dir(&data.pdf_id.to_string()),
+                        "Starting Vision PDF conversion (stall watchdog)"
                     );
 
-                    // Cooperative cancel: abort vision convert when the cancel
-                    // token fires (drops the convert future at the next .await).
+                    // Cooperative cancel + stall watchdog (replaces fixed wall-clock timeout).
                     let convert_result = tokio::select! {
                         biased;
                         _ = cancel_token.cancelled() => {
-                            // SPEC-057 P0: stamp PDF Cancelled before returning
-                            // (HTTP cancel path also writes Cancelled; this covers
-                            // in-flight vision abort when the worker observes the token).
                             let _ = pdf_storage
                                 .update_pdf_status(
                                     &data.pdf_id,
@@ -982,9 +1029,11 @@ impl DocumentTaskProcessor {
                                 "Cancelled during vision PDF conversion".to_string(),
                             ));
                         }
-                        result = tokio::time::timeout(
-                            vision_timeout,
+                        result = crate::services::run_with_vision_stall_watchdog(
                             converter.convert(&pdf_data, &conversion_config),
+                            Arc::clone(&vision_heartbeat),
+                            stall_secs,
+                            absolute_secs,
                         ) => result,
                     };
 
@@ -994,7 +1043,11 @@ impl DocumentTaskProcessor {
                             let error = edgequake_tasks::TaskError::Processing(format!(
                                 "PDF conversion failed: {e}"
                             ));
-                            if !vision_fallback_allowed(backend, &error) {
+                            if !vision_fallback_allowed(
+                                backend,
+                                &error,
+                                data.pdf_parser_backend_explicit,
+                            ) {
                                 return Err(error);
                             }
 
@@ -1023,14 +1076,20 @@ impl DocumentTaskProcessor {
                                 ))
                             })?
                         }
-                        Err(_elapsed) => {
-                            let error = edgequake_tasks::TaskError::Timeout(format!(
-                            "Vision extraction timed out after {}s for PDF {}. Provider '{}' may be unresponsive.",
-                            vision_timeout.as_secs(),
-                            data.pdf_id,
-                            data.vision_provider
-                        ));
-                            if !vision_fallback_allowed(backend, &error) {
+                        Err(abort) => {
+                            let made_progress = vision_heartbeat.made_progress();
+                            let raw = abort.as_timeout_message(
+                                &data.pdf_id.to_string(),
+                                &data.vision_provider,
+                            );
+                            let annotated =
+                                crate::services::annotate_timeout_progress(raw, made_progress);
+                            let error = edgequake_tasks::TaskError::Timeout(annotated);
+                            if !vision_fallback_allowed(
+                                backend,
+                                &error,
+                                data.pdf_parser_backend_explicit,
+                            ) {
                                 return Err(error);
                             }
 
@@ -1038,8 +1097,9 @@ impl DocumentTaskProcessor {
                                 build_edgeparse_fallback_message(&data.vision_provider, &error);
                             warn!(
                                 pdf_id = %data.pdf_id,
-                                timeout_secs = vision_timeout.as_secs(),
-                                "Vision extraction timed out; falling back to EdgeParse"
+                                made_progress = made_progress,
+                                pages_completed = vision_heartbeat.pages_completed(),
+                                "Vision extraction stalled/timed out; falling back to EdgeParse"
                             );
                             let _ = self
                                 .update_document_status(&early_doc_id, "processing", Some(&message))
@@ -1328,13 +1388,21 @@ mod tests {
     use uuid::Uuid;
 
     #[test]
-    fn vision_timeouts_trigger_edgeparse_fallback() {
+    fn vision_timeouts_trigger_edgeparse_fallback_when_implicit() {
         let error = TaskError::Timeout(
             "Vision extraction timed out after 480s for PDF abc. Provider 'ollama' may be unresponsive."
                 .to_string(),
         );
 
-        assert!(vision_fallback_allowed(PdfParserBackend::Vision, &error));
+        assert!(vision_fallback_allowed(
+            PdfParserBackend::Vision,
+            &error,
+            false
+        ));
+        assert!(
+            !vision_fallback_allowed(PdfParserBackend::Vision, &error, true),
+            "explicit workspace/upload Vision must fail closed"
+        );
     }
 
     #[test]
@@ -1344,10 +1412,12 @@ mod tests {
         assert!(!edgequake_pdf::should_fallback_to_edgeparse(
             PdfParserBackend::EdgeParse,
             VisionFailureKind::Timeout,
+            false,
         ));
         assert!(!vision_fallback_allowed(
             PdfParserBackend::EdgeParse,
-            &error
+            &error,
+            false
         ));
     }
 

@@ -113,7 +113,7 @@ To honestly claim "matches LightRAG quality":
   6. Diff graphs: entity count, edge count, chunk count
 ```
 
-**Status:** Not implemented. SPEC-026 documents the gap.
+**Status:** Implemented as **[SPEC-001](../../001-benchmark/000-index.md)** (`make bench001-smoke`) on GraphRAG-Bench (EQ `mix` vs LR `mix`).
 
 ---
 

@@ -39,6 +39,8 @@ pub enum TaskType {
     Reindex,
     PdfProcessing,
     KnowledgeInjection,
+    /// Async document cascade delete (vectors → graph → KV → relational).
+    Deletion,
 }
 
 impl fmt::Display for TaskType {
@@ -50,6 +52,7 @@ impl fmt::Display for TaskType {
             Self::Reindex => write!(f, "reindex"),
             Self::PdfProcessing => write!(f, "pdf_processing"),
             Self::KnowledgeInjection => write!(f, "knowledge_injection"),
+            Self::Deletion => write!(f, "deletion"),
         }
     }
 }

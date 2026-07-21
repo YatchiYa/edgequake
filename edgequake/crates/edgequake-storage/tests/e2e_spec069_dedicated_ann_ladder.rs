@@ -7,20 +7,18 @@
 //! - `EQ_DEDICATED_CONTENTION=1` (default) — clients∈{4,8,16} × scan_mem on first fail
 #![cfg(feature = "postgres")]
 
-#[path = "support/postgres_test_config.rs"]
-mod postgres_test_config;
+#[path = "support/perf_ann_corpus.rs"]
+mod perf_ann_corpus;
 #[path = "support/perf_harness.rs"]
 mod perf_harness;
 #[path = "support/perf_stress.rs"]
 mod perf_stress;
-#[path = "support/perf_ann_corpus.rs"]
-mod perf_ann_corpus;
+#[path = "support/postgres_test_config.rs"]
+mod postgres_test_config;
 
 use edgequake_storage::traits::VectorStorage;
 use edgequake_storage::{PgVectorStorage, VectorIndexType, VectorStorageMode};
-use perf_ann_corpus::{
-    emb, measure_single, measure_stress, seed_single_ws, workspace_filter,
-};
+use perf_ann_corpus::{emb, measure_single, measure_stress, seed_single_ws, workspace_filter};
 use perf_stress::{ceiling_hang_cliff_ms, stress_mult, stress_pool_max, with_stress_pool};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -35,10 +33,9 @@ const REF_EF: u32 = 400;
 
 fn parse_u32_list(env: &str, default: &[u32]) -> Vec<u32> {
     match std::env::var(env) {
-        Ok(s) if !s.trim().is_empty() => s
-            .split(',')
-            .filter_map(|p| p.trim().parse().ok())
-            .collect(),
+        Ok(s) if !s.trim().is_empty() => {
+            s.split(',').filter_map(|p| p.trim().parse().ok()).collect()
+        }
         _ => default.to_vec(),
     }
 }
@@ -82,7 +79,9 @@ async fn explain_hnsw(
     index_name: &str,
 ) -> String {
     let pool = postgres_test_config::contract_pg_pool(config).await;
-    let _ = sqlx::query(&format!("ANALYZE {table}")).execute(&pool).await;
+    let _ = sqlx::query(&format!("ANALYZE {table}"))
+        .execute(&pool)
+        .await;
     let emb: String = {
         let vals: Vec<String> = (0..DIM)
             .map(|i| format!("{:.8}", ((i as f32 + 10.0) * 0.019).sin()))
@@ -240,8 +239,8 @@ async fn run_cell(
 
 async fn seed_dedicated(rows: usize) -> (Arc<PgVectorStorage>, edgequake_storage::PostgresConfig) {
     let clients = 16usize;
-    let base = postgres_test_config::require_or_skip_postgres("ded069")
-        .expect("DATABASE_URL required");
+    let base =
+        postgres_test_config::require_or_skip_postgres("ded069").expect("DATABASE_URL required");
     let mut config = with_stress_pool(base, clients).with_vector_index(VectorIndexType::None);
     config.namespace = format!("eq_ded069_ws_{}", &uuid::Uuid::new_v4().to_string()[..8]);
 
@@ -355,7 +354,9 @@ async fn e2e_spec069_dedicated_midscale_ladder() {
         for &clients in &[4usize, 8, 16] {
             for scan_mem in &[None, Some(2u32)] {
                 match scan_mem {
-                    Some(m) => std::env::set_var("EDGEQUAKE_HNSW_SCAN_MEM_MULTIPLIER", m.to_string()),
+                    Some(m) => {
+                        std::env::set_var("EDGEQUAKE_HNSW_SCAN_MEM_MULTIPLIER", m.to_string())
+                    }
                     None => std::env::remove_var("EDGEQUAKE_HNSW_SCAN_MEM_MULTIPLIER"),
                 }
                 let arm = match scan_mem {
@@ -364,14 +365,7 @@ async fn e2e_spec069_dedicated_midscale_ladder() {
                 };
                 let pool_c = stress_pool_max(clients);
                 let cell = run_cell(
-                    &storage,
-                    fail_rows,
-                    fail_ef,
-                    clients,
-                    pool_c,
-                    cliff,
-                    mult,
-                    arm,
+                    &storage, fail_rows, fail_ef, clients, pool_c, cliff, mult, arm,
                 )
                 .await;
                 emit(

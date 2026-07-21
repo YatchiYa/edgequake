@@ -198,6 +198,7 @@ export class ProgressWebSocket {
       case "DeletionStarted":
       case "DeletionPhase":
       case "DeletionCompleted":
+      case "DeletionFailed":
       case "BulkDeletionStarted":
       case "BulkDeletionItemProgress":
       case "BulkDeletionCompleted":

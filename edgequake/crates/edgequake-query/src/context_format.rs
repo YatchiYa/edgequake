@@ -1,4 +1,4 @@
-//! Context string formatting for LLM prompts (SPEC-047 Q1.1).
+//! Context string formatting for LLM prompts (SPEC-047 Q1.1 / 021 F2–F4).
 //!
 //! # SOLID
 //!
@@ -10,8 +10,70 @@
 //!
 //! Truncation token estimates should use the same chunk header format so budget
 //! accounting matches what the LLM actually sees.
+//!
+//! # Modes (021)
+//!
+//! - `EDGEQUAKE_CONTEXT_FORMAT=flat` (default) — Entities → Relations → Chunks
+//! - `EDGEQUAKE_CONTEXT_FORMAT=path` — path-serialized entity–relation–entity blocks
+//! - `EDGEQUAKE_CONTEXT_FORMAT=rr_cer` — Relations → Entities → Chunks (028 A1 / Complex)
+//! - `EDGEQUAKE_PASSAGE_PACK=1` — chunks-first compact graph (HippoRAG2-style labeled)
 
 use crate::context::{RetrievedChunk, RetrievedEntity, RetrievedRelationship};
+use std::collections::{HashMap, HashSet};
+
+/// Prompt layout mode (Acc fairness default = flat).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ContextFormatMode {
+    #[default]
+    Flat,
+    /// Path-serialized multi-hop packing (021 F2 / `path_pack_v1`).
+    Path,
+    /// Relation-first packing for Complex Acc (028 A1).
+    ///
+    /// LightRAG Mix surfaces relational structure early in the prompt; EQ flat
+    /// puts entities first. Order: Relations → Entities → Chunks.
+    RrCer,
+}
+
+impl ContextFormatMode {
+    /// Parse `EDGEQUAKE_CONTEXT_FORMAT` (`flat` \| `path` \| `rr_cer`). Default `flat`.
+    pub fn from_env() -> Self {
+        match std::env::var("EDGEQUAKE_CONTEXT_FORMAT")
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "path" | "paths" | "path_pack" => Self::Path,
+            "rr_cer" | "rr-cer" | "relation_first" | "rel_first" => Self::RrCer,
+            _ => Self::Flat,
+        }
+    }
+}
+
+/// HippoRAG2-style passage-first packing (021 F4). Default off.
+pub fn passage_pack_enabled() -> bool {
+    matches!(
+        std::env::var("EDGEQUAKE_PASSAGE_PACK")
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase()
+            .as_str(),
+        "1" | "true" | "yes" | "on"
+    )
+}
+
+/// LightRAG-like content headings in chunk headers (022 P2). Default off.
+pub fn content_headings_enabled() -> bool {
+    matches!(
+        std::env::var("EDGEQUAKE_CONTENT_HEADINGS")
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase()
+            .as_str(),
+        "1" | "true" | "yes" | "on"
+    )
+}
 
 /// Build the metadata suffix for a chunk header (`page=N`, `modality=…`).
 ///
@@ -25,6 +87,17 @@ pub fn format_chunk_meta(chunk: &RetrievedChunk) -> String {
         let trimmed = modality.trim();
         if !trimmed.is_empty() {
             parts.push(format!("modality={trimmed}"));
+        }
+    }
+    if content_headings_enabled() {
+        if let Some(doc) = chunk.document_id.as_ref() {
+            let trimmed = doc.trim();
+            if !trimmed.is_empty() {
+                parts.push(format!("doc={trimmed}"));
+            }
+        }
+        if let Some(idx) = chunk.chunk_index {
+            parts.push(format!("heading=chunk-{idx}"));
         }
     }
     if parts.is_empty() {
@@ -73,49 +146,258 @@ pub fn format_relationship_line(rel: &RetrievedRelationship) -> String {
     }
 }
 
-/// Assemble the full context string (entities → relationships → chunks).
-pub fn format_query_context(
+fn chunk_legend() -> &'static str {
+    "Each chunk header may include `page=N` (1-indexed PDF page) and `modality=` \
+(chart|figure|table|equation). Prefer evidence from matching pages/modalities when answering.\n\n"
+}
+
+fn format_chunks_section(chunks: &[RetrievedChunk], start_ref: usize) -> String {
+    if chunks.is_empty() {
+        return String::new();
+    }
+    let mut parts = Vec::new();
+    parts.push("### Chunks\n\n".to_string());
+    parts.push(chunk_legend().to_string());
+    for (i, chunk) in chunks.iter().enumerate() {
+        parts.push(format_chunk_block(start_ref + i, chunk));
+    }
+    parts.join("")
+}
+
+fn format_entities_section(entities: &[RetrievedEntity]) -> String {
+    if entities.is_empty() {
+        return String::new();
+    }
+    let mut parts = Vec::new();
+    parts.push("### Entities\n\n".to_string());
+    for entity in entities {
+        parts.push(format_entity_line(entity));
+    }
+    parts.push("\n".to_string());
+    parts.join("")
+}
+
+fn format_relations_section(relationships: &[RetrievedRelationship]) -> String {
+    if relationships.is_empty() {
+        return String::new();
+    }
+    let mut parts = Vec::new();
+    parts.push("### Relations\n\n".to_string());
+    for rel in relationships {
+        parts.push(format_relationship_line(rel));
+    }
+    parts.push("\n".to_string());
+    parts.join("")
+}
+
+/// Flat layout: Entities → Relations → Chunks (LightRAG-aligned section titles).
+pub fn format_query_context_flat(
     entities: &[RetrievedEntity],
     relationships: &[RetrievedRelationship],
     chunks: &[RetrievedChunk],
 ) -> String {
     let mut parts = Vec::new();
+    parts.push(format_entities_section(entities));
+    parts.push(format_relations_section(relationships));
+    parts.push(format_chunks_section(chunks, 1));
+    parts.join("")
+}
 
-    if !entities.is_empty() {
-        parts.push("### Knowledge Graph Data (Entities)\n\n".to_string());
-        for entity in entities {
+/// Relation-first layout (028 A1): Relations → Entities → Chunks.
+///
+/// Surfaces multi-hop edges before hub entities so Complex reasoning sees
+/// relational structure earlier in the prompt budget.
+pub fn format_query_context_rr_cer(
+    entities: &[RetrievedEntity],
+    relationships: &[RetrievedRelationship],
+    chunks: &[RetrievedChunk],
+) -> String {
+    let mut parts = Vec::new();
+    parts.push(
+        "### Context layout\n\nRelations first (multi-hop edges), then entities, then supporting chunks.\n\n"
+            .to_string(),
+    );
+    parts.push(format_relations_section(relationships));
+    parts.push(format_entities_section(entities));
+    parts.push(format_chunks_section(chunks, 1));
+    parts.join("")
+}
+
+/// Path-serialized multi-hop packing (021 F2).
+///
+/// Emits `### Reasoning Paths` blocks: entity --[rel]--> entity with supporting
+/// chunk snippets linked via `source_chunk_ids`, then remaining graph + chunks.
+pub fn format_query_context_path(
+    entities: &[RetrievedEntity],
+    relationships: &[RetrievedRelationship],
+    chunks: &[RetrievedChunk],
+) -> String {
+    let entity_by_name: HashMap<String, &RetrievedEntity> = entities
+        .iter()
+        .map(|e| (e.name.to_ascii_uppercase(), e))
+        .collect();
+    let chunk_by_id: HashMap<&str, &RetrievedChunk> =
+        chunks.iter().map(|c| (c.id.as_str(), c)).collect();
+
+    let mut parts = Vec::new();
+    let mut used_chunk_ids: HashSet<String> = HashSet::new();
+    let mut used_entity_names: HashSet<String> = HashSet::new();
+    let mut used_rel_keys: HashSet<String> = HashSet::new();
+    let mut path_ref = 1usize;
+
+    if !relationships.is_empty() {
+        parts.push("### Reasoning Paths\n\n".to_string());
+        parts.push(
+            "Each path links entities via a relation, then lists supporting chunks. \
+Use paths for multi-hop reasoning; prefer cited chunk evidence.\n\n"
+                .to_string(),
+        );
+
+        for rel in relationships {
+            let key = format!(
+                "{}|{}|{}",
+                rel.source.to_ascii_uppercase(),
+                rel.relation_type.to_ascii_uppercase(),
+                rel.target.to_ascii_uppercase()
+            );
+            if !used_rel_keys.insert(key) {
+                continue;
+            }
+
+            let src_key = rel.source.to_ascii_uppercase();
+            let tgt_key = rel.target.to_ascii_uppercase();
+            used_entity_names.insert(src_key.clone());
+            used_entity_names.insert(tgt_key.clone());
+
+            parts.push(format!("#### Path {path_ref}\n"));
+            path_ref += 1;
+            parts.push(format_relationship_line(rel));
+
+            if let Some(src) = entity_by_name.get(&src_key) {
+                parts.push(format!("- Source: {}", format_entity_line(src).trim()));
+                parts.push("\n".to_string());
+            }
+            if let Some(tgt) = entity_by_name.get(&tgt_key) {
+                parts.push(format!("- Target: {}", format_entity_line(tgt).trim()));
+                parts.push("\n".to_string());
+            }
+
+            let mut support: Vec<&RetrievedChunk> = Vec::new();
+            for name_key in [&src_key, &tgt_key] {
+                if let Some(ent) = entity_by_name.get(name_key) {
+                    for cid in &ent.source_chunk_ids {
+                        if let Some(ch) = chunk_by_id.get(cid.as_str()) {
+                            if used_chunk_ids.insert(ch.id.clone()) {
+                                support.push(*ch);
+                            }
+                        }
+                    }
+                }
+            }
+            // Cap support snippets per path to keep prompt compact.
+            support.sort_by(|a, b| {
+                b.score
+                    .partial_cmp(&a.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+            support.truncate(3);
+            if !support.is_empty() {
+                parts.push("Supporting chunks:\n".to_string());
+                for (i, ch) in support.iter().enumerate() {
+                    parts.push(format_chunk_block(i + 1, ch));
+                }
+            }
+            parts.push("\n".to_string());
+        }
+    }
+
+    let leftover_entities: Vec<&RetrievedEntity> = entities
+        .iter()
+        .filter(|e| !used_entity_names.contains(&e.name.to_ascii_uppercase()))
+        .collect();
+    if !leftover_entities.is_empty() {
+        parts.push("### Entities\n\n".to_string());
+        for entity in leftover_entities {
             parts.push(format_entity_line(entity));
         }
         parts.push("\n".to_string());
     }
 
-    if !relationships.is_empty() {
-        parts.push("### Knowledge Graph Data (Relationships)\n\n".to_string());
-        for rel in relationships {
-            parts.push(format_relationship_line(rel));
-        }
-        parts.push("\n".to_string());
-    }
+    // Relations already listed under Reasoning Paths — no duplicate ### Relations.
 
-    if !chunks.is_empty() {
-        parts.push("### Document Chunks\n\n".to_string());
-        parts.push(
-            "Each chunk header may include `page=N` (1-indexed PDF page) and `modality=` \
-(chart|figure|table|equation). Prefer evidence from matching pages/modalities when answering.\n\n"
-                .to_string(),
-        );
-        for (i, chunk) in chunks.iter().enumerate() {
+    let leftover_chunks: Vec<&RetrievedChunk> = chunks
+        .iter()
+        .filter(|c| !used_chunk_ids.contains(&c.id))
+        .collect();
+    if !leftover_chunks.is_empty() {
+        parts.push("### Chunks\n\n".to_string());
+        parts.push(chunk_legend().to_string());
+        for (i, chunk) in leftover_chunks.iter().enumerate() {
             parts.push(format_chunk_block(i + 1, chunk));
         }
+    } else if used_chunk_ids.is_empty() && !chunks.is_empty() {
+        // No path-linked chunks — fall back to full chunk section.
+        parts.push(format_chunks_section(chunks, 1));
     }
 
     parts.join("")
 }
 
+/// Passage-first compact packing (021 F4 / HippoRAG2-inspired).
+///
+/// Chunks lead; entities/relations follow as compact graph evidence.
+pub fn format_query_context_passage_pack(
+    entities: &[RetrievedEntity],
+    relationships: &[RetrievedRelationship],
+    chunks: &[RetrievedChunk],
+) -> String {
+    let mut parts = Vec::new();
+    parts.push(format_chunks_section(chunks, 1));
+    // Compact graph: cap to top-scored entities / relations already in context order.
+    let ent_cap = entities.len().min(12);
+    let rel_cap = relationships.len().min(16);
+    parts.push(format_entities_section(&entities[..ent_cap]));
+    parts.push(format_relations_section(&relationships[..rel_cap]));
+    parts.join("")
+}
+
+/// Assemble the full context string using env-selected layout.
+pub fn format_query_context(
+    entities: &[RetrievedEntity],
+    relationships: &[RetrievedRelationship],
+    chunks: &[RetrievedChunk],
+) -> String {
+    format_query_context_with_mode(
+        entities,
+        relationships,
+        chunks,
+        ContextFormatMode::from_env(),
+        passage_pack_enabled(),
+    )
+}
+
+/// Explicit mode (tests / callers that avoid env).
+pub fn format_query_context_with_mode(
+    entities: &[RetrievedEntity],
+    relationships: &[RetrievedRelationship],
+    chunks: &[RetrievedChunk],
+    mode: ContextFormatMode,
+    passage_pack: bool,
+) -> String {
+    if passage_pack {
+        return format_query_context_passage_pack(entities, relationships, chunks);
+    }
+    match mode {
+        ContextFormatMode::Flat => format_query_context_flat(entities, relationships, chunks),
+        ContextFormatMode::Path => format_query_context_path(entities, relationships, chunks),
+        ContextFormatMode::RrCer => format_query_context_rr_cer(entities, relationships, chunks),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::context::{RetrievedChunk, RetrievedEntity};
+    use crate::context::{RetrievedChunk, RetrievedEntity, RetrievedRelationship};
 
     #[test]
     fn chunk_meta_includes_page_and_modality() {
@@ -140,13 +422,53 @@ mod tests {
     #[test]
     fn format_query_context_mentions_page_legend() {
         let chunk = RetrievedChunk::new("c1", "body", 0.5).with_page(2);
-        let s = format_query_context(
+        let s = format_query_context_flat(
             &[RetrievedEntity::new("Acme", "ORG", "A company")],
             &[],
             &[chunk],
         );
         assert!(s.contains("page=2"));
         assert!(s.contains("page=N"));
-        assert!(s.contains("Document Chunks"));
+        assert!(s.contains("### Chunks"));
+    }
+
+    #[test]
+    fn path_format_emits_reasoning_paths() {
+        let mut a = RetrievedEntity::new("ALPHA", "ORG", "Source org");
+        a.source_chunk_ids = vec!["c1".into()];
+        let mut b = RetrievedEntity::new("BETA", "ORG", "Target org");
+        b.source_chunk_ids = vec!["c1".into()];
+        let rel = RetrievedRelationship::new("ALPHA", "BETA", "PARTNERS_WITH")
+            .with_description("works with");
+        let chunk = RetrievedChunk::new("c1", "Alpha partners with Beta", 0.9);
+        let s = format_query_context_path(&[a, b], &[rel], &[chunk]);
+        assert!(s.contains("### Reasoning Paths"));
+        assert!(s.contains("PARTNERS_WITH"));
+        assert!(s.contains("Supporting chunks"));
+        assert!(s.contains("Alpha partners with Beta"));
+    }
+
+    #[test]
+    fn passage_pack_puts_chunks_first() {
+        let ent = RetrievedEntity::new("Acme", "ORG", "A company");
+        let chunk = RetrievedChunk::new("c1", "body text", 0.5);
+        let s = format_query_context_passage_pack(&[ent], &[], &[chunk]);
+        let chunks_pos = s.find("### Chunks").expect("chunks");
+        let ents_pos = s.find("### Entities").expect("entities");
+        assert!(chunks_pos < ents_pos);
+    }
+
+    #[test]
+    fn rr_cer_puts_relations_before_entities() {
+        let ent = RetrievedEntity::new("ALPHA", "ORG", "Source org");
+        let rel = RetrievedRelationship::new("ALPHA", "BETA", "PARTNERS_WITH")
+            .with_description("works with");
+        let chunk = RetrievedChunk::new("c1", "body", 0.5);
+        let s = format_query_context_rr_cer(&[ent], &[rel], &[chunk]);
+        let rel_pos = s.find("### Relations").expect("relations");
+        let ent_pos = s.find("### Entities").expect("entities");
+        let chunk_pos = s.find("### Chunks").expect("chunks");
+        assert!(rel_pos < ent_pos && ent_pos < chunk_pos);
+        assert!(s.contains("PARTNERS_WITH"));
     }
 }

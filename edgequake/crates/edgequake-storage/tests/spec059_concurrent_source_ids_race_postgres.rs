@@ -62,10 +62,7 @@ async fn spec059_concurrent_source_ids_race_unions_all() {
             let props = HashMap::from([
                 ("entity_type".to_string(), serde_json::json!("PERSON")),
                 ("source_ids".to_string(), serde_json::json!([doc.clone()])),
-                (
-                    "source_chunk_ids".to_string(),
-                    serde_json::json!([chunk]),
-                ),
+                ("source_chunk_ids".to_string(), serde_json::json!([chunk])),
                 (
                     "description".to_string(),
                     serde_json::json!(format!("from {doc}")),

@@ -52,7 +52,10 @@ fn query_preserves_workspace_filter_and_exact_rerank() {
         &p,
     );
     assert!(sql.contains("workspace_id = $2"), "{sql}");
-    assert!(sql.contains("<~>"), "Hamming candidate stage missing: {sql}");
+    assert!(
+        sql.contains("<~>"),
+        "Hamming candidate stage missing: {sql}"
+    );
     assert!(
         sql.contains("ORDER BY embedding <=> $1::halfvec"),
         "exact rerank missing: {sql}"

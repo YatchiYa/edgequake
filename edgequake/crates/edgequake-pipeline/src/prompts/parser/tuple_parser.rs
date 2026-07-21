@@ -17,6 +17,7 @@
 //! 3. **Line-by-line processing**: Enables streaming extraction.
 //! 4. **Battle-tested**: Proven in the LightRAG paper with millions of extractions.
 
+use super::super::extract_caps::apply_default_extraction_caps;
 use super::super::normalizer::normalize_entity_name;
 use super::super::{DEFAULT_COMPLETION_DELIMITER, DEFAULT_TUPLE_DELIMITER};
 use crate::error::Result;
@@ -172,6 +173,9 @@ impl TupleParser {
         result
             .metadata
             .insert("parse_errors".to_string(), serde_json::json!(parse_errors));
+
+        // 054: LightRAG per-response quantity caps (prompt + deterministic truncate).
+        apply_default_extraction_caps(&mut result);
 
         Ok(result)
     }

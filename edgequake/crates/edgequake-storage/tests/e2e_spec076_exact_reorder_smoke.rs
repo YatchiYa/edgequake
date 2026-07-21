@@ -4,12 +4,12 @@
 //! Does not raise floors; hang cliff hard-fails.
 #![cfg(feature = "postgres")]
 
-#[path = "support/postgres_test_config.rs"]
-mod postgres_test_config;
-#[path = "support/perf_harness.rs"]
-mod perf_harness;
 #[path = "support/perf_ann_corpus.rs"]
 mod perf_ann_corpus;
+#[path = "support/perf_harness.rs"]
+mod perf_harness;
+#[path = "support/postgres_test_config.rs"]
+mod postgres_test_config;
 
 use edgequake_storage::traits::VectorStorage;
 use edgequake_storage::{PgVectorStorage, VectorIndexType, VectorStorageMode};
@@ -44,16 +44,14 @@ async fn run_arm(label: &str, reorder: bool) {
     config.hnsw_m = 8;
     config.hnsw_ef_construction = 32;
 
-    let storage = PgVectorStorage::with_dimension(config, DIM).with_storage_mode(VectorStorageMode::Half);
+    let storage =
+        PgVectorStorage::with_dimension(config, DIM).with_storage_mode(VectorStorageMode::Half);
     if let Err(e) = storage.initialize().await {
         eprintln!("SKIP SPEC-076 arm={label}: init failed ({e})");
         return;
     }
 
-    let _ = seed_ws_split(
-        &storage, ROWS, DIM, 100, "pr076", TENANT, HOT_WS, COLD_WS,
-    )
-    .await;
+    let _ = seed_ws_split(&storage, ROWS, DIM, 100, "pr076", TENANT, HOT_WS, COLD_WS).await;
 
     let mf = workspace_filter(HOT_WS, TENANT);
     let q = emb(DIM, 3.0);
@@ -63,10 +61,7 @@ async fn run_arm(label: &str, reorder: bool) {
         .await
         .expect("filtered query");
     let ms = start.elapsed().as_secs_f64() * 1000.0;
-    assert!(
-        ms < HANG_CLIFF_MS,
-        "hang cliff: arm={label} took {ms:.1}ms"
-    );
+    assert!(ms < HANG_CLIFF_MS, "hang cliff: arm={label} took {ms:.1}ms");
     assert_eq!(
         hits.len(),
         TOP_K.min(ROWS / 5),

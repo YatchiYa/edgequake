@@ -2,6 +2,14 @@
 //!
 //! Centralizes when a vision backend failure should degrade to EdgeParse
 //! instead of failing the ingestion task outright.
+//!
+//! # First principles
+//!
+//! - **Implicit Vision** (server default / auto-route): timeout / provider
+//!   failure may degrade to EdgeParse so ingestion still completes.
+//! - **Explicit Vision** (workspace `pdf_parser_backend=vision` or upload
+//!   override): user/workspace choice is law — **fail closed**, no silent
+//!   EdgeParse. Callers must surface the error so the UI can retry / switch.
 
 use crate::PdfParserBackend;
 
@@ -26,10 +34,17 @@ impl VisionFailureKind {
 }
 
 /// Returns true when a vision backend request should fall back to EdgeParse.
+///
+/// `backend_explicit`: `true` when workspace or upload explicitly selected
+/// Vision (or EdgeParse). Explicit Vision never silently degrades.
 pub fn should_fallback_to_edgeparse(
     requested_backend: PdfParserBackend,
     failure: VisionFailureKind,
+    backend_explicit: bool,
 ) -> bool {
+    if backend_explicit {
+        return false;
+    }
     if requested_backend != PdfParserBackend::Vision {
         return false;
     }
@@ -55,7 +70,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn vision_failures_trigger_edgeparse_fallback() {
+    fn implicit_vision_failures_trigger_edgeparse_fallback() {
         for failure in [
             VisionFailureKind::Timeout,
             VisionFailureKind::ProviderUnavailable,
@@ -64,8 +79,24 @@ mod tests {
         ] {
             assert!(should_fallback_to_edgeparse(
                 PdfParserBackend::Vision,
-                failure
+                failure,
+                false
             ));
+        }
+    }
+
+    #[test]
+    fn explicit_vision_never_silent_fallback() {
+        for failure in [
+            VisionFailureKind::Timeout,
+            VisionFailureKind::ProviderUnavailable,
+            VisionFailureKind::ConversionFailed,
+            VisionFailureKind::FeatureUnavailable,
+        ] {
+            assert!(
+                !should_fallback_to_edgeparse(PdfParserBackend::Vision, failure, true),
+                "explicit Vision must fail closed for {failure:?}"
+            );
         }
     }
 
@@ -73,7 +104,8 @@ mod tests {
     fn edgeparse_requests_do_not_self_fallback() {
         assert!(!should_fallback_to_edgeparse(
             PdfParserBackend::EdgeParse,
-            VisionFailureKind::Timeout
+            VisionFailureKind::Timeout,
+            false
         ));
     }
 

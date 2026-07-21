@@ -568,10 +568,14 @@ impl WorkerPool {
                                 );
                             }
 
+                            // Classify once (SSOT) — reused for the retry gate
+                            // and the terminal reason so they never disagree.
+                            let is_permanent =
+                                crate::is_permanent_ingestion_failure(&error_msg);
                             let will_retry = config.auto_retry
                                 && task.can_retry()
                                 && !task.circuit_breaker_tripped
-                                && !crate::is_permanent_ingestion_failure(&error_msg);
+                                && !is_permanent;
 
                             if will_retry {
                                 let retry_delay_ms = calculate_backoff_delay(
@@ -635,6 +639,11 @@ impl WorkerPool {
                                         Last error: {}",
                                         task.consecutive_timeout_failures, error_msg
                                     )
+                                } else if is_permanent {
+                                    // Deterministic failure (SPEC-045): not retried.
+                                    // Surface the actionable cause directly instead of a
+                                    // misleading "retries exhausted" count.
+                                    format!("Permanent failure (not retryable): {}", error_msg)
                                 } else {
                                     format!(
                                         "Retries exhausted ({}/{} attempts). Last error: {}",
@@ -1152,6 +1161,105 @@ mod tests {
         let stored = storage.get_task(&track_id).await.unwrap().unwrap();
         assert_eq!(stored.status, TaskStatus::Cancelled);
         assert!(!stored.can_retry());
+
+        pool.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn test_provider_misconfig_fails_fast_no_retry() {
+        // A deterministic provider misconfiguration (missing credential) must
+        // fail permanently on the first attempt — no retry budget spent, no
+        // misleading "retries exhausted", and an actionable reason recorded.
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct MisconfigProcessor {
+            attempts: Arc<AtomicUsize>,
+            permanent_reason: Arc<std::sync::Mutex<Option<String>>>,
+        }
+
+        #[async_trait::async_trait]
+        impl TaskProcessor for MisconfigProcessor {
+            async fn process(
+                &self,
+                _task: &mut Task,
+                _cancel_token: CancellationToken,
+            ) -> TaskResult<serde_json::Value> {
+                self.attempts.fetch_add(1, Ordering::SeqCst);
+                Err(TaskError::Processing(
+                    "Failed to create vision provider 'mistral': Configuration error: \
+                     MISTRAL_API_KEY is not set. To use the Mistral provider, set the \
+                     environment variable and restart the server."
+                        .to_string(),
+                ))
+            }
+
+            async fn on_permanent_failure(&self, _task: &Task, error_msg: &str) {
+                *self.permanent_reason.lock().unwrap() = Some(error_msg.to_string());
+            }
+        }
+
+        let queue = Arc::new(ChannelTaskQueue::new(10));
+        let storage = Arc::new(MemoryTaskStorage::new());
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let permanent_reason = Arc::new(std::sync::Mutex::new(None));
+        let processor: SharedTaskProcessor = Arc::new(MisconfigProcessor {
+            attempts: Arc::clone(&attempts),
+            permanent_reason: Arc::clone(&permanent_reason),
+        });
+
+        let config = WorkerPoolConfig {
+            num_workers: 1,
+            auto_retry: true, // retry is ON — misconfig must still not retry
+            initial_retry_delay_ms: 10,
+            max_retry_delay_ms: 50,
+            backoff_multiplier: 2.0,
+            max_tasks_per_tenant: 0,
+            processing_timeout_secs: 300,
+        };
+
+        let mut pool = WorkerPool::new(config, queue.clone(), storage.clone(), processor);
+        pool.start();
+
+        let task = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::Insert,
+            serde_json::json!({"test": "misconfig"}),
+        );
+        let track_id = task.track_id.clone();
+        storage.create_task(&task).await.unwrap();
+        queue.send(task).await.unwrap();
+
+        // Give ample time for any (incorrect) retries to fire.
+        tokio::time::sleep(tokio::time::Duration::from_millis(400)).await;
+
+        let stored = storage.get_task(&track_id).await.unwrap().unwrap();
+        assert_eq!(
+            stored.status,
+            TaskStatus::Failed,
+            "misconfig task must be Failed, got {:?}",
+            stored.status
+        );
+        assert_eq!(
+            attempts.load(Ordering::SeqCst),
+            1,
+            "misconfig must not be retried (expected exactly 1 processing attempt)"
+        );
+        assert!(
+            stored.retry_count < stored.max_retries,
+            "must fail before exhausting retries: retry_count={} max_retries={}",
+            stored.retry_count,
+            stored.max_retries
+        );
+        let reason = permanent_reason.lock().unwrap().clone().unwrap_or_default();
+        assert!(
+            reason.contains("not retryable"),
+            "reason should mark non-retryable, got: {reason}"
+        );
+        assert!(
+            !reason.contains("Retries exhausted"),
+            "misleading 'Retries exhausted' must not appear: {reason}"
+        );
 
         pool.shutdown().await;
     }

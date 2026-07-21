@@ -21,7 +21,7 @@ impl QueryEngine {
     pub(in crate::engine_impl) async fn query_local_with_vector_storage(
         &self,
         query_text: &str,
-        _keywords: &ExtractedKeywords,
+        keywords: &ExtractedKeywords,
         embeddings: &QueryEmbeddings,
         tenant_id: Option<String>,
         workspace_id: Option<String>,
@@ -55,74 +55,110 @@ impl QueryEngine {
         let entity_scores: HashMap<String, f32> = entity_vectors
             .iter()
             .filter(|r| r.score >= self.config.min_score)
-            .map(|r| {
-                let entity_name =
+            .filter_map(|r| {
+                let bare =
                     crate::helpers::decode_entity_name_from_result(&r.id, &r.metadata);
-                let entity_name = if entity_name.is_empty() {
+                let bare = if bare.is_empty() {
                     r.id.clone()
                 } else {
-                    entity_name
+                    bare
                 };
-                (entity_name, r.score)
+                let graph_id = crate::helpers::graph_entity_id_for_workspace(
+                    &bare,
+                    workspace_id.as_deref(),
+                );
+                if graph_id.is_empty() {
+                    None
+                } else {
+                    Some((graph_id, r.score))
+                }
             })
             .collect();
 
         let entity_ids: Vec<String> = entity_vectors
             .iter()
             .filter(|r| r.score >= self.config.min_score)
-            .map(|r| {
-                let name = crate::helpers::decode_entity_name_from_result(&r.id, &r.metadata);
-                if name.is_empty() {
+            .filter_map(|r| {
+                let bare = crate::helpers::decode_entity_name_from_result(&r.id, &r.metadata);
+                let bare = if bare.is_empty() {
                     r.id.clone()
                 } else {
-                    name
+                    bare
+                };
+                let graph_id = crate::helpers::graph_entity_id_for_workspace(
+                    &bare,
+                    workspace_id.as_deref(),
+                );
+                if graph_id.is_empty() {
+                    None
+                } else {
+                    Some(graph_id)
                 }
             })
             .take(self.config.max_entities)
             .collect();
 
         if entity_ids.is_empty() {
-            tracing::debug!(
-                workspace_id = ?workspace_id,
-                "OODA-231: No entity vectors found, falling back to popular entities from graph"
-            );
-            crate::retrieval_telemetry::mark_popular_node_fallback(&mut context, "local");
-            let graph = self.graph_read();
-            let popular = graph
-                .get_popular_nodes_with_degree(
-                    self.config.max_entities,
-                    None,
-                    None,
-                    tenant_id.as_deref(),
-                    workspace_id.as_deref(),
-                )
-                .await?;
+            if crate::keyword_boost::popular_node_fallback_enabled() {
+                tracing::debug!(
+                    workspace_id = ?workspace_id,
+                    "OODA-231: No entity vectors found, falling back to popular entities from graph"
+                );
+                crate::retrieval_telemetry::mark_popular_node_fallback(&mut context, "local");
+                let graph = self.graph_read();
+                let popular = graph
+                    .get_popular_nodes_with_degree(
+                        self.config.max_entities,
+                        None,
+                        None,
+                        tenant_id.as_deref(),
+                        workspace_id.as_deref(),
+                    )
+                    .await?;
 
-            let fallback_entity_ids: Vec<String> =
-                popular.iter().map(|(n, _)| n.id.clone()).collect();
+                let fallback_entity_ids: Vec<String> =
+                    popular.iter().map(|(n, _)| n.id.clone()).collect();
 
-            for (node, degree) in popular {
-                let entity = build_entity_from_node(&node.id, &node.properties, degree, 0.0);
-                context.add_entity(entity);
-            }
-
-            if !fallback_entity_ids.is_empty() {
-                let edges = crate::graph_expand::expand_neighborhood_edges(
-                    &graph,
-                    &fallback_entity_ids,
-                    self.config.graph_depth,
-                    self.config.max_relationships,
-                    self.config.graph_walk,
-                    tenant_id.as_deref(),
-                    workspace_id.as_deref(),
-                )
-                .await?;
-                for edge in edges {
-                    let rel =
-                        build_relationship_from_edge(&edge.source, &edge.target, &edge.properties);
-                    context.add_relationship(rel);
+                for (node, degree) in popular {
+                    let entity = build_entity_from_node(&node.id, &node.properties, degree, 0.0);
+                    context.add_entity(entity);
                 }
+
+                if !fallback_entity_ids.is_empty() {
+                    let edges = crate::graph_expand::expand_neighborhood_edges(
+                        &graph,
+                        &fallback_entity_ids,
+                        self.config.graph_depth,
+                        self.config.max_relationships,
+                        self.config.graph_walk,
+                        tenant_id.as_deref(),
+                        workspace_id.as_deref(),
+                    )
+                    .await?;
+                    for edge in edges {
+                        let rel = build_relationship_from_edge(
+                            &edge.source,
+                            &edge.target,
+                            &edge.properties,
+                        );
+                        context.add_relationship(rel);
+                    }
+                }
+            } else {
+                tracing::debug!(
+                    workspace_id = ?workspace_id,
+                    "No entity vectors; popular-node fallback disabled (EDGEQUAKE_POPULAR_NODE_FALLBACK=0)"
+                );
             }
+            // Still try topic admit when VDB empty (exact-name graph hit).
+            crate::topic_entity_admit::admit_topic_entities(
+                self.graph_read(),
+                &mut context,
+                query_text,
+                keywords,
+                workspace_id.as_deref(),
+            )
+            .await?;
         } else {
             let graph = self.graph_read();
             let (nodes_map, degrees) = tokio::join!(
@@ -141,6 +177,20 @@ impl QueryEngine {
                     context.add_entity(entity);
                 }
             }
+            if crate::keyword_boost::keyword_lexical_boost_enabled() {
+                let kw = keywords.all_keywords();
+                crate::keyword_boost::boost_entities_by_keywords(&mut context.entities, &kw);
+            }
+
+            // 038 SELECT: Exploratory exact-name topic entities → Mix chunk pool
+            crate::topic_entity_admit::admit_topic_entities(
+                self.graph_read(),
+                &mut context,
+                query_text,
+                keywords,
+                workspace_id.as_deref(),
+            )
+            .await?;
 
             let edges = crate::graph_expand::expand_neighborhood_edges(
                 &graph,

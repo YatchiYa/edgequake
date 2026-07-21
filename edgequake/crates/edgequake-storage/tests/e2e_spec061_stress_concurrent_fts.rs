@@ -4,19 +4,20 @@
 //! Scale via `EDGEQUAKE_PERF_SCALE=prod|large`.
 #![cfg(feature = "postgres")]
 
-#[path = "support/postgres_test_config.rs"]
-mod postgres_test_config;
 #[path = "support/perf_harness.rs"]
 mod perf_harness;
 #[path = "support/perf_stress.rs"]
 mod perf_stress;
+#[path = "support/postgres_test_config.rs"]
+mod postgres_test_config;
 
 use edgequake_storage::adapters::postgres::PostgresPool;
 use edgequake_storage::traits::{KVStorage, MetadataFilter, VectorStorage};
 use edgequake_storage::{PgVectorStorage, PostgresKVStorage};
 use perf_harness::{finish_report, percentile_p95_ms};
 use perf_stress::{
-    fts_scale, perf_scale, stress_clients, stress_mult, stress_pool_max, with_stress_pool, PerfScale,
+    fts_scale, perf_scale, stress_clients, stress_mult, stress_pool_max, with_stress_pool,
+    PerfScale,
 };
 use std::sync::Arc;
 use std::time::Instant;
@@ -58,7 +59,10 @@ async fn e2e_spec061_stress_concurrent_fts() {
             } else {
                 "ordinary filler body"
             };
-            kv_batch.push((id.clone(), serde_json::json!({"content": phrase, "type": "chunk"})));
+            kv_batch.push((
+                id.clone(),
+                serde_json::json!({"content": phrase, "type": "chunk"}),
+            ));
             vec_batch.push((
                 id.clone(),
                 emb(fts.dim, i),

@@ -18,6 +18,7 @@
 mod cache;
 mod extractor;
 mod intent;
+mod keyword_mode;
 mod llm_extractor;
 mod mock_extractor;
 
@@ -26,5 +27,8 @@ pub use cache::PostgresKeywordCache;
 pub use cache::{InMemoryKeywordCache, KeywordCache};
 pub use extractor::{ExtractedKeywords, KeywordExtractor, Keywords};
 pub use intent::QueryIntent;
+pub use keyword_mode::{
+    heuristic_extracted_keywords, keyword_cache_enabled, keyword_mode_from_env, KeywordMode,
+};
 pub use llm_extractor::{CachedKeywordExtractor, LLMKeywordExtractor};
 pub use mock_extractor::MockKeywordExtractor;

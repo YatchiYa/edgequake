@@ -234,6 +234,10 @@ impl GraphStorageMutateOps for PostgresAGEGraphStorage {
         self.pg_delete_edge(source, target).await
     }
 
+    async fn delete_edges_batch(&self, edges: &[(String, String)]) -> Result<()> {
+        self.pg_delete_edges_batch(edges).await
+    }
+
     async fn delete_edge_scoped(
         &self,
         source: &str,

@@ -1,7 +1,8 @@
 //! Retrieval fusion helpers (SPEC-023 I5).
 //!
-//! Mix mode supports weighted min-max blending or Reciprocal Rank Fusion (RRF).
-//! Default: RRF. Set `EDGEQUAKE_MIX_FUSION=weighted` for weighted blend.
+//! Mix mode supports weighted min-max blending, Reciprocal Rank Fusion (RRF),
+//! or LightRAG-style round-robin merge.
+//! Default: RRF. Set `EDGEQUAKE_MIX_FUSION=weighted` or `round_robin` to ablate.
 
 use std::collections::HashMap;
 
@@ -14,6 +15,8 @@ pub enum MixFusionMode {
     Weighted,
     /// Reciprocal Rank Fusion across ranked ID lists.
     Rrf,
+    /// LightRAG-style round-robin interleave (local → global → naive).
+    RoundRobin,
 }
 
 /// Read fusion mode from environment (default: RRF per SPEC-024 2.1).
@@ -24,6 +27,7 @@ pub fn mix_fusion_mode_from_env() -> MixFusionMode {
         .as_str()
     {
         "weighted" => MixFusionMode::Weighted,
+        "round_robin" | "round-robin" | "rr" | "lightrag" => MixFusionMode::RoundRobin,
         _ => MixFusionMode::Rrf,
     }
 }
@@ -33,6 +37,7 @@ pub fn mix_fusion_mode_label(mode: MixFusionMode) -> &'static str {
     match mode {
         MixFusionMode::Weighted => "weighted",
         MixFusionMode::Rrf => "rrf",
+        MixFusionMode::RoundRobin => "round_robin",
     }
 }
 

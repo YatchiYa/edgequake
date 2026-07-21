@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use sqlx::Row;
 
-use super::PgVectorStorage;
 use super::super::ann_exact_reorder_policy::{build_ann_select_sql, AnnExactReorderPolicy};
+use super::PgVectorStorage;
 use crate::error::{Result, StorageError};
 use crate::traits::{MetadataFilter, VectorSearchResult, VectorStorage};
 
@@ -64,7 +64,8 @@ impl VectorStorage for PgVectorStorage {
             .await
             .map_err(|e| StorageError::Database(format!("Failed to begin query tx: {}", e)))?;
 
-        for stmt in Self::search_tuning_statements(self.effective_index_type(), tune_k, false, false)
+        for stmt in
+            Self::search_tuning_statements(self.effective_index_type(), tune_k, false, false)
         {
             sqlx::query(&stmt)
                 .execute(&mut *tx)
@@ -289,6 +290,26 @@ impl VectorStorage for PgVectorStorage {
             .map_err(|e| StorageError::Database(format!("Delete entity failed: {}", e)))?;
 
         Ok(())
+    }
+
+    async fn delete_entities_batch(&self, entity_names: &[String]) -> Result<usize> {
+        if entity_names.is_empty() {
+            return Ok(0);
+        }
+        let mut unique = entity_names.to_vec();
+        unique.sort();
+        unique.dedup();
+        let pool = self.pool.get().await?;
+        let sql = format!(
+            "DELETE FROM {} WHERE metadata->>'entity_name' = ANY($1::text[])",
+            self.table_name
+        );
+        sqlx::query(&sql)
+            .bind(&unique)
+            .execute(&pool)
+            .await
+            .map_err(|e| StorageError::Database(format!("Batch delete entities failed: {e}")))?;
+        Ok(unique.len())
     }
 
     async fn delete_entity_relations(&self, entity_name: &str) -> Result<()> {
@@ -640,12 +661,9 @@ impl VectorStorage for PgVectorStorage {
             mf,
             workspace_row_count,
         ) {
-            sqlx::query(&stmt)
-                .execute(&mut *tx)
-                .await
-                .map_err(|e| {
-                    StorageError::Database(format!("Failed to set Wave-2 planner bias: {e}"))
-                })?;
+            sqlx::query(&stmt).execute(&mut *tx).await.map_err(|e| {
+                StorageError::Database(format!("Failed to set Wave-2 planner bias: {e}"))
+            })?;
         }
 
         let rows = sqlx::query_with(&sql, args)

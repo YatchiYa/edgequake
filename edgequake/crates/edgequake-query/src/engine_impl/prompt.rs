@@ -12,6 +12,14 @@ use edgequake_llm::traits::{ChatMessage, ImageData};
 use super::QueryEngine;
 use super::TokenStream;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AnswerPromptStyle {
+    Default,
+    LightRag,
+    /// 046 — name concrete Context entities over category paraphrases.
+    Specific,
+}
+
 impl QueryEngine {
     /// Check if metadata matches tenant/workspace filter.
     ///
@@ -83,12 +91,16 @@ impl QueryEngine {
     ///
     /// `system_prompt_extension`: Optional additional instructions injected between
     /// the base instructions and the context section (SPEC-004).
+    ///
+    /// `question_type`: Optional GraphRAG-Bench / product type label (047). Used when
+    /// `EDGEQUAKE_ANSWER_SPECIFIC_TYPES` scopes `ANSWER_PROMPT=specific`.
     pub(super) fn build_prompt(
         &self,
         query: &str,
         context: &QueryContext,
         system_prompt_extension: Option<&str>,
         conversation_history: &[ConversationMessage],
+        question_type: Option<&str>,
     ) -> String {
         if context.is_empty() {
             return "I'm sorry, but I couldn't find any relevant information in my knowledge base to answer your question.".to_string();
@@ -102,6 +114,27 @@ impl QueryEngine {
         )
         .map(|section| format!("\n{section}\n"))
         .unwrap_or_default();
+
+        match Self::answer_prompt_style(question_type) {
+            AnswerPromptStyle::LightRag => {
+                return Self::build_prompt_lightrag(
+                    query,
+                    &context_text,
+                    &additional_instructions,
+                    &conversation_section,
+                );
+            }
+            AnswerPromptStyle::Specific => {
+                return Self::build_prompt_specific(
+                    query,
+                    &context_text,
+                    &additional_instructions,
+                    &conversation_section,
+                );
+            }
+            AnswerPromptStyle::Default => {}
+        }
+
         let grounding = crate::grounding::grounding_instructions();
 
         format!(
@@ -118,7 +151,7 @@ The answer must integrate relevant facts from the Knowledge Graph and Document C
 
 1. Step-by-Step Reasoning:
   - Carefully determine the user's query intent to fully understand the information need.
-  - Scrutinize both Knowledge Graph Data (Entities and Relationships) and Document Chunks in the **Context**. Identify and extract all pieces of information that are directly relevant to answering the user query.
+  - Scrutinize the **Entities**, **Relations**, and **Chunks** sections in the **Context**. Identify and extract all pieces of information that are directly relevant to answering the user query.
   - Weave the extracted facts into a coherent and logical response. Your own knowledge must ONLY be used to formulate fluent sentences and connect ideas, NOT to introduce any external information.
 
 2. Content & Grounding:
@@ -131,6 +164,155 @@ The answer must integrate relevant facts from the Knowledge Graph and Document C
 3. Formatting & Language:
   - The response MUST be in the same language as the user query.
   - Use Markdown formatting for clarity (headings, bold text, bullet points).
+{additional_instructions}
+---Context---
+
+{context_text}
+{conversation_section}
+---User Query---
+
+{query}"#
+        )
+    }
+
+    /// `EDGEQUAKE_ANSWER_PROMPT`: `default` | `lightrag` | `specific` (046/047).
+    ///
+    /// When style is `specific` and `EDGEQUAKE_ANSWER_SPECIFIC_TYPES` is non-empty
+    /// (comma-separated tokens, e.g. `complex`), apply specificity only if
+    /// `question_type` lowercase contains a token. Empty types → always specific (046).
+    /// Scoped + missing/empty `question_type` → default (protect Fact Acc).
+    fn answer_prompt_style(question_type: Option<&str>) -> AnswerPromptStyle {
+        let base = match std::env::var("EDGEQUAKE_ANSWER_PROMPT")
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "lightrag" | "lr" | "rag_response" => AnswerPromptStyle::LightRag,
+            "specific" | "entity_first" | "specificity" => AnswerPromptStyle::Specific,
+            _ => AnswerPromptStyle::Default,
+        };
+        if base == AnswerPromptStyle::Specific
+            && !Self::specific_types_allow(question_type)
+        {
+            return AnswerPromptStyle::Default;
+        }
+        base
+    }
+
+    /// 047: token match against `EDGEQUAKE_ANSWER_SPECIFIC_TYPES`.
+    fn specific_types_allow(question_type: Option<&str>) -> bool {
+        let raw = std::env::var("EDGEQUAKE_ANSWER_SPECIFIC_TYPES").unwrap_or_default();
+        let tokens: Vec<String> = raw
+            .split(',')
+            .map(|s| s.trim().to_ascii_lowercase())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if tokens.is_empty() {
+            return true;
+        }
+        let qt = question_type.unwrap_or("").trim().to_ascii_lowercase();
+        if qt.is_empty() {
+            return false;
+        }
+        tokens.iter().any(|t| qt.contains(t.as_str()))
+    }
+
+    /// 028 A3: `EDGEQUAKE_ANSWER_PROMPT=lightrag` → closer to LR `rag_response`.
+    #[allow(dead_code)]
+    fn answer_prompt_style_lightrag() -> bool {
+        matches!(Self::answer_prompt_style(None), AnswerPromptStyle::LightRag)
+    }
+
+    /// 046: prefer concrete Context names over category paraphrases (Complex Acc).
+    ///
+    /// Keeps EQ grounded-arithmetic / partial-answer rules (unlike LR abstain).
+    fn build_prompt_specific(
+        query: &str,
+        context_text: &str,
+        additional_instructions: &str,
+        conversation_section: &str,
+    ) -> String {
+        let grounding = crate::grounding::grounding_instructions();
+        format!(
+            r#"---Role---
+
+You are an expert AI assistant specializing in synthesizing information from a provided knowledge base. Your primary function is to answer user queries accurately by ONLY using the information within the provided **Context**.
+
+---Goal---
+
+Generate a comprehensive, well-structured answer to the user query.
+The answer must integrate relevant facts from the Knowledge Graph and Document Chunks found in the **Context**.
+Prefer **specific named items from Context** (drug names, test names, staging systems, entity labels) over generic category paraphrases.
+
+---Instructions---
+
+1. Step-by-Step Reasoning:
+  - Carefully determine the user's query intent to fully understand the information need.
+  - Scrutinize the **Entities**, **Relations**, and **Chunks** sections in the **Context**. Identify and extract all pieces of information that are directly relevant to answering the user query.
+  - When Context lists concrete members of a class (e.g. named PARP inhibitors, named imaging/exam modalities), **name those members** rather than only the class label.
+  - For multi-part questions, address each part explicitly (what / why / when / which factors).
+  - Weave the extracted facts into a coherent and logical response. Your own knowledge must ONLY be used to formulate fluent sentences and connect ideas, NOT to introduce any external information.
+
+2. Content & Grounding:
+  - Strictly adhere to the provided context; DO NOT invent facts from general knowledge or assume missing numbers.
+  - Grounded arithmetic is allowed when BOTH operands (e.g. percentage and sample size N) are explicit in Context — compute the count (not the bare percentage) and cite both sources (see Citations & Page Grounding).
+  - If the answer cannot be fully determined from the **Context**, state what information IS available and note what is missing. A partial answer with specific data is better than a generic "insufficient information" response.
+
+{grounding}
+
+3. Formatting & Language:
+  - The response MUST be in the same language as the user query.
+  - Use Markdown formatting for clarity (headings, bold text, bullet points).
+{additional_instructions}
+---Context---
+
+{context_text}
+{conversation_section}
+---User Query---
+
+{query}"#
+        )
+    }
+
+    /// LightRAG-aligned answer prompt (028 A3 Acc ablation).
+    ///
+    /// Diff vs EQ default: stricter "do not guess", explicit References section,
+    /// Knowledge Graph Data + Document Chunks wording, no grounded-arithmetic block.
+    fn build_prompt_lightrag(
+        query: &str,
+        context_text: &str,
+        additional_instructions: &str,
+        conversation_section: &str,
+    ) -> String {
+        format!(
+            r#"---Role---
+
+You are an expert AI assistant specializing in synthesizing information from a provided knowledge base. Your primary function is to answer user queries accurately by ONLY using the information within the provided **Context**.
+
+---Goal---
+
+Generate a comprehensive, well-structured answer to the user query.
+The answer must integrate relevant facts from the Knowledge Graph and Document Chunks found in the **Context**.
+Consider the conversation history if provided to maintain conversational flow and avoid repeating information.
+
+---Instructions---
+
+1. Step-by-Step Instruction:
+  - Carefully determine the user's query intent in the context of the conversation history to fully understand the user's information need.
+  - Scrutinize both Knowledge Graph Data (Entities / Relations) and Document Chunks in the **Context**. Identify and extract all pieces of information that are directly relevant to answering the user query.
+  - Weave the extracted facts into a coherent and logical response. Your own knowledge must ONLY be used to formulate fluent sentences and connect ideas, NOT to introduce any external information.
+  - Track chunk ids that directly support the facts presented. Prefer citing those chunks when available.
+  - When useful, end with a short `### References` section listing at most 5 supporting document/chunk titles or ids. Do not add commentary after References.
+
+2. Content & Grounding:
+  - Strictly adhere to the provided context from the **Context**; DO NOT invent, assume, or infer any information not explicitly stated.
+  - If the answer cannot be found in the **Context**, state that you do not have enough information to answer. Do not attempt to guess.
+
+3. Formatting & Language:
+  - The response MUST be in the same language as the user query.
+  - The response MUST utilize Markdown formatting for enhanced clarity and structure (e.g., headings, bold text, bullet points).
+  - Prefer a Multiple Paragraphs style unless the query clearly asks for a short fact.
 {additional_instructions}
 ---Context---
 
@@ -217,6 +399,7 @@ Generate a comprehensive, well-structured answer that integrates observations fr
         system_prompt_extension: Option<&str>,
         images: Option<&[ImageData]>,
         conversation_history: &[ConversationMessage],
+        question_type: Option<&str>,
     ) -> Result<(String, usize)> {
         if context.is_empty() {
             return Ok((
@@ -260,6 +443,7 @@ Generate a comprehensive, well-structured answer that integrates observations fr
                             context,
                             system_prompt_extension,
                             conversation_history,
+                            question_type,
                         ))
                         .await?
                 }
@@ -271,6 +455,7 @@ Generate a comprehensive, well-structured answer that integrates observations fr
                     context,
                     system_prompt_extension,
                     conversation_history,
+                    question_type,
                 ))
                 .await?
         };
@@ -285,6 +470,7 @@ Generate a comprehensive, well-structured answer that integrates observations fr
         context: &QueryContext,
         system_prompt_extension: Option<&str>,
         conversation_history: &[ConversationMessage],
+        question_type: Option<&str>,
     ) -> Result<(String, usize)> {
         self.generate_answer_with_provider(
             query,
@@ -293,6 +479,7 @@ Generate a comprehensive, well-structured answer that integrates observations fr
             system_prompt_extension,
             None,
             conversation_history,
+            question_type,
         )
         .await
     }
@@ -385,7 +572,8 @@ Generate a comprehensive, well-structured answer that integrates observations fr
                     "Streaming vision chat failed; falling back to text-only stream"
                 );
                 // Text-only fallback: prefer streaming if supported, else one-shot.
-                let prompt = self.build_prompt(query, context, system_prompt_extension, &[]);
+                let prompt =
+                    self.build_prompt(query, context, system_prompt_extension, &[], None);
                 if provider.supports_streaming() {
                     provider
                         .stream(&prompt)

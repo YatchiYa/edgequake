@@ -148,6 +148,7 @@ pub async fn start_worker_pool(state: &mut AppState) {
         Arc::clone(&state.workspace_service),
         Arc::clone(&state.query.models_config),
     )
+    .with_app_state(state.clone())
     .with_progress_broadcaster(state.tasks.progress_broadcaster.clone());
 
     #[cfg(feature = "postgres")]

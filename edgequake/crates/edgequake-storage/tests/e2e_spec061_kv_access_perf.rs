@@ -1,10 +1,10 @@
 //! SPEC-061 — KV DataAccess p95 + Index EXPLAIN.
 #![cfg(feature = "postgres")]
 
-#[path = "support/postgres_test_config.rs"]
-mod postgres_test_config;
 #[path = "support/perf_harness.rs"]
 mod perf_harness;
+#[path = "support/postgres_test_config.rs"]
+mod postgres_test_config;
 
 use edgequake_storage::traits::KVStorage;
 use edgequake_storage::PostgresKVStorage;
@@ -67,7 +67,10 @@ async fn e2e_spec061_kv_get_prefix_delete_count() {
     let mut prefix_samples = Vec::new();
     for _ in 0..SAMPLES {
         let start = Instant::now();
-        let keys = kv.keys_with_prefix("perf061-prefix-").await.expect("prefix");
+        let keys = kv
+            .keys_with_prefix("perf061-prefix-")
+            .await
+            .expect("prefix");
         prefix_samples.push(start.elapsed());
         assert!(keys.len() >= N);
     }

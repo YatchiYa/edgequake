@@ -74,7 +74,7 @@ See [022 re-assessment](./022-reassessment-2026-07-11.md), [012 — how to read 
 | — | [e2e/](./e2e/) | Artifacts + how to read SUMMARY |
 | — | [fixtures/](./fixtures/) | Smoke doc-id list, stratified seeds |
 
-**Cross-refs:** SPEC-046 GraphRAG study · SPEC-021 Mistral storage proof · SPEC-013 Mistral live ingest · `edgequake/models.toml` Mistral provider block
+**Cross-refs:** SPEC-046 GraphRAG study · **[SPEC-001 EQ vs LightRAG](../001-benchmark/000-index.md)** · SPEC-021 Mistral storage proof · SPEC-013 Mistral live ingest · `edgequake/models.toml` Mistral provider block
 
 ---
 

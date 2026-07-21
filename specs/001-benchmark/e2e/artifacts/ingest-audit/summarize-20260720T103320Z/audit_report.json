@@ -1,0 +1,1301 @@
+{
+  "utc": "20260720T103321Z",
+  "workspace_id": "2a7bcb2f-b156-4c49-9229-67f5bcde22a4",
+  "lr_stage": "smoke",
+  "eq_graph": "eq_eq_default_graph",
+  "predictions": "specs/001-benchmark/e2e/artifacts/history/smoke-20260720T095809Z/predictions_eq.json",
+  "global": {
+    "eq_nodes": 4560,
+    "eq_edges": 8247,
+    "lr_entities": 3580,
+    "eq_entities_bare": 4559
+  },
+  "summarize_questions": [
+    {
+      "id": "Medical-0002d2de",
+      "question": "How are bone cancers staged and what factors are considered in determining the stage?",
+      "query_intent": "exploratory",
+      "n_evidence": 6,
+      "eq_context_parts": 6,
+      "eq_context_chars": 41061,
+      "n_tokens": 22,
+      "eq": {
+        "n_entities": 732,
+        "mean_chunks": 2.333,
+        "median_chunks": 1.0,
+        "zero_chunk": 80,
+        "union_chunks": 188,
+        "top": [
+          {
+            "name": "LYMPH_NODES",
+            "n_chunks": 89
+          },
+          {
+            "name": "NCCN_PATIENT_GUIDES_FOR_CANCER_APP",
+            "n_chunks": 49
+          },
+          {
+            "name": "CANCER",
+            "n_chunks": 46
+          },
+          {
+            "name": "TUMOR",
+            "n_chunks": 41
+          },
+          {
+            "name": "SYSTEMIC_THERAPY",
+            "n_chunks": 32
+          },
+          {
+            "name": "CANCER_CELLS",
+            "n_chunks": 30
+          },
+          {
+            "name": "BONE_MARROW",
+            "n_chunks": 28
+          },
+          {
+            "name": "BONE",
+            "n_chunks": 17
+          }
+        ]
+      },
+      "lr": {
+        "n_entities": 667,
+        "mean_chunks": 2.264,
+        "median_chunks": 1,
+        "zero_chunk": 0,
+        "union_chunks": 198,
+        "top": [
+          {
+            "name": "Tumor",
+            "n_chunks": 52
+          },
+          {
+            "name": "Lymph nodes",
+            "n_chunks": 51
+          },
+          {
+            "name": "Cancer",
+            "n_chunks": 34
+          },
+          {
+            "name": "NCCN Patient Guides for Cancer app",
+            "n_chunks": 33
+          },
+          {
+            "name": "Bone marrow",
+            "n_chunks": 28
+          },
+          {
+            "name": "Systemic therapy",
+            "n_chunks": 28
+          },
+          {
+            "name": "Metastasis",
+            "n_chunks": 23
+          },
+          {
+            "name": "Lymph node",
+            "n_chunks": 18
+          }
+        ]
+      },
+      "delta_union_chunks": -10,
+      "delta_mean_chunks": 0.069,
+      "sample_tokens": [
+        "BONE",
+        "CANCER",
+        "CANCERS",
+        "COMBINING",
+        "CONSIDERS",
+        "DETERMINED",
+        "FACTORS",
+        "FINAL",
+        "GRADE",
+        "INVOLVEMENT",
+        "LOCATION",
+        "LYMPH",
+        "METASTASIS",
+        "NODE",
+        "SCORES",
+        "SIZE",
+        "STAGE",
+        "STAGED",
+        "SYSTEM",
+        "TNM",
+        "TUMOR",
+        "USING"
+      ]
+    },
+    {
+      "id": "Medical-8f9d5dde",
+      "question": "What are the main diagnostic methods and biomarkers used for prostate cancer across its stages?",
+      "query_intent": "exploratory",
+      "n_evidence": 12,
+      "eq_context_parts": 17,
+      "eq_context_chars": 111517,
+      "n_tokens": 38,
+      "eq": {
+        "n_entities": 707,
+        "mean_chunks": 2.395,
+        "median_chunks": 1,
+        "zero_chunk": 69,
+        "union_chunks": 187,
+        "top": [
+          {
+            "name": "BIOPSY",
+            "n_chunks": 73
+          },
+          {
+            "name": "NCCN_PATIENT_GUIDES_FOR_CANCER_APP",
+            "n_chunks": 49
+          },
+          {
+            "name": "CANCER",
+            "n_chunks": 46
+          },
+          {
+            "name": "BLOOD_TESTS",
+            "n_chunks": 42
+          },
+          {
+            "name": "IMAGING_TESTS",
+            "n_chunks": 42
+          },
+          {
+            "name": "CANCER_CELLS",
+            "n_chunks": 30
+          },
+          {
+            "name": "BONE_MARROW",
+            "n_chunks": 28
+          },
+          {
+            "name": "BIOMARKER_TESTING",
+            "n_chunks": 25
+          }
+        ]
+      },
+      "lr": {
+        "n_entities": 629,
+        "mean_chunks": 2.289,
+        "median_chunks": 1,
+        "zero_chunk": 0,
+        "union_chunks": 195,
+        "top": [
+          {
+            "name": "Biopsy",
+            "n_chunks": 64
+          },
+          {
+            "name": "Cancer",
+            "n_chunks": 34
+          },
+          {
+            "name": "NCCN Patient Guides for Cancer app",
+            "n_chunks": 33
+          },
+          {
+            "name": "Bone marrow",
+            "n_chunks": 28
+          },
+          {
+            "name": "Imaging tests",
+            "n_chunks": 27
+          },
+          {
+            "name": "Biomarker testing",
+            "n_chunks": 24
+          },
+          {
+            "name": "Blood tests",
+            "n_chunks": 22
+          },
+          {
+            "name": "Ultrasound",
+            "n_chunks": 20
+          }
+        ]
+      },
+      "delta_union_chunks": -8,
+      "delta_mean_chunks": 0.106,
+      "sample_tokens": [
+        "ACROSS",
+        "ALL",
+        "BIOMARKER",
+        "BIOMARKERS",
+        "BIOPSY",
+        "BONE",
+        "CANCER",
+        "COMMON",
+        "COMMONLY",
+        "DIAGNOSE",
+        "DIAGNOSIS",
+        "DIAGNOSTIC",
+        "DIGITAL",
+        "EXAM",
+        "GLEASON",
+        "GRADE",
+        "GROUP",
+        "IMAGING",
+        "INCLUDE",
+        "INVOLVES",
+        "ITS",
+        "METHOD",
+        "METHODS",
+        "MODALITIES"
+      ]
+    },
+    {
+      "id": "Medical-6809b810",
+      "question": "What are the main types and subtypes of throat cancer and how are they classified within head and neck cancers?",
+      "query_intent": "exploratory",
+      "n_evidence": 4,
+      "eq_context_parts": 18,
+      "eq_context_chars": 114477,
+      "n_tokens": 19,
+      "eq": {
+        "n_entities": 572,
+        "mean_chunks": 1.984,
+        "median_chunks": 1.0,
+        "zero_chunk": 72,
+        "union_chunks": 186,
+        "top": [
+          {
+            "name": "NCCN_PATIENT_GUIDES_FOR_CANCER_APP",
+            "n_chunks": 49
+          },
+          {
+            "name": "CANCER",
+            "n_chunks": 46
+          },
+          {
+            "name": "CANCER_CELLS",
+            "n_chunks": 30
+          },
+          {
+            "name": "WHITE_BLOOD_CELLS",
+            "n_chunks": 16
+          },
+          {
+            "name": "ADENOCARCINOMA",
+            "n_chunks": 14
+          },
+          {
+            "name": "BREAST_CANCER",
+            "n_chunks": 14
+          },
+          {
+            "name": "CERVICAL_CANCER",
+            "n_chunks": 14
+          },
+          {
+            "name": "NECK",
+            "n_chunks": 13
+          }
+        ]
+      },
+      "lr": {
+        "n_entities": 528,
+        "mean_chunks": 1.972,
+        "median_chunks": 1.0,
+        "zero_chunk": 0,
+        "union_chunks": 193,
+        "top": [
+          {
+            "name": "Cancer",
+            "n_chunks": 34
+          },
+          {
+            "name": "NCCN Patient Guides for Cancer app",
+            "n_chunks": 33
+          },
+          {
+            "name": "Adenocarcinoma",
+            "n_chunks": 17
+          },
+          {
+            "name": "Squamous cell carcinoma",
+            "n_chunks": 16
+          },
+          {
+            "name": "Breast cancer",
+            "n_chunks": 15
+          },
+          {
+            "name": "White blood cells",
+            "n_chunks": 15
+          },
+          {
+            "name": "Cancer cells",
+            "n_chunks": 14
+          },
+          {
+            "name": "Prostate cancer",
+            "n_chunks": 14
+          }
+        ]
+      },
+      "delta_union_chunks": -7,
+      "delta_mean_chunks": 0.012,
+      "sample_tokens": [
+        "ARISES",
+        "CANCER",
+        "CANCERS",
+        "CARCINOMA",
+        "CELL",
+        "CLASSIFIED",
+        "COMMON",
+        "FURTHER",
+        "HEAD",
+        "NECK",
+        "OFTEN",
+        "OROPHARYNGEAL",
+        "OROPHARYNX",
+        "SQUAMOUS",
+        "SUBTYPE",
+        "SUBTYPES",
+        "THEY",
+        "THROAT",
+        "WITHIN"
+      ]
+    },
+    {
+      "id": "Medical-c2a36052",
+      "question": "How do biomarkers influence treatment selection in colon cancer?",
+      "query_intent": "relational",
+      "n_evidence": 3,
+      "eq_context_parts": 18,
+      "eq_context_chars": 115541,
+      "n_tokens": 23,
+      "eq": {
+        "n_entities": 611,
+        "mean_chunks": 2.29,
+        "median_chunks": 1,
+        "zero_chunk": 67,
+        "union_chunks": 187,
+        "top": [
+          {
+            "name": "CHEMOTHERAPY",
+            "n_chunks": 59
+          },
+          {
+            "name": "NCCN_PATIENT_GUIDES_FOR_CANCER_APP",
+            "n_chunks": 49
+          },
+          {
+            "name": "CANCER",
+            "n_chunks": 46
+          },
+          {
+            "name": "TREATMENT_PLAN",
+            "n_chunks": 37
+          },
+          {
+            "name": "IMMUNOTHERAPY",
+            "n_chunks": 35
+          },
+          {
+            "name": "CANCER_CELLS",
+            "n_chunks": 30
+          },
+          {
+            "name": "BIOMARKER_TESTING",
+            "n_chunks": 25
+          },
+          {
+            "name": "GUIDE",
+            "n_chunks": 23
+          }
+        ]
+      },
+      "lr": {
+        "n_entities": 487,
+        "mean_chunks": 2.162,
+        "median_chunks": 1,
+        "zero_chunk": 0,
+        "union_chunks": 193,
+        "top": [
+          {
+            "name": "Chemotherapy",
+            "n_chunks": 59
+          },
+          {
+            "name": "Cancer",
+            "n_chunks": 34
+          },
+          {
+            "name": "NCCN Patient Guides for Cancer app",
+            "n_chunks": 33
+          },
+          {
+            "name": "Immunotherapy",
+            "n_chunks": 31
+          },
+          {
+            "name": "Biomarker testing",
+            "n_chunks": 24
+          },
+          {
+            "name": "Breast cancer",
+            "n_chunks": 15
+          },
+          {
+            "name": "Cancer cells",
+            "n_chunks": 14
+          },
+          {
+            "name": "Prostate cancer",
+            "n_chunks": 14
+          }
+        ]
+      },
+      "delta_union_chunks": -6,
+      "delta_mean_chunks": 0.128,
+      "sample_tokens": [
+        "BIOMARKER",
+        "BIOMARKERS",
+        "CANCER",
+        "CANCERS",
+        "CEA",
+        "CHECKPOINT",
+        "CHEMOTHERAPY",
+        "COLON",
+        "DISEASE",
+        "DMMR",
+        "GUIDES",
+        "IMMUNOTHERAPY",
+        "INFLUENCE",
+        "INHIBITORS",
+        "MONITORING",
+        "MSI_H",
+        "MSS",
+        "PMMR",
+        "SELECTION",
+        "TESTING",
+        "TREATED",
+        "TREATMENT",
+        "USE"
+      ]
+    },
+    {
+      "id": "Medical-e168b4d3",
+      "question": "Which risk factors and geographic regions are most associated with nasopharyngeal carcinoma (NPC)?",
+      "query_intent": "factual",
+      "n_evidence": 6,
+      "eq_context_parts": 18,
+      "eq_context_chars": 114943,
+      "n_tokens": 23,
+      "eq": {
+        "n_entities": 169,
+        "mean_chunks": 1.74,
+        "median_chunks": 1,
+        "zero_chunk": 13,
+        "union_chunks": 111,
+        "top": [
+          {
+            "name": "ADENOCARCINOMA",
+            "n_chunks": 14
+          },
+          {
+            "name": "SQUAMOUS_CELL_CARCINOMA",
+            "n_chunks": 13
+          },
+          {
+            "name": "INFECTION",
+            "n_chunks": 9
+          },
+          {
+            "name": "RISK_FACTOR",
+            "n_chunks": 7
+          },
+          {
+            "name": "BETOBACCOFREE.GOV",
+            "n_chunks": 6
+          },
+          {
+            "name": "CARCINOMA_IN_SITU",
+            "n_chunks": 6
+          },
+          {
+            "name": "CDC.GOV/TOBACCO",
+            "n_chunks": 6
+          },
+          {
+            "name": "HUMAN_PAPILLOMAVIRUS_(HPV)",
+            "n_chunks": 6
+          }
+        ]
+      },
+      "lr": {
+        "n_entities": 149,
+        "mean_chunks": 1.725,
+        "median_chunks": 1,
+        "zero_chunk": 0,
+        "union_chunks": 111,
+        "top": [
+          {
+            "name": "Adenocarcinoma",
+            "n_chunks": 17
+          },
+          {
+            "name": "Squamous cell carcinoma",
+            "n_chunks": 16
+          },
+          {
+            "name": "BeTobaccoFree.gov",
+            "n_chunks": 6
+          },
+          {
+            "name": "CDC.gov/tobacco",
+            "n_chunks": 6
+          },
+          {
+            "name": "Genetic cancer risk testing",
+            "n_chunks": 6
+          },
+          {
+            "name": "Genetic risk testing",
+            "n_chunks": 6
+          },
+          {
+            "name": "Infection",
+            "n_chunks": 6
+          },
+          {
+            "name": "Tobacco",
+            "n_chunks": 5
+          }
+        ]
+      },
+      "delta_union_chunks": 0,
+      "delta_mean_chunks": 0.015,
+      "sample_tokens": [
+        "AFRICA",
+        "ALCOHOL",
+        "AMERICANS",
+        "ASIA",
+        "CARCINOMA",
+        "EPSTEIN_BARR",
+        "FACTORS",
+        "FREQUENTLY",
+        "GEOGRAPHIC",
+        "INFECTION",
+        "MORE",
+        "NASOPHARYNGEAL",
+        "NATIVE",
+        "NORTH",
+        "NPC",
+        "OCCURS",
+        "OFTEN",
+        "PEOPLE",
+        "REGIONS",
+        "RISK",
+        "TOBACCO",
+        "USE",
+        "VIRUS"
+      ]
+    },
+    {
+      "id": "Medical-00bf955d",
+      "question": "What is the role of clinical trials in the treatment of specific ALL subtypes?",
+      "query_intent": "exploratory",
+      "n_evidence": 5,
+      "eq_context_parts": 18,
+      "eq_context_chars": 112208,
+      "n_tokens": 21,
+      "eq": {
+        "n_entities": 207,
+        "mean_chunks": 2.179,
+        "median_chunks": 1,
+        "zero_chunk": 20,
+        "union_chunks": 157,
+        "top": [
+          {
+            "name": "TREATMENT_PLAN",
+            "n_chunks": 37
+          },
+          {
+            "name": "CLINICAL_TRIAL",
+            "n_chunks": 34
+          },
+          {
+            "name": "HEALTH_CARE_PROVIDER",
+            "n_chunks": 20
+          },
+          {
+            "name": "CLINICAL_TRIALS",
+            "n_chunks": 18
+          },
+          {
+            "name": "TREATMENT_TEAM",
+            "n_chunks": 16
+          },
+          {
+            "name": "TREATMENT",
+            "n_chunks": 11
+          },
+          {
+            "name": "PATIENT_ACCESS_SYSTEM",
+            "n_chunks": 9
+          },
+          {
+            "name": "CANCER_TREATMENT",
+            "n_chunks": 8
+          }
+        ]
+      },
+      "lr": {
+        "n_entities": 106,
+        "mean_chunks": 2.189,
+        "median_chunks": 1.0,
+        "zero_chunk": 0,
+        "union_chunks": 119,
+        "top": [
+          {
+            "name": "Clinical trial",
+            "n_chunks": 34
+          },
+          {
+            "name": "Health care provider",
+            "n_chunks": 17
+          },
+          {
+            "name": "Cancer treatment",
+            "n_chunks": 11
+          },
+          {
+            "name": "Clinical stage",
+            "n_chunks": 8
+          },
+          {
+            "name": "Treatment team",
+            "n_chunks": 8
+          },
+          {
+            "name": "T-ALL",
+            "n_chunks": 7
+          },
+          {
+            "name": "Treatment plan",
+            "n_chunks": 7
+          },
+          {
+            "name": "B-ALL",
+            "n_chunks": 6
+          }
+        ]
+      },
+      "delta_union_chunks": 38,
+      "delta_mean_chunks": -0.01,
+      "sample_tokens": [
+        "ABL1_LIKE",
+        "ABL1_NEGATIVE",
+        "ACCESS",
+        "ALL",
+        "ANOTHER",
+        "BCR",
+        "B_ALL",
+        "CERTAIN",
+        "CLINICAL",
+        "NOVEL",
+        "ONE",
+        "OPTION",
+        "PREFERRED",
+        "PROVIDE",
+        "SPECIFIC",
+        "SUBTYPE",
+        "SUBTYPES",
+        "THERAPIES",
+        "TREATMENT",
+        "TRIALS",
+        "T_ALL"
+      ]
+    },
+    {
+      "id": "Medical-b5a3c96e",
+      "question": "How do the sites of involvement and epidemiology differ between mediastinal and non-mediastinal gray zone lymphomas?",
+      "query_intent": "comparative",
+      "n_evidence": 6,
+      "eq_context_parts": 19,
+      "eq_context_chars": 114320,
+      "n_tokens": 24,
+      "eq": {
+        "n_entities": 190,
+        "mean_chunks": 2.563,
+        "median_chunks": 1.0,
+        "zero_chunk": 16,
+        "union_chunks": 147,
+        "top": [
+          {
+            "name": "LYMPH_NODES",
+            "n_chunks": 89
+          },
+          {
+            "name": "BONE_MARROW",
+            "n_chunks": 28
+          },
+          {
+            "name": "BONE",
+            "n_chunks": 17
+          },
+          {
+            "name": "LYMPHOCYTES",
+            "n_chunks": 14
+          },
+          {
+            "name": "BONE_SCAN",
+            "n_chunks": 13
+          },
+          {
+            "name": "LYMPH",
+            "n_chunks": 11
+          },
+          {
+            "name": "LYMPHATIC_SYSTEM",
+            "n_chunks": 9
+          },
+          {
+            "name": "BONE_MARROW_TESTS",
+            "n_chunks": 8
+          }
+        ]
+      },
+      "lr": {
+        "n_entities": 176,
+        "mean_chunks": 2.636,
+        "median_chunks": 1.0,
+        "zero_chunk": 0,
+        "union_chunks": 152,
+        "top": [
+          {
+            "name": "Lymph nodes",
+            "n_chunks": 51
+          },
+          {
+            "name": "Bone marrow",
+            "n_chunks": 28
+          },
+          {
+            "name": "Lymph node",
+            "n_chunks": 18
+          },
+          {
+            "name": "Bone",
+            "n_chunks": 17
+          },
+          {
+            "name": "Lymphocytes",
+            "n_chunks": 14
+          },
+          {
+            "name": "Lymph",
+            "n_chunks": 11
+          },
+          {
+            "name": "Bone scan",
+            "n_chunks": 9
+          },
+          {
+            "name": "Bones",
+            "n_chunks": 8
+          }
+        ]
+      },
+      "delta_union_chunks": -5,
+      "delta_mean_chunks": -0.073,
+      "sample_tokens": [
+        "AFFECTS",
+        "BONE",
+        "EPIDEMIOLOGY",
+        "EXTRANODAL",
+        "GRAY",
+        "INVOLVEMENT",
+        "INVOLVES",
+        "LYMPH",
+        "LYMPHOMA",
+        "LYMPHOMAS",
+        "MALES",
+        "MARROW",
+        "MEDIASTINAL",
+        "MEDIASTINUM",
+        "NODES",
+        "NON_MEDIASTINAL",
+        "OCCUR",
+        "OLDER",
+        "PERSONS",
+        "PRIMARILY",
+        "SITES",
+        "SUPRACLAVICULAR",
+        "YOUNGER",
+        "ZONE"
+      ]
+    },
+    {
+      "id": "Medical-25f9adbb",
+      "question": "What are the main diagnostic methods and laboratory tests used to diagnose AML?",
+      "query_intent": "exploratory",
+      "n_evidence": 10,
+      "eq_context_parts": 19,
+      "eq_context_chars": 111970,
+      "n_tokens": 29,
+      "eq": {
+        "n_entities": 298,
+        "mean_chunks": 3.07,
+        "median_chunks": 1.0,
+        "zero_chunk": 29,
+        "union_chunks": 164,
+        "top": [
+          {
+            "name": "BIOPSY",
+            "n_chunks": 73
+          },
+          {
+            "name": "BLOOD_TESTS",
+            "n_chunks": 42
+          },
+          {
+            "name": "IMAGING_TESTS",
+            "n_chunks": 42
+          },
+          {
+            "name": "BONE_MARROW",
+            "n_chunks": 28
+          },
+          {
+            "name": "BIOMARKER_TESTING",
+            "n_chunks": 25
+          },
+          {
+            "name": "BLOOD",
+            "n_chunks": 24
+          },
+          {
+            "name": "DIAGNOSIS",
+            "n_chunks": 21
+          },
+          {
+            "name": "GENETIC_TESTING",
+            "n_chunks": 19
+          }
+        ]
+      },
+      "lr": {
+        "n_entities": 254,
+        "mean_chunks": 2.894,
+        "median_chunks": 1.0,
+        "zero_chunk": 0,
+        "union_chunks": 164,
+        "top": [
+          {
+            "name": "Biopsy",
+            "n_chunks": 64
+          },
+          {
+            "name": "Bone marrow",
+            "n_chunks": 28
+          },
+          {
+            "name": "Imaging tests",
+            "n_chunks": 27
+          },
+          {
+            "name": "Biomarker testing",
+            "n_chunks": 24
+          },
+          {
+            "name": "Blood tests",
+            "n_chunks": 22
+          },
+          {
+            "name": "Blood",
+            "n_chunks": 18
+          },
+          {
+            "name": "Bone",
+            "n_chunks": 17
+          },
+          {
+            "name": "Blood test",
+            "n_chunks": 16
+          }
+        ]
+      },
+      "delta_union_chunks": 0,
+      "delta_mean_chunks": 0.176,
+      "sample_tokens": [
+        "AML",
+        "ASPIRATE",
+        "BIOPSY",
+        "BLOOD",
+        "BONE",
+        "CBC",
+        "CLOTTING",
+        "CMP",
+        "CYTOGENETIC",
+        "CYTOMETRY",
+        "DIAGNOSE",
+        "DIAGNOSIS",
+        "DIAGNOSTIC",
+        "FLOW",
+        "IMAGING",
+        "IMMUNOPHENOTYPING",
+        "INVOLVES",
+        "LABORATORY",
+        "LDH",
+        "LIKE",
+        "MARROW",
+        "METHODS",
+        "MOLECULAR",
+        "MRI"
+      ]
+    },
+    {
+      "id": "Medical-296c7595",
+      "question": "How are the stages of esophageal cancer defined and what are their distinguishing features?",
+      "query_intent": "exploratory",
+      "n_evidence": 8,
+      "eq_context_parts": 20,
+      "eq_context_chars": 116131,
+      "n_tokens": 22,
+      "eq": {
+        "n_entities": 516,
+        "mean_chunks": 2.161,
+        "median_chunks": 1.0,
+        "zero_chunk": 68,
+        "union_chunks": 180,
+        "top": [
+          {
+            "name": "LYMPH_NODES",
+            "n_chunks": 89
+          },
+          {
+            "name": "NCCN_PATIENT_GUIDES_FOR_CANCER_APP",
+            "n_chunks": 49
+          },
+          {
+            "name": "CANCER",
+            "n_chunks": 46
+          },
+          {
+            "name": "CANCER_CELLS",
+            "n_chunks": 30
+          },
+          {
+            "name": "BREAST_CANCER",
+            "n_chunks": 14
+          },
+          {
+            "name": "CERVICAL_CANCER",
+            "n_chunks": 14
+          },
+          {
+            "name": "LYMPHOCYTES",
+            "n_chunks": 14
+          },
+          {
+            "name": "PROSTATE_CANCER",
+            "n_chunks": 13
+          }
+        ]
+      },
+      "lr": {
+        "n_entities": 480,
+        "mean_chunks": 2.154,
+        "median_chunks": 1.0,
+        "zero_chunk": 0,
+        "union_chunks": 190,
+        "top": [
+          {
+            "name": "Lymph nodes",
+            "n_chunks": 51
+          },
+          {
+            "name": "Cancer",
+            "n_chunks": 34
+          },
+          {
+            "name": "NCCN Patient Guides for Cancer app",
+            "n_chunks": 33
+          },
+          {
+            "name": "Lymph node",
+            "n_chunks": 18
+          },
+          {
+            "name": "Breast cancer",
+            "n_chunks": 15
+          },
+          {
+            "name": "Cancer cells",
+            "n_chunks": 14
+          },
+          {
+            "name": "Lymphocytes",
+            "n_chunks": 14
+          },
+          {
+            "name": "Prostate cancer",
+            "n_chunks": 14
+          }
+        ]
+      },
+      "delta_union_chunks": -10,
+      "delta_mean_chunks": 0.007,
+      "sample_tokens": [
+        "CANCER",
+        "CONFINED",
+        "DISTANT",
+        "DISTINGUISHING",
+        "EARLY_STAGE",
+        "ESOPHAGEAL",
+        "ESOPHAGUS",
+        "FEATURES",
+        "INCLUDE",
+        "INVADES",
+        "INVOLVE",
+        "LOCOREGIONAL",
+        "LYMPH",
+        "MAY",
+        "METASTATIC",
+        "NEARBY",
+        "NODES",
+        "NOT",
+        "ORGANS",
+        "SPREADS",
+        "STAGES",
+        "WALL"
+      ]
+    },
+    {
+      "id": "Medical-1991db28",
+      "question": "How is follow-up care managed in patients with glioma?",
+      "query_intent": "exploratory",
+      "n_evidence": 3,
+      "eq_context_parts": 22,
+      "eq_context_chars": 116308,
+      "n_tokens": 13,
+      "eq": {
+        "n_entities": 172,
+        "mean_chunks": 2.291,
+        "median_chunks": 1.0,
+        "zero_chunk": 17,
+        "union_chunks": 155,
+        "top": [
+          {
+            "name": "IMAGING_TESTS",
+            "n_chunks": 42
+          },
+          {
+            "name": "TREATMENT_PLAN",
+            "n_chunks": 37
+          },
+          {
+            "name": "RECURRENCE",
+            "n_chunks": 16
+          },
+          {
+            "name": "TREATMENT_TEAM",
+            "n_chunks": 16
+          },
+          {
+            "name": "IMAGING",
+            "n_chunks": 12
+          },
+          {
+            "name": "TREATMENT",
+            "n_chunks": 11
+          },
+          {
+            "name": "CANCER_TREATMENT",
+            "n_chunks": 8
+          },
+          {
+            "name": "TREATMENTS",
+            "n_chunks": 7
+          }
+        ]
+      },
+      "lr": {
+        "n_entities": 90,
+        "mean_chunks": 2.344,
+        "median_chunks": 1.0,
+        "zero_chunk": 0,
+        "union_chunks": 114,
+        "top": [
+          {
+            "name": "Imaging tests",
+            "n_chunks": 27
+          },
+          {
+            "name": "Imaging",
+            "n_chunks": 13
+          },
+          {
+            "name": "Recurrence",
+            "n_chunks": 12
+          },
+          {
+            "name": "Cancer treatment",
+            "n_chunks": 11
+          },
+          {
+            "name": "Treatment team",
+            "n_chunks": 8
+          },
+          {
+            "name": "Imaging test",
+            "n_chunks": 7
+          },
+          {
+            "name": "Treatment plan",
+            "n_chunks": 7
+          },
+          {
+            "name": "Glioma",
+            "n_chunks": 6
+          }
+        ]
+      },
+      "delta_union_chunks": 41,
+      "delta_mean_chunks": -0.053,
+      "sample_tokens": [
+        "AFTER",
+        "ESPECIALLY",
+        "FOLLOW_UP",
+        "GLIOMA",
+        "IMAGING",
+        "IMPORTANT",
+        "INITIAL",
+        "INVOLVES",
+        "MONITOR",
+        "MRI",
+        "PERIODIC",
+        "RECURRENCE",
+        "TREATMENT"
+      ]
+    }
+  ],
+  "binding": {
+    "id": "Medical-0002d2de",
+    "question": "How are bone cancers staged and what factors are considered in determining the stage?",
+    "query_intent": "exploratory",
+    "n_evidence": 6,
+    "eq_context_parts": 6,
+    "eq_context_chars": 41061,
+    "n_tokens": 22,
+    "eq": {
+      "n_entities": 732,
+      "mean_chunks": 2.333,
+      "median_chunks": 1.0,
+      "zero_chunk": 80,
+      "union_chunks": 188,
+      "top": [
+        {
+          "name": "LYMPH_NODES",
+          "n_chunks": 89
+        },
+        {
+          "name": "NCCN_PATIENT_GUIDES_FOR_CANCER_APP",
+          "n_chunks": 49
+        },
+        {
+          "name": "CANCER",
+          "n_chunks": 46
+        },
+        {
+          "name": "TUMOR",
+          "n_chunks": 41
+        },
+        {
+          "name": "SYSTEMIC_THERAPY",
+          "n_chunks": 32
+        },
+        {
+          "name": "CANCER_CELLS",
+          "n_chunks": 30
+        },
+        {
+          "name": "BONE_MARROW",
+          "n_chunks": 28
+        },
+        {
+          "name": "BONE",
+          "n_chunks": 17
+        }
+      ]
+    },
+    "lr": {
+      "n_entities": 667,
+      "mean_chunks": 2.264,
+      "median_chunks": 1,
+      "zero_chunk": 0,
+      "union_chunks": 198,
+      "top": [
+        {
+          "name": "Tumor",
+          "n_chunks": 52
+        },
+        {
+          "name": "Lymph nodes",
+          "n_chunks": 51
+        },
+        {
+          "name": "Cancer",
+          "n_chunks": 34
+        },
+        {
+          "name": "NCCN Patient Guides for Cancer app",
+          "n_chunks": 33
+        },
+        {
+          "name": "Bone marrow",
+          "n_chunks": 28
+        },
+        {
+          "name": "Systemic therapy",
+          "n_chunks": 28
+        },
+        {
+          "name": "Metastasis",
+          "n_chunks": 23
+        },
+        {
+          "name": "Lymph node",
+          "n_chunks": 18
+        }
+      ]
+    },
+    "delta_union_chunks": -10,
+    "delta_mean_chunks": 0.069,
+    "sample_tokens": [
+      "BONE",
+      "CANCER",
+      "CANCERS",
+      "COMBINING",
+      "CONSIDERS",
+      "DETERMINED",
+      "FACTORS",
+      "FINAL",
+      "GRADE",
+      "INVOLVEMENT",
+      "LOCATION",
+      "LYMPH",
+      "METASTASIS",
+      "NODE",
+      "SCORES",
+      "SIZE",
+      "STAGE",
+      "STAGED",
+      "SYSTEM",
+      "TNM",
+      "TUMOR",
+      "USING"
+    ]
+  },
+  "first_principles": {
+    "law": "Summarize ER tracks union of entity-linked chunks admitted into Mix. If query-matched entities have sparse source_chunk_ids, no CE/protect/dual-list knob recovers gold facets.",
+    "lightRAG": "Each entity/relation keeps source_id \u2192 chunk KV; VECTOR pick uses related_chunk_number * n_entities / 2 over that pool."
+  }
+}

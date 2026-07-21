@@ -1,9 +1,7 @@
 //! Search tuning and embedding serialization for [`super::PgVectorStorage`].
 
 use super::super::config::VectorIndexType;
-use super::super::hnsw_runtime_policy::{
-    parse_hnsw_iterative_scan_mode, HnswRuntimePolicy,
-};
+use super::super::hnsw_runtime_policy::{parse_hnsw_iterative_scan_mode, HnswRuntimePolicy};
 use super::PgVectorStorage;
 use crate::traits::MetadataFilter;
 
@@ -30,10 +28,7 @@ impl PgVectorStorage {
         if !prefer_columns || !partial_ready {
             return Vec::new();
         }
-        let jsonb_or_shapes = mf
-            .document_ids
-            .as_ref()
-            .is_some_and(|v| !v.is_empty())
+        let jsonb_or_shapes = mf.document_ids.as_ref().is_some_and(|v| !v.is_empty())
             || mf.modalities.as_ref().is_some_and(|v| !v.is_empty());
         if jsonb_or_shapes || mf.workspace_id.is_none() {
             return Vec::new();

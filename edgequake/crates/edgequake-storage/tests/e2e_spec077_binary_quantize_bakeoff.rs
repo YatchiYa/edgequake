@@ -3,12 +3,12 @@
 //! Soft-skip without DB. Hang cliff hard-fails. Does not raise floors.
 #![cfg(feature = "postgres")]
 
-#[path = "support/postgres_test_config.rs"]
-mod postgres_test_config;
-#[path = "support/perf_harness.rs"]
-mod perf_harness;
 #[path = "support/perf_ann_corpus.rs"]
 mod perf_ann_corpus;
+#[path = "support/perf_harness.rs"]
+mod perf_harness;
+#[path = "support/postgres_test_config.rs"]
+mod postgres_test_config;
 
 use edgequake_storage::traits::VectorStorage;
 use edgequake_storage::{
@@ -79,8 +79,8 @@ async fn e2e_spec077_binary_quantize_bakeoff() {
     config.hnsw_m = 16;
     config.hnsw_ef_construction = 64;
 
-    let storage =
-        PgVectorStorage::with_dimension(config.clone(), DIM).with_storage_mode(VectorStorageMode::Half);
+    let storage = PgVectorStorage::with_dimension(config.clone(), DIM)
+        .with_storage_mode(VectorStorageMode::Half);
     if let Err(e) = storage.initialize().await {
         eprintln!("SKIP SPEC-077: init failed ({e})");
         return;
@@ -113,7 +113,9 @@ async fn e2e_spec077_binary_quantize_bakeoff() {
         eprintln!("SKIP SPEC-077: binary index create failed ({e})");
         return;
     }
-    let _ = sqlx::query(&format!("ANALYZE {table}")).execute(&probe).await;
+    let _ = sqlx::query(&format!("ANALYZE {table}"))
+        .execute(&probe)
+        .await;
 
     let mf = workspace_filter(HOT_WS, TENANT);
     let q = emb(DIM, 11.0);

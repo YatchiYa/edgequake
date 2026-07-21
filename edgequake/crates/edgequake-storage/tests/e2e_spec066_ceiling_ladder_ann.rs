@@ -9,14 +9,14 @@
 //! Hard-fail only on hang cliff (FORBIDDEN / host undersized).
 #![cfg(feature = "postgres")]
 
-#[path = "support/postgres_test_config.rs"]
-mod postgres_test_config;
+#[path = "support/perf_ann_corpus.rs"]
+mod perf_ann_corpus;
 #[path = "support/perf_harness.rs"]
 mod perf_harness;
 #[path = "support/perf_stress.rs"]
 mod perf_stress;
-#[path = "support/perf_ann_corpus.rs"]
-mod perf_ann_corpus;
+#[path = "support/postgres_test_config.rs"]
+mod postgres_test_config;
 
 use edgequake_storage::traits::VectorStorage;
 use edgequake_storage::{PgVectorStorage, VectorIndexType, VectorStorageMode};
@@ -124,7 +124,9 @@ async fn explain_partial_plan(
     partial_name: &str,
 ) -> String {
     let pool = postgres_test_config::contract_pg_pool(config).await;
-    let _ = sqlx::query(&format!("ANALYZE {table}")).execute(&pool).await;
+    let _ = sqlx::query(&format!("ANALYZE {table}"))
+        .execute(&pool)
+        .await;
     let emb = emb_literal(DIM, 10.0);
     // Mirror SPEC-067 production Wave-2 planner bias (session-local; columns-only path).
     let mut tx = pool.begin().await.expect("explain tx");
@@ -181,21 +183,12 @@ async fn e2e_spec066_ceiling_wave2_filtered_ann() {
     };
     let config = with_stress_pool(base, clients).with_vector_index(VectorIndexType::None);
     let storage = Arc::new(
-        PgVectorStorage::with_dimension(config.clone(), DIM).with_storage_mode(VectorStorageMode::Half),
+        PgVectorStorage::with_dimension(config.clone(), DIM)
+            .with_storage_mode(VectorStorageMode::Half),
     );
     storage.initialize().await.expect("init");
 
-    let seed_ms = seed_ws_split(
-        &storage,
-        rows,
-        DIM,
-        1000,
-        "ceil066",
-        TENANT,
-        WS,
-        "ws-b",
-    )
-    .await;
+    let seed_ms = seed_ws_split(&storage, rows, DIM, 1000, "ceil066", TENANT, WS, "ws-b").await;
 
     let index_wall = Instant::now();
     // Wave-2 battle shape: partial for hot WS; drop global so planner cannot prefer
@@ -221,9 +214,7 @@ async fn e2e_spec066_ceiling_wave2_filtered_ann() {
         index_ms,
         true,
         "hnsw_create",
-        format!(
-            "step={step} rows={rows} dim={DIM} seed_ms={seed_ms:.0} partial_created={created}"
-        ),
+        format!("step={step} rows={rows} dim={DIM} seed_ms={seed_ms:.0} partial_created={created}"),
         &[Duration::from_secs_f64(index_ms / 1000.0)],
     );
 

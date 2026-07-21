@@ -112,6 +112,7 @@ fn e2e_path_prune_reduces_relation_tax() {
         drop_fraction: 0.4,
         min_keep: 3,
         min_input: 5,
+        ..Default::default()
     };
     let kept = prune_relationships(rels, &cfg);
     assert_eq!(kept.len(), 12);

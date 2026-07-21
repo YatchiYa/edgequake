@@ -1,11 +1,16 @@
-//! Query-side caches (SPEC-021 P-G9 / RC-14).
+//! Query-side caches (SPEC-021 P-G9 / RC-14 · 064 product polish).
 //!
-//! - `CachingEmbeddingProvider`: memoizes `embed_one` for the query path.
+//! - `CachingEmbeddingProvider`: memoizes `embed_one` **and** per-text batch `embed`.
 //! - `QueryResultCache`: memoizes `context_only` retrieval contexts.
+//! - `InMemoryAnswerCache`: opt-in Mix answer LLM cache (LR `cache_type=query`).
 
+pub mod answer_cache;
 pub mod embedding_cache;
 pub mod query_result_cache;
 
+pub use answer_cache::{
+    answer_cache_enabled_from_env, answer_cache_key, InMemoryAnswerCache, SharedAnswerCache,
+};
 pub use embedding_cache::CachingEmbeddingProvider;
 pub use query_result_cache::QueryResultCache;
 

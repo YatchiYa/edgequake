@@ -1,10 +1,10 @@
 //! SPEC-061 — unfiltered ANN `query` p95 + HNSW EXPLAIN.
 #![cfg(feature = "postgres")]
 
-#[path = "support/postgres_test_config.rs"]
-mod postgres_test_config;
 #[path = "support/perf_harness.rs"]
 mod perf_harness;
+#[path = "support/postgres_test_config.rs"]
+mod postgres_test_config;
 
 use edgequake_storage::traits::VectorStorage;
 use edgequake_storage::{PgVectorStorage, PostgresConfig};

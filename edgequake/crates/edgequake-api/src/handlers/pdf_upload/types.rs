@@ -39,10 +39,44 @@ pub struct PdfUploadOptions {
 }
 
 impl PdfUploadOptions {
+    /// Apply workspace vision / PDF parser defaults onto unset form fields (DRY).
+    ///
+    /// Precedence after this call:
+    /// 1. Explicit upload form fields (already set — preserved)
+    /// 2. Workspace `vision_llm_*` / `pdf_parser_backend`
+    /// 3. Env / hardcoded defaults via [`Self::resolved_vision_provider`] etc.
+    pub fn apply_workspace(&mut self, workspace: &Workspace) {
+        if self.vision_provider.as_ref().is_none_or(|s| s.is_empty()) {
+            let provider = workspace
+                .vision_llm_provider
+                .as_deref()
+                .filter(|p| !p.is_empty())
+                .unwrap_or(workspace.llm_provider.as_str());
+            if !provider.is_empty() {
+                self.vision_provider = Some(provider.to_string());
+            }
+        }
+        if self.vision_model.as_ref().is_none_or(|s| s.is_empty()) {
+            if let Some(model) = workspace
+                .vision_llm_model
+                .as_ref()
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+            {
+                self.vision_model = Some(model.to_string());
+            }
+        }
+        if self.pdf_parser_backend.is_none() {
+            if let Some(backend) = workspace.pdf_parser_backend {
+                self.pdf_parser_backend = Some(backend);
+            }
+        }
+    }
+
     /// Get the resolved vision provider (with fallback to server default).
     ///
     /// WHY (First Principle): Single resolution chain with explicit priority:
-    ///   1. Explicit form field `vision_provider`
+    ///   1. Explicit form field `vision_provider` (after [`Self::apply_workspace`])
     ///   2. EDGEQUAKE_VISION_PROVIDER / EDGEQUAKE_VISION_LLM_PROVIDER env
     ///   3. EDGEQUAKE_DEFAULT_LLM_PROVIDER env (inherit from LLM)
     ///   4. EDGEQUAKE_LLM_PROVIDER env (legacy alias)
@@ -100,6 +134,7 @@ impl PdfUploadOptions {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uuid::Uuid;
 
     #[test]
     fn resolved_process_options_defaults_i_for_vision_upload() {
@@ -127,6 +162,43 @@ mod tests {
             ..Default::default()
         };
         assert!(opts.resolved_process_options(None).is_none());
+    }
+
+    #[test]
+    fn apply_workspace_fills_vision_and_parser_when_unset() {
+        let mut ws = Workspace::new(Uuid::nil(), "ws", "ws");
+        ws.llm_provider = "mistral".into();
+        ws.vision_llm_provider = Some("mistral".into());
+        ws.vision_llm_model = Some("mistral-small-latest".into());
+        ws.pdf_parser_backend = Some(PdfParserBackend::Vision);
+
+        let mut opts = PdfUploadOptions::default();
+        opts.apply_workspace(&ws);
+
+        assert_eq!(opts.vision_provider.as_deref(), Some("mistral"));
+        assert_eq!(opts.vision_model.as_deref(), Some("mistral-small-latest"));
+        assert_eq!(opts.pdf_parser_backend, Some(PdfParserBackend::Vision));
+        assert_eq!(opts.resolved_backend(Some(&ws)), PdfParserBackend::Vision);
+    }
+
+    #[test]
+    fn apply_workspace_preserves_explicit_upload_overrides() {
+        let mut ws = Workspace::new(Uuid::nil(), "ws", "ws");
+        ws.vision_llm_provider = Some("mistral".into());
+        ws.vision_llm_model = Some("mistral-small-latest".into());
+        ws.pdf_parser_backend = Some(PdfParserBackend::Vision);
+
+        let mut opts = PdfUploadOptions {
+            vision_provider: Some("openai".into()),
+            vision_model: Some("gpt-4o".into()),
+            pdf_parser_backend: Some(PdfParserBackend::EdgeParse),
+            ..Default::default()
+        };
+        opts.apply_workspace(&ws);
+
+        assert_eq!(opts.vision_provider.as_deref(), Some("openai"));
+        assert_eq!(opts.vision_model.as_deref(), Some("gpt-4o"));
+        assert_eq!(opts.pdf_parser_backend, Some(PdfParserBackend::EdgeParse));
     }
 }
 

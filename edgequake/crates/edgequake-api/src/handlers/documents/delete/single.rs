@@ -1,25 +1,25 @@
 //! Single document deletion handler.
 //!
-//! Cascade-deletes a document: KV entries, chunk embeddings, graph entities,
-//! graph edges, and content-hash duplicate-detection key (OADA-90).
+//! Fast path: resolve identity, enqueue `TaskType::Deletion`, then admit
+//! `status=deleting`, return **202 Accepted**. The worker runs the
+//! authoritative cascade via [`crate::services::perform_document_deletion`].
+//! Enqueue runs before status mutation so a queue/DB failure cannot leave
+//! the document stuck in `deleting` with no job.
 //!
 //! @implements SPEC-050: Real-time deletion progress via WebSocket broadcast.
 
-use axum::{extract::State, Json};
+use axum::{extract::State, http::StatusCode, Json};
 use uuid::Uuid;
 
-use edgequake_audit::{AuditEventType, AuditResult};
+use edgequake_tasks::{DeletionTaskData, Task, TaskType};
 
 use crate::error::{ApiError, ApiResult};
 use crate::handlers::documents_types::*;
-use crate::handlers::websocket_types::DeletionPhaseKind;
 use crate::middleware::TenantContext;
-use crate::services::{
-    cascade_remove_document_sources, record_compliance_event, CascadeStats, ContentHasher,
-    DocumentSourceScope,
-};
+use crate::services::find_active_deletion_track_id;
+#[cfg(test)]
+use crate::services::perform_document_deletion;
 use crate::state::AppState;
-use edgequake_core::MetricsTriggerType;
 
 use crate::document_read_model::relational_document_scope;
 use crate::services::document_metadata_scan::{
@@ -27,27 +27,12 @@ use crate::services::document_metadata_scan::{
     metadata_key_for_document,
 };
 
-use super::super::storage_helpers::{
-    get_workspace_vector_storage_for_delete, metadata_matches_tenant_context,
-    purge_persisted_tasks_for_document,
-};
+use super::super::storage_helpers::metadata_matches_tenant_context;
 
 /// Resolve the actual KV key prefix for a document.
 ///
-/// WHY: The `list_documents` endpoint shows documents by their JSON `id` field
-/// inside KV metadata values, but the KV key is `{early_doc_id}-metadata`.
-/// These can diverge due to historical bugs (interrupted retries, backend restarts
-/// with older code). When the user requests deletion by JSON `id`, we must find
-/// the real KV key prefix to delete all associated keys (chunks, content, metadata).
-///
 /// Returns `(actual_key_prefix, metadata_key, has_metadata)`.
-///
-/// P-G7 (RC-12): the slow path uses `keys_with_suffix("-metadata")` (an
-/// index-friendly scan in Postgres) instead of requiring the caller to pass
-/// the full key list. The fast path is a direct O(1) `get_by_id` on the
-/// expected `{document_id}-metadata` key.
 async fn resolve_kv_key_prefix(document_id: &str, state: &AppState) -> (String, String, bool) {
-    // Fast path: direct key lookup — key prefix == document_id
     let direct_metadata_key = metadata_key_for_document(document_id);
     if state
         .storage
@@ -61,8 +46,6 @@ async fn resolve_kv_key_prefix(document_id: &str, state: &AppState) -> (String, 
         return (document_id.to_string(), direct_metadata_key, true);
     }
 
-    // Slow path: batch metadata entries (index-friendly suffix scan).
-    // SPEC-045: match canonical id (KV key wins over JSON `id`).
     if let Ok(entries) = load_all_document_metadata_entries(state.storage.kv_storage.as_ref()).await
     {
         for (key, val) in entries {
@@ -76,11 +59,10 @@ async fn resolve_kv_key_prefix(document_id: &str, state: &AppState) -> (String, 
         }
     }
 
-    // Neither direct key nor JSON id match — return document_id as-is
     (document_id.to_string(), direct_metadata_key, false)
 }
 
-/// Delete a document by ID.
+/// Delete a document by ID (async job — 202 Accepted).
 #[utoipa::path(
     delete,
     path = "/api/v1/documents/{document_id}",
@@ -89,7 +71,7 @@ async fn resolve_kv_key_prefix(document_id: &str, state: &AppState) -> (String, 
         ("document_id" = String, Path, description = "Document ID to delete")
     ),
     responses(
-        (status = 200, description = "Document deleted", body = DeleteDocumentResponse),
+        (status = 202, description = "Deletion accepted; track via WebSocket", body = DeleteDocumentResponse),
         (status = 404, description = "Document not found")
     )
 )]
@@ -97,11 +79,7 @@ pub async fn delete_document(
     State(state): State<AppState>,
     axum::extract::Path(document_id): axum::extract::Path<String>,
     tenant_ctx: TenantContext,
-) -> ApiResult<Json<DeleteDocumentResponse>> {
-    // P-G7 (RC-12): no upfront O(W) full-key scan. The metadata key is resolved
-    // via `resolve_kv_key_prefix` (fast O(1) direct lookup, slow path uses an
-    // index-friendly suffix scan). Chunk/content keys are fetched with an
-    // index-friendly prefix scan scoped to the resolved document prefix.
+) -> ApiResult<(StatusCode, Json<DeleteDocumentResponse>)> {
     let (actual_key_prefix, metadata_key, has_metadata) =
         resolve_kv_key_prefix(&document_id, &state).await;
     let key_id_mismatch = actual_key_prefix != document_id;
@@ -110,12 +88,10 @@ pub async fn delete_document(
         tracing::warn!(
             document_id = %document_id,
             actual_key_prefix = %actual_key_prefix,
-            "KV key/id mismatch detected — key prefix differs from metadata JSON id. \
-             Using resolved key prefix for cascade delete."
+            "KV key/id mismatch detected — using resolved key prefix for cascade delete"
         );
     }
 
-    // Find chunks belonging to this document (index-friendly prefix scan).
     let chunk_prefix = format!("{}-chunk-", actual_key_prefix);
     let chunk_ids: Vec<String> = state
         .storage
@@ -124,7 +100,6 @@ pub async fn delete_document(
         .await
         .unwrap_or_default();
 
-    // Also check for content key (using resolved key prefix)
     let content_key = format!("{}-content", actual_key_prefix);
     let has_content = state
         .storage
@@ -135,8 +110,6 @@ pub async fn delete_document(
         .flatten()
         .is_some();
 
-    // First principle: if the list shows the document (relational read model), delete
-    // must succeed even when KV metadata/chunks/content are absent.
     #[cfg(feature = "postgres")]
     let relational_scope =
         relational_document_scope(state.pg_pool.as_ref(), &document_id, &tenant_ctx).await?;
@@ -162,10 +135,7 @@ pub async fn delete_document(
         }
     }
 
-    // SPEC-033: Get workspace_id from document metadata for vector storage isolation
-    // OADA-90: Extract content_hash for hash key cleanup
-    // FIX-ISSUE-73: Extract pdf_id for pdf_documents cleanup
-    let (workspace_id_for_storage, document_status, content_hash_opt, _pdf_id_opt, track_id_opt) =
+    let (workspace_id_for_storage, document_status, content_hash_opt, pdf_id_opt, track_id_opt) =
         if has_metadata {
             if let Ok(Some(metadata)) = state.storage.kv_storage.get_by_id(&metadata_key).await {
                 let tenant_ok = metadata_matches_tenant_context(&metadata, &tenant_ctx);
@@ -190,17 +160,14 @@ pub async fn delete_document(
                                 .map(|s| s.status.clone())
                                 .unwrap_or_else(|| "unknown".to_string())
                         });
-                    // OADA-90: Extract content hash for duplicate detection key cleanup
                     let content_hash = metadata
                         .get("content_hash")
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string());
-                    // FIX-ISSUE-73: Extract pdf_id for pdf_documents cascade cleanup
                     let pdf_id = metadata
                         .get("pdf_id")
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string());
-                    // Extract track_id so we can cancel any in-flight processing task
                     let track_id = metadata
                         .get("track_id")
                         .and_then(|v| v.as_str())
@@ -236,14 +203,74 @@ pub async fn delete_document(
             )
         };
 
-    // SPEC-050: Generate a transient track_id for this deletion operation.
-    // WHY: Allows WebSocket clients to correlate DeletionStarted / DeletionPhase /
-    // DeletionCompleted events to the specific delete request they triggered.
+    let workspace_uuid = Uuid::parse_str(&workspace_id_for_storage).ok();
+    if let Some(existing_track) =
+        find_active_deletion_track_id(&state, &document_id, workspace_uuid).await
+    {
+        tracing::info!(
+            document_id = %document_id,
+            track_id = %existing_track,
+            "Deletion already in flight — returning existing track_id (idempotent)"
+        );
+        return Ok((
+            StatusCode::ACCEPTED,
+            Json(DeleteDocumentResponse {
+                document_id,
+                deleted: false,
+                accepted: true,
+                track_id: Some(existing_track),
+                chunks_deleted: 0,
+                entities_affected: 0,
+                relationships_affected: 0,
+                embeddings_deleted: 0,
+                partial_failure: false,
+                partial_failure_reason: None,
+            }),
+        ));
+    }
+
     let deletion_track_id = Uuid::new_v4().to_string();
 
-    // Early admit: write status=deleting BEFORE expensive cascade so list polls
-    // during vectors/graph/kv removal show an honest "Deleting" badge (not stale
-    // Completed). Same spirit as reprocess early-admit cleaning.
+    let tenant_id_str = tenant_ctx
+        .tenant_id
+        .clone()
+        .unwrap_or_else(|| "default".to_string());
+    let tenant_uuid = Uuid::parse_str(&tenant_id_str).unwrap_or_else(|_| Uuid::nil());
+    let workspace_uuid_for_task =
+        Uuid::parse_str(&workspace_id_for_storage).unwrap_or_else(|_| Uuid::nil());
+
+    let task_data = DeletionTaskData {
+        document_id: document_id.clone(),
+        key_prefix: actual_key_prefix.clone(),
+        workspace_id: workspace_id_for_storage.clone(),
+        tenant_id: tenant_id_str,
+        deletion_track_id: deletion_track_id.clone(),
+        metadata_key: if has_metadata {
+            Some(metadata_key.clone())
+        } else {
+            None
+        },
+        chunk_ids: chunk_ids.clone(),
+        has_content,
+        content_hash: content_hash_opt,
+        pdf_id: pdf_id_opt,
+        ingest_track_id: track_id_opt,
+        document_status: Some(document_status),
+    };
+
+    let task = Task::new(
+        tenant_uuid,
+        workspace_uuid_for_task,
+        TaskType::Deletion,
+        serde_json::to_value(&task_data).map_err(|e| {
+            ApiError::Internal(format!("Failed to serialize DeletionTaskData: {e}"))
+        })?,
+    );
+
+    // First principle: durable job BEFORE status=deleting. Enqueue failure must
+    // not leave the document stuck in a deleting badge with no worker task.
+    state.enqueue_task(task).await?;
+
     if has_metadata {
         if let Ok(Some(mut metadata)) = state.storage.kv_storage.get_by_id(&metadata_key).await {
             if let Some(obj) = metadata.as_object_mut() {
@@ -276,412 +303,73 @@ pub async fn delete_document(
         }
     }
 
-    // SPEC-050: Broadcast deletion started so the frontend can show "Deleting…"
     state
         .tasks
         .progress_broadcaster
         .deletion_started(&document_id, &deletion_track_id);
 
-    // First Principle: a user must always be able to delete their own document.
-    //
-    // If the document is still being processed (pending/processing), cancel its
-    // task first so the processor stops writing — then proceed with the cascade
-    // delete.  The processor already handles missing-document cases gracefully
-    // (update_document_status is a no-op when the KV key is gone), so there is
-    // no orphan risk from the race window.
-    //
-    // SRP: the delete handler's only job is data removal; lifecycle management
-    // belongs to the processor.  Blocking deletion here was the wrong layer.
-    if matches!(
-        document_status.as_str(),
-        "pending" | "processing" | "deleting"
-    ) {
-        match &track_id_opt {
-            Some(track_id) => {
-                state.tasks.progress_broadcaster.deletion_phase(
-                    &document_id,
-                    &deletion_track_id,
-                    DeletionPhaseKind::CancellingTask,
-                    0,
-                    1,
-                );
-                let cancelled = state.tasks.cancellation_registry.cancel(track_id).await;
-                tracing::info!(
-                    document_id = %document_id,
-                    track_id = %track_id,
-                    status = %document_status,
-                    cancelled,
-                    "Cancelled in-flight task before cascade delete"
-                );
-            }
-            None => {
-                tracing::warn!(
-                    document_id = %document_id,
-                    status = %document_status,
-                    "No track_id in metadata — falling back to persisted task scan during delete"
-                );
-            }
-        }
-    }
-
-    let persisted_tasks_removed = purge_persisted_tasks_for_document(
-        &state,
-        &document_id,
-        track_id_opt.as_deref(),
-        Some(&workspace_id_for_storage),
-    )
-    .await;
-
-    // SPEC-028: Collect chunk IDs for vector storage deletion
-    // Clone chunk_ids before workspace_vector_storage operations
-    let keys_to_delete_for_vectors: Vec<String> = chunk_ids.clone();
-
-    // SPEC-033: Get workspace-specific vector storage for deletion.
-    // WHY-OODA223: Use lenient resolver so that documents whose workspace
-    // record no longer exists in the DB are not permanently stuck ("zombie"
-    // documents).  Orphaned vector rows from the missing workspace are an
-    // acceptable trade-off vs. an undeleteable document.
-    let workspace_vector_storage =
-        get_workspace_vector_storage_for_delete(&state, &workspace_id_for_storage).await;
-
-    let chunks_deleted = chunk_ids.len();
-    let mut embeddings_deleted = 0usize;
-    let mut partial_failure = false;
-    let mut partial_failure_reason: Option<String> = None;
-
-    // SPEC-028: Delete chunk embeddings from vector storage first
-    // WHY: Chunks are stored with IDs like "doc-xxx-chunk-0", delete them
-    let chunk_embedding_ids: Vec<String> = keys_to_delete_for_vectors.clone();
-
-    // SPEC-050: Broadcast RemovingVectors phase.
-    state.tasks.progress_broadcaster.deletion_phase(
-        &document_id,
-        &deletion_track_id,
-        DeletionPhaseKind::RemovingVectors,
-        0,
-        chunk_embedding_ids.len() as u32,
-    );
-
-    if !chunk_embedding_ids.is_empty() {
-        if let Err(e) = workspace_vector_storage.delete(&chunk_embedding_ids).await {
-            tracing::warn!(
-                document_id = %document_id,
-                error = %e,
-                "Failed to delete chunk embeddings, continuing with graph cleanup"
-            );
-        } else {
-            embeddings_deleted += chunk_embedding_ids.len();
-            tracing::debug!(
-                document_id = %document_id,
-                count = chunk_embedding_ids.len(),
-                "Deleted chunk embeddings"
-            );
-        }
-    }
-
-    // SPEC-006 P1: bounded document-scoped cascade (no get_all_nodes/edges)
-    let scope =
-        DocumentSourceScope::with_key_prefix(document_id.clone(), actual_key_prefix.clone());
-
-    // SPEC-050: Broadcast RemovingGraph phase.
-    state.tasks.progress_broadcaster.deletion_phase(
-        &document_id,
-        &deletion_track_id,
-        DeletionPhaseKind::RemovingGraph,
-        0,
-        0,
-    );
-
-    // WHY non-fatal: the graph cascade cleans up derivative entities/edges. A
-    // graph hiccup (AGE Cypher error, transient connection drop, lazy-label
-    // table not yet created) must NOT block the user from deleting their
-    // document or turn a successful deletion into a 500. KV/vector/relational
-    // cleanup below is the authoritative data removal; graph rows are best-effort
-    // and can be reconciled later. This fixes the "delete returns 500 even though
-    // the document is gone" symptom seen on large ingestions.
-    let cascade_stats = match cascade_remove_document_sources(
-        &state.storage.graph_storage,
-        Some(&workspace_vector_storage),
-        Some(&tenant_ctx),
-        &scope,
-    )
-    .await
-    {
-        Ok(stats) => stats,
-        Err(e) => {
-            tracing::error!(
-                document_id = %document_id,
-                error = %e,
-                "Graph cascade delete failed (non-fatal) — proceeding with KV/vector/relational cleanup"
-            );
-            // SPEC-050: Track partial failure for response and completion event.
-            partial_failure = true;
-            partial_failure_reason = Some(format!("Graph cascade error: {}", e));
-            CascadeStats::default()
-        }
-    };
-    let entities_removed = cascade_stats.entities_removed;
-    let entities_updated = cascade_stats.entities_updated;
-    let relationships_removed = cascade_stats.relationships_removed;
-    let relationships_updated = cascade_stats.relationships_updated;
-    embeddings_deleted += cascade_stats.embeddings_deleted;
-
-    // Collect all keys to delete from KV storage
-    let mut keys_to_delete = keys_to_delete_for_vectors;
-    if has_metadata {
-        keys_to_delete.push(metadata_key);
-        keys_to_delete.push(edgequake_storage::kv_keys::workspace_doc_index(
-            &workspace_id_for_storage,
-            &actual_key_prefix,
-        ));
-    }
-    if has_content {
-        keys_to_delete.push(content_key);
-    }
-
-    // Collect any other KV keys with the document prefix that aren't already
-    // in the list (e.g., `-lineage` keys). This ensures comprehensive cleanup.
-    // P-G7 (RC-12): index-friendly prefix scan instead of filtering the full
-    // key set in-memory.
-    let actual_doc_prefix = format!("{}-", actual_key_prefix);
-    let all_prefix_keys: Vec<String> = state
-        .storage
-        .kv_storage
-        .keys_with_prefix(&actual_doc_prefix)
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|k| !keys_to_delete.contains(k))
-        .collect();
-    if !all_prefix_keys.is_empty() {
-        tracing::debug!(
-            count = all_prefix_keys.len(),
-            document_id = %document_id,
-            "Collecting additional KV keys with document prefix"
-        );
-        keys_to_delete.extend(all_prefix_keys);
-    }
-
-    // In mismatch cases, also collect keys under the JSON id prefix
-    if key_id_mismatch {
-        let json_doc_prefix = format!("{}-", document_id);
-        let alt_prefix_keys: Vec<String> = state
-            .storage
-            .kv_storage
-            .keys_with_prefix(&json_doc_prefix)
-            .await
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|k| !keys_to_delete.contains(k))
-            .collect();
-        if !alt_prefix_keys.is_empty() {
-            tracing::debug!(
-                count = alt_prefix_keys.len(),
-                json_id = %document_id,
-                "Collecting additional KV keys with JSON id prefix (mismatch cleanup)"
-            );
-            keys_to_delete.extend(alt_prefix_keys);
-        }
-    }
-
-    // OODA-90: Delete workspace-scoped hash key to allow re-upload of same content
-    // WHY: If we don't delete the hash key, the duplicate detection will still
-    // block uploads of the same content even after the document is deleted.
-    if let Some(content_hash) = content_hash_opt {
-        let hash_key = ContentHasher::workspace_hash_key(&workspace_id_for_storage, &content_hash);
-        keys_to_delete.push(hash_key.clone());
-        tracing::debug!(
-            hash_key = %hash_key,
-            document_id = %document_id,
-            "Adding hash key to deletion list for duplicate detection cleanup"
-        );
-    }
-
-    // SPEC-050: Broadcast RemovingKv phase before KV deletion.
-    state.tasks.progress_broadcaster.deletion_phase(
-        &document_id,
-        &deletion_track_id,
-        DeletionPhaseKind::RemovingKv,
-        0,
-        keys_to_delete.len() as u32,
-    );
-
-    // Delete all document data from KV storage
-    state.storage.kv_storage.delete(&keys_to_delete).await?;
-
-    // SPEC-047: explicit mm-asset cleanup (DB + FS). FK CASCADE also removes DB rows
-    // when the documents row is deleted; this covers memory mode and FS orphans.
-    #[cfg(feature = "postgres")]
-    {
-        let mm_storage = state.storage.mm_asset_storage.as_deref();
-        let workspace_uuid = uuid::Uuid::parse_str(&workspace_id_for_storage).ok();
-        match crate::services::delete_document_mm_assets(mm_storage, &document_id, workspace_uuid)
-            .await
-        {
-            Ok(n) => {
-                if n > 0 {
-                    tracing::debug!(
-                        document_id = %document_id,
-                        deleted = n,
-                        "Deleted document mm-assets"
-                    );
-                }
-            }
-            Err(e) => {
-                tracing::warn!(
-                    document_id = %document_id,
-                    error = %e,
-                    "Failed to delete document mm-assets (continuing cascade)"
-                );
-            }
-        }
-        // Also try actual_key_prefix when it differs (key/id mismatch).
-        if key_id_mismatch {
-            let _ = crate::services::delete_document_mm_assets(
-                mm_storage,
-                &actual_key_prefix,
-                workspace_uuid,
-            )
-            .await;
-        }
-    }
-
-    // FIX-ISSUE-73: Cascade delete pdf_documents, chunks, and the documents row.
-    // WHY: Previously only KV/graph/vector data was cleaned up, leaving orphaned rows
-    // in pdf_documents, chunks, and documents tables (GitHub Issue #73).
-    #[cfg(feature = "postgres")]
-    {
-        if let Some(ref pdf_storage) = state.storage.pdf_storage {
-            // 1. Delete from pdf_documents if this is a PDF document
-            if let Some(ref pid) = _pdf_id_opt {
-                if let Ok(pdf_uuid) = Uuid::parse_str(pid) {
-                    if let Err(e) = pdf_storage.delete_pdf(&pdf_uuid).await {
-                        tracing::warn!(
-                            pdf_id = %pid,
-                            document_id = %document_id,
-                            error = %e,
-                            "Failed to delete pdf_documents row (may already be gone)"
-                        );
-                    } else {
-                        tracing::debug!(
-                            pdf_id = %pid,
-                            document_id = %document_id,
-                            "Deleted pdf_documents row"
-                        );
-                    }
-                }
-            }
-
-            // 2. Delete from documents relational table (cascades to chunks via FK).
-            // WHY: Try actual_key_prefix first (true KV key prefix), then document_id
-            // (JSON id) if they differ, to handle key/id mismatch cases.
-            let doc_ids_to_try: Vec<&str> = if key_id_mismatch {
-                vec![&actual_key_prefix, &document_id]
-            } else {
-                vec![&document_id]
-            };
-            for doc_id_str in &doc_ids_to_try {
-                if let Ok(doc_uuid) = Uuid::parse_str(doc_id_str) {
-                    match pdf_storage.delete_document_record(&doc_uuid).await {
-                        Ok(_) => {
-                            tracing::debug!(
-                                document_id = %doc_id_str,
-                                "Deleted documents table row (cascaded to chunks)"
-                            );
-                            break;
-                        }
-                        Err(e) => {
-                            tracing::warn!(
-                                document_id = %doc_id_str,
-                                error = %e,
-                                "Failed to delete documents table row (may not exist)"
-                            );
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     tracing::info!(
         document_id = %document_id,
-        chunks = chunks_deleted,
-        embeddings_deleted = embeddings_deleted,
-        entities_removed = entities_removed,
-        entities_updated = entities_updated,
-        relationships_removed = relationships_removed,
-        relationships_updated = relationships_updated,
-        persisted_tasks_removed = persisted_tasks_removed,
-        "Document cascade delete complete"
+        track_id = %deletion_track_id,
+        chunks = chunk_ids.len(),
+        "Deletion accepted — worker will run cascade"
     );
 
-    // OODA-21: Record metrics snapshot for trend analysis after deletion
-    // Best-effort: log error but don't fail the deletion
-    if let Ok(workspace_uuid) = Uuid::parse_str(&workspace_id_for_storage) {
-        if let Err(e) = state
-            .workspace_service
-            .record_metrics_snapshot(workspace_uuid, MetricsTriggerType::Event)
-            .await
-        {
-            tracing::warn!(
-                workspace_id = %workspace_id_for_storage,
-                error = %e,
-                "Failed to record post-deletion metrics snapshot"
-            );
-        } else {
-            tracing::debug!(
-                workspace_id = %workspace_id_for_storage,
-                "Recorded post-deletion metrics snapshot"
-            );
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(DeleteDocumentResponse {
+            document_id,
+            deleted: false,
+            accepted: true,
+            track_id: Some(deletion_track_id),
+            chunks_deleted: 0,
+            entities_affected: 0,
+            relationships_affected: 0,
+            embeddings_deleted: 0,
+            partial_failure: false,
+            partial_failure_reason: None,
+        }),
+    ))
+}
+
+/// Test helper: admit delete then run the cascade inline (no live worker in unit tests).
+#[cfg(test)]
+pub async fn delete_document_and_drain_for_test(
+    state: &AppState,
+    document_id: String,
+    tenant_ctx: TenantContext,
+) -> ApiResult<DeleteDocumentResponse> {
+    let (status, Json(accepted)) = delete_document(
+        State(state.clone()),
+        axum::extract::Path(document_id),
+        tenant_ctx.clone(),
+    )
+    .await?;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    assert!(accepted.accepted);
+
+    // Drain the Deletion task from the queue and run the cascade.
+    if let Ok(Some(task)) = state.tasks.queue.try_receive().await {
+        if task.task_type == TaskType::Deletion {
+            let data: DeletionTaskData = serde_json::from_value(task.task_data)
+                .map_err(|e| ApiError::Internal(e.to_string()))?;
+            let result = perform_document_deletion(state, &data, &tenant_ctx).await?;
+            return Ok(DeleteDocumentResponse {
+                document_id: data.document_id,
+                deleted: true,
+                accepted: false,
+                track_id: Some(data.deletion_track_id),
+                chunks_deleted: result.chunks_deleted,
+                entities_affected: result.entities_removed + result.entities_updated,
+                relationships_affected: result.relationships_removed + result.relationships_updated,
+                embeddings_deleted: result.embeddings_deleted,
+                partial_failure: result.partial_failure,
+                partial_failure_reason: result.partial_failure_reason,
+            });
         }
     }
 
-    let tenant_for_audit = tenant_ctx
-        .tenant_id
-        .clone()
-        .unwrap_or_else(|| "default".to_string());
-    record_compliance_event(
-        &state,
-        tenant_for_audit,
-        AuditEventType::Authorization,
-        "delete_document",
-        AuditResult::Success,
-        tenant_ctx.workspace_id.clone(),
-        tenant_ctx.user_id.clone(),
-        Some(("document".to_string(), document_id.clone())),
-    );
-
-    // SPEC-050: Finalizing phase before completion broadcast.
-    state.tasks.progress_broadcaster.deletion_phase(
-        &document_id,
-        &deletion_track_id,
-        DeletionPhaseKind::Finalizing,
-        0,
-        1,
-    );
-
-    // SPEC-050: Broadcast DeletionCompleted so the frontend can show final stats.
-    state.tasks.progress_broadcaster.deletion_completed(
-        &document_id,
-        &deletion_track_id,
-        chunks_deleted,
-        entities_removed,
-        relationships_removed,
-        embeddings_deleted,
-        partial_failure,
-        partial_failure_reason.clone(),
-    );
-
-    Ok(Json(DeleteDocumentResponse {
-        document_id,
-        deleted: true,
-        chunks_deleted,
-        entities_affected: entities_removed + entities_updated,
-        relationships_affected: relationships_removed + relationships_updated,
-        embeddings_deleted,
-        partial_failure,
-        partial_failure_reason,
-    }))
+    Ok(accepted)
 }
 
 #[cfg(test)]
@@ -689,14 +377,12 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    /// resolve_kv_key_prefix: fast path — key prefix matches document_id.
     #[tokio::test]
     async fn test_resolve_key_prefix_fast_path() {
         let state = AppState::test_state();
         let doc_id = "aaaa-bbbb-cccc-dddd";
         let metadata_key = metadata_key_for_document(doc_id);
 
-        // Store metadata with matching key and id
         state
             .storage
             .kv_storage
@@ -714,7 +400,6 @@ mod tests {
         assert!(has_metadata);
     }
 
-    /// resolve_kv_key_prefix: slow path — key prefix differs from JSON id.
     #[tokio::test]
     async fn test_resolve_key_prefix_mismatch() {
         let state = AppState::test_state();
@@ -722,7 +407,6 @@ mod tests {
         let json_id = "mismatched-json-id-2222";
         let metadata_key = metadata_key_for_document(kv_prefix);
 
-        // Store metadata with MISMATCHED key/id
         state
             .storage
             .kv_storage
@@ -735,13 +419,11 @@ mod tests {
 
         let (prefix, key, has_metadata) = resolve_kv_key_prefix(json_id, &state).await;
 
-        // Should resolve to the KV key prefix, not the JSON id
         assert_eq!(prefix, kv_prefix);
         assert_eq!(key, metadata_key);
         assert!(has_metadata);
     }
 
-    /// resolve_kv_key_prefix: document not found at all.
     #[tokio::test]
     async fn test_resolve_key_prefix_not_found() {
         let state = AppState::test_state();
@@ -754,18 +436,12 @@ mod tests {
         assert!(!has_metadata);
     }
 
-    /// Delete succeeds when KV key prefix differs from metadata JSON id.
-    /// This is the exact bug scenario: list_documents returns a document
-    /// with JSON id "B" but KV key "A-metadata". DELETE /documents/B must
-    /// find and delete the KV entries under the "A-*" keys.
     #[tokio::test]
     async fn test_delete_document_with_key_id_mismatch() {
         let state = AppState::test_state();
         let kv_prefix = "4b788a9e-0000-0000-0000-000000000001";
         let json_id = "2cddf543-0000-0000-0000-000000000002";
 
-        // Set up the mismatch scenario: metadata key uses kv_prefix,
-        // but the JSON id field is json_id.
         let metadata_key = metadata_key_for_document(kv_prefix);
         let content_key = format!("{}-content", kv_prefix);
         let chunk_0_key = format!("{}-chunk-0", kv_prefix);
@@ -792,27 +468,16 @@ mod tests {
             .await
             .unwrap();
 
-        // Verify all 4 keys exist
-        let keys_before = state.storage.kv_storage.keys().await.unwrap();
-        assert!(keys_before.contains(&metadata_key));
-        assert!(keys_before.contains(&content_key));
-        assert!(keys_before.contains(&chunk_0_key));
-        assert!(keys_before.contains(&chunk_1_key));
-
-        // Delete using the JSON id (what the frontend sends)
-        let result = delete_document(
-            State(state.clone()),
-            axum::extract::Path(json_id.to_string()),
+        let response = delete_document_and_drain_for_test(
+            &state,
+            json_id.to_string(),
             TenantContext::default(),
         )
-        .await;
-
-        // Should succeed, not return 404
-        let response = result.expect("delete should succeed for mismatched key/id document");
+        .await
+        .expect("delete should succeed for mismatched key/id document");
         assert!(response.deleted);
         assert_eq!(response.chunks_deleted, 2);
 
-        // Verify all keys were deleted
         let keys_after = state.storage.kv_storage.keys().await.unwrap();
         assert!(
             !keys_after.contains(&metadata_key),
@@ -832,7 +497,6 @@ mod tests {
         );
     }
 
-    /// Delete still returns 404 when no matching document exists at all.
     #[tokio::test]
     async fn test_delete_truly_nonexistent_returns_404() {
         let state = AppState::test_state();
@@ -850,8 +514,6 @@ mod tests {
         );
     }
 
-    /// Comprehensive cleanup: lineage keys and keys under both prefixes
-    /// are deleted in a mismatch scenario.
     #[tokio::test]
     async fn test_delete_mismatch_cleans_lineage_and_alt_prefix_keys() {
         let state = AppState::test_state();
@@ -860,7 +522,6 @@ mod tests {
 
         let metadata_key = metadata_key_for_document(kv_prefix);
         let lineage_key = format!("{}-lineage", kv_prefix);
-        // A key under the JSON id prefix (e.g., lineage stored there)
         let alt_lineage_key = format!("{}-lineage", json_id);
 
         state
@@ -881,18 +542,15 @@ mod tests {
             .await
             .unwrap();
 
-        // Delete using the JSON id
-        let result = delete_document(
-            State(state.clone()),
-            axum::extract::Path(json_id.to_string()),
+        let response = delete_document_and_drain_for_test(
+            &state,
+            json_id.to_string(),
             TenantContext::default(),
         )
-        .await;
-
-        let response = result.expect("delete should succeed");
+        .await
+        .expect("delete should succeed");
         assert!(response.deleted);
 
-        // ALL keys under BOTH prefixes must be cleaned
         let keys_after = state.storage.kv_storage.keys().await.unwrap();
         assert!(!keys_after.contains(&metadata_key), "metadata");
         assert!(
@@ -903,5 +561,34 @@ mod tests {
             !keys_after.contains(&alt_lineage_key),
             "lineage under json id prefix"
         );
+    }
+
+    #[tokio::test]
+    async fn test_delete_returns_202_accepted() {
+        let state = AppState::test_state();
+        let doc_id = "cccc-0000-0000-0000-000000000003";
+        let metadata_key = metadata_key_for_document(doc_id);
+        state
+            .storage
+            .kv_storage
+            .upsert(&[(
+                metadata_key,
+                json!({"id": doc_id, "status": "completed", "workspace_id": "default"}),
+            )])
+            .await
+            .unwrap();
+
+        let (status, Json(resp)) = delete_document(
+            State(state.clone()),
+            axum::extract::Path(doc_id.to_string()),
+            TenantContext::default(),
+        )
+        .await
+        .expect("accept");
+
+        assert_eq!(status, StatusCode::ACCEPTED);
+        assert!(resp.accepted);
+        assert!(!resp.deleted);
+        assert!(resp.track_id.is_some());
     }
 }

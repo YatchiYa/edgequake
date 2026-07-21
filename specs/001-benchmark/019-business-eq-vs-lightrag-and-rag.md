@@ -1,0 +1,178 @@
+# How EdgeQuake Compares to LightRAG and Other RAG
+
+**Audience:** Business / product stakeholders  
+**Date:** 2026-07-21 (refresh — split peers + cold latency fairness)  
+**Evidence base:** Fair head-to-head Acc on GraphRAG-Bench medical smoke (n=40) · [peers.json](./e2e/artifacts/peers.json) · [055 First Principles hub](./001-edgquake-improvements/055-post-acc-ceiling-first-principles.md) · [063 why LR looked faster](./001-edgquake-improvements/063-why-lightrag-faster-cache-fairness.md) · [043 honesty](./001-edgquake-improvements/043-honesty-can-we-push.md)
+
+---
+
+## In one minute
+
+| Question | Plain answer |
+|----------|----------------|
+| Does EdgeQuake beat LightRAG on answer quality today? | **No — statistical tie** on n=40 (difference within noise). Do not claim “beats LightRAG.” |
+| Is EdgeQuake a serious GraphRAG peer? | **Yes.** Under Acc Fact peer pins, answer accuracy matches LightRAG Mix. |
+| How do we report fairly? | **Two labeled peers** — never one unlabeled “winner.” Acc Fact ≠ L2 Parity. |
+| Where is LightRAG ahead? | **Evidence coverage** under the L2 Parity pack. Warm Acc “~5× faster” was **LLM-cache-aided** — fair cold Mix is ≈ **1.0×**. |
+| Where is EdgeQuake ahead? | **Fact Acc** on the Acc Fact peer slice; **product/platform** (API, Postgres, multi-tenant). |
+| Are we “state of the art” vs all RAG? | **Peer on Acc with LightRAG; not retrieval SOTA.** HippoRAG2-class leads on clean+complete retrieval. |
+
+**Bottom line:** Credible LightRAG-class GraphRAG product on answer quality **and** cold query latency. Next investment is **UX (TTFT) / product caches**, **ingest naming fidelity**, and **honest packaging** — not another Soft Mix Acc knob.
+
+### Split peers (required reading)
+
+| Peer | What it optimizes | Headline numbers (n=40) |
+|------|-------------------|-------------------------|
+| **Acc Fact** (`a1fp` / B5) | Answer quality + Fact | EQ Acc **0.801** vs LR ~0.782 · ctx 0.519 · recall 0.926 · [T120315Z](./e2e/artifacts/history/smoke-20260720T120315Z/) |
+| **L2 Parity** (`a1lrl2`) | Evidence recall + clean context | EQ Acc 0.718 (tax) · ctx 0.525 · recall **0.933** · [T093152Z](./e2e/artifacts/history/smoke-20260720T093152Z/) |
+
+Machine index: [`e2e/artifacts/peers.json`](./e2e/artifacts/peers.json).
+---
+
+## What we compared (fair rules)
+
+We asked the same medical questions of:
+
+1. **EdgeQuake** (Mix mode — combines graph + vector retrieval)  
+2. **LightRAG** (Mix mode — the peer open-source GraphRAG)
+
+Same documents, same question set, same language model family (Mistral Small), same embedding model, same scoring method. That is the only comparison we treat as publishable for “EQ vs LightRAG.”
+
+We did **not** claim wins on UltraDomain leaderboards, paper Table-2 with different models, or unbenchmarked demos.
+
+---
+
+## Scorecard in business language
+
+Think of three layers:
+
+```text
+  Question
+     →  Retriever finds passages / graph facts   (retrieval quality)
+     →  Model writes an answer                   (generation)
+     →  We score the answer vs gold              (Acc = answer quality)
+```
+
+| Layer | What it means for the business | EdgeQuake vs LightRAG (fair Acc) |
+|-------|--------------------------------|----------------------------------|
+| **Answer quality (Acc)** | “Are answers roughly as good?” | **Tie** on Acc Fact peer (within statistical noise) |
+| **Evidence coverage** | “Did we find the right source material?” | Acc Fact ~93% recall; **L2 Parity peer** reaches ~93% EQ with cleaner packing (disclose Acc tax 0.718) |
+| **Context cleanliness** | “Is the prompt full of noise that confuses the model?” | Improved under labeled packs; do not claim default-product L2 parity without the L2 peer label |
+| **Speed** | “How long until the user sees an answer?” | **Fair cold Mix ≈ tied** (EQ ~5.9s vs LR ~5.8s, [T022103Z](./e2e/artifacts/history/smoke-20260721T022103Z/)). Warm Acc LR ~1.4s was answer/keyword **cache**, not a different model. |
+| **Product / ops** | API, database, tenancy, PDF pipeline, UI | **EdgeQuake’s strength** as a deployable stack — different job from a research library |
+
+### By question type (where each system feels stronger)
+
+| User need | Who tends to lead on Acc | Takeaway |
+|-----------|--------------------------|----------|
+| Simple fact lookup | **EdgeQuake** | Competitive for “what / who / when” style questions |
+| Multi-hop reasoning | **LightRAG** | Still the main quality gap to close |
+| Long summarization | **LightRAG** | Needs broader, cleaner coverage |
+| Creative / open-ended | **EdgeQuake** | Competitive on faithfulness-style Acc |
+
+---
+
+## How this sits vs “other RAG” (July 2026 landscape)
+
+Industry research on [GraphRAG-Bench](https://github.com/GraphRAG-Bench/GraphRAG-Benchmark) (ICLR 2026) is clear: **classic vector RAG is often enough for simple facts**; graphs help most when answers need **multi-hop reasoning or synthesis across documents**. EdgeQuake and LightRAG are both GraphRAG-family systems in that debate.
+
+RAG is not one product. Rough map for executives:
+
+| Family | What it is | Where EdgeQuake sits |
+|--------|------------|----------------------|
+| **Classic vector RAG** | Embed chunks → top-k → LLM | EdgeQuake includes this (naive arm) but adds a knowledge graph |
+| **GraphRAG (general)** | Entities/relations + text to help multi-hop | EdgeQuake and LightRAG are both in this family |
+| **LightRAG** | Popular dual-level GraphRAG; strong UX/dev adoption | **Peer on Acc** under our fair test; cold latency ≈ EQ when caches match |
+| **Microsoft GraphRAG / RAPTOR / Fast-GraphRAG** | Other graph or hierarchy approaches on the same research suite | Directional peers in the GraphRAG-Bench conversation — we did not re-run their paper pins head-to-head here |
+| **HippoRAG2-class** | High evidence recall **and** high context relevancy with compact prompts | **Aspirational retrieval SOTA** on this task family — the quality bar for “less noise, still complete” |
+
+**Important honesty note:** Absolute Acc numbers from the academic paper (GPT-4o-mini + BGE) are **not** directly comparable to our Mistral Acc runs. Use relative lessons (“who is cleaner / faster / better at multi-hop”), not raw score copy-paste.
+
+---
+
+## What we improved (and what we did not claim)
+
+We ran a disciplined improvement program (noise control, reranking, path pruning, Mix weights). Results in plain English:
+
+| Outcome | Meaning |
+|---------|---------|
+| **L2 / context quality improved** under a labeled advanced profile | We can pack less noise while keeping answer quality near baseline |
+| **Still a statistical tie on Acc** vs LightRAG | Advanced knobs did **not** produce a reliable “we win Acc” claim |
+| **Headline product defaults unchanged** | Default Acc path stays conservative; advanced retrieval stays opt-in / labeled |
+
+Allowed external language (recommended):
+
+- “EdgeQuake matches LightRAG on answer accuracy under our Acc Fact peer pins.”  
+- “Evidence-coverage parity is a separate labeled pack (L2 Parity) with an Acc trade-off — we disclose both.”  
+- “Peer GraphRAG system with a full production stack (Postgres, API, document pipeline).”  
+- “Fair cold Mix latency is ≈ LightRAG (≤1.5× PASS); warm Acc LR looks faster only with LLM cache hits.”
+
+Avoid:
+
+- “Beats LightRAG” / “wins Acc” without a confidence interval that excludes a tie  
+- Merging Acc Fact and L2 Parity into one unlabeled “we’re better” claim  
+- “#1 on GraphRAG-Bench” without matching the paper’s model and full evaluation protocol  
+
+---
+
+## When to choose EdgeQuake vs LightRAG vs simpler RAG
+
+| If you need… | Prefer |
+|--------------|--------|
+| Production RAG with tenancy, Postgres, PDF→Markdown, REST/UI | **EdgeQuake** |
+| Fastest Mix-style GraphRAG experiment / library-first workflow | **LightRAG** (or EQ if you already standardize on our stack) |
+| Lowest cost / latency for pure fact lookup | Often **lean vector RAG** (or EQ with fact-oriented routing later) |
+| Best published multi-hop + high relevancy on GraphRAG-Bench-class tasks | Study **HippoRAG2-class** designs; EQ roadmap points there as research, not current Acc default |
+
+---
+
+## Risks and next investments (business priority)
+
+**Current program (post Acc-ceiling):** **[055 First Principles hub](./001-edgquake-improvements/055-post-acc-ceiling-first-principles.md)** — Acc Beat fishing STOP.
+
+1. **Ship split peers honestly** — Acc Fact vs L2 Parity ([`peers.json`](./e2e/artifacts/peers.json)); never one unlabeled winner.  
+2. **Naming / ingest fidelity** — [056](./001-edgquake-improvements/056-naming-identity-lr-parity.md) short-numeric law (Acc re-ingest deferred).  
+3. **Latency honesty** — [063](./001-edgquake-improvements/063-why-lightrag-faster-cache-fairness.md) cold ≈1.0×; product polish [064](./001-edgquake-improvements/064-product-ttft-cache-batch-embed.md) (TTFT + opt-in caches) — not Acc Beat.  
+4. **Do not claim Beat** — CI still includes 0 on n=40; Soft Mix Acc knobs exhausted.  
+
+Historical ladder (E0–E4 / P0–P5): [022](./001-edgquake-improvements/022-deep-top-performance-plan.md) · [028](./001-edgquake-improvements/028-first-principles-beat-roadmap.md).
+
+---
+
+## Run the benchmark (publish pack)
+
+```bash
+make bench          # cold Acc n=40 + business report
+make bench-warm     # query-only (auto latest warm EQ workspace)
+```
+
+Latest stakeholder pack (regenerated each run):
+
+- [BUSINESS_REPORT.md](./e2e/artifacts/publish/latest/BUSINESS_REPORT.md)
+- [EXEC_SUMMARY.txt](./e2e/artifacts/publish/latest/EXEC_SUMMARY.txt)
+
+## Pointers for deeper reading
+
+| Doc | For whom |
+|-----|----------|
+| This page | Business / GTM / product (static brief) |
+| [publish/latest/BUSINESS_REPORT.md](./e2e/artifacts/publish/latest/BUSINESS_REPORT.md) | Latest run — regenerate with `make bench` |
+| [011 Publication Acc Report](./011-publication-acc-report.md) | Technical leaders / reviewers |
+| [018 E4 Acc-tie close](./001-edgquake-improvements/018-e4-acc-tie-close.md) | Exact claim language and CI ledger |
+| [022 Deep top-performance](./001-edgquake-improvements/022-deep-top-performance-plan.md) | Engineering Acc recovery program P0–P5 |
+| [017 Beat LightRAG](./001-edgquake-improvements/017-beat-lightrag.md) | Engineering architecture differences |
+| [020 Roadmap](./001-edgquake-improvements/020-roadmap.md) | Phases and Acc ladder |
+| [021 Grounded plan](./001-edgquake-improvements/021-grounded-improvement-plan.md) | F1–F4 cleanliness · multi-hop · latency |
+
+---
+
+## Glossary (30 seconds)
+
+| Term | Meaning |
+|------|---------|
+| **RAG** | Retrieval-Augmented Generation — look up text, then ask an LLM |
+| **GraphRAG** | RAG that also uses a knowledge graph (entities & relations) |
+| **Acc** | Our answer-quality score (blend of factual match + semantic similarity) |
+| **Statistical tie** | Score difference is too small to trust as a real win given sample size |
+| **Context relevancy** | How on-topic the retrieved text is (low noise) |
+| **Evidence recall** | Whether gold supporting text was retrieved at all |

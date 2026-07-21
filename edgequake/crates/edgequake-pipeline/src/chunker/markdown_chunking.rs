@@ -18,6 +18,10 @@ impl ChunkingStrategy for MarkdownChunking {
             return Ok(Vec::new());
         }
 
+        // 031 B3a: Acc prose blobs lack `#` headings — optionally lift FAQ cues.
+        let induced = crate::structure_induce::maybe_induce_structure(content);
+        let content = induced.as_str();
+
         let blocks = extract_markdown_blocks(content);
         let recursive = RecursiveCharacterChunking;
         let mut results = Vec::new();

@@ -100,8 +100,7 @@ mod tests {
         let registry = CancellationRegistry::new();
         let kv: Arc<dyn KVStorage> = Arc::new(MemoryKVStorage::new("cancel-facade"));
         let graph: Arc<dyn GraphStorage> = Arc::new(MemoryGraphStorage::new("cancel-facade"));
-        let vector: Arc<dyn VectorStorage> =
-            Arc::new(MemoryVectorStorage::new("cancel-facade", 4));
+        let vector: Arc<dyn VectorStorage> = Arc::new(MemoryVectorStorage::new("cancel-facade", 4));
         graph.initialize().await.unwrap();
         vector.initialize().await.unwrap();
         let tenant = Uuid::new_v4();
@@ -205,7 +204,11 @@ mod tests {
                 .unwrap();
         assert!(applied.cancelled);
         assert!(
-            vector.get_by_id(&format!("{doc_id}-chunk-0")).await.unwrap().is_none(),
+            vector
+                .get_by_id(&format!("{doc_id}-chunk-0"))
+                .await
+                .unwrap()
+                .is_none(),
             "SPEC-059: cancel facade must retract chunk vectors"
         );
     }

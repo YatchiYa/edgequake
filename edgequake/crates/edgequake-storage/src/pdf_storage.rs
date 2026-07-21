@@ -371,6 +371,12 @@ pub trait PdfDocumentStorage: Send + Sync {
     /// * `Err(StorageError)` - If update fails
     async fn update_pdf_status(&self, pdf_id: &Uuid, status: PdfProcessingStatus) -> Result<()>;
 
+    /// Heal / persist accurate `page_count` discovered after upload.
+    ///
+    /// Used when the create-time heuristic missed object-stream PDFs and
+    /// pdfium later counted pages accurately (vision timeout budgeting).
+    async fn update_pdf_page_count(&self, pdf_id: &Uuid, page_count: i32) -> Result<()>;
+
     /// Update PDF processing results (full update).
     ///
     /// # Arguments

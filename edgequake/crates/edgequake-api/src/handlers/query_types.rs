@@ -184,6 +184,11 @@ pub struct QueryRequest {
     #[serde(default)]
     pub system_prompt: Option<String>,
 
+    /// Optional question-type label (e.g. GraphRAG-Bench `Complex Reasoning`).
+    /// Forwarded to the engine for type-scoped answer prompts (047).
+    #[serde(default)]
+    pub question_type: Option<String>,
+
     /// Optional document filter to narrow query scope by date range or name pattern.
     /// When set, only chunks/entities from matching documents are used in retrieval.
     /// @implements SPEC-005: Document date and pattern filters
@@ -233,6 +238,10 @@ pub struct StreamQueryRequest {
     /// @implements SPEC-004: System prompt extension point
     #[serde(default)]
     pub system_prompt: Option<String>,
+
+    /// Optional question-type label for type-scoped answer prompts (047).
+    #[serde(default)]
+    pub question_type: Option<String>,
 
     /// Optional document filter to narrow query scope by date range or name pattern.
     /// @implements SPEC-005 + SPEC-006: Document filters for streaming queries
@@ -328,6 +337,14 @@ pub struct QueryStreamStats {
     /// Generation time in ms.
     pub generation_time_ms: u64,
 
+    /// LLM time-to-first-token from generation start (ms). 064 UX metric.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ttft_ms: Option<u64>,
+
+    /// User-felt TTFT: retrieve start → first token (ms). 064 UX metric.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ux_ttft_ms: Option<u64>,
+
     /// Total time in ms.
     pub total_time_ms: u64,
 
@@ -343,6 +360,10 @@ pub struct QueryStreamStats {
 
     /// Query mode used (after adaptive selection).
     pub query_mode: String,
+
+    /// True when answer served from product answer cache.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub answer_cache_hit: bool,
 }
 
 // ============================================================================
@@ -454,14 +475,26 @@ pub struct SourceReference {
 /// @implements SPEC-032 Item 18, 22: Token metrics and model lineage
 #[derive(Debug, Clone, Default, Serialize, ToSchema)]
 pub struct QueryStats {
-    /// Embedding time in ms.
+    /// Embedding time in ms (pure embed path; excludes keyword LLM — 059).
     pub embedding_time_ms: u64,
+
+    /// Keyword extraction time in ms (059 C1b stage honesty).
+    #[serde(default)]
+    pub keyword_time_ms: u64,
 
     /// Retrieval time in ms.
     pub retrieval_time_ms: u64,
 
     /// Generation time in ms.
     pub generation_time_ms: u64,
+
+    /// Time to first token from generation start (ms), when measured (064).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ttft_ms: Option<u64>,
+
+    /// True when answer served from product answer cache (064).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub answer_cache_hit: bool,
 
     /// Total time in ms.
     pub total_time_ms: u64,
@@ -534,6 +567,10 @@ pub struct QueryStats {
     /// True when intent/weight gating skipped at least one arm.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub arms_gated: Option<bool>,
+
+    /// LLM / heuristic query intent (022 P3a Summarize truncation audit).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub query_intent: Option<String>,
 }
 
 // ============================================================================

@@ -46,6 +46,23 @@ fn contract_batch_uses_eq_id_on_conflict() {
 }
 
 #[test]
+fn contract_drops_legacy_expression_uniques_when_eq_arbiters_exist() {
+    // Dual UNIQUE indexes break ON CONFLICT (non-arbiter violations under concurrency).
+    let life = include_str!("../src/adapters/postgres/graph/helpers/graph_lifecycle.rs");
+    assert!(
+        life.contains("DROP INDEX IF EXISTS")
+            && life.contains("idx_edge_source_target_unique")
+            && life.contains("idx_node_prop_node_id_unique")
+            && life.contains("idx_edge_eq_source_target"),
+        "ensure_eq_id_columns / bootstrap must drop legacy expression UNIQUEs once eq_* exist"
+    );
+    assert!(
+        life.contains("Dual-unique hazard") || life.contains("dual unique"),
+        "document why legacy expression UNIQUEs are dropped"
+    );
+}
+
+#[test]
 fn contract_env_example_documents_native_writes() {
     let env = include_str!("../../../../.env.example");
     assert!(

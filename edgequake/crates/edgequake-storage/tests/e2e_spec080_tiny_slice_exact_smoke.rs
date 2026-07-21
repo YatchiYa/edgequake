@@ -1,12 +1,12 @@
 //! SPEC-080 — tiny workspace filtered query recall=1.0 (exact-friendly path).
 #![cfg(feature = "postgres")]
 
-#[path = "support/postgres_test_config.rs"]
-mod postgres_test_config;
-#[path = "support/perf_harness.rs"]
-mod perf_harness;
 #[path = "support/perf_ann_corpus.rs"]
 mod perf_ann_corpus;
+#[path = "support/perf_harness.rs"]
+mod perf_harness;
+#[path = "support/postgres_test_config.rs"]
+mod postgres_test_config;
 
 use edgequake_storage::traits::VectorStorage;
 use edgequake_storage::{PgVectorStorage, VectorIndexType, VectorStorageMode};
@@ -44,7 +44,11 @@ async fn e2e_spec080_tiny_slice_exact_smoke() {
         .query_filtered(&q, TOP_K, None, Some(&mf))
         .await
         .expect("tiny filtered");
-    assert_eq!(hits.len(), TOP_K.min(ROWS), "exact-friendly path should fill top_k");
+    assert_eq!(
+        hits.len(),
+        TOP_K.min(ROWS),
+        "exact-friendly path should fill top_k"
+    );
     // Soft honesty: all hits belong to the tiny workspace (filter held).
     println!(
         "GREEN SPEC-080: tiny WS rows={ROWS} hits={} (bias skipped ≤ EDGEQUAKE_ANN_EXACT_MAX_ROWS)",

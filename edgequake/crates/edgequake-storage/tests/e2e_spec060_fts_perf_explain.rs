@@ -8,15 +8,15 @@
 
 #![cfg(feature = "postgres")]
 
-#[path = "support/postgres_test_config.rs"]
-mod postgres_test_config;
 #[path = "support/perf_harness.rs"]
 mod perf_harness;
+#[path = "support/postgres_test_config.rs"]
+mod postgres_test_config;
 
 use edgequake_storage::adapters::postgres::PostgresPool;
-use perf_harness::finish_report;
 use edgequake_storage::traits::{KVStorage, MetadataFilter, VectorStorage};
 use edgequake_storage::{PgVectorStorage, PostgresKVStorage};
+use perf_harness::finish_report;
 use std::time::{Duration, Instant};
 
 const DIM: usize = 8;
@@ -146,10 +146,7 @@ async fn assert_fts_gin_explain(config: &edgequake_storage::PostgresConfig) {
     .fetch_one(&pool)
     .await
     .expect("list FTS indexes");
-    assert!(
-        idx_count > 0,
-        "content_tsv GIN index must exist on {bare}"
-    );
+    assert!(idx_count > 0, "content_tsv GIN index must exist on {bare}");
 
     // Force index path so EXPLAIN asserts GIN/Bitmap (not heap Seq Scan on body).
     let mut tx = pool.begin().await.expect("begin explain tx");

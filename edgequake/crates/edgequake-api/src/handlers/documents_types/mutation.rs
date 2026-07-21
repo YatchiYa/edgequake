@@ -8,15 +8,27 @@ use utoipa::ToSchema;
 // ============================================================================
 
 /// Document deletion response.
+///
+/// Async path (default): HTTP returns 202 with `accepted=true` and `track_id`;
+/// WebSocket `DeletionCompleted` / `DeletionFailed` is the terminal SSOT.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct DeleteDocumentResponse {
     /// Document ID.
     pub document_id: String,
 
-    /// Whether the document was deleted.
+    /// Whether the cascade has finished and the document is gone.
+    /// False when the delete was accepted for async processing (`accepted=true`).
     pub deleted: bool,
 
-    /// Number of chunks deleted.
+    /// True when the delete job was accepted (async) — wait for WebSocket terminal.
+    #[serde(default)]
+    pub accepted: bool,
+
+    /// Deletion operation track id (WebSocket correlation).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub track_id: Option<String>,
+
+    /// Number of chunks deleted (0 when only accepted).
     pub chunks_deleted: usize,
 
     /// Number of entities affected.

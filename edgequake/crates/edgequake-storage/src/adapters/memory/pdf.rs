@@ -139,6 +139,16 @@ impl PdfDocumentStorage for MemoryPdfStorage {
         Ok(())
     }
 
+    async fn update_pdf_page_count(&self, pdf_id: &Uuid, page_count: i32) -> Result<()> {
+        let mut pdfs = self.pdfs.write().map_err(map_lock_err)?;
+        let doc = pdfs
+            .get_mut(pdf_id)
+            .ok_or_else(|| StorageError::NotFound(format!("PDF {pdf_id} not found")))?;
+        doc.page_count = Some(page_count);
+        doc.updated_at = Utc::now();
+        Ok(())
+    }
+
     async fn update_pdf_processing(&self, request: UpdatePdfProcessingRequest) -> Result<()> {
         let mut pdfs = self.pdfs.write().map_err(map_lock_err)?;
         let doc = pdfs

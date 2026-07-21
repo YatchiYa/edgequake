@@ -1,0 +1,114 @@
+[
+  {
+    "id": "canary-para-01",
+    "question": "What diagnostic method is required for MGZL?",
+    "question_type": "Fact Retrieval",
+    "generated_answer": "MGZL diagnosis requires review by an expert hematopathologist.",
+    "ground_truth": "Diagnosis of MGZL requires expert hematopathologist review.",
+    "gold_answer": "Diagnosis of MGZL requires expert hematopathologist review.",
+    "context": [
+      "canary: no retrieval context required"
+    ],
+    "evidence": [],
+    "source": "canary",
+    "canary_kind": "paraphrase"
+  },
+  {
+    "id": "canary-para-02",
+    "question": "What is mediastinal gray zone lymphoma a subtype of?",
+    "question_type": "Fact Retrieval",
+    "generated_answer": "MGZL is a subtype of gray zone lymphomas.",
+    "ground_truth": "Mediastinal gray zone lymphoma (MGZL) is a subtype of gray zone lymphomas.",
+    "gold_answer": "Mediastinal gray zone lymphoma (MGZL) is a subtype of gray zone lymphomas.",
+    "context": [
+      "canary: no retrieval context required"
+    ],
+    "evidence": [],
+    "source": "canary",
+    "canary_kind": "paraphrase"
+  },
+  {
+    "id": "canary-para-03",
+    "question": "What does treatment for ALL depend on?",
+    "question_type": "Complex Reasoning",
+    "generated_answer": "ALL treatment depends on subtype, age at diagnosis, biomarkers, and genetic alterations.",
+    "ground_truth": "Treatment for ALL depends on subtype, age at diagnosis, and other factors such as biomarkers and genetic alterations.",
+    "gold_answer": "Treatment for ALL depends on subtype, age at diagnosis, and other factors such as biomarkers and genetic alterations.",
+    "context": [
+      "canary: no retrieval context required"
+    ],
+    "evidence": [],
+    "source": "canary",
+    "canary_kind": "paraphrase"
+  },
+  {
+    "id": "canary-para-04",
+    "question": "What is the most common type of skin cancer?",
+    "question_type": "Fact Retrieval",
+    "generated_answer": "The most common skin cancer is basal cell carcinoma (BCC).",
+    "ground_truth": "Basal cell carcinoma (BCC) is the most common type of skin cancer.",
+    "gold_answer": "Basal cell carcinoma (BCC) is the most common type of skin cancer.",
+    "context": [
+      "canary: no retrieval context required"
+    ],
+    "evidence": [],
+    "source": "canary",
+    "canary_kind": "paraphrase"
+  },
+  {
+    "id": "canary-wrong-01",
+    "question": "What diagnostic method is required for MGZL?",
+    "question_type": "Fact Retrieval",
+    "generated_answer": "Diagnosis of MGZL requires a chest X-ray alone.",
+    "ground_truth": "Diagnosis of MGZL requires expert hematopathologist review.",
+    "gold_answer": "Diagnosis of MGZL requires expert hematopathologist review.",
+    "context": [
+      "canary: no retrieval context required"
+    ],
+    "evidence": [],
+    "source": "canary",
+    "canary_kind": "wrong_fact"
+  },
+  {
+    "id": "canary-wrong-02",
+    "question": "What is mediastinal gray zone lymphoma a subtype of?",
+    "question_type": "Fact Retrieval",
+    "generated_answer": "Mediastinal gray zone lymphoma is a subtype of basal cell carcinoma.",
+    "ground_truth": "Mediastinal gray zone lymphoma (MGZL) is a subtype of gray zone lymphomas.",
+    "gold_answer": "Mediastinal gray zone lymphoma (MGZL) is a subtype of gray zone lymphomas.",
+    "context": [
+      "canary: no retrieval context required"
+    ],
+    "evidence": [],
+    "source": "canary",
+    "canary_kind": "wrong_fact"
+  },
+  {
+    "id": "canary-wrong-03",
+    "question": "What does treatment for ALL depend on?",
+    "question_type": "Complex Reasoning",
+    "generated_answer": "Treatment for ALL depends only on patient height and blood type.",
+    "ground_truth": "Treatment for ALL depends on subtype, age at diagnosis, and other factors such as biomarkers and genetic alterations.",
+    "gold_answer": "Treatment for ALL depends on subtype, age at diagnosis, and other factors such as biomarkers and genetic alterations.",
+    "context": [
+      "canary: no retrieval context required"
+    ],
+    "evidence": [],
+    "source": "canary",
+    "canary_kind": "wrong_fact"
+  },
+  {
+    "id": "canary-wrong-04",
+    "question": "What is the most common type of skin cancer?",
+    "question_type": "Fact Retrieval",
+    "generated_answer": "Melanoma is the most common type of skin cancer.",
+    "ground_truth": "Basal cell carcinoma (BCC) is the most common type of skin cancer.",
+    "gold_answer": "Basal cell carcinoma (BCC) is the most common type of skin cancer.",
+    "context": [
+      "canary: no retrieval context required"
+    ],
+    "evidence": [],
+    "source": "canary",
+    "canary_kind": "wrong_fact"
+  }
+]

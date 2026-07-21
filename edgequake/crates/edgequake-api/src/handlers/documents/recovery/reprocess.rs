@@ -1,8 +1,9 @@
 //! GAP-039: Reprocess failed documents handler.
 //!
-//! Finds documents in "failed" or "cancelled" status and requeues them
-//! for processing. Supports both KV-based text documents and PostgreSQL
-//! PDF documents (via `postgres` feature).
+//! Finds documents eligible for reprocess (failed / cancelled / orphan waiting,
+//! or force-widened completed/in-flight) and requeues them. Lifecycle-exclusive
+//! states (`deleting`, `delete_failed`, cancel-in-flight) are never reprocessed —
+//! see [`crate::services::reprocess_admission`].
 
 use axum::response::Response;
 use axum::{extract::State, response::IntoResponse, Json};
@@ -97,84 +98,102 @@ pub(crate) async fn run_reprocess_failed(
     let mut document_task_ids: Vec<ReprocessDocumentTaskId> = Vec::new();
     let mut skip_reasons: std::collections::HashMap<String, usize> =
         std::collections::HashMap::new();
+    let mut targeted_doc_seen = false;
+
+    let workspace_uuid = tenant_ctx
+        .workspace_id
+        .as_deref()
+        .and_then(|s| uuid::Uuid::parse_str(s).ok());
 
     for value in scoped_metadata {
         if docs_to_reprocess.len() >= request.max_documents {
             break;
         }
 
-        if let Some(obj) = value.as_object() {
-            let status = obj.get("status").and_then(|v| v.as_str());
-            let doc_track_id = obj.get("track_id").and_then(|v| v.as_str());
-            let doc_id = obj.get("id").and_then(|v| v.as_str());
+        let Some(obj) = value.as_object() else {
+            continue;
+        };
+        let status = obj.get("status").and_then(|v| v.as_str());
+        let doc_track_id = obj.get("track_id").and_then(|v| v.as_str());
+        let Some(doc_id) = obj.get("id").and_then(|v| v.as_str()) else {
+            continue;
+        };
 
-            // If document_id filter is specified, only match that exact document
-            if let Some(ref filter_doc_id) = request.document_id {
-                if doc_id != Some(filter_doc_id.as_str()) {
-                    continue;
-                }
-                // When document_id is specified with force=true, allow any status.
-                // SPEC-054/#298: also allow orphan pending/queued without force
-                // (waiting docs with no active worker task).
-                if !request.force && status != Some("failed") && status != Some("cancelled") {
-                    let orphan_waiting = matches!(status, Some("pending") | Some("queued"));
-                    if !orphan_waiting {
-                        continue;
-                    }
-                    if let Some(id) = doc_id {
-                        let ws = tenant_ctx
-                            .workspace_id
-                            .as_deref()
-                            .and_then(|s| uuid::Uuid::parse_str(s).ok());
-                        let has_task = crate::services::pending_doc_task_reconcile::has_active_task_for_document(
-                            state.tasks.storage.as_ref(),
-                            id,
-                            ws,
-                        )
-                        .await
-                        .unwrap_or(true);
-                        if has_task {
-                            continue;
-                        }
-                    }
-                }
-                if let Some(id) = doc_id {
-                    docs_to_reprocess.push((id.to_string(), id.to_string()));
-                }
-                break; // Found the specific document
+        // document_id filter: only that exact document.
+        if let Some(ref filter_doc_id) = request.document_id {
+            if doc_id != filter_doc_id.as_str() {
+                continue;
             }
+            targeted_doc_seen = true;
+        }
 
-            // If track_id filter is specified, match by track_id
-            if let Some(ref filter_track) = request.track_id {
-                if doc_track_id != Some(filter_track.as_str()) {
-                    continue;
-                }
+        // track_id filter (batch correlation).
+        if let Some(ref filter_track) = request.track_id {
+            if doc_track_id != Some(filter_track.as_str()) {
+                continue;
             }
+        }
 
-            // Default behavior: failed/cancelled, plus orphan pending/queued (#298).
-            let mut include = status == Some("failed") || status == Some("cancelled");
-            if !include && matches!(status, Some("pending") | Some("queued")) {
-                if let Some(id) = doc_id {
-                    let ws = tenant_ctx
-                        .workspace_id
-                        .as_deref()
-                        .and_then(|s| uuid::Uuid::parse_str(s).ok());
-                    let has_task =
-                        crate::services::pending_doc_task_reconcile::has_active_task_for_document(
-                            state.tasks.storage.as_ref(),
-                            id,
-                            ws,
-                        )
-                        .await
-                        .unwrap_or(true);
-                    include = !has_task;
-                }
+        // When neither filter is set, only scan recoverable / orphan candidates
+        // (admission SSOT still applies — e.g. deleting never enters).
+        if request.document_id.is_none() && request.track_id.is_none() {
+            let prefilter_ok = status.is_some_and(|s| {
+                crate::services::is_reprocess_terminal_recoverable(s)
+                    || crate::services::is_reprocess_orphan_waiting_status(s)
+            });
+            if !prefilter_ok {
+                continue;
             }
-            if include {
-                if let Some(id) = doc_id {
-                    docs_to_reprocess.push((id.to_string(), id.to_string()));
-                }
+        }
+
+        let decision = admit_document_for_reprocess(
+            &state,
+            doc_id,
+            doc_track_id,
+            status,
+            request.force,
+            restart_from_scratch,
+            workspace_uuid,
+        )
+        .await;
+
+        match decision {
+            crate::services::ReprocessAdmitDecision::Admit => {
+                docs_to_reprocess.push((doc_id.to_string(), doc_id.to_string()));
             }
+            crate::services::ReprocessAdmitDecision::Skip(reason) => {
+                *skip_reasons.entry(reason.as_str().to_string()).or_insert(0) += 1;
+                tracing::info!(
+                    document_id = %doc_id,
+                    status = ?status,
+                    force = request.force,
+                    restart_from_scratch,
+                    skip_reason = %reason,
+                    "Reprocess admission skipped document"
+                );
+            }
+        }
+
+        // Targeted document_id: stop after the match (admit or skip).
+        if request.document_id.is_some() {
+            break;
+        }
+    }
+
+    // Targeted document_id not present in scoped metadata.
+    if let Some(ref filter_doc_id) = request.document_id {
+        if !targeted_doc_seen {
+            *skip_reasons
+                .entry(
+                    crate::services::ReprocessSkipReason::NotFound
+                        .as_str()
+                        .to_string(),
+                )
+                .or_insert(0) += 1;
+            tracing::info!(
+                document_id = %filter_doc_id,
+                "Reprocess target document not found in workspace metadata"
+            );
         }
     }
 
@@ -194,6 +213,31 @@ pub(crate) async fn run_reprocess_failed(
             .as_ref()
             .and_then(|m| m.get("status"))
             .and_then(|v| v.as_str());
+        let doc_track_id = metadata_opt
+            .as_ref()
+            .and_then(|m| m.get("track_id"))
+            .and_then(|v| v.as_str());
+
+        // TOCTOU: re-evaluate admission with fresh status/tasks before purge.
+        let decision = admit_document_for_reprocess(
+            &state,
+            doc_id,
+            doc_track_id,
+            doc_status,
+            request.force,
+            restart_from_scratch,
+            workspace_uuid,
+        )
+        .await;
+        if let crate::services::ReprocessAdmitDecision::Skip(reason) = decision {
+            *skip_reasons.entry(reason.as_str().to_string()).or_insert(0) += 1;
+            tracing::info!(
+                document_id = %doc_id,
+                skip_reason = %reason,
+                "Reprocess skipped at requeue (status raced since selection)"
+            );
+            continue;
+        }
 
         // SPEC-054/#298 (DRY): orphan pending/queued without force → SSOT recovery.
         // Avoids purge/cleanup/rebuild paths meant for failed re-runs.
@@ -359,42 +403,40 @@ pub(crate) async fn run_reprocess_failed(
             doc_id,
         )
         .await;
-        let cleanup_admit_stats =
-            match cleanup_document_graph_data(
-                doc_id,
-                &state.storage.graph_storage,
-                Some(&vector),
-            )
-            .await {
-                Ok(stats) => {
-                    tracing::info!(
-                        document_id = %doc_id,
-                        entities_removed = stats.entities_removed.max(retract_stats.entities_removed),
-                        entities_updated = stats.entities_updated,
-                        relationships_removed = stats
-                            .relationships_removed
-                            .max(retract_stats.relationships_removed),
-                        embeddings_deleted = retract_stats.embeddings_deleted,
-                        "Cleaned up partial data before reprocessing"
-                    );
-                    Some(crate::services::reprocess_stage_reset::CleanupAdmitStats {
-                        entities_removed: stats
-                            .entities_removed
-                            .max(retract_stats.entities_removed),
-                        relationships_removed: stats
-                            .relationships_removed
-                            .max(retract_stats.relationships_removed),
-                    })
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        document_id = %doc_id,
-                        error = %e,
-                        "Failed to cleanup partial data before reprocessing, continuing anyway"
-                    );
-                    None
-                }
-            };
+        let cleanup_admit_stats = match cleanup_document_graph_data(
+            doc_id,
+            &state.storage.graph_storage,
+            Some(&vector),
+        )
+        .await
+        {
+            Ok(stats) => {
+                tracing::info!(
+                    document_id = %doc_id,
+                    entities_removed = stats.entities_removed.max(retract_stats.entities_removed),
+                    entities_updated = stats.entities_updated,
+                    relationships_removed = stats
+                        .relationships_removed
+                        .max(retract_stats.relationships_removed),
+                    embeddings_deleted = retract_stats.embeddings_deleted,
+                    "Cleaned up partial data before reprocessing"
+                );
+                Some(crate::services::reprocess_stage_reset::CleanupAdmitStats {
+                    entities_removed: stats.entities_removed.max(retract_stats.entities_removed),
+                    relationships_removed: stats
+                        .relationships_removed
+                        .max(retract_stats.relationships_removed),
+                })
+            }
+            Err(e) => {
+                tracing::warn!(
+                    document_id = %doc_id,
+                    error = %e,
+                    "Failed to cleanup partial data before reprocessing, continuing anyway"
+                );
+                None
+            }
+        };
 
         // Transition cleaning → queued (or merging) once graph cleanup finishes.
         // True admission: waiting for a free worker / merge start.
@@ -997,11 +1039,61 @@ pub(crate) async fn run_reprocess_failed(
             .map(|ws| crate::services::job_registry::v2_migration_hint("reprocess_failed", ws)),
         failed_found: docs_to_reprocess.len(),
         requeued: requeued_ids.len(),
-        skipped: docs_to_reprocess.len().saturating_sub(requeued_ids.len()),
+        // Honesty: admission skips (deleting/cancelling/…) + mid-requeue skips.
+        skipped: skip_reasons
+            .values()
+            .copied()
+            .sum::<usize>()
+            .max(docs_to_reprocess.len().saturating_sub(requeued_ids.len())),
         skip_reasons,
         document_ids: requeued_ids,
         task_id: single_task_id,
         document_task_ids,
     };
     Ok(response)
+}
+
+/// Gather live task/deletion/cancel facts and evaluate the admission SSOT.
+async fn admit_document_for_reprocess(
+    state: &AppState,
+    document_id: &str,
+    doc_track_id: Option<&str>,
+    status: Option<&str>,
+    force: bool,
+    restart_from_scratch: bool,
+    workspace_uuid: Option<Uuid>,
+) -> crate::services::ReprocessAdmitDecision {
+    let has_active_ingest_task =
+        crate::services::pending_doc_task_reconcile::has_active_task_for_document(
+            state.tasks.storage.as_ref(),
+            document_id,
+            workspace_uuid,
+        )
+        .await
+        .unwrap_or(true); // fail closed: assume active if lookup fails
+
+    let has_active_deletion_task =
+        crate::services::find_active_deletion_track_id(state, document_id, workspace_uuid)
+            .await
+            .is_some();
+
+    let cancel_intent = match doc_track_id {
+        Some(tid) if !tid.is_empty() => {
+            state
+                .tasks
+                .cancellation_registry
+                .has_cancel_intent(tid)
+                .await
+        }
+        _ => false,
+    };
+
+    crate::services::evaluate_reprocess_admission(crate::services::ReprocessAdmitContext {
+        status,
+        force,
+        restart_from_scratch,
+        has_active_ingest_task,
+        has_active_deletion_task,
+        cancel_intent,
+    })
 }

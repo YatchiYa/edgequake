@@ -239,6 +239,16 @@ pub enum ProgressEvent {
         error: Option<String>,
     },
 
+    /// Single-document deletion failed hard (status reset off `deleting`).
+    DeletionFailed {
+        /// Document that failed to delete.
+        document_id: String,
+        /// Operation tracking ID.
+        track_id: String,
+        /// Human-readable failure reason.
+        error: String,
+    },
+
     /// Bulk deletion started.
     ///
     /// @implements SPEC-050: Bulk delete progress broadcast.
@@ -461,6 +471,15 @@ impl ProgressBroadcaster {
             embeddings_deleted,
             partial_failure,
             error,
+        });
+    }
+
+    /// Broadcast that a single-document deletion failed (self-heal terminal).
+    pub fn deletion_failed(&self, document_id: &str, track_id: &str, error: &str) {
+        self.broadcast(ProgressEvent::DeletionFailed {
+            document_id: document_id.to_string(),
+            track_id: track_id.to_string(),
+            error: error.to_string(),
         });
     }
 

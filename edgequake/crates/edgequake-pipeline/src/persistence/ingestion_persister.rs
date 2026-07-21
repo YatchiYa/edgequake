@@ -331,6 +331,11 @@ async fn persist_processing_result_impl(
         merger = merger.with_lineage_sink(ls.clone());
     }
 
+    // 050 B7: placeholders need the same embedder as community reports.
+    if let Some(ref embedder) = config.text_embedder {
+        merger = merger.with_text_embedder(embedder.clone());
+    }
+
     if config.merger_config.use_llm_summarization {
         if let Some(llm) = config.llm_provider.clone() {
             let summarizer = Arc::new(LLMSummarizer::new(llm, SummarizerConfig::default()));

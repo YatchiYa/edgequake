@@ -7,12 +7,12 @@
 //! Always measures **workspace-filtered** recall (never unfiltered-only).
 #![cfg(feature = "postgres")]
 
-#[path = "support/postgres_test_config.rs"]
-mod postgres_test_config;
-#[path = "support/perf_harness.rs"]
-mod perf_harness;
 #[path = "support/perf_ann_corpus.rs"]
 mod perf_ann_corpus;
+#[path = "support/perf_harness.rs"]
+mod perf_harness;
+#[path = "support/postgres_test_config.rs"]
+mod postgres_test_config;
 
 use edgequake_storage::traits::VectorStorage;
 use edgequake_storage::{PgVectorStorage, VectorIndexType, VectorStorageMode};
@@ -178,7 +178,9 @@ async fn run_arm(ns_suffix: &str, arm: &str, partial: bool, rows: u32) {
     );
 
     if full_green {
-        println!("GREEN SPEC-075: arm={arm} filtered_recall={recall:.4} single_p95={single_p95:.2}");
+        println!(
+            "GREEN SPEC-075: arm={arm} filtered_recall={recall:.4} single_p95={single_p95:.2}"
+        );
     } else {
         println!(
             "WARN SPEC-075: arm={arm} filtered_recall={recall:.4} single_p95={single_p95:.2} \

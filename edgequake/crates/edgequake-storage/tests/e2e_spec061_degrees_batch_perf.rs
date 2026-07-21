@@ -1,14 +1,12 @@
 //! SPEC-061 — `node_degrees_batch` p95 + index EXPLAIN.
 #![cfg(feature = "postgres")]
 
-#[path = "support/postgres_test_config.rs"]
-mod postgres_test_config;
 #[path = "support/perf_harness.rs"]
 mod perf_harness;
+#[path = "support/postgres_test_config.rs"]
+mod postgres_test_config;
 
-use edgequake_storage::traits::{
-    GraphStorage, GraphStorageMutateOps, GraphStorageReadOps,
-};
+use edgequake_storage::traits::{GraphStorage, GraphStorageMutateOps, GraphStorageReadOps};
 use edgequake_storage::PostgresAGEGraphStorage;
 use perf_harness::{
     assert_plan_uses_index, finish_report, join_plan_rows, samples_after_warmup, PlanKind,

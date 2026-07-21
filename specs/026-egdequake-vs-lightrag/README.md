@@ -32,6 +32,7 @@ EdgeQuake is a **credible Rust reimplementation of LightRAG's core graph-RAG alg
 | 005 | Features | [005-features/001-feature-matrix.md](./005-features/001-feature-matrix.md) |
 | 006 | Robustness | [006-robustness/001-robustness-comparison.md](./006-robustness/001-robustness-comparison.md) |
 | 007 | Evaluations | [007-evaluations/001-evaluation-comparison.md](./007-evaluations/001-evaluation-comparison.md) |
+| **SPEC-001** | **Dual-SUT HybridRAG bench** | **[../001-benchmark/000-index.md](../001-benchmark/000-index.md)** (`make bench001-smoke`) |
 | 008 | Expert lenses | [008-expert-lenses/](./008-expert-lenses/) (8 lens documents) |
 | 009 | Improvement plan | [009-improvement-plan/001-improvement-plan.md](./009-improvement-plan/001-improvement-plan.md) |
 | 009b | Phase 2 ingestion parity | [009-improvement-plan/phase2/](./009-improvement-plan/phase2/) |

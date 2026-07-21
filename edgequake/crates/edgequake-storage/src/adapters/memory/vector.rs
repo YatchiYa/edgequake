@@ -203,6 +203,16 @@ impl VectorStorage for MemoryVectorStorage {
         Ok(())
     }
 
+    async fn delete_entities_batch(&self, entity_names: &[String]) -> Result<usize> {
+        if entity_names.is_empty() {
+            return Ok(0);
+        }
+        for name in entity_names {
+            self.delete_entity(name).await?;
+        }
+        Ok(entity_names.len())
+    }
+
     async fn delete_entity_relations(&self, entity_name: &str) -> Result<()> {
         self.delete_entity(entity_name).await
     }

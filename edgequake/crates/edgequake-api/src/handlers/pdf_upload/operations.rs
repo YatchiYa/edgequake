@@ -99,7 +99,7 @@ pub async fn retry_pdf_processing(
         let pdf_uuid = Uuid::parse_str(&pdf_id)
             .map_err(|_| ApiError::BadRequest("Invalid PDF ID format".to_string()))?;
 
-        let _workspace_id = tenant
+        let workspace_id = tenant
             .workspace_id_uuid()
             .ok_or_else(|| ApiError::BadRequest("Workspace ID required".to_string()))?;
 
@@ -130,21 +130,29 @@ pub async fn retry_pdf_processing(
             .await
             .map_err(|e| ApiError::Internal(format!("Failed to reset PDF status: {}", e)))?;
 
-        // OODA-17: Create new processing task
-        let options = PdfUploadOptions {
+        // Workspace config has precedence (same chain as upload).
+        let workspace = state
+            .workspace_service
+            .get_workspace(workspace_id)
+            .await
+            .map_err(|e| ApiError::Internal(e.to_string()))?;
+        let mut options = PdfUploadOptions {
             enable_vision: true,
-            vision_provider: None, // will be resolved from workspace config or server default
+            vision_provider: None,
             vision_model: None,
             pdf_parser_backend: None,
             ..Default::default()
         };
+        if let Some(ref ws) = workspace {
+            options.apply_workspace(ws);
+        }
 
         let enqueue = create_pdf_processing_task(
             &state,
             &tenant,
             pdf_uuid,
             &options,
-            None,
+            workspace.as_ref(),
             super::helpers::PdfReprocessIntent::fresh(),
             pdf.page_count,
             pdf.file_size_bytes.max(0) as u64,
@@ -273,11 +281,8 @@ pub async fn cancel_pdf_processing(
 
         let mut cancelled_track_id = None;
         let workspace_key = workspace_id.to_string();
-        let vector = crate::services::get_workspace_vector_storage_for_delete(
-            &state,
-            &workspace_key,
-        )
-        .await;
+        let vector =
+            crate::services::get_workspace_vector_storage_for_delete(&state, &workspace_key).await;
         for applied in &cancel_results {
             if applied.cancelled {
                 if cancelled_track_id.is_none() {

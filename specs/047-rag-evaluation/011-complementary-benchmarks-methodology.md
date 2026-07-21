@@ -32,7 +32,7 @@ A serious RAG evaluation program separates **layers**:
 | Priority | Benchmark | Layer | Why for EdgeQuake | Primary metrics |
 |----------|-----------|-------|-------------------|-----------------|
 | **P0** | **MMLongBench-Doc** (this SPEC) | L4 | Real long PDFs, multi-modal, cross-page, unanswerable | Acc, gen. F1, slices |
-| **P0** | **GraphRAG-Bench** (SPEC-046) | L3 | When graphs help; ACC already in-tree | ACC / task-specific |
+| **P0** | **GraphRAG-Bench** (SPEC-046 ACC + **[SPEC-001](../001-benchmark/000-index.md)** dual-SUT) | L3 | When graphs help; EQ vs LightRAG head-to-head | ACC / Acc+ROUGE side-by-side |
 | **P1** | **MultiHop-RAG** ([repo](https://github.com/yixuantt/MultiHop-RAG), COLM 2024) | L2/L3 | Cross-document hops; retrieval Hits@K + QA | Hits@K, MAP, QA Acc |
 | **P1** | **UniDoc-Bench** ([Salesforce](https://github.com/SalesforceAIResearch/UniDOC-Bench), arXiv:2510.03663) | L4 | Explicit **MM-RAG** paradigms (text/image/fusion/joint) | RAGAS + retrieval + correctness |
 | **P2** | **LongDocURL** ([repo](https://github.com/dengc2023/LongDocURL)) | L4 | Understanding + reasoning + locating on long PDFs | Task-category scores |
