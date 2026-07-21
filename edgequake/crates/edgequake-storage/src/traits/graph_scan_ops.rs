@@ -53,16 +53,36 @@ pub fn edge_matches_scope_dims(
     true
 }
 
+/// Per-dimension scope match with legacy-null compatibility.
+///
+/// Missing filter dimension = wildcard. When a dimension is set, property may be
+/// absent/NULL (legacy rows) or equal; an explicit *different* value never matches.
+/// Used by list/discovery filters (issue #305 workspace-only discovery).
+pub fn scope_dim_matches_legacy_null(
+    properties: &HashMap<String, serde_json::Value>,
+    key: &str,
+    expected: Option<&str>,
+) -> bool {
+    let Some(exp) = expected else {
+        return true;
+    };
+    match properties.get(key).and_then(|v| v.as_str()) {
+        None => true,
+        Some(actual) => actual == exp,
+    }
+}
+
 /// Returns true when a node satisfies list filter criteria.
 pub fn node_matches_list_filter(node: &GraphNode, filter: &NodeListFilter) -> bool {
-    match (filter.tenant_id.as_deref(), filter.workspace_id.as_deref()) {
-        (Some(tid), Some(wid)) => {
-            if !node_matches_tenant_workspace(&node.properties, Some(tid), Some(wid)) {
-                return false;
-            }
-        }
-        (None, None) => {}
-        _ => return false,
+    if !scope_dim_matches_legacy_null(&node.properties, "tenant_id", filter.tenant_id.as_deref()) {
+        return false;
+    }
+    if !scope_dim_matches_legacy_null(
+        &node.properties,
+        "workspace_id",
+        filter.workspace_id.as_deref(),
+    ) {
+        return false;
     }
     if let Some(ref entity_type) = filter.entity_type {
         let node_type = node
@@ -101,14 +121,15 @@ pub fn node_matches_list_filter(node: &GraphNode, filter: &NodeListFilter) -> bo
 
 /// Returns true when an edge satisfies list filter criteria.
 pub fn edge_matches_list_filter(edge: &GraphEdge, filter: &EdgeListFilter) -> bool {
-    match (filter.tenant_id.as_deref(), filter.workspace_id.as_deref()) {
-        (Some(tid), Some(wid)) => {
-            if !edge_matches_tenant_workspace(&edge.properties, Some(tid), Some(wid)) {
-                return false;
-            }
-        }
-        (None, None) => {}
-        _ => return false,
+    if !scope_dim_matches_legacy_null(&edge.properties, "tenant_id", filter.tenant_id.as_deref()) {
+        return false;
+    }
+    if !scope_dim_matches_legacy_null(
+        &edge.properties,
+        "workspace_id",
+        filter.workspace_id.as_deref(),
+    ) {
+        return false;
     }
     if let Some(ref rel_type) = filter.relationship_type {
         let edge_type = edge
@@ -256,4 +277,44 @@ pub trait GraphScanOps: Send + Sync {
         filter: &EdgeListFilter,
         relationship_id: &str,
     ) -> Result<Option<GraphEdge>>;
+}
+
+#[cfg(test)]
+mod list_filter_tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn node_with(workspace: Option<&str>, tenant: Option<&str>) -> GraphNode {
+        let mut properties = HashMap::new();
+        if let Some(w) = workspace {
+            properties.insert("workspace_id".into(), serde_json::json!(w));
+        }
+        if let Some(t) = tenant {
+            properties.insert("tenant_id".into(), serde_json::json!(t));
+        }
+        GraphNode {
+            id: "N1".into(),
+            properties,
+        }
+    }
+
+    #[test]
+    fn workspace_only_filter_matches_legacy_null_and_equal() {
+        let filter = NodeListFilter {
+            tenant_id: None,
+            workspace_id: Some("ws-a".into()),
+            entity_type: None,
+            search: None,
+            community_ids: None,
+        };
+        assert!(node_matches_list_filter(&node_with(None, None), &filter));
+        assert!(node_matches_list_filter(
+            &node_with(Some("ws-a"), None),
+            &filter
+        ));
+        assert!(!node_matches_list_filter(
+            &node_with(Some("ws-b"), None),
+            &filter
+        ));
+    }
 }

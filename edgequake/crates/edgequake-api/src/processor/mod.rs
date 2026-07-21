@@ -84,6 +84,7 @@ mod status_updates;
 mod task_impl;
 mod text_insert;
 mod workspace_resolver;
+mod workspace_wipe;
 
 pub(crate) use status_updates::patch_document_graph_merge_progress;
 

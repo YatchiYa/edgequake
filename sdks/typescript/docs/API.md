@@ -50,7 +50,7 @@ await client.live(); // GET /live
 | `list(params?)`                 | `GET /api/v1/documents`                     | List documents (paginated) |
 | `get(id)`                       | `GET /api/v1/documents/:id`                 | Get document details       |
 | `delete(id)`                    | `DELETE /api/v1/documents/:id`              | Delete document            |
-| `deleteAll()`                   | `DELETE /api/v1/documents`                  | Delete all documents       |
+| `deleteAll()`                   | `DELETE /api/v1/documents`                  | Admit workspace wipe (202 + `wipe_track_id`) |
 | `getTrackStatus(trackId)`       | `GET /api/v1/documents/track/:id`           | Track processing status    |
 | `analyzeDeletionImpact(id)`     | `GET /api/v1/documents/:id/deletion-impact` | Analyze deletion impact    |
 | `scan(request)`                 | `POST /api/v1/documents/scan`               | Trigger document scan      |

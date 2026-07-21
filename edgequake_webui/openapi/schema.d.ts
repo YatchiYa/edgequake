@@ -730,13 +730,10 @@ export interface paths {
         /** Upload a document for processing. */
         post: operations["upload_document"];
         /**
-         * Delete all documents in the system (bulk deletion).
-         * @description This endpoint allows users to clear all documents from the system.
-         *     Documents that are actively being processed (pending/processing status)
-         *     will be skipped to prevent data corruption.
-         *
-         *     WHY: Frontend "Clear All" button needs this endpoint to remove stuck
-         *     or failed documents in bulk rather than deleting one by one.
+         * Delete all documents in the workspace (bulk wipe).
+         * @description Returns **202 Accepted** with `wipe_track_id` after durable enqueue.
+         *     Terminal counts arrive via WebSocket `BulkDeletionCompleted` / `BulkDeletionFailed`
+         *     or `GET /api/v1/tasks/{wipe_track_id}`.
          */
         delete: operations["delete_all_documents"];
         options?: never;
@@ -5178,21 +5175,36 @@ export interface components {
          *     WHY: Frontend "Clear All" button needs a bulk delete endpoint.
          *     Returns aggregated deletion statistics across all documents.
          * @example {
+         *       "accepted": {},
          *       "deleted_count": {},
+         *       "planned_delete_count": {},
          *       "skipped_count": {},
          *       "skipped_documents": [],
          *       "total_chunks_deleted": {},
          *       "total_entities_removed": {},
          *       "total_pdfs_deleted": {},
-         *       "total_relationships_removed": {}
+         *       "total_relationships_removed": {},
+         *       "wipe_track_id": {}
          *     }
          */
         DeleteAllDocumentsResponse: {
-            /** @description Total number of documents deleted. */
+            /**
+             * @description When true, wipe was accepted and runs asynchronously (HTTP 202).
+             *     Final counts arrive via WebSocket `BulkDeletionCompleted` / task poll.
+             */
+            accepted?: boolean;
+            /**
+             * @description Planned document count at admit time when `accepted` (not final deleted).
+             *
+             *     Final counts arrive via WebSocket `BulkDeletionCompleted` / task poll.
+             *     Kept for backward-compatible clients that read `deleted_count` on 202.
+             */
             deleted_count: number;
-            /** @description Number of documents skipped (processing/pending status). */
+            /** @description Explicit planned wipe size (same as admit-time `deleted_count` when accepted). */
+            planned_delete_count?: number | null;
+            /** @description Number of documents skipped (legacy; ForceCancelAll wipe leaves this 0). */
             skipped_count: number;
-            /** @description Document IDs that were skipped due to active processing. */
+            /** @description Document IDs that were skipped due to active processing (legacy). */
             skipped_documents: string[];
             /** @description Total number of chunks deleted across all documents. */
             total_chunks_deleted: number;
@@ -5202,6 +5214,8 @@ export interface components {
             total_pdfs_deleted: number;
             /** @description Total number of relationships removed. */
             total_relationships_removed: number;
+            /** @description Durable wipe correlation id (`TaskType::WorkspaceWipe` track_id). */
+            wipe_track_id?: string | null;
         };
         /**
          * @description Document deletion response.
@@ -13719,14 +13733,28 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Documents deleted */
-            200: {
+            /** @description Bulk wipe accepted; track via wipe_track_id / WebSocket */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["DeleteAllDocumentsResponse"];
                 };
+            };
+            /** @description Missing confirm header when required */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workspace wipe already in flight */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Internal error */
             500: {

@@ -66,6 +66,16 @@ pub(crate) async fn run_reprocess_failed(
     tenant_ctx: TenantContext,
     request: ReprocessFailedRequest,
 ) -> ApiResult<ReprocessFailedResponse> {
+    if let Some(ws_uuid) =
+        crate::middleware::resolve_workspace_uuid(tenant_ctx.workspace_id.as_deref())
+    {
+        if crate::services::workspace_wipe_in_flight(&state, ws_uuid).await {
+            return Err(ApiError::Conflict(
+                "Workspace wipe in progress — retry reprocess after wipe completes".into(),
+            ));
+        }
+    }
+
     // Resolve reprocess intent (DRY single knob). Default is EntitiesOnly so
     // existing callers (failed-retry, bulk reprocess) keep current behavior.
     let reprocess_mode = request
@@ -239,12 +249,14 @@ pub(crate) async fn run_reprocess_failed(
             continue;
         }
 
-        // SPEC-054/#298 (DRY): orphan pending/queued without force → SSOT recovery.
-        // Avoids purge/cleanup/rebuild paths meant for failed re-runs.
-        let use_orphan_ssot = !request.force
-            && doc_status.is_some_and(is_orphan_waiting_status)
-            && metadata_opt.is_some();
-        if use_orphan_ssot {
+        // SPEC-054/#298 + ISSUE-304 (DRY): orphan pending/queued OR structured
+        // Interrupted-after-restart → shared recovery enqueue SSOT.
+        // Ordinary failed/cancelled continue through cleanup/rebuild below.
+        let use_recovery_ssot = metadata_opt.as_ref().is_some_and(|meta| {
+            doc_status.is_some_and(is_orphan_waiting_status)
+                || crate::services::is_interrupted_restart_metadata(meta)
+        });
+        if use_recovery_ssot {
             let meta = metadata_opt.as_ref().expect("checked is_some");
             let content_key = format!("{doc_id}-content");
             let content = state
@@ -263,7 +275,7 @@ pub(crate) async fn run_reprocess_failed(
                 meta,
                 content.as_deref(),
                 &new_track_id,
-                "reprocess_orphan_pending",
+                "reprocess_recovery_enqueue",
             )
             .await?
             {
@@ -286,7 +298,17 @@ pub(crate) async fn run_reprocess_failed(
                     continue;
                 }
                 EnsureTaskOutcome::SkippedNotEligible => {
-                    *skip_reasons.entry("not_eligible".to_string()).or_insert(0) += 1;
+                    // Fall through to ordinary reprocess cleanup/rebuild path.
+                }
+                EnsureTaskOutcome::RequiresReupload { reason } => {
+                    *skip_reasons
+                        .entry("reupload_required".to_string())
+                        .or_insert(0) += 1;
+                    tracing::warn!(
+                        document_id = %doc_id,
+                        %reason,
+                        "Interrupted recovery requires re-upload"
+                    );
                     continue;
                 }
             }

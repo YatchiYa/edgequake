@@ -217,6 +217,14 @@ func (c *Client) delNoContent(ctx context.Context, path string) error {
 	return c.do(req, nil)
 }
 
+func (c *Client) del(ctx context.Context, path string, v interface{}) error {
+	req, err := c.newRequest(ctx, http.MethodDelete, path, nil)
+	if err != nil {
+		return err
+	}
+	return c.do(req, v)
+}
+
 func (c *Client) postNoContent(ctx context.Context, path string, body interface{}) error {
 	req, err := c.newRequest(ctx, http.MethodPost, path, body)
 	if err != nil {

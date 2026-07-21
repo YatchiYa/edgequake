@@ -353,7 +353,7 @@ Postgres task rows are the delivery SSOT; the in-memory channel is a wake signal
 | `EDGEQUAKE_EXTRACT_PROVIDER` | String | — | Hybrid extract provider for local clamp (P2) |
 | `EDGEQUAKE_DEFAULT_EXTRACT_PROVIDER` | String | — | Fallback extract provider for clamp |
 | `EDGEQUAKE_TASK_LEASE_TTL_SECS` | Integer | `120` (min `30`) | Claim lease TTL; heartbeat every 60s |
-| `EDGEQUAKE_STARTUP_AUTO_RESUME` | Boolean | `0` | `1` reclaims stale **Processing** → Pending; default marks Failed |
+| `EDGEQUAKE_STARTUP_AUTO_RESUME` | Boolean | `1` (unset) | Default **ON**: reclaim stale **Processing** → Pending. Set `0`/`false`/`off` to mark Interrupted Failed (manual Reprocess) |
 | `EDGEQUAKE_STARTUP_RECONCILE_MAX` | Integer | `32` | Max orphan rows reconciled at boot |
 | `EDGEQUAKE_REPLICAS` | Integer | `1` | Intended API/worker process count |
 | `EDGEQUAKE_TASK_DELIVERY` | String | `local` | `local` \| `bridged` \| `notify_only`; boot fails if `REPLICAS>1` and `local` |

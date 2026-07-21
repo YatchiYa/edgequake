@@ -40,18 +40,43 @@ pub fn asyncapi_document() -> Value {
                     "message": {
                         "name": "ProgressEvent",
                         "payload": {
-                            "type": "object",
-                            "properties": {
-                                "track_id": { "type": "string", "format": "uuid" },
-                                "phase": { "type": "string" },
-                                "progress": { "type": "number", "minimum": 0, "maximum": 100 },
-                                "message": { "type": "string" }
-                            },
+                            "oneOf": [
+                                {
+                                    "type": "object",
+                                    "description": "Pipeline track progress",
+                                    "properties": {
+                                        "track_id": { "type": "string" },
+                                        "phase": { "type": "string" },
+                                        "progress": { "type": "number", "minimum": 0, "maximum": 100 },
+                                        "message": { "type": "string" }
+                                    }
+                                },
+                                {
+                                    "type": "object",
+                                    "description": "BulkDeletion* events (issue #309)",
+                                    "properties": {
+                                        "event": {
+                                            "type": "string",
+                                            "enum": [
+                                                "BulkDeletionStarted",
+                                                "BulkDeletionItemProgress",
+                                                "BulkDeletionCompleted",
+                                                "BulkDeletionFailed"
+                                            ]
+                                        },
+                                        "wipe_track_id": { "type": "string" },
+                                        "workspace_id": { "type": "string" },
+                                        "deleted_count": { "type": "integer" },
+                                        "error_message": { "type": "string" }
+                                    },
+                                    "required": ["wipe_track_id"]
+                                }
+                            ],
                             "example": {
-                                "track_id": "f6fa9cad-bbff-4892-a855-3bd7d70da044",
-                                "phase": "entity_extraction",
-                                "progress": 42.5,
-                                "message": "Extracting entities from chunk 3/10"
+                                "event": "BulkDeletionFailed",
+                                "wipe_track_id": "workspace_wipe-f6fa9cad",
+                                "workspace_id": "940fadab-2390-4b29-af7e-ff27fd6d7755",
+                                "error_message": "workspace wipe graph clear failed"
                             }
                         }
                     }
@@ -102,5 +127,21 @@ mod tests {
         assert_eq!(doc["asyncapi"], "2.6.0");
         assert!(doc["channels"]["/ws/pipeline/progress"].is_object());
         assert!(doc["channels"]["/ws/progress/{track_id}"].is_object());
+        let payload = &doc["channels"]["/ws/pipeline/progress"]["subscribe"]["message"]["payload"];
+        let one_of = payload["oneOf"].as_array().expect("oneOf bulk+pipeline");
+        let bulk = one_of
+            .iter()
+            .find(|v| {
+                v["description"]
+                    .as_str()
+                    .unwrap_or("")
+                    .contains("BulkDeletion")
+            })
+            .expect("BulkDeletion schema");
+        assert!(bulk["properties"]["wipe_track_id"].is_object());
+        let events = bulk["properties"]["event"]["enum"]
+            .as_array()
+            .expect("event enum");
+        assert!(events.iter().any(|e| e == "BulkDeletionFailed"));
     }
 }

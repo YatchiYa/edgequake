@@ -225,9 +225,10 @@ async fn delete_document_http_and_drain(
         }
     };
 
+    // ISSUE-305: drain with worker-shaped TenantContext (workspace-scoped cascade).
     let tenant = edgequake_api::TenantContext {
-        tenant_id: None,
-        workspace_id: None,
+        tenant_id: Some(data.tenant_id.clone()),
+        workspace_id: Some(data.workspace_id.clone()),
         user_id: None,
     };
     edgequake_api::services::perform_document_deletion(state, &data, &tenant)
@@ -283,40 +284,124 @@ async fn delete_all_documents_http_scoped(
     (status, body)
 }
 
+/// Admit wipe-all (202) then drain durable `WorkspaceWipe` from the queue.
+async fn delete_all_documents_http_and_drain(
+    app: &axum::Router,
+    state: &AppState,
+    workspace_id: &str,
+) -> (StatusCode, Value) {
+    let (status, body) = delete_all_documents_http_scoped(app, workspace_id).await;
+    assert_eq!(
+        status,
+        StatusCode::ACCEPTED,
+        "wipe-all admits with 202; body={body}"
+    );
+    assert_eq!(body["accepted"].as_bool(), Some(true));
+    assert!(
+        body["wipe_track_id"]
+            .as_str()
+            .is_some_and(|s| !s.is_empty()),
+        "admit must return wipe_track_id; body={body}"
+    );
+
+    let mut task = state
+        .tasks
+        .queue
+        .try_receive()
+        .await
+        .expect("queue receive")
+        .expect("WorkspaceWipe task on queue");
+    // Drain any other queued tasks until we find WorkspaceWipe.
+    for _ in 0..20 {
+        if task.task_type == TaskType::WorkspaceWipe {
+            break;
+        }
+        task = state
+            .tasks
+            .queue
+            .try_receive()
+            .await
+            .expect("queue receive")
+            .expect("expected WorkspaceWipe eventually");
+    }
+    assert_eq!(task.task_type, TaskType::WorkspaceWipe);
+    let data: edgequake_tasks::WorkspaceWipeTaskData =
+        serde_json::from_value(task.task_data.clone()).expect("WorkspaceWipeTaskData");
+    edgequake_api::services::run_workspace_wipe_phases(state, &mut task, data)
+        .await
+        .expect("run_workspace_wipe_phases");
+    (status, body)
+}
+
 // ============================================================================
 // Basic Deletion Tests
 // ============================================================================
 
 #[tokio::test]
 async fn test_single_document_deletion() {
-    // Test basic deletion: document → chunks → entities → embeddings
-    let workers = create_worker_app().await;
-    let app = &workers.router;
+    // Test basic deletion admit (202) + drained cascade.
+    // Full shared-entity semantics covered elsewhere in this suite / PG e2e.
+    let state = AppState::test_state();
+    let app = create_test_server_with_state(state.clone());
+    let doc_id = "basic-single-delete-doc";
 
-    // Upload document and wait for ingestion (P-G2b: async upload).
-    let doc_id = upload_and_wait_http(
-        app,
-        "Tech Article",
-        "Alice is a software engineer at Google. She works with Bob on AI projects. \
-         They collaborate on machine learning models and data pipelines.",
-    )
-    .await;
+    state
+        .storage
+        .kv_storage
+        .upsert(&[(
+            format!("{doc_id}-metadata"),
+            json!({
+                "id": doc_id,
+                "title": "Tech Article",
+                "status": "completed",
+                "workspace_id": "default",
+                "tenant_id": "default"
+            }),
+        )])
+        .await
+        .unwrap();
+    state
+        .storage
+        .kv_storage
+        .upsert(&[(
+            format!("{doc_id}-content"),
+            json!({ "content": "Alice works at Google with Bob." }),
+        )])
+        .await
+        .unwrap();
+    state
+        .storage
+        .kv_storage
+        .upsert(&[(
+            format!("{doc_id}-chunk-0"),
+            json!({ "content": "Alice works at Google with Bob." }),
+        )])
+        .await
+        .unwrap();
 
-    // Delete document
-    let (delete_status, delete_resp) = delete_document_http(app, &doc_id).await;
+    let (delete_status, delete_resp) = delete_document_http_and_drain(&app, &state, doc_id).await;
 
-    assert_eq!(delete_status, StatusCode::OK);
+    assert_eq!(delete_status, StatusCode::ACCEPTED);
     assert_eq!(
-        delete_resp.get("deleted").and_then(|v| v.as_bool()),
+        delete_resp.get("accepted").and_then(|v| v.as_bool()),
         Some(true)
     );
     assert!(
         delete_resp
-            .get("chunks_deleted")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0)
-            > 0,
-        "Should have deleted chunks"
+            .get("track_id")
+            .and_then(|v| v.as_str())
+            .is_some_and(|s| !s.is_empty()),
+        "202 admit must return deletion track_id"
+    );
+    assert!(
+        state
+            .storage
+            .kv_storage
+            .get_by_id(&format!("{doc_id}-metadata"))
+            .await
+            .unwrap()
+            .is_none(),
+        "metadata must be removed after drained cascade"
     );
 
     println!("✅ Basic single document deletion completed");
@@ -1009,10 +1094,14 @@ async fn test_idempotent_deletion_returns_404() {
         .await
         .unwrap();
 
-    // 2. First deletion should succeed
-    let (status1, resp1) = delete_document_http(&app, doc_id).await;
-    assert_eq!(status1, StatusCode::OK, "First deletion should succeed");
-    assert_eq!(resp1.get("deleted").and_then(|v| v.as_bool()), Some(true));
+    // 2. First deletion should admit (202) and cascade
+    let (status1, resp1) = delete_document_http_and_drain(&app, &state, doc_id).await;
+    assert_eq!(
+        status1,
+        StatusCode::ACCEPTED,
+        "First deletion should admit async cascade"
+    );
+    assert_eq!(resp1.get("accepted").and_then(|v| v.as_bool()), Some(true));
 
     // 3. Second deletion should return 404 (document no longer exists)
     let (status2, resp2) = delete_document_http(&app, doc_id).await;
@@ -3344,16 +3433,17 @@ async fn test_deletion_performance_sequential() {
     let start = Instant::now();
     for doc_id in &doc_ids {
         let (status, _) = delete_document_http(&app, doc_id).await;
-        assert_eq!(status, StatusCode::OK);
+        // Admit only — cascade is async (202).
+        assert_eq!(status, StatusCode::ACCEPTED);
     }
     let total_duration = start.elapsed();
 
     let avg_ms = total_duration.as_millis() as f64 / doc_ids.len() as f64;
 
-    // Average should be <50ms per document
+    // Average admit should be <50ms per document
     assert!(
         avg_ms < 50.0,
-        "Average deletion time {:.2}ms, expected <50ms",
+        "Average deletion admit time {:.2}ms, expected <50ms",
         avg_ms
     );
 
@@ -3416,7 +3506,7 @@ async fn test_bulk_deletion_cleanup() {
     let mut success_count = 0;
     for doc_id in &doc_ids {
         let (status, body) = delete_document_http(&app, doc_id).await;
-        if status == StatusCode::OK && body["deleted"].as_bool().unwrap_or(false) {
+        if status == StatusCode::ACCEPTED && body["accepted"].as_bool().unwrap_or(false) {
             success_count += 1;
         }
     }
@@ -3480,10 +3570,10 @@ async fn test_bulk_deletion_allows_reupload() {
         doc_ids.push(body["document_id"].as_str().unwrap().to_string());
     }
 
-    // Delete all batch 1
+    // Delete all batch 1 (async admit)
     for doc_id in &doc_ids {
         let (status, _) = delete_document_http(&app, doc_id).await;
-        assert_eq!(status, StatusCode::OK);
+        assert_eq!(status, StatusCode::ACCEPTED);
     }
 
     // Upload batch 2 with same names
@@ -3516,7 +3606,7 @@ async fn test_bulk_deletion_allows_reupload() {
     // Cleanup batch 2
     for doc_id in &batch2_ids {
         let (status, _) = delete_document_http(&app, doc_id).await;
-        assert_eq!(status, StatusCode::OK);
+        assert_eq!(status, StatusCode::ACCEPTED);
     }
 
     println!("✅ OODA-31 TEST PASSED: Workspace clean after bulk operations");
@@ -4369,16 +4459,13 @@ async fn test_bulk_delete_only_clears_current_workspace_and_purges_tasks() {
     task.status = TaskStatus::Processing;
     state.tasks.storage.create_task(&task).await.unwrap();
 
-    let (status, body) = delete_all_documents_http_scoped(&app, &workspace_a.to_string()).await;
-    assert_eq!(status, StatusCode::OK);
+    let (status, body) =
+        delete_all_documents_http_and_drain(&app, &state, &workspace_a.to_string()).await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    assert_eq!(body["accepted"].as_bool(), Some(true));
     assert_eq!(body["deleted_count"].as_u64(), Some(1));
-    assert!(state
-        .tasks
-        .storage
-        .get_task(track_id)
-        .await
-        .unwrap()
-        .is_none());
+    assert!(body["wipe_track_id"].as_str().is_some());
+
     assert!(state
         .storage
         .kv_storage
@@ -4386,6 +4473,16 @@ async fn test_bulk_delete_only_clears_current_workspace_and_purges_tasks() {
         .await
         .unwrap()
         .is_none());
+    assert!(
+        state
+            .tasks
+            .storage
+            .get_task(track_id)
+            .await
+            .unwrap()
+            .is_none(),
+        "inflight insert task for workspace A must be purged by wipe"
+    );
     assert!(state
         .storage
         .kv_storage
@@ -4395,6 +4492,229 @@ async fn test_bulk_delete_only_clears_current_workspace_and_purges_tasks() {
         .is_some());
 
     println!("✅ OODA-37 TEST PASSED: Bulk delete stays in-scope and purges stale tasks");
+}
+
+/// ISSUE-309: wipe uses exactly one `clear_workspace` and zero prefix scans (memory op-count).
+#[tokio::test]
+async fn issue309_wipe_opcount_clear_once_no_prefix_scans() {
+    use edgequake_storage::traits::GraphStorageMutateOps;
+    use edgequake_storage::MemoryGraphStorage;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    let mem_graph = Arc::new(MemoryGraphStorage::new("wipe-opcount"));
+    let mut state = AppState::test_state();
+    state.storage.graph_storage =
+        Arc::clone(&mem_graph) as Arc<dyn edgequake_storage::traits::GraphStorage>;
+    let workspace_id = uuid::Uuid::new_v4();
+    let tenant_id = "00000000-0000-0000-0000-000000000001";
+    let n = 200usize;
+    let server = Server::new(create_test_config(), state.clone());
+    let app = server.build_router();
+
+    for i in 0..n {
+        let doc_id = format!("wipe-op-{i}-{workspace_id}");
+        state
+            .storage
+            .kv_storage
+            .upsert(&[(
+                format!("{doc_id}-metadata"),
+                json!({
+                    "id": doc_id,
+                    "title": format!("Op {i}"),
+                    "status": "completed",
+                    "workspace_id": workspace_id.to_string(),
+                    "tenant_id": tenant_id,
+                }),
+            )])
+            .await
+            .unwrap();
+        let mut props = HashMap::new();
+        props.insert("entity_type".into(), json!("CONCEPT"));
+        props.insert("source_ids".into(), json!([doc_id]));
+        props.insert("workspace_id".into(), json!(workspace_id.to_string()));
+        mem_graph
+            .upsert_node(&format!("WIPE_OP_{i}"), props)
+            .await
+            .unwrap();
+    }
+
+    mem_graph.reset_op_counts();
+    let (status, body) =
+        delete_all_documents_http_and_drain(&app, &state, &workspace_id.to_string()).await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    assert_eq!(body["planned_delete_count"].as_u64(), Some(n as u64));
+    assert_eq!(
+        mem_graph.clear_workspace_call_count(),
+        1,
+        "wipe must clear graph exactly once"
+    );
+    assert_eq!(
+        mem_graph.find_nodes_by_source_prefixes_call_count(),
+        0,
+        "wipe must never call find_nodes_by_source_prefixes"
+    );
+    assert_eq!(
+        mem_graph.find_edges_by_source_prefixes_call_count(),
+        0,
+        "wipe must never call find_edges_by_source_prefixes"
+    );
+    println!("✅ ISSUE-309 wipe op-count (200 docs): PASSED");
+}
+
+/// ISSUE-305: checkpoint resume — graph_done skips rediscovery on retry.
+#[tokio::test]
+async fn issue305_deletion_checkpoint_graph_done_skips_rediscovery() {
+    use edgequake_api::middleware::TenantContext;
+    use edgequake_api::services::perform_document_deletion;
+    use edgequake_storage::traits::{GraphStorageMutateOps, GraphStorageReadOps};
+    use edgequake_storage::MemoryGraphStorage;
+    use edgequake_tasks::DeletionTaskData;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    let mem_graph = Arc::new(MemoryGraphStorage::new("del-ckpt"));
+    let mut state = AppState::test_state();
+    state.storage.graph_storage =
+        Arc::clone(&mem_graph) as Arc<dyn edgequake_storage::traits::GraphStorage>;
+
+    let workspace_id = uuid::Uuid::new_v4().to_string();
+    let doc_id = "ckpt-graph-done-doc";
+    let meta_key = format!("{doc_id}-metadata");
+
+    // Seed metadata already past graph phase.
+    state
+        .storage
+        .kv_storage
+        .upsert(&[(
+            meta_key.clone(),
+            json!({
+                "id": doc_id,
+                "status": "deleting",
+                "tenant_id": TEST_TENANT_ID,
+                "workspace_id": workspace_id,
+                "deletion_checkpoint": "graph_done",
+            }),
+        )])
+        .await
+        .unwrap();
+    state
+        .storage
+        .kv_storage
+        .upsert(&[(format!("{doc_id}-content"), json!({"content": "x"}))])
+        .await
+        .unwrap();
+
+    // Unrelated node (different source) — proves we do not re-run prefix discovery.
+    let mut props = HashMap::new();
+    props.insert("tenant_id".into(), json!(TEST_TENANT_ID));
+    props.insert("workspace_id".into(), json!(workspace_id));
+    props.insert("source_ids".into(), json!(["other-doc"]));
+    mem_graph
+        .upsert_node("CKPT_UNRELATED", props)
+        .await
+        .unwrap();
+    mem_graph.reset_op_counts();
+
+    let tenant = TenantContext {
+        tenant_id: Some(TEST_TENANT_ID.to_string()),
+        workspace_id: Some(workspace_id.clone()),
+        user_id: None,
+    };
+    let data = DeletionTaskData {
+        document_id: doc_id.to_string(),
+        key_prefix: doc_id.to_string(),
+        workspace_id,
+        tenant_id: TEST_TENANT_ID.to_string(),
+        deletion_track_id: "del-ckpt-1".into(),
+        metadata_key: Some(meta_key.clone()),
+        chunk_ids: vec![],
+        has_content: true,
+        content_hash: None,
+        pdf_id: None,
+        ingest_track_id: None,
+        document_status: Some("deleting".into()),
+    };
+    perform_document_deletion(&state, &data, &tenant)
+        .await
+        .expect("resume from graph_done");
+
+    // Resume still runs post-proof (one node + one edge probe) but skips
+    // discovery/mutation (which would be ≥2 node scans without checkpoint).
+    assert_eq!(
+        mem_graph.find_nodes_by_source_prefixes_call_count(),
+        1,
+        "graph_done resume: only post-proof node probe, not full discovery"
+    );
+    assert_eq!(
+        mem_graph.find_edges_by_source_prefixes_call_count(),
+        1,
+        "graph_done resume: only post-proof edge probe"
+    );
+    assert!(
+        mem_graph.has_node("CKPT_UNRELATED").await.unwrap(),
+        "unrelated graph nodes must survive deletion resume"
+    );
+    assert!(
+        state
+            .storage
+            .kv_storage
+            .get_by_id(&meta_key)
+            .await
+            .unwrap()
+            .is_none(),
+        "KV metadata still purged after graph_done resume"
+    );
+}
+
+/// ISSUE-305: high chunk-index-only source_ids remain discoverable for cascade.
+#[tokio::test]
+async fn issue305_cascade_discovers_high_chunk_index_only_source() {
+    use edgequake_api::middleware::TenantContext;
+    use edgequake_api::services::{cascade_remove_document_sources, DocumentSourceScope};
+    use std::collections::HashMap;
+
+    let state = AppState::test_state();
+    let workspace_id = uuid::Uuid::new_v4().to_string();
+    let tenant_id = "00000000-0000-0000-0000-000000000001";
+    const DOC_ID: &str = "high-chunk-only-doc";
+
+    let mut props = HashMap::new();
+    props.insert("tenant_id".into(), json!(tenant_id));
+    props.insert("workspace_id".into(), json!(workspace_id));
+    // Only a high chunk index — must still cascade after probe-limit raise.
+    props.insert("source_ids".into(), json!([format!("{DOC_ID}-chunk-40")]));
+    state
+        .storage
+        .graph_storage
+        .upsert_node("HIGH_CHUNK_ENTITY", props)
+        .await
+        .unwrap();
+
+    let tenant_ctx = TenantContext {
+        tenant_id: Some(tenant_id.to_string()),
+        workspace_id: Some(workspace_id),
+        user_id: None,
+    };
+    let scope = DocumentSourceScope::from_document_id(DOC_ID);
+    cascade_remove_document_sources(
+        &state.storage.graph_storage,
+        None,
+        Some(&tenant_ctx),
+        &scope,
+    )
+    .await
+    .expect("cascade");
+
+    assert!(
+        !state
+            .storage
+            .graph_storage
+            .has_node("HIGH_CHUNK_ENTITY")
+            .await
+            .unwrap(),
+        "entity with only chunk-40 source_id must be cascaded"
+    );
 }
 
 // ============================================================================
@@ -4886,10 +5206,10 @@ async fn test_batch_cleanup_verification() {
         doc_ids.push(body["document_id"].as_str().unwrap().to_string());
     }
 
-    // Delete all documents
+    // Delete all documents (admit async cascade)
     for doc_id in &doc_ids {
         let (status, _) = delete_document_http(&app, doc_id).await;
-        assert_eq!(status, StatusCode::OK);
+        assert_eq!(status, StatusCode::ACCEPTED);
     }
 
     // Verify state is back to initial (no orphans)

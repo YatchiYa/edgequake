@@ -166,8 +166,9 @@ async fn create_postgres_test_state(pool: &PgPool) -> AppState {
         Arc::clone(&mock_provider) as Arc<dyn edgequake_llm::traits::LLMProvider>,
     ));
 
-    // Auth services
-    let auth_config = AuthConfig::default();
+    // Auth services — disable for local cascade/wipe contract tests.
+    let mut auth_config = AuthConfig::default();
+    auth_config.auth_enabled = false;
     let vector_registry: Arc<dyn edgequake_storage::traits::WorkspaceVectorRegistry> =
         Arc::new(MemoryWorkspaceVectorRegistry::new(
             Arc::clone(&vector_storage) as Arc<dyn edgequake_storage::traits::VectorStorage>,
@@ -273,8 +274,12 @@ async fn upload_document_http(
     (status, body)
 }
 
-/// Helper to delete a document via HTTP.
-async fn delete_document_http(app: &axum::Router, document_id: &str) -> (StatusCode, Value) {
+/// Admit delete (202) then drain durable `Deletion` task from the queue.
+async fn delete_document_http(
+    app: &axum::Router,
+    state: &AppState,
+    document_id: &str,
+) -> (StatusCode, Value) {
     let response = app
         .clone()
         .oneshot(
@@ -289,6 +294,92 @@ async fn delete_document_http(app: &axum::Router, document_id: &str) -> (StatusC
 
     let status = response.status();
     let body = extract_json(response).await;
+    assert_eq!(
+        status,
+        StatusCode::ACCEPTED,
+        "delete admits with 202; body={body}"
+    );
+
+    let mut task = state
+        .tasks
+        .queue
+        .try_receive()
+        .await
+        .expect("queue receive")
+        .expect("Deletion task on queue");
+    for _ in 0..20 {
+        if task.task_type == edgequake_tasks::TaskType::Deletion {
+            break;
+        }
+        task = state
+            .tasks
+            .queue
+            .try_receive()
+            .await
+            .expect("queue receive")
+            .expect("expected Deletion task");
+    }
+    let data: edgequake_tasks::DeletionTaskData =
+        serde_json::from_value(task.task_data).expect("DeletionTaskData");
+    let tenant = edgequake_api::TenantContext {
+        tenant_id: Some(data.tenant_id.clone()),
+        workspace_id: Some(data.workspace_id.clone()),
+        user_id: None,
+    };
+    edgequake_api::services::perform_document_deletion(state, &data, &tenant)
+        .await
+        .expect("perform_document_deletion");
+    (status, body)
+}
+
+/// Admit wipe-all (202) then drain durable `WorkspaceWipe`.
+async fn delete_all_documents_http_and_drain(
+    app: &axum::Router,
+    state: &AppState,
+    workspace_id: &str,
+) -> (StatusCode, Value) {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/v1/documents")
+                .header("X-Tenant-ID", "00000000-0000-0000-0000-000000000001")
+                .header("X-Workspace-ID", workspace_id)
+                .header("X-EdgeQuake-Confirm", "delete-all-documents")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = extract_json(response).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "wipe admits 202; body={body}");
+    assert_eq!(body["accepted"].as_bool(), Some(true));
+    let mut task = state
+        .tasks
+        .queue
+        .try_receive()
+        .await
+        .expect("queue receive")
+        .expect("WorkspaceWipe on queue");
+    for _ in 0..20 {
+        if task.task_type == edgequake_tasks::TaskType::WorkspaceWipe {
+            break;
+        }
+        task = state
+            .tasks
+            .queue
+            .try_receive()
+            .await
+            .expect("queue receive")
+            .expect("expected WorkspaceWipe");
+    }
+    let data: edgequake_tasks::WorkspaceWipeTaskData =
+        serde_json::from_value(task.task_data.clone()).expect("WorkspaceWipeTaskData");
+    edgequake_api::services::run_workspace_wipe_phases(state, &mut task, data)
+        .await
+        .expect("run_workspace_wipe_phases");
     (status, body)
 }
 
@@ -328,7 +419,7 @@ async fn query_rag_http(app: &axum::Router, query_text: &str) -> (StatusCode, Va
 async fn test_single_document_deletion_pg() {
     let pool = require_postgres!();
     let state = create_postgres_test_state(&pool).await;
-    let server = Server::new(create_test_config(), state);
+    let server = Server::new(create_test_config(), state.clone());
     let app = server.build_router();
 
     // Upload document
@@ -355,9 +446,9 @@ async fn test_single_document_deletion_pg() {
         .expect("Should have document_id");
 
     // Delete document
-    let (delete_status, delete_resp) = delete_document_http(&app, doc_id).await;
+    let (delete_status, delete_resp) = delete_document_http(&app, &state, doc_id).await;
 
-    if delete_status != StatusCode::OK {
+    if delete_status != StatusCode::ACCEPTED {
         eprintln!(
             "Delete failed: status={}, body={:?}",
             delete_status, delete_resp
@@ -365,8 +456,8 @@ async fn test_single_document_deletion_pg() {
     }
     assert_eq!(
         delete_status,
-        StatusCode::OK,
-        "Delete should succeed, got: {:?}",
+        StatusCode::ACCEPTED,
+        "Delete should admit, got: {:?}",
         delete_resp
     );
 
@@ -374,9 +465,9 @@ async fn test_single_document_deletion_pg() {
     eprintln!("Delete response: {:?}", delete_resp);
 
     assert_eq!(
-        delete_resp.get("deleted").and_then(|v| v.as_bool()),
+        delete_resp.get("accepted").and_then(|v| v.as_bool()),
         Some(true),
-        "Response should indicate deletion"
+        "Response should indicate async admit"
     );
 
     // Verify delete metrics are present (at top level, not nested)
@@ -421,8 +512,8 @@ async fn test_delete_preserves_shared_entities_pg() {
     let doc2_id = upload2.get("document_id").and_then(|v| v.as_str()).unwrap();
 
     // Delete first document
-    let (delete_status, delete_resp) = delete_document_http(&app, doc1_id).await;
-    assert_eq!(delete_status, StatusCode::OK);
+    let (delete_status, delete_resp) = delete_document_http(&app, &state, doc1_id).await;
+    assert_eq!(delete_status, StatusCode::ACCEPTED);
 
     // Check metrics (at top level, not nested)
     let entities_affected = delete_resp
@@ -434,8 +525,8 @@ async fn test_delete_preserves_shared_entities_pg() {
     println!("Entities affected: {}", entities_affected);
 
     // Delete second document to clean up
-    let (cleanup_status, _) = delete_document_http(&app, doc2_id).await;
-    assert_eq!(cleanup_status, StatusCode::OK);
+    let (cleanup_status, _) = delete_document_http(&app, &state, doc2_id).await;
+    assert_eq!(cleanup_status, StatusCode::ACCEPTED);
 
     println!("✅ Shared entity preservation with PostgreSQL: PASSED");
 }
@@ -447,7 +538,7 @@ async fn test_delete_preserves_shared_entities_pg() {
 async fn test_query_after_deletion_pg() {
     let pool = require_postgres!();
     let state = create_postgres_test_state(&pool).await;
-    let server = Server::new(create_test_config(), state);
+    let server = Server::new(create_test_config(), state.clone());
     let app = server.build_router();
 
     // Upload document
@@ -472,8 +563,8 @@ async fn test_query_after_deletion_pg() {
     );
 
     // Delete document
-    let (delete_status, _) = delete_document_http(&app, doc_id).await;
-    assert_eq!(delete_status, StatusCode::OK);
+    let (delete_status, _) = delete_document_http(&app, &state, doc_id).await;
+    assert_eq!(delete_status, StatusCode::ACCEPTED);
 
     // Query should still work (no dangling references)
     let (query_status2, _) = query_rag_http(&app, "What is EdgeQuake?").await;
@@ -529,15 +620,15 @@ async fn test_delete_failed_document_cleans_partial_entities_pg() {
         .expect("Should create entity");
 
     // Delete the failed document - should clean up partial data
-    let (delete_status, delete_resp) = delete_document_http(&app, &doc_id).await;
+    let (delete_status, delete_resp) = delete_document_http(&app, &state, &doc_id).await;
 
     assert_eq!(
         delete_status,
-        StatusCode::OK,
-        "Should delete failed document"
+        StatusCode::ACCEPTED,
+        "Should admit delete of failed document"
     );
     assert_eq!(
-        delete_resp.get("deleted").and_then(|v| v.as_bool()),
+        delete_resp.get("accepted").and_then(|v| v.as_bool()),
         Some(true)
     );
 
@@ -584,8 +675,8 @@ async fn test_accumulated_source_ids_deletion_pg() {
     }
 
     // Delete first document
-    let (status1, resp1) = delete_document_http(&app, &doc_ids[0]).await;
-    assert_eq!(status1, StatusCode::OK);
+    let (status1, resp1) = delete_document_http(&app, &state, &doc_ids[0]).await;
+    assert_eq!(status1, StatusCode::ACCEPTED);
 
     let entities_affected_1 = resp1
         .get("entities_affected")
@@ -593,8 +684,8 @@ async fn test_accumulated_source_ids_deletion_pg() {
         .unwrap_or(0);
 
     // Delete second document
-    let (status2, resp2) = delete_document_http(&app, &doc_ids[1]).await;
-    assert_eq!(status2, StatusCode::OK);
+    let (status2, resp2) = delete_document_http(&app, &state, &doc_ids[1]).await;
+    assert_eq!(status2, StatusCode::ACCEPTED);
 
     let entities_affected_2 = resp2
         .get("entities_affected")
@@ -602,8 +693,8 @@ async fn test_accumulated_source_ids_deletion_pg() {
         .unwrap_or(0);
 
     // Delete third document - now entities should be fully deleted
-    let (status3, resp3) = delete_document_http(&app, &doc_ids[2]).await;
-    assert_eq!(status3, StatusCode::OK);
+    let (status3, resp3) = delete_document_http(&app, &state, &doc_ids[2]).await;
+    assert_eq!(status3, StatusCode::ACCEPTED);
 
     let entities_affected_3 = resp3
         .get("entities_affected")
@@ -616,4 +707,164 @@ async fn test_accumulated_source_ids_deletion_pg() {
     );
 
     println!("✅ Accumulated source_ids deletion with PostgreSQL: PASSED");
+}
+
+/// ISSUE-309: durable wipe admit + drain clears seeded docs without N× prefix scans
+/// (wipe path uses clear_workspace once; verified by empty graph after drain).
+/// Memory suite asserts exact op-counts; this PG path proves AGE clear at reporter scale.
+#[tokio::test]
+async fn issue309_workspace_wipe_admit_and_drain_pg() {
+    let pool = require_postgres!();
+    let state = create_postgres_test_state(&pool).await;
+    let workspace_id = Uuid::new_v4();
+    let server = Server::new(create_test_config(), state.clone());
+    let app = server.build_router();
+
+    // Reporter-scale: 200 documents + exclusive graph nodes.
+    let n = 200usize;
+    let tenant_id = "00000000-0000-0000-0000-000000000001";
+    for i in 0..n {
+        let doc_id = format!("wipe-scale-{i}-{}", workspace_id);
+        let meta = json!({
+            "id": doc_id,
+            "title": format!("Wipe Scale {i}"),
+            "status": "completed",
+            "workspace_id": workspace_id.to_string(),
+            "tenant_id": tenant_id,
+        });
+        state
+            .storage
+            .kv_storage
+            .upsert(&[(format!("{doc_id}-metadata"), meta)])
+            .await
+            .unwrap();
+        let mut props = HashMap::new();
+        props.insert("entity_type".into(), json!("CONCEPT"));
+        props.insert("source_ids".into(), json!([doc_id]));
+        props.insert("workspace_id".into(), json!(workspace_id.to_string()));
+        state
+            .storage
+            .graph_storage
+            .upsert_node(&format!("WIPE_ENTITY_{i}"), props)
+            .await
+            .unwrap();
+    }
+
+    let (status, body) =
+        delete_all_documents_http_and_drain(&app, &state, &workspace_id.to_string()).await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    assert_eq!(body["accepted"].as_bool(), Some(true));
+    assert!(body["wipe_track_id"]
+        .as_str()
+        .is_some_and(|s| !s.is_empty()));
+    assert_eq!(
+        body["deleted_count"].as_u64(),
+        Some(n as u64),
+        "planned wipe count; body={body}"
+    );
+
+    for i in 0..n {
+        let doc_id = format!("wipe-scale-{i}-{}", workspace_id);
+        assert!(
+            state
+                .storage
+                .kv_storage
+                .get_by_id(&format!("{doc_id}-metadata"))
+                .await
+                .unwrap()
+                .is_none(),
+            "doc {doc_id} metadata must be purged"
+        );
+        let node = state
+            .storage
+            .graph_storage
+            .get_node(&format!("WIPE_ENTITY_{i}"))
+            .await
+            .unwrap();
+        assert!(node.is_none(), "graph node WIPE_ENTITY_{i} must be cleared");
+    }
+
+    println!("✅ ISSUE-309 workspace wipe admit+drain (PostgreSQL): PASSED");
+}
+
+/// ISSUE-304: AUTO_RESUME=0 orphan → structured Interrupted; force entities requeues Full PDF.
+#[tokio::test]
+async fn issue304_interrupted_pdf_force_entities_enqueues_full_pg() {
+    let pool = require_postgres!();
+    let _guard = std::sync::Mutex::new(());
+    // Scoped env for this test process — restore after.
+    let prev = std::env::var("EDGEQUAKE_STARTUP_AUTO_RESUME").ok();
+    std::env::set_var("EDGEQUAKE_STARTUP_AUTO_RESUME", "0");
+
+    let state = create_postgres_test_state(&pool).await;
+    let workspace_id = Uuid::new_v4();
+    let tenant_id = Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap();
+    let pdf_id = Uuid::new_v4();
+    let doc_id = format!("issue304-pdf-{}", pdf_id);
+
+    let metadata = json!({
+        "id": doc_id,
+        "title": "interrupted.pdf",
+        "status": "failed",
+        "current_stage": "failed",
+        "failure_code": "server_restart_interrupted",
+        "error_message": "Interrupted by server restart — use Reprocess",
+        "source_type": "pdf",
+        "pdf_id": pdf_id.to_string(),
+        "markdown": "",
+        "tenant_id": tenant_id.to_string(),
+        "workspace_id": workspace_id.to_string(),
+    });
+    state
+        .storage
+        .kv_storage
+        .upsert(&[(format!("{doc_id}-metadata"), metadata.clone())])
+        .await
+        .unwrap();
+
+    assert!(edgequake_api::services::is_interrupted_restart_metadata(
+        &metadata
+    ));
+
+    let outcome = edgequake_api::services::ensure_task_for_pending_document(
+        &state,
+        &doc_id,
+        &metadata,
+        None,
+        "issue304-batch",
+        "reprocess_recovery_enqueue",
+    )
+    .await
+    .expect("ensure_task");
+
+    match outcome {
+        edgequake_api::services::EnsureTaskOutcome::Enqueued { task_id } => {
+            let task = state
+                .tasks
+                .storage
+                .get_task(&task_id)
+                .await
+                .unwrap()
+                .expect("task row");
+            assert_eq!(task.task_type, edgequake_tasks::TaskType::PdfProcessing);
+            let data: edgequake_tasks::PdfProcessingData =
+                serde_json::from_value(task.task_data).unwrap();
+            assert!(
+                data.restart_from_scratch,
+                "empty markdown Interrupted must upgrade to Full"
+            );
+            assert_eq!(
+                data.reprocess_mode,
+                Some(edgequake_tasks::ReprocessMode::Full)
+            );
+        }
+        other => panic!("expected Enqueued Full PDF, got {other:?}"),
+    }
+
+    match prev {
+        Some(v) => std::env::set_var("EDGEQUAKE_STARTUP_AUTO_RESUME", v),
+        None => std::env::remove_var("EDGEQUAKE_STARTUP_AUTO_RESUME"),
+    }
+    let _ = _guard;
+    println!("✅ ISSUE-304 Interrupted PDF → Full PdfProcessing (PostgreSQL): PASSED");
 }

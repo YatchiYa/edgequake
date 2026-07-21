@@ -1109,10 +1109,16 @@ class UnitTest extends TestCase
 
     public function testDocumentDeleteAll(): void
     {
-        $mock = new MockHttpHelper('{"deleted_count":5}');
+        $mock = new MockHttpHelper(
+            '{"accepted":true,"wipe_track_id":"workspace_wipe-1","deleted_count":5,"planned_delete_count":5}'
+        );
         $svc = new DocumentService($mock);
         $result = $svc->deleteAll();
-        $this->assertSame(5, $result['deleted_count']);
+        $this->assertInstanceOf(\EdgeQuake\DeleteAllResponse::class, $result);
+        $this->assertTrue($result->accepted);
+        $this->assertSame('workspace_wipe-1', $result->wipeTrackId);
+        $this->assertSame(5, $result->deletedCount);
+        $this->assertSame(5, $result->plannedDeleteCount);
         $this->assertSame('DELETE', $mock->lastCall()['method']);
         $this->assertSame('/api/v1/documents', $mock->lastCall()['path']);
     }

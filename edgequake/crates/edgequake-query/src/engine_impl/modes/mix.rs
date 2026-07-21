@@ -371,7 +371,9 @@ mod tests {
     use crate::mix_weights::{resolve_arm_plan, MixWeightOverride};
 
     #[test]
-    fn attach_metadata_marks_gated_when_subset() {
+    fn attach_metadata_marks_all_arms_for_mix_factual() {
+        // Mix Factual always runs local+global+naive (MIX_ARM_GATE default false /
+        // LightRAG parity). Metadata must list all three arms as run, not gated.
         let plan = resolve_arm_plan(
             &QueryEngineConfig::default(),
             None,
@@ -379,13 +381,16 @@ mod tests {
             true,
         );
         let mut ctx = QueryContext::new();
-        attach_arm_metadata(&mut ctx, plan, 1, 2, 3, 0, 0, 4);
-        assert_eq!(ctx.metadata.get(META_ARMS_RUN).unwrap(), "naive");
-        assert_eq!(ctx.metadata.get(META_ARMS_GATED).unwrap(), true);
+        attach_arm_metadata(&mut ctx, plan, 1, 2, 3, 5, 6, 4);
+        assert_eq!(
+            ctx.metadata.get(META_ARMS_RUN).unwrap(),
+            "local,global,naive"
+        );
+        assert_eq!(ctx.metadata.get(META_ARMS_GATED).unwrap(), false);
+        assert!(ctx.metadata.contains_key(META_ARM_LOCAL_MS));
+        assert!(ctx.metadata.contains_key(META_ARM_GLOBAL_MS));
         assert!(ctx.metadata.contains_key(META_ARM_NAIVE_MS));
         assert_eq!(ctx.metadata.get(META_ARM_NAIVE_CHUNKS).unwrap(), 4);
-        assert!(!ctx.metadata.contains_key(META_ARM_LOCAL_MS));
-        assert!(!ctx.metadata.contains_key(META_ARM_LOCAL_CHUNKS));
     }
 
     #[test]

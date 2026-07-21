@@ -47,9 +47,9 @@ class DocumentService
         return $this->http->delete("/api/v1/documents/{$id}");
     }
 
-    public function deleteAll(): array
+    public function deleteAll(): DeleteAllResponse
     {
-        return $this->http->delete('/api/v1/documents');
+        return DeleteAllResponse::fromArray($this->http->delete('/api/v1/documents'));
     }
 
     public function track(string $trackId): array

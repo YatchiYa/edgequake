@@ -232,7 +232,7 @@ pub(crate) async fn run_recover_stuck(
                 requeued_titles.push(doc_title.clone());
                 tracing::info!("Recovered stuck document: {} ({})", doc_id, doc_title);
             }
-            EnsureTaskOutcome::SkippedNoContent => {
+            EnsureTaskOutcome::SkippedNoContent | EnsureTaskOutcome::RequiresReupload { .. } => {
                 tracing::warn!(
                     document_id = %doc_id,
                     "recover_stuck: no pdf_id/content — cannot enqueue"

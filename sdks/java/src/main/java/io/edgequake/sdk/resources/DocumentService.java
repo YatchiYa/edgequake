@@ -38,8 +38,8 @@ public class DocumentService {
         http.delete("/api/v1/documents/" + id);
     }
 
-    public void deleteAll() {
-        http.delete("/api/v1/documents");
+    public DeleteAllResponse deleteAll() {
+        return http.delete("/api/v1/documents", DeleteAllResponse.class);
     }
 
     public TrackStatus track(String trackId) {
