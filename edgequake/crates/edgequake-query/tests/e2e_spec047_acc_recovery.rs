@@ -57,8 +57,8 @@ fn e2e_a3_factual_truncation_prefers_chunks_over_entity_flood() {
         .map(|i| RetrievedEntity::new(format!("Ent{i}"), "T", "x".repeat(40)))
         .collect();
     let chunks = vec![
-        RetrievedChunk::new("c1", &"evidence-page-chunk-".repeat(8), 0.9),
-        RetrievedChunk::new("c2", &"more-evidence-chunk-".repeat(8), 0.8),
+        RetrievedChunk::new("c1", "evidence-page-chunk-".repeat(8), 0.9),
+        RetrievedChunk::new("c2", "more-evidence-chunk-".repeat(8), 0.8),
     ];
 
     let (be, _br, bc) = balance_context(entities, vec![], chunks, &cfg, &tokenizer);

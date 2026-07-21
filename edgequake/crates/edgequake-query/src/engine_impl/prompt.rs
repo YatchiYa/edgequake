@@ -389,6 +389,7 @@ Generate a comprehensive, well-structured answer that integrates observations fr
     ///
     /// If `images` is Some and non-empty, uses `provider.chat()` with image
     /// attachments instead of `provider.complete()` (FEAT0203: vision queries).
+    #[allow(clippy::too_many_arguments)] // answer path needs provider + vision + history knobs
     pub(super) async fn generate_answer_with_provider(
         &self,
         query: &str,

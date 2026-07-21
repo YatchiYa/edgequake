@@ -96,14 +96,12 @@ fn resolve_worker_pool_limits() -> (usize, usize) {
         return (requested_workers, requested_per_tenant);
     }
 
-    let workers = requested_workers.min(LOCAL_WORKER_THREADS_CAP).max(1);
+    let workers = requested_workers.clamp(1, LOCAL_WORKER_THREADS_CAP);
     // MAX_TASKS_PER_TENANT=0 means "unlimited" — preserve that opt-out.
     let per_tenant = if requested_per_tenant == 0 {
         0
     } else {
-        requested_per_tenant
-            .min(LOCAL_MAX_TASKS_PER_TENANT_CAP)
-            .max(1)
+        requested_per_tenant.clamp(1, LOCAL_MAX_TASKS_PER_TENANT_CAP)
     };
 
     if workers != requested_workers || per_tenant != requested_per_tenant {

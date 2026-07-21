@@ -382,10 +382,10 @@ mod tests {
         attach_arm_metadata(&mut ctx, plan, 1, 2, 3, 0, 0, 4);
         assert_eq!(ctx.metadata.get(META_ARMS_RUN).unwrap(), "naive");
         assert_eq!(ctx.metadata.get(META_ARMS_GATED).unwrap(), true);
-        assert!(ctx.metadata.get(META_ARM_NAIVE_MS).is_some());
+        assert!(ctx.metadata.contains_key(META_ARM_NAIVE_MS));
         assert_eq!(ctx.metadata.get(META_ARM_NAIVE_CHUNKS).unwrap(), 4);
-        assert!(ctx.metadata.get(META_ARM_LOCAL_MS).is_none());
-        assert!(ctx.metadata.get(META_ARM_LOCAL_CHUNKS).is_none());
+        assert!(!ctx.metadata.contains_key(META_ARM_LOCAL_MS));
+        assert!(!ctx.metadata.contains_key(META_ARM_LOCAL_CHUNKS));
     }
 
     #[test]

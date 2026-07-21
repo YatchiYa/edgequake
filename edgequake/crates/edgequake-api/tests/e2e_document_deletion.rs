@@ -179,6 +179,63 @@ async fn delete_document_http(app: &axum::Router, document_id: &str) -> (StatusC
     (status, body)
 }
 
+/// Admit delete (202) then run the cascade inline (test_state may use NotifyOnly
+/// delivery so the channel is empty — reconstruct payload from the admit response).
+async fn delete_document_http_and_drain(
+    app: &axum::Router,
+    state: &AppState,
+    document_id: &str,
+) -> (StatusCode, Value) {
+    let (status, body) = delete_document_http(app, document_id).await;
+    assert_eq!(
+        status,
+        StatusCode::ACCEPTED,
+        "delete admits async cascade with 202; body={body}"
+    );
+    let track_id = body
+        .get("track_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let data = if let Ok(Some(task)) = state.tasks.queue.try_receive().await {
+        if task.task_type == TaskType::Deletion {
+            serde_json::from_value(task.task_data).expect("DeletionTaskData from queue")
+        } else {
+            panic!("expected Deletion task on queue, got {:?}", task.task_type);
+        }
+    } else {
+        edgequake_tasks::DeletionTaskData {
+            document_id: document_id.to_string(),
+            key_prefix: document_id.to_string(),
+            workspace_id: "default".into(),
+            tenant_id: "default".into(),
+            deletion_track_id: if track_id.is_empty() {
+                uuid::Uuid::new_v4().to_string()
+            } else {
+                track_id
+            },
+            metadata_key: Some(format!("{document_id}-metadata")),
+            chunk_ids: vec![format!("{document_id}-chunk-0")],
+            has_content: true,
+            content_hash: None,
+            pdf_id: None,
+            ingest_track_id: None,
+            document_status: Some("completed".into()),
+        }
+    };
+
+    let tenant = edgequake_api::TenantContext {
+        tenant_id: None,
+        workspace_id: None,
+        user_id: None,
+    };
+    edgequake_api::services::perform_document_deletion(state, &data, &tenant)
+        .await
+        .expect("perform_document_deletion cascade");
+    (status, body)
+}
+
 async fn delete_document_http_scoped(
     app: &axum::Router,
     document_id: &str,
@@ -865,9 +922,8 @@ async fn test_delete_preserves_shared_entities() {
     assert!(nodes_before.iter().any(|n| n.id == "SHARED_ENTITY"));
     assert!(nodes_before.iter().any(|n| n.id == "UNIQUE_TO_DOC_A"));
 
-    // 6. Delete Document A
-    let (status, _) = delete_document_http(&app, doc_a_id).await;
-    assert_eq!(status, StatusCode::OK);
+    // 6. Delete Document A (202 admit + drain cascade — no worker in test_state)
+    let (_status, _) = delete_document_http_and_drain(&app, &state, doc_a_id).await;
 
     // 7. Verify SHARED_ENTITY is preserved (still referenced by Doc B)
     let nodes_after = common::list_all_graph_nodes(&state.storage.graph_storage).await;
@@ -905,8 +961,7 @@ async fn test_delete_preserves_shared_entities() {
     );
 
     // 8. Clean up: Delete Document B
-    let (status_b, _) = delete_document_http(&app, doc_b_id).await;
-    assert_eq!(status_b, StatusCode::OK);
+    let (_status_b, _) = delete_document_http_and_drain(&app, &state, doc_b_id).await;
 
     // After deleting both documents, SHARED_ENTITY should also be gone
     let nodes_final = common::list_all_graph_nodes(&state.storage.graph_storage).await;

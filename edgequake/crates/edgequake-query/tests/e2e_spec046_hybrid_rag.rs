@@ -144,14 +144,19 @@ fn e2e_dynamic_truncation_gives_chunks_remainder() {
 
 #[tokio::test]
 async fn e2e_local_mode_with_ppr_config_completes() {
-    let mut config = QueryEngineConfig::default();
-    config.use_adaptive_mode = false;
-    config.use_keyword_extraction = false;
-    config.graph_walk = GraphWalkMode::Ppr;
-    config.enable_rerank = false;
-    config.enable_bm25_retrieval = false;
-    config.path_prune.drop_fraction = 0.0;
-    config.min_score = 0.0;
+    let config = QueryEngineConfig {
+        use_adaptive_mode: false,
+        use_keyword_extraction: false,
+        graph_walk: GraphWalkMode::Ppr,
+        enable_rerank: false,
+        enable_bm25_retrieval: false,
+        path_prune: PathPruneConfig {
+            drop_fraction: 0.0,
+            ..PathPruneConfig::default()
+        },
+        min_score: 0.0,
+        ..QueryEngineConfig::default()
+    };
 
     let vs = Arc::new(MemoryVectorStorage::new("ppr-local", 1536));
     vs.initialize().await.unwrap();
@@ -185,7 +190,7 @@ async fn e2e_local_mode_with_ppr_config_completes() {
         .map(|e| e.name.as_str())
         .collect();
     assert!(
-        names.iter().any(|n| *n == "ALPHA") || !resp.context.relationships.is_empty(),
+        names.contains(&"ALPHA") || !resp.context.relationships.is_empty(),
         "expected ALPHA or relationships, got entities={names:?} rels={}",
         resp.context.relationships.len()
     );

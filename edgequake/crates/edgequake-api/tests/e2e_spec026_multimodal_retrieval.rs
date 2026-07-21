@@ -6,7 +6,6 @@ use common::spec026_multimodal::{
     allow_tiny_images_in_tests, parse_accepted_upload, png_upload_request, restore_vlm_image_limits,
 };
 use common::{count_doc_chunks, wait_for_document_processed};
-use edgequake_storage::kv_keys;
 use serde_json::json;
 use serial_test::serial;
 use std::time::Duration;

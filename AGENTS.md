@@ -796,6 +796,20 @@ The system now supports real LLM providers for production deployment:
 - Rate limit API calls to LLM providers
 - Monitor costs and usage for production deployments
 
+## Release & CD (product cut)
+
+Binding runbook: **[docs/operations/release-and-cd.md](docs/operations/release-and-cd.md)**.
+
+Checklist summary:
+
+1. `make version-bump VERSION=X.Y.Z` → `make codegen-openapi-refresh` → `cargo test -p edgequake-api --test spec027_api_contract`
+2. Local gates: `cargo fmt` / `cargo clippy --workspace --all-targets -- -D warnings` / `make release-gates`
+3. Commit `release: bump to vX.Y.Z` (workspace crates are **not** published to crates.io)
+4. `git tag vX.Y.Z && git push origin vX.Y.Z` → GHCR via `release-docker.yml`
+5. Verify: `gh release view vX.Y.Z` + `docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake:X.Y.Z`
+
+Current product pin: **v0.20.0**.
+
 ## Automation & Agent Workflow
 
 - Use absolute paths for file operations

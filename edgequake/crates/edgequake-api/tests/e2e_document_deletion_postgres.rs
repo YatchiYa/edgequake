@@ -220,6 +220,7 @@ async fn create_postgres_test_state(pool: &PgPool) -> AppState {
             4,
         )),
         pdf_vision: std::sync::Arc::new(edgequake_core::PdfVisionSemaphore::new(2)),
+        read_path_db: std::sync::Arc::new(edgequake_api::read_path::ReadPathDbPermit::from_env()),
         postgres_capabilities: None,
         server_config: edgequake_api::server_config_store::ServerConfigStore::new(),
     }

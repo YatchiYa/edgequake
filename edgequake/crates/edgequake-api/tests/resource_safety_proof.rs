@@ -4,7 +4,7 @@
 
 use axum::{
     body::Body,
-    extract::{FromRef, Query, State},
+    extract::FromRef,
     http::{Request, StatusCode},
 };
 use edgequake_api::state::{GraphQueryRuntime, StorageRuntime};

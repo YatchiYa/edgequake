@@ -115,9 +115,7 @@ async fn ingested_vlm_chart_chunk_has_modality_metadata() {
         "expected modality=chart on chunked enriched markdown"
     );
 
-    if common::doc_chunk_has_modality(&workers.kv_storage, &doc_id, MODALITY_CHART).await {
-        assert!(true);
-    }
+    let _ = common::doc_chunk_has_modality(&workers.kv_storage, &doc_id, MODALITY_CHART).await;
 
     restore_vlm_image_limits();
     std::env::remove_var("EDGEQUAKE_VISION_PROVIDER");

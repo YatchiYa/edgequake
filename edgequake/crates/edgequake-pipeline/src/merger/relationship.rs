@@ -454,7 +454,7 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         }
 
         let mut batch = Vec::with_capacity(specs.len());
-        for (spec, embedding) in specs.iter().zip(embeddings.into_iter()) {
+        for (spec, embedding) in specs.iter().zip(embeddings) {
             let entity_id = EntityId::new(&spec.label);
             if entity_id.is_empty() {
                 continue;

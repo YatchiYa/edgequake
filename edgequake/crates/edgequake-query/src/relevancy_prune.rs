@@ -80,8 +80,10 @@ impl Default for RelevancyPruneConfig {
 impl RelevancyPruneConfig {
     /// Read from environment. Off unless `EDGEQUAKE_MIX_RELEVANCY_PRUNE` is truthy.
     pub fn from_env() -> Self {
-        let mut cfg = Self::default();
-        cfg.enabled = env_truthy("EDGEQUAKE_MIX_RELEVANCY_PRUNE");
+        let mut cfg = Self {
+            enabled: env_truthy("EDGEQUAKE_MIX_RELEVANCY_PRUNE"),
+            ..Self::default()
+        };
         if let Ok(v) = std::env::var("EDGEQUAKE_MIX_RELEVANCY_KEEP") {
             if let Ok(n) = v.parse::<usize>() {
                 cfg.keep_m = n.max(1);

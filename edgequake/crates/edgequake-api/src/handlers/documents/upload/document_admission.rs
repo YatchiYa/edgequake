@@ -386,7 +386,6 @@ fn resolve_admission_chunk_strategy(input: &DocumentAdmissionInput) -> ChunkStra
     let markdown_hint = input.source_type.eq_ignore_ascii_case("markdown")
         || input
             .document_type
-            .as_deref()
             .is_some_and(|d| d.eq_ignore_ascii_case("markdown"))
         || input
             .mime_type

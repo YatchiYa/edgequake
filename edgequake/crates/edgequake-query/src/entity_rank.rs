@@ -49,7 +49,7 @@ impl EntityRankMode {
 pub fn rank_entities_for_prompt(entities: &mut [RetrievedEntity], mode: EntityRankMode) {
     match mode {
         EntityRankMode::Degree => {
-            entities.sort_by(|a, b| b.degree.cmp(&a.degree));
+            entities.sort_by_key(|b| std::cmp::Reverse(b.degree));
         }
         EntityRankMode::QueryScore => {
             entities.sort_by(|a, b| {

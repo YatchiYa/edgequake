@@ -40,30 +40,32 @@ impl Default for HnswRuntimePolicy {
 impl HnswRuntimePolicy {
     /// Load all knobs from environment (SPEC-065 SSOT).
     pub fn from_env() -> Self {
-        let mut p = Self::default();
-        p.storage_mode = VectorStorageMode::from_env();
-        p.iterative_scan_mode = parse_hnsw_iterative_scan_mode(
-            &std::env::var("EDGEQUAKE_HNSW_ITERATIVE_SCAN").unwrap_or_default(),
-        );
-        p.ef_search_override = std::env::var("EDGEQUAKE_HNSW_EF_SEARCH")
-            .ok()
-            .and_then(|v| v.parse::<usize>().ok())
-            .map(|n| n.clamp(1, 1000));
-        p.max_scan_tuples = std::env::var("EDGEQUAKE_HNSW_MAX_SCAN_TUPLES")
-            .ok()
-            .and_then(|v| v.parse::<u32>().ok())
-            .unwrap_or(20_000)
-            .clamp(1, 2_147_483_647);
-        p.scan_mem_multiplier = std::env::var("EDGEQUAKE_HNSW_SCAN_MEM_MULTIPLIER")
-            .ok()
-            .and_then(|v| v.parse::<u32>().ok())
-            .map(|n| n.clamp(1, 1000));
-        p.partial_by_workspace = env_flag_true("EDGEQUAKE_HNSW_PARTIAL_BY_WORKSPACE");
-        p.columns_only_filters = env_flag_true("EDGEQUAKE_METADATA_FILTER_COLUMNS_ONLY");
-        p.partial_min_rows = std::env::var("EDGEQUAKE_HNSW_PARTIAL_MIN_ROWS")
-            .ok()
-            .and_then(|v| v.parse::<u64>().ok())
-            .unwrap_or(1_000);
+        let partial_by_workspace = env_flag_true("EDGEQUAKE_HNSW_PARTIAL_BY_WORKSPACE");
+        let p = Self {
+            storage_mode: VectorStorageMode::from_env(),
+            iterative_scan_mode: parse_hnsw_iterative_scan_mode(
+                &std::env::var("EDGEQUAKE_HNSW_ITERATIVE_SCAN").unwrap_or_default(),
+            ),
+            ef_search_override: std::env::var("EDGEQUAKE_HNSW_EF_SEARCH")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .map(|n| n.clamp(1, 1000)),
+            max_scan_tuples: std::env::var("EDGEQUAKE_HNSW_MAX_SCAN_TUPLES")
+                .ok()
+                .and_then(|v| v.parse::<u32>().ok())
+                .unwrap_or(20_000)
+                .clamp(1, 2_147_483_647),
+            scan_mem_multiplier: std::env::var("EDGEQUAKE_HNSW_SCAN_MEM_MULTIPLIER")
+                .ok()
+                .and_then(|v| v.parse::<u32>().ok())
+                .map(|n| n.clamp(1, 1000)),
+            partial_by_workspace,
+            columns_only_filters: env_flag_true("EDGEQUAKE_METADATA_FILTER_COLUMNS_ONLY"),
+            partial_min_rows: std::env::var("EDGEQUAKE_HNSW_PARTIAL_MIN_ROWS")
+                .ok()
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(1_000),
+        };
         // SPEC-066: discoverability — log once when Wave-2 partial policy is opted in.
         if p.partial_by_workspace {
             static LOG_ONCE: Once = Once::new();

@@ -112,6 +112,8 @@ fn bench_ppr_expand(c: &mut Criterion) {
                     2,
                     10,
                     GraphWalkMode::Ppr,
+                    None,
+                    None,
                 )
                 .await
                 .unwrap()
@@ -128,6 +130,8 @@ fn bench_ppr_expand(c: &mut Criterion) {
                     2,
                     10,
                     GraphWalkMode::Bfs,
+                    None,
+                    None,
                 )
                 .await
                 .unwrap()

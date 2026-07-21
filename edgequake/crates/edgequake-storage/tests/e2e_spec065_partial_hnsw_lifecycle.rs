@@ -7,6 +7,8 @@
 //!
 //! Tests that mutate process env must hold `ENV_LOCK` (cargo runs them in parallel).
 #![cfg(feature = "postgres")]
+// Env serialization requires the mutex across the whole async test body.
+#![allow(clippy::await_holding_lock)]
 
 #[path = "support/postgres_test_config.rs"]
 mod postgres_test_config;

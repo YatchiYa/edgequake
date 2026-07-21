@@ -259,7 +259,7 @@ fn contract_spec049_kind_is_figure_semantics() {
 
 #[tokio::test]
 async fn e2e_spec049_figure_filter_with_real_provider() {
-    let api_key =
+    let _api_key =
         match std::env::var("OPENAI_API_KEY").or_else(|_| std::env::var("MISTRAL_API_KEY")) {
             Ok(k) => k,
             Err(_) => {

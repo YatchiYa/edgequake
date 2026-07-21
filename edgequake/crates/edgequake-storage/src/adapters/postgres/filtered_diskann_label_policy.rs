@@ -10,15 +10,9 @@ use std::collections::HashMap;
 pub const MAX_WORKSPACE_LABELS: i16 = 32_767;
 
 /// Runtime tip flag for Filtered-DiskANN labels study path.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct FilteredDiskannLabelPolicy {
     pub enabled: bool,
-}
-
-impl Default for FilteredDiskannLabelPolicy {
-    fn default() -> Self {
-        Self { enabled: false }
-    }
 }
 
 impl FilteredDiskannLabelPolicy {

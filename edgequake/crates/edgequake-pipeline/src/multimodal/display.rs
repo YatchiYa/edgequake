@@ -167,11 +167,9 @@ fn asset_id_hint_from_item_id(
             // Fallback: strip leading im-{slug}- if present.
             let stripped = lower_id.strip_prefix("im-").unwrap_or(lower_id);
             // Drop uuid slug before first -page-
-            if let Some(idx) = stripped.find("-page-") {
-                Some(stripped[idx + 1..].to_string()) // page-NNNN...
-            } else {
-                None
-            }
+            stripped
+                .find("-page-")
+                .map(|idx| stripped[idx + 1..].to_string()) // page-NNNN...
         }
     }
 }

@@ -10,6 +10,7 @@ use super::QueryEngine;
 // Using parallel execution eliminates the N×RTT sequential latency.
 
 impl QueryEngine {
+    #[allow(clippy::too_many_arguments)] // CE / BM25 / protect knobs stay explicit
     pub(super) async fn rerank_chunks(
         &self,
         query: &str,

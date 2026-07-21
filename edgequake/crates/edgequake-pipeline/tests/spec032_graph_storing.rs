@@ -53,6 +53,7 @@ fn make_result(chunk_id: &str, entities: Vec<ExtractedEntity>) -> ExtractionResu
     }
 }
 
+#[allow(dead_code)] // retained helper for local SPEC-032 debugging
 fn new_merger() -> KnowledgeGraphMerger<MemoryGraphStorage, MemoryVectorStorage> {
     let graph = Arc::new(MemoryGraphStorage::new("spec032-test"));
     let vector = Arc::new(MemoryVectorStorage::new("spec032-test", EMBED_DIM));
@@ -166,7 +167,7 @@ async fn w03_within_doc_dedup_accumulates_source_chunks() {
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default();
     assert!(
-        sources.len() >= 1,
+        !sources.is_empty(),
         "Expected source_chunk_ids to be populated, got {:?}",
         sources
     );
@@ -285,8 +286,10 @@ async fn w04_progress_increments_during_relationship_merge() {
     graph.initialize().await.unwrap();
     vector.initialize().await.unwrap();
 
-    let mut config = MergerConfig::default();
-    config.use_llm_summarization = false;
+    let config = MergerConfig {
+        use_llm_summarization: false,
+        ..MergerConfig::default()
+    };
 
     let merger = KnowledgeGraphMerger::new(config, graph.clone(), vector.clone());
 
@@ -301,11 +304,9 @@ async fn w04_progress_increments_during_relationship_merge() {
     let mut result = ExtractionResult::new("c-0");
     result.entities.push(make_entity("Anchor", "c-0"));
     for i in 0..N_REL {
-        result.relationships.push(make_relation(
-            &format!("Anchor"),
-            &format!("Target{i}"),
-            "c-0",
-        ));
+        result
+            .relationships
+            .push(make_relation("Anchor", &format!("Target{i}"), "c-0"));
     }
 
     merger
@@ -557,7 +558,7 @@ async fn w02_relationship_vectors_globally_batched() {
         .map(|i| {
             let src = format!("NodeA{i}");
             let tgt = format!("NodeB{i}");
-            let mut r = ExtractionResult::new(&format!("chunk-{i}"));
+            let mut r = ExtractionResult::new(format!("chunk-{i}"));
             r.entities.push(make_entity(&src, &format!("chunk-{i}")));
             r.entities.push(make_entity(&tgt, &format!("chunk-{i}")));
             r.relationships

@@ -18,6 +18,11 @@ fn mention(name: &str, desc: &str) -> ExtractedEntity {
         source_chunk_ids: vec![],
         source_document_id: None,
         source_file_path: None,
+        display_name: None,
+        page_num: None,
+        figure_index: None,
+        asset_id: None,
+        mm_subtype: None,
     }
 }
 

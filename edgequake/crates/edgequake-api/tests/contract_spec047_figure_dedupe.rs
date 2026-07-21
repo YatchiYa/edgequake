@@ -12,9 +12,7 @@ fn contract_figure_not_duplicated_when_pass_a_image_precedes_caption() {
     let rel = page_figure_asset_rel_path(3, 1);
     let pages = vec![VisionPageSlice {
         page_num: 3,
-        markdown: format!(
-            "# System Overview\n\n![Pipeline diagram](fig1.png)\n\nFigure 1: Architecture overview.\n"
-        ),
+        markdown: "# System Overview\n\n![Pipeline diagram](fig1.png)\n\nFigure 1: Architecture overview.\n".to_string(),
     }];
     let mut figs = HashMap::new();
     figs.insert(

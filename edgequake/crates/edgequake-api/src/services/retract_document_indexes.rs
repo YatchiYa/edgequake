@@ -82,10 +82,7 @@ pub async fn retract_document_indexes(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use edgequake_storage::{
-        GraphStorageMutateOps, GraphStorageReadOps, MemoryGraphStorage, MemoryVectorStorage,
-        VectorStorage,
-    };
+    use edgequake_storage::{MemoryGraphStorage, MemoryVectorStorage, VectorStorage};
     use std::collections::HashMap;
 
     #[tokio::test]

@@ -196,11 +196,12 @@ pub fn format_query_context_flat(
     relationships: &[RetrievedRelationship],
     chunks: &[RetrievedChunk],
 ) -> String {
-    let mut parts = Vec::new();
-    parts.push(format_entities_section(entities));
-    parts.push(format_relations_section(relationships));
-    parts.push(format_chunks_section(chunks, 1));
-    parts.join("")
+    [
+        format_entities_section(entities),
+        format_relations_section(relationships),
+        format_chunks_section(chunks, 1),
+    ]
+    .join("")
 }
 
 /// Relation-first layout (028 A1): Relations → Entities → Chunks.
@@ -212,15 +213,14 @@ pub fn format_query_context_rr_cer(
     relationships: &[RetrievedRelationship],
     chunks: &[RetrievedChunk],
 ) -> String {
-    let mut parts = Vec::new();
-    parts.push(
+    [
         "### Context layout\n\nRelations first (multi-hop edges), then entities, then supporting chunks.\n\n"
             .to_string(),
-    );
-    parts.push(format_relations_section(relationships));
-    parts.push(format_entities_section(entities));
-    parts.push(format_chunks_section(chunks, 1));
-    parts.join("")
+        format_relations_section(relationships),
+        format_entities_section(entities),
+        format_chunks_section(chunks, 1),
+    ]
+    .join("")
 }
 
 /// Path-serialized multi-hop packing (021 F2).
