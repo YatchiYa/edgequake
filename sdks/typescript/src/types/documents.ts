@@ -380,6 +380,19 @@ export interface PdfRetryResponse {
 // ── Delete All ────────────────────────────────────────────────
 
 export interface DeleteAllResponse {
-  deleted: number;
-  message: string;
+  /** True when wipe was accepted asynchronously (HTTP 202). */
+  accepted?: boolean;
+  /** Durable WorkspaceWipe task track id. */
+  wipe_track_id?: string;
+  /** Planned delete count at admit time (final counts via WS/task). */
+  deleted_count?: number;
+  /** @deprecated Prefer deleted_count */
+  deleted?: number;
+  message?: string;
+  total_chunks_deleted?: number;
+  total_entities_removed?: number;
+  total_relationships_removed?: number;
+  total_pdfs_deleted?: number;
+  skipped_count?: number;
+  skipped_documents?: string[];
 }

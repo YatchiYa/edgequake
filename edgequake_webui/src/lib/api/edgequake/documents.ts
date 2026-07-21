@@ -532,8 +532,24 @@ export async function deleteDocument(
   return api.delete<DeleteDocumentAccepted>(`/documents/${documentId}`);
 }
 
-export async function deleteAllDocuments(): Promise<{ deleted_count: number }> {
-  return api.delete<{ deleted_count: number }>("/documents");
+export interface DeleteAllDocumentsResponse {
+  /** True when wipe was accepted asynchronously (HTTP 202). */
+  accepted?: boolean;
+  /** Durable WorkspaceWipe task track id for WS correlation / poll. */
+  wipe_track_id?: string;
+  /** Planned delete count at admit time (final counts arrive via WS/task). */
+  deleted_count: number;
+  total_chunks_deleted?: number;
+  total_entities_removed?: number;
+  total_relationships_removed?: number;
+  total_pdfs_deleted?: number;
+  skipped_count?: number;
+  skipped_documents?: string[];
+}
+
+export async function deleteAllDocuments(): Promise<DeleteAllDocumentsResponse> {
+  // ISSUE-309: server returns 202 + wipe_track_id; terminal via WS or task poll.
+  return api.delete<DeleteAllDocumentsResponse>("/documents");
 }
 
 // ---------------------------------------------------------------------------

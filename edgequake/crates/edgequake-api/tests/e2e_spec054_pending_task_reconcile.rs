@@ -522,3 +522,80 @@ async fn spec054_298_pdf_reconcile_preserves_metadata_vision_provider() {
     );
     assert_eq!(built.vision_provider, "mistral");
 }
+
+/// ISSUE-304: Interrupted failed + UI-style force=true/mode=entities must requeue
+/// via recovery enqueue SSOT when content (or pdf_id) exists.
+#[tokio::test]
+async fn issue304_interrupted_failed_force_entities_requeues() {
+    let state = AppState::test_state();
+    let app = Server::new(test_config(), state.clone()).build_router();
+    let doc_id = "issue304-interrupted-failed";
+    let metadata = json!({
+        "id": doc_id,
+        "title": "interrupted.md",
+        "status": "failed",
+        "current_stage": "failed",
+        "failure_code": "server_restart_interrupted",
+        "error_message": "Interrupted by server restart — use Reprocess to resume",
+        "stage_message": "Interrupted by server restart — use Reprocess to resume",
+        "tenant_id": TEST_TENANT_ID,
+        "workspace_id": TEST_WORKSPACE_ID,
+        "source_type": "text",
+        "updated_at": "2020-01-01T00:00:00Z",
+    });
+    state
+        .storage
+        .kv_storage
+        .upsert(&[(format!("{doc_id}-metadata"), metadata)])
+        .await
+        .unwrap();
+    state
+        .storage
+        .kv_storage
+        .upsert(&[(
+            format!("{doc_id}-content"),
+            json!({ "content": "Resume me after interrupt" }),
+        )])
+        .await
+        .unwrap();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/documents/reprocess")
+                .header("Content-Type", "application/json")
+                .header("X-Tenant-ID", TEST_TENANT_ID)
+                .header("X-Workspace-ID", TEST_WORKSPACE_ID)
+                .body(Body::from(
+                    json!({
+                        "document_id": doc_id,
+                        "force": true,
+                        "mode": "entities",
+                        "max_documents": 1
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert!(
+        response.status().is_success(),
+        "reprocess must succeed, got {}",
+        response.status()
+    );
+    let body = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let requeued = parsed["requeued"]
+        .as_u64()
+        .or_else(|| parsed["documents_requeued"].as_u64())
+        .unwrap_or(0);
+    assert!(
+        requeued >= 1,
+        "falsifiable ISSUE-304: Interrupted failed + force/entities must requeue, body={parsed}"
+    );
+}

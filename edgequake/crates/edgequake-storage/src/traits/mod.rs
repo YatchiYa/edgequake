@@ -44,8 +44,8 @@ pub use graph_read_view::GraphReadView;
 pub use graph_scan_ops::{
     collect_source_references, edge_matches_list_filter, edge_matches_relationship_id,
     edge_matches_scope_dims, edge_matches_tenant_workspace, edge_relationship_id,
-    node_matches_list_filter, node_matches_tenant_workspace, sources_match_prefixes,
-    EdgeListFilter, GraphScanOps, NodeListFilter, PagedGraphResult,
+    node_matches_list_filter, node_matches_tenant_workspace, scope_dim_matches_legacy_null,
+    sources_match_prefixes, EdgeListFilter, GraphScanOps, NodeListFilter, PagedGraphResult,
 };
 pub use kv::{kv_key_matches_like, KVStorage};
 pub use vector::{

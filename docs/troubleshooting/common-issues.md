@@ -217,8 +217,10 @@ tail -f /tmp/edgequake-backend.log
 make stop
 make dev
 
-# Or manually retry document
-curl -X POST "http://localhost:8080/api/v1/documents/$DOC_ID/reprocess"
+# Or manually retry document (POST body, not path id)
+curl -X POST "http://localhost:8080/api/v1/documents/reprocess" \
+  -H "Content-Type: application/json" \
+  -d "{\"document_id\":\"$DOC_ID\",\"force\":true,\"mode\":\"full\"}"
 ```
 
 **Reliability note**: delete, reprocess, and recovery flows are workspace-scoped and restart-safe. A deleted document should not be resurrected by stale task recovery after a backend restart.
@@ -231,22 +233,24 @@ Full cancel, fairness, lease, and multi-replica semantics: [Ingestion cancel & f
 
 #### Symptom: Document shows **Failed** with message containing "Interrupted — use Reprocess"
 
-**Cause**: A task was in `Processing` when the server restarted or its lease expired. With default settings (`EDGEQUAKE_STARTUP_AUTO_RESUME` off), stale `Processing` rows become **Failed** with an Interrupted message — not silently resumed.
+**Cause**: A task was in `Processing` when the server restarted or its lease expired. With `EDGEQUAKE_STARTUP_AUTO_RESUME=0` (opt-out), stale `Processing` rows become **Failed** with an Interrupted message. The code default when the env var is **unset** is **ON** (auto-reclaim to Pending).
 
 **Solution**:
 
 ```bash
-# Reprocess from checkpoint when available
-curl -X POST "http://localhost:8080/api/v1/documents/$DOC_ID/reprocess"
+# Reprocess (real route — body carries document_id)
+curl -X POST "http://localhost:8080/api/v1/documents/reprocess" \
+  -H "Content-Type: application/json" \
+  -d "{\"document_id\":\"$DOC_ID\",\"force\":true,\"mode\":\"full\"}"
 ```
 
-**Optional auto-resume** (reclaim stale Processing as Pending on boot):
+**Default auto-resume** (unset env): reclaim stale Processing → Pending on boot. Opt out:
 
 ```bash
-export EDGEQUAKE_STARTUP_AUTO_RESUME=1
+export EDGEQUAKE_STARTUP_AUTO_RESUME=0
 ```
 
-Product default remains **off** so operators see an explicit Reprocess CTA. Pending tasks survive restart without auto-resume — workers claim via `FOR UPDATE SKIP LOCKED`.
+Pending tasks always survive restart — workers claim via `FOR UPDATE SKIP LOCKED` whether or not auto-resume is on.
 
 ---
 
@@ -1193,7 +1197,9 @@ curl "http://localhost:8080/api/v1/graph/relationships?workspace_id=$WORKSPACE_I
 RUST_LOG="edgequake_pipeline=debug" cargo run
 
 # Then reprocess document
-curl -X POST "http://localhost:8080/api/v1/documents/$DOC_ID/reprocess"
+curl -X POST "http://localhost:8080/api/v1/documents/reprocess" \
+  -H "Content-Type: application/json" \
+  -d "{\"document_id\":\"$DOC_ID\",\"force\":true,\"mode\":\"full\"}"
 ```
 
 ---

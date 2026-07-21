@@ -16,6 +16,8 @@ export interface Document {
     | "indexed"
     | "cancelled";
   error_message?: string;
+  /** Structured failure code (e.g. `server_restart_interrupted`). */
+  failure_code?: string;
   /** Non-fatal processing notice (e.g. vision parser fallback). */
   warning_message?: string;
   file_name?: string;

@@ -233,9 +233,94 @@ pub struct DeletionTaskData {
     pub document_status: Option<String>,
 }
 
+/// Checkpoint phase for durable workspace wipe-all (issue #309).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkspaceWipePhase {
+    #[default]
+    Admitted,
+    CancellingInflight,
+    ClearingGraph,
+    ClearingVectors,
+    PurgingDocumentKv,
+    ClearingRelational,
+    Completed,
+}
+
+/// Policy for documents that are still processing when wipe-all is admitted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum WipeActivePolicy {
+    /// Cancel all in-flight workspace tasks, then clear everything.
+    #[default]
+    ForceCancelAll,
+}
+
+/// Durable workspace wipe-all task payload.
+///
+/// Handler admits and enqueues this task; the worker cancels inflight work,
+/// clears graph/vectors once, then purges document KV/PDF/mm/relational rows.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceWipeTaskData {
+    pub tenant_id: String,
+    pub workspace_id: String,
+    /// WebSocket / track correlation id (also used as task.track_id when possible).
+    pub wipe_track_id: String,
+    #[serde(default)]
+    pub phase: WorkspaceWipePhase,
+    #[serde(default)]
+    pub deleted_count: usize,
+    #[serde(default)]
+    pub skipped_document_ids: Vec<String>,
+    /// Resume cursor for batched KV purge (`metadata_key`).
+    #[serde(default)]
+    pub cursor_metadata_key: Option<String>,
+    #[serde(default)]
+    pub active_policy: WipeActivePolicy,
+    #[serde(default)]
+    pub total_chunks_deleted: usize,
+    #[serde(default)]
+    pub total_entities_removed: usize,
+    #[serde(default)]
+    pub total_relationships_removed: usize,
+    #[serde(default)]
+    pub total_pdfs_deleted: usize,
+    /// Planned delete count captured at admit (for progress UI).
+    #[serde(default)]
+    pub planned_delete_count: usize,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn workspace_wipe_task_data_round_trip() {
+        let data = WorkspaceWipeTaskData {
+            tenant_id: "default".into(),
+            workspace_id: "ws".into(),
+            wipe_track_id: "workspace_wipe-1".into(),
+            phase: WorkspaceWipePhase::ClearingGraph,
+            deleted_count: 3,
+            skipped_document_ids: vec![],
+            cursor_metadata_key: Some("doc-2-metadata".into()),
+            active_policy: WipeActivePolicy::ForceCancelAll,
+            total_chunks_deleted: 10,
+            total_entities_removed: 4,
+            total_relationships_removed: 2,
+            total_pdfs_deleted: 1,
+            planned_delete_count: 5,
+        };
+        let v = serde_json::to_value(&data).unwrap();
+        let back: WorkspaceWipeTaskData = serde_json::from_value(v).unwrap();
+        assert_eq!(back.phase, WorkspaceWipePhase::ClearingGraph);
+        assert_eq!(back.wipe_track_id, "workspace_wipe-1");
+        assert_eq!(back.planned_delete_count, 5);
+        assert_eq!(
+            crate::types::TaskType::WorkspaceWipe.to_string(),
+            "workspace_wipe"
+        );
+    }
 
     #[test]
     fn full_mode_requests_fresh_conversion() {

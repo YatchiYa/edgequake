@@ -396,7 +396,8 @@ export type WebSocketProgressMessage =
   | DeletionFailedEvent
   | BulkDeletionStartedEvent
   | BulkDeletionItemProgressEvent
-  | BulkDeletionCompletedEvent;
+  | BulkDeletionCompletedEvent
+  | BulkDeletionFailedEvent;
 
 // ============================================================================
 // Deletion Progress Event Types (SPEC-050)
@@ -468,6 +469,8 @@ export interface BulkDeletionStartedEvent {
   type: 'BulkDeletionStarted';
   data: {
     total: number;
+    wipe_track_id?: string;
+    workspace_id?: string;
   };
 }
 
@@ -483,6 +486,8 @@ export interface BulkDeletionItemProgressEvent {
     total: number;
     entities_removed: number;
     relationships_removed: number;
+    wipe_track_id?: string;
+    workspace_id?: string;
   };
 }
 
@@ -497,6 +502,21 @@ export interface BulkDeletionCompletedEvent {
     skipped_count: number;
     total_entities_removed: number;
     total_relationships_removed: number;
+    wipe_track_id?: string;
+    workspace_id?: string;
+  };
+}
+
+/**
+ * Emitted when a durable workspace wipe fails permanently.
+ */
+export interface BulkDeletionFailedEvent {
+  type: 'BulkDeletionFailed';
+  data: {
+    wipe_track_id: string;
+    workspace_id?: string;
+    error_message: string;
+    deleted_count?: number;
   };
 }
 

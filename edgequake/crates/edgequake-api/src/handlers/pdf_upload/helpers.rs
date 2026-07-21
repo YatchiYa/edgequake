@@ -98,6 +98,12 @@ pub(super) async fn create_pdf_processing_task(
         .tenant_id_uuid()
         .ok_or_else(|| ApiError::BadRequest("Tenant ID required".to_string()))?;
 
+    if crate::services::workspace_wipe_in_flight(state, workspace_id).await {
+        return Err(ApiError::Conflict(
+            "Workspace wipe in progress — retry PDF upload after wipe completes".into(),
+        ));
+    }
+
     if let Some(existing_track_id) = crate::services::admit_pdf_processing_enqueue(
         state,
         pdf_id,

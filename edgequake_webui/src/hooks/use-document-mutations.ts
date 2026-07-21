@@ -256,13 +256,20 @@ export function useDocumentMutations(
   const deleteAllMutation = useMutation({
     mutationFn: deleteAllDocuments,
     onSuccess: (data) => {
-      toast.success(
-        t("documents.deleteAll.success", { count: data.deleted_count }) ||
-          `Deleted ${data.deleted_count} documents`,
-        {
-          duration: 4000,
-        },
-      );
+      // ISSUE-309: 202 admit — show accepted until Clear dialog / WS terminal.
+      const label = data.accepted
+        ? t("documents.deleteAll.started", {
+            count: data.deleted_count,
+            defaultValue: `Wipe accepted for ${data.deleted_count} documents…`,
+          })
+        : t("documents.deleteAll.success", { count: data.deleted_count }) ||
+          `Deleted ${data.deleted_count} documents`;
+      toast.message(label, {
+        description: data.wipe_track_id
+          ? `Track: ${data.wipe_track_id}`
+          : undefined,
+        duration: 4000,
+      });
       queryClient.invalidateQueries({ queryKey: ["documents"] });
       invalidateKnowledgeGraph(queryClient);
     },

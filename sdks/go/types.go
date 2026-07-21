@@ -100,6 +100,20 @@ type ScanResponse struct {
 	FilesSkipped int `json:"files_skipped"`
 }
 
+// DeleteAllResponse is the HTTP 202 admit payload for DELETE /api/v1/documents.
+type DeleteAllResponse struct {
+	Accepted                      bool     `json:"accepted"`
+	WipeTrackID                   string   `json:"wipe_track_id,omitempty"`
+	DeletedCount                  int      `json:"deleted_count"`
+	TotalChunksDeleted            int      `json:"total_chunks_deleted"`
+	TotalEntitiesRemoved          int      `json:"total_entities_removed"`
+	TotalRelationshipsRemoved     int      `json:"total_relationships_removed"`
+	TotalPdfsDeleted              int      `json:"total_pdfs_deleted"`
+	SkippedCount                  int      `json:"skipped_count"`
+	SkippedDocuments              []string `json:"skipped_documents,omitempty"`
+	Message                       string   `json:"message,omitempty"`
+}
+
 type DeletionImpact struct {
 	EntityCount       int `json:"entity_count"`
 	RelationshipCount int `json:"relationship_count"`

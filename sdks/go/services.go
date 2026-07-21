@@ -72,8 +72,12 @@ func (s *DocumentService) Delete(ctx context.Context, id string) error {
 	return s.c.delNoContent(ctx, fmt.Sprintf("/api/v1/documents/%s", id))
 }
 
-func (s *DocumentService) DeleteAll(ctx context.Context) error {
-	return s.c.delNoContent(ctx, "/api/v1/documents")
+func (s *DocumentService) DeleteAll(ctx context.Context) (*DeleteAllResponse, error) {
+	var out DeleteAllResponse
+	if err := s.c.del(ctx, "/api/v1/documents", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 func (s *DocumentService) Track(ctx context.Context, trackID string) (*TrackStatus, error) {

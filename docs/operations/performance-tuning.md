@@ -116,7 +116,7 @@ Local providers (`ollama`, `lmstudio`) clamp to **1 concurrent task per tenant**
 | Variable | Tuning note |
 | -------- | ----------- |
 | `EDGEQUAKE_TASK_LEASE_TTL_SECS` | Default `120`; heartbeat every 60s |
-| `EDGEQUAKE_STARTUP_AUTO_RESUME` | Default off — stale Processing → Failed (Reprocess) |
+| `EDGEQUAKE_STARTUP_AUTO_RESUME` | Default ON (unset); set `0` for Interrupted Failed + manual Reprocess |
 | `EDGEQUAKE_REPLICAS` + `EDGEQUAKE_TASK_DELIVERY` | `REPLICAS>1` requires `bridged` or `notify_only` |
 
 ### Adaptive Timeouts — LargeDocumentProfile (SPEC-038 / SPEC-057 P2)

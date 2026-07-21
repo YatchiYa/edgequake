@@ -112,6 +112,6 @@ pub use tenant_limiter::{TenantConcurrencyLimiter, TenantLimiterStats};
 pub use types::{
     ChunkProgress, DeletionTaskData, DirectoryScanData, DocumentUploadData, KnowledgeInjectionData,
     PdfProcessingData, ReindexData, ReprocessMode, Task, TaskFailureInfo, TaskProgress, TaskStatus,
-    TaskType, TextInsertData,
+    TaskType, TextInsertData, WipeActivePolicy, WorkspaceWipePhase, WorkspaceWipeTaskData,
 };
 pub use worker::{SharedTaskProcessor, TaskProcessor, WorkerPool, WorkerPoolConfig};
