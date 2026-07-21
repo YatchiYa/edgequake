@@ -427,6 +427,7 @@ fn parse_task_type(s: &str) -> Result<TaskType, String> {
         "pdf_processing" => Ok(TaskType::PdfProcessing),
         "knowledge_injection" => Ok(TaskType::KnowledgeInjection),
         "deletion" => Ok(TaskType::Deletion),
+        "workspace_wipe" => Ok(TaskType::WorkspaceWipe),
         _ => Err(format!("Invalid task type: {}", s)),
     }
 }

@@ -27,6 +27,7 @@ import type {
 } from '@/types/ingestion';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useSyncExternalStore } from 'react';
+import { toast } from 'sonner';
 import { invalidateKnowledgeGraph } from '@/lib/cache-manager';
 
 function subscribe(cb: () => void): () => void {
@@ -72,12 +73,22 @@ export function useDeletionSessions(): DeletionSessionEntry[] {
           partialFailure: ev.data.partial_failure,
           error: ev.data.error,
         });
+        if (ev.data.partial_failure) {
+          toast.error('Document delete incomplete', {
+            description:
+              ev.data.error ||
+              'Graph cascade reported a partial failure; document may still appear as delete_failed.',
+          });
+        }
         // Terminal: refresh list + KG (HTTP only admitted the job).
         queryClient.invalidateQueries({ queryKey: ['documents'] });
         invalidateKnowledgeGraph(queryClient);
       } else if (message.type === 'DeletionFailed') {
         const ev = message as DeletionFailedEvent;
         applyDeletionFailed(ev.data.document_id, ev.data.error);
+        toast.error('Document delete failed', {
+          description: ev.data.error || 'Cascade could not complete; document left as delete_failed.',
+        });
         queryClient.invalidateQueries({ queryKey: ['documents'] });
       }
     };

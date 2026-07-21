@@ -162,8 +162,8 @@ async fn recover_orphaned_tasks(
 /// Normalize document metadata left in non-terminal states after a restart.
 ///
 /// Early upload stages are marked for re-upload. Later stages:
-/// - `auto_resume=true`: reset to pending + enqueue (legacy)
-/// - `auto_resume=false` (default): mark failed; user reprocesses via API/UI
+/// - `auto_resume=true` (code default when unset): reset to pending + enqueue
+/// - `auto_resume=false` (`EDGEQUAKE_STARTUP_AUTO_RESUME=0`): mark failed; user Reprocess
 ///
 /// `min_age`: when `Some`, only documents whose `updated_at` is older than this
 /// duration are recovered. Use `None` at startup (zero workers → all non-terminal
@@ -789,11 +789,14 @@ async fn async_main() -> Result<()> {
     // Opt in: EDGEQUAKE_STARTUP_AUTO_RESUME=1
     let auto_resume = edgequake_api::services::startup_task_hydrate::startup_auto_resume_enabled();
     if auto_resume {
-        info!("Startup auto-resume ENABLED (EDGEQUAKE_STARTUP_AUTO_RESUME)");
+        info!(
+            "Startup auto-resume ENABLED (default when unset; opt out with \
+             EDGEQUAKE_STARTUP_AUTO_RESUME=0)"
+        );
     } else {
         info!(
-            "Startup auto-resume disabled (default) — orphaned work is marked failed; \
-             use Reprocess to resume. Set EDGEQUAKE_STARTUP_AUTO_RESUME=1 to restore automatic resume."
+            "Startup auto-resume disabled — orphaned Processing is marked Failed/Interrupted; \
+             use Reprocess to resume. Unset EDGEQUAKE_STARTUP_AUTO_RESUME to restore default ON."
         );
     }
 
@@ -1010,7 +1013,7 @@ async fn async_main() -> Result<()> {
 
     // SPEC-054/#298-B: background_requeue_pending_tasks — hydrate after workers
     // without blocking HTTP bind on large Pending backlogs.
-    // Only when EDGEQUAKE_STARTUP_AUTO_RESUME=1 (default: manual Reprocess).
+    // When auto-resume is ON (default unset). Opt out with =0 for manual Reprocess.
     if auto_resume {
         let hydrate_storage = Arc::clone(&state.tasks.storage) as Arc<dyn TaskStorage>;
         let hydrate_queue = Arc::clone(&state.tasks.queue) as Arc<dyn TaskQueue>;

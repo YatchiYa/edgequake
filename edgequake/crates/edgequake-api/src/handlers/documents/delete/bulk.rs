@@ -1,40 +1,43 @@
 //! Bulk deletion handler for all documents.
 //!
-//! Deletes all documents in the system, skipping those actively being processed
-//! unless they are detected as "stuck" (>1 hour at 100% progress).
-//! Also cleans up orphaned graph entities/edges and PDF table entries.
+//! Admits durable `TaskType::WorkspaceWipe` (HTTP 202) with `wipe_track_id`.
+//! The worker cancels inflight work, clears graph/vectors once, then purges docs.
+//!
+//! First principles (issue #309):
+//! - Wipe-all must not run N× per-document AGE source-prefix cascades.
+//! - HTTP 202 means admitted, never completed.
 //!
 //! @implements SPEC-050: Real-time bulk deletion progress via WebSocket broadcast.
 
-use crate::error::ApiResult;
-use crate::handlers::documents_types::*;
-use crate::middleware::TenantContext;
-use crate::state::AppState;
-use axum::{extract::State, http::HeaderMap, Json};
-use chrono::Utc;
-
-use crate::middleware::resolve_workspace_uuid;
-use crate::services::document_metadata_scan::{
-    document_id_from_metadata_key, load_scoped_document_metadata_entries,
+use axum::{
+    extract::State,
+    http::{header, HeaderMap, HeaderValue, StatusCode},
+    Json,
 };
-use crate::services::{cascade_remove_document_sources, DocumentSourceScope};
+use edgequake_tasks::{Task, TaskType};
+use uuid::Uuid;
 
-use super::super::storage_helpers::{purge_persisted_tasks_for_document, purge_workspace_tasks};
+use crate::error::{ApiError, ApiResult};
+use crate::handlers::documents_types::*;
+use crate::middleware::{resolve_workspace_uuid, TenantContext};
+use crate::services::{
+    count_planned_wipe_documents, find_active_workspace_wipe_track_id, new_wipe_task_data,
+};
+use crate::state::AppState;
 
-/// Delete all documents in the system (bulk deletion).
+/// Delete all documents in the workspace (bulk wipe).
 ///
-/// This endpoint allows users to clear all documents from the system.
-/// Documents that are actively being processed (pending/processing status)
-/// will be skipped to prevent data corruption.
-///
-/// WHY: Frontend "Clear All" button needs this endpoint to remove stuck
-/// or failed documents in bulk rather than deleting one by one.
+/// Returns **202 Accepted** with `wipe_track_id` after durable enqueue.
+/// Terminal counts arrive via WebSocket `BulkDeletionCompleted` / `BulkDeletionFailed`
+/// or `GET /api/v1/tasks/{wipe_track_id}`.
 #[utoipa::path(
     delete,
     path = "/api/v1/documents",
     tag = "Documents",
     responses(
-        (status = 200, description = "Documents deleted", body = DeleteAllDocumentsResponse),
+        (status = 202, description = "Bulk wipe accepted; track via wipe_track_id / WebSocket", body = DeleteAllDocumentsResponse),
+        (status = 400, description = "Missing confirm header when required"),
+        (status = 409, description = "Workspace wipe already in flight"),
         (status = 500, description = "Internal error")
     )
 )]
@@ -42,7 +45,7 @@ pub async fn delete_all_documents(
     State(state): State<AppState>,
     headers: HeaderMap,
     tenant_ctx: TenantContext,
-) -> ApiResult<Json<DeleteAllDocumentsResponse>> {
+) -> ApiResult<(StatusCode, HeaderMap, Json<DeleteAllDocumentsResponse>)> {
     if state.security.require_delete_all_confirm {
         let confirmed = headers
             .get("x-edgequake-confirm")
@@ -53,7 +56,7 @@ pub async fn delete_all_documents(
                 workspace_id = ?tenant_ctx.workspace_id,
                 "Bulk delete rejected — missing X-EdgeQuake-Confirm header (SPEC-027 IMP-018)"
             );
-            return Err(crate::error::ApiError::BadRequest(
+            return Err(ApiError::BadRequest(
                 "Bulk delete requires header X-EdgeQuake-Confirm: delete-all-documents".into(),
             ));
         }
@@ -66,358 +69,150 @@ pub async fn delete_all_documents(
 
     tracing::info!(workspace_id = ?tenant_ctx.workspace_id, "Bulk delete documents requested");
 
-    let scoped_entries =
-        load_scoped_document_metadata_entries(state.storage.kv_storage.as_ref(), &tenant_ctx)
-            .await?;
+    let workspace_id_str = tenant_ctx.workspace_id_or_default();
+    let workspace_uuid = resolve_workspace_uuid(Some(&workspace_id_str))
+        .ok_or_else(|| ApiError::BadRequest(format!("invalid workspace_id: {workspace_id_str}")))?;
 
-    // SPEC-050: Broadcast bulk deletion started so the frontend can show progress.
-    let total_to_delete = scoped_entries.len();
-    state
-        .tasks
-        .progress_broadcaster
-        .bulk_deletion_started(total_to_delete);
-
-    let mut deleted_count = 0usize;
-    let mut total_chunks_deleted = 0usize;
-    let mut total_entities_removed = 0usize;
-    let mut total_relationships_removed = 0usize;
-    let mut skipped_count = 0usize;
-    let mut skipped_documents = Vec::new();
-    #[cfg(feature = "postgres")]
-    let mut pdf_ids_to_delete = std::collections::HashSet::new();
-
-    // Define stuck threshold: documents processing for > 1 hour are considered stuck
-    let stuck_threshold_secs = 3600; // 1 hour
-
-    for (metadata_key, metadata) in scoped_entries {
-        let document_id = document_id_from_metadata_key(&metadata_key).unwrap_or_else(|| {
-            metadata
-                .get("id")
-                .and_then(|v| v.as_str())
-                .unwrap_or(&metadata_key)
-                .to_string()
-        });
-
-        #[cfg(feature = "postgres")]
-        let mut pdf_id_for_delete: Option<String> = None;
-
-        let (status, updated_at_opt, stage_progress_opt, track_id_opt, workspace_id_opt) =
-            if let Some(obj) = metadata.as_object() {
-                let status = obj
-                    .get("status")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| "unknown".to_string());
-                let updated_at = obj
-                    .get("updated_at")
-                    .and_then(|v| v.as_str())
-                    .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
-                    .map(|dt| dt.with_timezone(&chrono::Utc));
-                let stage_progress = obj.get("stage_progress").and_then(|v| v.as_f64());
-                let track_id = obj
-                    .get("track_id")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                let workspace_id = obj
-                    .get("workspace_id")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                #[cfg(feature = "postgres")]
-                {
-                    pdf_id_for_delete = obj
-                        .get("pdf_id")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string());
-                }
-                (status, updated_at, stage_progress, track_id, workspace_id)
-            } else {
-                ("unknown".to_string(), None, None, None, None)
-            };
-
-        // Skip documents that are actively being processed (unless stuck)
-        // A document is considered stuck if:
-        //   - Status is "processing" or "pending"
-        //   - AND updated_at is more than stuck_threshold_secs ago
-        //   - AND stage_progress is 1.0 (100%) or close to it
-        let is_stuck = if status == "pending" || status == "processing" {
-            if let Some(updated_at) = updated_at_opt {
-                let age_secs = (Utc::now() - updated_at).num_seconds();
-                let high_progress = stage_progress_opt.map(|p| p >= 0.99).unwrap_or(false);
-                age_secs > stuck_threshold_secs && high_progress
-            } else {
-                false
-            }
-        } else {
-            false
-        };
-
-        if (status == "pending" || status == "processing") && !is_stuck {
-            tracing::debug!(
-                document_id = %document_id,
-                status = %status,
-                "Skipping bulk delete of document with active processing"
-            );
-            skipped_count += 1;
-            skipped_documents.push(document_id.clone());
-            continue;
-        }
-
-        if is_stuck {
-            tracing::info!(
-                document_id = %document_id,
-                status = %status,
-                "Deleting stuck document (>1 hour at 100% progress)"
-            );
-        }
-
-        // WHY: Deleting KV data without purging persisted tasks allows startup
-        // recovery to resurrect documents the user explicitly cleared.
-        let _ = purge_persisted_tasks_for_document(
-            &state,
-            &document_id,
-            track_id_opt.as_deref(),
-            workspace_id_opt.as_deref(),
-        )
-        .await;
-
-        // Attempt to delete this document within the validated workspace scope.
-        let chunk_prefix = format!("{}-chunk-", document_id);
-        let chunk_ids = state
-            .storage
-            .kv_storage
-            .keys_with_prefix(&chunk_prefix)
-            .await?;
-
-        let content_key = format!("{}-content", document_id);
-
-        // Delete from KV storage - delete takes a slice of strings
-        if !chunk_ids.is_empty() {
-            if let Err(e) = state.storage.kv_storage.delete(&chunk_ids).await {
-                tracing::warn!(document_id = %document_id, error = %e, "Failed to delete chunks");
-            }
-        }
-
-        // Delete metadata key
-        if let Err(e) = state
-            .storage
-            .kv_storage
-            .delete(std::slice::from_ref(&metadata_key))
-            .await
-        {
-            tracing::warn!(key = %metadata_key, error = %e, "Failed to delete metadata");
-        }
-
-        // Delete content key
-        if let Err(e) = state
-            .storage
-            .kv_storage
-            .delete(std::slice::from_ref(&content_key))
-            .await
-        {
-            tracing::warn!(key = %content_key, error = %e, "Failed to delete content");
-        }
-
-        // Delete from vector storage (use default storage for bulk operations)
-        if !chunk_ids.is_empty() {
-            if let Err(e) = state.storage.vector_storage.delete(&chunk_ids).await {
-                tracing::warn!(
-                    document_id = %document_id,
-                    error = %e,
-                    "Failed to delete chunk embeddings"
-                );
-            }
-        }
-
-        // SPEC-006 P1: per-document bounded graph cascade (no post-hoc full scan)
-        let scope = DocumentSourceScope::from_document_id(document_id.clone());
-        match cascade_remove_document_sources(
-            &state.storage.graph_storage,
-            None,
-            Some(&tenant_ctx),
-            &scope,
-        )
-        .await
-        {
-            Ok(stats) => {
-                total_entities_removed += stats.entities_removed;
-                total_relationships_removed += stats.relationships_removed;
-            }
-            Err(e) => {
-                tracing::warn!(
-                    document_id = %document_id,
-                    error = %e,
-                    "Failed graph cascade during bulk delete"
-                );
-            }
-        }
-
-        total_chunks_deleted += chunk_ids.len();
-        deleted_count += 1;
-
-        // SPEC-050: Broadcast per-document progress for the bulk deletion UI.
-        state
-            .tasks
-            .progress_broadcaster
-            .bulk_deletion_item_progress(
-                &document_id,
-                deleted_count,
-                total_to_delete,
-                total_entities_removed,
-                total_relationships_removed,
-            );
-
-        // SPEC-047: remove mm-assets (DB + FS) for each deleted document.
-        #[cfg(feature = "postgres")]
-        {
-            let mm_storage = state.storage.mm_asset_storage.as_deref();
-            let workspace_uuid = uuid::Uuid::parse_str(&tenant_ctx.workspace_id_or_default()).ok();
-            if let Err(e) =
-                crate::services::delete_document_mm_assets(mm_storage, &document_id, workspace_uuid)
-                    .await
-            {
-                tracing::warn!(
-                    document_id = %document_id,
-                    error = %e,
-                    "Failed to delete mm-assets during bulk delete"
-                );
-            }
-        }
-
-        #[cfg(feature = "postgres")]
-        if let Some(pdf_id) = pdf_id_for_delete {
-            pdf_ids_to_delete.insert(pdf_id);
-        }
-
-        tracing::debug!(
-            document_id = %document_id,
-            chunks = chunk_ids.len(),
-            "Deleted document in bulk operation"
+    if let Some(existing) = find_active_workspace_wipe_track_id(&state, workspace_uuid).await {
+        tracing::info!(
+            workspace_id = %workspace_uuid,
+            wipe_track_id = %existing,
+            "Workspace wipe already in flight — returning existing track"
         );
+        let mut resp_headers = HeaderMap::new();
+        if let Ok(loc) = HeaderValue::from_str(&format!("/api/v1/tasks/{existing}")) {
+            resp_headers.insert(header::LOCATION, loc);
+        }
+        return Ok((
+            StatusCode::ACCEPTED,
+            resp_headers,
+            Json(DeleteAllDocumentsResponse {
+                accepted: true,
+                wipe_track_id: Some(existing),
+                deleted_count: 0,
+                total_chunks_deleted: 0,
+                total_entities_removed: 0,
+                total_relationships_removed: 0,
+                total_pdfs_deleted: 0,
+                skipped_count: 0,
+                skipped_documents: Vec::new(),
+            }),
+        ));
     }
 
-    // Clean up pdf_documents rows linked to deleted workspace documents only.
-    // WHY: Duplicate detection uses checksum in pdf_documents; must not delete other workspaces.
-    #[allow(unused_mut)] // mut only used when postgres feature is enabled
-    let mut total_pdfs_deleted = 0usize;
-    #[cfg(feature = "postgres")]
-    if let Some(ref pdf_storage) = state.storage.pdf_storage {
-        for pdf_id_str in pdf_ids_to_delete {
-            if let Ok(pdf_uuid) = uuid::Uuid::parse_str(&pdf_id_str) {
-                if let Err(e) = pdf_storage.delete_pdf(&pdf_uuid).await {
-                    tracing::warn!(
-                        pdf_id = %pdf_id_str,
-                        error = %e,
-                        "Failed to delete PDF document during bulk delete"
-                    );
-                } else {
-                    total_pdfs_deleted += 1;
-                }
-            }
+    let planned_delete = count_planned_wipe_documents(&state, &tenant_ctx).await?;
+
+    let tenant_id_str = tenant_ctx
+        .tenant_id
+        .clone()
+        .unwrap_or_else(|| "default".to_string());
+    let tenant_uuid = Uuid::parse_str(&tenant_id_str).unwrap_or_else(|_| Uuid::nil());
+
+    // Pre-allocate track id for process-local admission before durable enqueue.
+    let provisional_track = format!("workspace_wipe-{}", Uuid::new_v4());
+    if let Some(existing) = state
+        .tasks
+        .wipe_admission
+        .try_register(workspace_uuid, &provisional_track)
+    {
+        let mut resp_headers = HeaderMap::new();
+        if let Ok(loc) = HeaderValue::from_str(&format!("/api/v1/tasks/{existing}")) {
+            resp_headers.insert(header::LOCATION, loc);
         }
+        return Ok((
+            StatusCode::ACCEPTED,
+            resp_headers,
+            Json(DeleteAllDocumentsResponse {
+                accepted: true,
+                wipe_track_id: Some(existing),
+                deleted_count: 0,
+                total_chunks_deleted: 0,
+                total_entities_removed: 0,
+                total_relationships_removed: 0,
+                total_pdfs_deleted: 0,
+                skipped_count: 0,
+                skipped_documents: Vec::new(),
+            }),
+        ));
     }
 
-    // First principle: zero documents in workspace ⇒ zero workspace-scoped graph entities.
-    // Per-document source-prefix cascade misses orphans (no source_ids, PG-only rows, etc.).
-    if let Some(workspace_uuid) = resolve_workspace_uuid(tenant_ctx.workspace_id.as_deref()) {
-        #[cfg(feature = "postgres")]
-        {
-            let relational_deleted =
-                crate::document_read_model::delete_relational_documents_for_workspace(
-                    state.pg_pool.as_ref(),
-                    &tenant_ctx,
-                )
-                .await?;
-            if relational_deleted > 0 {
-                tracing::info!(
-                    workspace_id = %workspace_uuid,
-                    relational_deleted,
-                    "Removed remaining relational document rows during bulk delete"
-                );
-            }
+    let mut task = Task::new(
+        tenant_uuid,
+        workspace_uuid,
+        TaskType::WorkspaceWipe,
+        serde_json::json!({}),
+    );
+    // Align wipe_track_id with durable task.track_id for Location / WS / poll.
+    let wipe_track_id = task.track_id.clone();
+    // Replace provisional local slot with the real track id.
+    state.tasks.wipe_admission.release(workspace_uuid);
+    if let Some(existing) = state
+        .tasks
+        .wipe_admission
+        .try_register(workspace_uuid, &wipe_track_id)
+    {
+        let mut resp_headers = HeaderMap::new();
+        if let Ok(loc) = HeaderValue::from_str(&format!("/api/v1/tasks/{existing}")) {
+            resp_headers.insert(header::LOCATION, loc);
         }
+        return Ok((
+            StatusCode::ACCEPTED,
+            resp_headers,
+            Json(DeleteAllDocumentsResponse {
+                accepted: true,
+                wipe_track_id: Some(existing),
+                deleted_count: 0,
+                total_chunks_deleted: 0,
+                total_entities_removed: 0,
+                total_relationships_removed: 0,
+                total_pdfs_deleted: 0,
+                skipped_count: 0,
+                skipped_documents: Vec::new(),
+            }),
+        ));
+    }
 
-        let tasks_purged = purge_workspace_tasks(&state, workspace_uuid).await;
-        if tasks_purged > 0 {
-            tracing::info!(
-                workspace_id = %workspace_uuid,
-                tasks_purged,
-                "Purged persisted tasks during bulk delete"
-            );
-        }
+    let data = new_wipe_task_data(
+        tenant_id_str,
+        workspace_id_str,
+        wipe_track_id.clone(),
+        planned_delete,
+    );
+    task.task_data = serde_json::to_value(&data).map_err(|e| {
+        state.tasks.wipe_admission.release(workspace_uuid);
+        ApiError::Internal(format!("Failed to serialize WorkspaceWipeTaskData: {e}"))
+    })?;
 
-        match state
-            .storage
-            .graph_storage
-            .clear_workspace(&workspace_uuid)
-            .await
-        {
-            Ok((nodes, edges)) => {
-                total_entities_removed += nodes;
-                total_relationships_removed += edges;
-                tracing::info!(
-                    workspace_id = %workspace_uuid,
-                    nodes_cleared = nodes,
-                    edges_cleared = edges,
-                    "Workspace graph cleared after bulk document delete"
-                );
-            }
-            Err(e) => {
-                tracing::warn!(
-                    workspace_id = %workspace_uuid,
-                    error = %e,
-                    "Failed workspace graph clear during bulk delete (non-fatal)"
-                );
-            }
-        }
-
-        match state
-            .storage
-            .vector_storage
-            .clear_workspace(&workspace_uuid)
-            .await
-        {
-            Ok(vectors) => {
-                tracing::info!(
-                    workspace_id = %workspace_uuid,
-                    vectors_cleared = vectors,
-                    "Workspace vectors cleared after bulk document delete"
-                );
-            }
-            Err(e) => {
-                tracing::warn!(
-                    workspace_id = %workspace_uuid,
-                    error = %e,
-                    "Failed workspace vector clear during bulk delete (non-fatal)"
-                );
-            }
-        }
+    if let Err(e) = state.enqueue_task(task).await {
+        state.tasks.wipe_admission.release(workspace_uuid);
+        return Err(e);
     }
 
     tracing::info!(
-        deleted = deleted_count,
-        skipped = skipped_count,
-        chunks = total_chunks_deleted,
-        entities = total_entities_removed,
-        relationships = total_relationships_removed,
-        pdfs = total_pdfs_deleted,
-        "Bulk delete complete"
+        workspace_id = %workspace_uuid,
+        wipe_track_id = %wipe_track_id,
+        planned_delete,
+        "Admitted durable WorkspaceWipe task"
     );
 
-    // SPEC-050: Broadcast bulk deletion completed.
-    state.tasks.progress_broadcaster.bulk_deletion_completed(
-        deleted_count,
-        skipped_count,
-        total_entities_removed,
-        total_relationships_removed,
-    );
+    let mut resp_headers = HeaderMap::new();
+    if let Ok(loc) = HeaderValue::from_str(&format!("/api/v1/tasks/{wipe_track_id}")) {
+        resp_headers.insert(header::LOCATION, loc);
+    }
 
-    Ok(Json(DeleteAllDocumentsResponse {
-        deleted_count,
-        total_chunks_deleted,
-        total_entities_removed,
-        total_relationships_removed,
-        total_pdfs_deleted,
-        skipped_count,
-        skipped_documents,
-    }))
+    Ok((
+        StatusCode::ACCEPTED,
+        resp_headers,
+        Json(DeleteAllDocumentsResponse {
+            accepted: true,
+            wipe_track_id: Some(wipe_track_id),
+            deleted_count: planned_delete,
+            total_chunks_deleted: 0,
+            total_entities_removed: 0,
+            total_relationships_removed: 0,
+            total_pdfs_deleted: 0,
+            skipped_count: 0,
+            skipped_documents: Vec::new(),
+        }),
+    ))
 }

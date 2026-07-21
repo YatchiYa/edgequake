@@ -49,6 +49,7 @@ pub mod ingestion_status;
 pub mod ingestion_status_mapper;
 pub mod injection_list;
 pub mod injection_process;
+pub mod interrupted_restart;
 pub mod isolation_context;
 pub mod job_registry;
 pub mod knowledge_rebuild;
@@ -103,6 +104,8 @@ pub mod vlm_limits;
 pub mod vlm_provider_resolver;
 pub mod workspace_content_hash_dedup;
 pub mod workspace_document_index;
+pub mod workspace_document_wipe;
+pub mod workspace_wipe_admission;
 
 pub use audit::{
     record_audit, record_compliance_event, record_compliance_event_runtime, with_request_context,
@@ -188,6 +191,9 @@ pub use injection_process::{
     build_injection_metadata, injection_doc_id, injection_list_prefix, injection_meta_key,
     run_injection_pipeline, write_injection_status,
 };
+pub use interrupted_restart::{
+    is_interrupted_restart_metadata, FAILURE_CODE_SERVER_RESTART_INTERRUPTED,
+};
 pub use large_document_profile::{
     classify_ingestion_failure, is_provider_misconfig_message, IngestionEstimate,
     IngestionFailureClass, LargeDocumentProfile,
@@ -228,6 +234,7 @@ pub use pdf_workspace_dedup::{
     find_kv_document_id_for_pdf, recycle_orphan_workspace_pdf,
     workspace_has_visible_document_for_pdf,
 };
+pub use pending_doc_task_reconcile::{ensure_task_for_pending_document, EnsureTaskOutcome};
 pub use query_context::{
     build_legacy_query_response, build_legacy_query_sources, fetch_context_by_id,
     resolve_query_llm_override, retrieve_context, search_context, FetchContextOptions,
@@ -283,4 +290,11 @@ pub use workspace_document_index::{
     list_workspace_document_ids, list_workspace_metadata_keys, remove_workspace_document_index,
     sync_after_metadata_upsert, sync_workspace_document_index, upsert_final_document_metadata,
     upsert_metadata_kv_with_index,
+};
+pub use workspace_document_wipe::{
+    broadcast_wipe_failed, count_planned_wipe_documents, new_wipe_task_data,
+    run_workspace_wipe_phases,
+};
+pub use workspace_wipe_admission::{
+    find_active_workspace_wipe_track_id, workspace_wipe_in_flight, WorkspaceWipeAdmissionRegistry,
 };

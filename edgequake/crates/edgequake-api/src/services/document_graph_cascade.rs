@@ -73,10 +73,41 @@ pub fn node_list_filter(tenant_ctx: Option<&TenantContext>) -> NodeListFilter {
     }
 }
 
+/// Discovery filter for document cascade / deletion-impact (issue #305).
+///
+/// WHY workspace-only (no `tenant_id`): source prefixes already bound the
+/// document set. Requiring `tenant_id` equality excludes legacy AGE nodes that
+/// lack tenant props — impact preview used unfiltered `None` and disagreed
+/// with the deletion worker, leaving orphan KG entities after doc delete.
+pub fn node_list_filter_for_document_scope(tenant_ctx: Option<&TenantContext>) -> NodeListFilter {
+    match tenant_ctx {
+        Some(ctx) => NodeListFilter {
+            tenant_id: None,
+            workspace_id: ctx.workspace_id.clone(),
+            entity_type: None,
+            search: None,
+            community_ids: None,
+        },
+        None => NodeListFilter::default(),
+    }
+}
+
 pub fn edge_list_filter(tenant_ctx: Option<&TenantContext>) -> EdgeListFilter {
     match tenant_ctx {
         Some(ctx) => EdgeListFilter {
             tenant_id: ctx.tenant_id.clone(),
+            workspace_id: ctx.workspace_id.clone(),
+            relationship_type: None,
+        },
+        None => EdgeListFilter::default(),
+    }
+}
+
+/// Edge discovery filter aligned with [`node_list_filter_for_document_scope`].
+pub fn edge_list_filter_for_document_scope(tenant_ctx: Option<&TenantContext>) -> EdgeListFilter {
+    match tenant_ctx {
+        Some(ctx) => EdgeListFilter {
+            tenant_id: None,
             workspace_id: ctx.workspace_id.clone(),
             relationship_type: None,
         },
@@ -118,7 +149,7 @@ pub async fn find_document_nodes(
     tenant_ctx: Option<&TenantContext>,
     scope: &DocumentSourceScope,
 ) -> ApiResult<Vec<GraphNode>> {
-    let filter = node_list_filter(tenant_ctx);
+    let filter = node_list_filter_for_document_scope(tenant_ctx);
     graph
         .find_nodes_by_source_prefixes(&filter, &scope.source_prefixes)
         .await
@@ -131,7 +162,7 @@ pub async fn find_document_edges(
     tenant_ctx: Option<&TenantContext>,
     scope: &DocumentSourceScope,
 ) -> ApiResult<Vec<GraphEdge>> {
-    let filter = edge_list_filter(tenant_ctx);
+    let filter = edge_list_filter_for_document_scope(tenant_ctx);
     graph
         .find_edges_by_source_prefixes(&filter, &scope.source_prefixes)
         .await
@@ -397,6 +428,21 @@ pub async fn cleanup_document_graph_data(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cascade_discovery_filter_is_workspace_only() {
+        let ctx = TenantContext {
+            tenant_id: Some("tenant-a".into()),
+            workspace_id: Some("ws-a".into()),
+            user_id: None,
+        };
+        let filter = node_list_filter_for_document_scope(Some(&ctx));
+        assert!(filter.tenant_id.is_none());
+        assert_eq!(filter.workspace_id.as_deref(), Some("ws-a"));
+        let edge = edge_list_filter_for_document_scope(Some(&ctx));
+        assert!(edge.tenant_id.is_none());
+        assert_eq!(edge.workspace_id.as_deref(), Some("ws-a"));
+    }
 
     #[test]
     fn source_belongs_matches_chunk_and_doc_id() {

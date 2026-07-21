@@ -41,6 +41,9 @@ pub enum TaskType {
     KnowledgeInjection,
     /// Async document cascade delete (vectors → graph → KV → relational).
     Deletion,
+    /// Durable workspace wipe-all (cancel inflight → clear graph/vectors → purge docs).
+    #[serde(rename = "workspace_wipe")]
+    WorkspaceWipe,
 }
 
 impl fmt::Display for TaskType {
@@ -53,6 +56,7 @@ impl fmt::Display for TaskType {
             Self::PdfProcessing => write!(f, "pdf_processing"),
             Self::KnowledgeInjection => write!(f, "knowledge_injection"),
             Self::Deletion => write!(f, "deletion"),
+            Self::WorkspaceWipe => write!(f, "workspace_wipe"),
         }
     }
 }

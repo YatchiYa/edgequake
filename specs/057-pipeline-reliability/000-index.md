@@ -107,7 +107,7 @@
 | `MAX_TASKS_PER_TENANT` | Fairness cap | ≈ ¾ workers; `0` disables; local clamp → 1 |
 | `EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY` | Lift local clamp | off |
 | `TASK_PROCESSING_TIMEOUT_SECS` | Whole-task timeout | 7200 (min 60) |
-| `EDGEQUAKE_STARTUP_AUTO_RESUME` | Hydrate pending on boot | **off** (SPEC-054) |
+| `EDGEQUAKE_STARTUP_AUTO_RESUME` | Hydrate / reclaim on boot | **on** (unset); set `0` for Interrupted Failed |
 | `EDGEQUAKE_STARTUP_RECONCILE_MAX` | Orphan reconcile cap | 32 |
 | `EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS` | Parallel chunk extract | provider-clamped locally |
 | `EDGEQUAKE_CHUNK_TIMEOUT_SECS` / `EDGEQUAKE_CHUNK_RETRY_DELAY_MS` | Per-chunk resilience | see `.env.example` |
