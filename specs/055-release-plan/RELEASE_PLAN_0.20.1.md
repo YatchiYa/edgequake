@@ -39,14 +39,19 @@ Phase 3 — Local quality gates
 [x] 3-B  make test-e2e-lint
 
 Phase 4 — Commit + push
-[ ] 4-A  git commit -m "release: bump to v0.20.1"
-[ ] 4-B  git push origin edgequake-main
+[x] 4-A  git commit -m "release: bump to v0.20.1" (`9cac5bc0`)
+[x] 4-B  git push origin edgequake-main
 
 Phase 5 — Tag + CI/CD
-[ ] 5-A  git tag v0.20.1 && git push origin v0.20.1
-[ ] 5-B  gh release view v0.20.1
-[ ] 5-C  docker buildx imagetools inspect GHCR tags
+[x] 5-A  git tag v0.20.1 && git push origin v0.20.1
+[x] 5-B  gh release view v0.20.1 — https://github.com/raphaelmansuy/edgequake/releases/tag/v0.20.1
+[x] 5-C  docker buildx imagetools inspect GHCR tags (api/frontend/postgres + pg16/pg17/pg18 multi-arch)
 ```
+
+Issues closed: #305, #304; #309 already closed + verified comment.
+CD run: https://github.com/raphaelmansuy/edgequake/actions/runs/29854959325 (success)
+
+
 
 ---
 
