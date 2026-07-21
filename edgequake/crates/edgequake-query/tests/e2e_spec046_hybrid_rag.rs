@@ -354,7 +354,7 @@ fn e2e_multimodal_orphan_injection_guarantees_entity() {
         modality: None,
     }];
     let mut extractions: Vec<ExtractionResult> = Vec::new();
-    inject_modality_relations(&mut extractions, &chunks, &[mm], "paper.pdf");
+    inject_modality_relations(&mut extractions, &chunks, &[mm], "paper.pdf", None);
     assert_eq!(extractions.len(), 1);
     assert!(extractions[0].entities.iter().any(|e| e.name == "eq1"));
     assert_eq!(extractions[0].entities[0].entity_type, "equation");
@@ -398,7 +398,7 @@ fn e2e_multimodal_injection_links_existing_entities() {
         output_tokens: 0,
         extraction_time_ms: 0,
     }];
-    inject_modality_relations(&mut extractions, &chunks, &[mm], "demo.pdf");
+    inject_modality_relations(&mut extractions, &chunks, &[mm], "demo.pdf", None);
     assert!(extractions[0].entities.iter().any(|e| e.name == "d1"));
     assert_eq!(extractions[0].relationships.len(), 1);
 }

@@ -1,0 +1,97 @@
+{
+  "spec": "001",
+  "stage": "smoke",
+  "valid": false,
+  "invalid_reason": "empty_context_rate;pre_fix_context_export;faithfulness_not_trustworthy",
+  "task_name": "GraphRAG-Bench/EQ-vs-LR",
+  "banner": "EQ mix vs LR mix on GraphRAG-Bench (Mistral Small + mistral-embed) \u2014 not UltraDomain win-rates, not MMLongBench LVLM.",
+  "profile_id": "P0_mistral_mix",
+  "pins": {
+    "edgequake_git_sha": "936b9236",
+    "dataset_id": "GraphRAG-Bench/GraphRAG-Bench",
+    "dataset_revision": "dc3a111e77dbaf8bbaf51ef331f3cfc9b1b5c546",
+    "fixture_id": "smoke_question_ids_v1",
+    "profile_id": "P0_mistral_mix",
+    "llm_provider": "mistral",
+    "llm_model": "mistral-small-latest",
+    "vision_provider": "mistral",
+    "vision_model": "mistral-small-latest",
+    "embedding_provider": "mistral",
+    "embedding_model": "mistral-embed",
+    "embedding_dim": 1024,
+    "eq_query_mode": "mix",
+    "lr_query_mode": "mix",
+    "chunk_size": 1200,
+    "retrieve_topk": 5,
+    "query_concurrency": 8,
+    "eval_concurrency": 8,
+    "judge": "generation_eval"
+  },
+  "metrics": {
+    "eq": {
+      "overall_acc": 0.22887735914542084,
+      "by_type": {
+        "Fact Retrieval": {
+          "rouge_score": 0.11312711399484858,
+          "answer_correctness": 0.22607291403215765
+        },
+        "Complex Reasoning": {
+          "rouge_score": 0.07275843329404746,
+          "answer_correctness": 0.23025418714112308
+        },
+        "Contextual Summarize": {
+          "answer_correctness": 0.23003818000132098,
+          "coverage_score": 0.8548717948717949
+        },
+        "Creative Generation": {
+          "answer_correctness": 0.22914415540708172,
+          "coverage_score": 0.6747180597180596,
+          "faithfulness": 0.0
+        }
+      }
+    },
+    "lr": {
+      "overall_acc": 0.23113586350759924,
+      "by_type": {
+        "Fact Retrieval": {
+          "rouge_score": 0.1993928948215157,
+          "answer_correctness": 0.23113314299678747
+        },
+        "Complex Reasoning": {
+          "rouge_score": 0.07968482341857869,
+          "answer_correctness": 0.23129286449767933
+        },
+        "Contextual Summarize": {
+          "answer_correctness": 0.23165049814509162,
+          "coverage_score": 0.8996153846153845
+        },
+        "Creative Generation": {
+          "answer_correctness": 0.2304669483908385,
+          "coverage_score": 0.7766122766122766,
+          "faithfulness": 0.0
+        }
+      }
+    },
+    "delta_eq_minus_lr": {
+      "overall_acc": -0.002258504362178393
+    }
+  },
+  "ops": {
+    "n_questions": 40,
+    "eq_empty_answer_rate": 0.0,
+    "lr_empty_answer_rate": 0.0,
+    "eq_query_p50_ms": 10922,
+    "eq_query_p95_ms": 24747,
+    "lr_query_p50_ms": 1817,
+    "lr_query_p95_ms": 2692,
+    "ingest_wall_s": 0.0,
+    "eq_empty_context_rate": 1.0,
+    "lr_empty_context_rate": 1.0
+  },
+  "created_at_utc": "2026-07-19T01:04:00Z",
+  "accuracy_audit": {
+    "at_utc": "2026-07-19T01:15:12Z",
+    "finding": "Both SUTs exported empty context (EQ extract_answer missed snippet; LR aquery dropped context). Acc/ROUGE may still be informative; Creative faithfulness=0.0 is an artifact.",
+    "fix": "bench001 client snippet+include_references; LR aquery_llm; P9 empty_context_rate gate"
+  }
+}

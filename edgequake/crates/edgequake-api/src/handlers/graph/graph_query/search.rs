@@ -202,7 +202,7 @@ pub async fn search_nodes(
 
             GraphNodeResponse {
                 id: node.id.clone(),
-                label: node.id,
+                label: crate::handlers::graph::graph_node_label(&node),
                 node_type: entity_type,
                 description,
                 degree,

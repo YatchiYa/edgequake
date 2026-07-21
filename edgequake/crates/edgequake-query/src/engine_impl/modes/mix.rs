@@ -167,26 +167,29 @@ fn fuse_mix_contexts(
 
     match crate::fusion::mix_fusion_mode_from_env() {
         crate::fusion::MixFusionMode::Rrf => {
-        let mut chunk_lookup: HashMap<String, RetrievedChunk> = HashMap::new();
-        for ctx in [&local_context, &global_context, naive_context] {
-            for chunk in &ctx.chunks {
-                chunk_lookup
-                    .entry(chunk.id.clone())
-                    .or_insert_with(|| chunk.clone());
+            let mut chunk_lookup: HashMap<String, RetrievedChunk> = HashMap::new();
+            for ctx in [&local_context, &global_context, naive_context] {
+                for chunk in &ctx.chunks {
+                    chunk_lookup
+                        .entry(chunk.id.clone())
+                        .or_insert_with(|| chunk.clone());
+                }
             }
-        }
 
-        let ranked_lists = [
-            local_context.chunks.iter().map(|c| c.id.clone()).collect(),
-            global_context.chunks.iter().map(|c| c.id.clone()).collect(),
-            naive_context.chunks.iter().map(|c| c.id.clone()).collect(),
-        ];
-        let weights = [w_local, w_global, w_naive];
-        let fused =
-            crate::fusion::reciprocal_rank_fusion(&ranked_lists, &weights, crate::fusion::RRF_K);
-        for chunk in crate::fusion::chunks_from_rrf_ranking(&fused, &chunk_lookup, max_chunks) {
-            merged.add_chunk(chunk);
-        }
+            let ranked_lists = [
+                local_context.chunks.iter().map(|c| c.id.clone()).collect(),
+                global_context.chunks.iter().map(|c| c.id.clone()).collect(),
+                naive_context.chunks.iter().map(|c| c.id.clone()).collect(),
+            ];
+            let weights = [w_local, w_global, w_naive];
+            let fused = crate::fusion::reciprocal_rank_fusion(
+                &ranked_lists,
+                &weights,
+                crate::fusion::RRF_K,
+            );
+            for chunk in crate::fusion::chunks_from_rrf_ranking(&fused, &chunk_lookup, max_chunks) {
+                merged.add_chunk(chunk);
+            }
         }
         crate::fusion::MixFusionMode::RoundRobin => {
             for chunk in crate::hybrid_merge::round_robin_merge_chunks(
@@ -199,35 +202,35 @@ fn fuse_mix_contexts(
             }
         }
         crate::fusion::MixFusionMode::Weighted => {
-        let mut blended: HashMap<String, (RetrievedChunk, f32)> = HashMap::new();
-        for (ctx, weight) in [
-            (&local_context, w_local),
-            (&global_context, w_global),
-            (naive_context, w_naive),
-        ] {
-            if weight <= 0.0 {
-                continue;
+            let mut blended: HashMap<String, (RetrievedChunk, f32)> = HashMap::new();
+            for (ctx, weight) in [
+                (&local_context, w_local),
+                (&global_context, w_global),
+                (naive_context, w_naive),
+            ] {
+                if weight <= 0.0 {
+                    continue;
+                }
+                let norm = min_max_normalize_scores(&ctx.chunks);
+                for (chunk, &norm_score) in ctx.chunks.iter().zip(norm.iter()) {
+                    let contribution = weight * norm_score;
+                    blended
+                        .entry(chunk.id.clone())
+                        .and_modify(|(_, score)| {
+                            if contribution > *score {
+                                *score = contribution;
+                            }
+                        })
+                        .or_insert_with(|| (chunk.clone(), contribution));
+                }
             }
-            let norm = min_max_normalize_scores(&ctx.chunks);
-            for (chunk, &norm_score) in ctx.chunks.iter().zip(norm.iter()) {
-                let contribution = weight * norm_score;
-                blended
-                    .entry(chunk.id.clone())
-                    .and_modify(|(_, score)| {
-                        if contribution > *score {
-                            *score = contribution;
-                        }
-                    })
-                    .or_insert_with(|| (chunk.clone(), contribution));
-            }
-        }
 
-        let mut chunks: Vec<(RetrievedChunk, f32)> = blended.into_values().collect();
-        chunks.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        for (mut chunk, score) in chunks.into_iter().take(max_chunks) {
-            chunk.score = score.max(0.0);
-            merged.add_chunk(chunk);
-        }
+            let mut chunks: Vec<(RetrievedChunk, f32)> = blended.into_values().collect();
+            chunks.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            for (mut chunk, score) in chunks.into_iter().take(max_chunks) {
+                chunk.score = score.max(0.0);
+                merged.add_chunk(chunk);
+            }
         }
     }
 

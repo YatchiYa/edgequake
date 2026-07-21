@@ -65,10 +65,7 @@ pub fn blend_protect_first(
             continue;
         }
         // Replace lowest-priority non-protected slot (end of CE list).
-        if let Some(pos) = out
-            .iter()
-            .rposition(|c| !protected.contains(&c.id))
-        {
+        if let Some(pos) = out.iter().rposition(|c| !protected.contains(&c.id)) {
             seen.remove(&out[pos].id);
             seen.insert(chunk.id.clone());
             out[pos] = chunk.clone();
@@ -160,7 +157,12 @@ mod tests {
 
     #[test]
     fn protect_preserves_ce_order_and_includes_missing() {
-        let original = vec![chunk("a", 1.0), chunk("b", 0.9), chunk("c", 0.8), chunk("d", 0.7)];
+        let original = vec![
+            chunk("a", 1.0),
+            chunk("b", 0.9),
+            chunk("c", 0.8),
+            chunk("d", 0.7),
+        ];
         // CE buries a,b (first-stage top-2) at the bottom
         let ce = vec![
             chunk("d", 0.99),

@@ -7,8 +7,8 @@
 use crate::context::QueryContext;
 use crate::error::Result;
 use edgequake_observability::{
-    query_preview, record_query_arm_duration, record_rag_retrieval_outcome, with_rag_retrieval_span,
-    RagRetrievalAttrs,
+    query_preview, record_query_arm_duration, record_rag_retrieval_outcome,
+    with_rag_retrieval_span, RagRetrievalAttrs,
 };
 use std::time::Instant;
 

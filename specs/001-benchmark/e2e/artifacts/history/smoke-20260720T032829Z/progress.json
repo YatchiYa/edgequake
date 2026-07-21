@@ -1,0 +1,304 @@
+{
+  "stage": "smoke",
+  "started_at_utc": "2026-07-20T03:25:44Z",
+  "updated_at_utc": "2026-07-20T03:28:29Z",
+  "phases": [
+    {
+      "phase": "prepare",
+      "status": "done",
+      "at_utc": "2026-07-20T03:25:44Z",
+      "run_elapsed_s": 0.002067791996523738,
+      "detail": "n_questions=40 docs=1 chars=1052159 chunk=1200/100",
+      "counts": {
+        "n_questions": 40,
+        "n_docs": 1,
+        "corpus_chars": 1052159,
+        "chunk_token_size": 1200,
+        "chunk_overlap_token_size": 100,
+        "ingest_capped": false,
+        "query_concurrency": 4,
+        "eval_concurrency": 24
+      }
+    },
+    {
+      "phase": "query_parallel",
+      "status": "running",
+      "at_utc": "2026-07-20T03:25:44Z",
+      "run_elapsed_s": 0.17083687498234212,
+      "detail": "EQ=running LR=running",
+      "phase_elapsed_s": 2.2919848561286926e-06
+    },
+    {
+      "phase": "query_lr",
+      "status": "running",
+      "at_utc": "2026-07-20T03:25:50Z",
+      "run_elapsed_s": 6.359931292012334,
+      "detail": "LR query 5/40",
+      "done": 5,
+      "total": 40,
+      "phase_elapsed_s": 4.551779999979772,
+      "eta_s": 31.8624599998584
+    },
+    {
+      "phase": "query_eq",
+      "status": "running",
+      "at_utc": "2026-07-20T03:25:51Z",
+      "run_elapsed_s": 7.107321624993347,
+      "detail": "EQ query 1/40 id=Medical-13fe78ff",
+      "done": 1,
+      "total": 40,
+      "phase_elapsed_s": 6.840049999998882,
+      "eta_s": 266.7619499999564
+    },
+    {
+      "phase": "query_lr",
+      "status": "running",
+      "at_utc": "2026-07-20T03:25:55Z",
+      "run_elapsed_s": 11.47131720802281,
+      "detail": "LR query 10/40",
+      "done": 10,
+      "total": 40,
+      "phase_elapsed_s": 9.663130415952764,
+      "eta_s": 28.989391247858297
+    },
+    {
+      "phase": "query_parallel",
+      "status": "running",
+      "at_utc": "2026-07-20T03:25:59Z",
+      "run_elapsed_s": 15.17348816699814,
+      "detail": "EQ=running LR=running",
+      "phase_elapsed_s": 15.002366458065808
+    },
+    {
+      "phase": "query_lr",
+      "status": "running",
+      "at_utc": "2026-07-20T03:26:00Z",
+      "run_elapsed_s": 15.57269029202871,
+      "detail": "LR query 15/40",
+      "done": 15,
+      "total": 40,
+      "phase_elapsed_s": 13.764066207921132,
+      "eta_s": 22.94011034653522
+    },
+    {
+      "phase": "query_eq",
+      "status": "running",
+      "at_utc": "2026-07-20T03:26:00Z",
+      "run_elapsed_s": 16.16092266701162,
+      "detail": "EQ query 5/40 id=Medical-189210ec",
+      "done": 5,
+      "total": 40,
+      "phase_elapsed_s": 15.893756750039756,
+      "eta_s": 111.25629725027831
+    },
+    {
+      "phase": "query_lr",
+      "status": "running",
+      "at_utc": "2026-07-20T03:26:09Z",
+      "run_elapsed_s": 25.098362582968548,
+      "detail": "LR query 25/40",
+      "done": 25,
+      "total": 40,
+      "phase_elapsed_s": 23.290164457983337,
+      "eta_s": 13.974098674790001
+    },
+    {
+      "phase": "query_eq",
+      "status": "running",
+      "at_utc": "2026-07-20T03:26:11Z",
+      "run_elapsed_s": 27.48816187493503,
+      "detail": "EQ query 10/40 id=Medical-ba2c8007",
+      "done": 10,
+      "total": 40,
+      "phase_elapsed_s": 27.22097287501674,
+      "eta_s": 81.66291862505022
+    },
+    {
+      "phase": "query_lr",
+      "status": "running",
+      "at_utc": "2026-07-20T03:26:13Z",
+      "run_elapsed_s": 29.0419445829466,
+      "detail": "LR query 30/40",
+      "done": 30,
+      "total": 40,
+      "phase_elapsed_s": 27.233713040943258,
+      "eta_s": 9.077904346981086
+    },
+    {
+      "phase": "query_parallel",
+      "status": "running",
+      "at_utc": "2026-07-20T03:26:14Z",
+      "run_elapsed_s": 30.184570999932475,
+      "detail": "EQ=running LR=running",
+      "phase_elapsed_s": 30.013508875039406
+    },
+    {
+      "phase": "query_lr",
+      "status": "running",
+      "at_utc": "2026-07-20T03:26:23Z",
+      "run_elapsed_s": 38.70065854198765,
+      "detail": "LR query 40/40",
+      "done": 40,
+      "total": 40,
+      "phase_elapsed_s": 36.89240791590419,
+      "eta_s": 0.0
+    },
+    {
+      "phase": "query_eq",
+      "status": "running",
+      "at_utc": "2026-07-20T03:26:26Z",
+      "run_elapsed_s": 41.804383166949265,
+      "detail": "EQ query 15/40 id=Medical-32b9ef93",
+      "done": 15,
+      "total": 40,
+      "phase_elapsed_s": 41.537202042061836,
+      "eta_s": 69.22867007010306
+    },
+    {
+      "phase": "query_parallel",
+      "status": "running",
+      "at_utc": "2026-07-20T03:26:29Z",
+      "run_elapsed_s": 45.1898558329558,
+      "detail": "EQ=running LR=done",
+      "phase_elapsed_s": 45.01869316701777
+    },
+    {
+      "phase": "query_eq",
+      "status": "running",
+      "at_utc": "2026-07-20T03:26:37Z",
+      "run_elapsed_s": 52.725947833037935,
+      "detail": "EQ query 20/40 id=Medical-31580ac0",
+      "done": 20,
+      "total": 40,
+      "phase_elapsed_s": 52.45851229201071,
+      "eta_s": 52.45851229201071
+    },
+    {
+      "phase": "query_parallel",
+      "status": "running",
+      "at_utc": "2026-07-20T03:26:44Z",
+      "run_elapsed_s": 60.19382187502924,
+      "detail": "EQ=running LR=done",
+      "phase_elapsed_s": 60.022290291963145
+    },
+    {
+      "phase": "query_eq",
+      "status": "running",
+      "at_utc": "2026-07-20T03:26:49Z",
+      "run_elapsed_s": 65.18111925001722,
+      "detail": "EQ query 25/40 id=Medical-6809b810",
+      "done": 25,
+      "total": 40,
+      "phase_elapsed_s": 64.91221637499984,
+      "eta_s": 38.947329824999905
+    },
+    {
+      "phase": "query_parallel",
+      "status": "running",
+      "at_utc": "2026-07-20T03:26:59Z",
+      "run_elapsed_s": 75.19643220794387,
+      "detail": "EQ=running LR=done",
+      "phase_elapsed_s": 75.02527004200965
+    },
+    {
+      "phase": "query_eq",
+      "status": "running",
+      "at_utc": "2026-07-20T03:27:09Z",
+      "run_elapsed_s": 84.5906960000284,
+      "detail": "EQ query 30/40 id=Medical-8f9d5dde",
+      "done": 30,
+      "total": 40,
+      "phase_elapsed_s": 84.32351150002796,
+      "eta_s": 28.107837166675985
+    },
+    {
+      "phase": "query_parallel",
+      "status": "running",
+      "at_utc": "2026-07-20T03:27:14Z",
+      "run_elapsed_s": 90.20265812496655,
+      "detail": "EQ=running LR=done",
+      "phase_elapsed_s": 90.0315643750364
+    },
+    {
+      "phase": "query_eq",
+      "status": "running",
+      "at_utc": "2026-07-20T03:27:22Z",
+      "run_elapsed_s": 98.00526337500196,
+      "detail": "EQ query 35/40 id=Medical-0c5272d1",
+      "done": 35,
+      "total": 40,
+      "phase_elapsed_s": 97.73799495806452,
+      "eta_s": 13.962570708294932
+    },
+    {
+      "phase": "query_parallel",
+      "status": "running",
+      "at_utc": "2026-07-20T03:27:29Z",
+      "run_elapsed_s": 105.21041883295402,
+      "detail": "EQ=running LR=done",
+      "phase_elapsed_s": 105.03925233299378
+    },
+    {
+      "phase": "query_eq",
+      "status": "running",
+      "at_utc": "2026-07-20T03:27:39Z",
+      "run_elapsed_s": 115.4025386669673,
+      "detail": "EQ query 40/40 id=Medical-c8a65fec",
+      "done": 40,
+      "total": 40,
+      "phase_elapsed_s": 115.13546208303887,
+      "eta_s": 0.0
+    },
+    {
+      "phase": "query_parallel",
+      "status": "running",
+      "at_utc": "2026-07-20T03:27:44Z",
+      "run_elapsed_s": 120.21700937498827,
+      "detail": "EQ=done LR=done",
+      "phase_elapsed_s": 120.04611404205207
+    },
+    {
+      "phase": "query_parallel",
+      "status": "done",
+      "at_utc": "2026-07-20T03:27:44Z",
+      "run_elapsed_s": 120.2180544580333,
+      "detail": "eq=40 lr=40",
+      "counts": {
+        "eq_empty_context_rate": 0.0,
+        "lr_empty_context_rate": 0.0
+      }
+    },
+    {
+      "phase": "score_parallel",
+      "status": "running",
+      "at_utc": "2026-07-20T03:28:29Z",
+      "run_elapsed_s": 165.3120064169634,
+      "detail": "EQ=done LR=done eval\u2225=24",
+      "phase_elapsed_s": 45.060540584032424
+    },
+    {
+      "phase": "score_parallel",
+      "status": "done",
+      "at_utc": "2026-07-20T03:28:29Z",
+      "run_elapsed_s": 165.31409120792523,
+      "detail": "elapsed=45s"
+    }
+  ],
+  "current_phase": "score_parallel",
+  "counts": {
+    "n_questions": 40,
+    "n_docs": 1,
+    "corpus_chars": 1052159,
+    "chunk_token_size": 1200,
+    "chunk_overlap_token_size": 100,
+    "ingest_capped": false,
+    "query_concurrency": 4,
+    "eval_concurrency": 24,
+    "done": 10,
+    "total": 10,
+    "eta_s": 0.0,
+    "eq_empty_context_rate": 0.0,
+    "lr_empty_context_rate": 0.0
+  },
+  "run_elapsed_s": 165.31409754196648
+}

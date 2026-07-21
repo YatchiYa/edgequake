@@ -152,7 +152,7 @@ pub async fn get_graph(
             .into_iter()
             .map(|(node, degree)| GraphNodeResponse {
                 id: node.id.clone(),
-                label: node.id.clone(),
+                label: crate::handlers::graph::graph_node_label(&node),
                 node_type: node
                     .properties
                     .get("entity_type")

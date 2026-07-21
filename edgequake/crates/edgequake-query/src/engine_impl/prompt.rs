@@ -192,9 +192,7 @@ The answer must integrate relevant facts from the Knowledge Graph and Document C
             "specific" | "entity_first" | "specificity" => AnswerPromptStyle::Specific,
             _ => AnswerPromptStyle::Default,
         };
-        if base == AnswerPromptStyle::Specific
-            && !Self::specific_types_allow(question_type)
-        {
+        if base == AnswerPromptStyle::Specific && !Self::specific_types_allow(question_type) {
             return AnswerPromptStyle::Default;
         }
         base
@@ -572,8 +570,7 @@ Generate a comprehensive, well-structured answer that integrates observations fr
                     "Streaming vision chat failed; falling back to text-only stream"
                 );
                 // Text-only fallback: prefer streaming if supported, else one-shot.
-                let prompt =
-                    self.build_prompt(query, context, system_prompt_extension, &[], None);
+                let prompt = self.build_prompt(query, context, system_prompt_extension, &[], None);
                 if provider.supports_streaming() {
                     provider
                         .stream(&prompt)

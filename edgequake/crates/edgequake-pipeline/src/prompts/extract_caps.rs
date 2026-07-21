@@ -89,7 +89,8 @@ pub fn apply_extraction_caps(result: &mut ExtractionResult, caps: ExtractionCaps
         result.relationships.truncate(max_rels);
     }
 
-    let truncated = before_ents != result.entities.len() || before_rels != result.relationships.len();
+    let truncated =
+        before_ents != result.entities.len() || before_rels != result.relationships.len();
     if truncated {
         result.metadata.insert(
             "extract_caps_applied".to_string(),

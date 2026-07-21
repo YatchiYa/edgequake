@@ -98,6 +98,26 @@ pub struct ExtractedEntity {
     /// Original file path of the source document.
     #[serde(default)]
     pub source_file_path: Option<String>,
+
+    /// Human-facing label for multimodal entities (066). Identity stays in `name`.
+    #[serde(default)]
+    pub display_name: Option<String>,
+
+    /// 1-indexed page for multimodal crops (066).
+    #[serde(default)]
+    pub page_num: Option<u32>,
+
+    /// Figure index within page when applicable (066).
+    #[serde(default)]
+    pub figure_index: Option<u32>,
+
+    /// `document_mm_assets.asset_id` stem hint (e.g. `page-0002-fig-01`).
+    #[serde(default)]
+    pub asset_id: Option<String>,
+
+    /// VLM image type / subtype (Chart, Flowchart, …).
+    #[serde(default)]
+    pub mm_subtype: Option<String>,
 }
 
 impl ExtractedEntity {
@@ -117,6 +137,11 @@ impl ExtractedEntity {
             source_chunk_ids: Vec::new(),
             source_document_id: None,
             source_file_path: None,
+            display_name: None,
+            page_num: None,
+            figure_index: None,
+            asset_id: None,
+            mm_subtype: None,
         }
     }
 
@@ -150,6 +175,23 @@ impl ExtractedEntity {
     /// Set the source file path.
     pub fn with_source_file_path(mut self, file_path: impl Into<String>) -> Self {
         self.source_file_path = Some(file_path.into());
+        self
+    }
+
+    /// Attach multimodal display metadata (066). Does not change identity (`name`).
+    pub fn with_mm_display(
+        mut self,
+        display_name: impl Into<String>,
+        page_num: Option<u32>,
+        figure_index: Option<u32>,
+        asset_id: Option<String>,
+        mm_subtype: Option<String>,
+    ) -> Self {
+        self.display_name = Some(display_name.into());
+        self.page_num = page_num;
+        self.figure_index = figure_index;
+        self.asset_id = asset_id;
+        self.mm_subtype = mm_subtype;
         self
     }
 

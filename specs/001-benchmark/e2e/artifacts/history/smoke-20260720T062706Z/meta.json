@@ -1,0 +1,10 @@
+{
+  "created_at_utc": "2026-07-20T06:27:06Z",
+  "profile_id": "A4_acc_ci_a1_rr_cer_v1_lrlike_arms_v2",
+  "valid": true,
+  "verdict": "STATISTICAL TIE on answer quality",
+  "git_sha": "936b9236",
+  "archive": "specs/001-benchmark/e2e/artifacts/history/smoke-20260720T062706Z",
+  "task_name": "GraphRAG-Bench/EQ-vs-LR",
+  "can_claim_beats_lightrag": false
+}

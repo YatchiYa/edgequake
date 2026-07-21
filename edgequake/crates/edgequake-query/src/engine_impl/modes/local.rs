@@ -56,17 +56,10 @@ impl QueryEngine {
             .iter()
             .filter(|r| r.score >= self.config.min_score)
             .filter_map(|r| {
-                let bare =
-                    crate::helpers::decode_entity_name_from_result(&r.id, &r.metadata);
-                let bare = if bare.is_empty() {
-                    r.id.clone()
-                } else {
-                    bare
-                };
-                let graph_id = crate::helpers::graph_entity_id_for_workspace(
-                    &bare,
-                    workspace_id.as_deref(),
-                );
+                let bare = crate::helpers::decode_entity_name_from_result(&r.id, &r.metadata);
+                let bare = if bare.is_empty() { r.id.clone() } else { bare };
+                let graph_id =
+                    crate::helpers::graph_entity_id_for_workspace(&bare, workspace_id.as_deref());
                 if graph_id.is_empty() {
                     None
                 } else {
@@ -80,15 +73,9 @@ impl QueryEngine {
             .filter(|r| r.score >= self.config.min_score)
             .filter_map(|r| {
                 let bare = crate::helpers::decode_entity_name_from_result(&r.id, &r.metadata);
-                let bare = if bare.is_empty() {
-                    r.id.clone()
-                } else {
-                    bare
-                };
-                let graph_id = crate::helpers::graph_entity_id_for_workspace(
-                    &bare,
-                    workspace_id.as_deref(),
-                );
+                let bare = if bare.is_empty() { r.id.clone() } else { bare };
+                let graph_id =
+                    crate::helpers::graph_entity_id_for_workspace(&bare, workspace_id.as_deref());
                 if graph_id.is_empty() {
                     None
                 } else {
@@ -210,6 +197,7 @@ impl QueryEngine {
             }
         }
 
+        // Chunk fetch SSOT uses vector_type=chunk (not the entity ANN `mf` above).
         let (chunks, sparse_outcome) = append_score_ranked_chunks(
             self,
             &context,
@@ -219,7 +207,6 @@ impl QueryEngine {
             workspace_id,
             vector_storage,
             &retrieval_config,
-            mf.as_ref(),
             allowed_document_ids,
             "local",
         )

@@ -132,7 +132,10 @@ async fn e2e_spec060_mix_arm_walls_documented() {
         let _e2e = start.elapsed();
 
         let l = resp.stats.arm_local_ms.expect("arm_local_ms in Mix stats");
-        let g = resp.stats.arm_global_ms.expect("arm_global_ms in Mix stats");
+        let g = resp
+            .stats
+            .arm_global_ms
+            .expect("arm_global_ms in Mix stats");
         let n = resp.stats.arm_naive_ms.expect("arm_naive_ms in Mix stats");
         local_ms.push(l);
         global_ms.push(g);

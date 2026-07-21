@@ -210,6 +210,8 @@ make bench001-c1e   # TBD
 - One confound per pack; pin every env in SUMMARY.  
 - Do not claim ≤1.5× until generate (+ KEYWORD role) is honest under the same pins.
 
+**Product follow-through (065):** Smart/`mode=mix` arm set = LightRAG mix (always local∥global∥naive). Product `EDGEQUAKE_MIX_ARM_GATE` defaults **off**; Linked/`hybrid` keeps intent gating. See [065](./065-smart-lightrag-mix-arms.md).
+
 ---
 
 ## 8. Sources (law)

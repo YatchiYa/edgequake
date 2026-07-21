@@ -4,10 +4,10 @@
 //! Scale via `EDGEQUAKE_PERF_SCALE=prod|large` (5k seed @1536).
 #![cfg(feature = "postgres")]
 
-#[path = "../../edgequake-storage/tests/support/postgres_test_config.rs"]
-mod postgres_test_config;
 #[path = "../../edgequake-storage/tests/support/perf_stress.rs"]
 mod perf_stress;
+#[path = "../../edgequake-storage/tests/support/postgres_test_config.rs"]
+mod postgres_test_config;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;

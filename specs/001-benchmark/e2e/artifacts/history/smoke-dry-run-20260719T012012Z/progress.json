@@ -1,0 +1,121 @@
+{
+  "stage": "smoke-dry-run",
+  "started_at_utc": "2026-07-19T01:15:54Z",
+  "updated_at_utc": "2026-07-19T01:20:12Z",
+  "phases": [
+    {
+      "phase": "prepare",
+      "status": "done",
+      "at_utc": "2026-07-19T01:15:54Z",
+      "detail": "n_questions=4 n_corpus=1",
+      "counts": {
+        "n_questions": 4,
+        "query_concurrency": 2,
+        "eval_concurrency": 8
+      }
+    },
+    {
+      "phase": "query",
+      "status": "running",
+      "at_utc": "2026-07-19T01:15:54Z",
+      "detail": "dry_run stubs"
+    },
+    {
+      "phase": "query",
+      "status": "done",
+      "at_utc": "2026-07-19T01:15:54Z",
+      "detail": "dry_run"
+    },
+    {
+      "phase": "score_parallel",
+      "status": "done",
+      "at_utc": "2026-07-19T01:15:54Z"
+    },
+    {
+      "phase": "prepare",
+      "status": "done",
+      "at_utc": "2026-07-19T01:16:04Z",
+      "detail": "n_questions=2 n_corpus=1",
+      "counts": {
+        "n_questions": 2,
+        "query_concurrency": 8,
+        "eval_concurrency": 8
+      }
+    },
+    {
+      "phase": "query",
+      "status": "running",
+      "at_utc": "2026-07-19T01:16:04Z",
+      "detail": "dry_run stubs"
+    },
+    {
+      "phase": "query",
+      "status": "done",
+      "at_utc": "2026-07-19T01:16:04Z",
+      "detail": "dry_run"
+    },
+    {
+      "phase": "score_parallel",
+      "status": "running",
+      "at_utc": "2026-07-19T01:16:04Z",
+      "detail": "prefer_official=False eval_concurrency=8"
+    },
+    {
+      "phase": "score_parallel",
+      "status": "done",
+      "at_utc": "2026-07-19T01:16:04Z"
+    },
+    {
+      "phase": "report",
+      "status": "done",
+      "at_utc": "2026-07-19T01:16:04Z",
+      "detail": "valid=False archive=smoke-dry-run-20260719T011604Z",
+      "counts": {
+        "eq_acc": 1.0,
+        "lr_acc": 1.0
+      }
+    },
+    {
+      "phase": "prepare",
+      "status": "done",
+      "at_utc": "2026-07-19T01:20:12Z",
+      "detail": "n_questions=2 n_corpus=1",
+      "counts": {
+        "n_questions": 2,
+        "query_concurrency": 8,
+        "eval_concurrency": 8
+      }
+    },
+    {
+      "phase": "query",
+      "status": "running",
+      "at_utc": "2026-07-19T01:20:12Z",
+      "detail": "dry_run stubs"
+    },
+    {
+      "phase": "query",
+      "status": "done",
+      "at_utc": "2026-07-19T01:20:12Z",
+      "detail": "dry_run"
+    },
+    {
+      "phase": "score_parallel",
+      "status": "running",
+      "at_utc": "2026-07-19T01:20:12Z",
+      "detail": "prefer_official=False eval_concurrency=8"
+    },
+    {
+      "phase": "score_parallel",
+      "status": "done",
+      "at_utc": "2026-07-19T01:20:12Z"
+    }
+  ],
+  "current_phase": "score_parallel",
+  "counts": {
+    "n_questions": 2,
+    "query_concurrency": 8,
+    "eval_concurrency": 8,
+    "eq_acc": 1.0,
+    "lr_acc": 1.0
+  }
+}

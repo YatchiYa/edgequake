@@ -1,0 +1,53 @@
+{
+  "stage": "smoke-fast",
+  "started_at_utc": "2026-07-19T01:22:13Z",
+  "updated_at_utc": "2026-07-19T01:23:51Z",
+  "phases": [
+    {
+      "phase": "prepare",
+      "status": "done",
+      "at_utc": "2026-07-19T01:22:13Z",
+      "detail": "n_questions=8 n_corpus=1",
+      "counts": {
+        "n_questions": 8,
+        "query_concurrency": 12,
+        "eval_concurrency": 12
+      }
+    },
+    {
+      "phase": "query_parallel",
+      "status": "running",
+      "at_utc": "2026-07-19T01:22:13Z",
+      "detail": "EQ\u2225LR concurrency=12"
+    },
+    {
+      "phase": "query_parallel",
+      "status": "done",
+      "at_utc": "2026-07-19T01:22:27Z",
+      "detail": "eq=8 lr=8",
+      "counts": {
+        "eq_empty_context_rate": 0.0,
+        "lr_empty_context_rate": 0.0
+      }
+    },
+    {
+      "phase": "score_parallel",
+      "status": "running",
+      "at_utc": "2026-07-19T01:22:27Z",
+      "detail": "prefer_official=True eval_concurrency=12"
+    },
+    {
+      "phase": "score_parallel",
+      "status": "done",
+      "at_utc": "2026-07-19T01:23:51Z"
+    }
+  ],
+  "current_phase": "score_parallel",
+  "counts": {
+    "n_questions": 8,
+    "query_concurrency": 12,
+    "eval_concurrency": 12,
+    "eq_empty_context_rate": 0.0,
+    "lr_empty_context_rate": 0.0
+  }
+}

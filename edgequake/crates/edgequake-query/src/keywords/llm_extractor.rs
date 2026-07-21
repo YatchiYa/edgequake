@@ -194,10 +194,7 @@ Now extract keywords from the query above. Respond with JSON only:"#
         }
         let heuristic = QueryIntent::classify_heuristic(query);
         if matches!(heuristic, QueryIntent::Factual)
-            && matches!(
-                intent,
-                QueryIntent::Exploratory | QueryIntent::Relational
-            )
+            && matches!(intent, QueryIntent::Exploratory | QueryIntent::Relational)
         {
             tracing::debug!(
                 llm = %intent,
@@ -632,16 +629,11 @@ Done!"#;
     fn factual_bias_upgrades_exploratory_when_enabled() {
         std::env::set_var("EDGEQUAKE_INTENT_FACTUAL_BIAS", "1");
         let q = "What diagnostic method is required for MGZL?";
-        let out = LLMKeywordExtractor::maybe_apply_factual_intent_bias(
-            q,
-            QueryIntent::Exploratory,
-        );
+        let out = LLMKeywordExtractor::maybe_apply_factual_intent_bias(q, QueryIntent::Exploratory);
         assert_eq!(out, QueryIntent::Factual);
         std::env::remove_var("EDGEQUAKE_INTENT_FACTUAL_BIAS");
-        let out_off = LLMKeywordExtractor::maybe_apply_factual_intent_bias(
-            q,
-            QueryIntent::Exploratory,
-        );
+        let out_off =
+            LLMKeywordExtractor::maybe_apply_factual_intent_bias(q, QueryIntent::Exploratory);
         assert_eq!(out_off, QueryIntent::Exploratory);
     }
 }

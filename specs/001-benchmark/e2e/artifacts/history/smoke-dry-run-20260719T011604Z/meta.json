@@ -1,0 +1,12 @@
+{
+  "stage": "smoke",
+  "fixture_id": "smoke_question_ids_v1",
+  "n_questions": 2,
+  "n_corpus_chunks": 1,
+  "dry_run": true,
+  "query_only": false,
+  "eq_only": false,
+  "lr_only": false,
+  "query_concurrency": 8,
+  "eval_concurrency": 8
+}

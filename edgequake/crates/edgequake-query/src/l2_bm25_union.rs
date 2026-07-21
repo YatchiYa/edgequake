@@ -115,7 +115,10 @@ mod tests {
             RetrievedChunk::new("a", "a", 1.0),
             RetrievedChunk::new("b", "b", 0.9),
         ];
-        let ce = vec![RetrievedChunk::new("b", "b", 0.5), RetrievedChunk::new("c", "c", 0.4)];
+        let ce = vec![
+            RetrievedChunk::new("b", "b", 0.5),
+            RetrievedChunk::new("c", "c", 0.4),
+        ];
         let u = union_bm25_ce_chunks(&bm25, &ce, L2Bm25Mode::UnionBm25First);
         let ids: Vec<&str> = u.iter().map(|c| c.id.as_str()).collect();
         assert_eq!(ids, vec!["a", "b", "c"]);
@@ -126,6 +129,9 @@ mod tests {
         let bm25 = vec![RetrievedChunk::new("a", "a", 1.0)];
         let ce = vec![RetrievedChunk::new("c", "c", 0.4)];
         let u = union_bm25_ce_chunks(&bm25, &ce, L2Bm25Mode::Replace);
-        assert_eq!(u.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), vec!["a"]);
+        assert_eq!(
+            u.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(),
+            vec!["a"]
+        );
     }
 }

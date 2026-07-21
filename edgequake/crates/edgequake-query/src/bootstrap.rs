@@ -171,7 +171,9 @@ mod tests {
         restore_env("EDGEQUAKE_RERANKER_BASE_URL", saved.4);
         let r = r.expect("override should build");
         assert_eq!(r.model(), "qwen3-rerank");
-        assert!(r.name().contains("http") || r.name().contains("aliyun") || r.name().contains("rerank"));
+        assert!(
+            r.name().contains("http") || r.name().contains("aliyun") || r.name().contains("rerank")
+        );
     }
 
     fn env_lock() -> std::sync::MutexGuard<'static, ()> {

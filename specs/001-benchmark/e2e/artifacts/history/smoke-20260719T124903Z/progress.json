@@ -1,0 +1,29 @@
+{
+  "stage": "smoke",
+  "started_at_utc": "2026-07-19T12:48:52Z",
+  "updated_at_utc": "2026-07-19T12:49:03Z",
+  "phases": [
+    {
+      "phase": "score_parallel",
+      "status": "running",
+      "at_utc": "2026-07-19T12:49:03Z",
+      "run_elapsed_s": 765.5720561250346,
+      "detail": "EQ=done LR=done eval\u2225=24",
+      "phase_elapsed_s": 30.10051683394704
+    },
+    {
+      "phase": "score_parallel",
+      "status": "done",
+      "at_utc": "2026-07-19T12:49:03Z",
+      "run_elapsed_s": 765.5732202909421,
+      "detail": "elapsed=30s"
+    }
+  ],
+  "current_phase": "score_parallel",
+  "counts": {
+    "done": 10,
+    "total": 10,
+    "eta_s": 0.0
+  },
+  "run_elapsed_s": 765.5732295829803
+}

@@ -1,11 +1,13 @@
-//! SPEC-047 / 020 B2 — Hybrid arm honesty e2e.
+//! SPEC-047 / 020 B2 / 065 — Mix & Hybrid arm honesty e2e.
 //!
-//! Law: `mode=hybrid` must not collapse Factual→naive-only (smoke showed ~96%
-//! `naive_only_rate`). Mix keeps the aggressive cost gate; Hybrid uses
-//! [`intent_arm_mask_hybrid`].
+//! Law:
+//! - Product Smart (`mode=mix`) = LightRAG mix → always local ∥ global ∥ naive.
+//! - Linked (`mode=hybrid`) keeps [`intent_arm_mask_hybrid`] so Factual is
+//!   local+naive (not naive-only, not full Mix tax).
 
 use edgequake_query::mix_weights::{
-    intent_arm_mask, intent_arm_mask_hybrid, resolve_arm_plan, resolve_hybrid_arm_plan,
+    intent_arm_mask, intent_arm_mask_hybrid, parse_mix_arm_gate, resolve_arm_plan,
+    resolve_hybrid_arm_plan,
 };
 use edgequake_query::{QueryEngineConfig, QueryIntent};
 
@@ -27,19 +29,33 @@ fn e2e_b2_hybrid_factual_is_not_naive_only() {
 }
 
 #[test]
-fn e2e_b2_mix_factual_stays_naive_only_for_cost() {
-    let plan = resolve_arm_plan(
-        &QueryEngineConfig::default(),
-        None,
-        QueryIntent::Factual,
-        true,
-    );
-    assert!(!plan.run_local && !plan.run_global && plan.run_naive);
-    assert_eq!(intent_arm_mask(QueryIntent::Factual), (false, false, true));
+fn e2e_065_mix_factual_runs_all_arms_lightrag() {
+    // Gate on or off — Mix mask is always-on LightRAG arms.
+    for gate in [true, false] {
+        let plan = resolve_arm_plan(
+            &QueryEngineConfig::default(),
+            None,
+            QueryIntent::Factual,
+            gate,
+        );
+        assert!(
+            plan.run_local && plan.run_global && plan.run_naive,
+            "Mix Factual must run all three arms (gate={gate}); got {plan:?}"
+        );
+    }
+    assert_eq!(intent_arm_mask(QueryIntent::Factual), (true, true, true));
     assert_eq!(
         intent_arm_mask_hybrid(QueryIntent::Factual),
         (true, false, true),
-        "hybrid mask must diverge from Mix on Factual"
+        "hybrid mask must diverge from Mix on Factual (skips global)"
+    );
+}
+
+#[test]
+fn e2e_065_mix_arm_gate_defaults_off() {
+    assert!(
+        !parse_mix_arm_gate(""),
+        "unset EDGEQUAKE_MIX_ARM_GATE must default off (product Smart = LR mix)"
     );
 }
 
@@ -51,4 +67,21 @@ fn e2e_b2_hybrid_relational_keeps_page_arm() {
         "hybrid Relational must keep naive for page evidence; got {plan:?}"
     );
     assert!(plan.run_local && plan.run_global);
+}
+
+#[test]
+fn e2e_065_mix_all_intents_keep_three_arms() {
+    for intent in [
+        QueryIntent::Factual,
+        QueryIntent::Relational,
+        QueryIntent::Exploratory,
+        QueryIntent::Comparative,
+        QueryIntent::Procedural,
+    ] {
+        let plan = resolve_arm_plan(&QueryEngineConfig::default(), None, intent, true);
+        assert!(
+            plan.run_local && plan.run_global && plan.run_naive,
+            "Mix {intent:?} must keep LightRAG three-arm set; got {plan:?}"
+        );
+    }
 }

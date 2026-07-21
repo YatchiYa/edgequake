@@ -182,7 +182,10 @@ async fn e2e_spec061_postgres_mix_hybrid_arm_walls() {
             "detail": "mock_provider context_only",
         })
     );
-    eprintln!("OK SPEC-061 Postgres Hybrid arms: naive_p95={hn}ms (samples={})", hybrid_naive.len());
+    eprintln!(
+        "OK SPEC-061 Postgres Hybrid arms: naive_p95={hn}ms (samples={})",
+        hybrid_naive.len()
+    );
 
     // Typed filter contract still present
     let local_src = include_str!("../src/engine_impl/modes/local.rs");
