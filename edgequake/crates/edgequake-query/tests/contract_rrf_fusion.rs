@@ -44,6 +44,12 @@ fn contract_mix_fusion_env_modes() {
         MixFusionMode::Weighted
     );
 
+    std::env::set_var("EDGEQUAKE_MIX_FUSION", "round_robin");
+    assert_eq!(
+        edgequake_query::fusion::mix_fusion_mode_from_env(),
+        MixFusionMode::RoundRobin
+    );
+
     std::env::remove_var("EDGEQUAKE_MIX_FUSION");
     assert_eq!(
         edgequake_query::fusion::mix_fusion_mode_from_env(),

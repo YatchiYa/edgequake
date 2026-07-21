@@ -100,7 +100,9 @@ async fn wave2_ready_missing_index_then_warmup() {
         .await
         .expect("probe missing");
     assert!(
-        blocker.as_ref().is_some_and(|b| b.contains("wave2_ann_missing")),
+        blocker
+            .as_ref()
+            .is_some_and(|b| b.contains("wave2_ann_missing")),
         "expected catalog miss blocker, got {blocker:?}"
     );
     let msg = blocker.unwrap();

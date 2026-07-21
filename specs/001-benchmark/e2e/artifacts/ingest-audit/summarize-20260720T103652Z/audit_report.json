@@ -1,0 +1,2061 @@
+{
+  "utc": "20260720T103653Z",
+  "workspace_id": "2a7bcb2f-b156-4c49-9229-67f5bcde22a4",
+  "lr_stage": "smoke",
+  "eq_graph": "eq_eq_default_graph",
+  "predictions_eq": "specs/001-benchmark/e2e/artifacts/history/smoke-20260720T095809Z/predictions_eq.json",
+  "predictions_lr": "specs/001-benchmark/e2e/artifacts/history/smoke-20260720T095809Z/predictions_lr.json",
+  "first_principles": {
+    "chain": "q \u2192 entity hit \u2192 source_chunk_ids \u2192 Mix C \u2192 Summarize ER",
+    "laws": {
+      "LINK": "EQ empty source_ids on exact-name topic entity that LR links",
+      "SELECT": "both linked; EQ Mix hits fewer question content bigrams than LR",
+      "GEN_OR_EVAL": "EQ Mix question-bigram hits not below LR"
+    },
+    "probes": {
+      "topic_in_C": "verbatim question content bigrams (not evidence paraphrases)",
+      "entity_links": "exact normalized name pairs only"
+    },
+    "forbidden": "No +N / \u2265p% / domain-needle / token-overlap promote heuristics"
+  },
+  "global": {
+    "eq_nodes": 4560,
+    "eq_edges": 8247,
+    "eq_entities_bare": 4559,
+    "lr_entities": 3580,
+    "eq_zero_chunk": 344,
+    "lr_zero_chunk": 0,
+    "eq_mean_chunks": 2.228,
+    "lr_mean_chunks": 2.204,
+    "note": "Zero-chunk counts are hygiene observables. They are not a promote gate; they only matter if LINK law fires on question-topic entities."
+  },
+  "summarize_questions": [
+    {
+      "id": "Medical-0002d2de",
+      "question": "How are bone cancers staged and what factors are considered in determining the stage?",
+      "query_intent": "exploratory",
+      "n_evidence": 6,
+      "eq_mix_parts": 6,
+      "eq_mix_chars": 41061,
+      "lr_mix_parts": 14,
+      "lr_mix_chars": 78664,
+      "question_bigrams": [
+        "bone cancers",
+        "cancers staged",
+        "staged stage"
+      ],
+      "eq_topic": {
+        "n_parts": 6,
+        "n_bigrams": 3,
+        "n_bigrams_hit": 0,
+        "hit_bigrams": [],
+        "missed_bigrams": [
+          "bone cancers",
+          "cancers staged",
+          "staged stage"
+        ]
+      },
+      "lr_topic": {
+        "n_parts": 14,
+        "n_bigrams": 3,
+        "n_bigrams_hit": 1,
+        "hit_bigrams": [
+          "bone cancers"
+        ],
+        "missed_bigrams": [
+          "cancers staged",
+          "staged stage"
+        ]
+      },
+      "topic_norms": [
+        "BONE_CANCERS",
+        "BONE_CANCER",
+        "CANCERS_STAGED",
+        "STAGED_STAGE",
+        "BONE_CANCERS_STAGED",
+        "CANCERS_STAGED_STAGE",
+        "BONE",
+        "CANCERS",
+        "CANCER",
+        "STAGED",
+        "STAGE",
+        "BONE_CANCERS_ARE",
+        "THE_TNM",
+        "THE_TNM_SYSTEM"
+      ],
+      "exact_pairs": [
+        {
+          "norm": "BONE_CANCER",
+          "eq_name": "BONE_CANCER",
+          "lr_name": "Bone cancer",
+          "eq_n_chunks": 5,
+          "lr_n_chunks": 6,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "BONE",
+          "eq_name": "BONE",
+          "lr_name": "Bone",
+          "eq_n_chunks": 17,
+          "lr_n_chunks": 17,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "CANCERS",
+          "eq_name": "CANCERS",
+          "lr_name": null,
+          "eq_n_chunks": 3,
+          "lr_n_chunks": null,
+          "link_gap": "EQ_ONLY"
+        },
+        {
+          "norm": "CANCER",
+          "eq_name": "CANCER",
+          "lr_name": "Cancer",
+          "eq_n_chunks": 46,
+          "lr_n_chunks": 34,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "STAGE",
+          "eq_name": "STAGE",
+          "lr_name": "Stage",
+          "eq_n_chunks": 2,
+          "lr_n_chunks": 3,
+          "link_gap": "BOTH_LINKED"
+        }
+      ],
+      "eq_part_heads": [
+        ". Options for non\u2013fertility-sparing treatment are provided next according to stage. EBRT or chemoradiation may be needed after surgery. Stage 1A1 Stage 1A1 canc",
+        "7 The anus 8 Risk factors 9 Diagnosis and treatment planning 13 Staging 14 Fertility and family planning 15 Key points Anal cancer basics The anus Anal cancer i",
+        ". Key points Cervical cancer is most often diagnosed by cervical biopsy. Samples of cervical tissue are removed and tested for dysplasia and cancer. A cone biop",
+        ". In general, to be diagnosed with AML, 20 percent or more myeloblasts must be present in the bone marrow or blood. This means that at least 1 out of every 5 ce",
+        ". In general, to be diagnosed with AML, 20 percent or more myeloblasts must be present in the bone marrow or blood. This means that at least 1 out of every 5 ce",
+        ". This tube will allow your kidneys to drain. Your urine will now exit the body through a small opening called a stoma. A small disposable bag attached to the o"
+      ],
+      "lr_part_heads": [
+        "physis (growth plate) and diaphysis. Diaphysis \u2013 the middle region of the bone. Physis \u2013 the growth plate, which is made of cartilage. After skeletal maturity, ",
+        ", and produce hormones. Bone is light, yet strong and can regrow. What's in this book? This book is organized into the following chapters: Chapter 2: Testing fo",
+        "ostic stage also includes the assumption that you are treated with the standard-of-care approaches. Prognostic stages are divided into clinical and pathologic. ",
+        "This is called a somatic mutation or somatic change. MSI-H/dMMR mutation Microsatellites are short, repeated strings of DNA. When errors or defects occur, they ",
+        "It might include cancer in the base of the skull or carotid artery. Metastatic \u2013 This is cancer that has spread to other parts of the body, including lung and d",
+        "If the cancer doesn't take up iodine, targeted therapy may be an option. But, if the metastatic tumors are growing slowly (or not at all) and aren't causing sym",
+        "treatment begins. Online portals are a great way to access your test results. Please discuss your results with your health care provider A medical history and p",
+        ", siblings, and children. Next, talk to half-siblings, aunts and uncles, nieces and nephews, grandparents, and grandchildren. Write down what you learn about yo"
+      ],
+      "verdict": {
+        "law": "SELECT",
+        "why": "Topic entities are linked on both sides (not LINK starvation), yet EQ Mix contains fewer of the question's own content bigrams than LR \u2014 Mix admission selected the wrong neighborhood.",
+        "facts": {
+          "eq_mix_parts": 6,
+          "lr_mix_parts": 14,
+          "eq_question_bigrams_hit": 0,
+          "lr_question_bigrams_hit": 1,
+          "eq_missed_bigrams": [
+            "bone cancers",
+            "cancers staged",
+            "staged stage"
+          ],
+          "lr_missed_bigrams": [
+            "cancers staged",
+            "staged stage"
+          ],
+          "n_exact_pairs_both_linked": 4,
+          "n_exact_pairs_eq_empty_lr_linked": 0,
+          "n_exact_pairs_lr_only": 0,
+          "eq_empty_names": [],
+          "both_linked_sample": [
+            {
+              "norm": "BONE_CANCER",
+              "eq_n": 5,
+              "lr_n": 6
+            },
+            {
+              "norm": "BONE",
+              "eq_n": 17,
+              "lr_n": 17
+            },
+            {
+              "norm": "CANCER",
+              "eq_n": 46,
+              "lr_n": 34
+            },
+            {
+              "norm": "STAGE",
+              "eq_n": 2,
+              "lr_n": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "Medical-1991db28",
+      "question": "How is follow-up care managed in patients with glioma?",
+      "query_intent": "exploratory",
+      "n_evidence": 3,
+      "eq_mix_parts": 22,
+      "eq_mix_chars": 116308,
+      "lr_mix_parts": 16,
+      "lr_mix_chars": 94243,
+      "question_bigrams": [
+        "follow-up care",
+        "care managed",
+        "managed patients",
+        "patients glioma"
+      ],
+      "eq_topic": {
+        "n_parts": 22,
+        "n_bigrams": 4,
+        "n_bigrams_hit": 0,
+        "hit_bigrams": [],
+        "missed_bigrams": [
+          "follow-up care",
+          "care managed",
+          "managed patients",
+          "patients glioma"
+        ]
+      },
+      "lr_topic": {
+        "n_parts": 16,
+        "n_bigrams": 4,
+        "n_bigrams_hit": 1,
+        "hit_bigrams": [
+          "follow-up care"
+        ],
+        "missed_bigrams": [
+          "care managed",
+          "managed patients",
+          "patients glioma"
+        ]
+      },
+      "topic_norms": [
+        "FOLLOW_UP_CARE",
+        "CARE_MANAGED",
+        "MANAGED_PATIENTS",
+        "MANAGED_PATIENT",
+        "PATIENTS_GLIOMA",
+        "FOLLOW_UP_CARE_MANAGED",
+        "CARE_MANAGED_PATIENTS",
+        "CARE_MANAGED_PATIENT",
+        "MANAGED_PATIENTS_GLIOMA",
+        "FOLLOW_UP",
+        "CARE",
+        "MANAGED",
+        "PATIENTS",
+        "PATIENT",
+        "GLIOMA",
+        "FOLLOW_UP_CARE_FOR",
+        "FOLLOW_UP_MRI",
+        "FOLLOW_UP_MRI_IS",
+        "PERIODIC_IMAGING",
+        "PERIODIC_IMAGING_IS"
+      ],
+      "exact_pairs": [
+        {
+          "norm": "FOLLOW_UP_CARE",
+          "eq_name": "FOLLOW-UP_CARE",
+          "lr_name": "Follow-up care",
+          "eq_n_chunks": 4,
+          "lr_n_chunks": 1,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "FOLLOW_UP",
+          "eq_name": "FOLLOW_UP",
+          "lr_name": null,
+          "eq_n_chunks": 0,
+          "lr_n_chunks": null,
+          "link_gap": "EQ_ONLY"
+        },
+        {
+          "norm": "CARE",
+          "eq_name": "CARE",
+          "lr_name": null,
+          "eq_n_chunks": 1,
+          "lr_n_chunks": null,
+          "link_gap": "EQ_ONLY"
+        },
+        {
+          "norm": "PATIENTS",
+          "eq_name": "PATIENTS",
+          "lr_name": null,
+          "eq_n_chunks": 1,
+          "lr_n_chunks": null,
+          "link_gap": "EQ_ONLY"
+        },
+        {
+          "norm": "PATIENT",
+          "eq_name": "PATIENT",
+          "lr_name": "Patient",
+          "eq_n_chunks": 16,
+          "lr_n_chunks": 22,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "GLIOMA",
+          "eq_name": "GLIOMA",
+          "lr_name": "Glioma",
+          "eq_n_chunks": 3,
+          "lr_n_chunks": 6,
+          "link_gap": "BOTH_LINKED"
+        }
+      ],
+      "eq_part_heads": [
+        ". Imaging If you have signs or symptoms of a brain tumor, your care team will want to try to find it and see what it looks like. Imaging tests are used to make ",
+        "About glioma What is a glioma? What causes a glioma? Are there types of gliomas? How are gliomas diagnosed? Can gliomas be cured? What\u2019s next? Key points Being ",
+        ". The next chapter explains the tests needed to diagnose and monitor this disease. A message to caregivers and loved ones This book is for you, too. This book w",
+        ". Create files for insurance forms, medical records, and test results. You can do the same on your computer, phone, or other electronic device. Keep a list of c",
+        ". Keep a list of contact information for your care team and update your primary care physician (PCP) regarding any changes. Include details about the specific t",
+        ". Keep a list of contact information for your care team and update your primary care physician (PCP) regarding any changes. Include details about the specific t",
+        ". After the fifth year, visits are generally spaced out to once per year. Or you and your doctor may agree on a different schedule after discussing your persona",
+        ". It\u2019s important to identify the exact type of tumor you have to predict the course of your disease and plan your treatment. There are 3 ways to classify a glio"
+      ],
+      "lr_part_heads": [
+        "main treatments for a glioma are surgery, radiation therapy, and chemotherapy. These are often combined with one another for more complete treatment. Another op",
+        "information on the treatment of metastatic anal cancer. If cancer returns to the anus If cancer returns to the anal area, surgery to remove the anus is recommen",
+        "much sleep you get or how much activity you do. However, physical activity or exercise can sometimes help. Nausea and vomiting \u2013 Nausea and vomiting can be caus",
+        ", and at what age they were diagnosed. It\u2019s important to know the specific type of cancer or where the cancer started, if it is in multiple locations, and if th",
+        "remove only enough of the tumor to make a diagnosis. A stereotactic biopsy is done by a neurosurgeon in an operating room. First, you\u2019ll be fitted with a frame ",
+        "1 tumors grow slowly and are usually benign. Many people with grade 1 gliomas can be treated with surgery alone. But if the tumor grows back, additional therapy",
+        "cell rescue First, stem cells are removed (harvested) from the patient\u2019s blood or bone marrow. The harvested stem cells are concentrated and frozen for preserva",
+        "ative medicine. Don\u2019t be shy. Be your own advocate\u2014or ask someone close to be one for you.\u201d Multidisciplinary care means that a number of doctors, specialists, "
+      ],
+      "verdict": {
+        "law": "SELECT",
+        "why": "Topic entities are linked on both sides (not LINK starvation), yet EQ Mix contains fewer of the question's own content bigrams than LR \u2014 Mix admission selected the wrong neighborhood.",
+        "facts": {
+          "eq_mix_parts": 22,
+          "lr_mix_parts": 16,
+          "eq_question_bigrams_hit": 0,
+          "lr_question_bigrams_hit": 1,
+          "eq_missed_bigrams": [
+            "follow-up care",
+            "care managed",
+            "managed patients",
+            "patients glioma"
+          ],
+          "lr_missed_bigrams": [
+            "care managed",
+            "managed patients",
+            "patients glioma"
+          ],
+          "n_exact_pairs_both_linked": 3,
+          "n_exact_pairs_eq_empty_lr_linked": 0,
+          "n_exact_pairs_lr_only": 0,
+          "eq_empty_names": [],
+          "both_linked_sample": [
+            {
+              "norm": "FOLLOW_UP_CARE",
+              "eq_n": 4,
+              "lr_n": 1
+            },
+            {
+              "norm": "PATIENT",
+              "eq_n": 16,
+              "lr_n": 22
+            },
+            {
+              "norm": "GLIOMA",
+              "eq_n": 3,
+              "lr_n": 6
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "Medical-8f9d5dde",
+      "question": "What are the main diagnostic methods and biomarkers used for prostate cancer across its stages?",
+      "query_intent": "exploratory",
+      "n_evidence": 12,
+      "eq_mix_parts": 17,
+      "eq_mix_chars": 111517,
+      "lr_mix_parts": 12,
+      "lr_mix_chars": 71098,
+      "question_bigrams": [
+        "diagnostic methods",
+        "methods biomarkers",
+        "biomarkers prostate",
+        "prostate cancer",
+        "cancer across",
+        "across its",
+        "its stages"
+      ],
+      "eq_topic": {
+        "n_parts": 17,
+        "n_bigrams": 7,
+        "n_bigrams_hit": 1,
+        "hit_bigrams": [
+          "prostate cancer"
+        ],
+        "missed_bigrams": [
+          "diagnostic methods",
+          "methods biomarkers",
+          "biomarkers prostate",
+          "cancer across",
+          "across its",
+          "its stages"
+        ]
+      },
+      "lr_topic": {
+        "n_parts": 12,
+        "n_bigrams": 7,
+        "n_bigrams_hit": 1,
+        "hit_bigrams": [
+          "prostate cancer"
+        ],
+        "missed_bigrams": [
+          "diagnostic methods",
+          "methods biomarkers",
+          "biomarkers prostate",
+          "cancer across",
+          "across its",
+          "its stages"
+        ]
+      },
+      "topic_norms": [
+        "DIAGNOSTIC_METHODS",
+        "DIAGNOSTIC_METHOD",
+        "METHODS_BIOMARKERS",
+        "METHODS_BIOMARKER",
+        "BIOMARKERS_PROSTATE",
+        "PROSTATE_CANCER",
+        "CANCER_ACROSS",
+        "CANCER_ACROS",
+        "ACROSS_ITS",
+        "ACROSS_IT",
+        "ITS_STAGES",
+        "ITS_STAGE",
+        "DIAGNOSTIC_METHODS_BIOMARKERS",
+        "DIAGNOSTIC_METHODS_BIOMARKER",
+        "METHODS_BIOMARKERS_PROSTATE",
+        "BIOMARKERS_PROSTATE_CANCER",
+        "PROSTATE_CANCER_ACROSS",
+        "PROSTATE_CANCER_ACROS",
+        "CANCER_ACROSS_ITS",
+        "CANCER_ACROSS_IT",
+        "ACROSS_ITS_STAGES",
+        "ACROSS_ITS_STAGE",
+        "DIAGNOSTIC",
+        "METHODS"
+      ],
+      "exact_pairs": [
+        {
+          "norm": "PROSTATE_CANCER",
+          "eq_name": "PROSTATE_CANCER",
+          "lr_name": "Prostate cancer",
+          "eq_n_chunks": 13,
+          "lr_n_chunks": 18,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "METHOD",
+          "eq_name": null,
+          "lr_name": "Method",
+          "eq_n_chunks": null,
+          "lr_n_chunks": 1,
+          "link_gap": "LR_ONLY"
+        },
+        {
+          "norm": "BIOMARKERS",
+          "eq_name": "BIOMARKERS",
+          "lr_name": "Biomarkers",
+          "eq_n_chunks": 6,
+          "lr_n_chunks": 2,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "BIOMARKER",
+          "eq_name": "BIOMARKER",
+          "lr_name": "Biomarker",
+          "eq_n_chunks": 3,
+          "lr_n_chunks": 8,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "PROSTATE",
+          "eq_name": "PROSTATE",
+          "lr_name": "Prostate",
+          "eq_n_chunks": 9,
+          "lr_n_chunks": 9,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "CANCER",
+          "eq_name": "CANCER",
+          "lr_name": "Cancer",
+          "eq_n_chunks": 46,
+          "lr_n_chunks": 34,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "STAGE",
+          "eq_name": "STAGE",
+          "lr_name": "Stage",
+          "eq_n_chunks": 2,
+          "lr_n_chunks": 3,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "DIGITAL_RECTAL_EXAM",
+          "eq_name": "DIGITAL_RECTAL_EXAM",
+          "lr_name": "Digital rectal exam",
+          "eq_n_chunks": 7,
+          "lr_n_chunks": 7,
+          "link_gap": "BOTH_LINKED"
+        }
+      ],
+      "eq_part_heads": [
+        ". Germline mutations in genes like BRCA1 or BRCA2 are also related to breast cancer, ovarian cancer, pancreatic cancer, and skin cancer (melanoma). Germline mut",
+        ". Not every person with prostate cancer will receive every test listed here. When you go for testing, bring someone with you to listen, ask questions, and write",
+        ". Not every person with prostate cancer will receive every test listed here. When you go for testing, bring someone with you to listen, ask questions, and write",
+        ". Several things may contribute to these differences, such as barriers to accessing health care (including early detection screening), biological and genetic fa",
+        ". The images can reveal cancer, including its size, location, and other features such as the size of the prostate itself. The images may show where the cancer s",
+        ". Tumor testing Tumor testing (also called somatic testing, molecular tumor testing, or tumor profiling) requires a tissue sample from the tumor itself or from ",
+        ". What does aggressive mean? When health care professionals describe cancer as aggressive, they mean the cancer is likely to grow or spread more rapidly than av",
+        ". It can take a few hours for the tracer to enter your bones. PET/CT scan of prostate cancer This image combines PET and CT scans to show a cross-section of a p"
+      ],
+      "lr_part_heads": [
+        "a patient\u2019s pelvis. The greenish circle identifies cancer in the prostate, while the intense red dot indicates cancer that has spread to a pelvic lymph node. A ",
+        "and stays within the prostate. This is also called localized prostate cancer. Advanced-stage prostate cancer has grown outside the prostate and may have spread ",
+        "prostate-specific membrane antigen (PSMA) on the surface of prostate cancer cells. Prostate cancer cells can make a lot of PSMA, so doctors developed tracers th",
+        "internal organ, or a bone. This biopsy is performed in a similar way to a prostate biopsy\u2014using a hollow needle to remove cores of tissue. Sometimes, a blood sa",
+        "cause more side effects. may feel for enlarged glands (lymph nodes) in your groin, underarms, and neck. Family history Some cancers and other diseases can run i",
+        ". PSA testing Prostate-specific antigen (PSA) is a protein made inside the prostate gland. If there\u2019s something wrong with the prostate, the prostate may make m",
+        "something else. Scientists have learned a great deal about prostate cancer in recent years. As a result, today\u2019s detection methods and treatments work better th",
+        "germline (inherited) mutations that occur in every cell in your body. Genetic germline testing is done using a sample of your blood, urine, or saliva. For prost"
+      ],
+      "verdict": {
+        "law": "GEN_OR_EVAL",
+        "why": "EQ Mix is not below LR on question-bigram containment; if Summarize ER still lags, look at generation/eval \u2014 not entity\u2192chunk link density.",
+        "facts": {
+          "eq_mix_parts": 17,
+          "lr_mix_parts": 12,
+          "eq_question_bigrams_hit": 1,
+          "lr_question_bigrams_hit": 1,
+          "eq_missed_bigrams": [
+            "diagnostic methods",
+            "methods biomarkers",
+            "biomarkers prostate",
+            "cancer across",
+            "across its",
+            "its stages"
+          ],
+          "lr_missed_bigrams": [
+            "diagnostic methods",
+            "methods biomarkers",
+            "biomarkers prostate",
+            "cancer across",
+            "across its",
+            "its stages"
+          ],
+          "n_exact_pairs_both_linked": 7,
+          "n_exact_pairs_eq_empty_lr_linked": 0,
+          "n_exact_pairs_lr_only": 1,
+          "eq_empty_names": [],
+          "both_linked_sample": [
+            {
+              "norm": "PROSTATE_CANCER",
+              "eq_n": 13,
+              "lr_n": 18
+            },
+            {
+              "norm": "BIOMARKERS",
+              "eq_n": 6,
+              "lr_n": 2
+            },
+            {
+              "norm": "BIOMARKER",
+              "eq_n": 3,
+              "lr_n": 8
+            },
+            {
+              "norm": "PROSTATE",
+              "eq_n": 9,
+              "lr_n": 9
+            },
+            {
+              "norm": "CANCER",
+              "eq_n": 46,
+              "lr_n": 34
+            },
+            {
+              "norm": "STAGE",
+              "eq_n": 2,
+              "lr_n": 3
+            },
+            {
+              "norm": "DIGITAL_RECTAL_EXAM",
+              "eq_n": 7,
+              "lr_n": 7
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "Medical-00bf955d",
+      "question": "What is the role of clinical trials in the treatment of specific ALL subtypes?",
+      "query_intent": "exploratory",
+      "n_evidence": 5,
+      "eq_mix_parts": 18,
+      "eq_mix_chars": 112208,
+      "lr_mix_parts": 16,
+      "lr_mix_chars": 92203,
+      "question_bigrams": [
+        "role clinical",
+        "clinical trials",
+        "trials treatment",
+        "treatment specific",
+        "specific all",
+        "all subtypes"
+      ],
+      "eq_topic": {
+        "n_parts": 18,
+        "n_bigrams": 6,
+        "n_bigrams_hit": 1,
+        "hit_bigrams": [
+          "clinical trials"
+        ],
+        "missed_bigrams": [
+          "role clinical",
+          "trials treatment",
+          "treatment specific",
+          "specific all",
+          "all subtypes"
+        ]
+      },
+      "lr_topic": {
+        "n_parts": 16,
+        "n_bigrams": 6,
+        "n_bigrams_hit": 2,
+        "hit_bigrams": [
+          "clinical trials",
+          "treatment specific"
+        ],
+        "missed_bigrams": [
+          "role clinical",
+          "trials treatment",
+          "specific all",
+          "all subtypes"
+        ]
+      },
+      "topic_norms": [
+        "ROLE_CLINICAL",
+        "CLINICAL_TRIALS",
+        "CLINICAL_TRIAL",
+        "TRIALS_TREATMENT",
+        "TREATMENT_SPECIFIC",
+        "SPECIFIC_ALL",
+        "ALL_SUBTYPES",
+        "ALL_SUBTYPE",
+        "ROLE_CLINICAL_TRIALS",
+        "ROLE_CLINICAL_TRIAL",
+        "CLINICAL_TRIALS_TREATMENT",
+        "TRIALS_TREATMENT_SPECIFIC",
+        "TREATMENT_SPECIFIC_ALL",
+        "SPECIFIC_ALL_SUBTYPES",
+        "SPECIFIC_ALL_SUBTYPE",
+        "ROLE",
+        "CLINICAL",
+        "TRIALS",
+        "TRIAL",
+        "TREATMENT",
+        "SPECIFIC",
+        "SUBTYPES",
+        "SUBTYPE",
+        "CLINICAL_TRIALS_ARE"
+      ],
+      "exact_pairs": [
+        {
+          "norm": "CLINICAL_TRIALS",
+          "eq_name": "CLINICAL_TRIALS",
+          "lr_name": "Clinical trials",
+          "eq_n_chunks": 18,
+          "lr_n_chunks": 6,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "CLINICAL_TRIAL",
+          "eq_name": "CLINICAL_TRIAL",
+          "lr_name": "Clinical trial",
+          "eq_n_chunks": 34,
+          "lr_n_chunks": 40,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "TRIAL",
+          "eq_name": "TRIAL",
+          "lr_name": null,
+          "eq_n_chunks": 1,
+          "lr_n_chunks": null,
+          "link_gap": "EQ_ONLY"
+        },
+        {
+          "norm": "TREATMENT",
+          "eq_name": "TREATMENT",
+          "lr_name": "Treatment",
+          "eq_n_chunks": 11,
+          "lr_n_chunks": 5,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "SUBTYPES",
+          "eq_name": "SUBTYPES",
+          "lr_name": null,
+          "eq_n_chunks": 1,
+          "lr_n_chunks": null,
+          "link_gap": "EQ_ONLY"
+        },
+        {
+          "norm": "SUBTYPE",
+          "eq_name": "SUBTYPE",
+          "lr_name": null,
+          "eq_n_chunks": 0,
+          "lr_n_chunks": null,
+          "link_gap": "EQ_ONLY"
+        },
+        {
+          "norm": "BCR_ABL1_NEGATIVE_B_ALL",
+          "eq_name": null,
+          "lr_name": "BCR::ABL1-negative B-ALL",
+          "eq_n_chunks": null,
+          "lr_n_chunks": 1,
+          "link_gap": "LR_ONLY"
+        }
+      ],
+      "eq_part_heads": [
+        ". Chapter 3: Types of treatments gives a general overview of treatment. Everyone with ALL will be treated with steroids and multiagent chemotherapy. Other types",
+        ". Chapter 3: Types of treatments gives a general overview of treatment. Everyone with ALL will be treated with steroids and multiagent chemotherapy. Other types",
+        "About ALL What is ALL? What are lymphocytes? What is blood? What's in this book? What can you do to get the best care? Acute lymphoblastic leukemia (ALL) is the",
+        "About ALL What is ALL? What are lymphocytes? What is blood? What's in this book? What can you do to get the best care? Acute lymphoblastic leukemia (ALL) is the",
+        "Blood Lymphocytes Acute lymphoblastic leukemia About this book Key points Acute lymphoblastic leukemia (ALL) is a fast-growing cancer that starts in lymphocytes",
+        ". In general, to be diagnosed with AML, 20 percent or more myeloblasts must be present in the bone marrow or blood. This means that at least 1 out of every 5 ce",
+        ". In general, to be diagnosed with AML, 20 percent or more myeloblasts must be present in the bone marrow or blood. This means that at least 1 out of every 5 ce",
+        ". More information for AYAs seeking ALL treatment at a pediatric cancer center can be found at NCCN.org/patientguidelines and on the NCCN Patient Guides for Can"
+      ],
+      "lr_part_heads": [
+        "specific abnormal gene that is created when a piece of chromosome 9 and a piece of chromosome 22 break off and trade places. The result is a fused gene called B",
+        "non-lymphoid blood cells. ALL is thought to arise from stem cells that make an increased amount of lymphoid progenitor cells. Blood cell formation All blood cel",
+        "T-ALL. Mature B-cell ALL (also called Burkitt leukemia), a rare subtype, is essentially the same as Burkitt lymphoma (a type of non-Hodgkin lymphoma), but is tr",
+        "catheter or port will be tailored to your needs and treatment plans. Treatment options Treatment options are often described in the following ways: Preferred th",
+        "or a new drug with a standard treatment. You will be informed, verbally and in writing, if a placebo is part of a clinical trial before you enroll. Are clinical",
+        "? This book is organized into the following chapters: Chapter 2: Testing for ALL provides an overview of tests your child might receive, how fertility might be ",
+        "which are based mainly on: The type of lymphocyte (most often B cell or T cell) within the leukemia cells and how mature the cells are. This is known as the imm",
+        "ask your treatment team if you meet the requirements. If you have already started standard treatment, you may not be eligible for certain clinical trials. Try n"
+      ],
+      "verdict": {
+        "law": "SELECT",
+        "why": "Topic entities are linked on both sides (not LINK starvation), yet EQ Mix contains fewer of the question's own content bigrams than LR \u2014 Mix admission selected the wrong neighborhood.",
+        "facts": {
+          "eq_mix_parts": 18,
+          "lr_mix_parts": 16,
+          "eq_question_bigrams_hit": 1,
+          "lr_question_bigrams_hit": 2,
+          "eq_missed_bigrams": [
+            "role clinical",
+            "trials treatment",
+            "treatment specific",
+            "specific all",
+            "all subtypes"
+          ],
+          "lr_missed_bigrams": [
+            "role clinical",
+            "trials treatment",
+            "specific all",
+            "all subtypes"
+          ],
+          "n_exact_pairs_both_linked": 3,
+          "n_exact_pairs_eq_empty_lr_linked": 0,
+          "n_exact_pairs_lr_only": 1,
+          "eq_empty_names": [],
+          "both_linked_sample": [
+            {
+              "norm": "CLINICAL_TRIALS",
+              "eq_n": 18,
+              "lr_n": 6
+            },
+            {
+              "norm": "CLINICAL_TRIAL",
+              "eq_n": 34,
+              "lr_n": 40
+            },
+            {
+              "norm": "TREATMENT",
+              "eq_n": 11,
+              "lr_n": 5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "Medical-e168b4d3",
+      "question": "Which risk factors and geographic regions are most associated with nasopharyngeal carcinoma (NPC)?",
+      "query_intent": "factual",
+      "n_evidence": 6,
+      "eq_mix_parts": 18,
+      "eq_mix_chars": 114943,
+      "lr_mix_parts": 14,
+      "lr_mix_chars": 78542,
+      "question_bigrams": [
+        "risk geographic",
+        "geographic regions",
+        "regions associated",
+        "associated nasopharyngeal",
+        "nasopharyngeal carcinoma",
+        "carcinoma npc"
+      ],
+      "eq_topic": {
+        "n_parts": 18,
+        "n_bigrams": 6,
+        "n_bigrams_hit": 1,
+        "hit_bigrams": [
+          "nasopharyngeal carcinoma"
+        ],
+        "missed_bigrams": [
+          "risk geographic",
+          "geographic regions",
+          "regions associated",
+          "associated nasopharyngeal",
+          "carcinoma npc"
+        ]
+      },
+      "lr_topic": {
+        "n_parts": 14,
+        "n_bigrams": 6,
+        "n_bigrams_hit": 1,
+        "hit_bigrams": [
+          "nasopharyngeal carcinoma"
+        ],
+        "missed_bigrams": [
+          "risk geographic",
+          "geographic regions",
+          "regions associated",
+          "associated nasopharyngeal",
+          "carcinoma npc"
+        ]
+      },
+      "topic_norms": [
+        "RISK_GEOGRAPHIC",
+        "GEOGRAPHIC_REGIONS",
+        "GEOGRAPHIC_REGION",
+        "REGIONS_ASSOCIATED",
+        "ASSOCIATED_NASOPHARYNGEAL",
+        "NASOPHARYNGEAL_CARCINOMA",
+        "CARCINOMA_NPC",
+        "RISK_GEOGRAPHIC_REGIONS",
+        "RISK_GEOGRAPHIC_REGION",
+        "GEOGRAPHIC_REGIONS_ASSOCIATED",
+        "REGIONS_ASSOCIATED_NASOPHARYNGEAL",
+        "ASSOCIATED_NASOPHARYNGEAL_CARCINOMA",
+        "NASOPHARYNGEAL_CARCINOMA_NPC",
+        "RISK",
+        "GEOGRAPHIC",
+        "REGIONS",
+        "REGION",
+        "ASSOCIATED",
+        "NASOPHARYNGEAL",
+        "CARCINOMA",
+        "NPC_IS",
+        "NPC_IS_MOST",
+        "NPC_IS_ASSOCIATED",
+        "NPC_OCCURS"
+      ],
+      "exact_pairs": [
+        {
+          "norm": "NASOPHARYNGEAL_CARCINOMA",
+          "eq_name": null,
+          "lr_name": "Nasopharyngeal Carcinoma",
+          "eq_n_chunks": null,
+          "lr_n_chunks": 2,
+          "link_gap": "LR_ONLY"
+        },
+        {
+          "norm": "NASOPHARYNGEAL_CARCINOMA_NPC",
+          "eq_name": "NASOPHARYNGEAL_CARCINOMA_(NPC)",
+          "lr_name": "Nasopharyngeal Carcinoma (NPC)",
+          "eq_n_chunks": 1,
+          "lr_n_chunks": 1,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "RISK",
+          "eq_name": "RISK",
+          "lr_name": null,
+          "eq_n_chunks": 1,
+          "lr_n_chunks": null,
+          "link_gap": "EQ_ONLY"
+        },
+        {
+          "norm": "CARCINOMA",
+          "eq_name": null,
+          "lr_name": "Carcinoma",
+          "eq_n_chunks": null,
+          "lr_n_chunks": 3,
+          "link_gap": "LR_ONLY"
+        }
+      ],
+      "eq_part_heads": [
+        ". For possible tests, see Guide General health tests Some general health tests are described next. You will not have all of these tests. Medical history A medic",
+        "The pharynx Head and neck cancer Nasopharyngeal cancer Key points Nasopharyngeal carcinoma (NPC) is a type of cancer that affects the nasopharynx. The nasophary",
+        ". h A sample of your tumor or blood may be tested to look for specific DNA (deoxyribonucleic acid) mutations, protein levels, or other molecular features. Some ",
+        ". FDG-PET/CT can be done at the same time as a CT used for diagnosis. Ultrasound Ultrasound (US) uses high-energy sound waves to form pictures of the inside of ",
+        "Throat cancer basics The throat The pharynx Head and neck cancers Throat cancer Key points The throat is located in the back of the mouth and in the neck. Cance",
+        ". Online patient portals are a great way to access your test results. Please discuss your results with your health care provider. Keep these things in mind: Cho",
+        ". Keep a list of contact information for everyone on your care team. Add it to your phone. Hang the list on your refrigerator or keep it in a place where someon",
+        "Cervical cancer basics The cervix Cervical changes Risk factors Types of cervical cancer Key points Cervical cancer is a common cancer of the female reproductiv"
+      ],
+      "lr_part_heads": [
+        "(NPC) is a type of cancer that affects the nasopharynx. The nasopharynx connects the back of the nose (nasal cavity) to the back of the mouth (pharynx). Head an",
+        "information on cancer. Take our survey to let us know what we got right and what we could do better. NCCN.org/patients/feedback 3 Nasopharyngeal cancer staging ",
+        "otherapy is typically given for 3 to 6 months. The length of treatment depends on the regimen and the risk of recurrence. Surveillance Follow-up testing is star",
+        "the oropharynx is found inside the throat, some parts are not easy to see when you open your mouth. A health care provider might use a special mirror or fiberop",
+        "sample of tumor or lymph node. An ultrasound or CT scan might be used to guide a lymph node biopsy. Biopsy of metastasis Metastasis is the spread of cancer to a",
+        "carcinoma (NPC) or cancer starts in the nasopharynx. The following TNM staging information is used for squamous cell carcinoma of the nasopharynx. See Guide Tum",
+        "older persons, have a higher rate of bone marrow involvement, include disease outside the lymph nodes (extranodal disease), and have more advanced-stage disease",
+        "ostic stage also includes the assumption that you are treated with the standard-of-care approaches. Prognostic stages are divided into clinical and pathologic. "
+      ],
+      "verdict": {
+        "law": "GEN_OR_EVAL",
+        "why": "EQ Mix is not below LR on question-bigram containment; if Summarize ER still lags, look at generation/eval \u2014 not entity\u2192chunk link density.",
+        "facts": {
+          "eq_mix_parts": 18,
+          "lr_mix_parts": 14,
+          "eq_question_bigrams_hit": 1,
+          "lr_question_bigrams_hit": 1,
+          "eq_missed_bigrams": [
+            "risk geographic",
+            "geographic regions",
+            "regions associated",
+            "associated nasopharyngeal",
+            "carcinoma npc"
+          ],
+          "lr_missed_bigrams": [
+            "risk geographic",
+            "geographic regions",
+            "regions associated",
+            "associated nasopharyngeal",
+            "carcinoma npc"
+          ],
+          "n_exact_pairs_both_linked": 1,
+          "n_exact_pairs_eq_empty_lr_linked": 0,
+          "n_exact_pairs_lr_only": 2,
+          "eq_empty_names": [],
+          "both_linked_sample": [
+            {
+              "norm": "NASOPHARYNGEAL_CARCINOMA_NPC",
+              "eq_n": 1,
+              "lr_n": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "Medical-c2a36052",
+      "question": "How do biomarkers influence treatment selection in colon cancer?",
+      "query_intent": "relational",
+      "n_evidence": 3,
+      "eq_mix_parts": 18,
+      "eq_mix_chars": 115541,
+      "lr_mix_parts": 14,
+      "lr_mix_chars": 78911,
+      "question_bigrams": [
+        "biomarkers influence",
+        "influence treatment",
+        "treatment selection",
+        "selection colon",
+        "colon cancer"
+      ],
+      "eq_topic": {
+        "n_parts": 18,
+        "n_bigrams": 5,
+        "n_bigrams_hit": 1,
+        "hit_bigrams": [
+          "colon cancer"
+        ],
+        "missed_bigrams": [
+          "biomarkers influence",
+          "influence treatment",
+          "treatment selection",
+          "selection colon"
+        ]
+      },
+      "lr_topic": {
+        "n_parts": 14,
+        "n_bigrams": 5,
+        "n_bigrams_hit": 1,
+        "hit_bigrams": [
+          "colon cancer"
+        ],
+        "missed_bigrams": [
+          "biomarkers influence",
+          "influence treatment",
+          "treatment selection",
+          "selection colon"
+        ]
+      },
+      "topic_norms": [
+        "DO_BIOMARKERS",
+        "DO_BIOMARKER",
+        "BIOMARKERS_INFLUENCE",
+        "INFLUENCE_TREATMENT",
+        "TREATMENT_SELECTION",
+        "SELECTION_COLON",
+        "COLON_CANCER",
+        "DO_BIOMARKERS_INFLUENCE",
+        "BIOMARKERS_INFLUENCE_TREATMENT",
+        "INFLUENCE_TREATMENT_SELECTION",
+        "TREATMENT_SELECTION_COLON",
+        "SELECTION_COLON_CANCER",
+        "BIOMARKERS",
+        "BIOMARKER",
+        "INFLUENCE",
+        "TREATMENT",
+        "SELECTION",
+        "COLON",
+        "CANCER",
+        "BIOMARKER_TESTING",
+        "BIOMARKER_TESTING_FOR",
+        "PMMR_MSS",
+        "PMMR_MSS_CANCERS",
+        "CEA_IS"
+      ],
+      "exact_pairs": [
+        {
+          "norm": "COLON_CANCER",
+          "eq_name": "COLON_CANCER",
+          "lr_name": "Colon cancer",
+          "eq_n_chunks": 3,
+          "lr_n_chunks": 5,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "BIOMARKERS",
+          "eq_name": "BIOMARKERS",
+          "lr_name": "Biomarkers",
+          "eq_n_chunks": 6,
+          "lr_n_chunks": 2,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "BIOMARKER",
+          "eq_name": "BIOMARKER",
+          "lr_name": "Biomarker",
+          "eq_n_chunks": 3,
+          "lr_n_chunks": 8,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "TREATMENT",
+          "eq_name": "TREATMENT",
+          "lr_name": "Treatment",
+          "eq_n_chunks": 11,
+          "lr_n_chunks": 5,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "COLON",
+          "eq_name": "COLON",
+          "lr_name": "Colon",
+          "eq_n_chunks": 12,
+          "lr_n_chunks": 9,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "CANCER",
+          "eq_name": "CANCER",
+          "lr_name": "Cancer",
+          "eq_n_chunks": 46,
+          "lr_n_chunks": 34,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "BIOMARKER_TESTING",
+          "eq_name": "BIOMARKER_TESTING",
+          "lr_name": "Biomarker testing",
+          "eq_n_chunks": 25,
+          "lr_n_chunks": 29,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "PMMR_MSS_CANCERS",
+          "eq_name": "PMMR/MSS_CANCERS",
+          "lr_name": "pMMR/MSS Cancers",
+          "eq_n_chunks": 1,
+          "lr_n_chunks": 1,
+          "link_gap": "BOTH_LINKED"
+        }
+      ],
+      "eq_part_heads": [
+        "Colon cancer basics 5 6 6 The colon Polyps Key points Colon cancer is common and treatable. Many cancers that start in the colon can be cured, especially when f",
+        "Rectal cancer basics 5 The rectum 6 Polyps 6 Key points Rectal cancer is common and treatable. Many cancers that start in the rectum can be cured, especially wh",
+        ". FDG-PET/CT can be done at the same time as a CT used for diagnosis. Ultrasound Ultrasound (US) uses high-energy sound waves to form pictures of the inside of ",
+        ". Levels that are too high or too low may be a sign that an organ isn\u2019t working well. Abnormal levels may also be caused by the spread of cancer or by other dis",
+        ". CEA blood test Carcinoembryonic antigen (CEA) is a protein found in blood. The level of CEA is often higher than normal in people with colon cancer, especiall",
+        ". Surveillance When there are no signs of cancer after treatment, expect to see your oncologist on a regular basis for physical and pelvic exams. First 2 years:",
+        ". The stages are explained below. Stage 0 There are abnormal cells on the innermost layer of the colon wall. These abnormal cells may become cancer and spread i",
+        ". Physical exam Your hematologist/oncologist will perform a physical exam of your body. This exam will include: Checking your vital signs\u2014blood pressure, heart "
+      ],
+      "lr_part_heads": [
+        "I was dismissed for more than a year for so many different reasons. My journey taught me this: never give up, explore every reasonable option, and prioritize yo",
+        "information on cancer. Take our survey to let us know what we got right and what we could do better. NCCN.org/patients/feedback 3 Nasopharyngeal cancer staging ",
+        "into cancer include hyperplastic and inflammatory polyps. While most polyps do not become cancer, almost all colon cancers start in a polyp. Removing polyps can",
+        "N Guidelines for Patients Immunotherapy Side Effects: Immune Checkpoint Inhibitors at NCCN.org/ patientguidelines and on the NCCN Patient Guides for Cancer app.",
+        "ps are non-cancerous growths that form on the inner lining of the colon and rectum. The most common type is called an adenoma. While it may take many years, ade",
+        "will give you information on: How to prepare for surgery What to expect during and after surgery Recovery Possible short- and long-term side effects of colectom",
+        "ative medicine. Don\u2019t be shy. Be your own advocate\u2014or ask someone close to be one for you.\u201d Multidisciplinary care means that a number of doctors, specialists, ",
+        "cancer A polyp is an overgrowth of cells on the inner lining of the colon wall. The most common type is called an adenoma. While it may take many years, adenoma"
+      ],
+      "verdict": {
+        "law": "GEN_OR_EVAL",
+        "why": "EQ Mix is not below LR on question-bigram containment; if Summarize ER still lags, look at generation/eval \u2014 not entity\u2192chunk link density.",
+        "facts": {
+          "eq_mix_parts": 18,
+          "lr_mix_parts": 14,
+          "eq_question_bigrams_hit": 1,
+          "lr_question_bigrams_hit": 1,
+          "eq_missed_bigrams": [
+            "biomarkers influence",
+            "influence treatment",
+            "treatment selection",
+            "selection colon"
+          ],
+          "lr_missed_bigrams": [
+            "biomarkers influence",
+            "influence treatment",
+            "treatment selection",
+            "selection colon"
+          ],
+          "n_exact_pairs_both_linked": 8,
+          "n_exact_pairs_eq_empty_lr_linked": 0,
+          "n_exact_pairs_lr_only": 0,
+          "eq_empty_names": [],
+          "both_linked_sample": [
+            {
+              "norm": "COLON_CANCER",
+              "eq_n": 3,
+              "lr_n": 5
+            },
+            {
+              "norm": "BIOMARKERS",
+              "eq_n": 6,
+              "lr_n": 2
+            },
+            {
+              "norm": "BIOMARKER",
+              "eq_n": 3,
+              "lr_n": 8
+            },
+            {
+              "norm": "TREATMENT",
+              "eq_n": 11,
+              "lr_n": 5
+            },
+            {
+              "norm": "COLON",
+              "eq_n": 12,
+              "lr_n": 9
+            },
+            {
+              "norm": "CANCER",
+              "eq_n": 46,
+              "lr_n": 34
+            },
+            {
+              "norm": "BIOMARKER_TESTING",
+              "eq_n": 25,
+              "lr_n": 29
+            },
+            {
+              "norm": "PMMR_MSS_CANCERS",
+              "eq_n": 1,
+              "lr_n": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "Medical-25f9adbb",
+      "question": "What are the main diagnostic methods and laboratory tests used to diagnose AML?",
+      "query_intent": "exploratory",
+      "n_evidence": 10,
+      "eq_mix_parts": 19,
+      "eq_mix_chars": 111970,
+      "lr_mix_parts": 12,
+      "lr_mix_chars": 69423,
+      "question_bigrams": [
+        "diagnostic methods",
+        "methods laboratory",
+        "laboratory tests",
+        "tests diagnose",
+        "diagnose aml"
+      ],
+      "eq_topic": {
+        "n_parts": 19,
+        "n_bigrams": 5,
+        "n_bigrams_hit": 1,
+        "hit_bigrams": [
+          "diagnose aml"
+        ],
+        "missed_bigrams": [
+          "diagnostic methods",
+          "methods laboratory",
+          "laboratory tests",
+          "tests diagnose"
+        ]
+      },
+      "lr_topic": {
+        "n_parts": 12,
+        "n_bigrams": 5,
+        "n_bigrams_hit": 1,
+        "hit_bigrams": [
+          "diagnose aml"
+        ],
+        "missed_bigrams": [
+          "diagnostic methods",
+          "methods laboratory",
+          "laboratory tests",
+          "tests diagnose"
+        ]
+      },
+      "topic_norms": [
+        "DIAGNOSTIC_METHODS",
+        "DIAGNOSTIC_METHOD",
+        "METHODS_LABORATORY",
+        "LABORATORY_TESTS",
+        "LABORATORY_TEST",
+        "TESTS_DIAGNOSE",
+        "DIAGNOSE_AML",
+        "DIAGNOSTIC_METHODS_LABORATORY",
+        "METHODS_LABORATORY_TESTS",
+        "METHODS_LABORATORY_TEST",
+        "LABORATORY_TESTS_DIAGNOSE",
+        "TESTS_DIAGNOSE_AML",
+        "DIAGNOSTIC",
+        "METHODS",
+        "METHOD",
+        "LABORATORY",
+        "TESTS",
+        "TEST",
+        "DIAGNOSE",
+        "AML_DIAGNOSIS",
+        "AML_DIAGNOSIS_INVOLVES"
+      ],
+      "exact_pairs": [
+        {
+          "norm": "METHOD",
+          "eq_name": null,
+          "lr_name": "Method",
+          "eq_n_chunks": null,
+          "lr_n_chunks": 1,
+          "link_gap": "LR_ONLY"
+        },
+        {
+          "norm": "LABORATORY",
+          "eq_name": "LABORATORY",
+          "lr_name": "Laboratory",
+          "eq_n_chunks": 1,
+          "lr_n_chunks": 2,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "TESTS",
+          "eq_name": "TESTS",
+          "lr_name": null,
+          "eq_n_chunks": 2,
+          "lr_n_chunks": null,
+          "link_gap": "EQ_ONLY"
+        },
+        {
+          "norm": "TEST",
+          "eq_name": null,
+          "lr_name": "Test",
+          "eq_n_chunks": null,
+          "lr_n_chunks": 1,
+          "link_gap": "LR_ONLY"
+        }
+      ],
+      "eq_part_heads": [
+        ". A diagnosis of AML is based on the presence of myeloid blasts in the bone marrow or blood. The number of blasts required to be diagnosed with AML can vary. In",
+        ". A diagnosis of AML is based on the presence of myeloid blasts in the bone marrow or blood. The number of blasts required to be diagnosed with AML can vary. In",
+        ". In general, to be diagnosed with AML, 20 percent or more myeloblasts must be present in the bone marrow or blood. This means that at least 1 out of every 5 ce",
+        ". In general, to be diagnosed with AML, 20 percent or more myeloblasts must be present in the bone marrow or blood. This means that at least 1 out of every 5 ce",
+        ". Lactate dehydrogenase Lactate dehydrogenase (LDH) or lactic acid dehydrogenase is an enzyme found in most cells. Dying cells release LDH into blood. Fastgrowi",
+        ". Lactate dehydrogenase Lactate dehydrogenase (LDH) or lactic acid dehydrogenase is an enzyme found in most cells. Dying cells release LDH into blood. Fastgrowi",
+        "About AML 5 What is AML? 5 What is blood? 7 What are blasts? 7 What's in this book? 7 What can you do to get the best care? Acute myeloid leukemia (AML) is a ty",
+        "About AML 5 What is AML? 5 What is blood? 7 What are blasts? 7 What's in this book? 7 What can you do to get the best care? Acute myeloid leukemia (AML) is a ty"
+      ],
+      "lr_part_heads": [
+        "possible tests and procedures can be found in this chapter. You do not need to know what all of these tests mean. It is ok to skip over information that doesn't",
+        ". Consider seeking the opinion of an AML specialist. The NCCN Guidelines for Patients will help you understand cancer care. With better understanding, you\u2019ll be",
+        "state of general health will be rated using a PS scale called the Eastern Cooperative Oncology Group (ECOG) score or the Karnofsky Performance Status (KPS). PS ",
+        "at the health of the liver by measuring chemicals that are made or processed by the liver. Levels that are too high or low signal that the liver is not working ",
+        "powerful magnets to take pictures of the inside of the body. It does not use x-rays, which means there is no radiation delivered to your body during the test. B",
+        "shape of the cells. Flow cytometry may be used on cells from circulating (peripheral) blood or from a bone marrow aspirate. A blood test can count the number of",
+        "RUNX1::RUNX1T Leukemia predisposition syndromes Some hereditary cancer syndromes can be passed down from biological parent to child. A family history of leukemi",
+        "otype is a picture of chromosomes. Normal human cells contain 23 pairs of chromosomes for a total of 46 chromosomes. A karyotype will show extra, missing, rearr"
+      ],
+      "verdict": {
+        "law": "GEN_OR_EVAL",
+        "why": "EQ Mix is not below LR on question-bigram containment; if Summarize ER still lags, look at generation/eval \u2014 not entity\u2192chunk link density.",
+        "facts": {
+          "eq_mix_parts": 19,
+          "lr_mix_parts": 12,
+          "eq_question_bigrams_hit": 1,
+          "lr_question_bigrams_hit": 1,
+          "eq_missed_bigrams": [
+            "diagnostic methods",
+            "methods laboratory",
+            "laboratory tests",
+            "tests diagnose"
+          ],
+          "lr_missed_bigrams": [
+            "diagnostic methods",
+            "methods laboratory",
+            "laboratory tests",
+            "tests diagnose"
+          ],
+          "n_exact_pairs_both_linked": 1,
+          "n_exact_pairs_eq_empty_lr_linked": 0,
+          "n_exact_pairs_lr_only": 2,
+          "eq_empty_names": [],
+          "both_linked_sample": [
+            {
+              "norm": "LABORATORY",
+              "eq_n": 1,
+              "lr_n": 2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "Medical-296c7595",
+      "question": "How are the stages of esophageal cancer defined and what are their distinguishing features?",
+      "query_intent": "exploratory",
+      "n_evidence": 8,
+      "eq_mix_parts": 20,
+      "eq_mix_chars": 116131,
+      "lr_mix_parts": 16,
+      "lr_mix_chars": 89492,
+      "question_bigrams": [
+        "stages esophageal",
+        "esophageal cancer",
+        "cancer defined",
+        "defined distinguishing",
+        "distinguishing features"
+      ],
+      "eq_topic": {
+        "n_parts": 20,
+        "n_bigrams": 5,
+        "n_bigrams_hit": 1,
+        "hit_bigrams": [
+          "esophageal cancer"
+        ],
+        "missed_bigrams": [
+          "stages esophageal",
+          "cancer defined",
+          "defined distinguishing",
+          "distinguishing features"
+        ]
+      },
+      "lr_topic": {
+        "n_parts": 16,
+        "n_bigrams": 5,
+        "n_bigrams_hit": 1,
+        "hit_bigrams": [
+          "esophageal cancer"
+        ],
+        "missed_bigrams": [
+          "stages esophageal",
+          "cancer defined",
+          "defined distinguishing",
+          "distinguishing features"
+        ]
+      },
+      "topic_norms": [
+        "STAGES_ESOPHAGEAL",
+        "ESOPHAGEAL_CANCER",
+        "CANCER_DEFINED",
+        "DEFINED_DISTINGUISHING",
+        "DISTINGUISHING_FEATURES",
+        "DISTINGUISHING_FEATURE",
+        "STAGES_ESOPHAGEAL_CANCER",
+        "ESOPHAGEAL_CANCER_DEFINED",
+        "CANCER_DEFINED_DISTINGUISHING",
+        "DEFINED_DISTINGUISHING_FEATURES",
+        "DEFINED_DISTINGUISHING_FEATURE",
+        "STAGES",
+        "STAGE",
+        "ESOPHAGEAL",
+        "CANCER",
+        "DEFINED",
+        "DISTINGUISHING",
+        "FEATURES",
+        "FEATURE",
+        "ESOPHAGEAL_CANCER_STAGES",
+        "EARLY_STAGE_ESOPHAGEAL",
+        "EARLY_STAGE_ESOPHAGEAL_CANCER"
+      ],
+      "exact_pairs": [
+        {
+          "norm": "ESOPHAGEAL_CANCER",
+          "eq_name": "ESOPHAGEAL_CANCER",
+          "lr_name": "Esophageal cancer",
+          "eq_n_chunks": 4,
+          "lr_n_chunks": 5,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "STAGE",
+          "eq_name": "STAGE",
+          "lr_name": "Stage",
+          "eq_n_chunks": 2,
+          "lr_n_chunks": 3,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "CANCER",
+          "eq_name": "CANCER",
+          "lr_name": "Cancer",
+          "eq_n_chunks": 46,
+          "lr_n_chunks": 34,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "EARLY_STAGE_ESOPHAGEAL_CANCER",
+          "eq_name": null,
+          "lr_name": "Early-stage esophageal cancer",
+          "eq_n_chunks": null,
+          "lr_n_chunks": 1,
+          "link_gap": "LR_ONLY"
+        }
+      ],
+      "eq_part_heads": [
+        "The esophagus Parts of the esophagus Esophageal cancer How cancer spreads Key points The esophagus is a long, muscular tube through which food passes from the t",
+        ". The esophagus wall is made up of 4 main layers: mucosa, submucosa, muscularis propria, and tunica adventitia. Esophageal cancers tend to develop slowly over m",
+        ". In this system, the letters T, N, and M describe different areas of cancer growth. Based on imaging and pathology results, a score or number is assigned to ea",
+        ". Poorly differentiated (G3) means the cancer cells look very different compared to normal cells. GX \u2013 Grade cannot be determined G1 \u2013 Well differentiated (low ",
+        ". Clinical stage Clinical stage (c) is the rating given before any treatment. It is based on a physical exam, biopsy, and imaging tests. An example might look l",
+        ". The stages are explained below. Stage 0 There are abnormal cells on the innermost layer of the colon wall. These abnormal cells may become cancer and spread i",
+        ". Smoking can limit how well cancer treatment works. Smoking and vaping can also increase the risk of lung problems during and after chemotherapy. They also inc",
+        ". Options for non\u2013fertility-sparing treatment are provided next according to stage. EBRT or chemoradiation may be needed after surgery. Stage 1A1 Stage 1A1 canc"
+      ],
+      "lr_part_heads": [
+        "istalsis). Tunica adventitia \u2013 outermost layer, made of connective tissue Upper esophagus The upper part of the esophagus is made of striated muscle. Striated m",
+        "ostic stage also includes the assumption that you are treated with the standard-of-care approaches. Prognostic stages are divided into clinical and pathologic. ",
+        "NSCLC, found at NCCN.org/patientguidelines and on the NCCN Patient Guides for Cancer app. What are the causes and risk factors? Smoking cigarettes is the main c",
+        "system to better fight off the cancer cells. PDL1 expression is measured using a combined positive score (CPS), which measures the immune proteins in your tumor",
+        "It might include cancer in the base of the skull or carotid artery. Metastatic \u2013 This is cancer that has spread to other parts of the body, including lung and d",
+        "information on cancer. Take our survey to let us know what we got right and what we could do better. NCCN.org/patients/feedback 3 Nasopharyngeal cancer staging ",
+        "ulcer or masses that can cause symptoms. Stomach cancers tend to develop slowly over many years. Before cancer develops, precancerous changes often occur in the",
+        ". But they do know several factors that increase the chance of developing pancreatic cancer. Such risk factors include: Lifestyle factors, such as smoking tobac"
+      ],
+      "verdict": {
+        "law": "GEN_OR_EVAL",
+        "why": "EQ Mix is not below LR on question-bigram containment; if Summarize ER still lags, look at generation/eval \u2014 not entity\u2192chunk link density.",
+        "facts": {
+          "eq_mix_parts": 20,
+          "lr_mix_parts": 16,
+          "eq_question_bigrams_hit": 1,
+          "lr_question_bigrams_hit": 1,
+          "eq_missed_bigrams": [
+            "stages esophageal",
+            "cancer defined",
+            "defined distinguishing",
+            "distinguishing features"
+          ],
+          "lr_missed_bigrams": [
+            "stages esophageal",
+            "cancer defined",
+            "defined distinguishing",
+            "distinguishing features"
+          ],
+          "n_exact_pairs_both_linked": 3,
+          "n_exact_pairs_eq_empty_lr_linked": 0,
+          "n_exact_pairs_lr_only": 1,
+          "eq_empty_names": [],
+          "both_linked_sample": [
+            {
+              "norm": "ESOPHAGEAL_CANCER",
+              "eq_n": 4,
+              "lr_n": 5
+            },
+            {
+              "norm": "STAGE",
+              "eq_n": 2,
+              "lr_n": 3
+            },
+            {
+              "norm": "CANCER",
+              "eq_n": 46,
+              "lr_n": 34
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "Medical-6809b810",
+      "question": "What are the main types and subtypes of throat cancer and how are they classified within head and neck cancers?",
+      "query_intent": "exploratory",
+      "n_evidence": 4,
+      "eq_mix_parts": 18,
+      "eq_mix_chars": 114477,
+      "lr_mix_parts": 14,
+      "lr_mix_chars": 80012,
+      "question_bigrams": [
+        "types subtypes",
+        "subtypes throat",
+        "throat cancer",
+        "cancer they",
+        "they classified",
+        "classified within",
+        "within head",
+        "head neck",
+        "neck cancers"
+      ],
+      "eq_topic": {
+        "n_parts": 18,
+        "n_bigrams": 9,
+        "n_bigrams_hit": 2,
+        "hit_bigrams": [
+          "throat cancer",
+          "neck cancers"
+        ],
+        "missed_bigrams": [
+          "types subtypes",
+          "subtypes throat",
+          "cancer they",
+          "they classified",
+          "classified within",
+          "within head",
+          "head neck"
+        ]
+      },
+      "lr_topic": {
+        "n_parts": 14,
+        "n_bigrams": 9,
+        "n_bigrams_hit": 2,
+        "hit_bigrams": [
+          "throat cancer",
+          "neck cancers"
+        ],
+        "missed_bigrams": [
+          "types subtypes",
+          "subtypes throat",
+          "cancer they",
+          "they classified",
+          "classified within",
+          "within head",
+          "head neck"
+        ]
+      },
+      "topic_norms": [
+        "TYPES_SUBTYPES",
+        "TYPES_SUBTYPE",
+        "SUBTYPES_THROAT",
+        "THROAT_CANCER",
+        "CANCER_THEY",
+        "THEY_CLASSIFIED",
+        "CLASSIFIED_WITHIN",
+        "WITHIN_HEAD",
+        "HEAD_NECK",
+        "NECK_CANCERS",
+        "NECK_CANCER",
+        "TYPES_SUBTYPES_THROAT",
+        "SUBTYPES_THROAT_CANCER",
+        "THROAT_CANCER_THEY",
+        "CANCER_THEY_CLASSIFIED",
+        "THEY_CLASSIFIED_WITHIN",
+        "CLASSIFIED_WITHIN_HEAD",
+        "WITHIN_HEAD_NECK",
+        "HEAD_NECK_CANCERS",
+        "HEAD_NECK_CANCER",
+        "TYPES",
+        "TYPE",
+        "SUBTYPES",
+        "SUBTYPE"
+      ],
+      "exact_pairs": [
+        {
+          "norm": "THROAT_CANCER",
+          "eq_name": "THROAT_CANCER",
+          "lr_name": "Throat Cancer",
+          "eq_n_chunks": 2,
+          "lr_n_chunks": 6,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "SUBTYPES",
+          "eq_name": "SUBTYPES",
+          "lr_name": null,
+          "eq_n_chunks": 1,
+          "lr_n_chunks": null,
+          "link_gap": "EQ_ONLY"
+        },
+        {
+          "norm": "SUBTYPE",
+          "eq_name": "SUBTYPE",
+          "lr_name": null,
+          "eq_n_chunks": 0,
+          "lr_n_chunks": null,
+          "link_gap": "EQ_ONLY"
+        },
+        {
+          "norm": "THROAT",
+          "eq_name": "THROAT",
+          "lr_name": "Throat",
+          "eq_n_chunks": 7,
+          "lr_n_chunks": 8,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "CANCER",
+          "eq_name": "CANCER",
+          "lr_name": "Cancer",
+          "eq_n_chunks": 46,
+          "lr_n_chunks": 34,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "HEAD",
+          "eq_name": "HEAD",
+          "lr_name": "Head",
+          "eq_n_chunks": 4,
+          "lr_n_chunks": 3,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "NECK",
+          "eq_name": "NECK",
+          "lr_name": "Neck",
+          "eq_n_chunks": 13,
+          "lr_n_chunks": 6,
+          "link_gap": "BOTH_LINKED"
+        },
+        {
+          "norm": "CANCERS",
+          "eq_name": "CANCERS",
+          "lr_name": null,
+          "eq_n_chunks": 3,
+          "lr_n_chunks": null,
+          "link_gap": "EQ_ONLY"
+        },
+        {
+          "norm": "SQUAMOUS_CELL",
+          "eq_name": null,
+          "lr_name": "Squamous cell",
+          "eq_n_chunks": null,
+          "lr_n_chunks": 1,
+          "link_gap": "LR_ONLY"
+        },
+        {
+          "norm": "SQUAMOUS_CELL_CARCINOMA",
+          "eq_name": "SQUAMOUS_CELL_CARCINOMA",
+          "lr_name": "Squamous Cell Carcinoma",
+          "eq_n_chunks": 13,
+          "lr_n_chunks": 19,
+          "link_gap": "BOTH_LINKED"
+        }
+      ],
+      "eq_part_heads": [
+        "Throat cancer basics The throat The pharynx Head and neck cancers Throat cancer Key points The throat is located in the back of the mouth and in the neck. Cance",
+        "The pharynx Head and neck cancer Nasopharyngeal cancer Key points Nasopharyngeal carcinoma (NPC) is a type of cancer that affects the nasopharynx. The nasophary",
+        "Mouth cancer basics The mouth Head and neck cancer Mouth cancer Key points Mouth or oral cavity cancer is a type of cancer that affects the lips, the front two-",
+        ". HPV type 16 is responsible for 9 out of 10 throat cancers. The remaining cancers are caused by HPV18, 33, and HPV-positive throat cancer is a distinct disease",
+        ". Clinical stage Clinical stage (c) is the rating given before any treatment. It is based on a physical exam, biopsy, and imaging tests. An example might look l",
+        ". If you smoke or vape, seek help to quit A history of smoking or vaping nicotine increases your chances of developing head and neck, lung, and other cancers. S",
+        ". Online patient portals are a great way to access your test results. Please discuss your results with your health care provider. Keep these things in mind: Cho",
+        ". Keep a list of contact information for everyone on your care team. Add it to your phone. Hang the list on your refrigerator or keep it in a place where someon"
+      ],
+      "lr_part_heads": [
+        "N Guidelines for Patients Immunotherapy Side Effects: Immune Checkpoint Inhibitors at NCCN.org/ patientguidelines and on the NCCN Patient Guides for Cancer app.",
+        "if I am pregnant? What if I\u2019m planning to get pregnant in the near future? Am I a candidate for a clinical trial? Which option is proven to work best for my can",
+        "ostic stage also includes the assumption that you are treated with the standard-of-care approaches. Prognostic stages are divided into clinical and pathologic. ",
+        "system to better fight off the cancer cells. PDL1 expression is measured using a combined positive score (CPS), which measures the immune proteins in your tumor",
+        "throat (oropharynx) is the focus of this book. The oropharynx includes the back of the roof of the mouth (soft palate), the tonsils, the side and back walls of ",
+        "Cancer at NCCN.org/ patientguidelines and on the NCCN Patient Guides for Cancer app. Key points Mouth cancer refers to cancer that develops in any of the parts ",
+        "teeth, upper and lower jaws, and surrounding structures and tissues. It is commonly performed by dentists and oral surgeons in everyday practice and may be used",
+        "otherapy is typically given for 3 to 6 months. The length of treatment depends on the regimen and the risk of recurrence. Surveillance Follow-up testing is star"
+      ],
+      "verdict": {
+        "law": "GEN_OR_EVAL",
+        "why": "EQ Mix is not below LR on question-bigram containment; if Summarize ER still lags, look at generation/eval \u2014 not entity\u2192chunk link density.",
+        "facts": {
+          "eq_mix_parts": 18,
+          "lr_mix_parts": 14,
+          "eq_question_bigrams_hit": 2,
+          "lr_question_bigrams_hit": 2,
+          "eq_missed_bigrams": [
+            "types subtypes",
+            "subtypes throat",
+            "cancer they",
+            "they classified",
+            "classified within",
+            "within head",
+            "head neck"
+          ],
+          "lr_missed_bigrams": [
+            "types subtypes",
+            "subtypes throat",
+            "cancer they",
+            "they classified",
+            "classified within",
+            "within head",
+            "head neck"
+          ],
+          "n_exact_pairs_both_linked": 6,
+          "n_exact_pairs_eq_empty_lr_linked": 0,
+          "n_exact_pairs_lr_only": 1,
+          "eq_empty_names": [],
+          "both_linked_sample": [
+            {
+              "norm": "THROAT_CANCER",
+              "eq_n": 2,
+              "lr_n": 6
+            },
+            {
+              "norm": "THROAT",
+              "eq_n": 7,
+              "lr_n": 8
+            },
+            {
+              "norm": "CANCER",
+              "eq_n": 46,
+              "lr_n": 34
+            },
+            {
+              "norm": "HEAD",
+              "eq_n": 4,
+              "lr_n": 3
+            },
+            {
+              "norm": "NECK",
+              "eq_n": 13,
+              "lr_n": 6
+            },
+            {
+              "norm": "SQUAMOUS_CELL_CARCINOMA",
+              "eq_n": 13,
+              "lr_n": 19
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "Medical-b5a3c96e",
+      "question": "How do the sites of involvement and epidemiology differ between mediastinal and non-mediastinal gray zone lymphomas?",
+      "query_intent": "comparative",
+      "n_evidence": 6,
+      "eq_mix_parts": 19,
+      "eq_mix_chars": 114320,
+      "lr_mix_parts": 12,
+      "lr_mix_chars": 67833,
+      "question_bigrams": [
+        "sites involvement",
+        "involvement epidemiology",
+        "epidemiology differ",
+        "differ between",
+        "between mediastinal",
+        "mediastinal non-mediastinal",
+        "non-mediastinal gray",
+        "gray zone",
+        "zone lymphomas"
+      ],
+      "eq_topic": {
+        "n_parts": 19,
+        "n_bigrams": 9,
+        "n_bigrams_hit": 3,
+        "hit_bigrams": [
+          "non-mediastinal gray",
+          "gray zone",
+          "zone lymphomas"
+        ],
+        "missed_bigrams": [
+          "sites involvement",
+          "involvement epidemiology",
+          "epidemiology differ",
+          "differ between",
+          "between mediastinal",
+          "mediastinal non-mediastinal"
+        ]
+      },
+      "lr_topic": {
+        "n_parts": 12,
+        "n_bigrams": 9,
+        "n_bigrams_hit": 3,
+        "hit_bigrams": [
+          "non-mediastinal gray",
+          "gray zone",
+          "zone lymphomas"
+        ],
+        "missed_bigrams": [
+          "sites involvement",
+          "involvement epidemiology",
+          "epidemiology differ",
+          "differ between",
+          "between mediastinal",
+          "mediastinal non-mediastinal"
+        ]
+      },
+      "topic_norms": [
+        "DO_SITES",
+        "DO_SITE",
+        "SITES_INVOLVEMENT",
+        "INVOLVEMENT_EPIDEMIOLOGY",
+        "EPIDEMIOLOGY_DIFFER",
+        "DIFFER_BETWEEN",
+        "BETWEEN_MEDIASTINAL",
+        "MEDIASTINAL_NON_MEDIASTINAL",
+        "NON_MEDIASTINAL_GRAY",
+        "GRAY_ZONE",
+        "ZONE_LYMPHOMAS",
+        "ZONE_LYMPHOMA",
+        "DO_SITES_INVOLVEMENT",
+        "SITES_INVOLVEMENT_EPIDEMIOLOGY",
+        "INVOLVEMENT_EPIDEMIOLOGY_DIFFER",
+        "EPIDEMIOLOGY_DIFFER_BETWEEN",
+        "DIFFER_BETWEEN_MEDIASTINAL",
+        "BETWEEN_MEDIASTINAL_NON_MEDIASTINAL",
+        "MEDIASTINAL_NON_MEDIASTINAL_GRAY",
+        "NON_MEDIASTINAL_GRAY_ZONE",
+        "GRAY_ZONE_LYMPHOMAS",
+        "GRAY_ZONE_LYMPHOMA",
+        "SITES",
+        "SITE"
+      ],
+      "exact_pairs": [
+        {
+          "norm": "LYMPHOMA",
+          "eq_name": "LYMPHOMA",
+          "lr_name": "Lymphoma",
+          "eq_n_chunks": 5,
+          "lr_n_chunks": 4,
+          "link_gap": "BOTH_LINKED"
+        }
+      ],
+      "eq_part_heads": [
+        "Mediastinal gray zone lymphomas 69 Overview 70 Treatment 71 Key points 71 Questions to ask Mediastinal gray zone lymphoma (MGZL) has overlapping features of pri",
+        ". FDG-PET/CT can be done at the same time as a CT used for diagnosis. Ultrasound Ultrasound (US) uses high-energy sound waves to form pictures of the inside of ",
+        ". In fact, you\u2019re more likely to get the care you want by asking questions and making shared decisions with your care team. The NCCN Guidelines for Patients wil",
+        ". Physical exam Your hematologist/oncologist will perform a physical exam of your body. This exam will include: Checking your vital signs\u2014blood pressure, heart ",
+        ". Key points A biopsy is the main test to diagnose primary CNS lymphoma. Imaging tests take pictures that show areas in the body that might have cancer as well ",
+        ". The images show areas in the body that might have cancer. The images can reveal a lymphoma\u2019s location, size, and other features. MRI Magnetic resonance imagin",
+        "Lymphoma basics Lymphatic system Lymphocytes Follicular lymphoma How does FL develop? Types of FL Key points Follicular lymphoma (FL) is a slow-growing (indolen",
+        ". Lymphocytes normally grow in response to infection or inflammation. When they grow on their own without proper regulation, they can develop into lymphoma. h F"
+      ],
+      "lr_part_heads": [
+        "treat tumors in the liver, lungs, or bone. Only a few treatment sessions are needed. If treatment with the local therapies listed above is complete, systemic th",
+        ". Nicotine is the chemical in tobacco that makes you want to keep smoking. Nicotine withdrawal is challenging for most people who smoke. The stress of having ca",
+        "older persons, have a higher rate of bone marrow involvement, include disease outside the lymph nodes (extranodal disease), and have more advanced-stage disease",
+        "information on the treatment of metastatic anal cancer. If cancer returns to the anus If cancer returns to the anal area, surgery to remove the anus is recommen",
+        "Health Organization classification (WHO5), follicular lymphoma grades 1, 2, and 3A are termed classic FL (cFL). International Consensus classification (ICC) gro",
+        ". After your scan, your images will be studied by a radiologist. A radiologist is a doctor who\u2019s an expert in reading imaging tests. The radiologist will send t",
+        "Hodgkin lymphoma in adults. Information on Hodgkin lymphoma in children and adolescents is available at NCCN.org/patientguidelines and on the NCCN Patient Guide",
+        "quit. For online support, try these websites: SmokeFree.gov BeTobaccoFree.gov CDC.gov/tobacco 3 Staging and grading 23 24 26 26 27 How far and how fast? Stage G"
+      ],
+      "verdict": {
+        "law": "GEN_OR_EVAL",
+        "why": "EQ Mix is not below LR on question-bigram containment; if Summarize ER still lags, look at generation/eval \u2014 not entity\u2192chunk link density.",
+        "facts": {
+          "eq_mix_parts": 19,
+          "lr_mix_parts": 12,
+          "eq_question_bigrams_hit": 3,
+          "lr_question_bigrams_hit": 3,
+          "eq_missed_bigrams": [
+            "sites involvement",
+            "involvement epidemiology",
+            "epidemiology differ",
+            "differ between",
+            "between mediastinal",
+            "mediastinal non-mediastinal"
+          ],
+          "lr_missed_bigrams": [
+            "sites involvement",
+            "involvement epidemiology",
+            "epidemiology differ",
+            "differ between",
+            "between mediastinal",
+            "mediastinal non-mediastinal"
+          ],
+          "n_exact_pairs_both_linked": 1,
+          "n_exact_pairs_eq_empty_lr_linked": 0,
+          "n_exact_pairs_lr_only": 0,
+          "eq_empty_names": [],
+          "both_linked_sample": [
+            {
+              "norm": "LYMPHOMA",
+              "eq_n": 5,
+              "lr_n": 4
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "binding": {
+    "id": "Medical-0002d2de",
+    "question": "How are bone cancers staged and what factors are considered in determining the stage?",
+    "query_intent": "exploratory",
+    "n_evidence": 6,
+    "eq_mix_parts": 6,
+    "eq_mix_chars": 41061,
+    "lr_mix_parts": 14,
+    "lr_mix_chars": 78664,
+    "question_bigrams": [
+      "bone cancers",
+      "cancers staged",
+      "staged stage"
+    ],
+    "eq_topic": {
+      "n_parts": 6,
+      "n_bigrams": 3,
+      "n_bigrams_hit": 0,
+      "hit_bigrams": [],
+      "missed_bigrams": [
+        "bone cancers",
+        "cancers staged",
+        "staged stage"
+      ]
+    },
+    "lr_topic": {
+      "n_parts": 14,
+      "n_bigrams": 3,
+      "n_bigrams_hit": 1,
+      "hit_bigrams": [
+        "bone cancers"
+      ],
+      "missed_bigrams": [
+        "cancers staged",
+        "staged stage"
+      ]
+    },
+    "topic_norms": [
+      "BONE_CANCERS",
+      "BONE_CANCER",
+      "CANCERS_STAGED",
+      "STAGED_STAGE",
+      "BONE_CANCERS_STAGED",
+      "CANCERS_STAGED_STAGE",
+      "BONE",
+      "CANCERS",
+      "CANCER",
+      "STAGED",
+      "STAGE",
+      "BONE_CANCERS_ARE",
+      "THE_TNM",
+      "THE_TNM_SYSTEM"
+    ],
+    "exact_pairs": [
+      {
+        "norm": "BONE_CANCER",
+        "eq_name": "BONE_CANCER",
+        "lr_name": "Bone cancer",
+        "eq_n_chunks": 5,
+        "lr_n_chunks": 6,
+        "link_gap": "BOTH_LINKED"
+      },
+      {
+        "norm": "BONE",
+        "eq_name": "BONE",
+        "lr_name": "Bone",
+        "eq_n_chunks": 17,
+        "lr_n_chunks": 17,
+        "link_gap": "BOTH_LINKED"
+      },
+      {
+        "norm": "CANCERS",
+        "eq_name": "CANCERS",
+        "lr_name": null,
+        "eq_n_chunks": 3,
+        "lr_n_chunks": null,
+        "link_gap": "EQ_ONLY"
+      },
+      {
+        "norm": "CANCER",
+        "eq_name": "CANCER",
+        "lr_name": "Cancer",
+        "eq_n_chunks": 46,
+        "lr_n_chunks": 34,
+        "link_gap": "BOTH_LINKED"
+      },
+      {
+        "norm": "STAGE",
+        "eq_name": "STAGE",
+        "lr_name": "Stage",
+        "eq_n_chunks": 2,
+        "lr_n_chunks": 3,
+        "link_gap": "BOTH_LINKED"
+      }
+    ],
+    "eq_part_heads": [
+      ". Options for non\u2013fertility-sparing treatment are provided next according to stage. EBRT or chemoradiation may be needed after surgery. Stage 1A1 Stage 1A1 canc",
+      "7 The anus 8 Risk factors 9 Diagnosis and treatment planning 13 Staging 14 Fertility and family planning 15 Key points Anal cancer basics The anus Anal cancer i",
+      ". Key points Cervical cancer is most often diagnosed by cervical biopsy. Samples of cervical tissue are removed and tested for dysplasia and cancer. A cone biop",
+      ". In general, to be diagnosed with AML, 20 percent or more myeloblasts must be present in the bone marrow or blood. This means that at least 1 out of every 5 ce",
+      ". In general, to be diagnosed with AML, 20 percent or more myeloblasts must be present in the bone marrow or blood. This means that at least 1 out of every 5 ce",
+      ". This tube will allow your kidneys to drain. Your urine will now exit the body through a small opening called a stoma. A small disposable bag attached to the o"
+    ],
+    "lr_part_heads": [
+      "physis (growth plate) and diaphysis. Diaphysis \u2013 the middle region of the bone. Physis \u2013 the growth plate, which is made of cartilage. After skeletal maturity, ",
+      ", and produce hormones. Bone is light, yet strong and can regrow. What's in this book? This book is organized into the following chapters: Chapter 2: Testing fo",
+      "ostic stage also includes the assumption that you are treated with the standard-of-care approaches. Prognostic stages are divided into clinical and pathologic. ",
+      "This is called a somatic mutation or somatic change. MSI-H/dMMR mutation Microsatellites are short, repeated strings of DNA. When errors or defects occur, they ",
+      "It might include cancer in the base of the skull or carotid artery. Metastatic \u2013 This is cancer that has spread to other parts of the body, including lung and d",
+      "If the cancer doesn't take up iodine, targeted therapy may be an option. But, if the metastatic tumors are growing slowly (or not at all) and aren't causing sym",
+      "treatment begins. Online portals are a great way to access your test results. Please discuss your results with your health care provider A medical history and p",
+      ", siblings, and children. Next, talk to half-siblings, aunts and uncles, nieces and nephews, grandparents, and grandchildren. Write down what you learn about yo"
+    ],
+    "verdict": {
+      "law": "SELECT",
+      "why": "Topic entities are linked on both sides (not LINK starvation), yet EQ Mix contains fewer of the question's own content bigrams than LR \u2014 Mix admission selected the wrong neighborhood.",
+      "facts": {
+        "eq_mix_parts": 6,
+        "lr_mix_parts": 14,
+        "eq_question_bigrams_hit": 0,
+        "lr_question_bigrams_hit": 1,
+        "eq_missed_bigrams": [
+          "bone cancers",
+          "cancers staged",
+          "staged stage"
+        ],
+        "lr_missed_bigrams": [
+          "cancers staged",
+          "staged stage"
+        ],
+        "n_exact_pairs_both_linked": 4,
+        "n_exact_pairs_eq_empty_lr_linked": 0,
+        "n_exact_pairs_lr_only": 0,
+        "eq_empty_names": [],
+        "both_linked_sample": [
+          {
+            "norm": "BONE_CANCER",
+            "eq_n": 5,
+            "lr_n": 6
+          },
+          {
+            "norm": "BONE",
+            "eq_n": 17,
+            "lr_n": 17
+          },
+          {
+            "norm": "CANCER",
+            "eq_n": 46,
+            "lr_n": 34
+          },
+          {
+            "norm": "STAGE",
+            "eq_n": 2,
+            "lr_n": 3
+          }
+        ]
+      }
+    }
+  }
+}

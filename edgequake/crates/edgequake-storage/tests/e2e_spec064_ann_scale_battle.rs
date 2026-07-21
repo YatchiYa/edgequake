@@ -10,17 +10,15 @@
 //! `make ann-scale-battle`.
 #![cfg(feature = "postgres")]
 
-#[path = "support/postgres_test_config.rs"]
-mod postgres_test_config;
 #[path = "support/perf_harness.rs"]
 mod perf_harness;
 #[path = "support/perf_stress.rs"]
 mod perf_stress;
+#[path = "support/postgres_test_config.rs"]
+mod postgres_test_config;
 
 use edgequake_storage::traits::{MetadataFilter, VectorStorage};
-use edgequake_storage::{
-    PgVectorStorage, VectorIndexType, VectorStorageMode,
-};
+use edgequake_storage::{PgVectorStorage, VectorIndexType, VectorStorageMode};
 use perf_harness::percentile_p95_ms;
 use perf_stress::{
     ann_scale, perf_scale, stress_clients, stress_mult, stress_pool_max, with_stress_pool,
@@ -114,7 +112,14 @@ fn mf() -> MetadataFilter {
     }
 }
 
-fn emit_report(op: &str, p95_ms: f64, samples: &[Duration], plan_class: &str, pass: bool, detail: String) {
+fn emit_report(
+    op: &str,
+    p95_ms: f64,
+    samples: &[Duration],
+    plan_class: &str,
+    pass: bool,
+    detail: String,
+) {
     println!(
         "PERF_REPORT {}",
         serde_json::json!({
@@ -291,7 +296,9 @@ async fn explain_filtered(
     global_ann_name: Option<&str>,
 ) -> String {
     let pool = postgres_test_config::contract_pg_pool(config).await;
-    let _ = sqlx::query(&format!("ANALYZE {table}")).execute(&pool).await;
+    let _ = sqlx::query(&format!("ANALYZE {table}"))
+        .execute(&pool)
+        .await;
     // Match production search tuning so EXPLAIN reflects iterative walk cost.
     let _ = sqlx::query("SET hnsw.ef_search = 80").execute(&pool).await;
     let _ = sqlx::query("SET hnsw.iterative_scan = relaxed_order")
@@ -341,9 +348,11 @@ async fn explain_filtered(
             // btree so the planner must pick the partial HNSW.
             let mut tx = pool.begin().await.expect("explain tx");
             // Index names are eq_{prefix}_vectors_tenant_ws_idx — table is eq_{prefix}_vectors.
-            let tenant_idx = table
-                .trim_start_matches("public.")
-                .replacen("_vectors", "_vectors_tenant_ws_idx", 1);
+            let tenant_idx = table.trim_start_matches("public.").replacen(
+                "_vectors",
+                "_vectors_tenant_ws_idx",
+                1,
+            );
             let _ = sqlx::query(&format!("DROP INDEX IF EXISTS {tenant_idx}"))
                 .execute(&mut *tx)
                 .await;
@@ -376,9 +385,7 @@ async fn explain_filtered(
         }
     } else {
         assert!(
-            !lower.contains("seq scan")
-                || lower.contains("hnsw")
-                || plan.contains("Index Scan"),
+            !lower.contains("seq scan") || lower.contains("hnsw") || plan.contains("Index Scan"),
             "filtered ANN EXPLAIN should use index/HNSW path; plan was:\n{summary}"
         );
     }
@@ -386,7 +393,12 @@ async fn explain_filtered(
     summary
 }
 
-async fn topk_ids(storage: &PgVectorStorage, dim: usize, seed: f32, filter: &MetadataFilter) -> Vec<String> {
+async fn topk_ids(
+    storage: &PgVectorStorage,
+    dim: usize,
+    seed: f32,
+    filter: &MetadataFilter,
+) -> Vec<String> {
     storage
         .query_filtered(&emb(dim, seed), TOP_K, None, Some(filter))
         .await
@@ -417,9 +429,8 @@ async fn e2e_spec064_ann_scale_battle() {
         scale.as_str()
     );
     let arms = BattleArm::parse_list(
-        &std::env::var("EDGEQUAKE_BATTLE_ARMS").unwrap_or_else(|_| {
-            "full_default,halfvec_default,halfvec_partial_ws,guc_grid".into()
-        }),
+        &std::env::var("EDGEQUAKE_BATTLE_ARMS")
+            .unwrap_or_else(|_| "full_default,halfvec_default,halfvec_partial_ws,guc_grid".into()),
     );
     let ann = ann_scale(scale);
     let clients = stress_clients();
@@ -441,12 +452,12 @@ async fn e2e_spec064_ann_scale_battle() {
 
         match arm {
             BattleArm::FullDefault => {
-                let Some(base) =
-                    postgres_test_config::require_or_skip_postgres("battle064_full")
+                let Some(base) = postgres_test_config::require_or_skip_postgres("battle064_full")
                 else {
                     return;
                 };
-                let config = with_stress_pool(base, clients).with_vector_index(VectorIndexType::None);
+                let config =
+                    with_stress_pool(base, clients).with_vector_index(VectorIndexType::None);
                 let storage = Arc::new(
                     PgVectorStorage::with_dimension(config.clone(), ann.dim)
                         .with_storage_mode(VectorStorageMode::Full),
@@ -483,8 +494,7 @@ async fn e2e_spec064_ann_scale_battle() {
                     explain.chars().take(4000).collect::<String>(),
                 );
 
-                let (single_p95, single_samples) =
-                    measure_single(&storage, ann.dim, &filter).await;
+                let (single_p95, single_samples) = measure_single(&storage, ann.dim, &filter).await;
                 let slo_pass = single_p95 < Q1D_SLO_MS;
                 assert!(
                     single_p95 < HANG_CLIFF_MS,
@@ -607,8 +617,7 @@ async fn e2e_spec064_ann_scale_battle() {
                     explain.chars().take(4000).collect::<String>(),
                 );
 
-                let (single_p95, single_samples) =
-                    measure_single(&storage, ann.dim, &filter).await;
+                let (single_p95, single_samples) = measure_single(&storage, ann.dim, &filter).await;
                 let slo_pass = single_p95 < Q1D_SLO_MS;
                 assert!(
                     single_p95 < HANG_CLIFF_MS,
@@ -709,7 +718,8 @@ async fn e2e_spec064_ann_scale_battle() {
 
     if arms.contains(&BattleArm::GucGrid) {
         // Prefer partial halfvec table when present; else half; else full.
-        let (storage, config) = if let (Some(s), Some(c)) = (half_storage.as_ref(), half_config.as_ref())
+        let (storage, config) = if let (Some(s), Some(c)) =
+            (half_storage.as_ref(), half_config.as_ref())
         {
             // Ensure Wave2 shape if that arm ran; otherwise keep global halfvec.
             if arms.contains(&BattleArm::HalfvecPartialWs) {
@@ -787,7 +797,17 @@ async fn e2e_spec064_ann_scale_battle() {
             &[],
             "hnsw",
             best_p95 < Q1D_SLO_MS,
-            format!("best={best_label} p95_ms={best_p95:.2} explain_tail={}", explain.chars().rev().take(500).collect::<String>().chars().rev().collect::<String>()),
+            format!(
+                "best={best_label} p95_ms={best_p95:.2} explain_tail={}",
+                explain
+                    .chars()
+                    .rev()
+                    .take(500)
+                    .collect::<String>()
+                    .chars()
+                    .rev()
+                    .collect::<String>()
+            ),
         );
         outcomes.push(ArmOutcome {
             arm: BattleArm::GucGrid,

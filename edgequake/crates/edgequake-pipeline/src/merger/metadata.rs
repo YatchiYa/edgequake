@@ -59,7 +59,7 @@ pub fn relationship_vector_metadata(
     target_key: &str,
     scope: TenantScope<'_>,
 ) -> Value {
-    let chunk_ids: Vec<String> = rel.source_chunk_id.iter().cloned().collect();
+    let chunk_ids = rel.all_source_chunk_ids();
     let doc_ids = crate::merger::lineage::resolve_incoming_document_ids(
         rel.source_document_id.as_deref(),
         &chunk_ids,
@@ -71,7 +71,8 @@ pub fn relationship_vector_metadata(
         "keywords": rel.keywords.join(", "),
         "relation_type": rel.relation_type,
         "description": rel.description,
-        "source_chunk_id": rel.source_chunk_id,
+        "source_chunk_id": chunk_ids.first(),
+        "source_chunk_ids": chunk_ids,
         "source_document_id": rel.source_document_id,
         "source_document_ids": doc_ids,
         "source_file_path": rel.source_file_path

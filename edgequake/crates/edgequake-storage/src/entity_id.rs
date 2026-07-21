@@ -22,12 +22,21 @@
 //!
 //! # Canonical convention
 //!
-//! - Graph node id  = `EntityId::as_graph_node_id()`  → bare `JOHN_DOE`
-//! - Entity vector id = `EntityId::as_vector_id()`    → `entity:JOHN_DOE`
+//! - Graph node id (legacy / no workspace) = `EntityId::as_graph_node_id()` → bare `JOHN_DOE`
+//! - Graph node id (workspace-scoped, SPEC-032 / B3b) =
+//!   `EntityId::scoped_graph_node_id(workspace_id)` → `{workspace_id}::JOHN_DOE`
+//! - Entity vector id = `EntityId::as_vector_id()` → `entity:JOHN_DOE`
+//!
+//! WHY scoped graph ids: a shared AGE graph with bare `node_id` + UNIQUE
+//! `eq_node_id` lets the first workspace to extract `SURGERY` own that vertex;
+//! later Acc workspaces merge into foreign `workspace_id` rows and Mix query
+//! (workspace filter) cannot see them. Vectors stay workspace-table-scoped, so
+//! extract density looks healthy while the graph arm is starved.
 //!
 //! The `entity:` prefix on the vector id is what [`VectorId`] decodes back into
 //! an [`EntityId`]; keeping the prefix makes the storage id self-describing
-//! even when metadata is absent.
+//! even when metadata is absent. Display `label` stays the bare normalized name.
+
 //!
 //! [`VectorId`]: crate::vector_id::VectorId
 
@@ -63,9 +72,50 @@ impl EntityId {
         Self(normalized.into())
     }
 
-    /// The bare normalized name, used as the graph node id.
+    /// Separator between workspace UUID and normalized entity name in scoped
+    /// graph node ids. Chosen so it cannot appear in UUIDs and is distinct from
+    /// relationship `A::B` vector ids (those use a single `::` between *two
+    /// entity names*, not a workspace prefix).
+    pub const WORKSPACE_SCOPE_SEP: &str = "::";
+
+    /// The bare normalized name (legacy graph node id when no workspace).
     pub fn as_graph_node_id(&self) -> &str {
         &self.0
+    }
+
+    /// Workspace-scoped graph node id: `{workspace_id}::{NORMALIZED_NAME}`.
+    ///
+    /// Empty / whitespace workspace falls back to the bare id (single-tenant /
+    /// tests without a workspace context).
+    pub fn scoped_graph_node_id(&self, workspace_id: &str) -> String {
+        let ws = workspace_id.trim();
+        if ws.is_empty() || self.0.is_empty() {
+            return self.0.clone();
+        }
+        format!("{ws}{}{}", Self::WORKSPACE_SCOPE_SEP, self.0)
+    }
+
+    /// Resolve graph node id: scoped when `workspace_id` is `Some` and non-empty.
+    pub fn graph_node_id_for_workspace(&self, workspace_id: Option<&str>) -> String {
+        match workspace_id.map(str::trim).filter(|s| !s.is_empty()) {
+            Some(ws) => self.scoped_graph_node_id(ws),
+            None => self.0.clone(),
+        }
+    }
+
+    /// Strip a leading `{workspace_id}::` scope when present; otherwise return
+    /// the bare normalized name (for display / keyword match).
+    pub fn bare_name_from_graph_node_id(graph_node_id: &str) -> &str {
+        match graph_node_id.split_once(Self::WORKSPACE_SCOPE_SEP) {
+            Some((maybe_ws, rest))
+                if !rest.is_empty()
+                    && maybe_ws.len() == 36
+                    && maybe_ws.chars().filter(|c| *c == '-').count() == 4 =>
+            {
+                rest
+            }
+            _ => graph_node_id,
+        }
     }
 
     /// The prefixed vector storage id (`entity:NAME`), used as the entity
@@ -129,8 +179,14 @@ impl From<&EntityId> for String {
 /// - Title-cases each word, joins with `_`, uppercases the result.
 ///
 /// Empty / whitespace-only input yields the empty string (E1).
+///
+/// Also rejects LightRAG `normalize_extracted_info` numeric empties (056):
+/// pure digits with `len < 3`, or digits+dots with `len < 6` and at least one dot.
 pub fn normalize_entity_name(raw_name: &str) -> String {
     let trimmed = raw_name.trim();
+    if trimmed.is_empty() || is_lightrag_rejected_numeric_name(trimmed) {
+        return String::new();
+    }
 
     let without_prefix = trimmed
         .strip_prefix("The ")
@@ -141,7 +197,7 @@ pub fn normalize_entity_name(raw_name: &str) -> String {
         .or_else(|| trimmed.strip_prefix("an "))
         .unwrap_or(trimmed);
 
-    without_prefix
+    let normalized = without_prefix
         .split_whitespace()
         .filter(|w| !w.is_empty())
         .map(|word| {
@@ -153,7 +209,29 @@ pub fn normalize_entity_name(raw_name: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join("_")
-        .to_uppercase()
+        .to_uppercase();
+
+    // Re-check after fold (e.g. dotted forms that survived whitespace split).
+    if is_lightrag_rejected_numeric_name(&normalized) {
+        return String::new();
+    }
+    normalized
+}
+
+/// LightRAG `normalize_extracted_info` empty-name filters for short numeric labels.
+fn is_lightrag_rejected_numeric_name(name: &str) -> bool {
+    let t = name.trim();
+    if t.is_empty() {
+        return false;
+    }
+    if t.len() < 3 && t.chars().all(|c| c.is_ascii_digit()) {
+        return true;
+    }
+    let digits_and_dots = t.chars().all(|c| c.is_ascii_digit() || c == '.');
+    if t.len() < 6 && digits_and_dots && t.contains('.') {
+        return true;
+    }
+    false
 }
 
 /// Convert a word to title case (first letter uppercase, rest lowercase).
@@ -239,5 +317,50 @@ mod tests {
     fn hyphens_and_special_chars_preserved() {
         assert_eq!(EntityId::new("New-York").as_str(), "NEW-YORK");
         assert_eq!(EntityId::new("C++").as_str(), "C++");
+    }
+
+    #[test]
+    fn scoped_graph_node_id_prefixes_workspace() {
+        let id = EntityId::new("Basal Cell");
+        let ws = "e0270f5f-0b6c-4e90-882f-5f9b0eac8cff";
+        assert_eq!(id.scoped_graph_node_id(ws), format!("{ws}::BASAL_CELL"));
+        assert_eq!(
+            id.graph_node_id_for_workspace(Some(ws)),
+            id.scoped_graph_node_id(ws)
+        );
+        assert_eq!(id.graph_node_id_for_workspace(None), "BASAL_CELL");
+        assert_eq!(id.scoped_graph_node_id("  "), "BASAL_CELL");
+    }
+
+    #[test]
+    fn bare_name_strips_uuid_workspace_scope() {
+        let ws = "e0270f5f-0b6c-4e90-882f-5f9b0eac8cff";
+        let scoped = format!("{ws}::BASAL_CELL");
+        assert_eq!(
+            EntityId::bare_name_from_graph_node_id(&scoped),
+            "BASAL_CELL"
+        );
+        assert_eq!(
+            EntityId::bare_name_from_graph_node_id("BASAL_CELL"),
+            "BASAL_CELL"
+        );
+        // Relationship-style A::B must not be stripped (left side is not a UUID).
+        assert_eq!(
+            EntityId::bare_name_from_graph_node_id("ALPHA::BETA"),
+            "ALPHA::BETA"
+        );
+    }
+
+    #[test]
+    fn lightrag_short_numeric_names_normalize_empty() {
+        // 056 / LightRAG normalize_extracted_info
+        assert_eq!(normalize_entity_name("42"), "");
+        assert_eq!(normalize_entity_name("7"), "");
+        assert_eq!(normalize_entity_name("1.2"), "");
+        assert_eq!(normalize_entity_name("12.3"), "");
+        // Kept: years and real names
+        assert_eq!(normalize_entity_name("2022"), "2022");
+        assert_eq!(normalize_entity_name("BRCA1"), "BRCA1");
+        assert_eq!(normalize_entity_name("5 Fluorouracil"), "5_FLUOROURACIL");
     }
 }

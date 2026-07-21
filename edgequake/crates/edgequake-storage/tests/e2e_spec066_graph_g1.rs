@@ -1,10 +1,10 @@
 //! SPEC-066 — Graph G1: 100k nodes store + degrees sample p95 < 100ms.
 #![cfg(feature = "postgres")]
 
-#[path = "support/postgres_test_config.rs"]
-mod postgres_test_config;
 #[path = "support/perf_harness.rs"]
 mod perf_harness;
+#[path = "support/postgres_test_config.rs"]
+mod postgres_test_config;
 
 use edgequake_storage::traits::{GraphStorage, GraphStorageMutateOps, GraphStorageReadOps};
 use edgequake_storage::PostgresAGEGraphStorage;

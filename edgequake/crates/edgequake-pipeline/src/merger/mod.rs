@@ -65,7 +65,7 @@ use std::time::Instant;
 
 use async_trait::async_trait;
 use edgequake_observability::record_ingest_stage_duration;
-use edgequake_storage::{GraphStorage, VectorStorage};
+use edgequake_storage::{GraphStorage, TextEmbedder, VectorStorage};
 
 use crate::error::Result;
 use crate::extractor::ExtractionResult;
@@ -409,6 +409,9 @@ pub struct KnowledgeGraphMerger<G: GraphStorage + ?Sized, V: VectorStorage + ?Si
     pub(super) workspace_id: Option<String>,
     /// Optional LLM backend for intelligent description merging (P7a DI).
     pub(super) summarizer: Option<Arc<dyn DescriptionMergeBackend>>,
+    /// Optional text embedder for relation-endpoint placeholders (050 B7).
+    /// When None, placeholders are AGE-only (pre-B7 behaviour).
+    pub(super) text_embedder: Option<Arc<dyn TextEmbedder>>,
     /// Optional CQRS relational sink (SPEC-021 P3-01).
     /// When None, relational sync is skipped (backwards-compatible default).
     pub(super) relational_sink: Arc<dyn RelationalEntitySink>,
@@ -427,6 +430,7 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
             tenant_id: None,
             workspace_id: None,
             summarizer: None,
+            text_embedder: None,
             relational_sink: Arc::new(NoopEntitySink),
             lineage_sink: Arc::new(NoopLineageSink),
         }
@@ -441,6 +445,12 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
     /// Wire a lineage sink for chunk→entity/relation provenance (SPEC-032 W-08).
     pub fn with_lineage_sink(mut self, sink: Arc<dyn LineageSink>) -> Self {
         self.lineage_sink = sink;
+        self
+    }
+
+    /// Wire text embedder for placeholder entity VDB upserts (050 B7 / LightRAG parity).
+    pub fn with_text_embedder(mut self, embedder: Arc<dyn TextEmbedder>) -> Self {
+        self.text_embedder = Some(embedder);
         self
     }
 
@@ -1251,14 +1261,15 @@ mod tests {
             .with_source_document_id("doc-xyz789")
             .with_source_file_path("/documents/team.md");
 
-        // Verify source tracking fields (relationship uses Option<String> for chunk_id)
+        // Verify source tracking fields (049: Vec + singular mirror)
         assert_eq!(rel.source_chunk_id, Some("chunk-005".to_string()));
+        assert_eq!(rel.all_source_chunk_ids(), vec!["chunk-005".to_string()]);
         assert_eq!(rel.source_document_id, Some("doc-xyz789".to_string()));
         assert_eq!(rel.source_file_path, Some("/documents/team.md".to_string()));
 
         // Verify JSON serialization works
         let json = serde_json::json!({
-            "source_chunk_ids": rel.source_chunk_id.map(|id| vec![id]).unwrap_or_default(),
+            "source_chunk_ids": rel.all_source_chunk_ids(),
             "source_document_id": rel.source_document_id,
             "source_file_path": rel.source_file_path,
         });
@@ -1636,6 +1647,12 @@ mod tests {
                 .and_then(|v| v.as_str()),
             Some("WORKS_WITH"),
             "last-write-wins relation_type"
+        );
+        // 049: within-batch endpoint collapse must union chunk lineage (not last-write).
+        let chunk_ids = crate::merger::source_chunk_ids_from_properties(&edge.properties);
+        assert!(
+            chunk_ids.contains(&"chunk-0".to_string()) && chunk_ids.contains(&"chunk-1".to_string()),
+            "expected unioned source_chunk_ids {{chunk-0, chunk-1}}, got {chunk_ids:?}"
         );
     }
 

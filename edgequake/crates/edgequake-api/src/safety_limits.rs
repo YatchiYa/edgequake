@@ -844,7 +844,8 @@ impl SafetyLimitsConfig {
 ///
 /// Reads `EDGEQUAKE_PDF_SECS_PER_PAGE` first; falls back to:
 /// - Local providers: 30 s / page (conservative for a mid-range GPU)
-/// - Cloud providers:  8 s / page
+/// - Cloud providers: 15 s / page (VLM round-trip + postprocess; raised from
+///   8 s after figure-heavy arXiv PDFs exhausted the 520 s under-budget)
 pub fn secs_per_page_for_provider(provider_name: &str) -> u64 {
     if let Ok(val) = std::env::var("EDGEQUAKE_PDF_SECS_PER_PAGE") {
         if let Ok(n) = val.parse::<u64>() {
@@ -855,18 +856,61 @@ pub fn secs_per_page_for_provider(provider_name: &str) -> u64 {
     if is_local_provider(provider_name) {
         30
     } else {
-        8
+        15
+    }
+}
+
+/// Extra seconds/page for figure extraction + Pass-B VLM analyze + page PNG render.
+///
+/// These phases scale with figure density, not just OCR page count. We budget a
+/// deterministic per-page overhead (env `EDGEQUAKE_PDF_FIGURE_SECS_PER_PAGE`) so
+/// figure-heavy docs are not killed by the OCR-only formula. The stall watchdog
+/// is the primary reliability guarantee; this is a backstop absolute budget.
+pub fn figure_secs_per_page_for_provider(provider_name: &str) -> u64 {
+    if let Ok(val) = std::env::var("EDGEQUAKE_PDF_FIGURE_SECS_PER_PAGE") {
+        if let Ok(n) = val.parse::<u64>() {
+            return n; // 0 allowed to disable the overhead term
+        }
+    }
+    if is_local_provider(provider_name) {
+        20
+    } else {
+        10
     }
 }
 
 /// Compute the outer vision-conversion timeout for the entire PDF.
 ///
-/// Formula: `120 + (page_count × secs_per_page_for_provider(provider))`
+/// Formula:
+/// `120 + pages×secs_per_page + pages×figure_secs_per_page`
 /// clamped to `VISION_MAX_OUTER_TIMEOUT_SECS`.
+///
+/// First principles (no flaky adaptivity):
+/// - Budget scales with **document size + provider class + figure overhead**.
+/// - Never treat unknown page_count as 0 (that collapsed budgets to 120s).
+/// - Load/queue pressure must not shrink the budget mid-run.
+/// - The stall watchdog (progress-resetting) is the primary hang detector;
+///   this absolute budget is a backstop only.
 pub fn vision_outer_timeout_secs(provider_name: &str, page_count: usize) -> u64 {
+    let pages = effective_page_count_for_vision_budget(page_count);
     let per_page = secs_per_page_for_provider(provider_name);
-    let computed = 120_u64.saturating_add(per_page.saturating_mul(page_count as u64));
+    let figure_per_page = figure_secs_per_page_for_provider(provider_name);
+    let page_budget = per_page.saturating_add(figure_per_page);
+    let computed = 120_u64.saturating_add(page_budget.saturating_mul(pages as u64));
     computed.min(VISION_MAX_OUTER_TIMEOUT_SECS)
+}
+
+/// When page_count is missing/zero after PDF heal, assume a mid-size doc so
+/// explicit Vision does not die at the 120s floor (deterministic, not adaptive).
+pub const UNKNOWN_PAGE_COUNT_VISION_BUDGET_ASSUMPTION: usize = 50;
+
+/// Normalize page_count for vision outer-timeout math.
+pub fn effective_page_count_for_vision_budget(page_count: usize) -> usize {
+    if page_count == 0 {
+        UNKNOWN_PAGE_COUNT_VISION_BUDGET_ASSUMPTION
+    } else {
+        page_count
+    }
 }
 
 /// Default HTTP timeout for synchronous markdown/text upload processing (cloud/mock).
@@ -1210,5 +1254,69 @@ mod sync_timeout_tests {
         std::env::set_var("EDGEQUAKE_SYNC_PROCESSING_TIMEOUT_SECS", "900");
         assert_eq!(sync_processing_timeout_secs("ollama"), 900);
         std::env::remove_var("EDGEQUAKE_SYNC_PROCESSING_TIMEOUT_SECS");
+    }
+}
+
+#[cfg(test)]
+mod vision_outer_timeout_tests {
+    use super::*;
+    use serial_test::serial;
+
+    #[test]
+    #[serial]
+    fn unknown_page_count_uses_deterministic_assumption_not_zero() {
+        std::env::remove_var("EDGEQUAKE_PDF_SECS_PER_PAGE");
+        std::env::remove_var("EDGEQUAKE_PDF_FIGURE_SECS_PER_PAGE");
+        let zero_budget = vision_outer_timeout_secs("mistral", 0);
+        let assumed =
+            vision_outer_timeout_secs("mistral", UNKNOWN_PAGE_COUNT_VISION_BUDGET_ASSUMPTION);
+        assert_eq!(zero_budget, assumed);
+        // mistral cloud: 120 + 50*(15+10) = 1370 — never the broken 120s floor
+        assert_eq!(zero_budget, 120 + (15 + 10) * 50);
+        assert!(zero_budget > 120);
+    }
+
+    #[test]
+    #[serial]
+    fn known_page_count_scales_linearly_cloud() {
+        std::env::remove_var("EDGEQUAKE_PDF_SECS_PER_PAGE");
+        std::env::remove_var("EDGEQUAKE_PDF_FIGURE_SECS_PER_PAGE");
+        assert_eq!(
+            vision_outer_timeout_secs("mistral", 10),
+            120 + (15 + 10) * 10
+        );
+        assert_eq!(
+            vision_outer_timeout_secs("openai", 100),
+            120 + (15 + 10) * 100
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn known_page_count_scales_local_provider() {
+        std::env::remove_var("EDGEQUAKE_PDF_SECS_PER_PAGE");
+        std::env::remove_var("EDGEQUAKE_PDF_FIGURE_SECS_PER_PAGE");
+        assert_eq!(
+            vision_outer_timeout_secs("ollama", 10),
+            120 + (30 + 20) * 10
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn figure_overhead_can_be_disabled_via_env() {
+        std::env::remove_var("EDGEQUAKE_PDF_SECS_PER_PAGE");
+        std::env::set_var("EDGEQUAKE_PDF_FIGURE_SECS_PER_PAGE", "0");
+        assert_eq!(vision_outer_timeout_secs("mistral", 10), 120 + 15 * 10);
+        std::env::remove_var("EDGEQUAKE_PDF_FIGURE_SECS_PER_PAGE");
+    }
+
+    #[test]
+    fn effective_page_count_zero_maps_to_assumption() {
+        assert_eq!(
+            effective_page_count_for_vision_budget(0),
+            UNKNOWN_PAGE_COUNT_VISION_BUDGET_ASSUMPTION
+        );
+        assert_eq!(effective_page_count_for_vision_budget(42), 42);
     }
 }

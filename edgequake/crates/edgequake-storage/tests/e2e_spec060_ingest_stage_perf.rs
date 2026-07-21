@@ -8,14 +8,12 @@
 
 #![cfg(feature = "postgres")]
 
-#[path = "support/postgres_test_config.rs"]
-mod postgres_test_config;
 #[path = "support/perf_harness.rs"]
 mod perf_harness;
+#[path = "support/postgres_test_config.rs"]
+mod postgres_test_config;
 
-use edgequake_storage::traits::{
-    GraphStorage, GraphStorageMutateOps, KVStorage, VectorStorage,
-};
+use edgequake_storage::traits::{GraphStorage, GraphStorageMutateOps, KVStorage, VectorStorage};
 use edgequake_storage::{
     PgVectorStorage, PostgresAGEGraphStorage, PostgresKVStorage, VectorIndexType,
 };
@@ -101,7 +99,11 @@ async fn e2e_spec060_ingest_stage_budgets() {
             .await
             .expect("upsert_report_created 1k");
         vec_samples.push(start.elapsed());
-        assert_eq!(created.len(), VEC_N, "first insert of unique ids must create all");
+        assert_eq!(
+            created.len(),
+            VEC_N,
+            "first insert of unique ids must create all"
+        );
     }
     // Drop cold sample + single max spike (p95≈max with n≈10 is host jitter).
     let mut vec_hygiene = samples_after_warmup(&vec_samples, 8);

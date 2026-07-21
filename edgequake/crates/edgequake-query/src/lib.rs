@@ -76,8 +76,18 @@ pub mod lineage_scope;
 pub mod mix_weights;
 pub mod modality_retrieve;
 pub mod modes;
+pub mod entity_rank;
+pub mod relation_select;
+pub mod graph_walk_compress;
+pub mod keyword_boost;
+pub mod topic_entity_admit;
+pub mod intent_rerank;
+pub mod l2_bm25_union;
+pub mod l2_sources_union;
 pub mod path_prune;
 pub mod query_reliability;
+pub mod relevancy_prune;
+pub mod rerank_protect;
 pub mod retrieval_telemetry;
 pub mod sparse_retrieval;
 pub mod tokenizer;
@@ -98,7 +108,9 @@ pub use bootstrap::{
 pub use cache::{QueryResultCache, QueryResultCacheInvalidator};
 pub use context_format::{
     format_chunk_block, format_chunk_meta, format_entity_line, format_query_context,
-    format_relationship_line,
+    format_query_context_flat, format_query_context_passage_pack, format_query_context_path,
+    format_query_context_with_mode, format_relationship_line, passage_pack_enabled,
+    ContextFormatMode,
 };
 pub use engine_impl::{QueryEmbeddings, QueryEngine, QueryEngineConfig};
 pub use graph_ppr::{parse_graph_walk_mode, GraphWalkMode, PprConfig};
@@ -114,7 +126,7 @@ pub use lineage_scope::{
     document_ids_from_chunk_ids, filter_chunk_ids_by_allowed_docs, lineage_intersects_allowed,
     resolve_lineage_document_ids,
 };
-pub use mix_weights::MixWeightOverride;
+pub use mix_weights::{mix_arm_weight_from_env, MixWeightOverride};
 pub use modality_retrieve::{
     chart_modality_filter_enabled, plan_modality_retrieval,
     query_filtered_with_modality_preference, query_prefers_chart_modality,
@@ -122,11 +134,17 @@ pub use modality_retrieve::{
     MODALITY_CHART,
 };
 pub use modes::QueryMode;
-pub use path_prune::PathPruneConfig;
+pub use entity_rank::{rank_entities_for_prompt, EntityRankMode};
+pub use path_prune::{
+    prune_orphan_entities, prune_relationships, prune_relationships_for_query, PathPruneConfig,
+};
+pub use relevancy_prune::{RelevancyPruneConfig, RelevancyScoreMode};
+pub use rerank_protect::{blend_protect_first, blend_protect_ids, protect_first_from_env};
 pub use query_reliability::{classify_query_failure, query_failure_diagnostic, QueryFailureClass};
 pub use tokenizer::{MockTokenizer, SimpleTokenizer, Tokenizer};
 pub use truncation::{
-    balance_context, min_chunk_token_budget, parse_min_chunk_budget_ratio, truncate_chunks,
+    balance_context, min_chunk_token_budget, parse_min_chunk_budget_ratio, parse_token_cap,
+    truncate_chunks, LR_MAX_ENTITY_TOKENS, LR_MAX_RELATION_TOKENS, LR_MAX_TOTAL_TOKENS,
     truncate_entities, truncate_relationships, truncation_config_for_intent, TruncationConfig,
 };
 

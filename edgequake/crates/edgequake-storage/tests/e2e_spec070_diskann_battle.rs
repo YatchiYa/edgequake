@@ -12,14 +12,14 @@
 //! - `EQ_DISKANN_SMOKE=1` → tiny rows for image/extension smoke
 #![cfg(feature = "postgres")]
 
-#[path = "support/postgres_test_config.rs"]
-mod postgres_test_config;
+#[path = "support/perf_ann_corpus.rs"]
+mod perf_ann_corpus;
 #[path = "support/perf_harness.rs"]
 mod perf_harness;
 #[path = "support/perf_stress.rs"]
 mod perf_stress;
-#[path = "support/perf_ann_corpus.rs"]
-mod perf_ann_corpus;
+#[path = "support/postgres_test_config.rs"]
+mod postgres_test_config;
 
 use edgequake_storage::traits::VectorStorage;
 use edgequake_storage::{PgVectorStorage, VectorIndexType, VectorStorageMode};
@@ -39,10 +39,9 @@ const QUERY_EF: u32 = 240;
 
 fn parse_u32_list(env: &str, default: &[u32]) -> Vec<u32> {
     match std::env::var(env) {
-        Ok(s) if !s.trim().is_empty() => s
-            .split(',')
-            .filter_map(|p| p.trim().parse().ok())
-            .collect(),
+        Ok(s) if !s.trim().is_empty() => {
+            s.split(',').filter_map(|p| p.trim().parse().ok()).collect()
+        }
         _ => default.to_vec(),
     }
 }
@@ -92,8 +91,9 @@ async fn vectorscale_available(pool: &sqlx::PgPool) -> bool {
 
 async fn ensure_vectorscale(pool: &sqlx::PgPool) -> Result<(), String> {
     if !vectorscale_available(pool).await {
-        return Err("vectorscale extension not available — use EQ_POSTGRES_PROFILE=pg18-vectorscale"
-            .into());
+        return Err(
+            "vectorscale extension not available — use EQ_POSTGRES_PROFILE=pg18-vectorscale".into(),
+        );
     }
     sqlx::query("CREATE EXTENSION IF NOT EXISTS vectorscale CASCADE")
         .execute(pool)
@@ -109,7 +109,9 @@ async fn explain_index(
     expect_am: &str,
 ) -> String {
     let pool = postgres_test_config::contract_pg_pool(config).await;
-    let _ = sqlx::query(&format!("ANALYZE {table}")).execute(&pool).await;
+    let _ = sqlx::query(&format!("ANALYZE {table}"))
+        .execute(&pool)
+        .await;
     let emb: String = {
         let vals: Vec<String> = (0..DIM)
             .map(|i| format!("{:.8}", ((i as f32 + 10.0) * 0.019).sin()))
@@ -250,7 +252,9 @@ async fn run_cell(
         recall * 1000.0,
         recall_ok,
         arm,
-        format!("arm={arm} rows={rows} clients={clients} recall@20_mean={recall:.4} gate={RECALL_GATE}"),
+        format!(
+            "arm={arm} rows={rows} clients={clients} recall@20_mean={recall:.4} gate={RECALL_GATE}"
+        ),
         &[],
     );
 
@@ -265,7 +269,9 @@ async fn run_cell(
         single_p95,
         slo_pass && recall_ok,
         arm,
-        format!("arm={arm} rows={rows} clients={clients} slo_pass={slo_pass} recall_ok={recall_ok}"),
+        format!(
+            "arm={arm} rows={rows} clients={clients} slo_pass={slo_pass} recall_ok={recall_ok}"
+        ),
         &single,
     );
 
@@ -297,8 +303,8 @@ async fn run_cell(
 
 async fn seed_hnsw(rows: usize) -> (Arc<PgVectorStorage>, edgequake_storage::PostgresConfig) {
     let clients = 16usize;
-    let base = postgres_test_config::require_or_skip_postgres("disk070")
-        .expect("DATABASE_URL required");
+    let base =
+        postgres_test_config::require_or_skip_postgres("disk070").expect("DATABASE_URL required");
     let mut config = with_stress_pool(base, clients).with_vector_index(VectorIndexType::None);
     config.namespace = format!("eq_d070h_ws_{}", &uuid::Uuid::new_v4().to_string()[..8]);
 
@@ -318,7 +324,10 @@ async fn seed_hnsw(rows: usize) -> (Arc<PgVectorStorage>, edgequake_storage::Pos
         index_ms,
         true,
         "hnsw",
-        format!("arm=hnsw rows={rows} seed_ms={seed_ms:.0} table={}", storage.vectors_table_name()),
+        format!(
+            "arm=hnsw rows={rows} seed_ms={seed_ms:.0} table={}",
+            storage.vectors_table_name()
+        ),
         &[Duration::from_secs_f64(index_ms / 1000.0)],
     );
     let explain = explain_index(
@@ -396,7 +405,9 @@ async fn seed_diskann(
 
 #[tokio::test]
 async fn e2e_spec070_diskann_vs_hnsw_battle() {
-    let smoke = std::env::var("EQ_DISKANN_SMOKE").map(|v| v == "1").unwrap_or(false);
+    let smoke = std::env::var("EQ_DISKANN_SMOKE")
+        .map(|v| v == "1")
+        .unwrap_or(false);
     let rows_list = if smoke {
         parse_u32_list("EQ_DISKANN_ROWS_LIST", &[2_000])
     } else {
@@ -455,8 +466,7 @@ async fn e2e_spec070_diskann_vs_hnsw_battle() {
         match seed_diskann(rows as usize).await {
             Ok((disk_storage, disk_cfg)) => {
                 let table = disk_storage.vectors_table_name().to_string();
-                let disk_recall =
-                    measure_recall_diskann(&disk_storage, &disk_cfg, &table).await;
+                let disk_recall = measure_recall_diskann(&disk_storage, &disk_cfg, &table).await;
                 let disk_cell = run_cell(
                     &disk_storage,
                     rows,

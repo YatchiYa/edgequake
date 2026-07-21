@@ -251,14 +251,16 @@ entity<|#|>Also Valid<|#|>CONCEPT<|#|>Another valid
     #[test]
     fn test_json_parser() {
         let parser = JsonExtractionParser::new();
+        // 054: relationships must reference selected entity endpoints (LR law).
         let response = r#"
 ```json
 {
   "entities": [
-    {"name": "John Doe", "type": "PERSON", "description": "A developer"}
+    {"name": "John Doe", "type": "PERSON", "description": "A developer"},
+    {"name": "Acme", "type": "ORGANIZATION", "description": "Employer"}
   ],
   "relationships": [
-    {"source": "John", "target": "Company", "type": "WORKS_AT", "description": "Employment"}
+    {"source": "John Doe", "target": "Acme", "type": "WORKS_AT", "description": "Employment"}
   ]
 }
 ```
@@ -266,7 +268,7 @@ entity<|#|>Also Valid<|#|>CONCEPT<|#|>Another valid
 
         let result = parser.parse(response, "chunk-1").unwrap();
 
-        assert_eq!(result.entities.len(), 1);
+        assert_eq!(result.entities.len(), 2);
         assert_eq!(result.entities[0].name, "JOHN_DOE");
         assert_eq!(result.relationships.len(), 1);
     }
@@ -327,6 +329,7 @@ entity<|#|>Also Valid<|#|>CONCEPT<|#|>Another valid
     fn test_br0006_tuple_self_referencing_relationship_filtered() {
         let parser = TupleParser::new();
         let response = r#"entity<|#|>Neural Network<|#|>CONCEPT<|#|>A computing model
+entity<|#|>Deep Learning<|#|>CONCEPT<|#|>A learning paradigm
 relation<|#|>Neural Network<|#|>Neural Network<|#|>self-reference<|#|>Relates to itself
 relation<|#|>Neural Network<|#|>Deep Learning<|#|>uses<|#|>Neural networks use deep learning
 <|COMPLETE|>"#;
@@ -355,7 +358,10 @@ relation<|#|>The Company<|#|>company<|#|>self<|#|>Same entity after normalizatio
     fn test_br0006_json_self_referencing_relationship_filtered() {
         let parser = JsonExtractionParser::new();
         let response = r#"{
-            "entities": [{"name": "AI", "type": "CONCEPT", "description": "Artificial Intelligence"}],
+            "entities": [
+                {"name": "AI", "type": "CONCEPT", "description": "Artificial Intelligence"},
+                {"name": "Machine Learning", "type": "CONCEPT", "description": "ML"}
+            ],
             "relationships": [
                 {"source": "AI", "target": "AI", "type": "SELF_REF", "description": "Self loop"},
                 {"source": "AI", "target": "Machine Learning", "type": "USES", "description": "AI uses ML"}
@@ -454,7 +460,10 @@ relation<|#|>A<|#|>   <|#|>broken<|#|>Empty target
     fn test_json_empty_relationship_endpoints_filtered() {
         let parser = JsonExtractionParser::new();
         let response = r#"{
-            "entities": [],
+            "entities": [
+                {"name": "A", "type": "CONCEPT", "description": "Entity A"},
+                {"name": "B", "type": "CONCEPT", "description": "Entity B"}
+            ],
             "relationships": [
                 {"source": "  ", "target": "B", "type": "REL", "description": "Empty source"},
                 {"source": "A", "target": "  ", "type": "REL", "description": "Empty target"},

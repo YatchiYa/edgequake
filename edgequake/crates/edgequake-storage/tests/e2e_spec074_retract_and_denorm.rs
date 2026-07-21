@@ -11,7 +11,7 @@ mod e2e_fixtures;
 mod postgres_test_config;
 
 use e2e_fixtures::generate_namespace;
-use edgequake_storage::{MemoryKVStorage, MemoryVectorStorage, VectorStorage, KVStorage};
+use edgequake_storage::{KVStorage, MemoryKVStorage, MemoryVectorStorage, VectorStorage};
 use serde_json::json;
 
 const TEST_DIM: usize = 64;

@@ -38,6 +38,7 @@ mod migration;
 mod search_tuning;
 mod storage_impl;
 
+pub use migration::allow_vector_table_rebuild;
 
 /// PostgreSQL vector storage using pgvector.
 ///

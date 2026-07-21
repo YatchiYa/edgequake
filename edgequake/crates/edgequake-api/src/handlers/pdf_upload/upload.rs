@@ -373,34 +373,20 @@ async fn process_pdf_upload_parts(
         .get_workspace(workspace_id)
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
+    if let Some(ref ws) = workspace {
+        options.apply_workspace(ws);
+    }
     let resolved_backend = options.resolved_backend(workspace.as_ref());
 
+    // Legacy debug breadcrumb when Vision still lacks a model after workspace apply.
     if resolved_backend == PdfParserBackend::Vision
-        && (options.vision_provider.is_none() || options.vision_model.is_none())
+        && options.enable_vision
+        && options.vision_model.as_ref().is_none_or(|s| s.is_empty())
     {
-        if let Some(ws) = workspace.as_ref() {
-            if options.vision_provider.is_none() {
-                let effective_vision_provider = ws
-                    .vision_llm_provider
-                    .as_deref()
-                    .filter(|p| !p.is_empty())
-                    .unwrap_or(&ws.llm_provider);
-                debug!(
-                    "SPEC-040: Resolved vision_provider={} (workspace vision={:?}, main={})",
-                    effective_vision_provider, ws.vision_llm_provider, ws.llm_provider
-                );
-                options.vision_provider = Some(effective_vision_provider.to_string());
-            }
-            if options.vision_model.is_none() {
-                if let Some(ref wm) = ws.vision_llm_model {
-                    debug!(
-                        "SPEC-040: Applying workspace vision_model={} from workspace config",
-                        wm
-                    );
-                    options.vision_model = Some(wm.clone());
-                }
-            }
-        }
+        debug!(
+            "Vision backend selected but no vision_model after workspace apply; \
+             will use provider default via vision_model()"
+        );
     }
 
     let mut existing_pdf = pdf_storage
@@ -618,7 +604,7 @@ async fn process_pdf_upload_parts(
     }
 
     let file_size_bytes = file_data.len() as u64;
-    let page_count = extract_page_count(&file_data);
+    let page_count = extract_page_count(&file_data).await;
     let vision_model = if resolved_backend == PdfParserBackend::Vision && options.enable_vision {
         Some(options.vision_model())
     } else {

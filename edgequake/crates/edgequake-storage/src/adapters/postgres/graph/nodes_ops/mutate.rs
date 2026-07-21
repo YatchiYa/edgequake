@@ -268,9 +268,7 @@ impl PostgresAGEGraphStorage {
             .bind(&unique)
             .execute(&pool)
             .await
-            .map_err(|e| {
-                StorageError::Database(format!("native batch edge detach failed: {e}"))
-            })?;
+            .map_err(|e| StorageError::Database(format!("native batch edge detach failed: {e}")))?;
 
         let del_nodes = format!(
             r#"DELETE FROM {graph}."Node" n
@@ -280,9 +278,7 @@ impl PostgresAGEGraphStorage {
             .bind(&unique)
             .execute(&pool)
             .await
-            .map_err(|e| {
-                StorageError::Database(format!("native batch node delete failed: {e}"))
-            })?;
+            .map_err(|e| StorageError::Database(format!("native batch node delete failed: {e}")))?;
         Ok(())
     }
 

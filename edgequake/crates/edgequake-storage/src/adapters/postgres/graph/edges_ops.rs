@@ -198,6 +198,51 @@ impl PostgresAGEGraphStorage {
         self.cypher_execute_bound(cypher, &params).await
     }
 
+    /// Batch-delete edges by `(source, target)` pairs.
+    ///
+    /// Native path: one SQL DELETE with `= ANY($1)` / `= ANY($2)` on EDGE
+    /// property indexes (SPEC-060). Cypher fallback loops when native writes
+    /// are disabled.
+    pub(super) async fn pg_delete_edges_batch(&self, edges: &[(String, String)]) -> Result<()> {
+        if edges.is_empty() {
+            return Ok(());
+        }
+
+        let mut unique: Vec<(String, String)> = edges.to_vec();
+        unique.sort();
+        unique.dedup();
+
+        if !super::native_graph_writes_enabled() {
+            for (source, target) in &unique {
+                self.pg_delete_edge(source, target).await?;
+            }
+            return Ok(());
+        }
+
+        let sources: Vec<String> = unique.iter().map(|(s, _)| s.clone()).collect();
+        let targets: Vec<String> = unique.iter().map(|(_, t)| t.clone()).collect();
+
+        let pool = self.pool.get().await?;
+        let graph = &self.graph_name;
+        // Pairwise match: delete rows whose (source_id, target_id) is in the
+        // unnested pair list (avoids cartesian ANY×ANY false positives).
+        let del_edges = format!(
+            r#"DELETE FROM {graph}."EDGE" e
+               USING (
+                 SELECT * FROM unnest($1::text[], $2::text[]) AS t(source_id, target_id)
+               ) pairs
+               WHERE ag_catalog.agtype_to_json(e.properties)->>'source_id' = pairs.source_id
+                 AND ag_catalog.agtype_to_json(e.properties)->>'target_id' = pairs.target_id"#
+        );
+        sqlx::query(&del_edges)
+            .bind(&sources)
+            .bind(&targets)
+            .execute(&pool)
+            .await
+            .map_err(|e| StorageError::Database(format!("native batch edge delete failed: {e}")))?;
+        Ok(())
+    }
+
     /// Tenant-scoped edge delete — strict property match on the relationship.
     pub(super) async fn pg_delete_edge_scoped(
         &self,
@@ -400,7 +445,10 @@ impl PostgresAGEGraphStorage {
         let edges = edges.as_slice();
         let start = std::time::Instant::now();
         // SPEC-062: eq_source_id / eq_target_id / eq_node_id must exist before native INSERT.
-        if !self.indexes_verified.load(std::sync::atomic::Ordering::Relaxed) {
+        if !self
+            .indexes_verified
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
             self.ensure_indexes().await?;
             self.indexes_verified
                 .store(true, std::sync::atomic::Ordering::Relaxed);
@@ -469,35 +517,46 @@ impl PostgresAGEGraphStorage {
             props_json.push(serde_json::to_string(&full).unwrap_or_else(|_| "{}".to_string()));
         }
 
-        // Conflict target matches idx_edge_source_target_unique (Migration 074/083).
+        // Conflict target matches idx_edge_eq_source_target (SPEC-062).
         // DISTINCT ON is a SQL safety net if a caller bypasses Rust dedupe
         // (Postgres forbids ON CONFLICT DO UPDATE affecting a row twice).
         // ORDER BY … ord DESC → last-write-wins, matching Rust policy.
-        // SPEC-062: JOIN/CONFLICT on denormalized eq_* text columns (btree), not agtype_to_json.
-        // Rust always sends full properties → DO UPDATE replaces (skip eq_merge_graph_properties).
+        // Re-DISTINCT after JOIN: duplicate endpoint nodes must not propose the
+        // same arbiter key twice. Legacy expression UNIQUE
+        // idx_edge_source_target_unique is dropped once eq_* exists.
+        // Rust always sends full properties → DO UPDATE replaces (skip eq_merge).
         let sql = format!(
             r#"
             INSERT INTO {graph}."EDGE" (id, start_id, end_id, properties, eq_source_id, eq_target_id)
             SELECT
                 eq_next_edge_id('{graph}'),
-                sn.id      AS start_id,
-                tn.id      AS end_id,
-                d.props_text::ag_catalog.agtype,
-                d.source_id_val,
-                d.target_id_val
+                j.start_id,
+                j.end_id,
+                j.props_text::ag_catalog.agtype,
+                j.source_id_val,
+                j.target_id_val
             FROM (
-                SELECT DISTINCT ON (source_id_val, target_id_val)
-                    source_id_val,
-                    target_id_val,
-                    props_text
-                FROM unnest($1::text[], $2::text[], $3::text[])
-                       WITH ORDINALITY AS p(source_id_val, target_id_val, props_text, ord)
-                ORDER BY source_id_val, target_id_val, ord DESC
-            ) AS d
-            JOIN {graph}."Node" sn
-              ON sn.eq_node_id = d.source_id_val
-            JOIN {graph}."Node" tn
-              ON tn.eq_node_id = d.target_id_val
+                SELECT DISTINCT ON (d.source_id_val, d.target_id_val)
+                    sn.id AS start_id,
+                    tn.id AS end_id,
+                    d.props_text,
+                    d.source_id_val,
+                    d.target_id_val
+                FROM (
+                    SELECT DISTINCT ON (source_id_val, target_id_val)
+                        source_id_val,
+                        target_id_val,
+                        props_text
+                    FROM unnest($1::text[], $2::text[], $3::text[])
+                           WITH ORDINALITY AS p(source_id_val, target_id_val, props_text, ord)
+                    ORDER BY source_id_val, target_id_val, ord DESC
+                ) AS d
+                JOIN {graph}."Node" sn
+                  ON sn.eq_node_id = d.source_id_val
+                JOIN {graph}."Node" tn
+                  ON tn.eq_node_id = d.target_id_val
+                ORDER BY d.source_id_val, d.target_id_val
+            ) AS j
             ON CONFLICT (eq_source_id, eq_target_id)
                 WHERE eq_source_id IS NOT NULL AND eq_target_id IS NOT NULL
             DO UPDATE SET

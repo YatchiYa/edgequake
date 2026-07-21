@@ -15,6 +15,7 @@ pub use crate::services::document_reingest::{
 pub use crate::services::document_task_cleanup::{
     purge_persisted_tasks_for_document, purge_workspace_tasks,
 };
+#[allow(unused_imports)] // re-export for delete handlers / tests
 pub use crate::services::document_vector_storage::get_workspace_vector_storage_for_delete;
 
 /// Check whether a metadata payload belongs to the requester's tenant + workspace.

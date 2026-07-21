@@ -5,6 +5,7 @@
 //! control characters, etc.).
 
 use super::super::entity_type_policy::{enforce_entity_type, EntityExtractionSchema};
+use super::super::extract_caps::apply_default_extraction_caps;
 use super::super::normalizer::normalize_entity_name;
 use crate::error::{PipelineError, Result};
 use crate::extractor::{ExtractedEntity, ExtractedRelationship, ExtractionResult};
@@ -104,6 +105,9 @@ impl JsonExtractionParser {
         result
             .metadata
             .insert("parser".to_string(), serde_json::json!("json"));
+
+        // 054: LightRAG per-response quantity caps (prompt + deterministic truncate).
+        apply_default_extraction_caps(&mut result);
 
         Ok(result)
     }

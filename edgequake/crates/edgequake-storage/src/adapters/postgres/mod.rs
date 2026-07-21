@@ -37,9 +37,9 @@ mod capabilities;
 mod config;
 mod connection;
 mod conversation;
-mod graph;
 mod diskann_runtime_policy;
 mod filtered_diskann_label_policy;
+mod graph;
 mod hnsw_runtime_policy;
 mod id_allocation;
 mod kv;
@@ -54,6 +54,13 @@ mod vector;
 mod workspace_vector;
 
 pub use age_csv_loader::{load_vertices_from_csv, should_use_copy_loader};
+pub use ann_exact_reorder_policy::{
+    build_ann_select_sql, AnnExactReorderPolicy, DEFAULT_ANN_REORDER_CANDIDATE_K,
+};
+pub use binary_quantize_policy::{
+    build_binary_hnsw_index_sql, build_binary_rerank_select_sql, BinaryQuantizePolicy,
+    DEFAULT_BINARY_CANDIDATE_K,
+};
 pub use capabilities::{
     age_copy_loader_min_rows, age_rls_requested, age_supports_copy_loader, age_supports_rls,
     extension_version_at_least, pgvector_meets_cve_floor, AnnIndexPolicy, DocumentIdGenerator,
@@ -62,13 +69,7 @@ pub use capabilities::{
 };
 pub use config::{hnsw_ef_construction_from_env, PostgresConfig, VectorIndexType};
 pub use connection::PostgresPool;
-pub use ann_exact_reorder_policy::{
-    build_ann_select_sql, AnnExactReorderPolicy, DEFAULT_ANN_REORDER_CANDIDATE_K,
-};
-pub use binary_quantize_policy::{
-    build_binary_hnsw_index_sql, build_binary_rerank_select_sql, BinaryQuantizePolicy,
-    DEFAULT_BINARY_CANDIDATE_K,
-};
+pub use conversation::PostgresConversationStorage;
 pub use diskann_runtime_policy::{
     diskann_optin_recipe_statements, diskann_query_tuning_statements, diskann_rescore_for_list,
     DISKANN_OPTIN_RESCORE, DISKANN_OPTIN_SEARCH_LIST,
@@ -78,11 +79,10 @@ pub use filtered_diskann_label_policy::{
     build_filtered_diskann_label_select_sql, build_postfilter_diskann_select_sql,
     FilteredDiskannLabelPolicy, WorkspaceLabelMap, MAX_WORKSPACE_LABELS,
 };
-pub use hnsw_runtime_policy::{
-    hnsw_partial_by_workspace_enabled, HnswRuntimePolicy, parse_hnsw_iterative_scan_mode,
-};
-pub use conversation::PostgresConversationStorage;
 pub use graph::PostgresAGEGraphStorage;
+pub use hnsw_runtime_policy::{
+    hnsw_partial_by_workspace_enabled, parse_hnsw_iterative_scan_mode, HnswRuntimePolicy,
+};
 pub use id_allocation::{allocate_document_id, is_uuidv7};
 pub use kv::PostgresKVStorage;
 pub use mm_asset_storage_impl::PostgresMmAssetStorage;
@@ -98,5 +98,5 @@ pub use rls::{
 // SPEC-046 OPS-P2.16: `RlsContext` is no longer re-exported from `postgres::`.
 // Use `acquire_rls_connection` / `with_acquired_tenant_context` (SEC-014 SSOT).
 // The type remains in `rls` for transitional `#[deprecated]` compile errors.
-pub use vector::PgVectorStorage;
+pub use vector::{allow_vector_table_rebuild, PgVectorStorage};
 pub use workspace_vector::PgWorkspaceVectorRegistry;

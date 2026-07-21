@@ -13,14 +13,14 @@
 //! - `EQ_DISKANN_SMOKE=1` → tiny corpus
 #![cfg(feature = "postgres")]
 
-#[path = "support/postgres_test_config.rs"]
-mod postgres_test_config;
+#[path = "support/perf_ann_corpus.rs"]
+mod perf_ann_corpus;
 #[path = "support/perf_harness.rs"]
 mod perf_harness;
 #[path = "support/perf_stress.rs"]
 mod perf_stress;
-#[path = "support/perf_ann_corpus.rs"]
-mod perf_ann_corpus;
+#[path = "support/postgres_test_config.rs"]
+mod postgres_test_config;
 
 use edgequake_storage::traits::VectorStorage;
 use edgequake_storage::{PgVectorStorage, VectorIndexType, VectorStorageMode};
@@ -64,10 +64,9 @@ const BUILD_HQ: BuildParams = BuildParams {
 
 fn parse_u32_list(env: &str, default: &[u32]) -> Vec<u32> {
     match std::env::var(env) {
-        Ok(s) if !s.trim().is_empty() => s
-            .split(',')
-            .filter_map(|p| p.trim().parse().ok())
-            .collect(),
+        Ok(s) if !s.trim().is_empty() => {
+            s.split(',').filter_map(|p| p.trim().parse().ok()).collect()
+        }
         _ => default.to_vec(),
     }
 }
@@ -122,9 +121,7 @@ async fn ensure_vectorscale(pool: &sqlx::PgPool) -> Result<(), String> {
     .await
     .unwrap_or(false);
     if !ok {
-        return Err(
-            "vectorscale not available — use EQ_POSTGRES_PROFILE=pg18-vectorscale".into(),
-        );
+        return Err("vectorscale not available — use EQ_POSTGRES_PROFILE=pg18-vectorscale".into());
     }
     sqlx::query("CREATE EXTENSION IF NOT EXISTS vectorscale CASCADE")
         .execute(pool)
@@ -292,7 +289,9 @@ async fn seed_diskann(rows: usize, build: &BuildParams) -> Result<Seeded, String
     .execute(&probe)
     .await
     .map_err(|e| format!("CREATE INDEX diskann: {e}"))?;
-    let _ = sqlx::query(&format!("ANALYZE {table}")).execute(&probe).await;
+    let _ = sqlx::query(&format!("ANALYZE {table}"))
+        .execute(&probe)
+        .await;
     // Confirm DiskANN index is visible to the planner.
     let idx_ok: bool = sqlx::query_scalar(&format!(
         "SELECT EXISTS(SELECT 1 FROM pg_indexes WHERE indexname = '{idx}' AND indexdef ILIKE '%diskann%')"
@@ -355,7 +354,10 @@ async fn seed_diskann(rows: usize, build: &BuildParams) -> Result<Seeded, String
         0.0,
         uses_diskann,
         build.label,
-        format!("unfiltered_dedicated_ws_shape\n{}", plan.chars().take(2800).collect::<String>()),
+        format!(
+            "unfiltered_dedicated_ws_shape\n{}",
+            plan.chars().take(2800).collect::<String>()
+        ),
         &[],
     );
     if !uses_diskann {
@@ -525,7 +527,9 @@ async fn run_grid_on_seed(
 
 #[tokio::test]
 async fn e2e_spec072_diskann_recall_pareto() {
-    let smoke = std::env::var("EQ_DISKANN_SMOKE").map(|v| v == "1").unwrap_or(false);
+    let smoke = std::env::var("EQ_DISKANN_SMOKE")
+        .map(|v| v == "1")
+        .unwrap_or(false);
     // Smoke forces tiny corpus even if runner exported EQ_PARETO_ROWS=150000.
     let primary = if smoke {
         2_000
@@ -589,13 +593,15 @@ async fn e2e_spec072_diskann_recall_pareto() {
     }
 
     if !green_default && do_rebuild && !smoke {
-        eprintln!("NOTE SPEC-072: query-only failed — rebuild arm {}", BUILD_HQ.label);
+        eprintln!(
+            "NOTE SPEC-072: query-only failed — rebuild arm {}",
+            BUILD_HQ.label
+        );
         drop_index(&seeded.pool, &seeded.index_name).await;
         match seed_diskann(primary as usize, &BUILD_HQ).await {
             Ok(hq) => {
                 let green_hq =
-                    run_grid_on_seed(&hq, primary, &BUILD_HQ, &search_lists, ref_list, cliff)
-                        .await;
+                    run_grid_on_seed(&hq, primary, &BUILD_HQ, &search_lists, ref_list, cliff).await;
                 if green_hq && primary == 150_000 {
                     green_150k = true;
                     best_detail = format!("build={} query_grid_green", BUILD_HQ.label);
@@ -633,11 +639,8 @@ async fn e2e_spec072_diskann_recall_pareto() {
         match seed_diskann(rows as usize, &BUILD_DEFAULT).await {
             Ok(s) => {
                 // Spot: q_list=400 (mid) + 800 (high) only
-                let spot_lists: Vec<u32> = search_lists
-                    .iter()
-                    .copied()
-                    .filter(|v| *v >= 400)
-                    .collect();
+                let spot_lists: Vec<u32> =
+                    search_lists.iter().copied().filter(|v| *v >= 400).collect();
                 let lists = if spot_lists.is_empty() {
                     search_lists.clone()
                 } else {

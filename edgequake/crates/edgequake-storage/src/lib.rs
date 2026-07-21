@@ -70,6 +70,10 @@ pub use compensation::{
 };
 pub mod conversation_storage;
 pub mod conversation_types;
+pub mod dimension_policy;
+pub use dimension_policy::{
+    decide_dimension_action, DimensionAction, DimensionEnsureOutcome, DimensionReconcilePolicy,
+};
 pub mod document_metadata_integrity;
 pub mod entity_id;
 pub mod entity_reconcile;
@@ -170,13 +174,14 @@ pub use adapters::memory::{
 // Conditionally export PostgreSQL adapters
 #[cfg(feature = "postgres")]
 pub use adapters::postgres::{
-    build_ann_select_sql, build_binary_hnsw_index_sql, build_binary_rerank_select_sql,
-    build_diskann_embedding_only_index_sql, build_diskann_labels_index_sql,
-    build_filtered_diskann_label_select_sql, build_postfilter_diskann_select_sql,
-    diskann_optin_recipe_statements, diskann_query_tuning_statements, diskann_rescore_for_list,
-    hnsw_ef_construction_from_env, hnsw_partial_by_workspace_enabled, parse_hnsw_iterative_scan_mode,
-    AnnExactReorderPolicy, BinaryQuantizePolicy, FilteredDiskannLabelPolicy, HnswRuntimePolicy,
-    PgVectorStorage, PgWorkspaceVectorRegistry, PostgresAGEGraphStorage, PostgresConfig,
+    allow_vector_table_rebuild, build_ann_select_sql, build_binary_hnsw_index_sql,
+    build_binary_rerank_select_sql, build_diskann_embedding_only_index_sql,
+    build_diskann_labels_index_sql, build_filtered_diskann_label_select_sql,
+    build_postfilter_diskann_select_sql, diskann_optin_recipe_statements,
+    diskann_query_tuning_statements, diskann_rescore_for_list, hnsw_ef_construction_from_env,
+    hnsw_partial_by_workspace_enabled, parse_hnsw_iterative_scan_mode, AnnExactReorderPolicy,
+    BinaryQuantizePolicy, FilteredDiskannLabelPolicy, HnswRuntimePolicy, PgVectorStorage,
+    PgWorkspaceVectorRegistry, PostgresAGEGraphStorage, PostgresConfig,
     PostgresConversationStorage, PostgresKVStorage, PostgresMmAssetStorage,
     PostgresOriginalStorage, PostgresPdfStorage, PostgresPool, VectorIndexType, VectorStorageMode,
     WorkspaceLabelMap, DEFAULT_ANN_REORDER_CANDIDATE_K, DEFAULT_BINARY_CANDIDATE_K,

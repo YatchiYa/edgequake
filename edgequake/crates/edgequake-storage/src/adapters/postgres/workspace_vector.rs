@@ -125,7 +125,8 @@ impl PgWorkspaceVectorRegistry {
 
         // SPEC-065: dedicated per-workspace tables skip partial HNSW (already isolated).
         // Shared/default multi-WS tables create partials via query_filtered / ensure_hot_workspace_ann.
-        if HnswRuntimePolicy::from_env().partial_by_workspace && storage.is_dedicated_workspace_table()
+        if HnswRuntimePolicy::from_env().partial_by_workspace
+            && storage.is_dedicated_workspace_table()
         {
             tracing::debug!(
                 workspace_id = %config.workspace_id,

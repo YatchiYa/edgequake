@@ -691,6 +691,7 @@ async fn async_main() -> Result<()> {
         Arc::clone(&state.workspace_service),
         Arc::clone(&state.query.models_config),
     )
+    .with_app_state(state.clone())
     .with_progress_broadcaster(state.tasks.progress_broadcaster.clone())
     .with_task_enqueue(
         Arc::clone(&state.tasks.storage) as edgequake_tasks::SharedTaskStorage,
@@ -941,6 +942,16 @@ async fn async_main() -> Result<()> {
                     json!({ "non_fatal": true }),
                 );
             }
+        }
+
+        let stuck_requeued =
+            edgequake_api::services::reconcile_stuck_deleting_documents(&state, reconcile_budget)
+                .await;
+        if stuck_requeued > 0 {
+            info!(
+                requeued = stuck_requeued,
+                "Re-enqueued stuck deleting documents (crash recovery)"
+            );
         }
     }
 

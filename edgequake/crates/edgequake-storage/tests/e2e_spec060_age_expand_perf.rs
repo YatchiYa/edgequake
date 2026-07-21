@@ -8,14 +8,12 @@
 
 #![cfg(feature = "postgres")]
 
-#[path = "support/postgres_test_config.rs"]
-mod postgres_test_config;
 #[path = "support/perf_harness.rs"]
 mod perf_harness;
+#[path = "support/postgres_test_config.rs"]
+mod postgres_test_config;
 
-use edgequake_storage::traits::{
-    GraphStorage, GraphStorageMutateOps, GraphStorageReadOps,
-};
+use edgequake_storage::traits::{GraphStorage, GraphStorageMutateOps, GraphStorageReadOps};
 use edgequake_storage::PostgresAGEGraphStorage;
 use perf_harness::finish_report;
 use std::collections::HashMap;
@@ -71,10 +69,7 @@ async fn e2e_spec060_scoped_expand_p95_and_explain() {
     }
     // Dedup by inserting hubs then leaves in batches
     for batch in nodes.chunks(500) {
-        graph
-            .upsert_nodes_batch(batch)
-            .await
-            .expect("upsert nodes");
+        graph.upsert_nodes_batch(batch).await.expect("upsert nodes");
     }
 
     let mut edges = Vec::with_capacity(NODE_COUNT * EDGES_PER_HUB);
@@ -84,11 +79,7 @@ async fn e2e_spec060_scoped_expand_p95_and_explain() {
             props.insert("relation_type".to_string(), serde_json::json!("RELATED"));
             props.insert("workspace_id".to_string(), serde_json::json!(WS));
             props.insert("tenant_id".to_string(), serde_json::json!(TENANT));
-            edges.push((
-                format!("HUB_{i}"),
-                format!("LEAF_{i}_{j}"),
-                props,
-            ));
+            edges.push((format!("HUB_{i}"), format!("LEAF_{i}_{j}"), props));
         }
     }
     for batch in edges.chunks(500) {
@@ -103,7 +94,9 @@ async fn e2e_spec060_scoped_expand_p95_and_explain() {
 
     let mut samples = Vec::with_capacity(SAMPLES);
     for s in 0..SAMPLES {
-        let ids: Vec<String> = (0..10).map(|i| format!("HUB_{}", (s + i) % NODE_COUNT)).collect();
+        let ids: Vec<String> = (0..10)
+            .map(|i| format!("HUB_{}", (s + i) % NODE_COUNT))
+            .collect();
         let start = Instant::now();
         let found = graph
             .get_incident_edges_batch(&ids, Some(TENANT), Some(WS))
@@ -137,10 +130,7 @@ async fn e2e_spec060_scoped_expand_p95_and_explain() {
     let _ = graph.clear().await;
 }
 
-async fn assert_incident_edge_index_plan(
-    config: &edgequake_storage::PostgresConfig,
-    graph: &str,
-) {
+async fn assert_incident_edge_index_plan(config: &edgequake_storage::PostgresConfig, graph: &str) {
     let pool = postgres_test_config::contract_pg_pool(config).await;
     let sql = format!(
         r#"EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)

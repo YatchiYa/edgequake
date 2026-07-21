@@ -1,0 +1,135 @@
+{
+  "utc": "20260720T112509Z",
+  "workspace_id": "2a7bcb2f-b156-4c49-9229-67f5bcde22a4",
+  "question_id": "Medical-0002d2de",
+  "question": "How are bone cancers staged and what factors are considered in determining the stage?",
+  "query_intent": "exploratory",
+  "content_bigrams": [
+    "bone cancers",
+    "cancers staged",
+    "staged stage"
+  ],
+  "entity_norms": [
+    "BONE_CANCER",
+    "BONE_CANCERS",
+    "CANCERS_STAGED",
+    "STAGED_STAGE"
+  ],
+  "mix": {
+    "parts": 6,
+    "chars": 41061,
+    "bigram_hits": []
+  },
+  "laws": {
+    "RESOLVE_all": true,
+    "RESOLVE_any": true,
+    "CONTENT": true,
+    "IN_MIX": false
+  },
+  "verdict_law": "CE_GAP",
+  "verdict_note": "Linked bodies contain question bigrams, but Mix C does not (SELECT after link \u2014 CE/fuse/trunc survivors).",
+  "entities": [
+    {
+      "norm": "BONE_CANCER",
+      "eq_name": "BONE_CANCER",
+      "lr_name": "Bone cancer",
+      "eq_n_chunks": 5,
+      "lr_n_chunks": 6,
+      "resolved": 5,
+      "unresolved": 0,
+      "content_hit_chunks": 3,
+      "content_hit_ids": [
+        "019f7ea3-71dc-7bf2-85fa-cd86aa2dc14d-chunk-146",
+        "019f7ea3-71dc-7bf2-85fa-cd86aa2dc14d-chunk-150",
+        "019f7ea3-71dc-7bf2-85fa-cd86aa2dc14d-chunk-151"
+      ],
+      "samples": [
+        {
+          "id": "019f7ea3-71dc-7bf2-85fa-cd86aa2dc14d-chunk-146",
+          "resolved": true,
+          "chars": 6753,
+          "bigram_hits": [
+            "bone cancers"
+          ],
+          "head": "About bone cancer 5 What is bone cancer? 6 What is bone? 7 What's in this book? 7 What can you do to get the best care? Bone cancer includes a group of cancers "
+        },
+        {
+          "id": "019f7ea3-71dc-7bf2-85fa-cd86aa2dc14d-chunk-148",
+          "resolved": true,
+          "chars": 6168,
+          "bigram_hits": [],
+          "head": ". While these reports might be available to you through your patient portal or patient access system, please wait to discuss these results with your care team. "
+        },
+        {
+          "id": "019f7ea3-71dc-7bf2-85fa-cd86aa2dc14d-chunk-149",
+          "resolved": true,
+          "chars": 6754,
+          "bigram_hits": [],
+          "head": ". The goal is to look for gene mutations inherited from your birth parents called germline mutations. Some mutations can put you at risk for more than one type "
+        },
+        {
+          "id": "019f7ea3-71dc-7bf2-85fa-cd86aa2dc14d-chunk-150",
+          "resolved": true,
+          "chars": 6225,
+          "bigram_hits": [
+            "bone cancers"
+          ],
+          "head": ". New bone formation, known as ossification, starts in the womb and ends during adolescence, between 10 and 19 years of age. Ossification is complete when the s"
+        },
+        {
+          "id": "019f7ea3-71dc-7bf2-85fa-cd86aa2dc14d-chunk-151",
+          "resolved": true,
+          "chars": 564,
+          "bigram_hits": [
+            "bone cancers"
+          ],
+          "head": ". Poorly differentiated (G3) means the cancer cells look very different compared to normal cells. GX \u2013 Grade cannot be determined G1 \u2013 Well differentiated (low "
+        }
+      ]
+    },
+    {
+      "norm": "BONE_CANCERS",
+      "eq_name": null,
+      "lr_name": null,
+      "eq_n_chunks": 0,
+      "lr_n_chunks": 0,
+      "resolved": 0,
+      "unresolved": 0,
+      "content_hit_chunks": 0,
+      "content_hit_ids": [],
+      "samples": []
+    },
+    {
+      "norm": "CANCERS_STAGED",
+      "eq_name": null,
+      "lr_name": null,
+      "eq_n_chunks": 0,
+      "lr_n_chunks": 0,
+      "resolved": 0,
+      "unresolved": 0,
+      "content_hit_chunks": 0,
+      "content_hit_ids": [],
+      "samples": []
+    },
+    {
+      "norm": "STAGED_STAGE",
+      "eq_name": null,
+      "lr_name": null,
+      "eq_n_chunks": 0,
+      "lr_n_chunks": 0,
+      "resolved": 0,
+      "unresolved": 0,
+      "content_hit_chunks": 0,
+      "content_hit_ids": [],
+      "samples": []
+    }
+  ],
+  "predictions_eq": "specs/001-benchmark/e2e/artifacts/history/smoke-20260720T111944Z/predictions_eq.json",
+  "predictions_lr": "specs/001-benchmark/e2e/artifacts/history/smoke-20260720T111944Z/predictions_lr.json",
+  "lr_mix": {
+    "chars": 78664,
+    "bigram_hits": [
+      "bone cancers"
+    ]
+  }
+}

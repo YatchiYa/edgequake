@@ -23,10 +23,10 @@ fn migration_defines_serving_functions() {
 
 #[test]
 fn first_principles_forbid_silent_unify() {
-    let fp = include_str!(
-        "../../../../specs/081-serving-view-dual-ssot/001-first-principles.md"
-    );
+    let fp = include_str!("../../../../specs/081-serving-view-dual-ssot/001-first-principles.md");
     assert!(fp.contains("dual SSOT") || fp.contains("dual-SSOT") || fp.contains("Dual"));
-    assert!(fp.to_lowercase().contains("not") && fp.to_lowercase().contains("unify")
-        || fp.contains("Do **not** silently unify"));
+    assert!(
+        fp.to_lowercase().contains("not") && fp.to_lowercase().contains("unify")
+            || fp.contains("Do **not** silently unify")
+    );
 }

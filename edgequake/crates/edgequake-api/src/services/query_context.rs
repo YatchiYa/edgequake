@@ -156,6 +156,7 @@ async fn run_context_retrieval(
         mix_weights,
         conversation_history,
         system_prompt: None,
+        question_type: None,
         allowed_document_ids,
         data_tenant_id,
         workspace_id: tenant_ctx.workspace_id.clone(),

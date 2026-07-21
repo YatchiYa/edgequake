@@ -145,6 +145,7 @@ async fn create_test_app_with_state_and_workers() -> (axum::Router, AppState) {
         Arc::clone(&state.workspace_service),
         Arc::clone(&state.query.models_config),
     )
+    .with_app_state(state.clone())
     .with_progress_broadcaster(state.tasks.progress_broadcaster.clone());
     let processor = Arc::new(processor);
 

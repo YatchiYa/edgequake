@@ -287,11 +287,8 @@ pub async fn cancel_task(
         .as_ref()
         .map(|t| t.workspace_id.to_string())
         .unwrap_or_else(|| "default".to_string());
-    let vector = crate::services::get_workspace_vector_storage_for_delete(
-        &state,
-        &workspace_key,
-    )
-    .await;
+    let vector =
+        crate::services::get_workspace_vector_storage_for_delete(&state, &workspace_key).await;
     let applied = cancel_track_with_doc_and_pdf_chain(
         &state.tasks.storage,
         &state.tasks.cancellation_registry,
@@ -428,6 +425,8 @@ fn parse_task_type(s: &str) -> Result<TaskType, String> {
         "scan" => Ok(TaskType::Scan),
         "reindex" => Ok(TaskType::Reindex),
         "pdf_processing" => Ok(TaskType::PdfProcessing),
+        "knowledge_injection" => Ok(TaskType::KnowledgeInjection),
+        "deletion" => Ok(TaskType::Deletion),
         _ => Err(format!("Invalid task type: {}", s)),
     }
 }

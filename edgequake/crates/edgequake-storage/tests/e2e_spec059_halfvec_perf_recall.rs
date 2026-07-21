@@ -30,9 +30,7 @@ fn percentile_p95(sorted: &[Duration]) -> Duration {
     sorted[idx.min(sorted.len() - 1)]
 }
 
-async fn seed_and_measure(
-    storage: &PgVectorStorage,
-) -> (Duration, Vec<String>) {
+async fn seed_and_measure(storage: &PgVectorStorage) -> (Duration, Vec<String>) {
     let chunk = 1000usize;
     for batch_start in (0..ROW_COUNT).step_by(chunk) {
         let end = (batch_start + chunk).min(ROW_COUNT);

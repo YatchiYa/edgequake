@@ -4,12 +4,12 @@
 //! Scale via `EDGEQUAKE_PERF_SCALE=prod|large`.
 #![cfg(feature = "postgres")]
 
-#[path = "support/postgres_test_config.rs"]
-mod postgres_test_config;
 #[path = "support/perf_harness.rs"]
 mod perf_harness;
 #[path = "support/perf_stress.rs"]
 mod perf_stress;
+#[path = "support/postgres_test_config.rs"]
+mod postgres_test_config;
 
 use edgequake_storage::traits::{GraphStorage, GraphStorageMutateOps, GraphStorageReadOps};
 use edgequake_storage::PostgresAGEGraphStorage;

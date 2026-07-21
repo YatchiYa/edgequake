@@ -29,8 +29,11 @@ pub fn from_engine_stats(
 
     QueryStats {
         embedding_time_ms: engine.embedding_time_ms,
+        keyword_time_ms: engine.keyword_time_ms,
         retrieval_time_ms: engine.retrieval_time_ms,
         generation_time_ms: engine.generation_time_ms,
+        ttft_ms: engine.ttft_ms,
+        answer_cache_hit: engine.answer_cache_hit,
         total_time_ms: engine.total_time_ms,
         sources_retrieved: context.chunks.len()
             + context.entities.len()
@@ -50,6 +53,7 @@ pub fn from_engine_stats(
         arm_naive_chunks: engine.arm_naive_chunks,
         arms_run: engine.arms_run.clone(),
         arms_gated: engine.arms_gated,
+        query_intent: engine.query_intent.clone(),
     }
 }
 

@@ -47,8 +47,9 @@ pub struct ReconcilePendingReport {
 }
 
 /// Waiting statuses that can be stranded without a task (#298).
+/// DRY: delegates to reprocess admission SSOT.
 pub fn is_orphan_waiting_status(status: &str) -> bool {
-    matches!(status.to_lowercase().as_str(), "pending" | "queued")
+    super::reprocess_admission::is_reprocess_orphan_waiting_status(status)
 }
 
 /// True when TaskStorage already has a pending/processing task for this document.

@@ -10,14 +10,14 @@
 //! “supported” claim but still archives a measured cliff.
 #![cfg(feature = "postgres")]
 
-#[path = "support/postgres_test_config.rs"]
-mod postgres_test_config;
+#[path = "support/perf_ann_corpus.rs"]
+mod perf_ann_corpus;
 #[path = "support/perf_harness.rs"]
 mod perf_harness;
 #[path = "support/perf_stress.rs"]
 mod perf_stress;
-#[path = "support/perf_ann_corpus.rs"]
-mod perf_ann_corpus;
+#[path = "support/postgres_test_config.rs"]
+mod postgres_test_config;
 
 use edgequake_storage::traits::VectorStorage;
 use edgequake_storage::{PgVectorStorage, VectorIndexType};
@@ -127,15 +127,8 @@ async fn e2e_spec063_capacity_ladder_filtered_ann() {
     }
 
     let qpc = ann.queries_per_client;
-    let (stress_p95, all, stress_wall) = measure_stress(
-        Arc::clone(&storage),
-        ann.dim,
-        mf,
-        clients,
-        qpc,
-        TOP_K,
-    )
-    .await;
+    let (stress_p95, all, stress_wall) =
+        measure_stress(Arc::clone(&storage), ann.dim, mf, clients, qpc, TOP_K).await;
     let budget = (single_p95 * mult).max(50.0);
     let stress_pass = stress_p95 < budget;
     println!(

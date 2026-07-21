@@ -12,9 +12,7 @@ use edgequake_storage::PgVectorStorage;
 
 /// Returns `Ok(None)` when ready, or `Ok(Some(blocker))` when not ready.
 #[cfg(feature = "postgres")]
-pub async fn wave2_ann_readiness_blocker(
-    pool: &sqlx::PgPool,
-) -> Result<Option<String>, String> {
+pub async fn wave2_ann_readiness_blocker(pool: &sqlx::PgPool) -> Result<Option<String>, String> {
     use edgequake_storage::hnsw_partial_by_workspace_enabled;
 
     if !hnsw_partial_by_workspace_enabled() {
@@ -36,9 +34,7 @@ pub async fn wave2_ann_readiness_blocker(
 }
 
 #[cfg(not(feature = "postgres"))]
-pub async fn wave2_ann_readiness_blocker(
-    _pool: &(),
-) -> Result<Option<String>, String> {
+pub async fn wave2_ann_readiness_blocker(_pool: &()) -> Result<Option<String>, String> {
     Ok(None)
 }
 

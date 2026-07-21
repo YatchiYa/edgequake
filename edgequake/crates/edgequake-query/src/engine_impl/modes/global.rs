@@ -21,7 +21,7 @@ impl QueryEngine {
     pub(in crate::engine_impl) async fn query_global_with_vector_storage(
         &self,
         query_text: &str,
-        _keywords: &ExtractedKeywords,
+        keywords: &ExtractedKeywords,
         embeddings: &QueryEmbeddings,
         tenant_id: Option<String>,
         workspace_id: Option<String>,
@@ -95,8 +95,21 @@ impl QueryEngine {
                 .unwrap_or("");
 
             if !src_id.is_empty() && !tgt_id.is_empty() {
+                let src_graph = crate::helpers::graph_entity_id_for_workspace(
+                    src_id,
+                    workspace_id.as_deref(),
+                );
+                let tgt_graph = crate::helpers::graph_entity_id_for_workspace(
+                    tgt_id,
+                    workspace_id.as_deref(),
+                );
                 let rel_key = format!("{}->{}:{}", src_id, tgt_id, rel_type);
                 if seen_relationships.insert(rel_key) {
+                    let source_chunk_ids: Vec<String> = result
+                        .metadata
+                        .get("source_chunk_ids")
+                        .and_then(|v| serde_json::from_value(v.clone()).ok())
+                        .unwrap_or_default();
                     let source_chunk_id = result
                         .metadata
                         .get("source_chunk_id")
@@ -113,10 +126,13 @@ impl QueryEngine {
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string());
 
+                    // Prompt/display keep bare names; graph lookups use scoped ids.
                     let mut rel = RetrievedRelationship::new(src_id, tgt_id, rel_type.to_string())
                         .with_description(description.to_string())
                         .with_score(result.score);
-                    if let Some(chunk_id) = source_chunk_id {
+                    if !source_chunk_ids.is_empty() {
+                        rel = rel.with_source_chunk_ids(source_chunk_ids);
+                    } else if let Some(chunk_id) = source_chunk_id {
                         rel = rel.with_source_chunk_id(chunk_id);
                     }
                     if let Some(doc_id) = source_document_id {
@@ -126,61 +142,68 @@ impl QueryEngine {
                         rel = rel.with_source_file_path(file_path);
                     }
                     context.add_relationship(rel);
-                    if !entity_ids.contains(&src_id.to_string()) {
-                        entity_ids.push(src_id.to_string());
+                    if !src_graph.is_empty() && !entity_ids.contains(&src_graph) {
+                        entity_ids.push(src_graph);
                     }
-                    if !entity_ids.contains(&tgt_id.to_string()) {
-                        entity_ids.push(tgt_id.to_string());
+                    if !tgt_graph.is_empty() && !entity_ids.contains(&tgt_graph) {
+                        entity_ids.push(tgt_graph);
                     }
                 }
             }
         }
 
         if entity_ids.is_empty() {
-            tracing::debug!(
-                workspace_id = ?workspace_id,
-                "OODA-231: No relationship vectors found, falling back to popular entities from graph"
-            );
-            crate::retrieval_telemetry::mark_popular_node_fallback(&mut context, "global");
-            let graph = self.graph_read();
-            let popular = graph
-                .get_popular_nodes_with_degree(
-                    self.config.max_entities,
-                    None,
-                    None,
-                    tenant_id.as_deref(),
-                    workspace_id.as_deref(),
-                )
-                .await?;
+            if crate::keyword_boost::popular_node_fallback_enabled() {
+                tracing::debug!(
+                    workspace_id = ?workspace_id,
+                    "OODA-231: No relationship vectors found, falling back to popular entities from graph"
+                );
+                crate::retrieval_telemetry::mark_popular_node_fallback(&mut context, "global");
+                let graph = self.graph_read();
+                let popular = graph
+                    .get_popular_nodes_with_degree(
+                        self.config.max_entities,
+                        None,
+                        None,
+                        tenant_id.as_deref(),
+                        workspace_id.as_deref(),
+                    )
+                    .await?;
 
-            for (node, degree) in &popular {
-                let entity = build_entity_from_node(&node.id, &node.properties, *degree, 0.0);
-                context.add_entity(entity);
-                entity_ids.push(node.id.clone());
-            }
+                for (node, degree) in &popular {
+                    let entity = build_entity_from_node(&node.id, &node.properties, *degree, 0.0);
+                    context.add_entity(entity);
+                    entity_ids.push(node.id.clone());
+                }
 
-            if !entity_ids.is_empty() {
-                let edges = crate::graph_expand::expand_neighborhood_edges(
-                    &graph,
-                    &entity_ids,
-                    self.config.graph_depth,
-                    self.config.max_relationships,
-                    self.config.graph_walk,
-                    tenant_id.as_deref(),
-                    workspace_id.as_deref(),
-                )
-                .await?;
-                for edge in edges {
-                    let rel_key = format!("{}->{}:{}", edge.source, edge.target, "RELATED_TO");
-                    if seen_relationships.insert(rel_key) {
-                        let rel = build_relationship_from_edge(
-                            &edge.source,
-                            &edge.target,
-                            &edge.properties,
-                        );
-                        context.add_relationship(rel);
+                if !entity_ids.is_empty() {
+                    let edges = crate::graph_expand::expand_neighborhood_edges(
+                        &graph,
+                        &entity_ids,
+                        self.config.graph_depth,
+                        self.config.max_relationships,
+                        self.config.graph_walk,
+                        tenant_id.as_deref(),
+                        workspace_id.as_deref(),
+                    )
+                    .await?;
+                    for edge in edges {
+                        let rel_key = format!("{}->{}:{}", edge.source, edge.target, "RELATED_TO");
+                        if seen_relationships.insert(rel_key) {
+                            let rel = build_relationship_from_edge(
+                                &edge.source,
+                                &edge.target,
+                                &edge.properties,
+                            );
+                            context.add_relationship(rel);
+                        }
                     }
                 }
+            } else {
+                tracing::debug!(
+                    workspace_id = ?workspace_id,
+                    "No relationship vectors; popular-node fallback disabled (EDGEQUAKE_POPULAR_NODE_FALLBACK=0)"
+                );
             }
         } else {
             let graph = self.graph_read();
@@ -199,7 +222,21 @@ impl QueryEngine {
                     context.add_entity(entity);
                 }
             }
+            if crate::keyword_boost::keyword_lexical_boost_enabled() {
+                let kw = keywords.all_keywords();
+                crate::keyword_boost::boost_entities_by_keywords(&mut context.entities, &kw);
+            }
         }
+
+        // 038 SELECT: Exploratory exact-name topic entities → Mix chunk pool
+        crate::topic_entity_admit::admit_topic_entities(
+            self.graph_read(),
+            &mut context,
+            query_text,
+            keywords,
+            workspace_id.as_deref(),
+        )
+        .await?;
 
         crate::community_global::expand_global_context_with_communities(
             &self.config,

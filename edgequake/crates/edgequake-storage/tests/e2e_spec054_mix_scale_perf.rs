@@ -215,9 +215,7 @@ async fn assert_filtered_hnsw_explain(config: &PostgresConfig, table: &str) {
         "SPEC-060 FAIL: filtered ANN EXPLAIN must not Seq Scan; plan was:\n{plan}"
     );
     assert!(
-        lower.contains("hnsw")
-            || plan.contains("Index Scan")
-            || plan.contains("Index Only Scan"),
+        lower.contains("hnsw") || plan.contains("Index Scan") || plan.contains("Index Only Scan"),
         "filtered ANN EXPLAIN should use HNSW/index path; plan was:\n{plan}"
     );
     assert!(

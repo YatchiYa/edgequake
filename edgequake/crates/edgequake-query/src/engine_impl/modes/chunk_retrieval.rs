@@ -16,8 +16,8 @@ use crate::error::Result;
 use crate::graph_ppr::GraphWalkMode;
 use crate::helpers::build_chunk_from_result;
 use crate::kg_chunk_pick::{
-    collect_kg_chunk_ids_scoped, pick_chunks_by_bipartite_ppr, pick_chunks_by_weight,
-    KgChunkPickMethod,
+    collect_kg_chunk_ids_scoped, lr_vector_budget_enabled, lr_vector_chunk_budget,
+    pick_chunks_by_bipartite_ppr, pick_chunks_by_weight, KgChunkPickMethod,
 };
 use crate::lineage_scope::filter_chunk_ids_by_allowed_docs;
 use edgequake_storage::traits::GraphEdge;
@@ -40,10 +40,11 @@ pub(super) async fn append_score_ranked_chunks(
     crate::sparse_retrieval::SparseRetrievalOutcome,
 )> {
     let related_n = retrieval_config.related_chunk_number;
+    let topic_ids = crate::topic_entity_admit::topic_chunk_ids_from_context(context);
 
     // Dual-node (EQ-046-17): bipartite PPR over entity relations ∪ mentions.
     // Falls back to lite entity-score projection when no relations are present.
-    let raw_ids = if retrieval_config.graph_walk == GraphWalkMode::Ppr {
+    let mut raw_ids = if retrieval_config.graph_walk == GraphWalkMode::Ppr {
         let entity_edges: Vec<GraphEdge> = context
             .relationships
             .iter()
@@ -71,12 +72,46 @@ pub(super) async fn append_score_ranked_chunks(
                 }
             }
             KgChunkPickMethod::Vector => {
-                collect_kg_chunk_ids_scoped(context, related_n, allowed_document_ids)
+                // 024 Q2: LightRAG VECTOR uses the full entity-linked pool, then
+                // cosine-takes `related_chunk_number * n_entities / 2`.
+                let per_entity_cap = if lr_vector_budget_enabled() {
+                    0
+                } else {
+                    related_n
+                };
+                collect_kg_chunk_ids_scoped(context, per_entity_cap, allowed_document_ids)
             }
         }
     };
 
+    // 038 SELECT: Acc default graph_walk=Ppr — PPR shortlist can omit topic
+    // entity chunks even after admit. Union topic source_chunk_ids into the
+    // candidate pool (document-scoped), then pin them after fetch.
+    if !topic_ids.is_empty() {
+        let scoped_topic =
+            filter_chunk_ids_by_allowed_docs(&topic_ids, allowed_document_ids);
+        let have: std::collections::HashSet<&str> =
+            raw_ids.iter().map(|s| s.as_str()).collect();
+        let mut prepend: Vec<String> = scoped_topic
+            .into_iter()
+            .filter(|id| !have.contains(id.as_str()))
+            .collect();
+        if !prepend.is_empty() {
+            prepend.append(&mut raw_ids);
+            raw_ids = prepend;
+        }
+    }
+
     let chunk_ids_vec = raw_ids;
+    let lr_budget = lr_vector_budget_enabled()
+        && retrieval_config.kg_chunk_pick_method == KgChunkPickMethod::Vector
+        && retrieval_config.graph_walk != GraphWalkMode::Ppr;
+    let vector_take = if lr_budget {
+        // LightRAG: do not pre-clamp to max_chunks before cosine pick.
+        lr_vector_chunk_budget(related_n, context.entities.len()).max(1)
+    } else {
+        retrieval_config.max_chunks
+    };
 
     tracing::info!(
         total_chunk_ids = chunk_ids_vec.len(),
@@ -85,6 +120,8 @@ pub(super) async fn append_score_ranked_chunks(
         pick_method = retrieval_config.kg_chunk_pick_method.as_str(),
         graph_walk = ?retrieval_config.graph_walk,
         related_chunk_number = related_n,
+        lr_vector_budget = lr_budget,
+        vector_take,
         scoped = allowed_document_ids.is_some(),
         log_label,
         "OODA-230: chunk collection (workspace)"
@@ -120,16 +157,53 @@ pub(super) async fn append_score_ranked_chunks(
         vector_storage
             .query_filtered(
                 query_embedding,
-                retrieval_config.max_chunks,
+                vector_take,
                 Some(&chunk_ids_vec),
                 workspace_mf,
             )
             .await?
     };
 
+    // 038: pin topic-entity chunks to the front of the fetched shortlist
+    // (works for VECTOR and PPR — Acc fairness uses graph_walk=Ppr).
+    let mut results = results;
+    if !topic_ids.is_empty() {
+        crate::topic_entity_admit::pin_topic_chunks_in_results(&mut results, &topic_ids, |r| {
+            r.id.as_str()
+        });
+        let have: std::collections::HashSet<&str> =
+            results.iter().map(|r| r.id.as_str()).collect();
+        let missing: Vec<String> = topic_ids
+            .iter()
+            .filter(|id| chunk_ids_vec.iter().any(|c| c == *id) && !have.contains(id.as_str()))
+            .cloned()
+            .collect();
+        if !missing.is_empty() {
+            if let Ok(extra) = vector_storage
+                .query_filtered(
+                    query_embedding,
+                    missing.len(),
+                    Some(&missing),
+                    workspace_mf,
+                )
+                .await
+            {
+                let mut merged = extra;
+                merged.append(&mut results);
+                results = merged;
+                crate::topic_entity_admit::pin_topic_chunks_in_results(
+                    &mut results,
+                    &topic_ids,
+                    |r| r.id.as_str(),
+                );
+            }
+        }
+    }
+
     tracing::debug!(
         candidates = chunk_ids_vec.len(),
         returned = results.len(),
+        topic_pinned = topic_ids.len(),
         log_label,
         "OODA-231: Chunk retrieval result"
     );
@@ -153,7 +227,7 @@ pub(super) async fn append_score_ranked_chunks(
             results
                 .iter()
                 .filter(|r| preserve_order || r.score >= retrieval_config.min_score)
-                .take(retrieval_config.max_chunks)
+                .take(vector_take)
                 .map(build_chunk_from_result)
                 .collect(),
             crate::sparse_retrieval::SparseRetrievalOutcome::VectorOnly,

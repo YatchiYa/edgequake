@@ -289,6 +289,7 @@ pub async fn create_test_app_with_workers() -> WorkerAppGuard {
         std::sync::Arc::clone(&state.workspace_service),
         std::sync::Arc::clone(&state.query.models_config),
     )
+    .with_app_state(state.clone())
     .with_progress_broadcaster(state.tasks.progress_broadcaster.clone())
     .with_task_enqueue(
         std::sync::Arc::clone(&state.tasks.storage),
@@ -370,6 +371,7 @@ pub async fn create_test_app_with_llm_responses(extra_responses: &[&str]) -> Wor
         std::sync::Arc::clone(&state.workspace_service),
         std::sync::Arc::clone(&state.query.models_config),
     )
+    .with_app_state(state.clone())
     .with_progress_broadcaster(state.tasks.progress_broadcaster.clone())
     .with_task_enqueue(
         std::sync::Arc::clone(&state.tasks.storage),

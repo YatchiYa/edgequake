@@ -209,8 +209,12 @@ impl Task {
         // Check if this is a timeout error
         let error_lower = error.to_lowercase();
         if error_lower.contains("timeout") || error_lower.contains("timed out") {
-            self.consecutive_timeout_failures += 1;
-            self.check_circuit_breaker();
+            // Progress-aware: marker from vision stall watchdog.
+            let made_progress = error.contains("[vision_progress=1]");
+            if !made_progress {
+                self.consecutive_timeout_failures += 1;
+                self.check_circuit_breaker();
+            }
         } else {
             // Non-timeout failures reset the counter
             self.consecutive_timeout_failures = 0;
@@ -228,10 +232,16 @@ impl Task {
         // Set error FIRST so check_circuit_breaker can modify it
         self.error = Some(error.clone());
 
-        // Track consecutive timeouts for circuit breaker
+        // Track consecutive timeouts for circuit breaker.
+        // Progress-aware: a timeout after real progress (checkpointed pages)
+        // must NOT advance the breaker — only no-progress hangs trip it.
         if error.is_timeout() {
-            self.consecutive_timeout_failures += 1;
-            self.check_circuit_breaker(); // Modifies self.error if circuit breaker trips
+            if error.made_progress {
+                // Leave consecutive_timeout_failures unchanged.
+            } else {
+                self.consecutive_timeout_failures += 1;
+                self.check_circuit_breaker(); // Modifies self.error if circuit breaker trips
+            }
         } else {
             // Non-timeout failures reset the counter
             self.consecutive_timeout_failures = 0;
@@ -261,11 +271,11 @@ impl Task {
                 error.retryable = false;
             } else {
                 self.error_message = Some(format!(
-                    "Circuit breaker tripped after {} consecutive timeouts. \
-                    Document is too large for current LLM timeout settings. \
-                    Suggestions: 1) Use smaller chunk size (adaptive chunking), \
-                    2) Split document into smaller files, \
-                    3) Switch to provider with longer timeout (Ollama: 300s vs OpenAI: 120s)",
+                    "Circuit breaker tripped after {} consecutive timeouts with no progress. \
+                    Document may be blocked on a hung vision provider or a single stuck page. \
+                    Suggestions: 1) Check provider health / API quotas, \
+                    2) Raise EDGEQUAKE_VISION_STALL_TIMEOUT_SECS if pages are legitimately slow, \
+                    3) Split the document, 4) Reprocess after fixing the provider.",
                     self.consecutive_timeout_failures
                 ));
             }

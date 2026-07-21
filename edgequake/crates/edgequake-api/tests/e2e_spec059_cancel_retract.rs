@@ -5,8 +5,9 @@ use edgequake_storage::{
     GraphStorage, KVStorage, MemoryGraphStorage, MemoryKVStorage, MemoryVectorStorage,
     VectorStorage,
 };
-use edgequake_tasks::{memory::MemoryTaskStorage, CancellationRegistry, SharedTaskStorage, Task,
-    TaskType};
+use edgequake_tasks::{
+    memory::MemoryTaskStorage, CancellationRegistry, SharedTaskStorage, Task, TaskType,
+};
 use std::sync::Arc;
 use uuid::Uuid;
 

@@ -92,6 +92,7 @@ mod tests {
             mix_weights: None,
             conversation_history: None,
             system_prompt: None,
+            question_type: None,
             allowed_document_ids: None,
             data_tenant_id: None,
             workspace_id: None,

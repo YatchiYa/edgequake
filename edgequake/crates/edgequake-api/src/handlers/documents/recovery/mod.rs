@@ -2,7 +2,7 @@
 //!
 //! | Sub-module   | Responsibility                                     |
 //! |--------------|----------------------------------------------------|
-//! | `reprocess`  | Reprocess failed/cancelled documents (GAP-039)     |
+//! | `reprocess`  | Reprocess with lifecycle admission SSOT (GAP-039) |
 //! | `stuck`      | Recover documents stuck in "processing" status     |
 //! | `chunks`     | Retry/list failed chunks (FEAT0408, FEAT0409)      |
 

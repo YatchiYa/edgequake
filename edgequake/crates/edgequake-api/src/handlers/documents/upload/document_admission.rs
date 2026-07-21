@@ -172,11 +172,7 @@ pub async fn admit_document_for_processing(
         opts.validate().map_err(ApiError::ValidationError)?;
     }
 
-    let chunk_strategy = ChunkStrategy::resolve_for_upload(
-        input.chunk_strategy,
-        input.mime_type.as_deref(),
-        &input.title,
-    );
+    let chunk_strategy = resolve_admission_chunk_strategy(&input);
 
     let document_id = crate::services::ingest_admission::allocate_new_document_id(state).await;
     let track_id = input.build_track_id(track_prefix);
@@ -345,10 +341,18 @@ pub const ADMISSION_ACCEPTED_STATUS: StatusCode = StatusCode::ACCEPTED;
 
 /// Worker timeout for text ingest tasks (SPEC-045 SRE-I03).
 ///
-/// Local providers (Ollama / LM Studio) use at least [`TASK_TIMEOUT_FLOOR_SECS`]
-/// so multi-chunk gemma4 runs are not killed by the legacy 600s sync budget.
+/// Async insert workers always get at least [`TASK_TIMEOUT_FLOOR_SECS`].
+/// `sync_processing_timeout_secs` is a request-path sync budget (often 120s for
+/// cloud) and must not kill multi-chunk medical/novel corpus ingests.
 async fn resolve_text_ingest_timeout_secs(state: &AppState, workspace_id: &str) -> u64 {
     let floor = crate::services::large_document_profile::TASK_TIMEOUT_FLOOR_SECS;
+    // Prefer explicit worker override when set (same knob as PDF large-doc path).
+    if let Some(n) = std::env::var("TASK_PROCESSING_TIMEOUT_SECS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+    {
+        return n.max(floor);
+    }
     let Ok(ws_uuid) = Uuid::parse_str(workspace_id) else {
         return floor;
     };
@@ -361,11 +365,37 @@ async fn resolve_text_ingest_timeout_secs(state: &AppState, workspace_id: &str) 
         workspace.llm_provider.as_str()
     };
     let sync_budget = crate::safety_limits::sync_processing_timeout_secs(provider);
-    if crate::safety_limits::is_slow_local_provider(provider) {
-        sync_budget.max(floor)
-    } else {
-        sync_budget
+    sync_budget.max(floor)
+}
+
+/// Resolve chunk strategy for admission (028 B2).
+///
+/// When the caller does not set an explicit strategy, markdown text uploads
+/// (`source_type` / `document_type` / mime) must use [`ChunkStrategy::Markdown`]
+/// so heading breadcrumbs reach extract/glean prompts — even if the title has
+/// no `.md` suffix (Acc bench001 titles).
+fn resolve_admission_chunk_strategy(input: &DocumentAdmissionInput) -> ChunkStrategy {
+    let resolved = ChunkStrategy::resolve_for_upload(
+        input.chunk_strategy,
+        input.mime_type.as_deref(),
+        &input.title,
+    );
+    if input.chunk_strategy.is_some() {
+        return resolved;
     }
+    let markdown_hint = input.source_type.eq_ignore_ascii_case("markdown")
+        || input
+            .document_type
+            .as_deref()
+            .is_some_and(|d| d.eq_ignore_ascii_case("markdown"))
+        || input
+            .mime_type
+            .as_deref()
+            .is_some_and(|m| m.to_ascii_lowercase().contains("markdown"));
+    if markdown_hint && matches!(resolved, ChunkStrategy::Recursive | ChunkStrategy::Fixed) {
+        return ChunkStrategy::Markdown;
+    }
+    resolved
 }
 
 /// Parse chunk strategy + options from JSON upload fields (SSOT for all upload paths).
@@ -479,9 +509,70 @@ mod tests {
     }
 
     #[test]
+    fn parse_upload_chunk_fields_accepts_chunk_size_alias() {
+        let (_strategy, opts) = parse_upload_chunk_fields(
+            None,
+            Some(json!({ "chunk_size": 1200, "chunk_overlap": 100 })),
+        );
+        let opts = opts.expect("chunk options");
+        assert_eq!(opts.chunk_token_size, Some(1200));
+        assert_eq!(opts.chunk_overlap_token_size, Some(100));
+    }
+
+    #[test]
     fn resolve_upload_defaults_to_recursive_for_plain_text() {
         assert_eq!(
             ChunkStrategy::resolve_for_upload(None, Some("text/plain"), "notes.txt"),
+            ChunkStrategy::Recursive
+        );
+    }
+
+    #[test]
+    fn admission_markdown_source_selects_markdown_chunker() {
+        let input = DocumentAdmissionInput {
+            text_content: "# Title\n\nBody".into(),
+            title: "bench001-smoke".into(),
+            source_type: "markdown",
+            mime_type: None,
+            raw_byte_size: 16,
+            content_hash: "abc".into(),
+            custom_metadata: None,
+            track_id: None,
+            gleaning: GleaningAdmissionOptions::default(),
+            document_type: Some("markdown"),
+            chunk_strategy: None,
+            chunk_options: None,
+            multimodal: false,
+            ingest_mode: None,
+            multimodal_manifest: None,
+        };
+        assert_eq!(
+            resolve_admission_chunk_strategy(&input),
+            ChunkStrategy::Markdown
+        );
+    }
+
+    #[test]
+    fn admission_explicit_recursive_is_preserved() {
+        let input = DocumentAdmissionInput {
+            text_content: "plain".into(),
+            title: "bench001-smoke".into(),
+            source_type: "markdown",
+            mime_type: Some("text/markdown".to_string()),
+            raw_byte_size: 5,
+            content_hash: "abc".into(),
+            custom_metadata: None,
+            track_id: None,
+            gleaning: GleaningAdmissionOptions::default(),
+            document_type: Some("markdown"),
+            chunk_strategy: Some(ChunkStrategy::Recursive),
+            chunk_options: None,
+            multimodal: false,
+            ingest_mode: None,
+            multimodal_manifest: None,
+        };
+        assert_eq!(
+            resolve_admission_chunk_strategy(&input),
             ChunkStrategy::Recursive
         );
     }

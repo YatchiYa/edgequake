@@ -74,13 +74,17 @@ pub mod progress;
 pub mod prompts;
 pub mod sanitizer;
 pub mod stage_bridge;
+pub mod structure_induce;
 pub mod summarizer;
 pub mod table_preprocessor;
 pub mod test_fixtures;
 pub mod text_embedder;
 pub mod validation;
 
-pub use adaptive_chunking::{adaptive_chunk_overlap, calculate_adaptive_chunk_size};
+pub use adaptive_chunking::{
+    adaptive_chunk_overlap, adaptive_chunking_enabled, calculate_adaptive_chunk_size,
+    env_fixed_chunk_overlap, env_fixed_chunk_size, resolve_base_chunk_size_overlap,
+};
 pub use cache::{
     generate_cache_key, generate_cache_key_multi, CacheEntry, CacheStats, CacheType,
     CachedExtractor, LLMCache, MemoryLLMCache,
@@ -109,6 +113,10 @@ pub use ingestion_pipeline::{
     IngestionPipelineOptions,
 };
 pub use markdown_ir::{extract_markdown_blocks, format_breadcrumb, PREFACE_HEADING};
+pub use structure_induce::{
+    induce_faq_markdown, maybe_induce_structure, structure_induce_mode_from_env,
+    StructureInduceMode, STRUCTURE_INDUCE_ENV,
+};
 // Re-export unified ingestion types for frontend compatibility
 pub use ingestion_types::{
     error_codes, IngestionError as UnifiedIngestionError,

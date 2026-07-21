@@ -78,8 +78,7 @@ async fn spec059_upsert_report_created_concurrent_at_most_one_insert() {
 
 #[tokio::test]
 async fn spec059_upsert_report_created_sequential_update_empty() {
-    let Some(config) =
-        postgres_test_config::contract_postgres_config("spec059_upsert_report_seq")
+    let Some(config) = postgres_test_config::contract_postgres_config("spec059_upsert_report_seq")
     else {
         if std::env::var("EDGEQUAKE_REQUIRE_POSTGRES_TESTS").as_deref() == Ok("1") {
             panic!("DATABASE_URL or POSTGRES_PASSWORD required");
@@ -92,11 +91,7 @@ async fn spec059_upsert_report_created_sequential_update_empty() {
     storage.initialize().await.expect("vector init");
     let id = "spec059-seq".to_string();
     let first = storage
-        .upsert_report_created(&[(
-            id.clone(),
-            emb(1.0),
-            serde_json::json!({"type": "entity"}),
-        )])
+        .upsert_report_created(&[(id.clone(), emb(1.0), serde_json::json!({"type": "entity"}))])
         .await
         .expect("first");
     assert_eq!(first, vec![id.clone()]);
@@ -108,6 +103,9 @@ async fn spec059_upsert_report_created_sequential_update_empty() {
         )])
         .await
         .expect("second");
-    assert!(second.is_empty(), "update must not report created: {second:?}");
+    assert!(
+        second.is_empty(),
+        "update must not report created: {second:?}"
+    );
     storage.delete(&[id]).await.ok();
 }

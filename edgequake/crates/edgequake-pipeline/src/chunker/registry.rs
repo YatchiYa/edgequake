@@ -97,7 +97,11 @@ impl ChunkStrategy {
 /// Optional per-document chunk tuning from API.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ChunkOptions {
+    /// Token budget per chunk. Accepts legacy alias `chunk_size` (bench001).
+    #[serde(default, alias = "chunk_size")]
     pub chunk_token_size: Option<usize>,
+    /// Overlap tokens. Accepts legacy alias `chunk_overlap`.
+    #[serde(default, alias = "chunk_overlap", alias = "chunk_overlap_size")]
     pub chunk_overlap_token_size: Option<usize>,
     #[serde(default)]
     pub separators: Vec<String>,

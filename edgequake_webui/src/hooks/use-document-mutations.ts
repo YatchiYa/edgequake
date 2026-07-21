@@ -198,16 +198,28 @@ export function useDocumentMutations(
       });
       patchDocumentsDeletingOptimistic(queryClient, documentId);
     },
-    onSuccess: (_data, _documentId) => {
-      toast.success(t("documents.delete.success", "Document deleted"), {
-        duration: 3000,
-        description: t(
-          "documents.delete.successDesc",
-          "The document has been permanently removed.",
-        ),
-      });
+    onSuccess: (data, _documentId) => {
+      // HTTP 202 admit — WebSocket DeletionCompleted is the terminal SSOT.
+      // Do not toast "deleted" here (cascade may still be running).
+      if (data?.accepted) {
+        toast.success(t("documents.delete.accepted", "Deletion started"), {
+          duration: 2500,
+          description: t(
+            "documents.delete.acceptedDesc",
+            "Removing document data in the background…",
+          ),
+        });
+      } else if (data?.deleted) {
+        toast.success(t("documents.delete.success", "Document deleted"), {
+          duration: 3000,
+          description: t(
+            "documents.delete.successDesc",
+            "The document has been permanently removed.",
+          ),
+        });
+        invalidateKnowledgeGraph(queryClient);
+      }
       queryClient.invalidateQueries({ queryKey: ["documents"] });
-      invalidateKnowledgeGraph(queryClient);
     },
     onError: (error: Error, documentId) => {
       const message =

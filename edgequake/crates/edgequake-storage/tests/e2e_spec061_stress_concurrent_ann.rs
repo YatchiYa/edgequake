@@ -3,18 +3,19 @@
 //! pg16: N=8 ≤2×; pg17/18: N=16 ≤1.5×. Scale via `EDGEQUAKE_PERF_SCALE=prod|large`.
 #![cfg(feature = "postgres")]
 
-#[path = "support/postgres_test_config.rs"]
-mod postgres_test_config;
 #[path = "support/perf_harness.rs"]
 mod perf_harness;
 #[path = "support/perf_stress.rs"]
 mod perf_stress;
+#[path = "support/postgres_test_config.rs"]
+mod postgres_test_config;
 
 use edgequake_storage::traits::{MetadataFilter, VectorStorage};
 use edgequake_storage::PgVectorStorage;
 use perf_harness::{finish_report, percentile_p95_ms};
 use perf_stress::{
-    ann_scale, perf_scale, stress_clients, stress_mult, stress_pool_max, with_stress_pool, PerfScale,
+    ann_scale, perf_scale, stress_clients, stress_mult, stress_pool_max, with_stress_pool,
+    PerfScale,
 };
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -93,7 +94,12 @@ async fn e2e_spec061_stress_concurrent_filtered_ann() {
             warm.push(tokio::spawn(async move {
                 for q in 0..4u32 {
                     let _ = storage
-                        .query_filtered(&emb(dim, (c * 17 + q as usize) as f32), TOP_K, None, Some(&mf))
+                        .query_filtered(
+                            &emb(dim, (c * 17 + q as usize) as f32),
+                            TOP_K,
+                            None,
+                            Some(&mf),
+                        )
                         .await
                         .expect("warmup");
                 }

@@ -135,9 +135,7 @@ pub async fn resolve_worker_pdf_document_id(
                 ws,
             )
             .await
-            .map_err(|e| {
-                edgequake_tasks::TaskError::Processing(format!("document quota: {e}"))
-            })?;
+            .map_err(|e| edgequake_tasks::TaskError::Processing(format!("document quota: {e}")))?;
         }
     }
 

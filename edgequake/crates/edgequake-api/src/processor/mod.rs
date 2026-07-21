@@ -76,6 +76,7 @@
 //! - [`BR0472`]: Documents processed with workspace-specific providers
 
 // Sub-modules organized by responsibility (SRP)
+mod document_deletion;
 mod injection_processing;
 mod pdf_processing;
 pub mod pipeline_checkpoint;
@@ -189,6 +190,8 @@ pub struct DocumentTaskProcessor {
     pg_pool: Option<sqlx::PgPool>,
     #[cfg(feature = "postgres")]
     postgres_capabilities: Option<edgequake_storage::adapters::postgres::PostgresCapabilities>,
+    /// Shared AppState for async document deletion (cascade + WS + audit).
+    app_state: Option<crate::state::AppState>,
 }
 
 impl DocumentTaskProcessor {
@@ -232,6 +235,7 @@ impl DocumentTaskProcessor {
             pg_pool: None,
             #[cfg(feature = "postgres")]
             postgres_capabilities: None,
+            app_state: None,
         }
     }
 
@@ -284,6 +288,7 @@ impl DocumentTaskProcessor {
             pg_pool: None,
             #[cfg(feature = "postgres")]
             postgres_capabilities: None,
+            app_state: None,
         }
     }
 
@@ -333,7 +338,14 @@ impl DocumentTaskProcessor {
             pg_pool: None,
             #[cfg(feature = "postgres")]
             postgres_capabilities: None,
+            app_state: None,
         }
+    }
+
+    /// Attach AppState for async document deletion cascade (DRY with HTTP path).
+    pub fn with_app_state(mut self, state: crate::state::AppState) -> Self {
+        self.app_state = Some(state);
+        self
     }
 
     /// Set the relational CQRS sink for dual-write to the entities table (SPEC-021 P3-01).

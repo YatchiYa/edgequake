@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 use edgequake_llm::traits::{EmbeddingProvider, LLMProvider};
 
-use crate::adaptive_chunking::{adaptive_chunk_overlap, calculate_adaptive_chunk_size};
 use crate::chunker::{ChunkOptions, ChunkStrategy, ChunkerConfig};
 use crate::extractor::{EntityExtractor, GleaningConfig, GleaningExtractor, LLMExtractor};
 use crate::pipeline::{Pipeline, PipelineConfig};
@@ -93,16 +92,26 @@ impl IngestionPipelineOptions {
 }
 
 /// Build chunker config from document size + optional API overrides.
+///
+/// When `EDGEQUAKE_ADAPTIVE_CHUNKING=0`, uses fixed
+/// `EDGEQUAKE_CHUNK_SIZE` / `EDGEQUAKE_CHUNK_OVERLAP` (defaults 1200/100)
+/// for fair LightRAG-matched Acc ingest. API `ChunkOptions` still win last.
 pub fn build_chunker_config(
     document_size_bytes: usize,
     strategy: ChunkStrategy,
     chunk_options: Option<&ChunkOptions>,
 ) -> ChunkerConfig {
-    let mut chunk_size = calculate_adaptive_chunk_size(document_size_bytes);
-    let chunk_overlap = adaptive_chunk_overlap(chunk_size);
+    use crate::adaptive_chunking::{
+        adaptive_chunking_enabled, resolve_base_chunk_size_overlap,
+    };
 
-    // Recursive/markdown/pdf use LightRAG nominal 1200 when doc is small.
-    if strategy != ChunkStrategy::Fixed && document_size_bytes <= 50_000 {
+    let (mut chunk_size, chunk_overlap) = resolve_base_chunk_size_overlap(document_size_bytes);
+
+    // Recursive/markdown/pdf floor when adaptive (legacy LightRAG small-doc path).
+    if adaptive_chunking_enabled()
+        && strategy != ChunkStrategy::Fixed
+        && document_size_bytes <= 50_000
+    {
         chunk_size = chunk_size.max(800);
     }
 

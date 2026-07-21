@@ -102,6 +102,7 @@ pub fn run_spec046_acc_report() -> AccReport {
         drop_fraction: 0.4,
         min_keep: 3,
         min_input: 5,
+        ..Default::default()
     };
     let kept = prune_relationships(rels, &cfg);
     checks.push(AccCheckResult {

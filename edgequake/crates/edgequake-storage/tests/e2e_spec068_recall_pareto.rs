@@ -8,14 +8,14 @@
 //! Soft-fails product gates (archives cliffs). Hang cliff hard-fails.
 #![cfg(feature = "postgres")]
 
-#[path = "support/postgres_test_config.rs"]
-mod postgres_test_config;
+#[path = "support/perf_ann_corpus.rs"]
+mod perf_ann_corpus;
 #[path = "support/perf_harness.rs"]
 mod perf_harness;
 #[path = "support/perf_stress.rs"]
 mod perf_stress;
-#[path = "support/perf_ann_corpus.rs"]
-mod perf_ann_corpus;
+#[path = "support/postgres_test_config.rs"]
+mod postgres_test_config;
 
 use edgequake_storage::traits::VectorStorage;
 use edgequake_storage::{PgVectorStorage, VectorIndexType, VectorStorageMode};
@@ -36,10 +36,9 @@ const REF_EF: u32 = 400;
 
 fn parse_u32_list(env: &str, default: &[u32]) -> Vec<u32> {
     match std::env::var(env) {
-        Ok(s) if !s.trim().is_empty() => s
-            .split(',')
-            .filter_map(|p| p.trim().parse().ok())
-            .collect(),
+        Ok(s) if !s.trim().is_empty() => {
+            s.split(',').filter_map(|p| p.trim().parse().ok()).collect()
+        }
         _ => default.to_vec(),
     }
 }
@@ -178,12 +177,7 @@ async fn run_cell(
     std::env::remove_var("EDGEQUAKE_HNSW_EF_SEARCH");
 }
 
-async fn seed_indexed(
-    rows: usize,
-    m: u32,
-    ef_c: u32,
-    arm: &str,
-) -> Arc<PgVectorStorage> {
+async fn seed_indexed(rows: usize, m: u32, ef_c: u32, arm: &str) -> Arc<PgVectorStorage> {
     let clients = stress_clients();
     let base = postgres_test_config::require_or_skip_postgres("pareto068")
         .expect("DATABASE_URL required under EDGEQUAKE_REQUIRE_POSTGRES_TESTS");
@@ -192,13 +186,11 @@ async fn seed_indexed(
     config.hnsw_ef_construction = ef_c;
 
     let storage = Arc::new(
-        PgVectorStorage::with_dimension(config.clone(), DIM).with_storage_mode(VectorStorageMode::Half),
+        PgVectorStorage::with_dimension(config.clone(), DIM)
+            .with_storage_mode(VectorStorageMode::Half),
     );
     storage.initialize().await.expect("init");
-    let seed_ms = seed_ws_split(
-        &storage, rows, DIM, 1000, "pareto068", TENANT, WS, "ws-b",
-    )
-    .await;
+    let seed_ms = seed_ws_split(&storage, rows, DIM, 1000, "pareto068", TENANT, WS, "ws-b").await;
     let index_wall = Instant::now();
     let created = storage
         .ensure_hot_workspace_ann(WS)
@@ -211,10 +203,7 @@ async fn seed_indexed(
             .expect("partial probe"),
         "Wave-2 partial must exist"
     );
-    storage
-        .drop_global_ann_index()
-        .await
-        .expect("drop global");
+    storage.drop_global_ann_index().await.expect("drop global");
     let index_ms = index_wall.elapsed().as_secs_f64() * 1000.0;
     emit(
         "pareto_index",
@@ -232,10 +221,7 @@ async fn seed_indexed(
 
 #[tokio::test]
 async fn e2e_spec068_recall_latency_pareto() {
-    let rows_list = parse_u32_list(
-        "EQ_PARETO_ROWS_LIST",
-        &[100_000, 150_000, 200_000, 250_000],
-    );
+    let rows_list = parse_u32_list("EQ_PARETO_ROWS_LIST", &[100_000, 150_000, 200_000, 250_000]);
     let ef_list = parse_u32_list("EQ_PARETO_EF_LIST", &[80, 160, 240, 400]);
     let do_rebuild = std::env::var("EQ_PARETO_REBUILD").ok().as_deref() == Some("1");
 
@@ -257,17 +243,7 @@ async fn e2e_spec068_recall_latency_pareto() {
         let storage = seed_indexed(rows as usize, 16, 64, "query_ef").await;
         for &ef in &ef_list {
             // ef=400 vs ref ef=400 is tautological ~1.0 — still useful as latency cell
-            run_cell(
-                &storage,
-                rows,
-                ef,
-                "query_ef",
-                clients,
-                pool,
-                cliff,
-                mult,
-            )
-            .await;
+            run_cell(&storage, rows, ef, "query_ef", clients, pool, cliff, mult).await;
         }
     }
 

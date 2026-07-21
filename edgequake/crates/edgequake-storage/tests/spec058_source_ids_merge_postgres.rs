@@ -30,10 +30,7 @@ mod postgres_integration {
                 node_id,
                 HashMap::from([
                     ("entity_type".to_string(), serde_json::json!("PERSON")),
-                    (
-                        "source_ids".to_string(),
-                        serde_json::json!(["doc-a"]),
-                    ),
+                    ("source_ids".to_string(), serde_json::json!(["doc-a"])),
                     (
                         "source_chunk_ids".to_string(),
                         serde_json::json!(["doc-a-chunk-0"]),
@@ -49,10 +46,7 @@ mod postgres_integration {
                 node_id,
                 HashMap::from([
                     ("entity_type".to_string(), serde_json::json!("PERSON")),
-                    (
-                        "source_ids".to_string(),
-                        serde_json::json!(["doc-b"]),
-                    ),
+                    ("source_ids".to_string(), serde_json::json!(["doc-b"])),
                     (
                         "source_chunk_ids".to_string(),
                         serde_json::json!(["doc-b-chunk-0"]),
@@ -80,9 +74,7 @@ mod postgres_integration {
             "eq_merge_graph_properties must union source_ids, got {ids:?}"
         );
         assert_eq!(
-            node.properties
-                .get("description")
-                .and_then(|v| v.as_str()),
+            node.properties.get("description").and_then(|v| v.as_str()),
             Some("from B"),
             "incoming scalar description wins"
         );

@@ -100,6 +100,19 @@ pub fn intent_arm_mask_hybrid(intent: QueryIntent) -> (bool, bool, bool) {
     }
 }
 
+/// Parse a Mix arm weight from env (`EDGEQUAKE_MIX_{LOCAL,GLOBAL,NAIVE}_WEIGHT`).
+///
+/// Default **1.0** when unset / invalid. Values are clamped to `[0.0, 10.0]`
+/// before normalization in [`normalized_mix_weights`].
+pub fn mix_arm_weight_from_env(var: &str, default: f32) -> f32 {
+    std::env::var(var)
+        .ok()
+        .and_then(|v| v.parse::<f32>().ok())
+        .filter(|v| v.is_finite())
+        .map(|v| v.clamp(0.0, 10.0))
+        .unwrap_or(default)
+}
+
 /// Normalize Mix weights to sum to 1 (P-G8 E24/E25).
 pub fn normalized_mix_weights(
     config: &QueryEngineConfig,
@@ -299,5 +312,25 @@ mod tests {
         assert!(plan.run_local && !plan.run_global && plan.run_naive);
         assert!((plan.w_local - 0.5).abs() < 1e-5);
         assert!((plan.w_naive - 0.5).abs() < 1e-5);
+    }
+
+    #[test]
+    fn naive_weight_boost_normalizes_to_half() {
+        // Acc-win E3b: local=1, global=1, naive=2 → 0.25 / 0.25 / 0.50
+        let mut c = cfg();
+        c.mix_local_weight = 1.0;
+        c.mix_global_weight = 1.0;
+        c.mix_naive_weight = 2.0;
+        let (l, g, n) = normalized_mix_weights(&c, None);
+        assert!((l - 0.25).abs() < 1e-5);
+        assert!((g - 0.25).abs() < 1e-5);
+        assert!((n - 0.5).abs() < 1e-5);
+        let plan = resolve_arm_plan(&c, None, QueryIntent::Comparative, false);
+        assert!((plan.w_naive - 0.5).abs() < 1e-5);
+    }
+
+    #[test]
+    fn mix_arm_weight_from_env_clamps() {
+        assert!((mix_arm_weight_from_env("EDGEQUAKE_MIX_NAIVE_WEIGHT_UNSET_XYZ", 1.0) - 1.0).abs() < 1e-5);
     }
 }

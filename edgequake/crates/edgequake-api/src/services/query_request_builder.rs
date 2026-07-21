@@ -17,6 +17,8 @@ pub struct QueryExecutionParams {
     pub mix_weights: Option<MixWeightRequest>,
     pub conversation_history: Option<Vec<ConversationMessage>>,
     pub system_prompt: Option<String>,
+    /// GraphRAG-Bench / product question type (047 type-scoped prompts).
+    pub question_type: Option<String>,
     pub allowed_document_ids: Option<Vec<String>>,
     pub data_tenant_id: Option<String>,
     pub workspace_id: Option<String>,
@@ -54,6 +56,12 @@ pub fn build_engine_request(params: &QueryExecutionParams) -> EngineQueryRequest
 
     if let Some(ref system_prompt) = params.system_prompt {
         engine_request = engine_request.with_system_prompt(system_prompt);
+    }
+    if let Some(ref question_type) = params.question_type {
+        let trimmed = question_type.trim();
+        if !trimmed.is_empty() {
+            engine_request = engine_request.with_question_type(trimmed);
+        }
     }
     if let Some(ref tenant_id) = params.data_tenant_id {
         engine_request = engine_request.with_tenant_id(tenant_id.clone());
@@ -119,6 +127,7 @@ mod tests {
             mix_weights: None,
             conversation_history: None,
             system_prompt: None,
+            question_type: None,
             allowed_document_ids: None,
             data_tenant_id: None,
             workspace_id: None,
@@ -127,6 +136,30 @@ mod tests {
         };
         let req = build_engine_request(&params);
         assert!(req.context_only);
+    }
+
+    #[test]
+    fn question_type_propagates_to_engine_params() {
+        let params = QueryExecutionParams {
+            query: "test".into(),
+            mode: QueryMode::Mix,
+            max_results: None,
+            context_only: false,
+            prompt_only: false,
+            enable_rerank: true,
+            rerank_top_k: None,
+            mix_weights: None,
+            conversation_history: None,
+            system_prompt: None,
+            question_type: Some("Complex Reasoning".into()),
+            allowed_document_ids: None,
+            data_tenant_id: None,
+            workspace_id: None,
+            llm_provider: None,
+            llm_model: None,
+        };
+        let req = build_engine_request(&params);
+        assert_eq!(req.question_type(), Some("Complex Reasoning"));
     }
 
     #[test]

@@ -41,6 +41,56 @@ fn bt045_ec07_provider_unavailable_retriable() {
 }
 
 #[test]
+fn bt045_provider_missing_key_is_permanent_not_retried() {
+    // Exact strings emitted by the vision path and workspace pipeline factory
+    // when a workspace is pinned to a provider whose credential is absent.
+    for msg in [
+        "Processing error: Failed to create vision provider 'mistral': Configuration error: \
+         MISTRAL_API_KEY is not set. To use the Mistral provider, set the environment variable \
+         and restart the server. Alternatively, select the Ollama provider which runs locally.",
+        "Processing error: Workspace pipeline error: Failed to create LLM (Configuration error: \
+         MISTRAL_API_KEY is not set.) and embedding (Configuration error: MISTRAL_API_KEY \
+         environment variable not set. Get your API key from https://console.mistral.ai) providers",
+        "LLM error: Authentication error: invalid_request_error: Incorrect API key provided \
+         (code: invalid_api_key)",
+    ] {
+        let class = classify_ingestion_failure(msg);
+        assert_eq!(
+            class,
+            IngestionFailureClass::ProviderMisconfigured,
+            "should be misconfig: {msg}"
+        );
+        assert_eq!(class.as_str(), "provider_misconfigured");
+        assert_eq!(class.recommended_action(), "configure_provider_credentials");
+        assert!(
+            is_permanent_ingestion_failure(msg),
+            "must be permanent: {msg}"
+        );
+
+        // Task must refuse to retry a deterministic misconfiguration.
+        let mut task = Task::new(
+            uuid::Uuid::new_v4(),
+            uuid::Uuid::new_v4(),
+            TaskType::PdfProcessing,
+            serde_json::json!({}),
+        );
+        task.mark_failed_with_details(TaskFailureInfo::from_processing_error(msg));
+        assert!(!task.can_retry(), "misconfig must not retry: {msg}");
+    }
+}
+
+#[test]
+fn bt045_transient_provider_error_still_retries() {
+    // Guard against over-eager permanence: a network-level construction failure
+    // with no credential/config marker must stay retryable.
+    let msg = "Failed to create provider 'ollama': error sending request for url \
+               (http://localhost:11434/api/tags)";
+    let class = classify_ingestion_failure(msg);
+    assert_eq!(class, IngestionFailureClass::ProviderUnavailable);
+    assert!(!is_permanent_ingestion_failure(msg));
+}
+
+#[test]
 fn bt045_ec09_embedding_400_permanent_not_retried() {
     let msg = "Embedding error: API error: Too many tokens overall, split into more batches. (400)";
     let class = classify_ingestion_failure(msg);
@@ -312,7 +362,7 @@ fn bt045_spec054_recover_skips_already_pending_stampede_guard() {
 }
 
 #[test]
-fn bt045_spec054_manual_resume_default_no_auto_hydrate() {
+fn bt045_spec054_auto_resume_env_gated_hydrate() {
     let src = include_str!("../../../src/main.rs");
     let hydrate = include_str!("../src/services/startup_task_hydrate.rs");
     assert!(
@@ -322,6 +372,11 @@ fn bt045_spec054_manual_resume_default_no_auto_hydrate() {
     assert!(
         hydrate.contains("EDGEQUAKE_STARTUP_AUTO_RESUME"),
         "auto-resume must be env-gated"
+    );
+    // Default ON for reliable resume; opt-out with =0/false/off.
+    assert!(
+        hydrate.contains("Unset → default ON") || hydrate.contains("default ON"),
+        "auto-resume must default ON for checkpoint resume reliability"
     );
     assert!(
         src.contains("startup_auto_resume_enabled"),

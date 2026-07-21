@@ -290,6 +290,8 @@ mod tests {
         let response = DeleteDocumentResponse {
             document_id: "doc-to-delete".to_string(),
             deleted: true,
+            accepted: false,
+            track_id: None,
             chunks_deleted: 7,
             entities_affected: 2,
             relationships_affected: 1,

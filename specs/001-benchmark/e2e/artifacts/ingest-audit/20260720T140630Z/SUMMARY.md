@@ -1,0 +1,56 @@
+# Ingest parity audit (028 B1)
+
+**UTC:** 20260720T140631Z  
+**EQ workspace:** `58ffe7da-d181-4a31-8941-9621b051a678`  
+**LR stage:** `smoke`  
+**EQ graph:** `eq_eq_default_graph`  
+
+## Counts
+
+| Side | Entities/nodes | Edges / rels | Linked chunks |
+|------|----------------|--------------|---------------|
+| LR | 3580 | 5325 | 199 |
+| EQ | 4651 | 8389 | 188 |
+
+## Identity parity (032 B3b)
+
+- EQ entity vectors: **4300**
+- EQ AGE nodes (WS filter): **4651**
+- AGE/vectors ratio: **1.0816** (target ≈ 1.0)
+- B3b pass when age_over_vectors ≈ 1.0 (±0.10); pre-fix Acc WS often ~0.09 (global node_id collision).
+
+## Entity name overlap (normalized)
+
+- Jaccard: **0.4376**
+- EQ coverage of LR: **0.7372**
+- LR coverage of EQ: **0.5185**
+- EQ soft-overlap (substring ≥6): **0.7485** (3459/4651)
+- Only LR (sample): `2022, 2D_DIGITAL_MAMMOGRAPHY, 2D_DIGITAL_MAMMOGRAPHY_3D_MAMMOGRAM, 3D_MAMMOGRAM, 5_FLUOROURACIL, ABDOMINAL_CT, ABNORMAL_BLEEDING, ABNORMAL_LYMPH_NODES, ABSOLUTE_NEUTROPHIL_COUNT, ACUTE_LYMPHOBLASTIC_LEUKEMIA, ACUTE_PROMYELOCYTIC_LEUKEMIA, ADOLESCENT_AND_YOUNG_ADULT`
+
+## Linkage density
+
+- LR mean chunks/entity: 2.204
+- EQ mean chunks/entity: 2.301
+- EQ zero-chunk entities: 0
+
+## Relation linkage (049 B6)
+
+- EQ mean chunks/edge: **1.182**
+- LR mean chunks/relation: **1.17**
+- EQ edges ≥2 chunks: **1046** (rate **0.1247**)
+- LR relations ≥2 chunks: **633** (rate **0.1189**)
+- 049 B6: endpoint dedupe must union chunk ids (raise eq_edges_ge2_rate).
+
+## Stub provenance (044 B5)
+
+- Zero-chunk total: **0** (rate **0.0**)
+- UNKNOWN empty stubs: **0**
+- Named zero-chunk: **0**
+- B5 pass when eq_zero_chunk_rate ≤ 0.01 after placeholder provenance inherit.
+
+## Re-ingest plan
+
+- Forced new workspace + labeled ingest pins (never silent Acc pin change).
+- Re-run Acc query-only (A0/A1) on new workspace after B2/B3.
+
+Artifact: `/Users/raphaelmansuy/Github/03-working/edgequake/specs/001-benchmark/e2e/artifacts/ingest-audit/20260720T140630Z/audit_report.json`

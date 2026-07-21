@@ -12,6 +12,7 @@ pub mod auth_bootstrap;
 pub mod auth_memory_store;
 pub mod auth_validation;
 pub mod cancel_facade;
+pub mod cancel_retract;
 pub mod content_granularity;
 pub mod content_hasher;
 pub mod context_bundle_mapper;
@@ -19,15 +20,16 @@ pub mod converting_subprogress;
 pub mod cost_aggregation;
 pub mod document_assets;
 pub mod document_body_loader;
+pub mod document_deletion;
 pub mod document_graph_cascade;
 pub mod document_graph_lineage;
 pub mod document_metadata_repair;
 pub mod document_metadata_scan;
-pub mod document_quota;
 #[cfg(feature = "postgres")]
 pub mod document_mm_asset_persist;
 #[cfg(feature = "postgres")]
 pub mod document_original_persist;
+pub mod document_quota;
 pub mod document_reingest;
 pub mod document_task_cleanup;
 pub mod document_vector_storage;
@@ -78,8 +80,8 @@ pub mod query_execution;
 pub mod query_generation;
 pub mod query_request_builder;
 pub mod query_stats_mapper;
+pub mod reprocess_admission;
 pub mod reprocess_stage_reset;
-pub mod cancel_retract;
 pub mod retract_document_indexes;
 pub mod retrieval_id_cache;
 pub mod route_registry;
@@ -96,6 +98,7 @@ pub mod tenant_isolation;
 pub mod text_insert_content;
 pub mod v1_rpc_migration;
 pub mod vision_content;
+pub mod vision_stall_watchdog;
 pub mod vlm_limits;
 pub mod vlm_provider_resolver;
 pub mod workspace_content_hash_dedup;
@@ -124,6 +127,10 @@ pub use converting_subprogress::{
 pub use document_assets::{
     document_mm_assets_root, mm_assets_base_dir, multimodal_asset_base_dir,
     multimodal_images_requested, page_drawing_assets_config, page_drawing_assets_config_for_vision,
+};
+pub use document_deletion::{
+    find_active_deletion_track_id, perform_document_deletion, reconcile_stuck_deleting_documents,
+    reset_deleting_status, DocumentDeletionResult,
 };
 pub use document_graph_cascade::{
     analyze_deletion_impact_stats, cascade_remove_document_sources, cleanup_document_graph_data,
@@ -182,7 +189,8 @@ pub use injection_process::{
     run_injection_pipeline, write_injection_status,
 };
 pub use large_document_profile::{
-    classify_ingestion_failure, IngestionEstimate, IngestionFailureClass, LargeDocumentProfile,
+    classify_ingestion_failure, is_provider_misconfig_message, IngestionEstimate,
+    IngestionFailureClass, LargeDocumentProfile,
 };
 pub use llm_text_embedder::LlmTextEmbedder;
 pub use message_context_mapper::{
@@ -209,6 +217,10 @@ pub use multimodal::{
 pub use multimodal_admission::{
     resolve_upload_content, MultimodalAdmissionMeta, ResolvedUploadContent,
 };
+pub use orphan_index_retract::{
+    is_post_graph_incomplete_stage, orphan_retract_on_recover_enabled,
+    retract_indexes_for_orphan_docs,
+};
 pub use orphan_task_recovery::{recover_orphaned_tasks, OrphanTaskRecoveryReport};
 pub use pdf_admission_registry::PdfAdmissionRegistry;
 pub use pdf_auto_routing::{should_try_edgeparse_before_vision, try_edgeparse_fast_path};
@@ -228,9 +240,11 @@ pub use query_execution::{
 pub use query_generation::{execute_full_query, execute_legacy_query_response};
 pub use query_request_builder::{build_engine_request, QueryExecutionParams};
 pub use query_stats_mapper::from_engine_stats as map_engine_query_stats;
-pub use orphan_index_retract::{
-    is_post_graph_incomplete_stage, orphan_retract_on_recover_enabled,
-    retract_indexes_for_orphan_docs,
+pub use reprocess_admission::{
+    evaluate_reprocess_admission, is_reprocess_completed_status, is_reprocess_inflight_status,
+    is_reprocess_lifecycle_exclusive, is_reprocess_orphan_waiting_status,
+    is_reprocess_terminal_recoverable, ReprocessAdmitContext, ReprocessAdmitDecision,
+    ReprocessSkipReason,
 };
 pub use retract_document_indexes::{retract_document_indexes, retract_on_cancel_total};
 pub use retrieval_id_cache::{global_retrieval_cache, new_retrieval_id, RetrievalIdCache};
@@ -252,6 +266,11 @@ pub use vision_content::{
     describe_image, describe_image_as_markdown, image_analysis_to_markdown,
     image_analysis_to_markdown_with_asset, parse_image_analysis_json, ImageAnalysisResult,
     MultimodalProcessOptions, IMAGE_TYPE_FALLBACK,
+};
+pub use vision_stall_watchdog::{
+    annotate_timeout_progress, durable_vision_checkpoint_dir, evaluate_vision_watchdog,
+    run_with_vision_stall_watchdog, vision_stall_timeout_secs, HeartbeatProgressCallback,
+    VisionProgressHeartbeat, VisionWatchdogAbort, DEFAULT_VISION_STALL_TIMEOUT_SECS,
 };
 pub use vlm_provider_resolver::{
     resolve_extract_provider_for_workspace, resolve_vlm_provider,

@@ -64,7 +64,11 @@ pub fn build_ann_select_sql(
 ) -> String {
     let where_sql = if where_clause.trim().is_empty() {
         String::new()
-    } else if where_clause.trim_start().to_ascii_uppercase().starts_with("WHERE") {
+    } else if where_clause
+        .trim_start()
+        .to_ascii_uppercase()
+        .starts_with("WHERE")
+    {
         format!("\n            {}", where_clause.trim())
     } else {
         format!("\n            WHERE {}", where_clause.trim())
@@ -140,14 +144,7 @@ mod tests {
             enabled: true,
             candidate_k: 50,
         };
-        let sql = build_ann_select_sql(
-            "eq_v",
-            "vector",
-            "WHERE workspace_id = $2",
-            3,
-            20,
-            &p,
-        );
+        let sql = build_ann_select_sql("eq_v", "vector", "WHERE workspace_id = $2", 3, 20, &p);
         assert!(sql.contains("WITH candidates AS MATERIALIZED"));
         assert!(sql.contains("LIMIT 50"));
         assert!(sql.contains("ORDER BY distance + 0"));

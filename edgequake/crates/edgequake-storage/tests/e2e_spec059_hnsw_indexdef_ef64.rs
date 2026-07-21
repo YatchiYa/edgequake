@@ -54,10 +54,15 @@ async fn e2e_spec059_new_hnsw_indexdef_ef_construction_64() {
     let needle = format!("ef_construction='{expected}'");
     let needle_alt = format!("ef_construction={expected}");
     assert!(
-        row.0.contains(&needle) || row.0.contains(&needle_alt) || row.0.contains(&format!("ef_construction={expected}")),
+        row.0.contains(&needle)
+            || row.0.contains(&needle_alt)
+            || row.0.contains(&format!("ef_construction={expected}")),
         "new HNSW indexdef must include ef_construction={expected}; got {}",
         row.0
     );
-    eprintln!("OK SPEC-059: HNSW indexdef ef_construction={expected}: {}", row.0);
+    eprintln!(
+        "OK SPEC-059: HNSW indexdef ef_construction={expected}: {}",
+        row.0
+    );
     let _ = storage.clear().await;
 }

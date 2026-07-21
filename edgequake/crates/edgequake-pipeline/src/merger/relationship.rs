@@ -31,6 +31,28 @@ struct RelMergeOutcome {
     edge_for_map: Option<GraphEdge>,
 }
 
+/// New AGE placeholder awaiting entities_vdb upsert (050 B7).
+struct PlaceholderVdbSpec {
+    label: String,
+    description: String,
+    chunk_ids: Vec<String>,
+}
+
+/// Keep the longest incident relation description (LightRAG node_description).
+fn retain_longest_description(
+    map: &mut HashMap<String, String>,
+    key: &str,
+    candidate: &str,
+) {
+    if candidate.is_empty() {
+        return;
+    }
+    let entry = map.entry(key.to_string()).or_default();
+    if candidate.len() > entry.len() {
+        *entry = candidate.to_string();
+    }
+}
+
 impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphMerger<G, V> {
     /// Collect batched relationship vector upserts (P-G4-merger).
     ///
@@ -46,21 +68,22 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         for rel in &unique {
             let source_id = EntityId::new(&rel.source);
             let target_id = EntityId::new(&rel.target);
-            let source_key = source_id.as_graph_node_id();
-            let target_key = target_id.as_graph_node_id();
-            if source_key.is_empty() || target_key.is_empty() || source_key == target_key {
+            // Vector metadata keeps bare names; graph endpoints use scoped ids.
+            let source_bare = source_id.as_graph_node_id();
+            let target_bare = target_id.as_graph_node_id();
+            if source_bare.is_empty() || target_bare.is_empty() || source_bare == target_bare {
                 continue;
             }
             let Some(embedding) = rel.embedding.as_ref() else {
                 continue;
             };
-            let rel_id = format!("{}->{}:{}", source_key, target_key, rel.relation_type);
+            let rel_id = format!("{}->{}:{}", source_bare, target_bare, rel.relation_type);
             let scope = metadata::TenantScope {
                 tenant_id: &self.tenant_id,
                 workspace_id: &self.workspace_id,
             };
             let metadata =
-                metadata::relationship_vector_metadata(rel, source_key, target_key, scope);
+                metadata::relationship_vector_metadata(rel, source_bare, target_bare, scope);
             batch.push((rel_id, embedding.clone(), metadata));
         }
         batch
@@ -90,11 +113,12 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         let mut valid = Vec::new();
         let mut endpoint_keys = Vec::new();
 
+        let ws = self.workspace_id.as_deref();
         for rel in relationships {
             let source_id = EntityId::new(&rel.source);
             let target_id = EntityId::new(&rel.target);
-            let source_key = source_id.as_graph_node_id().to_string();
-            let target_key = target_id.as_graph_node_id().to_string();
+            let source_key = source_id.graph_node_id_for_workspace(ws);
+            let target_key = target_id.graph_node_id_for_workspace(ws);
 
             if source_key == target_key {
                 tracing::debug!(
@@ -148,28 +172,110 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
             edge_map.insert((edge.source.clone(), edge.target.clone()), edge);
         }
 
+        // Horizon B5 (044): relation endpoints missing a full entity extract still
+        // inherit the relation's source_chunk_id — GraphRAG/LightRAG provenance law.
+        // Horizon B7 (050): also seed description from the longest incident relation
+        // description and upsert entities_vdb (LightRAG operate.py ~1916).
+        // Also enrich existing zero-chunk stubs when later relation batches arrive.
         let mut placeholder_batch: Vec<(String, HashMap<String, serde_json::Value>)> = Vec::new();
         let mut placeholders: HashMap<String, String> = HashMap::new();
+        let mut placeholder_chunk_ids: HashMap<String, Vec<String>> = HashMap::new();
+        let mut placeholder_descriptions: HashMap<String, String> = HashMap::new();
+        let mut stub_enrich_chunk_ids: HashMap<String, Vec<String>> = HashMap::new();
         for (rel, source_key, target_key) in &valid {
-            if !existing_nodes.contains_key(source_key) {
-                placeholders
-                    .entry(source_key.clone())
-                    .or_insert_with(|| rel.source.clone());
-            }
-            if !existing_nodes.contains_key(target_key) {
-                placeholders
-                    .entry(target_key.clone())
-                    .or_insert_with(|| rel.target.clone());
+            let rel_chunk_ids = rel.all_source_chunk_ids();
+            for (key, raw_label) in [
+                (source_key, rel.source.as_str()),
+                (target_key, rel.target.as_str()),
+            ] {
+                if rel_chunk_ids.is_empty() {
+                    if !existing_nodes.contains_key(key) {
+                        placeholders
+                            .entry(key.clone())
+                            .or_insert_with(|| raw_label.to_string());
+                        retain_longest_description(
+                            &mut placeholder_descriptions,
+                            key,
+                            &rel.description,
+                        );
+                    }
+                    continue;
+                }
+                if let Some(node) = existing_nodes.get(key) {
+                    let existing_ids = source_chunk_ids_from_properties(&node.properties);
+                    if existing_ids.is_empty() {
+                        let ids = stub_enrich_chunk_ids.entry(key.clone()).or_default();
+                        for chunk_id in &rel_chunk_ids {
+                            if !ids.contains(chunk_id) {
+                                ids.push(chunk_id.clone());
+                            }
+                        }
+                    }
+                } else {
+                    placeholders
+                        .entry(key.clone())
+                        .or_insert_with(|| raw_label.to_string());
+                    retain_longest_description(
+                        &mut placeholder_descriptions,
+                        key,
+                        &rel.description,
+                    );
+                    let ids = placeholder_chunk_ids.entry(key.clone()).or_default();
+                    for chunk_id in &rel_chunk_ids {
+                        if !ids.contains(chunk_id) {
+                            ids.push(chunk_id.clone());
+                        }
+                    }
+                }
             }
         }
-        for (key, label) in placeholders {
-            placeholder_batch.push((key.clone(), self.placeholder_node_properties(&label)));
+        let mut new_placeholder_specs: Vec<PlaceholderVdbSpec> = Vec::new();
+        for (key, raw_label) in placeholders {
+            let label = EntityId::new(&raw_label).as_str().to_string();
+            let label = if label.is_empty() {
+                raw_label
+            } else {
+                label
+            };
+            let chunk_ids = placeholder_chunk_ids.get(&key).cloned().unwrap_or_default();
+            let description = placeholder_descriptions
+                .get(&key)
+                .cloned()
+                .unwrap_or_default();
+            placeholder_batch.push((
+                key.clone(),
+                self.placeholder_node_properties(&label, &chunk_ids, &description),
+            ));
+            new_placeholder_specs.push(PlaceholderVdbSpec {
+                label,
+                description,
+                chunk_ids,
+            });
             stats.artifacts.graph_nodes_created.push(key);
+        }
+        for (key, chunk_ids) in stub_enrich_chunk_ids {
+            if let Some(node) = existing_nodes.get(&key) {
+                let mut props = node.properties.clone();
+                let capped = apply_source_ids_limit(
+                    &chunk_ids,
+                    self.config.max_source_ids_per_entity,
+                    self.config.source_ids_limit_method,
+                );
+                super::lineage::insert_chunk_lineage_properties(&mut props, &capped);
+                super::lineage::merge_and_insert_document_lineage(&mut props, None, &capped);
+                placeholder_batch.push((key, props));
+            }
         }
 
         if !placeholder_batch.is_empty() {
             self.graph_storage
                 .upsert_nodes_batch(&placeholder_batch)
+                .await?;
+        }
+
+        // B7: AGE placeholders without entity extract must still be Local/Mix-retrievable.
+        if !new_placeholder_specs.is_empty() {
+            self.upsert_placeholder_entity_vectors(&new_placeholder_specs)
                 .await?;
         }
 
@@ -211,9 +317,9 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
                 .collect();
 
             for (rel, source_key, target_key) in &valid[chunk_start..chunk_end] {
-                if let Some(ref chunk_id) = rel.source_chunk_id {
+                for chunk_id in rel.all_source_chunk_ids() {
                     lineage_batch.push(RelationLineageLink {
-                        chunk_id: chunk_id.clone(),
+                        chunk_id,
                         source_entity: source_key.clone(),
                         target_entity: target_key.clone(),
                         workspace_id: ws.clone(),
@@ -320,7 +426,83 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         Ok(())
     }
 
-    fn placeholder_node_properties(&self, label: &str) -> HashMap<String, serde_json::Value> {
+    /// Embed + upsert entities_vdb for newly created AGE placeholders (050 B7).
+    ///
+    /// LightRAG writes `{name}\n{relation_description}` into entities_vdb when
+    /// creating UNKNOWN relation endpoints. Without this, Local/Mix cannot
+    /// retrieve AGE-only stubs (age_over_vectors ≫ 1).
+    async fn upsert_placeholder_entity_vectors(
+        &self,
+        specs: &[PlaceholderVdbSpec],
+    ) -> Result<()> {
+        let Some(embedder) = self.text_embedder.as_ref() else {
+            tracing::debug!(
+                count = specs.len(),
+                "Placeholder VDB skipped: no text_embedder wired (AGE-only stubs)"
+            );
+            return Ok(());
+        };
+        if specs.is_empty() {
+            return Ok(());
+        }
+
+        let texts: Vec<String> = specs
+            .iter()
+            .map(|s| {
+                crate::pipeline::helpers::unique_embed::entity_embed_text(
+                    &s.label,
+                    &s.description,
+                )
+            })
+            .collect();
+        let embeddings = embedder
+            .embed_texts(&texts)
+            .await
+            .map_err(|e| crate::error::PipelineError::EmbeddingError(e.to_string()))?;
+        if embeddings.len() != specs.len() {
+            return Err(crate::error::PipelineError::EmbeddingError(format!(
+                "placeholder embed count mismatch: texts={} embeddings={}",
+                specs.len(),
+                embeddings.len()
+            )));
+        }
+
+        let mut batch = Vec::with_capacity(specs.len());
+        for (spec, embedding) in specs.iter().zip(embeddings.into_iter()) {
+            let entity_id = EntityId::new(&spec.label);
+            if entity_id.is_empty() {
+                continue;
+            }
+            let mut entity = crate::extractor::ExtractedEntity::new(
+                &spec.label,
+                "UNKNOWN",
+                &spec.description,
+            );
+            entity.source_chunk_ids = spec.chunk_ids.clone();
+            let scope = metadata::TenantScope {
+                tenant_id: &self.tenant_id,
+                workspace_id: &self.workspace_id,
+            };
+            let metadata = metadata::entity_vector_metadata(&entity, &entity_id, scope);
+            batch.push((entity_id.as_vector_id(), embedding, metadata));
+        }
+        if batch.is_empty() {
+            return Ok(());
+        }
+        self.vector_storage.upsert(&batch).await?;
+        tracing::info!(
+            count = batch.len(),
+            "Placeholder entity VDB upserted (050 B7 / LightRAG parity)"
+        );
+        Ok(())
+    }
+
+    fn placeholder_node_properties(
+        &self,
+        label: &str,
+        source_chunk_ids: &[String],
+        description: &str,
+    ) -> HashMap<String, serde_json::Value> {
         let mut properties = HashMap::new();
         properties.insert(
             "entity_type".to_string(),
@@ -328,12 +510,21 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         );
         properties.insert(
             "description".to_string(),
-            serde_json::Value::String(String::new()),
+            serde_json::Value::String(description.to_string()),
         );
         properties.insert(
             "label".to_string(),
             serde_json::Value::String(label.to_string()),
         );
+        // Inherit relation chunk lineage so Mix/graph can still surface evidence
+        // for endpoints that never received a full entity extract.
+        let capped = apply_source_ids_limit(
+            source_chunk_ids,
+            self.config.max_source_ids_per_entity,
+            self.config.source_ids_limit_method,
+        );
+        super::lineage::insert_chunk_lineage_properties(&mut properties, &capped);
+        super::lineage::merge_and_insert_document_lineage(&mut properties, None, &capped);
         if let Some(tenant_id) = &self.tenant_id {
             properties.insert(
                 "tenant_id".to_string(),
@@ -404,12 +595,7 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         edge: &mut GraphEdge,
         rel: &ExtractedRelationship,
     ) -> Result<bool> {
-        let incoming_ids: Vec<String> = rel
-            .source_chunk_id
-            .iter()
-            .filter(|s| !s.is_empty())
-            .cloned()
-            .collect();
+        let incoming_ids = rel.all_source_chunk_ids();
         let existing_chunk_ids = source_chunk_ids_from_properties(&edge.properties);
         if should_skip_description_update_keep(
             &existing_chunk_ids,
@@ -534,13 +720,8 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         );
         properties.insert("keywords".to_string(), serde_json::json!(rel.keywords));
 
-        // Source tracking for citations (LightRAG parity)
-        let incoming: Vec<String> = rel
-            .source_chunk_id
-            .iter()
-            .filter(|s| !s.is_empty())
-            .cloned()
-            .collect();
+        // Source tracking for citations (LightRAG parity / 049 multi-chunk union)
+        let incoming = rel.all_source_chunk_ids();
         let capped = apply_source_ids_limit(
             &incoming,
             self.config.max_source_ids_per_relation,
@@ -591,9 +772,11 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
 ///
 /// # Policy (First Principles / AGE unique index)
 ///
-/// - Last-write-wins for `relation_type`, `description`, embeddings, source ids
+/// - Last-write-wins for `relation_type`, `description`, embeddings
 /// - Keywords union (capped later at write time)
 /// - Weight = max of seen weights (preserve strongest signal)
+/// - **049:** `source_chunk_ids` **union** (entity / LightRAG `merge_source_ids` parity —
+///   never last-write a singular chunk id and drop sibling-chunk lineage)
 fn dedupe_relationships_by_endpoints(
     rows: Vec<(ExtractedRelationship, String, String)>,
 ) -> Vec<(ExtractedRelationship, String, String)> {
@@ -620,8 +803,8 @@ fn dedupe_relationships_by_endpoints(
             if rel.embedding.is_some() {
                 existing.embedding = rel.embedding.clone();
             }
-            if rel.source_chunk_id.is_some() {
-                existing.source_chunk_id = rel.source_chunk_id.clone();
+            for cid in rel.all_source_chunk_ids() {
+                existing.add_source_chunk_id(cid);
             }
             if rel.source_document_id.is_some() {
                 existing.source_document_id = rel.source_document_id.clone();
@@ -630,8 +813,13 @@ fn dedupe_relationships_by_endpoints(
                 existing.source_file_path = rel.source_file_path.clone();
             }
         } else {
+            // Normalize singular → Vec so later merges see a complete list.
+            let mut normalized = rel;
+            for cid in normalized.all_source_chunk_ids() {
+                normalized.add_source_chunk_id(cid);
+            }
             order.push(key.clone());
-            map.insert(key, rel);
+            map.insert(key, normalized);
         }
     }
 
@@ -647,6 +835,122 @@ fn dedupe_relationships_by_endpoints(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::extractor::ExtractionResult;
+    use crate::merger::{KnowledgeGraphMerger, MergerConfig};
+    use async_trait::async_trait;
+    use edgequake_storage::{
+        EntityId, MemoryGraphStorage, MemoryVectorStorage, TextEmbedder, VectorStorage,
+    };
+    use std::sync::Arc;
+
+    fn test_merger() -> KnowledgeGraphMerger<MemoryGraphStorage, MemoryVectorStorage> {
+        let graph = Arc::new(MemoryGraphStorage::new("b5-placeholder"));
+        let vector = Arc::new(MemoryVectorStorage::new("b5-placeholder", 4));
+        KnowledgeGraphMerger::new(MergerConfig::default(), graph, vector).with_tenant_context(
+            Some("tenant-b5".to_string()),
+            Some("ws-b5".to_string()),
+        )
+    }
+
+    struct FixedEmbedder;
+
+    #[async_trait]
+    impl TextEmbedder for FixedEmbedder {
+        async fn embed_texts(
+            &self,
+            texts: &[String],
+        ) -> edgequake_storage::error::Result<Vec<Vec<f32>>> {
+            Ok(texts.iter().map(|_| vec![0.1, 0.2, 0.3, 0.4]).collect())
+        }
+    }
+
+    #[test]
+    fn placeholder_inherits_relation_source_chunk_ids() {
+        let merger = test_merger();
+        let props = merger.placeholder_node_properties(
+            "AJCC",
+            &["doc-1-chunk-3".to_string(), "doc-1-chunk-7".to_string()],
+            "AJCC staging system",
+        );
+        let ids = source_chunk_ids_from_properties(&props);
+        assert_eq!(
+            ids,
+            vec!["doc-1-chunk-3".to_string(), "doc-1-chunk-7".to_string()]
+        );
+        assert_eq!(
+            props.get("entity_type").and_then(|v| v.as_str()),
+            Some("UNKNOWN")
+        );
+        assert_eq!(props.get("label").and_then(|v| v.as_str()), Some("AJCC"));
+        assert_eq!(
+            props.get("description").and_then(|v| v.as_str()),
+            Some("AJCC staging system")
+        );
+        let source_ids = props
+            .get("source_ids")
+            .and_then(|v| v.as_array())
+            .expect("source_ids");
+        assert_eq!(source_ids.len(), 2);
+        assert_eq!(
+            props.get("workspace_id").and_then(|v| v.as_str()),
+            Some("ws-b5")
+        );
+    }
+
+    #[test]
+    fn placeholder_empty_chunks_still_writes_empty_lineage_arrays() {
+        let merger = test_merger();
+        let props = merger.placeholder_node_properties("ORPHAN", &[], "");
+        let ids = source_chunk_ids_from_properties(&props);
+        assert!(ids.is_empty());
+        assert!(props.contains_key("source_chunk_ids"));
+        assert!(props.contains_key("source_ids"));
+    }
+
+    #[test]
+    fn retain_longest_description_keeps_longer_candidate() {
+        let mut map = HashMap::new();
+        retain_longest_description(&mut map, "AJCC", "short");
+        retain_longest_description(&mut map, "AJCC", "a much longer description");
+        retain_longest_description(&mut map, "AJCC", "mid");
+        assert_eq!(map.get("AJCC").map(String::as_str), Some("a much longer description"));
+    }
+
+    #[tokio::test]
+    async fn placeholder_endpoints_get_entity_vdb_rows() {
+        let graph = Arc::new(MemoryGraphStorage::new("b7-placeholder-vdb"));
+        let vector = Arc::new(MemoryVectorStorage::new("b7-placeholder-vdb", 4));
+        vector.initialize().await.unwrap();
+        let merger = KnowledgeGraphMerger::new(MergerConfig::default(), graph, vector.clone())
+            .with_tenant_context(Some("tenant-b7".into()), Some("ws-b7".into()))
+            .with_text_embedder(Arc::new(FixedEmbedder));
+
+        // Only a relationship — endpoints are AGE placeholders, not extracted entities.
+        let rel = ExtractedRelationship::new("Alice", "Bob", "KNOWS")
+            .with_description("Alice knows Bob from the clinic")
+            .with_source_chunk_id("chunk-7");
+        let extraction = ExtractionResult {
+            entities: vec![],
+            relationships: vec![rel],
+            source_chunk_id: "chunk-7".into(),
+            ..Default::default()
+        };
+
+        merger
+            .merge(vec![extraction])
+            .await
+            .expect("merge placeholders");
+
+        for name in ["Alice", "Bob"] {
+            let vid = EntityId::new(name).as_vector_id();
+            let got = vector
+                .get_by_id(&vid)
+                .await
+                .expect("get vector")
+                .unwrap_or_else(|| panic!("missing entity VDB for placeholder {name} ({vid})"));
+            assert_eq!(got.len(), 4, "{name} embedding dim");
+        }
+    }
 
     #[test]
     fn dedupe_relationships_collapses_same_endpoints() {
@@ -679,5 +983,31 @@ mod tests {
         assert!((out[0].0.weight - 0.9).abs() < f32::EPSILON);
         assert_eq!(out[0].0.keywords, vec!["x".to_string()]);
         assert_eq!(out[1].1, "CAROL");
+    }
+
+    #[test]
+    fn dedupe_relationships_unions_source_chunk_ids() {
+        let rows = vec![
+            (
+                ExtractedRelationship::new("Alice", "Bob", "KNOWS")
+                    .with_description("a")
+                    .with_source_chunk_id("chunk-0"),
+                "ALICE".into(),
+                "BOB".into(),
+            ),
+            (
+                ExtractedRelationship::new("Alice", "Bob", "WORKS_WITH")
+                    .with_description("longer description")
+                    .with_source_chunk_id("chunk-1"),
+                "ALICE".into(),
+                "BOB".into(),
+            ),
+        ];
+        let out = dedupe_relationships_by_endpoints(rows);
+        assert_eq!(out.len(), 1);
+        let ids = out[0].0.all_source_chunk_ids();
+        assert!(ids.contains(&"chunk-0".to_string()), "{ids:?}");
+        assert!(ids.contains(&"chunk-1".to_string()), "{ids:?}");
+        assert_eq!(ids.len(), 2, "{ids:?}");
     }
 }

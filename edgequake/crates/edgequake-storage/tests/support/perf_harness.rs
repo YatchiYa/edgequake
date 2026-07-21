@@ -118,8 +118,7 @@ pub fn assert_plan_uses_index(plan: &str, kinds: &[PlanKind]) {
             PlanKind::Hnsw => lower.contains("hnsw"),
             PlanKind::Gin => lower.contains("gin") || lower.contains("bitmap index scan"),
             PlanKind::Btree => {
-                lower.contains("btree")
-                    || (lower.contains("index scan") && !lower.contains("hnsw"))
+                lower.contains("btree") || (lower.contains("index scan") && !lower.contains("hnsw"))
             }
             PlanKind::Bitmap => lower.contains("bitmap"),
             PlanKind::Index => {
@@ -180,8 +179,5 @@ pub fn finish_report(
 
 /// Join EXPLAIN rows into a single plan string.
 pub fn join_plan_rows(rows: Vec<(String,)>) -> String {
-    rows.into_iter()
-        .map(|r| r.0)
-        .collect::<Vec<_>>()
-        .join("\n")
+    rows.into_iter().map(|r| r.0).collect::<Vec<_>>().join("\n")
 }

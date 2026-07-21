@@ -201,8 +201,8 @@ pub async fn cancel_pipeline(
                     );
                 }
                 let ws = task.workspace_id.to_string();
-                let vector = crate::services::get_workspace_vector_storage_for_delete(&state, &ws)
-                    .await;
+                let vector =
+                    crate::services::get_workspace_vector_storage_for_delete(&state, &ws).await;
                 crate::services::retract_indexes_for_task(
                     &state.storage.graph_storage,
                     &vector,
@@ -347,8 +347,7 @@ pub async fn get_queue_metrics(
         compensate_shared_entity_skipped_total:
             edgequake_storage::compensate_shared_entity_skipped_total(),
         retract_on_cancel_total: crate::services::retract_on_cancel_total(),
-        vector_dim_mismatch_rejected_total:
-            edgequake_storage::vector_dim_mismatch_rejected_total(),
+        vector_dim_mismatch_rejected_total: edgequake_storage::vector_dim_mismatch_rejected_total(),
         operator_action: store.operator_action.clone(),
     };
     // Prefer queue pressure action; surface store action when queue is normal.

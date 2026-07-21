@@ -24,7 +24,16 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct QueryContext {
     /// Retrieved chunks with their relevance scores.
+    ///
+    /// This is the **prompt** set (post-CE / truncate). LLM generation uses these.
     pub chunks: Vec<RetrievedChunk>,
+
+    /// Optional L2/citation chunk set (026 Mix∪CE dual-list).
+    ///
+    /// When set, API `sources` emit these instead of `chunks` so evidence_recall
+    /// can retain Mix first-stage membership while the prompt stays CE-ordered.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub citation_chunks: Option<Vec<RetrievedChunk>>,
 
     /// Retrieved entities from the knowledge graph.
     pub entities: Vec<RetrievedEntity>,
@@ -68,6 +77,9 @@ impl QueryContext {
     ///
     /// SPEC-047 Q1.1: chunk headers include `page=` / `modality=` via
     /// [`crate::context_format`] so the LLM can ground answers on retrieved pages.
+    ///
+    /// Layout: `EDGEQUAKE_CONTEXT_FORMAT` (`flat` \| `path`) and optional
+    /// `EDGEQUAKE_PASSAGE_PACK` (021 F2/F4).
     pub fn to_context_string(&self) -> String {
         crate::context_format::format_query_context(
             &self.entities,
@@ -290,8 +302,13 @@ pub struct RetrievedRelationship {
     pub score: f32,
 
     /// Source chunk ID where this relationship was extracted (for citations).
+    /// Legacy singular — prefer [`Self::source_chunk_ids`] (052 / LightRAG parity).
     #[serde(default)]
     pub source_chunk_id: Option<String>,
+
+    /// All chunk IDs that contributed this relationship (049 union → Mix pool).
+    #[serde(default)]
+    pub source_chunk_ids: Vec<String>,
 
     /// Source document ID (single — legacy, may be overwritten during reconciliation).
     #[serde(default)]
@@ -321,6 +338,7 @@ impl RetrievedRelationship {
             description: String::new(),
             score: 0.0,
             source_chunk_id: None,
+            source_chunk_ids: Vec::new(),
             source_document_id: None,
             source_document_ids: Vec::new(),
             source_file_path: None,
@@ -339,10 +357,32 @@ impl RetrievedRelationship {
         self
     }
 
-    /// Set source chunk ID.
+    /// Set source chunk ID (also ensures it appears in [`Self::source_chunk_ids`]).
     pub fn with_source_chunk_id(mut self, chunk_id: impl Into<String>) -> Self {
-        self.source_chunk_id = Some(chunk_id.into());
+        let id = chunk_id.into();
+        self.source_chunk_id = Some(id.clone());
+        if !self.source_chunk_ids.iter().any(|c| c == &id) {
+            self.source_chunk_ids.insert(0, id);
+        }
         self
+    }
+
+    /// Set all source chunk IDs (LightRAG relation `source_id` multi-part / 052).
+    pub fn with_source_chunk_ids(mut self, chunk_ids: Vec<String>) -> Self {
+        self.source_chunk_ids = chunk_ids;
+        self.source_chunk_id = self.source_chunk_ids.first().cloned();
+        self
+    }
+
+    /// All provenance chunk ids (plural preferred; singular fallback).
+    pub fn all_source_chunk_ids(&self) -> Vec<String> {
+        if !self.source_chunk_ids.is_empty() {
+            return self.source_chunk_ids.clone();
+        }
+        self.source_chunk_id
+            .iter()
+            .cloned()
+            .collect()
     }
 
     /// Set source document ID.
@@ -404,9 +444,9 @@ mod tests {
 
         let s = ctx.to_context_string();
 
-        assert!(s.contains("Document Chunks"));
+        assert!(s.contains("### Chunks"));
         assert!(s.contains("Test content"));
-        assert!(s.contains("Knowledge Graph Data (Entities)"));
+        assert!(s.contains("### Entities"));
     }
 
     #[test]

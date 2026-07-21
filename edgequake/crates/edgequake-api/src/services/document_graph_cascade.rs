@@ -143,6 +143,15 @@ fn edge_key(edge: &GraphEdge) -> (String, String) {
 }
 
 /// Cascade remove document sources from graph entities and relationships.
+///
+/// # First principles (reliable delete)
+///
+/// - Collect exclusive vs shared entities in one pass, then **batch** mutate:
+///   `delete_nodes_batch` (DETACH removes incident edges) + `upsert_nodes_batch`.
+/// - Edge membership uses the in-memory `deleted_node_ids` set — never N×`has_node`.
+/// - Edges touching a deleted node are already gone via DETACH; only surviving
+///   endpoints need `delete_edges_batch` / `upsert_edges_batch`.
+/// - Exclusive entity embeddings: one `delete_entities_batch` (not per-entity).
 pub async fn cascade_remove_document_sources(
     graph: &Arc<dyn GraphStorage>,
     vector_storage: Option<&Arc<dyn VectorStorage>>,
@@ -152,7 +161,8 @@ pub async fn cascade_remove_document_sources(
     let mut stats = CascadeStats::default();
     let affected_nodes = find_document_nodes(graph, tenant_ctx, scope).await?;
 
-    let mut deleted_node_ids = HashSet::new();
+    let mut node_ids_to_delete: Vec<String> = Vec::new();
+    let mut nodes_to_update: Vec<(String, HashMap<String, serde_json::Value>)> = Vec::new();
 
     for node in affected_nodes {
         let sources = collect_source_references(&node.properties);
@@ -161,12 +171,7 @@ pub async fn cascade_remove_document_sources(
         }
         let remaining = remaining_sources_after_removal(&node.properties, scope);
         if remaining.is_empty() {
-            graph.delete_node(&node.id).await.map_err(ApiError::from)?;
-            if let Some(vs) = vector_storage {
-                let _ = vs.delete_entity(&node.id).await;
-                stats.embeddings_deleted += 1;
-            }
-            deleted_node_ids.insert(node.id.clone());
+            node_ids_to_delete.push(node.id);
             stats.entities_removed += 1;
         } else if remaining.len() < sources.len() {
             let mut updated_props = node.properties.clone();
@@ -175,19 +180,19 @@ pub async fn cascade_remove_document_sources(
                 &mut updated_props,
                 &remaining,
             );
-            graph
-                .upsert_node(&node.id, updated_props)
-                .await
-                .map_err(ApiError::from)?;
+            nodes_to_update.push((node.id, updated_props));
             stats.entities_updated += 1;
         }
     }
 
+    let deleted_node_ids: HashSet<String> = node_ids_to_delete.iter().cloned().collect();
+
+    // Snapshot edges BEFORE DETACH so we can count incident edges and update
+    // surviving shared relationships (find after delete would miss DETACH'd rows).
     let mut edges_to_process: HashMap<(String, String), GraphEdge> = HashMap::new();
     for edge in find_document_edges(graph, tenant_ctx, scope).await? {
         edges_to_process.insert(edge_key(&edge), edge);
     }
-
     if !deleted_node_ids.is_empty() {
         let ids: Vec<String> = deleted_node_ids.iter().cloned().collect();
         for edge in graph
@@ -199,14 +204,41 @@ pub async fn cascade_remove_document_sources(
         }
     }
 
+    if !node_ids_to_delete.is_empty() {
+        graph
+            .delete_nodes_batch(&node_ids_to_delete)
+            .await
+            .map_err(ApiError::from)?;
+        if let Some(vs) = vector_storage {
+            match vs.delete_entities_batch(&node_ids_to_delete).await {
+                Ok(n) => stats.embeddings_deleted += n,
+                Err(e) => {
+                    tracing::warn!(
+                        document_id = %scope.document_id,
+                        error = %e,
+                        "Batch entity embedding delete failed (non-fatal)"
+                    );
+                }
+            }
+        }
+    }
+
+    if !nodes_to_update.is_empty() {
+        graph
+            .upsert_nodes_batch(&nodes_to_update)
+            .await
+            .map_err(ApiError::from)?;
+    }
+
+    let mut edges_to_delete: Vec<(String, String)> = Vec::new();
+    let mut edges_to_update: Vec<(String, String, HashMap<String, serde_json::Value>)> = Vec::new();
+
     for edge in edges_to_process.into_values() {
-        let source_exists = graph.has_node(&edge.source).await.map_err(ApiError::from)?;
-        let target_exists = graph.has_node(&edge.target).await.map_err(ApiError::from)?;
-        if !source_exists || !target_exists {
-            graph
-                .delete_edge(&edge.source, &edge.target)
-                .await
-                .map_err(ApiError::from)?;
+        let source_deleted = deleted_node_ids.contains(&edge.source);
+        let target_deleted = deleted_node_ids.contains(&edge.target);
+        if source_deleted || target_deleted {
+            // DETACH already removed the edge; count for stats parity with the
+            // historical path that explicitly deleted dangling edges.
             stats.relationships_removed += 1;
             continue;
         }
@@ -217,10 +249,7 @@ pub async fn cascade_remove_document_sources(
         }
         let remaining = remaining_sources_after_removal(&edge.properties, scope);
         if remaining.is_empty() {
-            graph
-                .delete_edge(&edge.source, &edge.target)
-                .await
-                .map_err(ApiError::from)?;
+            edges_to_delete.push((edge.source, edge.target));
             stats.relationships_removed += 1;
         } else if remaining.len() < sources.len() {
             let mut updated_props = edge.properties.clone();
@@ -228,12 +257,23 @@ pub async fn cascade_remove_document_sources(
                 &mut updated_props,
                 &remaining,
             );
-            graph
-                .upsert_edge(&edge.source, &edge.target, updated_props)
-                .await
-                .map_err(ApiError::from)?;
+            edges_to_update.push((edge.source, edge.target, updated_props));
             stats.relationships_updated += 1;
         }
+    }
+
+    if !edges_to_delete.is_empty() {
+        graph
+            .delete_edges_batch(&edges_to_delete)
+            .await
+            .map_err(ApiError::from)?;
+    }
+
+    if !edges_to_update.is_empty() {
+        graph
+            .upsert_edges_batch(&edges_to_update)
+            .await
+            .map_err(ApiError::from)?;
     }
 
     Ok(stats)
@@ -399,6 +439,58 @@ mod tests {
         assert_eq!(scope.source_prefixes.len(), 2);
         assert!(source_belongs_to_document("kv-key-prefix-chunk-0", &scope));
         assert!(source_belongs_to_document("doc-uuid-chunk-1", &scope));
+    }
+
+    #[tokio::test]
+    async fn batch_cascade_removes_exclusive_and_rebuilds_shared() {
+        use edgequake_storage::{MemoryGraphStorage, MemoryVectorStorage};
+
+        let graph: Arc<dyn GraphStorage> = Arc::new(MemoryGraphStorage::new("cascade-batch"));
+        let vectors: Arc<dyn VectorStorage> =
+            Arc::new(MemoryVectorStorage::new("cascade-batch", 8));
+        let doc_a = "doc-a";
+        let doc_b = "doc-b";
+        let scope = DocumentSourceScope::from_document_id(doc_a);
+
+        let mut exclusive = HashMap::new();
+        exclusive.insert(
+            "source_ids".to_string(),
+            serde_json::json!([format!("{doc_a}-chunk-0")]),
+        );
+        graph
+            .upsert_node("EXCLUSIVE", exclusive)
+            .await
+            .expect("exclusive");
+
+        let mut shared = HashMap::new();
+        shared.insert(
+            "source_ids".to_string(),
+            serde_json::json!([format!("{doc_a}-chunk-0"), format!("{doc_b}-chunk-0")]),
+        );
+        graph.upsert_node("SHARED", shared).await.expect("shared");
+
+        let mut edge_props = HashMap::new();
+        edge_props.insert(
+            "source_ids".to_string(),
+            serde_json::json!([format!("{doc_a}-chunk-0")]),
+        );
+        graph
+            .upsert_edge("EXCLUSIVE", "SHARED", edge_props)
+            .await
+            .expect("edge");
+
+        let stats = cascade_remove_document_sources(&graph, Some(&vectors), None, &scope)
+            .await
+            .expect("cascade");
+
+        assert_eq!(stats.entities_removed, 1);
+        assert_eq!(stats.entities_updated, 1);
+        assert!(stats.relationships_removed >= 1);
+        assert!(!graph.has_node("EXCLUSIVE").await.unwrap());
+        assert!(graph.has_node("SHARED").await.unwrap());
+        let shared_node = graph.get_node("SHARED").await.unwrap().unwrap();
+        let remaining = remaining_sources_after_removal(&shared_node.properties, &scope);
+        assert_eq!(remaining, vec![format!("{doc_b}-chunk-0")]);
     }
 
     #[tokio::test]

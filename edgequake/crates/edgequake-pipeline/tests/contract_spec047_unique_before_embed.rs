@@ -60,6 +60,7 @@ fn contract_unique_relationships_collapse_cross_chunk() {
             keywords: vec!["k".into()],
             weight: 1.0,
             embedding: None,
+            source_chunk_ids: Vec::new(),
             source_chunk_id: None,
             source_document_id: None,
             source_file_path: None,

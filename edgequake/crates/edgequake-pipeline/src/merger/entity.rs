@@ -130,7 +130,9 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
                 );
                 continue;
             }
-            let key = entity_id.as_graph_node_id().to_string();
+            // SPEC-032 / B3b: workspace-scoped AGE node_id so Acc WS cannot
+            // collide with foreign tenants on bare EntityId.
+            let key = entity_id.graph_node_id_for_workspace(self.workspace_id.as_deref());
             if let Some(existing) = dedup_map.get_mut(&key) {
                 // Merge descriptions: keep longer (richer)
                 if entity.description.len() > existing.description.len() {
@@ -293,7 +295,20 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         existing: Option<&GraphNode>,
     ) -> Result<EntityMergeOutcome> {
         let entity_id = EntityId::new(&entity.name);
-        let entity_key = entity_id.as_graph_node_id().to_string();
+        let entity_key = entity_id.graph_node_id_for_workspace(self.workspace_id.as_deref());
+
+        // Foreign-workspace hit on a legacy bare node_id: never merge across WS.
+        let existing = existing.filter(|n| {
+            let node_ws = n
+                .properties
+                .get("workspace_id")
+                .and_then(|v| v.as_str());
+            match (self.workspace_id.as_deref(), node_ws) {
+                (Some(w), Some(nw)) => w == nw,
+                (Some(_), None) => false,
+                (None, _) => true,
+            }
+        });
 
         match existing.cloned() {
             Some(mut node) => {
@@ -436,7 +451,9 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
     /// Create a new entity node.
     fn create_entity_node(&self, entity: &ExtractedEntity) -> Result<GraphNode> {
         let entity_id = EntityId::new(&entity.name);
-        let entity_key = entity_id.as_graph_node_id().to_string();
+        let entity_key = entity_id.graph_node_id_for_workspace(self.workspace_id.as_deref());
+        // Display / keyword label stays bare normalized name (not the scoped id).
+        let label = entity_id.as_str().to_string();
 
         let mut properties = HashMap::new();
         properties.insert(
@@ -459,7 +476,7 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         );
         properties.insert(
             "label".to_string(),
-            serde_json::Value::String(entity.name.clone()),
+            serde_json::Value::String(label),
         );
 
         // Source tracking for citations (LightRAG parity) + analytics reconcile

@@ -3,8 +3,8 @@
 #![cfg(feature = "postgres")]
 
 use edgequake_storage::adapters::postgres::PgVectorStorage;
-use edgequake_storage::{ann_exact_max_rows, DEFAULT_ANN_EXACT_MAX_ROWS};
 use edgequake_storage::traits::MetadataFilter;
+use edgequake_storage::{ann_exact_max_rows, DEFAULT_ANN_EXACT_MAX_ROWS};
 use std::sync::Mutex;
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());

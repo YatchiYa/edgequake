@@ -20,11 +20,14 @@ import {
 import { getWebSocketClient } from '@/lib/websocket';
 import type {
   DeletionCompletedEvent,
+  DeletionFailedEvent,
   DeletionPhaseEvent,
   DeletionStartedEvent,
   WebSocketProgressMessage,
 } from '@/types/ingestion';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useSyncExternalStore } from 'react';
+import { invalidateKnowledgeGraph } from '@/lib/cache-manager';
 
 function subscribe(cb: () => void): () => void {
   return subscribeDeleteSessions(cb);
@@ -40,6 +43,7 @@ function getSnapshot(): DeletionSessionEntry[] {
  */
 export function useDeletionSessions(): DeletionSessionEntry[] {
   const sessions = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     const client = getWebSocketClient();
@@ -68,6 +72,13 @@ export function useDeletionSessions(): DeletionSessionEntry[] {
           partialFailure: ev.data.partial_failure,
           error: ev.data.error,
         });
+        // Terminal: refresh list + KG (HTTP only admitted the job).
+        queryClient.invalidateQueries({ queryKey: ['documents'] });
+        invalidateKnowledgeGraph(queryClient);
+      } else if (message.type === 'DeletionFailed') {
+        const ev = message as DeletionFailedEvent;
+        applyDeletionFailed(ev.data.document_id, ev.data.error);
+        queryClient.invalidateQueries({ queryKey: ['documents'] });
       }
     };
 
@@ -76,7 +87,7 @@ export function useDeletionSessions(): DeletionSessionEntry[] {
     return () => {
       client.off('progress', handleMessage as (...args: unknown[]) => void);
     };
-  }, []);
+  }, [queryClient]);
 
   return sessions;
 }

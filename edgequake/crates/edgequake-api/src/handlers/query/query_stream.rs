@@ -163,6 +163,7 @@ pub async fn stream_query(
         mix_weights: None,
         conversation_history: None,
         system_prompt: request.system_prompt.clone(),
+        question_type: request.question_type.clone(),
         allowed_document_ids,
         data_tenant_id: data_tenant_id.clone(),
         workspace_id: tenant_ctx.workspace_id.clone(),
@@ -371,13 +372,19 @@ pub async fn stream_query(
                         "Sent context event for streaming query"
                     );
 
-                    // Stream tokens
+                    // Stream tokens (064: stamp TTFT on first non-empty token)
                     let gen_start = std::time::Instant::now();
                     let mut accumulator = StreamAccumulator::new();
+                    let mut ttft_ms: Option<u64> = None;
+                    let mut ux_ttft_ms: Option<u64> = None;
 
                     while let Some(chunk_result) = stream.next().await {
                         match chunk_result {
                             Ok(text) => {
+                                if ttft_ms.is_none() && !text.is_empty() {
+                                    ttft_ms = Some(gen_start.elapsed().as_millis() as u64);
+                                    ux_ttft_ms = Some(retrieval_start.elapsed().as_millis() as u64);
+                                }
                                 accumulator.append_content(&text);
                                 let event = QueryStreamEvent::Token {
                                     content: text.clone(),
@@ -449,6 +456,8 @@ pub async fn stream_query(
                                 embedding_time_ms: 0, // Included in retrieval_time_ms
                                 retrieval_time_ms,
                                 generation_time_ms,
+                                ttft_ms,
+                                ux_ttft_ms,
                                 total_time_ms,
                                 sources_retrieved: context.chunks.len()
                                     + context.entities.len()
@@ -456,6 +465,9 @@ pub async fn stream_query(
                                 tokens_used,
                                 tokens_per_second,
                                 query_mode: used_mode.to_string(),
+                                // Stream path does not currently surface engine answer-cache hits
+                                // (cache short-circuit returns a single chunk; leave false).
+                                answer_cache_hit: false,
                             },
                             llm_provider: used_provider,
                             llm_model: used_model,

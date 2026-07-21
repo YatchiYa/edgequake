@@ -63,23 +63,15 @@ async fn e2e_spec065_partial_off_creates_nothing() {
     std::env::remove_var("EDGEQUAKE_HNSW_PARTIAL_BY_WORKSPACE");
     std::env::remove_var("EDGEQUAKE_HNSW_PARTIAL_MIN_ROWS");
 
-    let storage = PgVectorStorage::with_dimension(
-        cfg.with_vector_index(VectorIndexType::HNSW),
-        DIM,
-    );
+    let storage =
+        PgVectorStorage::with_dimension(cfg.with_vector_index(VectorIndexType::HNSW), DIM);
     storage.initialize().await.expect("init");
     seed_shared(&storage).await;
 
-    let created = storage
-        .ensure_hot_workspace_ann(WS)
-        .await
-        .expect("ensure");
+    let created = storage.ensure_hot_workspace_ann(WS).await.expect("ensure");
     assert!(!created, "flag off must not create partial");
     assert!(
-        !storage
-            .partial_ann_index_exists(WS)
-            .await
-            .expect("probe"),
+        !storage.partial_ann_index_exists(WS).await.expect("probe"),
         "partial index must not exist when flag off"
     );
 }
@@ -93,10 +85,8 @@ async fn e2e_spec065_partial_on_via_query_filtered() {
     std::env::set_var("EDGEQUAKE_HNSW_PARTIAL_BY_WORKSPACE", "1");
     std::env::set_var("EDGEQUAKE_HNSW_PARTIAL_MIN_ROWS", "500");
 
-    let storage = PgVectorStorage::with_dimension(
-        cfg.with_vector_index(VectorIndexType::HNSW),
-        DIM,
-    );
+    let storage =
+        PgVectorStorage::with_dimension(cfg.with_vector_index(VectorIndexType::HNSW), DIM);
     storage.initialize().await.expect("init");
     seed_shared(&storage).await;
 
@@ -114,10 +104,7 @@ async fn e2e_spec065_partial_on_via_query_filtered() {
     assert!(!hits.is_empty());
 
     assert!(
-        storage
-            .partial_ann_index_exists(WS)
-            .await
-            .expect("probe"),
+        storage.partial_ann_index_exists(WS).await.expect("probe"),
         "partial index must exist after hot query"
     );
     assert!(
@@ -146,20 +133,15 @@ async fn e2e_spec065_dedicated_ws_table_skips_partial() {
     std::env::set_var("EDGEQUAKE_HNSW_PARTIAL_BY_WORKSPACE", "1");
     std::env::set_var("EDGEQUAKE_HNSW_PARTIAL_MIN_ROWS", "1");
 
-    let storage = PgVectorStorage::with_dimension(
-        cfg.with_vector_index(VectorIndexType::HNSW),
-        DIM,
-    );
+    let storage =
+        PgVectorStorage::with_dimension(cfg.with_vector_index(VectorIndexType::HNSW), DIM);
     storage.initialize().await.expect("init");
     assert!(
         storage.is_dedicated_workspace_table(),
         "fixture must look like dedicated ws table"
     );
     seed_shared(&storage).await;
-    let created = storage
-        .ensure_hot_workspace_ann(WS)
-        .await
-        .expect("ensure");
+    let created = storage.ensure_hot_workspace_ann(WS).await.expect("ensure");
     assert!(!created, "dedicated table must skip partial");
     assert!(!storage.partial_ann_index_exists(WS).await.expect("probe"));
 

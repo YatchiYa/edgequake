@@ -28,7 +28,11 @@ pub struct ReprocessFailedRequest {
     #[serde(default = "default_max_reprocess")]
     pub max_documents: usize,
 
-    /// Force reprocess even if document is not failed. Default: false.
+    /// Force reprocess of completed / in-flight ingest documents.
+    ///
+    /// Does **not** override lifecycle-exclusive states (`deleting`,
+    /// `delete_failed`, cancel-in-flight). Those always skip with an explicit
+    /// `skip_reasons` entry (fail closed).
     #[serde(default)]
     pub force: bool,
 

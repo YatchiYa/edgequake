@@ -193,6 +193,46 @@ pub struct ReindexData {
     pub reason: String,
 }
 
+/// Async document deletion task payload.
+///
+/// Handler admits `status=deleting` and enqueues this task; the worker runs the
+/// authoritative cascade (vectors → graph → KV → relational) and broadcasts
+/// SPEC-050 deletion phases.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeletionTaskData {
+    /// Document id as requested by the client (JSON id).
+    pub document_id: String,
+    /// Resolved KV key prefix (may differ from `document_id` on mismatch).
+    pub key_prefix: String,
+    /// Workspace id string used for vector/KV scoping.
+    pub workspace_id: String,
+    /// Tenant id string (may be "default").
+    pub tenant_id: String,
+    /// Transient deletion operation id for WebSocket correlation.
+    pub deletion_track_id: String,
+    /// Metadata KV key (`{key_prefix}-metadata`) when present.
+    #[serde(default)]
+    pub metadata_key: Option<String>,
+    /// Chunk KV ids discovered at admit time.
+    #[serde(default)]
+    pub chunk_ids: Vec<String>,
+    /// Whether content key existed at admit time.
+    #[serde(default)]
+    pub has_content: bool,
+    /// Content hash for duplicate-detection key cleanup.
+    #[serde(default)]
+    pub content_hash: Option<String>,
+    /// Linked PDF id when this document came from PDF upload.
+    #[serde(default)]
+    pub pdf_id: Option<String>,
+    /// In-flight ingestion track_id to cancel (if any).
+    #[serde(default)]
+    pub ingest_track_id: Option<String>,
+    /// Document status at admit time (pending/processing/deleting/…).
+    #[serde(default)]
+    pub document_status: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

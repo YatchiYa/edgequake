@@ -8,12 +8,10 @@
 //!
 //! Design (DIP / DRY):
 //! - `CachingEmbeddingProvider` wraps any `EmbeddingProvider` and memoizes
-//!   `embed_one` results keyed by `hash(model || text)`. It delegates `embed`
-//!   (batch) and all metadata methods to the inner provider unchanged, so the
-//!   cache is transparent to callers and never changes semantics.
-//! - `embed` (batch) is NOT cached by default: batch callers (ingestion) embed
-//!   unique chunks, so caching would be pure overhead. Only the query path uses
-//!   `embed_one`, which is where the repeat hit rate is high.
+//!   results keyed by `hash(model || text)` for both `embed_one` and per-text
+//!   slots inside batch `embed` (064 / LightRAG query batch law).
+//! - Batch `embed` fills missing texts in one inner round-trip, then stores each
+//!   vector so a later `embed_one` / `embed` hit skips the network.
 //! - LRU + TTL eviction (mirrors `keywords::cache::InMemoryKeywordCache`).
 //! - `embedding_version` is part of the key (E27): changing the embedding model
 //!   or its configuration invalidates the whole cache without a manual clear.
@@ -43,8 +41,8 @@ struct Entry {
 
 /// LRU + TTL embedding cache wrapping any `EmbeddingProvider`.
 ///
-/// Cache only `embed_one` (the query path). `embed` (batch) is delegated
-/// unchanged because batch inputs (chunks) are effectively unique per call.
+/// Query path: `embed_one` and batch `embed` share the same per-text keys so
+/// keyword-level batches after a speculative `embed_one(query)` stay warm.
 pub struct CachingEmbeddingProvider {
     inner: Arc<dyn EmbeddingProvider>,
     /// Bumped into the key so a model/config change invalidates everything.
@@ -131,46 +129,70 @@ impl EmbeddingProvider for CachingEmbeddingProvider {
         self.inner.max_batch_size()
     }
 
-    // Batch embed is delegated unchanged (chunk inputs are unique per call).
     async fn embed(&self, texts: &[String]) -> edgequake_llm::Result<Vec<Vec<f32>>> {
-        self.inner.embed(texts).await
-    }
-
-    // embed_one is the hot query path — memoize it.
-    async fn embed_one(&self, text: &str) -> edgequake_llm::Result<Vec<f32>> {
-        let key = cache_key(&self.version, text);
+        if texts.is_empty() {
+            return Ok(Vec::new());
+        }
         let now = Instant::now();
+        let mut out: Vec<Option<Vec<f32>>> = vec![None; texts.len()];
+        let mut missing: Vec<(usize, String)> = Vec::new();
 
-        // Fast path: read lock, check for a live entry.
         {
             let cache = self.cache.read().unwrap();
-            if let Some(entry) = cache.get(&key) {
-                let live = entry.expires_at.map(|exp| exp > now).unwrap_or(true);
-                if live {
-                    *self.hits.write().unwrap() += 1;
-                    return Ok(entry.embedding.clone());
+            for (i, text) in texts.iter().enumerate() {
+                let key = cache_key(&self.version, text);
+                if let Some(entry) = cache.get(&key) {
+                    let live = entry.expires_at.map(|exp| exp > now).unwrap_or(true);
+                    if live {
+                        *self.hits.write().unwrap() += 1;
+                        out[i] = Some(entry.embedding.clone());
+                        continue;
+                    }
                 }
+                *self.misses.write().unwrap() += 1;
+                missing.push((i, text.clone()));
             }
         }
 
-        // Miss: call the inner provider with NO cache lock held (avoid blocking
-        // other readers across an await).
-        *self.misses.write().unwrap() += 1;
-        let embedding = self.inner.embed_one(text).await?;
+        if !missing.is_empty() {
+            let miss_texts: Vec<String> = missing.iter().map(|(_, t)| t.clone()).collect();
+            let vectors = self.inner.embed(&miss_texts).await?;
+            if vectors.len() != miss_texts.len() {
+                return Err(edgequake_llm::error::LlmError::ProviderError(format!(
+                    "embed batch size mismatch: expected {} got {}",
+                    miss_texts.len(),
+                    vectors.len()
+                )));
+            }
+            self.evict_if_needed();
+            let mut cache = self.cache.write().unwrap();
+            let store_at = Instant::now();
+            for ((i, text), embedding) in missing.into_iter().zip(vectors.into_iter()) {
+                let key = cache_key(&self.version, &text);
+                cache.insert(
+                    key,
+                    Entry {
+                        embedding: embedding.clone(),
+                        expires_at: Some(store_at + self.ttl),
+                        accessed_at: store_at,
+                    },
+                );
+                out[i] = Some(embedding);
+            }
+        }
 
-        // Store. Evict first so we never exceed max_size.
-        self.evict_if_needed();
-        let mut cache = self.cache.write().unwrap();
-        cache.insert(
-            key,
-            Entry {
-                embedding: embedding.clone(),
-                expires_at: Some(now + self.ttl),
-                accessed_at: now,
-            },
-        );
+        Ok(out
+            .into_iter()
+            .map(|v| v.expect("embed cache slot filled"))
+            .collect())
+    }
 
-        Ok(embedding)
+    // embed_one is the hot query path — memoize it (same keys as batch).
+    async fn embed_one(&self, text: &str) -> edgequake_llm::Result<Vec<f32>> {
+        let mut batch = self.embed(&[text.to_string()]).await?;
+        Ok(batch
+            .pop()
+            .expect("embed_one batch always returns one vector"))
     }
 }
 
@@ -209,22 +231,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn embed_batch_is_delegated_not_cached() {
+    async fn embed_batch_populates_and_shares_cache_with_embed_one() {
         let mock = Arc::new(MockProvider::default());
         let cached = Arc::new(CachingEmbeddingProvider::with_defaults(
             mock as Arc<dyn EmbeddingProvider>,
         ));
 
-        // Batch embed must still work and must NOT populate the embed_one cache.
         let texts = vec!["x".to_string(), "y".to_string()];
         let out = cached.embed(&texts).await.unwrap();
         assert_eq!(out.len(), 2);
-        assert_eq!(cached.hits(), 0);
-        assert_eq!(
-            cached.misses(),
-            0,
-            "batch embed must not touch the embed_one cache"
-        );
+        assert_eq!(cached.misses(), 2);
+        // Second batch: both texts hit.
+        let out2 = cached.embed(&texts).await.unwrap();
+        assert_eq!(out, out2);
+        assert_eq!(cached.hits(), 2);
+        // embed_one reuses the same key.
+        let _ = cached.embed_one("x").await.unwrap();
+        assert_eq!(cached.hits(), 3);
     }
 
     #[tokio::test]
