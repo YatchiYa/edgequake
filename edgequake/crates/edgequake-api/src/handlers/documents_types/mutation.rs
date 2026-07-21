@@ -71,8 +71,15 @@ pub struct DeleteAllDocumentsResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wipe_track_id: Option<String>,
 
-    /// Documents deleted (final) or planned for delete (when `accepted`).
+    /// Planned document count at admit time when `accepted` (not final deleted).
+    ///
+    /// Final counts arrive via WebSocket `BulkDeletionCompleted` / task poll.
+    /// Kept for backward-compatible clients that read `deleted_count` on 202.
     pub deleted_count: usize,
+
+    /// Explicit planned wipe size (same as admit-time `deleted_count` when accepted).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub planned_delete_count: Option<usize>,
 
     /// Total number of chunks deleted across all documents.
     pub total_chunks_deleted: usize,

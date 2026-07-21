@@ -105,6 +105,7 @@ type DeleteAllResponse struct {
 	Accepted                      bool     `json:"accepted"`
 	WipeTrackID                   string   `json:"wipe_track_id,omitempty"`
 	DeletedCount                  int      `json:"deleted_count"`
+	PlannedDeleteCount            *int     `json:"planned_delete_count,omitempty"`
 	TotalChunksDeleted            int      `json:"total_chunks_deleted"`
 	TotalEntitiesRemoved          int      `json:"total_entities_removed"`
 	TotalRelationshipsRemoved     int      `json:"total_relationships_removed"`

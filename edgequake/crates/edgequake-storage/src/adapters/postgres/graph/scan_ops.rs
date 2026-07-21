@@ -398,15 +398,26 @@ mod source_prefix_clause_tests {
 
     #[test]
     fn source_prefix_clause_casts_agtype_json_to_jsonb() {
-        let clause = PostgresAGEGraphStorage::build_source_prefix_clause(
-            "ag_catalog.agtype_to_json(v.properties)",
-            &["doc-abc".to_string()],
-        );
+        let prefixes = ["doc-abc".to_string()];
+        let props = "ag_catalog.agtype_to_json(v.properties)";
+        let modern = PostgresAGEGraphStorage::build_source_prefix_clause_modern(props, &prefixes);
+        let legacy = PostgresAGEGraphStorage::build_source_prefix_clause_legacy(props, &prefixes);
+        for clause in [&modern, &legacy] {
+            assert!(
+                clause.contains("::jsonb"),
+                "jsonb_* functions require jsonb cast: {clause}"
+            );
+        }
         assert!(
-            clause.contains("::jsonb"),
-            "jsonb_* functions require jsonb cast: {clause}"
+            modern.contains("@>") || modern.contains("jsonb_build_array"),
+            "modern path should use GIN-friendly containment: {modern}"
         );
-        assert!(clause.contains("jsonb_typeof"));
-        assert!(clause.contains("jsonb_array_elements_text"));
+        assert!(legacy.contains("jsonb_typeof") || legacy.contains("jsonb_array_elements_text"));
+        // Combined helper keeps both paths for callers that need a single predicate.
+        let combined = crate::adapters::postgres::graph::helpers::jsonb_matches_doc_source_prefix(
+            &format!("({props})::jsonb"),
+            "doc-abc",
+        );
+        assert!(combined.contains("::jsonb"));
     }
 }

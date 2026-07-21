@@ -5177,6 +5177,7 @@ export interface components {
          * @example {
          *       "accepted": {},
          *       "deleted_count": {},
+         *       "planned_delete_count": {},
          *       "skipped_count": {},
          *       "skipped_documents": [],
          *       "total_chunks_deleted": {},
@@ -5192,8 +5193,15 @@ export interface components {
              *     Final counts arrive via WebSocket `BulkDeletionCompleted` / task poll.
              */
             accepted?: boolean;
-            /** @description Documents deleted (final) or planned for delete (when `accepted`). */
+            /**
+             * @description Planned document count at admit time when `accepted` (not final deleted).
+             *
+             *     Final counts arrive via WebSocket `BulkDeletionCompleted` / task poll.
+             *     Kept for backward-compatible clients that read `deleted_count` on 202.
+             */
             deleted_count: number;
+            /** @description Explicit planned wipe size (same as admit-time `deleted_count` when accepted). */
+            planned_delete_count?: number | null;
             /** @description Number of documents skipped (legacy; ForceCancelAll wipe leaves this 0). */
             skipped_count: number;
             /** @description Document IDs that were skipped due to active processing (legacy). */

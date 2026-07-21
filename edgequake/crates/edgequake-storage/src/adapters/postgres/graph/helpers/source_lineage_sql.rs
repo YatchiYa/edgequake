@@ -54,8 +54,9 @@ pub(in crate::adapters::postgres::graph) fn jsonb_matches_doc_source_prefix_mode
     let mut parts = vec![format!(
         "({props}->'source_ids') @> to_jsonb('{esc}'::text)"
     )];
-    // Probe first N chunk ids for GIN hits (delete cascade documents rarely exceed this).
-    for i in 0..16 {
+    // Probe chunk ids up to SOURCE_CHUNK_PROBE_LIMIT so high-index-only
+    // source_ids (e.g. doc-chunk-40) remain discoverable for cascade (#305).
+    for i in 0..SOURCE_CHUNK_PROBE_LIMIT {
         parts.push(format!(
             "({props}->'source_ids') @> to_jsonb(('{chunk}' || '{i}')::text)"
         ));
@@ -128,6 +129,11 @@ mod tests {
         assert!(sql.contains("@>"));
         assert!(!sql.contains("LIKE"));
         assert!(sql.contains("doc-abc-chunk-"));
+        // High chunk indices must be probeable (cascade discovery).
+        assert!(
+            sql.contains("doc-abc-chunk-40") || sql.contains("|| '40'"),
+            "modern path must probe past chunk 15: {sql}"
+        );
     }
 
     #[test]

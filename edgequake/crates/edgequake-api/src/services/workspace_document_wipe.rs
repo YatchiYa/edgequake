@@ -151,11 +151,10 @@ async fn purge_one_document_kv(
             crate::services::delete_document_mm_assets(mm_storage, &doc.document_id, workspace_uuid)
                 .await
         {
-            tracing::warn!(
-                document_id = %doc.document_id,
-                error = %e,
-                "Failed to delete mm-assets during workspace wipe"
-            );
+            return Err(ApiError::Internal(format!(
+                "workspace wipe mm-asset delete failed (retryable) doc={}: {e}",
+                doc.document_id
+            )));
         }
         if let Some(ref pdf_id_str) = doc.pdf_id {
             if let (Some(ref pdf_storage), Ok(pdf_uuid)) = (
@@ -163,7 +162,9 @@ async fn purge_one_document_kv(
                 uuid::Uuid::parse_str(pdf_id_str),
             ) {
                 if let Err(e) = pdf_storage.delete_pdf(&pdf_uuid).await {
-                    tracing::warn!(pdf_id = %pdf_id_str, error = %e, "Failed to delete PDF during wipe");
+                    return Err(ApiError::Internal(format!(
+                        "workspace wipe PDF delete failed (retryable) pdf_id={pdf_id_str}: {e}"
+                    )));
                 }
             }
         }
@@ -276,13 +277,15 @@ pub async fn run_workspace_wipe_phases(
                         .tasks
                         .progress_broadcaster
                         .bulk_deletion_item_progress(
-                            &doc.document_id,
-                            data.deleted_count,
-                            planned_total.max(data.deleted_count),
-                            data.total_entities_removed,
-                            data.total_relationships_removed,
-                            Some(&wipe_track_id),
-                            Some(&data.workspace_id),
+                            crate::handlers::websocket_types::BulkDeletionItemProgressArgs {
+                                document_id: &doc.document_id,
+                                completed: data.deleted_count,
+                                total: planned_total.max(data.deleted_count),
+                                entities_removed: data.total_entities_removed,
+                                relationships_removed: data.total_relationships_removed,
+                                wipe_track_id: Some(&wipe_track_id),
+                                workspace_id: Some(&data.workspace_id),
+                            },
                         );
                 }
                 data.cursor_metadata_key = batch.last().map(|d| d.metadata_key.clone());

@@ -75,14 +75,15 @@ pub fn node_list_filter(tenant_ctx: Option<&TenantContext>) -> NodeListFilter {
 
 /// Discovery filter for document cascade / deletion-impact (issue #305).
 ///
-/// WHY workspace-only (no `tenant_id`): source prefixes already bound the
-/// document set. Requiring `tenant_id` equality excludes legacy AGE nodes that
-/// lack tenant props — impact preview used unfiltered `None` and disagreed
-/// with the deletion worker, leaving orphan KG entities after doc delete.
+/// Sets `tenant_id` when present so an explicit *different* tenant never matches
+/// (SPEC-006 isolation). Missing/NULL tenant props still match via
+/// [`edgequake_storage::traits::scope_dim_matches_legacy_null`] /
+/// `LegacyNullAsWildcard` discovery SQL — legacy AGE rows without tenant props
+/// remain cascadeable.
 pub fn node_list_filter_for_document_scope(tenant_ctx: Option<&TenantContext>) -> NodeListFilter {
     match tenant_ctx {
         Some(ctx) => NodeListFilter {
-            tenant_id: None,
+            tenant_id: ctx.tenant_id.clone(),
             workspace_id: ctx.workspace_id.clone(),
             entity_type: None,
             search: None,
@@ -107,7 +108,7 @@ pub fn edge_list_filter(tenant_ctx: Option<&TenantContext>) -> EdgeListFilter {
 pub fn edge_list_filter_for_document_scope(tenant_ctx: Option<&TenantContext>) -> EdgeListFilter {
     match tenant_ctx {
         Some(ctx) => EdgeListFilter {
-            tenant_id: None,
+            tenant_id: ctx.tenant_id.clone(),
             workspace_id: ctx.workspace_id.clone(),
             relationship_type: None,
         },

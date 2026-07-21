@@ -90,8 +90,8 @@ impl<'a> DocumentsResource<'a> {
     // Bulk / Recovery Operations (OODA-32)
     // ========================================================================
 
-    /// `DELETE /api/v1/documents` — Delete all documents in workspace.
-    pub async fn delete_all(&self) -> Result<serde_json::Value> {
+    /// `DELETE /api/v1/documents` — Admit workspace wipe (HTTP 202 + wipe_track_id).
+    pub async fn delete_all(&self) -> Result<crate::types::documents::DeleteAllResponse> {
         self.client.delete("/api/v1/documents").await
     }
 

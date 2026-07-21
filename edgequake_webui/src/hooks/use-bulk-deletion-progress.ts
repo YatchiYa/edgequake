@@ -55,13 +55,15 @@ const initialState = (
   wipeTrackId: wipeTrackId ?? null,
 });
 
-function matchesWipe(
+/** Exported for unit tests — wipe ID correlation for bulk deletion WS events. */
+export function matchesWipe(
   eventWipeId: string | undefined | null,
   expected: string | null | undefined,
 ): boolean {
-  // Until admit returns a track id, accept unscoped events; once set, filter.
+  // Until admit returns a track id, accept unscoped events.
   if (!expected) return true;
-  if (!eventWipeId) return true; // legacy payloads without correlation
+  // Once expected is set, require an exact match (ignore legacy unscoped events).
+  if (!eventWipeId) return false;
   return eventWipeId === expected;
 }
 
