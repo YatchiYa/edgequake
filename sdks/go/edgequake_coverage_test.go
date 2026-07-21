@@ -82,11 +82,17 @@ func TestWithTimeout(t *testing.T) {
 // ── Document Service ─────────────────────────────────────────────────────────
 
 func TestDocuments_DeleteAll(t *testing.T) {
-	srv := mockServer(t, 204, nil)
+	srv := mockServer(t, 202, edgequake.DeleteAllResponse{
+		Accepted: true, WipeTrackID: "workspace_wipe-1", DeletedCount: 3,
+	})
 	defer srv.Close()
 	c := edgequake.NewClient(edgequake.WithBaseURL(srv.URL))
-	if err := c.Documents.DeleteAll(context.Background()); err != nil {
+	out, err := c.Documents.DeleteAll(context.Background())
+	if err != nil {
 		t.Fatal(err)
+	}
+	if !out.Accepted || out.WipeTrackID == "" {
+		t.Fatalf("expected accepted wipe admit, got %+v", out)
 	}
 }
 
@@ -2058,7 +2064,7 @@ func TestDocuments_DeleteAll_Error(t *testing.T) {
 	srv := mockServer(t, 500, map[string]string{"error": "Internal Server Error"})
 	defer srv.Close()
 	c := edgequake.NewClient(edgequake.WithBaseURL(srv.URL), edgequake.WithMaxRetries(0))
-	err := c.Documents.DeleteAll(context.Background())
+	_, err := c.Documents.DeleteAll(context.Background())
 	if err == nil {
 		t.Fatal("expected error")
 	}

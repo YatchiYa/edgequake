@@ -202,6 +202,7 @@ export class ProgressWebSocket {
       case "BulkDeletionStarted":
       case "BulkDeletionItemProgress":
       case "BulkDeletionCompleted":
+      case "BulkDeletionFailed":
         // SPEC-050: Deletion progress events — broadcast as generic "progress"
         // so existing listeners receive them. Specialised hooks filter by type.
         this.emit("progress", message);

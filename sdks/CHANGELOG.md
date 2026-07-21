@@ -4,6 +4,13 @@ All notable changes to the EdgeQuake SDKs directory are tracked here. See the ro
 
 ## [Unreleased]
 
+### Changed
+
+- `DELETE /api/v1/documents` (delete-all) is now an **HTTP 202 admit** returning
+  `accepted`, `wipe_track_id`, and planned counts. Final wipe status is tracked
+  via WebSocket `BulkDeletion*` events or `GET /api/v1/tasks/{wipe_track_id}`.
+  Updated TypeScript, Python, Go, Rust, Java, and PHP client surfaces.
+
 ### Added
 
 - Issue #236: SDK batch ingestion support for new API routes:

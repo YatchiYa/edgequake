@@ -124,6 +124,14 @@ pub async fn admit_document_for_processing(
     let workspace_id = tenant_ctx.workspace_id_or_default();
     let tenant_id = tenant_ctx.tenant_id_or_default();
 
+    if let Some(ws_uuid) = crate::middleware::resolve_workspace_uuid(Some(&workspace_id)) {
+        if crate::services::workspace_wipe_in_flight(state, ws_uuid).await {
+            return Err(crate::error::ApiError::Conflict(
+                "Workspace wipe in progress — retry document upload after wipe completes".into(),
+            ));
+        }
+    }
+
     // SPEC-066: fail-closed when workspace declares max_documents.
     crate::services::document_quota::enforce_max_documents_admission(state, &workspace_id).await?;
 

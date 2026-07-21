@@ -2079,12 +2079,12 @@
         "tags": [
           "Documents"
         ],
-        "summary": "Delete all documents in the system (bulk deletion).",
-        "description": "This endpoint allows users to clear all documents from the system.\nDocuments that are actively being processed (pending/processing status)\nwill be skipped to prevent data corruption.\n\nWHY: Frontend \"Clear All\" button needs this endpoint to remove stuck\nor failed documents in bulk rather than deleting one by one.",
+        "summary": "Delete all documents in the workspace (bulk wipe).",
+        "description": "Returns **202 Accepted** with `wipe_track_id` after durable enqueue.\nTerminal counts arrive via WebSocket `BulkDeletionCompleted` / `BulkDeletionFailed`\nor `GET /api/v1/tasks/{wipe_track_id}`.",
         "operationId": "delete_all_documents",
         "responses": {
-          "200": {
-            "description": "Documents deleted",
+          "202": {
+            "description": "Bulk wipe accepted; track via wipe_track_id / WebSocket",
             "content": {
               "application/json": {
                 "schema": {
@@ -2092,6 +2092,12 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Missing confirm header when required"
+          },
+          "409": {
+            "description": "Workspace wipe already in flight"
           },
           "500": {
             "description": "Internal error"
@@ -2774,8 +2780,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "recover_stuck",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "recover_stuck"
       }
     },
     "/api/v1/documents/reprocess": {
@@ -3811,8 +3817,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "reanalyze_multimodal"
+        "x-edgequake-v2-job-type": "reanalyze_multimodal",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/documents/{document_id}/retry-chunks": {
@@ -8529,8 +8535,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "reprocess_all"
+        "x-edgequake-v2-job-type": "reprocess_all",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/workspaces/{workspace_id}/stats": {
@@ -9054,8 +9060,8 @@
             "description": "WebSocket upgrade failed"
           }
         },
-        "x-edgequake-transport": "websocket",
-        "x-edgequake-upgrade": "RFC6455"
+        "x-edgequake-upgrade": "RFC6455",
+        "x-edgequake-transport": "websocket"
       }
     }
   },
@@ -12704,14 +12710,26 @@
           "skipped_documents"
         ],
         "properties": {
+          "accepted": {
+            "type": "boolean",
+            "description": "When true, wipe was accepted and runs asynchronously (HTTP 202).\nFinal counts arrive via WebSocket `BulkDeletionCompleted` / task poll."
+          },
           "deleted_count": {
             "type": "integer",
-            "description": "Total number of documents deleted.",
+            "description": "Planned document count at admit time when `accepted` (not final deleted).\n\nFinal counts arrive via WebSocket `BulkDeletionCompleted` / task poll.\nKept for backward-compatible clients that read `deleted_count` on 202.",
+            "minimum": 0
+          },
+          "planned_delete_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Explicit planned wipe size (same as admit-time `deleted_count` when accepted).",
             "minimum": 0
           },
           "skipped_count": {
             "type": "integer",
-            "description": "Number of documents skipped (processing/pending status).",
+            "description": "Number of documents skipped (legacy; ForceCancelAll wipe leaves this 0).",
             "minimum": 0
           },
           "skipped_documents": {
@@ -12719,7 +12737,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Document IDs that were skipped due to active processing."
+            "description": "Document IDs that were skipped due to active processing (legacy)."
           },
           "total_chunks_deleted": {
             "type": "integer",
@@ -12740,16 +12758,26 @@
             "type": "integer",
             "description": "Total number of relationships removed.",
             "minimum": 0
+          },
+          "wipe_track_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Durable wipe correlation id (`TaskType::WorkspaceWipe` track_id)."
           }
         },
         "example": {
+          "accepted": {},
           "deleted_count": {},
+          "planned_delete_count": {},
           "skipped_count": {},
           "skipped_documents": [],
           "total_chunks_deleted": {},
           "total_entities_removed": {},
           "total_pdfs_deleted": {},
-          "total_relationships_removed": {}
+          "total_relationships_removed": {},
+          "wipe_track_id": {}
         }
       },
       "DeleteDocumentResponse": {
@@ -26276,29 +26304,63 @@
           "message": {
             "name": "ProgressEvent",
             "payload": {
-              "type": "object",
-              "properties": {
-                "track_id": {
-                  "type": "string",
-                  "format": "uuid"
+              "oneOf": [
+                {
+                  "type": "object",
+                  "description": "Pipeline track progress",
+                  "properties": {
+                    "track_id": {
+                      "type": "string"
+                    },
+                    "phase": {
+                      "type": "string"
+                    },
+                    "progress": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
                 },
-                "phase": {
-                  "type": "string"
-                },
-                "progress": {
-                  "type": "number",
-                  "minimum": 0,
-                  "maximum": 100
-                },
-                "message": {
-                  "type": "string"
+                {
+                  "type": "object",
+                  "description": "BulkDeletion* events (issue #309)",
+                  "properties": {
+                    "event": {
+                      "type": "string",
+                      "enum": [
+                        "BulkDeletionStarted",
+                        "BulkDeletionItemProgress",
+                        "BulkDeletionCompleted",
+                        "BulkDeletionFailed"
+                      ]
+                    },
+                    "wipe_track_id": {
+                      "type": "string"
+                    },
+                    "workspace_id": {
+                      "type": "string"
+                    },
+                    "deleted_count": {
+                      "type": "integer"
+                    },
+                    "error_message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "wipe_track_id"
+                  ]
                 }
-              },
+              ],
               "example": {
-                "track_id": "f6fa9cad-bbff-4892-a855-3bd7d70da044",
-                "phase": "entity_extraction",
-                "progress": 42.5,
-                "message": "Extracting entities from chunk 3/10"
+                "event": "BulkDeletionFailed",
+                "wipe_track_id": "workspace_wipe-f6fa9cad",
+                "workspace_id": "940fadab-2390-4b29-af7e-ff27fd6d7755",
+                "error_message": "workspace wipe graph clear failed"
               }
             }
           }

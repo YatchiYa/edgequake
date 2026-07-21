@@ -255,6 +255,12 @@ pub enum ProgressEvent {
     BulkDeletionStarted {
         /// Total documents to delete.
         total: usize,
+        /// Durable wipe correlation id (task track / wipe_track_id).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        wipe_track_id: Option<String>,
+        /// Workspace being wiped.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        workspace_id: Option<String>,
     },
 
     /// Per-document progress during a bulk deletion.
@@ -271,6 +277,10 @@ pub enum ProgressEvent {
         entities_removed: usize,
         /// Relationships removed during this document's deletion.
         relationships_removed: usize,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        wipe_track_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        workspace_id: Option<String>,
     },
 
     /// Bulk deletion finished.
@@ -285,12 +295,41 @@ pub enum ProgressEvent {
         total_entities_removed: usize,
         /// Total relationships removed across all documents.
         total_relationships_removed: usize,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        wipe_track_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        workspace_id: Option<String>,
+    },
+
+    /// Bulk / workspace wipe failed permanently.
+    ///
+    /// @implements SPEC-050: Bulk delete failure broadcast.
+    BulkDeletionFailed {
+        wipe_track_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        workspace_id: Option<String>,
+        error_message: String,
+        /// Documents purged before failure (best-effort).
+        #[serde(default)]
+        deleted_count: usize,
     },
 }
 
 // ============================================================================
 // Progress Broadcaster
 // ============================================================================
+
+/// Arguments for [`ProgressBroadcaster::bulk_deletion_item_progress`].
+#[derive(Debug, Clone, Copy)]
+pub struct BulkDeletionItemProgressArgs<'a> {
+    pub document_id: &'a str,
+    pub completed: usize,
+    pub total: usize,
+    pub entities_removed: usize,
+    pub relationships_removed: usize,
+    pub wipe_track_id: Option<&'a str>,
+    pub workspace_id: Option<&'a str>,
+}
 
 /// Broadcast channel for progress events.
 ///
@@ -484,25 +523,29 @@ impl ProgressBroadcaster {
     }
 
     /// Broadcast that a bulk deletion has started.
-    pub fn bulk_deletion_started(&self, total: usize) {
-        self.broadcast(ProgressEvent::BulkDeletionStarted { total });
+    pub fn bulk_deletion_started(
+        &self,
+        total: usize,
+        wipe_track_id: Option<&str>,
+        workspace_id: Option<&str>,
+    ) {
+        self.broadcast(ProgressEvent::BulkDeletionStarted {
+            total,
+            wipe_track_id: wipe_track_id.map(|s| s.to_string()),
+            workspace_id: workspace_id.map(|s| s.to_string()),
+        });
     }
 
     /// Broadcast per-document progress during a bulk deletion.
-    pub fn bulk_deletion_item_progress(
-        &self,
-        document_id: &str,
-        completed: usize,
-        total: usize,
-        entities_removed: usize,
-        relationships_removed: usize,
-    ) {
+    pub fn bulk_deletion_item_progress(&self, args: BulkDeletionItemProgressArgs<'_>) {
         self.broadcast(ProgressEvent::BulkDeletionItemProgress {
-            document_id: document_id.to_string(),
-            completed,
-            total,
-            entities_removed,
-            relationships_removed,
+            document_id: args.document_id.to_string(),
+            completed: args.completed,
+            total: args.total,
+            entities_removed: args.entities_removed,
+            relationships_removed: args.relationships_removed,
+            wipe_track_id: args.wipe_track_id.map(|s| s.to_string()),
+            workspace_id: args.workspace_id.map(|s| s.to_string()),
         });
     }
 
@@ -513,12 +556,32 @@ impl ProgressBroadcaster {
         skipped_count: usize,
         total_entities_removed: usize,
         total_relationships_removed: usize,
+        wipe_track_id: Option<&str>,
+        workspace_id: Option<&str>,
     ) {
         self.broadcast(ProgressEvent::BulkDeletionCompleted {
             deleted_count,
             skipped_count,
             total_entities_removed,
             total_relationships_removed,
+            wipe_track_id: wipe_track_id.map(|s| s.to_string()),
+            workspace_id: workspace_id.map(|s| s.to_string()),
+        });
+    }
+
+    /// Broadcast that a durable workspace wipe failed permanently.
+    pub fn bulk_deletion_failed(
+        &self,
+        wipe_track_id: &str,
+        workspace_id: Option<&str>,
+        error_message: &str,
+        deleted_count: usize,
+    ) {
+        self.broadcast(ProgressEvent::BulkDeletionFailed {
+            wipe_track_id: wipe_track_id.to_string(),
+            workspace_id: workspace_id.map(|s| s.to_string()),
+            error_message: error_message.to_string(),
+            deleted_count,
         });
     }
 }

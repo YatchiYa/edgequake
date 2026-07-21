@@ -61,7 +61,7 @@ Ship P0 before marketing “production multi-tenant ingestion.” P1 before prom
 
 ## Recommendations
 
-1. Product copy: default restart policy = **Reprocess** (matches `EDGEQUAKE_STARTUP_AUTO_RESUME=0`); document when to enable auto-resume.  
+1. Product copy: default restart policy = **auto-resume** (unset `EDGEQUAKE_STARTUP_AUTO_RESUME`); document opt-out (`=0`) → Interrupted Failed + Reprocess.  
 2. Treat Cancelled as a first-class analytics event (not Failed).  
 3. Expose queue-metrics fairness signals in admin UI (park waiters).  
 4. Tie large-PDF admission warnings to EdgeParse recommendation (SPEC-038).

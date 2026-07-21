@@ -337,11 +337,11 @@ Parked tasks wait on a semaphore — they are **not** requeued in a loop. Check 
 
 Postgres task rows are the delivery SSOT. Workers **claim** via `FOR UPDATE SKIP LOCKED`, hold a **lease** (`EDGEQUAKE_TASK_LEASE_TTL_SECS`, default 120 s), and refresh every 60 s.
 
-| Status at boot | Default (`AUTO_RESUME` off) | `EDGEQUAKE_STARTUP_AUTO_RESUME=1` |
-| -------------- | --------------------------- | --------------------------------- |
-| **Pending**    | Claimable                   | Claimable                         |
-| **Processing** (stale) | → Failed (use Reprocess) | → Pending (reclaimable)   |
-| **Cancelled**  | Never claimed               | Never claimed                     |
+| Status at boot | Default (unset / ON) | `EDGEQUAKE_STARTUP_AUTO_RESUME=0` |
+| -------------- | -------------------- | --------------------------------- |
+| **Pending**    | Claimable            | Claimable                         |
+| **Processing** (stale) | → Pending (reclaimable) | → Failed (`failure_code=server_restart_interrupted`; use Reprocess) |
+| **Cancelled**  | Never claimed        | Never claimed                     |
 
 ### Can I run multiple API/worker replicas?
 

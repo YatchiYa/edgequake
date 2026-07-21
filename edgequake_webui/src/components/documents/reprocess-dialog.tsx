@@ -46,7 +46,19 @@ interface ReprocessDialogProps {
   /** Whether the dialog is visible. */
   open: boolean;
   /** Target document (used to tailor copy: PDF vs. text, status-aware hints). */
-  document: Pick<Document, 'id' | 'title' | 'file_name' | 'source_type' | 'status' | 'document_type' | 'mime_type'> | null;
+  document: Pick<
+    Document,
+    | 'id'
+    | 'title'
+    | 'file_name'
+    | 'source_type'
+    | 'status'
+    | 'document_type'
+    | 'mime_type'
+    | 'error_message'
+    | 'stage_message'
+    | 'failure_code'
+  > | null;
   /** Called with the user's choice when they confirm. */
   onConfirm: (choice: ReprocessChoice) => void;
   /** Called when the user cancels or dismisses the dialog. */
@@ -74,6 +86,24 @@ export function isInflight(
   return doc?.status === 'processing' || doc?.status === 'pending';
 }
 
+const INTERRUPTED_RESTART_RE =
+  /interrupted by server restart|use reprocess to resume|server restart/i;
+
+/** ISSUE-304: Interrupted-after-restart docs should default to Full reprocess. */
+export function isInterruptedRestartDoc(
+  doc:
+    | Pick<Document, 'status' | 'error_message' | 'stage_message' | 'failure_code'>
+    | null
+    | undefined,
+): boolean {
+  if (!doc) return false;
+  if (doc.status !== 'failed' && doc.status !== 'partial_failure') return false;
+  if (doc.failure_code === 'server_restart_interrupted') return true;
+  // Legacy message fallback for docs written before structured failure_code.
+  const msg = `${doc.error_message ?? ''} ${doc.stage_message ?? ''}`;
+  return INTERRUPTED_RESTART_RE.test(msg);
+}
+
 // ---------------------------------------------------------------------------
 
 export function ReprocessDialog({
@@ -86,15 +116,21 @@ export function ReprocessDialog({
   const pdf = isPdfDocument(target);
   const inflight = isInflight(target);
 
-  // Default: entity-only is the cheap, safe default. For non-PDF docs the
-  // mode is irrelevant (no PDF to re-convert) but we still default to
-  // "entities" so the backend reuses any cached content.
+  // Default: entity-only is the cheap, safe default — except Interrupted
+  // (server restart) docs, which need Full to avoid soft Entities no-ops.
   const [mode, setMode] = useState<ReprocessMode>('entities');
 
-  // Reset to the safe default whenever the dialog (re)opens for a new target.
   useEffect(() => {
-    if (open) setMode('entities');
-  }, [open, target?.id]);
+    if (!open) return;
+    setMode(isInterruptedRestartDoc(target) ? 'full' : 'entities');
+  }, [
+    open,
+    target?.id,
+    target?.status,
+    target?.error_message,
+    target?.stage_message,
+    target?.failure_code,
+  ]);
 
   const title = useMemo(() => {
     const name = target?.file_name || target?.title || target?.id?.slice(0, 8) || '';

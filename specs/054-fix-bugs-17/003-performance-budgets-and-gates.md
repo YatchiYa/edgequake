@@ -50,7 +50,7 @@ Override: `EDGEQUAKE_HNSW_ITERATIVE_SCAN=off|strict_order|relaxed_order`.
 
 | Variable | Default | Performance meaning |
 | --- | --- | --- |
-| `EDGEQUAKE_STARTUP_AUTO_RESUME` | **off** | No hydrate/reconcile enqueue → quiet boot |
+| `EDGEQUAKE_STARTUP_AUTO_RESUME` | **on** (unset) | Boot reclaim Processing→Pending; set `0` for Interrupted Failed |
 | `EDGEQUAKE_STARTUP_RECONCILE_MAX` | 32 | Cap when auto-resume on |
 | `EDGEQUAKE_NATIVE_GRAPH_WRITES` | profile-dependent | Fast ingest path if UNIQUE exists |
 | `EDGEQUAKE_MIGRATION_LARGE_GRAPH_THRESHOLD` | 500000 | Defer blocking M038 repair |

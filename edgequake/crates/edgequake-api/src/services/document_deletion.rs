@@ -2,8 +2,8 @@
 //!
 //! First principles:
 //! - HTTP admits `status=deleting` and returns 202; this service runs async.
-//! - Batch graph/vector ops (see `document_graph_cascade`) — no N+1 Cypher.
-//! - Idempotent: deleting absent rows is a no-op.
+//! - Order: graph discover/mutate/post-proof → vectors → KV/PDF/relational.
+//! - Never wipe metadata before graph provenance is proved absent.
 //! - Fail closed with `delete_failed` status (never leave permanent `deleting`).
 
 use uuid::Uuid;
@@ -15,14 +15,91 @@ use edgequake_tasks::DeletionTaskData;
 use crate::error::{ApiError, ApiResult};
 use crate::handlers::websocket_types::DeletionPhaseKind;
 use crate::middleware::TenantContext;
+use crate::services::document_graph_cascade::{find_document_edges, find_document_nodes};
 use crate::services::document_metadata_scan::metadata_key_for_document;
 use crate::services::document_task_cleanup::purge_persisted_tasks_for_document;
 use crate::services::document_vector_storage::get_workspace_vector_storage_for_delete;
 use crate::services::{
-    cascade_remove_document_sources, record_compliance_event, CascadeStats, ContentHasher,
-    DocumentSourceScope,
+    cascade_remove_document_sources, record_compliance_event, ContentHasher, DocumentSourceScope,
 };
 use crate::state::AppState;
+
+const DELETION_CHECKPOINT_KEY: &str = "deletion_checkpoint";
+const CHECKPOINT_GRAPH_DONE: &str = "graph_done";
+const CHECKPOINT_VECTORS_DONE: &str = "vectors_done";
+
+async fn read_deletion_checkpoint(state: &AppState, metadata_key: &str) -> Option<String> {
+    let meta = state
+        .storage
+        .kv_storage
+        .get_by_id(metadata_key)
+        .await
+        .ok()
+        .flatten()?;
+    meta.get(DELETION_CHECKPOINT_KEY)
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+}
+
+async fn write_deletion_checkpoint(
+    state: &AppState,
+    metadata_key: &str,
+    has_metadata: bool,
+    phase: &str,
+) {
+    if !has_metadata {
+        return;
+    }
+    if let Ok(Some(mut metadata)) = state.storage.kv_storage.get_by_id(metadata_key).await {
+        if let Some(obj) = metadata.as_object_mut() {
+            obj.insert(
+                DELETION_CHECKPOINT_KEY.to_string(),
+                serde_json::json!(phase),
+            );
+            let _ = crate::services::upsert_metadata_kv_with_index(
+                state.storage.kv_storage.as_ref(),
+                metadata_key,
+                metadata,
+            )
+            .await;
+        }
+    }
+}
+
+/// Diagnostic unscoped probe: source-owned rows exist but scoped discovery is empty.
+async fn scoped_discovery_has_filter_mismatch(
+    state: &AppState,
+    tenant_ctx: &TenantContext,
+    scope: &DocumentSourceScope,
+) -> ApiResult<bool> {
+    let scoped_nodes =
+        find_document_nodes(&state.storage.graph_storage, Some(tenant_ctx), scope).await?;
+    let scoped_edges =
+        find_document_edges(&state.storage.graph_storage, Some(tenant_ctx), scope).await?;
+    if !scoped_nodes.is_empty() || !scoped_edges.is_empty() {
+        return Ok(false);
+    }
+    let unscoped_nodes = find_document_nodes(&state.storage.graph_storage, None, scope).await?;
+    let unscoped_edges = find_document_edges(&state.storage.graph_storage, None, scope).await?;
+    Ok(!unscoped_nodes.is_empty() || !unscoped_edges.is_empty())
+}
+
+async fn post_proof_source_absent(
+    state: &AppState,
+    tenant_ctx: &TenantContext,
+    scope: &DocumentSourceScope,
+) -> ApiResult<()> {
+    let nodes = find_document_nodes(&state.storage.graph_storage, Some(tenant_ctx), scope).await?;
+    let edges = find_document_edges(&state.storage.graph_storage, Some(tenant_ctx), scope).await?;
+    if nodes.is_empty() && edges.is_empty() {
+        return Ok(());
+    }
+    Err(ApiError::Internal(format!(
+        "Post-proof failed: {} nodes and {} edges still reference document sources",
+        nodes.len(),
+        edges.len()
+    )))
+}
 
 /// Result of a completed cascade delete.
 #[derive(Debug, Clone, Default)]
@@ -79,7 +156,7 @@ pub async fn reset_deleting_status(
     }
 }
 
-/// Run the authoritative cascade for a document (vectors → graph → KV → relational).
+/// Run the authoritative cascade for a document (graph → vectors → KV → relational).
 pub async fn perform_document_deletion(
     state: &AppState,
     data: &DeletionTaskData,
@@ -169,87 +246,205 @@ pub async fn perform_document_deletion(
 
     let chunks_deleted = chunk_ids.len();
     let mut embeddings_deleted = 0usize;
-    let mut partial_failure = false;
-    let mut partial_failure_reason: Option<String> = None;
+    let partial_failure = false;
+    let partial_failure_reason: Option<String> = None;
 
-    state.tasks.progress_broadcaster.deletion_phase(
-        &document_id,
-        &deletion_track_id,
-        DeletionPhaseKind::RemovingVectors,
-        0,
-        chunk_ids.len() as u32,
-    );
+    let scope =
+        DocumentSourceScope::with_key_prefix(document_id.clone(), actual_key_prefix.clone());
+    let checkpoint = read_deletion_checkpoint(state, &metadata_key).await;
+    let graph_already_done = checkpoint.as_deref() == Some(CHECKPOINT_GRAPH_DONE)
+        || checkpoint.as_deref() == Some(CHECKPOINT_VECTORS_DONE);
 
-    // Prefer document-scoped wipe (chunks + any doc-tagged vectors), then
-    // fall back to explicit chunk id list for legacy rows.
-    match workspace_vector_storage
-        .delete_by_document(&document_id)
-        .await
-    {
-        Ok(n) => {
-            embeddings_deleted += n;
+    let mut entities_removed = 0usize;
+    let mut entities_updated = 0usize;
+    let mut relationships_removed = 0usize;
+    let mut relationships_updated = 0usize;
+
+    if !graph_already_done {
+        state.tasks.progress_broadcaster.deletion_phase(
+            &document_id,
+            &deletion_track_id,
+            DeletionPhaseKind::RemovingGraph,
+            0,
+            0,
+        );
+
+        // Zero-match guard: scoped empty but unscoped hits ⇒ filter mismatch, fail closed.
+        match scoped_discovery_has_filter_mismatch(state, tenant_ctx, &scope).await {
+            Ok(true) => {
+                let reason = "Graph discovery filter mismatch: source-owned rows exist but scoped discovery returned zero — retaining metadata as delete_failed";
+                tracing::error!(document_id = %document_id, "{reason}");
+                reset_deleting_status(
+                    state,
+                    &document_id,
+                    &actual_key_prefix,
+                    reason,
+                    Some(deletion_track_id.as_str()),
+                )
+                .await;
+                return Err(ApiError::Internal(reason.into()));
+            }
+            Err(e) => {
+                let reason = format!("Graph discovery error: {e}");
+                reset_deleting_status(
+                    state,
+                    &document_id,
+                    &actual_key_prefix,
+                    &reason,
+                    Some(deletion_track_id.as_str()),
+                )
+                .await;
+                return Err(e);
+            }
+            Ok(false) => {}
         }
-        Err(e) => {
-            tracing::warn!(
-                document_id = %document_id,
-                error = %e,
-                "delete_by_document failed; falling back to chunk id delete"
-            );
-            if !chunk_ids.is_empty() {
-                if let Err(e2) = workspace_vector_storage.delete(&chunk_ids).await {
-                    tracing::warn!(
-                        document_id = %document_id,
-                        error = %e2,
-                        "Failed to delete chunk embeddings, continuing with graph cleanup"
+
+        // ISSUE-305: fail closed — never wipe KV/docs if graph cascade cannot run.
+        let cascade_stats = {
+            let mut last_err: Option<ApiError> = None;
+            let mut stats = None;
+            for attempt in 1u8..=2 {
+                match cascade_remove_document_sources(
+                    &state.storage.graph_storage,
+                    Some(&workspace_vector_storage),
+                    Some(tenant_ctx),
+                    &scope,
+                )
+                .await
+                {
+                    Ok(s) => {
+                        stats = Some(s);
+                        break;
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            document_id = %document_id,
+                            attempt,
+                            error = %e,
+                            "Graph cascade delete failed"
+                        );
+                        last_err = Some(e);
+                    }
+                }
+            }
+            match stats {
+                Some(s) => s,
+                None => {
+                    let reason = format!(
+                        "Graph cascade error: {}",
+                        last_err
+                            .as_ref()
+                            .map(|e| e.to_string())
+                            .unwrap_or_else(|| "unknown".to_string())
                     );
-                } else {
+                    tracing::error!(
+                        document_id = %document_id,
+                        %reason,
+                        "Graph cascade delete failed after retry — aborting KV wipe (fail-closed)"
+                    );
+                    reset_deleting_status(
+                        state,
+                        &document_id,
+                        &actual_key_prefix,
+                        &reason,
+                        Some(deletion_track_id.as_str()),
+                    )
+                    .await;
+                    return Err(last_err.unwrap_or_else(|| {
+                        ApiError::Internal("Graph cascade delete failed".into())
+                    }));
+                }
+            }
+        };
+
+        if let Err(e) = post_proof_source_absent(state, tenant_ctx, &scope).await {
+            let reason = e.to_string();
+            tracing::error!(
+                document_id = %document_id,
+                %reason,
+                "Post-proof residual provenance — aborting vector/KV wipe"
+            );
+            reset_deleting_status(
+                state,
+                &document_id,
+                &actual_key_prefix,
+                &reason,
+                Some(deletion_track_id.as_str()),
+            )
+            .await;
+            return Err(e);
+        }
+
+        entities_removed = cascade_stats.entities_removed;
+        entities_updated = cascade_stats.entities_updated;
+        relationships_removed = cascade_stats.relationships_removed;
+        relationships_updated = cascade_stats.relationships_updated;
+        embeddings_deleted += cascade_stats.embeddings_deleted;
+        write_deletion_checkpoint(state, &metadata_key, has_metadata, CHECKPOINT_GRAPH_DONE).await;
+    } else {
+        // Resume after graph: still re-prove before vectors/KV.
+        if let Err(e) = post_proof_source_absent(state, tenant_ctx, &scope).await {
+            let reason = e.to_string();
+            reset_deleting_status(
+                state,
+                &document_id,
+                &actual_key_prefix,
+                &reason,
+                Some(deletion_track_id.as_str()),
+            )
+            .await;
+            return Err(e);
+        }
+    }
+
+    let vectors_already_done = checkpoint.as_deref() == Some(CHECKPOINT_VECTORS_DONE);
+    if !vectors_already_done {
+        state.tasks.progress_broadcaster.deletion_phase(
+            &document_id,
+            &deletion_track_id,
+            DeletionPhaseKind::RemovingVectors,
+            0,
+            chunk_ids.len() as u32,
+        );
+
+        match workspace_vector_storage
+            .delete_by_document(&document_id)
+            .await
+        {
+            Ok(n) => {
+                embeddings_deleted += n;
+            }
+            Err(e) => {
+                tracing::warn!(
+                    document_id = %document_id,
+                    error = %e,
+                    "delete_by_document failed; falling back to chunk id delete"
+                );
+                if !chunk_ids.is_empty() {
+                    if let Err(e2) = workspace_vector_storage.delete(&chunk_ids).await {
+                        let reason = format!("Vector delete failed: {e2}");
+                        reset_deleting_status(
+                            state,
+                            &document_id,
+                            &actual_key_prefix,
+                            &reason,
+                            Some(deletion_track_id.as_str()),
+                        )
+                        .await;
+                        return Err(ApiError::Internal(reason));
+                    }
                     embeddings_deleted += chunk_ids.len();
                 }
             }
         }
-    }
-    if key_id_mismatch {
-        let _ = workspace_vector_storage
-            .delete_by_document(&actual_key_prefix)
+        if key_id_mismatch {
+            let _ = workspace_vector_storage
+                .delete_by_document(&actual_key_prefix)
+                .await;
+        }
+        write_deletion_checkpoint(state, &metadata_key, has_metadata, CHECKPOINT_VECTORS_DONE)
             .await;
     }
-
-    let scope =
-        DocumentSourceScope::with_key_prefix(document_id.clone(), actual_key_prefix.clone());
-
-    state.tasks.progress_broadcaster.deletion_phase(
-        &document_id,
-        &deletion_track_id,
-        DeletionPhaseKind::RemovingGraph,
-        0,
-        0,
-    );
-
-    let cascade_stats = match cascade_remove_document_sources(
-        &state.storage.graph_storage,
-        Some(&workspace_vector_storage),
-        Some(tenant_ctx),
-        &scope,
-    )
-    .await
-    {
-        Ok(stats) => stats,
-        Err(e) => {
-            tracing::error!(
-                document_id = %document_id,
-                error = %e,
-                "Graph cascade delete failed (non-fatal) — proceeding with KV/vector/relational cleanup"
-            );
-            partial_failure = true;
-            partial_failure_reason = Some(format!("Graph cascade error: {}", e));
-            CascadeStats::default()
-        }
-    };
-    let entities_removed = cascade_stats.entities_removed;
-    let entities_updated = cascade_stats.entities_updated;
-    let relationships_removed = cascade_stats.relationships_removed;
-    let relationships_updated = cascade_stats.relationships_updated;
-    embeddings_deleted += cascade_stats.embeddings_deleted;
 
     let mut keys_to_delete = chunk_ids.clone();
     if has_metadata {

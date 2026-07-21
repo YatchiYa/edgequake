@@ -7,6 +7,7 @@ use axum::{extract::State, Json};
 
 use crate::error::{ApiError, ApiResult};
 use crate::handlers::documents_types::*;
+use crate::middleware::TenantContext;
 use crate::services::{analyze_deletion_impact_stats, DocumentSourceScope};
 use crate::state::AppState;
 
@@ -30,6 +31,7 @@ use crate::state::AppState;
 pub async fn analyze_deletion_impact(
     State(state): State<AppState>,
     axum::extract::Path(document_id): axum::extract::Path<String>,
+    tenant_ctx: TenantContext,
 ) -> ApiResult<Json<DeletionImpactResponse>> {
     let chunk_prefix = format!("{}-chunk-", document_id);
     let chunk_ids = state
@@ -64,9 +66,11 @@ pub async fn analyze_deletion_impact(
 
     let chunks_to_delete = chunk_ids.len();
 
-    // SPEC-006 P1: bounded impact analysis (document-scoped, no full graph scan)
+    // ISSUE-305: same workspace-scoped discovery as cascade (not unfiltered None).
     let scope = DocumentSourceScope::from_document_id(document_id.clone());
-    let impact = analyze_deletion_impact_stats(&state.storage.graph_storage, None, &scope).await?;
+    let impact =
+        analyze_deletion_impact_stats(&state.storage.graph_storage, Some(&tenant_ctx), &scope)
+            .await?;
     let entities_to_remove = impact.entities_removed;
     let entities_to_update = impact.entities_updated;
     let relationships_to_remove = impact.relationships_removed;

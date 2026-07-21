@@ -11,6 +11,7 @@
 import type { HttpTransport } from "../transport/types.js";
 import type {
   BatchUploadResponse,
+  DeleteAllResponse,
   DeletionImpactResponse,
   DocumentDetail,
   FailedChunkInfo,
@@ -213,9 +214,9 @@ export class DocumentsResource extends Resource {
     await this._del(`/api/v1/documents/${documentId}`);
   }
 
-  /** Delete all documents in the workspace. */
-  async deleteAll(): Promise<void> {
-    await this._del("/api/v1/documents");
+  /** Delete all documents in the workspace (HTTP 202 admit + wipe_track_id). */
+  async deleteAll(): Promise<DeleteAllResponse> {
+    return this._del<DeleteAllResponse>("/api/v1/documents");
   }
 
   /** Get track status for an async operation. */

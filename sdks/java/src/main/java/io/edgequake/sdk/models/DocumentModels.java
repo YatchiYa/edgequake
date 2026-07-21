@@ -69,6 +69,21 @@ public class DocumentModels {
         @JsonProperty("chunk_count") public int chunkCount;
     }
 
+    /** HTTP 202 admit response for DELETE /api/v1/documents. */
+    public static class DeleteAllResponse {
+        @JsonProperty("accepted") public boolean accepted;
+        @JsonProperty("wipe_track_id") public String wipeTrackId;
+        @JsonProperty("deleted_count") public int deletedCount;
+        @JsonProperty("planned_delete_count") public Integer plannedDeleteCount;
+        @JsonProperty("total_chunks_deleted") public int totalChunksDeleted;
+        @JsonProperty("total_entities_removed") public int totalEntitiesRemoved;
+        @JsonProperty("total_relationships_removed") public int totalRelationshipsRemoved;
+        @JsonProperty("total_pdfs_deleted") public int totalPdfsDeleted;
+        @JsonProperty("skipped_count") public int skippedCount;
+        @JsonProperty("skipped_documents") public List<String> skippedDocuments;
+        @JsonProperty("message") public String message;
+    }
+
     /** Request body for uploading text content. */
     public static class TextUploadRequest {
         @JsonProperty("content") public String content;

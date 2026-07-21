@@ -551,6 +551,13 @@ mod tests {
 
     #[test]
     fn local_concurrency_safety_clamp_caps_ollama() {
+        // Serialise env — parallel tests may leave ALLOW_LOCAL_HIGH_CONCURRENCY set.
+        let _lock = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let prev_allow = std::env::var(ALLOW_LOCAL_HIGH_CONCURRENCY_ENV).ok();
+        unsafe {
+            std::env::remove_var(ALLOW_LOCAL_HIGH_CONCURRENCY_ENV);
+        }
+
         let (effective, clamped) = apply_local_concurrency_safety_clamp("ollama", 32);
         assert_eq!(effective, LOCAL_MAX_CONCURRENT_EXTRACTIONS);
         assert!(clamped);
@@ -562,6 +569,13 @@ mod tests {
         let (effective, clamped) = apply_local_concurrency_safety_clamp("openai", 32);
         assert_eq!(effective, 32);
         assert!(!clamped);
+
+        unsafe {
+            match prev_allow {
+                Some(v) => std::env::set_var(ALLOW_LOCAL_HIGH_CONCURRENCY_ENV, v),
+                None => std::env::remove_var(ALLOW_LOCAL_HIGH_CONCURRENCY_ENV),
+            }
+        }
     }
 
     #[test]

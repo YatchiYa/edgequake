@@ -1,7 +1,9 @@
 //! Document-scoped source lineage SQL predicates (SPEC-021 P-A3 / SPEC-045).
 //!
 //! SSOT for matching AGE node/edge properties against a document chunk prefix.
-//! Covers legacy `source_id`, modern `source_ids`, and pipeline `source_chunk_ids`.
+//! Two-path design (issue #305/#309):
+//! - **Modern**: GIN-friendly `source_ids @>` exact candidates (indexed).
+//! - **Legacy**: bounded LIKE/unnest only when modern arrays are absent.
 
 /// Max chunk indices probed for GIN `@>` entity-count reconcile (list hot path).
 ///
@@ -30,7 +32,7 @@ pub(in crate::adapters::postgres::graph) fn normalize_doc_chunk_prefix(prefix: &
 ///
 /// Batched list counts use SQL `generate_series` instead; this helper remains
 /// for single-prefix probes, scan predicates, and tests.
-#[allow(dead_code)]
+#[cfg_attr(not(test), allow(dead_code))]
 pub(in crate::adapters::postgres::graph) fn source_chunk_id_candidates(
     prefix: &str,
     limit: usize,
@@ -40,44 +42,63 @@ pub(in crate::adapters::postgres::graph) fn source_chunk_id_candidates(
     (0..n).map(|i| format!("{chunk_prefix}{i}")).collect()
 }
 
-/// Build a SQL predicate matching jsonb `properties` against one document prefix.
+/// Modern indexed path: `source_ids` / `source_chunk_ids` containment via `@>`.
 ///
-/// `props` must already be a jsonb expression (e.g. `(agtype_to_json(v.properties))::jsonb`).
-/// `doc_prefix` is the document id (used to derive `{doc_id}-chunk-` patterns).
-///
-/// Prefer [`source_chunk_id_candidates`] + GIN `@>` for list hot paths; this
-/// LIKE/unnest form remains for scan/filter ops where prefix match is required.
-pub(in crate::adapters::postgres::graph) fn jsonb_matches_doc_source_prefix(
+/// Does **not** include LIKE — planners can use GIN without SeqScan fallback.
+pub(in crate::adapters::postgres::graph) fn jsonb_matches_doc_source_prefix_modern(
     props: &str,
     doc_prefix: &str,
 ) -> String {
     let esc = escape_sql_literal(doc_prefix);
     let chunk = escape_sql_literal(&normalize_doc_chunk_prefix(doc_prefix));
+    let mut parts = vec![format!(
+        "({props}->'source_ids') @> to_jsonb('{esc}'::text)"
+    )];
+    // Probe chunk ids up to SOURCE_CHUNK_PROBE_LIMIT so high-index-only
+    // source_ids (e.g. doc-chunk-40) remain discoverable for cascade (#305).
+    for i in 0..SOURCE_CHUNK_PROBE_LIMIT {
+        parts.push(format!(
+            "({props}->'source_ids') @> to_jsonb(('{chunk}' || '{i}')::text)"
+        ));
+        parts.push(format!(
+            "({props}->'source_chunk_ids') @> to_jsonb(('{chunk}' || '{i}')::text)"
+        ));
+    }
+    parts.push(format!(
+        "({props}->'source_chunk_ids') @> to_jsonb('{esc}'::text)"
+    ));
+    format!("({})", parts.join(" OR "))
+}
 
+/// Legacy-only path: pipe `source_id` / LIKE / unnest when modern arrays are absent.
+///
+/// Bounded to rows without usable `source_ids` arrays so wipe-all never needs this
+/// and cascade discovery does not SeqScan the whole modern graph.
+pub(in crate::adapters::postgres::graph) fn jsonb_matches_doc_source_prefix_legacy(
+    props: &str,
+    doc_prefix: &str,
+) -> String {
+    let esc = escape_sql_literal(doc_prefix);
+    let chunk = escape_sql_literal(&normalize_doc_chunk_prefix(doc_prefix));
     format!(
-        "({props}->>'source_id' LIKE '{esc}%' \
-         OR {props}->>'source_id' LIKE '%|{esc}%' \
-         OR {props}->>'source_id' LIKE '%|{chunk}%' \
-         OR {props}->>'source_id' LIKE '{chunk}%' \
-         OR EXISTS ( \
-             SELECT 1 FROM jsonb_array_elements_text( \
-                 CASE \
-                     WHEN jsonb_typeof({props}->'source_ids') = 'array' \
-                     THEN {props}->'source_ids' \
-                     ELSE '[]'::jsonb \
-                 END \
-             ) src \
-             WHERE src LIKE '{esc}%' OR src LIKE '{chunk}%' OR src = '{esc}' \
-         ) \
-         OR EXISTS ( \
-             SELECT 1 FROM jsonb_array_elements_text( \
-                 CASE \
-                     WHEN jsonb_typeof({props}->'source_chunk_ids') = 'array' \
-                     THEN {props}->'source_chunk_ids' \
-                     ELSE '[]'::jsonb \
-                 END \
-             ) src \
-             WHERE src LIKE '{esc}%' OR src LIKE '{chunk}%' OR src = '{esc}' \
+        "((jsonb_typeof({props}->'source_ids') IS DISTINCT FROM 'array' \
+          OR jsonb_array_length(COALESCE({props}->'source_ids', '[]'::jsonb)) = 0) \
+         AND ( \
+           {props}->>'source_id' = '{esc}' \
+           OR {props}->>'source_id' LIKE '{esc}%' \
+           OR {props}->>'source_id' LIKE '%|{esc}%' \
+           OR {props}->>'source_id' LIKE '%|{chunk}%' \
+           OR {props}->>'source_id' LIKE '{chunk}%' \
+           OR EXISTS ( \
+               SELECT 1 FROM jsonb_array_elements_text( \
+                   CASE \
+                       WHEN jsonb_typeof({props}->'source_chunk_ids') = 'array' \
+                       THEN {props}->'source_chunk_ids' \
+                       ELSE '[]'::jsonb \
+                   END \
+               ) src \
+               WHERE src LIKE '{esc}%' OR src LIKE '{chunk}%' OR src = '{esc}' \
+           ) \
          ))",
         props = props,
         esc = esc,
@@ -85,9 +106,43 @@ pub(in crate::adapters::postgres::graph) fn jsonb_matches_doc_source_prefix(
     )
 }
 
+/// Combined predicate (compat / unit tests). Prefer two-path queries in `scan_ops`.
+#[cfg_attr(not(test), allow(dead_code))]
+pub(in crate::adapters::postgres::graph) fn jsonb_matches_doc_source_prefix(
+    props: &str,
+    doc_prefix: &str,
+) -> String {
+    format!(
+        "({} OR {})",
+        jsonb_matches_doc_source_prefix_modern(props, doc_prefix),
+        jsonb_matches_doc_source_prefix_legacy(props, doc_prefix),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn modern_path_is_gin_only() {
+        let sql = jsonb_matches_doc_source_prefix_modern("props", "doc-abc");
+        assert!(sql.contains("@>"));
+        assert!(!sql.contains("LIKE"));
+        assert!(sql.contains("doc-abc-chunk-"));
+        // High chunk indices must be probeable (cascade discovery).
+        assert!(
+            sql.contains("doc-abc-chunk-40") || sql.contains("|| '40'"),
+            "modern path must probe past chunk 15: {sql}"
+        );
+    }
+
+    #[test]
+    fn legacy_path_requires_empty_source_ids() {
+        let sql = jsonb_matches_doc_source_prefix_legacy("props", "doc-abc");
+        assert!(sql.contains("LIKE"));
+        assert!(sql.contains("jsonb_typeof"));
+        assert!(sql.contains("source_chunk_ids"));
+    }
 
     #[test]
     fn includes_source_chunk_ids_array_path() {
@@ -114,7 +169,7 @@ mod tests {
             vec![
                 "doc-abc-chunk-0".to_string(),
                 "doc-abc-chunk-1".to_string(),
-                "doc-abc-chunk-2".to_string()
+                "doc-abc-chunk-2".to_string(),
             ]
         );
     }

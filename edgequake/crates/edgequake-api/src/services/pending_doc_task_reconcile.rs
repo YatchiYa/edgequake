@@ -32,6 +32,8 @@ pub enum EnsureTaskOutcome {
     SkippedNoContent,
     /// Document is not in a waiting/orphan-eligible status.
     SkippedNotEligible,
+    /// Interrupted PDF/text lacks durable bytes — client must re-upload (never silent no-op).
+    RequiresReupload { reason: String },
 }
 
 /// Report from a bulk reconcile pass.
@@ -130,6 +132,25 @@ pub fn build_pdf_recovery_task_data(
     workspace_id: Uuid,
     document_id: &str,
 ) -> PdfProcessingData {
+    build_pdf_recovery_task_data_with_mode(
+        metadata,
+        pdf_id,
+        tenant_id,
+        workspace_id,
+        document_id,
+        false,
+    )
+}
+
+/// PDF recovery builder with optional Full restart (empty-markdown Interrupted path).
+pub fn build_pdf_recovery_task_data_with_mode(
+    metadata: &Value,
+    pdf_id: Uuid,
+    tenant_id: Uuid,
+    workspace_id: Uuid,
+    document_id: &str,
+    full_restart: bool,
+) -> PdfProcessingData {
     let vision_provider = resolve_pdf_recovery_vision_provider(metadata);
     PdfProcessingData {
         pdf_id,
@@ -141,10 +162,23 @@ pub fn build_pdf_recovery_task_data(
         existing_document_id: Some(document_id.to_string()),
         pdf_parser_backend: edgequake_pdf::PdfParserBackend::Vision,
         pdf_parser_backend_explicit: false,
-        restart_from_scratch: false,
-        reprocess_mode: None,
+        restart_from_scratch: full_restart,
+        reprocess_mode: if full_restart {
+            Some(edgequake_tasks::ReprocessMode::Full)
+        } else {
+            None
+        },
         multimodal_process_options: None,
     }
+}
+
+fn markdown_is_absent_or_empty(metadata: &Value) -> bool {
+    let md = metadata
+        .get("markdown")
+        .and_then(|v| v.as_str())
+        .or_else(|| metadata.get("content").and_then(|v| v.as_str()))
+        .unwrap_or("");
+    md.trim().is_empty()
 }
 
 /// Build a recovery task for document metadata (PDF → PdfProcessing, else Insert).
@@ -196,8 +230,12 @@ pub async fn ensure_task_for_pending_document(
     reason: &str,
 ) -> ApiResult<EnsureTaskOutcome> {
     let status = meta_str(metadata, "status").unwrap_or("pending");
+    // ISSUE-304: admit orphan waiting OR structured Interrupted only — not all
+    // failed/cancelled (ordinary failures keep the full reprocess cleanup path).
+    let interrupted = super::interrupted_restart::is_interrupted_restart_metadata(metadata);
     if !is_orphan_waiting_status(status)
         && !crate::document_metadata::is_active_processing_status(status)
+        && !interrupted
     {
         return Ok(EnsureTaskOutcome::SkippedNotEligible);
     }
@@ -241,12 +279,15 @@ pub async fn ensure_task_for_pending_document(
 
     let (task_type, task_value) = if meta_str(metadata, "source_type") == Some("pdf") {
         if let Some(pdf_id) = meta_str(metadata, "pdf_id").and_then(|s| Uuid::parse_str(s).ok()) {
-            let task_data = build_pdf_recovery_task_data(
+            // Interrupted + empty markdown ⇒ Full PDF conversion (not soft Entities).
+            let full_restart = interrupted && markdown_is_absent_or_empty(metadata);
+            let task_data = build_pdf_recovery_task_data_with_mode(
                 metadata,
                 pdf_id,
                 tenant_id,
                 workspace_id,
                 document_id,
+                full_restart,
             );
             (
                 TaskType::PdfProcessing,
@@ -263,6 +304,11 @@ pub async fn ensure_task_for_pending_document(
                 tenant_id,
                 workspace_id,
             )?
+        } else if interrupted {
+            return Ok(EnsureTaskOutcome::RequiresReupload {
+                reason: "Interrupted PDF missing durable pdf_id and content — re-upload required"
+                    .into(),
+            });
         } else {
             return Ok(EnsureTaskOutcome::SkippedNoContent);
         }
@@ -276,6 +322,10 @@ pub async fn ensure_task_for_pending_document(
             tenant_id,
             workspace_id,
         )?
+    } else if interrupted {
+        return Ok(EnsureTaskOutcome::RequiresReupload {
+            reason: "Interrupted document missing durable content — re-upload required".into(),
+        });
     } else {
         return Ok(EnsureTaskOutcome::SkippedNoContent);
     };
@@ -417,7 +467,8 @@ async fn ensure_one_orphan(
             report.document_ids.push(document_id.to_string());
         }
         Ok(EnsureTaskOutcome::AlreadyScheduled) => report.already_scheduled += 1,
-        Ok(EnsureTaskOutcome::SkippedNoContent) => report.skipped_no_content += 1,
+        Ok(EnsureTaskOutcome::SkippedNoContent)
+        | Ok(EnsureTaskOutcome::RequiresReupload { .. }) => report.skipped_no_content += 1,
         Ok(EnsureTaskOutcome::SkippedNotEligible) => report.skipped_not_eligible += 1,
         Err(e) => {
             report.errors += 1;
@@ -557,6 +608,24 @@ mod tests {
         assert!(!is_orphan_waiting_status("processing"));
         assert!(!is_orphan_waiting_status("failed"));
         assert!(!is_orphan_waiting_status("completed"));
+    }
+
+    #[test]
+    fn issue304_failed_interrupted_is_ensure_eligible() {
+        // Ordinary failed/cancelled are NOT Interrupted — recovery SSOT is narrow.
+        assert!(
+            !super::super::interrupted_restart::is_interrupted_restart_metadata(
+                &serde_json::json!({"status":"failed","error_message":"timeout"})
+            )
+        );
+        assert!(
+            super::super::interrupted_restart::is_interrupted_restart_metadata(
+                &serde_json::json!({
+                    "status":"failed",
+                    "failure_code": super::super::interrupted_restart::FAILURE_CODE_SERVER_RESTART_INTERRUPTED
+                })
+            )
+        );
     }
 
     #[test]

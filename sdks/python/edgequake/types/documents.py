@@ -184,10 +184,19 @@ class DocumentDetail(BaseModel):
 
 
 class DeleteAllResponse(BaseModel):
-    """Response from DELETE /api/v1/documents."""
+    """Response from DELETE /api/v1/documents (HTTP 202 admit)."""
 
+    accepted: bool = False
+    wipe_track_id: str | None = None
     deleted_count: int = 0
+    planned_delete_count: int | None = None
     message: str | None = None
+    total_chunks_deleted: int = 0
+    total_entities_removed: int = 0
+    total_relationships_removed: int = 0
+    total_pdfs_deleted: int = 0
+    skipped_count: int = 0
+    skipped_documents: list[str] | None = None
 
 
 class TrackStatusResponse(BaseModel):

@@ -8,6 +8,15 @@ use crate::traits::{EdgeListFilter, NodeListFilter};
 
 use super::super::PostgresAGEGraphStorage;
 
+/// Vertex tenant/workspace filter mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::adapters::postgres::graph) enum VertexTenantFilterMode {
+    /// Strict equality — missing tenant/workspace on vertex → excluded (list APIs).
+    Strict,
+    /// Legacy read compat — NULL tenant/workspace still matches (document cascade discovery).
+    LegacyNullAsWildcard,
+}
+
 /// Edge tenant filter mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::adapters::postgres::graph) enum EdgeTenantFilterMode {
@@ -21,25 +30,44 @@ impl PostgresAGEGraphStorage {
     /// Build a SQL predicate for vertex property filters.
     ///
     /// Returns `TRUE` when no filters are set (admin / internal callers only).
-    /// Strict tenant/workspace equality — vertices missing those properties are excluded.
+    /// Default is strict equality; use [`VertexTenantFilterMode::LegacyNullAsWildcard`]
+    /// for document cascade discovery (issue #305).
     pub(in crate::adapters::postgres::graph) fn build_vertex_property_where(
         table_alias: &str,
         filter: &NodeListFilter,
+    ) -> String {
+        Self::build_vertex_property_where_mode(table_alias, filter, VertexTenantFilterMode::Strict)
+    }
+
+    pub(in crate::adapters::postgres::graph) fn build_vertex_property_where_mode(
+        table_alias: &str,
+        filter: &NodeListFilter,
+        mode: VertexTenantFilterMode,
     ) -> String {
         let props = format!("ag_catalog.agtype_to_json({table_alias}.properties)");
         let mut conditions = Vec::new();
 
         if let Some(tid) = filter.tenant_id.as_deref() {
-            conditions.push(format!(
-                "{props}->>'tenant_id' = '{}'",
-                Self::escape_sql_string(tid)
-            ));
+            let escaped = Self::escape_sql_string(tid);
+            conditions.push(match mode {
+                VertexTenantFilterMode::Strict => {
+                    format!("{props}->>'tenant_id' = '{escaped}'")
+                }
+                VertexTenantFilterMode::LegacyNullAsWildcard => format!(
+                    "({props}->>'tenant_id' IS NULL OR {props}->>'tenant_id' = '{escaped}')"
+                ),
+            });
         }
         if let Some(wid) = filter.workspace_id.as_deref() {
-            conditions.push(format!(
-                "{props}->>'workspace_id' = '{}'",
-                Self::escape_sql_string(wid)
-            ));
+            let escaped = Self::escape_sql_string(wid);
+            conditions.push(match mode {
+                VertexTenantFilterMode::Strict => {
+                    format!("{props}->>'workspace_id' = '{escaped}'")
+                }
+                VertexTenantFilterMode::LegacyNullAsWildcard => format!(
+                    "({props}->>'workspace_id' IS NULL OR {props}->>'workspace_id' = '{escaped}')"
+                ),
+            });
         }
         if let Some(etype) = filter.entity_type.as_deref() {
             conditions.push(format!(

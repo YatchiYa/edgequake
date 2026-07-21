@@ -101,6 +101,17 @@ pub async fn purge_persisted_tasks_for_document(
 
 /// Remove all persisted tasks belonging to a workspace.
 pub async fn purge_workspace_tasks(state: &AppState, workspace_id: Uuid) -> usize {
+    purge_workspace_tasks_except(state, workspace_id, "").await
+}
+
+/// Remove all persisted tasks for a workspace except `keep_track_id`.
+///
+/// Used by durable workspace wipe so the wipe task does not cancel itself.
+pub async fn purge_workspace_tasks_except(
+    state: &AppState,
+    workspace_id: Uuid,
+    keep_track_id: &str,
+) -> usize {
     let pagination = Pagination {
         page: 1,
         page_size: 10_000,
@@ -117,6 +128,17 @@ pub async fn purge_workspace_tasks(state: &AppState, workspace_id: Uuid) -> usiz
 
     let mut deleted = 0usize;
     for task in task_list.tasks {
+        if !keep_track_id.is_empty() && task.track_id == keep_track_id {
+            continue;
+        }
+        // Also keep by wipe payload correlation id when task.track_id differs.
+        if !keep_track_id.is_empty() {
+            if let Some(wid) = task.task_data.get("wipe_track_id").and_then(|v| v.as_str()) {
+                if wid == keep_track_id {
+                    continue;
+                }
+            }
+        }
         if cancel_and_delete_task(state, &task).await {
             deleted += 1;
         }

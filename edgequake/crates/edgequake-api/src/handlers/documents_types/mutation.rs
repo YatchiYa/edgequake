@@ -62,8 +62,24 @@ pub struct DeleteDocumentResponse {
 /// Returns aggregated deletion statistics across all documents.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct DeleteAllDocumentsResponse {
-    /// Total number of documents deleted.
+    /// When true, wipe was accepted and runs asynchronously (HTTP 202).
+    /// Final counts arrive via WebSocket `BulkDeletionCompleted` / task poll.
+    #[serde(default)]
+    pub accepted: bool,
+
+    /// Durable wipe correlation id (`TaskType::WorkspaceWipe` track_id).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wipe_track_id: Option<String>,
+
+    /// Planned document count at admit time when `accepted` (not final deleted).
+    ///
+    /// Final counts arrive via WebSocket `BulkDeletionCompleted` / task poll.
+    /// Kept for backward-compatible clients that read `deleted_count` on 202.
     pub deleted_count: usize,
+
+    /// Explicit planned wipe size (same as admit-time `deleted_count` when accepted).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub planned_delete_count: Option<usize>,
 
     /// Total number of chunks deleted across all documents.
     pub total_chunks_deleted: usize,
@@ -77,10 +93,10 @@ pub struct DeleteAllDocumentsResponse {
     /// Total number of PDF documents deleted from separate storage.
     pub total_pdfs_deleted: usize,
 
-    /// Number of documents skipped (processing/pending status).
+    /// Number of documents skipped (legacy; ForceCancelAll wipe leaves this 0).
     pub skipped_count: usize,
 
-    /// Document IDs that were skipped due to active processing.
+    /// Document IDs that were skipped due to active processing (legacy).
     pub skipped_documents: Vec<String>,
 }
 

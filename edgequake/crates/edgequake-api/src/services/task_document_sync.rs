@@ -110,6 +110,19 @@ pub async fn sync_document_failed_on_orphan_heartbeat(
     obj.insert("current_stage".to_string(), json!("failed"));
     obj.insert("error_message".to_string(), json!(error_msg));
     obj.insert("failure_class".to_string(), json!(failure.as_str()));
+    // ISSUE-304: structured Interrupted code for Reprocess routing (not message matching).
+    if error_msg
+        .to_ascii_lowercase()
+        .contains("interrupted by server restart")
+        || error_msg
+            .to_ascii_lowercase()
+            .contains("interrupted — use reprocess")
+    {
+        obj.insert(
+            "failure_code".to_string(),
+            json!(crate::services::FAILURE_CODE_SERVER_RESTART_INTERRUPTED),
+        );
+    }
     obj.insert(
         "recommended_action".to_string(),
         json!(failure.recommended_action()),

@@ -360,3 +360,29 @@ pub struct ScanRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extensions: Option<Vec<String>>,
 }
+
+/// HTTP 202 admit payload for `DELETE /api/v1/documents` (workspace wipe).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct DeleteAllResponse {
+    #[serde(default)]
+    pub accepted: bool,
+    #[serde(default)]
+    pub wipe_track_id: Option<String>,
+    /// Planned delete count at admit time (final counts via WS/task).
+    #[serde(default)]
+    pub deleted_count: usize,
+    #[serde(default)]
+    pub planned_delete_count: Option<usize>,
+    #[serde(default)]
+    pub total_chunks_deleted: usize,
+    #[serde(default)]
+    pub total_entities_removed: usize,
+    #[serde(default)]
+    pub total_relationships_removed: usize,
+    #[serde(default)]
+    pub total_pdfs_deleted: usize,
+    #[serde(default)]
+    pub skipped_count: usize,
+    #[serde(default)]
+    pub skipped_documents: Vec<String>,
+}

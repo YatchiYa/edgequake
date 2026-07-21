@@ -157,10 +157,10 @@ Postgres task rows are the **delivery SSOT**. The in-memory channel is a **wake 
 └───────────────────────────────────────────────────────────┘
 ```
 
-| Status at boot | Default (`AUTO_RESUME` off) | `EDGEQUAKE_STARTUP_AUTO_RESUME=1` |
-| -------------- | --------------------------- | --------------------------------- |
+| Status at boot | Default (unset / ON) | `EDGEQUAKE_STARTUP_AUTO_RESUME=0` |
+| -------------- | -------------------- | -------------------------------- |
 | **Pending** | Leave Pending (claimable via `claim_next` / poll) | Leave Pending (unchanged) |
-| **Processing** (stale / this process) | → Failed (“Interrupted — use Reprocess”) | → Pending (reclaimable) |
+| **Processing** (stale / this process) | → Pending (reclaimable) | → Failed (“Interrupted — use Reprocess”) |
 | **Cancelled** | Never claimed | Never claimed |
 
 Workers: wake or ~2s poll → `FOR UPDATE SKIP LOCKED` claim → lease (`EDGEQUAKE_TASK_LEASE_TTL_SECS`, default 120) → `refresh_lease` heartbeat every 60s. Fairness park **releases** the claim before waiting.

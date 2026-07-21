@@ -82,6 +82,17 @@ impl TaskProcessor for DocumentTaskProcessor {
                 self.process_document_deletion(task, data, cancel_token)
                     .await
             }
+            TaskType::WorkspaceWipe => {
+                let data: edgequake_tasks::WorkspaceWipeTaskData =
+                    serde_json::from_value(task.task_data.clone()).map_err(|e| {
+                        edgequake_tasks::TaskError::InvalidPayload(format!(
+                            "Invalid WorkspaceWipeTaskData: {}",
+                            e
+                        ))
+                    })?;
+
+                self.process_workspace_wipe(task, data, cancel_token).await
+            }
         }
     }
 
@@ -214,6 +225,20 @@ impl TaskProcessor for DocumentTaskProcessor {
                         Some(&data.deletion_track_id),
                     )
                     .await;
+                }
+            }
+        }
+
+        if task.task_type == TaskType::WorkspaceWipe {
+            if let Ok(data) = serde_json::from_value::<edgequake_tasks::WorkspaceWipeTaskData>(
+                task.task_data.clone(),
+            ) {
+                if let Some(state) = self.app_state.as_ref() {
+                    crate::services::broadcast_wipe_failed(
+                        state,
+                        &data,
+                        &format!("Workspace wipe failed permanently: {error_msg}"),
+                    );
                 }
             }
         }

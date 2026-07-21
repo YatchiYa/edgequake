@@ -20,7 +20,7 @@ import { deleteAllDocuments } from '@/lib/api/edgequake';
 import { useBulkDeletionProgress } from '@/hooks/use-bulk-deletion-progress';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, Loader2, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -74,9 +74,31 @@ export function ClearDocumentsDialog({
 
   const isConfirmed = confirmation === CONFIRMATION_TEXT;
 
+  // ISSUE-309: HTTP 202 admits wipe; final counts arrive on BulkDeletionCompleted
+  // (correlated by wipe_track_id) or task-status poll fallback.
+  const [awaitingWipeComplete, setAwaitingWipeComplete] = useState(false);
+  const [plannedDeleteCount, setPlannedDeleteCount] = useState(0);
+  const [wipeTrackId, setWipeTrackId] = useState<string | null>(null);
+
   const clearMutation = useMutation({
     mutationFn: deleteAllDocuments,
     onSuccess: (data) => {
+      if (data.accepted) {
+        setPlannedDeleteCount(data.deleted_count);
+        setWipeTrackId(data.wipe_track_id ?? null);
+        setAwaitingWipeComplete(true);
+        toast.message(
+          t('documents.clearAll.started', 'Deleting documents…'),
+          {
+            description: t(
+              'documents.clearAll.startedDesc',
+              'Bulk wipe accepted for {{count}} document(s). Waiting for completion…',
+              { count: data.deleted_count },
+            ),
+          },
+        );
+        return;
+      }
       toast.success(
         t('documents.clearAll.success', 'Documents cleared'),
         {
@@ -84,16 +106,14 @@ export function ClearDocumentsDialog({
           duration: 5000,
         }
       );
-      // Refresh documents list
       queryClient.invalidateQueries({ queryKey: ['documents'] });
       invalidateKnowledgeGraph(queryClient);
-      // Reset and close
       setConfirmation('');
       setOpen(false);
-      // Notify parent
       onCleared?.(data.deleted_count);
     },
     onError: (error) => {
+      setAwaitingWipeComplete(false);
       toast.error(
         t('documents.clearAll.failed', 'Clear failed'),
         {
@@ -107,11 +127,55 @@ export function ClearDocumentsDialog({
     },
   });
 
-  // SPEC-050: Track bulk deletion progress via WebSocket events.
-  // WHY: The bulk delete is a single HTTP call, but the server broadcasts
-  // per-document progress so the user can see real-time deletion progress.
-  // Declared after clearMutation to avoid temporal dead zone.
-  const bulkProgress = useBulkDeletionProgress(isOpen && clearMutation.isPending);
+  // SPEC-050: Track bulk deletion progress via WebSocket + wipe_track_id poll.
+  const bulkProgress = useBulkDeletionProgress(
+    isOpen && (clearMutation.isPending || awaitingWipeComplete),
+    wipeTrackId,
+  );
+
+  useEffect(() => {
+    if (!awaitingWipeComplete || !bulkProgress.isComplete) return;
+    if (bulkProgress.isFailed) {
+      toast.error(t('documents.clearAll.failed', 'Clear failed'), {
+        description:
+          bulkProgress.errorMessage ||
+          t('common.unknownError', 'An error occurred'),
+      });
+      setAwaitingWipeComplete(false);
+      setWipeTrackId(null);
+      return;
+    }
+    const count = bulkProgress.completed || plannedDeleteCount;
+    toast.success(
+      t('documents.clearAll.success', 'Documents cleared'),
+      {
+        description: t(
+          'documents.clearAll.successDesc',
+          'Successfully deleted {{count}} document(s) and their associated data.',
+          { count },
+        ),
+        duration: 5000,
+      },
+    );
+    queryClient.invalidateQueries({ queryKey: ['documents'] });
+    invalidateKnowledgeGraph(queryClient);
+    setConfirmation('');
+    setAwaitingWipeComplete(false);
+    setWipeTrackId(null);
+    setOpen(false);
+    onCleared?.(count);
+  }, [
+    awaitingWipeComplete,
+    bulkProgress.isComplete,
+    bulkProgress.isFailed,
+    bulkProgress.errorMessage,
+    bulkProgress.completed,
+    plannedDeleteCount,
+    queryClient,
+    t,
+    setOpen,
+    onCleared,
+  ]);
 
   const handleClear = () => {
     if (!isConfirmed) return;
@@ -175,7 +239,7 @@ export function ClearDocumentsDialog({
                   onChange={(e) => setConfirmation(e.target.value)}
                   placeholder={CONFIRMATION_TEXT}
                   className="mt-2"
-                  disabled={clearMutation.isPending}
+                  disabled={clearMutation.isPending || awaitingWipeComplete}
                   autoComplete="off"
                 />
               </div>
@@ -183,8 +247,8 @@ export function ClearDocumentsDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
 
-        {/* SPEC-050: Real-time bulk deletion progress (shown while mutation is pending) */}
-        {clearMutation.isPending && (
+        {/* SPEC-050: Real-time bulk deletion progress (HTTP pending or async wipe) */}
+        {(clearMutation.isPending || awaitingWipeComplete) && (
           <div className="space-y-2 py-1" data-testid="bulk-deletion-progress">
             <Progress
               value={bulkProgress.total > 0 ? (bulkProgress.completed / bulkProgress.total) * 100 : undefined}
