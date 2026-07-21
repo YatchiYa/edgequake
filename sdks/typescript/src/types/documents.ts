@@ -386,6 +386,8 @@ export interface DeleteAllResponse {
   wipe_track_id?: string;
   /** Planned delete count at admit time (final counts via WS/task). */
   deleted_count?: number;
+  /** Explicit planned wipe size (same as admit-time deleted_count). */
+  planned_delete_count?: number;
   /** @deprecated Prefer deleted_count */
   deleted?: number;
   message?: string;

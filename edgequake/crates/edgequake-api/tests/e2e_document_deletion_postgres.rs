@@ -711,6 +711,7 @@ async fn test_accumulated_source_ids_deletion_pg() {
 
 /// ISSUE-309: durable wipe admit + drain clears seeded docs without N× prefix scans
 /// (wipe path uses clear_workspace once; verified by empty graph after drain).
+/// Memory suite asserts exact op-counts; this PG path proves AGE clear at reporter scale.
 #[tokio::test]
 async fn issue309_workspace_wipe_admit_and_drain_pg() {
     let pool = require_postgres!();
@@ -719,8 +720,8 @@ async fn issue309_workspace_wipe_admit_and_drain_pg() {
     let server = Server::new(create_test_config(), state.clone());
     let app = server.build_router();
 
-    // Seed 25 documents + exclusive graph nodes (reporter-scale shape, bounded for CI).
-    let n = 25usize;
+    // Reporter-scale: 200 documents + exclusive graph nodes.
+    let n = 200usize;
     let tenant_id = "00000000-0000-0000-0000-000000000001";
     for i in 0..n {
         let doc_id = format!("wipe-scale-{i}-{}", workspace_id);

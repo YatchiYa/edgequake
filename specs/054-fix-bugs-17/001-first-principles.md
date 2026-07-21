@@ -66,7 +66,7 @@ checksum-locked) vs frozen `083_*.sql` (sqlx once; **checksum-locked**).
 
 ### F5 — Ingest resume ≠ query performance
 
-SPEC-054 boot policy (`EDGEQUAKE_STARTUP_AUTO_RESUME`, default off) controls whether
+SPEC-054 boot policy (`EDGEQUAKE_STARTUP_AUTO_RESUME`, default **on** when unset; set `0` for Interrupted Failed) controls whether
 orphaned **tasks** re-enter the worker pool. It does **not** change AGE/HNSW plans.
 Do not conflate “quiet make-dev” with “fast hybrid query”.
 

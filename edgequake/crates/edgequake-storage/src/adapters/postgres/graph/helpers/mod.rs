@@ -22,6 +22,9 @@ pub(in crate::adapters::postgres::graph) use source_lineage_sql::{
     normalize_doc_chunk_prefix, SOURCE_CHUNK_PROBE_LIMIT,
 };
 
+#[cfg(test)]
+pub(in crate::adapters::postgres::graph) use source_lineage_sql::jsonb_matches_doc_source_prefix;
+
 pub(in crate::adapters::postgres::graph) use vertex_filter::{
     EdgeTenantFilterMode, VertexTenantFilterMode,
 };

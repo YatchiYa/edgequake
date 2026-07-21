@@ -319,6 +319,18 @@ pub enum ProgressEvent {
 // Progress Broadcaster
 // ============================================================================
 
+/// Arguments for [`ProgressBroadcaster::bulk_deletion_item_progress`].
+#[derive(Debug, Clone, Copy)]
+pub struct BulkDeletionItemProgressArgs<'a> {
+    pub document_id: &'a str,
+    pub completed: usize,
+    pub total: usize,
+    pub entities_removed: usize,
+    pub relationships_removed: usize,
+    pub wipe_track_id: Option<&'a str>,
+    pub workspace_id: Option<&'a str>,
+}
+
 /// Broadcast channel for progress events.
 ///
 /// This struct manages the broadcast channel that distributes progress events
@@ -525,24 +537,15 @@ impl ProgressBroadcaster {
     }
 
     /// Broadcast per-document progress during a bulk deletion.
-    pub fn bulk_deletion_item_progress(
-        &self,
-        document_id: &str,
-        completed: usize,
-        total: usize,
-        entities_removed: usize,
-        relationships_removed: usize,
-        wipe_track_id: Option<&str>,
-        workspace_id: Option<&str>,
-    ) {
+    pub fn bulk_deletion_item_progress(&self, args: BulkDeletionItemProgressArgs<'_>) {
         self.broadcast(ProgressEvent::BulkDeletionItemProgress {
-            document_id: document_id.to_string(),
-            completed,
-            total,
-            entities_removed,
-            relationships_removed,
-            wipe_track_id: wipe_track_id.map(|s| s.to_string()),
-            workspace_id: workspace_id.map(|s| s.to_string()),
+            document_id: args.document_id.to_string(),
+            completed: args.completed,
+            total: args.total,
+            entities_removed: args.entities_removed,
+            relationships_removed: args.relationships_removed,
+            wipe_track_id: args.wipe_track_id.map(|s| s.to_string()),
+            workspace_id: args.workspace_id.map(|s| s.to_string()),
         });
     }
 

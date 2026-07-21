@@ -74,6 +74,7 @@ public class DocumentModels {
         @JsonProperty("accepted") public boolean accepted;
         @JsonProperty("wipe_track_id") public String wipeTrackId;
         @JsonProperty("deleted_count") public int deletedCount;
+        @JsonProperty("planned_delete_count") public Integer plannedDeleteCount;
         @JsonProperty("total_chunks_deleted") public int totalChunksDeleted;
         @JsonProperty("total_entities_removed") public int totalEntitiesRemoved;
         @JsonProperty("total_relationships_removed") public int totalRelationshipsRemoved;

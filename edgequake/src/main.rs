@@ -353,8 +353,15 @@ async fn recover_orphaned_documents(
             } else {
                 if let Some(obj) = updated.as_object_mut() {
                     // Manual resume (default): fail; user clicks Reprocess.
+                    // SSOT with task-orphan path: structured failure_code (#304).
                     obj.insert("status".to_string(), serde_json::json!("failed"));
                     obj.insert("current_stage".to_string(), serde_json::json!("failed"));
+                    obj.insert(
+                        "failure_code".to_string(),
+                        serde_json::json!(
+                            edgequake_api::services::FAILURE_CODE_SERVER_RESTART_INTERRUPTED
+                        ),
+                    );
                     obj.insert(
                         "stage_message".to_string(),
                         serde_json::json!(format!(

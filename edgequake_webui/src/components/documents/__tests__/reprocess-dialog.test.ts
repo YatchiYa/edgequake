@@ -7,7 +7,11 @@
  * or allowed while a task is already running.
  */
 import { describe, expect, it } from "vitest";
-import { isInflight, isPdfDocument } from "../reprocess-dialog";
+import {
+  isInflight,
+  isInterruptedRestartDoc,
+  isPdfDocument,
+} from "../reprocess-dialog";
 
 describe("isPdfDocument", () => {
   it("returns true when source_type is pdf", () => {
@@ -49,5 +53,39 @@ describe("isInflight", () => {
   it("returns false for null/undefined", () => {
     expect(isInflight(null)).toBe(false);
     expect(isInflight(undefined)).toBe(false);
+  });
+});
+
+describe("isInterruptedRestartDoc", () => {
+  it("returns true for structured failure_code", () => {
+    expect(
+      isInterruptedRestartDoc({
+        status: "failed",
+        failure_code: "server_restart_interrupted",
+      }),
+    ).toBe(true);
+  });
+
+  it("returns true for legacy Interrupted error_message", () => {
+    expect(
+      isInterruptedRestartDoc({
+        status: "failed",
+        error_message: "Interrupted by server restart — use Reprocess to resume",
+      }),
+    ).toBe(true);
+  });
+
+  it("returns false for ordinary extraction failures", () => {
+    expect(
+      isInterruptedRestartDoc({
+        status: "failed",
+        error_message: "Entity extraction timed out",
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false for null/undefined", () => {
+    expect(isInterruptedRestartDoc(null)).toBe(false);
+    expect(isInterruptedRestartDoc(undefined)).toBe(false);
   });
 });

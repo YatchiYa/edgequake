@@ -86,17 +86,7 @@ pub async fn delete_all_documents(
         return Ok((
             StatusCode::ACCEPTED,
             resp_headers,
-            Json(DeleteAllDocumentsResponse {
-                accepted: true,
-                wipe_track_id: Some(existing),
-                deleted_count: 0,
-                total_chunks_deleted: 0,
-                total_entities_removed: 0,
-                total_relationships_removed: 0,
-                total_pdfs_deleted: 0,
-                skipped_count: 0,
-                skipped_documents: Vec::new(),
-            }),
+            Json(admit_wipe_response(existing, 0)),
         ));
     }
 
@@ -122,17 +112,7 @@ pub async fn delete_all_documents(
         return Ok((
             StatusCode::ACCEPTED,
             resp_headers,
-            Json(DeleteAllDocumentsResponse {
-                accepted: true,
-                wipe_track_id: Some(existing),
-                deleted_count: 0,
-                total_chunks_deleted: 0,
-                total_entities_removed: 0,
-                total_relationships_removed: 0,
-                total_pdfs_deleted: 0,
-                skipped_count: 0,
-                skipped_documents: Vec::new(),
-            }),
+            Json(admit_wipe_response(existing, 0)),
         ));
     }
 
@@ -144,13 +124,13 @@ pub async fn delete_all_documents(
     );
     // Align wipe_track_id with durable task.track_id for Location / WS / poll.
     let wipe_track_id = task.track_id.clone();
-    // Replace provisional local slot with the real track id.
-    state.tasks.wipe_admission.release(workspace_uuid);
-    if let Some(existing) = state
-        .tasks
-        .wipe_admission
-        .try_register(workspace_uuid, &wipe_track_id)
-    {
+    // Atomically replace provisional slot with the real track id — never release
+    // first (that opens a race where upload/reprocess can admit mid-wipe).
+    if let Some(existing) = state.tasks.wipe_admission.replace_track_id(
+        workspace_uuid,
+        &provisional_track,
+        &wipe_track_id,
+    ) {
         let mut resp_headers = HeaderMap::new();
         if let Ok(loc) = HeaderValue::from_str(&format!("/api/v1/tasks/{existing}")) {
             resp_headers.insert(header::LOCATION, loc);
@@ -158,17 +138,7 @@ pub async fn delete_all_documents(
         return Ok((
             StatusCode::ACCEPTED,
             resp_headers,
-            Json(DeleteAllDocumentsResponse {
-                accepted: true,
-                wipe_track_id: Some(existing),
-                deleted_count: 0,
-                total_chunks_deleted: 0,
-                total_entities_removed: 0,
-                total_relationships_removed: 0,
-                total_pdfs_deleted: 0,
-                skipped_count: 0,
-                skipped_documents: Vec::new(),
-            }),
+            Json(admit_wipe_response(existing, 0)),
         ));
     }
 
@@ -203,16 +173,21 @@ pub async fn delete_all_documents(
     Ok((
         StatusCode::ACCEPTED,
         resp_headers,
-        Json(DeleteAllDocumentsResponse {
-            accepted: true,
-            wipe_track_id: Some(wipe_track_id),
-            deleted_count: planned_delete,
-            total_chunks_deleted: 0,
-            total_entities_removed: 0,
-            total_relationships_removed: 0,
-            total_pdfs_deleted: 0,
-            skipped_count: 0,
-            skipped_documents: Vec::new(),
-        }),
+        Json(admit_wipe_response(wipe_track_id, planned_delete)),
     ))
+}
+
+fn admit_wipe_response(wipe_track_id: String, planned_delete: usize) -> DeleteAllDocumentsResponse {
+    DeleteAllDocumentsResponse {
+        accepted: true,
+        wipe_track_id: Some(wipe_track_id),
+        deleted_count: planned_delete,
+        planned_delete_count: Some(planned_delete),
+        total_chunks_deleted: 0,
+        total_entities_removed: 0,
+        total_relationships_removed: 0,
+        total_pdfs_deleted: 0,
+        skipped_count: 0,
+        skipped_documents: Vec::new(),
+    }
 }

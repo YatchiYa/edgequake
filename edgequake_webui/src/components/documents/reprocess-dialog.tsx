@@ -57,6 +57,7 @@ interface ReprocessDialogProps {
     | 'mime_type'
     | 'error_message'
     | 'stage_message'
+    | 'failure_code'
   > | null;
   /** Called with the user's choice when they confirm. */
   onConfirm: (choice: ReprocessChoice) => void;

@@ -657,6 +657,57 @@ async fn resource_safety_cascade_tenant_isolation() {
     );
 }
 
+/// P4 edge — legacy nodes missing tenant_id still cascade when workspace matches.
+#[tokio::test]
+async fn resource_safety_cascade_legacy_null_tenant() {
+    use edgequake_api::middleware::TenantContext;
+    use serde_json::json;
+
+    const DOC_ID: &str = "proof-legacy-null-tenant-doc";
+
+    let state = AppState::test_state();
+
+    let mut props = HashMap::new();
+    // No tenant_id property — legacy AGE row.
+    props.insert("workspace_id".to_string(), json!(PROOF_WORKSPACE));
+    props.insert(
+        "source_ids".to_string(),
+        json!([format!("{}-chunk-0", DOC_ID)]),
+    );
+    state
+        .storage
+        .graph_storage
+        .upsert_node("LEGACY_NULL_TENANT_ENTITY", props)
+        .await
+        .expect("seed");
+
+    let tenant_ctx = TenantContext {
+        tenant_id: Some(PROOF_TENANT.to_string()),
+        workspace_id: Some(PROOF_WORKSPACE.to_string()),
+        user_id: None,
+    };
+
+    let scope = edgequake_api::services::DocumentSourceScope::from_document_id(DOC_ID);
+    edgequake_api::services::cascade_remove_document_sources(
+        &state.storage.graph_storage,
+        None,
+        Some(&tenant_ctx),
+        &scope,
+    )
+    .await
+    .expect("cascade");
+
+    assert!(
+        !state
+            .storage
+            .graph_storage
+            .has_node("LEGACY_NULL_TENANT_ENTITY")
+            .await
+            .unwrap(),
+        "legacy null-tenant entity must cascade when workspace matches"
+    );
+}
+
 /// P4 edge — relationship lookup by property `id`, not only composite key.
 #[tokio::test]
 async fn resource_safety_relationship_lookup_by_property_id() {

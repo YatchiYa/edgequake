@@ -20,6 +20,7 @@
 
 use async_trait::async_trait;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::RwLock;
 
 use crate::error::Result;
@@ -41,6 +42,10 @@ pub struct MemoryGraphStorage {
     edges: RwLock<HashMap<(String, String), HashMap<String, serde_json::Value>>>,
     // adjacency list: node -> set of neighbors
     adjacency: RwLock<HashMap<String, HashSet<String>>>,
+    /// Test/op-count instrumentation (issue #309 wipe proofs).
+    clear_workspace_calls: AtomicU64,
+    find_nodes_by_source_prefixes_calls: AtomicU64,
+    find_edges_by_source_prefixes_calls: AtomicU64,
 }
 
 impl MemoryGraphStorage {
@@ -51,7 +56,36 @@ impl MemoryGraphStorage {
             nodes: RwLock::new(HashMap::new()),
             edges: RwLock::new(HashMap::new()),
             adjacency: RwLock::new(HashMap::new()),
+            clear_workspace_calls: AtomicU64::new(0),
+            find_nodes_by_source_prefixes_calls: AtomicU64::new(0),
+            find_edges_by_source_prefixes_calls: AtomicU64::new(0),
         }
+    }
+
+    /// How many times [`GraphStorageMutateOps::clear_workspace`] was invoked.
+    pub fn clear_workspace_call_count(&self) -> u64 {
+        self.clear_workspace_calls.load(Ordering::Relaxed)
+    }
+
+    /// How many times [`GraphScanOps::find_nodes_by_source_prefixes`] was invoked.
+    pub fn find_nodes_by_source_prefixes_call_count(&self) -> u64 {
+        self.find_nodes_by_source_prefixes_calls
+            .load(Ordering::Relaxed)
+    }
+
+    /// How many times [`GraphScanOps::find_edges_by_source_prefixes`] was invoked.
+    pub fn find_edges_by_source_prefixes_call_count(&self) -> u64 {
+        self.find_edges_by_source_prefixes_calls
+            .load(Ordering::Relaxed)
+    }
+
+    /// Reset op-count instrumentation (tests).
+    pub fn reset_op_counts(&self) {
+        self.clear_workspace_calls.store(0, Ordering::Relaxed);
+        self.find_nodes_by_source_prefixes_calls
+            .store(0, Ordering::Relaxed);
+        self.find_edges_by_source_prefixes_calls
+            .store(0, Ordering::Relaxed);
     }
 
     /// Normalize edge key (alphabetically sorted for consistency).
@@ -854,6 +888,7 @@ impl GraphStorageMutateOps for MemoryGraphStorage {
     /// Filters by `workspace_id` property in node/edge data.
     /// Returns (nodes_deleted, edges_deleted).
     async fn clear_workspace(&self, workspace_id: &uuid::Uuid) -> Result<(usize, usize)> {
+        self.clear_workspace_calls.fetch_add(1, Ordering::Relaxed);
         let mut nodes = self.nodes.write().map_err(super::lock::map_lock_err)?;
         let mut edges = self.edges.write().map_err(super::lock::map_lock_err)?;
         let mut adjacency = self.adjacency.write().map_err(super::lock::map_lock_err)?;
@@ -1064,6 +1099,8 @@ impl GraphScanOps for MemoryGraphStorage {
         filter: &NodeListFilter,
         source_prefixes: &[String],
     ) -> Result<Vec<GraphNode>> {
+        self.find_nodes_by_source_prefixes_calls
+            .fetch_add(1, Ordering::Relaxed);
         let nodes = self.nodes.read().map_err(super::lock::map_lock_err)?;
         let mut matched: Vec<GraphNode> = nodes
             .iter()
@@ -1090,6 +1127,8 @@ impl GraphScanOps for MemoryGraphStorage {
         filter: &EdgeListFilter,
         source_prefixes: &[String],
     ) -> Result<Vec<GraphEdge>> {
+        self.find_edges_by_source_prefixes_calls
+            .fetch_add(1, Ordering::Relaxed);
         let edges = self.edges.read().map_err(super::lock::map_lock_err)?;
         let mut matched: Vec<GraphEdge> = edges
             .iter()

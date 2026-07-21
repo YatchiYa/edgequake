@@ -57,7 +57,7 @@
 | Slim checkpoint re-embed | `edgequake-api/src/processor/text_insert/extraction.rs` | comment SPEC-047 P5; `ensure_embeddings` | Extra embed cost on resume |
 | Queue metrics expose park/cancel | `edgequake-api/src/handlers/pipeline.rs` | `tenant_park_waiters`, `max_tasks_per_tenant` | — |
 | Local fairness clamp from env | `.env.example` + `main.rs` `resolve_worker_pool_limits` | local provider → 1/tenant unless allow flag | May diverge from runtime extract model |
-| Startup auto-resume opt-in | `.env.example` | `EDGEQUAKE_STARTUP_AUTO_RESUME` default off | Orphans need Reprocess |
+| Startup auto-resume default ON | `.env.example` | `EDGEQUAKE_STARTUP_AUTO_RESUME` unset=on; `0` → Interrupted Failed + Reprocess | Opt-out for manual resume |
 | UI cancel API | `edgequake_webui/src/lib/api/edgequake/pipeline.ts` | `cancelTask` → `POST /tasks/${taskId}/cancel` | Also PDF cancel path in `use-pdf-progress.ts` |
 | UI cancel from documents | `edgequake_webui/src/hooks/use-document-mutations.ts` | `cancelMutation` → `cancelTask(trackId)` | Stopping… copy varies by surface |
 

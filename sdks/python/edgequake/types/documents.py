@@ -189,6 +189,7 @@ class DeleteAllResponse(BaseModel):
     accepted: bool = False
     wipe_track_id: str | None = None
     deleted_count: int = 0
+    planned_delete_count: int | None = None
     message: str | None = None
     total_chunks_deleted: int = 0
     total_entities_removed: int = 0
