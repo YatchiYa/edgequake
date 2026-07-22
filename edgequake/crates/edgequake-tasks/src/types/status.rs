@@ -92,7 +92,10 @@ mod fairness_class_tests {
 
     #[test]
     fn deletion_and_wipe_are_lifecycle() {
-        assert_eq!(TaskType::Deletion.fairness_class(), FairnessClass::Lifecycle);
+        assert_eq!(
+            TaskType::Deletion.fairness_class(),
+            FairnessClass::Lifecycle
+        );
         assert_eq!(
             TaskType::WorkspaceWipe.fairness_class(),
             FairnessClass::Lifecycle

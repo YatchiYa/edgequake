@@ -9,7 +9,7 @@
     "license": {
       "name": "Apache-2.0"
     },
-    "version": "0.20.1"
+    "version": "0.20.2"
   },
   "servers": [
     {
@@ -2780,8 +2780,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "recover_stuck",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "recover_stuck"
       }
     },
     "/api/v1/documents/reprocess": {
@@ -2838,8 +2838,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "reprocess_failed"
+        "x-edgequake-v2-job-type": "reprocess_failed",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/documents/scan": {
@@ -3817,8 +3817,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "reanalyze_multimodal",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "reanalyze_multimodal"
       }
     },
     "/api/v1/documents/{document_id}/retry-chunks": {
@@ -5265,7 +5265,7 @@
         "tags": [
           "Pipeline"
         ],
-        "summary": "Get real-time ingestion progress for a track ID (SPEC-048 DEF-01).",
+        "summary": "Get real-time ingestion progress for a track ID (SPEC-048 DEF-01 / 068).",
         "operationId": "get_ingestion_progress",
         "parameters": [
           {
@@ -8387,8 +8387,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "rebuild_embeddings"
+        "x-edgequake-v2-job-type": "rebuild_embeddings",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/workspaces/{workspace_id}/rebuild-knowledge-graph": {
@@ -8461,8 +8461,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "rebuild_knowledge_graph"
+        "x-edgequake-v2-job-type": "rebuild_knowledge_graph",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/workspaces/{workspace_id}/reprocess-documents": {
@@ -8535,8 +8535,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "reprocess_all"
+        "x-edgequake-v2-job-type": "reprocess_all",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/workspaces/{workspace_id}/stats": {
@@ -9029,8 +9029,8 @@
             "description": "WebSocket upgrade failed"
           }
         },
-        "x-edgequake-upgrade": "RFC6455",
-        "x-edgequake-transport": "websocket"
+        "x-edgequake-transport": "websocket",
+        "x-edgequake-upgrade": "RFC6455"
       }
     },
     "/ws/progress/{track_id}": {
@@ -9060,8 +9060,8 @@
             "description": "WebSocket upgrade failed"
           }
         },
-        "x-edgequake-transport": "websocket",
-        "x-edgequake-upgrade": "RFC6455"
+        "x-edgequake-upgrade": "RFC6455",
+        "x-edgequake-transport": "websocket"
       }
     }
   },
@@ -11460,10 +11460,20 @@
             "format": "float"
           },
           "source": {
-            "type": "string"
+            "type": "string",
+            "description": "Graph node id (identity / navigation)."
+          },
+          "source_label": {
+            "type": "string",
+            "description": "Human presentation for source (073)."
           },
           "target": {
-            "type": "string"
+            "type": "string",
+            "description": "Graph node id (identity / navigation)."
+          },
+          "target_label": {
+            "type": "string",
+            "description": "Human presentation for target (073)."
           }
         },
         "example": {
@@ -11473,7 +11483,9 @@
           "relation_type": {},
           "score": {},
           "source": {},
-          "target": {}
+          "source_label": {},
+          "target": {},
+          "target_label": {}
         }
       },
       "ContextRetrievalRequest": {
@@ -14711,23 +14723,40 @@
         "type": "object",
         "description": "Entity summary in lineage response.",
         "required": [
+          "id",
           "name",
+          "label",
           "entity_type",
           "source_chunks",
           "is_shared"
         ],
         "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional description for detail panels."
+          },
           "entity_type": {
             "type": "string",
             "description": "Entity type."
+          },
+          "id": {
+            "type": "string",
+            "description": "Graph node id (edge endpoints / stable identity)."
           },
           "is_shared": {
             "type": "boolean",
             "description": "Whether entity is shared with other documents."
           },
+          "label": {
+            "type": "string",
+            "description": "Human presentation label (`graph_node_label` SSOT)."
+          },
           "name": {
             "type": "string",
-            "description": "Entity name."
+            "description": "Bare semantic name, or soft-label when bare id is opaque (BC display)."
           },
           "source_chunks": {
             "type": "array",
@@ -14738,8 +14767,11 @@
           }
         },
         "example": {
+          "description": {},
           "entity_type": {},
+          "id": {},
           "is_shared": {},
+          "label": {},
           "name": {},
           "source_chunks": []
         }
@@ -18768,13 +18800,18 @@
           "id": {
             "type": "string",
             "description": "Node ID (entity name)."
+          },
+          "label": {
+            "type": "string",
+            "description": "Human presentation label (073 / graph_node_label SSOT)."
           }
         },
         "example": {
           "degree": {},
           "description": {},
           "entity_type": {},
-          "id": {}
+          "id": {},
+          "label": {}
         }
       },
       "NodeDegree": {
@@ -26293,7 +26330,7 @@
     "asyncapi": "2.6.0",
     "info": {
       "title": "EdgeQuake WebSocket Progress",
-      "version": "0.20.1",
+      "version": "0.20.2",
       "description": "Real-time pipeline and document processing progress over WebSocket (RFC 6455)."
     },
     "defaultContentType": "application/json",

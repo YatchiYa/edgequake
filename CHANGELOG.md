@@ -6,6 +6,31 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.20.2] — 2026-07-22
+
+Patch: opaque entity soft-labels across lineage/query, reliable delete/DDL-off-hotpath, text-ingest progress parity, and dual fairness lanes so deletes do not starve PDF ingest (SPEC-067–073).
+
+### Added
+
+- **Opaque entity reject (067)** — Reject UUID/GUID-like entity names at write; soft-label presentation SSOT (`resolve_entity_display_label` / `graph_node_label`).
+- **Text ingest progress (068)** — Markdown/text ingest progress parity with PDF upload UX.
+- **Lineage label SSOT (072)** — Document-scoped KG entities expose `id` + soft `label` (identity ≠ presentation).
+- **Relationship endpoint labels (073)** — Query Connections / LLM context use `source_label`/`target_label`; traversal, neighborhood, chunk/provenance soft-label remaining bypasses.
+- **Lineage edge discovery (071)** — Source-prefix GIN path for reliable edge discovery under delete/lineage loads.
+- **DB ops excellence (070)** — Migrations support reconcile m086/m092; vector DDL session contracts; ops audit.
+
+### Fixed
+
+- **Reliable delete (069)** — DDL off delete hotpath; progress contracts for long deletes.
+- **Dual fairness lanes** — Deletes no longer starve PDF ingest under concurrent load.
+- Prefixed opaque IDs (`RESOURCE_<uuid>`, `org:`, `uuid:`) detected for soft-label and write reject.
+
+### Ops note
+
+Legacy opaque AGE node ids remain until re-ingest; soft-label only fixes presentation.
+
+---
+
 ## [0.20.1] — 2026-07-22
 
 Patch: durable workspace wipe, graph-first cascade with tenant isolation, and structured Interrupted restart recovery ([#312](https://github.com/raphaelmansuy/edgequake/pull/312)).

@@ -337,10 +337,7 @@ mod tests {
     async fn test_basic_acquire_release() {
         let limiter = TenantConcurrencyLimiter::new(2, 2);
 
-        let permit1 = match limiter
-            .try_acquire(tenant_a(), FairnessClass::Ingest)
-            .await
-        {
+        let permit1 = match limiter.try_acquire(tenant_a(), FairnessClass::Ingest).await {
             TryAcquireOutcome::Acquired(p) => p,
             other => panic!("expected Acquired, got {other:?}"),
         };
@@ -351,25 +348,17 @@ mod tests {
             1
         );
 
-        let permit2 = match limiter
-            .try_acquire(tenant_a(), FairnessClass::Ingest)
-            .await
-        {
+        let permit2 = match limiter.try_acquire(tenant_a(), FairnessClass::Ingest).await {
             TryAcquireOutcome::Acquired(p) => p,
             other => panic!("expected Acquired, got {other:?}"),
         };
         assert!(matches!(
-            limiter
-                .try_acquire(tenant_a(), FairnessClass::Ingest)
-                .await,
+            limiter.try_acquire(tenant_a(), FairnessClass::Ingest).await,
             TryAcquireOutcome::AtCapacity
         ));
 
         drop(permit1);
-        let _permit3 = match limiter
-            .try_acquire(tenant_a(), FairnessClass::Ingest)
-            .await
-        {
+        let _permit3 = match limiter.try_acquire(tenant_a(), FairnessClass::Ingest).await {
             TryAcquireOutcome::Acquired(p) => p,
             other => panic!("expected Acquired after release, got {other:?}"),
         };
@@ -379,10 +368,7 @@ mod tests {
     #[tokio::test]
     async fn lifecycle_lane_independent_of_ingest() {
         let limiter = TenantConcurrencyLimiter::new(1, 2);
-        let _ingest = match limiter
-            .try_acquire(tenant_a(), FairnessClass::Ingest)
-            .await
-        {
+        let _ingest = match limiter.try_acquire(tenant_a(), FairnessClass::Ingest).await {
             TryAcquireOutcome::Acquired(p) => p,
             other => panic!("expected Acquired, got {other:?}"),
         };
@@ -393,9 +379,7 @@ mod tests {
             TryAcquireOutcome::Acquired(_)
         ));
         assert!(matches!(
-            limiter
-                .try_acquire(tenant_a(), FairnessClass::Ingest)
-                .await,
+            limiter.try_acquire(tenant_a(), FairnessClass::Ingest).await,
             TryAcquireOutcome::AtCapacity
         ));
     }
@@ -403,10 +387,7 @@ mod tests {
     #[tokio::test]
     async fn test_park_acquire_waits_for_release() {
         let limiter = TenantConcurrencyLimiter::new(1, 1);
-        let held = match limiter
-            .try_acquire(tenant_a(), FairnessClass::Ingest)
-            .await
-        {
+        let held = match limiter.try_acquire(tenant_a(), FairnessClass::Ingest).await {
             TryAcquireOutcome::Acquired(p) => p,
             other => panic!("expected Acquired, got {other:?}"),
         };
@@ -435,24 +416,16 @@ mod tests {
     async fn test_tenant_isolation() {
         let limiter = TenantConcurrencyLimiter::new(1, 1);
 
-        let _permit_a = match limiter
-            .try_acquire(tenant_a(), FairnessClass::Ingest)
-            .await
-        {
+        let _permit_a = match limiter.try_acquire(tenant_a(), FairnessClass::Ingest).await {
             TryAcquireOutcome::Acquired(p) => p,
             other => panic!("expected Acquired, got {other:?}"),
         };
-        let _permit_b = match limiter
-            .try_acquire(tenant_b(), FairnessClass::Ingest)
-            .await
-        {
+        let _permit_b = match limiter.try_acquire(tenant_b(), FairnessClass::Ingest).await {
             TryAcquireOutcome::Acquired(p) => p,
             other => panic!("expected Acquired, got {other:?}"),
         };
         assert!(matches!(
-            limiter
-                .try_acquire(tenant_a(), FairnessClass::Ingest)
-                .await,
+            limiter.try_acquire(tenant_a(), FairnessClass::Ingest).await,
             TryAcquireOutcome::AtCapacity
         ));
     }
@@ -467,19 +440,14 @@ mod tests {
     #[tokio::test]
     async fn test_cleanup_idle() {
         let limiter = TenantConcurrencyLimiter::new(2, 2);
-        let permit = match limiter
-            .try_acquire(tenant_a(), FairnessClass::Ingest)
-            .await
-        {
+        let permit = match limiter.try_acquire(tenant_a(), FairnessClass::Ingest).await {
             TryAcquireOutcome::Acquired(p) => p,
             other => panic!("expected Acquired, got {other:?}"),
         };
         drop(permit);
         limiter.cleanup_idle().await;
         assert!(matches!(
-            limiter
-                .try_acquire(tenant_a(), FairnessClass::Ingest)
-                .await,
+            limiter.try_acquire(tenant_a(), FairnessClass::Ingest).await,
             TryAcquireOutcome::Acquired(_)
         ));
     }

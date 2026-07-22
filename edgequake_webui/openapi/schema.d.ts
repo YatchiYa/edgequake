@@ -1883,7 +1883,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get real-time ingestion progress for a track ID (SPEC-048 DEF-01). */
+        /** Get real-time ingestion progress for a track ID (SPEC-048 DEF-01 / 068). */
         get: operations["get_ingestion_progress"];
         put?: never;
         post?: never;
@@ -4469,7 +4469,9 @@ export interface components {
          *       "relation_type": {},
          *       "score": {},
          *       "source": {},
-         *       "target": {}
+         *       "source_label": {},
+         *       "target": {},
+         *       "target_label": {}
          *     }
          */
         ContextRelationship: {
@@ -4479,8 +4481,14 @@ export interface components {
             relation_type: string;
             /** Format: float */
             score: number;
+            /** @description Graph node id (identity / navigation). */
             source: string;
+            /** @description Human presentation for source (073). */
+            source_label?: string;
+            /** @description Graph node id (identity / navigation). */
             target: string;
+            /** @description Human presentation for target (073). */
+            target_label?: string;
         };
         /**
          * @description Context retrieval request (`POST /api/v1/query/context`).
@@ -6217,18 +6225,27 @@ export interface components {
         /**
          * @description Entity summary in lineage response.
          * @example {
+         *       "description": {},
          *       "entity_type": {},
+         *       "id": {},
          *       "is_shared": {},
+         *       "label": {},
          *       "name": {},
          *       "source_chunks": []
          *     }
          */
         EntitySummaryResponse: {
+            /** @description Optional description for detail panels. */
+            description?: string | null;
             /** @description Entity type. */
             entity_type: string;
+            /** @description Graph node id (edge endpoints / stable identity). */
+            id: string;
             /** @description Whether entity is shared with other documents. */
             is_shared: boolean;
-            /** @description Entity name. */
+            /** @description Human presentation label (`graph_node_label` SSOT). */
+            label: string;
+            /** @description Bare semantic name, or soft-label when bare id is opaque (BC display). */
             name: string;
             /** @description Source chunk IDs. */
             source_chunks: string[];
@@ -8307,7 +8324,8 @@ export interface components {
          *       "degree": {},
          *       "description": {},
          *       "entity_type": {},
-         *       "id": {}
+         *       "id": {},
+         *       "label": {}
          *     }
          */
         NeighborhoodNode: {
@@ -8319,6 +8337,8 @@ export interface components {
             entity_type: string;
             /** @description Node ID (entity name). */
             id: string;
+            /** @description Human presentation label (073 / graph_node_label SSOT). */
+            label?: string;
         };
         /**
          * @description Response for a single node degree.

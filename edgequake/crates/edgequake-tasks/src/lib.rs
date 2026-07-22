@@ -108,9 +108,7 @@ pub use storage::{
     Pagination, SharedTaskStorage, SortField, SortOrder, TaskFilter, TaskList, TaskStatistics,
     TaskStorage,
 };
-pub use tenant_limiter::{
-    TenantConcurrencyLimiter, TenantLimiterStats, TryAcquireOutcome,
-};
+pub use tenant_limiter::{TenantConcurrencyLimiter, TenantLimiterStats, TryAcquireOutcome};
 pub use types::{
     ChunkProgress, DeletionTaskData, DirectoryScanData, DocumentUploadData, FairnessClass,
     KnowledgeInjectionData, PdfProcessingData, ReindexData, ReprocessMode, Task, TaskFailureInfo,

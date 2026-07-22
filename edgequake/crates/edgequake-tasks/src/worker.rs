@@ -1039,7 +1039,7 @@ mod tests {
             initial_retry_delay_ms: 100,
             max_retry_delay_ms: 5000,
             backoff_multiplier: 2.0,
-            max_tasks_per_tenant: 0,      // disabled for basic test
+            max_tasks_per_tenant: 0, // disabled for basic test
             max_lifecycle_tasks_per_tenant: 0,
             processing_timeout_secs: 300, // 5 min for tests
         };
@@ -1636,10 +1636,7 @@ mod tests {
             );
             // Align payload id with durable track_id (wipe pattern).
             if let Some(obj) = task.task_data.as_object_mut() {
-                obj.insert(
-                    "deletion_track_id".into(),
-                    serde_json::json!(task.track_id),
-                );
+                obj.insert("deletion_track_id".into(), serde_json::json!(task.track_id));
             }
             storage.create_task(&task).await.unwrap();
             queue.send(task).await.unwrap();

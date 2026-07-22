@@ -1,6 +1,6 @@
 # Release & CD Cycle
 
-> **Product: v0.20.1** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.20.2** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 This document describes how to cut a release, run quality gates, and verify the published Docker images.
 
@@ -62,8 +62,8 @@ done
 
 ```bash
 # Example (current cut)
-git tag v0.20.1
-git push origin v0.20.1
+git tag v0.20.2
+git push origin v0.20.2
 ```
 
 This triggers `.github/workflows/release-docker.yml`, which:
@@ -73,12 +73,12 @@ This triggers `.github/workflows/release-docker.yml`, which:
 ## 4) Post-Publish Verification
 
 ```bash
-gh release view v0.20.1
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake:0.20.1
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-frontend:0.20.1
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.20.1
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.20.1-pg16
-docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.20.1-pg17
+gh release view v0.20.2
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake:0.20.2
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-frontend:0.20.2
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.20.2
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.20.2-pg16
+docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake-postgres:0.20.2-pg17
 ```
 
 ## SPEC-042 Verification (before tag)
@@ -95,10 +95,10 @@ Docker images are built and published automatically via GitHub Actions (`.github
 
 ```bash
 # Tag a release — triggers multi-arch docker build + publish to ghcr.io
-git tag v0.20.1 && git push origin v0.20.1
+git tag v0.20.2 && git push origin v0.20.2
 ```
 
-Both `linux/amd64` (ubuntu-latest runner) and `linux/arm64` (native ARM64 runner — no QEMU) are built in parallel and merged into a single multi-arch manifest. The same image tag (`ghcr.io/raphaelmansuy/edgequake:0.20.1`) works on x86 servers, Apple Silicon Macs, and AWS Graviton instances.
+Both `linux/amd64` (ubuntu-latest runner) and `linux/arm64` (native ARM64 runner — no QEMU) are built in parallel and merged into a single multi-arch manifest. The same image tag (`ghcr.io/raphaelmansuy/edgequake:0.20.2`) works on x86 servers, Apple Silicon Macs, and AWS Graviton instances.
 
 You can also trigger a manual Docker build + publish without a tag via the `workflow_dispatch` input on GitHub Actions (`Actions -> Release -- Docker (GHCR) -> Run workflow`).
 
@@ -143,6 +143,13 @@ See [AGENTS.md](../../AGENTS.md) for the full developer workflow, including:
 | PG18 | 18.x | 0.8.5 | 1.8.0 | Default / recommended (SPEC-068 pin) |
 
 See [PostgreSQL migration guide](../../edgequake/docs/migrations/postgres-triple-track-spec042.md) for tier details.
+
+## Lessons from 0.20.2 cut
+
+- **OpenAPI refresh is mandatory** after `version-bump` — `openapi.snapshot.json` `info.version` must equal `VERSION` or release-gates fail.
+- **Workspace ≠ crates.io** — bump all members together; dry-run `cargo package`; ship via GHCR tag only.
+- Soft-label only — clean opaque AGE node ids still need re-ingest.
+- **Do not use `make version-tag`** — it auto-pushes; prefer explicit `git tag` + `git push origin vX.Y.Z` after local gates.
 
 ## Lessons from 0.20.1 cut
 
