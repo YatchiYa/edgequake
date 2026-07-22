@@ -208,7 +208,7 @@ tail -f /tmp/edgequake-backend.log
 | Ollama not running | Start Ollama: `ollama serve` |
 | Worker crash       | Restart backend              |
 | Lease expired      | See **Interrupted / Reprocess** below |
-| Tenant fairness park | Normal under local LLM clamp; check `tenant_park_waiters` in queue-metrics |
+| Tenant fairness park | Normal under local LLM clamp (ingest≤2, lifecycle≤4); check `tenant_park_waiters` / per-lane waiters in queue-metrics. Deletes use the lifecycle lane so a new PDF should not stay Queued behind deletes. |
 
 **Solution**:
 

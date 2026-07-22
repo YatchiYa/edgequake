@@ -214,6 +214,97 @@ pub fn apply_local_concurrency_safety_clamp(
     }
 }
 
+/// Local Ollama/LM Studio worker-pool ceilings (unless high-concurrency opt-out).
+pub const LOCAL_WORKER_THREADS_CAP: usize = 4;
+/// Local ingest fairness lane cap (Pdf/Insert) — protects LLM/vision.
+pub const LOCAL_MAX_INGEST_TASKS_PER_TENANT_CAP: usize = 2;
+/// Local lifecycle fairness lane default (Deletion/Wipe) — DB/graph bound.
+pub const LOCAL_DEFAULT_LIFECYCLE_TASKS_PER_TENANT: usize = 4;
+pub const LOCAL_MAX_LIFECYCLE_TASKS_PER_TENANT_CAP: usize = 4;
+
+/// Resolved worker pool + dual-lane tenant fairness limits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WorkerPoolLimits {
+    pub num_workers: usize,
+    /// Ingest lane max (`0` = unlimited).
+    pub max_ingest_per_tenant: usize,
+    /// Lifecycle lane max (`0` = unlimited).
+    pub max_lifecycle_per_tenant: usize,
+    /// True when local clamp reduced workers or ingest vs the requested values.
+    pub local_clamped: bool,
+}
+
+/// Pure resolver for worker pool + ingest/lifecycle tenant caps (testable SSOT).
+pub fn resolve_worker_pool_limits_from(
+    provider: &str,
+    allow_high_concurrency: bool,
+    requested_workers: usize,
+    requested_ingest_per_tenant: usize,
+    lifecycle_override: Option<usize>,
+) -> WorkerPoolLimits {
+    if !is_local_extraction_provider(provider) || allow_high_concurrency {
+        let lifecycle = lifecycle_override.unwrap_or(requested_ingest_per_tenant);
+        return WorkerPoolLimits {
+            num_workers: requested_workers,
+            max_ingest_per_tenant: requested_ingest_per_tenant,
+            max_lifecycle_per_tenant: lifecycle,
+            local_clamped: false,
+        };
+    }
+
+    let workers = requested_workers.clamp(1, LOCAL_WORKER_THREADS_CAP);
+    let ingest = if requested_ingest_per_tenant == 0 {
+        0
+    } else {
+        requested_ingest_per_tenant.clamp(1, LOCAL_MAX_INGEST_TASKS_PER_TENANT_CAP)
+    };
+    let lifecycle = match lifecycle_override {
+        Some(0) => 0,
+        Some(n) => n.clamp(1, LOCAL_MAX_LIFECYCLE_TASKS_PER_TENANT_CAP),
+        None => LOCAL_DEFAULT_LIFECYCLE_TASKS_PER_TENANT
+            .max(requested_ingest_per_tenant.min(LOCAL_MAX_LIFECYCLE_TASKS_PER_TENANT_CAP)),
+    };
+    WorkerPoolLimits {
+        num_workers: workers,
+        max_ingest_per_tenant: ingest,
+        max_lifecycle_per_tenant: lifecycle,
+        local_clamped: workers != requested_workers || ingest != requested_ingest_per_tenant,
+    }
+}
+
+fn default_worker_threads() -> usize {
+    let cpus = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+    (cpus * 4).max(4)
+}
+
+/// Resolve worker pool size + ingest/lifecycle per-tenant limits from env + extract provider.
+pub fn resolve_worker_pool_limits() -> WorkerPoolLimits {
+    let requested_workers: usize = std::env::var("WORKER_THREADS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(default_worker_threads);
+
+    let requested_ingest: usize = std::env::var("MAX_TASKS_PER_TENANT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(|| (requested_workers * 3 / 4).max(1));
+
+    let lifecycle_override = std::env::var("MAX_LIFECYCLE_TASKS_PER_TENANT")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok());
+
+    let provider = resolve_extract_provider_name_for_fairness();
+    resolve_worker_pool_limits_from(
+        &provider,
+        allow_local_high_concurrency(),
+        requested_workers,
+        requested_ingest,
+        lifecycle_override,
+    )
+}
+
 /// True when a chunk extraction error looks like local LLM overload / unreachable.
 pub fn is_local_provider_overload_error(error: &str) -> bool {
     let lower = error.to_ascii_lowercase();
@@ -458,6 +549,52 @@ impl Default for PipelineConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn local_worker_pool_limits_raise_tenant_lanes() {
+        let limits = resolve_worker_pool_limits_from("ollama", false, 16, 12, None);
+        assert_eq!(limits.num_workers, LOCAL_WORKER_THREADS_CAP);
+        assert_eq!(
+            limits.max_ingest_per_tenant,
+            LOCAL_MAX_INGEST_TASKS_PER_TENANT_CAP
+        );
+        assert_eq!(
+            limits.max_lifecycle_per_tenant,
+            LOCAL_DEFAULT_LIFECYCLE_TASKS_PER_TENANT
+        );
+        assert!(limits.local_clamped);
+    }
+
+    #[test]
+    fn cloud_worker_pool_limits_pass_through() {
+        let limits = resolve_worker_pool_limits_from("openai", false, 16, 12, None);
+        assert_eq!(
+            limits,
+            WorkerPoolLimits {
+                num_workers: 16,
+                max_ingest_per_tenant: 12,
+                max_lifecycle_per_tenant: 12,
+                local_clamped: false,
+            }
+        );
+    }
+
+    #[test]
+    fn local_lifecycle_override_and_ingest_unlimited() {
+        let limits = resolve_worker_pool_limits_from("lmstudio", false, 8, 0, Some(2));
+        assert_eq!(limits.max_ingest_per_tenant, 0);
+        assert_eq!(limits.max_lifecycle_per_tenant, 2);
+        assert_eq!(limits.num_workers, LOCAL_WORKER_THREADS_CAP);
+    }
+
+    #[test]
+    fn allow_high_concurrency_skips_local_clamp() {
+        let limits = resolve_worker_pool_limits_from("ollama", true, 16, 12, Some(3));
+        assert_eq!(limits.num_workers, 16);
+        assert_eq!(limits.max_ingest_per_tenant, 12);
+        assert_eq!(limits.max_lifecycle_per_tenant, 3);
+        assert!(!limits.local_clamped);
+    }
 
     #[test]
     fn clamp_gleaning_caps_at_two() {

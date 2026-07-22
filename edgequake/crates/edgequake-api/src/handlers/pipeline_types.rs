@@ -140,9 +140,17 @@ pub struct QueueMetricsResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub operator_action: Option<String>,
 
-    /// Tasks parked waiting for a per-tenant concurrency permit.
+    /// Tasks parked waiting for a per-tenant concurrency permit (all lanes).
     #[serde(default)]
     pub tenant_park_waiters: u64,
+
+    /// Park waiters on the ingest fairness lane (Pdf/Insert/…).
+    #[serde(default)]
+    pub tenant_park_waiters_ingest: u64,
+
+    /// Park waiters on the lifecycle fairness lane (Deletion/Wipe).
+    #[serde(default)]
+    pub tenant_park_waiters_lifecycle: u64,
 
     /// Outstanding cancel intents (pending drain + in-flight).
     #[serde(default)]
@@ -152,9 +160,14 @@ pub struct QueueMetricsResponse {
     #[serde(default)]
     pub cancel_intent_total: u64,
 
-    /// Configured max concurrent tasks per tenant (`0` = unlimited / disabled).
+    /// Configured max concurrent **ingest** tasks per tenant (`0` = unlimited).
     #[serde(default)]
     pub max_tasks_per_tenant: u64,
+
+    /// Configured max concurrent **lifecycle** tasks per tenant (Deletion/Wipe).
+    /// `0` = unlimited / lane disabled.
+    #[serde(default)]
+    pub max_lifecycle_tasks_per_tenant: u64,
 
     /// SPEC-057 P3: store contention SLOs (pool util + compensation quarantine).
     #[serde(default)]
@@ -264,9 +277,12 @@ mod tests {
             pending_critical_threshold: 500,
             operator_action: None,
             tenant_park_waiters: 2,
+            tenant_park_waiters_ingest: 1,
+            tenant_park_waiters_lifecycle: 1,
             cancel_intent_count: 1,
             cancel_intent_total: 3,
             max_tasks_per_tenant: 1,
+            max_lifecycle_tasks_per_tenant: 2,
             store_contention: StoreContentionMetrics {
                 level: "normal".to_string(),
                 db_pool_utilization: Some(0.2),

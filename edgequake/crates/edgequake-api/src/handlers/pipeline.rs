@@ -321,12 +321,24 @@ pub async fn get_queue_metrics(
         &pressure,
     );
 
-    let (tenant_park_waiters, max_tasks_per_tenant) = match &state.tasks.tenant_limiter {
+    let (
+        tenant_park_waiters,
+        tenant_park_waiters_ingest,
+        tenant_park_waiters_lifecycle,
+        max_tasks_per_tenant,
+        max_lifecycle_tasks_per_tenant,
+    ) = match &state.tasks.tenant_limiter {
         Some(limiter) => {
             let stats = limiter.stats().await;
-            (stats.park_waiters, stats.max_per_tenant as u64)
+            (
+                stats.park_waiters,
+                stats.park_waiters_ingest,
+                stats.park_waiters_lifecycle,
+                stats.max_per_tenant as u64,
+                stats.max_lifecycle_per_tenant as u64,
+            )
         }
-        None => (0, 0),
+        None => (0, 0, 0, 0, 0),
     };
 
     #[cfg(feature = "postgres")]
@@ -370,6 +382,8 @@ pub async fn get_queue_metrics(
         pending_critical_threshold: pressure.pending_critical_threshold,
         operator_action,
         tenant_park_waiters,
+        tenant_park_waiters_ingest,
+        tenant_park_waiters_lifecycle,
         cancel_intent_count: state
             .tasks
             .cancellation_registry
@@ -377,6 +391,7 @@ pub async fn get_queue_metrics(
             .await as u64,
         cancel_intent_total: state.tasks.cancellation_registry.cancel_intent_total(),
         max_tasks_per_tenant,
+        max_lifecycle_tasks_per_tenant,
         store_contention,
     }))
 }

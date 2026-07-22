@@ -45,16 +45,63 @@ use crate::{
     queue::TaskQueue,
     storage::TaskStorage,
     task_lease_ttl_from_env,
-    tenant_limiter::TenantConcurrencyLimiter,
-    types::{Task, TaskStatus},
+    tenant_limiter::{TenantConcurrencyLimiter, TryAcquireOutcome},
+    types::{FairnessClass, Task, TaskStatus},
 };
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::task::JoinHandle;
 use tokio::time::MissedTickBehavior;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn, Instrument};
+
+/// Process-local set of `track_id`s currently waiting in a fairness park.
+///
+/// WHY: Park releases the claim → Pending. Without this set, other workers
+/// reclaim the same Pending row and spawn duplicate park waiters (storm) while
+/// newer PdfProcessing stays FIFO-starved behind reclaim loops.
+#[derive(Clone, Default)]
+struct FairnessParkSet {
+    inner: Arc<Mutex<HashSet<String>>>,
+}
+
+impl FairnessParkSet {
+    fn contains(&self, track_id: &str) -> bool {
+        self.inner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains(track_id)
+    }
+
+    /// Begin parking `track_id`. Returns `false` if already parked.
+    fn try_begin(&self, track_id: &str) -> bool {
+        self.inner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(track_id.to_string())
+    }
+
+    fn end(&self, track_id: &str) {
+        self.inner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(track_id);
+    }
+}
+
+/// RAII: remove `track_id` from the park set when the park task exits.
+struct FairnessParkGuard {
+    set: FairnessParkSet,
+    track_id: String,
+}
+
+impl Drop for FairnessParkGuard {
+    fn drop(&mut self) {
+        self.set.end(&self.track_id);
+    }
+}
 
 /// RAII guard that aborts the heartbeat task on drop.
 ///
@@ -78,6 +125,10 @@ impl Drop for HeartbeatGuard {
 /// making the system non-functional. Even very fast tasks need a few
 /// seconds for LLM API round-trips.
 const MIN_PROCESSING_TIMEOUT_SECS: u64 = 60;
+
+/// After releasing an already-parked claim, re-claim immediately (bounded)
+/// so newer ingest work is not stuck behind the 2s poll interval.
+const MAX_PARK_SKIP_RECLAIMS: usize = 8;
 
 /// Task processor trait - implement this to process different task types.
 ///
@@ -139,17 +190,23 @@ pub struct WorkerPoolConfig {
     /// Backoff multiplier (default: 2.0 for exponential backoff)
     pub backoff_multiplier: f64,
 
-    /// Maximum concurrent tasks per tenant.
+    /// Maximum concurrent **ingest** tasks per tenant (Pdf/Insert/… fairness lane).
     ///
-    /// WHY: Prevents one tenant from monopolizing all workers. When a tenant
-    /// has `max_tasks_per_tenant` tasks in flight, excess tasks park on the
-    /// tenant semaphore until a slot frees (no channel requeue churn).
+    /// WHY: Protects scarce LLM/vision capacity. When a tenant has this many
+    /// ingest tasks in flight, excess ingest work parks until a slot frees.
     ///
-    /// Default: `max(1, num_workers * 3/4)` — most slots usable per tenant
-    /// while keeping headroom for others.
-    ///
-    /// Set to 0 to disable per-tenant limiting (all workers available to any tenant).
+    /// Default: `max(1, num_workers * 3/4)`. Set to 0 to disable the ingest lane.
     pub max_tasks_per_tenant: usize,
+
+    /// Maximum concurrent **lifecycle** tasks per tenant (Deletion/Wipe lane).
+    ///
+    /// WHY: Deletion/Wipe are DB-bound and must not share the local LLM clamp
+    /// with PdfProcessing — otherwise one delete serializes the tenant and
+    /// starves new uploads (stuck Queued).
+    ///
+    /// Default: same as `max_tasks_per_tenant` (unified). Local Ollama defaults
+    /// override to 2 via `resolve_worker_pool_limits`. Set to 0 to disable.
+    pub max_lifecycle_tasks_per_tenant: usize,
 
     /// Maximum time (seconds) a single task can process before being timed out.
     ///
@@ -183,6 +240,8 @@ impl Default for WorkerPoolConfig {
             // use most of the pool while still guaranteeing at least 25% of
             // workers remain available for other tenants.
             max_tasks_per_tenant: (num_workers * 3 / 4).max(1),
+            // Unified default; local extract providers override lifecycle to 2.
+            max_lifecycle_tasks_per_tenant: (num_workers * 3 / 4).max(1),
             // WHY 2 hours: Large PDFs (1000+ pages) with vision LLM extraction
             // can take 3+ hours. 2 hours catches most real-world cases while
             // still preventing infinite hangs. Override via
@@ -219,6 +278,8 @@ pub struct WorkerPool {
     cancellation_registry: CancellationRegistry,
     /// Rate-limit fairness park DEBUG logs (one line per N parks).
     fairness_park_logs: Arc<AtomicU64>,
+    /// Dedupes fairness park waiters per `track_id` (process-local).
+    fairness_park_set: FairnessParkSet,
 }
 
 impl WorkerPool {
@@ -229,12 +290,16 @@ impl WorkerPool {
         storage: Arc<dyn TaskStorage>,
         processor: SharedTaskProcessor,
     ) -> Self {
-        // Create tenant limiter if max_tasks_per_tenant > 0
-        let tenant_limiter = if config.max_tasks_per_tenant > 0 {
-            Some(TenantConcurrencyLimiter::new(config.max_tasks_per_tenant))
-        } else {
-            None
-        };
+        // Create dual-lane limiter when either lane is capacity-limited.
+        let tenant_limiter =
+            if config.max_tasks_per_tenant > 0 || config.max_lifecycle_tasks_per_tenant > 0 {
+                Some(TenantConcurrencyLimiter::new(
+                    config.max_tasks_per_tenant,
+                    config.max_lifecycle_tasks_per_tenant,
+                ))
+            } else {
+                None
+            };
 
         Self {
             config,
@@ -246,6 +311,7 @@ impl WorkerPool {
             tenant_limiter,
             cancellation_registry: CancellationRegistry::new(),
             fairness_park_logs: Arc::new(AtomicU64::new(0)),
+            fairness_park_set: FairnessParkSet::default(),
         }
     }
 
@@ -258,7 +324,7 @@ impl WorkerPool {
         self.cancellation_registry.clone()
     }
 
-    /// Optional per-tenant limiter (None when `max_tasks_per_tenant == 0`).
+    /// Optional per-tenant limiter (None when both fairness lanes are unlimited).
     pub fn tenant_limiter(&self) -> Option<TenantConcurrencyLimiter> {
         self.tenant_limiter.clone()
     }
@@ -278,9 +344,10 @@ impl WorkerPool {
 
         if let Some(ref limiter) = self.tenant_limiter {
             info!(
-                "Starting worker pool: {} workers, max {} tasks/tenant",
+                "Starting worker pool: {} workers, ingest={}/tenant lifecycle={}/tenant",
                 self.config.num_workers,
-                limiter.max_per_tenant()
+                limiter.max_per_tenant(),
+                limiter.max_lifecycle_per_tenant()
             );
         } else {
             info!(
@@ -299,6 +366,7 @@ impl WorkerPool {
             let tenant_limiter = self.tenant_limiter.clone();
             let cancel_registry = self.cancellation_registry.clone();
             let fairness_park_logs = Arc::clone(&self.fairness_park_logs);
+            let fairness_park_set = self.fairness_park_set.clone();
 
             let handle = runtime.spawn(async move {
                 info!("Worker {} started", worker_id);
@@ -343,110 +411,185 @@ impl WorkerPool {
                         }
                     }
 
-                    let mut task = match storage.claim_next(&worker_name, lease_ttl).await {
-                        Ok(Some(t)) => t,
-                        Ok(None) => continue,
-                        Err(e) => {
-                            error!(
-                                error.source = "task_worker",
-                                error.action = "claim_next",
-                                worker_id = worker_id,
-                                error.message = %e,
-                                "Failed to claim next task"
-                            );
-                            continue;
-                        }
-                    };
+                    // Claim loop: skip already-parked rows and re-claim immediately
+                    // (bounded) so FIFO Pending deletions do not starve newer ingest.
+                    let mut claimed: Option<(Task, uuid::Uuid, Option<tokio::sync::OwnedSemaphorePermit>)> =
+                        None;
+                    for _reclaim in 0..=MAX_PARK_SKIP_RECLAIMS {
+                        let mut task = match storage.claim_next(&worker_name, lease_ttl).await {
+                            Ok(Some(t)) => t,
+                            Ok(None) => break,
+                            Err(e) => {
+                                error!(
+                                    error.source = "task_worker",
+                                    error.action = "claim_next",
+                                    worker_id = worker_id,
+                                    error.message = %e,
+                                    "Failed to claim next task"
+                                );
+                                break;
+                            }
+                        };
 
-                    let lease_token = match task.lease_token {
-                        Some(token) => token,
-                        None => {
-                            warn!(
-                                worker_id = worker_id,
-                                task_id = %task.track_id,
-                                "Claimed task missing lease_token — releasing"
-                            );
-                            let _ = storage
-                                .release_claim(&task.track_id, &worker_name, uuid::Uuid::nil())
-                                .await;
-                            continue;
-                        }
-                    };
-
-                    // FEAT-CANCEL: Drop terminal / cancel-intent after claim.
-                    if should_skip_task(&storage, &cancel_registry, &task).await {
-                        debug!(
-                            worker_id = worker_id,
-                            task_id = %task.track_id,
-                            "Skipping cancelled or terminal task after claim"
-                        );
-                        if cancel_registry.has_cancel_intent(&task.track_id).await {
-                            task.mark_cancelled();
-                            let _ = storage.update_task(&task).await;
-                        } else if let Err(e) = storage
-                            .release_claim(&task.track_id, &worker_name, lease_token)
-                            .await
-                        {
-                            warn!(
-                                task_id = %task.track_id,
-                                error = %e,
-                                "Failed to release claim for skipped task"
-                            );
-                        }
-                        cancel_registry.deregister(&task.track_id).await;
-                        continue;
-                    }
-
-                    // FEAT-TENANT-FAIRNESS: release claim before park (no double-process).
-                    let _tenant_permit = if let Some(ref limiter) = tenant_limiter {
-                        match limiter.try_acquire(task.tenant_id).await {
-                            Some(permit) => Some(permit),
+                        let lease_token = match task.lease_token {
+                            Some(token) => token,
                             None => {
-                                let n = fairness_park_logs.fetch_add(1, Ordering::Relaxed) + 1;
-                                if n == 1 || n.is_multiple_of(32) {
-                                    info!(
-                                        worker_id = worker_id,
-                                        task_id = %task.track_id,
-                                        tenant_id = %task.tenant_id,
-                                        park_events = n,
-                                        park_waiters = limiter.park_waiter_count(),
-                                        "Tenant at concurrency limit — releasing claim and parking (aggregated)"
-                                    );
-                                }
-                                if let Err(e) = storage
-                                    .release_claim(&task.track_id, &worker_name, lease_token)
-                                    .await
-                                {
-                                    error!(
-                                        task_id = %task.track_id,
-                                        error = %e,
-                                        "Failed to release claim before fairness park"
-                                    );
-                                } else {
-                                    // Reload as Pending for park wake payload.
-                                    if let Ok(Some(pending)) =
+                                warn!(
+                                    worker_id = worker_id,
+                                    task_id = %task.track_id,
+                                    "Claimed task missing lease_token — releasing"
+                                );
+                                let _ = storage
+                                    .release_claim(
+                                        &task.track_id,
+                                        &worker_name,
+                                        uuid::Uuid::nil(),
+                                    )
+                                    .await;
+                                break;
+                            }
+                        };
+
+                        // FEAT-CANCEL: Drop terminal / cancel-intent after claim.
+                        if should_skip_task(&storage, &cancel_registry, &task).await {
+                            debug!(
+                                worker_id = worker_id,
+                                task_id = %task.track_id,
+                                "Skipping cancelled or terminal task after claim"
+                            );
+                            if cancel_registry.has_cancel_intent(&task.track_id).await {
+                                task.mark_cancelled();
+                                let _ = storage.update_task(&task).await;
+                            } else if let Err(e) = storage
+                                .release_claim(&task.track_id, &worker_name, lease_token)
+                                .await
+                            {
+                                warn!(
+                                    task_id = %task.track_id,
+                                    error = %e,
+                                    "Failed to release claim for skipped task"
+                                );
+                            }
+                            cancel_registry.deregister(&task.track_id).await;
+                            break;
+                        }
+
+                        // Already parked: release and re-claim (do not wait for poll).
+                        if fairness_park_set.contains(&task.track_id) {
+                            debug!(
+                                worker_id = worker_id,
+                                task_id = %task.track_id,
+                                "Claimed task already fairness-parked — releasing without re-park"
+                            );
+                            if let Err(e) = storage
+                                .release_claim(&task.track_id, &worker_name, lease_token)
+                                .await
+                            {
+                                warn!(
+                                    task_id = %task.track_id,
+                                    error = %e,
+                                    "Failed to release claim for already-parked task"
+                                );
+                                break;
+                            }
+                            continue;
+                        }
+
+                        // FEAT-TENANT-FAIRNESS: release claim before park (no double-process).
+                        let fairness_class = task.task_type.fairness_class();
+                        let tenant_permit = if let Some(ref limiter) = tenant_limiter {
+                            match limiter.try_acquire(task.tenant_id, fairness_class).await {
+                                TryAcquireOutcome::Unlimited => None,
+                                TryAcquireOutcome::Acquired(permit) => Some(permit),
+                                TryAcquireOutcome::AtCapacity => {
+                                    let n =
+                                        fairness_park_logs.fetch_add(1, Ordering::Relaxed) + 1;
+                                    if n == 1 || n.is_multiple_of(32) {
+                                        info!(
+                                            worker_id = worker_id,
+                                            task_id = %task.track_id,
+                                            tenant_id = %task.tenant_id,
+                                            fairness_class = ?fairness_class,
+                                            park_events = n,
+                                            park_waiters = limiter.park_waiter_count(),
+                                            "Tenant at concurrency limit — releasing claim and parking (aggregated)"
+                                        );
+                                    }
+                                    if !fairness_park_set.try_begin(&task.track_id) {
+                                        if let Err(e) = storage
+                                            .release_claim(
+                                                &task.track_id,
+                                                &worker_name,
+                                                lease_token,
+                                            )
+                                            .await
+                                        {
+                                            warn!(
+                                                task_id = %task.track_id,
+                                                error = %e,
+                                                "Failed to release claim for duplicate park skip"
+                                            );
+                                            break;
+                                        }
+                                        continue;
+                                    }
+                                    if let Err(e) = storage
+                                        .release_claim(
+                                            &task.track_id,
+                                            &worker_name,
+                                            lease_token,
+                                        )
+                                        .await
+                                    {
+                                        error!(
+                                            task_id = %task.track_id,
+                                            error = %e,
+                                            "Failed to release claim before fairness park"
+                                        );
+                                        fairness_park_set.end(&task.track_id);
+                                    } else if let Ok(Some(pending)) =
                                         storage.get_task(&task.track_id).await
                                     {
-                                        task = pending;
+                                        spawn_fairness_park(
+                                            worker_id,
+                                            pending,
+                                            fairness_class,
+                                            Arc::clone(&queue),
+                                            Arc::clone(&storage),
+                                            limiter.clone(),
+                                            cancel_registry.clone(),
+                                            fairness_park_set.clone(),
+                                            park_shutdown_tx.subscribe(),
+                                        );
                                     } else {
                                         task.status = TaskStatus::Pending;
                                         task.clear_lease();
+                                        spawn_fairness_park(
+                                            worker_id,
+                                            task,
+                                            fairness_class,
+                                            Arc::clone(&queue),
+                                            Arc::clone(&storage),
+                                            limiter.clone(),
+                                            cancel_registry.clone(),
+                                            fairness_park_set.clone(),
+                                            park_shutdown_tx.subscribe(),
+                                        );
                                     }
-                                    spawn_fairness_park(
-                                        worker_id,
-                                        task,
-                                        Arc::clone(&queue),
-                                        Arc::clone(&storage),
-                                        limiter.clone(),
-                                        cancel_registry.clone(),
-                                        park_shutdown_tx.subscribe(),
-                                    );
+                                    break;
                                 }
-                                continue;
                             }
-                        }
-                    } else {
-                        None
+                        } else {
+                            None
+                        };
+
+                        claimed = Some((task, lease_token, tenant_permit));
+                        break;
+                    }
+
+                    let (mut task, lease_token, _tenant_permit) = match claimed {
+                        Some(c) => c,
+                        None => continue,
                     };
 
                     info!(
@@ -763,21 +906,30 @@ async fn should_skip_task(
 }
 
 /// Park until a tenant permit frees, then re-enqueue once (no polling storm).
+#[allow(clippy::too_many_arguments)] // Internal spawn helper; bundling would obscure wake/cancel wiring.
 fn spawn_fairness_park(
     worker_id: usize,
     task: Task,
+    fairness_class: FairnessClass,
     queue: Arc<dyn TaskQueue>,
     storage: Arc<dyn TaskStorage>,
     limiter: TenantConcurrencyLimiter,
     cancel_registry: CancellationRegistry,
+    park_set: FairnessParkSet,
     mut shutdown_rx: tokio::sync::broadcast::Receiver<()>,
 ) {
     tokio::spawn(async move {
         let track_id = task.track_id.clone();
         let tenant_id = task.tenant_id;
+        // Clears park membership on abort/skip. Success path ends park *before*
+        // requeue so claim_next is not treated as a duplicate park.
+        let mut park_guard = Some(FairnessParkGuard {
+            set: park_set,
+            track_id: track_id.clone(),
+        });
 
         let permit = tokio::select! {
-            result = limiter.acquire(tenant_id) => {
+            result = limiter.acquire(tenant_id, fairness_class) => {
                 match result {
                     Ok(permit) => permit,
                     Err(_) => {
@@ -796,7 +948,8 @@ fn spawn_fairness_park(
                     task_id = %track_id,
                     "Fairness park aborted — worker pool shutting down"
                 );
-                // Return task to queue so hydrate/restart can recover if needed.
+                // End park before send so reclaim is not skipped as "already parked".
+                drop(park_guard.take());
                 let _ = queue.send(task).await;
                 return;
             }
@@ -815,6 +968,9 @@ fn spawn_fairness_park(
             cancel_registry.deregister(&track_id).await;
             return;
         }
+
+        // Plan order: remove from park set, then single queue.send.
+        drop(park_guard.take());
 
         if let Err(e) = queue.send(task).await {
             error!(
@@ -884,6 +1040,7 @@ mod tests {
             max_retry_delay_ms: 5000,
             backoff_multiplier: 2.0,
             max_tasks_per_tenant: 0,      // disabled for basic test
+            max_lifecycle_tasks_per_tenant: 0,
             processing_timeout_secs: 300, // 5 min for tests
         };
 
@@ -930,6 +1087,7 @@ mod tests {
             max_retry_delay_ms: 5000,
             backoff_multiplier: 2.0,
             max_tasks_per_tenant: 0,
+            max_lifecycle_tasks_per_tenant: 0,
             processing_timeout_secs: 300,
         };
 
@@ -942,25 +1100,48 @@ mod tests {
 
     #[tokio::test]
     async fn test_tenant_fairness_limiting() {
-        // With max_tasks_per_tenant=1, only 1 task per tenant runs at a time
-        let limiter = crate::tenant_limiter::TenantConcurrencyLimiter::new(1);
+        use crate::tenant_limiter::TryAcquireOutcome;
+        use crate::types::FairnessClass;
+
+        // Ingest lane=1: only one ingest task per tenant at a time.
+        let limiter = crate::tenant_limiter::TenantConcurrencyLimiter::new(1, 2);
         let tenant = test_tenant_id();
 
-        let p1 = limiter.try_acquire(tenant).await;
-        assert!(p1.is_some(), "First acquire should succeed");
+        let p1 = match limiter.try_acquire(tenant, FairnessClass::Ingest).await {
+            TryAcquireOutcome::Acquired(p) => p,
+            other => panic!("First ingest acquire should succeed, got {other:?}"),
+        };
 
-        let p2 = limiter.try_acquire(tenant).await;
-        assert!(p2.is_none(), "Second acquire should be denied (at limit)");
+        assert!(
+            matches!(
+                limiter.try_acquire(tenant, FairnessClass::Ingest).await,
+                TryAcquireOutcome::AtCapacity
+            ),
+            "Second ingest acquire should be denied"
+        );
 
-        // Different tenant should still get through
+        // Lifecycle lane stays independent under local-style clamps.
+        assert!(
+            matches!(
+                limiter.try_acquire(tenant, FairnessClass::Lifecycle).await,
+                TryAcquireOutcome::Acquired(_)
+            ),
+            "Lifecycle lane must remain available while ingest is saturated"
+        );
+
         let other_tenant = uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000099").unwrap();
-        let p3 = limiter.try_acquire(other_tenant).await;
-        assert!(p3.is_some(), "Other tenant should not be affected");
+        assert!(matches!(
+            limiter
+                .try_acquire(other_tenant, FairnessClass::Ingest)
+                .await,
+            TryAcquireOutcome::Acquired(_)
+        ));
 
-        // Release first permit, then acquire should succeed
         drop(p1);
-        let p4 = limiter.try_acquire(tenant).await;
-        assert!(p4.is_some(), "Should succeed after releasing permit");
+        assert!(matches!(
+            limiter.try_acquire(tenant, FairnessClass::Ingest).await,
+            TryAcquireOutcome::Acquired(_)
+        ));
     }
 
     #[test]
@@ -1073,6 +1254,7 @@ mod tests {
             max_retry_delay_ms: 5000,
             backoff_multiplier: 2.0,
             max_tasks_per_tenant: 0,
+            max_lifecycle_tasks_per_tenant: 0,
             processing_timeout_secs: 1, // 1 second timeout for quick test
         };
 
@@ -1140,6 +1322,7 @@ mod tests {
             max_retry_delay_ms: 50,
             backoff_multiplier: 2.0,
             max_tasks_per_tenant: 0,
+            max_lifecycle_tasks_per_tenant: 0,
             processing_timeout_secs: 300,
         };
 
@@ -1214,6 +1397,7 @@ mod tests {
             max_retry_delay_ms: 50,
             backoff_multiplier: 2.0,
             max_tasks_per_tenant: 0,
+            max_lifecycle_tasks_per_tenant: 0,
             processing_timeout_secs: 300,
         };
 
@@ -1277,6 +1461,7 @@ mod tests {
             max_retry_delay_ms: 5000,
             backoff_multiplier: 2.0,
             max_tasks_per_tenant: 0,
+            max_lifecycle_tasks_per_tenant: 0,
             processing_timeout_secs: 300,
         };
 
@@ -1323,12 +1508,13 @@ mod tests {
         }
 
         let config = WorkerPoolConfig {
-            num_workers: 2,
+            num_workers: 4,
             auto_retry: false,
             initial_retry_delay_ms: 100,
             max_retry_delay_ms: 5000,
             backoff_multiplier: 2.0,
             max_tasks_per_tenant: 1,
+            max_lifecycle_tasks_per_tenant: 1,
             processing_timeout_secs: 300,
         };
 
@@ -1341,6 +1527,7 @@ mod tests {
         let limiter = pool.tenant_limiter().expect("limiter enabled");
         pool.start();
 
+        // One slow holder + several Pending that would otherwise reclaim-storm.
         for i in 0..5 {
             let task = Task::new(
                 test_tenant_id(),
@@ -1352,20 +1539,142 @@ mod tests {
             queue.send(task).await.unwrap();
         }
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-        // Park waiters should absorb backlog instead of unbounded re-sends.
+        // Let workers reclaim the same Pending repeatedly via poll interval.
+        tokio::time::sleep(tokio::time::Duration::from_millis(2500)).await;
+        let stats = limiter.stats().await;
+        // Deduped park: waiters ≤ backlog tasks; completions stay O(tasks), not O(polls×workers).
         assert!(
-            limiter.park_waiter_count() <= 5,
+            stats.park_waiters <= 5,
             "unexpected park waiter count {}",
-            limiter.park_waiter_count()
+            stats.park_waiters
         );
         assert!(
-            queue.approximate_depth() <= 5,
+            stats.park_completions <= 8,
+            "park reclaim storm: completions={}",
+            stats.park_completions
+        );
+        assert!(
+            queue.approximate_depth() <= 8,
             "queue storm detected: depth={}",
             queue.approximate_depth()
         );
 
         tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+        pool.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn test_delete3_upload1_lifecycle_lane_does_not_starve_ingest() {
+        use std::sync::atomic::AtomicUsize;
+
+        struct CountingProcessor {
+            deletion_started: Arc<AtomicUsize>,
+            pdf_started: Arc<AtomicUsize>,
+            pdf_gate: Arc<tokio::sync::Notify>,
+        }
+
+        #[async_trait::async_trait]
+        impl TaskProcessor for CountingProcessor {
+            async fn process(
+                &self,
+                task: &mut Task,
+                _cancel_token: CancellationToken,
+            ) -> TaskResult<serde_json::Value> {
+                match task.task_type {
+                    TaskType::Deletion => {
+                        self.deletion_started.fetch_add(1, Ordering::SeqCst);
+                        // Hold lifecycle slot while PDF should still acquire ingest.
+                        tokio::time::sleep(tokio::time::Duration::from_millis(400)).await;
+                    }
+                    TaskType::PdfProcessing => {
+                        self.pdf_started.fetch_add(1, Ordering::SeqCst);
+                        self.pdf_gate.notify_waiters();
+                        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+                    }
+                    _ => {}
+                }
+                Ok(serde_json::json!({"ok": true}))
+            }
+        }
+
+        let deletion_started = Arc::new(AtomicUsize::new(0));
+        let pdf_started = Arc::new(AtomicUsize::new(0));
+        let pdf_gate = Arc::new(tokio::sync::Notify::new());
+        let processor: SharedTaskProcessor = Arc::new(CountingProcessor {
+            deletion_started: Arc::clone(&deletion_started),
+            pdf_started: Arc::clone(&pdf_started),
+            pdf_gate: Arc::clone(&pdf_gate),
+        });
+
+        let queue = Arc::new(ChannelTaskQueue::new(50));
+        let storage = Arc::new(MemoryTaskStorage::new());
+        // Local Ollama-style raised defaults: workers=4, ingest=2, lifecycle=4.
+        let config = WorkerPoolConfig {
+            num_workers: 4,
+            auto_retry: false,
+            initial_retry_delay_ms: 100,
+            max_retry_delay_ms: 5000,
+            backoff_multiplier: 2.0,
+            max_tasks_per_tenant: 2,
+            max_lifecycle_tasks_per_tenant: 4,
+            processing_timeout_secs: 300,
+        };
+        let mut pool = WorkerPool::new(config, queue.clone(), storage.clone(), processor);
+        let limiter = pool.tenant_limiter().expect("dual-lane limiter");
+        assert_eq!(limiter.max_per_tenant(), 2);
+        assert_eq!(limiter.max_lifecycle_per_tenant(), 4);
+        pool.start();
+
+        for i in 0..3 {
+            let mut task = Task::new(
+                test_tenant_id(),
+                test_workspace_id(),
+                TaskType::Deletion,
+                serde_json::json!({
+                    "document_id": format!("doc-{i}"),
+                }),
+            );
+            // Align payload id with durable track_id (wipe pattern).
+            if let Some(obj) = task.task_data.as_object_mut() {
+                obj.insert(
+                    "deletion_track_id".into(),
+                    serde_json::json!(task.track_id),
+                );
+            }
+            storage.create_task(&task).await.unwrap();
+            queue.send(task).await.unwrap();
+        }
+        let pdf = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::PdfProcessing,
+            serde_json::json!({"document_id": "pdf-new"}),
+        );
+        let pdf_id = pdf.track_id.clone();
+        storage.create_task(&pdf).await.unwrap();
+        queue.send(pdf).await.unwrap();
+
+        // PDF must start while deletions are still running (separate lanes).
+        tokio::time::timeout(tokio::time::Duration::from_secs(3), pdf_gate.notified())
+            .await
+            .expect("PDF should leave Queued and start under lifecycle load");
+        assert!(
+            pdf_started.load(Ordering::SeqCst) >= 1,
+            "PDF ingest lane must run"
+        );
+        assert!(
+            deletion_started.load(Ordering::SeqCst) >= 1,
+            "at least one deletion should have started"
+        );
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(800)).await;
+        let stored = storage.get_task(&pdf_id).await.unwrap().unwrap();
+        assert_eq!(
+            stored.status,
+            TaskStatus::Indexed,
+            "PDF must complete, got {:?}",
+            stored.status
+        );
         pool.shutdown().await;
     }
 }

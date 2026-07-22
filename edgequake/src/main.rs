@@ -71,52 +71,34 @@ fn clear_empty_env_var(name: &str) {
     }
 }
 
-/// Local Ollama/LM Studio worker ceilings (unless high-concurrency opt-out).
-const LOCAL_WORKER_THREADS_CAP: usize = 2;
-const LOCAL_MAX_TASKS_PER_TENANT_CAP: usize = 1;
-
-/// Resolve worker pool size + per-tenant limit with local-provider safety clamps.
-fn resolve_worker_pool_limits() -> (usize, usize) {
-    let requested_workers: usize = std::env::var("WORKER_THREADS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or_else(|| (num_cpus::get() * 4).max(4));
-
-    let requested_per_tenant: usize = std::env::var("MAX_TASKS_PER_TENANT")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or_else(|| (requested_workers * 3 / 4).max(1));
-
-    // SPEC-057 P2: clamp from runtime extract provider (hybrid-aware), not LLM-only.
+/// Resolve worker pool + dual-lane tenant limits (SSOT in edgequake-pipeline).
+fn resolve_worker_pool_limits() -> (usize, usize, usize) {
     let provider = edgequake_pipeline::resolve_extract_provider_name_for_fairness();
-
-    if !edgequake_pipeline::is_local_extraction_provider(&provider)
-        || edgequake_pipeline::allow_local_high_concurrency()
-    {
-        return (requested_workers, requested_per_tenant);
-    }
-
-    let workers = requested_workers.clamp(1, LOCAL_WORKER_THREADS_CAP);
-    // MAX_TASKS_PER_TENANT=0 means "unlimited" — preserve that opt-out.
-    let per_tenant = if requested_per_tenant == 0 {
-        0
-    } else {
-        requested_per_tenant.clamp(1, LOCAL_MAX_TASKS_PER_TENANT_CAP)
-    };
-
-    if workers != requested_workers || per_tenant != requested_per_tenant {
+    let limits = edgequake_pipeline::resolve_worker_pool_limits();
+    if limits.local_clamped {
         warn!(
             extract_provider = %provider,
-            requested_workers,
-            effective_workers = workers,
-            requested_per_tenant,
-            effective_per_tenant = per_tenant,
+            effective_workers = limits.num_workers,
+            effective_ingest_per_tenant = limits.max_ingest_per_tenant,
+            effective_lifecycle_per_tenant = limits.max_lifecycle_per_tenant,
             "Local worker pool clamped from runtime extract provider \
-             (set EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1 to override)"
+             (ingest protects LLM; lifecycle is a separate lane; \
+             set EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1 to override ingest)"
+        );
+    } else if edgequake_pipeline::is_local_extraction_provider(&provider) {
+        info!(
+            extract_provider = %provider,
+            effective_workers = limits.num_workers,
+            effective_ingest_per_tenant = limits.max_ingest_per_tenant,
+            effective_lifecycle_per_tenant = limits.max_lifecycle_per_tenant,
+            "Local worker pool fairness lanes (ingest vs lifecycle)"
         );
     }
-
-    (workers, per_tenant)
+    (
+        limits.num_workers,
+        limits.max_ingest_per_tenant,
+        limits.max_lifecycle_per_tenant,
+    )
 }
 
 fn redact_database_url(url: &str) -> String {
@@ -755,7 +737,8 @@ async fn async_main() -> Result<()> {
     // more workers than CPU cores to keep the pipeline saturated.
     // Local (Ollama) profile: clamp to 2 workers / 1 per-tenant unless
     // EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1 (parity with extract clamp).
-    let (num_workers, max_tasks_per_tenant) = resolve_worker_pool_limits();
+    let (num_workers, max_tasks_per_tenant, max_lifecycle_tasks_per_tenant) =
+        resolve_worker_pool_limits();
 
     let worker_config = WorkerPoolConfig {
         num_workers,
@@ -763,13 +746,13 @@ async fn async_main() -> Result<()> {
         initial_retry_delay_ms: 5000,
         max_retry_delay_ms: 60000,
         backoff_multiplier: 2.0,
-        // FEAT-TENANT-FAIRNESS: Per-tenant concurrency limit.
-        // Ensures no single tenant can monopolize all workers.
-        // Default: max(1, num_workers * 3/4) — IO-bound workloads benefit
-        // from higher per-tenant concurrency while still reserving 25%
-        // capacity for other tenants.
-        // Set MAX_TASKS_PER_TENANT=0 to disable.
+        // FEAT-TENANT-FAIRNESS: ingest lane (LLM/vision). Local Ollama clamps to 1.
+        // Set MAX_TASKS_PER_TENANT=0 to disable the ingest lane.
         max_tasks_per_tenant,
+        // Lifecycle lane (Deletion/Wipe): separate from ingest so deletes do not
+        // starve PdfProcessing under the local LLM clamp.
+        // Override via MAX_LIFECYCLE_TASKS_PER_TENANT.
+        max_lifecycle_tasks_per_tenant,
         // WHY 2 hours (7200s): Large PDFs with vision LLM extraction can take
         // 3+ hours (1000+ pages × ~12s/page). 2 hours covers the vast majority
         // of real-world documents while still catching truly stuck tasks.
@@ -991,9 +974,11 @@ async fn async_main() -> Result<()> {
     state.tasks.tenant_limiter = worker_pool.tenant_limiter();
     if let Some(ref limiter) = state.tasks.tenant_limiter {
         info!(
-            max_tasks_per_tenant = limiter.max_per_tenant(),
-            "Tenant fairness limiter active (excess tasks park until permit; \
-             local providers clamp to 1 unless EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1)"
+            max_ingest_per_tenant = limiter.max_per_tenant(),
+            max_lifecycle_per_tenant = limiter.max_lifecycle_per_tenant(),
+            "Tenant fairness limiter active (ingest vs lifecycle lanes; \
+             local defaults workers=4 ingest=2 lifecycle=4 unless \
+             EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1)"
         );
     }
 
