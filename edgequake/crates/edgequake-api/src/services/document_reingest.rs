@@ -62,9 +62,6 @@ pub async fn delete_document_for_reingestion(
     state: &AppState,
     workspace_id: &str,
 ) -> Result<bool, ApiError> {
-    let metadata_key =
-        crate::services::document_metadata_scan::metadata_key_for_document(document_id);
-
     let allowed_from_statuses = [
         "failed",
         "completed",
@@ -72,6 +69,22 @@ pub async fn delete_document_for_reingestion(
         "processed",
         "cancelled",
     ];
+    // First Principles: never transition from lifecycle-exclusive states.
+    // (deleting / delete_failed are owned by the deletion state machine.)
+    let metadata_key =
+        crate::services::document_metadata_scan::metadata_key_for_document(document_id);
+    if let Ok(Some(meta)) = state.storage.kv_storage.get_by_id(&metadata_key).await {
+        if let Some(status) = meta.get("status").and_then(|v| v.as_str()) {
+            if crate::services::is_reprocess_lifecycle_exclusive(status) {
+                tracing::warn!(
+                    document_id = %document_id,
+                    status = %status,
+                    "Cannot re-ingest: lifecycle-exclusive status"
+                );
+                return Ok(false);
+            }
+        }
+    }
     let mut transitioned = false;
     for from_status in &allowed_from_statuses {
         match state

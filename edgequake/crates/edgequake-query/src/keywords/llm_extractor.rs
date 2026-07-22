@@ -17,6 +17,7 @@ use super::extractor::{
     rule_based_keyword_extraction, ExtractedKeywords, KeywordExtractor, Keywords,
 };
 use super::intent::QueryIntent;
+use super::keyword_mode::keyword_cache_enabled;
 
 /// LLM-based keyword extractor.
 ///
@@ -77,6 +78,8 @@ impl LLMKeywordExtractor {
             .map_err(QueryError::from)?;
 
         let mut extracted = self.parse_response(&response.content)?;
+        extracted.query_intent =
+            Self::maybe_apply_factual_intent_bias(query, extracted.query_intent);
         extracted.cache_key = self.cache_key(query);
 
         Ok(extracted)
@@ -98,11 +101,14 @@ Examples: "artificial intelligence", "climate change", "software architecture", 
 Examples: "GPT-4", "Sarah Chen", "PostgreSQL", "neural network", "Microsoft"
 
 **Query Intent**:
-- factual: Questions asking for facts about a specific thing ("What is X?", "Who is Y?")
-- relational: Questions about connections between things ("How does X relate to Y?")
-- exploratory: Broad questions seeking overview or understanding ("Tell me about X")
-- comparative: Questions comparing multiple things ("Compare X and Y")
-- procedural: Questions about processes or steps ("How to do X?")
+- factual: Closed fact lookup — a single answerable fact, name, method, regimen, yes/no, or which-of ("What is X?", "Which Y is used for Z?", "Is X associated with Y?", "What diagnostic method is required for MGZL?")
+- relational: Connections / multi-hop between things ("How does X relate to Y?", "How do A and B differ in mechanism?")
+- exploratory: Synthesis, overview, staging, classification, or contextual summarize across aspects ("Tell me about X", "What are the main types/stages/methods… and how are they classified?", "How are stages defined and what are distinguishing features?")
+- comparative: Explicit side-by-side comparison ("Compare X and Y", "X vs Y")
+- procedural: Step-by-step how-to ("How to do X?", "How do I …?")
+
+Prefer **factual** for short What/Which/Who/Is/Does questions that expect one concrete answer (drug name, method, gene, yes/no).
+Prefer **exploratory** (not factual) only when the question asks for a structured overview, stages, subtypes, diagnostic panels, or multi-aspect summary ("What are the main stages…", "How are … classified?").
 
 ## Query
 "{query}"
@@ -145,8 +151,58 @@ Query: "Compare Python and Rust for systems programming"
   "query_intent": "comparative"
 }}
 
+Query: "How are the stages of esophageal cancer defined and what are their distinguishing features?"
+{{
+  "high_level_keywords": ["cancer staging", "esophageal cancer", "clinical classification"],
+  "low_level_keywords": ["esophageal cancer", "TNM", "stage", "distinguishing features"],
+  "query_intent": "exploratory"
+}}
+
+Query: "What diagnostic method is required for MGZL?"
+{{
+  "high_level_keywords": ["diagnosis", "lymphoma", "pathology"],
+  "low_level_keywords": ["MGZL", "hematopathologist", "diagnostic method"],
+  "query_intent": "factual"
+}}
+
+Query: "Which chemotherapy regimens are used for bladder cancer?"
+{{
+  "high_level_keywords": ["chemotherapy", "bladder cancer", "treatment regimens"],
+  "low_level_keywords": ["bladder cancer", "cisplatin", "ddMVAC"],
+  "query_intent": "factual"
+}}
+
+Query: "Is autoimmune disease associated with increased BCC risk?"
+{{
+  "high_level_keywords": ["autoimmune disease", "skin cancer risk"],
+  "low_level_keywords": ["BCC", "basal cell carcinoma", "autoimmune"],
+  "query_intent": "factual"
+}}
+
 Now extract keywords from the query above. Respond with JSON only:"#
         )
+    }
+
+    /// 028 A2: when enabled, prefer heuristic Factual over LLM exploratory/relational
+    /// for closed factoids — improves Fact intent coverage without L2 heuristic-OR.
+    fn maybe_apply_factual_intent_bias(query: &str, intent: QueryIntent) -> QueryIntent {
+        let enabled = std::env::var("EDGEQUAKE_INTENT_FACTUAL_BIAS")
+            .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+            .unwrap_or(false);
+        if !enabled {
+            return intent;
+        }
+        let heuristic = QueryIntent::classify_heuristic(query);
+        if matches!(heuristic, QueryIntent::Factual)
+            && matches!(intent, QueryIntent::Exploratory | QueryIntent::Relational)
+        {
+            tracing::debug!(
+                llm = %intent,
+                "028 A2 INTENT_FACTUAL_BIAS: LLM→factual (heuristic factual)"
+            );
+            return QueryIntent::Factual;
+        }
+        intent
     }
 
     /// Parse the LLM response into ExtractedKeywords.
@@ -154,19 +210,21 @@ Now extract keywords from the query above. Respond with JSON only:"#
         // Try to find JSON in the response
         let json_str = self.extract_json(response)?;
 
-        // Parse the JSON
-        let parsed: LLMKeywordResponse = match serde_json::from_str(&json_str) {
+        // Parse the JSON (tolerate wrapper objects some small models emit:
+        // `{"data":{...}}` / `{"response":{...}}` — needed for fast KEYWORD roles).
+        let parsed: LLMKeywordResponse = match Self::parse_keyword_payload(&json_str) {
             Ok(p) => p,
             Err(e) => {
                 // Try json_repair-style fixes
                 if let Ok(fixed) = self.try_fix_json(&json_str) {
-                    if let Ok(parsed) = serde_json::from_str::<LLMKeywordResponse>(&fixed) {
-                        parsed
-                    } else {
-                        return Err(QueryError::Internal(format!(
-                            "Failed to parse keyword JSON after fix attempt: {}. Response: {}",
-                            e, json_str
-                        )));
+                    match Self::parse_keyword_payload(&fixed) {
+                        Ok(parsed) => parsed,
+                        Err(_) => {
+                            return Err(QueryError::Internal(format!(
+                                "Failed to parse keyword JSON after fix attempt: {}. Response: {}",
+                                e, json_str
+                            )));
+                        }
                     }
                 } else {
                     return Err(QueryError::Internal(format!(
@@ -182,6 +240,25 @@ Now extract keywords from the query above. Respond with JSON only:"#
             parsed.low_level_keywords,
             QueryIntent::from_str_loose(&parsed.query_intent),
         ))
+    }
+
+    /// Deserialize keyword JSON, unwrapping one nesting level when needed.
+    fn parse_keyword_payload(
+        json_str: &str,
+    ) -> std::result::Result<LLMKeywordResponse, serde_json::Error> {
+        if let Ok(p) = serde_json::from_str::<LLMKeywordResponse>(json_str) {
+            return Ok(p);
+        }
+        let value: serde_json::Value = serde_json::from_str(json_str)?;
+        if let Some(inner) = value.as_object().and_then(|obj| {
+            obj.get("data")
+                .or_else(|| obj.get("response"))
+                .or_else(|| obj.get("result"))
+                .or_else(|| obj.get("keywords"))
+        }) {
+            return serde_json::from_value(inner.clone());
+        }
+        serde_json::from_value(value)
     }
 
     fn rule_based_keywords_for_mock(&self, query: &str) -> ExtractedKeywords {
@@ -290,7 +367,9 @@ impl KeywordExtractor for LLMKeywordExtractor {
             .await
             .map_err(QueryError::from)?;
 
-        let extracted = self.parse_response(&response.content)?;
+        let mut extracted = self.parse_response(&response.content)?;
+        extracted.query_intent =
+            Self::maybe_apply_factual_intent_bias(query, extracted.query_intent);
 
         Ok(extracted.to_simple())
     }
@@ -311,6 +390,8 @@ impl KeywordExtractor for LLMKeywordExtractor {
             .map_err(QueryError::from)?;
 
         let mut extracted = self.parse_response(&response.content)?;
+        extracted.query_intent =
+            Self::maybe_apply_factual_intent_bias(query, extracted.query_intent);
         extracted.cache_key = self.cache_key(query);
 
         Ok(extracted)
@@ -390,10 +471,12 @@ impl KeywordExtractor for CachedKeywordExtractor {
     async fn extract_extended(&self, query: &str) -> Result<ExtractedKeywords> {
         let cache_key = self.cache_key(query);
 
-        // Check cache first
-        if let Ok(Some(cached)) = self.cache.get(&cache_key).await {
-            tracing::debug!(query = %query, "Keyword cache hit");
-            return Ok(cached);
+        // Check cache first (064: EDGEQUAKE_KEYWORD_CACHE=0 disables)
+        if keyword_cache_enabled() {
+            if let Ok(Some(cached)) = self.cache.get(&cache_key).await {
+                tracing::debug!(query = %query, "Keyword cache hit");
+                return Ok(cached);
+            }
         }
 
         tracing::debug!(query = %query, "Keyword cache miss, extracting...");
@@ -403,8 +486,10 @@ impl KeywordExtractor for CachedKeywordExtractor {
         extracted.cache_key = cache_key.clone();
 
         // Cache the result
-        if let Err(e) = self.cache.set(&cache_key, &extracted, Some(self.ttl)).await {
-            tracing::warn!(error = %e, "Failed to cache keywords");
+        if keyword_cache_enabled() {
+            if let Err(e) = self.cache.set(&cache_key, &extracted, Some(self.ttl)).await {
+                tracing::warn!(error = %e, "Failed to cache keywords");
+            }
         }
 
         Ok(extracted)
@@ -427,9 +512,11 @@ impl KeywordExtractor for CachedKeywordExtractor {
         let cache_key = self.cache_key(query);
 
         // Check cache first (independent of LLM provider)
-        if let Ok(Some(cached)) = self.cache.get(&cache_key).await {
-            tracing::debug!(query = %query, "Keyword cache hit (with LLM override)");
-            return Ok(cached);
+        if keyword_cache_enabled() {
+            if let Ok(Some(cached)) = self.cache.get(&cache_key).await {
+                tracing::debug!(query = %query, "Keyword cache hit (with LLM override)");
+                return Ok(cached);
+            }
         }
 
         tracing::debug!(query = %query, "Keyword cache miss (with LLM override), extracting...");
@@ -442,8 +529,10 @@ impl KeywordExtractor for CachedKeywordExtractor {
         extracted.cache_key = cache_key.clone();
 
         // Cache the result
-        if let Err(e) = self.cache.set(&cache_key, &extracted, Some(self.ttl)).await {
-            tracing::warn!(error = %e, "Failed to cache keywords");
+        if keyword_cache_enabled() {
+            if let Err(e) = self.cache.set(&cache_key, &extracted, Some(self.ttl)).await {
+                tracing::warn!(error = %e, "Failed to cache keywords");
+            }
         }
 
         Ok(extracted)
@@ -505,6 +594,23 @@ Done!"#;
         assert_eq!(extracted.query_intent, QueryIntent::Relational);
     }
 
+    #[test]
+    fn test_parse_response_unwraps_data_wrapper() {
+        let llm = Arc::new(edgequake_llm::MockProvider::new());
+        let extractor = LLMKeywordExtractor::new(llm);
+        let response = r#"{
+            "data": {
+                "high_level_keywords": ["RAG"],
+                "low_level_keywords": ["LightRAG"],
+                "query_intent": "factual"
+            }
+        }"#;
+        let extracted = extractor.parse_response(response).unwrap();
+        assert_eq!(extracted.high_level, vec!["RAG".to_string()]);
+        assert_eq!(extracted.low_level, vec!["LightRAG".to_string()]);
+        assert_eq!(extracted.query_intent, QueryIntent::Factual);
+    }
+
     #[tokio::test]
     async fn test_extract_extended_uses_rule_based_keywords_for_mock_provider() {
         let llm = Arc::new(edgequake_llm::MockProvider::new());
@@ -517,5 +623,17 @@ Done!"#;
 
         assert!(!extracted.high_level.is_empty() || !extracted.low_level.is_empty());
         assert_eq!(extracted.query_intent, QueryIntent::Factual);
+    }
+
+    #[test]
+    fn factual_bias_upgrades_exploratory_when_enabled() {
+        std::env::set_var("EDGEQUAKE_INTENT_FACTUAL_BIAS", "1");
+        let q = "What diagnostic method is required for MGZL?";
+        let out = LLMKeywordExtractor::maybe_apply_factual_intent_bias(q, QueryIntent::Exploratory);
+        assert_eq!(out, QueryIntent::Factual);
+        std::env::remove_var("EDGEQUAKE_INTENT_FACTUAL_BIAS");
+        let out_off =
+            LLMKeywordExtractor::maybe_apply_factual_intent_bias(q, QueryIntent::Exploratory);
+        assert_eq!(out_off, QueryIntent::Exploratory);
     }
 }

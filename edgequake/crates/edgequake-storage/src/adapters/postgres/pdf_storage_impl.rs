@@ -340,12 +340,11 @@ impl PdfDocumentStorage for PostgresPdfStorage {
     async fn update_pdf_status(&self, pdf_id: &Uuid, status: PdfProcessingStatus) -> Result<()> {
         let status_str = status.as_str();
 
-        let processed_at =
-            if status == PdfProcessingStatus::Completed || status == PdfProcessingStatus::Failed {
-                Some(chrono::Utc::now())
-            } else {
-                None
-            };
+        let processed_at = if status.is_terminal() {
+            Some(chrono::Utc::now())
+        } else {
+            None
+        };
 
         sqlx::query!(
             r#"
@@ -367,13 +366,34 @@ impl PdfDocumentStorage for PostgresPdfStorage {
         Ok(())
     }
 
+    async fn update_pdf_page_count(&self, pdf_id: &Uuid, page_count: i32) -> Result<()> {
+        // Use non-macro query so SQLX_OFFLINE builds don't require a cache refresh
+        // for this heal-only path.
+        sqlx::query(
+            r#"
+            UPDATE pdf_documents
+            SET page_count = $1
+            WHERE pdf_id = $2
+            "#,
+        )
+        .bind(page_count)
+        .bind(pdf_id)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| StorageError::Database(format!("Failed to update PDF page_count: {}", e)))?;
+
+        debug!(
+            "Updated PDF page_count: id={}, page_count={}",
+            pdf_id, page_count
+        );
+        Ok(())
+    }
+
     async fn update_pdf_processing(&self, request: UpdatePdfProcessingRequest) -> Result<()> {
         let status_str = request.processing_status.as_str();
         let method_str = request.extraction_method.map(|m| m.as_str().to_string());
 
-        let processed_at = if request.processing_status == PdfProcessingStatus::Completed
-            || request.processing_status == PdfProcessingStatus::Failed
-        {
+        let processed_at = if request.processing_status.is_terminal() {
             Some(chrono::Utc::now())
         } else {
             None

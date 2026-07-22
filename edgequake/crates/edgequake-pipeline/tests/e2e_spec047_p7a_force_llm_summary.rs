@@ -77,12 +77,14 @@ async fn setup_merger(
     graph.initialize().await.unwrap();
     vector.initialize().await.unwrap();
 
-    let mut config = MergerConfig::default();
-    config.use_llm_summarization = true;
-    config.force_llm_summary_on_merge = force;
-    config.summary_max_tokens = 12_000;
-    // Disable Jaccard skip so distinct short facts always accumulate.
-    config.description_similarity_threshold = 1.01;
+    let config = MergerConfig {
+        use_llm_summarization: true,
+        force_llm_summary_on_merge: force,
+        summary_max_tokens: 12_000,
+        // Disable Jaccard skip so distinct short facts always accumulate.
+        description_similarity_threshold: 1.01,
+        ..MergerConfig::default()
+    };
 
     let merger =
         KnowledgeGraphMerger::new(config, graph.clone(), vector).with_merge_backend(backend);

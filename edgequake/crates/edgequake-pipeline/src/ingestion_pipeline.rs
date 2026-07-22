@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 use edgequake_llm::traits::{EmbeddingProvider, LLMProvider};
 
-use crate::adaptive_chunking::{adaptive_chunk_overlap, calculate_adaptive_chunk_size};
 use crate::chunker::{ChunkOptions, ChunkStrategy, ChunkerConfig};
 use crate::extractor::{EntityExtractor, GleaningConfig, GleaningExtractor, LLMExtractor};
 use crate::pipeline::{Pipeline, PipelineConfig};
@@ -29,6 +28,12 @@ pub struct IngestionPipelineOptions {
     /// Used to apply local-vs-cloud extraction timeouts/concurrency without
     /// changing cloud quality defaults.
     pub llm_provider: Option<String>,
+    /// When true, allow gleaning on local providers (Ollama / LM Studio).
+    ///
+    /// Local gleaning is off by default — it doubles LLM load and worsens
+    /// connection storms. Set via metadata `allow_local_gleaning` or env
+    /// `EDGEQUAKE_LOCAL_ENABLE_GLEANING=1`.
+    pub allow_local_gleaning: bool,
 }
 
 impl IngestionPipelineOptions {
@@ -41,6 +46,7 @@ impl IngestionPipelineOptions {
             chunk_options: None,
             is_pdf_source: false,
             llm_provider: None,
+            allow_local_gleaning: false,
         }
     }
 
@@ -68,6 +74,12 @@ impl IngestionPipelineOptions {
         self
     }
 
+    /// Opt in to gleaning when the extract provider is local (Ollama / LM Studio).
+    pub fn with_allow_local_gleaning(mut self, allow: bool) -> Self {
+        self.allow_local_gleaning = allow;
+        self
+    }
+
     pub fn with_chunk_strategy(mut self, strategy: ChunkStrategy) -> Self {
         self.chunk_strategy = strategy;
         self
@@ -80,16 +92,24 @@ impl IngestionPipelineOptions {
 }
 
 /// Build chunker config from document size + optional API overrides.
+///
+/// When `EDGEQUAKE_ADAPTIVE_CHUNKING=0`, uses fixed
+/// `EDGEQUAKE_CHUNK_SIZE` / `EDGEQUAKE_CHUNK_OVERLAP` (defaults 1200/100)
+/// for fair LightRAG-matched Acc ingest. API `ChunkOptions` still win last.
 pub fn build_chunker_config(
     document_size_bytes: usize,
     strategy: ChunkStrategy,
     chunk_options: Option<&ChunkOptions>,
 ) -> ChunkerConfig {
-    let mut chunk_size = calculate_adaptive_chunk_size(document_size_bytes);
-    let chunk_overlap = adaptive_chunk_overlap(chunk_size);
+    use crate::adaptive_chunking::{adaptive_chunking_enabled, resolve_base_chunk_size_overlap};
 
-    // Recursive/markdown/pdf use LightRAG nominal 1200 when doc is small.
-    if strategy != ChunkStrategy::Fixed && document_size_bytes <= 50_000 {
+    let (mut chunk_size, chunk_overlap) = resolve_base_chunk_size_overlap(document_size_bytes);
+
+    // Recursive/markdown/pdf floor when adaptive (legacy LightRAG small-doc path).
+    if adaptive_chunking_enabled()
+        && strategy != ChunkStrategy::Fixed
+        && document_size_bytes <= 50_000
+    {
         chunk_size = chunk_size.max(800);
     }
 
@@ -126,13 +146,30 @@ pub fn build_ingestion_pipeline(
         ..PipelineConfig::from_env_for_provider(provider)
     };
 
+    let (enable_gleaning, max_gleaning) = crate::pipeline::resolve_gleaning_for_provider(
+        provider,
+        options.enable_gleaning,
+        options.max_gleaning,
+        options.allow_local_gleaning,
+    );
+    if options.enable_gleaning
+        && !enable_gleaning
+        && crate::pipeline::is_local_extraction_provider(provider)
+    {
+        tracing::info!(
+            llm_provider = provider,
+            "Disabled gleaning for local LLM to reduce Ollama load; set {}=1 or allow_local_gleaning to opt in",
+            crate::pipeline::LOCAL_ENABLE_GLEANING_ENV
+        );
+    }
+
     tracing::info!(
         doc_size_bytes = options.document_size_bytes,
         chunk_size = pipeline_config.chunker.chunk_size,
         chunk_overlap = pipeline_config.chunker.chunk_overlap,
         chunk_strategy = options.chunk_strategy.as_str(),
-        enable_gleaning = options.enable_gleaning,
-        max_gleaning = options.max_gleaning,
+        enable_gleaning = enable_gleaning,
+        max_gleaning = max_gleaning,
         llm_provider = provider,
         is_local_extraction = crate::pipeline::is_local_extraction_provider(provider),
         chunk_timeout_secs = pipeline_config.chunk_extraction_timeout_secs,
@@ -144,13 +181,12 @@ pub fn build_ingestion_pipeline(
     let base_extractor: Arc<dyn EntityExtractor> =
         Arc::new(LLMExtractor::new(llm.clone()).with_entity_schema(entity_schema.clone()));
 
-    let extractor: Arc<dyn EntityExtractor> = if options.enable_gleaning && options.max_gleaning > 0
-    {
+    let extractor: Arc<dyn EntityExtractor> = if enable_gleaning && max_gleaning > 0 {
         Arc::new(
             GleaningExtractor::new(llm, base_extractor)
                 .with_entity_schema(entity_schema)
                 .with_config(GleaningConfig {
-                    max_gleaning: options.max_gleaning,
+                    max_gleaning,
                     always_glean: false,
                 }),
         )

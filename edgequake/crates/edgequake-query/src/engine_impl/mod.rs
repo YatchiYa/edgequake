@@ -165,6 +165,10 @@ pub struct QueryEngineConfig {
     /// PathRAG-style relation prune before truncation. SPEC-046 P1.3.
     #[serde(skip)]
     pub path_prune: crate::path_prune::PathPruneConfig,
+
+    /// Prompt entity order: `degree` (default) or `query_score` (Acc-win E2).
+    #[serde(skip)]
+    pub entity_rank: crate::entity_rank::EntityRankMode,
 }
 
 impl Default for QueryEngineConfig {
@@ -194,34 +198,36 @@ impl Default for QueryEngineConfig {
                 .unwrap_or(0.1),
             use_keyword_extraction: true,
             use_adaptive_mode: true,
-            // WHY derived from max_context_tokens: The truncation budget MUST match
-            // the context token budget, otherwise the system fetches chunks it then
-            // throws away. LightRAG splits: 50% entities, 50% relationships, chunks
-            // fill the remainder. With 30K total: entities=10K, rels=10K, chunks=10K.
-            truncation: TruncationConfig {
-                max_entity_tokens: 10000,
-                max_relation_tokens: 10000,
-                max_total_tokens: 30000,
-                buffer_tokens: std::env::var("EDGEQUAKE_TRUNCATION_BUFFER_TOKENS")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(200)
-                    .clamp(0, 5_000),
-                min_chunk_budget_ratio: crate::truncation::parse_min_chunk_budget_ratio(
-                    &std::env::var("EDGEQUAKE_MIN_CHUNK_BUDGET_RATIO").unwrap_or_default(),
-                ),
-            },
+            // WHY derived from max_context_tokens: truncation MUST match the
+            // context token budget. LightRAG (constants.py): entity=6000,
+            // relation=8000, total=30000; chunks get dynamic remainder.
+            // Override via EDGEQUAKE_MAX_ENTITY_TOKENS / MAX_RELATION_TOKENS.
+            truncation: TruncationConfig::default(),
             keyword_cache_ttl_secs: 24 * 60 * 60, // 24 hours
             enable_rerank: true,                  // Enable by default for retrieval quality
-            // WHY 0.1: BM25 scores can be low for short documents or simple queries.
-            // 0.3 was too aggressive and filtered out valid chunks. 0.1 matches min_score.
-            min_rerank_score: 0.1,
+            // WHY 0.1 default: filters CE noise. Acc recall recovery (025): set
+            // EDGEQUAKE_MIN_RERANK_SCORE=0 so Mix gold is not hard-dropped before protect.
+            min_rerank_score: std::env::var("EDGEQUAKE_MIN_RERANK_SCORE")
+                .ok()
+                .and_then(|v| v.parse::<f32>().ok())
+                .unwrap_or(0.1)
+                .clamp(0.0, 1.0),
             // WHY 20: Match max_chunks to keep all chunk candidates after reranking.
             rerank_top_k: 20,
             // P-G8: equal weights preserve Hybrid ordering on identical fixtures.
-            mix_local_weight: 1.0,
-            mix_global_weight: 1.0,
-            mix_naive_weight: 1.0,
+            // Acc-win E3b: override via EDGEQUAKE_MIX_{LOCAL,GLOBAL,NAIVE}_WEIGHT.
+            mix_local_weight: crate::mix_weights::mix_arm_weight_from_env(
+                "EDGEQUAKE_MIX_LOCAL_WEIGHT",
+                1.0,
+            ),
+            mix_global_weight: crate::mix_weights::mix_arm_weight_from_env(
+                "EDGEQUAKE_MIX_GLOBAL_WEIGHT",
+                1.0,
+            ),
+            mix_naive_weight: crate::mix_weights::mix_arm_weight_from_env(
+                "EDGEQUAKE_MIX_NAIVE_WEIGHT",
+                1.0,
+            ),
             enable_bm25_retrieval: std::env::var("EDGEQUAKE_BM25_RETRIEVAL")
                 .map(|v| !matches!(v.to_ascii_lowercase().as_str(), "false" | "0" | "off"))
                 .unwrap_or(true),
@@ -241,6 +247,7 @@ impl Default for QueryEngineConfig {
             kg_chunk_pick_method: crate::kg_chunk_pick::KgChunkPickMethod::from_env(),
             graph_walk: crate::graph_ppr::GraphWalkMode::from_env(),
             path_prune: crate::path_prune::PathPruneConfig::from_env(),
+            entity_rank: crate::entity_rank::EntityRankMode::from_env(),
         }
     }
 }
@@ -337,11 +344,20 @@ impl QueryEmbeddings {
             keywords.low_level.join(", ")
         };
 
-        // When keyword extraction is off, high/low texts equal the query string.
-        // Batch-embed three slots so providers (e.g. MockProvider queue) can supply
-        // distinct query / high_level / low_level vectors — required for Local/Global
-        // mode ranking (SPEC-017 / e2e_engine_impl chunk-ranking contract).
+        // When high/low texts equal the query, vectors are identical — reuse the
+        // precomputed query_vec (057/058 C1c). Avoids a cache-bypassing triple
+        // `embed()` batch that re-pays remote embed RTT after parallel embed_one.
+        //
+        // Empty query_vec = keyword extraction off: keep legacy triple batch so
+        // MockProvider queues can supply distinct slots (SPEC-017 / e2e_sota).
         if high_level_text == query && low_level_text == query {
+            if !query_vec.is_empty() {
+                return Ok(Self {
+                    query: query_vec.clone(),
+                    high_level: query_vec.clone(),
+                    low_level: query_vec,
+                });
+            }
             let texts = vec![query.to_string(), query.to_string(), query.to_string()];
             let embeds = embedder.embed(&texts).await.map_err(QueryError::from)?;
             if embeds.len() >= 3 {
@@ -351,7 +367,6 @@ impl QueryEmbeddings {
                     low_level: embeds[2].clone(),
                 });
             }
-            // Fallback: reuse parallel embed_one result when provider returns fewer.
             return Ok(Self {
                 query: query_vec.clone(),
                 high_level: query_vec.clone(),
@@ -394,6 +409,8 @@ pub struct QueryEngine {
     keyword_validation_cache: Arc<tokio::sync::RwLock<std::collections::HashMap<String, bool>>>,
     /// Optional cache for `context_only` retrieval contexts (P-G9).
     result_cache: Option<Arc<crate::cache::QueryResultCache>>,
+    /// Opt-in product Mix answer LLM cache (064 / LR `cache_type=query`).
+    answer_cache: Option<crate::cache::SharedAnswerCache>,
 }
 
 impl QueryEngine {
@@ -435,6 +452,7 @@ impl QueryEngine {
                 std::collections::HashMap::new(),
             )),
             result_cache: None,
+            answer_cache: None,
         }
     }
 
@@ -444,6 +462,28 @@ impl QueryEngine {
         self
     }
 
+    /// Enable in-memory Mix answer LLM cache (064). Also auto-enabled when
+    /// `EDGEQUAKE_QUERY_ANSWER_CACHE=1` via [`Self::with_answer_cache_from_env`].
+    pub fn with_answer_cache(self) -> Self {
+        self.with_answer_cache_config(1_000, std::time::Duration::from_secs(3600))
+    }
+
+    pub fn with_answer_cache_config(mut self, max_size: usize, ttl: std::time::Duration) -> Self {
+        self.answer_cache = Some(Arc::new(crate::cache::InMemoryAnswerCache::new(
+            max_size, ttl,
+        )));
+        self
+    }
+
+    /// Attach answer cache when `EDGEQUAKE_QUERY_ANSWER_CACHE` is truthy (default off).
+    pub fn with_answer_cache_from_env(self) -> Self {
+        if crate::cache::answer_cache_enabled_from_env() {
+            self.with_answer_cache()
+        } else {
+            self
+        }
+    }
+
     /// Attach KV storage for chunk content hydration (SPEC-024 2.5).
     pub fn with_kv_storage(mut self, kv: Arc<dyn edgequake_storage::traits::KVStorage>) -> Self {
         self.kv_storage = Some(kv);
@@ -451,9 +491,8 @@ impl QueryEngine {
     }
 
     /// Wrap the engine's embedding provider in an LRU+TTL embedding cache
-    /// (P-G9 / RC-14). Repeated `embed_one` calls for the same query text skip
-    /// the embedding round-trip. Batch `embed` (ingestion) is delegated
-    /// unchanged, so this never affects ingestion semantics.
+    /// (P-G9 / RC-14 / 064). Repeated `embed_one` and per-text batch `embed`
+    /// slots share keys so Mix keyword-level batches stay warm.
     ///
     /// Defaults: 10_000 entries, 1h TTL. Use [`Self::with_embedding_cache_config`]
     /// for custom sizing.
@@ -493,6 +532,9 @@ impl QueryEngine {
     pub fn invalidate_result_cache(&self) {
         if let Some(cache) = &self.result_cache {
             cache.invalidate_all();
+        }
+        if let Some(cache) = &self.answer_cache {
+            cache.clear();
         }
     }
 }
@@ -539,6 +581,7 @@ impl QueryEngine {
                 std::collections::HashMap::new(),
             )),
             result_cache: None,
+            answer_cache: None,
         }
     }
 
@@ -594,7 +637,8 @@ impl QueryEngine {
     }
 }
 
-mod modes;
+/// SPEC-059: public for arm concurrency load tests.
+pub mod modes;
 mod prompt;
 mod query_entry;
 mod query_modes;
@@ -625,13 +669,75 @@ mod tests {
         assert_eq!(embeddings.low_level, embedding);
     }
 
+    #[tokio::test]
+    async fn compute_with_query_vec_reuses_when_keywords_equal_query() {
+        // 058 C1c: non-empty query_vec + empty keywords → no second embed RTT.
+        use crate::keywords::QueryIntent;
+        use edgequake_llm::MockProvider;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct CountingEmbed {
+            inner: MockProvider,
+            calls: AtomicUsize,
+        }
+        #[async_trait::async_trait]
+        impl EmbeddingProvider for CountingEmbed {
+            fn name(&self) -> &str {
+                EmbeddingProvider::name(&self.inner)
+            }
+            fn model(&self) -> &str {
+                EmbeddingProvider::model(&self.inner)
+            }
+            fn dimension(&self) -> usize {
+                EmbeddingProvider::dimension(&self.inner)
+            }
+            fn max_tokens(&self) -> usize {
+                EmbeddingProvider::max_tokens(&self.inner)
+            }
+            async fn embed(&self, texts: &[String]) -> edgequake_llm::Result<Vec<Vec<f32>>> {
+                self.calls.fetch_add(1, Ordering::SeqCst);
+                self.inner.embed(texts).await
+            }
+            async fn embed_one(&self, text: &str) -> edgequake_llm::Result<Vec<f32>> {
+                self.calls.fetch_add(1, Ordering::SeqCst);
+                self.inner.embed_one(text).await
+            }
+        }
+
+        let provider = CountingEmbed {
+            inner: MockProvider::default(),
+            calls: AtomicUsize::new(0),
+        };
+        let query_vec = vec![0.5_f32; EmbeddingProvider::dimension(&provider)];
+        let keywords = ExtractedKeywords::new(vec![], vec![], QueryIntent::Factual);
+        let out = QueryEmbeddings::compute_with_query_vec(
+            "what is BRCA1?",
+            query_vec.clone(),
+            &keywords,
+            &provider,
+        )
+        .await
+        .unwrap();
+        assert_eq!(out.query, query_vec);
+        assert_eq!(out.high_level, query_vec);
+        assert_eq!(out.low_level, query_vec);
+        assert_eq!(
+            provider.calls.load(Ordering::SeqCst),
+            0,
+            "must reuse query_vec — no embed() batch"
+        );
+    }
+
     /// @implements SPEC-004: build_prompt with system_prompt_extension
     mod system_prompt_tests {
         use super::*;
         use crate::context::{QueryContext, RetrievedChunk};
         use edgequake_llm::MockProvider;
         use edgequake_storage::{MemoryGraphStorage, MemoryVectorStorage};
-        use std::sync::Arc;
+        use std::sync::{Arc, Mutex};
+
+        /// Serialize env-var prompt tests (parallel cargo test races on process env).
+        static ANSWER_PROMPT_ENV_LOCK: Mutex<()> = Mutex::new(());
 
         /// Helper to create a minimal QueryEngine for prompt tests.
         fn create_prompt_test_engine() -> QueryEngine {
@@ -666,7 +772,7 @@ mod tests {
             let engine = create_prompt_test_engine();
             let context = test_context();
 
-            let prompt = engine.build_prompt("What is Rust?", &context, None, &[]);
+            let prompt = engine.build_prompt("What is Rust?", &context, None, &[], None);
 
             assert!(prompt.contains("---Role---"));
             assert!(prompt.contains("---Instructions---"));
@@ -686,6 +792,7 @@ mod tests {
                 &context,
                 Some("Always respond in French. Be concise."),
                 &[],
+                None,
             );
 
             assert!(prompt.contains("---Role---"));
@@ -715,12 +822,85 @@ mod tests {
             let context = test_context();
 
             // Empty string should behave like None
-            let prompt = engine.build_prompt("What is Rust?", &context, Some(""), &[]);
+            let prompt = engine.build_prompt("What is Rust?", &context, Some(""), &[], None);
             assert!(!prompt.contains("---Additional Instructions---"));
 
             // Whitespace-only should also behave like None
-            let prompt = engine.build_prompt("What is Rust?", &context, Some("   \n\t  "), &[]);
+            let prompt =
+                engine.build_prompt("What is Rust?", &context, Some("   \n\t  "), &[], None);
             assert!(!prompt.contains("---Additional Instructions---"));
+        }
+
+        #[test]
+        fn test_build_prompt_specific_style_names_entities() {
+            let _guard = ANSWER_PROMPT_ENV_LOCK
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            std::env::set_var("EDGEQUAKE_ANSWER_PROMPT", "specific");
+            std::env::remove_var("EDGEQUAKE_ANSWER_SPECIFIC_TYPES");
+            let engine = create_prompt_test_engine();
+            let context = test_context();
+            let prompt = engine.build_prompt(
+                "Which PARP inhibitors are recommended?",
+                &context,
+                None,
+                &[],
+                None,
+            );
+            assert!(
+                prompt.contains("specific named items") || prompt.contains("name those members"),
+                "specific prompt missing specificity instructions"
+            );
+            assert!(
+                !prompt.contains("Do not attempt to guess"),
+                "specific must not use LR abstain wording"
+            );
+            std::env::remove_var("EDGEQUAKE_ANSWER_PROMPT");
+        }
+
+        #[test]
+        fn test_build_prompt_specific_types_scopes_to_complex() {
+            let _guard = ANSWER_PROMPT_ENV_LOCK
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            std::env::set_var("EDGEQUAKE_ANSWER_PROMPT", "specific");
+            std::env::set_var("EDGEQUAKE_ANSWER_SPECIFIC_TYPES", "complex");
+            let engine = create_prompt_test_engine();
+            let context = test_context();
+
+            let complex = engine.build_prompt(
+                "Which PARP inhibitors are recommended?",
+                &context,
+                None,
+                &[],
+                Some("Complex Reasoning"),
+            );
+            assert!(
+                complex.contains("name those members") || complex.contains("specific named items"),
+                "Complex question_type must get specific prompt"
+            );
+
+            let fact = engine.build_prompt(
+                "What is the capital?",
+                &context,
+                None,
+                &[],
+                Some("Fact Retrieval"),
+            );
+            assert!(
+                !fact.contains("name those members") && !fact.contains("specific named items"),
+                "Fact question_type must keep default prompt under SPECIFIC_TYPES=complex"
+            );
+
+            let missing = engine.build_prompt("q", &context, None, &[], None);
+            assert!(
+                !missing.contains("name those members")
+                    && !missing.contains("specific named items"),
+                "missing question_type must keep default when types scoped"
+            );
+
+            std::env::remove_var("EDGEQUAKE_ANSWER_PROMPT");
+            std::env::remove_var("EDGEQUAKE_ANSWER_SPECIFIC_TYPES");
         }
 
         #[test]
@@ -729,7 +909,8 @@ mod tests {
             let empty_context = QueryContext::default();
 
             // Empty context should return a "no information" message regardless of system_prompt
-            let prompt = engine.build_prompt("query", &empty_context, Some("Be concise"), &[]);
+            let prompt =
+                engine.build_prompt("query", &empty_context, Some("Be concise"), &[], None);
             assert!(prompt.contains("couldn't find any relevant information"));
             assert!(!prompt.contains("---Additional Instructions---"));
         }

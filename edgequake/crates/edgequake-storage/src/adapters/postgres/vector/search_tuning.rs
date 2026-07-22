@@ -1,7 +1,9 @@
 //! Search tuning and embedding serialization for [`super::PgVectorStorage`].
 
 use super::super::config::VectorIndexType;
+use super::super::hnsw_runtime_policy::{parse_hnsw_iterative_scan_mode, HnswRuntimePolicy};
 use super::PgVectorStorage;
+use crate::traits::MetadataFilter;
 
 impl PgVectorStorage {
     pub(crate) fn format_embedding(embedding: &[f32]) -> String {
@@ -9,40 +11,114 @@ impl PgVectorStorage {
         format!("[{}]", values.join(","))
     }
 
-    pub(crate) fn search_tuning_statements(
+    /// SPEC-067: session-local planner bias toward HNSW / partial when Wave-2 shape applies.
+    ///
+    /// Only when columns-only filters (partial implication) and no JSONB OR shapes
+    /// (`document_ids` / `modalities`). Does **not** drop global HNSW.
+    ///
+    /// SPEC-080 B3: when `workspace_row_count` is `Some(n)` and `n <= ann_exact_max_rows()`,
+    /// skip bias so the planner may choose exact (seq/btree) on tiny workspace slices.
+    /// Public for SPEC-080 contracts (pure; no DB).
+    pub fn wave2_planner_bias_statements(
+        prefer_columns: bool,
+        partial_ready: bool,
+        mf: &MetadataFilter,
+        workspace_row_count: Option<u64>,
+    ) -> Vec<String> {
+        if !prefer_columns || !partial_ready {
+            return Vec::new();
+        }
+        let jsonb_or_shapes = mf.document_ids.as_ref().is_some_and(|v| !v.is_empty())
+            || mf.modalities.as_ref().is_some_and(|v| !v.is_empty());
+        if jsonb_or_shapes || mf.workspace_id.is_none() {
+            return Vec::new();
+        }
+        if let Some(n) = workspace_row_count {
+            if n <= crate::filter_column_policy::ann_exact_max_rows() {
+                return Vec::new();
+            }
+        }
+        vec![
+            "SET LOCAL enable_seqscan = off".to_string(),
+            "SET LOCAL random_page_cost = 1.1".to_string(),
+        ]
+    }
+
+    /// Build session-local ANN GUCs (SPEC-054/075). Public for contract tests.
+    pub fn search_tuning_statements(
         index_type: VectorIndexType,
         top_k: usize,
         filtered: bool,
         iterative_scan_supported: bool,
     ) -> Vec<String> {
-        Self::search_tuning_statements_with_hnsw_mode(
+        let policy = HnswRuntimePolicy::from_env();
+        Self::search_tuning_statements_with_overrides(
             index_type,
             top_k,
             filtered,
             iterative_scan_supported,
-            hnsw_iterative_scan_mode(),
+            policy.iterative_scan_mode,
+            policy.ef_search_override,
+            policy.max_scan_tuples,
+            policy.scan_mem_multiplier,
         )
     }
 
-    /// Pure variant for tests / DI (SPEC-046 OPS-P1.5 — no env reads).
-    pub(crate) fn search_tuning_statements_with_hnsw_mode(
+    /// Pure variant for tests / DI (SPEC-046 OPS-P1.5 — no env reads for mode string).
+    pub fn search_tuning_statements_with_hnsw_mode(
         index_type: VectorIndexType,
         top_k: usize,
         filtered: bool,
         iterative_scan_supported: bool,
         hnsw_iterative_mode: &str,
     ) -> Vec<String> {
+        let policy = HnswRuntimePolicy::from_env();
+        Self::search_tuning_statements_with_overrides(
+            index_type,
+            top_k,
+            filtered,
+            iterative_scan_supported,
+            hnsw_iterative_mode,
+            policy.ef_search_override,
+            policy.max_scan_tuples,
+            policy.scan_mem_multiplier,
+        )
+    }
+
+    /// Pure GUC builder (SPEC-064 Wave 3 — injectable overrides for battle grid / tests).
+    #[allow(clippy::too_many_arguments)] // injectable override grid mirrors HnswRuntimePolicy fields
+    pub(crate) fn search_tuning_statements_with_overrides(
+        index_type: VectorIndexType,
+        top_k: usize,
+        filtered: bool,
+        iterative_scan_supported: bool,
+        hnsw_iterative_mode: &str,
+        ef_search_override: Option<usize>,
+        max_scan_tuples: u32,
+        scan_mem_multiplier: Option<u32>,
+    ) -> Vec<String> {
         let mut stmts = Vec::new();
         match index_type {
             VectorIndexType::HNSW => {
-                let ef = (top_k.saturating_mul(4)).clamp(40, 1000);
+                let ef = ef_search_override
+                    .unwrap_or_else(|| (top_k.saturating_mul(4)).clamp(40, 1000))
+                    .clamp(1, 1000);
                 stmts.push(format!("SET LOCAL hnsw.ef_search = {}", ef));
                 if filtered && iterative_scan_supported {
                     // AWS/pgvector 2026 RAG guidance: relaxed_order for filtered search.
                     let mode = parse_hnsw_iterative_scan_mode(hnsw_iterative_mode);
                     if mode != "off" {
                         stmts.push(format!("SET LOCAL hnsw.iterative_scan = {}", mode));
-                        stmts.push("SET LOCAL hnsw.max_scan_tuples = 20000".to_string());
+                        stmts.push(format!(
+                            "SET LOCAL hnsw.max_scan_tuples = {}",
+                            max_scan_tuples.clamp(1, 2_147_483_647)
+                        ));
+                        if let Some(mult) = scan_mem_multiplier {
+                            stmts.push(format!(
+                                "SET LOCAL hnsw.scan_mem_multiplier = {}",
+                                mult.clamp(1, 1000)
+                            ));
+                        }
                     }
                 }
             }
@@ -97,24 +173,6 @@ impl PgVectorStorage {
     }
 }
 
-/// Resolve HNSW iterative_scan mode from a raw env value (SPEC-046 OPS-P1.5).
-///
-/// Default `relaxed_order` for filtered RAG (higher recall under filters).
-pub(crate) fn parse_hnsw_iterative_scan_mode(raw: &str) -> &'static str {
-    match raw.trim().to_ascii_lowercase().as_str() {
-        "strict" | "strict_order" => "strict_order",
-        "off" | "false" | "0" => "off",
-        _ => "relaxed_order",
-    }
-}
-
-/// Resolve HNSW iterative_scan mode (SPEC-046 OPS-P1.5).
-pub(crate) fn hnsw_iterative_scan_mode() -> &'static str {
-    parse_hnsw_iterative_scan_mode(
-        &std::env::var("EDGEQUAKE_HNSW_ITERATIVE_SCAN").unwrap_or_default(),
-    )
-}
-
 /// Return true if pgvector `extversion` is >= 0.8.0 (iterative-scan GUCs).
 pub(crate) fn pgvector_supports_iterative_scan(version: &str) -> bool {
     let mut parts = version
@@ -132,6 +190,7 @@ pub(crate) fn pgvector_supports_iterative_scan(version: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use super::super::super::hnsw_runtime_policy::parse_hnsw_iterative_scan_mode;
     use super::*;
 
     #[test]
@@ -179,6 +238,27 @@ mod tests {
     }
 
     #[test]
+    fn test_search_tuning_overrides_ef_and_scan_mem() {
+        let stmts = PgVectorStorage::search_tuning_statements_with_overrides(
+            VectorIndexType::HNSW,
+            10,
+            true,
+            true,
+            "relaxed_order",
+            Some(120),
+            5_000,
+            Some(2),
+        );
+        assert!(stmts.iter().any(|s| s == "SET LOCAL hnsw.ef_search = 120"));
+        assert!(stmts
+            .iter()
+            .any(|s| s == "SET LOCAL hnsw.max_scan_tuples = 5000"));
+        assert!(stmts
+            .iter()
+            .any(|s| s == "SET LOCAL hnsw.scan_mem_multiplier = 2"));
+    }
+
+    #[test]
     fn test_search_tuning_hnsw_iterative_scan_strict() {
         let stmts = PgVectorStorage::search_tuning_statements_with_hnsw_mode(
             VectorIndexType::HNSW,
@@ -216,6 +296,8 @@ mod tests {
         assert_eq!(parse_hnsw_iterative_scan_mode("garbage"), "relaxed_order");
     }
 
+    // parse_hnsw_iterative_scan_mode is re-exported from hnsw_runtime_policy via super.
+
     #[test]
     fn test_search_tuning_hnsw_filtered_without_iterative_scan_support() {
         let stmts =
@@ -249,6 +331,54 @@ mod tests {
         let stmts =
             PgVectorStorage::search_tuning_statements(VectorIndexType::None, 100, true, true);
         assert!(stmts.is_empty());
+    }
+
+    #[test]
+    fn test_wave2_planner_bias_columns_only() {
+        let mf = MetadataFilter {
+            workspace_id: Some("ws-a".into()),
+            tenant_id: Some("t1".into()),
+            vector_type: Some("chunk".into()),
+            document_ids: None,
+            modalities: None,
+        };
+        let stmts = PgVectorStorage::wave2_planner_bias_statements(true, true, &mf, Some(50_000));
+        assert!(stmts.iter().any(|s| s == "SET LOCAL enable_seqscan = off"));
+        assert!(stmts
+            .iter()
+            .any(|s| s == "SET LOCAL random_page_cost = 1.1"));
+        // SPEC-080: tiny slice skips bias
+        assert!(
+            PgVectorStorage::wave2_planner_bias_statements(true, true, &mf, Some(100)).is_empty()
+        );
+    }
+
+    #[test]
+    fn test_wave2_planner_bias_skips_jsonb_or_and_when_not_ready() {
+        let with_docs = MetadataFilter {
+            workspace_id: Some("ws-a".into()),
+            document_ids: Some(vec!["d1".into()]),
+            ..Default::default()
+        };
+        assert!(PgVectorStorage::wave2_planner_bias_statements(
+            true,
+            true,
+            &with_docs,
+            Some(50_000)
+        )
+        .is_empty());
+        let plain = MetadataFilter {
+            workspace_id: Some("ws-a".into()),
+            ..Default::default()
+        };
+        assert!(
+            PgVectorStorage::wave2_planner_bias_statements(false, true, &plain, Some(50_000))
+                .is_empty()
+        );
+        assert!(
+            PgVectorStorage::wave2_planner_bias_statements(true, false, &plain, Some(50_000))
+                .is_empty()
+        );
     }
 
     #[test]

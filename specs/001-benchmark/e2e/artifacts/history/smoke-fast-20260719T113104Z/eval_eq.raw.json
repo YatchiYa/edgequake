@@ -1,0 +1,31 @@
+{
+  "Fact Retrieval": {
+    "average_scores": {
+      "rouge_score": NaN,
+      "answer_correctness": NaN
+    },
+    "detailed": []
+  },
+  "Complex Reasoning": {
+    "average_scores": {
+      "rouge_score": NaN,
+      "answer_correctness": NaN
+    },
+    "detailed": []
+  },
+  "Contextual Summarize": {
+    "average_scores": {
+      "answer_correctness": NaN,
+      "coverage_score": NaN
+    },
+    "detailed": []
+  },
+  "Creative Generation": {
+    "average_scores": {
+      "answer_correctness": NaN,
+      "coverage_score": NaN,
+      "faithfulness": NaN
+    },
+    "detailed": []
+  }
+}

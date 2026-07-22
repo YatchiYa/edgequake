@@ -93,16 +93,16 @@ impl Default for PostgresConfig {
             ssl_mode: SslMode::Prefer,
             vector_index_type: VectorIndexType::HNSW,
             hnsw_m: 16,
-            // Default 32 = SPEC-034 local/dev size tradeoff. Production: set
-            // EDGEQUAKE_HNSW_EF_CONSTRUCTION=128 (specs/054-fix-bugs-17/006).
-            // Never REINDEX on boot — operator-driven only.
+            // Default 64 = pgvector HNSW default (SPEC-058). Production: set
+            // EDGEQUAKE_HNSW_EF_CONSTRUCTION=128. Never REINDEX on boot —
+            // operator-driven only.
             hnsw_ef_construction: hnsw_ef_construction_from_env(),
             ivfflat_lists: 100,
         }
     }
 }
 
-/// HNSW `ef_construction` from env (default **32** for local/smoke).
+/// HNSW `ef_construction` from env (default **64** = pgvector upstream default).
 ///
 /// Production recommendation (July 2026): **128**. Changing this only affects
 /// **new** index builds — existing HNSW requires operator `REINDEX CONCURRENTLY`.
@@ -111,7 +111,7 @@ pub fn hnsw_ef_construction_from_env() -> u32 {
         .ok()
         .and_then(|v| v.parse::<u32>().ok())
         .map(|v| v.clamp(4, 1000))
-        .unwrap_or(32)
+        .unwrap_or(64)
 }
 
 #[cfg(test)]
@@ -125,11 +125,11 @@ mod hnsw_ef_construction_tests {
     }
 
     #[test]
-    fn default_is_32_when_unset() {
+    fn default_is_64_when_unset() {
         let _g = env_lock().lock().unwrap();
         let prev = std::env::var("EDGEQUAKE_HNSW_EF_CONSTRUCTION").ok();
         std::env::remove_var("EDGEQUAKE_HNSW_EF_CONSTRUCTION");
-        assert_eq!(hnsw_ef_construction_from_env(), 32);
+        assert_eq!(hnsw_ef_construction_from_env(), 64);
         match prev {
             Some(v) => std::env::set_var("EDGEQUAKE_HNSW_EF_CONSTRUCTION", v),
             None => std::env::remove_var("EDGEQUAKE_HNSW_EF_CONSTRUCTION"),

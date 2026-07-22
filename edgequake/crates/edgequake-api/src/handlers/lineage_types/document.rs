@@ -21,14 +21,21 @@ pub struct DocumentGraphLineageResponse {
 /// Entity summary in lineage response.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct EntitySummaryResponse {
-    /// Entity name.
+    /// Graph node id (edge endpoints / stable identity).
+    pub id: String,
+    /// Bare semantic name, or soft-label when bare id is opaque (BC display).
     pub name: String,
+    /// Human presentation label (`graph_node_label` SSOT).
+    pub label: String,
     /// Entity type.
     pub entity_type: String,
     /// Source chunk IDs.
     pub source_chunks: Vec<String>,
     /// Whether entity is shared with other documents.
     pub is_shared: bool,
+    /// Optional description for detail panels.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }
 
 /// Relationship summary in lineage response.

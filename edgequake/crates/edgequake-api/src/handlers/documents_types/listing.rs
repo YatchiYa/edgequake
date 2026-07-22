@@ -93,6 +93,10 @@ pub struct ListDocumentsResponse {
 
     /// Status counts for all documents (not just current page).
     pub status_counts: StatusCounts,
+
+    /// True when the workspace metadata scan was truncated for latency.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub truncated: Option<bool>,
 }
 
 /// Document summary.
@@ -208,6 +212,16 @@ pub struct DocumentSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "8866e3c3-bbd6-4384-b86f-215c9844914d")]
     pub pdf_id: Option<String>,
+
+    /// SPEC-057 P4: badge key from `IngestionStatusMapper` (prefer over status/stage).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "extracting")]
+    pub display_status: Option<String>,
+
+    /// SPEC-057 P4: `idle` | `running` | `stopping` | `terminal`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "running")]
+    pub ui_phase: Option<String>,
 }
 
 // ── SPEC-031: Lightweight document search for the scope picker ───────────────

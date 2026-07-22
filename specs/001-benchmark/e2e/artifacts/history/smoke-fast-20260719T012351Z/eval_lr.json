@@ -1,0 +1,46 @@
+{
+  "judge": "generation_eval",
+  "judge_model": "mistral-small-latest",
+  "judge_provider": "mistral",
+  "judge_base_url": "https://api.mistral.ai/v1",
+  "judge_embedding_model": "BAAI/bge-large-en-v1.5",
+  "overall_acc": 0.2302737064474073,
+  "by_type": {
+    "Fact Retrieval": {
+      "rouge_score": 0.40750000000000003,
+      "answer_correctness": 0.23512304997947572
+    },
+    "Complex Reasoning": {
+      "rouge_score": 0.03727503643040787,
+      "answer_correctness": 0.22934521671999797
+    },
+    "Contextual Summarize": {
+      "answer_correctness": 0.23273265875510601,
+      "coverage_score": 1.0
+    },
+    "Creative Generation": {
+      "answer_correctness": 0.22389390033504947,
+      "coverage_score": 0.6538461538461539,
+      "faithfulness": 0.9545454545454546
+    }
+  },
+  "raw": {
+    "Fact Retrieval": {
+      "rouge_score": 0.40750000000000003,
+      "answer_correctness": 0.23512304997947572
+    },
+    "Complex Reasoning": {
+      "rouge_score": 0.03727503643040787,
+      "answer_correctness": 0.22934521671999797
+    },
+    "Contextual Summarize": {
+      "answer_correctness": 0.23273265875510601,
+      "coverage_score": 1.0
+    },
+    "Creative Generation": {
+      "answer_correctness": 0.22389390033504947,
+      "coverage_score": 0.6538461538461539,
+      "faithfulness": 0.9545454545454546
+    }
+  }
+}

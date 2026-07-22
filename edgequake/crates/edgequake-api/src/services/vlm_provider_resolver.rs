@@ -13,7 +13,9 @@ use edgequake_core::{resolve_role_llm, LlmRole, Workspace, WorkspaceService};
 use edgequake_llm::traits::LLMProvider;
 use uuid::Uuid;
 
-use crate::safety_limits::{create_safe_llm_provider, create_safe_vision_provider};
+use crate::safety_limits::{
+    create_safe_llm_provider, create_safe_vision_provider, create_safe_vision_provider_for_pass_b,
+};
 use crate::state::AppState;
 use crate::vision_env::{default_vision_model_for_provider, resolved_vision_provider_from_env};
 
@@ -29,6 +31,15 @@ async fn try_workspace_vlm(
     let ws = workspace_service.get_workspace(workspace_id).await.ok()??;
     let role = resolve_workspace_vlm_config(&ws);
     create_safe_vision_provider(&role.provider, &role.model).ok()
+}
+
+async fn try_workspace_vlm_pass_b(
+    workspace_service: &Arc<dyn WorkspaceService>,
+    workspace_id: Uuid,
+) -> Option<Arc<dyn LLMProvider>> {
+    let ws = workspace_service.get_workspace(workspace_id).await.ok()??;
+    let role = resolve_workspace_vlm_config(&ws);
+    create_safe_vision_provider_for_pass_b(&role.provider, &role.model).ok()
 }
 
 async fn try_workspace_extract(
@@ -78,6 +89,36 @@ pub async fn resolve_vlm_provider_for_workspace(
     let env_provider = resolved_vision_provider_from_env();
     let env_model = default_vision_model_for_provider(&env_provider);
     if let Ok(provider) = create_safe_vision_provider(&env_provider, &env_model) {
+        return provider;
+    }
+
+    if let Some(provider) = startup_vision {
+        return provider;
+    }
+
+    fallback
+}
+
+/// Resolve VLM for multimodal Pass B with shorter local per-call timeout.
+pub async fn resolve_vlm_provider_for_pass_b(
+    workspace_service: Option<&Arc<dyn WorkspaceService>>,
+    workspace_id: Uuid,
+    startup_vision: Option<Arc<dyn LLMProvider>>,
+    fallback: Arc<dyn LLMProvider>,
+) -> Arc<dyn LLMProvider> {
+    if let Some(svc) = workspace_service {
+        if let Some(provider) = try_workspace_vlm_pass_b(svc, workspace_id).await {
+            tracing::info!(
+                workspace_id = %workspace_id,
+                "Pass B VLM using workspace-configured provider (Pass B timeout)"
+            );
+            return provider;
+        }
+    }
+
+    let env_provider = resolved_vision_provider_from_env();
+    let env_model = default_vision_model_for_provider(&env_provider);
+    if let Ok(provider) = create_safe_vision_provider_for_pass_b(&env_provider, &env_model) {
         return provider;
     }
 

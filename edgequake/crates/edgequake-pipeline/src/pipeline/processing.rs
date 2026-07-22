@@ -25,6 +25,7 @@ use super::{
 
 impl Pipeline {
     /// Shared tail: link extractions, embed, build lineage (SPEC-017 ISP dedupe).
+    #[allow(clippy::too_many_arguments)]
     async fn finish_document_processing(
         &self,
         document_id: &str,
@@ -33,6 +34,7 @@ impl Pipeline {
         mut extractions: Vec<ExtractionResult>,
         mut stats: ProcessingStats,
         embed_progress: Option<&EmbedProgressCallback>,
+        cancel_token: Option<&CancellationToken>,
     ) -> Result<ProcessingResult> {
         if self.config.enable_entity_extraction || self.config.enable_relationship_extraction {
             if let Some(extractor) = &self.extractor {
@@ -41,8 +43,14 @@ impl Pipeline {
             }
         }
 
-        self.generate_all_embeddings(&mut chunks, &mut extractions, &mut stats, embed_progress)
-            .await?;
+        self.generate_all_embeddings(
+            &mut chunks,
+            &mut extractions,
+            &mut stats,
+            embed_progress,
+            cancel_token,
+        )
+        .await?;
 
         stats.processing_time_ms = start.elapsed().as_millis() as u64;
         let lineage = self.build_lineage(document_id, &chunks, &extractions, &stats);
@@ -72,7 +80,7 @@ impl Pipeline {
             }
         }
 
-        self.finish_document_processing(document_id, start, chunks, extractions, stats, None)
+        self.finish_document_processing(document_id, start, chunks, extractions, stats, None, None)
             .await
     }
 
@@ -97,7 +105,7 @@ impl Pipeline {
             }
         }
 
-        self.finish_document_processing(document_id, start, chunks, extractions, stats, None)
+        self.finish_document_processing(document_id, start, chunks, extractions, stats, None, None)
             .await
     }
 
@@ -205,6 +213,7 @@ impl Pipeline {
                 extractions,
                 stats,
                 embed_progress.as_ref(),
+                cancel_token.as_ref(),
             )
             .await?;
 
@@ -242,7 +251,9 @@ impl Pipeline {
         &self,
         documents: &[(String, String)],
     ) -> Result<Vec<ProcessingResult>> {
-        let max_concurrent_docs = self.config.max_concurrent_extractions.max(4);
+        // Use clamped extract concurrency as-is — no artificial floor-of-4
+        // (local Ollama profiles set 1–2; a floor of 4 re-introduced fan-out storms).
+        let max_concurrent_docs = self.config.max_concurrent_extractions.max(1);
 
         let futures: Vec<_> = documents
             .iter()

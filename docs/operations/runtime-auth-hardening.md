@@ -1,5 +1,7 @@
 # Runtime Config and Authentication Hardening
 
+> **Product: v0.19.0** · See also: [Docker Quickstart](/docs/operations/docker-quickstart/) (`EDGEQUAKE_DEV_MODE=true` for frictionless demos).
+
 EdgeQuake supports both demo-friendly local development and fail-closed authenticated deployments.
 
 ## Recommended production environment
@@ -15,7 +17,7 @@ export NEXT_PUBLIC_API_URL="https://your-api-host"
 
 ## Local development (open API)
 
-`make dev` sets `EDGEQUAKE_DEV_MODE=true` when `DEV_AUTH_ENABLED=false`, disabling auth for frictionless local testing. Do not use this in production.
+`make dev` sets `EDGEQUAKE_DEV_MODE=true` when `DEV_AUTH_ENABLED=false`, disabling auth for frictionless local testing. The [Docker Quickstart](/docs/operations/docker-quickstart/) compose file does the same for container demos — **do not use in production**.
 
 ```bash
 # Explicit local open API (alternative to make dev defaults)

@@ -1,0 +1,71 @@
+[
+  {
+    "id": "Medical-0cbbd549",
+    "question": "What diagnostic method is required for MGZL?",
+    "source": "medical",
+    "context": [
+      "Diagnosis of MGZL requires expert hematopathologist review."
+    ],
+    "evidence": [
+      "Diagnosis of MGZL requires expert hematopathologist review."
+    ],
+    "question_type": "Fact Retrieval",
+    "generated_answer": "Diagnosis of MGZL",
+    "ground_truth": "Diagnosis of MGZL requires expert hematopathologist review.",
+    "gold_answer": "Diagnosis of MGZL requires expert hematopathologist review.",
+    "latency_ms": 0,
+    "stub": "eq"
+  },
+  {
+    "id": "Medical-e7b5ec54",
+    "question": "Which lymphoma is a subtype of gray zone lymphomas?",
+    "source": "medical",
+    "context": [
+      "Mediastinal gray zone lymphoma (MGZL) is a subtype of gray zone lymphomas."
+    ],
+    "evidence": [
+      "Mediastinal gray zone lymphoma (MGZL) is a subtype of gray zone lymphomas."
+    ],
+    "question_type": "Fact Retrieval",
+    "generated_answer": "Mediastinal gray zone lymphoma (MGZL) is",
+    "ground_truth": "Mediastinal gray zone lymphoma (MGZL) is a subtype of gray zone lymphomas.",
+    "gold_answer": "Mediastinal gray zone lymphoma (MGZL) is a subtype of gray zone lymphomas.",
+    "latency_ms": 0,
+    "stub": "eq"
+  },
+  {
+    "id": "Medical-13fe78ff",
+    "question": "What is the typical genetic alteration found in almost all FL cases?",
+    "source": "medical",
+    "context": [
+      "Almost all FL cases have a chromosome translocation or excess BCL2 protein."
+    ],
+    "evidence": [
+      "Almost all follicular lymphoma cases have a chromosome translocation.",
+      "Almost all follicular lymphoma cases have excess BCL2 protein."
+    ],
+    "question_type": "Fact Retrieval",
+    "generated_answer": "Almost all FL cases have a",
+    "ground_truth": "Almost all FL cases have a chromosome translocation or excess BCL2 protein.",
+    "gold_answer": "Almost all FL cases have a chromosome translocation or excess BCL2 protein.",
+    "latency_ms": 0,
+    "stub": "eq"
+  },
+  {
+    "id": "Medical-73b1e8c2",
+    "question": "What is the indication for groin dissection in anal cancer?",
+    "source": "medical",
+    "context": [
+      "Groin dissection is indicated for lymph node recurrence."
+    ],
+    "evidence": [
+      "Groin dissection is indicated for lymph node recurrence in anal cancer."
+    ],
+    "question_type": "Fact Retrieval",
+    "generated_answer": "Groin dissection is indicated",
+    "ground_truth": "Groin dissection is indicated for lymph node recurrence.",
+    "gold_answer": "Groin dissection is indicated for lymph node recurrence.",
+    "latency_ms": 0,
+    "stub": "eq"
+  }
+]

@@ -2,6 +2,8 @@
 title: 'Tracing Entity Sources Tutorial'
 ---
 
+> **Product: v0.19.0** · Contract: [`openapi.snapshot.json`](../../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 # Tracing Entity Sources Tutorial
 
 > Learn how to trace any entity in EdgeQuake's knowledge graph back to its source document and exact location
@@ -44,7 +46,8 @@ This tutorial shows how to follow this chain in both directions — from entity 
 List entities in a document:
 
 ```bash
-curl http://localhost:8080/api/v1/lineage/documents/{document_id} | jq '.entities[].name'
+curl http://localhost:8080/api/v1/lineage/documents/{document_id} \
+  -H "X-Workspace-ID: default" | jq '.entities[].name'
 ```
 
 ---
@@ -56,7 +59,8 @@ The provenance endpoint tells you every source document and chunk where this ent
 ### Using curl
 
 ```bash
-curl http://localhost:8080/api/v1/entities/SARAH_CHEN/provenance | jq
+curl http://localhost:8080/api/v1/entities/SARAH_CHEN/provenance \
+  -H "X-Workspace-ID: default" | jq
 ```
 
 ### Using Python SDK

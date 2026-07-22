@@ -120,6 +120,21 @@ else
   fail "Static checksum check failed"
 fi
 
+# SPEC-057 / M089: edgequake.tasks view must expose lease columns after migrate.
+# Catches the stale-view class (ALTER public.tasks without refreshing the view).
+echo "  Verifying edgequake.tasks exposes lease_* columns..."
+LEASE_COLS=$(PGPASSWORD="$PG_PASS" psql -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$TEST_DB" -t -A -c \
+  "SELECT string_agg(column_name, ',' ORDER BY column_name)
+   FROM information_schema.columns
+   WHERE table_schema = 'edgequake'
+     AND table_name = 'tasks'
+     AND column_name IN ('lease_owner', 'lease_token', 'lease_expires_at');" 2>&1 | tr -d '[:space:]')
+if [[ "$LEASE_COLS" == "lease_expires_at,lease_owner,lease_token" ]]; then
+  pass "edgequake.tasks view exposes lease_owner/lease_token/lease_expires_at"
+else
+  fail "edgequake.tasks missing lease columns after migrate (got: '$LEASE_COLS')"
+fi
+
 # Cleanup
 PGPASSWORD="$PG_PASS" psql -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d postgres \
   -c "DROP DATABASE IF EXISTS $TEST_DB;" 2>&1 | sed 's/^/  /' || true

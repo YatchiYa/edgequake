@@ -1,0 +1,76 @@
+{
+  "utc": "20260720T112429Z",
+  "workspace_id": "2a7bcb2f-b156-4c49-9229-67f5bcde22a4",
+  "question_id": "Medical-0002d2de",
+  "question": "How are bone cancers staged and what factors are considered in determining the stage?",
+  "query_intent": "exploratory",
+  "content_bigrams": [
+    "bone cancers",
+    "cancers staged",
+    "staged stage"
+  ],
+  "entity_norms": [
+    "BONE_CANCERS",
+    "CANCERS_STAGED",
+    "STAGED_STAGE"
+  ],
+  "mix": {
+    "parts": 6,
+    "chars": 41061,
+    "bigram_hits": []
+  },
+  "laws": {
+    "RESOLVE_all": false,
+    "RESOLVE_any": false,
+    "CONTENT": false,
+    "IN_MIX": false
+  },
+  "verdict_law": "NO_ENTITY",
+  "verdict_note": "No exact-name entity from question bigrams in EQ graph.",
+  "entities": [
+    {
+      "norm": "BONE_CANCERS",
+      "eq_name": null,
+      "lr_name": null,
+      "eq_n_chunks": 0,
+      "lr_n_chunks": 0,
+      "resolved": 0,
+      "unresolved": 0,
+      "content_hit_chunks": 0,
+      "content_hit_ids": [],
+      "samples": []
+    },
+    {
+      "norm": "CANCERS_STAGED",
+      "eq_name": null,
+      "lr_name": null,
+      "eq_n_chunks": 0,
+      "lr_n_chunks": 0,
+      "resolved": 0,
+      "unresolved": 0,
+      "content_hit_chunks": 0,
+      "content_hit_ids": [],
+      "samples": []
+    },
+    {
+      "norm": "STAGED_STAGE",
+      "eq_name": null,
+      "lr_name": null,
+      "eq_n_chunks": 0,
+      "lr_n_chunks": 0,
+      "resolved": 0,
+      "unresolved": 0,
+      "content_hit_chunks": 0,
+      "content_hit_ids": [],
+      "samples": []
+    }
+  ],
+  "predictions_eq": "specs/001-benchmark/e2e/artifacts/history/smoke-20260720T111944Z/predictions_eq.json",
+  "predictions_lr": "specs/001-benchmark/e2e/artifacts/history/smoke-20260720T111944Z/predictions_lr.json",
+  "lr_mix": {
+    "chars": 78664,
+    "bigram_hits": [
+      "bone cancers"
+    ]
+  }
+}

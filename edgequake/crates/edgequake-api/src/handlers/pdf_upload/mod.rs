@@ -23,6 +23,9 @@ pub use status::*;
 pub use types::*;
 pub use upload::*;
 
+/// Page-count heal for PDF workers (DRY with upload admit path).
+pub(crate) use helpers::extract_page_count;
+
 // SPEC-054: reprocess shares upload progress-identity seeding (DRY).
 pub(crate) use progress_identity::seed_pdf_job_progress;
 

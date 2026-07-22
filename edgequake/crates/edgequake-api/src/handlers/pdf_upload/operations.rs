@@ -5,7 +5,13 @@ use utoipa::ToSchema;
 
 use crate::error::{ApiError, ApiResult};
 use crate::middleware::TenantContext;
+#[cfg(feature = "postgres")]
+use crate::services::task_cancel::apply_cancel_pdf_pipeline_tasks;
+#[cfg(feature = "postgres")]
+use crate::services::{sync_doc_cancelled_by_document_id, sync_doc_cancelled_for_task};
 use crate::state::AppState;
+#[cfg(feature = "postgres")]
+use std::sync::Arc;
 
 // WHY: These imports are only used inside #[cfg(feature = "postgres")] blocks.
 #[cfg(feature = "postgres")]
@@ -93,7 +99,7 @@ pub async fn retry_pdf_processing(
         let pdf_uuid = Uuid::parse_str(&pdf_id)
             .map_err(|_| ApiError::BadRequest("Invalid PDF ID format".to_string()))?;
 
-        let _workspace_id = tenant
+        let workspace_id = tenant
             .workspace_id_uuid()
             .ok_or_else(|| ApiError::BadRequest("Workspace ID required".to_string()))?;
 
@@ -124,21 +130,29 @@ pub async fn retry_pdf_processing(
             .await
             .map_err(|e| ApiError::Internal(format!("Failed to reset PDF status: {}", e)))?;
 
-        // OODA-17: Create new processing task
-        let options = PdfUploadOptions {
+        // Workspace config has precedence (same chain as upload).
+        let workspace = state
+            .workspace_service
+            .get_workspace(workspace_id)
+            .await
+            .map_err(|e| ApiError::Internal(e.to_string()))?;
+        let mut options = PdfUploadOptions {
             enable_vision: true,
-            vision_provider: None, // will be resolved from workspace config or server default
+            vision_provider: None,
             vision_model: None,
             pdf_parser_backend: None,
             ..Default::default()
         };
+        if let Some(ref ws) = workspace {
+            options.apply_workspace(ws);
+        }
 
         let enqueue = create_pdf_processing_task(
             &state,
             &tenant,
             pdf_uuid,
             &options,
-            None,
+            workspace.as_ref(),
             super::helpers::PdfReprocessIntent::fresh(),
             pdf.page_count,
             pdf.file_size_bytes.max(0) as u64,
@@ -171,9 +185,9 @@ pub async fn retry_pdf_processing(
 /// # Behavior
 ///
 /// 1. Validate PDF exists and belongs to workspace
-/// 2. Check status is Processing (cannot cancel Completed/Failed)
-/// 3. Request cancellation via PipelineState
-/// 4. Update status to Failed with cancellation message
+/// 2. Check status is Processing or Pending (cannot cancel terminal)
+/// 3. Request cancellation via CancellationRegistry / task row
+/// 4. Update PDF status to Cancelled (SPEC-057 — not Failed)
 ///
 /// # Errors
 ///
@@ -213,7 +227,7 @@ pub async fn cancel_pdf_processing(
         let pdf_uuid = Uuid::parse_str(&pdf_id)
             .map_err(|_| ApiError::BadRequest("Invalid PDF ID format".to_string()))?;
 
-        let _workspace_id = tenant
+        let workspace_id = tenant
             .workspace_id_uuid()
             .ok_or_else(|| ApiError::BadRequest("Workspace ID required".to_string()))?;
 
@@ -230,42 +244,123 @@ pub async fn cancel_pdf_processing(
             .map_err(|e| ApiError::Internal(format!("Failed to get PDF: {}", e)))?
             .ok_or_else(|| ApiError::NotFound(format!("PDF not found: {}", pdf_id)))?;
 
-        // Allow cancel of Processing or Pending PDFs
-        // WHY: Documents can get stuck in non-terminal states (e.g., "uploading",
-        // "pending") after a server restart or network interruption. Previously
-        // only "processing" was cancellable, leaving users unable to recover from
-        // stuck states. Now Pending is also allowed so users can force-cancel
-        // documents that never transitioned to processing.
-        if pdf.processing_status != PdfProcessingStatus::Processing
-            && pdf.processing_status != PdfProcessingStatus::Pending
-        {
+        // SPEC-057 P2: allow cancel while convert is Pending/Processing, OR after
+        // convert Completed when a follow-on Insert is still in-flight.
+        let active_before = state
+            .tasks
+            .storage
+            .find_active_pdf_processing_task(pdf_uuid, workspace_id)
+            .await
+            .map_err(|e| ApiError::Internal(format!("Failed to find PDF task: {}", e)))?;
+
+        let convert_in_flight = matches!(
+            pdf.processing_status,
+            PdfProcessingStatus::Processing | PdfProcessingStatus::Pending
+        );
+        let ingest_in_flight = active_before
+            .as_ref()
+            .is_some_and(|t| t.task_type == edgequake_tasks::TaskType::Insert)
+            || (pdf.processing_status == PdfProcessingStatus::Completed && active_before.is_some());
+
+        if !convert_in_flight && !ingest_in_flight {
             return Err(ApiError::Conflict(format!(
-                "Cannot cancel PDF with status '{}'. Only 'processing' or 'pending' PDFs can be cancelled.",
+                "Cannot cancel PDF with status '{}'. Only pending/processing convert or \
+                 in-flight ingest after convert can be cancelled.",
                 pdf.processing_status
             )));
         }
 
-        // OODA-17: Request cancellation via pipeline state
-        // WHY: This sets a flag that the worker checks periodically
+        let cancel_results = apply_cancel_pdf_pipeline_tasks(
+            &state.tasks.storage,
+            &state.tasks.cancellation_registry,
+            pdf_uuid,
+            workspace_id,
+        )
+        .await
+        .map_err(ApiError::Internal)?;
+
+        let mut cancelled_track_id = None;
+        let workspace_key = workspace_id.to_string();
+        let vector =
+            crate::services::get_workspace_vector_storage_for_delete(&state, &workspace_key).await;
+        for applied in &cancel_results {
+            if applied.cancelled {
+                if cancelled_track_id.is_none() {
+                    cancelled_track_id = Some(applied.track_id.clone());
+                }
+                if let Some(ref cancelled_task) = applied.task {
+                    if let Err(e) = sync_doc_cancelled_for_task(
+                        Arc::clone(&state.storage.kv_storage),
+                        cancelled_task,
+                        "Task cancelled by user",
+                    )
+                    .await
+                    {
+                        tracing::warn!(
+                            track_id = %applied.track_id,
+                            error = %e,
+                            "PDF cancel: doc KV sync from task failed"
+                        );
+                    }
+                    crate::services::retract_indexes_for_task(
+                        &state.storage.graph_storage,
+                        &vector,
+                        cancelled_task,
+                    )
+                    .await;
+                }
+            }
+        }
+
+        // Also flip the legacy flag for any older callers that still poll it.
         state.tasks.pipeline_state.request_cancellation().await;
 
-        // OODA-17: Update status to Failed with cancellation message
-        // WHY: UpdatePdfProcessingRequest requires pdf_id and processing_status as non-optional
-        pdf_storage
-            .update_pdf_status(&pdf_uuid, PdfProcessingStatus::Failed)
+        // SPEC-057 P0/P2: cancel during convert → PDF Cancelled; after convert
+        // Completed, leave PDF Completed (convert artifact survives ingest cancel).
+        if convert_in_flight {
+            pdf_storage
+                .update_pdf_status(&pdf_uuid, crate::services::pdf_status_for_cancel())
+                .await
+                .map_err(|e| ApiError::Internal(format!("Failed to update PDF status: {}", e)))?;
+        }
+
+        // Sync doc KV from PDF.document_id when task payload had no link.
+        if let Some(document_uuid) = pdf.document_id {
+            let doc_id = document_uuid.to_string();
+            if let Err(e) = sync_doc_cancelled_by_document_id(
+                Arc::clone(&state.storage.kv_storage),
+                &doc_id,
+                "Task cancelled by user",
+            )
             .await
-            .map_err(|e| ApiError::Internal(format!("Failed to update PDF status: {}", e)))?;
+            {
+                tracing::warn!(
+                    pdf_id = %pdf_id,
+                    document_id = %document_uuid,
+                    error = %e,
+                    "PDF cancel: doc KV sync by pdf.document_id failed"
+                );
+            }
+            crate::services::retract_indexes_for_document_id(
+                &state.storage.graph_storage,
+                &vector,
+                &doc_id,
+            )
+            .await;
+        }
 
         info!(
             pdf_id = %pdf_id,
-            "PDF processing cancellation requested"
+            track_id = ?cancelled_track_id,
+            cancelled_tasks = cancel_results.len(),
+            "PDF pipeline cancellation requested (Convert+Insert chain)"
         );
 
         Ok(Json(PdfOperationResponse {
             success: true,
             pdf_id,
             message: "PDF processing cancellation requested".to_string(),
-            task_id: None,
+            task_id: cancelled_track_id,
         }))
     }
 }

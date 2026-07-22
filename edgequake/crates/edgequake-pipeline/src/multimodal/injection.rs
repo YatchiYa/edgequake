@@ -2,25 +2,9 @@
 
 use crate::chunker::TextChunk;
 use crate::extractor::{ExtractedEntity, ExtractedRelationship, ExtractionResult};
-use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::sync::LazyLock;
 
-static MM_DISPLAY_NAME: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?m)^\[(?:Image|Chart|Figure|Table|Equation) Name\](.+)$")
-        .expect("mm display name regex")
-});
-
-/// Parse friendly name from mm chunk content (LightRAG `_parse_mm_display_name`).
-pub fn parse_mm_display_name(content: &str, fallback: &str) -> String {
-    if let Some(cap) = MM_DISPLAY_NAME.captures(content) {
-        let candidate = cap.get(1).map(|m| m.as_str().trim()).unwrap_or("");
-        if !candidate.is_empty() {
-            return candidate.to_string();
-        }
-    }
-    fallback.to_string()
-}
+use super::display::{parse_mm_display_name, resolve_mm_entity_display, MmDisplayInput};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MmSidecarRef {
@@ -66,11 +50,14 @@ fn chunk_matches_mm(chunk_content: &str, mm: &MmChunkSidecarMeta) -> bool {
 ///
 /// SPEC-046 EQ-046-15: also creates a synthetic extraction for mm chunks that
 /// never received an LLM extraction slot (orphan guarantee — entity always lands).
+///
+/// `doc_title`: optional human document title / file stem for display_name prefix (066).
 pub fn inject_modality_relations(
     extractions: &mut Vec<ExtractionResult>,
     chunks: &[TextChunk],
     mm_chunks: &[MmChunkSidecarMeta],
     file_path: &str,
+    doc_title: Option<&str>,
 ) {
     if mm_chunks.is_empty() {
         return;
@@ -89,7 +76,14 @@ pub fn inject_modality_relations(
             continue;
         };
         covered_mm_ids.insert(mm.sidecar.id.clone());
-        inject_into_extraction(extraction, mm, &chunk.content, file_path, &chunk.id);
+        inject_into_extraction(
+            extraction,
+            mm,
+            &chunk.content,
+            file_path,
+            &chunk.id,
+            doc_title,
+        );
     }
 
     // Orphan mm chunks: no extraction row matched — synthesize one so the
@@ -109,18 +103,44 @@ pub fn inject_modality_relations(
             // after chunking). Still inject with a synthetic chunk id.
             let synth_id = format!("mm-orphan-{}", mm.item_id);
             let mut extraction = ExtractionResult::new(synth_id.clone());
-            inject_into_extraction(&mut extraction, mm, &mm.text, file_path, &synth_id);
+            inject_into_extraction(
+                &mut extraction,
+                mm,
+                &mm.text,
+                file_path,
+                &synth_id,
+                doc_title,
+            );
             if !extraction.entities.is_empty() {
                 extractions.push(extraction);
             }
             continue;
         };
         let mut extraction = ExtractionResult::new(chunk.id.clone());
-        inject_into_extraction(&mut extraction, mm, &chunk.content, file_path, &chunk.id);
+        inject_into_extraction(
+            &mut extraction,
+            mm,
+            &chunk.content,
+            file_path,
+            &chunk.id,
+            doc_title,
+        );
         if !extraction.entities.is_empty() {
             extractions.push(extraction);
         }
     }
+}
+
+/// Compact node description: keep markers + first body chars (full text stays in mm chunks).
+fn compact_mm_description(content: &str) -> String {
+    const MAX: usize = 500;
+    let trimmed = content.trim();
+    if trimmed.chars().count() <= MAX {
+        return trimmed.to_string();
+    }
+    let mut out: String = trimmed.chars().take(MAX).collect();
+    out.push('…');
+    out
 }
 
 fn inject_into_extraction(
@@ -129,6 +149,7 @@ fn inject_into_extraction(
     content: &str,
     file_path: &str,
     chunk_id: &str,
+    doc_title: Option<&str>,
 ) {
     let sidecar_type = mm.sidecar.sidecar_type.as_str();
     if !matches!(sidecar_type, "drawing" | "table" | "equation") {
@@ -136,26 +157,64 @@ fn inject_into_extraction(
     }
     let entity_name = mm.sidecar.id.clone();
 
-    if !extraction.entities.iter().any(|e| e.name == entity_name) {
-        extraction.entities.push(
-            ExtractedEntity::new(entity_name.clone(), sidecar_type, content)
-                .with_source_chunk_id(chunk_id)
-                .with_source_file_path(file_path),
-        );
-    }
-
     let heading_label = mm
         .heading
         .as_ref()
         .map(|h| h.heading.trim())
         .filter(|s| !s.is_empty())
         .unwrap_or("");
+
+    let resolved = resolve_mm_entity_display(MmDisplayInput {
+        item_id: &entity_name,
+        content,
+        heading: if heading_label.is_empty() {
+            None
+        } else {
+            Some(heading_label)
+        },
+        caption: None,
+        doc_title: doc_title.or(Some(file_path)),
+        sidecar_type,
+    });
+
+    if !extraction.entities.iter().any(|e| e.name == entity_name) {
+        extraction.entities.push(
+            ExtractedEntity::new(
+                entity_name.clone(),
+                sidecar_type,
+                compact_mm_description(content),
+            )
+            .with_source_chunk_id(chunk_id)
+            .with_source_file_path(file_path)
+            .with_mm_display(
+                resolved.display_name.clone(),
+                resolved.page,
+                resolved.fig,
+                resolved.asset_id_hint.clone(),
+                resolved.mm_subtype.clone(),
+            ),
+        );
+    } else if let Some(ent) = extraction
+        .entities
+        .iter_mut()
+        .find(|e| e.name == entity_name)
+    {
+        // Refresh display metadata on re-inject without changing identity.
+        if ent.display_name.is_none() {
+            ent.display_name = Some(resolved.display_name.clone());
+            ent.page_num = resolved.page;
+            ent.figure_index = resolved.fig;
+            ent.asset_id = resolved.asset_id_hint.clone();
+            ent.mm_subtype = resolved.mm_subtype.clone();
+        }
+    }
+
     let location = if heading_label.is_empty() {
         "of document".to_string()
     } else {
         format!("in section {heading_label} of document")
     };
-    let display = parse_mm_display_name(content, &entity_name);
+    let display = parse_mm_display_name(content, &resolved.display_name);
 
     let targets: Vec<String> = extraction
         .entities
@@ -260,8 +319,26 @@ mod tests {
             output_tokens: 0,
             extraction_time_ms: 0,
         }];
-        inject_modality_relations(&mut extractions, &chunks, &[mm], "demo.pdf");
-        assert!(extractions[0].entities.iter().any(|e| e.name == "d1"));
+        inject_modality_relations(
+            &mut extractions,
+            &chunks,
+            &[mm],
+            "demo.pdf",
+            Some("Demo Doc"),
+        );
+        let drawing = extractions[0]
+            .entities
+            .iter()
+            .find(|e| e.name == "d1")
+            .expect("drawing entity");
+        assert!(
+            drawing
+                .display_name
+                .as_deref()
+                .is_some_and(|d| d.contains("系统架构图")),
+            "display_name={:?}",
+            drawing.display_name
+        );
         assert_eq!(extractions[0].relationships.len(), 1);
         assert!(extractions[0].relationships[0]
             .description
@@ -299,9 +376,17 @@ mod tests {
         }];
         // Empty extractions — LLM never saw this chunk
         let mut extractions = Vec::new();
-        inject_modality_relations(&mut extractions, &chunks, &[mm], "demo.pdf");
+        inject_modality_relations(&mut extractions, &chunks, &[mm], "demo.pdf", None);
         assert_eq!(extractions.len(), 1);
         assert!(extractions[0].entities.iter().any(|e| e.name == "t1"));
         assert_eq!(extractions[0].entities[0].entity_type, "table");
+        assert!(
+            extractions[0].entities[0]
+                .display_name
+                .as_deref()
+                .is_some_and(|d| d.contains("Perf")),
+            "display_name={:?}",
+            extractions[0].entities[0].display_name
+        );
     }
 }

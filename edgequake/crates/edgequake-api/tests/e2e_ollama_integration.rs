@@ -145,6 +145,7 @@ async fn create_test_app_with_state_and_workers() -> (axum::Router, AppState) {
         Arc::clone(&state.workspace_service),
         Arc::clone(&state.query.models_config),
     )
+    .with_app_state(state.clone())
     .with_progress_broadcaster(state.tasks.progress_broadcaster.clone());
     let processor = Arc::new(processor);
 
@@ -155,6 +156,7 @@ async fn create_test_app_with_state_and_workers() -> (axum::Router, AppState) {
         max_retry_delay_ms: 1_000,
         backoff_multiplier: 2.0,
         max_tasks_per_tenant: 4,
+        max_lifecycle_tasks_per_tenant: 4,
         processing_timeout_secs: 120,
     };
     let mut worker_pool = WorkerPool::new(

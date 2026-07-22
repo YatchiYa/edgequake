@@ -131,12 +131,13 @@ release: ## Bump all crate versions and tag release using cargo-release (uses VE
 
 
 .PHONY: help install dev dev-auth dev-bg dev-auth-bg dev-memory kill-app stop clean build test lint format sync-dev-ports \
-        ops17-smoke spec046-acc \
+        ops17-smoke spec046-acc data-access-perf-matrix data-access-perf-matrix-release data-access-perf-matrix-prod data-access-perf-capacity-ladder ann-scale-battle ceiling-proof recall-pareto dedicated-midscale diskann-battle diskann-recall-pareto diskann-rescore-smoke filtered-recall-gate precision-layers-gate binary-quantize-bakeoff filtered-diskann-labels-bakeoff midscale-quantize-labels tiny-slice-exact-gate serving-view-check push-scale-ladder wave2-greenfield-env product-limits-check compare-eq-perf \
+        postgres-image-build-pg18-vectorscale \
         dev-pg16 dev-pg17 dev-pg18 dev-bg-pg16 dev-bg-pg17 dev-bg-pg18 \
         backend-dev backend-db backend-memory backend-bg backend-build backend-build-online backend-sqlx-prepare backend-test backend-run \
         frontend-dev frontend-bg frontend-build frontend-test frontend-lint \
         openapi-snapshot codegen-openapi codegen-openapi-refresh codegen-openapi-live \
-        db-start db-start-pg16 db-start-pg17 db-start-pg18 db-stop db-wait db-logs db-shell postgres-image-build postgres-image-build-pg17 postgres-image-build-pg18 postgres-image-build-unified check-extension-pins postgres-battle-test hnsw-dimension-battle-test spec042-battle-test-all spec044-battle-test-all dev-e2e-proof dev-e2e-proof-all docker-network-diagnose stop-docker-services \
+        db-start db-start-pg16 db-start-pg17 db-start-pg18 db-stop db-wait db-logs db-shell postgres-image-build postgres-image-build-pg17 postgres-image-build-pg18 postgres-image-build-pg18-vectorscale postgres-image-build-unified check-extension-pins postgres-battle-test hnsw-dimension-battle-test spec042-battle-test-all spec044-battle-test-all dev-e2e-proof dev-e2e-proof-all docker-network-diagnose stop-docker-services \
         docker-build docker-up docker-prebuilt docker-prebuilt-down docker-prebuilt-logs docker-ps-prebuilt docker-api-only docker-down docker-logs \
         stack stack-down stack-logs stack-status stack-restart stack-pull \
         check-deps status \
@@ -229,76 +230,43 @@ OPENAI_API_KEY ?= $(shell echo $$OPENAI_API_KEY)
 # Hierarchy (outer → inner):
 #   WORKER_THREADS ⊃ MAX_TASKS_PER_TENANT ⊃ PDF_VISION_JOBS ⊃ PDF_CONCURRENCY
 #     ⊃ MM_IMAGE_CONCURRENCY ⊃ MAX_CONCURRENT_EXTRACTIONS
-# Peak vision in-flight ≈ PDF_VISION_JOBS × PDF_CONCURRENCY (here 4×4=16).
+# Peak vision in-flight ≈ PDF_VISION_JOBS × PDF_CONCURRENCY (cloud: 4×4=16).
 # Dial down if provider 429s or RSS climbs; set MEM_LIMIT so budget code is aware.
 # Low-RAM override example: WORKER_THREADS=4 MAX_TASKS_PER_TENANT=2 \
 #   EDGEQUAKE_PDF_VISION_JOBS=1 EDGEQUAKE_PDF_CONCURRENCY=1
-WORKER_THREADS ?= 16
-MAX_TASKS_PER_TENANT ?= 12
-EDGEQUAKE_PDF_CONCURRENCY ?= 4
-EDGEQUAKE_PDF_VISION_JOBS ?= 4
-EDGEQUAKE_MM_IMAGE_CONCURRENCY ?= 8
-EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS ?= 32
+# Local (Ollama) concurrency defaults are applied AFTER provider detection below.
+# Escape hatch: EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1 \
+#   EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS=8 make dev
+# WORKER_THREADS / MAX_TASKS_PER_TENANT / EMBED_MAX_ASYNC / MERGE_MAX_ASYNC
+# are set in the provider-aware block below (local vs cloud).
 EDGEQUAKE_MEM_LIMIT ?= 48g
 # SPEC-034: native SQL AGE upserts (~69× faster than Cypher MERGE).
 EDGEQUAKE_NATIVE_GRAPH_WRITES ?= 1
+# Mix intent arm gate (default on = production). Bench001 Acc fairness uses false (LR-like 3 arms).
+# Product Smart = LightRAG mix: always local∥global∥naive (065). Acc pins false too.
+EDGEQUAKE_MIX_ARM_GATE ?= false
 # SPEC-047: skip Louvain tax in local/bench; fail-open MM for throughput.
 EDGEQUAKE_COMMUNITY_GLOBAL ?= false
 EDGEQUAKE_MULTIMODAL_FAIL_MODE ?= degraded
+# Local never-stuck Pass B: classify-only, figure cap, wall budget (cloud ignores defaults).
+EDGEQUAKE_MM_LOCAL_CLASSIFY_ONLY ?= 1
+EDGEQUAKE_MM_MAX_FIGURES ?= 12
+EDGEQUAKE_MM_PASS_B_TIMEOUT_SECS ?= 600
+EDGEQUAKE_MM_PASS_B_PAGE_TIMEOUT_SECS ?= 90
 # SPEC-026/047: inline chart/figure VLM analyze (Pass B). Opt out with false.
 VLM_PROCESS_ENABLE ?= true
 # SPEC-047 P5: HNSW upsert progress cadence (default 1000); chunk_only skips KG extract.
 EDGEQUAKE_VECTOR_UPSERT_CHUNK ?= 1000
 EDGEQUAKE_INGEST_PROFILE ?= full
-# SPEC-047 P6: parallel embed sub-batches (LightRAG embedding_func_max_async ≈ 8).
-EDGEQUAKE_EMBED_MAX_ASYNC ?= 8
 # SPEC-047 P7a: LightRAG FORCE_LLM_SUMMARY_ON_MERGE — join <N fragments with <SEP>, else LLM.
 EDGEQUAKE_FORCE_LLM_SUMMARY_ON_MERGE ?= 8
-# SPEC-047 P7b: LightRAG graph_max_async ≈ llm_max_async×2 — parallel unique entity/rel merges.
-EDGEQUAKE_MERGE_MAX_ASYNC ?= 8
 # SPEC-047 P7d: LightRAG SOURCE_IDS KEEP — skip description updates when saturated (default 200).
 EDGEQUAKE_MAX_SOURCE_IDS_PER_ENTITY ?= 200
 EDGEQUAKE_MAX_SOURCE_IDS_PER_RELATION ?= 200
 EDGEQUAKE_SOURCE_IDS_LIMIT_METHOD ?= KEEP
 # SPEC-047 P7f: native/Cypher graph upsert chunk size (rows per UNNEST/UNWIND statement).
 EDGEQUAKE_GRAPH_UPSERT_CHUNK ?= 500
-export WORKER_THREADS MAX_TASKS_PER_TENANT \
-	EDGEQUAKE_PDF_CONCURRENCY EDGEQUAKE_PDF_VISION_JOBS \
-	EDGEQUAKE_MM_IMAGE_CONCURRENCY EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS \
-	EDGEQUAKE_MEM_LIMIT EDGEQUAKE_NATIVE_GRAPH_WRITES \
-	EDGEQUAKE_COMMUNITY_GLOBAL EDGEQUAKE_MULTIMODAL_FAIL_MODE VLM_PROCESS_ENABLE \
-	EDGEQUAKE_VECTOR_UPSERT_CHUNK EDGEQUAKE_INGEST_PROFILE \
-	EDGEQUAKE_EMBED_MAX_ASYNC EDGEQUAKE_FORCE_LLM_SUMMARY_ON_MERGE \
-	EDGEQUAKE_MERGE_MAX_ASYNC EDGEQUAKE_MAX_SOURCE_IDS_PER_ENTITY \
-	EDGEQUAKE_MAX_SOURCE_IDS_PER_RELATION EDGEQUAKE_SOURCE_IDS_LIMIT_METHOD \
-	EDGEQUAKE_GRAPH_UPSERT_CHUNK
 
-# Shared exports appended to /tmp/edgequake-start.sh by backend-bg.
-# SPEC-047: also pin VLM + chart modality so bench restarts do not silently drop MV-32.
-define BACKEND_STABILITY_EXPORTS
-printf '%s\n' "export WORKER_THREADS=\"$(WORKER_THREADS)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export MAX_TASKS_PER_TENANT=\"$(MAX_TASKS_PER_TENANT)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_PDF_CONCURRENCY=\"$(EDGEQUAKE_PDF_CONCURRENCY)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_PDF_VISION_JOBS=\"$(EDGEQUAKE_PDF_VISION_JOBS)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_MM_IMAGE_CONCURRENCY=\"$(EDGEQUAKE_MM_IMAGE_CONCURRENCY)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS=\"$(EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_MEM_LIMIT=\"$(EDGEQUAKE_MEM_LIMIT)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_NATIVE_GRAPH_WRITES=\"$(EDGEQUAKE_NATIVE_GRAPH_WRITES)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_COMMUNITY_GLOBAL=\"$(EDGEQUAKE_COMMUNITY_GLOBAL)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_MULTIMODAL_FAIL_MODE=\"$(EDGEQUAKE_MULTIMODAL_FAIL_MODE)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_VECTOR_UPSERT_CHUNK=\"$(EDGEQUAKE_VECTOR_UPSERT_CHUNK)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_INGEST_PROFILE=\"$(EDGEQUAKE_INGEST_PROFILE)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_EMBED_MAX_ASYNC=\"$(EDGEQUAKE_EMBED_MAX_ASYNC)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_FORCE_LLM_SUMMARY_ON_MERGE=\"$(EDGEQUAKE_FORCE_LLM_SUMMARY_ON_MERGE)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_MERGE_MAX_ASYNC=\"$(EDGEQUAKE_MERGE_MAX_ASYNC)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_MAX_SOURCE_IDS_PER_ENTITY=\"$(EDGEQUAKE_MAX_SOURCE_IDS_PER_ENTITY)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_MAX_SOURCE_IDS_PER_RELATION=\"$(EDGEQUAKE_MAX_SOURCE_IDS_PER_RELATION)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_SOURCE_IDS_LIMIT_METHOD=\"$(EDGEQUAKE_SOURCE_IDS_LIMIT_METHOD)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_GRAPH_UPSERT_CHUNK=\"$(EDGEQUAKE_GRAPH_UPSERT_CHUNK)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export VLM_PROCESS_ENABLE=\"$(VLM_PROCESS_ENABLE)\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_CHART_MODALITY_FILTER=\"true\"" >> /tmp/edgequake-start.sh; \
-printf '%s\n' "export EDGEQUAKE_MM_ANALYSIS_CACHE=\"true\"" >> /tmp/edgequake-start.sh;
-endef
 DEV_AUTH_ENABLED ?= false
 DEV_DISABLE_DEMO_LOGIN ?= false
 # SPEC-027 AC-4: frictionless local dev when DEV_AUTH_ENABLED=false (auth secure by default otherwise).
@@ -322,6 +290,95 @@ else
   EDGEQUAKE_DEFAULT_EMBEDDING_MODEL ?= embeddinggemma:latest
   EDGEQUAKE_DEFAULT_EMBEDDING_DIMENSION ?= 768
 endif
+
+# Provider-aware ingest concurrency (must follow DEFAULT_LLM_PROVIDER resolution).
+# Ollama ~1 parallel sequence — cloud-scale fan-out (32) causes connection storms.
+# Local profile also clamps workers / embed / merge (parity with extract=2).
+ifeq ($(EDGEQUAKE_DEFAULT_LLM_PROVIDER),$(filter $(EDGEQUAKE_DEFAULT_LLM_PROVIDER),ollama lmstudio lm-studio lm_studio))
+  WORKER_THREADS ?= 2
+  MAX_TASKS_PER_TENANT ?= 1
+  EDGEQUAKE_PDF_CONCURRENCY ?= 1
+  EDGEQUAKE_PDF_VISION_JOBS ?= 1
+  EDGEQUAKE_MM_IMAGE_CONCURRENCY ?= 1
+  EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS ?= 2
+  EDGEQUAKE_EMBED_MAX_ASYNC ?= 1
+  EDGEQUAKE_MERGE_MAX_ASYNC ?= 2
+  EDGEQUAKE_LOCAL_MAX_INFLIGHT ?= 2
+  # Leave headroom for interactive HTTP reads under gemma4 ingest.
+  DATABASE_POOL_SIZE ?= 16
+else
+  WORKER_THREADS ?= 16
+  MAX_TASKS_PER_TENANT ?= 12
+  EDGEQUAKE_PDF_CONCURRENCY ?= 4
+  EDGEQUAKE_PDF_VISION_JOBS ?= 4
+  EDGEQUAKE_MM_IMAGE_CONCURRENCY ?= 8
+  EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS ?= 32
+  EDGEQUAKE_EMBED_MAX_ASYNC ?= 8
+  EDGEQUAKE_MERGE_MAX_ASYNC ?= 8
+  EDGEQUAKE_LOCAL_MAX_INFLIGHT ?= 0
+  DATABASE_POOL_SIZE ?= 32
+endif
+
+export WORKER_THREADS MAX_TASKS_PER_TENANT \
+	EDGEQUAKE_PDF_CONCURRENCY EDGEQUAKE_PDF_VISION_JOBS \
+	EDGEQUAKE_MM_IMAGE_CONCURRENCY EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS \
+	EDGEQUAKE_MEM_LIMIT EDGEQUAKE_NATIVE_GRAPH_WRITES \
+	EDGEQUAKE_COMMUNITY_GLOBAL EDGEQUAKE_MULTIMODAL_FAIL_MODE VLM_PROCESS_ENABLE \
+	EDGEQUAKE_MM_LOCAL_CLASSIFY_ONLY EDGEQUAKE_MM_MAX_FIGURES \
+	EDGEQUAKE_MM_PASS_B_TIMEOUT_SECS EDGEQUAKE_MM_PASS_B_PAGE_TIMEOUT_SECS \
+	EDGEQUAKE_VECTOR_UPSERT_CHUNK EDGEQUAKE_INGEST_PROFILE \
+	EDGEQUAKE_EMBED_MAX_ASYNC EDGEQUAKE_FORCE_LLM_SUMMARY_ON_MERGE \
+	EDGEQUAKE_MERGE_MAX_ASYNC EDGEQUAKE_MAX_SOURCE_IDS_PER_ENTITY \
+	EDGEQUAKE_MAX_SOURCE_IDS_PER_RELATION EDGEQUAKE_SOURCE_IDS_LIMIT_METHOD \
+	EDGEQUAKE_GRAPH_UPSERT_CHUNK EDGEQUAKE_LOCAL_MAX_INFLIGHT DATABASE_POOL_SIZE
+
+# Shared exports appended to /tmp/edgequake-start.sh by backend-bg.
+# SPEC-047: also pin VLM + chart modality so bench restarts do not silently drop MV-32.
+define BACKEND_STABILITY_EXPORTS
+printf '%s\n' "export WORKER_THREADS=\"$(WORKER_THREADS)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export MAX_TASKS_PER_TENANT=\"$(MAX_TASKS_PER_TENANT)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_PDF_CONCURRENCY=\"$(EDGEQUAKE_PDF_CONCURRENCY)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_PDF_VISION_JOBS=\"$(EDGEQUAKE_PDF_VISION_JOBS)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MM_IMAGE_CONCURRENCY=\"$(EDGEQUAKE_MM_IMAGE_CONCURRENCY)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS=\"$(EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MEM_LIMIT=\"$(EDGEQUAKE_MEM_LIMIT)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_NATIVE_GRAPH_WRITES=\"$(EDGEQUAKE_NATIVE_GRAPH_WRITES)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_COMMUNITY_GLOBAL=\"$(EDGEQUAKE_COMMUNITY_GLOBAL)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MULTIMODAL_FAIL_MODE=\"$(EDGEQUAKE_MULTIMODAL_FAIL_MODE)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MM_LOCAL_CLASSIFY_ONLY=\"$(EDGEQUAKE_MM_LOCAL_CLASSIFY_ONLY)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MM_MAX_FIGURES=\"$(EDGEQUAKE_MM_MAX_FIGURES)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MM_PASS_B_TIMEOUT_SECS=\"$(EDGEQUAKE_MM_PASS_B_TIMEOUT_SECS)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MM_PASS_B_PAGE_TIMEOUT_SECS=\"$(EDGEQUAKE_MM_PASS_B_PAGE_TIMEOUT_SECS)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_VECTOR_UPSERT_CHUNK=\"$(EDGEQUAKE_VECTOR_UPSERT_CHUNK)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_INGEST_PROFILE=\"$(EDGEQUAKE_INGEST_PROFILE)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_EMBED_MAX_ASYNC=\"$(EDGEQUAKE_EMBED_MAX_ASYNC)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_FORCE_LLM_SUMMARY_ON_MERGE=\"$(EDGEQUAKE_FORCE_LLM_SUMMARY_ON_MERGE)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MERGE_MAX_ASYNC=\"$(EDGEQUAKE_MERGE_MAX_ASYNC)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MAX_SOURCE_IDS_PER_ENTITY=\"$(EDGEQUAKE_MAX_SOURCE_IDS_PER_ENTITY)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MAX_SOURCE_IDS_PER_RELATION=\"$(EDGEQUAKE_MAX_SOURCE_IDS_PER_RELATION)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_SOURCE_IDS_LIMIT_METHOD=\"$(EDGEQUAKE_SOURCE_IDS_LIMIT_METHOD)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_GRAPH_UPSERT_CHUNK=\"$(EDGEQUAKE_GRAPH_UPSERT_CHUNK)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_LOCAL_MAX_INFLIGHT=\"$(EDGEQUAKE_LOCAL_MAX_INFLIGHT)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MIX_ARM_GATE=\"$(EDGEQUAKE_MIX_ARM_GATE)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_RELATED_CHUNK_NUMBER=\"$${EDGEQUAKE_RELATED_CHUNK_NUMBER:-5}\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_ORPHAN_RETRACT_ON_RECOVER=\"$${EDGEQUAKE_ORPHAN_RETRACT_ON_RECOVER:-0}\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_ADAPTIVE_CHUNKING=\"$${EDGEQUAKE_ADAPTIVE_CHUNKING:-1}\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_CHUNK_SIZE=\"$${EDGEQUAKE_CHUNK_SIZE:-1200}\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_CHUNK_OVERLAP=\"$${EDGEQUAKE_CHUNK_OVERLAP:-100}\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export DATABASE_POOL_SIZE=\"$(DATABASE_POOL_SIZE)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export VLM_PROCESS_ENABLE=\"$(VLM_PROCESS_ENABLE)\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_CHART_MODALITY_FILTER=\"true\"" >> /tmp/edgequake-start.sh; \
+printf '%s\n' "export EDGEQUAKE_MM_ANALYSIS_CACHE=\"true\"" >> /tmp/edgequake-start.sh; \
+if [ "$${WAVE2_GREENFIELD:-$(WAVE2_GREENFIELD)}" = "1" ]; then \
+  printf '%s\n' "export EDGEQUAKE_VECTOR_STORAGE=halfvec" >> /tmp/edgequake-start.sh; \
+  printf '%s\n' "export EDGEQUAKE_HNSW_PARTIAL_BY_WORKSPACE=1" >> /tmp/edgequake-start.sh; \
+  printf '%s\n' "export EDGEQUAKE_HNSW_EF_SEARCH=240" >> /tmp/edgequake-start.sh; \
+  echo "$(YELLOW)→ WAVE2_GREENFIELD=1 — halfvec + partial HNSW + ef_search=240 (SPEC-071 turnkey)$(RESET)"; \
+fi;
+endef
+
+# SPEC-071: opt-in Wave-2 greenfield (empty = off; set WAVE2_GREENFIELD=1 for make dev / backend-bg)
+WAVE2_GREENFIELD ?=
 
 # SPEC-040: Vision/VLM provider defaults for PDF-to-Markdown conversion
 # WHY: Vision provider MUST inherit from the resolved DEFAULT_LLM values (set above,
@@ -397,6 +454,8 @@ help: ## Show this help message
 	@echo "  $(GREEN)make db-shell$(RESET)     Open psql shell"
 	@echo "  $(GREEN)make db-clean$(RESET)     Clean all data (non-interactive)"
 	@echo "  $(GREEN)make db-clean-force$(RESET) Destroy and recreate DB container"
+	@echo "  $(GREEN)make wave2-greenfield-env$(RESET)  Print Wave-2 100k turnkey exports (claim gates ≠ day-2 sizing; docs/product-limits.md)"
+	@echo "  $(GREEN)WAVE2_GREENFIELD=1 make backend-bg$(RESET)  Opt-in Wave-2 recipe for greenfield installs"
 	@echo ""
 	@echo "$(BOLD)$(BLUE)🐳 Docker$(RESET)"
 	@echo "  $(GREEN)make docker-up$(RESET)               Start full stack via Docker (build from source)"
@@ -563,11 +622,28 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 		echo "  $(BLUE)Provider$(RESET): Ollama (http://localhost:11434)"; \
 	fi
 	@echo ""
-	@trap 'echo ""; echo "$(YELLOW)Stopping only the processes started by this make dev session...$(RESET)"; [ -n "$$BACKEND_PID" ] && kill "$$BACKEND_PID" 2>/dev/null || true; [ -n "$$FRONTEND_PID" ] && kill "$$FRONTEND_PID" 2>/dev/null || true; echo "$(GREEN)✓ App processes stopped. PostgreSQL is left running for faster restarts.$(RESET)"; exit 0' INT; \
+	@DEV_LOCK="/tmp/edgequake-make-dev.lock"; \
+	if ! mkdir "$$DEV_LOCK" 2>/dev/null; then \
+		OTHER=$$(cat "$$DEV_LOCK/pid" 2>/dev/null || true); \
+		if [ -n "$$OTHER" ] && kill -0 "$$OTHER" 2>/dev/null; then \
+			echo "$(RED)✗ Another make dev is already running (pid $$OTHER).$(RESET)"; \
+			echo "  Stop it with Ctrl+C in that terminal, or run $(GREEN)make kill-app$(RESET) then retry."; \
+			exit 1; \
+		fi; \
+		rm -rf "$$DEV_LOCK"; \
+		mkdir "$$DEV_LOCK" || exit 1; \
+	fi; \
+	echo "$$$$" > "$$DEV_LOCK/pid"; \
+	trap 'echo ""; echo "$(YELLOW)Stopping only the processes started by this make dev session...$(RESET)"; [ -n "$$BACKEND_PID" ] && kill "$$BACKEND_PID" 2>/dev/null || true; [ -n "$$FRONTEND_PID" ] && kill "$$FRONTEND_PID" 2>/dev/null || true; rm -rf /tmp/edgequake-make-dev.lock; echo "$(GREEN)✓ App processes stopped. PostgreSQL is left running for faster restarts.$(RESET)"; exit 0' INT; \
 	set -a && . $(DEV_PORTS_ENV) && set +a; \
 	BACKEND_PID=""; \
 	FRONTEND_PID=""; \
 	$(LOAD_EFF_DB_URL); \
+	for BPID in $$(lsof -nP -iTCP:$$BACKEND_PORT -sTCP:LISTEN -t 2>/dev/null || true); do \
+		echo "$(YELLOW)→ Freeing port $$BACKEND_PORT (PID $$BPID) before backend start$(RESET)"; \
+		kill -9 "$$BPID" 2>/dev/null || true; \
+	done; \
+	sleep 0.3; \
 	echo "$(YELLOW)→ Starting backend on port $$BACKEND_PORT (DATABASE_URL port: $$(printf '%s' $$_EFF_DB_URL | sed -E 's|.*:([0-9]+)/.*|\1|'))...$(RESET)"; \
 	if [ -n "$(OPENAI_API_KEY)" ]; then \
 		(cd $(BACKEND_DIR) && \
@@ -581,6 +657,10 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 			EDGEQUAKE_NATIVE_GRAPH_WRITES="$(EDGEQUAKE_NATIVE_GRAPH_WRITES)" \
 			VLM_PROCESS_ENABLE="$(VLM_PROCESS_ENABLE)" \
 			EDGEQUAKE_MULTIMODAL_FAIL_MODE="$(EDGEQUAKE_MULTIMODAL_FAIL_MODE)" \
+			EDGEQUAKE_MM_LOCAL_CLASSIFY_ONLY="$(EDGEQUAKE_MM_LOCAL_CLASSIFY_ONLY)" \
+			EDGEQUAKE_MM_MAX_FIGURES="$(EDGEQUAKE_MM_MAX_FIGURES)" \
+			EDGEQUAKE_MM_PASS_B_TIMEOUT_SECS="$(EDGEQUAKE_MM_PASS_B_TIMEOUT_SECS)" \
+			EDGEQUAKE_MM_PASS_B_PAGE_TIMEOUT_SECS="$(EDGEQUAKE_MM_PASS_B_PAGE_TIMEOUT_SECS)" \
 			EDGEQUAKE_MM_IMAGE_CONCURRENCY="$(EDGEQUAKE_MM_IMAGE_CONCURRENCY)" \
 			cargo run 2>&1 | sed 's/^/[backend] /') & \
 		BACKEND_PID=$$!; \
@@ -595,6 +675,10 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 			EDGEQUAKE_NATIVE_GRAPH_WRITES="$(EDGEQUAKE_NATIVE_GRAPH_WRITES)" \
 			VLM_PROCESS_ENABLE="$(VLM_PROCESS_ENABLE)" \
 			EDGEQUAKE_MULTIMODAL_FAIL_MODE="$(EDGEQUAKE_MULTIMODAL_FAIL_MODE)" \
+			EDGEQUAKE_MM_LOCAL_CLASSIFY_ONLY="$(EDGEQUAKE_MM_LOCAL_CLASSIFY_ONLY)" \
+			EDGEQUAKE_MM_MAX_FIGURES="$(EDGEQUAKE_MM_MAX_FIGURES)" \
+			EDGEQUAKE_MM_PASS_B_TIMEOUT_SECS="$(EDGEQUAKE_MM_PASS_B_TIMEOUT_SECS)" \
+			EDGEQUAKE_MM_PASS_B_PAGE_TIMEOUT_SECS="$(EDGEQUAKE_MM_PASS_B_PAGE_TIMEOUT_SECS)" \
 			EDGEQUAKE_MM_IMAGE_CONCURRENCY="$(EDGEQUAKE_MM_IMAGE_CONCURRENCY)" \
 			OLLAMA_HOST="http://localhost:11434" \
 			OLLAMA_MODEL="gemma4:latest" \
@@ -766,13 +850,25 @@ kill-app: ## Kill backend and frontend processes (leaves PostgreSQL running)
 	@-if [ -f /tmp/edgequake-backend.pid ]; then kill -9 $$(cat /tmp/edgequake-backend.pid) 2>/dev/null || true; rm -f /tmp/edgequake-backend.pid; fi
 	@-pkill -9 -f "target/debug/edgequake" 2>/dev/null || true
 	@-pkill -9 -f "target/release/edgequake" 2>/dev/null || true
-	@-BPID=$$(lsof -nP -iTCP:$(BACKEND_PORT) -sTCP:LISTEN -t 2>/dev/null | head -1); \
-	[ -n "$$BPID" ] && kill -9 "$$BPID" 2>/dev/null || true
+	@-pkill -9 -f "cargo run --bin edgequake" 2>/dev/null || true
+	@-set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)" && set +a; \
+	for port in "$${BACKEND_PORT:-$(BACKEND_PORT)}" "$(DEFAULT_BACKEND_PORT)" "$(BACKEND_PORT)"; do \
+		[ -z "$$port" ] && continue; \
+		for BPID in $$(lsof -nP -iTCP:$$port -sTCP:LISTEN -t 2>/dev/null || true); do \
+			kill -9 "$$BPID" 2>/dev/null || true; \
+		done; \
+	done
 	@echo "$(YELLOW)→ Killing existing frontend processes...$(RESET)"
 	@-if [ -f /tmp/edgequake-frontend.pid ]; then kill -9 $$(cat /tmp/edgequake-frontend.pid) 2>/dev/null || true; rm -f /tmp/edgequake-frontend.pid; fi
 	@-pkill -f "node.*edgequake_webui" 2>/dev/null || true
-	@-FPID=$$(lsof -nP -iTCP:$(FRONTEND_PORT) -sTCP:LISTEN -t 2>/dev/null | head -1); \
-	[ -n "$$FPID" ] && kill -9 "$$FPID" 2>/dev/null || true
+	@-set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)" && set +a; \
+	for port in "$${FRONTEND_PORT:-$(FRONTEND_PORT)}" "$(DEFAULT_FRONTEND_PORT)" "$(FRONTEND_PORT)"; do \
+		[ -z "$$port" ] && continue; \
+		for FPID in $$(lsof -nP -iTCP:$$port -sTCP:LISTEN -t 2>/dev/null || true); do \
+			kill -9 "$$FPID" 2>/dev/null || true; \
+		done; \
+	done
+	@rm -rf /tmp/edgequake-make-dev.lock
 	@echo "$(GREEN)✓ App processes cleared (PostgreSQL left running)$(RESET)"
 
 stop: ## Stop all development services
@@ -926,6 +1022,12 @@ backend-bg: sync-dev-ports db-wait ## Run backend in background with PostgreSQL 
 	@# Read the effective DATABASE_URL resolved by db-start (may differ in port
 	@# when another PostgreSQL occupies the default 5432).
 	@$(LOAD_EFF_DB_URL); \
+	set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)" && set +a; \
+	for BPID in $$(lsof -nP -iTCP:$${BACKEND_PORT:-$(BACKEND_PORT)} -sTCP:LISTEN -t 2>/dev/null || true); do \
+		echo "$(YELLOW)→ Freeing port $${BACKEND_PORT:-$(BACKEND_PORT)} (PID $$BPID) before backend-bg start$(RESET)"; \
+		kill -9 "$$BPID" 2>/dev/null || true; \
+	done; \
+	sleep 0.3; \
 	_BIN="$(BACKEND_DIR)/target/debug/edgequake"; \
 	if [ -x "$$_BIN" ]; then _RUN="exec $$_BIN"; else _RUN="cd $(BACKEND_DIR) && exec cargo run"; fi; \
 	if [ -n "$$MISTRAL_API_KEY" ] || [ -n "$(MISTRAL_API_KEY)" ]; then \
@@ -1417,7 +1519,7 @@ postgres-image-build-pg17: ## Build and verify edgequake-postgres PG17 image (pg
 	@EQ_POSTGRES_PROFILE=pg17 bash $(DOCKER_DIR)/verify-postgres-extensions.sh edgequake-postgres:pg17
 	@echo "$(GREEN)✓ edgequake-postgres:pg17 ready$(RESET)"
 
-postgres-image-build-pg18: ## Build and verify edgequake-postgres PG18 image (pgvector 0.8.3 + AGE 1.7.0) — default dev profile
+postgres-image-build-pg18: ## Build and verify edgequake-postgres PG18 image (pgvector 0.8.5 + AGE 1.8.0) — default dev profile
 	@echo "$(BLUE)Building edgequake-postgres image (PG18 / SPEC-042-B)...$(RESET)"
 	@cd $(DOCKER_DIR) && docker build -f Dockerfile.postgres.pg18 -t edgequake-postgres:pg18 -t edgequake-postgres:local .
 	@chmod +x $(DOCKER_DIR)/verify-postgres-extensions.sh
@@ -1445,6 +1547,106 @@ check-extension-pins: ## Verify Dockerfile pins match extension-pins.sh SSOT (SP
 ops17-smoke: ## SPEC-046 OPS-17: pin smoke for pg16/pg17/pg18 (non-flaky; add --battle for Docker)
 	@chmod +x specs/046-graphrag-study/e2e/run_ops17_perf_smoke.sh
 	@./specs/046-graphrag-study/e2e/run_ops17_perf_smoke.sh
+
+data-access-perf-matrix: ## SPEC-061/062: inviolable DataAccess p95/EXPLAIN/stress on PG16/17/18
+	@chmod +x specs/061-multi-version-data-access-perf/e2e/run_data_access_perf_matrix.sh
+	@./specs/061-multi-version-data-access-perf/e2e/run_data_access_perf_matrix.sh $${EQ_PERF_PROFILES:-all}
+
+data-access-perf-matrix-release: ## SPEC-062: same matrix with cargo --release
+	@chmod +x specs/061-multi-version-data-access-perf/e2e/run_data_access_perf_matrix.sh
+	@EDGEQUAKE_PERF_RELEASE=1 ./specs/061-multi-version-data-access-perf/e2e/run_data_access_perf_matrix.sh $${EQ_PERF_PROFILES:-all}
+
+data-access-perf-matrix-prod: ## SPEC-062: release + EDGEQUAKE_PERF_SCALE=prod (50k ANN/FTS, Mix 5k)
+	@chmod +x specs/061-multi-version-data-access-perf/e2e/run_data_access_perf_matrix.sh
+	@EDGEQUAKE_PERF_RELEASE=1 EDGEQUAKE_PERF_SCALE=prod ./specs/061-multi-version-data-access-perf/e2e/run_data_access_perf_matrix.sh $${EQ_PERF_PROFILES:-all}
+
+data-access-perf-capacity-ladder: ## SPEC-063: L1/L2/L3 ANN soak on pg18 (EDGEQUAKE_CAPACITY_LADDER=L1|L2|L3)
+	@chmod +x specs/063-architecture-capacity-assessment/e2e/run_capacity_ladder.sh
+	@./specs/063-architecture-capacity-assessment/e2e/run_capacity_ladder.sh $${EQ_PERF_PROFILES:-pg18}
+
+ann-scale-battle: ## SPEC-064: filtered ANN scale battle (halfvec / partial HNSW / GUC) @100k on pg18
+	@chmod +x specs/064-filtered-ann-scale-battle/e2e/run_ann_scale_battle.sh
+	@./specs/064-filtered-ann-scale-battle/e2e/run_ann_scale_battle.sh $${EQ_PERF_PROFILES:-pg18}
+
+ceiling-proof: ## SPEC-066/067 claim gate (not day-2 sizing; see docs/product-limits.md). EQ_CEILING_STEP=L2|L3|SEEK|G1
+	@chmod +x specs/066-ceiling-proof/e2e/run_ceiling_ladder.sh
+	@./specs/066-ceiling-proof/e2e/run_ceiling_ladder.sh $${EQ_PERF_PROFILES:-pg18}
+
+recall-pareto: ## SPEC-068 recall×latency claim gate (not day-2 sizing). EQ_PARETO_ROWS_LIST / EQ_PARETO_EF_LIST / EQ_PARETO_REBUILD
+	@chmod +x specs/068-recall-quality-scale/e2e/run_recall_pareto.sh
+	@./specs/068-recall-quality-scale/e2e/run_recall_pareto.sh $${EQ_PERF_PROFILES:-pg18}
+
+dedicated-midscale: ## SPEC-069 dedicated WS table mid-scale claim gate (not day-2 sizing)
+	@chmod +x specs/069-dedicated-midscale/e2e/run_dedicated_midscale.sh
+	@./specs/069-dedicated-midscale/e2e/run_dedicated_midscale.sh $${EQ_PERF_PROFILES:-pg18}
+
+wave2-greenfield-env: ## SPEC-071: print Wave-2 turnkey exports (claim gates ≠ day-2 sizing; see docs/product-limits.md)
+	@chmod +x scripts/wave2_greenfield_env.sh scripts/wave2_warmup.sh
+	@./scripts/wave2_greenfield_env.sh
+	@echo "Apply: eval \"\$$(make -s wave2-greenfield-env)\"  or  WAVE2_GREENFIELD=1 make backend-bg" >&2
+	@echo "Warmup: ./scripts/wave2_warmup.sh <workspace_uuid>  (or POST /api/v1/admin/ann/warmup)" >&2
+	@echo "Claim gates (not day-2 sizing): make ceiling-proof · make recall-pareto · make filtered-recall-gate · make product-limits-check — docs/product-limits.md" >&2
+
+postgres-image-build-pg18-vectorscale: ## SPEC-070: build/verify pg18 + pgvectorscale (DiskANN) opt-in image
+	@echo "$(BLUE)Building edgequake-postgres:pg18-vectorscale (SPEC-070)...$(RESET)"
+	@cd $(DOCKER_DIR) && docker build -f Dockerfile.postgres.pg18-vectorscale \
+		-t edgequake-postgres:pg18-vectorscale .
+	@chmod +x $(DOCKER_DIR)/verify-postgres-extensions.sh
+	@EQ_POSTGRES_PROFILE=pg18-vectorscale bash $(DOCKER_DIR)/verify-postgres-extensions.sh edgequake-postgres:pg18-vectorscale
+	@echo "$(GREEN)✓ edgequake-postgres:pg18-vectorscale ready$(RESET)"
+
+diskann-battle: ## SPEC-070 DiskANN vs HNSW dedicated battle (claim gate; not day-2 sizing)
+	@chmod +x specs/070-diskann-study/e2e/run_diskann_battle.sh
+	@./specs/070-diskann-study/e2e/run_diskann_battle.sh $${EQ_PERF_PROFILES:-pg18-vectorscale}
+
+diskann-recall-pareto: ## SPEC-072 DiskANN recall×latency Pareto @150k (claim gate; not day-2 sizing)
+	@chmod +x specs/072-diskann-recall-pareto/e2e/run_diskann_recall_pareto.sh
+	@./specs/072-diskann-recall-pareto/e2e/run_diskann_recall_pareto.sh $${EQ_PERF_PROFILES:-pg18-vectorscale}
+
+diskann-rescore-smoke: ## SPEC-074 DiskANN list=400 + rescore=200 smoke (opt-in recipe; not silent default)
+	@chmod +x specs/074-storage-p0-hardening/e2e/run_diskann_rescore_smoke.sh
+	@./specs/074-storage-p0-hardening/e2e/run_diskann_rescore_smoke.sh $${EQ_PERF_PROFILES:-pg18-vectorscale}
+
+filtered-recall-gate: ## SPEC-075 filtered recall@20 claim gate (Wave-2 smoke; not day-2 sizing). EQ_FILTERED_RECALL_ROWS
+	@chmod +x specs/075-filtered-recall-gates/e2e/run_filtered_recall_gate.sh
+	@./specs/075-filtered-recall-gates/e2e/run_filtered_recall_gate.sh $${EQ_PERF_PROFILES:-pg18}
+
+precision-layers-gate: ## SPEC-076 A3 exact-reorder + A4 sparse RRF tip (contracts; EQ_PRECISION_SMOKE=1 for DB)
+	@chmod +x specs/076-precision-reorder-rrf/e2e/run_precision_layers_gate.sh
+	@./specs/076-precision-reorder-rrf/e2e/run_precision_layers_gate.sh
+
+binary-quantize-bakeoff: ## SPEC-077 binary_quantize+rerank vs Wave-2 (study; not silent default). EQ_BQ_ROWS
+	@chmod +x specs/077-binary-quantize-bakeoff/e2e/run_binary_quantize_bakeoff.sh
+	@./specs/077-binary-quantize-bakeoff/e2e/run_binary_quantize_bakeoff.sh $${EQ_PERF_PROFILES:-pg18}
+
+filtered-diskann-labels-bakeoff: ## SPEC-078 Filtered-DiskANN labels vs Wave-2 (study; not silent default). EQ_FDL_ROWS
+	@chmod +x specs/078-filtered-diskann-labels/e2e/run_filtered_diskann_labels.sh
+	@./specs/078-filtered-diskann-labels/e2e/run_filtered_diskann_labels.sh $${EQ_PERF_PROFILES:-pg18-vectorscale}
+
+midscale-quantize-labels: ## SPEC-079 mid-scale B2+A6 @50k/100k (study archive; not silent default)
+	@chmod +x specs/079-midscale-quantize-labels/e2e/run_midscale_quantize_labels.sh
+	@./specs/079-midscale-quantize-labels/e2e/run_midscale_quantize_labels.sh
+
+tiny-slice-exact-gate: ## SPEC-080 B3 tiny-slice exact (skip Wave-2 planner bias below EDGEQUAKE_ANN_EXACT_MAX_ROWS)
+	@chmod +x specs/080-tiny-slice-exact/e2e/run_tiny_slice_exact_gate.sh
+	@./specs/080-tiny-slice-exact/e2e/run_tiny_slice_exact_gate.sh
+
+serving-view-check: ## SPEC-081 C5 serving-view dual-SSOT (migrate + contract)
+	@chmod +x specs/081-serving-view-dual-ssot/e2e/run_serving_view_check.sh
+	@./specs/081-serving-view-dual-ssot/e2e/run_serving_view_check.sh
+
+push-scale-ladder: ## SPEC-082 A6@150/250 + Wave-2@150 spot + DiskANN@250 full-gate (raise floors only if green)
+	@chmod +x specs/082-push-scale-floors/e2e/run_push_scale_ladder.sh
+	@./specs/082-push-scale-floors/e2e/run_push_scale_ladder.sh
+
+product-limits-check: ## SPEC-065–082 honesty gate for docs/product-limits.md vs FAQ/envelope
+	@python3 scripts/product_limits_check.py
+
+compare-eq-perf: ## SPEC-062: cross-major 2× gate on archived JSONL (or ARGS=a.jsonl b.jsonl)
+	@python3 scripts/compare_eq_perf_jsonl.py --cross-major \
+		specs/061-multi-version-data-access-perf/e2e/artifacts/eq-perf-pg16.jsonl \
+		specs/061-multi-version-data-access-perf/e2e/artifacts/eq-perf-pg17.jsonl \
+		specs/061-multi-version-data-access-perf/e2e/artifacts/eq-perf-pg18.jsonl
 
 spec046-acc: ## SPEC-046 science ACC gate + JSON artifact (deterministic; no API key)
 	@chmod +x specs/046-graphrag-study/e2e/run_spec046_acc.sh
@@ -2490,3 +2692,591 @@ bench047-full: bench047-install ## SPEC-047 full (135 docs) ≥10 parallel inges
 	chmod +x tools/bench047/scripts/ensure_backend_small.sh tools/bench047/scripts/run_full_parallel.sh; \
 	tools/bench047/scripts/run_full_parallel.sh; \
 	echo "$(GREEN)→ SUMMARY:$(RESET) specs/047-rag-evaluation/e2e/artifacts/full/SUMMARY.md"
+# ---------------------------------------------------------------------------
+# SPEC-001 — EdgeQuake HybridRAG vs LightRAG (GraphRAG-Bench)
+# ---------------------------------------------------------------------------
+.PHONY: bench bench-warm bench001-install bench001-doctor bench001-freeze-smoke bench001-smoke bench001-smoke-fast bench001-smoke-fast-large bench001-smoke-fast-acc bench001-smoke-acc bench001-full bench001 bench001-acc-canary bench001-smoke-paper bench001-core bench001-acc-backend bench001-watch bench001-f1a bench001-f2a bench001-f3a bench001-f4a bench001-p0 bench001-p1a bench001-p1b bench001-p2a bench001-p2b bench001-p3a bench001-p3b bench001-p4 bench001-p5 bench001-q0 bench001-q1 bench001-q2 bench001-q3 bench001-q4 bench001-r0 bench001-r1 bench001-r2 bench001-r3 bench001-s0 bench001-s1 bench001-t0 bench001-t0b bench001-t0c bench001-t0d bench001-t1 bench001-a0 bench001-a1 bench001-a2 bench001-a3 bench001-a4 bench001-b1-audit bench001-b2-reingest bench001-b3-reingest bench001-b3b-reingest bench001-b5-reingest bench001-b6-reingest bench001-b7-reingest bench001-b8-reingest bench001-b9-reingest bench001-c1a bench001-c1b bench001-c1d bench001-c1e bench001-c1cold
+
+bench001-install: ## Install SPEC-001 Python harness (editable)
+	@cd tools/bench001 && pip3 install -e . -q
+	@echo "$(GREEN)✓ bench001 installed$(RESET)"
+
+bench001-watch: ## Refresh LIVE.md progress board (STAGE=smoke-fast; INTERVAL=2)
+	@STAGE="$${STAGE:-smoke-fast}"; INTERVAL="$${INTERVAL:-2}"; \
+	echo "$(BLUE)→ Watching specs/001-benchmark/e2e/artifacts/$$STAGE/LIVE.md (every $${INTERVAL}s)$(RESET)"; \
+	echo "  also: specs/001-benchmark/e2e/artifacts/LIVE.md"; \
+	export PYTHONPATH="tools/bench001:$${PYTHONPATH}"; \
+	while true; do \
+	  clear 2>/dev/null || true; \
+	  date -u +"UTC %Y-%m-%dT%H:%M:%SZ"; \
+	  python3 -m bench001.cli live "$$STAGE" 2>/dev/null || \
+	    python3 -m bench001.cli live 2>/dev/null || \
+	    echo "(no LIVE.md yet — start a run first)"; \
+	  sleep "$$INTERVAL"; \
+	done
+
+bench001-doctor: bench001-install ## Preflight: fixtures, EQ health, keys, LightRAG
+	@set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)"; set +a; \
+	EDGEQUAKE_API_URL="$${EDGEQUAKE_API_URL:-$(BACKEND_URL)}" \
+	python3 -m bench001.cli doctor --api "$${EDGEQUAKE_API_URL:-$(BACKEND_URL)}"
+
+bench001-freeze-smoke: bench001-install ## Download GraphRAG-Bench + verify smoke fixture IDs
+	@python3 -m bench001.cli freeze-smoke
+
+bench001-smoke: bench001-install ## SPEC-001 dual-SUT smoke (default mistral-small-latest + mistral-embed); BENCH001_DRY_RUN=1 offline
+	@set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)"; set +a; \
+	export EDGEQUAKE_API_URL="$${EDGEQUAKE_API_URL:-$(BACKEND_URL)}"; \
+	export EDGEQUAKE_LLM_PROVIDER="$${EDGEQUAKE_LLM_PROVIDER:-$${BENCH001_LLM_PROVIDER:-mistral}}"; \
+	export EDGEQUAKE_LLM_MODEL="$${EDGEQUAKE_LLM_MODEL:-$${BENCH001_LLM_MODEL:-$${MISTRAL_MODEL:-mistral-small-latest}}}"; \
+	export MISTRAL_MODEL="$$EDGEQUAKE_LLM_MODEL"; \
+	export EDGEQUAKE_EMBEDDING_PROVIDER="$${EDGEQUAKE_EMBEDDING_PROVIDER:-$${BENCH001_EMBEDDING_PROVIDER:-mistral}}"; \
+	export MISTRAL_EMBEDDING_MODEL="$${MISTRAL_EMBEDDING_MODEL:-$${BENCH001_EMBEDDING_MODEL:-mistral-embed}}"; \
+	export EDGEQUAKE_VISION_PROVIDER="$${EDGEQUAKE_VISION_PROVIDER:-$${BENCH001_VISION_PROVIDER:-mistral}}"; \
+	export EDGEQUAKE_VISION_MODEL="$${EDGEQUAKE_VISION_MODEL:-$${BENCH001_VISION_MODEL:-mistral-small-latest}}"; \
+	export VLM_PROCESS_ENABLE=true; \
+	export BENCH001_QUERY_CONCURRENCY="$${BENCH001_QUERY_CONCURRENCY:-8}"; \
+	export BENCH001_EVAL_CONCURRENCY="$${BENCH001_EVAL_CONCURRENCY:-8}"; \
+	if [ "$${BENCH001_DRY_RUN:-0}" = "1" ]; then \
+	  python3 -m bench001.cli smoke --dry-run --query-concurrency "$$BENCH001_QUERY_CONCURRENCY" --eval-concurrency "$$BENCH001_EVAL_CONCURRENCY"; \
+	else \
+	  python3 -m bench001.cli smoke --api "$$EDGEQUAKE_API_URL" --query-concurrency "$$BENCH001_QUERY_CONCURRENCY" --eval-concurrency "$$BENCH001_EVAL_CONCURRENCY"; \
+	fi; \
+	echo "$(GREEN)→ SUMMARY:$(RESET) specs/001-benchmark/e2e/artifacts/smoke/SUMMARY.md"
+
+bench001-smoke-fast: bench001-install ## Fast smoke gate (8 Qs, query-only, concurrency 12); needs warm smoke indexes
+	@set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)"; set +a; \
+	export EDGEQUAKE_API_URL="$${EDGEQUAKE_API_URL:-$(BACKEND_URL)}"; \
+	export EDGEQUAKE_LLM_PROVIDER="$${EDGEQUAKE_LLM_PROVIDER:-$${BENCH001_LLM_PROVIDER:-mistral}}"; \
+	export EDGEQUAKE_LLM_MODEL="$${EDGEQUAKE_LLM_MODEL:-$${BENCH001_LLM_MODEL:-$${MISTRAL_MODEL:-mistral-small-latest}}}"; \
+	export MISTRAL_MODEL="$$EDGEQUAKE_LLM_MODEL"; \
+	export EDGEQUAKE_EMBEDDING_PROVIDER="$${EDGEQUAKE_EMBEDDING_PROVIDER:-$${BENCH001_EMBEDDING_PROVIDER:-mistral}}"; \
+	export MISTRAL_EMBEDDING_MODEL="$${MISTRAL_EMBEDDING_MODEL:-$${BENCH001_EMBEDDING_MODEL:-mistral-embed}}"; \
+	export EDGEQUAKE_VISION_PROVIDER="$${EDGEQUAKE_VISION_PROVIDER:-$${BENCH001_VISION_PROVIDER:-mistral}}"; \
+	export EDGEQUAKE_VISION_MODEL="$${EDGEQUAKE_VISION_MODEL:-$${BENCH001_VISION_MODEL:-mistral-small-latest}}"; \
+	export VLM_PROCESS_ENABLE=true; \
+	export BENCH001_QUERY_CONCURRENCY="$${BENCH001_QUERY_CONCURRENCY:-12}"; \
+	export BENCH001_EVAL_CONCURRENCY="$${BENCH001_EVAL_CONCURRENCY:-16}"; \
+	if [ -n "$${BENCH001_EQ_WORKSPACE_ID:-}" ]; then export BENCH001_EQ_WORKSPACE_ID; fi; \
+	export LLM_API_KEY="$${LLM_API_KEY:-$$MISTRAL_API_KEY}"; \
+	python3 -m bench001.cli smoke-fast --api "$$EDGEQUAKE_API_URL" --query-only \
+	  --query-concurrency "$$BENCH001_QUERY_CONCURRENCY" --eval-concurrency "$$BENCH001_EVAL_CONCURRENCY"; \
+	echo "$(GREEN)→ SUMMARY:$(RESET) specs/001-benchmark/e2e/artifacts/smoke-fast/SUMMARY.md"
+
+# Ablation targets: force high judge fan-out (ignore stale BENCH001_EVAL_CONCURRENCY in shell).
+BENCH001_LARGE_EVAL_CONCURRENCY ?= 24
+BENCH001_LARGE_QUERY_CONCURRENCY ?= 4
+BENCH001_ACC_EVAL_CONCURRENCY ?= 24
+BENCH001_ACC_QUERY_CONCURRENCY ?= 4
+# Acc-lift SUT+judge: mistral-small-latest (fast/reliable Acc loop; medium optional override).
+BENCH001_ACC_LLM_MODEL ?= mistral-small-latest
+BENCH001_ACC_JUDGE_MODEL ?= mistral-small-latest
+# LR-like Mix: always-on local+global+naive (must also be on the EQ *server*).
+BENCH001_EQ_MIX_ARM_GATE ?= false
+# Fair Acc ingest chunk pin (LightRAG CHUNK_SIZE=1200 parity). Used by backend-lrlike + Acc targets.
+BENCH001_EQ_ADAPTIVE_CHUNKING ?= 0
+BENCH001_EQ_CHUNK_SIZE ?= 1200
+BENCH001_EQ_CHUNK_OVERLAP ?= 100
+# Cap corpus chars on smoke-fast Acc force-ingest (full medical ~1.05MB → hour+ merge risk).
+# Set 0 for full corpus. Isolates EQ workspace / LR dir as *-c{N}.
+BENCH001_INGEST_MAX_CHARS ?= 100000
+BENCH001_INGEST_TIMEOUT_S ?= 1800
+# Acc backend: detached double-fork (survives agent shell cleanup). Set 0 to use make backend-bg.
+BENCH001_ACC_DAEMON ?= 1
+BENCH001_ACC_EXTRACT_CONCURRENCY ?= 8
+
+.PHONY: bench001-acc-backend
+bench001-acc-backend: ## Detach Acc-pinned release backend (small + fair-1200 + rrf + extract∥)
+	@set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)"; set +a; \
+	if [ "$${BENCH001_SKIP_BACKEND_RESTART:-0}" = "1" ]; then \
+	  echo "$(YELLOW)→ Skipping Acc backend restart (BENCH001_SKIP_BACKEND_RESTART=1)$(RESET)"; \
+	  _H=$$(curl -sf "$${EDGEQUAKE_API_URL:-$(BACKEND_URL)}/health" || true); \
+	  if [ -z "$$_H" ]; then echo "$(RED)→ Backend unhealthy while skip-restart set$(RESET)"; exit 1; fi; \
+	  PYTHONPATH="tools/bench001:$${PYTHONPATH}" python3 -c \
+	    "import json,sys; from bench001.acc_env import backend_pin_mismatches; \
+h=json.loads(sys.argv[1]); bad=backend_pin_mismatches(h); \
+print('acc pins OK' if not bad else 'pin mismatch: '+'; '.join(bad)); \
+sys.exit(1 if bad else 0)" "$$_H" \
+	    || { echo "$(RED)→ Acc pin mismatch — unset BENCH001_SKIP_BACKEND_RESTART and restart$(RESET)"; exit 1; }; \
+	  exit 0; \
+	fi; \
+	if [ "$${BENCH001_ACC_DAEMON:-$(BENCH001_ACC_DAEMON)}" = "1" ]; then \
+	  echo "$(YELLOW)→ Acc detached backend (port $${BACKEND_PORT:-$(BACKEND_PORT)})$(RESET)"; \
+	  PYTHONPATH="tools/bench001:$${PYTHONPATH}" python3 tools/bench001/scripts/start_acc_backend.py \
+	    --port "$${BACKEND_PORT:-$(BACKEND_PORT)}" --wait 90; \
+	else \
+	  $(MAKE) bench001-backend-lrlike --no-print-directory \
+	    EDGEQUAKE_MIX_ARM_GATE="$(BENCH001_EQ_MIX_ARM_GATE)" \
+	    EDGEQUAKE_ADAPTIVE_CHUNKING="$(BENCH001_EQ_ADAPTIVE_CHUNKING)" \
+	    EDGEQUAKE_CHUNK_SIZE="$(BENCH001_EQ_CHUNK_SIZE)" \
+	    EDGEQUAKE_CHUNK_OVERLAP="$(BENCH001_EQ_CHUNK_OVERLAP)" \
+	    EDGEQUAKE_LLM_MODEL="$(BENCH001_ACC_LLM_MODEL)" \
+	    EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS="$(BENCH001_ACC_EXTRACT_CONCURRENCY)" \
+	    EDGEQUAKE_MIX_FUSION=rrf; \
+	fi
+
+.PHONY: bench001-backend-lrlike
+bench001-backend-lrlike: ## Ensure backend runs with EDGEQUAKE_MIX_ARM_GATE=false (LR-like Mix arms)
+	@set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)"; set +a; \
+	if [ "$${BENCH001_SKIP_BACKEND_RESTART:-0}" = "1" ]; then \
+	  echo "$(YELLOW)→ Skipping backend restart (BENCH001_SKIP_BACKEND_RESTART=1)$(RESET)"; \
+	  exit 0; \
+	fi; \
+	if curl -sf "$${EDGEQUAKE_API_URL:-$(BACKEND_URL)}/health" >/dev/null; then \
+	  if ps eww -p $$(lsof -nP -iTCP:$${BACKEND_PORT:-$(BACKEND_PORT)} -sTCP:LISTEN -t 2>/dev/null | head -1) 2>/dev/null \
+	    | tr ' ' '\n' | grep -q '^EDGEQUAKE_MIX_ARM_GATE=$(BENCH001_EQ_MIX_ARM_GATE)$$'; then \
+	    echo "$(GREEN)→ Backend already healthy with EDGEQUAKE_MIX_ARM_GATE=$(BENCH001_EQ_MIX_ARM_GATE)$(RESET)"; \
+	    exit 0; \
+	  fi; \
+	  if grep -q 'EDGEQUAKE_MIX_ARM_GATE="$(BENCH001_EQ_MIX_ARM_GATE)"' /tmp/edgequake-start.sh 2>/dev/null \
+	    || grep -q 'EDGEQUAKE_MIX_ARM_GATE=$(BENCH001_EQ_MIX_ARM_GATE)' /tmp/eq-bench-start-trap.sh 2>/dev/null; then \
+	    echo "$(GREEN)→ Backend healthy; start script pins Mix arm gate=$(BENCH001_EQ_MIX_ARM_GATE)$(RESET)"; \
+	    exit 0; \
+	  fi; \
+	fi; \
+	echo "$(YELLOW)→ Restart backend on port $${BACKEND_PORT:-$(BACKEND_PORT)} with EDGEQUAKE_MIX_ARM_GATE=$(BENCH001_EQ_MIX_ARM_GATE)$(RESET)"; \
+	if [ -f /tmp/edgequake-backend.pid ]; then kill $$(cat /tmp/edgequake-backend.pid) 2>/dev/null || true; fi; \
+	if [ -f /tmp/eq-bench-backend.pid ]; then kill $$(cat /tmp/eq-bench-backend.pid) 2>/dev/null || true; fi; \
+	for BPID in $$(lsof -nP -iTCP:$${BACKEND_PORT:-$(BACKEND_PORT)} -sTCP:LISTEN -t 2>/dev/null || true); do \
+	  kill "$$BPID" 2>/dev/null || true; \
+	done; \
+	rm -f /tmp/edgequake-backend.pid /tmp/eq-bench-backend.pid; \
+	sleep 1; \
+	$(MAKE) backend-bg --no-print-directory \
+	  EDGEQUAKE_MIX_ARM_GATE="$(BENCH001_EQ_MIX_ARM_GATE)" \
+	  EDGEQUAKE_ADAPTIVE_CHUNKING="$(BENCH001_EQ_ADAPTIVE_CHUNKING)" \
+	  EDGEQUAKE_CHUNK_SIZE="$(BENCH001_EQ_CHUNK_SIZE)" \
+	  EDGEQUAKE_CHUNK_OVERLAP="$(BENCH001_EQ_CHUNK_OVERLAP)"; \
+	for i in $$(seq 1 60); do \
+	  if curl -sf "$${EDGEQUAKE_API_URL:-$(BACKEND_URL)}/health" >/dev/null; then \
+	    echo "$(GREEN)→ Backend healthy with Mix arm gate=$(BENCH001_EQ_MIX_ARM_GATE)$(RESET)"; \
+	    grep -q 'EDGEQUAKE_MIX_ARM_GATE="$(BENCH001_EQ_MIX_ARM_GATE)"' /tmp/edgequake-start.sh \
+	      && echo "$(GREEN)→ Confirmed /tmp/edgequake-start.sh exports EDGEQUAKE_MIX_ARM_GATE=$(BENCH001_EQ_MIX_ARM_GATE)$(RESET)" \
+	      || echo "$(YELLOW)→ Warn: start.sh missing expected MIX_ARM_GATE pin$(RESET)"; \
+	    exit 0; \
+	  fi; \
+	  sleep 2; \
+	done; \
+	echo "$(RED)→ Backend health check failed — verify port / logs$(RESET)"; exit 1
+
+bench001-smoke-fast-large: bench001-install ## smoke-fast with mistral-large SUT+judge, high eval parallelism
+	@set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)"; set +a; \
+	export EDGEQUAKE_API_URL="$${EDGEQUAKE_API_URL:-$(BACKEND_URL)}"; \
+	export EDGEQUAKE_MIX_ARM_GATE="$(BENCH001_EQ_MIX_ARM_GATE)"; \
+	export BENCH001_LLM_PROVIDER=mistral; \
+	export BENCH001_LLM_MODEL="$${BENCH001_LLM_MODEL:-mistral-large-latest}"; \
+	export BENCH001_JUDGE_PROVIDER=mistral; \
+	export BENCH001_JUDGE_MODEL="$${BENCH001_JUDGE_MODEL:-mistral-large-latest}"; \
+	export BENCH001_ANSWER_STYLE="$${BENCH001_ANSWER_STYLE:-gold}"; \
+	export BENCH001_PUBLISH_FAIRNESS=1; \
+	export BENCH001_QUERY_CONCURRENCY="$(BENCH001_LARGE_QUERY_CONCURRENCY)"; \
+	export BENCH001_LR_QUERY_CONCURRENCY="$${BENCH001_LR_QUERY_CONCURRENCY:-1}"; \
+	export BENCH001_EVAL_CONCURRENCY="$(BENCH001_LARGE_EVAL_CONCURRENCY)"; \
+	if [ -n "$${BENCH001_EQ_WORKSPACE_ID:-}" ]; then export BENCH001_EQ_WORKSPACE_ID; fi; \
+	export LLM_API_KEY="$${LLM_API_KEY:-$$MISTRAL_API_KEY}"; \
+	export PYTHONPATH="tools/bench001:$${PYTHONPATH}"; \
+	python3 -m bench001.cli smoke-fast --api "$$EDGEQUAKE_API_URL" --query-only \
+	  --llm-provider mistral --llm-model "$$BENCH001_LLM_MODEL" \
+	  --judge-provider mistral --judge-model "$$BENCH001_JUDGE_MODEL" \
+	  --answer-style "$$BENCH001_ANSWER_STYLE" \
+	  --profile-id P0_mistral_large_mix_v2 \
+	  --query-concurrency "$(BENCH001_LARGE_QUERY_CONCURRENCY)" \
+	  --eval-concurrency "$(BENCH001_LARGE_EVAL_CONCURRENCY)"; \
+	echo "$(GREEN)→ SUMMARY:$(RESET) specs/001-benchmark/e2e/artifacts/smoke-fast/SUMMARY.md"
+
+bench001-smoke-fast-acc: bench001-install bench001-acc-backend ## Acc-lift smoke-fast: gold + small + LR-like Mix + fair chunk 1200
+	@set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)"; set +a; \
+	export EDGEQUAKE_API_URL="$${EDGEQUAKE_API_URL:-$(BACKEND_URL)}"; \
+	export EDGEQUAKE_MIX_ARM_GATE="$(BENCH001_EQ_MIX_ARM_GATE)"; \
+	export EDGEQUAKE_ADAPTIVE_CHUNKING="$(BENCH001_EQ_ADAPTIVE_CHUNKING)"; \
+	export EDGEQUAKE_CHUNK_SIZE="$(BENCH001_EQ_CHUNK_SIZE)"; \
+	export EDGEQUAKE_CHUNK_OVERLAP="$(BENCH001_EQ_CHUNK_OVERLAP)"; \
+	export EDGEQUAKE_MIX_FUSION="$${EDGEQUAKE_MIX_FUSION:-rrf}"; \
+	export BENCH001_INGEST_MAX_CHARS="$${BENCH001_INGEST_MAX_CHARS:-$(BENCH001_INGEST_MAX_CHARS)}"; \
+	export BENCH001_INGEST_TIMEOUT_S="$${BENCH001_INGEST_TIMEOUT_S:-$(BENCH001_INGEST_TIMEOUT_S)}"; \
+	export BENCH001_LLM_PROVIDER=mistral; \
+	export BENCH001_LLM_MODEL="$(BENCH001_ACC_LLM_MODEL)"; \
+	export BENCH001_JUDGE_PROVIDER=mistral; \
+	export BENCH001_JUDGE_MODEL="$(BENCH001_ACC_JUDGE_MODEL)"; \
+	export BENCH001_ANSWER_STYLE=gold; \
+	export BENCH001_PUBLISH_FAIRNESS=1; \
+	export BENCH001_QUERY_CONCURRENCY="$(BENCH001_ACC_QUERY_CONCURRENCY)"; \
+	export BENCH001_LR_QUERY_CONCURRENCY="$${BENCH001_LR_QUERY_CONCURRENCY:-1}"; \
+	export BENCH001_EVAL_CONCURRENCY="$(BENCH001_ACC_EVAL_CONCURRENCY)"; \
+	if [ -n "$${BENCH001_EQ_WORKSPACE_ID:-}" ]; then export BENCH001_EQ_WORKSPACE_ID; fi; \
+	case "$${LLM_API_KEY:-}" in FAKE*|fake*) unset LLM_API_KEY ;; esac; \
+	case "$${MISTRAL_API_KEY:-}" in FAKE*|fake*) unset MISTRAL_API_KEY ;; esac; \
+	export LLM_API_KEY="$${LLM_API_KEY:-$$MISTRAL_API_KEY}"; \
+	export PYTHONPATH="tools/bench001:$${PYTHONPATH}"; \
+	export PYTHONUNBUFFERED=1; \
+	_QONLY_FLAG="--query-only"; \
+	if [ "$${BENCH001_FORCE_INGEST:-0}" = "1" ]; then _QONLY_FLAG="--force-ingest"; fi; \
+	echo "$(YELLOW)→ Acc smoke-fast: api=$$EDGEQUAKE_API_URL model=$(BENCH001_ACC_LLM_MODEL) ingest_max_chars=$$BENCH001_INGEST_MAX_CHARS force=$${BENCH001_FORCE_INGEST:-0}$(RESET)"; \
+	python3 -m bench001.cli smoke-fast --api "$$EDGEQUAKE_API_URL" $$_QONLY_FLAG \
+	  --llm-provider mistral --llm-model "$(BENCH001_ACC_LLM_MODEL)" \
+	  --vision-provider mistral --vision-model "$(BENCH001_ACC_LLM_MODEL)" \
+	  --embedding-provider mistral --embedding-model mistral-embed --embedding-dim 1024 \
+	  --judge-provider mistral --judge-model "$(BENCH001_ACC_JUDGE_MODEL)" \
+	  --judge-embedding-model mistral-embed \
+	  --answer-style gold \
+	  --profile-id P0_mistral_small_mix_chunk1200_v1 \
+	  --query-concurrency "$(BENCH001_ACC_QUERY_CONCURRENCY)" \
+	  --eval-concurrency "$(BENCH001_ACC_EVAL_CONCURRENCY)"; \
+	echo "$(GREEN)→ SUMMARY:$(RESET) specs/001-benchmark/e2e/artifacts/smoke-fast/SUMMARY.md"
+
+bench001-smoke-acc: bench001-install bench001-acc-backend ## Acc-lift smoke n=40: gold + small + LR-like Mix + fair chunk 1200
+	@set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)"; set +a; \
+	export EDGEQUAKE_API_URL="$${EDGEQUAKE_API_URL:-$(BACKEND_URL)}"; \
+	export BENCH001_PUBLICATION=1; \
+	export BENCH001_FULL_ACC=1; \
+	export EDGEQUAKE_MIX_ARM_GATE="$(BENCH001_EQ_MIX_ARM_GATE)"; \
+	export EDGEQUAKE_ADAPTIVE_CHUNKING=0; \
+	export EDGEQUAKE_CHUNK_SIZE=1200; \
+	export EDGEQUAKE_CHUNK_OVERLAP=100; \
+	export EDGEQUAKE_MIX_FUSION=rrf; \
+	export EDGEQUAKE_HYBRID_FUSION=rrf; \
+	export EDGEQUAKE_LLM_PROVIDER=mistral; \
+	export EDGEQUAKE_LLM_MODEL="$(BENCH001_ACC_LLM_MODEL)"; \
+	export EDGEQUAKE_VISION_PROVIDER=mistral; \
+	export EDGEQUAKE_VISION_MODEL="$(BENCH001_ACC_LLM_MODEL)"; \
+	export EDGEQUAKE_EMBEDDING_PROVIDER=mistral; \
+	export EDGEQUAKE_EMBEDDING_MODEL=mistral-embed; \
+	export MISTRAL_MODEL="$(BENCH001_ACC_LLM_MODEL)"; \
+	export MISTRAL_EMBEDDING_MODEL=mistral-embed; \
+	export BENCH001_LLM_PROVIDER=mistral; \
+	export BENCH001_LLM_MODEL="$(BENCH001_ACC_LLM_MODEL)"; \
+	export BENCH001_VISION_PROVIDER=mistral; \
+	export BENCH001_VISION_MODEL="$(BENCH001_ACC_LLM_MODEL)"; \
+	export BENCH001_EMBEDDING_PROVIDER=mistral; \
+	export BENCH001_EMBEDDING_MODEL=mistral-embed; \
+	export BENCH001_EMBEDDING_DIM=1024; \
+	export BENCH001_JUDGE_PROVIDER=mistral; \
+	export BENCH001_JUDGE_MODEL="$(BENCH001_ACC_JUDGE_MODEL)"; \
+	export BENCH001_JUDGE_EMBEDDING_MODEL=mistral-embed; \
+	export BENCH001_ANSWER_STYLE=gold; \
+	export BENCH001_PUBLISH_FAIRNESS=1; \
+	export BENCH001_QUERY_CONCURRENCY="$(BENCH001_ACC_QUERY_CONCURRENCY)"; \
+	export BENCH001_LR_QUERY_CONCURRENCY="$${BENCH001_LR_QUERY_CONCURRENCY:-1}"; \
+	export BENCH001_EVAL_CONCURRENCY="$(BENCH001_ACC_EVAL_CONCURRENCY)"; \
+	export BENCH001_INGEST_MAX_CHARS=0; \
+	export BENCH001_INGEST_TIMEOUT_S="$${BENCH001_INGEST_TIMEOUT_S:-7200}"; \
+	case "$${BENCH001_EQ_WORKSPACE_ID:-}" in *c100000*|*c10000*) unset BENCH001_EQ_WORKSPACE_ID ;; esac; \
+	case "$${LLM_API_KEY:-}" in FAKE*|fake*) unset LLM_API_KEY ;; esac; \
+	case "$${MISTRAL_API_KEY:-}" in FAKE*|fake*) unset MISTRAL_API_KEY ;; esac; \
+	export LLM_API_KEY="$${LLM_API_KEY:-$$MISTRAL_API_KEY}"; \
+	export PYTHONPATH="tools/bench001:$${PYTHONPATH}"; \
+	export PYTHONUNBUFFERED=1; \
+	_QONLY_FLAG="--force-ingest"; \
+	if [ "$${BENCH001_QUERY_ONLY:-0}" = "1" ]; then _QONLY_FLAG="--query-only"; fi; \
+	echo "$(YELLOW)→ Acc smoke n=40 PUBLICATION: api=$$EDGEQUAKE_API_URL$(RESET)"; \
+	echo "$(YELLOW)  llm/vision/judge=$(BENCH001_ACC_LLM_MODEL) embed=mistral-embed chunk=1200/100 corpus=FULL$(RESET)"; \
+	echo "$(BLUE)  monitor: make bench001-watch STAGE=smoke$(RESET)"; \
+	python3 -m bench001.cli smoke --api "$$EDGEQUAKE_API_URL" $$_QONLY_FLAG \
+	  --llm-provider mistral --llm-model "$(BENCH001_ACC_LLM_MODEL)" \
+	  --vision-provider mistral --vision-model "$(BENCH001_ACC_LLM_MODEL)" \
+	  --embedding-provider mistral --embedding-model mistral-embed --embedding-dim 1024 \
+	  --judge-provider mistral --judge-model "$(BENCH001_ACC_JUDGE_MODEL)" \
+	  --judge-embedding-model mistral-embed \
+	  --answer-style gold \
+	  --profile-id P0_mistral_small_mix_chunk1200_v1 \
+	  --query-concurrency "$(BENCH001_ACC_QUERY_CONCURRENCY)" \
+	  --eval-concurrency "$(BENCH001_ACC_EVAL_CONCURRENCY)"; \
+	echo "$(GREEN)→ SUMMARY:$(RESET) specs/001-benchmark/e2e/artifacts/smoke/SUMMARY.md"
+
+# ---------------------------------------------------------------------------
+# Primary stakeholder entry: make bench
+# Fair GraphRAG-Bench Acc (EQ Mix vs LightRAG Mix, n=40) + business publish pack.
+# Chain: install → Acc backend → doctor → Acc smoke → BUSINESS_REPORT in publish/latest/
+# ---------------------------------------------------------------------------
+bench: bench001-install ## Publishable Acc dual-SUT + business report (n=40)
+	@echo "$(BLUE)→ make bench: Acc backend → doctor → dual-SUT Acc (n=40)$(RESET)"
+	@$(MAKE) bench001-acc-backend --no-print-directory
+	@set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)"; set +a; \
+	export EDGEQUAKE_API_URL="$${EDGEQUAKE_API_URL:-$(BACKEND_URL)}"; \
+	export PYTHONPATH="tools/bench001:$${PYTHONPATH}"; \
+	python3 -m bench001.cli doctor --api "$$EDGEQUAKE_API_URL" || exit 1
+	@BENCH001_SKIP_BACKEND_RESTART=1 $(MAKE) bench001-smoke-acc --no-print-directory
+	@echo ""
+	@echo "$(GREEN)✓ Bench finished$(RESET)"
+	@echo "$(GREEN)  Technical:$(RESET) specs/001-benchmark/e2e/artifacts/smoke/SUMMARY.md"
+	@echo "$(GREEN)  Business:$(RESET)  specs/001-benchmark/e2e/artifacts/publish/latest/BUSINESS_REPORT.md"
+	@echo "$(GREEN)  Exec blurb:$(RESET) specs/001-benchmark/e2e/artifacts/publish/latest/EXEC_SUMMARY.txt"
+	@if [ -f specs/001-benchmark/e2e/artifacts/publish/latest/EXEC_SUMMARY.txt ]; then \
+	  echo ""; \
+	  cat specs/001-benchmark/e2e/artifacts/publish/latest/EXEC_SUMMARY.txt; \
+	fi
+
+bench-warm: ## Same as make bench but query-only (defaults to latest warm EQ workspace)
+	@set -e; \
+	if [ -z "$${BENCH001_EQ_WORKSPACE_ID:-}" ]; then \
+	  BENCH001_EQ_WORKSPACE_ID="$$(cd tools/bench001 && PYTHONPATH=. python3 -m bench001.cli resolve-warm-workspace)"; \
+	  echo "$(GREEN)bench-warm: using warm workspace $${BENCH001_EQ_WORKSPACE_ID}$(RESET)"; \
+	else \
+	  echo "$(GREEN)bench-warm: using BENCH001_EQ_WORKSPACE_ID=$${BENCH001_EQ_WORKSPACE_ID}$(RESET)"; \
+	fi; \
+	export BENCH001_EQ_WORKSPACE_ID; \
+	export BENCH001_QUERY_ONLY=1; \
+	$(MAKE) bench --no-print-directory
+
+# Legacy aliases → make bench
+bench001-full: bench ## Alias: full Acc benchmark (n=40; full corpus; mistral-small + mistral-embed)
+bench001: bench ## Alias: launch full Acc benchmark (n=40)
+
+# 021 F1–F4 labeled Acc ladder (requires BENCH001_EQ_WORKSPACE_ID + DASHSCOPE for S1 CE).
+bench001-f1a: ## 021 F1a: S1 CE+protect + Summarize truncation floor (warm query-only)
+	@chmod +x tools/bench001/scripts/run_f_ladder_acc.sh
+	@./tools/bench001/scripts/run_f_ladder_acc.sh f1a
+
+bench001-f2a: ## 021 F2a: path_pack_v1 (CONTEXT_FORMAT=path + soft path prune)
+	@chmod +x tools/bench001/scripts/run_f_ladder_acc.sh
+	@./tools/bench001/scripts/run_f_ladder_acc.sh f2a
+
+bench001-f3a: ## 021 F3a: latency stage timing + arm concurrency remeasure
+	@chmod +x tools/bench001/scripts/run_f_ladder_acc.sh
+	@./tools/bench001/scripts/run_f_ladder_acc.sh f3a
+
+bench001-f4a: ## 021 F4a: labeled PASSAGE_PACK=1 (HippoRAG2-style chunks-first)
+	@chmod +x tools/bench001/scripts/run_f_ladder_acc.sh
+	@./tools/bench001/scripts/run_f_ladder_acc.sh f4a
+
+# 022 P0–P5 Acc recovery ladder (warm query-only; auto-resolves warm workspace).
+bench001-p0: ## 022 P0: PATH_PRUNE=0 BM25 Acc restore
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh p0
+
+bench001-p1a: ## 022 P1a: graph-walk compress on BM25
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh p1a
+
+bench001-p1b: ## 022 P1b: graph-walk compress on S1 CE+protect (needs DASHSCOPE)
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh p1b
+
+bench001-p2a: ## 022 P2a: MIX_FUSION=round_robin Acc ablation
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh p2a
+
+bench001-p2b: ## 022 P2b: lr_pack_v1 on S1 (retrieval + path + headings)
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh p2b
+
+bench001-p3a: ## 022 P3a: intent truncation audit (query_intent on predictions)
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh p3a
+
+bench001-p3b: ## 022 P3b: keyword lexical boost + popular-node fallback off
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh p3b
+
+bench001-p4: ## 022 P4: Acc CI decision package (promote only if gates green)
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh p4
+
+bench001-p5: ## 022 P5: latency arm concurrency 24 + stage remeasure
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh p5
+
+# 024 Acc parity / beat ladder (warm query-only).
+bench001-q0: ## 024 Q0: P2b stability Acc
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh q0
+
+bench001-q1: ## 024 Q1: occurrence-sort on P0 BM25
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh q1
+
+bench001-q2: ## 024 Q2: VECTOR LR budget on P0 BM25
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh q2
+
+bench001-q3: ## 024 Q3: Fact winner on P2b (BENCH001_Q3_FACT_KNOB=occurrence|lr_budget)
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh q3
+
+bench001-q4: ## 024 Q4: Acc CI decision (BENCH001_Q4_PACKAGE=p2b|occurrence|lr_budget)
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh q4
+
+bench001-r0: ## 025 R0: P2b + PROTECT_FIRST=20 (CE recall)
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh r0
+
+bench001-r1: ## 025 R1: P2b + MIN_RERANK_SCORE=0
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh r1
+
+bench001-r2: ## 025 R2: P2b + MIN_CHUNK_BUDGET_RATIO=0.55
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh r2
+
+bench001-r3: ## 025 R3: Acc CI decision (BENCH001_R3_PACKAGE=protect20|min_rerank0|chunk055|p2b)
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh r3
+
+bench001-s0: ## 026 S0: P2b + L2_SOURCES_UNION=1 (Mix∪CE citations)
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh s0
+
+bench001-s1: ## 026 S1: Acc CI decision (BENCH001_S1_PACKAGE=union|p2b)
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh s1
+
+bench001-t0: ## 027 T0: P2b + Fact→BM25 on prompt (Acc tax; prefer t0b)
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh t0
+
+bench001-t0b: ## 027 T0b: P2b + L2 BM25-first ∪ CE (CE prompt)
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh t0b
+
+bench001-t0c: ## 027 T0c: P2b + L2 BM25 replace sources (CE prompt)
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh t0c
+
+bench001-t0d: ## 027 T0d: P2b + L2 FactReplace (Fact BM25 L2; else CE)
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh t0d
+
+bench001-t1: ## 027 T1: Acc CI (BENCH001_T1_PACKAGE=fact_replace|replace|union|p2b)
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh t1
+
+bench001-a0: ## 028 A0: P2b baseline Acc
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh a0
+
+bench001-a1: ## 028 A1: P2b + CONTEXT_FORMAT=rr_cer (relation-first)
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh a1
+
+bench001-a2: ## 028 A2: A1 + INTENT_FACTUAL_BIAS=1
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh a2
+
+bench001-a3: ## 028 A3: A2 + ANSWER_PROMPT=lightrag
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh a3
+
+bench001-a4: ## 028 A4: Acc CI (BENCH001_A4_PACKAGE=a3|a2|a1|a0)
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh a4
+
+bench001-b1-audit: ## 028/029 B1: EQ↔LR extract/source_id audit (warm WS)
+	@chmod +x tools/bench001/scripts/audit_eq_lr_ingest.py
+	@PYTHONPATH=tools/bench001 python3 tools/bench001/scripts/audit_eq_lr_ingest.py
+
+bench001-b2-reingest: ## 030 B2: new WS markdown+gleaning force-ingest then A1 Acc
+	@chmod +x tools/bench001/scripts/run_b2_reingest_acc.sh
+	@./tools/bench001/scripts/run_b2_reingest_acc.sh
+
+bench001-b3-reingest: ## 031 B3a: FAQ induce+markdown+glean force-ingest then A1 Acc
+	@chmod +x tools/bench001/scripts/run_b3_reingest_acc.sh
+	@./tools/bench001/scripts/run_b3_reingest_acc.sh
+
+bench001-b3b-reingest: ## 032 B3b: ws-scoped AGE node ids + markdown+glean (no FAQ) then A1 Acc
+	@chmod +x tools/bench001/scripts/run_b3b_reingest_acc.sh
+	@./tools/bench001/scripts/run_b3b_reingest_acc.sh
+
+bench001-b5-reingest: ## 044 B5: placeholder provenance inherit + md+glean then a1fp Acc
+	@chmod +x tools/bench001/scripts/run_b5_reingest_acc.sh
+	@./tools/bench001/scripts/run_b5_reingest_acc.sh
+
+bench001-b6-reingest: ## 049 B6: relation dedupe source-chunk union + md+glean then a1fp Acc
+	@chmod +x tools/bench001/scripts/run_b6_reingest_acc.sh
+	@./tools/bench001/scripts/run_b6_reingest_acc.sh
+
+bench001-b7-reingest: ## 050 B7: placeholder entity VDB parity + md+glean then a1fp Acc
+	@chmod +x tools/bench001/scripts/run_b7_reingest_acc.sh
+	@./tools/bench001/scripts/run_b7_reingest_acc.sh
+
+bench001-b8-reingest: ## 053 B8: entity types LR parity (no DATE) + md+glean then a1fp Acc
+	@chmod +x tools/bench001/scripts/run_b8_reingest_acc.sh
+	@./tools/bench001/scripts/run_b8_reingest_acc.sh
+
+bench001-b9-reingest: ## 054 B9: extract caps LR parity (40/100) + md+glean then a1fp Acc
+	@chmod +x tools/bench001/scripts/run_b9_reingest_acc.sh
+	@./tools/bench001/scripts/run_b9_reingest_acc.sh
+
+bench001-c1a: ## 058 C1a: Fact CE-skip latency peer (not Acc promote); needs warm Acc WS
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh c1a
+
+bench001-c1b: ## 059 C1b: BM25-all (no CE) latency peer + keyword/embed split (not Acc promote)
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh c1b
+
+bench001-c1d: ## 060 C1d: BM25-all + heuristic keywords (skip keyword LLM); not Acc promote
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh c1d
+
+bench001-c1e: ## 062 C1e: BM25-all + fast KEYWORD LLM (ministral-3b); not Acc promote
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh c1e
+
+bench001-c1cold: ## 063 C1cold: C1b + LR LLM cache OFF (fair cold EQ/LR latency); not Acc promote
+	@chmod +x tools/bench001/scripts/run_p_ladder_acc.sh
+	@./tools/bench001/scripts/run_p_ladder_acc.sh c1cold
+
+bench001-smoke-fast-acc-rr: bench001-install ## Optional P3: smoke-fast Acc with EDGEQUAKE_MIX_FUSION=round_robin (query-only; warm WS)
+	@set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)"; set +a; \
+	export EDGEQUAKE_API_URL="$${EDGEQUAKE_API_URL:-$(BACKEND_URL)}"; \
+	export EDGEQUAKE_MIX_ARM_GATE="$(BENCH001_EQ_MIX_ARM_GATE)"; \
+	export EDGEQUAKE_MIX_FUSION=round_robin; \
+	export BENCH001_PUBLISH_FAIRNESS=1; \
+	export LLM_API_KEY="$${LLM_API_KEY:-$$MISTRAL_API_KEY}"; \
+	export PYTHONPATH="tools/bench001:$${PYTHONPATH}"; \
+	export BENCH001_LR_QUERY_CONCURRENCY="$${BENCH001_LR_QUERY_CONCURRENCY:-1}"; \
+	if [ -z "$${BENCH001_EQ_WORKSPACE_ID:-}" ]; then echo "$(RED)BENCH001_EQ_WORKSPACE_ID required for query-only RR ablation$(RESET)"; exit 1; fi; \
+	python3 -m bench001.cli smoke-fast --api "$$EDGEQUAKE_API_URL" --query-only \
+	  --llm-provider mistral --llm-model "$(BENCH001_ACC_LLM_MODEL)" \
+	  --judge-provider mistral --judge-model "$(BENCH001_ACC_JUDGE_MODEL)" \
+	  --answer-style gold \
+	  --profile-id P0_mistral_medium_mix_rr_fusion_v2 \
+	  --query-concurrency "$(BENCH001_ACC_QUERY_CONCURRENCY)" \
+	  --eval-concurrency "$(BENCH001_ACC_EVAL_CONCURRENCY)"; \
+	echo "$(GREEN)→ SUMMARY:$(RESET) specs/001-benchmark/e2e/artifacts/smoke-fast/SUMMARY.md"
+
+bench001-acc-canary: bench001-install ## Acc instrument canaries (judge-only; paraphrase/wrong-fact)
+	@set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)"; set +a; \
+	export BENCH001_JUDGE_PROVIDER="$${BENCH001_JUDGE_PROVIDER:-mistral}"; \
+	export BENCH001_JUDGE_MODEL="$${BENCH001_JUDGE_MODEL:-mistral-small-latest}"; \
+	export BENCH001_EVAL_CONCURRENCY="$(BENCH001_ACC_EVAL_CONCURRENCY)"; \
+	export LLM_API_KEY="$${LLM_API_KEY:-$$MISTRAL_API_KEY}"; \
+	export PYTHONPATH="tools/bench001:$${PYTHONPATH}"; \
+	python3 -m bench001.cli acc-canary \
+	  --judge-provider "$$BENCH001_JUDGE_PROVIDER" \
+	  --judge-model "$$BENCH001_JUDGE_MODEL" \
+	  --eval-concurrency "$(BENCH001_ACC_EVAL_CONCURRENCY)"; \
+	echo "$(GREEN)→ SUMMARY:$(RESET) specs/001-benchmark/e2e/artifacts/acc-canary/SUMMARY.md"
+
+bench001-smoke-paper: bench001-install ## Paper-track Acc rescore (GPT-4o-mini + BGE) on frozen smoke predictions
+	@set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)"; set +a; \
+	export PYTHONPATH="tools/bench001:$${PYTHONPATH}"; \
+	export BENCH001_PUBLISH_FAIRNESS=1; \
+	export BENCH001_EVAL_CONCURRENCY="$(BENCH001_ACC_EVAL_CONCURRENCY)"; \
+	export BENCH001_JUDGE_EMBED_BACKEND=hf_bge; \
+	export LLM_API_KEY="$${LLM_API_KEY:-$$OPENAI_API_KEY}"; \
+	test -n "$$OPENAI_API_KEY" || { echo "$(RED)OPENAI_API_KEY required for P0_paper$(RESET)"; exit 2; }; \
+	python3 -m bench001.cli rescore --source smoke \
+	  --profile-id P0_paper \
+	  --judge-provider openai --judge-model gpt-4o-mini \
+	  --judge-base-url https://api.openai.com/v1 \
+	  --judge-embedding-model BAAI/bge-large-en-v1.5 \
+	  --judge-embed-backend hf_bge \
+	  --eval-concurrency "$(BENCH001_ACC_EVAL_CONCURRENCY)"; \
+	echo "$(GREEN)→ SUMMARY:$(RESET) specs/001-benchmark/e2e/artifacts/smoke-paper/SUMMARY.md"
+
+bench001-core: bench001-install ## SPEC-001 core (default mistral-small-latest + mistral-embed; cost-gated)
+	@set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)"; set +a; \
+	export EDGEQUAKE_API_URL="$${EDGEQUAKE_API_URL:-$(BACKEND_URL)}"; \
+	export EDGEQUAKE_LLM_PROVIDER="$${EDGEQUAKE_LLM_PROVIDER:-$${BENCH001_LLM_PROVIDER:-mistral}}"; \
+	export EDGEQUAKE_LLM_MODEL="$${EDGEQUAKE_LLM_MODEL:-$${BENCH001_LLM_MODEL:-$${MISTRAL_MODEL:-mistral-small-latest}}}"; \
+	export MISTRAL_MODEL="$$EDGEQUAKE_LLM_MODEL"; \
+	export EDGEQUAKE_EMBEDDING_PROVIDER="$${EDGEQUAKE_EMBEDDING_PROVIDER:-$${BENCH001_EMBEDDING_PROVIDER:-mistral}}"; \
+	export MISTRAL_EMBEDDING_MODEL="$${MISTRAL_EMBEDDING_MODEL:-$${BENCH001_EMBEDDING_MODEL:-mistral-embed}}"; \
+	export EDGEQUAKE_VISION_PROVIDER="$${EDGEQUAKE_VISION_PROVIDER:-$${BENCH001_VISION_PROVIDER:-mistral}}"; \
+	export EDGEQUAKE_VISION_MODEL="$${EDGEQUAKE_VISION_MODEL:-$${BENCH001_VISION_MODEL:-mistral-small-latest}}"; \
+	export VLM_PROCESS_ENABLE=true; \
+	export BENCH001_QUERY_CONCURRENCY="$${BENCH001_QUERY_CONCURRENCY:-8}"; \
+	export BENCH001_EVAL_CONCURRENCY="$${BENCH001_EVAL_CONCURRENCY:-8}"; \
+	python3 -m bench001.cli core --api "$$EDGEQUAKE_API_URL" --i-accept-cost --query-concurrency "$$BENCH001_QUERY_CONCURRENCY" --eval-concurrency "$$BENCH001_EVAL_CONCURRENCY"; \
+	echo "$(GREEN)→ SUMMARY:$(RESET) specs/001-benchmark/e2e/artifacts/core/SUMMARY.md"

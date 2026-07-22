@@ -6,6 +6,116 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.20.2] — 2026-07-22
+
+Patch: opaque entity soft-labels across lineage/query, reliable delete/DDL-off-hotpath, text-ingest progress parity, and dual fairness lanes so deletes do not starve PDF ingest (SPEC-067–073).
+
+### Added
+
+- **Opaque entity reject (067)** — Reject UUID/GUID-like entity names at write; soft-label presentation SSOT (`resolve_entity_display_label` / `graph_node_label`).
+- **Text ingest progress (068)** — Markdown/text ingest progress parity with PDF upload UX.
+- **Lineage label SSOT (072)** — Document-scoped KG entities expose `id` + soft `label` (identity ≠ presentation).
+- **Relationship endpoint labels (073)** — Query Connections / LLM context use `source_label`/`target_label`; traversal, neighborhood, chunk/provenance soft-label remaining bypasses.
+- **Lineage edge discovery (071)** — Source-prefix GIN path for reliable edge discovery under delete/lineage loads.
+- **DB ops excellence (070)** — Migrations support reconcile m086/m092; vector DDL session contracts; ops audit.
+
+### Fixed
+
+- **Reliable delete (069)** — DDL off delete hotpath; progress contracts for long deletes.
+- **Dual fairness lanes** — Deletes no longer starve PDF ingest under concurrent load.
+- Prefixed opaque IDs (`RESOURCE_<uuid>`, `org:`, `uuid:`) detected for soft-label and write reject.
+
+### Ops note
+
+Legacy opaque AGE node ids remain until re-ingest; soft-label only fixes presentation.
+
+---
+
+## [0.20.1] — 2026-07-22
+
+Patch: durable workspace wipe, graph-first cascade with tenant isolation, and structured Interrupted restart recovery ([#312](https://github.com/raphaelmansuy/edgequake/pull/312)).
+
+### Added
+
+- **Durable workspace wipe (#309)** — `WorkspaceWipe` task type (migration `095`), HTTP 202 + `wipe_track_id` / `planned_delete_count`, WebSocket bulk deletion progress, process-local admission so upload/reprocess cannot race mid-admit.
+- **Graph-first cascade (#305)** — Prefix-safe modern+legacy source discovery (chunk probe to `SOURCE_CHUNK_PROBE_LIMIT`), legacy-null workspace/tenant matching, high-chunk-index coverage, fail-closed wipe PDF/mm deletes.
+- **Structured Interrupted (#304)** — `failure_code=server_restart_interrupted` from task orphan sync and `recover_orphaned_documents`; WebUI Interrupted → default Full reprocess (entities force); narrow SSOT (no broad terminal-recoverable hijack).
+- **Contracts / SDKs / WebUI** — OpenAPI/AsyncAPI wipe fields; typed `DeleteAllResponse` / `wipe_track_id` across TS/Python/Go/Java/Rust/PHP; Playwright `issue309-wipe-all-async.spec.ts`.
+
+### Fixed
+
+- SPEC-006 tenant isolation on cascade list filters (explicit different tenant must not cascade; legacy-null tenant still matches).
+- Wipe admission race: in-flight slot held across `try_register` → `enqueue_task`.
+- Op-count scale proof: workspace wipe uses exactly one `clear_workspace` and zero prefix scans at 200 docs (memory + PG).
+
+---
+
+## [0.20.0] — 2026-07-21
+
+Smart query = LightRAG Mix arms, Drawing entity human labels, Vision ingestion reliability, and honest Acc/latency publish evidence.
+
+### Added
+
+- **Drawing `display_name` (066)** — Multimodal Drawing/Table/Equation entities keep stable `im-…` / `IM-…` identity and gain a human `display_name` (VLM → heading → `Fig n · p.m` fallback). Spec: [066](specs/001-benchmark/001-edgquake-improvements/066-drawing-entity-display-name.md).
+- **Graph `graph_node_label`** — Stream/search/traversal/node/popular APIs prefer `display_name` for graph `label` without rewriting node ids.
+- **WebUI graph identity** — DRAWING/TABLE/EQUATION colors, label-utils, node details Identity + thumbnail.
+- **Vision ingestion reliability** — Accurate pdfium page count, phase-aware budget, stall watchdog, durable checkpoints, progress-aware breaker, startup auto-resume (shipped in `ebf384c0`).
+
+### Changed
+
+- **Smart / Mix = LightRAG three arms (065)** — `intent_arm_mask` always runs local + global + naive; product `EDGEQUAKE_MIX_ARM_GATE` defaults **false**. Spec: [065](specs/001-benchmark/001-edgquake-improvements/065-smart-lightrag-mix-arms.md).
+- **Chunk hydration SSOT** — Local/global chunk fetch uses `vector_type=chunk` (no entity/relationship metadata filter on chunk rows).
+
+### Performance testing
+
+Honest Acc/latency vs LightRAG (do **not** claim Acc Beat / SOTA win):
+
+| Claim | Evidence |
+|-------|----------|
+| Statistical Acc **tie** (cold publish) | EQ Acc **0.731** vs LR **0.760** (CI includes 0) |
+| Fair cold query p50 | ratio **1.013×** (`smoke-20260721T022103Z`) |
+| Acc Fact peer | EQ Acc **0.801** (`smoke-20260720T120315Z`) |
+| Warm ~4× LR “faster” | **LR LLM cache**, not engine ([063](specs/001-benchmark/001-edgquake-improvements/063-why-lightrag-faster-cache-fairness.md)) |
+
+Publish pack: [BUSINESS_REPORT.md](specs/001-benchmark/e2e/artifacts/publish/latest/BUSINESS_REPORT.md) · [EXEC_SUMMARY.txt](specs/001-benchmark/e2e/artifacts/publish/latest/EXEC_SUMMARY.txt) · [peers.json](specs/001-benchmark/e2e/artifacts/peers.json). Soft Mix Acc fishing stopped ([055](specs/001-benchmark/001-edgquake-improvements/055-post-acc-ceiling-first-principles.md)).
+
+---
+
+## [0.19.0] — 2026-07-17
+
+Pipeline reliability (SPEC-057 P0–P4): Postgres claim/lease delivery SSOT, cancel/status truth, convert→ingest stage split, multi-replica hardening, and migration tooling.
+
+### Added — SPEC-057 Pipeline reliability
+
+- **Claim/lease delivery SSOT** — Workers claim via `FOR UPDATE SKIP LOCKED` + leases; channel/NOTIFY is wake-only. Pending survives boot without `STARTUP_AUTO_RESUME`; Cancelled is never claimed; stale Processing → Interrupted/Failed (Reprocess).
+- **PDF `Cancelled` status** — `PdfProcessingStatus::Cancelled` (migration 087); cancel paths never map cancel → Failed.
+- **Task lease columns** — Migrations 088/089 add lease fields and refresh the tasks view for claim/reaper paths.
+- **`IngestionStatusMapper` SSOT** — Unified task / doc KV / PDF / stage → API `display_status` / `ui_phase` (Stopping… → Cancelled).
+- **Cancel facade + orphan recovery** — Restart-safe cancel sync across HTTP/WS/PDF/pipeline; boot + periodic orphan/pending reconcile.
+- **Convert → ingest split** — `PdfProcessing` is convert-only; KG ingest runs as `TaskType::Insert` with markdown checkpoint barrier (ingest fail keeps PDF Completed + markdown).
+- **Multi-replica claim** — `EDGEQUAKE_REPLICAS` + Bridged/NotifyOnly delivery; dual-pool contracts prove no double-process.
+- **Store contention + compensate observability** — Queue-metrics / `/ready` blockers; idempotent saga compensate + KV DLQ metrics.
+- **Contract suite** — `contract_cancel_and_fairness`, `contract_claim_and_restart`, `contract_pdf_convert_ingest_split`, `contract_ingestion_status_mapper`, `contract_multi_replica_claim`, `contract_compensate_observability`, `postgres_claim_lease`.
+- **Ops runbook** — [docs/ingestion-cancel-and-fairness.md](docs/ingestion-cancel-and-fairness.md) + `.env.example` lease/replicas knobs.
+
+### Fixed — Ingestion UX & fairness
+
+- **Cancel fairness park** — At worker-cap, release claim and park (no 500ms requeue storm).
+- **Vision parser defaults** — Default vision parser applied on document create paths.
+- **WebUI status readiness** — Document WS/cache updates, backend readiness, and cancelled excluded from failed-count chips.
+- **Lease view guard** — Tasks view refresh hardened so lease columns stay visible after migrate.
+
+### Changed — Migrations tooling
+
+- **Checksum gate hardening** — Migration checksum / hook install paths tightened for CI Layer 1 immutability.
+- **Migration e2e coverage** — Lease-view and checksum regression coverage in `scripts/test_migration_e2e.sh`.
+
+### Changed — Multimodal
+
+- **Local multimodal processing** — Stronger error handling and recovery around local vision/PDF convert paths.
+
+---
+
 ## [0.18.0] — 2026-07-16
 
 Storage/query performance gates (SPEC-054), ingestion progress reliability, OpenAPI snapshot freshness, and Docker CD lean-ups.

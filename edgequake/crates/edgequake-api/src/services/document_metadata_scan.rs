@@ -6,7 +6,9 @@ use edgequake_storage::traits::KVStorage;
 
 use crate::error::ApiResult;
 use crate::middleware::TenantContext;
-use crate::services::workspace_document_index::list_workspace_metadata_keys;
+use crate::services::workspace_document_index::{
+    list_workspace_metadata_keys, list_workspace_metadata_keys_limited,
+};
 use crate::workspace_scope::metadata_matches_tenant_context;
 
 pub use edgequake_storage::document_metadata_integrity::{
@@ -81,29 +83,86 @@ pub fn filter_metadata_for_tenant<'a>(
         .collect()
 }
 
-/// Load scoped `(key, metadata)` pairs for tenant/workspace.
+/// Result of a bounded interactive metadata load (list path).
+#[derive(Debug, Clone)]
+pub struct ScopedMetadataLoad {
+    pub entries: Vec<(String, serde_json::Value)>,
+    /// True when key enumeration exceeded `max_entries` before value fetch.
+    pub truncated: bool,
+}
+
+/// Load scoped `(key, metadata)` pairs for tenant/workspace (unbounded).
+///
+/// Prefer [`load_scoped_document_metadata_entries_limited`] on interactive
+/// HTTP paths — this unlimited variant is for internal/admin scans.
 pub async fn load_scoped_document_metadata_entries(
     kv_storage: &(dyn KVStorage + Send + Sync),
     tenant_ctx: &TenantContext,
 ) -> ApiResult<Vec<(String, serde_json::Value)>> {
     if let Some(workspace_id) = tenant_ctx.workspace_id.as_deref() {
-        if let Ok(indexed) =
-            load_workspace_metadata_entries_by_index(kv_storage, workspace_id).await
-        {
-            if !indexed.is_empty() {
-                return Ok(indexed
-                    .into_iter()
-                    .filter(|(_, value)| metadata_matches_tenant_context(value, tenant_ctx))
-                    .collect());
-            }
+        let metadata_keys = list_workspace_metadata_keys(kv_storage, workspace_id).await?;
+        if !metadata_keys.is_empty() {
+            return Ok(
+                fetch_scoped_entries(kv_storage, tenant_ctx, metadata_keys, false)
+                    .await?
+                    .entries,
+            );
+        }
+    }
+    let keys = kv_storage
+        .keys_with_suffix(DOCUMENT_METADATA_SUFFIX)
+        .await?;
+    Ok(fetch_scoped_entries(kv_storage, tenant_ctx, keys, false)
+        .await?
+        .entries)
+}
+
+/// Load scoped metadata with a hard cap on keys **before** `get_by_ids_ordered`.
+///
+/// WHY: interactive list must not pay unbounded KV key/value materialization for
+/// huge workspaces. Truncation happens at the storage key-list stage (Postgres
+/// `LIMIT` on index/suffix scan), not after loading every JSON blob into memory.
+pub async fn load_scoped_document_metadata_entries_limited(
+    kv_storage: &(dyn KVStorage + Send + Sync),
+    tenant_ctx: &TenantContext,
+    max_entries: usize,
+) -> ApiResult<ScopedMetadataLoad> {
+    let max_entries = max_entries.max(1);
+
+    if let Some(workspace_id) = tenant_ctx.workspace_id.as_deref() {
+        let (metadata_keys, truncated) =
+            list_workspace_metadata_keys_limited(kv_storage, workspace_id, max_entries).await?;
+        if !metadata_keys.is_empty() {
+            return fetch_scoped_entries(kv_storage, tenant_ctx, metadata_keys, truncated).await;
         }
     }
 
-    Ok(load_all_document_metadata_entries(kv_storage)
-        .await?
+    let (keys, truncated) = kv_storage
+        .keys_with_suffix_limited(DOCUMENT_METADATA_SUFFIX, max_entries)
+        .await?;
+    fetch_scoped_entries(kv_storage, tenant_ctx, keys, truncated).await
+}
+
+async fn fetch_scoped_entries(
+    kv_storage: &(dyn KVStorage + Send + Sync),
+    tenant_ctx: &TenantContext,
+    metadata_keys: Vec<String>,
+    truncated: bool,
+) -> ApiResult<ScopedMetadataLoad> {
+    if metadata_keys.is_empty() {
+        return Ok(ScopedMetadataLoad {
+            entries: vec![],
+            truncated: false,
+        });
+    }
+    let values = kv_storage.get_by_ids_ordered(&metadata_keys).await?;
+    let entries = metadata_keys
         .into_iter()
+        .zip(values)
+        .filter_map(|(key, value)| value.map(|v| (key, v)))
         .filter(|(_, value)| metadata_matches_tenant_context(value, tenant_ctx))
-        .collect())
+        .collect();
+    Ok(ScopedMetadataLoad { entries, truncated })
 }
 
 /// Load `(key, metadata)` for a workspace using `wsdoc:` index prefix scan.
@@ -135,6 +194,50 @@ pub async fn load_scoped_document_metadata(
             .map(|(_, value)| value)
             .collect(),
     )
+}
+
+/// Progress facade load (068): final workspace docs **plus** in-flight staging metadata.
+///
+/// Text/MD admits write `staging:{doc}-metadata` only until promote. The wsdoc index
+/// skips staging keys, so a non-empty workspace would otherwise 404
+/// `GET /ingestion/{insert-*}/progress` for active inserts.
+pub async fn load_scoped_document_metadata_for_progress(
+    kv_storage: &(dyn KVStorage + Send + Sync),
+    tenant_ctx: &TenantContext,
+) -> ApiResult<Vec<serde_json::Value>> {
+    let mut values = load_scoped_document_metadata(kv_storage, tenant_ctx).await?;
+
+    let staging_keys: Vec<String> = kv_storage
+        .keys_with_prefix("staging:")
+        .await?
+        .into_iter()
+        .filter(|k| k.ends_with(DOCUMENT_METADATA_SUFFIX) && !k.contains(":hash:"))
+        .collect();
+    if staging_keys.is_empty() {
+        return Ok(values);
+    }
+
+    let staging_values = kv_storage.get_by_ids_ordered(&staging_keys).await?;
+    let mut seen_ids: std::collections::HashSet<String> = values
+        .iter()
+        .filter_map(|v| v.get("id").and_then(|i| i.as_str()).map(str::to_string))
+        .collect();
+
+    for value in staging_values.into_iter().flatten() {
+        if !metadata_matches_tenant_context(&value, tenant_ctx) {
+            continue;
+        }
+        let Some(id) = value.get("id").and_then(|i| i.as_str()) else {
+            continue;
+        };
+        if id.is_empty() || seen_ids.contains(id) {
+            // Prefer final `{doc}-metadata` over staging when both exist.
+            continue;
+        }
+        seen_ids.insert(id.to_string());
+        values.push(value);
+    }
+    Ok(values)
 }
 
 /// KV keys to remove when cascade-deleting a workspace's documents.
@@ -532,5 +635,102 @@ mod tests {
             .unwrap();
         assert_eq!(default_docs.len(), 1);
         assert_eq!(default_docs[0].doc_id, "doc-legacy-default");
+    }
+
+    #[tokio::test]
+    async fn limited_load_truncates_keys_before_value_fetch() {
+        use edgequake_storage::MemoryKVStorage;
+        use std::sync::Arc;
+
+        let kv = Arc::new(MemoryKVStorage::new("spec027-limited-load"));
+        kv.initialize().await.unwrap();
+
+        let ws = uuid::Uuid::new_v4().to_string();
+        let tenant = uuid::Uuid::new_v4().to_string();
+        let mut upserts = Vec::new();
+        for i in 0..5 {
+            let id = format!("doc-cap-{i}");
+            upserts.push((
+                format!("{id}-metadata"),
+                serde_json::json!({
+                    "id": id,
+                    "tenant_id": tenant,
+                    "workspace_id": ws,
+                }),
+            ));
+        }
+        kv.upsert(&upserts).await.unwrap();
+
+        let loaded =
+            load_scoped_document_metadata_entries_limited(kv.as_ref(), &ctx(&tenant, &ws), 2)
+                .await
+                .unwrap();
+        assert!(loaded.truncated);
+        assert!(loaded.entries.len() <= 2);
+    }
+
+    #[tokio::test]
+    async fn limited_load_exact_cap_without_extra_is_not_truncated() {
+        use edgequake_storage::MemoryKVStorage;
+        use std::sync::Arc;
+
+        let kv = Arc::new(MemoryKVStorage::new("spec027-exact-cap"));
+        kv.initialize().await.unwrap();
+        let ws = uuid::Uuid::new_v4().to_string();
+        let tenant = uuid::Uuid::new_v4().to_string();
+        let mut upserts = Vec::new();
+        for i in 0..2 {
+            let id = format!("doc-exact-{i}");
+            upserts.push((
+                format!("{id}-metadata"),
+                serde_json::json!({
+                    "id": id,
+                    "tenant_id": tenant,
+                    "workspace_id": ws,
+                }),
+            ));
+        }
+        kv.upsert(&upserts).await.unwrap();
+
+        let loaded =
+            load_scoped_document_metadata_entries_limited(kv.as_ref(), &ctx(&tenant, &ws), 2)
+                .await
+                .unwrap();
+        assert!(!loaded.truncated, "exact fill must not report truncated");
+        assert_eq!(loaded.entries.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn limited_load_max_entries_one_returns_single() {
+        use edgequake_storage::MemoryKVStorage;
+        use std::sync::Arc;
+
+        let kv = Arc::new(MemoryKVStorage::new("spec027-cap-one"));
+        kv.initialize().await.unwrap();
+        let ws = uuid::Uuid::new_v4().to_string();
+        let tenant = uuid::Uuid::new_v4().to_string();
+        let mut upserts = Vec::new();
+        for i in 0..3 {
+            let id = format!("doc-one-{i}");
+            upserts.push((
+                format!("{id}-metadata"),
+                serde_json::json!({
+                    "id": id,
+                    "tenant_id": tenant,
+                    "workspace_id": ws,
+                }),
+            ));
+        }
+        kv.upsert(&upserts).await.unwrap();
+
+        let loaded = load_scoped_document_metadata_entries_limited(
+            kv.as_ref(),
+            &ctx(&tenant, &ws),
+            0, // clamped to 1
+        )
+        .await
+        .unwrap();
+        assert!(loaded.truncated);
+        assert_eq!(loaded.entries.len(), 1);
     }
 }

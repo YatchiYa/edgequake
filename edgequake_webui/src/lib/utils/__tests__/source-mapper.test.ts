@@ -101,6 +101,8 @@ describe("mapSourcesToContext", () => {
     expect(result.relationships[0]).toEqual({
       source: "SARAH_CHEN",
       target: "QUANTUM_LAB",
+      source_label: "SARAH_CHEN",
+      target_label: "QUANTUM_LAB",
       type: "WORKS_AT",
       relevance: 0.88,
       source_document_id: "doc-789",
@@ -241,6 +243,28 @@ describe("buildQueryContextFromRetrieval with subgraph", () => {
   it("mapSubgraphToQueryContext preserves relation_type without snippet parsing", () => {
     const graph = mapSubgraphToQueryContext(subgraph);
     expect(graph.relationships[0].type).toBe("IMPLEMENTS");
+  });
+
+  it("073: mapSubgraphToQueryContext prefers source_label/target_label", () => {
+    const opaque = "84b69e27-e38b-444a-83dd-5e6a537c6f12";
+    const graph = mapSubgraphToQueryContext({
+      entities: [],
+      relationships: [
+        {
+          id: `rel:${opaque}:HAS_THEME:AI_NEXT`,
+          source: opaque,
+          target: "AI_NEXT",
+          source_label: "Future of work theme",
+          target_label: "AI Next Conference",
+          relation_type: "HAS_THEME",
+          description: "",
+          score: 0.7,
+        },
+      ],
+    });
+    expect(graph.relationships[0].source).toBe(opaque);
+    expect(graph.relationships[0].source_label).toBe("Future of work theme");
+    expect(graph.relationships[0].target_label).toBe("AI Next Conference");
   });
 });
 

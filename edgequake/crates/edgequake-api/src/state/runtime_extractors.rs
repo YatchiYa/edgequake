@@ -108,6 +108,12 @@ impl FromRef<AppState> for ApiSecurityConfig {
     }
 }
 
+impl FromRef<AppState> for Arc<crate::read_path::ReadPathDbPermit> {
+    fn from_ref(state: &AppState) -> Self {
+        Arc::clone(&state.read_path_db)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;

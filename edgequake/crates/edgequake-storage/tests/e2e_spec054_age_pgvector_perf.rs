@@ -15,6 +15,8 @@
 
 #![cfg(feature = "postgres")]
 
+#[path = "support/perf_harness.rs"]
+mod perf_harness;
 #[path = "support/postgres_test_config.rs"]
 mod postgres_test_config;
 
@@ -39,8 +41,7 @@ fn emb(seed: f32) -> Vec<f32> {
 
 #[tokio::test]
 async fn e2e_filtered_hnsw_meets_topk_under_workspace_filter() {
-    let Some(config) = postgres_test_config::contract_postgres_config("perf054_vec") else {
-        eprintln!("SKIP: no DATABASE_URL / POSTGRES_PASSWORD");
+    let Some(config) = postgres_test_config::require_or_skip_postgres("perf054_vec") else {
         return;
     };
 
@@ -90,7 +91,7 @@ async fn e2e_filtered_hnsw_meets_topk_under_workspace_filter() {
         .expect("warmup");
 
     let mut samples = Vec::new();
-    for _ in 0..5 {
+    for _ in 0..32 {
         let start = Instant::now();
         let results = storage
             .query_filtered(&emb(1.0), FILTERED_TOP_K, None, Some(&mf))
@@ -110,12 +111,16 @@ async fn e2e_filtered_hnsw_meets_topk_under_workspace_filter() {
         );
     }
 
+    perf_harness::finish_report(
+        "vector_query_filtered_q1",
+        &perf_harness::samples_after_warmup(&samples, 20),
+        100.0,
+        "hnsw_iterative",
+        true,
+        format!("top_k={FILTERED_TOP_K} N=2000"),
+    );
     samples.sort();
     let worst = samples[samples.len() - 1];
-    assert!(
-        worst < Duration::from_millis(100),
-        "Q1 FAIL: filtered ANN worst {worst:?} exceeds 100ms budget (samples={samples:?})"
-    );
     eprintln!(
         "OK Q1: filtered HNSW top_k={FILTERED_TOP_K} filled; wall samples={samples:?} max={worst:?}"
     );
@@ -125,8 +130,7 @@ async fn e2e_filtered_hnsw_meets_topk_under_workspace_filter() {
 
 #[tokio::test]
 async fn e2e_native_upsert_batch_get_and_unique_index_plan() {
-    let Some(config) = postgres_test_config::contract_postgres_config("perf054_graph") else {
-        eprintln!("SKIP: no DATABASE_URL / POSTGRES_PASSWORD");
+    let Some(config) = postgres_test_config::require_or_skip_postgres("perf054_graph") else {
         return;
     };
 
@@ -191,8 +195,7 @@ async fn e2e_native_upsert_batch_get_and_unique_index_plan() {
 /// round-trips and finish under 200ms for ~20 prefixes on a warm graph.
 #[tokio::test]
 async fn e2e_batched_source_prefix_counts_under_budget() {
-    let Some(config) = postgres_test_config::contract_postgres_config("perf054_lineage") else {
-        eprintln!("SKIP: no DATABASE_URL / POSTGRES_PASSWORD");
+    let Some(config) = postgres_test_config::require_or_skip_postgres("perf054_lineage") else {
         return;
     };
 

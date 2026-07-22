@@ -144,10 +144,10 @@ fn test_tokenizer_consistency() {
 fn test_truncation_config_defaults() {
     let config = TruncationConfig::default();
 
-    // WHY: the query engine now reserves 10k each for entities and relationships,
-    // leaving the remaining 10k for chunks under a 30k total context budget.
-    assert_eq!(config.max_entity_tokens, 10000);
-    assert_eq!(config.max_relation_tokens, 10000);
+    // WHY: LightRAG constants.py — entity=6000, relation=8000, total=30000;
+    // chunks get the dynamic remainder (not a fixed 10k/10k/10k split).
+    assert_eq!(config.max_entity_tokens, 6000);
+    assert_eq!(config.max_relation_tokens, 8000);
     assert_eq!(config.max_total_tokens, 30000);
 }
 

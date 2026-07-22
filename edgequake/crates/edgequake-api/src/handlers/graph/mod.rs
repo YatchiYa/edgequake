@@ -34,9 +34,11 @@
 //!
 //! Separating from query handlers enables independent optimization.
 
+mod graph_label;
 mod graph_query;
 mod graph_stream;
 
+pub use graph_label::graph_node_label;
 pub use graph_query::*;
 pub use graph_stream::*;
 

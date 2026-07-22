@@ -28,8 +28,16 @@ pub fn build_sources_from_context(
     let mut sources = Vec::new();
     let mut ref_counter = 1usize;
 
-    let mut chunk_sources: Vec<SourceReference> = context
-        .chunks
+    // 026/034: prefer citation_chunks (Mix∪CE) for L2/sources when dual-list is set.
+    // Dual-list owns its own budget — do NOT re-truncate to rerank_top_k, or Mix fill
+    // after a full CE[:30] set is silently dropped (026 S0 Fact ER flat root cause).
+    let dual_list = context.citation_chunks.is_some();
+    let chunk_iter = context
+        .citation_chunks
+        .as_deref()
+        .unwrap_or(context.chunks.as_slice());
+
+    let mut chunk_sources: Vec<SourceReference> = chunk_iter
         .iter()
         .filter(|chunk| !is_injection_source(chunk.document_id.as_deref(), None))
         .map(|chunk| {
@@ -62,7 +70,7 @@ pub fn build_sources_from_context(
         })
         .collect();
 
-    if reranked {
+    if reranked && !dual_list {
         if let Some(top_k) = rerank_top_k {
             chunk_sources.truncate(top_k);
         }
@@ -132,12 +140,15 @@ pub fn build_sources_from_context(
 
         sources.push(SourceReference {
             source_type: "relationship".to_string(),
+            // Keep identity in id for dedupe; snippet uses presentation labels (073).
             id: format!("{}->{}", rel.source, rel.target),
             score: rel.score,
             rerank_score: None,
             snippet: Some(format!(
                 "{} {} {}",
-                rel.source, rel.relation_type, rel.target
+                rel.display_source(),
+                rel.relation_type,
+                rel.display_target()
             )),
             reference_id: ref_id,
             document_id: rel.source_document_id.clone(),
@@ -219,6 +230,105 @@ mod tests {
         let without =
             build_sources_from_context(&ctx, false, None, false, ContentGranularity::Citation);
         assert!(without[0].reference_id.is_none());
+    }
+
+    #[test]
+    fn prefers_citation_chunks_for_sources() {
+        let mut ctx = QueryContext::default();
+        ctx.chunks.push(RetrievedChunk {
+            id: "ce-only".into(),
+            content: "prompt chunk".into(),
+            score: 0.9,
+            document_id: Some("doc-1".into()),
+            token_count: 2,
+            start_line: None,
+            end_line: None,
+            chunk_index: None,
+            page_start: None,
+            page_end: None,
+            modality: None,
+        });
+        ctx.citation_chunks = Some(vec![
+            RetrievedChunk {
+                id: "ce-only".into(),
+                content: "prompt chunk".into(),
+                score: 0.9,
+                document_id: Some("doc-1".into()),
+                token_count: 2,
+                start_line: None,
+                end_line: None,
+                chunk_index: None,
+                page_start: None,
+                page_end: None,
+                modality: None,
+            },
+            RetrievedChunk {
+                id: "mix-only".into(),
+                content: "mix gold".into(),
+                score: 0.8,
+                document_id: Some("doc-2".into()),
+                token_count: 2,
+                start_line: None,
+                end_line: None,
+                chunk_index: None,
+                page_start: None,
+                page_end: None,
+                modality: None,
+            },
+        ]);
+
+        let sources =
+            build_sources_from_context(&ctx, true, None, false, ContentGranularity::Agent);
+        let ids: Vec<&str> = sources.iter().map(|s| s.id.as_str()).collect();
+        assert_eq!(ids, vec!["ce-only", "mix-only"]);
+    }
+
+    #[test]
+    fn dual_list_survives_rerank_top_k_truncate() {
+        // 034: Acc path passes reranked=true + top_k=30. If CE already fills 30,
+        // Mix∪CE fill must still appear in API sources for L2 evidence_recall.
+        let mut ctx = QueryContext::default();
+        let mut citation = Vec::new();
+        for i in 0..30 {
+            citation.push(RetrievedChunk {
+                id: format!("ce-{i}"),
+                content: format!("ce {i}"),
+                score: 1.0 - (i as f32) * 0.01,
+                document_id: Some("doc-ce".into()),
+                token_count: 2,
+                start_line: None,
+                end_line: None,
+                chunk_index: None,
+                page_start: None,
+                page_end: None,
+                modality: None,
+            });
+        }
+        citation.push(RetrievedChunk {
+            id: "mix-gold".into(),
+            content: "mix gold evidence".into(),
+            score: 0.5,
+            document_id: Some("doc-mix".into()),
+            token_count: 2,
+            start_line: None,
+            end_line: None,
+            chunk_index: None,
+            page_start: None,
+            page_end: None,
+            modality: None,
+        });
+        ctx.chunks = citation[..30].to_vec();
+        ctx.citation_chunks = Some(citation);
+
+        let sources =
+            build_sources_from_context(&ctx, true, Some(30), true, ContentGranularity::Citation);
+        let ids: Vec<&str> = sources
+            .iter()
+            .filter(|s| s.source_type == "chunk")
+            .map(|s| s.id.as_str())
+            .collect();
+        assert_eq!(ids.len(), 31);
+        assert_eq!(ids[30], "mix-gold");
     }
 
     #[test]

@@ -2,17 +2,52 @@
 title: 'PDF Processing Deep Dive'
 ---
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 # PDF Processing Deep Dive
 
-**Status**: ✅ Production Ready  
-**Crate**: `edgequake-pdf`  
-**Source**: [`edgequake/crates/edgequake-pdf/`](https://github.com/raphaelmansuy/edgequake/tree/edgequake-main/edgequake/crates/edgequake-pdf/)
+**Crate:** `edgequake-pdf` · **Orchestration:** `edgequake-api` processor + task worker (SPEC-047 / SPEC-057)
 
-> **Current implementation (code as of v0.10+):** PDF ingestion uses `PdfConverter` with two backends:
-> - **`vision`** (default) — renders pages and converts via a vision LLM (`EDGEQUAKE_VISION_PROVIDER` / `EDGEQUAKE_VISION_MODEL`)
-> - **`edgeparse`** — CPU-based EdgeParse fallback when vision is unavailable
->
-> Public API: `create_pdf_converter()`, `PdfConverter`, `PdfParserBackend`. The lopdf/processor-chain architecture described in sections below is **legacy documentation** from an earlier design iteration.
+---
+
+## Current path (v0.19.0)
+
+PDF ingestion is a **two-phase pipeline** separated at the task layer. Vision conversion and KG ingest run under different leases, timeouts, and cancel semantics.
+
+```
+Upload ──▶ TaskType::PdfProcessing (convert only)
+              │
+              ├─ Render pages (pdfium embedded, no external lib)
+              ├─ Vision LLM per page (EDGEQUAKE_VISION_*)
+              ├─ mm-assets: page PNGs, chart crops, figure/table regions (SPEC-047)
+              └─ Durable markdown in pdf_documents + PdfProcessingStatus::Completed
+              │
+              ▼
+         TaskType::Insert (KG ingest — separate lease/timeout)
+              │
+              └─ Chunk → extract → embed → graph (same as text upload)
+```
+
+| Phase | Task type | PDF row on success | Cancel terminal |
+| ----- | --------- | ------------------ | --------------- |
+| **Convert** | `pdf_processing` | `Completed` + markdown | `Cancelled` (not `Failed`) |
+| **Ingest** | `insert` | unchanged (markdown barrier kept) | task + doc KV cancelled; PDF stays `Completed` if convert already finished |
+
+**Vision + multimodal assets (SPEC-047):** Each page is rendered and sent to the configured vision provider. Chart/table/figure regions are written as durable **mm-assets** (`has_mm_assets` in document metadata, viewer URLs in markdown). Multimodal entity nodes are injected after LLM extraction when assets exist.
+
+**Environment (see `.env.example`):**
+
+```bash
+EDGEQUAKE_VISION_PROVIDER=openai
+EDGEQUAKE_VISION_MODEL=gpt-4.1-nano
+# Fallback when vision unavailable: edgeparse CPU backend inside PdfConverter
+```
+
+**Cancel:** `POST /api/v1/tasks/{track_id}/cancel` aborts cooperative vision/LLM calls and sets `PdfProcessingStatus::Cancelled`. See [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md).
+
+**Progress:** PDF phases stream on `ws://…/ws/progress/{track_id}` and `GET /api/v1/documents/pdf/progress/{track_id}`. See [Pipeline Progress](/docs/deep-dives/pipeline-progress/).
+
+**Public API:** `create_pdf_converter()`, `PdfConverter`, `PdfParserBackend`, `assemble_vision_markdown*`, `page_assets`, `region_assets` — [`edgequake/crates/edgequake-pdf/src/lib.rs`](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pdf/src/lib.rs).
 
 ---
 
@@ -76,9 +111,11 @@ title: 'PDF Processing Deep Dive'
 
 ---
 
-## Architecture
+## Legacy: lopdf processor chain (historical)
 
-### Processing Pipeline
+> The sections below describe an **earlier lopdf + processor-chain design** that is no longer the production PDF path. Production uses vision + mm-assets (above). Kept for background on spatial table detection and layout algorithms that informed later vision prompts.
+
+### Processing Pipeline (legacy)
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -1169,6 +1206,4 @@ assert!(result.markdown.is_empty()); // Empty!
 
 ---
 
-**Version**: 1.0  
-**Last Updated**: 2026-01-29  
-**Maintainer**: EdgeQuake Team
+**Product:** v0.19.0 · **Last updated:** 2026-07-18

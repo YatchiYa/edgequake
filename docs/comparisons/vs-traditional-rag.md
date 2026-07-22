@@ -4,6 +4,8 @@ title: 'EdgeQuake vs Traditional RAG'
 
 # EdgeQuake vs Traditional RAG
 
+> **Product: v0.19.0**
+
 > **Why Knowledge Graphs Transform Retrieval Quality**
 
 Traditional RAG (Retrieval-Augmented Generation) uses vector similarity search to find relevant document chunks. EdgeQuake adds knowledge graph construction, enabling semantic understanding of entity relationships that pure vector search misses.
@@ -18,8 +20,11 @@ Traditional RAG (Retrieval-Augmented Generation) uses vector similarity search t
 | **Understanding** | Semantic similarity    | Entity relationships           |
 | **Multi-hop**     | ❌ Single-hop          | ✅ Multi-hop reasoning         |
 | **Themes**        | ❌ Local only          | ✅ Global themes               |
-| **Indexing**      | Fast (~1s/doc)         | Slower (~5-30s/doc)            |
+| **Indexing**      | Fast (~1s/doc)         | Slower (~5–30s/doc; vision PDFs longer) |
 | **Query Latency** | ~100-300ms             | ~200-500ms                     |
+| **Storage**       | Vector DB only         | PostgreSQL 16–18 (required)    |
+| **PDF vision**    | External OCR           | Built-in vision LLM pipeline   |
+| **Cancel / progress** | N/A                | WebSocket + task cancel (SPEC-057) |
 
 ---
 
@@ -246,7 +251,8 @@ This means you get the best of both worlds:
 | ----------------- | --------------- | ----------------------------- |
 | Setup complexity  | Low             | Medium                        |
 | LLM calls per doc | 1 (embedding)   | 3-10 (extraction + embedding) |
-| Infrastructure    | Vector DB only  | Vector + Graph DB             |
+| Infrastructure    | Vector DB only  | PostgreSQL 16–18 (pgvector + AGE); `DATABASE_URL` required |
+| Long-running jobs | N/A             | Cancel via `POST /tasks/{track_id}/cancel`; multi-replica with `EDGEQUAKE_REPLICAS` |
 | Maintenance       | Simple          | Moderate                      |
 | Query tuning      | Limited         | 6 modes to optimize           |
 

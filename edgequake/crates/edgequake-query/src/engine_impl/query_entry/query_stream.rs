@@ -151,7 +151,22 @@ impl QueryEngine {
             &context,
             request.system_prompt.as_deref(),
             &request.conversation_history,
+            request.question_type(),
         );
+
+        // 064 product answer cache (opt-in): stream cached answer as one chunk.
+        // Warm fills happen on the non-stream generate path (LR also skips
+        // caching streaming responses).
+        if let Some(cache) = self.answer_cache.as_ref() {
+            let key = crate::cache::answer_cache_key(&prompt);
+            if let Some(cached) = cache.get(&key) {
+                return Ok((
+                    context,
+                    mode,
+                    futures::stream::once(async move { Ok(cached) }).boxed(),
+                ));
+            }
+        }
 
         let llm = llm_override.unwrap_or_else(|| self.llm_provider.clone());
 
@@ -166,6 +181,11 @@ impl QueryEngine {
                 "Provider doesn't support streaming, falling back to non-streaming mode"
             );
             let response = llm.complete(&prompt).await.map_err(QueryError::from)?;
+            if let Some(cache) = self.answer_cache.as_ref() {
+                if !response.content.is_empty() {
+                    cache.set(&crate::cache::answer_cache_key(&prompt), &response.content);
+                }
+            }
             futures::stream::once(async move { Ok(response.content) }).boxed()
         };
 

@@ -27,13 +27,16 @@ use utoipa::IntoParams;
 
 use crate::error::{ApiError, ApiResult};
 use crate::middleware::TenantContext;
+use crate::services::sync_doc_cancelled_for_task;
+use crate::services::task_cancel::apply_cancel_all_active;
 use crate::state::AppState;
+use std::sync::Arc;
 
 // Re-export DTOs from pipeline_types for backwards compatibility
 pub use crate::handlers::ingestion_types::PipelineActivityResponse;
 pub use crate::handlers::pipeline_types::{
     CancelPipelineResponse, EnhancedPipelineStatusResponse, PipelineMessageResponse,
-    QueueMetricsResponse,
+    QueueMetricsResponse, StoreContentionMetrics,
 };
 
 /// Get enhanced pipeline status with history messages.
@@ -175,13 +178,50 @@ pub async fn cancel_pipeline(
         }));
     }
 
+    // Signal every in-flight task via the shared cancel helper (registry + task rows).
+    let results = apply_cancel_all_active(&state.tasks.storage, &state.tasks.cancellation_registry)
+        .await
+        .map_err(ApiError::Internal)?;
+
+    // SPEC-057 P0 + SPEC-059: sync linked doc KV and retract indexes.
+    for applied in &results {
+        if applied.cancelled {
+            if let Some(ref task) = applied.task {
+                if let Err(e) = sync_doc_cancelled_for_task(
+                    Arc::clone(&state.storage.kv_storage),
+                    task,
+                    "Task cancelled by user",
+                )
+                .await
+                {
+                    tracing::warn!(
+                        track_id = %applied.track_id,
+                        error = %e,
+                        "Pipeline cancel: doc KV sync failed"
+                    );
+                }
+                let ws = task.workspace_id.to_string();
+                let vector =
+                    crate::services::get_workspace_vector_storage_for_delete(&state, &ws).await;
+                crate::services::retract_indexes_for_task(
+                    &state.storage.graph_storage,
+                    &vector,
+                    task,
+                )
+                .await;
+            }
+        }
+    }
+
+    // Legacy flag retained for status snapshots / older clients.
     state.tasks.pipeline_state.request_cancellation().await;
 
     Ok(Json(CancelPipelineResponse {
         status: "cancellation_requested".to_string(),
-        message:
-            "Pipeline cancellation has been requested. Processing will stop after current document."
-                .to_string(),
+        message: format!(
+            "Pipeline cancellation requested for {} in-flight task(s). Cooperative stop at next checkpoint.",
+            results.len()
+        ),
     }))
 }
 
@@ -281,6 +321,50 @@ pub async fn get_queue_metrics(
         &pressure,
     );
 
+    let (
+        tenant_park_waiters,
+        tenant_park_waiters_ingest,
+        tenant_park_waiters_lifecycle,
+        max_tasks_per_tenant,
+        max_lifecycle_tasks_per_tenant,
+    ) = match &state.tasks.tenant_limiter {
+        Some(limiter) => {
+            let stats = limiter.stats().await;
+            (
+                stats.park_waiters,
+                stats.park_waiters_ingest,
+                stats.park_waiters_lifecycle,
+                stats.max_per_tenant as u64,
+                stats.max_lifecycle_per_tenant as u64,
+            )
+        }
+        None => (0, 0, 0, 0, 0),
+    };
+
+    #[cfg(feature = "postgres")]
+    let pool_util = state.pg_pool.as_ref().and_then(|pool| {
+        crate::store_contention::pool_utilization(pool.size(), pool.num_idle() as u32)
+    });
+    #[cfg(not(feature = "postgres"))]
+    let pool_util: Option<f64> = None;
+    let store = crate::store_contention::assess_store_contention(pool_util);
+    let store_contention = crate::handlers::pipeline_types::StoreContentionMetrics {
+        level: store.level.as_str().to_string(),
+        db_pool_utilization: store.db_pool_utilization,
+        db_pool_util_warn: store.db_pool_util_warn,
+        db_pool_util_critical: store.db_pool_util_critical,
+        compensation_quarantine_total: store.compensation_quarantine_total,
+        compensation_quarantine_warn: store.compensation_quarantine_warn,
+        compensation_quarantine_critical: store.compensation_quarantine_critical,
+        compensate_shared_entity_skipped_total:
+            edgequake_storage::compensate_shared_entity_skipped_total(),
+        retract_on_cancel_total: crate::services::retract_on_cancel_total(),
+        vector_dim_mismatch_rejected_total: edgequake_storage::vector_dim_mismatch_rejected_total(),
+        operator_action: store.operator_action.clone(),
+    };
+    // Prefer queue pressure action; surface store action when queue is normal.
+    let operator_action = pressure.operator_action.or(store.operator_action);
+
     Ok(Json(QueueMetricsResponse {
         pending_count: metrics.pending_count,
         processing_count: metrics.processing_count,
@@ -296,6 +380,18 @@ pub async fn get_queue_metrics(
         pressure: pressure.level.as_str().to_string(),
         pending_warn_threshold: pressure.pending_warn_threshold,
         pending_critical_threshold: pressure.pending_critical_threshold,
-        operator_action: pressure.operator_action,
+        operator_action,
+        tenant_park_waiters,
+        tenant_park_waiters_ingest,
+        tenant_park_waiters_lifecycle,
+        cancel_intent_count: state
+            .tasks
+            .cancellation_registry
+            .cancel_intent_count()
+            .await as u64,
+        cancel_intent_total: state.tasks.cancellation_registry.cancel_intent_total(),
+        max_tasks_per_tenant,
+        max_lifecycle_tasks_per_tenant,
+        store_contention,
     }))
 }

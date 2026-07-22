@@ -2,6 +2,8 @@
 title: 'Deep Dive: Embedding Models'
 ---
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 # Deep Dive: Embedding Models
 
 > **Understanding Vector Embeddings in EdgeQuake**
@@ -94,7 +96,15 @@ EdgeQuake uses embeddings at multiple stages:
 **Recommendation**: Use `text-embedding-3-small` for most use cases (best cost/performance).
 
 ```bash
-export EDGEQUAKE_EMBEDDING_MODEL="text-embedding-3-small"
+# Defaults from .env.example (workspace bootstrap)
+export EDGEQUAKE_DEFAULT_EMBEDDING_PROVIDER=openai
+export EDGEQUAKE_DEFAULT_EMBEDDING_MODEL=text-embedding-3-small
+export EDGEQUAKE_DEFAULT_EMBEDDING_DIMENSION=1536
+
+# Runtime override (takes precedence over DEFAULT_* when set)
+# export EDGEQUAKE_EMBEDDING_PROVIDER=openai
+# export EDGEQUAKE_EMBEDDING_MODEL=text-embedding-3-small
+# export EDGEQUAKE_EMBEDDING_DIMENSION=1536
 ```
 
 ### Ollama Models
@@ -117,8 +127,9 @@ export EDGEQUAKE_EMBEDDING_MODEL="text-embedding-3-small"
 
 ```bash
 ollama pull embeddinggemma:latest
-export EDGEQUAKE_DEFAULT_EMBEDDING_PROVIDER="ollama"
-export EDGEQUAKE_DEFAULT_EMBEDDING_MODEL="embeddinggemma:latest"
+export EDGEQUAKE_DEFAULT_EMBEDDING_PROVIDER=ollama
+export EDGEQUAKE_DEFAULT_EMBEDDING_MODEL=embeddinggemma:latest
+export EDGEQUAKE_DEFAULT_EMBEDDING_DIMENSION=768
 ```
 
 ---
@@ -153,8 +164,12 @@ export EDGEQUAKE_DEFAULT_EMBEDDING_MODEL="embeddinggemma:latest"
 │  • 384 dims:  153 MB                                            │
 │  • 768 dims:  307 MB                                            │
 │  • 1536 dims: 614 MB                                            │
-│  • 3072 dims: 1.2 GB                                            │
-│                                                                 │
+│    • 3072 dims: 1.2 GB                                            │
+  │                                                                 │
+  │ halfvec mode (EDGEQUAKE_VECTOR_STORAGE=halfvec): ~50% column   │
+  │ footprint; required for HNSW when dim ∈ (2000, 4000]. See      │
+  │ [Vector Storage](/docs/deep-dives/vector-storage/).             │
+  │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -307,11 +322,22 @@ curl -X POST http://localhost:8080/api/v1/tenants/default/workspaces \
 
 ### Global Defaults
 
+Environment variables follow `.env.example` naming:
+
+| Variable | Role |
+| -------- | ---- |
+| `EDGEQUAKE_DEFAULT_EMBEDDING_PROVIDER` | Workspace bootstrap default |
+| `EDGEQUAKE_DEFAULT_EMBEDDING_MODEL` | Model at workspace creation |
+| `EDGEQUAKE_DEFAULT_EMBEDDING_DIMENSION` | Must match model output |
+| `EDGEQUAKE_EMBEDDING_PROVIDER` | Runtime override (wins over `DEFAULT_*`) |
+| `EDGEQUAKE_EMBEDDING_MODEL` | Runtime model override |
+| `EDGEQUAKE_EMBEDDING_DIMENSION` | Runtime dimension override |
+| `EDGEQUAKE_VECTOR_STORAGE` | `full` (vector) or `halfvec` — see [Vector Storage](/docs/deep-dives/vector-storage/) |
+
 ```bash
-# Environment variables
-export EDGEQUAKE_EMBEDDING_PROVIDER="openai"
-export EDGEQUAKE_EMBEDDING_MODEL="text-embedding-3-small"
-export EDGEQUAKE_EMBEDDING_DIMENSION="1536"
+export EDGEQUAKE_DEFAULT_EMBEDDING_PROVIDER=openai
+export EDGEQUAKE_DEFAULT_EMBEDDING_MODEL=text-embedding-3-small
+export EDGEQUAKE_DEFAULT_EMBEDDING_DIMENSION=1536
 ```
 
 ### models.toml Configuration

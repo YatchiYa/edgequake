@@ -67,16 +67,31 @@ pub trait GraphStorageReadOps: Send + Sync {
 
     async fn get_node_edges(&self, node_id: &str) -> Result<Vec<GraphEdge>>;
 
-    /// Incident edges for many nodes in one round-trip (SPEC-025 6.2).
+    /// Incident edges for many nodes in one round-trip (SPEC-025 6.2 / SPEC-058).
     ///
     /// Returns edges where **either** endpoint is in `node_ids` (same semantics as
     /// repeated `get_node_edges`, without N+1 per frontier node).
-    async fn get_incident_edges_batch(&self, node_ids: &[String]) -> Result<Vec<GraphEdge>> {
+    ///
+    /// When `tenant_id` / `workspace_id` are set, implementations MUST filter in SQL
+    /// (or post-filter for memory) so RAG expand cannot leak cross-workspace edges.
+    async fn get_incident_edges_batch(
+        &self,
+        node_ids: &[String],
+        tenant_id: Option<&str>,
+        workspace_id: Option<&str>,
+    ) -> Result<Vec<GraphEdge>> {
+        use super::graph_scan_ops::edge_matches_scope_dims;
         let mut collected = Vec::new();
         for node_id in node_ids {
             collected.extend(self.get_node_edges(node_id).await?);
         }
-        Ok(collected)
+        if tenant_id.is_none() && workspace_id.is_none() {
+            return Ok(collected);
+        }
+        Ok(collected
+            .into_iter()
+            .filter(|e| edge_matches_scope_dims(&e.properties, tenant_id, workspace_id))
+            .collect())
     }
 
     /// Legacy full-graph load — **not for API hot paths** (SPEC-006).

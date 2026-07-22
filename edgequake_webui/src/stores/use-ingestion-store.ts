@@ -135,9 +135,10 @@ function createInitialProgress(
     status: "pending",
     overall_progress: 0,
     progress: {
-      current_stage: "pending",
+      // 068: avoid "Processing pending..." — admission is queued/uploading
+      current_stage: "uploading",
       completion_percentage: 0,
-      latest_message: "Waiting to start...",
+      latest_message: "Queued for processing…",
       stages: createInitialStages(),
     },
     started_at: new Date().toISOString(),

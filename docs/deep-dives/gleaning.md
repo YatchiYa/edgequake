@@ -2,6 +2,8 @@
 title: 'Deep Dive: Gleaning'
 ---
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 # Deep Dive: Gleaning
 
 > **Multi-Pass Extraction for Comprehensive Entity Discovery**

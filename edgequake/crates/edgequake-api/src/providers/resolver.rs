@@ -625,7 +625,16 @@ mod tests {
         use edgequake_core::{
             CreateWorkspaceRequest, InMemoryWorkspaceService, Tenant, WorkspaceService,
         };
+        use serial_test::serial;
         use std::sync::Arc;
+
+        /// Mock is forbidden at runtime unless tests opt in (SPEC-043).
+        fn allow_mock_provider() {
+            // SAFETY: tests are `#[serial]` so env mutation is exclusive.
+            unsafe {
+                std::env::set_var(crate::provider_visibility::ALLOW_MOCK_PROVIDER_ENV, "1");
+            }
+        }
 
         async fn create_test_workspace(
             service: &Arc<dyn WorkspaceService>,
@@ -664,7 +673,9 @@ mod tests {
         }
 
         #[tokio::test]
+        #[serial]
         async fn test_resolve_explicit_provider() {
+            allow_mock_provider();
             let service: Arc<dyn WorkspaceService> = Arc::new(InMemoryWorkspaceService::new());
             let resolver = WorkspaceProviderResolver::new(service);
 
@@ -685,7 +696,9 @@ mod tests {
         }
 
         #[tokio::test]
+        #[serial]
         async fn test_resolve_from_workspace() {
+            allow_mock_provider();
             let service: Arc<dyn WorkspaceService> = Arc::new(InMemoryWorkspaceService::new());
             let (workspace_id, _) = create_test_workspace(&service).await;
             let resolver = WorkspaceProviderResolver::new(service.clone());
@@ -706,7 +719,9 @@ mod tests {
         }
 
         #[tokio::test]
+        #[serial]
         async fn test_explicit_overrides_workspace() {
+            allow_mock_provider();
             let service: Arc<dyn WorkspaceService> = Arc::new(InMemoryWorkspaceService::new());
             let (workspace_id, _) = create_test_workspace(&service).await;
             let resolver = WorkspaceProviderResolver::new(service.clone());

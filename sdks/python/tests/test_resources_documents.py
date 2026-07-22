@@ -135,15 +135,19 @@ class TestDocumentsResource:
     def test_delete_all(self, mock_req: MagicMock) -> None:
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
+            "accepted": True,
+            "wipe_track_id": "workspace_wipe-1",
             "deleted_count": 5,
-            "message": "All documents deleted",
+            "message": "Wipe accepted",
         }
-        mock_resp.status_code = 200
+        mock_resp.status_code = 202
         mock_req.return_value = mock_resp
 
         client = EdgeQuake()
         result = client.documents.delete_all()
         assert isinstance(result, DeleteAllResponse)
+        assert result.accepted is True
+        assert result.wipe_track_id == "workspace_wipe-1"
         assert result.deleted_count == 5
         client.close()
 
@@ -551,11 +555,17 @@ class TestAsyncDocumentsResource:
     @patch("edgequake._transport.AsyncTransport.request", new_callable=AsyncMock)
     async def test_delete_all(self, mock_req: AsyncMock) -> None:
         mock_resp = MagicMock()
-        mock_resp.json.return_value = {"deleted_count": 3}
+        mock_resp.json.return_value = {
+            "accepted": True,
+            "wipe_track_id": "workspace_wipe-1",
+            "deleted_count": 3,
+        }
         mock_req.return_value = mock_resp
 
         client = AsyncEdgeQuake()
         result = await client.documents.delete_all()
+        assert result["accepted"] is True
+        assert result["wipe_track_id"] == "workspace_wipe-1"
         assert result["deleted_count"] == 3
 
     @pytest.mark.asyncio
@@ -912,16 +922,22 @@ class TestDocumentEdgeCases:
 
     @patch("edgequake._transport.SyncTransport.request")
     def test_delete_all_returns_count(self, mock_req: MagicMock) -> None:
-        """WHY: Delete all returns count of deleted documents."""
+        """WHY: Delete all admits wipe with planned count + wipe_track_id."""
         from edgequake.types.documents import DeleteAllResponse
 
         mock_resp = MagicMock()
-        mock_resp.json.return_value = {"deleted_count": 42}
+        mock_resp.json.return_value = {
+            "accepted": True,
+            "wipe_track_id": "workspace_wipe-42",
+            "deleted_count": 42,
+        }
         mock_req.return_value = mock_resp
 
         client = EdgeQuake()
         result = client.documents.delete_all()
         assert isinstance(result, DeleteAllResponse)
+        assert result.accepted is True
+        assert result.wipe_track_id == "workspace_wipe-42"
         assert result.deleted_count == 42
         client.close()
 

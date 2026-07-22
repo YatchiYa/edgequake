@@ -2,6 +2,8 @@
 title: 'Hybrid Retrieval'
 ---
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 # Hybrid Retrieval
 
 > **Hybrid retrieval combines vector similarity search with knowledge graph
@@ -152,8 +154,8 @@ EdgeQuake offers 6 query modes for different use cases:
 | **Naive**  | ✅       | ❌          | Simple factual queries          |
 | **Local**  | ✅       | ✅ Entities | "Who/What is X?"                |
 | **Global** | ❌       | ✅ Topics   | "What are the themes?"          |
-| **Hybrid** | ✅       | ✅ Both     | Complex multi-faceted (DEFAULT) |
-| **Mix**    | Weighted | Weighted    | Custom blending                 |
+| **Hybrid** | ✅       | ✅ Both     | Complex multi-faceted           |
+| **Mix**    | Weighted | Weighted    | Custom blend (**API default**)  |
 | **Bypass** | ❌       | ❌          | Testing/debugging               |
 
 ---
@@ -266,6 +268,6 @@ curl -X POST http://localhost:8080/api/v1/query \
 
 ## Source Code
 
-- **Query engine**: [engine.rs](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-query/src/engine.rs)
-- **Query modes**: [modes.rs](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-query/src/modes.rs)
-- **Context building**: [context.rs](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-query/src/context.rs)
+- **Query engine**: [`edgequake-query/src/engine_impl/`](https://github.com/raphaelmansuy/edgequake/tree/edgequake-main/edgequake/crates/edgequake-query/src/engine_impl/)
+- **Query modes**: [`modes.rs`](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-query/src/modes.rs)
+- **Context building**: [`context.rs`](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-query/src/context.rs)

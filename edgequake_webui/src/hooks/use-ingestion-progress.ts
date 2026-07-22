@@ -32,6 +32,10 @@ interface UseIngestionProgressOptions {
   pollingInterval?: number;
   /** Whether to auto-subscribe on mount (default: true) */
   autoSubscribe?: boolean;
+  /** Optional document id for early store hydration (068) */
+  documentId?: string;
+  /** Optional document name for early store hydration (068) */
+  documentName?: string;
 }
 
 interface UseIngestionProgressResult {
@@ -65,6 +69,8 @@ export function useIngestionProgress(
     enableWebSocket = true,
     pollingInterval = 2000,
     autoSubscribe = true,
+    documentId: optionDocumentId,
+    documentName: optionDocumentName,
   } = options;
 
   const {
@@ -105,7 +111,26 @@ export function useIngestionProgress(
     refetchInterval: shouldPoll
       ? getAutomationAwareRefetchInterval(effectiveInterval)
       : false,
+    // 068: brief admit race — retry instead of permanent error UI
+    retry: (failureCount, err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("404") || msg.toLowerCase().includes("not found")) {
+        return failureCount < 5;
+      }
+      return failureCount < 2;
+    },
+    retryDelay: 800,
   });
+
+  // 068: hydrate store before first successful poll so WS ChunkProgress is applied
+  useEffect(() => {
+    if (!trackId) return;
+    startTracking(
+      trackId,
+      optionDocumentId?.trim() || trackId,
+      optionDocumentName?.trim() || trackId,
+    );
+  }, [trackId, optionDocumentId, optionDocumentName, startTracking]);
 
   // Subscribe to WebSocket updates
   useEffect(() => {
@@ -118,7 +143,7 @@ export function useIngestionProgress(
     };
   }, [trackId, enableWebSocket, autoSubscribe, subscribe, unsubscribe]);
 
-  // Update store from polled data
+  // Update store from polled data (refresh document id/name when available)
   useEffect(() => {
     if (polledProgress && trackId) {
       startTracking(

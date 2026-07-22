@@ -23,6 +23,10 @@ use crate::context::QueryContext;
 use crate::mix_weights::MixWeightOverride;
 use crate::modes::QueryMode;
 
+fn is_zero_u64(v: &u64) -> bool {
+    *v == 0
+}
+
 /// A query request — the caller-facing contract for asking the engine a
 /// question.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -175,6 +179,25 @@ impl QueryRequest {
         self
     }
 
+    /// Optional question-type label (e.g. GraphRAG-Bench "Complex Reasoning").
+    /// Stored in `params["question_type"]` for answer-prompt scoping (047).
+    pub fn with_question_type(mut self, question_type: impl Into<String>) -> Self {
+        self.params.insert(
+            "question_type".to_string(),
+            serde_json::json!(question_type.into()),
+        );
+        self
+    }
+
+    /// Read `params["question_type"]` when present and non-empty.
+    pub fn question_type(&self) -> Option<&str> {
+        self.params
+            .get("question_type")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+    }
+
     /// Set both LLM provider and model from a full model ID.
     /// Format: "provider/model" (e.g., "ollama/gemma3:12b").
     /// @implements SPEC-032: Full model ID parsing
@@ -268,14 +291,29 @@ pub struct QueryResponse {
 /// Query processing statistics.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct QueryStats {
-    /// Time for embedding generation (ms).
+    /// Time for embedding generation (ms) — pure embed path only (059).
+    /// Does **not** include keyword LLM (see [`keyword_time_ms`]).
     pub embedding_time_ms: u64,
+
+    /// Time for keyword extraction LLM / heuristic (ms). 059 C1b honesty:
+    /// historically folded into `embedding_time_ms` and inflated "embed" ~2.5s.
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    pub keyword_time_ms: u64,
 
     /// Time for retrieval (ms).
     pub retrieval_time_ms: u64,
 
     /// Time for LLM generation (ms).
     pub generation_time_ms: u64,
+
+    /// Time to first token from generation start (ms). Stream path / 064 UX.
+    /// Unset for non-streaming `complete` unless answer-cache short-circuit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ttft_ms: Option<u64>,
+
+    /// True when answer served from product answer cache (064).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub answer_cache_hit: bool,
 
     /// Total time (ms).
     pub total_time_ms: u64,
@@ -357,6 +395,10 @@ pub struct QueryStats {
     /// Optional online faithfulness sample score in `[0, 1]` (OPS-P2.20).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub faithfulness_score: Option<f32>,
+
+    /// LLM / heuristic query intent used for truncation + Mix gating (022 P3a).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub query_intent: Option<String>,
 }
 
 impl QueryStats {
@@ -430,6 +472,10 @@ impl QueryStats {
             .get(META_RETRIEVED_CHART_CHUNKS)
             .and_then(|v| v.as_u64())
             .map(|n| n as usize);
+        self.query_intent = context
+            .metadata
+            .get("query_intent")
+            .and_then(|v| v.as_str().map(str::to_string));
         self.context_empty = context.chunks.is_empty()
             && context.entities.is_empty()
             && context.relationships.is_empty();

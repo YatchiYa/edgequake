@@ -98,6 +98,26 @@ pub struct ExtractedEntity {
     /// Original file path of the source document.
     #[serde(default)]
     pub source_file_path: Option<String>,
+
+    /// Human-facing label for multimodal entities (066). Identity stays in `name`.
+    #[serde(default)]
+    pub display_name: Option<String>,
+
+    /// 1-indexed page for multimodal crops (066).
+    #[serde(default)]
+    pub page_num: Option<u32>,
+
+    /// Figure index within page when applicable (066).
+    #[serde(default)]
+    pub figure_index: Option<u32>,
+
+    /// `document_mm_assets.asset_id` stem hint (e.g. `page-0002-fig-01`).
+    #[serde(default)]
+    pub asset_id: Option<String>,
+
+    /// VLM image type / subtype (Chart, Flowchart, …).
+    #[serde(default)]
+    pub mm_subtype: Option<String>,
 }
 
 impl ExtractedEntity {
@@ -117,6 +137,11 @@ impl ExtractedEntity {
             source_chunk_ids: Vec::new(),
             source_document_id: None,
             source_file_path: None,
+            display_name: None,
+            page_num: None,
+            figure_index: None,
+            asset_id: None,
+            mm_subtype: None,
         }
     }
 
@@ -153,6 +178,23 @@ impl ExtractedEntity {
         self
     }
 
+    /// Attach multimodal display metadata (066). Does not change identity (`name`).
+    pub fn with_mm_display(
+        mut self,
+        display_name: impl Into<String>,
+        page_num: Option<u32>,
+        figure_index: Option<u32>,
+        asset_id: Option<String>,
+        mm_subtype: Option<String>,
+    ) -> Self {
+        self.display_name = Some(display_name.into());
+        self.page_num = page_num;
+        self.figure_index = figure_index;
+        self.asset_id = asset_id;
+        self.mm_subtype = mm_subtype;
+        self
+    }
+
     /// Add source chunk ID (mutable reference version).
     pub fn add_source_chunk_id(&mut self, chunk_id: impl Into<String>) {
         let id = chunk_id.into();
@@ -186,7 +228,13 @@ pub struct ExtractedRelationship {
     /// Relationship embedding (for similarity search).
     pub embedding: Option<Vec<f32>>,
 
-    /// Source chunk ID where this relationship was extracted.
+    /// Source chunk IDs where this relationship was extracted (049: union on dedupe).
+    ///
+    /// Prefer this list. `source_chunk_id` is kept for serde back-compat / first-id mirror.
+    #[serde(default)]
+    pub source_chunk_ids: Vec<String>,
+
+    /// Legacy singular source chunk ID (mirrored from `source_chunk_ids.first()`).
     #[serde(default)]
     pub source_chunk_id: Option<String>,
 
@@ -214,6 +262,7 @@ impl ExtractedRelationship {
             weight: 0.5,
             keywords: Vec::new(),
             embedding: None,
+            source_chunk_ids: Vec::new(),
             source_chunk_id: None,
             source_document_id: None,
             source_file_path: None,
@@ -238,10 +287,38 @@ impl ExtractedRelationship {
         self
     }
 
-    /// Set the source chunk ID.
+    /// All provenance chunk ids (Vec ∪ legacy singular).
+    pub fn all_source_chunk_ids(&self) -> Vec<String> {
+        let mut ids = self.source_chunk_ids.clone();
+        if let Some(ref id) = self.source_chunk_id {
+            if !id.is_empty() && !ids.iter().any(|x| x == id) {
+                ids.push(id.clone());
+            }
+        }
+        ids
+    }
+
+    /// Append a source chunk id (entity-parity; mirrors singular for legacy readers).
     pub fn with_source_chunk_id(mut self, chunk_id: impl Into<String>) -> Self {
-        self.source_chunk_id = Some(chunk_id.into());
+        self.add_source_chunk_id(chunk_id);
         self
+    }
+
+    /// Append a source chunk id if missing.
+    pub fn add_source_chunk_id(&mut self, chunk_id: impl Into<String>) {
+        let id = chunk_id.into();
+        if id.is_empty() {
+            return;
+        }
+        if !self.source_chunk_ids.iter().any(|x| x == &id) {
+            self.source_chunk_ids.push(id.clone());
+        }
+        if self.source_chunk_id.is_none() {
+            self.source_chunk_id = Some(id);
+        } else {
+            // Keep singular as first id for citation helpers that still read it.
+            self.source_chunk_id = self.source_chunk_ids.first().cloned();
+        }
     }
 
     /// Set the source document ID.

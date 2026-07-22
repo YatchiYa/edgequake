@@ -261,34 +261,67 @@ impl AppState {
 
         // Create PostgreSQL-backed storages (SPEC-011: single shared pool)
         use edgequake_storage::adapters::postgres::PostgresPool;
+        use edgequake_storage::{DimensionEnsureOutcome, DimensionReconcilePolicy};
         let storage_pool = PostgresPool::from_existing(pool.clone(), pg_config.clone());
         let kv_storage = Arc::new(PostgresKVStorage::with_pool(
             storage_pool.clone(),
             pg_config.clone(),
-        ));
-        let vector_storage = Arc::new(PgVectorStorage::with_pool_and_dimension(
-            storage_pool.clone(),
-            pg_config.clone(),
-            embedding_dim,
         ));
         let graph_storage = Arc::new(PostgresAGEGraphStorage::with_pool(
             storage_pool.clone(),
             pg_config.clone(),
         ));
 
-        // OODA-228: Ensure default vector storage has correct dimension BEFORE initialize
-        // WHY: If embedding provider changed (e.g., OpenAI 1536 → Ollama 768),
-        // the existing table has the wrong dimension. We must recreate it.
-        // This is the same logic used for workspace storage.
-        let recreated = vector_storage.ensure_dimension(embedding_dim).await?;
+        // First principles (SPEC-058 + per-workspace tables):
+        // - Empty default table may recreate to match provider dim (schema heal).
+        // - Non-empty mismatch keeps stored schema so Acc/other WS stay reachable;
+        //   rebind default vector storage to stored dim (PreferExisting).
+        // - New workspaces still use provider `embedding_dim` via registry.
+        let provisional = PgVectorStorage::with_pool_and_dimension(
+            storage_pool.clone(),
+            pg_config.clone(),
+            embedding_dim,
+        );
+        let outcome = provisional
+            .reconcile_dimension(embedding_dim, DimensionReconcilePolicy::PreferExisting)
+            .await?;
+        let (vector_storage, recreated) = match outcome {
+            DimensionEnsureOutcome::Matched => (Arc::new(provisional), false),
+            DimensionEnsureOutcome::Recreated => (Arc::new(provisional), true),
+            DimensionEnsureOutcome::KeptExisting { stored, required } => {
+                tracing::warn!(
+                    stored_dimension = stored,
+                    provider_dimension = required,
+                    provider = embedding_provider.name(),
+                    "Default vector table kept at stored dim (SPEC-058 PreferExisting). \
+                     Default namespace queries need a matching embedding provider or \
+                     EDGEQUAKE_ALLOW_VECTOR_TABLE_REBUILD=1 + re-embed. \
+                     Per-workspace tables are unaffected."
+                );
+                (
+                    Arc::new(PgVectorStorage::with_pool_and_dimension(
+                        storage_pool.clone(),
+                        pg_config.clone(),
+                        stored,
+                    )),
+                    false,
+                )
+            }
+        };
         if recreated {
             tracing::warn!(
                 dimension = embedding_dim,
                 provider = embedding_provider.name(),
-                "⚠️ Default vector table recreated due to dimension change (OODA-228). \
-                 All existing vectors were cleared. Documents need to be re-embedded."
+                "Default vector table recreated due to dimension change (empty or ALLOW_REBUILD). \
+                 Documents in the default namespace need re-embed if rows were wiped."
             );
         }
+        tracing::info!(
+            provider_dimension = embedding_dim,
+            default_vector_dimension = vector_storage.dimension(),
+            recreated,
+            "Default vector storage dimension reconciled"
+        );
 
         // Initialize storage backends to establish connections
         kv_storage.initialize().await?;
@@ -404,8 +437,14 @@ impl AppState {
         storage.validate_postgres_adapters()?;
 
         let audit_logger = AuditLogger::new(pool.clone());
-        let (resource_guard, graph_materialize, pdf_vision) =
+        let (resource_guard, graph_materialize, pdf_vision, read_path_db) =
             super::resource_runtime::build_resource_runtime();
+
+        let configured_pool_size: usize = std::env::var("DATABASE_POOL_SIZE")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(32);
+        crate::read_path::warn_if_local_pool_oversized(configured_pool_size, llm_provider.name());
 
         let app_state = Self {
             storage,
@@ -433,6 +472,7 @@ impl AppState {
             resource_guard,
             graph_materialize,
             pdf_vision,
+            read_path_db,
             migration_bootstrap: Some(migration_bootstrap),
             postgres_capabilities: Some(postgres_capabilities),
             security: ApiSecurityConfig::from_env(),

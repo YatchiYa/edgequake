@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/hover-card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { displayEntityLabel } from '@/lib/graph/label-utils';
 import { buildDocumentPageUrl } from '@/lib/utils/document-url';
 import { useSettingsStore } from '@/stores/use-settings-store';
 import type { QueryContext } from '@/types';
@@ -748,12 +749,20 @@ const KnowledgeTab = ({
                     >
                       <span
                         className="font-medium hover:text-primary cursor-pointer truncate max-w-[100px]"
+                        title={displayEntityLabel({
+                          label: rel.source_label,
+                          id: rel.source,
+                          maxLen: 80,
+                        })}
                         onClick={(e) => {
                           e.stopPropagation();
                           onEntityClick?.(rel.source);
                         }}
                       >
-                        {rel.source}
+                        {displayEntityLabel({
+                          label: rel.source_label,
+                          id: rel.source,
+                        })}
                       </span>
                       <span className="text-primary/60 group-hover:text-primary transition-colors">→</span>
                       <Badge variant="outline" className="text-[10px] px-1.5 h-4 font-normal">
@@ -762,12 +771,20 @@ const KnowledgeTab = ({
                       <span className="text-primary/60 group-hover:text-primary transition-colors">→</span>
                       <span
                         className="font-medium hover:text-primary cursor-pointer truncate max-w-[100px]"
+                        title={displayEntityLabel({
+                          label: rel.target_label,
+                          id: rel.target,
+                          maxLen: 80,
+                        })}
                         onClick={(e) => {
                           e.stopPropagation();
                           onEntityClick?.(rel.target);
                         }}
                       >
-                        {rel.target}
+                        {displayEntityLabel({
+                          label: rel.target_label,
+                          id: rel.target,
+                        })}
                       </span>
                       {/* Only show score if meaningful (> 0) - graph relationships often have no similarity score */}
                       {rel.relevance > 0.01 && (
@@ -779,7 +796,19 @@ const KnowledgeTab = ({
                   </HoverCardTrigger>
                   <HoverCardContent className="w-64" align="start">
                     <div className="space-y-2">
-                      <p className="text-sm font-medium">{rel.source} → {rel.target}</p>
+                      <p className="text-sm font-medium">
+                        {displayEntityLabel({
+                          label: rel.source_label,
+                          id: rel.source,
+                          maxLen: 80,
+                        })}{" "}
+                        →{" "}
+                        {displayEntityLabel({
+                          label: rel.target_label,
+                          id: rel.target,
+                          maxLen: 80,
+                        })}
+                      </p>
                       <Badge variant="secondary" className="text-[10px]">{rel.type}</Badge>
                       {(rel.source_file_path || rel.source_document_id) && (
                         <button

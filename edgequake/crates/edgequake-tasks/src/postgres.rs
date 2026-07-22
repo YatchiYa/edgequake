@@ -7,9 +7,87 @@ use crate::{
     types::Task,
 };
 #[cfg(feature = "postgres")]
-use sqlx::{PgPool, Row};
+use chrono::Utc;
+#[cfg(feature = "postgres")]
+use sqlx::{postgres::PgRow, PgPool, Row};
 #[cfg(feature = "postgres")]
 use std::sync::Arc;
+#[cfg(feature = "postgres")]
+use std::time::Duration;
+#[cfg(feature = "postgres")]
+use uuid::Uuid;
+
+#[cfg(feature = "postgres")]
+const TASK_SELECT_COLUMNS: &str = r#"
+    track_id, tenant_id, workspace_id, task_type, status, created_at, updated_at,
+    started_at, completed_at, error_message, error, retry_count,
+    max_retries, consecutive_timeout_failures, circuit_breaker_tripped,
+    payload, result, lease_owner, lease_token, lease_expires_at
+"#;
+
+/// RETURNING list for `UPDATE tasks t … FROM candidate` — must qualify as `t.*`
+/// because `candidate.track_id` makes bare `track_id` ambiguous (Postgres).
+#[cfg(feature = "postgres")]
+const TASK_RETURNING_COLUMNS_ALIASED: &str = r#"
+    t.track_id, t.tenant_id, t.workspace_id, t.task_type, t.status, t.created_at, t.updated_at,
+    t.started_at, t.completed_at, t.error_message, t.error, t.retry_count,
+    t.max_retries, t.consecutive_timeout_failures, t.circuit_breaker_tripped,
+    t.payload, t.result, t.lease_owner, t.lease_token, t.lease_expires_at
+"#;
+
+#[cfg(feature = "postgres")]
+fn task_from_row(row: &PgRow) -> TaskResult<Task> {
+    let payload: serde_json::Value = row.get("payload");
+    let task_data = payload
+        .get("task_data")
+        .cloned()
+        .unwrap_or(serde_json::json!({}));
+    let metadata =
+        payload
+            .get("metadata")
+            .cloned()
+            .and_then(|v| if v.is_null() { None } else { Some(v) });
+    let progress = payload.get("progress").cloned().and_then(|v| {
+        if v.is_null() {
+            None
+        } else {
+            serde_json::from_value(v).ok()
+        }
+    });
+
+    Ok(Task {
+        track_id: row.get("track_id"),
+        tenant_id: row.get("tenant_id"),
+        workspace_id: row.get("workspace_id"),
+        task_type: row
+            .get::<String, _>("task_type")
+            .parse()
+            .map_err(|_| TaskError::InvalidTaskData("Invalid task type".to_string()))?,
+        status: row
+            .get::<String, _>("status")
+            .parse()
+            .map_err(|_| TaskError::InvalidTaskData("Invalid status".to_string()))?,
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
+        started_at: row.get("started_at"),
+        completed_at: row.get("completed_at"),
+        error_message: row.get("error_message"),
+        error: row
+            .get::<Option<serde_json::Value>, _>("error")
+            .and_then(|v| serde_json::from_value(v).ok()),
+        retry_count: row.get("retry_count"),
+        max_retries: row.get("max_retries"),
+        consecutive_timeout_failures: row.get("consecutive_timeout_failures"),
+        circuit_breaker_tripped: row.get("circuit_breaker_tripped"),
+        task_data,
+        metadata,
+        progress,
+        result: row.get("result"),
+        lease_owner: row.get("lease_owner"),
+        lease_token: row.get("lease_token"),
+        lease_expires_at: row.get("lease_expires_at"),
+    })
+}
 
 #[cfg(feature = "postgres")]
 /// PostgreSQL task storage
@@ -59,8 +137,8 @@ impl TaskStorage for PostgresTaskStorage {
                 track_id, tenant_id, workspace_id, task_type, status, created_at, updated_at,
                 started_at, completed_at, error_message, error, retry_count,
                 max_retries, consecutive_timeout_failures, circuit_breaker_tripped,
-                payload, result
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+                payload, result, lease_owner, lease_token, lease_expires_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
             "#,
         )
         .bind(&task.track_id)
@@ -80,6 +158,9 @@ impl TaskStorage for PostgresTaskStorage {
         .bind(task.circuit_breaker_tripped)
         .bind(&payload)
         .bind(&task.result)
+        .bind(&task.lease_owner)
+        .bind(task.lease_token)
+        .bind(task.lease_expires_at)
         .execute(&*self.pool)
         .await
         .map_err(|e| TaskError::StorageError(format!("Failed to create task: {}", e)))?;
@@ -88,81 +169,16 @@ impl TaskStorage for PostgresTaskStorage {
     }
 
     async fn get_task(&self, track_id: &str) -> TaskResult<Option<Task>> {
-        // WHY: Fetch from `payload` JSONB column and extract task_data, metadata, progress
-        // The database stores these combined in payload for schema simplicity
-        let row = sqlx::query(
-            r#"
-            SELECT 
-                track_id, tenant_id, workspace_id, task_type, status, created_at, updated_at,
-                started_at, completed_at, error_message, error, retry_count,
-                max_retries, consecutive_timeout_failures, circuit_breaker_tripped,
-                payload, result
-            FROM tasks
-            WHERE track_id = $1
-            "#,
-        )
-        .bind(track_id)
-        .fetch_optional(&*self.pool)
-        .await
-        .map_err(|e| TaskError::StorageError(format!("Failed to fetch task: {}", e)))?;
+        let sql = format!("SELECT {TASK_SELECT_COLUMNS} FROM tasks WHERE track_id = $1");
+        let row = sqlx::query(&sql)
+            .bind(track_id)
+            .fetch_optional(&*self.pool)
+            .await
+            .map_err(|e| TaskError::StorageError(format!("Failed to fetch task: {}", e)))?;
 
-        if let Some(row) = row {
-            // Extract payload JSONB and decompose into task_data, metadata, progress
-            let payload: serde_json::Value = row.get("payload");
-            let task_data = payload
-                .get("task_data")
-                .cloned()
-                .unwrap_or(serde_json::json!({}));
-            let metadata =
-                payload.get("metadata").cloned().and_then(
-                    |v| {
-                        if v.is_null() {
-                            None
-                        } else {
-                            Some(v)
-                        }
-                    },
-                );
-            let progress = payload.get("progress").cloned().and_then(|v| {
-                if v.is_null() {
-                    None
-                } else {
-                    serde_json::from_value(v).ok()
-                }
-            });
-
-            let task = Task {
-                track_id: row.get("track_id"),
-                tenant_id: row.get("tenant_id"),
-                workspace_id: row.get("workspace_id"),
-                task_type: row
-                    .get::<String, _>("task_type")
-                    .parse()
-                    .map_err(|_| TaskError::InvalidTaskData("Invalid task type".to_string()))?,
-                status: row
-                    .get::<String, _>("status")
-                    .parse()
-                    .map_err(|_| TaskError::InvalidTaskData("Invalid status".to_string()))?,
-                created_at: row.get("created_at"),
-                updated_at: row.get("updated_at"),
-                started_at: row.get("started_at"),
-                completed_at: row.get("completed_at"),
-                error_message: row.get("error_message"),
-                error: row
-                    .get::<Option<serde_json::Value>, _>("error")
-                    .and_then(|v| serde_json::from_value(v).ok()),
-                retry_count: row.get("retry_count"),
-                max_retries: row.get("max_retries"),
-                consecutive_timeout_failures: row.get("consecutive_timeout_failures"),
-                circuit_breaker_tripped: row.get("circuit_breaker_tripped"),
-                task_data,
-                metadata,
-                progress,
-                result: row.get("result"),
-            };
-            Ok(Some(task))
-        } else {
-            Ok(None)
+        match row {
+            Some(row) => Ok(Some(task_from_row(&row)?)),
+            None => Ok(None),
         }
     }
 
@@ -202,7 +218,10 @@ impl TaskStorage for PostgresTaskStorage {
                 consecutive_timeout_failures = $9,
                 circuit_breaker_tripped = $10,
                 payload = $11,
-                result = $12
+                result = $12,
+                lease_owner = $13,
+                lease_token = $14,
+                lease_expires_at = $15
             WHERE track_id = $1
             "#,
         )
@@ -218,6 +237,9 @@ impl TaskStorage for PostgresTaskStorage {
         .bind(task.circuit_breaker_tripped)
         .bind(&payload)
         .bind(&task.result)
+        .bind(&task.lease_owner)
+        .bind(task.lease_token)
+        .bind(task.lease_expires_at)
         .execute(&*self.pool)
         .await
         .map_err(|e| TaskError::StorageError(format!("Failed to update task: {}", e)))?;
@@ -246,14 +268,7 @@ impl TaskStorage for PostgresTaskStorage {
     async fn list_tasks(&self, filter: TaskFilter, pagination: Pagination) -> TaskResult<TaskList> {
         // WHY: Query uses `payload` column instead of separate task_data, metadata, progress columns
         // The payload JSONB contains all three fields combined
-        let mut query = String::from(
-            "SELECT 
-                track_id, tenant_id, workspace_id, task_type, status, created_at, updated_at,
-                started_at, completed_at, error_message, error, retry_count,
-                max_retries, consecutive_timeout_failures, circuit_breaker_tripped,
-                payload, result
-            FROM tasks WHERE 1=1",
-        );
+        let mut query = format!("SELECT {TASK_SELECT_COLUMNS} FROM tasks WHERE 1=1");
 
         let mut param_count = 0;
 
@@ -318,52 +333,7 @@ impl TaskStorage for PostgresTaskStorage {
 
         let tasks: Vec<Task> = rows
             .into_iter()
-            .filter_map(|row| {
-                // Extract payload JSONB and decompose into task_data, metadata, progress
-                let payload: serde_json::Value = row.get("payload");
-                let task_data = payload
-                    .get("task_data")
-                    .cloned()
-                    .unwrap_or(serde_json::json!({}));
-                let metadata = payload.get("metadata").cloned().and_then(|v| {
-                    if v.is_null() {
-                        None
-                    } else {
-                        Some(v)
-                    }
-                });
-                let progress = payload.get("progress").cloned().and_then(|v| {
-                    if v.is_null() {
-                        None
-                    } else {
-                        serde_json::from_value(v).ok()
-                    }
-                });
-
-                Some(Task {
-                    track_id: row.get("track_id"),
-                    tenant_id: row.get("tenant_id"),
-                    workspace_id: row.get("workspace_id"),
-                    task_type: row.get::<String, _>("task_type").parse().ok()?,
-                    status: row.get::<String, _>("status").parse().ok()?,
-                    created_at: row.get("created_at"),
-                    updated_at: row.get("updated_at"),
-                    started_at: row.get("started_at"),
-                    completed_at: row.get("completed_at"),
-                    error_message: row.get("error_message"),
-                    error: row
-                        .get::<Option<serde_json::Value>, _>("error")
-                        .and_then(|v| serde_json::from_value(v).ok()),
-                    retry_count: row.get("retry_count"),
-                    max_retries: row.get("max_retries"),
-                    consecutive_timeout_failures: row.get("consecutive_timeout_failures"),
-                    circuit_breaker_tripped: row.get("circuit_breaker_tripped"),
-                    task_data,
-                    metadata,
-                    progress,
-                    result: row.get("result"),
-                })
-            })
+            .filter_map(|row| task_from_row(&row).ok())
             .collect();
 
         // Get total count
@@ -462,83 +432,177 @@ impl TaskStorage for PostgresTaskStorage {
         workspace_id: uuid::Uuid,
     ) -> TaskResult<Option<Task>> {
         let pdf_id_str = pdf_id.to_string();
-        let row = sqlx::query(
+        // SPEC-057 P2: Convert (`pdf_processing`) or follow-on Insert ingest.
+        let sql = format!(
             r#"
-            SELECT
-                track_id, tenant_id, workspace_id, task_type, status, created_at, updated_at,
-                started_at, completed_at, error_message, error, retry_count,
-                max_retries, consecutive_timeout_failures, circuit_breaker_tripped,
-                payload, result
+            SELECT {TASK_SELECT_COLUMNS}
             FROM tasks
             WHERE workspace_id = $1
-              AND task_type = 'pdf_processing'
               AND status IN ('pending', 'processing')
-              AND payload->'task_data'->>'pdf_id' = $2
+              AND (
+                    (task_type = 'pdf_processing'
+                     AND payload->'task_data'->>'pdf_id' = $2)
+                 OR (task_type = 'insert'
+                     AND payload->'task_data'->'metadata'->>'pdf_id' = $2)
+              )
             ORDER BY created_at DESC
             LIMIT 1
+            "#
+        );
+        let row = sqlx::query(&sql)
+            .bind(workspace_id)
+            .bind(&pdf_id_str)
+            .fetch_optional(&*self.pool)
+            .await
+            .map_err(|e| {
+                TaskError::StorageError(format!("Failed to find active PDF task: {}", e))
+            })?;
+
+        match row {
+            Some(row) => Ok(Some(task_from_row(&row)?)),
+            None => Ok(None),
+        }
+    }
+
+    async fn find_active_pdf_ingest_task(
+        &self,
+        pdf_id: uuid::Uuid,
+        workspace_id: uuid::Uuid,
+    ) -> TaskResult<Option<Task>> {
+        let pdf_id_str = pdf_id.to_string();
+        let sql = format!(
+            r#"
+            SELECT {TASK_SELECT_COLUMNS}
+            FROM tasks
+            WHERE workspace_id = $1
+              AND task_type = 'insert'
+              AND status IN ('pending', 'processing')
+              AND payload->'task_data'->'metadata'->>'pdf_id' = $2
+            ORDER BY created_at DESC
+            LIMIT 1
+            "#
+        );
+        let row = sqlx::query(&sql)
+            .bind(workspace_id)
+            .bind(&pdf_id_str)
+            .fetch_optional(&*self.pool)
+            .await
+            .map_err(|e| {
+                TaskError::StorageError(format!("Failed to find active PDF ingest task: {}", e))
+            })?;
+
+        match row {
+            Some(row) => Ok(Some(task_from_row(&row)?)),
+            None => Ok(None),
+        }
+    }
+
+    async fn claim_next(&self, worker_id: &str, lease_ttl: Duration) -> TaskResult<Option<Task>> {
+        let lease_token = Uuid::new_v4();
+        let lease_expires_at = crate::lease_expires_at(Utc::now(), lease_ttl);
+
+        let sql = format!(
+            r#"
+            WITH candidate AS (
+                SELECT track_id
+                FROM tasks
+                WHERE status = 'pending'
+                   OR (
+                        status = 'processing'
+                        AND (lease_expires_at IS NULL OR lease_expires_at < NOW())
+                   )
+                ORDER BY created_at ASC
+                FOR UPDATE SKIP LOCKED
+                LIMIT 1
+            )
+            UPDATE tasks t
+            SET status = 'processing',
+                lease_owner = $1,
+                lease_token = $2,
+                lease_expires_at = $3,
+                started_at = COALESCE(t.started_at, NOW()),
+                updated_at = NOW(),
+                completed_at = NULL
+            FROM candidate
+            WHERE t.track_id = candidate.track_id
+            RETURNING {TASK_RETURNING_COLUMNS_ALIASED}
+            "#
+        );
+
+        let row = sqlx::query(&sql)
+            .bind(worker_id)
+            .bind(lease_token)
+            .bind(lease_expires_at)
+            .fetch_optional(&*self.pool)
+            .await
+            .map_err(|e| TaskError::StorageError(format!("Failed to claim next task: {}", e)))?;
+
+        match row {
+            Some(row) => Ok(Some(task_from_row(&row)?)),
+            None => Ok(None),
+        }
+    }
+
+    async fn refresh_lease(
+        &self,
+        track_id: &str,
+        worker_id: &str,
+        lease_token: Uuid,
+        lease_ttl: Duration,
+    ) -> TaskResult<bool> {
+        let lease_expires_at = crate::lease_expires_at(Utc::now(), lease_ttl);
+
+        let result = sqlx::query(
+            r#"
+            UPDATE tasks
+            SET lease_expires_at = $4,
+                updated_at = NOW()
+            WHERE track_id = $1
+              AND lease_owner = $2
+              AND lease_token = $3
+              AND status = 'processing'
             "#,
         )
-        .bind(workspace_id)
-        .bind(&pdf_id_str)
-        .fetch_optional(&*self.pool)
+        .bind(track_id)
+        .bind(worker_id)
+        .bind(lease_token)
+        .bind(lease_expires_at)
+        .execute(&*self.pool)
         .await
-        .map_err(|e| TaskError::StorageError(format!("Failed to find active PDF task: {}", e)))?;
+        .map_err(|e| TaskError::StorageError(format!("Failed to refresh lease: {}", e)))?;
 
-        if let Some(row) = row {
-            let task_type = row.get::<String, _>("task_type").parse().ok();
-            let status = row.get::<String, _>("status").parse().ok();
-            if task_type.is_none() || status.is_none() {
-                return Ok(None);
-            }
-            let payload: serde_json::Value = row.get("payload");
-            let task_data = payload
-                .get("task_data")
-                .cloned()
-                .unwrap_or(serde_json::json!({}));
-            let metadata =
-                payload.get("metadata").cloned().and_then(
-                    |v| {
-                        if v.is_null() {
-                            None
-                        } else {
-                            Some(v)
-                        }
-                    },
-                );
-            let progress = payload.get("progress").cloned().and_then(|v| {
-                if v.is_null() {
-                    None
-                } else {
-                    serde_json::from_value(v).ok()
-                }
-            });
+        Ok(result.rows_affected() > 0)
+    }
 
-            Ok(Some(Task {
-                track_id: row.get("track_id"),
-                tenant_id: row.get("tenant_id"),
-                workspace_id: row.get("workspace_id"),
-                task_type: task_type.unwrap(),
-                status: status.unwrap(),
-                created_at: row.get("created_at"),
-                updated_at: row.get("updated_at"),
-                started_at: row.get("started_at"),
-                completed_at: row.get("completed_at"),
-                error_message: row.get("error_message"),
-                error: row
-                    .get::<Option<serde_json::Value>, _>("error")
-                    .and_then(|v| serde_json::from_value(v).ok()),
-                retry_count: row.get("retry_count"),
-                max_retries: row.get("max_retries"),
-                consecutive_timeout_failures: row.get("consecutive_timeout_failures"),
-                circuit_breaker_tripped: row.get("circuit_breaker_tripped"),
-                task_data,
-                metadata,
-                progress,
-                result: row.get("result"),
-            }))
-        } else {
-            Ok(None)
-        }
+    async fn release_claim(
+        &self,
+        track_id: &str,
+        worker_id: &str,
+        lease_token: Uuid,
+    ) -> TaskResult<bool> {
+        let result = sqlx::query(
+            r#"
+            UPDATE tasks
+            SET status = 'pending',
+                lease_owner = NULL,
+                lease_token = NULL,
+                lease_expires_at = NULL,
+                started_at = NULL,
+                updated_at = NOW()
+            WHERE track_id = $1
+              AND lease_owner = $2
+              AND lease_token = $3
+              AND status = 'processing'
+            "#,
+        )
+        .bind(track_id)
+        .bind(worker_id)
+        .bind(lease_token)
+        .execute(&*self.pool)
+        .await
+        .map_err(|e| TaskError::StorageError(format!("Failed to release claim: {}", e)))?;
+
+        Ok(result.rows_affected() > 0)
     }
 
     async fn get_queue_metrics_filtered(
@@ -680,6 +744,8 @@ impl std::str::FromStr for crate::types::TaskType {
             "reindex" => Ok(crate::types::TaskType::Reindex),
             "pdf_processing" => Ok(crate::types::TaskType::PdfProcessing),
             "knowledge_injection" => Ok(crate::types::TaskType::KnowledgeInjection),
+            "deletion" => Ok(crate::types::TaskType::Deletion),
+            "workspace_wipe" => Ok(crate::types::TaskType::WorkspaceWipe),
             _ => Err(format!("Invalid task type: {}", s)),
         }
     }

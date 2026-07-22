@@ -5,7 +5,7 @@
 import { getRuntimeServerBaseUrl } from "@/lib/runtime-config";
 import { postMultipart, type MultipartUploadProgress } from "@/lib/upload/multipart-upload-client";
 import { buildPdfUploadFormData } from "@/lib/upload/pdf-upload-form-data";
-import { api } from "../client";
+import { api, DOCUMENTS_API_TIMEOUT_MS } from "../client";
 import { buildQueryString, withQuery } from "../query-params";
 
 import type {
@@ -48,8 +48,10 @@ export async function getDocuments(
   });
 
   // API now returns { documents: [...], total, page, page_size, total_pages, has_more, status_counts }
+  // Fail-fast: never spin skeletons until the browser TCP timeout under ingest load.
   const response = await api.get<ListDocumentsResponse>(
     withQuery("/documents", query),
+    { timeoutMs: DOCUMENTS_API_TIMEOUT_MS },
   );
 
   return {
@@ -72,7 +74,9 @@ export async function getDocuments(
 }
 
 export async function getDocument(documentId: string): Promise<Document> {
-  return api.get<Document>(`/documents/${documentId}`);
+  return api.get<Document>(`/documents/${documentId}`, {
+    timeoutMs: DOCUMENTS_API_TIMEOUT_MS,
+  });
 }
 
 export async function uploadDocument(
@@ -507,12 +511,45 @@ export function rewriteMarkdownMmAssetUrls(
   );
 }
 
-export async function deleteDocument(documentId: string): Promise<void> {
-  return api.delete<void>(`/documents/${documentId}`);
+/** Async delete admit response (HTTP 202). Terminal state arrives via WebSocket. */
+export interface DeleteDocumentAccepted {
+  document_id: string;
+  deleted: boolean;
+  accepted: boolean;
+  track_id?: string | null;
+  chunks_deleted: number;
+  entities_affected: number;
+  relationships_affected: number;
+  embeddings_deleted?: number;
+  partial_failure?: boolean;
+  partial_failure_reason?: string | null;
 }
 
-export async function deleteAllDocuments(): Promise<{ deleted_count: number }> {
-  return api.delete<{ deleted_count: number }>("/documents");
+export async function deleteDocument(
+  documentId: string,
+): Promise<DeleteDocumentAccepted> {
+  // Fast admit — cascade runs as a background job; do not wait on graph size.
+  return api.delete<DeleteDocumentAccepted>(`/documents/${documentId}`);
+}
+
+export interface DeleteAllDocumentsResponse {
+  /** True when wipe was accepted asynchronously (HTTP 202). */
+  accepted?: boolean;
+  /** Durable WorkspaceWipe task track id for WS correlation / poll. */
+  wipe_track_id?: string;
+  /** Planned delete count at admit time (final counts arrive via WS/task). */
+  deleted_count: number;
+  total_chunks_deleted?: number;
+  total_entities_removed?: number;
+  total_relationships_removed?: number;
+  total_pdfs_deleted?: number;
+  skipped_count?: number;
+  skipped_documents?: string[];
+}
+
+export async function deleteAllDocuments(): Promise<DeleteAllDocumentsResponse> {
+  // ISSUE-309: server returns 202 + wipe_track_id; terminal via WS or task poll.
+  return api.delete<DeleteAllDocumentsResponse>("/documents");
 }
 
 // ---------------------------------------------------------------------------

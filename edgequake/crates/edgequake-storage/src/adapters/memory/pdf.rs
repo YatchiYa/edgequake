@@ -132,12 +132,19 @@ impl PdfDocumentStorage for MemoryPdfStorage {
             .ok_or_else(|| StorageError::NotFound(format!("PDF {pdf_id} not found")))?;
 
         doc.processing_status = status;
-        if matches!(
-            status,
-            PdfProcessingStatus::Completed | PdfProcessingStatus::Failed
-        ) {
+        if status.is_terminal() {
             doc.processed_at = Some(Utc::now());
         }
+        doc.updated_at = Utc::now();
+        Ok(())
+    }
+
+    async fn update_pdf_page_count(&self, pdf_id: &Uuid, page_count: i32) -> Result<()> {
+        let mut pdfs = self.pdfs.write().map_err(map_lock_err)?;
+        let doc = pdfs
+            .get_mut(pdf_id)
+            .ok_or_else(|| StorageError::NotFound(format!("PDF {pdf_id} not found")))?;
+        doc.page_count = Some(page_count);
         doc.updated_at = Utc::now();
         Ok(())
     }
@@ -164,10 +171,7 @@ impl PdfDocumentStorage for MemoryPdfStorage {
         if let Some(model) = request.vision_model {
             doc.vision_model = Some(model);
         }
-        if matches!(
-            request.processing_status,
-            PdfProcessingStatus::Completed | PdfProcessingStatus::Failed
-        ) {
+        if request.processing_status.is_terminal() {
             doc.processed_at = Some(Utc::now());
         }
         doc.updated_at = Utc::now();

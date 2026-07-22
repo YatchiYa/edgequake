@@ -1,10 +1,12 @@
 # Java SDK
 
+> **Product: v0.19.0** · SDK package: **~0.4.0** (decoupled from server)
+
 **Location:** `sdks/java`
 
-## Maven dependency
+## Maven dependency (published)
 
-Use Maven Central:
+Maven Central when published via tags `sdk-java-v*`:
 
 ```xml
 <dependency>
@@ -14,8 +16,17 @@ Use Maven Central:
 </dependency>
 ```
 
-Maintainer publication is automated by `.github/workflows/publish-java-sdk.yml` on tags
-matching `sdk-java-v*`.
+Maintainer publication: `.github/workflows/publish-java-sdk.yml`.
+
+## Monorepo / unreleased builds
+
+For bleeding-edge API changes before a Maven release:
+
+```bash
+cd sdks/java && mvn install -DskipTests
+```
+
+Point your project at the local `~/.m2` artifact or use a composite build. **Server v0.19.0 may expose fields not yet in the latest published JAR** — compare OpenAPI when in doubt.
 
 ## Example
 
@@ -42,6 +53,15 @@ System.out.println(affected);
 - **Archive:** includes `archive: true`.
 - **Move:** `conversation_ids` plus optional `folder_id`.
 
+## v0.19 gaps
+
+Spot-check task cancel, PDF progress, and document `display_status` / `ui_phase` against OpenAPI — Java models may trail Tier 1.
+
 ```bash
 cd sdks/java && mvn test
 ```
+
+## See also
+
+- In-repo reference: `sdks/java/README.md`
+- [Brutal assessment](../BRUTAL-ASSESSMENT.md)

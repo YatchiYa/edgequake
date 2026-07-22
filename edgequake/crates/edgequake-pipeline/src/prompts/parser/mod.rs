@@ -251,14 +251,16 @@ entity<|#|>Also Valid<|#|>CONCEPT<|#|>Another valid
     #[test]
     fn test_json_parser() {
         let parser = JsonExtractionParser::new();
+        // 054: relationships must reference selected entity endpoints (LR law).
         let response = r#"
 ```json
 {
   "entities": [
-    {"name": "John Doe", "type": "PERSON", "description": "A developer"}
+    {"name": "John Doe", "type": "PERSON", "description": "A developer"},
+    {"name": "Acme", "type": "ORGANIZATION", "description": "Employer"}
   ],
   "relationships": [
-    {"source": "John", "target": "Company", "type": "WORKS_AT", "description": "Employment"}
+    {"source": "John Doe", "target": "Acme", "type": "WORKS_AT", "description": "Employment"}
   ]
 }
 ```
@@ -266,7 +268,7 @@ entity<|#|>Also Valid<|#|>CONCEPT<|#|>Another valid
 
         let result = parser.parse(response, "chunk-1").unwrap();
 
-        assert_eq!(result.entities.len(), 1);
+        assert_eq!(result.entities.len(), 2);
         assert_eq!(result.entities[0].name, "JOHN_DOE");
         assert_eq!(result.relationships.len(), 1);
     }
@@ -327,6 +329,7 @@ entity<|#|>Also Valid<|#|>CONCEPT<|#|>Another valid
     fn test_br0006_tuple_self_referencing_relationship_filtered() {
         let parser = TupleParser::new();
         let response = r#"entity<|#|>Neural Network<|#|>CONCEPT<|#|>A computing model
+entity<|#|>Deep Learning<|#|>CONCEPT<|#|>A learning paradigm
 relation<|#|>Neural Network<|#|>Neural Network<|#|>self-reference<|#|>Relates to itself
 relation<|#|>Neural Network<|#|>Deep Learning<|#|>uses<|#|>Neural networks use deep learning
 <|COMPLETE|>"#;
@@ -355,7 +358,10 @@ relation<|#|>The Company<|#|>company<|#|>self<|#|>Same entity after normalizatio
     fn test_br0006_json_self_referencing_relationship_filtered() {
         let parser = JsonExtractionParser::new();
         let response = r#"{
-            "entities": [{"name": "AI", "type": "CONCEPT", "description": "Artificial Intelligence"}],
+            "entities": [
+                {"name": "AI", "type": "CONCEPT", "description": "Artificial Intelligence"},
+                {"name": "Machine Learning", "type": "CONCEPT", "description": "ML"}
+            ],
             "relationships": [
                 {"source": "AI", "target": "AI", "type": "SELF_REF", "description": "Self loop"},
                 {"source": "AI", "target": "Machine Learning", "type": "USES", "description": "AI uses ML"}
@@ -454,7 +460,10 @@ relation<|#|>A<|#|>   <|#|>broken<|#|>Empty target
     fn test_json_empty_relationship_endpoints_filtered() {
         let parser = JsonExtractionParser::new();
         let response = r#"{
-            "entities": [],
+            "entities": [
+                {"name": "A", "type": "CONCEPT", "description": "Entity A"},
+                {"name": "B", "type": "CONCEPT", "description": "Entity B"}
+            ],
             "relationships": [
                 {"source": "  ", "target": "B", "type": "REL", "description": "Empty source"},
                 {"source": "A", "target": "  ", "type": "REL", "description": "Empty target"},
@@ -465,5 +474,74 @@ relation<|#|>A<|#|>   <|#|>broken<|#|>Empty target
         let result = parser.parse(response, "chunk-1").unwrap();
         assert_eq!(result.relationships.len(), 1);
         assert_eq!(result.relationships[0].relation_type, "VALID");
+    }
+
+    // =========================================================================
+    // 067 — Opaque identifier entity names rejected
+    // =========================================================================
+
+    #[test]
+    fn test_tuple_opaque_uuid_entity_names_filtered() {
+        let parser = TupleParser::new();
+        let response = r#"entity<|#|>84b69e27-e38b-444a-83dd-5e6a537c6f12<|#|>ORGANIZATION<|#|>An Anthropic resource id
+entity<|#|>Acme Corp<|#|>ORGANIZATION<|#|>A real company
+relation<|#|>84b69e27-e38b-444a-83dd-5e6a537c6f12<|#|>Acme Corp<|#|>uses<|#|>Opaque endpoint dropped
+relation<|#|>Acme Corp<|#|>Gabriel Greenfield<|#|>employs<|#|>Valid edge
+entity<|#|>Gabriel Greenfield<|#|>PERSON<|#|>Author
+<|COMPLETE|>"#;
+
+        let result = parser.parse(response, "chunk-1").unwrap();
+        assert!(
+            result
+                .entities
+                .iter()
+                .all(|e| !e.name.contains("84B69E27") && !e.name.contains('-')),
+            "UUID entity must be filtered: {:?}",
+            result.entities
+        );
+        assert!(
+            result.entities.iter().any(|e| e.name == "ACME_CORP"),
+            "semantic org kept: {:?}",
+            result.entities
+        );
+        assert!(
+            result
+                .entities
+                .iter()
+                .any(|e| e.name == "GABRIEL_GREENFIELD"),
+            "person kept: {:?}",
+            result.entities
+        );
+        assert_eq!(result.relationships.len(), 1);
+        assert_eq!(result.relationships[0].source, "ACME_CORP");
+        assert_eq!(result.relationships[0].target, "GABRIEL_GREENFIELD");
+    }
+
+    #[test]
+    fn test_json_opaque_uuid_entity_names_filtered() {
+        let parser = JsonExtractionParser::new();
+        let response = r#"{
+            "entities": [
+                {"name": "84b69e27-e38b-444a-83dd-5e6a537c6f12", "type": "ORGANIZATION", "description": "Resource id"},
+                {"name": "Acme Corp", "type": "ORGANIZATION", "description": "A company"}
+            ],
+            "relationships": [
+                {"source": "84b69e27-e38b-444a-83dd-5e6a537c6f12", "target": "Acme Corp", "type": "USES", "description": "dropped"},
+                {"source": "Acme Corp", "target": "Acme Corp", "type": "SELF", "description": "self ref dropped"}
+            ]
+        }"#;
+
+        let result = parser.parse(response, "chunk-1").unwrap();
+        assert_eq!(result.entities.len(), 1);
+        assert_eq!(result.entities[0].name, "ACME_CORP");
+        assert!(result.relationships.is_empty());
+    }
+
+    #[test]
+    fn test_tuple_multimodal_im_id_not_rejected_by_parser_normalize() {
+        // Merger/mm path relies on EntityId keeping im- identities; parser should too
+        // if an inject path ever feeds through tuple parse with that name.
+        let mm = "im-019f7028-d3e3-7684-8b3b-a9259368329a-page-0002-fig-01";
+        assert!(!crate::prompts::normalize_entity_name(mm).is_empty());
     }
 }

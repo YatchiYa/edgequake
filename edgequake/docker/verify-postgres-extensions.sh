@@ -56,11 +56,21 @@ wait_for_postgres() {
 
 wait_for_postgres
 
+# Optional vectorscale (SPEC-070 pg18-vectorscale profile)
+VECTORSCALE_SQL=""
+if [ -n "${EQ_PGVECTORSCALE_MIN:-}" ]; then
+  VECTORSCALE_SQL=$(cat <<'VSQL'
+CREATE EXTENSION IF NOT EXISTS vectorscale CASCADE;
+VSQL
+)
+fi
+
 docker exec -e PGPASSWORD="$PGPASSWORD" "$CONTAINER" psql -U edgequake -d edgequake -v ON_ERROR_STOP=1 <<SQL
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE EXTENSION IF NOT EXISTS btree_gin;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+${VECTORSCALE_SQL}
 
 DO \$\$
 BEGIN
@@ -71,13 +81,14 @@ END \$\$;
 
 SELECT extname, extversion
 FROM pg_extension
-WHERE extname IN ('vector', 'age', 'pg_trgm', 'btree_gin', 'uuid-ossp')
+WHERE extname IN ('vector', 'age', 'pg_trgm', 'btree_gin', 'uuid-ossp', 'vectorscale')
 ORDER BY extname;
 
 DO \$\$
 DECLARE
   v_vector text;
   v_age text;
+  v_vs text;
 BEGIN
   SELECT extversion INTO v_vector FROM pg_extension WHERE extname = 'vector';
   SELECT extversion INTO v_age FROM pg_extension WHERE extname = 'age';
@@ -87,6 +98,12 @@ BEGIN
   END IF;
   IF v_age IS NULL OR string_to_array(v_age, '.')::int[] < string_to_array('${EQ_AGE_MIN}', '.')::int[] THEN
     RAISE EXCEPTION 'Apache AGE must be >= ${EQ_AGE_MIN} (got %)', v_age;
+  END IF;
+  IF '${EQ_PGVECTORSCALE_MIN}' <> '' THEN
+    SELECT extversion INTO v_vs FROM pg_extension WHERE extname = 'vectorscale';
+    IF v_vs IS NULL OR string_to_array(v_vs, '.')::int[] < string_to_array('${EQ_PGVECTORSCALE_MIN}', '.')::int[] THEN
+      RAISE EXCEPTION 'vectorscale must be >= ${EQ_PGVECTORSCALE_MIN} (got %)', v_vs;
+    END IF;
   END IF;
 END \$\$;
 SQL

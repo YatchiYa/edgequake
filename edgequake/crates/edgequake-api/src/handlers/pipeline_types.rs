@@ -139,6 +139,66 @@ pub struct QueueMetricsResponse {
     /// Operator guidance when backlog is elevated or critical.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub operator_action: Option<String>,
+
+    /// Tasks parked waiting for a per-tenant concurrency permit (all lanes).
+    #[serde(default)]
+    pub tenant_park_waiters: u64,
+
+    /// Park waiters on the ingest fairness lane (Pdf/Insert/…).
+    #[serde(default)]
+    pub tenant_park_waiters_ingest: u64,
+
+    /// Park waiters on the lifecycle fairness lane (Deletion/Wipe).
+    #[serde(default)]
+    pub tenant_park_waiters_lifecycle: u64,
+
+    /// Outstanding cancel intents (pending drain + in-flight).
+    #[serde(default)]
+    pub cancel_intent_count: u64,
+
+    /// Lifetime cancel intents recorded since process start.
+    #[serde(default)]
+    pub cancel_intent_total: u64,
+
+    /// Configured max concurrent **ingest** tasks per tenant (`0` = unlimited).
+    #[serde(default)]
+    pub max_tasks_per_tenant: u64,
+
+    /// Configured max concurrent **lifecycle** tasks per tenant (Deletion/Wipe).
+    /// `0` = unlimited / lane disabled.
+    #[serde(default)]
+    pub max_lifecycle_tasks_per_tenant: u64,
+
+    /// SPEC-057 P3: store contention SLOs (pool util + compensation quarantine).
+    #[serde(default)]
+    pub store_contention: StoreContentionMetrics,
+}
+
+/// Nested store contention projection for queue-metrics (SPEC-057 P3).
+#[derive(Debug, Clone, Serialize, ToSchema, Default)]
+pub struct StoreContentionMetrics {
+    /// `normal` | `elevated` | `critical`
+    pub level: String,
+    /// Active/size pool utilization when a pool is available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub db_pool_utilization: Option<f64>,
+    pub db_pool_util_warn: f64,
+    pub db_pool_util_critical: f64,
+    /// Process-local compensation quarantine total since boot.
+    pub compensation_quarantine_total: u64,
+    pub compensation_quarantine_warn: u64,
+    pub compensation_quarantine_critical: u64,
+    /// SPEC-059: shared entity/rel vectors skipped from compensate deletes.
+    #[serde(default)]
+    pub compensate_shared_entity_skipped_total: u64,
+    /// SPEC-059: cancel/orphan index retract operations.
+    #[serde(default)]
+    pub retract_on_cancel_total: u64,
+    /// SPEC-059: fail-closed dimension mismatch rejections.
+    #[serde(default)]
+    pub vector_dim_mismatch_rejected_total: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operator_action: Option<String>,
 }
 
 // ============================================================================
@@ -216,6 +276,26 @@ mod tests {
             pending_warn_threshold: 100,
             pending_critical_threshold: 500,
             operator_action: None,
+            tenant_park_waiters: 2,
+            tenant_park_waiters_ingest: 1,
+            tenant_park_waiters_lifecycle: 1,
+            cancel_intent_count: 1,
+            cancel_intent_total: 3,
+            max_tasks_per_tenant: 1,
+            max_lifecycle_tasks_per_tenant: 2,
+            store_contention: StoreContentionMetrics {
+                level: "normal".to_string(),
+                db_pool_utilization: Some(0.2),
+                db_pool_util_warn: 0.75,
+                db_pool_util_critical: 0.90,
+                compensation_quarantine_total: 0,
+                compensation_quarantine_warn: 1,
+                compensation_quarantine_critical: 5,
+                compensate_shared_entity_skipped_total: 0,
+                retract_on_cancel_total: 0,
+                vector_dim_mismatch_rejected_total: 0,
+                operator_action: None,
+            },
         };
 
         let json = serde_json::to_string(&response).unwrap();
@@ -223,5 +303,6 @@ mod tests {
         assert!(json.contains("worker_utilization"));
         assert!(json.contains("throughput_per_minute"));
         assert!(json.contains("75")); // worker_utilization value
+        assert!(json.contains("tenant_park_waiters"));
     }
 }

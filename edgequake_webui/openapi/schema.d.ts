@@ -125,6 +125,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/ann/warmup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * POST /api/v1/admin/ann/warmup — create Wave-2 partial HNSW for hot workspaces.
+         * @description No-op when `EDGEQUAKE_HNSW_PARTIAL_BY_WORKSPACE` is off, table is dedicated,
+         *     or row count is below threshold. Prefer this over chat UX for ops warmup.
+         */
+        post: operations["ann_warmup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/config/defaults": {
         parameters: {
             query?: never;
@@ -709,13 +730,10 @@ export interface paths {
         /** Upload a document for processing. */
         post: operations["upload_document"];
         /**
-         * Delete all documents in the system (bulk deletion).
-         * @description This endpoint allows users to clear all documents from the system.
-         *     Documents that are actively being processed (pending/processing status)
-         *     will be skipped to prevent data corruption.
-         *
-         *     WHY: Frontend "Clear All" button needs this endpoint to remove stuck
-         *     or failed documents in bulk rather than deleting one by one.
+         * Delete all documents in the workspace (bulk wipe).
+         * @description Returns **202 Accepted** with `wipe_track_id` after durable enqueue.
+         *     Terminal counts arrive via WebSocket `BulkDeletionCompleted` / `BulkDeletionFailed`
+         *     or `GET /api/v1/tasks/{wipe_track_id}`.
          */
         delete: operations["delete_all_documents"];
         options?: never;
@@ -960,9 +978,9 @@ export interface paths {
          *     # Behavior
          *
          *     1. Validate PDF exists and belongs to workspace
-         *     2. Check status is Processing (cannot cancel Completed/Failed)
-         *     3. Request cancellation via PipelineState
-         *     4. Update status to Failed with cancellation message
+         *     2. Check status is Processing or Pending (cannot cancel terminal)
+         *     3. Request cancellation via CancellationRegistry / task row
+         *     4. Update PDF status to Cancelled (SPEC-057 — not Failed)
          *
          *     # Errors
          *
@@ -1236,7 +1254,7 @@ export interface paths {
         get: operations["get_document"];
         put?: never;
         post?: never;
-        /** Delete a document by ID. */
+        /** Delete a document by ID (async job — 202 Accepted). */
         delete: operations["delete_document"];
         options?: never;
         head?: never;
@@ -1865,7 +1883,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get real-time ingestion progress for a track ID (SPEC-048 DEF-01). */
+        /** Get real-time ingestion progress for a track ID (SPEC-048 DEF-01 / 068). */
         get: operations["get_ingestion_progress"];
         put?: never;
         post?: never;
@@ -2646,6 +2664,9 @@ export interface paths {
         /**
          * Create a new workspace.
          * @description POST /api/v1/tenants/{tenant_id}/workspaces
+         *
+         *     When `pdf_parser_backend` is omitted, the workspace persists `"vision"` so
+         *     server env (`EDGEQUAKE_PDF_PARSER_BACKEND`) cannot silently override new workspaces.
          */
         post: operations["create_workspace"];
         delete?: never;
@@ -3203,8 +3224,12 @@ export interface paths {
         };
         /**
          * Readiness check (for Kubernetes).
-         * @description Returns 503 when migration 038 indexes are required but missing on a large graph
-         *     (AGE present, indexes not ready). Prevents routing traffic to slow-prefix nodes.
+         * @description Returns 503 when:
+         *     - migration 038 indexes are required but missing on a large graph, or
+         *     - storage component pings fail / time out, or
+         *     - the task queue is at critical pressure.
+         *
+         *     Prevents routing traffic to nodes that cannot serve ingest/query reliably.
          */
         get: operations["readiness_check"];
         put?: never;
@@ -3331,6 +3356,42 @@ export interface components {
             documents_touched: number;
             dominant_entity_types?: string[];
             suggested_followups?: string[];
+        };
+        /**
+         * @description Per-workspace warmup result.
+         * @example {
+         *       "created": {},
+         *       "error": {},
+         *       "workspace_id": {}
+         *     }
+         */
+        AnnWarmupItem: {
+            /** @description True when a new partial HNSW was created. */
+            created: boolean;
+            error?: string | null;
+            workspace_id: string;
+        };
+        /**
+         * @description Request body for admin ANN warmup.
+         * @example {
+         *       "workspace_ids": []
+         *     }
+         */
+        AnnWarmupRequest: {
+            /** @description Workspace IDs to warm (partial HNSW when Wave-2 flag is on). */
+            workspace_ids: string[];
+        };
+        /**
+         * @description Response for POST /api/v1/admin/ann/warmup.
+         * @example {
+         *       "note": {},
+         *       "results": []
+         *     }
+         */
+        AnnWarmupResponse: {
+            /** @description Operator note: /ready is catalog-only; first filtered query also warms. */
+            note: string;
+            results: components["schemas"]["AnnWarmupItem"][];
         };
         /**
          * @description Operator-facing API discovery hints (additive JSON on `/health`).
@@ -4408,7 +4469,9 @@ export interface components {
          *       "relation_type": {},
          *       "score": {},
          *       "source": {},
-         *       "target": {}
+         *       "source_label": {},
+         *       "target": {},
+         *       "target_label": {}
          *     }
          */
         ContextRelationship: {
@@ -4418,8 +4481,14 @@ export interface components {
             relation_type: string;
             /** Format: float */
             score: number;
+            /** @description Graph node id (identity / navigation). */
             source: string;
+            /** @description Human presentation for source (073). */
+            source_label?: string;
+            /** @description Graph node id (identity / navigation). */
             target: string;
+            /** @description Human presentation for target (073). */
+            target_label?: string;
         };
         /**
          * @description Context retrieval request (`POST /api/v1/query/context`).
@@ -5114,21 +5183,36 @@ export interface components {
          *     WHY: Frontend "Clear All" button needs a bulk delete endpoint.
          *     Returns aggregated deletion statistics across all documents.
          * @example {
+         *       "accepted": {},
          *       "deleted_count": {},
+         *       "planned_delete_count": {},
          *       "skipped_count": {},
          *       "skipped_documents": [],
          *       "total_chunks_deleted": {},
          *       "total_entities_removed": {},
          *       "total_pdfs_deleted": {},
-         *       "total_relationships_removed": {}
+         *       "total_relationships_removed": {},
+         *       "wipe_track_id": {}
          *     }
          */
         DeleteAllDocumentsResponse: {
-            /** @description Total number of documents deleted. */
+            /**
+             * @description When true, wipe was accepted and runs asynchronously (HTTP 202).
+             *     Final counts arrive via WebSocket `BulkDeletionCompleted` / task poll.
+             */
+            accepted?: boolean;
+            /**
+             * @description Planned document count at admit time when `accepted` (not final deleted).
+             *
+             *     Final counts arrive via WebSocket `BulkDeletionCompleted` / task poll.
+             *     Kept for backward-compatible clients that read `deleted_count` on 202.
+             */
             deleted_count: number;
-            /** @description Number of documents skipped (processing/pending status). */
+            /** @description Explicit planned wipe size (same as admit-time `deleted_count` when accepted). */
+            planned_delete_count?: number | null;
+            /** @description Number of documents skipped (legacy; ForceCancelAll wipe leaves this 0). */
             skipped_count: number;
-            /** @description Document IDs that were skipped due to active processing. */
+            /** @description Document IDs that were skipped due to active processing (legacy). */
             skipped_documents: string[];
             /** @description Total number of chunks deleted across all documents. */
             total_chunks_deleted: number;
@@ -5138,10 +5222,16 @@ export interface components {
             total_pdfs_deleted: number;
             /** @description Total number of relationships removed. */
             total_relationships_removed: number;
+            /** @description Durable wipe correlation id (`TaskType::WorkspaceWipe` track_id). */
+            wipe_track_id?: string | null;
         };
         /**
          * @description Document deletion response.
+         *
+         *     Async path (default): HTTP returns 202 with `accepted=true` and `track_id`;
+         *     WebSocket `DeletionCompleted` / `DeletionFailed` is the terminal SSOT.
          * @example {
+         *       "accepted": {},
          *       "chunks_deleted": {},
          *       "deleted": {},
          *       "document_id": {},
@@ -5149,13 +5239,19 @@ export interface components {
          *       "entities_affected": {},
          *       "partial_failure": {},
          *       "partial_failure_reason": {},
-         *       "relationships_affected": {}
+         *       "relationships_affected": {},
+         *       "track_id": {}
          *     }
          */
         DeleteDocumentResponse: {
-            /** @description Number of chunks deleted. */
+            /** @description True when the delete job was accepted (async) — wait for WebSocket terminal. */
+            accepted?: boolean;
+            /** @description Number of chunks deleted (0 when only accepted). */
             chunks_deleted: number;
-            /** @description Whether the document was deleted. */
+            /**
+             * @description Whether the cascade has finished and the document is gone.
+             *     False when the delete was accepted for async processing (`accepted=true`).
+             */
             deleted: boolean;
             /** @description Document ID. */
             document_id: string;
@@ -5181,6 +5277,8 @@ export interface components {
             partial_failure_reason?: string | null;
             /** @description Number of relationships affected. */
             relationships_affected: number;
+            /** @description Deletion operation track id (WebSocket correlation). */
+            track_id?: string | null;
         };
         /**
          * @description Delete query parameters.
@@ -5358,6 +5456,7 @@ export interface components {
          *       "content_length": {},
          *       "content_summary": {},
          *       "created_at": {},
+         *       "display_status": {},
          *       "entity_count": {},
          *       "error_message": {},
          *       "file_name": {},
@@ -5376,6 +5475,7 @@ export interface components {
          *       "tenant_id": {},
          *       "title": {},
          *       "track_id": {},
+         *       "ui_phase": {},
          *       "updated_at": {},
          *       "warning_message": {},
          *       "workspace_id": {}
@@ -5394,6 +5494,8 @@ export interface components {
             content_summary?: string | null;
             /** @description Creation timestamp. */
             created_at?: string | null;
+            /** @description SPEC-057 P4: badge key from IngestionStatusMapper. */
+            display_status?: string | null;
             /** @description Number of entities extracted. */
             entity_count?: number | null;
             /** @description Error message if processing failed. */
@@ -5432,6 +5534,8 @@ export interface components {
             title?: string | null;
             /** @description Track ID for batch grouping. */
             track_id?: string | null;
+            /** @description SPEC-057 P4: `idle` | `running` | `stopping` | `terminal`. */
+            ui_phase?: string | null;
             /** @description Last update timestamp. */
             updated_at?: string | null;
             /** @description Non-fatal processing notice (e.g. vision parser fallback). */
@@ -5621,6 +5725,7 @@ export interface components {
          *       "cost_usd": {},
          *       "created_at": {},
          *       "current_stage": {},
+         *       "display_status": {},
          *       "embedding_model": {},
          *       "entity_count": {},
          *       "error_message": {},
@@ -5637,6 +5742,7 @@ export interface components {
          *       "title": {},
          *       "total_tokens": {},
          *       "track_id": {},
+         *       "ui_phase": {},
          *       "updated_at": {},
          *       "warning_message": {}
          *     }
@@ -5663,6 +5769,11 @@ export interface components {
              * @example extracting
              */
             current_stage?: string | null;
+            /**
+             * @description SPEC-057 P4: badge key from `IngestionStatusMapper` (prefer over status/stage).
+             * @example extracting
+             */
+            display_status?: string | null;
             /** @description Embedding model used for processing. */
             embedding_model?: string | null;
             /** @description Number of entities extracted. */
@@ -5713,6 +5824,11 @@ export interface components {
             total_tokens?: number | null;
             /** @description Track ID for batch grouping. */
             track_id?: string | null;
+            /**
+             * @description SPEC-057 P4: `idle` | `running` | `stopping` | `terminal`.
+             * @example running
+             */
+            ui_phase?: string | null;
             /** @description Last update timestamp (ISO 8601 format). */
             updated_at?: string | null;
             /** @description Non-fatal processing notice (e.g. vision parser fallback). */
@@ -6109,18 +6225,27 @@ export interface components {
         /**
          * @description Entity summary in lineage response.
          * @example {
+         *       "description": {},
          *       "entity_type": {},
+         *       "id": {},
          *       "is_shared": {},
+         *       "label": {},
          *       "name": {},
          *       "source_chunks": []
          *     }
          */
         EntitySummaryResponse: {
+            /** @description Optional description for detail panels. */
+            description?: string | null;
             /** @description Entity type. */
             entity_type: string;
+            /** @description Graph node id (edge endpoints / stable identity). */
+            id: string;
             /** @description Whether entity is shared with other documents. */
             is_shared: boolean;
-            /** @description Entity name. */
+            /** @description Human presentation label (`graph_node_label` SSOT). */
+            label: string;
+            /** @description Bare semantic name, or soft-label when bare id is opaque (BC display). */
             name: string;
             /** @description Source chunk IDs. */
             source_chunks: string[];
@@ -7248,7 +7373,8 @@ export interface components {
          *       "page_size": {},
          *       "status_counts": {},
          *       "total": {},
-         *       "total_pages": {}
+         *       "total_pages": {},
+         *       "truncated": {}
          *     }
          */
         ListDocumentsResponse: {
@@ -7266,6 +7392,8 @@ export interface components {
             total: number;
             /** @description Total number of pages. */
             total_pages: number;
+            /** @description True when the workspace metadata scan was truncated for latency. */
+            truncated?: boolean | null;
         };
         /**
          * @description List entities query parameters.
@@ -8196,7 +8324,8 @@ export interface components {
          *       "degree": {},
          *       "description": {},
          *       "entity_type": {},
-         *       "id": {}
+         *       "id": {},
+         *       "label": {}
          *     }
          */
         NeighborhoodNode: {
@@ -8208,6 +8337,8 @@ export interface components {
             entity_type: string;
             /** @description Node ID (entity name). */
             id: string;
+            /** @description Human presentation label (073 / graph_node_label SSOT). */
+            label?: string;
         };
         /**
          * @description Response for a single node degree.
@@ -9545,6 +9676,11 @@ export interface components {
             prompt_only?: boolean;
             /** @description The query text. */
             query: string;
+            /**
+             * @description Optional question-type label (e.g. GraphRAG-Bench `Complex Reasoning`).
+             *     Forwarded to the engine for type-scoped answer prompts (047).
+             */
+            question_type?: string | null;
             /** @description Rerank model to use (e.g., "cohere-rerank-v3"). */
             rerank_model?: string | null;
             /** @description Top K chunks to keep after reranking. */
@@ -9587,6 +9723,7 @@ export interface components {
          *
          *     @implements SPEC-032 Item 18, 22: Token metrics and model lineage
          * @example {
+         *       "answer_cache_hit": {},
          *       "arm_global_chunks": {},
          *       "arm_global_ms": {},
          *       "arm_local_chunks": {},
@@ -9599,17 +9736,22 @@ export interface components {
          *       "context_truncated": {},
          *       "embedding_time_ms": {},
          *       "generation_time_ms": {},
+         *       "keyword_time_ms": {},
          *       "llm_model": {},
          *       "llm_provider": {},
+         *       "query_intent": {},
          *       "rerank_time_ms": {},
          *       "retrieval_time_ms": {},
          *       "sources_retrieved": {},
          *       "tokens_per_second": {},
          *       "tokens_used": {},
-         *       "total_time_ms": {}
+         *       "total_time_ms": {},
+         *       "ttft_ms": {}
          *     }
          */
         QueryStats: {
+            /** @description True when answer served from product answer cache (064). */
+            answer_cache_hit?: boolean;
             /** @description Chunks from the global arm before merge. */
             arm_global_chunks?: number | null;
             /**
@@ -9641,7 +9783,7 @@ export interface components {
             context_truncated?: boolean;
             /**
              * Format: int64
-             * @description Embedding time in ms.
+             * @description Embedding time in ms (pure embed path; excludes keyword LLM — 059).
              */
             embedding_time_ms: number;
             /**
@@ -9649,10 +9791,17 @@ export interface components {
              * @description Generation time in ms.
              */
             generation_time_ms: number;
+            /**
+             * Format: int64
+             * @description Keyword extraction time in ms (059 C1b stage honesty).
+             */
+            keyword_time_ms?: number;
             /** @description LLM model name used for generation (e.g., "gemma3:12b", "gpt-4o-mini"). */
             llm_model?: string | null;
             /** @description LLM provider used for generation (e.g., "ollama", "openai", "lmstudio"). */
             llm_provider?: string | null;
+            /** @description LLM / heuristic query intent (022 P3a Summarize truncation audit). */
+            query_intent?: string | null;
             /**
              * Format: int64
              * @description Rerank time in ms (if reranking was applied).
@@ -9677,6 +9826,11 @@ export interface components {
              * @description Total time in ms.
              */
             total_time_ms: number;
+            /**
+             * Format: int64
+             * @description Time to first token from generation start (ms), when measured (064).
+             */
+            ttft_ms?: number | null;
         };
         /**
          * @description Streaming SSE event types for the query endpoint.
@@ -9717,6 +9871,7 @@ export interface components {
          *
          *     @implements SPEC-006 FR-003: Retrieval statistics in streaming events
          * @example {
+         *       "answer_cache_hit": {},
          *       "embedding_time_ms": {},
          *       "generation_time_ms": {},
          *       "query_mode": {},
@@ -9724,10 +9879,14 @@ export interface components {
          *       "sources_retrieved": {},
          *       "tokens_per_second": {},
          *       "tokens_used": {},
-         *       "total_time_ms": {}
+         *       "total_time_ms": {},
+         *       "ttft_ms": {},
+         *       "ux_ttft_ms": {}
          *     }
          */
         QueryStreamStats: {
+            /** @description True when answer served from product answer cache. */
+            answer_cache_hit?: boolean;
             /**
              * Format: int64
              * @description Embedding time in ms.
@@ -9762,6 +9921,16 @@ export interface components {
              * @description Total time in ms.
              */
             total_time_ms: number;
+            /**
+             * Format: int64
+             * @description LLM time-to-first-token from generation start (ms). 064 UX metric.
+             */
+            ttft_ms?: number | null;
+            /**
+             * Format: int64
+             * @description User-felt TTFT: retrieve start → first token (ms). 064 UX metric.
+             */
+            ux_ttft_ms?: number | null;
         };
         /**
          * @description Queue metrics response for Objective B: Workspace-Level Task Queue Visibility.
@@ -9781,7 +9950,11 @@ export interface components {
          * @example {
          *       "active_workers": {},
          *       "avg_wait_time_seconds": {},
+         *       "cancel_intent_count": {},
+         *       "cancel_intent_total": {},
          *       "estimated_queue_time_seconds": {},
+         *       "max_lifecycle_tasks_per_tenant": {},
+         *       "max_tasks_per_tenant": {},
          *       "max_wait_time_seconds": {},
          *       "max_workers": {},
          *       "operator_action": {},
@@ -9791,6 +9964,10 @@ export interface components {
          *       "pressure": {},
          *       "processing_count": {},
          *       "rate_limited": {},
+         *       "store_contention": {},
+         *       "tenant_park_waiters": {},
+         *       "tenant_park_waiters_ingest": {},
+         *       "tenant_park_waiters_lifecycle": {},
          *       "throughput_per_minute": {},
          *       "timestamp": {},
          *       "worker_utilization": {}
@@ -9808,10 +9985,31 @@ export interface components {
              */
             avg_wait_time_seconds: number;
             /**
+             * Format: int64
+             * @description Outstanding cancel intents (pending drain + in-flight).
+             */
+            cancel_intent_count?: number;
+            /**
+             * Format: int64
+             * @description Lifetime cancel intents recorded since process start.
+             */
+            cancel_intent_total?: number;
+            /**
              * Format: double
              * @description Estimated time to clear the queue in seconds.
              */
             estimated_queue_time_seconds: number;
+            /**
+             * Format: int64
+             * @description Configured max concurrent **lifecycle** tasks per tenant (Deletion/Wipe).
+             *     `0` = unlimited / lane disabled.
+             */
+            max_lifecycle_tasks_per_tenant?: number;
+            /**
+             * Format: int64
+             * @description Configured max concurrent **ingest** tasks per tenant (`0` = unlimited).
+             */
+            max_tasks_per_tenant?: number;
             /**
              * Format: double
              * @description Maximum wait time in seconds among pending tasks.
@@ -9848,6 +10046,23 @@ export interface components {
             processing_count: number;
             /** @description Whether the system is currently rate limited. */
             rate_limited: boolean;
+            /** @description SPEC-057 P3: store contention SLOs (pool util + compensation quarantine). */
+            store_contention?: components["schemas"]["StoreContentionMetrics"];
+            /**
+             * Format: int64
+             * @description Tasks parked waiting for a per-tenant concurrency permit (all lanes).
+             */
+            tenant_park_waiters?: number;
+            /**
+             * Format: int64
+             * @description Park waiters on the ingest fairness lane (Pdf/Insert/…).
+             */
+            tenant_park_waiters_ingest?: number;
+            /**
+             * Format: int64
+             * @description Park waiters on the lifecycle fairness lane (Deletion/Wipe).
+             */
+            tenant_park_waiters_lifecycle?: number;
             /**
              * Format: double
              * @description Current throughput in documents per minute.
@@ -10456,7 +10671,13 @@ export interface components {
              *     If provided, reprocesses this document regardless of its status.
              */
             document_id?: string | null;
-            /** @description Force reprocess even if document is not failed. Default: false. */
+            /**
+             * @description Force reprocess of completed / in-flight ingest documents.
+             *
+             *     Does **not** override lifecycle-exclusive states (`deleting`,
+             *     `delete_failed`, cancel-in-flight). Those always skip with an explicit
+             *     `skip_reasons` entry (fail closed).
+             */
             force?: boolean;
             /** @description Maximum number of documents to reprocess. */
             max_documents?: number;
@@ -11101,6 +11322,60 @@ export interface components {
             type: string;
         };
         /**
+         * @description Nested store contention projection for queue-metrics (SPEC-057 P3).
+         * @example {
+         *       "compensate_shared_entity_skipped_total": {},
+         *       "compensation_quarantine_critical": {},
+         *       "compensation_quarantine_total": {},
+         *       "compensation_quarantine_warn": {},
+         *       "db_pool_util_critical": {},
+         *       "db_pool_util_warn": {},
+         *       "db_pool_utilization": {},
+         *       "level": {},
+         *       "operator_action": {},
+         *       "retract_on_cancel_total": {},
+         *       "vector_dim_mismatch_rejected_total": {}
+         *     }
+         */
+        StoreContentionMetrics: {
+            /**
+             * Format: int64
+             * @description SPEC-059: shared entity/rel vectors skipped from compensate deletes.
+             */
+            compensate_shared_entity_skipped_total?: number;
+            /** Format: int64 */
+            compensation_quarantine_critical: number;
+            /**
+             * Format: int64
+             * @description Process-local compensation quarantine total since boot.
+             */
+            compensation_quarantine_total: number;
+            /** Format: int64 */
+            compensation_quarantine_warn: number;
+            /** Format: double */
+            db_pool_util_critical: number;
+            /** Format: double */
+            db_pool_util_warn: number;
+            /**
+             * Format: double
+             * @description Active/size pool utilization when a pool is available.
+             */
+            db_pool_utilization?: number | null;
+            /** @description `normal` | `elevated` | `critical` */
+            level: string;
+            operator_action?: string | null;
+            /**
+             * Format: int64
+             * @description SPEC-059: cancel/orphan index retract operations.
+             */
+            retract_on_cancel_total?: number;
+            /**
+             * Format: int64
+             * @description SPEC-059: fail-closed dimension mismatch rejections.
+             */
+            vector_dim_mismatch_rejected_total?: number;
+        };
+        /**
          * @description Streaming query request.
          *
          *     @implements SPEC-006: Unified streaming protocol
@@ -11113,6 +11388,7 @@ export interface components {
          *       "llm_provider": {},
          *       "mode": {},
          *       "query": {},
+         *       "question_type": {},
          *       "stream_format": {},
          *       "system_prompt": {}
          *     }
@@ -11150,6 +11426,8 @@ export interface components {
             mode?: string | null;
             /** @description The query text. */
             query: string;
+            /** @description Optional question-type label for type-scoped answer prompts (047). */
+            question_type?: string | null;
             /**
              * @description Stream format version: "v1" (raw text) or "v2" (structured JSON events, default).
              *     @implements SPEC-006: Backward compatibility
@@ -12216,6 +12494,37 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["OllamaTagsResponse"];
                 };
+            };
+        };
+    };
+    ann_warmup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnnWarmupRequest"];
+            };
+        };
+        responses: {
+            /** @description Warmup results */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnnWarmupResponse"];
+                };
+            };
+            /** @description Empty workspace_ids */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -13402,6 +13711,13 @@ export interface operations {
                     "application/json": components["schemas"]["ListDocumentsResponse"];
                 };
             };
+            /** @description Read path busy under ingest load */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     upload_document: {
@@ -13456,14 +13772,28 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Documents deleted */
-            200: {
+            /** @description Bulk wipe accepted; track via wipe_track_id / WebSocket */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["DeleteAllDocumentsResponse"];
                 };
+            };
+            /** @description Missing confirm header when required */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workspace wipe already in flight */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Internal error */
             500: {
@@ -14207,6 +14537,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Read path busy under ingest load */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     delete_document: {
@@ -14221,8 +14558,8 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Document deleted */
-            200: {
+            /** @description Deletion accepted; track via WebSocket */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -16653,7 +16990,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Workspace created */
+            /** @description Workspace created (pdf_parser_backend defaults to vision) */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -17753,7 +18090,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Migration 038 indexes pending — not ready for traffic */
+            /** @description Not ready for traffic (migration, storage, or queue pressure) */
             503: {
                 headers: {
                     [name: string]: unknown;

@@ -79,8 +79,15 @@ impl<'a> GraphReadView<'a> {
         self.inner.get_node_edges(node_id).await
     }
 
-    pub async fn get_incident_edges_batch(&self, node_ids: &[String]) -> Result<Vec<GraphEdge>> {
-        self.inner.get_incident_edges_batch(node_ids).await
+    pub async fn get_incident_edges_batch(
+        &self,
+        node_ids: &[String],
+        tenant_id: Option<&str>,
+        workspace_id: Option<&str>,
+    ) -> Result<Vec<GraphEdge>> {
+        self.inner
+            .get_incident_edges_batch(node_ids, tenant_id, workspace_id)
+            .await
     }
 
     #[allow(deprecated)]

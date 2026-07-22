@@ -31,6 +31,15 @@ pub trait GraphStorageMutateOps: Send + Sync {
 
     async fn delete_node(&self, node_id: &str) -> Result<()>;
 
+    /// Batch-delete nodes (and incident edges). Default loops `delete_node`;
+    /// Postgres native path is O(K log N) one round-trip (SPEC-060 compensate).
+    async fn delete_nodes_batch(&self, node_ids: &[String]) -> Result<()> {
+        for id in node_ids {
+            self.delete_node(id).await?;
+        }
+        Ok(())
+    }
+
     /// Delete a node only when its stored tenant/workspace match (defense in depth).
     ///
     /// Returns `Ok(true)` when a node was deleted, `Ok(false)` when no matching node
@@ -56,6 +65,17 @@ pub trait GraphStorageMutateOps: Send + Sync {
     ) -> Result<()>;
 
     async fn delete_edge(&self, source: &str, target: &str) -> Result<()>;
+
+    /// Batch-delete edges by `(source, target)` pairs.
+    ///
+    /// Default loops `delete_edge`. Postgres native path is one `ANY` round-trip
+    /// (SPEC-060 style) so document cascade delete stays O(1) storage ops.
+    async fn delete_edges_batch(&self, edges: &[(String, String)]) -> Result<()> {
+        for (source, target) in edges {
+            self.delete_edge(source, target).await?;
+        }
+        Ok(())
+    }
 
     /// Delete an edge only when tenant/workspace properties match.
     async fn delete_edge_scoped(

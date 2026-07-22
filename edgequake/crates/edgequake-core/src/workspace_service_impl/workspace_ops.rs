@@ -138,13 +138,16 @@ impl WorkspaceServiceImpl {
                 serde_json::json!(provider),
             );
         }
-        if let Some(pdf_parser_backend) = request.pdf_parser_backend {
-            workspace.pdf_parser_backend = Some(pdf_parser_backend);
-            workspace.metadata.insert(
-                "pdf_parser_backend".to_string(),
-                serde_json::json!(pdf_parser_backend.as_str()),
-            );
-        }
+        // Persist vision by default when omitted so env edgeparse cannot silently
+        // override a freshly created workspace.
+        let pdf_parser_backend = request
+            .pdf_parser_backend
+            .unwrap_or(PdfParserBackend::Vision);
+        workspace.pdf_parser_backend = Some(pdf_parser_backend);
+        workspace.metadata.insert(
+            "pdf_parser_backend".to_string(),
+            serde_json::json!(pdf_parser_backend.as_str()),
+        );
 
         // SPEC-085: Apply entity type configuration from request
         // Normalize: uppercase, underscored, deduplicated, max 50 types

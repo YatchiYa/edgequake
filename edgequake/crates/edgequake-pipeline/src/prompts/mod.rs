@@ -27,6 +27,7 @@
 
 mod entity_extraction;
 mod entity_type_policy;
+mod extract_caps;
 mod json_extract;
 mod json_prompts;
 mod normalizer;
@@ -39,9 +40,13 @@ pub use entity_type_policy::{
     enforce_entity_type, json_entity_types_prompt_section, normalize_type_token,
     sota_entity_type_instruction, EntityExtractionSchema, METADATA_ENTITY_TYPES_STRICT,
 };
+pub use extract_caps::{
+    apply_default_extraction_caps, apply_extraction_caps, ExtractionCaps,
+    DEFAULT_MAX_EXTRACTION_ENTITIES, DEFAULT_MAX_EXTRACTION_RECORDS,
+};
 pub use json_extract::extract_json_from_response;
 pub use json_prompts::{json_extraction_prompt, json_gleaning_prompt, JSON_OUTPUT_FORMAT_SECTION};
-pub use normalizer::normalize_entity_name;
+pub use normalizer::{is_opaque_identifier, normalize_entity_name};
 pub use parser::{
     detect_format_markers, ExtractionResultParser, HybridExtractionParser, JsonExtractionParser,
     JsonParseOptions, TupleParser,
@@ -73,17 +78,27 @@ pub const SUPPORTED_LANGUAGES: &[&str] = &[
 ];
 
 /// Default entity types for extraction.
+///
+/// Matches LightRAG `default_entity_types_guidance` / `DEFAULT_ENTITY_TYPES`
+/// (Person…NaturalObject) plus `OTHER`. No `DATE` — that type induced
+/// duration/measurement noise on Acc medical corpora (053).
+///
+/// `NATURALOBJECT` is the UPPER fold of LR's `NaturalObject` (no underscore
+/// inserted by [`normalize_type_token`]).
 pub fn default_entity_types() -> Vec<String> {
     vec![
         "PERSON".to_string(),
+        "CREATURE".to_string(),
         "ORGANIZATION".to_string(),
         "LOCATION".to_string(),
         "EVENT".to_string(),
         "CONCEPT".to_string(),
-        "TECHNOLOGY".to_string(),
-        "PRODUCT".to_string(),
-        "DATE".to_string(),
-        "DOCUMENT".to_string(),
+        "METHOD".to_string(),
+        "CONTENT".to_string(),
+        "DATA".to_string(),
+        "ARTIFACT".to_string(),
+        "NATURALOBJECT".to_string(),
+        "OTHER".to_string(),
     ]
 }
 
@@ -96,7 +111,14 @@ mod tests {
         let types = default_entity_types();
         assert!(types.contains(&"PERSON".to_string()));
         assert!(types.contains(&"ORGANIZATION".to_string()));
-        assert!(types.len() >= 7);
+        assert!(types.contains(&"NATURALOBJECT".to_string()));
+        assert!(types.contains(&"OTHER".to_string()));
+        assert!(types.contains(&"METHOD".to_string()));
+        assert!(!types.iter().any(|t| t == "DATE"));
+        assert!(!types.iter().any(|t| t == "PRODUCT"));
+        assert!(!types.iter().any(|t| t == "TECHNOLOGY"));
+        assert!(!types.iter().any(|t| t == "DOCUMENT"));
+        assert_eq!(types.len(), 12);
     }
 
     #[test]

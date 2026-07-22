@@ -2,6 +2,8 @@
 title: 'Knowledge Graph'
 ---
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 # Knowledge Graph
 
 > **EdgeQuake's knowledge graph stores entities as nodes and relationships as edges,
@@ -97,7 +99,7 @@ EdgeQuake uses a hybrid storage architecture:
 │  │  │                    pgvector                              │││
 │  │  │   • Vector embeddings (1536 dims)                       │││
 │  │  │   • Similarity search (cosine, L2)                      │││
-│  │  │   • HNSW index for fast retrieval                       │││
+│  │  │   • HNSW / halfvec ANN (see vector storage deep-dive)   │││
 │  │  └─────────────────────────────────────────────────────────┘││
 │  │  ┌─────────────────────────────────────────────────────────┐││
 │  │  │                    Standard Tables                       │││
@@ -227,6 +229,6 @@ LIMIT 10
 
 ## Source Code
 
-- **Graph storage trait**: [graph.rs](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-storage/src/traits/graph.rs)
-- **Vector storage trait**: [vector.rs](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-storage/src/traits/vector.rs)
-- **PostgreSQL implementation**: [postgres/](https://github.com/raphaelmansuy/edgequake/tree/edgequake-main/edgequake/crates/edgequake-storage/src/postgres/)
+- **Graph storage trait**: [traits/graph.rs](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-storage/src/traits/graph.rs)
+- **Vector storage trait**: [traits/vector.rs](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-storage/src/traits/vector.rs)
+- **PostgreSQL implementation**: [adapters/postgres/](https://github.com/raphaelmansuy/edgequake/tree/edgequake-main/edgequake/crates/edgequake-storage/src/adapters/postgres/)

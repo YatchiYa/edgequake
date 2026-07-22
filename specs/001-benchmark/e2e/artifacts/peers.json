@@ -1,0 +1,137 @@
+{
+  "spec": "001-benchmark",
+  "updated_at_utc": "2026-07-21T02:30:00Z",
+  "honesty": "Split peers — never merge Acc / L2 / latency. Beat CI unmet. Warm Acc LR p50 (~1.5s) is LLM-cache-aided (063); fair cold peer c1cold ≈1.01× PASS. Acc Fact peer unchanged. 064 product TTFT/answer-cache (default OFF) is not an Acc latency peer.",
+  "peers": {
+    "acc_fact": {
+      "label": "Acc Fact peer",
+      "workspace_id": "8e990410-43b5-44f4-9f56-87bd154570ce",
+      "workspace_name": "bench001-b5-placeholder-provenance",
+      "pack": "a1fp",
+      "profile_id": "A1FP_p2b_rr_cer_fact_protect_bm25_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/smoke-20260720T120315Z",
+      "metrics": {
+        "eq_acc": 0.801,
+        "lr_acc": 0.782,
+        "eq_ctx_rel": 0.519,
+        "eq_evidence_recall": 0.926,
+        "fact_er": 0.85,
+        "eq_query_p50_ms": 6876,
+        "lr_query_p50_ms": 1350,
+        "eq_lr_p50_ratio": 5.093
+      },
+      "use_for": ["answer_quality", "fact_lookup", "acc_claims"],
+      "not_for": ["l2_parity_claims", "beat_claims", "latency_parity_claims"]
+    },
+    "l2_parity": {
+      "label": "L2 Parity peer",
+      "workspace_note": "Query pack a1lrl2 on Acc-era full WS graph; Acc point tax vs a1fp",
+      "pack": "a1lrl2",
+      "profile_id": "A1LRL2_p2b_rr_cer_lr_budget_l2_union_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/smoke-20260720T093152Z",
+      "metrics": {
+        "eq_acc": 0.718,
+        "lr_acc": 0.781,
+        "eq_ctx_rel": 0.525,
+        "eq_evidence_recall": 0.933,
+        "fact_er": 0.85,
+        "eq_query_p50_ms": 7164,
+        "lr_query_p50_ms": 1473,
+        "eq_lr_p50_ratio": 4.864
+      },
+      "use_for": ["evidence_recall", "context_relevancy", "l2_parity_claims"],
+      "not_for": ["acc_headline_without_tax_disclosure", "beat_claims"]
+    },
+    "latency_c1a": {
+      "label": "Latency C1a (Fact CE-skip)",
+      "workspace_id": "8e990410-43b5-44f4-9f56-87bd154570ce",
+      "pack": "c1a",
+      "profile_id": "C1A_a1_rr_cer_fact_ce_skip_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/smoke-20260721T012849Z",
+      "metrics": {
+        "eq_acc": 0.729,
+        "eq_query_p50_ms": 6299,
+        "eq_lr_p50_ratio": 4.347,
+        "fact_rerank_p50_ms": 9
+      },
+      "use_for": ["product_latency_fact_path"],
+      "not_for": ["acc_headline", "beat_claims"]
+    },
+    "latency_c1b": {
+      "label": "Latency C1b (BM25-all + keyword/embed split)",
+      "workspace_id": "8e990410-43b5-44f4-9f56-87bd154570ce",
+      "pack": "c1b",
+      "profile_id": "C1B_a1_rr_cer_bm25_all_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/smoke-20260721T013842Z",
+      "metrics": {
+        "eq_acc": 0.712,
+        "lr_acc": 0.787,
+        "eq_query_p50_ms": 5791,
+        "lr_query_p50_ms": 1481,
+        "eq_lr_p50_ratio": 3.91,
+        "eq_keyword_p50_ms": 1782,
+        "eq_embed_p50_ms": 2212,
+        "eq_rerank_p50_ms": 9,
+        "eq_generate_p50_ms": 2421
+      },
+      "use_for": ["product_latency_ops", "stage_honesty_claims"],
+      "not_for": ["acc_headline", "acc_fact_peer", "beat_claims", "latency_slo_1_5x_claim"]
+    },
+    "latency_c1d": {
+      "label": "Latency C1d (heuristic KEYWORD)",
+      "workspace_id": "8e990410-43b5-44f4-9f56-87bd154570ce",
+      "pack": "c1d",
+      "profile_id": "C1D_a1_rr_cer_bm25_heuristic_kw_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/smoke-20260721T014632Z",
+      "metrics": {
+        "eq_acc": 0.736,
+        "eq_query_p50_ms": 5995,
+        "eq_lr_p50_ratio": 4.084,
+        "eq_keyword_p50_ms": 0,
+        "eq_generate_p50_ms": 2985
+      },
+      "use_for": ["keyword_stage_proof"],
+      "not_for": ["acc_headline", "latency_slo_1_5x_claim", "wall_latency_win_claim"]
+    },
+    "latency_c1e": {
+      "label": "Latency C1e (KEYWORD=ministral-3b env role)",
+      "workspace_id": "8e990410-43b5-44f4-9f56-87bd154570ce",
+      "pack": "c1e",
+      "profile_id": "C1E_a1_rr_cer_bm25_fast_keyword_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/smoke-20260721T020802Z",
+      "metrics": {
+        "eq_acc": 0.742,
+        "eq_query_p50_ms": 6796,
+        "eq_lr_p50_ratio": 4.746,
+        "eq_keyword_p50_ms": 2035,
+        "eq_embed_p50_ms": 2313,
+        "eq_generate_p50_ms": 3039,
+        "keyword_llm_model": "ministral-3b-latest"
+      },
+      "use_for": ["keyword_role_env_proof"],
+      "not_for": ["acc_headline", "latency_slo_1_5x_claim", "wall_latency_win_claim"]
+    },
+    "latency_c1cold": {
+      "label": "Latency C1cold (fair cold — LR LLM cache OFF)",
+      "workspace_id": "8e990410-43b5-44f4-9f56-87bd154570ce",
+      "pack": "c1cold",
+      "profile_id": "C1COLD_a1_rr_cer_bm25_lr_nocache_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/smoke-20260721T022103Z",
+      "metrics": {
+        "eq_acc": 0.731,
+        "lr_acc": 0.760,
+        "eq_query_p50_ms": 5891,
+        "lr_query_p50_ms": 5817,
+        "eq_lr_p50_ratio": 1.013,
+        "lr_enable_llm_cache": false,
+        "eq_keyword_p50_ms": 1678,
+        "eq_generate_p50_ms": 2311,
+        "latency_slo_1_5x": true
+      },
+      "use_for": ["fair_cold_latency_claims", "eq_lr_latency_parity"],
+      "not_for": ["acc_headline", "warm_cache_latency_claims", "beat_claims"]
+    }
+  },
+  "warm_workspace_pointer": "specs/001-benchmark/e2e/artifacts/warm_workspace.json",
+  "warm_points_to": "acc_fact"
+}

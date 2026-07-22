@@ -49,6 +49,9 @@
 //! ```
 
 use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
+
+use tokio::sync::Mutex;
 
 use super::config::PostgresConfig;
 use super::connection::PostgresPool;
@@ -91,6 +94,9 @@ pub struct PostgresAGEGraphStorage {
     /// AGE creates label tables lazily on first use, so indexes must be
     /// created after the first node/edge is inserted.
     indexes_verified: AtomicBool,
+    /// Single-flight lock for `ensure_indexes` / SPEC-062 eq_* DDL (069).
+    /// Prevents concurrent deletion/ingest workers from racing ALTER/TRIGGER DDL.
+    ensure_indexes_lock: Arc<Mutex<()>>,
 }
 
 impl PostgresAGEGraphStorage {
@@ -112,6 +118,7 @@ impl PostgresAGEGraphStorage {
             prefix,
             initialized: AtomicBool::new(false),
             indexes_verified: AtomicBool::new(false),
+            ensure_indexes_lock: Arc::new(Mutex::new(())),
         }
     }
 

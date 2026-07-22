@@ -287,10 +287,16 @@ export interface DocumentImpactResponse {
 // ============================================================================
 
 export interface EntitySummaryResponse {
+  /** Graph node id (edge endpoints / stable identity). */
+  id?: string;
+  /** Bare semantic name, or soft-label when opaque (BC). */
   name: string;
+  /** Human presentation label (072 SSOT). */
+  label?: string;
   entity_type: string;
   source_chunks: string[];
   is_shared: boolean;
+  description?: string | null;
 }
 
 export interface RelationshipSummaryResponse {

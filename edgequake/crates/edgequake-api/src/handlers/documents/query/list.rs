@@ -1,5 +1,7 @@
 //! List all documents handler.
 
+use std::sync::Arc;
+
 use axum::{
     extract::{Query, State},
     Json,
@@ -8,12 +10,16 @@ use tracing::debug;
 
 use crate::error::ApiResult;
 use crate::middleware::TenantContext;
+use crate::read_path::{
+    run_with_read_path_guard, should_skip_entity_reconcile, ReadPathDbPermit,
+    MAX_LIST_METADATA_ENTRIES,
+};
 use crate::services::document_metadata_scan::canonical_document_id;
 use crate::services::list_pagination::paginate_vec;
 use crate::services::tenant_guard::{
     empty_documents_list, has_full_tenant_context, warn_missing_tenant_context,
 };
-use crate::state::{PostgresRuntime, StorageRuntime};
+use crate::state::{PostgresRuntime, StorageRuntime, TaskRuntime};
 use edgequake_core::ResourceBudgetConfig;
 
 use crate::handlers::documents_types::*;
@@ -24,7 +30,8 @@ use crate::handlers::documents_types::*;
     path = "/api/v1/documents",
     tag = "Documents",
     responses(
-        (status = 200, description = "Documents retrieved", body = ListDocumentsResponse)
+        (status = 200, description = "Documents retrieved", body = ListDocumentsResponse),
+        (status = 503, description = "Read path busy under ingest load")
     )
 )]
 #[allow(clippy::field_reassign_with_default)]
@@ -32,8 +39,25 @@ pub async fn list_documents(
     State(storage): State<StorageRuntime>,
     State(_pg_runtime): State<PostgresRuntime>,
     State(budget): State<ResourceBudgetConfig>,
+    State(tasks): State<TaskRuntime>,
+    State(read_path_db): State<Arc<ReadPathDbPermit>>,
     tenant_ctx: TenantContext,
     Query(params): Query<ListDocumentsRequest>,
+) -> ApiResult<Json<ListDocumentsResponse>> {
+    run_with_read_path_guard(&read_path_db, || {
+        list_documents_inner(storage, _pg_runtime, budget, tasks, tenant_ctx, params)
+    })
+    .await
+}
+
+#[allow(clippy::field_reassign_with_default)]
+async fn list_documents_inner(
+    storage: StorageRuntime,
+    _pg_runtime: PostgresRuntime,
+    budget: ResourceBudgetConfig,
+    tasks: TaskRuntime,
+    tenant_ctx: TenantContext,
+    params: ListDocumentsRequest,
 ) -> ApiResult<Json<ListDocumentsResponse>> {
     debug!(
         tenant_id = ?tenant_ctx.tenant_id,
@@ -48,16 +72,26 @@ pub async fn list_documents(
         return Ok(Json(empty_documents_list()));
     }
 
-    // SPEC-027: scoped metadata scan SSOT (suffix index + tenant filter).
-    let metadata_entries =
-        crate::services::document_metadata_scan::load_scoped_document_metadata_entries(
+    // SPEC-027: scoped metadata scan SSOT — cap keys *before* value fetch so
+    // large workspaces never pay unbounded get_by_ids under ingest load.
+    let scoped =
+        crate::services::document_metadata_scan::load_scoped_document_metadata_entries_limited(
             storage.kv_storage.as_ref(),
             &tenant_ctx,
+            MAX_LIST_METADATA_ENTRIES,
         )
         .await?;
+    let metadata_entries = scoped.entries;
+    let truncated = scoped.truncated;
+    if truncated {
+        tracing::warn!(
+            entry_count_cap = MAX_LIST_METADATA_ENTRIES,
+            "Document metadata key scan truncated before value fetch (interactive list)"
+        );
+    }
     debug!(
         metadata_entries_count = metadata_entries.len(),
-        "Scoped metadata entries retrieved"
+        truncated, "Scoped metadata entries retrieved"
     );
 
     // Store complete document metadata, keyed by document ID
@@ -313,6 +347,8 @@ pub async fn list_documents(
                 stage_progress: meta.stage_progress,
                 stage_message: meta.stage_message,
                 pdf_id: meta.pdf_id,
+                display_status: None,
+                ui_phase: None,
             }
         })
         .collect();
@@ -356,7 +392,12 @@ pub async fn list_documents(
         }
     }
 
-    crate::document_read_model::reconcile_entity_counts_with_graph(&storage, &mut documents).await;
+    if should_skip_entity_reconcile(&tasks.storage).await {
+        // Serve KV/relational counts under queue/storage pressure — never hang on AGE.
+    } else {
+        crate::document_read_model::reconcile_entity_counts_with_graph(&storage, &mut documents)
+            .await;
+    }
 
     // SPEC-005: Apply optional date range and title pattern filters
     if params.date_from.is_some() || params.date_to.is_some() || params.document_pattern.is_some() {
@@ -473,6 +514,13 @@ pub async fn list_documents(
             .count(),
     };
 
+    // SPEC-057 P4: project display_status / ui_phase SSOT before pagination.
+    crate::services::ingestion_status_mapper::enrich_document_summaries_with_cancel(
+        &mut documents,
+        &tasks.cancellation_registry,
+    )
+    .await;
+
     // SPEC-027 IMP-020: honor query pagination (status_counts remain over full filtered set).
     let page_size = budget.clamp_page_size(params.page_size.min(u32::MAX as usize) as u32) as usize;
     let page = params.page.max(1);
@@ -486,5 +534,6 @@ pub async fn list_documents(
         total_pages: pagination.total_pages,
         has_more: pagination.has_more,
         status_counts,
+        truncated: truncated.then_some(true),
     }))
 }

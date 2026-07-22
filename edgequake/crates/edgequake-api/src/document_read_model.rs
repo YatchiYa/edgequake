@@ -194,6 +194,8 @@ pub async fn list_relational_document_summaries(
                 stage_progress: None,
                 stage_message: None,
                 pdf_id: None,
+                display_status: None,
+                ui_phase: None,
             }
         })
         .collect())
@@ -416,28 +418,33 @@ pub fn merge_document_summaries(
 /// counts, so we fall back to `node_counts_by_source_prefixes` (SPEC-054 L1-a:
 /// **one** AGE round-trip) for documents whose current `entity_count` is 0.
 ///
-/// Best-effort: AGE failures are swallowed (counts stay as-is) so the list
-/// request never fails due to a graph hiccup.
+/// Whether a list row is eligible for AGE entity-count reconcile.
+///
+/// Only finished docs with a zero count — never in-progress extraction
+/// (those probes can exceed the interactive read deadline on large graphs).
+#[inline]
+pub(crate) fn should_reconcile_entity_count(
+    status: Option<&str>,
+    entity_count: Option<usize>,
+) -> bool {
+    entity_count.unwrap_or(0) == 0
+        && matches!(status, Some("completed" | "indexed" | "partial_failure"))
+}
+
+/// Best-effort: AGE failures/timeouts are swallowed (counts stay as-is) so the
+/// interactive list never fails with `read_path_busy` due to a graph probe.
 pub async fn reconcile_entity_counts_with_graph(
     storage: &crate::state::StorageRuntime,
     documents: &mut [DocumentSummary],
 ) {
+    use std::time::Duration;
+
     use edgequake_storage::kv_keys;
 
-    // Only reconcile rows that currently report 0 entities — the common
-    // screenshot case. Rows with a non-zero count already come from KV (truth).
-    // Skip terminal failure / cancelled rows: AGE reconcile cannot help and
-    // previously paid a full-graph Seq Scan per zero-count document.
     let candidates: Vec<(usize, String)> = documents
         .iter()
         .enumerate()
-        .filter(|(_, d)| {
-            d.entity_count.unwrap_or(0) == 0
-                && !matches!(
-                    d.status.as_deref(),
-                    Some("failed" | "cancelled" | "pending" | "queued")
-                )
-        })
+        .filter(|(_, d)| should_reconcile_entity_count(d.status.as_deref(), d.entity_count))
         .map(|(i, d)| (i, d.id.clone()))
         .collect();
 
@@ -450,17 +457,31 @@ pub async fn reconcile_entity_counts_with_graph(
         .map(|(_, doc_id)| kv_keys::doc_chunk_prefix(doc_id))
         .collect();
 
-    let counts = match storage
-        .graph_storage
-        .node_counts_by_source_prefixes(&prefixes)
-        .await
+    // Hard cap well under EDGEQUAKE_DOCUMENTS_READ_TIMEOUT_MS so list/detail
+    // keep serving KV counts when AGE is slow (142k+ node graphs).
+    const AGE_RECONCILE_TIMEOUT: Duration = Duration::from_millis(400);
+    let counts = match tokio::time::timeout(
+        AGE_RECONCILE_TIMEOUT,
+        storage
+            .graph_storage
+            .node_counts_by_source_prefixes(&prefixes),
+    )
+    .await
     {
-        Ok(map) => map,
-        Err(e) => {
+        Ok(Ok(map)) => map,
+        Ok(Err(e)) => {
             tracing::warn!(
                 error = %e,
                 candidate_count = candidates.len(),
                 "P-A3: batched AGE entity_count fallback failed (non-fatal) — leaving counts as-is"
+            );
+            return;
+        }
+        Err(_) => {
+            tracing::warn!(
+                candidate_count = candidates.len(),
+                timeout_ms = AGE_RECONCILE_TIMEOUT.as_millis() as u64,
+                "P-A3: AGE entity_count reconcile timed out — serving KV counts"
             );
             return;
         }
@@ -484,6 +505,21 @@ mod tests {
         assert_eq!(merge_document_count(7, 0), 7);
         assert_eq!(merge_document_count(0, 3), 3);
         assert_eq!(merge_document_count(2, 5), 5);
+    }
+
+    #[test]
+    fn reconcile_skips_in_progress_and_nonzero_counts() {
+        assert!(should_reconcile_entity_count(Some("completed"), Some(0)));
+        assert!(should_reconcile_entity_count(Some("indexed"), None));
+        assert!(should_reconcile_entity_count(
+            Some("partial_failure"),
+            Some(0)
+        ));
+        assert!(!should_reconcile_entity_count(Some("extracting"), None));
+        assert!(!should_reconcile_entity_count(Some("processing"), Some(0)));
+        assert!(!should_reconcile_entity_count(Some("completed"), Some(7)));
+        assert!(!should_reconcile_entity_count(Some("failed"), Some(0)));
+        assert!(!should_reconcile_entity_count(Some("pending"), None));
     }
 
     #[test]
@@ -534,6 +570,8 @@ mod tests {
             stage_progress: None,
             stage_message: None,
             pdf_id: None,
+            display_status: None,
+            ui_phase: None,
         }];
 
         let pg = vec![DocumentSummary {
@@ -561,6 +599,8 @@ mod tests {
             stage_progress: None,
             stage_message: None,
             pdf_id: None,
+            display_status: None,
+            ui_phase: None,
         }];
 
         let merged = merge_document_summaries(kv, pg);
@@ -597,6 +637,8 @@ mod tests {
             stage_progress: None,
             stage_message: None,
             pdf_id: None,
+            display_status: None,
+            ui_phase: None,
         }];
 
         let pg = vec![DocumentSummary {
@@ -624,6 +666,8 @@ mod tests {
             stage_progress: None,
             stage_message: None,
             pdf_id: None,
+            display_status: None,
+            ui_phase: None,
         }];
 
         let merged = merge_document_summaries(kv, pg);
@@ -658,6 +702,8 @@ mod tests {
             stage_progress: None,
             stage_message: None,
             pdf_id: None,
+            display_status: None,
+            ui_phase: None,
         }
     }
 

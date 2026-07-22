@@ -68,7 +68,7 @@ export const QUERY_MODE_META: readonly QueryModeMeta[] = [
     label: "Smart",
     apiName: "mix",
     description:
-      "Full blend: Focused + Broad + document chunks, fused with ranking (RRF). Richest context for most questions. Recommended default.",
+      "Full blend (LightRAG mix): Focused + Broad + document chunks in parallel, fused with ranking (RRF). Always runs all three retrieval arms — richest context for most questions. Recommended default.",
     icon: Layers,
     color: "text-primary",
     recommended: true,

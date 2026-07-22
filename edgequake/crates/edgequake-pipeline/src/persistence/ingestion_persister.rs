@@ -5,9 +5,11 @@
 //! sequence cannot diverge (P-G2b config SSOT).
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use async_trait::async_trait;
 use edgequake_llm::LLMProvider;
+use edgequake_observability::record_ingest_stage_duration;
 use edgequake_storage::{
     compensation, traits::KVStorage, GraphStorage, TextEmbedder, VectorStorage,
 };
@@ -294,9 +296,12 @@ async fn persist_processing_result_impl(
         );
         if !records.is_empty() {
             chunk_kv_ids = records.iter().map(|(id, _)| id.clone()).collect();
+            let stage_start = Instant::now();
             kv.upsert(&records)
                 .await
                 .map_err(crate::error::PipelineError::StorageError)?;
+            // SPEC-060: ingest KV stage histogram
+            record_ingest_stage_duration("kv_upsert", stage_start.elapsed().as_secs_f64());
         }
     }
 
@@ -304,10 +309,13 @@ async fn persist_processing_result_impl(
     let chunk_vector_ids: Vec<String> = chunk_vectors.iter().map(|(id, _, _)| id.clone()).collect();
 
     if !chunk_vectors.is_empty() {
+        let stage_start = Instant::now();
         vector_storage
             .upsert(&chunk_vectors)
             .await
             .map_err(crate::error::PipelineError::StorageError)?;
+        // SPEC-060: ingest chunk vector stage histogram
+        record_ingest_stage_duration("chunk_vector_upsert", stage_start.elapsed().as_secs_f64());
     }
 
     let mut merger = KnowledgeGraphMerger::new(
@@ -321,6 +329,11 @@ async fn persist_processing_result_impl(
     // Wire lineage sink if provided (SPEC-032 W-08)
     if let Some(ref ls) = config.lineage_sink {
         merger = merger.with_lineage_sink(ls.clone());
+    }
+
+    // 050 B7: placeholders need the same embedder as community reports.
+    if let Some(ref embedder) = config.text_embedder {
+        merger = merger.with_text_embedder(embedder.clone());
     }
 
     if config.merger_config.use_llm_summarization {
@@ -419,6 +432,9 @@ async fn persist_processing_result_impl(
             Err(crate::error::PipelineError::GraphError(cause))
         }
         Err(merge_err) => {
+            // Hard Err is rare after SPEC-057 P3 (vector upserts return Ok+errors
+            // with partial artifacts). Keep defensive compensate; prefer Ok(errors)
+            // path which carries real MergeArtifacts.
             let cause = merge_err.to_string();
             compensate_merge_failure(
                 graph_storage.as_ref(),
@@ -447,6 +463,7 @@ async fn compensate_merge_failure(
     artifacts: &crate::merger::MergeArtifacts,
     cause: &str,
 ) {
+    let stage_start = Instant::now();
     compensation::compensate_merge_failure_with_kv(
         graph_storage,
         vector_storage,
@@ -461,6 +478,8 @@ async fn compensate_merge_failure(
         cause,
     )
     .await;
+    // SPEC-060: compensate stage histogram
+    record_ingest_stage_duration("compensate", stage_start.elapsed().as_secs_f64());
 }
 
 #[cfg(test)]

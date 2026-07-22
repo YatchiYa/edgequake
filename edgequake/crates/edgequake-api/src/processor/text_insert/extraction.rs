@@ -202,8 +202,13 @@ impl DocumentTaskProcessor {
                         result
                     }
                     Err(e) => {
-                        // FIX-3: Comprehensive error logging with context
                         let error_msg = format!("Pipeline processing failed: {}", e);
+                        if crate::services::task_cancel::is_cancel_error_message(&error_msg) {
+                            let _ = self
+                                .update_document_status(&document_id, "cancelled", Some(&error_msg))
+                                .await;
+                            return Err(edgequake_tasks::TaskError::Cancelled(error_msg));
+                        }
                         error!(
                             document_id = %document_id,
                             workspace_id = ?workspace_id,
@@ -277,15 +282,21 @@ impl DocumentTaskProcessor {
             }
         };
 
-        // SPEC-047 P5: slim checkpoints omit embeddings — re-embed before persist.
+        // SPEC-047 P5 / SPEC-057 P2: slim checkpoints omit embeddings — re-embed
+        // before persist and surface an honest stage (not silent "embedding").
         if result.needs_reembed() {
             info!(
                 document_id = %document_id,
                 resumed = resumed_from_checkpoint,
+                embeddings_omitted = true,
                 "Re-generating embeddings (slim checkpoint or incomplete embed)"
             );
-            self.update_document_status(&document_id, "embedding", None)
-                .await?;
+            self.update_document_status(
+                &document_id,
+                "re_embedding",
+                Some("Re-generating embeddings after slim checkpoint (embeddings_omitted)"),
+            )
+            .await?;
             if let Err(e) = pipeline
                 .ensure_embeddings(&mut result, Some(&embed_progress_callback))
                 .await
@@ -319,11 +330,20 @@ impl DocumentTaskProcessor {
 
         if !mm_metas.is_empty() {
             let file_path = data.file_source.as_str();
+            // Prefer metadata title; fall back to file stem (066 Drawing display_name).
+            let doc_title = data
+                .metadata
+                .as_ref()
+                .and_then(|m| m.get("title"))
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or(file_path);
             edgequake_pipeline::inject_modality_relations(
                 &mut result.extractions,
                 &result.chunks,
                 &mm_metas,
                 file_path,
+                Some(doc_title),
             );
         }
         edgequake_pipeline::stamp_retrieval_modality_on_chunks(&mut result.chunks, &mm_metas);

@@ -1,0 +1,41 @@
+{
+  "judge": "retrieval_eval",
+  "overall_context_relevancy": 0.625,
+  "overall_evidence_recall": 0.8125,
+  "by_type": {
+    "Fact Retrieval": {
+      "context_relevancy": 0.5,
+      "evidence_recall": 0.5
+    },
+    "Complex Reasoning": {
+      "context_relevancy": 0.75,
+      "evidence_recall": 1.0
+    },
+    "Contextual Summarize": {
+      "context_relevancy": 0.5,
+      "evidence_recall": 0.75
+    },
+    "Creative Generation": {
+      "context_relevancy": 0.75,
+      "evidence_recall": 1.0
+    }
+  },
+  "raw": {
+    "Fact Retrieval": {
+      "context_relevancy": 0.5,
+      "evidence_recall": 0.5
+    },
+    "Complex Reasoning": {
+      "context_relevancy": 0.75,
+      "evidence_recall": 1.0
+    },
+    "Contextual Summarize": {
+      "context_relevancy": 0.5,
+      "evidence_recall": 0.75
+    },
+    "Creative Generation": {
+      "context_relevancy": 0.75,
+      "evidence_recall": 1.0
+    }
+  }
+}

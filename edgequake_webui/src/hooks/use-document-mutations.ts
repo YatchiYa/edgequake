@@ -18,6 +18,7 @@
 "use client";
 
 import type {
+    DeleteDocumentAccepted,
     ReprocessFailedResponse,
     ReprocessMode,
 } from "@/lib/api/edgequake";
@@ -32,6 +33,8 @@ import { invalidateKnowledgeGraph } from "@/lib/cache-manager";
 import {
     applyDeletionFailed,
     beginDeleteSession,
+    bindDeleteSessionTrackId,
+    getDeleteSession,
     patchDocumentsDeletingOptimistic,
 } from "@/lib/documents/deletion-session";
 import {
@@ -105,7 +108,12 @@ export interface UseDocumentMutationsReturn {
    * Delete a single document by ID.
    * Invalidates documents query cache on success.
    */
-  deleteMutation: UseMutationResult<void, Error, string, unknown>;
+  deleteMutation: UseMutationResult<
+    DeleteDocumentAccepted,
+    Error,
+    string,
+    unknown
+  >;
 
   /**
    * Delete all documents in the current workspace.
@@ -191,23 +199,41 @@ export function useDocumentMutations(
   const deleteMutation = useMutation({
     mutationFn: deleteDocument,
     onMutate: (documentId: string) => {
-      // Paint-first fallback if caller did not begin a named session yet.
-      beginDeleteSession({
-        documentId,
-        documentName: documentId.slice(0, 8),
-      });
+      // SPEC-069: never overwrite a named session with hex id.slice(0,8).
+      // Caller (DocumentManager) begins with file_name/title first.
+      if (!getDeleteSession(documentId)) {
+        beginDeleteSession({
+          documentId,
+          documentName: documentId.slice(0, 8),
+        });
+      }
       patchDocumentsDeletingOptimistic(queryClient, documentId);
     },
-    onSuccess: (_data, _documentId) => {
-      toast.success(t("documents.delete.success", "Document deleted"), {
-        duration: 3000,
-        description: t(
-          "documents.delete.successDesc",
-          "The document has been permanently removed.",
-        ),
-      });
+    onSuccess: (data, documentId) => {
+      // HTTP 202 admit — WebSocket DeletionCompleted is the terminal SSOT.
+      // Do not toast "deleted" here (cascade may still be running).
+      if (data?.track_id) {
+        bindDeleteSessionTrackId(documentId, data.track_id);
+      }
+      if (data?.accepted) {
+        toast.success(t("documents.delete.accepted", "Deletion started"), {
+          duration: 2500,
+          description: t(
+            "documents.delete.acceptedDesc",
+            "Removing document data in the background…",
+          ),
+        });
+      } else if (data?.deleted) {
+        toast.success(t("documents.delete.success", "Document deleted"), {
+          duration: 3000,
+          description: t(
+            "documents.delete.successDesc",
+            "The document has been permanently removed.",
+          ),
+        });
+        invalidateKnowledgeGraph(queryClient);
+      }
       queryClient.invalidateQueries({ queryKey: ["documents"] });
-      invalidateKnowledgeGraph(queryClient);
     },
     onError: (error: Error, documentId) => {
       const message =
@@ -238,13 +264,20 @@ export function useDocumentMutations(
   const deleteAllMutation = useMutation({
     mutationFn: deleteAllDocuments,
     onSuccess: (data) => {
-      toast.success(
-        t("documents.deleteAll.success", { count: data.deleted_count }) ||
-          `Deleted ${data.deleted_count} documents`,
-        {
-          duration: 4000,
-        },
-      );
+      // ISSUE-309: 202 admit — show accepted until Clear dialog / WS terminal.
+      const label = data.accepted
+        ? t("documents.deleteAll.started", {
+            count: data.deleted_count,
+            defaultValue: `Wipe accepted for ${data.deleted_count} documents…`,
+          })
+        : t("documents.deleteAll.success", { count: data.deleted_count }) ||
+          `Deleted ${data.deleted_count} documents`;
+      toast.message(label, {
+        description: data.wipe_track_id
+          ? `Track: ${data.wipe_track_id}`
+          : undefined,
+        duration: 4000,
+      });
       queryClient.invalidateQueries({ queryKey: ["documents"] });
       invalidateKnowledgeGraph(queryClient);
     },

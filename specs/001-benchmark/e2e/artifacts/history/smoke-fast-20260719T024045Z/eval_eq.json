@@ -1,0 +1,76 @@
+{
+  "judge": "generation_eval",
+  "judge_model": "mistral-medium-latest",
+  "judge_provider": "mistral",
+  "judge_base_url": "https://api.mistral.ai/v1",
+  "judge_embedding_model": "mistral-embed",
+  "judge_temperature": 0.0,
+  "judge_acc_factuality_weight": 0.75,
+  "judge_embed_backend": "auto",
+  "answer_style": "gold",
+  "recommended_mistral_judge": "mistral-medium-latest",
+  "acc_formula": "0.75*F1 + 0.25*embed_cosine (weights overridable)",
+  "acc_lift_note": "Closer Acc under Mistral judge: answer_style=gold (SUT) + judge_model=mistral-medium-latest; keep L2 gates",
+  "overall_acc": 0.23732505896765815,
+  "by_type": {
+    "Fact Retrieval": {
+      "rouge_score": 0.25,
+      "answer_correctness": 0.23230952133507077
+    },
+    "Complex Reasoning": {
+      "rouge_score": 0.4410075121520106,
+      "answer_correctness": 0.24598335231745555
+    },
+    "Contextual Summarize": {
+      "answer_correctness": 0.24581726266860024,
+      "coverage_score": 1.0
+    },
+    "Creative Generation": {
+      "answer_correctness": 0.22519009954950603,
+      "coverage_score": 0.2777777777777778,
+      "faithfulness": 0.47368421052631576
+    }
+  },
+  "raw": {
+    "Fact Retrieval": {
+      "rouge_score": 0.25,
+      "answer_correctness": 0.23230952133507077
+    },
+    "Complex Reasoning": {
+      "rouge_score": 0.4410075121520106,
+      "answer_correctness": 0.24598335231745555
+    },
+    "Contextual Summarize": {
+      "answer_correctness": 0.24581726266860024,
+      "coverage_score": 1.0
+    },
+    "Creative Generation": {
+      "answer_correctness": 0.22519009954950603,
+      "coverage_score": 0.2777777777777778,
+      "faithfulness": 0.47368421052631576
+    }
+  },
+  "retrieval": {
+    "overall_context_relevancy": 0.625,
+    "overall_evidence_recall": 0.725,
+    "by_type": {
+      "Fact Retrieval": {
+        "context_relevancy": 0.5,
+        "evidence_recall": 0.5
+      },
+      "Complex Reasoning": {
+        "context_relevancy": 0.75,
+        "evidence_recall": 1.0
+      },
+      "Contextual Summarize": {
+        "context_relevancy": 0.5,
+        "evidence_recall": 0.5
+      },
+      "Creative Generation": {
+        "context_relevancy": 0.75,
+        "evidence_recall": 0.9
+      }
+    }
+  },
+  "l2_retrieval": true
+}

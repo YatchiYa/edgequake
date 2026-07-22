@@ -76,6 +76,7 @@
 //! - [`BR0472`]: Documents processed with workspace-specific providers
 
 // Sub-modules organized by responsibility (SRP)
+mod document_deletion;
 mod injection_processing;
 mod pdf_processing;
 pub mod pipeline_checkpoint;
@@ -83,6 +84,7 @@ mod status_updates;
 mod task_impl;
 mod text_insert;
 mod workspace_resolver;
+mod workspace_wipe;
 
 pub(crate) use status_updates::patch_document_graph_merge_progress;
 
@@ -175,6 +177,10 @@ pub struct DocumentTaskProcessor {
     lineage_sink: Arc<dyn edgequake_pipeline::LineageSink>,
     /// Persist task rows when ingestion identity is allocated mid-flight.
     task_storage: Option<edgequake_tasks::SharedTaskStorage>,
+    /// SPEC-057 P2: wake queue for follow-on Insert after PDF convert.
+    task_queue: Option<edgequake_tasks::SharedTaskQueue>,
+    task_notifier: Option<edgequake_tasks::SharedTaskNotifier>,
+    task_delivery_mode: edgequake_tasks::TaskDeliveryMode,
     /// P-G9: Invalidate query result cache after ingest (DIP port).
     query_cache_invalidator: Option<Arc<dyn edgequake_query::QueryResultCacheInvalidator>>,
     /// P-G13: Process-wide cap on concurrent vision PDF conversions.
@@ -185,6 +191,8 @@ pub struct DocumentTaskProcessor {
     pg_pool: Option<sqlx::PgPool>,
     #[cfg(feature = "postgres")]
     postgres_capabilities: Option<edgequake_storage::adapters::postgres::PostgresCapabilities>,
+    /// Shared AppState for async document deletion (cascade + WS + audit).
+    app_state: Option<crate::state::AppState>,
 }
 
 impl DocumentTaskProcessor {
@@ -218,6 +226,9 @@ impl DocumentTaskProcessor {
             relational_sink: Arc::new(NoopEntitySink), // SPEC-021: no-op default
             lineage_sink: Arc::new(edgequake_pipeline::NoopLineageSink), // SPEC-032 W-08
             task_storage: None,
+            task_queue: None,
+            task_notifier: None,
+            task_delivery_mode: edgequake_tasks::TaskDeliveryMode::Local,
             query_cache_invalidator: None,
             #[cfg(feature = "postgres")]
             pdf_vision: None,
@@ -225,6 +236,7 @@ impl DocumentTaskProcessor {
             pg_pool: None,
             #[cfg(feature = "postgres")]
             postgres_capabilities: None,
+            app_state: None,
         }
     }
 
@@ -267,6 +279,9 @@ impl DocumentTaskProcessor {
             relational_sink: Arc::new(NoopEntitySink), // SPEC-021: no-op default
             lineage_sink: Arc::new(edgequake_pipeline::NoopLineageSink), // SPEC-032 W-08
             task_storage: None,
+            task_queue: None,
+            task_notifier: None,
+            task_delivery_mode: edgequake_tasks::TaskDeliveryMode::Local,
             query_cache_invalidator: None,
             #[cfg(feature = "postgres")]
             pdf_vision: None,
@@ -274,6 +289,7 @@ impl DocumentTaskProcessor {
             pg_pool: None,
             #[cfg(feature = "postgres")]
             postgres_capabilities: None,
+            app_state: None,
         }
     }
 
@@ -313,6 +329,9 @@ impl DocumentTaskProcessor {
             relational_sink: Arc::new(NoopEntitySink), // SPEC-021: no-op default
             lineage_sink: Arc::new(edgequake_pipeline::NoopLineageSink), // SPEC-032 W-08
             task_storage: None,
+            task_queue: None,
+            task_notifier: None,
+            task_delivery_mode: edgequake_tasks::TaskDeliveryMode::Local,
             query_cache_invalidator: None,
             #[cfg(feature = "postgres")]
             pdf_vision: None,
@@ -320,7 +339,14 @@ impl DocumentTaskProcessor {
             pg_pool: None,
             #[cfg(feature = "postgres")]
             postgres_capabilities: None,
+            app_state: None,
         }
+    }
+
+    /// Attach AppState for async document deletion cascade (DRY with HTTP path).
+    pub fn with_app_state(mut self, state: crate::state::AppState) -> Self {
+        self.app_state = Some(state);
+        self
     }
 
     /// Set the relational CQRS sink for dual-write to the entities table (SPEC-021 P3-01).
@@ -383,6 +409,21 @@ impl DocumentTaskProcessor {
     /// P-G14: Persist task identity updates during PDF ingestion.
     pub fn with_task_storage(mut self, task_storage: edgequake_tasks::SharedTaskStorage) -> Self {
         self.task_storage = Some(task_storage);
+        self
+    }
+
+    /// SPEC-057 P2: Wire enqueue ports so Convert can enqueue follow-on Insert.
+    pub fn with_task_enqueue(
+        mut self,
+        storage: edgequake_tasks::SharedTaskStorage,
+        queue: edgequake_tasks::SharedTaskQueue,
+        notifier: edgequake_tasks::SharedTaskNotifier,
+        delivery_mode: edgequake_tasks::TaskDeliveryMode,
+    ) -> Self {
+        self.task_storage = Some(storage);
+        self.task_queue = Some(queue);
+        self.task_notifier = Some(notifier);
+        self.task_delivery_mode = delivery_mode;
         self
     }
 

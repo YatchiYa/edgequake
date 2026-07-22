@@ -1,0 +1,19 @@
+{
+  "judge": "rouge_proxy",
+  "overall_acc": 1.0,
+  "by_type": {
+    "Fact Retrieval": {
+      "rouge_score": 0.6,
+      "answer_correctness": 1.0
+    },
+    "Complex Reasoning": {},
+    "Contextual Summarize": {
+      "coverage_score": 0.0
+    },
+    "Creative Generation": {
+      "coverage_score": 0.0,
+      "faithfulness": 0.0
+    }
+  },
+  "n": 1
+}

@@ -1,7 +1,11 @@
-//! Mix-mode weight resolution + intent arm gating (SPEC-022 / SPEC-046 OPS-P1).
+//! Mix-mode weight resolution + intent arm gating (SPEC-022 / SPEC-046 OPS-P1 / 065).
 //!
 //! SOLID: single responsibility — resolve which Mix/Hybrid arms run and at what weight.
-//! DRY: both Mix and Hybrid call [`resolve_arm_plan`].
+//! DRY: Mix and Hybrid share [`ArmPlan`] / weight helpers; Hybrid uses
+//! [`intent_arm_mask_hybrid`] for Linked cost routing.
+//!
+//! **Law (LightRAG mix / product Smart):** Mix always runs local ∥ global ∥ naive.
+//! Intent arm collapse belongs on Hybrid (Linked), not Mix.
 
 use serde::{Deserialize, Serialize};
 
@@ -54,12 +58,13 @@ impl ArmPlan {
 
 /// Parse `EDGEQUAKE_MIX_ARM_GATE` (pure — pass raw for tests).
 ///
-/// Default **true** (gate on). Set `false`/`off`/`0` to force all arms.
-/// `force_all` / `all` also disables gating.
+/// Default **false** (gate off = LightRAG-like Mix arms). Opt in with
+/// `true`/`1`/`on`/`yes`. Mix [`intent_arm_mask`] is always all arms, so enabling
+/// the gate is a no-op for Mix today; Hybrid still uses its own mask when gated.
 pub fn parse_mix_arm_gate(raw: &str) -> bool {
-    !matches!(
+    matches!(
         raw.trim().to_ascii_lowercase().as_str(),
-        "0" | "false" | "off" | "no" | "force_all" | "all"
+        "1" | "true" | "on" | "yes"
     )
 }
 
@@ -67,27 +72,19 @@ pub fn mix_arm_gate_enabled() -> bool {
     parse_mix_arm_gate(&std::env::var("EDGEQUAKE_MIX_ARM_GATE").unwrap_or_default())
 }
 
-/// Intent → preferred arm mask when gating is on (SPEC-046 OPS-P1.3).
+/// Mix arm mask — LightRAG `mix` law (product Smart).
 ///
-/// Used by **Mix** (production cost path). Even when the client forces `mode=mix`,
-/// L1 factual queries should not pay the full 3-arm tax unless the operator
-/// disables the gate (`EDGEQUAKE_MIX_ARM_GATE=false`).
-///
-/// **Hybrid** uses [`intent_arm_mask_hybrid`] instead (020 B2).
-pub fn intent_arm_mask(intent: QueryIntent) -> (bool, bool, bool) {
-    match intent {
-        QueryIntent::Factual => (false, false, true), // naive only (Mix cost)
-        QueryIntent::Relational => (true, true, false), // local + global
-        QueryIntent::Exploratory => (false, true, false), // global
-        QueryIntent::Comparative | QueryIntent::Procedural => (true, true, true),
-    }
+/// Always `(local, global, naive)` for every intent. Cost-aware arm collapse lives
+/// on Hybrid via [`intent_arm_mask_hybrid`], not Mix.
+pub fn intent_arm_mask(_intent: QueryIntent) -> (bool, bool, bool) {
+    (true, true, true)
 }
 
 /// Hybrid arm mask (SPEC-047 / 020 B2).
 ///
 /// Law: requesting `mode=hybrid` means multi-arm fusion. Collapsing Factual→naive-only
-/// made hybrid a lie on MMLongBench (≈96% `naive_only_rate`). Keep Mix aggressive;
-/// Hybrid always retains the naive chunk arm plus at least one graph arm when gated.
+/// made hybrid a lie on MMLongBench (≈96% `naive_only_rate`). Mix always runs all
+/// three arms (LightRAG); Hybrid retains naive plus at least one graph arm when gated.
 pub fn intent_arm_mask_hybrid(intent: QueryIntent) -> (bool, bool, bool) {
     match intent {
         // Local + naive: entity neighborhood + page chunks (skip global community tax).
@@ -98,6 +95,19 @@ pub fn intent_arm_mask_hybrid(intent: QueryIntent) -> (bool, bool, bool) {
         QueryIntent::Exploratory => (false, true, true),
         QueryIntent::Comparative | QueryIntent::Procedural => (true, true, true),
     }
+}
+
+/// Parse a Mix arm weight from env (`EDGEQUAKE_MIX_{LOCAL,GLOBAL,NAIVE}_WEIGHT`).
+///
+/// Default **1.0** when unset / invalid. Values are clamped to `[0.0, 10.0]`
+/// before normalization in [`normalized_mix_weights`].
+pub fn mix_arm_weight_from_env(var: &str, default: f32) -> f32 {
+    std::env::var(var)
+        .ok()
+        .and_then(|v| v.parse::<f32>().ok())
+        .filter(|v| v.is_finite())
+        .map(|v| v.clamp(0.0, 10.0))
+        .unwrap_or(default)
 }
 
 /// Normalize Mix weights to sum to 1 (P-G8 E24/E25).
@@ -206,10 +216,19 @@ mod tests {
     }
 
     #[test]
-    fn factual_gate_runs_naive_only() {
-        let plan = resolve_arm_plan(&cfg(), None, QueryIntent::Factual, true);
-        assert!(!plan.run_local && !plan.run_global && plan.run_naive);
-        assert!((plan.w_naive - 1.0).abs() < 1e-5);
+    fn mix_factual_always_runs_all_arms() {
+        // LightRAG mix / product Smart: gate on or off, Mix keeps local+global+naive.
+        for gate in [true, false] {
+            let plan = resolve_arm_plan(&cfg(), None, QueryIntent::Factual, gate);
+            assert!(
+                plan.run_local && plan.run_global && plan.run_naive,
+                "Mix Factual must run all arms (gate={gate}); got {plan:?}"
+            );
+        }
+        assert!(
+            (resolve_arm_plan(&cfg(), None, QueryIntent::Factual, true).w_local - 1.0 / 3.0).abs()
+                < 1e-5
+        );
     }
 
     #[test]
@@ -225,17 +244,18 @@ mod tests {
 
     #[test]
     fn hybrid_mask_differs_from_mix_on_factual() {
-        assert_eq!(intent_arm_mask(QueryIntent::Factual), (false, false, true));
+        assert_eq!(intent_arm_mask(QueryIntent::Factual), (true, true, true));
         assert_eq!(
             intent_arm_mask_hybrid(QueryIntent::Factual),
-            (true, false, true)
+            (true, false, true),
+            "Hybrid Factual skips global; Mix keeps all three"
         );
     }
 
     #[test]
-    fn relational_gate_skips_naive() {
+    fn mix_relational_keeps_naive() {
         let plan = resolve_arm_plan(&cfg(), None, QueryIntent::Relational, true);
-        assert!(plan.run_local && plan.run_global && !plan.run_naive);
+        assert!(plan.run_local && plan.run_global && plan.run_naive);
     }
 
     #[test]
@@ -268,24 +288,33 @@ mod tests {
 
     #[test]
     fn parse_mix_arm_gate_edge_cases() {
-        assert!(parse_mix_arm_gate(""));
-        assert!(parse_mix_arm_gate("true"));
+        // Default off (LightRAG-like product Smart).
+        assert!(!parse_mix_arm_gate(""));
         assert!(!parse_mix_arm_gate("false"));
-        assert!(!parse_mix_arm_gate("force_all"));
         assert!(!parse_mix_arm_gate("0"));
+        assert!(!parse_mix_arm_gate("force_all"));
+        assert!(!parse_mix_arm_gate("all"));
+        assert!(parse_mix_arm_gate("true"));
+        assert!(parse_mix_arm_gate("1"));
+        assert!(parse_mix_arm_gate("on"));
+        assert!(parse_mix_arm_gate("yes"));
     }
 
     #[test]
     fn intent_masks_cover_all_variants() {
-        assert_eq!(
-            intent_arm_mask(QueryIntent::Exploratory),
-            (false, true, false)
-        );
-        assert_eq!(
-            intent_arm_mask(QueryIntent::Comparative),
-            (true, true, true)
-        );
-        assert_eq!(intent_arm_mask(QueryIntent::Procedural), (true, true, true));
+        for intent in [
+            QueryIntent::Factual,
+            QueryIntent::Relational,
+            QueryIntent::Exploratory,
+            QueryIntent::Comparative,
+            QueryIntent::Procedural,
+        ] {
+            assert_eq!(
+                intent_arm_mask(intent),
+                (true, true, true),
+                "Mix mask must be LightRAG always-on for {intent:?}"
+            );
+        }
         assert_eq!(
             intent_arm_mask_hybrid(QueryIntent::Exploratory),
             (false, true, true)
@@ -299,5 +328,28 @@ mod tests {
         assert!(plan.run_local && !plan.run_global && plan.run_naive);
         assert!((plan.w_local - 0.5).abs() < 1e-5);
         assert!((plan.w_naive - 0.5).abs() < 1e-5);
+    }
+
+    #[test]
+    fn naive_weight_boost_normalizes_to_half() {
+        // Acc-win E3b: local=1, global=1, naive=2 → 0.25 / 0.25 / 0.50
+        let mut c = cfg();
+        c.mix_local_weight = 1.0;
+        c.mix_global_weight = 1.0;
+        c.mix_naive_weight = 2.0;
+        let (l, g, n) = normalized_mix_weights(&c, None);
+        assert!((l - 0.25).abs() < 1e-5);
+        assert!((g - 0.25).abs() < 1e-5);
+        assert!((n - 0.5).abs() < 1e-5);
+        let plan = resolve_arm_plan(&c, None, QueryIntent::Comparative, false);
+        assert!((plan.w_naive - 0.5).abs() < 1e-5);
+    }
+
+    #[test]
+    fn mix_arm_weight_from_env_clamps() {
+        assert!(
+            (mix_arm_weight_from_env("EDGEQUAKE_MIX_NAIVE_WEIGHT_UNSET_XYZ", 1.0) - 1.0).abs()
+                < 1e-5
+        );
     }
 }

@@ -9,6 +9,24 @@ use crate::error::{Result, StorageError};
 use crate::traits::{GraphNode, NodeListFilter};
 
 impl PostgresAGEGraphStorage {
+    /// Bare entity name for search/display under workspace-scoped `node_id` (032).
+    /// Prefer `label` (bare); else strip `{uuid}::` from `node_id`.
+    fn sql_vertex_search_text(alias: &str) -> String {
+        format!(
+            "COALESCE( \
+                NULLIF(ag_catalog.agtype_to_json({a}.properties)->>'label', ''), \
+                CASE \
+                  WHEN ag_catalog.agtype_to_json({a}.properties)->>'node_id' \
+                       ~ '^[0-9a-fA-F-]{{36}}::' \
+                  THEN split_part( \
+                         ag_catalog.agtype_to_json({a}.properties)->>'node_id', '::', 2) \
+                  ELSE ag_catalog.agtype_to_json({a}.properties)->>'node_id' \
+                END \
+             )",
+            a = alias
+        )
+    }
+
     pub(in crate::adapters::postgres::graph) async fn pg_get_popular_labels(
         &self,
         limit: usize,
@@ -40,12 +58,16 @@ impl PostgresAGEGraphStorage {
                 INNER JOIN filtered_nodes fn ON e.start_id::text = fn.id_text \
                 GROUP BY e.start_id::text \
             ) \
-            SELECT ag_catalog.agtype_to_json(fn.properties)->>'node_id' AS label \
+            SELECT {} AS label \
             FROM filtered_nodes fn \
             LEFT JOIN edge_counts ec ON fn.id_text = ec.start_id_text \
             ORDER BY COALESCE(ec.out_degree, 0) DESC \
             LIMIT {}",
-            self.graph_name, vertex_where, self.graph_name, limit
+            self.graph_name,
+            vertex_where,
+            self.graph_name,
+            Self::sql_vertex_search_text("fn"),
+            limit
         );
 
         let rows = sqlx::query(&sql)
@@ -93,17 +115,20 @@ impl PostgresAGEGraphStorage {
 
         let escaped_query = Self::escape_sql_string(query);
         tracing::debug!(query = %query, escaped = %escaped_query, "search_labels starting");
+        let search_text = Self::sql_vertex_search_text("v");
 
-        // Try full-text search first (best for word matching)
+        // Try full-text search first (best for word matching).
+        // 032: FTS must use bare label — scoped node_id (`{ws}::NAME`) breaks
+        // keyword validation / prefix match against natural-language terms.
         let fts_sql = format!(
             "SELECT \
-                ag_catalog.agtype_to_json(v.properties)->>'node_id' as label, \
+                {search_text} as label, \
                 ts_rank( \
-                    to_tsvector('english', ag_catalog.agtype_to_json(v.properties)->>'node_id'), \
+                    to_tsvector('english', coalesce({search_text}, '')), \
                     plainto_tsquery('english', '{0}') \
                 ) as rank \
              FROM {1}.\"_ag_label_vertex\" v \
-             WHERE to_tsvector('english', ag_catalog.agtype_to_json(v.properties)->>'node_id') \
+             WHERE to_tsvector('english', coalesce({search_text}, '')) \
                    @@ plainto_tsquery('english', '{0}'){2} \
              ORDER BY rank DESC \
              LIMIT {3}",
@@ -131,13 +156,13 @@ impl PostgresAGEGraphStorage {
         //      and ag_catalog.similarity() explicitly to avoid "function not found" errors
         let trgm_sql = format!(
             "SELECT \
-                ag_catalog.agtype_to_json(v.properties)->>'node_id' as label, \
+                {search_text} as label, \
                 ag_catalog.similarity( \
-                    ag_catalog.agtype_to_json(v.properties)->>'node_id', \
+                    coalesce({search_text}, ''), \
                     '{0}' \
                 ) as sim \
              FROM {1}.\"_ag_label_vertex\" v \
-             WHERE ag_catalog.agtype_to_json(v.properties)->>'node_id' OPERATOR(ag_catalog.%) '{0}' \
+             WHERE coalesce({search_text}, '') OPERATOR(ag_catalog.%) '{0}' \
              {2} \
              ORDER BY sim DESC \
              LIMIT {3}",
@@ -164,11 +189,11 @@ impl PostgresAGEGraphStorage {
 
         // Final fallback to simple ILIKE prefix matching (always works)
         let prefix_sql = format!(
-            "SELECT ag_catalog.agtype_to_json(v.properties)->>'node_id' as label \
+            "SELECT {search_text} as label \
              FROM {0}.\"_ag_label_vertex\" v \
-             WHERE LOWER(ag_catalog.agtype_to_json(v.properties)->>'node_id') LIKE LOWER('{1}%') \
+             WHERE LOWER(coalesce({search_text}, '')) LIKE LOWER('{1}%') \
              {2} \
-             ORDER BY ag_catalog.agtype_to_json(v.properties)->>'node_id' \
+             ORDER BY {search_text} \
              LIMIT {3}",
             self.graph_name, escaped_query, tenant_and, limit
         );

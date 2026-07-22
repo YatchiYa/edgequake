@@ -65,6 +65,7 @@ fn bench_path_prune(c: &mut Criterion) {
         drop_fraction: 0.4,
         min_keep: 3,
         min_input: 5,
+        ..Default::default()
     };
     for n in [20usize, 60, 200] {
         let rels: Vec<_> = (0..n)
@@ -111,6 +112,8 @@ fn bench_ppr_expand(c: &mut Criterion) {
                     2,
                     10,
                     GraphWalkMode::Ppr,
+                    None,
+                    None,
                 )
                 .await
                 .unwrap()
@@ -127,6 +130,8 @@ fn bench_ppr_expand(c: &mut Criterion) {
                     2,
                     10,
                     GraphWalkMode::Bfs,
+                    None,
+                    None,
                 )
                 .await
                 .unwrap()

@@ -21,7 +21,7 @@ fn e2e_q11_context_string_exposes_page_and_modality() {
     let entity = RetrievedEntity::new("Acme Corp", "ORG", "Subject of the chart");
     let rel = RetrievedRelationship::new("Acme Corp", "Q3", "REPORTED");
 
-    let ctx = format_query_context(&[entity], &[rel], &[chunk.clone()]);
+    let ctx = format_query_context(&[entity], &[rel], std::slice::from_ref(&chunk));
 
     assert!(
         ctx.contains("page=14"),

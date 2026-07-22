@@ -2,11 +2,15 @@
 title: 'Query Modes Deep-Dive'
 ---
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 # Query Modes Deep-Dive
 
 > **Understanding EdgeQuake's Multi-Strategy Retrieval System**
 
-EdgeQuake provides 6 distinct query modes, each optimized for different types of questions. This guide explains when and why to use each mode, with practical examples and tuning recommendations.
+EdgeQuake provides **6 query modes** (`naive`, `local`, `global`, `hybrid`, `mix`, `bypass`), each optimized for different question types. **Production default:** `mix` (RRF-weighted fusion). API handlers fall back to `mix` when `mode` is omitted.
+
+**Storage touchpoints:** which modes hit pgvector vs AGE vs KV is documented in [Data Layer — How information is queried](data-layer.md#8-how-information-is-queried).
 
 ---
 
@@ -75,8 +79,8 @@ No mode is universally "best" - each makes different trade-offs.
 | **Naive**  |      ✅       |       ❌        | Factual queries, keyword lookup |
 | **Local**  |      ✅       |       ✅        | Entity-specific questions       |
 | **Global** |      ❌       |       ✅        | Theme/topic analysis            |
-| **Hybrid** |      ✅       |       ✅        | Complex, multi-faceted queries  |
-| **Mix**    |      ✅       |       ✅        | Custom weighted retrieval       |
+| **Hybrid** |      ✅       |       ✅        | Local + Global + Naive (round-robin) |
+| **Mix**    |      ✅       |       ✅        | RRF / weighted fusion (**default**)  |
 | **Bypass** |      ❌       |       ❌        | Direct LLM, testing             |
 
 ### Quick Selection Guide
@@ -551,7 +555,7 @@ curl -X POST http://localhost:8080/api/v1/query \
 
 ```rust
 QueryEngineConfig {
-    default_mode: QueryMode::Hybrid,
+    default_mode: QueryMode::Mix,  // production default
     max_chunks: 10,
     max_entities: 20,
     max_context_tokens: 4000,
@@ -560,6 +564,38 @@ QueryEngineConfig {
     include_sources: true,
 }
 ```
+
+### Document filters (SPEC-005 / SPEC-007)
+
+Restrict retrieval to a document subset via `document_filter` on the query request:
+
+```json
+{
+  "query": "What are the findings?",
+  "mode": "hybrid",
+  "document_filter": {
+    "document_ids": ["doc-uuid-1", "doc-uuid-2"],
+    "date_from": "2024-01-01",
+    "date_to": "2024-12-31",
+    "pattern": "*.pdf"
+  }
+}
+```
+
+| Field | Behavior |
+| ----- | -------- |
+| `document_ids` | Explicit allow-list (fast path when alone) |
+| `date_from` / `date_to` | KV scan + AND with ids |
+| `pattern` | Glob on document paths; union with explicit ids |
+
+Vector pre-filter uses materialized `document_id` columns (Tier 2/3) — see [Vector Storage](/docs/deep-dives/vector-storage/).
+
+### Debug flags
+
+| Flag | Effect |
+| ---- | ------ |
+| `context_only: true` | Return retrieved context only (no LLM answer); result cache enabled (P-G9) |
+| `prompt_only: true` | Return formatted prompt without calling LLM |
 
 ### Tuning Parameters
 

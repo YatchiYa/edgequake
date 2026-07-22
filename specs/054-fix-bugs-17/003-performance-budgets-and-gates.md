@@ -50,24 +50,36 @@ Override: `EDGEQUAKE_HNSW_ITERATIVE_SCAN=off|strict_order|relaxed_order`.
 
 | Variable | Default | Performance meaning |
 | --- | --- | --- |
-| `EDGEQUAKE_STARTUP_AUTO_RESUME` | **off** | No hydrate/reconcile enqueue → quiet boot |
+| `EDGEQUAKE_STARTUP_AUTO_RESUME` | **on** (unset) | Boot reclaim Processing→Pending; set `0` for Interrupted Failed |
 | `EDGEQUAKE_STARTUP_RECONCILE_MAX` | 32 | Cap when auto-resume on |
 | `EDGEQUAKE_NATIVE_GRAPH_WRITES` | profile-dependent | Fast ingest path if UNIQUE exists |
 | `EDGEQUAKE_MIGRATION_LARGE_GRAPH_THRESHOLD` | 500000 | Defer blocking M038 repair |
 
 ## 5. Index checklist (per AGE graph)
 
-Must exist for production query + native ingest:
+Must exist for production query + native ingest (SPEC-062/069/070):
 
 | Index | Table | Purpose |
 | --- | --- | --- |
-| `idx_node_prop_node_id_unique` | Node | ON CONFLICT + O(log N) node_id |
-| `idx_edge_source_target_unique` | EDGE | ON CONFLICT endpoints |
-| `idx_node_source_ids_gin` (+ expr) | Node | lineage / delete |
+| `idx_node_eq_node_id` | Node | **Primary** ON CONFLICT arbiter (eq_node_id) |
+| `idx_edge_eq_source_target` | EDGE | **Primary** ON CONFLICT arbiter (eq_source_id, eq_target_id) |
+| `idx_node_prop_node_id_unique` | Node | Legacy fallback only — dropped when eq_* present (M083/M092) |
+| `idx_edge_source_target_unique` | EDGE | Legacy fallback only — dropped when eq_* present |
+| `idx_node_source_ids_gin` (+ expr) | Node | lineage / delete (O(probes) GIN JOIN) |
 | `idx_edge_source_ids_gin` | EDGE | lineage |
+| `idx_edge_source_id` / `idx_edge_target_id` | EDGE | BFS / incident-edge batch (M086 every boot) |
 | tenant/workspace expr btree | Node | scope filters |
 | HNSW (or IVFFlat) on `embedding` | `eq_*_vectors` | ANN |
 | `content_tsv` GIN | vectors | FTS (M045) |
+
+Operator check (eq_* preferred):
+
+```bash
+docker exec edgequake-postgres psql -U edgequake -d edgequake -c \
+  "SELECT indexname FROM pg_indexes WHERE schemaname='eq_eq_default_graph' \
+   AND indexname IN ('idx_node_eq_node_id','idx_edge_eq_source_target',
+   'idx_edge_source_id','idx_edge_target_id');"
+```
 
 ## 6. Anti-patterns (do not ship)
 
@@ -85,10 +97,10 @@ Must exist for production query + native ingest:
 docker exec edgequake-postgres psql -U edgequake -d edgequake -c \
   "SELECT extname, extversion FROM pg_extension WHERE extname IN ('age','vector');"
 
-# 2) UNIQUE present (default graph)
+# 2) eq_* UNIQUE arbiters present (default graph; SPEC-069/070)
 docker exec edgequake-postgres psql -U edgequake -d edgequake -c \
   "SELECT indexname FROM pg_indexes WHERE schemaname='eq_eq_default_graph' \
-   AND indexname IN ('idx_node_prop_node_id_unique','idx_edge_source_target_unique');"
+   AND indexname IN ('idx_node_eq_node_id','idx_edge_eq_source_target');"
 
 # 3) Fast-path M083 (should be sub-second notices "already exists")
 time docker exec -i edgequake-postgres psql -U edgequake -d edgequake \

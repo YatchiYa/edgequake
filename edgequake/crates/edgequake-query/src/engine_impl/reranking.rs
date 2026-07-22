@@ -1,4 +1,8 @@
+use crate::context::QueryContext;
 use crate::keywords::ExtractedKeywords;
+use crate::relevancy_prune::{
+    apply_cosine_rescored_prune, capped_chunk_text, RelevancyPruneConfig,
+};
 
 use super::QueryEngine;
 
@@ -6,12 +10,19 @@ use super::QueryEngine;
 // Using parallel execution eliminates the N×RTT sequential latency.
 
 impl QueryEngine {
+    #[allow(clippy::too_many_arguments)] // CE / BM25 / protect knobs stay explicit
     pub(super) async fn rerank_chunks(
         &self,
         query: &str,
         mut chunks: Vec<crate::context::RetrievedChunk>,
         enable_override: Option<bool>,
         top_k_override: Option<usize>,
+        // 027: Fact→BM25 when intent-gated (skip CE + protect).
+        prefer_bm25: bool,
+        // 036: intent-aware protect slots (Exploratory coverage override).
+        protect_first: usize,
+        // 039: topic-admitted chunk ids — CE set membership protect.
+        topic_protect_ids: &[String],
     ) -> Vec<crate::context::RetrievedChunk> {
         // Check if reranking is enabled (use request override if provided)
         let enable_rerank = enable_override.unwrap_or(self.config.enable_rerank);
@@ -22,7 +33,16 @@ impl QueryEngine {
             return chunks;
         }
 
-        let reranker = self.reranker.as_ref().unwrap();
+        // 027: hold a BM25 instance when Fact routing is active so the trait
+        // object lives for the full match.
+        let bm25_holder;
+        let reranker: &dyn edgequake_llm::Reranker = if prefer_bm25 {
+            bm25_holder = edgequake_llm::BM25Reranker::for_rag();
+            tracing::debug!("027 Fact intent → BM25 rerank (skip CE protect)");
+            &bm25_holder
+        } else {
+            self.reranker.as_ref().unwrap().as_ref()
+        };
 
         // Extract contents for reranking
         let documents: Vec<String> = chunks.iter().map(|c| c.content.clone()).collect();
@@ -54,13 +74,20 @@ impl QueryEngine {
                     .map(|r| (r.index, r.relevance_score))
                     .collect();
 
+                // 027: BM25 often scores 0.0 on non-overlapping terms — do not hard-drop.
+                let min_score = if prefer_bm25 {
+                    0.0
+                } else {
+                    self.config.min_rerank_score as f64
+                };
+
                 // Update scores and filter by min score
                 let mut reranked: Vec<_> = chunks
                     .iter()
                     .enumerate()
                     .filter_map(|(idx, chunk)| {
                         score_map.get(&idx).and_then(|&score| {
-                            if score >= self.config.min_rerank_score as f64 {
+                            if score >= min_score {
                                 let mut c = chunk.clone();
                                 c.score = score as f32;
                                 Some(c)
@@ -79,7 +106,7 @@ impl QueryEngine {
                     tracing::warn!(
                         query = %query,
                         original_chunks = chunks.len(),
-                        min_rerank_score = self.config.min_rerank_score,
+                        min_rerank_score = min_score,
                         "OODA-231: All chunks filtered by reranking, falling back to original chunks"
                     );
                     chunks.truncate(rerank_top_k);
@@ -93,9 +120,46 @@ impl QueryEngine {
                         .unwrap_or(std::cmp::Ordering::Equal)
                 });
 
-                // Return top_k
-                reranked.truncate(rerank_top_k);
-                reranked
+                // SPEC-001 / 036: first-stage protect slots (intent-aware).
+                // 027: skip protect on Fact→BM25 (lexical order is the Acc win).
+                let protect_n = if prefer_bm25 { 0 } else { protect_first };
+                let mut out = if protect_n > 0 {
+                    tracing::debug!(
+                        protect_n,
+                        rerank_top_k,
+                        "Blending CE ranks with first-stage protect slots"
+                    );
+                    crate::rerank_protect::blend_protect_first(
+                        &chunks,
+                        reranked,
+                        protect_n,
+                        rerank_top_k,
+                    )
+                } else {
+                    reranked.truncate(rerank_top_k);
+                    reranked
+                };
+
+                // 039/042: topic-admit / materialized ids survive CE hard-drop.
+                // Still skip on Fact→BM25 — that path owns Fact Acc.
+                if !prefer_bm25
+                    && crate::topic_entity_admit::topic_survival_enabled()
+                    && !topic_protect_ids.is_empty()
+                {
+                    tracing::debug!(
+                        topic_n = topic_protect_ids.len(),
+                        rerank_top_k,
+                        "039 topic_ce_protect: blending CE ranks with topic chunk ids"
+                    );
+                    out = crate::rerank_protect::blend_protect_ids(
+                        &chunks,
+                        out,
+                        topic_protect_ids,
+                        rerank_top_k,
+                    );
+                }
+
+                out
             }
             Err(e) => {
                 tracing::warn!(error = %e, "Reranking failed, returning original chunks");
@@ -105,19 +169,57 @@ impl QueryEngine {
         }
     }
 
-    /// Sort entities by degree (descending) for importance-based ranking.
+    /// SPEC-001: re-score fused chunks by query↔chunk embedding cosine, then keep-m.
     ///
-    /// High-degree entities are more connected in the knowledge graph
-    /// and typically represent more important/central concepts.
+    /// Fail-open: on embed errors, returns the original context unchanged.
+    pub(crate) async fn apply_query_embed_cosine_prune(
+        &self,
+        query: &str,
+        context: QueryContext,
+        config: &RelevancyPruneConfig,
+    ) -> QueryContext {
+        if !config.uses_query_embed_cosine() || context.chunks.is_empty() {
+            return context;
+        }
+
+        let mut texts = Vec::with_capacity(context.chunks.len() + 1);
+        texts.push(query.to_string());
+        for chunk in &context.chunks {
+            texts.push(capped_chunk_text(&chunk.content, config.embed_char_cap));
+        }
+
+        let embeddings = match self.default_embedding_provider().embed(&texts).await {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "relevancy_prune cosine: embed failed — keeping unpruned context"
+                );
+                return context;
+            }
+        };
+
+        if embeddings.len() != texts.len() {
+            tracing::warn!(
+                expected = texts.len(),
+                got = embeddings.len(),
+                "relevancy_prune cosine: unexpected embed batch size — keeping unpruned"
+            );
+            return context;
+        }
+
+        let query_vec = &embeddings[0];
+        let chunk_vecs = embeddings[1..].to_vec();
+        apply_cosine_rescored_prune(context, query_vec, &chunk_vecs, config)
+    }
+
+    /// Sort entities by degree (descending). Prefer
+    /// [`crate::entity_rank::rank_entities_for_prompt`] via `entity_rank` config.
+    #[allow(dead_code)]
     pub(super) fn sort_entities_by_degree(&self, entities: &mut [crate::context::RetrievedEntity]) {
-        entities.sort_by(|a, b| {
-            // Sort by degree descending (higher degree = more important)
-            b.degree.cmp(&a.degree)
-        });
-        tracing::debug!(
-            entity_count = entities.len(),
-            top_degree = entities.first().map(|e| e.degree).unwrap_or(0),
-            "Sorted entities by degree"
+        crate::entity_rank::rank_entities_for_prompt(
+            entities,
+            crate::entity_rank::EntityRankMode::Degree,
         );
     }
 
@@ -136,6 +238,8 @@ impl QueryEngine {
     pub(super) async fn validate_keywords(
         &self,
         keywords: &ExtractedKeywords,
+        tenant_id: Option<&str>,
+        workspace_id: Option<&str>,
     ) -> ExtractedKeywords {
         if keywords.low_level.is_empty() {
             return keywords.clone();
@@ -158,15 +262,20 @@ impl QueryEngine {
         }
 
         // Step 2: Fan-out all cache misses in parallel (no sequential RTT stacking).
+        // 032: scope search to workspace so foreign AGE vertices cannot keep noise keywords.
+        let tenant_owned = tenant_id.map(str::to_owned);
+        let workspace_owned = workspace_id.map(str::to_owned);
         let miss_futures: Vec<_> = miss_keywords
             .iter()
             .map(|kw| {
                 let graph = self.graph_storage.clone();
                 let kw = kw.clone();
+                let tenant = tenant_owned.clone();
+                let workspace = workspace_owned.clone();
                 async move {
                     let view = edgequake_storage::GraphReadView::from_arc(&graph);
                     let exists = view
-                        .search_labels(&kw, 1, None, None)
+                        .search_labels(&kw, 1, tenant.as_deref(), workspace.as_deref())
                         .await
                         .map(|labels| !labels.is_empty())
                         .unwrap_or(false);

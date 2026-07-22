@@ -60,6 +60,7 @@ pub mod adaptive_chunking;
 pub mod cache;
 pub mod chunk_storage;
 pub mod chunker;
+pub mod entity_display;
 pub mod error;
 pub mod extractor;
 pub mod ingestion_pipeline;
@@ -74,13 +75,17 @@ pub mod progress;
 pub mod prompts;
 pub mod sanitizer;
 pub mod stage_bridge;
+pub mod structure_induce;
 pub mod summarizer;
 pub mod table_preprocessor;
 pub mod test_fixtures;
 pub mod text_embedder;
 pub mod validation;
 
-pub use adaptive_chunking::{adaptive_chunk_overlap, calculate_adaptive_chunk_size};
+pub use adaptive_chunking::{
+    adaptive_chunk_overlap, adaptive_chunking_enabled, calculate_adaptive_chunk_size,
+    env_fixed_chunk_overlap, env_fixed_chunk_size, resolve_base_chunk_size_overlap,
+};
 pub use cache::{
     generate_cache_key, generate_cache_key_multi, CacheEntry, CacheStats, CacheType,
     CachedExtractor, LLMCache, MemoryLLMCache,
@@ -109,7 +114,12 @@ pub use ingestion_pipeline::{
     IngestionPipelineOptions,
 };
 pub use markdown_ir::{extract_markdown_blocks, format_breadcrumb, PREFACE_HEADING};
+pub use structure_induce::{
+    induce_faq_markdown, maybe_induce_structure, structure_induce_mode_from_env,
+    StructureInduceMode, STRUCTURE_INDUCE_ENV,
+};
 // Re-export unified ingestion types for frontend compatibility
+pub use entity_display::{resolve_entity_display_label, soft_label_opaque};
 pub use ingestion_types::{
     error_codes, IngestionError as UnifiedIngestionError,
     IngestionProgress as UnifiedIngestionProgress, SourceType,
@@ -120,27 +130,29 @@ pub use lineage::{
     ExtractionMetadata, LineageBuilder, RelationshipLineage, SourceSpan,
 };
 pub use merger::{
-    apply_source_ids_limit, approx_token_count, collect_unique_fragments, decide_description_merge,
-    description_similarity, document_id_from_chunk_id, document_ids_from_chunk_ids,
-    force_llm_summary_on_merge_from_env, insert_chunk_lineage_properties,
-    insert_document_lineage_properties, join_description_fragments,
-    max_source_ids_per_entity_from_env, max_source_ids_per_relation_from_env,
-    merge_and_insert_document_lineage, merge_document_ids, merge_max_async_from_env,
-    merge_source_ids, parse_max_source_ids, parse_merge_max_async, resolve_incoming_document_ids,
-    should_skip_description_update_keep, source_chunk_ids_from_properties,
-    source_document_ids_from_properties, source_ids_limit_method_from_env,
-    split_description_fragments, summary_max_tokens_from_env, truncate_keep_doc_diverse,
-    DescriptionMergeBackend, DescriptionMergeDecision, DescriptionMergePolicy, EntityLineageLink,
-    KnowledgeGraphMerger, LineageSink, MergeArtifacts, MergePhase, MergeProgress,
-    MergeProgressCallback, MergeStats, MergerConfig, NoopEntitySink, NoopLineageSink,
-    RelationLineageLink, RelationalEntitySink, SourceIdsLimitMethod,
+    apply_local_merge_async_clamp, apply_source_ids_limit, approx_token_count,
+    collect_unique_fragments, decide_description_merge, description_similarity,
+    document_id_from_chunk_id, document_ids_from_chunk_ids, force_llm_summary_on_merge_from_env,
+    insert_chunk_lineage_properties, insert_document_lineage_properties,
+    join_description_fragments, max_source_ids_per_entity_from_env,
+    max_source_ids_per_relation_from_env, merge_and_insert_document_lineage, merge_document_ids,
+    merge_max_async_from_env, merge_source_ids, parse_max_source_ids, parse_merge_max_async,
+    resolve_incoming_document_ids, should_skip_description_update_keep,
+    source_chunk_ids_from_properties, source_document_ids_from_properties,
+    source_ids_limit_method_from_env, split_description_fragments, summary_max_tokens_from_env,
+    truncate_keep_doc_diverse, DescriptionMergeBackend, DescriptionMergeDecision,
+    DescriptionMergePolicy, EntityLineageLink, KnowledgeGraphMerger, LineageSink, MergeArtifacts,
+    MergePhase, MergeProgress, MergeProgressCallback, MergeStats, MergerConfig, NoopEntitySink,
+    NoopLineageSink, RelationLineageLink, RelationalEntitySink, SourceIdsLimitMethod,
     DEFAULT_FORCE_LLM_SUMMARY_ON_MERGE, DEFAULT_MAX_SOURCE_IDS, DEFAULT_MERGE_MAX_ASYNC,
-    DEFAULT_SUMMARY_MAX_TOKENS, GRAPH_FIELD_SEP,
+    DEFAULT_SUMMARY_MAX_TOKENS, GRAPH_FIELD_SEP, LOCAL_MERGE_MAX_ASYNC,
 };
 pub use multimodal::{
-    inject_modality_relations, map_image_type_to_retrieval_modality, parse_mm_display_name,
-    resolve_retrieval_modality_from_content, stamp_retrieval_modality_on_chunks,
-    MmChunkSidecarMeta, MmHeadingBlock, MmSidecarBlock, MmSidecarRef, MODALITY_CHART,
+    bare_entity_id, inject_modality_relations, map_image_type_to_retrieval_modality,
+    parse_drawing_item_locus, parse_mm_display_name, resolve_mm_display_from_node_props,
+    resolve_mm_entity_display, resolve_retrieval_modality_from_content,
+    stamp_retrieval_modality_on_chunks, DrawingItemKind, DrawingItemLocus, MmChunkSidecarMeta,
+    MmDisplayInput, MmDisplayLabel, MmHeadingBlock, MmSidecarBlock, MmSidecarRef, MODALITY_CHART,
     MODALITY_EQUATION, MODALITY_FIGURE, MODALITY_TABLE,
 };
 pub use persistence::{
@@ -149,12 +161,22 @@ pub use persistence::{
     IngestionPersistOutput, IngestionPersistSettings, IngestionPersister,
 };
 pub use pipeline::{
+    allow_local_gleaning,
+    allow_local_high_concurrency,
+    apply_local_concurrency_safety_clamp,
     clamp_max_concurrent_extractions,
     clamp_max_gleaning,
     // Issue-194: configurable timeout / concurrency constants
     default_chunk_timeout_for_provider,
     default_max_concurrent_for_provider,
     is_local_extraction_provider,
+    is_local_provider_overload_error,
+    resolve_extract_provider_name_for_fairness,
+    resolve_extract_provider_name_for_fairness_from,
+    resolve_gleaning_for_provider,
+    resolve_worker_pool_limits,
+    resolve_worker_pool_limits_from,
+    retry_delay_ms_for_chunk_error,
     ChunkErrorInfo,
     ChunkProgressCallback,
     ChunkProgressUpdate,
@@ -166,15 +188,24 @@ pub use pipeline::{
     PipelineConfig,
     ProcessingResult,
     ProcessingStats,
+    WorkerPoolLimits,
+    ALLOW_LOCAL_HIGH_CONCURRENCY_ENV,
     DEFAULT_CHUNK_MAX_RETRIES,
     DEFAULT_CHUNK_TIMEOUT_SECS,
     DEFAULT_INITIAL_RETRY_DELAY_MS,
     DEFAULT_MAX_CONCURRENT_EXTRACTIONS,
     LOCAL_CHUNK_TIMEOUT_SECS,
+    LOCAL_DEFAULT_LIFECYCLE_TASKS_PER_TENANT,
+    LOCAL_ENABLE_GLEANING_ENV,
     LOCAL_MAX_CONCURRENT_EXTRACTIONS,
+    LOCAL_MAX_INGEST_TASKS_PER_TENANT_CAP,
+    LOCAL_MAX_LIFECYCLE_TASKS_PER_TENANT_CAP,
+    LOCAL_OVERLOAD_RETRY_DELAY_MS,
+    LOCAL_WORKER_THREADS_CAP,
     MAX_CHUNK_MAX_RETRIES,
     MAX_CONCURRENT_EXTRACTIONS_CAP,
     MAX_GLEANING_CAP,
+    MAX_RETRY_DELAY_MS,
     MIN_CHUNK_TIMEOUT_SECS,
 };
 pub use progress::{

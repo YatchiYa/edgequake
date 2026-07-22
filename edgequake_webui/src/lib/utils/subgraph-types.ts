@@ -28,6 +28,10 @@ export interface ContextRelationshipApi {
   id: string;
   source: string;
   target: string;
+  /** Human presentation for source (073). */
+  source_label?: string;
+  /** Human presentation for target (073). */
+  target_label?: string;
   relation_type: string;
   description: string;
   score: number;

@@ -155,62 +155,82 @@ fn fuse_mix_contexts(
     plan: ArmPlan,
     max_chunks: usize,
 ) -> QueryContext {
+    // Match Hybrid: drop orphan KG payloads when an arm returned no chunks.
+    let local_context = crate::hybrid_merge::prune_empty_arm_graph(local_context.clone());
+    let global_context = crate::hybrid_merge::prune_empty_arm_graph(global_context.clone());
+
     let w_local = plan.w_local;
     let w_global = plan.w_global;
     let w_naive = plan.w_naive;
 
     let mut merged = QueryContext::new();
 
-    if crate::fusion::mix_fusion_mode_from_env() == crate::fusion::MixFusionMode::Rrf {
-        let mut chunk_lookup: HashMap<String, RetrievedChunk> = HashMap::new();
-        for ctx in [local_context, global_context, naive_context] {
-            for chunk in &ctx.chunks {
-                chunk_lookup
-                    .entry(chunk.id.clone())
-                    .or_insert_with(|| chunk.clone());
+    match crate::fusion::mix_fusion_mode_from_env() {
+        crate::fusion::MixFusionMode::Rrf => {
+            let mut chunk_lookup: HashMap<String, RetrievedChunk> = HashMap::new();
+            for ctx in [&local_context, &global_context, naive_context] {
+                for chunk in &ctx.chunks {
+                    chunk_lookup
+                        .entry(chunk.id.clone())
+                        .or_insert_with(|| chunk.clone());
+                }
             }
-        }
 
-        let ranked_lists = [
-            local_context.chunks.iter().map(|c| c.id.clone()).collect(),
-            global_context.chunks.iter().map(|c| c.id.clone()).collect(),
-            naive_context.chunks.iter().map(|c| c.id.clone()).collect(),
-        ];
-        let weights = [w_local, w_global, w_naive];
-        let fused =
-            crate::fusion::reciprocal_rank_fusion(&ranked_lists, &weights, crate::fusion::RRF_K);
-        for chunk in crate::fusion::chunks_from_rrf_ranking(&fused, &chunk_lookup, max_chunks) {
-            merged.add_chunk(chunk);
-        }
-    } else {
-        let mut blended: HashMap<String, (RetrievedChunk, f32)> = HashMap::new();
-        for (ctx, weight) in [
-            (local_context, w_local),
-            (global_context, w_global),
-            (naive_context, w_naive),
-        ] {
-            if weight <= 0.0 {
-                continue;
-            }
-            let norm = min_max_normalize_scores(&ctx.chunks);
-            for (chunk, &norm_score) in ctx.chunks.iter().zip(norm.iter()) {
-                let contribution = weight * norm_score;
-                blended
-                    .entry(chunk.id.clone())
-                    .and_modify(|(_, score)| {
-                        if contribution > *score {
-                            *score = contribution;
-                        }
-                    })
-                    .or_insert_with(|| (chunk.clone(), contribution));
+            let ranked_lists = [
+                local_context.chunks.iter().map(|c| c.id.clone()).collect(),
+                global_context.chunks.iter().map(|c| c.id.clone()).collect(),
+                naive_context.chunks.iter().map(|c| c.id.clone()).collect(),
+            ];
+            let weights = [w_local, w_global, w_naive];
+            let fused = crate::fusion::reciprocal_rank_fusion(
+                &ranked_lists,
+                &weights,
+                crate::fusion::RRF_K,
+            );
+            for chunk in crate::fusion::chunks_from_rrf_ranking(&fused, &chunk_lookup, max_chunks) {
+                merged.add_chunk(chunk);
             }
         }
+        crate::fusion::MixFusionMode::RoundRobin => {
+            for chunk in crate::hybrid_merge::round_robin_merge_chunks(
+                &local_context.chunks,
+                &global_context.chunks,
+                &naive_context.chunks,
+                max_chunks,
+            ) {
+                merged.add_chunk(chunk);
+            }
+        }
+        crate::fusion::MixFusionMode::Weighted => {
+            let mut blended: HashMap<String, (RetrievedChunk, f32)> = HashMap::new();
+            for (ctx, weight) in [
+                (&local_context, w_local),
+                (&global_context, w_global),
+                (naive_context, w_naive),
+            ] {
+                if weight <= 0.0 {
+                    continue;
+                }
+                let norm = min_max_normalize_scores(&ctx.chunks);
+                for (chunk, &norm_score) in ctx.chunks.iter().zip(norm.iter()) {
+                    let contribution = weight * norm_score;
+                    blended
+                        .entry(chunk.id.clone())
+                        .and_modify(|(_, score)| {
+                            if contribution > *score {
+                                *score = contribution;
+                            }
+                        })
+                        .or_insert_with(|| (chunk.clone(), contribution));
+                }
+            }
 
-        let mut chunks: Vec<(RetrievedChunk, f32)> = blended.into_values().collect();
-        chunks.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        for (mut chunk, score) in chunks.into_iter().take(max_chunks) {
-            chunk.score = score.max(0.0);
-            merged.add_chunk(chunk);
+            let mut chunks: Vec<(RetrievedChunk, f32)> = blended.into_values().collect();
+            chunks.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            for (mut chunk, score) in chunks.into_iter().take(max_chunks) {
+                chunk.score = score.max(0.0);
+                merged.add_chunk(chunk);
+            }
         }
     }
 
@@ -236,7 +256,37 @@ fn fuse_mix_contexts(
         }
     }
 
-    merged
+    // 039: propagate topic_admit_* from arms (fuse previously dropped metadata).
+    crate::topic_entity_admit::merge_topic_admit_metadata(
+        &mut merged,
+        &[&local_context, &global_context, naive_context],
+    );
+    let topic_ids = crate::topic_entity_admit::topic_chunk_ids_from_context(&merged);
+    if crate::topic_entity_admit::topic_survival_enabled() && !topic_ids.is_empty() {
+        let mut lookup: HashMap<String, RetrievedChunk> = HashMap::new();
+        for ctx in [&local_context, &global_context, naive_context] {
+            for chunk in &ctx.chunks {
+                lookup
+                    .entry(chunk.id.clone())
+                    .or_insert_with(|| chunk.clone());
+            }
+        }
+        crate::topic_entity_admit::fuse_protect_topic_chunks(
+            &mut merged.chunks,
+            &lookup,
+            &topic_ids,
+            max_chunks,
+        );
+    }
+
+    // Phase 1 (SPEC-001): sync RRF-score prune only. Cosine mode runs in postprocess
+    // (needs embedding provider) so Mix must not pre-truncate the candidate pool.
+    let prune_cfg = crate::relevancy_prune::RelevancyPruneConfig::from_env();
+    if prune_cfg.applies_in_mix_fuse() {
+        crate::relevancy_prune::apply_relevancy_prune(merged, &prune_cfg)
+    } else {
+        merged
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -321,7 +371,9 @@ mod tests {
     use crate::mix_weights::{resolve_arm_plan, MixWeightOverride};
 
     #[test]
-    fn attach_metadata_marks_gated_when_subset() {
+    fn attach_metadata_marks_all_arms_for_mix_factual() {
+        // Mix Factual always runs local+global+naive (MIX_ARM_GATE default false /
+        // LightRAG parity). Metadata must list all three arms as run, not gated.
         let plan = resolve_arm_plan(
             &QueryEngineConfig::default(),
             None,
@@ -329,13 +381,16 @@ mod tests {
             true,
         );
         let mut ctx = QueryContext::new();
-        attach_arm_metadata(&mut ctx, plan, 1, 2, 3, 0, 0, 4);
-        assert_eq!(ctx.metadata.get(META_ARMS_RUN).unwrap(), "naive");
-        assert_eq!(ctx.metadata.get(META_ARMS_GATED).unwrap(), true);
-        assert!(ctx.metadata.get(META_ARM_NAIVE_MS).is_some());
+        attach_arm_metadata(&mut ctx, plan, 1, 2, 3, 5, 6, 4);
+        assert_eq!(
+            ctx.metadata.get(META_ARMS_RUN).unwrap(),
+            "local,global,naive"
+        );
+        assert_eq!(ctx.metadata.get(META_ARMS_GATED).unwrap(), false);
+        assert!(ctx.metadata.contains_key(META_ARM_LOCAL_MS));
+        assert!(ctx.metadata.contains_key(META_ARM_GLOBAL_MS));
+        assert!(ctx.metadata.contains_key(META_ARM_NAIVE_MS));
         assert_eq!(ctx.metadata.get(META_ARM_NAIVE_CHUNKS).unwrap(), 4);
-        assert!(ctx.metadata.get(META_ARM_LOCAL_MS).is_none());
-        assert!(ctx.metadata.get(META_ARM_LOCAL_CHUNKS).is_none());
     }
 
     #[test]

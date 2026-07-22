@@ -33,7 +33,60 @@ fn bt045_ec07_provider_unavailable_retriable() {
     let msg = "Entity extraction error: Network error: error sending request for url (http://localhost:11434/api/chat)";
     let class = classify_ingestion_failure(msg);
     assert_eq!(class, IngestionFailureClass::ProviderUnavailable);
-    assert_eq!(class.recommended_action(), "check_provider");
+    assert_eq!(
+        class.recommended_action(),
+        "reduce_concurrency_or_check_provider"
+    );
+    assert!(!is_permanent_ingestion_failure(msg));
+}
+
+#[test]
+fn bt045_provider_missing_key_is_permanent_not_retried() {
+    // Exact strings emitted by the vision path and workspace pipeline factory
+    // when a workspace is pinned to a provider whose credential is absent.
+    for msg in [
+        "Processing error: Failed to create vision provider 'mistral': Configuration error: \
+         MISTRAL_API_KEY is not set. To use the Mistral provider, set the environment variable \
+         and restart the server. Alternatively, select the Ollama provider which runs locally.",
+        "Processing error: Workspace pipeline error: Failed to create LLM (Configuration error: \
+         MISTRAL_API_KEY is not set.) and embedding (Configuration error: MISTRAL_API_KEY \
+         environment variable not set. Get your API key from https://console.mistral.ai) providers",
+        "LLM error: Authentication error: invalid_request_error: Incorrect API key provided \
+         (code: invalid_api_key)",
+    ] {
+        let class = classify_ingestion_failure(msg);
+        assert_eq!(
+            class,
+            IngestionFailureClass::ProviderMisconfigured,
+            "should be misconfig: {msg}"
+        );
+        assert_eq!(class.as_str(), "provider_misconfigured");
+        assert_eq!(class.recommended_action(), "configure_provider_credentials");
+        assert!(
+            is_permanent_ingestion_failure(msg),
+            "must be permanent: {msg}"
+        );
+
+        // Task must refuse to retry a deterministic misconfiguration.
+        let mut task = Task::new(
+            uuid::Uuid::new_v4(),
+            uuid::Uuid::new_v4(),
+            TaskType::PdfProcessing,
+            serde_json::json!({}),
+        );
+        task.mark_failed_with_details(TaskFailureInfo::from_processing_error(msg));
+        assert!(!task.can_retry(), "misconfig must not retry: {msg}");
+    }
+}
+
+#[test]
+fn bt045_transient_provider_error_still_retries() {
+    // Guard against over-eager permanence: a network-level construction failure
+    // with no credential/config marker must stay retryable.
+    let msg = "Failed to create provider 'ollama': error sending request for url \
+               (http://localhost:11434/api/tags)";
+    let class = classify_ingestion_failure(msg);
+    assert_eq!(class, IngestionFailureClass::ProviderUnavailable);
     assert!(!is_permanent_ingestion_failure(msg));
 }
 
@@ -107,10 +160,49 @@ fn bt045_ec06_orphan_recovery_before_workers() {
     let recover_docs = src
         .find("recover_orphaned_documents")
         .expect("document recovery");
-    let worker_start = src.find("worker_pool.start()").expect("worker start");
+    let worker_start = src
+        .find("worker_pool.start")
+        .expect("worker start (start or start_on)");
     assert!(
         recover_tasks < worker_start && recover_docs < worker_start,
         "orphan recovery must run before workers"
+    );
+}
+
+#[test]
+fn bt045_spec057_p1_pending_survives_boot_claim_ssot() {
+    let recovery = include_str!("../src/services/orphan_task_recovery.rs");
+    assert!(
+        recovery.contains("Pending left claimable"),
+        "SPEC-057 P1: Pending must survive boot (not auto-Failed)"
+    );
+    assert!(
+        recovery.contains("status: Some(TaskStatus::Processing)"),
+        "SPEC-057 P1: boot recovery must only target Processing"
+    );
+    assert!(
+        !recovery.contains("TaskStatus::Processing, TaskStatus::Pending"),
+        "SPEC-057 P1: must not fail Pending alongside Processing on boot"
+    );
+
+    let main = include_str!("../../../src/main.rs");
+    assert!(
+        main.contains("edgequake_api::services::recover_orphaned_tasks"),
+        "main must delegate boot recovery to orphan_task_recovery SSOT"
+    );
+
+    let worker = include_str!("../../edgequake-tasks/src/worker.rs");
+    assert!(
+        worker.contains("claim_next"),
+        "SPEC-057 P1: worker must claim from storage SSOT"
+    );
+    assert!(
+        worker.contains("refresh_lease"),
+        "SPEC-057 P1: worker must heartbeat via refresh_lease"
+    );
+    assert!(
+        worker.contains("release_claim"),
+        "SPEC-057 P1: fairness park must release_claim"
     );
 }
 
@@ -270,7 +362,7 @@ fn bt045_spec054_recover_skips_already_pending_stampede_guard() {
 }
 
 #[test]
-fn bt045_spec054_manual_resume_default_no_auto_hydrate() {
+fn bt045_spec054_auto_resume_env_gated_hydrate() {
     let src = include_str!("../../../src/main.rs");
     let hydrate = include_str!("../src/services/startup_task_hydrate.rs");
     assert!(
@@ -280,6 +372,11 @@ fn bt045_spec054_manual_resume_default_no_auto_hydrate() {
     assert!(
         hydrate.contains("EDGEQUAKE_STARTUP_AUTO_RESUME"),
         "auto-resume must be env-gated"
+    );
+    // Default ON for reliable resume; opt-out with =0/false/off.
+    assert!(
+        hydrate.contains("Unset → default ON") || hydrate.contains("default ON"),
+        "auto-resume must default ON for checkpoint resume reliability"
     );
     assert!(
         src.contains("startup_auto_resume_enabled"),

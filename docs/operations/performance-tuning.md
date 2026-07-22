@@ -2,11 +2,17 @@
 title: 'Performance Tuning Guide'
 ---
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 # Performance Tuning Guide
 
 > **Optimizing EdgeQuake for Production Workloads**
 
-This guide covers performance tuning strategies for EdgeQuake deployments.
+**Capacity / sizing SSOT:** [Product limits](../product-limits.md) — pick host RAM, `shared_buffers`, and Wave-2 env from the sizing table before tuning LLM knobs.
+
+**Vector search (pgvector):** For ~100k filtered ANN, use the Wave-2 greenfield recipe (`halfvec` + `EDGEQUAKE_HNSW_PARTIAL_BY_WORKSPACE=1`). SPEC-067 applies session-local planner bias (`enable_seqscan=off`, `random_page_cost=1.1`) when a workspace partial HNSW is ready and filters are column-only. Do **not** invent ad-hoc `CREATE INDEX … ON embeddings` SQL — EdgeQuake owns `eq_*_vectors` DDL.
+
+Claim ladders (`make ceiling-proof`) are honesty gates, not day-2 sizing.
 
 ---
 
@@ -40,20 +46,17 @@ This guide covers performance tuning strategies for EdgeQuake deployments.
 
 ## Quick Wins
 
-### 1. Choose Faster LLM Models
+### 1. Choose the Right LLM for the Workload
 
-| Model                | Latency (TTFT) | Cost | Quality   |
-| -------------------- | -------------- | ---- | --------- |
-| gpt-4o               | 500ms          | $$$$ | Excellent |
-| gpt-4.1-nano           | 200ms          | $    | Very Good |
-| gemma4:latest (Ollama)  | 100ms          | Free | Good      |
-| llama3.2:3b (Ollama) | 50ms           | Free | Moderate  |
+Latency varies by provider, hardware, and context size — **do not treat static TTFT tables as SSOT**. Measure with your models and `GET /api/v1/pipeline/queue-metrics`.
 
-**Recommendation**: Use `gpt-4.1-nano` for production (best latency/quality ratio)
+| Workload | Starting point |
+| -------- | -------------- |
+| Production cloud ingest/query | `gpt-5-mini` or `gpt-4.1-nano` (cost/latency balance) |
+| Local dev (`make dev`, no API key) | `ollama` / `gemma4:latest` |
+| Vision PDF convert (unset env) | `ollama` / `gemma4:latest` per `vision_env.rs`; cloud: set `EDGEQUAKE_VISION_*` explicitly |
 
-```bash
-export EDGEQUAKE_LLM_MODEL=gpt-4.1-nano
-```
+Pin models via `EDGEQUAKE_DEFAULT_LLM_MODEL` (or Makefile / `.env.example` — see [Configuration](/docs/operations/configuration/)).
 
 ### 2. Reduce Context Size
 
@@ -97,7 +100,35 @@ curl -X POST http://localhost:8080/api/v1/query \
 # Default: Uses all CPU cores
 # For I/O bound workloads (LLM API calls), use 2x cores
 export WORKER_THREADS=8  # For 4-core machine
+
+# Fairness cap (default ≈ ¾ of WORKER_THREADS)
+# MAX_TASKS_PER_TENANT=0  # disable limiter
 ```
+
+### Tenant Fairness & Local LLM Clamp (SPEC-057)
+
+When `MAX_TASKS_PER_TENANT` > 0, workers park excess tasks on a per-tenant semaphore — **no 500ms requeue storm**. Parked tasks release their DB claim before waiting; monitor `tenant_park_waiters` on queue-metrics.
+
+Local providers (`ollama`, `lmstudio`) clamp to **1 concurrent task per tenant** unless `EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1`. Hybrid mode: set `EDGEQUAKE_EXTRACT_PROVIDER=ollama` when LLM is cloud but extract runs locally so the clamp applies.
+
+### Task Lease & Multi-Replica (SPEC-057 P1/P3)
+
+| Variable | Tuning note |
+| -------- | ----------- |
+| `EDGEQUAKE_TASK_LEASE_TTL_SECS` | Default `120`; heartbeat every 60s |
+| `EDGEQUAKE_STARTUP_AUTO_RESUME` | Default ON (unset); set `0` for Interrupted Failed + manual Reprocess |
+| `EDGEQUAKE_REPLICAS` + `EDGEQUAKE_TASK_DELIVERY` | `REPLICAS>1` requires `bridged` or `notify_only` |
+
+### Adaptive Timeouts — LargeDocumentProfile (SPEC-038 / SPEC-057 P2)
+
+Convert and ingest run as **separate tasks** with independent timeouts derived from page count:
+
+| Phase | Task type | Timeout source |
+| ----- | --------- | -------------- |
+| Convert | `pdf_processing` | `LargeDocumentProfile::convert_timeout_secs` (+ Pass B budget) |
+| Ingest | `insert` | `LargeDocumentProfile::ingest_timeout_secs` |
+
+Override both phases with `TASK_PROCESSING_TIMEOUT_SECS` (legacy single knob). Floors/ceilings: 7200s–86400s. Upload ETA and admission routing use the same profile — see `edgequake-api/src/services/large_document_profile.rs`.
 
 ### Chunk Size Tuning
 
@@ -369,30 +400,7 @@ ollama pull gemma4:latest-q4_K_M
 
 ### Local vs Cloud Latency
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                 LATENCY COMPARISON                              │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  Local Ollama (RTX 4090):                                       │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │ Time to First Token: 50ms                                │   │
-│  │ Token Generation: 100 tokens/sec                         │   │
-│  │ Total (500 tokens): 5.05s                                │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│                                                                 │
-│  OpenAI gpt-4.1-nano:                                            │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │ Time to First Token: 200ms                               │   │
-│  │ Token Generation: 80 tokens/sec                          │   │
-│  │ Network overhead: 50ms                                   │   │
-│  │ Total (500 tokens): 6.5s                                 │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│                                                                 │
-│  Verdict: Local GPU is faster for inference-heavy workloads     │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
+Measure in your environment. Local Ollama on GPU often wins on time-to-first-token for short contexts; cloud models win on throughput and extraction quality at scale. Use queue-metrics `pressure` and document `display_status` to spot fairness stalls vs true LLM slowness.
 
 ---
 
@@ -513,10 +521,11 @@ cargo bench
 
 ### Quick Wins
 
-- [ ] Using gpt-4.1-nano (or faster model)
+- [ ] Model/provider chosen for workload (measure, don't guess from static tables)
 - [ ] Context size reduced (max_chunks ≤ 10)
 - [ ] Appropriate query mode selected
 - [ ] Streaming enabled for chat
+- [ ] `tenant_park_waiters` understood under local LLM clamp
 
 ### Database
 

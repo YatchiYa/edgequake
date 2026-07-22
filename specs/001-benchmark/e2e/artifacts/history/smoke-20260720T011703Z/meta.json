@@ -1,0 +1,10 @@
+{
+  "created_at_utc": "2026-07-20T01:17:03Z",
+  "profile_id": "P0_mistral_small_mix_chunk1200_v1_lrlike_arms_v2",
+  "valid": true,
+  "verdict": "LightRAG ahead on answer quality (CI excludes 0)",
+  "git_sha": "936b9236",
+  "archive": "specs/001-benchmark/e2e/artifacts/history/smoke-20260720T011703Z",
+  "task_name": "GraphRAG-Bench/EQ-vs-LR",
+  "can_claim_beats_lightrag": false
+}

@@ -1,5 +1,7 @@
 # Swift SDK
 
+> **Product: v0.19.0** · SDK package **~0.4.0** (decoupled from server)
+
 **Location:** `sdks/swift`
 
 ## Add to your app
@@ -37,3 +39,5 @@ cd sdks/swift && swift test
 ```
 
 `ConversationService.bulkDelete` sends **`conversation_ids`** in the JSON body.
+
+For v0.19 task cancel and progress WebSocket, spot-check OpenAPI — Tier 1 SDKs lead on typed helpers. See [Ingestion cancel & fairness](../../ingestion-cancel-and-fairness.md).

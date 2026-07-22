@@ -98,6 +98,12 @@ pub(super) async fn create_pdf_processing_task(
         .tenant_id_uuid()
         .ok_or_else(|| ApiError::BadRequest("Tenant ID required".to_string()))?;
 
+    if crate::services::workspace_wipe_in_flight(state, workspace_id).await {
+        return Err(ApiError::Conflict(
+            "Workspace wipe in progress — retry PDF upload after wipe completes".into(),
+        ));
+    }
+
     if let Some(existing_track_id) = crate::services::admit_pdf_processing_enqueue(
         state,
         pdf_id,
@@ -112,7 +118,7 @@ pub(super) async fn create_pdf_processing_task(
             intent.existing_document_id.clone(),
             context,
         )
-        .await;
+        .await?;
         return Ok(PdfProcessingEnqueueResult {
             track_id: existing_track_id,
             document_id,
@@ -125,7 +131,7 @@ pub(super) async fn create_pdf_processing_task(
         intent.existing_document_id.clone(),
         context,
     )
-    .await;
+    .await?;
 
     let resolved_backend = options.resolved_backend(workspace);
     let backend_explicit = options.pdf_parser_backend.is_some()
@@ -134,8 +140,9 @@ pub(super) async fn create_pdf_processing_task(
 
     let page_count_usize = page_count.unwrap_or(1).max(1) as usize;
     let profile = crate::services::LargeDocumentProfile::new(page_count_usize, file_size_bytes);
+    // SPEC-057 P2: convert task uses convert-phase budget; Insert gets ingest_*.
     let processing_timeout_secs =
-        profile.task_timeout_secs(resolved_backend, &options.resolved_vision_provider());
+        profile.convert_timeout_secs(resolved_backend, &options.resolved_vision_provider());
 
     let task_data = PdfProcessingData {
         pdf_id,
@@ -210,6 +217,9 @@ pub(super) async fn create_pdf_processing_task(
         metadata: Some(metadata),
         progress: None,
         result: None,
+        lease_owner: None,
+        lease_token: None,
+        lease_expires_at: None,
     };
 
     if let Err(e) = state.enqueue_task(task).await {
@@ -228,15 +238,11 @@ pub(super) async fn create_pdf_processing_task(
     })
 }
 
-/// Extract page count from PDF binary data.
+/// Byte-scan heuristic for `/Count N` (last-resort fallback).
 ///
-/// WHY: PDF files contain binary content (compressed streams, images), so
-/// `std::str::from_utf8` fails for virtually all real PDFs. Instead, we
-/// search the raw bytes for the `/Count` token followed by a space and
-/// digits — the standard PDF catalog structure for declaring page count.
-/// We find the LARGEST `/Count N` value because the root Pages node
-/// contains the total, while sub-nodes contain partial counts.
-pub(super) fn extract_page_count(pdf_data: &[u8]) -> Option<i32> {
+/// Prefer [`extract_page_count`] which uses pdfium first. This scan fails on
+/// compressed object-stream PDFs (common for arXiv) and under-budgets vision.
+pub(crate) fn extract_page_count_bytescan(pdf_data: &[u8]) -> Option<i32> {
     let needle = b"/Count ";
     let mut max_count: Option<i32> = None;
 
@@ -269,6 +275,11 @@ pub(super) fn extract_page_count(pdf_data: &[u8]) -> Option<i32> {
     }
 
     max_count
+}
+
+/// Accurate page count: pdfium SSOT, then `/Count` byte-scan fallback.
+pub(crate) async fn extract_page_count(pdf_data: &[u8]) -> Option<i32> {
+    edgequake_pdf::resolve_pdf_page_count(pdf_data, extract_page_count_bytescan(pdf_data)).await
 }
 
 /// Estimate processing time based on file size and page count.
@@ -345,13 +356,13 @@ pub(super) async fn clear_document_derived_data_in_workspace(
 mod tests {
     use super::*;
 
-    // ── extract_page_count edge cases ─────────────────────────────────
+    // ── extract_page_count_bytescan edge cases ───────────────────────
 
     #[test]
     fn test_extract_page_count_normal_pdf() {
         // Simulates a PDF with a root Pages node: /Count 42
         let data = b"%PDF-1.4\n/Type /Pages\n/Count 42\n/Kids [...]";
-        assert_eq!(extract_page_count(data), Some(42));
+        assert_eq!(extract_page_count_bytescan(data), Some(42));
     }
 
     #[test]
@@ -359,44 +370,44 @@ mod tests {
         // PDF with sub-nodes: root /Count 100, sub /Count 50
         // Should return the largest (root total)
         let data = b"%PDF-1.4\n/Count 50\n...\n/Count 100\n";
-        assert_eq!(extract_page_count(data), Some(100));
+        assert_eq!(extract_page_count_bytescan(data), Some(100));
     }
 
     #[test]
     fn test_extract_page_count_single_page() {
         let data = b"%PDF-1.4\n/Count 1\n";
-        assert_eq!(extract_page_count(data), Some(1));
+        assert_eq!(extract_page_count_bytescan(data), Some(1));
     }
 
     #[test]
     fn test_extract_page_count_zero_pages() {
         // Edge case: /Count 0 should return Some(0)
         let data = b"%PDF-1.4\n/Count 0\n";
-        assert_eq!(extract_page_count(data), Some(0));
+        assert_eq!(extract_page_count_bytescan(data), Some(0));
     }
 
     #[test]
     fn test_extract_page_count_empty_data() {
-        assert_eq!(extract_page_count(b""), None);
+        assert_eq!(extract_page_count_bytescan(b""), None);
     }
 
     #[test]
     fn test_extract_page_count_no_count_token() {
         let data = b"%PDF-1.4\n/Type /Pages\n/MediaBox [0 0 612 792]\n";
-        assert_eq!(extract_page_count(data), None);
+        assert_eq!(extract_page_count_bytescan(data), None);
     }
 
     #[test]
     fn test_extract_page_count_count_without_digits() {
         // "/Count " followed by non-digits
         let data = b"%PDF-1.4\n/Count abc\n";
-        assert_eq!(extract_page_count(data), None);
+        assert_eq!(extract_page_count_bytescan(data), None);
     }
 
     #[test]
     fn test_extract_page_count_large_page_count() {
         let data = b"%PDF-1.4\n/Count 12345\n";
-        assert_eq!(extract_page_count(data), Some(12345));
+        assert_eq!(extract_page_count_bytescan(data), Some(12345));
     }
 
     #[test]
@@ -405,14 +416,14 @@ mod tests {
         let mut data = vec![0u8; 100];
         data.extend_from_slice(b"/Count 7");
         data.extend_from_slice(&[0xFF, 0xFE, 0x00]);
-        assert_eq!(extract_page_count(&data), Some(7));
+        assert_eq!(extract_page_count_bytescan(&data), Some(7));
     }
 
     #[test]
     fn test_extract_page_count_needle_at_end_of_data() {
         // "/Count " at the very end with no digits after
         let data = b"%PDF-1.4\n/Count ";
-        assert_eq!(extract_page_count(data), None);
+        assert_eq!(extract_page_count_bytescan(data), None);
     }
 
     // ── estimate_processing_time edge cases ───────────────────────────

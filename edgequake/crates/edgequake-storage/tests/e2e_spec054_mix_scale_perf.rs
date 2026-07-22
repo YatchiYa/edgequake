@@ -48,8 +48,7 @@ fn percentile_p95(sorted: &[Duration]) -> Duration {
 
 #[tokio::test]
 async fn e2e_q1d_mix_filtered_ann_p95_under_500ms_at_50k() {
-    let Some(config) = postgres_test_config::contract_postgres_config("perf054_mix50k") else {
-        eprintln!("SKIP: no DATABASE_URL / POSTGRES_PASSWORD");
+    let Some(config) = postgres_test_config::require_or_skip_postgres("perf054_mix50k") else {
         return;
     };
 
@@ -130,8 +129,7 @@ async fn e2e_q1d_mix_filtered_ann_p95_under_500ms_at_50k() {
 
 #[tokio::test]
 async fn e2e_explain_snapshots_hot_paths() {
-    let Some(config) = postgres_test_config::contract_postgres_config("perf054_explain") else {
-        eprintln!("SKIP: no DATABASE_URL / POSTGRES_PASSWORD");
+    let Some(config) = postgres_test_config::require_or_skip_postgres("perf054_explain") else {
         return;
     };
 
@@ -185,9 +183,9 @@ async fn e2e_explain_snapshots_hot_paths() {
 
 async fn assert_filtered_hnsw_explain(config: &PostgresConfig, table: &str) {
     let pool = postgres_test_config::contract_pg_pool(config).await;
-    // Parameterized distance ORDER BY — look for HNSW / Index Scan in plan.
+    // SPEC-060: EXPLAIN (ANALYZE, BUFFERS) — fail on Seq Scan; require HNSW/index + buffers.
     let sql = format!(
-        r#"EXPLAIN (FORMAT TEXT)
+        r#"EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
            SELECT id FROM {table}
            WHERE workspace_id = $1
            ORDER BY embedding <=> $2::vector
@@ -211,14 +209,20 @@ async fn assert_filtered_hnsw_explain(config: &PostgresConfig, table: &str) {
         .map(|r| r.0)
         .collect::<Vec<_>>()
         .join("\n");
+    let lower = plan.to_lowercase();
     assert!(
-        plan.to_lowercase().contains("hnsw")
-            || plan.contains("Index Scan")
-            || plan.contains("Index Only Scan")
-            || plan.contains("embedding"),
+        !lower.contains("seq scan"),
+        "SPEC-060 FAIL: filtered ANN EXPLAIN must not Seq Scan; plan was:\n{plan}"
+    );
+    assert!(
+        lower.contains("hnsw") || plan.contains("Index Scan") || plan.contains("Index Only Scan"),
         "filtered ANN EXPLAIN should use HNSW/index path; plan was:\n{plan}"
     );
-    eprintln!("OK EXPLAIN filtered ANN:\n{plan}");
+    assert!(
+        lower.contains("buffers:") || lower.contains("shared"),
+        "EXPLAIN ANALYZE BUFFERS should report buffer stats; plan was:\n{plan}"
+    );
+    eprintln!("OK EXPLAIN (ANALYZE, BUFFERS) filtered ANN:\n{plan}");
 }
 
 async fn assert_unique_node_id_plan(config: &PostgresConfig, graph: &str, node_id: &str) {

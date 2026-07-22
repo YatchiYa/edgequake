@@ -18,6 +18,11 @@ fn mention(name: &str, desc: &str) -> ExtractedEntity {
         source_chunk_ids: vec![],
         source_document_id: None,
         source_file_path: None,
+        display_name: None,
+        page_num: None,
+        figure_index: None,
+        asset_id: None,
+        mm_subtype: None,
     }
 }
 
@@ -60,6 +65,7 @@ fn contract_unique_relationships_collapse_cross_chunk() {
             keywords: vec!["k".into()],
             weight: 1.0,
             embedding: None,
+            source_chunk_ids: Vec::new(),
             source_chunk_id: None,
             source_document_id: None,
             source_file_path: None,

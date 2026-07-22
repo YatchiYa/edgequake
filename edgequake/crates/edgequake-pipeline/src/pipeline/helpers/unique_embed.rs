@@ -203,6 +203,10 @@ pub fn dedupe_relationships_by_endpoints(
                     existing.keywords.push(kw.clone());
                 }
             }
+            // 049: union chunk lineage (same law as merger endpoint dedupe).
+            for cid in rel.all_source_chunk_ids() {
+                existing.add_source_chunk_id(cid);
+            }
         } else {
             order.push(key.clone());
             by_key.insert(key, rel.clone());
@@ -231,6 +235,11 @@ mod tests {
             source_chunk_ids: vec![],
             source_document_id: None,
             source_file_path: None,
+            display_name: None,
+            page_num: None,
+            figure_index: None,
+            asset_id: None,
+            mm_subtype: None,
         }
     }
 
@@ -272,6 +281,7 @@ mod tests {
             keywords: vec!["k".into()],
             weight: 1.0,
             embedding: None,
+            source_chunk_ids: Vec::new(),
             source_chunk_id: None,
             source_document_id: None,
             source_file_path: None,

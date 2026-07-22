@@ -1,0 +1,8 @@
+{"detail":"rows=2000 FILTERED bake-off","op":"fdl078_seed","p95_ms":593.716292,"pass":true,"plan_class":"wave2_halfvec","profile":"pg18-vectorscale"}
+{"detail":"hits=20","op":"fdl078_cell","p95_ms":3.3709170000000004,"pass":true,"plan_class":"wave2_filtered","profile":"pg18-vectorscale"}
+{"detail":"rows=2000 labels hot=1 cold=2","op":"fdl078_seed","p95_ms":6483.217584,"pass":true,"plan_class":"study_vector_labels","profile":"pg18-vectorscale"}
+{"detail":"FILTERED recall@20 postfilter_vs_wave2=1.0000 (honesty baseline) post_ms=3.0 hits=20","op":"fdl078_filtered_recall","p95_ms":1000.0,"pass":true,"plan_class":"postfilter_vs_wave2","profile":"pg18-vectorscale"}
+{"detail":"hits=20 recall_vs_wave2=1.0000 (post-filter cliff archive)","op":"fdl078_cell","p95_ms":2.984875,"pass":true,"plan_class":"postfilter_diskann","profile":"pg18-vectorscale"}
+{"detail":"FILTERED recall@20 labels_vs_wave2=1.0000 soft=0.9 wave2_ms=3.4 labels_ms=2.8 rows=2000","op":"fdl078_filtered_recall","p95_ms":1000.0,"pass":true,"plan_class":"labels_vs_wave2","profile":"pg18-vectorscale"}
+{"detail":"wave2_hits=20 labels_hits=20 recall=1.0000 (soft-fail; Wave-2 remains default; no silent flip)","op":"fdl078_cell","p95_ms":2.8130830000000002,"pass":true,"plan_class":"filtered_diskann_labels","profile":"pg18-vectorscale"}
+{"detail":"Filtered-DiskANN labels is opt-in study; Wave-2 default + floors unchanged; EDGEQUAKE_FILTERED_DISKANN_LABELS default OFF; promote only after full gate","op":"fdl078_decision","p95_ms":0.0,"pass":true,"plan_class":"honesty","profile":"pg18-vectorscale"}

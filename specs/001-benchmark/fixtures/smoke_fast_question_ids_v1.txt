@@ -1,0 +1,9 @@
+# Fast smoke: 2 per question_type from smoke_question_ids_v1 (n=8)
+Medical-0cbbd549
+Medical-e7b5ec54
+Medical-2ca88e8f
+Medical-54a3a465
+Medical-296c7595
+Medical-0002d2de
+Medical-7b694381
+Medical-a5356e35

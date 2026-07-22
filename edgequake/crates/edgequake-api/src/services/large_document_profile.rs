@@ -9,9 +9,11 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 pub use edgequake_tasks::{
-    classify_ingestion_failure, is_permanent_ingestion_failure, IngestionFailureClass,
+    classify_ingestion_failure, is_permanent_ingestion_failure, is_provider_misconfig_message,
+    IngestionFailureClass,
 };
 
+use super::multimodal::LocalMmProfile;
 use crate::safety_limits::{
     is_local_provider, vision_outer_timeout_secs, VISION_MAX_OUTER_TIMEOUT_SECS,
 };
@@ -91,29 +93,55 @@ impl LargeDocumentProfile {
     /// Embed + merge headroom.
     pub const PERSIST_BUFFER_SECS: u64 = 600;
 
-    /// Total worker timeout budget for a PDF processing task.
-    pub fn task_timeout_secs(&self, backend: PdfParserBackend, provider: &str) -> u64 {
-        if let Ok(val) = std::env::var("TASK_PROCESSING_TIMEOUT_SECS") {
-            if let Ok(n) = val.parse::<u64>() {
-                return n.clamp(60, TASK_TIMEOUT_CEILING_SECS);
-            }
-        }
+    /// Env override for either phase timeout (legacy single knob).
+    fn env_timeout_override() -> Option<u64> {
+        std::env::var("TASK_PROCESSING_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .map(|n: u64| n.clamp(60, TASK_TIMEOUT_CEILING_SECS))
+    }
 
+    /// Convert-phase timeout (PdfProcessing / EdgeParse+Vision+Pass B).
+    ///
+    /// SPEC-057 P2: shorter lease than the combined convert+ingest budget.
+    pub fn convert_timeout_secs(&self, backend: PdfParserBackend, provider: &str) -> u64 {
+        if let Some(n) = Self::env_timeout_override() {
+            return n;
+        }
         let convert = match backend {
             PdfParserBackend::EdgeParse => self.edgeparse_convert_secs(),
             PdfParserBackend::Vision => self.vision_convert_secs(provider),
         };
-        let raw = convert
-            .saturating_add(self.extract_secs())
-            .saturating_add(Self::PERSIST_BUFFER_SECS);
+        let pass_b = LocalMmProfile::resolve(provider).pass_b_task_budget_secs();
+        let raw = convert.saturating_add(pass_b).saturating_add(300);
         let adjusted = match backend {
-            PdfParserBackend::Vision if self.page_count >= 200 => {
-                // Large vision jobs need headroom beyond naive sum (variance + merge).
-                raw.saturating_add(convert / 4)
-            }
+            PdfParserBackend::Vision if self.page_count >= 200 => raw.saturating_add(convert / 4),
             _ => raw,
         };
         adjusted.clamp(TASK_TIMEOUT_FLOOR_SECS, TASK_TIMEOUT_CEILING_SECS)
+    }
+
+    /// Ingest-phase timeout (TaskType::Insert extract/embed/merge).
+    pub fn ingest_timeout_secs(&self) -> u64 {
+        if let Some(n) = Self::env_timeout_override() {
+            return n;
+        }
+        let raw = self
+            .extract_secs()
+            .saturating_add(Self::PERSIST_BUFFER_SECS);
+        raw.clamp(TASK_TIMEOUT_FLOOR_SECS, TASK_TIMEOUT_CEILING_SECS)
+    }
+
+    /// Total worker timeout budget (UX ETA / legacy single-task helper).
+    ///
+    /// Equals convert + ingest phase budgets (SPEC-057 P2 stage split).
+    pub fn task_timeout_secs(&self, backend: PdfParserBackend, provider: &str) -> u64 {
+        if let Some(n) = Self::env_timeout_override() {
+            return n;
+        }
+        self.convert_timeout_secs(backend, provider)
+            .saturating_add(self.ingest_timeout_secs())
+            .clamp(TASK_TIMEOUT_FLOOR_SECS, TASK_TIMEOUT_CEILING_SECS)
     }
 
     /// Upload ETA surfaced to clients (seconds).
@@ -201,6 +229,26 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
+    fn p2_phase_timeouts_split_convert_and_ingest() {
+        std::env::remove_var("TASK_PROCESSING_TIMEOUT_SECS");
+        let profile = LargeDocumentProfile::new(603, 11_043_120);
+        let convert = profile.convert_timeout_secs(PdfParserBackend::EdgeParse, "mistral");
+        let ingest = profile.ingest_timeout_secs();
+        let total = profile.task_timeout_secs(PdfParserBackend::EdgeParse, "mistral");
+        assert!(convert >= TASK_TIMEOUT_FLOOR_SECS);
+        assert!(ingest >= TASK_TIMEOUT_FLOOR_SECS);
+        assert_eq!(
+            total,
+            convert
+                .saturating_add(ingest)
+                .clamp(TASK_TIMEOUT_FLOOR_SECS, TASK_TIMEOUT_CEILING_SECS,)
+        );
+        // Convert budget must not include full extract waves (those are ingest).
+        assert!(convert < total);
+    }
+
+    #[test]
     fn reproducer_603_pages_vision_exceeds_old_cap_without_scale() {
         let profile = LargeDocumentProfile::new(603, 11_043_120);
         let vision_convert = profile.vision_convert_secs("mistral");
@@ -220,10 +268,27 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
+    fn local_task_timeout_includes_pass_b_budget() {
+        std::env::remove_var("TASK_PROCESSING_TIMEOUT_SECS");
+        std::env::set_var("EDGEQUAKE_MM_MAX_FIGURES", "12");
+        std::env::set_var("EDGEQUAKE_MM_PASS_B_TIMEOUT_SECS", "600");
+        let profile = LargeDocumentProfile::new(10, 1_000_000);
+        let local = profile.task_timeout_secs(PdfParserBackend::Vision, "ollama");
+        let cloud = profile.task_timeout_secs(PdfParserBackend::Vision, "openai");
+        assert!(
+            local >= cloud,
+            "local timeout should include Pass B budget: local={local} cloud={cloud}"
+        );
+        std::env::remove_var("EDGEQUAKE_MM_MAX_FIGURES");
+        std::env::remove_var("EDGEQUAKE_MM_PASS_B_TIMEOUT_SECS");
+    }
+
+    #[test]
     fn sparse_markdown_not_born_digital() {
         let markdown = "short";
         assert!(!LargeDocumentProfile::markdown_has_text_layer(
-            &markdown, 603
+            markdown, 603
         ));
     }
 

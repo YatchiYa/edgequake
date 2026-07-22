@@ -2,6 +2,8 @@
 title: 'Deep Dive: Entity Extraction'
 ---
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 # Deep Dive: Entity Extraction
 
 > **How EdgeQuake Extracts Knowledge Entities from Documents**
@@ -93,6 +95,24 @@ Traditional Named Entity Recognition (NER) systems use trained models with fixed
 ```
 
 EdgeQuake chooses LLM extraction because **knowledge graph quality is paramount** for effective RAG.
+
+---
+
+## Multimodal entities (SPEC-047)
+
+When a document has durable **mm-assets** (page/chart/figure PNGs from PDF vision), the pipeline injects multimodal entity nodes and association edges **after** the LLM tuple pass. These nodes link figure/table assets to text entities for viewer lineage — see [`edgequake-pipeline/src/multimodal/injection.rs`](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-pipeline/src/multimodal/injection.rs).
+
+---
+
+## Cancel and cooperative abort (SPEC-057)
+
+Entity extraction runs inside `TaskType::Insert`. Cancel via `POST /api/v1/tasks/{track_id}/cancel`:
+
+- Sets task row → `Cancelled` (terminal, no auto-retry)
+- Aborts in-flight LLM/embedding calls at `.await` boundaries (`CancellationToken`)
+- Doc KV → `cancelled` + `failure_class=cancelled`; UI shows `ui_phase=stopping` until terminal
+
+Convert-phase cancel also stops a pending Insert for the same PDF. See [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md).
 
 ---
 

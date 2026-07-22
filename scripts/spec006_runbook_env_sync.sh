@@ -11,9 +11,11 @@ if [[ ! -f "$RUNBOOK" ]]; then
 fi
 
 # var_name:code_file (relative to ROOT)
+# Worker pool limits live in pipeline config SSOT (resolve_worker_pool_limits);
+# main.rs consumes the resolved tuple.
 PAIRS=(
-  "WORKER_THREADS:edgequake/src/main.rs"
-  "MAX_TASKS_PER_TENANT:edgequake/src/main.rs"
+  "WORKER_THREADS:edgequake/crates/edgequake-pipeline/src/pipeline/config.rs"
+  "MAX_TASKS_PER_TENANT:edgequake/crates/edgequake-pipeline/src/pipeline/config.rs"
   "TASK_PROCESSING_TIMEOUT_SECS:edgequake/src/main.rs"
   "EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS:edgequake/crates/edgequake-pipeline/src/pipeline/config.rs"
   "EDGEQUAKE_GRAPH_SCAN_THRESHOLD:edgequake/crates/edgequake-core/src/resource/budget.rs"

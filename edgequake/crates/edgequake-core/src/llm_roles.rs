@@ -143,6 +143,45 @@ pub fn role_capability_hint(role: LlmRole) -> &'static str {
     }
 }
 
+/// Process-env KEYWORD role (LightRAG `KEYWORD_LLM_*` law).
+///
+/// Env (either MODEL or PROVIDER non-empty enables the override):
+/// - `EDGEQUAKE_KEYWORD_LLM_MODEL` — required for a usable pin (empty = unset)
+/// - `EDGEQUAKE_KEYWORD_LLM_PROVIDER` — optional; falls back to `EDGEQUAKE_LLM_PROVIDER`
+///   then `"mistral"` when only the model is set
+///
+/// Precedence at query time: **env → workspace `llm_roles.keyword` → Query LLM**.
+pub fn env_keyword_role_llm() -> Option<ResolvedRoleLlm> {
+    let model = non_empty_env("EDGEQUAKE_KEYWORD_LLM_MODEL");
+    let provider = non_empty_env("EDGEQUAKE_KEYWORD_LLM_PROVIDER");
+    match (provider, model) {
+        (None, None) => None,
+        (Some(provider), Some(model)) => Some(ResolvedRoleLlm { provider, model }),
+        (None, Some(model)) => {
+            let provider =
+                non_empty_env("EDGEQUAKE_LLM_PROVIDER").unwrap_or_else(|| "mistral".to_string());
+            Some(ResolvedRoleLlm { provider, model })
+        }
+        (Some(provider), None) => {
+            // Provider-only: use that provider's conventional default model name.
+            let model = match provider.to_ascii_lowercase().as_str() {
+                "mistral" => "ministral-3b-latest".to_string(),
+                "openai" => "gpt-5.4-nano".to_string(),
+                "ollama" => "gemma3:latest".to_string(),
+                other => other.to_string(),
+            };
+            Some(ResolvedRoleLlm { provider, model })
+        }
+    }
+}
+
+fn non_empty_env(key: &str) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 /// Parse full llm_roles map from metadata (for tests / API).
 pub fn parse_llm_roles_map(
     metadata: &HashMap<String, serde_json::Value>,
@@ -166,6 +205,7 @@ pub fn parse_llm_roles_map(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use uuid::Uuid;
 
     fn sample_workspace(metadata: HashMap<String, serde_json::Value>) -> Workspace {
@@ -255,5 +295,26 @@ mod tests {
         assert_eq!(sum.provider, "mock");
         assert!(!role_capability_hint(LlmRole::Keyword).is_empty());
         assert_eq!(LlmRole::all().len(), 5);
+    }
+
+    #[test]
+    #[serial]
+    fn env_keyword_role_unset_when_empty() {
+        // Isolate from ambient Acc/dev env (serialize — env is process-global).
+        std::env::remove_var("EDGEQUAKE_KEYWORD_LLM_PROVIDER");
+        std::env::remove_var("EDGEQUAKE_KEYWORD_LLM_MODEL");
+        assert!(env_keyword_role_llm().is_none());
+        std::env::set_var("EDGEQUAKE_KEYWORD_LLM_MODEL", "ministral-3b-latest");
+        let role = env_keyword_role_llm().expect("model-only pin");
+        assert_eq!(role.model, "ministral-3b-latest");
+        assert!(!role.provider.is_empty());
+        std::env::remove_var("EDGEQUAKE_KEYWORD_LLM_MODEL");
+        std::env::set_var("EDGEQUAKE_KEYWORD_LLM_PROVIDER", "mistral");
+        std::env::set_var("EDGEQUAKE_KEYWORD_LLM_MODEL", "ministral-3b-latest");
+        let role = env_keyword_role_llm().expect("full pin");
+        assert_eq!(role.provider, "mistral");
+        assert_eq!(role.model, "ministral-3b-latest");
+        std::env::remove_var("EDGEQUAKE_KEYWORD_LLM_PROVIDER");
+        std::env::remove_var("EDGEQUAKE_KEYWORD_LLM_MODEL");
     }
 }

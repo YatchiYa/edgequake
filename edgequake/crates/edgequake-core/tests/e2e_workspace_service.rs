@@ -230,6 +230,11 @@ mod workspace_crud_tests {
             Some("Main knowledge base".to_string())
         );
         assert!(workspace.is_active);
+        assert_eq!(
+            workspace.pdf_parser_backend,
+            Some(edgequake_pdf::PdfParserBackend::Vision),
+            "create with omitted pdf_parser_backend must persist vision"
+        );
     }
 
     #[tokio::test]

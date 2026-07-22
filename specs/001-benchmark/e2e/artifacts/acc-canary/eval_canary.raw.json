@@ -1,0 +1,142 @@
+{
+  "Fact Retrieval": {
+    "average_scores": {
+      "rouge_score": 0.6242392872827655,
+      "answer_correctness": 0.6178985871272381,
+      "factuality_f1": 0.499999999925,
+      "embed_cosine": 0.9715943487339526
+    },
+    "detailed": [
+      {
+        "id": "canary-para-04",
+        "question": "What is the most common type of skin cancer?",
+        "ground_truth": "Basal cell carcinoma (BCC) is the most common type of skin cancer.",
+        "generated_answer": "The most common skin cancer is basal cell carcinoma (BCC).",
+        "contexts": [
+          "canary: no retrieval context required"
+        ],
+        "metrics": {
+          "rouge_score": 0.45454545454545453,
+          "answer_correctness": 0.9970291880770767,
+          "factuality_f1": 0.99999999985,
+          "embed_cosine": 0.9881167527583071
+        }
+      },
+      {
+        "id": "canary-wrong-02",
+        "question": "What is mediastinal gray zone lymphoma a subtype of?",
+        "ground_truth": "Mediastinal gray zone lymphoma (MGZL) is a subtype of gray zone lymphomas.",
+        "generated_answer": "Mediastinal gray zone lymphoma is a subtype of basal cell carcinoma.",
+        "contexts": [
+          "canary: no retrieval context required"
+        ],
+        "metrics": {
+          "rouge_score": 0.6956521739130435,
+          "answer_correctness": 0.2429106117163904,
+          "factuality_f1": 0.0,
+          "embed_cosine": 0.9716424468655616
+        }
+      },
+      {
+        "id": "canary-wrong-04",
+        "question": "What is the most common type of skin cancer?",
+        "ground_truth": "Basal cell carcinoma (BCC) is the most common type of skin cancer.",
+        "generated_answer": "Melanoma is the most common type of skin cancer.",
+        "contexts": [
+          "canary: no retrieval context required"
+        ],
+        "metrics": {
+          "rouge_score": 0.761904761904762,
+          "answer_correctness": 0.2381824586580954,
+          "factuality_f1": 0.0,
+          "embed_cosine": 0.9527298346323816
+        }
+      },
+      {
+        "id": "canary-para-02",
+        "question": "What is mediastinal gray zone lymphoma a subtype of?",
+        "ground_truth": "Mediastinal gray zone lymphoma (MGZL) is a subtype of gray zone lymphomas.",
+        "generated_answer": "MGZL is a subtype of gray zone lymphomas.",
+        "contexts": [
+          "canary: no retrieval context required"
+        ],
+        "metrics": {
+          "rouge_score": 0.8,
+          "answer_correctness": 0.9921280227435639,
+          "factuality_f1": 0.99999999985,
+          "embed_cosine": 0.9685120914242558
+        }
+      },
+      {
+        "id": "canary-para-01",
+        "question": "What diagnostic method is required for MGZL?",
+        "ground_truth": "Diagnosis of MGZL requires expert hematopathologist review.",
+        "generated_answer": "MGZL diagnosis requires review by an expert hematopathologist.",
+        "contexts": [
+          "canary: no retrieval context required"
+        ],
+        "metrics": {
+          "rouge_score": 0.5333333333333333,
+          "answer_correctness": 0.9986468290626255,
+          "factuality_f1": 0.99999999985,
+          "embed_cosine": 0.9945873167005019
+        }
+      },
+      {
+        "id": "canary-wrong-01",
+        "question": "What diagnostic method is required for MGZL?",
+        "ground_truth": "Diagnosis of MGZL requires expert hematopathologist review.",
+        "generated_answer": "Diagnosis of MGZL requires a chest X-ray alone.",
+        "contexts": [
+          "canary: no retrieval context required"
+        ],
+        "metrics": {
+          "rouge_score": 0.5,
+          "answer_correctness": 0.238494412505677,
+          "factuality_f1": 0.0,
+          "embed_cosine": 0.953977650022708
+        }
+      }
+    ]
+  },
+  "Complex Reasoning": {
+    "average_scores": {
+      "rouge_score": 0.5735632183908046,
+      "answer_correctness": 0.6140378904014762,
+      "factuality_f1": 0.4999999999625,
+      "embed_cosine": 0.9561515617184045
+    },
+    "detailed": [
+      {
+        "id": "canary-wrong-03",
+        "question": "What does treatment for ALL depend on?",
+        "ground_truth": "Treatment for ALL depends on subtype, age at diagnosis, and other factors such as biomarkers and genetic alterations.",
+        "generated_answer": "Treatment for ALL depends only on patient height and blood type.",
+        "contexts": [
+          "canary: no retrieval context required"
+        ],
+        "metrics": {
+          "rouge_score": 0.41379310344827586,
+          "answer_correctness": 0.23326343409807124,
+          "factuality_f1": 0.0,
+          "embed_cosine": 0.933053736392285
+        }
+      },
+      {
+        "id": "canary-para-03",
+        "question": "What does treatment for ALL depend on?",
+        "ground_truth": "Treatment for ALL depends on subtype, age at diagnosis, and other factors such as biomarkers and genetic alterations.",
+        "generated_answer": "ALL treatment depends on subtype, age at diagnosis, biomarkers, and genetic alterations.",
+        "contexts": [
+          "canary: no retrieval context required"
+        ],
+        "metrics": {
+          "rouge_score": 0.7333333333333334,
+          "answer_correctness": 0.9948123467048811,
+          "factuality_f1": 0.999999999925,
+          "embed_cosine": 0.9792493870445241
+        }
+      }
+    ]
+  }
+}

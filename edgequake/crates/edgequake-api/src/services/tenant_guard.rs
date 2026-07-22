@@ -30,6 +30,7 @@ pub fn empty_documents_list() -> ListDocumentsResponse {
             cancelled: 0,
             unknown: 0,
         },
+        truncated: None,
     }
 }
 

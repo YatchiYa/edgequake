@@ -2,12 +2,78 @@
 
 use super::super::capabilities::{AnnIndexPolicy, HNSW_MAX_DIM_HALFVEC};
 use super::super::config::VectorIndexType;
+use super::super::hnsw_runtime_policy::HnswRuntimePolicy;
 use super::super::row_count_stats::{self, RowCountStatsConfig};
 use super::super::schema;
 use super::PgVectorStorage;
 use crate::error::{Result, StorageError};
 
+/// SPEC-070: sanitize `maintenance_work_mem` / lock_timeout env values (digits + unit only).
+fn sanitize_pg_setting(raw: &str, fallback: &str) -> String {
+    let t = raw.trim();
+    if t.is_empty() {
+        return fallback.to_string();
+    }
+    if t.chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
+    {
+        t.to_string()
+    } else {
+        fallback.to_string()
+    }
+}
+
 impl PgVectorStorage {
+    /// SPEC-070: DDL-only session GUCs for index builds (never apply query timeout).
+    ///
+    /// July 2026 pgvector practice: `statement_timeout=0`, short `lock_timeout`,
+    /// elevated `maintenance_work_mem` on the **build connection only**.
+    pub(crate) async fn setup_vector_ddl_session(conn: &mut sqlx::PgConnection) -> Result<()> {
+        let lock_timeout = sanitize_pg_setting(
+            &std::env::var("EDGEQUAKE_GRAPH_DDL_LOCK_TIMEOUT").unwrap_or_default(),
+            "5s",
+        );
+        let maint_mem = sanitize_pg_setting(
+            &std::env::var("EDGEQUAKE_INDEX_MAINTENANCE_WORK_MEM").unwrap_or_default(),
+            "256MB",
+        );
+        sqlx::query("SET statement_timeout = 0")
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                StorageError::Database(format!(
+                    "Failed to clear statement_timeout for vector DDL: {e}"
+                ))
+            })?;
+        sqlx::query(&format!("SET lock_timeout = '{lock_timeout}'"))
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                StorageError::Database(format!("Failed to set vector DDL lock_timeout: {e}"))
+            })?;
+        sqlx::query(&format!("SET maintenance_work_mem = '{maint_mem}'"))
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                StorageError::Database(format!(
+                    "Failed to set maintenance_work_mem for vector DDL: {e}"
+                ))
+            })?;
+        Ok(())
+    }
+
+    /// Run index/DDL SQL on a dedicated connection with vector DDL session GUCs.
+    async fn execute_index_ddl(pool: &sqlx::PgPool, sql: &str) -> Result<()> {
+        let mut conn = pool.acquire().await.map_err(|e| {
+            StorageError::Connection(format!("Failed to acquire connection for vector DDL: {e}"))
+        })?;
+        Self::setup_vector_ddl_session(&mut conn).await?;
+        sqlx::query(sql)
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| StorageError::Database(format!("Vector index DDL failed: {e}")))?;
+        Ok(())
+    }
     /// Create the vectors table and indexes.
     pub(crate) async fn create_table(&self) -> Result<()> {
         let pool = self.pool.get().await?;
@@ -62,12 +128,15 @@ impl PgVectorStorage {
         if !index_sql.is_empty() {
             // SPEC-046 OPS-P0.3: fail-closed — never swallow ANN index DDL errors.
             // Missing HNSW silently degrades to seq-scan (latency/recall cliff).
-            sqlx::query(&index_sql).execute(&pool).await.map_err(|e| {
-                StorageError::Database(format!(
-                    "Failed to create ANN index on {}: {}",
-                    self.table_name, e
-                ))
-            })?;
+            // SPEC-070: DDL session GUCs on dedicated connection.
+            Self::execute_index_ddl(&pool, &index_sql)
+                .await
+                .map_err(|e| {
+                    StorageError::Database(format!(
+                        "Failed to create ANN index on {}: {}",
+                        self.table_name, e
+                    ))
+                })?;
         }
 
         // SPEC-034 IMP-08: Vector metadata GIN index removed.
@@ -96,13 +165,13 @@ impl PgVectorStorage {
             "CREATE INDEX IF NOT EXISTS eq_{}_vectors_doc_id_idx ON {} (document_id) WHERE document_id IS NOT NULL",
             self.prefix, self.table_name
         );
-        sqlx::query(&doc_idx).execute(&pool).await.ok();
+        let _ = Self::execute_index_ddl(&pool, &doc_idx).await;
 
         let tenant_idx = format!(
             "CREATE INDEX IF NOT EXISTS eq_{}_vectors_tenant_ws_idx ON {} (tenant_id, workspace_id) WHERE tenant_id IS NOT NULL",
             self.prefix, self.table_name
         );
-        sqlx::query(&tenant_idx).execute(&pool).await.ok();
+        let _ = Self::execute_index_ddl(&pool, &tenant_idx).await;
 
         self.ensure_content_fts(&pool).await?;
 
@@ -158,14 +227,164 @@ impl PgVectorStorage {
         format!("eq_{}_vectors_embedding_idx", self.prefix)
     }
 
-    /// True when HNSW/IVFFlat index exists (fail-closed readiness probe).
-    pub async fn ann_index_exists(&self) -> Result<bool> {
+    /// SPEC-062: build HNSW/IVFFlat after a deferred bulk load (`VectorIndexType::None`).
+    ///
+    /// Cold ingest pattern: create table without ANN → upsert heap rows → `ensure_ann_index`.
+    /// Online ingest still creates HNSW at `initialize()` time (pays insert tax).
+    pub async fn ensure_ann_index(&self) -> Result<()> {
+        let pool = self.pool.get().await?;
         let policy = AnnIndexPolicy::resolve(self.dimension, self.storage_mode);
-        if !policy.hnsw_viable || matches!(self.index_type, VectorIndexType::None) {
-            return Ok(true); // ANN not expected — not a readiness failure
+        if !policy.hnsw_viable {
+            return Ok(());
+        }
+        let opclass = self.embedding_opclass();
+        let index_sql = match self.index_type {
+            VectorIndexType::None | VectorIndexType::HNSW => format!(
+                "CREATE INDEX IF NOT EXISTS eq_{}_vectors_embedding_idx ON {} USING hnsw (embedding {}) WITH (m = {}, ef_construction = {})",
+                self.prefix, self.table_name, opclass, self.hnsw_m, self.hnsw_ef_construction
+            ),
+            VectorIndexType::IVFFlat => format!(
+                "CREATE INDEX IF NOT EXISTS eq_{}_vectors_embedding_idx ON {} USING ivfflat (embedding {}) WITH (lists = {})",
+                self.prefix, self.table_name, opclass, self.ivfflat_lists
+            ),
+        };
+        Self::execute_index_ddl(&pool, &index_sql)
+            .await
+            .map_err(|e| {
+                StorageError::Database(format!(
+                    "Failed to ensure ANN index on {}: {}",
+                    self.table_name, e
+                ))
+            })?;
+        self.mark_deferred_ann_ready();
+        Ok(())
+    }
+
+    /// SPEC-064 Wave 2: workspace-scoped partial HNSW (opt-in / explicit hot-workspace path).
+    ///
+    /// Builds `WHERE workspace_id = $ws` so filtered ANN walks a smaller graph instead of
+    /// over-filtering a global HNSW via `hnsw.iterative_scan`. Prefer for hot workspaces;
+    /// keep global `ensure_ann_index` for sparse/small workspaces.
+    ///
+    /// Gate: call after heap load. Battle harness drops the global ANN first so the planner
+    /// cannot prefer the larger index. Production callers should set
+    /// `EDGEQUAKE_HNSW_PARTIAL_BY_WORKSPACE=1` before creating hot-workspace partials.
+    pub async fn ensure_partial_hnsw_for_workspace(&self, workspace_id: &str) -> Result<()> {
+        if workspace_id.is_empty() {
+            return Err(StorageError::Database(
+                "ensure_partial_hnsw_for_workspace: empty workspace_id".into(),
+            ));
         }
         let pool = self.pool.get().await?;
+        let policy = AnnIndexPolicy::resolve(self.dimension, self.storage_mode);
+        if !policy.hnsw_viable {
+            return Ok(());
+        }
+        let opclass = self.embedding_opclass();
+        let index_name = self.partial_ann_index_name(workspace_id);
+        let lit = sql_string_literal(workspace_id);
+        let index_sql = format!(
+            "CREATE INDEX IF NOT EXISTS {index_name} ON {} USING hnsw (embedding {}) WITH (m = {}, ef_construction = {}) WHERE workspace_id = {lit}",
+            self.table_name, opclass, self.hnsw_m, self.hnsw_ef_construction
+        );
+        Self::execute_index_ddl(&pool, &index_sql)
+            .await
+            .map_err(|e| {
+                StorageError::Database(format!(
+                    "Failed to create partial HNSW {index_name} on {}: {}",
+                    self.table_name, e
+                ))
+            })?;
+        self.mark_deferred_ann_ready();
+        tracing::info!(
+            table = %self.table_name,
+            index = %index_name,
+            workspace_id,
+            "Ensured workspace partial HNSW (SPEC-064)"
+        );
+        Ok(())
+    }
+
+    /// Drop the global ANN index (battle / rebuild helper). Partial indexes are left intact.
+    pub async fn drop_global_ann_index(&self) -> Result<()> {
+        let pool = self.pool.get().await?;
         let index_name = self.ann_index_name();
+        let sql = format!("DROP INDEX IF EXISTS {index_name}");
+        sqlx::query(&sql).execute(&pool).await.map_err(|e| {
+            StorageError::Database(format!("Failed to drop ANN index {index_name}: {e}"))
+        })?;
+        Ok(())
+    }
+
+    /// Name of a workspace partial HNSW index.
+    pub fn partial_ann_index_name(&self, workspace_id: &str) -> String {
+        format!(
+            "eq_{}_vectors_hnsw_ws_{}",
+            self.prefix,
+            workspace_index_slug(workspace_id)
+        )
+    }
+
+    /// True when HNSW/IVFFlat index exists (fail-closed readiness probe).
+    ///
+    /// SPEC-065: accepts **global** ANN **or** any workspace partial HNSW on this table.
+    /// `VectorIndexType::None` (deferred create) is not a readiness failure until/unless
+    /// callers expect an index — then catalog probe still reports truth.
+    pub async fn ann_index_exists(&self) -> Result<bool> {
+        let policy = AnnIndexPolicy::resolve(self.dimension, self.storage_mode);
+        if !policy.hnsw_viable {
+            return Ok(true); // ANN not expected
+        }
+        if matches!(self.index_type, VectorIndexType::None)
+            && !self
+                .deferred_ann_ready
+                .load(std::sync::atomic::Ordering::Acquire)
+        {
+            // Deferred heap load — not a readiness failure yet.
+            return Ok(true);
+        }
+        let pool = self.pool.get().await?;
+        let global = self.ann_index_name();
+        let partial_prefix = format!("eq_{}_vectors_hnsw_ws_", self.prefix);
+        let exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(
+                SELECT 1 FROM pg_indexes
+                WHERE schemaname = 'public'
+                  AND (indexname = $1 OR indexname LIKE $2)
+            )",
+        )
+        .bind(&global)
+        .bind(format!("{partial_prefix}%"))
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| StorageError::Database(format!("ann_index_exists probe failed: {e}")))?;
+        Ok(exists)
+    }
+
+    /// True when this table is a dedicated per-workspace table (`*_ws_*` namespace).
+    pub fn is_dedicated_workspace_table(&self) -> bool {
+        self.prefix.contains("_ws_") || self.table_name.contains("_ws_")
+    }
+
+    /// Count rows for a workspace (denorm column).
+    pub async fn count_workspace_rows(&self, workspace_id: &str) -> Result<u64> {
+        let pool = self.pool.get().await?;
+        let sql = format!(
+            "SELECT COUNT(*)::bigint FROM {} WHERE workspace_id = $1",
+            self.table_name
+        );
+        let n: i64 = sqlx::query_scalar(&sql)
+            .bind(workspace_id)
+            .fetch_one(&pool)
+            .await
+            .map_err(|e| StorageError::Database(format!("count_workspace_rows failed: {e}")))?;
+        Ok(n.max(0) as u64)
+    }
+
+    /// True when the workspace partial HNSW exists in the catalog.
+    pub async fn partial_ann_index_exists(&self, workspace_id: &str) -> Result<bool> {
+        let pool = self.pool.get().await?;
+        let index_name = self.partial_ann_index_name(workspace_id);
         let exists: bool = sqlx::query_scalar(
             "SELECT EXISTS(
                 SELECT 1 FROM pg_indexes
@@ -175,8 +394,59 @@ impl PgVectorStorage {
         .bind(&index_name)
         .fetch_one(&pool)
         .await
-        .map_err(|e| StorageError::Database(format!("ann_index_exists probe failed: {e}")))?;
+        .map_err(|e| {
+            StorageError::Database(format!("partial_ann_index_exists probe failed: {e}"))
+        })?;
         Ok(exists)
+    }
+
+    /// SPEC-065: productized Wave-2 path — create partial HNSW for a hot workspace
+    /// when opt-in is on, table is shared (multi-WS), and row count ≥ threshold.
+    ///
+    /// Dedicated per-workspace tables are a no-op (already isolated). Keeps global HNSW.
+    pub async fn ensure_hot_workspace_ann(&self, workspace_id: &str) -> Result<bool> {
+        let runtime = HnswRuntimePolicy::from_env();
+        if !runtime.partial_by_workspace {
+            return Ok(false);
+        }
+        if workspace_id.is_empty() {
+            return Err(StorageError::Database(
+                "ensure_hot_workspace_ann: empty workspace_id".into(),
+            ));
+        }
+        if self.is_dedicated_workspace_table() {
+            tracing::debug!(
+                table = %self.table_name,
+                "Skipping partial HNSW — dedicated workspace table"
+            );
+            return Ok(false);
+        }
+        if self.partial_ann_index_exists(workspace_id).await? {
+            self.mark_deferred_ann_ready();
+            return Ok(false);
+        }
+        let rows = self.count_workspace_rows(workspace_id).await?;
+        if rows < runtime.partial_min_rows {
+            tracing::debug!(
+                workspace_id,
+                rows,
+                min = runtime.partial_min_rows,
+                "Skipping partial HNSW — below row threshold"
+            );
+            return Ok(false);
+        }
+        let policy = AnnIndexPolicy::resolve(self.dimension, self.storage_mode);
+        if !policy.hnsw_viable {
+            return Ok(false);
+        }
+        self.ensure_partial_hnsw_for_workspace(workspace_id).await?;
+        // Fail-closed: catalog must show the partial after DDL (no silent seq-scan path).
+        if !self.partial_ann_index_exists(workspace_id).await? {
+            return Err(StorageError::Database(format!(
+                "ensure_hot_workspace_ann: partial HNSW missing after CREATE for workspace {workspace_id}"
+            )));
+        }
+        Ok(true)
     }
 
     /// Count vector tables that have no HNSW/IVFFlat index (bootstrap readiness).
@@ -207,7 +477,10 @@ impl PgVectorStorage {
         Ok(missing.max(0) as usize)
     }
 
-    /// Add GIN-backed `content_tsv` for native Postgres FTS on chunk content (SPEC-023 I10).
+    /// Add writable GIN-backed `content_tsv` for native Postgres FTS (SPEC-023 I10 / SPEC-058).
+    ///
+    /// WHY writable (not GENERATED): chunk SSOT is KV via `content_ref`; generated
+    /// columns from `metadata->>'content'` stay empty and block coalesce fallthrough.
     pub(crate) async fn ensure_content_fts(&self, pool: &sqlx::PgPool) -> Result<()> {
         let table_only = self
             .table_name
@@ -215,21 +488,29 @@ impl PgVectorStorage {
             .next_back()
             .unwrap_or(&self.table_name);
 
-        let add_col = format!(
+        let ensure_col = format!(
             r#"
             DO $$
+            DECLARE
+                gen text;
             BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_schema = 'public'
-                      AND table_name = '{table_only}'
-                      AND column_name = 'content_tsv'
-                ) THEN
+                SELECT a.attgenerated INTO gen
+                FROM pg_attribute a
+                JOIN pg_class c ON c.oid = a.attrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = 'public'
+                  AND c.relname = '{table_only}'
+                  AND a.attname = 'content_tsv'
+                  AND a.attnum > 0
+                  AND NOT a.attisdropped;
+
+                IF gen IS NULL THEN
                     ALTER TABLE {table}
-                    ADD COLUMN content_tsv TSVECTOR
-                    GENERATED ALWAYS AS (
-                        to_tsvector('english', coalesce(metadata->>'content', ''))
-                    ) STORED;
+                    ADD COLUMN content_tsv TSVECTOR;
+                ELSIF gen <> '' THEN
+                    ALTER TABLE {table} DROP COLUMN content_tsv;
+                    ALTER TABLE {table}
+                    ADD COLUMN content_tsv TSVECTOR;
                 END IF;
             END $$;
             "#,
@@ -237,14 +518,58 @@ impl PgVectorStorage {
             table = self.table_name
         );
 
-        sqlx::query(&add_col).execute(pool).await.ok();
+        sqlx::query(&ensure_col).execute(pool).await.ok();
 
         let fts_idx = format!(
             "CREATE INDEX IF NOT EXISTS eq_{}_vectors_content_tsv_idx ON {} USING GIN (content_tsv)",
             self.prefix, self.table_name
         );
-        sqlx::query(&fts_idx).execute(pool).await.ok();
+        // SPEC-070: GIN build also uses DDL session (timeout=0 + maintenance_work_mem).
+        let _ = Self::execute_index_ddl(pool, &fts_idx).await;
 
         Ok(())
+    }
+}
+
+/// Stable, index-safe slug for workspace_id (alnum/_ + short hash).
+fn workspace_index_slug(workspace_id: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let safe: String = workspace_id
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .take(24)
+        .collect();
+    let mut hasher = DefaultHasher::new();
+    workspace_id.hash(&mut hasher);
+    format!("{safe}_{:04x}", hasher.finish() as u16)
+}
+
+fn sql_string_literal(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn workspace_index_slug_is_stable_and_safe() {
+        let a = workspace_index_slug("ws-a");
+        let b = workspace_index_slug("ws-a");
+        assert_eq!(a, b);
+        assert!(a.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'));
+        assert!(!workspace_index_slug("ws';a").contains('\''));
+    }
+
+    #[test]
+    fn sql_string_literal_escapes_quotes() {
+        assert_eq!(sql_string_literal("o'reilly"), "'o''reilly'");
     }
 }

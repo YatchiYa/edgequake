@@ -93,15 +93,37 @@ pub struct Task {
 
     /// Result data (on success)
     pub result: Option<serde_json::Value>,
+
+    /// Worker id holding the processing lease (SPEC-057 P1).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lease_owner: Option<String>,
+
+    /// CAS token for refresh_lease / release_claim (SPEC-057 P1).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lease_token: Option<Uuid>,
+
+    /// When the processing lease expires (SPEC-057 P1).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lease_expires_at: Option<DateTime<Utc>>,
 }
 
 impl Task {
-    /// PDF id from `task_data.pdf_id` when present (P-G14 admission).
+    /// PDF id from convert (`task_data.pdf_id`) or ingest (`metadata.pdf_id`).
+    ///
+    /// SPEC-057 P2: Insert follow-on tasks carry `pdf_id` under metadata so
+    /// single-flight / cancel chain can match Convert + Ingest for the same PDF.
     pub fn pdf_id(&self) -> Option<Uuid> {
         self.task_data
             .get("pdf_id")
             .and_then(|v| v.as_str())
             .and_then(|s| Uuid::parse_str(s).ok())
+            .or_else(|| {
+                self.task_data
+                    .get("metadata")
+                    .and_then(|m| m.get("pdf_id"))
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| Uuid::parse_str(s).ok())
+            })
     }
 
     /// Create a new task
@@ -134,6 +156,24 @@ impl Task {
             metadata: None,
             progress: None,
             result: None,
+            lease_owner: None,
+            lease_token: None,
+            lease_expires_at: None,
+        }
+    }
+
+    /// Clear lease fields (terminal status or release_claim).
+    pub fn clear_lease(&mut self) {
+        self.lease_owner = None;
+        self.lease_token = None;
+        self.lease_expires_at = None;
+    }
+
+    /// True when a Processing lease is missing or past expiry (claimable / orphan).
+    pub fn lease_is_expired(&self, now: DateTime<Utc>) -> bool {
+        match self.lease_expires_at {
+            None => true,
+            Some(exp) => exp <= now,
         }
     }
 
@@ -154,6 +194,7 @@ impl Task {
         self.error_message = None;
         // Reset timeout counter on success
         self.consecutive_timeout_failures = 0;
+        self.clear_lease();
     }
 
     /// Mark task as failed with simple error message (backward compatible)
@@ -162,13 +203,18 @@ impl Task {
         self.completed_at = Some(Utc::now());
         self.updated_at = Utc::now();
         self.error_message = Some(error.clone());
+        self.clear_lease();
         self.retry_count += 1;
 
         // Check if this is a timeout error
         let error_lower = error.to_lowercase();
         if error_lower.contains("timeout") || error_lower.contains("timed out") {
-            self.consecutive_timeout_failures += 1;
-            self.check_circuit_breaker();
+            // Progress-aware: marker from vision stall watchdog.
+            let made_progress = error.contains("[vision_progress=1]");
+            if !made_progress {
+                self.consecutive_timeout_failures += 1;
+                self.check_circuit_breaker();
+            }
         } else {
             // Non-timeout failures reset the counter
             self.consecutive_timeout_failures = 0;
@@ -181,14 +227,21 @@ impl Task {
         self.completed_at = Some(Utc::now());
         self.updated_at = Utc::now();
         self.error_message = Some(error.message.clone());
+        self.clear_lease();
 
         // Set error FIRST so check_circuit_breaker can modify it
         self.error = Some(error.clone());
 
-        // Track consecutive timeouts for circuit breaker
+        // Track consecutive timeouts for circuit breaker.
+        // Progress-aware: a timeout after real progress (checkpointed pages)
+        // must NOT advance the breaker — only no-progress hangs trip it.
         if error.is_timeout() {
-            self.consecutive_timeout_failures += 1;
-            self.check_circuit_breaker(); // Modifies self.error if circuit breaker trips
+            if error.made_progress {
+                // Leave consecutive_timeout_failures unchanged.
+            } else {
+                self.consecutive_timeout_failures += 1;
+                self.check_circuit_breaker(); // Modifies self.error if circuit breaker trips
+            }
         } else {
             // Non-timeout failures reset the counter
             self.consecutive_timeout_failures = 0;
@@ -218,11 +271,11 @@ impl Task {
                 error.retryable = false;
             } else {
                 self.error_message = Some(format!(
-                    "Circuit breaker tripped after {} consecutive timeouts. \
-                    Document is too large for current LLM timeout settings. \
-                    Suggestions: 1) Use smaller chunk size (adaptive chunking), \
-                    2) Split document into smaller files, \
-                    3) Switch to provider with longer timeout (Ollama: 300s vs OpenAI: 120s)",
+                    "Circuit breaker tripped after {} consecutive timeouts with no progress. \
+                    Document may be blocked on a hung vision provider or a single stuck page. \
+                    Suggestions: 1) Check provider health / API quotas, \
+                    2) Raise EDGEQUAKE_VISION_STALL_TIMEOUT_SECS if pages are legitimately slow, \
+                    3) Split the document, 4) Reprocess after fixing the provider.",
                     self.consecutive_timeout_failures
                 ));
             }
@@ -234,6 +287,7 @@ impl Task {
         self.status = TaskStatus::Cancelled;
         self.completed_at = Some(Utc::now());
         self.updated_at = Utc::now();
+        self.clear_lease();
     }
 
     /// Update task progress

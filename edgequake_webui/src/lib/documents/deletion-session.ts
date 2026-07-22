@@ -18,6 +18,12 @@ export interface DeletionSessionEntry {
   itemsProcessed: number;
   itemsTotal: number;
   status: DeletionSessionStatus;
+  /** Durable deletion task id for poll fallback (SPEC-069). */
+  trackId?: string | null;
+  /** Wall clock when phase/counts last advanced (liveness). */
+  phaseUpdatedAt: number;
+  /** Wall clock when the session was opened. */
+  startedAt: number;
   entitiesRemoved?: number;
   relationshipsRemoved?: number;
   chunksDeleted?: number;
@@ -26,6 +32,28 @@ export interface DeletionSessionEntry {
   dismissed: boolean;
   /** Auto-dismiss timer id after success. */
   dismissTimer?: ReturnType<typeof setTimeout>;
+}
+
+/** Hex short id used as last-resort label — never preferred over a real name. */
+export function isHexShortDocumentLabel(name: string): boolean {
+  return /^[0-9a-f]{8}$/i.test(name.trim());
+}
+
+/**
+ * Prefer title/file_name over hex id slices (SPEC-069).
+ * Never downgrade an existing better documentName.
+ */
+export function preferDocumentName(
+  current: string | undefined,
+  next: string | undefined,
+): string {
+  const cur = (current ?? "").trim();
+  const nxt = (next ?? "").trim();
+  if (!nxt) return cur;
+  if (!cur) return nxt;
+  if (isHexShortDocumentLabel(cur) && !isHexShortDocumentLabel(nxt)) return nxt;
+  if (!isHexShortDocumentLabel(cur) && isHexShortDocumentLabel(nxt)) return cur;
+  return cur;
 }
 
 const sessions = new Map<string, DeletionSessionEntry>();
@@ -105,27 +133,61 @@ export function patchDocumentsDeletingOptimistic(
 
 /**
  * Paint-first: open a feedback-zone delete row before DELETE HTTP returns.
+ * SPEC-069: must not downgrade an existing better `documentName` (hex overwrite).
  */
 export function beginDeleteSession(input: {
   documentId: string;
   documentName: string;
+  trackId?: string | null;
 }): DeletionSessionEntry {
   const existing = sessions.get(input.documentId);
   if (existing?.dismissTimer) clearTimeout(existing.dismissTimer);
 
+  const now = Date.now();
+  if (existing && !existing.dismissed && existing.status === "active") {
+    const documentName = preferDocumentName(
+      existing.documentName,
+      input.documentName,
+    );
+    const entry: DeletionSessionEntry = {
+      ...existing,
+      documentName,
+      trackId: input.trackId ?? existing.trackId,
+      dismissed: false,
+    };
+    sessions.set(input.documentId, entry);
+    notify();
+    return entry;
+  }
+
   const entry: DeletionSessionEntry = {
     documentId: input.documentId,
-    documentName: input.documentName,
+    documentName: preferDocumentName(undefined, input.documentName),
     phase: null,
     phaseLabel: "Removing document data…",
     itemsProcessed: 0,
     itemsTotal: 0,
     status: "active",
+    trackId: input.trackId ?? null,
+    phaseUpdatedAt: now,
+    startedAt: now,
     dismissed: false,
   };
   sessions.set(input.documentId, entry);
   notify();
   return entry;
+}
+
+/** Bind deletion track id after HTTP 202 admit (poll fallback). */
+export function bindDeleteSessionTrackId(
+  documentId: string,
+  trackId: string | null | undefined,
+): void {
+  if (!trackId) return;
+  const entry = sessions.get(documentId);
+  if (!entry || entry.dismissed) return;
+  sessions.set(documentId, { ...entry, trackId });
+  notify();
 }
 
 /** Hide panel only — deletion continues server-side. */
@@ -162,6 +224,10 @@ export function applyDeletionPhase(input: {
 }): void {
   const entry = sessions.get(input.documentId);
   if (!entry || entry.dismissed) return;
+  const advanced =
+    input.phase !== entry.phase ||
+    input.itemsProcessed !== entry.itemsProcessed ||
+    input.itemsTotal !== entry.itemsTotal;
   sessions.set(input.documentId, {
     ...entry,
     status: "active",
@@ -169,6 +235,7 @@ export function applyDeletionPhase(input: {
     phaseLabel: input.phaseLabel || entry.phaseLabel,
     itemsProcessed: input.itemsProcessed,
     itemsTotal: input.itemsTotal,
+    phaseUpdatedAt: advanced ? Date.now() : entry.phaseUpdatedAt,
   });
   notify();
 }
@@ -258,6 +325,40 @@ export function formatDeleteCountsLabel(
     return `${entry.itemsProcessed}/${entry.itemsTotal}`;
   }
   return null;
+}
+
+/**
+ * SPEC-069: long graph phase liveness when counts stay empty / unchanged.
+ * Pass `now` so React can re-render on a tick without mutating the store.
+ */
+export function formatDeleteLivenessLabel(
+  entry: DeletionSessionEntry,
+  now: number = Date.now(),
+): string | null {
+  if (entry.status !== "active") return null;
+  const phase = (entry.phase ?? "").toLowerCase();
+  const inGraph =
+    phase === "removing_graph" ||
+    entry.phaseLabel.toLowerCase().includes("graph");
+  if (!inGraph) return null;
+  const silentMs = now - (entry.phaseUpdatedAt || entry.startedAt);
+  if (silentMs < 4000) return null;
+  const elapsedSec = Math.max(1, Math.floor((now - entry.startedAt) / 1000));
+  if (entry.itemsTotal > 0) {
+    return `Still working… ${elapsedSec}s`;
+  }
+  return `Still working on graph… ${elapsedSec}s`;
+}
+
+/** Compose stage message with optional liveness suffix. */
+export function formatDeleteStageMessage(
+  entry: DeletionSessionEntry,
+  now: number = Date.now(),
+): string {
+  const live = formatDeleteLivenessLabel(entry, now);
+  if (!live) return entry.phaseLabel;
+  if (entry.phaseLabel.includes("Still working")) return entry.phaseLabel;
+  return `${entry.phaseLabel} — ${live}`;
 }
 
 /** Test helper. */

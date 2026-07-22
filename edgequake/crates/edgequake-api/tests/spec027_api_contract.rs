@@ -205,7 +205,11 @@ fn spec027_document_list_uses_metadata_scan_ssot() {
     let reprocess = read_crate_src("src/handlers/documents/recovery/reprocess.rs");
     assert!(reprocess.contains("load_scoped_document_metadata"));
     let bulk = read_crate_src("src/handlers/documents/delete/bulk.rs");
-    assert!(bulk.contains("load_scoped_document_metadata_entries"));
+    // Durable WorkspaceWipe admit — planned counts via wipe SSOT (not inline scan).
+    assert!(bulk.contains("count_planned_wipe_documents"));
+    assert!(bulk.contains("WorkspaceWipe"));
+    let wipe = read_crate_src("src/services/workspace_document_wipe.rs");
+    assert!(wipe.contains("load_scoped_document_metadata_entries"));
     let tasks = read_crate_src("src/handlers/tasks.rs");
     assert!(tasks.contains("load_scoped_document_metadata_entries"));
     let track = read_crate_src("src/handlers/documents/query/track_status.rs");

@@ -28,7 +28,12 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { searchNodes } from "@/lib/api/edgequake";
 import { focusCameraOnNode } from "@/lib/graph/camera-utils";
-import { formatEntityLabel, formatEntityType, getEntityTypeColor } from "@/lib/graph/label-utils";
+import {
+  formatEntityLabel,
+  formatEntityType,
+  formatMmEntitySubtitle,
+  getEntityTypeColor,
+} from "@/lib/graph/label-utils";
 import { cn } from "@/lib/utils";
 import { useGraphStore } from "@/stores/use-graph-store";
 import { useUIPreferencesStore } from "@/stores/use-ui-preferences-store";
@@ -121,7 +126,8 @@ const EntityItem = memo(function EntityItem({
             "text-[9px] tracking-wide",
             isSelected ? "text-primary-foreground/70" : "text-muted-foreground"
           )}>
-            {formatEntityType(node.node_type ?? "unknown")}
+            {formatMmEntitySubtitle(node.node_type, node.properties) ??
+              formatEntityType(node.node_type ?? "unknown")}
           </span>
           {node.degree && node.degree > 0 && (
             <>

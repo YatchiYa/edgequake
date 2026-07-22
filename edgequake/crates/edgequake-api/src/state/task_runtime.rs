@@ -3,14 +3,14 @@
 use edgequake_tasks::{
     delivery_mode_from_env, enqueue_with_delivery, BridgedTaskQueue, CancellationRegistry,
     ChannelTaskNotifier, NoopTaskNotifier, PipelineState, SharedTaskNotifier, SharedTaskQueue,
-    SharedTaskStorage, Task, TaskDeliveryMode,
+    SharedTaskStorage, Task, TaskDeliveryMode, TenantConcurrencyLimiter,
 };
 
 use std::sync::Arc;
 
 use crate::error::{ApiError, ApiResult};
 use crate::handlers::ProgressBroadcaster;
-use crate::services::PdfAdmissionRegistry;
+use crate::services::{PdfAdmissionRegistry, WorkspaceWipeAdmissionRegistry};
 
 /// Background task processing and real-time progress broadcasting.
 #[derive(Clone)]
@@ -20,8 +20,12 @@ pub struct TaskRuntime {
     pub pipeline_state: PipelineState,
     pub progress_broadcaster: ProgressBroadcaster,
     pub cancellation_registry: CancellationRegistry,
+    /// Shared with the worker pool when per-tenant fairness is enabled.
+    pub tenant_limiter: Option<TenantConcurrencyLimiter>,
     /// P-G15: closes TOCTOU between single-flight check and task row creation.
     pub pdf_admission: Arc<crate::services::PdfAdmissionRegistry>,
+    /// Single-flight for durable workspace wipe-all (issue #309).
+    pub wipe_admission: Arc<crate::services::WorkspaceWipeAdmissionRegistry>,
     delivery_mode: TaskDeliveryMode,
     notifier: SharedTaskNotifier,
     /// Present when delivery uses [`ChannelTaskNotifier`] (bridged / notify_only).
@@ -60,7 +64,9 @@ impl TaskRuntime {
             pipeline_state: PipelineState::new(),
             progress_broadcaster: ProgressBroadcaster::default(),
             cancellation_registry: CancellationRegistry::new(),
+            tenant_limiter: None,
             pdf_admission: Arc::new(PdfAdmissionRegistry::default()),
+            wipe_admission: Arc::new(WorkspaceWipeAdmissionRegistry::default()),
             delivery_mode,
             notifier,
             channel_notifier,

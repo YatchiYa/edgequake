@@ -593,3 +593,161 @@ async fn test_multiple_uploads_consistent_graph() {
 
     assert!(result.is_ok(), "Multi graph: {}", result.unwrap_err());
 }
+
+// ============================================================================
+// Lifecycle admission edge cases (deleting / delete_failed / cancel)
+// ============================================================================
+
+async fn seed_doc_metadata(state: &AppState, doc_id: &str, status: &str, track_id: &str) {
+    let key = format!("{doc_id}-metadata");
+    let meta = json!({
+        "id": doc_id,
+        "status": status,
+        "current_stage": status,
+        "track_id": track_id,
+        "title": format!("seed-{status}"),
+        "workspace_id": TEST_WORKSPACE_ID,
+        "tenant_id": TEST_TENANT_ID,
+    });
+    state
+        .storage
+        .kv_storage
+        .upsert(&[(key, meta)])
+        .await
+        .expect("seed metadata");
+}
+
+fn app_from_state(state: AppState) -> axum::Router {
+    let config = ServerConfig {
+        host: "127.0.0.1".to_string(),
+        port: 0,
+        enable_cors: false,
+        enable_compression: false,
+        enable_swagger: true,
+    };
+    Server::new(config, state).build_router()
+}
+
+async fn post_reprocess(app: &axum::Router, body: Value) -> Value {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/documents/reprocess")
+                .header("Content-Type", "application/json")
+                .header("X-Tenant-ID", TEST_TENANT_ID)
+                .header("X-Workspace-ID", TEST_WORKSPACE_ID)
+                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(
+        response.status().is_success(),
+        "reprocess HTTP {}",
+        response.status()
+    );
+    extract_json(response).await
+}
+
+#[tokio::test]
+async fn test_reprocess_skips_deleting_even_with_force() {
+    let result = with_timeout(Duration::from_secs(20), async {
+        let state = AppState::test_state();
+        let doc_id = "00000000-0000-4000-8000-00000000del1";
+        seed_doc_metadata(&state, doc_id, "deleting", "upload_del_1").await;
+        let app = app_from_state(state);
+
+        let body = post_reprocess(
+            &app,
+            json!({ "document_id": doc_id, "force": true, "mode": "full" }),
+        )
+        .await;
+
+        assert_eq!(body["requeued"], 0, "must not requeue deleting doc: {body}");
+        let reasons = body["skip_reasons"].as_object().expect("skip_reasons");
+        assert!(
+            reasons.get("deleting_in_progress").is_some(),
+            "expected deleting_in_progress in {reasons:?}"
+        );
+    })
+    .await;
+    assert!(result.is_ok(), "{}", result.unwrap_err());
+}
+
+#[tokio::test]
+async fn test_reprocess_skips_delete_failed_even_with_force() {
+    let result = with_timeout(Duration::from_secs(20), async {
+        let state = AppState::test_state();
+        let doc_id = "00000000-0000-4000-8000-00000000delf";
+        seed_doc_metadata(&state, doc_id, "delete_failed", "upload_delf").await;
+        let app = app_from_state(state);
+
+        let body = post_reprocess(
+            &app,
+            json!({ "document_id": doc_id, "force": true, "mode": "full" }),
+        )
+        .await;
+
+        assert_eq!(body["requeued"], 0);
+        let reasons = body["skip_reasons"].as_object().expect("skip_reasons");
+        assert!(
+            reasons.get("delete_failed").is_some(),
+            "expected delete_failed in {reasons:?}"
+        );
+    })
+    .await;
+    assert!(result.is_ok(), "{}", result.unwrap_err());
+}
+
+#[tokio::test]
+async fn test_reprocess_skips_cancelling_in_progress() {
+    let result = with_timeout(Duration::from_secs(20), async {
+        let state = AppState::test_state();
+        let doc_id = "00000000-0000-4000-8000-00000000can1";
+        let track_id = "insert-cancel-intent-1";
+        seed_doc_metadata(&state, doc_id, "processing", track_id).await;
+        state
+            .tasks
+            .cancellation_registry
+            .mark_cancel_intent(track_id)
+            .await;
+        let app = app_from_state(state);
+
+        let body = post_reprocess(
+            &app,
+            json!({ "document_id": doc_id, "force": true, "mode": "full" }),
+        )
+        .await;
+
+        assert_eq!(body["requeued"], 0);
+        let reasons = body["skip_reasons"].as_object().expect("skip_reasons");
+        assert!(
+            reasons.get("cancelling_in_progress").is_some(),
+            "expected cancelling_in_progress in {reasons:?}"
+        );
+    })
+    .await;
+    assert!(result.is_ok(), "{}", result.unwrap_err());
+}
+
+#[tokio::test]
+async fn test_reprocess_not_found_target_is_honest() {
+    let result = with_timeout(Duration::from_secs(20), async {
+        let state = AppState::test_state();
+        let app = app_from_state(state);
+        let missing = "00000000-0000-4000-8000-00000000miss";
+
+        let body = post_reprocess(&app, json!({ "document_id": missing, "force": true })).await;
+
+        assert_eq!(body["requeued"], 0);
+        let reasons = body["skip_reasons"].as_object().expect("skip_reasons");
+        assert!(
+            reasons.get("not_found").is_some(),
+            "expected not_found in {reasons:?}"
+        );
+    })
+    .await;
+    assert!(result.is_ok(), "{}", result.unwrap_err());
+}

@@ -1,0 +1,98 @@
+{
+  "passed": true,
+  "failures": [],
+  "details": [
+    {
+      "id": "canary-para-01",
+      "kind": "paraphrase",
+      "answer_correctness": 0.9986468290626255,
+      "factuality_f1": 0.99999999985,
+      "embed_cosine": 0.9945873167005019,
+      "ok": true,
+      "reason": ""
+    },
+    {
+      "id": "canary-para-02",
+      "kind": "paraphrase",
+      "answer_correctness": 0.9921280227435639,
+      "factuality_f1": 0.99999999985,
+      "embed_cosine": 0.9685120914242558,
+      "ok": true,
+      "reason": ""
+    },
+    {
+      "id": "canary-para-03",
+      "kind": "paraphrase",
+      "answer_correctness": 0.9948123467048811,
+      "factuality_f1": 0.999999999925,
+      "embed_cosine": 0.9792493870445241,
+      "ok": true,
+      "reason": ""
+    },
+    {
+      "id": "canary-para-04",
+      "kind": "paraphrase",
+      "answer_correctness": 0.9970291880770767,
+      "factuality_f1": 0.99999999985,
+      "embed_cosine": 0.9881167527583071,
+      "ok": true,
+      "reason": ""
+    },
+    {
+      "id": "canary-wrong-01",
+      "kind": "wrong_fact",
+      "answer_correctness": 0.238494412505677,
+      "factuality_f1": 0.0,
+      "embed_cosine": 0.953977650022708,
+      "ok": true,
+      "reason": ""
+    },
+    {
+      "id": "canary-wrong-02",
+      "kind": "wrong_fact",
+      "answer_correctness": 0.2429106117163904,
+      "factuality_f1": 0.0,
+      "embed_cosine": 0.9716424468655616,
+      "ok": true,
+      "reason": ""
+    },
+    {
+      "id": "canary-wrong-03",
+      "kind": "wrong_fact",
+      "answer_correctness": 0.23326343409807124,
+      "factuality_f1": 0.0,
+      "embed_cosine": 0.933053736392285,
+      "ok": true,
+      "reason": ""
+    },
+    {
+      "id": "canary-wrong-04",
+      "kind": "wrong_fact",
+      "answer_correctness": 0.2381824586580954,
+      "factuality_f1": 0.0,
+      "embed_cosine": 0.9527298346323816,
+      "ok": true,
+      "reason": ""
+    }
+  ],
+  "n_scored": 8,
+  "thresholds": {
+    "paraphrase_min_acc": 0.7,
+    "paraphrase_min_f1": 0.5,
+    "wrong_fact_max_acc": 0.4,
+    "wrong_fact_max_f1": 0.2
+  },
+  "overall_acc": 0.6159682387643571,
+  "overall_f1": 0.49999999994375,
+  "overall_cos": 0.9638729552261786,
+  "pins": {
+    "sut_llm": "mistral/mistral-small-latest",
+    "sut_vision": "mistral/mistral-small-latest",
+    "sut_embed": "mistral/mistral-embed@1024d",
+    "judge_llm": "mistral/mistral-medium-latest",
+    "judge_metric_embed": "mistral-embed",
+    "llm_base_url": "https://api.mistral.ai/v1",
+    "judge_base_url": "https://api.mistral.ai/v1"
+  },
+  "judge_model": "mistral-medium-latest"
+}

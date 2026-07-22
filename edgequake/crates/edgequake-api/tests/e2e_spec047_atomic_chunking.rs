@@ -112,9 +112,7 @@ async fn analyzed_chart_markdown_ingest_completes_with_atomic_chunks() {
     .await;
     assert_eq!(status, "completed");
 
-    if common::doc_chunks_contain(&workers.kv_storage, &doc_id, "42").await {
-        assert!(true);
-    } else {
+    if !common::doc_chunks_contain(&workers.kv_storage, &doc_id, "42").await {
         // Fallback: enriched body still present in at least one chunk path via full scan
         let config = ChunkerConfig {
             chunk_size: 800,

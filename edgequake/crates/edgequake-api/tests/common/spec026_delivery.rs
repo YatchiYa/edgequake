@@ -1,13 +1,16 @@
 //! SPEC-026 Phase 4 task delivery E2E helpers (DRY SSOT).
+//!
+//! SPEC-057 P3: hydrating workers must authorize work via `claim_next` (never
+//! bare `mark_processing`). Notify payloads are wake-only.
 
 use edgequake_tasks::{
-    delivery::StorageHydratingTaskQueue, CancellationRegistry, ChannelTaskNotifier,
-    SharedTaskProcessor, SharedTaskStorage,
+    delivery::StorageHydratingTaskQueue, task_lease_ttl_from_env, CancellationRegistry,
+    ChannelTaskNotifier, SharedTaskProcessor, SharedTaskStorage,
 };
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 
-/// Background workers for `notify_only` mode: hydrate from Postgres SSOT via notifier.
+/// Background workers for `notify_only` mode: wake from notifier, claim from SSOT.
 pub fn spawn_hydrating_workers(
     storage: SharedTaskStorage,
     notifier: Arc<ChannelTaskNotifier>,
@@ -22,15 +25,20 @@ pub fn spawn_hydrating_workers(
             let processor = Arc::clone(&processor);
             let cancel_registry = cancellation_registry.clone();
             tokio::spawn(async move {
-                let mut hydrating = StorageHydratingTaskQueue::new(storage.clone(), notifier.as_ref());
+                let mut hydrating =
+                    StorageHydratingTaskQueue::new(storage.clone(), notifier.as_ref());
+                let worker_name = format!("hydrating-{worker_id}");
+                let lease_ttl = task_lease_ttl_from_env();
                 loop {
-                    let Ok(mut task) = hydrating.receive_hydrated().await else {
+                    // Wake only — ignore hydrated body; claim authorizes work.
+                    let Ok(_wake) = hydrating.receive_hydrated().await else {
                         break;
                     };
-                    task.mark_processing();
-                    if storage.update_task(&task).await.is_err() {
-                        continue;
-                    }
+                    let mut task = match storage.claim_next(&worker_name, lease_ttl).await {
+                        Ok(Some(t)) => t,
+                        Ok(None) => continue,
+                        Err(_) => continue,
+                    };
                     let cancel = cancel_registry.register(&task.track_id).await;
                     match processor.process(&mut task, cancel).await {
                         Ok(result) => task.mark_success(result),
@@ -38,7 +46,11 @@ pub fn spawn_hydrating_workers(
                     }
                     cancel_registry.deregister(&task.track_id).await;
                     let _ = storage.update_task(&task).await;
-                    tracing::debug!(worker_id, track_id = %task.track_id, "hydrating worker finished task");
+                    tracing::debug!(
+                        worker_id,
+                        track_id = %task.track_id,
+                        "hydrating worker finished task"
+                    );
                 }
             })
         })

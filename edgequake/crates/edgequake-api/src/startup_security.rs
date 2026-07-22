@@ -119,9 +119,11 @@ mod tests {
 
     #[test]
     fn remote_db_auth_off_strict_exits_message() {
-        let mut auth = AuthConfig::default();
-        auth.auth_enabled = false;
-        auth.dev_mode = true;
+        let auth = AuthConfig {
+            auth_enabled: false,
+            dev_mode: true,
+            ..AuthConfig::default()
+        };
         let security = ApiSecurityConfig {
             strict_startup: true,
             ..Default::default()

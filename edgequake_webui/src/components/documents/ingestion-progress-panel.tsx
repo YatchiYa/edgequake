@@ -68,7 +68,7 @@ export function IngestionProgressPanel({
   className,
 }: IngestionProgressPanelProps) {
   const { progress, isLive, isLoading, error, cost, cancel, refetch } =
-    useIngestionProgress(trackId);
+    useIngestionProgress(trackId, { documentName });
   
   // SPEC-003: Get chunk-level progress including failed chunks
   const { getProgress, getFailedChunks, hasFailedChunks } = useChunkProgress();
@@ -144,15 +144,29 @@ export function IngestionProgressPanel({
     });
   }, [progress]);
 
-  // Current stage message
+  // Current stage message (068: never surface "Processing pending...")
   const currentMessage = useMemo(() => {
-    if (!progress?.progress?.stages) return 'Starting...';
-    
-    const currentStage = progress.progress.current_stage;
-    if (!currentStage) return 'Preparing...';
-    
-    const stageData = progress.progress.stages.find(s => s.stage === currentStage);
-    return stageData?.message || `Processing ${currentStage}...`;
+    if (!progress) return 'Queued for processing…';
+
+    const currentStage = (progress.progress?.current_stage || '').toLowerCase();
+    const stageData = progress.progress?.stages?.find(
+      (s) => s.stage === progress.progress.current_stage,
+    );
+    if (stageData?.message?.trim()) return stageData.message;
+    if (progress.progress?.latest_message?.trim()) {
+      return progress.progress.latest_message;
+    }
+    if (
+      !currentStage ||
+      currentStage === 'pending' ||
+      currentStage === 'queued'
+    ) {
+      return 'Queued for processing…';
+    }
+    if (currentStage === 'uploading') {
+      return 'Document received — starting extraction…';
+    }
+    return `Processing ${currentStage}...`;
   }, [progress]);
 
   // Handle cancel
@@ -198,6 +212,32 @@ export function IngestionProgressPanel({
   }
 
   if (error && !progress) {
+    const errMsg = error.message || '';
+    const isNotFound =
+      errMsg.includes('404') || errMsg.toLowerCase().includes('not found');
+    // 068: admit race — show queued instead of hard error / false Done
+    if (isNotFound && compact) {
+      return (
+        <div
+          className={cn('flex flex-col gap-1 w-full pr-8', className)}
+          data-testid="ingestion-progress-queued"
+        >
+          <div className="flex items-center gap-3">
+            {isLive && <WebSocketStatusDot className="shrink-0" />}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between mb-1 gap-2">
+                <span className="text-sm font-medium truncate">{documentName}</span>
+                <span className="text-xs text-muted-foreground shrink-0">0%</span>
+              </div>
+              <AnimatedProgress value={0} size="sm" variant="info" />
+            </div>
+          </div>
+          <p className="text-xs text-blue-600 dark:text-blue-400 truncate">
+            Queued for processing…
+          </p>
+        </div>
+      );
+    }
     if (compact) {
       return (
         <div

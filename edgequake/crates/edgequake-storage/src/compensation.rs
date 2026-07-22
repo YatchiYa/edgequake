@@ -1,4 +1,4 @@
-//! Cross-store saga compensation helpers (SPEC-021 P-C1).
+//! Cross-store saga compensation helpers (SPEC-021 P-C1 / SPEC-057 P3).
 //!
 //! WHY: the orchestrator path (`EdgeQuake::insert`) already rolls back chunk
 //! vectors when the graph merge fails (`ingestion.rs::fail_with_chunk_vector_rollback`).
@@ -11,10 +11,65 @@
 //! - **Best-effort**: never returns an error. Compensation runs on an
 //!   already-failing path; masking the original error would be worse.
 //! - **Idempotent**: deletion is keyed by exact vector IDs, so retrying is safe.
-//! - **Observable**: on cleanup failure, emits a structured `quarantine` log
-//!   so an operator or reconciliation job can remove residue out of band.
+//! - **Observable**: on cleanup failure, emits metric + durable KV DLQ record
+//!   (`compensation_quarantine:{document_id}:{uuid}`) so operators can reconcile.
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use crate::kv_key_schema::kv_keys;
 use crate::traits::{GraphStorage, KVStorage, VectorStorage};
+
+/// Process-local quarantine counter (SSOT for store_contention assessor + tests).
+static COMPENSATION_QUARANTINE_TOTAL: AtomicU64 = AtomicU64::new(0);
+
+/// SPEC-058: entity/rel vectors that already existed and were skipped from
+/// compensate artifact lists (shared across documents).
+static COMPENSATE_SHARED_ENTITY_SKIPPED_TOTAL: AtomicU64 = AtomicU64::new(0);
+
+/// SPEC-058: dimension mismatch rejected (fail-closed, no DROP).
+static VECTOR_DIM_MISMATCH_REJECTED_TOTAL: AtomicU64 = AtomicU64::new(0);
+
+/// Snapshot of compensation quarantine events since process start.
+pub fn compensation_quarantine_total() -> u64 {
+    COMPENSATION_QUARANTINE_TOTAL.load(Ordering::Relaxed)
+}
+
+/// Snapshot of shared-entity vector IDs excluded from compensate delete lists.
+pub fn compensate_shared_entity_skipped_total() -> u64 {
+    COMPENSATE_SHARED_ENTITY_SKIPPED_TOTAL.load(Ordering::Relaxed)
+}
+
+/// Record N shared entity/rel vectors that pre-existed (not compensatable).
+pub fn record_compensate_shared_entity_skipped(n: usize) {
+    if n == 0 {
+        return;
+    }
+    COMPENSATE_SHARED_ENTITY_SKIPPED_TOTAL.fetch_add(n as u64, Ordering::Relaxed);
+    #[cfg(feature = "observability")]
+    edgequake_observability::record_compensate_shared_entity_skipped(n as u64);
+}
+
+/// Snapshot of fail-closed dimension mismatch rejections.
+pub fn vector_dim_mismatch_rejected_total() -> u64 {
+    VECTOR_DIM_MISMATCH_REJECTED_TOTAL.load(Ordering::Relaxed)
+}
+
+/// Record a refused vector table rebuild due to dimension mismatch.
+pub fn record_vector_dim_mismatch_rejected() {
+    VECTOR_DIM_MISMATCH_REJECTED_TOTAL.fetch_add(1, Ordering::Relaxed);
+    #[cfg(feature = "observability")]
+    edgequake_observability::record_vector_dim_mismatch_rejected();
+}
+
+#[cfg(test)]
+pub fn reset_compensation_quarantine_total_for_tests() {
+    COMPENSATION_QUARANTINE_TOTAL.store(0, Ordering::Relaxed);
+}
+
+#[cfg(test)]
+pub fn reset_compensate_shared_entity_skipped_for_tests() {
+    COMPENSATE_SHARED_ENTITY_SKIPPED_TOTAL.store(0, Ordering::Relaxed);
+}
 
 /// Record quarantine metric when observability feature is enabled (SPEC-045 SRE-I07).
 #[cfg(feature = "observability")]
@@ -25,10 +80,49 @@ fn record_compensation_quarantine_metric(kind: &str) {
 #[cfg(not(feature = "observability"))]
 fn record_compensation_quarantine_metric(_kind: &str) {}
 
+async fn quarantine(
+    kv_storage: Option<&dyn KVStorage>,
+    doc_id: &str,
+    kind: &str,
+    artifact_id: &str,
+    cause: &str,
+    cleanup_error: &str,
+) {
+    COMPENSATION_QUARANTINE_TOTAL.fetch_add(1, Ordering::Relaxed);
+    record_compensation_quarantine_metric(kind);
+
+    tracing::error!(
+        document_id = %doc_id,
+        kind = %kind,
+        artifact_id = %artifact_id,
+        merge_cause = %cause,
+        cleanup_error = %cleanup_error,
+        "quarantine: failed compensation cleanup; durable DLQ write attempted"
+    );
+
+    let Some(kv) = kv_storage else {
+        return;
+    };
+    let entry_id = uuid::Uuid::new_v4().to_string();
+    let key = kv_keys::compensation_quarantine(doc_id, &entry_id);
+    let record = serde_json::json!({
+        "kind": kind,
+        "id": artifact_id,
+        "cause": cause,
+        "cleanup_error": cleanup_error,
+        "ts": chrono::Utc::now().to_rfc3339(),
+    });
+    if let Err(e) = kv.upsert(&[(key.clone(), record)]).await {
+        tracing::error!(
+            document_id = %doc_id,
+            key = %key,
+            error = %e,
+            "failed to persist compensation quarantine DLQ record"
+        );
+    }
+}
+
 /// Roll back chunk KV records written before a failed merge (SPEC-046 OPS-P1.8).
-///
-/// Best-effort and idempotent. Pass the exact KV keys upserted in the persist
-/// stage (typically `doc_chunk` ids from [`crate::kv_keys::doc_chunk`]).
 pub async fn compensate_orphan_kv(
     kv_storage: &dyn KVStorage,
     doc_id: &str,
@@ -49,32 +143,43 @@ pub async fn compensate_orphan_kv(
             );
         }
         Err(cleanup_err) => {
-            record_compensation_quarantine_metric("kv");
-            tracing::error!(
-                document_id = %doc_id,
-                orphan_chunk_kv = chunk_kv_ids.len(),
-                merge_cause = %cause,
-                cleanup_error = %cleanup_err,
-                "quarantine: failed to roll back orphan chunk KV after graph failure; \
-                 manual or reconciliation cleanup required"
-            );
+            quarantine(
+                Some(kv_storage),
+                doc_id,
+                "kv",
+                &chunk_kv_ids.join(","),
+                cause,
+                &cleanup_err.to_string(),
+            )
+            .await;
         }
     }
 }
 
 /// Roll back chunk vectors (and optionally entity vectors) written earlier in
 /// the ingestion saga after the graph merge failed.
-///
-/// `chunk_vector_ids` are the exact IDs written in Stage 2 (chunk embeddings).
-/// `entity_vector_ids` are the `entity:{name}` IDs written in Stage 3 (entity
-/// embeddings) — pass `&[]` when compensating from the orchestrator path which
-/// does not write entity vectors in the same scope.
-///
-/// Deletion is best-effort and idempotent. Failures are logged as `quarantine`
-/// events; the original ingestion error must be surfaced separately by the
-/// caller.
 pub async fn compensate_orphan_vectors(
     vector_storage: &dyn VectorStorage,
+    doc_id: &str,
+    chunk_vector_ids: &[String],
+    entity_vector_ids: &[String],
+    cause: &str,
+) {
+    compensate_orphan_vectors_with_kv(
+        vector_storage,
+        None,
+        doc_id,
+        chunk_vector_ids,
+        entity_vector_ids,
+        cause,
+    )
+    .await;
+}
+
+/// Same as [`compensate_orphan_vectors`] with optional KV DLQ on cleanup failure.
+pub async fn compensate_orphan_vectors_with_kv(
+    vector_storage: &dyn VectorStorage,
+    kv_storage: Option<&dyn KVStorage>,
     doc_id: &str,
     chunk_vector_ids: &[String],
     entity_vector_ids: &[String],
@@ -103,24 +208,20 @@ pub async fn compensate_orphan_vectors(
             );
         }
         Err(cleanup_err) => {
-            record_compensation_quarantine_metric("vector");
-            tracing::error!(
-                document_id = %doc_id,
-                orphan_chunk_vectors = chunk_n,
-                orphan_entity_vectors = entity_n,
-                merge_cause = %cause,
-                cleanup_error = %cleanup_err,
-                "quarantine: failed to roll back orphan vectors after graph failure; \
-                 manual or reconciliation cleanup required"
-            );
+            quarantine(
+                kv_storage,
+                doc_id,
+                "vector",
+                &all_ids.join(","),
+                cause,
+                &cleanup_err.to_string(),
+            )
+            .await;
         }
     }
 }
 
 /// Roll back graph nodes and edges created during a failed merge attempt (P-G5).
-///
-/// Best-effort and idempotent — only deletes IDs recorded as newly created in the
-/// current ingest session (never touches pre-existing merged nodes).
 pub async fn compensate_orphan_graph_writes(
     graph_storage: &dyn GraphStorage,
     doc_id: &str,
@@ -128,31 +229,51 @@ pub async fn compensate_orphan_graph_writes(
     edges_created: &[(String, String)],
     cause: &str,
 ) {
+    compensate_orphan_graph_writes_with_kv(
+        graph_storage,
+        None,
+        doc_id,
+        nodes_created,
+        edges_created,
+        cause,
+    )
+    .await;
+}
+
+/// Same as [`compensate_orphan_graph_writes`] with optional KV DLQ.
+pub async fn compensate_orphan_graph_writes_with_kv(
+    graph_storage: &dyn GraphStorage,
+    kv_storage: Option<&dyn KVStorage>,
+    doc_id: &str,
+    nodes_created: &[String],
+    edges_created: &[(String, String)],
+    cause: &str,
+) {
     for (source, target) in edges_created {
         if let Err(e) = graph_storage.delete_edge(source, target).await {
-            record_compensation_quarantine_metric("edge");
-            tracing::error!(
-                document_id = %doc_id,
-                source = %source,
-                target = %target,
-                merge_cause = %cause,
-                cleanup_error = %e,
-                "quarantine: failed to roll back orphan edge after merge failure"
-            );
+            quarantine(
+                kv_storage,
+                doc_id,
+                "edge",
+                &format!("{source}->{target}"),
+                cause,
+                &e.to_string(),
+            )
+            .await;
         }
     }
 
-    for node_id in nodes_created {
-        if let Err(e) = graph_storage.delete_node(node_id).await {
-            record_compensation_quarantine_metric("node");
-            tracing::error!(
-                document_id = %doc_id,
-                node_id = %node_id,
-                merge_cause = %cause,
-                cleanup_error = %e,
-                "quarantine: failed to roll back orphan node after merge failure"
-            );
-        }
+    // SPEC-060: batch delete (native ANY) — per-node Cypher DETACH was O(K) RTs.
+    if let Err(e) = graph_storage.delete_nodes_batch(nodes_created).await {
+        quarantine(
+            kv_storage,
+            doc_id,
+            "node",
+            &nodes_created.join(","),
+            cause,
+            &e.to_string(),
+        )
+        .await;
     }
 
     if !nodes_created.is_empty() || !edges_created.is_empty() {
@@ -196,7 +317,7 @@ pub async fn compensate_merge_failure(
     .await;
 }
 
-/// Same as [`compensate_merge_failure`] plus optional KV chunk rollback.
+/// Same as [`compensate_merge_failure`] plus optional KV chunk rollback + DLQ.
 #[allow(clippy::too_many_arguments)]
 pub async fn compensate_merge_failure_with_kv(
     graph_storage: &dyn GraphStorage,
@@ -215,8 +336,9 @@ pub async fn compensate_merge_failure_with_kv(
         compensate_orphan_kv(kv, doc_id, chunk_kv_ids, cause).await;
     }
 
-    compensate_orphan_vectors(
+    compensate_orphan_vectors_with_kv(
         vector_storage,
+        kv_storage,
         doc_id,
         chunk_vector_ids,
         entity_vector_ids,
@@ -225,24 +347,120 @@ pub async fn compensate_merge_failure_with_kv(
     .await;
 
     if !relationship_vector_ids.is_empty() {
-        compensate_orphan_vectors(vector_storage, doc_id, &[], relationship_vector_ids, cause)
-            .await;
+        compensate_orphan_vectors_with_kv(
+            vector_storage,
+            kv_storage,
+            doc_id,
+            &[],
+            relationship_vector_ids,
+            cause,
+        )
+        .await;
     }
 
-    compensate_orphan_graph_writes(graph_storage, doc_id, nodes_created, edges_created, cause)
-        .await;
+    compensate_orphan_graph_writes_with_kv(
+        graph_storage,
+        kv_storage,
+        doc_id,
+        nodes_created,
+        edges_created,
+        cause,
+    )
+    .await;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adapters::memory::MemoryVectorStorage;
+    use crate::adapters::memory::{MemoryGraphStorage, MemoryKVStorage, MemoryVectorStorage};
+    use crate::error::StorageError;
+    use crate::traits::{GraphStorageMutateOps, GraphStorageReadOps, KVStorage, VectorStorage};
+    use async_trait::async_trait;
+    use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+
+    /// Vector storage that fails the first `delete` call (inject-fail for DLQ).
+    struct FailOnceDeleteVector {
+        inner: MemoryVectorStorage,
+        failed_once: AtomicBool,
+    }
+
+    #[async_trait]
+    impl VectorStorage for FailOnceDeleteVector {
+        fn namespace(&self) -> &str {
+            self.inner.namespace()
+        }
+
+        fn dimension(&self) -> usize {
+            self.inner.dimension()
+        }
+
+        async fn initialize(&self) -> crate::error::Result<()> {
+            self.inner.initialize().await
+        }
+
+        async fn finalize(&self) -> crate::error::Result<()> {
+            self.inner.finalize().await
+        }
+
+        async fn query(
+            &self,
+            query_embedding: &[f32],
+            top_k: usize,
+            filter_ids: Option<&[String]>,
+        ) -> crate::error::Result<Vec<crate::traits::VectorSearchResult>> {
+            self.inner.query(query_embedding, top_k, filter_ids).await
+        }
+
+        async fn upsert(
+            &self,
+            data: &[(String, Vec<f32>, serde_json::Value)],
+        ) -> crate::error::Result<()> {
+            self.inner.upsert(data).await
+        }
+
+        async fn delete(&self, ids: &[String]) -> crate::error::Result<()> {
+            if !self.failed_once.swap(true, AtomicOrdering::SeqCst) {
+                return Err(StorageError::Database(
+                    "injected delete failure (SPEC-057 P3)".into(),
+                ));
+            }
+            self.inner.delete(ids).await
+        }
+
+        async fn delete_entity(&self, entity_name: &str) -> crate::error::Result<()> {
+            self.inner.delete_entity(entity_name).await
+        }
+
+        async fn delete_entity_relations(&self, entity_name: &str) -> crate::error::Result<()> {
+            self.inner.delete_entity_relations(entity_name).await
+        }
+
+        async fn get_by_id(&self, id: &str) -> crate::error::Result<Option<Vec<f32>>> {
+            self.inner.get_by_id(id).await
+        }
+
+        async fn get_by_ids(
+            &self,
+            ids: &[String],
+        ) -> crate::error::Result<Vec<(String, Vec<f32>)>> {
+            self.inner.get_by_ids(ids).await
+        }
+
+        async fn is_empty(&self) -> crate::error::Result<bool> {
+            self.inner.is_empty().await
+        }
+
+        async fn count(&self) -> crate::error::Result<usize> {
+            self.inner.count().await
+        }
+
+        async fn clear(&self) -> crate::error::Result<()> {
+            self.inner.clear().await
+        }
+    }
 
     #[tokio::test]
     async fn compensate_merge_failure_rolls_back_new_graph_and_vectors() {
-        use crate::adapters::memory::{MemoryGraphStorage, MemoryVectorStorage};
-        use crate::traits::{GraphStorageMutateOps, GraphStorageReadOps};
-
         let graph = MemoryGraphStorage::new("test");
         graph.initialize().await.unwrap();
         let vector = MemoryVectorStorage::new("test", 4);
@@ -292,10 +510,53 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn compensate_twice_is_idempotent() {
+        let graph = MemoryGraphStorage::new("test");
+        graph.initialize().await.unwrap();
+        let vector = MemoryVectorStorage::new("test", 4);
+        vector.initialize().await.unwrap();
+
+        vector
+            .upsert(&[(
+                "doc1-chunk-0".to_string(),
+                vec![0.1; 4],
+                serde_json::json!({}),
+            )])
+            .await
+            .unwrap();
+        graph
+            .upsert_node(
+                "NODE_A",
+                std::collections::HashMap::from([("label".to_string(), serde_json::json!("A"))]),
+            )
+            .await
+            .unwrap();
+
+        let chunk_ids = ["doc1-chunk-0".to_string()];
+        let nodes = ["NODE_A".to_string()];
+        for _ in 0..2 {
+            super::compensate_merge_failure(
+                &graph,
+                &vector,
+                "doc1",
+                &chunk_ids,
+                &[],
+                &[],
+                &nodes,
+                &[],
+                "double compensate",
+            )
+            .await;
+        }
+
+        assert!(vector.get_by_id("doc1-chunk-0").await.unwrap().is_none());
+        assert!(graph.get_node("NODE_A").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
     async fn compensate_deletes_orphan_chunk_and_entity_vectors() {
         let storage = MemoryVectorStorage::new("test", 4);
         storage.initialize().await.unwrap();
-        // Seed two vectors we claim were orphaned by a graph failure.
         storage
             .upsert(&[
                 (
@@ -321,7 +582,6 @@ mod tests {
         )
         .await;
 
-        // Both orphaned vectors must be gone.
         assert!(storage.get_by_id("doc1-chunk-0").await.unwrap().is_none());
         assert!(storage.get_by_id("entity:FOO").await.unwrap().is_none());
     }
@@ -330,15 +590,11 @@ mod tests {
     async fn compensate_noop_on_empty() {
         let storage = MemoryVectorStorage::new("test", 4);
         storage.initialize().await.unwrap();
-        // No IDs → must not panic and must not delete anything.
         super::compensate_orphan_vectors(&storage, "doc1", &[], &[], "noop").await;
     }
 
     #[tokio::test]
     async fn compensate_orphan_kv_deletes_chunk_keys() {
-        use crate::adapters::memory::MemoryKVStorage;
-        use crate::traits::KVStorage;
-
         let kv = MemoryKVStorage::new("test");
         kv.initialize().await.unwrap();
         kv.upsert(&[(
@@ -352,5 +608,107 @@ mod tests {
             .await;
 
         assert!(kv.get_by_id("doc1-chunk-0").await.unwrap().is_none());
+    }
+
+    /// SPEC-058: compensate must not delete a shared entity vector that was
+    /// only *updated* (absent from created artifact list).
+    #[tokio::test]
+    async fn spec058_compensate_preserves_shared_entity_vector() {
+        let graph = MemoryGraphStorage::new("test");
+        graph.initialize().await.unwrap();
+        let vector = MemoryVectorStorage::new("test", 4);
+        vector.initialize().await.unwrap();
+
+        vector
+            .upsert(&[
+                (
+                    "doc-b-chunk-0".to_string(),
+                    vec![0.1; 4],
+                    serde_json::json!({"type": "chunk"}),
+                ),
+                (
+                    "entity:SHARED".to_string(),
+                    vec![0.9; 4],
+                    serde_json::json!({"type": "entity"}),
+                ),
+            ])
+            .await
+            .unwrap();
+
+        // Only chunk + *new* node were created for doc B; SHARED entity vector
+        // is omitted from the compensate list (pre-existed from doc A).
+        super::compensate_merge_failure(
+            &graph,
+            &vector,
+            "doc-b",
+            &["doc-b-chunk-0".to_string()],
+            &[], // no created entity vectors
+            &[],
+            &["ONLY_IN_B".to_string()],
+            &[],
+            "doc-b merge failed",
+        )
+        .await;
+
+        assert!(vector.get_by_id("doc-b-chunk-0").await.unwrap().is_none());
+        assert!(
+            vector.get_by_id("entity:SHARED").await.unwrap().is_some(),
+            "shared entity embedding must survive compensate"
+        );
+    }
+
+    #[tokio::test]
+    async fn inject_fail_delete_writes_kv_dlq_and_increments_metric() {
+        reset_compensation_quarantine_total_for_tests();
+        let before = compensation_quarantine_total();
+
+        let graph = MemoryGraphStorage::new("test");
+        graph.initialize().await.unwrap();
+        let vector = FailOnceDeleteVector {
+            inner: MemoryVectorStorage::new("test", 4),
+            failed_once: AtomicBool::new(false),
+        };
+        vector.initialize().await.unwrap();
+        vector
+            .upsert(&[(
+                "doc-inject-chunk-0".to_string(),
+                vec![0.1; 4],
+                serde_json::json!({}),
+            )])
+            .await
+            .unwrap();
+
+        let kv = MemoryKVStorage::new("test");
+        kv.initialize().await.unwrap();
+
+        super::compensate_merge_failure_with_kv(
+            &graph,
+            &vector,
+            Some(&kv),
+            "doc-inject",
+            &["doc-inject-chunk-0".to_string()],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            "inject-fail merge",
+        )
+        .await;
+
+        let after = compensation_quarantine_total();
+        assert!(
+            after > before,
+            "quarantine metric must increment on cleanup failure"
+        );
+
+        let prefix = kv_keys::compensation_quarantine_prefix("doc-inject");
+        let keys = kv.keys_with_prefix(&prefix).await.unwrap();
+        assert!(
+            !keys.is_empty(),
+            "KV DLQ must contain compensation_quarantine record"
+        );
+        let record = kv.get_by_id(&keys[0]).await.unwrap().expect("dlq value");
+        assert_eq!(record["kind"], "vector");
     }
 }

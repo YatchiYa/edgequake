@@ -124,6 +124,17 @@ pub async fn admit_document_for_processing(
     let workspace_id = tenant_ctx.workspace_id_or_default();
     let tenant_id = tenant_ctx.tenant_id_or_default();
 
+    if let Some(ws_uuid) = crate::middleware::resolve_workspace_uuid(Some(&workspace_id)) {
+        if crate::services::workspace_wipe_in_flight(state, ws_uuid).await {
+            return Err(crate::error::ApiError::Conflict(
+                "Workspace wipe in progress — retry document upload after wipe completes".into(),
+            ));
+        }
+    }
+
+    // SPEC-066: fail-closed when workspace declares max_documents.
+    crate::services::document_quota::enforce_max_documents_admission(state, &workspace_id).await?;
+
     let hash_key = ContentHasher::workspace_hash_key(&workspace_id, &input.content_hash);
     let staging_hash_key = kv_keys::staging_workspace_hash(&workspace_id, &input.content_hash);
 
@@ -169,14 +180,11 @@ pub async fn admit_document_for_processing(
         opts.validate().map_err(ApiError::ValidationError)?;
     }
 
-    let chunk_strategy = ChunkStrategy::resolve_for_upload(
-        input.chunk_strategy,
-        input.mime_type.as_deref(),
-        &input.title,
-    );
+    let chunk_strategy = resolve_admission_chunk_strategy(&input);
 
     let document_id = crate::services::ingest_admission::allocate_new_document_id(state).await;
-    let track_id = input.build_track_id(track_prefix);
+    // Batch / client correlation only — never the progress SSOT (068 / SPEC-054).
+    let client_track_id = input.build_track_id(track_prefix);
     let content_summary = crate::validation::generate_content_summary(&input.text_content);
     let content_length = input.text_content.len();
 
@@ -186,6 +194,49 @@ pub async fn admit_document_for_processing(
         .kv_storage
         .upsert(&[(staging_hash_key, json!(document_id))])
         .await?;
+
+    let chunk_options_json = input
+        .chunk_options
+        .as_ref()
+        .and_then(|o| serde_json::to_value(o).ok());
+
+    // SPEC-025 6.1: task payload references KV only — no duplicate text in JSONB.
+    // Create task before metadata write so progress identity = insert-* (068).
+    let task_data = TextInsertData {
+        text: String::new(),
+        file_source: input.title.clone(),
+        workspace_id: workspace_id.clone(),
+        metadata: Some(json!({
+            "document_id": document_id,
+            "title": input.title,
+            "tenant_id": tenant_id,
+            "workspace_id": workspace_id,
+            "source_type": input.source_type,
+            "mime_type": input.mime_type,
+            "content_hash": input.content_hash,
+            "file_size_bytes": input.raw_byte_size,
+            "enable_gleaning": input.gleaning.enable_gleaning,
+            "max_gleaning": input.gleaning.max_gleaning,
+            "chunk_strategy": chunk_strategy.as_str(),
+            "chunk_options": chunk_options_json,
+        })),
+    };
+
+    let mut task = Task::new(
+        uuid::Uuid::parse_str(&tenant_id)
+            .map_err(|_| ApiError::ValidationError("Invalid tenant ID".to_string()))?,
+        uuid::Uuid::parse_str(&workspace_id)
+            .map_err(|_| ApiError::ValidationError("Invalid workspace ID".to_string()))?,
+        TaskType::Insert,
+        serde_json::to_value(task_data).unwrap(),
+    );
+    let task_id = task.track_id.clone();
+    // 068: metadata.track_id == task_id (insert-*) — sole progress / cancel / WS key.
+    let track_id = task_id.clone();
+
+    // SPEC-045 SRE-I03: wire processing timeout for text ingest (parity with PDF metadata).
+    let processing_timeout_secs = resolve_text_ingest_timeout_secs(state, &workspace_id).await;
+    task.metadata = Some(json!({ "processing_timeout_secs": processing_timeout_secs }));
 
     let staging_metadata_key = kv_keys::staging_doc_metadata(&document_id);
     let mut doc_metadata = json!({
@@ -197,6 +248,8 @@ pub async fn admit_document_for_processing(
         "content_hash": input.content_hash,
         "sha256_checksum": input.content_hash,
         "track_id": track_id,
+        "task_id": task_id,
+        "client_track_id": client_track_id,
         "created_at": Utc::now().to_rfc3339(),
         "status": "pending",
         "tenant_id": tenant_id,
@@ -284,47 +337,6 @@ pub async fn admit_document_for_processing(
         )])
         .await?;
 
-    let chunk_options_json = input
-        .chunk_options
-        .as_ref()
-        .and_then(|o| serde_json::to_value(o).ok());
-
-    // SPEC-025 6.1: task payload references KV only — no duplicate text in JSONB.
-    let task_data = TextInsertData {
-        text: String::new(),
-        file_source: input.title.clone(),
-        workspace_id: workspace_id.clone(),
-        metadata: Some(json!({
-            "document_id": document_id,
-            "title": input.title,
-            "tenant_id": tenant_id,
-            "workspace_id": workspace_id,
-            "source_type": input.source_type,
-            "mime_type": input.mime_type,
-            "content_hash": input.content_hash,
-            "file_size_bytes": input.raw_byte_size,
-            "enable_gleaning": input.gleaning.enable_gleaning,
-            "max_gleaning": input.gleaning.max_gleaning,
-            "chunk_strategy": chunk_strategy.as_str(),
-            "chunk_options": chunk_options_json,
-        })),
-    };
-
-    let task = Task::new(
-        uuid::Uuid::parse_str(&tenant_id)
-            .map_err(|_| ApiError::ValidationError("Invalid tenant ID".to_string()))?,
-        uuid::Uuid::parse_str(&workspace_id)
-            .map_err(|_| ApiError::ValidationError("Invalid workspace ID".to_string()))?,
-        TaskType::Insert,
-        serde_json::to_value(task_data).unwrap(),
-    );
-    let task_id = task.track_id.clone();
-
-    // SPEC-045 SRE-I03: wire processing timeout for text ingest (parity with PDF metadata).
-    let processing_timeout_secs = resolve_text_ingest_timeout_secs(state, &workspace_id).await;
-    let mut task = task;
-    task.metadata = Some(json!({ "processing_timeout_secs": processing_timeout_secs }));
-
     state.enqueue_task(task).await?;
 
     Ok(DocumentAdmissionOutcome::Accepted(
@@ -341,20 +353,61 @@ pub async fn admit_document_for_processing(
 pub const ADMISSION_ACCEPTED_STATUS: StatusCode = StatusCode::ACCEPTED;
 
 /// Worker timeout for text ingest tasks (SPEC-045 SRE-I03).
+///
+/// Async insert workers always get at least [`TASK_TIMEOUT_FLOOR_SECS`].
+/// `sync_processing_timeout_secs` is a request-path sync budget (often 120s for
+/// cloud) and must not kill multi-chunk medical/novel corpus ingests.
 async fn resolve_text_ingest_timeout_secs(state: &AppState, workspace_id: &str) -> u64 {
-    let default = crate::services::large_document_profile::TASK_TIMEOUT_FLOOR_SECS;
+    let floor = crate::services::large_document_profile::TASK_TIMEOUT_FLOOR_SECS;
+    // Prefer explicit worker override when set (same knob as PDF large-doc path).
+    if let Some(n) = std::env::var("TASK_PROCESSING_TIMEOUT_SECS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+    {
+        return n.max(floor);
+    }
     let Ok(ws_uuid) = Uuid::parse_str(workspace_id) else {
-        return default;
+        return floor;
     };
     let Ok(Some(workspace)) = state.workspace_service.get_workspace(ws_uuid).await else {
-        return default;
+        return floor;
     };
     let provider = if workspace.llm_provider.is_empty() {
         "mock"
     } else {
         workspace.llm_provider.as_str()
     };
-    crate::safety_limits::sync_processing_timeout_secs(provider)
+    let sync_budget = crate::safety_limits::sync_processing_timeout_secs(provider);
+    sync_budget.max(floor)
+}
+
+/// Resolve chunk strategy for admission (028 B2).
+///
+/// When the caller does not set an explicit strategy, markdown text uploads
+/// (`source_type` / `document_type` / mime) must use [`ChunkStrategy::Markdown`]
+/// so heading breadcrumbs reach extract/glean prompts — even if the title has
+/// no `.md` suffix (Acc bench001 titles).
+fn resolve_admission_chunk_strategy(input: &DocumentAdmissionInput) -> ChunkStrategy {
+    let resolved = ChunkStrategy::resolve_for_upload(
+        input.chunk_strategy,
+        input.mime_type.as_deref(),
+        &input.title,
+    );
+    if input.chunk_strategy.is_some() {
+        return resolved;
+    }
+    let markdown_hint = input.source_type.eq_ignore_ascii_case("markdown")
+        || input
+            .document_type
+            .is_some_and(|d| d.eq_ignore_ascii_case("markdown"))
+        || input
+            .mime_type
+            .as_deref()
+            .is_some_and(|m| m.to_ascii_lowercase().contains("markdown"));
+    if markdown_hint && matches!(resolved, ChunkStrategy::Recursive | ChunkStrategy::Fixed) {
+        return ChunkStrategy::Markdown;
+    }
+    resolved
 }
 
 /// Parse chunk strategy + options from JSON upload fields (SSOT for all upload paths).
@@ -468,9 +521,70 @@ mod tests {
     }
 
     #[test]
+    fn parse_upload_chunk_fields_accepts_chunk_size_alias() {
+        let (_strategy, opts) = parse_upload_chunk_fields(
+            None,
+            Some(json!({ "chunk_size": 1200, "chunk_overlap": 100 })),
+        );
+        let opts = opts.expect("chunk options");
+        assert_eq!(opts.chunk_token_size, Some(1200));
+        assert_eq!(opts.chunk_overlap_token_size, Some(100));
+    }
+
+    #[test]
     fn resolve_upload_defaults_to_recursive_for_plain_text() {
         assert_eq!(
             ChunkStrategy::resolve_for_upload(None, Some("text/plain"), "notes.txt"),
+            ChunkStrategy::Recursive
+        );
+    }
+
+    #[test]
+    fn admission_markdown_source_selects_markdown_chunker() {
+        let input = DocumentAdmissionInput {
+            text_content: "# Title\n\nBody".into(),
+            title: "bench001-smoke".into(),
+            source_type: "markdown",
+            mime_type: None,
+            raw_byte_size: 16,
+            content_hash: "abc".into(),
+            custom_metadata: None,
+            track_id: None,
+            gleaning: GleaningAdmissionOptions::default(),
+            document_type: Some("markdown"),
+            chunk_strategy: None,
+            chunk_options: None,
+            multimodal: false,
+            ingest_mode: None,
+            multimodal_manifest: None,
+        };
+        assert_eq!(
+            resolve_admission_chunk_strategy(&input),
+            ChunkStrategy::Markdown
+        );
+    }
+
+    #[test]
+    fn admission_explicit_recursive_is_preserved() {
+        let input = DocumentAdmissionInput {
+            text_content: "plain".into(),
+            title: "bench001-smoke".into(),
+            source_type: "markdown",
+            mime_type: Some("text/markdown".to_string()),
+            raw_byte_size: 5,
+            content_hash: "abc".into(),
+            custom_metadata: None,
+            track_id: None,
+            gleaning: GleaningAdmissionOptions::default(),
+            document_type: Some("markdown"),
+            chunk_strategy: Some(ChunkStrategy::Recursive),
+            chunk_options: None,
+            multimodal: false,
+            ingest_mode: None,
+            multimodal_manifest: None,
+        };
+        assert_eq!(
+            resolve_admission_chunk_strategy(&input),
             ChunkStrategy::Recursive
         );
     }

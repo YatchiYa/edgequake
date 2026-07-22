@@ -1,0 +1,132 @@
+{
+  "stage": "smoke",
+  "started_at_utc": "2026-07-19T13:34:24Z",
+  "updated_at_utc": "2026-07-19T13:35:39Z",
+  "phases": [
+    {
+      "phase": "prepare",
+      "status": "done",
+      "at_utc": "2026-07-19T13:34:24Z",
+      "run_elapsed_s": 0.0016385840717703104,
+      "detail": "n_questions=40 docs=1 chars=1052159 chunk=1200/100",
+      "counts": {
+        "n_questions": 40,
+        "n_docs": 1,
+        "corpus_chars": 1052159,
+        "chunk_token_size": 1200,
+        "chunk_overlap_token_size": 100,
+        "ingest_capped": false,
+        "query_concurrency": 4,
+        "eval_concurrency": 24
+      }
+    },
+    {
+      "phase": "query_parallel",
+      "status": "running",
+      "at_utc": "2026-07-19T13:34:24Z",
+      "run_elapsed_s": 0.10216004203539342,
+      "detail": "EQ=running LR=running",
+      "phase_elapsed_s": 1.959037035703659e-06
+    },
+    {
+      "phase": "query_lr",
+      "status": "running",
+      "at_utc": "2026-07-19T13:34:37Z",
+      "run_elapsed_s": 13.497788000036962,
+      "detail": "LR query 15/40",
+      "done": 15,
+      "total": 40,
+      "phase_elapsed_s": 11.941583000007086,
+      "eta_s": 19.90263833334514
+    },
+    {
+      "phase": "query_parallel",
+      "status": "running",
+      "at_utc": "2026-07-19T13:34:39Z",
+      "run_elapsed_s": 15.107765375054441,
+      "detail": "EQ=done LR=running",
+      "phase_elapsed_s": 15.005320874974132
+    },
+    {
+      "phase": "query_lr",
+      "status": "running",
+      "at_utc": "2026-07-19T13:34:51Z",
+      "run_elapsed_s": 27.176468749996275,
+      "detail": "LR query 35/40",
+      "done": 35,
+      "total": 40,
+      "phase_elapsed_s": 25.620130333001725,
+      "eta_s": 3.6600186190002466
+    },
+    {
+      "phase": "query_parallel",
+      "status": "running",
+      "at_utc": "2026-07-19T13:34:54Z",
+      "run_elapsed_s": 30.114898083964363,
+      "detail": "EQ=done LR=running",
+      "phase_elapsed_s": 30.011753874947317
+    },
+    {
+      "phase": "query_lr",
+      "status": "running",
+      "at_utc": "2026-07-19T13:34:55Z",
+      "run_elapsed_s": 31.14563825004734,
+      "detail": "LR query 40/40",
+      "done": 40,
+      "total": 40,
+      "phase_elapsed_s": 29.58931379194837,
+      "eta_s": 0.0
+    },
+    {
+      "phase": "query_parallel",
+      "status": "running",
+      "at_utc": "2026-07-19T13:35:09Z",
+      "run_elapsed_s": 45.117403125041164,
+      "detail": "EQ=done LR=done",
+      "phase_elapsed_s": 45.01518354204018
+    },
+    {
+      "phase": "query_parallel",
+      "status": "done",
+      "at_utc": "2026-07-19T13:35:09Z",
+      "run_elapsed_s": 45.11829337500967,
+      "detail": "eq=40 lr=40",
+      "counts": {
+        "eq_empty_context_rate": 0.0,
+        "lr_empty_context_rate": 0.0
+      }
+    },
+    {
+      "phase": "score_parallel",
+      "status": "running",
+      "at_utc": "2026-07-19T13:35:39Z",
+      "run_elapsed_s": 75.14075000002049,
+      "detail": "EQ=done LR=done eval\u2225=24",
+      "phase_elapsed_s": 30.01018679200206
+    },
+    {
+      "phase": "score_parallel",
+      "status": "done",
+      "at_utc": "2026-07-19T13:35:39Z",
+      "run_elapsed_s": 75.14162920904346,
+      "detail": "elapsed=30s"
+    }
+  ],
+  "current_phase": "score_parallel",
+  "counts": {
+    "n_questions": 40,
+    "n_docs": 1,
+    "corpus_chars": 1052159,
+    "chunk_token_size": 1200,
+    "chunk_overlap_token_size": 100,
+    "ingest_capped": false,
+    "query_concurrency": 4,
+    "eval_concurrency": 24,
+    "done": 10,
+    "total": 10,
+    "eta_s": 0.0,
+    "eq_empty_context_rate": 0.0,
+    "lr_empty_context_rate": 0.0
+  },
+  "run_elapsed_s": 75.14163512503728
+}

@@ -2,6 +2,8 @@
 title: "Frequently Asked Questions"
 ---
 
+> **Product: v0.19.0** · Contract: [OpenAPI snapshot](../edgequake_webui/openapi/openapi.snapshot.json) · Spec ops: [Ingestion cancel & fairness](ingestion-cancel-and-fairness.md)
+
 # Frequently Asked Questions
 
 > **Common Questions About EdgeQuake**
@@ -35,10 +37,10 @@ EdgeQuake is a **Rust implementation inspired by [LightRAG](https://github.com/H
 
 Key differences:
 
-- **Language**: Rust vs Python (10-50x faster)
-- **Production Ready**: Multi-tenant, observability, deployment
+- **Language**: Rust vs Python (10–50× faster)
+- **Production Ready**: Multi-tenant, auth, observability, deployment
 - **Storage**: PostgreSQL + pgvector + Apache AGE
-- **API**: REST with streaming support
+- **API**: REST with async ingestion, streaming, and WebSocket progress
 
 ---
 
@@ -51,23 +53,24 @@ Key differences:
 - 4 GB RAM
 - 2 CPU cores
 - Rust 1.95+
-- PostgreSQL 15+ with pgvector and AGE available
+- PostgreSQL **16, 17, or 18** with pgvector and Apache AGE (Docker image: `ghcr.io/raphaelmansuy/edgequake-postgres:0.19.0`)
 
-**Production**:
+**Production (minimum to boot)**:
 
-- 8+ GB RAM
+- **8+ GB RAM** is enough to *start* the stack — **not** enough for Proven 50k / Supported 100k filtered ANN
+- Floors: [Product limits — Pick your size](product-limits.md) — ≥**16 GB** for ≤50k (**Proven**); ≥**32 GB** preferred for 100k Wave-2 (**Supported**); `shared_buffers` ≥**2 GB**
 - 4+ CPU cores
-- PostgreSQL 15+ with pgvector + AGE
-- LLM provider (OpenAI or Ollama)
+- PostgreSQL 16+ with pgvector + AGE
+- LLM provider (OpenAI, Ollama, or other supported provider)
+- Vision-capable model for PDF ingestion (see [Vision & PDF Processing](#vision--pdf-processing))
+
+**Ports** (defaults): API **8080**, WebUI **3000**.
 
 ### Can I run EdgeQuake without PostgreSQL?
 
-**No** — starting with v0.4.0, `DATABASE_URL` is required for all server modes.
-In-memory storage was removed to ensure reliable, production-grade behavior. Running
-without a database causes the server to exit with error code 1.
+**No** — `DATABASE_URL` is required for all server modes. In-memory storage was removed in v0.4.0. Running without a database causes the server to exit with error code 1.
 
-For **development and testing**, use the Docker-based PostgreSQL setup — it starts
-in seconds and requires no configuration:
+For **development and testing**, use the Docker-based PostgreSQL setup:
 
 ```bash
 # Start full stack (PostgreSQL + backend + frontend)
@@ -78,14 +81,19 @@ make db-start
 cargo test
 ```
 
-For **CI environments**, use Docker Compose with the provided `docker-compose.yml`.
+For **production-style deployments**, use prebuilt GHCR images:
+
+```bash
+EDGEQUAKE_VERSION=0.19.0 docker compose -f docker-compose.quickstart.yml up -d
+```
+
+Images: `ghcr.io/raphaelmansuy/edgequake:0.19.0`, `ghcr.io/raphaelmansuy/edgequake-postgres:0.19.0-pg18` (also `-pg16`, `-pg17`).
 
 ### Can I run EdgeQuake without an LLM?
 
 **Yes**, for testing with the mock provider:
 
 ```bash
-# Uses mock provider (no API key needed)
 cargo test
 ```
 
@@ -94,6 +102,7 @@ For production, you need a real LLM. Options:
 - OpenAI (`OPENAI_API_KEY`)
 - Ollama (local, free)
 - LM Studio (local, free)
+- Mistral, Anthropic, Gemini, Vertex AI (see `.env.example`)
 
 ---
 
@@ -106,7 +115,7 @@ EdgeQuake itself is **free and open source**. Costs come from:
 | Component  | Cost                                   |
 | ---------- | -------------------------------------- |
 | EdgeQuake  | Free                                   |
-| PostgreSQL | Free (self-hosted) or $15/mo (managed) |
+| PostgreSQL | Free (self-hosted) or ~$15/mo (managed) |
 | OpenAI     | ~$0.002 per document (~500 words)      |
 | Ollama     | Free (local GPU)                       |
 
@@ -115,26 +124,21 @@ EdgeQuake itself is **free and open source**. Costs come from:
 1. **Use cheaper models**:
 
    ```bash
-   # gpt-4.1-nano is 10x cheaper than gpt-4o
-   EDGEQUAKE_LLM_MODEL=gpt-4.1-nano
+   EDGEQUAKE_DEFAULT_LLM_MODEL=gpt-5-mini
    ```
 
 2. **Use local LLM** (Ollama):
 
    ```bash
-   EDGEQUAKE_LLM_PROVIDER=ollama
-   EDGEQUAKE_LLM_MODEL=gemma4:latest
+   EDGEQUAKE_DEFAULT_LLM_PROVIDER=ollama
+   EDGEQUAKE_DEFAULT_LLM_MODEL=gemma4:latest
    ```
 
-3. **Reduce chunk size** (fewer LLM calls):
-   - Configure smaller chunks in pipeline
+3. **Reduce chunk size** (fewer LLM calls) in pipeline configuration.
 
 ### Is there a free tier for OpenAI?
 
-OpenAI offers free credits for new accounts ($5-$18 depending on promotion). After that:
-
-- gpt-4.1-nano: ~$0.00015/1K input tokens
-- text-embedding-3-small: ~$0.00002/1K tokens
+OpenAI offers free credits for new accounts. After that, `gpt-5-mini` and `text-embedding-3-small` are cost-effective defaults (see `.env.example`).
 
 ---
 
@@ -142,30 +146,100 @@ OpenAI offers free credits for new accounts ($5-$18 depending on promotion). Aft
 
 ### How fast is EdgeQuake?
 
-| Operation         | Typical Time              |
-| ----------------- | ------------------------- |
-| Document upload   | < 1s                      |
-| Entity extraction | 2-5s per chunk (with LLM) |
-| Vector search     | < 100ms                   |
-| Graph traversal   | < 50ms                    |
-| Full query        | 2-10s (depends on LLM)    |
+| Operation              | Typical Time                          |
+| ---------------------- | ------------------------------------- |
+| Document admit (HTTP)  | < 1 s (returns **202** + `track_id`)  |
+| Entity extraction      | 2–5 s per chunk (with LLM, async)     |
+| Vector search          | < 100 ms                              |
+| Graph traversal        | < 50 ms                               |
+| Full query             | 2–10 s (depends on LLM)               |
+
+Uploads are **async**: the API accepts the document immediately; poll `GET /api/v1/tasks/{track_id}` or subscribe via WebSocket/SSE for progress.
 
 ### How does it scale?
 
-EdgeQuake handles:
+**SSOT:** [Product limits](product-limits.md) — start with **TL;DR** and **Pick your size**.
 
-- **Documents**: 100,000+ per workspace
-- **Entities**: 1,000,000+ per workspace
-- **Concurrent users**: 100+ with connection pooling
-- **Query throughput**: 50+ queries/second (without LLM bottleneck)
+| Status | What you can promise | Recipe |
+|--------|----------------------|--------|
+| **Proven** | ≤**50k** chunk vectors @1536 under prod stress; Louvain gated at **50k** nodes | Defaults + `shared_buffers` ≥2 GB; host ≥16 GB |
+| **Supported** (default) | **100k** filtered ANN @1536 (Q1-d) | **Wave-2**: `halfvec` + `EDGEQUAKE_HNSW_PARTIAL_BY_WORKSPACE=1` + residency (host ≥32 GB preferred) |
+| **Supported opt-in** | **150k** on dedicated DiskANN | `query_search_list_size≥400` + `query_rescore≈list/2` (pg18-vectorscale) — not a silent default |
+| **Not promoted** | Wave-2 above 100k (250k+) | Mid-scale wall — do not sell |
+| **Aspirational** | 100k+ documents / 1M+ entities per workspace | Not a latency-gated claim |
+
+Hard caps: **50 MiB**/upload, HNSW dim ≤2000/4000. Concurrent tip @100k Wave-2: `EDGEQUAKE_HNSW_EF_SEARCH=240`. Mix/hybrid seeds ≪ ANN ladder.
+
+There is **no** enforced per-workspace storage-GB quota. Workspace `max_documents` (when set) is fail-closed at upload / new PDF mint (SPEC-066). Size disk/RAM from [product-limits](product-limits.md). Ceiling ladder: `make ceiling-proof` ([SPEC-066](../specs/066-ceiling-proof/000-index.md)).
+
+For multi-replica worker deployments, see [Ingestion, replicas & leases](#ingestion-cancel-fairness-replicas--convert--ingest).
 
 ### How can I speed up queries?
 
-1. **Use `naive` mode** for simple queries (vector-only, no graph)
-2. **Reduce `max_chunks`** from 20 to 5-10
-3. **Use faster LLM** (gpt-4.1-nano vs gpt-4o)
-4. **Pre-warm embeddings** with test query
-5. **Use GPU** for Ollama embedding
+**Data plane (often the real cliff before LLM):**
+
+1. **Wave-2 for ~100k filtered ANN** — `EDGEQUAKE_VECTOR_STORAGE=halfvec` + `EDGEQUAKE_HNSW_PARTIAL_BY_WORKSPACE=1` (greenfield only); see [Product limits](product-limits.md)
+2. **Residency** — keep `shared_buffers` ≥2 GB (4 GB class for large lab); cold ~1.5 s @100k default path is expected without this
+3. **Warm** a filtered query after deploy so partial HNSW exists (or `./scripts/wave2_warmup.sh` / `POST /api/v1/admin/ann/warmup`)
+3b. **Filtered recall underfill** — EdgeQuake sets `hnsw.iterative_scan=relaxed_order` + `max_scan_tuples` on filtered queries only; tune `EDGEQUAKE_HNSW_MAX_SCAN_TUPLES` / `EDGEQUAKE_HNSW_SCAN_MEM_MULTIPLIER` if needed ([SPEC-075](../specs/075-filtered-recall-gates/000-index.md)). Promote with **filtered** recall@20 (`make filtered-recall-gate`), never unfiltered-only.
+
+**Query / LLM:**
+
+4. **Use `naive` mode** for simple queries (vector-only, no graph)
+5. **Reduce `max_chunks`** from 20 to 5–10
+6. **Use faster LLM** (`gpt-5-mini` vs larger models)
+7. **Use GPU** for Ollama embedding
+
+### How do I enable the supported 100k shape?
+
+Use the **Turnkey greenfield** recipe in [Product limits](product-limits.md):
+
+```bash
+eval "$(make -s wave2-greenfield-env)"
+# or: WAVE2_GREENFIELD=1 make backend-bg
+./scripts/wave2_warmup.sh <workspace_uuid>
+```
+
+That sets `halfvec` + workspace partial HNSW + optional `EDGEQUAKE_HNSW_EF_SEARCH=240` (concurrent tip — not a silent default). Do **not** silent-flip existing vector DBs. Dedicated `*_ws_*` + HNSW is dimension isolation only — not the 100k concurrent path.
+
+### How do I enable opt-in DiskANN @150k / @250k?
+
+See [Product limits — Opt-in DiskANN recipe](product-limits.md): `pg18-vectorscale` image, dedicated table + `USING diskann`. **@150k:** `query_search_list_size ≥ 400` + `query_rescore ≈ list/2`. **@250k (SPEC-082 floor):** list ≥ **800**, rescore ≈ **400**, prefer a higher-quality DiskANN build (`num_neighbors=64`, `search_list_size=200`). Wave-2 remains the default; DiskANN is opt-in only (`make diskann-recall-pareto` / `make push-scale-ladder` / `make diskann-rescore-smoke`).
+
+### How do I gate filtered recall@20?
+
+Use `make filtered-recall-gate` (SPEC-075). It archives **workspace-filtered** recall@20 for Wave-2 (+ iterative_scan-only compare). Soft-fails product floors; does not raise the 100k Wave-2 floor. See [Product limits — Filtered recall + iterative_scan](product-limits.md).
+
+### How do I improve ranking precision without raising floors?
+
+See [Product limits — Precision tips (SPEC-076)](product-limits.md):
+
+1. **Opt-in ANN→exact reorder** — `EDGEQUAKE_ANN_EXACT_REORDER=1` + optional `EDGEQUAKE_ANN_REORDER_CANDIDATE_K=50` (default OFF; not a silent flip).
+2. **Sparse FTS+ANN RRF tip** for codes/names — `EDGEQUAKE_SPARSE_FUSION=rrf` (default remains sparse-first weighted).
+
+Gate: `make precision-layers-gate`. Mix/RRF does **not** raise the Wave-2 / DiskANN ANN floors.
+
+### What about binary quantization for larger corpora?
+
+Study-only (SPEC-077): `make binary-quantize-bakeoff` compares Wave-2 halfvec HNSW to pgvector `binary_quantize` + Hamming ANN + exact rerank under a **workspace filter**. Default remains Wave-2; do **not** silent-flip (`EDGEQUAKE_BINARY_QUANTIZE` stays off). See [Product limits — Binary quantize study](product-limits.md).
+
+### What about Filtered-DiskANN labels for shared tables?
+
+Study-only (SPEC-078): `make filtered-diskann-labels-bakeoff` compares Wave-2 to post-filter DiskANN and to pgvectorscale **Filtered-DiskANN** (`labels smallint[]` + `labels && …`) under a **workspace filter**. Default remains Wave-2; dedicated DiskANN @150k unchanged; do **not** silent-flip (`EDGEQUAKE_FILTERED_DISKANN_LABELS` stays off; no product labels migration). See [Product limits — Filtered-DiskANN labels study](product-limits.md).
+
+Mid-scale archive: `make midscale-quantize-labels` (SPEC-079) — tips stay **Not promoted** unless a full concurrent gate says otherwise.
+
+### Why are tiny workspaces forced onto HNSW?
+
+They should not be. SPEC-080 skips Wave-2 `enable_seqscan=off` bias when workspace rows ≤ `EDGEQUAKE_ANN_EXACT_MAX_ROWS` (default 2000). Gate: `make tiny-slice-exact-gate`.
+
+### Is there a serving view for “chunks that have vectors”?
+
+Admin/debug only (SPEC-081): `eq_serving_chunk_presence` / `eq_serving_vector_presence`. This is **not** the RAG ANN path and does **not** unify dual-SSOT stores. Gate: `make serving-view-check`.
+
+### How do we push performance tests / floors further?
+
+`make push-scale-ladder` (SPEC-082) archives A6 Filtered-DiskANN @150k/250k, Wave-2 filtered spot @150k, and DiskANN **primary** full-gate @250k. Floors rise **only** when the full-gate is green; Wave-2 default stays 100k unless a separate full-gate says otherwise. Silent flip remains forbidden. See [Product limits](product-limits.md).
 
 ---
 
@@ -180,25 +254,11 @@ EdgeQuake handles:
 - Per-workspace LLM configuration
 - No data leakage between workspaces
 
+Use `X-Tenant-ID` and `X-Workspace-ID` headers (or JWT claims) on protected routes when auth is enabled.
+
 ### Can different tenants use different LLMs?
 
-**Yes**. LLM is configured per-workspace:
-
-```json
-POST /api/v1/workspaces
-{
-  "name": "tenant-a",
-  "llm_provider": "openai",
-  "llm_model": "gpt-4o"
-}
-
-POST /api/v1/workspaces
-{
-  "name": "tenant-b",
-  "llm_provider": "ollama",
-  "llm_model": "llama3.2"
-}
-```
+**Yes**. LLM provider and model are configured per workspace via the API or environment defaults.
 
 ---
 
@@ -216,17 +276,89 @@ POST /api/v1/workspaces
 
 Only to LLM providers you configure:
 
-- **OpenAI**: Document chunks sent for extraction
+- **OpenAI / cloud providers**: Document chunks sent for extraction and vision
 - **Ollama**: Local, no external calls
 - **No telemetry** sent by EdgeQuake itself
 
 ### How do I secure the API?
 
-EdgeQuake doesn't include built-in authentication. Secure with:
+**Authentication is ON by default** (SPEC-027). Protected routes require a JWT (`Authorization: Bearer …`) or API key (`X-API-Key`).
 
-1. **Reverse proxy** (nginx/Caddy) with API keys
+| Mode | When to use | Configuration |
+| ---- | ----------- | ------------- |
+| **Production** | Deployed stacks | Auth enabled (default); set `JWT_SECRET`, bootstrap admin, disable demo login |
+| **Local dev** | `make dev` | `EDGEQUAKE_DEV_MODE=true` (Makefile sets this when `DEV_AUTH_ENABLED=false`) |
+
+**Bootstrap first admin** (before first login):
+
+```bash
+export EDGEQUAKE_BOOTSTRAP_ADMIN_USERNAME=admin
+export EDGEQUAKE_BOOTSTRAP_ADMIN_PASSWORD='ChangeMe123!'
+export EDGEQUAKE_BOOTSTRAP_ADMIN_EMAIL=admin@example.com
+```
+
+Or create a user with the master API key: `EDGEQUAKE_MASTER_API_KEY`.
+
+Full hardening checklist: [Runtime auth hardening](operations/runtime-auth-hardening.md).
+
+**Additional layers** for production:
+
+1. **Reverse proxy** (nginx/Caddy) with TLS
 2. **Network isolation** (private subnet)
-3. **OAuth2 proxy** (like oauth2-proxy)
+3. **External SSO** via [oauth2-proxy](https://github.com/oauth2-proxy/oauth2-proxy) (recommended over in-process OIDC for enterprise)
+
+Explicit opt-out (not recommended outside local dev): `EDGEQUAKE_AUTH_ENABLED=false` or `EDGEQUAKE_AUTH_DISABLED=true`.
+
+---
+
+## Ingestion: cancel, fairness, replicas & convert → ingest
+
+Operational details live in [Ingestion cancel & fairness](ingestion-cancel-and-fairness.md). Summary:
+
+### How do I cancel an in-flight upload or ingestion?
+
+Canonical endpoint:
+
+```http
+POST /api/v1/tasks/{track_id}/cancel
+```
+
+Also supported: `DELETE /api/v2/workspaces/{id}/jobs/{job_id}`, PDF cancel, pipeline-wide cancel, and WebSocket `{ "type": "cancel", "track_id": "…" }`.
+
+Cancel is **cooperative** — expect a short delay until the current LLM/vision round-trip aborts. UI should show **Stopping…** until status is terminal (`display_status=cancelled`).
+
+### What is tenant fairness / why is my second upload waiting?
+
+Workers limit concurrency **per tenant and per fairness lane**:
+
+- **Ingest** (`MAX_TASKS_PER_TENANT`): Pdf/Insert/… — local Ollama/LM Studio clamps to **2** (workers capped at **4**) unless `EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1`
+- **Lifecycle** (`MAX_LIFECYCLE_TASKS_PER_TENANT`, local default **4**): Deletion/Wipe — separate from ingest so deletes do not serialize new uploads
+
+Parked tasks wait on that lane’s semaphore — they are **not** requeued in a reclaim storm. Check `GET /api/v1/pipeline/queue-metrics` → `tenant_park_waiters`, `tenant_park_waiters_ingest`, `tenant_park_waiters_lifecycle`, `max_tasks_per_tenant`, `max_lifecycle_tasks_per_tenant`.
+
+If a new PDF stays **Queued** while deletes run, that was the old shared-lane bug; with dual lanes the PDF should take the ingest slot while lifecycle deletes continue.
+
+### What are claim / lease semantics on restart?
+
+Postgres task rows are the delivery SSOT. Workers **claim** via `FOR UPDATE SKIP LOCKED`, hold a **lease** (`EDGEQUAKE_TASK_LEASE_TTL_SECS`, default 120 s), and refresh every 60 s.
+
+| Status at boot | Default (unset / ON) | `EDGEQUAKE_STARTUP_AUTO_RESUME=0` |
+| -------------- | -------------------- | --------------------------------- |
+| **Pending**    | Claimable            | Claimable                         |
+| **Processing** (stale) | → Pending (reclaimable) | → Failed (`failure_code=server_restart_interrupted`; use Reprocess) |
+| **Cancelled**  | Never claimed        | Never claimed                     |
+
+### Can I run multiple API/worker replicas?
+
+Set `EDGEQUAKE_REPLICAS` to your process count. When `EDGEQUAKE_REPLICAS>1`, **`EDGEQUAKE_TASK_DELIVERY=local` fails at boot** — use `bridged` or `notify_only`. Correctness remains `claim_next` + lease; delivery modes are wake signals only.
+
+Monitor: `GET /api/v1/pipeline/queue-metrics` (`store_contention`, `cancel_intent_count`).
+
+### Why does PDF processing have two phases (convert → ingest)?
+
+PDF admission enqueues **convert only** (`TaskType::PdfProcessing`). After durable markdown is stored and the PDF row is `Completed`, a separate **Insert** task runs KG ingestion under its own lease, timeout, and fairness permit.
+
+Cancelling convert **or** an in-flight ingest cancels both linked tasks for the same `pdf_id`. After convert completes, cancelling ingest leaves the PDF `Completed` (markdown barrier kept).
 
 ---
 
@@ -238,23 +370,23 @@ EdgeQuake doesn't include built-in authentication. Secure with:
 | ---------- | --------------------------- |
 | Plain text | ✅ Full                      |
 | Markdown   | ✅ Full                      |
-| PDF        | ✅ Full (with edgequake-pdf) |
+| PDF        | ✅ Full (vision LLM required) |
 | HTML       | 🔄 Planned                   |
 | DOCX       | 🔄 Planned                   |
 
 ### What LLM providers are supported?
 
-| Provider     | Support   | Notes                                    |
-| ------------ | --------- | ---------------------------------------- |
-| OpenAI       | ✅ Full    | GPT-4.1 series, GPT-5.x series (catalog) |
-| Anthropic    | ✅ Full    | Claude models (`ANTHROPIC_API_KEY`)        |
-| Mistral      | ✅ Full    | Mistral models (`MISTRAL_API_KEY`)       |
-| Google Gemini| ✅ Full    | Developer API (`GEMINI_API_KEY`)         |
-| Vertex AI    | ✅ Full    | Enterprise GCP identity (ADC/SA)         |
-| Ollama       | ✅ Full    | Local models (default: `gemma4:latest`)  |
-| LM Studio    | ✅ Full    | OpenAI-compatible                        |
-| Azure OpenAI | ✅ Full    | Via `AZURE_OPENAI_*` env vars            |
-| OpenRouter   | ✅ Full    | Model aggregator                         |
+| Provider      | Support | Notes                                      |
+| ------------- | ------- | ------------------------------------------ |
+| OpenAI        | ✅ Full  | GPT-5.x series (catalog)                   |
+| Anthropic     | ✅ Full  | Claude models (`ANTHROPIC_API_KEY`)        |
+| Mistral       | ✅ Full  | Mistral models (`MISTRAL_API_KEY`)         |
+| Google Gemini | ✅ Full  | Developer API (`GEMINI_API_KEY`)           |
+| Vertex AI     | ✅ Full  | Enterprise GCP identity (ADC/SA)           |
+| Ollama        | ✅ Full  | Local models (default: `gemma4:latest`)    |
+| LM Studio     | ✅ Full  | OpenAI-compatible                          |
+| Azure OpenAI  | ✅ Full  | Via `AZURE_OPENAI_*` env vars              |
+| OpenRouter    | ✅ Full  | Model aggregator                           |
 
 ### What query modes are available?
 
@@ -276,19 +408,22 @@ EdgeQuake doesn't include built-in authentication. Secure with:
 1. **Check documents exist**:
 
    ```bash
-   curl http://localhost:8080/api/v1/documents?workspace_id=...
+   curl http://localhost:8080/api/v1/documents
    ```
 
-2. **Check entities extracted**:
+2. **Check entities extracted** (graph namespace):
 
    ```bash
-   curl http://localhost:8080/api/v1/graph/entities?workspace_id=...
+   curl http://localhost:8080/api/v1/graph/entities
    ```
 
 3. **Try `naive` mode** (vector-only):
+
    ```json
    { "query": "test", "mode": "naive" }
    ```
+
+When auth is enabled, add `-H "Authorization: Bearer $TOKEN"` or `-H "X-API-Key: $KEY"`.
 
 See [Troubleshooting Guide](/docs/troubleshooting/common-issues/) for more.
 
@@ -296,16 +431,17 @@ See [Troubleshooting Guide](/docs/troubleshooting/common-issues/) for more.
 
 1. Check LLM is running (Ollama: `ollama list`)
 2. Check API key is valid (OpenAI)
-3. Check logs: `tail -f /tmp/edgequake-backend.log`
-4. Restart backend and retry
+3. Poll task status: `GET /api/v1/tasks/{track_id}`
+4. Check queue metrics: `GET /api/v1/pipeline/queue-metrics`
+5. Check logs: `tail -f /tmp/edgequake-backend.log`
 
 ### How do I check if EdgeQuake is healthy?
 
 ```bash
-# Basic health
+# Basic health (no auth)
 curl http://localhost:8080/health
 
-# Full readiness (checks database)
+# Full readiness (checks database + store contention)
 curl http://localhost:8080/ready
 ```
 
@@ -318,7 +454,7 @@ curl http://localhost:8080/ready
 | Aspect       | LightRAG | EdgeQuake     |
 | ------------ | -------- | ------------- |
 | Language     | Python   | Rust          |
-| Speed        | Baseline | 10-50x faster |
+| Speed        | Baseline | 10–50× faster |
 | Memory       | Higher   | Lower (no GC) |
 | Multi-tenant | No       | Yes           |
 | Production   | Research | Production    |
@@ -329,8 +465,8 @@ curl http://localhost:8080/ready
 | Aspect     | GraphRAG                 | EdgeQuake         |
 | ---------- | ------------------------ | ----------------- |
 | Approach   | Hierarchical communities | Flat entity graph |
-| Cost       | Very high ($$$)          | Low-medium        |
-| Index time | Hours-days               | Minutes           |
+| Cost       | Very high ($$$)          | Low–medium        |
+| Index time | Hours–days               | Minutes           |
 | Queries    | Global summaries         | Hybrid modes      |
 | Use case   | Large corpora            | General purpose   |
 
@@ -358,17 +494,10 @@ curl http://localhost:8080/ready
 ### What's the development workflow?
 
 ```bash
-# Clone
 git clone https://github.com/your-fork/edgequake
-
-# Setup
 make dev
-
-# Make changes, then test
 cargo test
 cargo clippy
-
-# Format before commit
 cargo fmt
 ```
 
@@ -410,24 +539,18 @@ The resolution chain (highest priority first):
 3. **`EDGEQUAKE_VISION_LLM_PROVIDER`** / **`EDGEQUAKE_VISION_LLM_MODEL`** env vars
 4. **`EDGEQUAKE_DEFAULT_LLM_PROVIDER`** / **`EDGEQUAKE_DEFAULT_LLM_MODEL`** env vars
 5. **`EDGEQUAKE_LLM_PROVIDER`** / **`EDGEQUAKE_LLM_MODEL`** env vars
-6. **Vision fallback** (when no env vars match): `ollama` / `gemma4:latest` (`vision_env.rs`)
+6. **Vision fallback** (when no env vars match): `ollama` / `gemma4:latest`
 
-> **Note:** LLM compiled defaults (no env) are `openai` / `gpt-4.1-mini` per `models.toml`. Vision resolution falls back to Ollama when no `EDGEQUAKE_*` vars are set.
-
-At each step, the resolved model is checked for compatibility with the resolved
-provider. Incompatible combinations (e.g. `gpt-4.1-nano` on `ollama`) are
-automatically skipped with a warning log, and the next candidate is tried.
+At each step, incompatible combinations are skipped with a warning log.
 
 ### Can I use a different model for vision than for text extraction?
 
 **Yes**. Set the vision-specific env vars:
 
 ```bash
-# Main LLM for entity extraction
 EDGEQUAKE_DEFAULT_LLM_PROVIDER=ollama
 EDGEQUAKE_DEFAULT_LLM_MODEL=gemma4:latest
 
-# Separate vision model for PDF OCR
 EDGEQUAKE_VISION_PROVIDER=openai
 EDGEQUAKE_VISION_MODEL=gpt-4.1-nano
 OPENAI_API_KEY=sk-...
@@ -435,19 +558,15 @@ OPENAI_API_KEY=sk-...
 
 ### Where can I see the active configuration in the UI?
 
-Open **Settings → Configuration Explainability** panel. It shows:
-
-- The resolved provider and model for each area (LLM, Embedding, Vision)
-- The full resolution chain (which env var won)
-- Mismatch warnings with actionable fix instructions (auto-expanded)
-
-The same data is available via `GET /api/v1/config/effective`.
+Open **Settings → Configuration Explainability**. The same data is available via `GET /api/v1/config/effective`.
 
 ---
 
 ## See Also
 
 - [Getting Started](/docs/getting-started/installation/)
+- [Runtime auth hardening](operations/runtime-auth-hardening.md)
+- [Ingestion cancel & fairness](ingestion-cancel-and-fairness.md)
 - [Architecture Overview](/docs/architecture/overview/)
 - [API Reference](/docs/api-reference/rest-api/)
 - [Troubleshooting](/docs/troubleshooting/common-issues/)

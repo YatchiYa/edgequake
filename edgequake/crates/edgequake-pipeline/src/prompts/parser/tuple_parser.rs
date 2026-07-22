@@ -17,6 +17,7 @@
 //! 3. **Line-by-line processing**: Enables streaming extraction.
 //! 4. **Battle-tested**: Proven in the LightRAG paper with millions of extractions.
 
+use super::super::extract_caps::apply_default_extraction_caps;
 use super::super::normalizer::normalize_entity_name;
 use super::super::{DEFAULT_COMPLETION_DELIMITER, DEFAULT_TUPLE_DELIMITER};
 use crate::error::Result;
@@ -96,9 +97,20 @@ impl TupleParser {
 
                     let normalized_name = normalize_entity_name(raw_name);
 
-                    // BR0006 defense: Skip entities that normalize to empty string
+                    // BR0006 / 067: Skip entities that normalize to empty (numeric or opaque ID)
                     if normalized_name.is_empty() {
-                        tracing::debug!(raw_name = %raw_name, "Skipping entity with empty normalized name");
+                        if edgequake_storage::is_opaque_identifier(raw_name) {
+                            tracing::debug!(
+                                raw_name = %raw_name,
+                                metric = "opaque_entity_name_rejected",
+                                "Skipping opaque identifier entity name (067)"
+                            );
+                        } else {
+                            tracing::debug!(
+                                raw_name = %raw_name,
+                                "Skipping entity with empty normalized name"
+                            );
+                        }
                         continue;
                     }
 
@@ -172,6 +184,9 @@ impl TupleParser {
         result
             .metadata
             .insert("parse_errors".to_string(), serde_json::json!(parse_errors));
+
+        // 054: LightRAG per-response quantity caps (prompt + deterministic truncate).
+        apply_default_extraction_caps(&mut result);
 
         Ok(result)
     }

@@ -5,7 +5,7 @@
 > **High-Performance Graph-RAG Framework in Rust**  
 > Transform documents into intelligent knowledge graphs for superior retrieval and generation
 
-[![Version](https://img.shields.io/badge/version-0.18.0-blue.svg?style=flat)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.20.2-blue.svg?style=flat)](CHANGELOG.md)
 [![Rust](https://img.shields.io/badge/rust-1.95+-orange.svg?style=flat&logo=rust)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat)](LICENSE)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg?style=flat)](https://github.com/raphaelmansuy/edgequake)
@@ -66,7 +66,24 @@ EDGEQUAKE_LLM_PROVIDER=ollama \
 curl -s http://localhost:8080/health | python3 -m json.tool
 ```
 
-> Pin a version: `EDGEQUAKE_VERSION=0.18.0 sh quickstart.sh`
+> Pin a version: `EDGEQUAKE_VERSION=0.20.2 sh quickstart.sh`
+
+### What's new in 0.20.2
+
+- **Opaque soft-labels (067 / 072 / 073)** — Reject UUID entity names at write; document KG + Query Connections show human labels while keeping graph ids for navigation.
+- **Reliable delete + DB ops (069 / 070 / 071)** — DDL off delete hotpath; lineage edge discovery; m086/m092 reconcile.
+- **Text ingest progress (068)** + **dual fairness lanes** — MD/text progress parity; deletes do not starve PDF ingest.
+
+Also in **0.20.1**: durable wipe (#309), graph-first cascade (#305), Interrupted restart (#304). **0.20.0**: Smart Mix ([065](specs/001-benchmark/001-edgquake-improvements/065-smart-lightrag-mix-arms.md)), Drawing `display_name` ([066](specs/001-benchmark/001-edgquake-improvements/066-drawing-entity-display-name.md)).
+
+### Performance testing
+
+Statistical Acc **tie** with LightRAG (not an Acc Beat / SOTA claim). Cold publish Acc EQ **0.731** vs LR **0.760**; fair cold query p50 ratio **1.013×** (`smoke-20260721T022103Z`); Acc Fact peer EQ Acc **0.801** (`smoke-20260720T120315Z`). Warm ~4× LR “faster” was **LR LLM cache**, not the engine.
+
+- [BUSINESS_REPORT.md](specs/001-benchmark/e2e/artifacts/publish/latest/BUSINESS_REPORT.md)
+- [EXEC_SUMMARY.txt](specs/001-benchmark/e2e/artifacts/publish/latest/EXEC_SUMMARY.txt)
+- [peers.json](specs/001-benchmark/e2e/artifacts/peers.json)
+- Context: [055](specs/001-benchmark/001-edgquake-improvements/055-post-acc-ceiling-first-principles.md) · [063](specs/001-benchmark/001-edgquake-improvements/063-why-lightrag-faster-cache-fairness.md)
 
 ### Authentication (v0.15+)
 
@@ -96,6 +113,10 @@ The API creates the bootstrap admin on startup. Sign in at http://localhost:3000
 Upgrades from pre-v0.15: legacy KV `auth:user:*` records are imported into PostgreSQL automatically when present.
 
 See [Runtime Auth Hardening](docs/operations/runtime-auth-hardening.md) for master API keys, OIDC, and troubleshooting ([GitHub #288](https://github.com/raphaelmansuy/edgequake/issues/288)).
+
+### Ingestion cancel & restart (v0.19+)
+
+From **v0.19**, cancel and restart are durable (SPEC-057): UI shows **Stopping…** until terminal **Cancelled** (not Failed); Pending tasks survive process restart via Postgres claim/lease (`FOR UPDATE SKIP LOCKED`). See [Ingestion cancel and fairness](docs/ingestion-cancel-and-fairness.md).
 
 ---
 
@@ -254,24 +275,24 @@ docker compose -f docker-compose.prebuilt.yml up -d
 
 | Service | Port | Image |
 |---------|------|-------|
-| API | 8080 | `ghcr.io/raphaelmansuy/edgequake:0.18.0` (`:latest`) |
-| Frontend | 3000 | `ghcr.io/raphaelmansuy/edgequake-frontend:0.18.0` (`:latest`) |
-| PostgreSQL | 5432 | `ghcr.io/raphaelmansuy/edgequake-postgres:0.18.0` (**PG18** default) |
+| API | 8080 | `ghcr.io/raphaelmansuy/edgequake:0.20.2` (`:latest`) |
+| Frontend | 3000 | `ghcr.io/raphaelmansuy/edgequake-frontend:0.20.2` (`:latest`) |
+| PostgreSQL | 5432 | `ghcr.io/raphaelmansuy/edgequake-postgres:0.20.2` (**PG18** default) |
 
 **PostgreSQL major tags (multi-arch amd64 + arm64):**
 
 | Tag | PostgreSQL |
 |-----|------------|
-| `0.18.0` / `latest` / `0.18.0-pg18` / `latest-pg18` | PG18 |
-| `0.18.0-pg17` / `latest-pg17` | PG17 |
-| `0.18.0-pg16` / `latest-pg16` | PG16 |
+| `0.20.2` / `latest` / `0.20.2-pg18` / `latest-pg18` | PG18 |
+| `0.20.2-pg17` / `latest-pg17` | PG17 |
+| `0.20.2-pg16` / `latest-pg16` | PG16 |
 
 ```bash
 # Pin full stack to this release
-EDGEQUAKE_VERSION=0.18.0 docker compose -f docker-compose.quickstart.yml up -d
+EDGEQUAKE_VERSION=0.20.2 docker compose -f docker-compose.quickstart.yml up -d
 
 # Pin PostgreSQL major (optional; default tag follows EDGEQUAKE_VERSION → PG18)
-EDGEQUAKE_VERSION=0.18.0 EDGEQUAKE_POSTGRES_TAG=0.18.0-pg16 \
+EDGEQUAKE_VERSION=0.20.2 EDGEQUAKE_POSTGRES_TAG=0.20.2-pg16 \
   docker compose -f docker-compose.quickstart.yml up -d
 ```
 
@@ -359,7 +380,7 @@ cargo fmt --all -- --check
 cd .. && make status && make stop
 ```
 
-### Pre-delivery checklist (v0.16+)
+### Pre-delivery checklist (v0.19+)
 
 Run these **before** tagging a release. Prefer Makefile targets — they set required env vars.
 

@@ -42,10 +42,55 @@ impl KgChunkPickMethod {
     }
 }
 
+fn env_flag_on(name: &str) -> bool {
+    std::env::var(name)
+        .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+        .unwrap_or(false)
+}
+
+/// 024 Q1: LightRAG Step-3 — sort each entity's chunks by global citation frequency
+/// before applying `related_chunk_number` take.
+pub fn occurrence_sort_enabled() -> bool {
+    env_flag_on("EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT")
+}
+
+/// 024 Q2: LightRAG VECTOR path — uncapped pool, then take
+/// `related_chunk_number * n_entities / 2`.
+pub fn lr_vector_budget_enabled() -> bool {
+    env_flag_on("EDGEQUAKE_KG_CHUNK_PICK_LR_BUDGET")
+}
+
+/// LightRAG VECTOR budget: `related_chunk_number * n_entities / 2` (integer).
+pub fn lr_vector_chunk_budget(related_chunk_number: usize, n_entities: usize) -> usize {
+    if related_chunk_number == 0 || n_entities == 0 {
+        return 0;
+    }
+    (related_chunk_number * n_entities) / 2
+}
+
+/// Global citation counts for entity/relation source chunks (LightRAG occurrence).
+pub fn chunk_citation_counts(context: &QueryContext) -> HashMap<String, usize> {
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for entity in &context.entities {
+        for chunk_id in &entity.source_chunk_ids {
+            *counts.entry(chunk_id.clone()).or_insert(0) += 1;
+        }
+    }
+    for rel in &context.relationships {
+        for chunk_id in rel.all_source_chunk_ids() {
+            *counts.entry(chunk_id).or_insert(0) += 1;
+        }
+    }
+    counts
+}
+
 /// Collect candidate chunk IDs from a KG context, optionally capped per source.
 ///
 /// `related_chunk_number` mirrors LightRAG: max chunks contributed per entity
 /// or relationship. `0` means unlimited per source.
+///
+/// When `EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT=1`, each entity's chunk list is
+/// sorted by global citation frequency (desc) before the take.
 ///
 /// When `allowed_document_ids` is `Some`, only chunk ids whose derived document
 /// intersects the allowed set are returned (SPEC-047 / 021 L-A3).
@@ -59,23 +104,38 @@ pub fn collect_kg_chunk_ids_scoped(
     related_chunk_number: usize,
     allowed_document_ids: Option<&[String]>,
 ) -> Vec<String> {
+    let sort_by_occurrence = occurrence_sort_enabled();
+    let counts = if sort_by_occurrence {
+        chunk_citation_counts(context)
+    } else {
+        HashMap::new()
+    };
     let mut ids = HashSet::new();
 
     for entity in &context.entities {
+        let mut chunk_ids = entity.source_chunk_ids.clone();
+        if sort_by_occurrence {
+            chunk_ids.sort_by(|a, b| {
+                let ca = counts.get(a).copied().unwrap_or(0);
+                let cb = counts.get(b).copied().unwrap_or(0);
+                cb.cmp(&ca).then_with(|| a.cmp(b))
+            });
+        }
         let take = if related_chunk_number == 0 {
-            entity.source_chunk_ids.len()
+            chunk_ids.len()
         } else {
-            related_chunk_number.min(entity.source_chunk_ids.len())
+            related_chunk_number.min(chunk_ids.len())
         };
-        for chunk_id in entity.source_chunk_ids.iter().take(take) {
-            ids.insert(chunk_id.clone());
+        for chunk_id in chunk_ids.into_iter().take(take) {
+            ids.insert(chunk_id);
         }
     }
 
     for rel in &context.relationships {
-        if let Some(chunk_id) = &rel.source_chunk_id {
-            let _ = related_chunk_number;
-            ids.insert(chunk_id.clone());
+        let _ = related_chunk_number;
+        // 052: LightRAG admits every relation source_id part into the chunk pool.
+        for chunk_id in rel.all_source_chunk_ids() {
+            ids.insert(chunk_id);
         }
     }
 
@@ -237,6 +297,48 @@ mod tests {
         ctx.add_entity(e);
         let ids = collect_kg_chunk_ids(&ctx, 2);
         assert_eq!(ids.len(), 2);
+    }
+
+    #[test]
+    fn collect_admits_all_relation_source_chunk_ids() {
+        // 052: LightRAG multi-part relation source_id → Mix pool.
+        let mut ctx = QueryContext::new();
+        ctx.add_relationship(
+            RetrievedRelationship::new("A", "B", "KNOWS")
+                .with_source_chunk_ids(vec!["rel-a".into(), "rel-b".into()]),
+        );
+        let ids = collect_kg_chunk_ids(&ctx, 5);
+        assert!(ids.contains(&"rel-a".to_string()), "{ids:?}");
+        assert!(ids.contains(&"rel-b".to_string()), "{ids:?}");
+        assert_eq!(ids.len(), 2);
+    }
+
+    #[test]
+    fn occurrence_sort_prefers_high_citation_before_take() {
+        // Without sort: take(1) keeps storage-first "cold".
+        // With sort: "hot" cited by two entities wins.
+        std::env::remove_var("EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT");
+        let mut ctx = QueryContext::new();
+        let mut e1 = RetrievedEntity::new("A", "PERSON", "d");
+        e1.source_chunk_ids = vec!["cold".into(), "hot".into()];
+        let mut e2 = RetrievedEntity::new("B", "PERSON", "d");
+        e2.source_chunk_ids = vec!["hot".into()];
+        ctx.add_entity(e1);
+        ctx.add_entity(e2);
+        let unsorted = collect_kg_chunk_ids(&ctx, 1);
+        assert!(unsorted.contains(&"cold".to_string()) || unsorted.contains(&"hot".to_string()));
+
+        std::env::set_var("EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT", "1");
+        let sorted = collect_kg_chunk_ids(&ctx, 1);
+        std::env::remove_var("EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT");
+        assert_eq!(sorted, vec!["hot".to_string()]);
+    }
+
+    #[test]
+    fn lr_vector_chunk_budget_matches_lightrag_formula() {
+        assert_eq!(lr_vector_chunk_budget(5, 10), 25);
+        assert_eq!(lr_vector_chunk_budget(5, 1), 2);
+        assert_eq!(lr_vector_chunk_budget(0, 10), 0);
     }
 
     #[test]

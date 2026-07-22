@@ -20,14 +20,15 @@
 
 use async_trait::async_trait;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::RwLock;
 
-use crate::error::Result;
+use crate::error::{Result, StorageError};
 use crate::traits::{
-    edge_matches_list_filter, edge_matches_relationship_id, node_matches_list_filter,
-    sources_match_prefixes, EdgeListFilter, GraphEdge, GraphNode, GraphScanOps, GraphStorage,
-    GraphStorageAnalyticsOps, GraphStorageMutateOps, GraphStorageReadOps, KnowledgeGraph,
-    NodeListFilter, PagedGraphResult,
+    edge_matches_list_filter, edge_matches_relationship_id, edge_matches_scope_dims,
+    node_matches_list_filter, sources_match_prefixes, EdgeListFilter, GraphEdge, GraphNode,
+    GraphScanOps, GraphStorage, GraphStorageAnalyticsOps, GraphStorageMutateOps,
+    GraphStorageReadOps, KnowledgeGraph, NodeListFilter, PagedGraphResult,
 };
 
 /// In-memory graph storage implementation.
@@ -41,6 +42,12 @@ pub struct MemoryGraphStorage {
     edges: RwLock<HashMap<(String, String), HashMap<String, serde_json::Value>>>,
     // adjacency list: node -> set of neighbors
     adjacency: RwLock<HashMap<String, HashSet<String>>>,
+    /// Test/op-count instrumentation (issue #309 wipe proofs).
+    clear_workspace_calls: AtomicU64,
+    find_nodes_by_source_prefixes_calls: AtomicU64,
+    find_edges_by_source_prefixes_calls: AtomicU64,
+    /// SPEC-071: next `find_edges_by_source_prefixes` returns Database error once.
+    fail_next_find_edges_by_source_prefixes: AtomicBool,
 }
 
 impl MemoryGraphStorage {
@@ -51,7 +58,43 @@ impl MemoryGraphStorage {
             nodes: RwLock::new(HashMap::new()),
             edges: RwLock::new(HashMap::new()),
             adjacency: RwLock::new(HashMap::new()),
+            clear_workspace_calls: AtomicU64::new(0),
+            find_nodes_by_source_prefixes_calls: AtomicU64::new(0),
+            find_edges_by_source_prefixes_calls: AtomicU64::new(0),
+            fail_next_find_edges_by_source_prefixes: AtomicBool::new(false),
         }
+    }
+
+    /// SPEC-071 test hook: inject a one-shot source-prefix edge discovery failure.
+    pub fn fail_next_find_edges_by_source_prefixes(&self) {
+        self.fail_next_find_edges_by_source_prefixes
+            .store(true, Ordering::Relaxed);
+    }
+
+    /// How many times [`GraphStorageMutateOps::clear_workspace`] was invoked.
+    pub fn clear_workspace_call_count(&self) -> u64 {
+        self.clear_workspace_calls.load(Ordering::Relaxed)
+    }
+
+    /// How many times [`GraphScanOps::find_nodes_by_source_prefixes`] was invoked.
+    pub fn find_nodes_by_source_prefixes_call_count(&self) -> u64 {
+        self.find_nodes_by_source_prefixes_calls
+            .load(Ordering::Relaxed)
+    }
+
+    /// How many times [`GraphScanOps::find_edges_by_source_prefixes`] was invoked.
+    pub fn find_edges_by_source_prefixes_call_count(&self) -> u64 {
+        self.find_edges_by_source_prefixes_calls
+            .load(Ordering::Relaxed)
+    }
+
+    /// Reset op-count instrumentation (tests).
+    pub fn reset_op_counts(&self) {
+        self.clear_workspace_calls.store(0, Ordering::Relaxed);
+        self.find_nodes_by_source_prefixes_calls
+            .store(0, Ordering::Relaxed);
+        self.find_edges_by_source_prefixes_calls
+            .store(0, Ordering::Relaxed);
     }
 
     /// Normalize edge key (alphabetically sorted for consistency).
@@ -232,7 +275,12 @@ impl GraphStorageReadOps for MemoryGraphStorage {
             .collect())
     }
 
-    async fn get_incident_edges_batch(&self, node_ids: &[String]) -> Result<Vec<GraphEdge>> {
+    async fn get_incident_edges_batch(
+        &self,
+        node_ids: &[String],
+        tenant_id: Option<&str>,
+        workspace_id: Option<&str>,
+    ) -> Result<Vec<GraphEdge>> {
         if node_ids.is_empty() {
             return Ok(Vec::new());
         }
@@ -240,7 +288,6 @@ impl GraphStorageReadOps for MemoryGraphStorage {
         let node_set: std::collections::HashSet<&str> =
             node_ids.iter().map(|s| s.as_str()).collect();
         let edges = self.edges.read().map_err(super::lock::map_lock_err)?;
-
         Ok(edges
             .iter()
             .filter(|((s, t), _)| node_set.contains(s.as_str()) || node_set.contains(t.as_str()))
@@ -249,6 +296,7 @@ impl GraphStorageReadOps for MemoryGraphStorage {
                 target: t.clone(),
                 properties: props.clone(),
             })
+            .filter(|e| edge_matches_scope_dims(&e.properties, tenant_id, workspace_id))
             .collect())
     }
 
@@ -662,27 +710,33 @@ impl GraphStorageMutateOps for MemoryGraphStorage {
     }
 
     async fn delete_node(&self, node_id: &str) -> Result<()> {
+        self.delete_nodes_batch(&[node_id.to_string()]).await
+    }
+
+    async fn delete_nodes_batch(&self, node_ids: &[String]) -> Result<()> {
+        if node_ids.is_empty() {
+            return Ok(());
+        }
         let mut nodes = self.nodes.write().map_err(super::lock::map_lock_err)?;
         let mut edges = self.edges.write().map_err(super::lock::map_lock_err)?;
         let mut adjacency = self.adjacency.write().map_err(super::lock::map_lock_err)?;
 
-        nodes.remove(node_id);
+        for node_id in node_ids {
+            nodes.remove(node_id);
 
-        // Remove all edges involving this node
-        let to_remove: Vec<(String, String)> = edges
-            .keys()
-            .filter(|(s, t)| s == node_id || t == node_id)
-            .cloned()
-            .collect();
+            let to_remove: Vec<(String, String)> = edges
+                .keys()
+                .filter(|(s, t)| s == node_id || t == node_id)
+                .cloned()
+                .collect();
+            for key in to_remove {
+                edges.remove(&key);
+            }
 
-        for key in to_remove {
-            edges.remove(&key);
-        }
-
-        // Update adjacency
-        adjacency.remove(node_id);
-        for neighbors in adjacency.values_mut() {
-            neighbors.remove(node_id);
+            adjacency.remove(node_id);
+            for neighbors in adjacency.values_mut() {
+                neighbors.remove(node_id);
+            }
         }
 
         Ok(())
@@ -779,6 +833,25 @@ impl GraphStorageMutateOps for MemoryGraphStorage {
         Ok(())
     }
 
+    async fn delete_edges_batch(&self, edges: &[(String, String)]) -> Result<()> {
+        if edges.is_empty() {
+            return Ok(());
+        }
+        let mut edge_store = self.edges.write().map_err(super::lock::map_lock_err)?;
+        let mut adjacency = self.adjacency.write().map_err(super::lock::map_lock_err)?;
+        for (source, target) in edges {
+            let key = Self::edge_key(source, target);
+            edge_store.remove(&key);
+            if let Some(neighbors) = adjacency.get_mut(source) {
+                neighbors.remove(target);
+            }
+            if let Some(neighbors) = adjacency.get_mut(target) {
+                neighbors.remove(source);
+            }
+        }
+        Ok(())
+    }
+
     async fn delete_edge_scoped(
         &self,
         source: &str,
@@ -824,6 +897,7 @@ impl GraphStorageMutateOps for MemoryGraphStorage {
     /// Filters by `workspace_id` property in node/edge data.
     /// Returns (nodes_deleted, edges_deleted).
     async fn clear_workspace(&self, workspace_id: &uuid::Uuid) -> Result<(usize, usize)> {
+        self.clear_workspace_calls.fetch_add(1, Ordering::Relaxed);
         let mut nodes = self.nodes.write().map_err(super::lock::map_lock_err)?;
         let mut edges = self.edges.write().map_err(super::lock::map_lock_err)?;
         let mut adjacency = self.adjacency.write().map_err(super::lock::map_lock_err)?;
@@ -1034,6 +1108,8 @@ impl GraphScanOps for MemoryGraphStorage {
         filter: &NodeListFilter,
         source_prefixes: &[String],
     ) -> Result<Vec<GraphNode>> {
+        self.find_nodes_by_source_prefixes_calls
+            .fetch_add(1, Ordering::Relaxed);
         let nodes = self.nodes.read().map_err(super::lock::map_lock_err)?;
         let mut matched: Vec<GraphNode> = nodes
             .iter()
@@ -1060,6 +1136,16 @@ impl GraphScanOps for MemoryGraphStorage {
         filter: &EdgeListFilter,
         source_prefixes: &[String],
     ) -> Result<Vec<GraphEdge>> {
+        self.find_edges_by_source_prefixes_calls
+            .fetch_add(1, Ordering::Relaxed);
+        if self
+            .fail_next_find_edges_by_source_prefixes
+            .swap(false, Ordering::Relaxed)
+        {
+            return Err(StorageError::Database(
+                "injected: canceling statement due to statement timeout".into(),
+            ));
+        }
         let edges = self.edges.read().map_err(super::lock::map_lock_err)?;
         let mut matched: Vec<GraphEdge> = edges
             .iter()
@@ -1214,5 +1300,27 @@ mod tests {
 
         assert!(!storage.has_node("A").await.unwrap());
         assert_eq!(storage.edge_count().await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_delete_edges_batch() {
+        use crate::traits::GraphStorageMutateOps;
+        let storage = MemoryGraphStorage::new("edges-batch");
+        storage.upsert_node("A", HashMap::new()).await.unwrap();
+        storage.upsert_node("B", HashMap::new()).await.unwrap();
+        storage.upsert_node("C", HashMap::new()).await.unwrap();
+        storage.upsert_edge("A", "B", HashMap::new()).await.unwrap();
+        storage.upsert_edge("B", "C", HashMap::new()).await.unwrap();
+
+        storage
+            .delete_edges_batch(&[
+                ("A".to_string(), "B".to_string()),
+                ("B".to_string(), "C".to_string()),
+            ])
+            .await
+            .unwrap();
+
+        assert_eq!(storage.edge_count().await.unwrap(), 0);
+        assert!(storage.has_node("A").await.unwrap());
     }
 }

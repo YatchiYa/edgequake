@@ -171,6 +171,11 @@ pub enum ApiError {
         retry_after_secs: u64,
     },
 
+    /// Interactive document/tenant read path saturated or past deadline.
+    /// Returns HTTP 503 with code `read_path_busy` (local-ingest hardening).
+    #[error("Read path busy")]
+    ReadPathBusy { retry_after_ms: u64 },
+
     /// Not implemented.
     #[error("Not implemented: {feature}")]
     NotImplemented {
@@ -214,7 +219,9 @@ impl ApiError {
             Self::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::RateLimited => StatusCode::TOO_MANY_REQUESTS,
             Self::Timeout(_) => StatusCode::REQUEST_TIMEOUT,
-            Self::ServiceUnavailable { .. } => StatusCode::SERVICE_UNAVAILABLE,
+            Self::ServiceUnavailable { .. } | Self::ReadPathBusy { .. } => {
+                StatusCode::SERVICE_UNAVAILABLE
+            }
             Self::NotImplemented { .. } => StatusCode::NOT_IMPLEMENTED,
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::ConfigError(_) => StatusCode::UNPROCESSABLE_ENTITY,
@@ -227,7 +234,10 @@ impl ApiError {
     /// Whether clients should retry (rate limits, timeouts, transient upstream errors).
     pub fn is_retryable(&self) -> bool {
         match self {
-            Self::RateLimited | Self::Timeout(_) | Self::ServiceUnavailable { .. } => true,
+            Self::RateLimited
+            | Self::Timeout(_)
+            | Self::ServiceUnavailable { .. }
+            | Self::ReadPathBusy { .. } => true,
             Self::Storage(e) => storage_error_retryable(e),
             Self::Llm(e) => llm_error_retryable(e),
             Self::Pipeline(e) => pipeline_error_retryable(e),
@@ -303,6 +313,11 @@ impl ApiError {
                 "retry_after_secs": retry_after_secs,
                 "retryable": true,
             }),
+            Self::ReadPathBusy { retry_after_ms } => json!({
+                "kind": "read_path_busy",
+                "retry_after_ms": retry_after_ms,
+                "retryable": true,
+            }),
             Self::NotImplemented { feature } => {
                 json!({ "kind": "not_implemented", "feature": feature })
             }
@@ -352,6 +367,7 @@ impl ApiError {
             Self::RateLimited => "RATE_LIMITED",
             Self::Timeout(_) => "REQUEST_TIMEOUT",
             Self::ServiceUnavailable { .. } => "SERVICE_UNAVAILABLE",
+            Self::ReadPathBusy { .. } => "read_path_busy",
             Self::NotImplemented { .. } => "NOT_IMPLEMENTED",
             Self::Internal(_) => "INTERNAL_ERROR",
             Self::ConfigError(_) => "CONFIG_ERROR",
@@ -431,6 +447,23 @@ impl IntoResponse for ApiError {
             );
         }
 
+        if let Self::ReadPathBusy { retry_after_ms } = &self {
+            let retry_after_secs = (*retry_after_ms).div_ceil(1000).max(1);
+            // Surface machine-readable retry_after_ms in the top-level body too.
+            error.details = Some(json!({
+                "retry_after_ms": retry_after_ms,
+                "retryable": true,
+            }));
+            return problem_details::into_problem_json_response(
+                status,
+                error,
+                &[(
+                    axum::http::header::RETRY_AFTER.as_str(),
+                    retry_after_secs.to_string(),
+                )],
+            );
+        }
+
         problem_details::into_problem_json_response(status, error, &[])
     }
 }
@@ -460,6 +493,13 @@ impl ApiError {
         Self::ServiceUnavailable {
             message: "Graph materialization capacity reached. Retry shortly.".into(),
             retry_after_secs: 5,
+        }
+    }
+
+    /// Interactive read path busy (pool/runtime pressure during ingest).
+    pub fn read_path_busy(retry_after_ms: u64) -> Self {
+        Self::ReadPathBusy {
+            retry_after_ms: retry_after_ms.max(500),
         }
     }
 }
@@ -1078,6 +1118,9 @@ mod tests {
             ApiError::Conflict("test".into()),
             ApiError::ValidationError("test".into()),
             ApiError::RateLimited,
+            ApiError::ReadPathBusy {
+                retry_after_ms: 2000,
+            },
             ApiError::NotImplemented {
                 feature: "test".into(),
             },
@@ -1088,6 +1131,11 @@ mod tests {
             let status = error.status_code();
             assert!(status.as_u16() >= 400 && status.as_u16() < 600);
         }
+        assert_eq!(ApiError::read_path_busy(2000).code(), "read_path_busy");
+        assert_eq!(
+            ApiError::read_path_busy(2000).status_code(),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
     }
 
     #[test]

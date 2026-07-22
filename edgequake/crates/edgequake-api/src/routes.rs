@@ -249,6 +249,8 @@ fn api_v1_routes() -> Router<AppState> {
         // SPEC-021 P-D2: Storage health inspection + repair (admin-only)
         .route("/admin/storage/inspect", get(handlers::storage_inspect))
         .route("/admin/storage/repair", post(handlers::storage_repair))
+        // SPEC-071: Wave-2 ANN warmup (admin/ops — not chat UX)
+        .route("/admin/ann/warmup", post(handlers::ann_warmup))
         // SPEC-021 P-G1b: legacy entity reconciliation (admin-gated, dry-run + confirm).
         .route(
             "/admin/entities/reconcile",

@@ -8,7 +8,7 @@ use crate::services::document_metadata_scan::load_scoped_document_metadata;
 use crate::services::tenant_guard::{
     empty_track_status, has_full_tenant_context, warn_missing_tenant_context,
 };
-use crate::state::StorageRuntime;
+use crate::state::{StorageRuntime, TaskRuntime};
 
 use crate::handlers::documents_types::*;
 
@@ -29,6 +29,7 @@ use crate::handlers::documents_types::*;
 )]
 pub async fn get_track_status(
     State(storage): State<StorageRuntime>,
+    State(tasks): State<TaskRuntime>,
     tenant_ctx: TenantContext,
     axum::extract::Path(track_id): axum::extract::Path<String>,
 ) -> ApiResult<Json<TrackStatusResponse>> {
@@ -138,10 +139,19 @@ pub async fn get_track_status(
                         .and_then(|v| v.as_str())
                         .map(String::from),
                     pdf_id: obj.get("pdf_id").and_then(|v| v.as_str()).map(String::from),
+                    display_status: None,
+                    ui_phase: None,
                 });
             }
         }
     }
+
+    // SPEC-057 P4: project display_status / ui_phase SSOT for track payloads.
+    crate::services::ingestion_status_mapper::enrich_document_summaries_with_cancel(
+        &mut track_docs,
+        &tasks.cancellation_registry,
+    )
+    .await;
 
     // Calculate status summary (handle empty track gracefully - documents may still be processing)
     let status_summary = StatusCounts {

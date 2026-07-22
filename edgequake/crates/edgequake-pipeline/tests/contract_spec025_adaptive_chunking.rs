@@ -3,7 +3,8 @@
 use edgequake_llm::MockProvider;
 use edgequake_pipeline::prompts::EntityExtractionSchema;
 use edgequake_pipeline::{
-    build_ingestion_pipeline, calculate_adaptive_chunk_size, IngestionPipelineOptions,
+    build_chunker_config, build_ingestion_pipeline, calculate_adaptive_chunk_size, ChunkStrategy,
+    IngestionPipelineOptions,
 };
 use std::sync::Arc;
 
@@ -31,4 +32,33 @@ fn ingestion_pipeline_applies_document_size() {
     assert_eq!(calculate_adaptive_chunk_size(120_000), 600);
     assert!(pipeline.config().chunker.chunk_size <= 600);
     assert!(pipeline.config().chunker.chunk_size > 0);
+}
+
+#[test]
+fn fixed_chunking_env_overrides_adaptive_for_large_docs() {
+    let prev_adaptive = std::env::var("EDGEQUAKE_ADAPTIVE_CHUNKING").ok();
+    let prev_size = std::env::var("EDGEQUAKE_CHUNK_SIZE").ok();
+    let prev_overlap = std::env::var("EDGEQUAKE_CHUNK_OVERLAP").ok();
+    unsafe {
+        std::env::set_var("EDGEQUAKE_ADAPTIVE_CHUNKING", "0");
+        std::env::set_var("EDGEQUAKE_CHUNK_SIZE", "1200");
+        std::env::set_var("EDGEQUAKE_CHUNK_OVERLAP", "100");
+    }
+    let cfg = build_chunker_config(200_000, ChunkStrategy::Recursive, None);
+    assert_eq!(cfg.chunk_size, 1200);
+    assert_eq!(cfg.chunk_overlap, 100);
+    unsafe {
+        match prev_adaptive {
+            Some(v) => std::env::set_var("EDGEQUAKE_ADAPTIVE_CHUNKING", v),
+            None => std::env::remove_var("EDGEQUAKE_ADAPTIVE_CHUNKING"),
+        }
+        match prev_size {
+            Some(v) => std::env::set_var("EDGEQUAKE_CHUNK_SIZE", v),
+            None => std::env::remove_var("EDGEQUAKE_CHUNK_SIZE"),
+        }
+        match prev_overlap {
+            Some(v) => std::env::set_var("EDGEQUAKE_CHUNK_OVERLAP", v),
+            None => std::env::remove_var("EDGEQUAKE_CHUNK_OVERLAP"),
+        }
+    }
 }

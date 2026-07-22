@@ -2,6 +2,8 @@
 title: 'Deployment Guide'
 ---
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 # Deployment Guide
 
 > **Deploying EdgeQuake to Production**
@@ -50,7 +52,16 @@ EDGEQUAKE_LLM_PROVIDER=openai OPENAI_API_KEY=sk-... make stack
 
 **Pin to a specific version:**
 ```bash
-EDGEQUAKE_VERSION=0.10.6 make stack
+EDGEQUAKE_VERSION=0.19.0 make stack
+```
+
+**Production auth** (auth is on by default; quickstart uses `EDGEQUAKE_DEV_MODE=true` for open API):
+```bash
+EDGEQUAKE_VERSION=0.19.0 \
+EDGEQUAKE_DEV_MODE=false \
+EDGEQUAKE_AUTH_ENABLED=true \
+EDGEQUAKE_BOOTSTRAP_ADMIN_PASSWORD='ChangeMe123!' \
+  docker compose -f docker-compose.quickstart.yml up -d
 ```
 
 For full documentation see: [Docker Quickstart Guide](./docker-quickstart.md)
@@ -73,10 +84,12 @@ For full documentation see: [Docker Quickstart Guide](./docker-quickstart.md)
 
 ### Required
 
-- PostgreSQL 15+ with extensions:
-  - `pgvector` 0.7+ (vector similarity search)
-  - `age` 1.5+ (Apache AGE for graph storage)
+- PostgreSQL 16+ (recommended: PG18 via GHCR image) with extensions:
+  - `pgvector` **0.8.3** (vector similarity search)
+  - `age` **1.6.0** (PG16) or **1.7.0** (PG17/PG18) — Apache AGE for graph storage
 - LLM provider access (OpenAI API key or Ollama running)
+
+See [Release & CD](./release-and-cd.md#postgresql-version-tiers) for the triple-track pin matrix.
 
 ### Recommended
 
@@ -100,19 +113,20 @@ The binary is at `target/release/edgequake` (~15MB).
 
 ### Step 2: Set Up PostgreSQL
 
-Install PostgreSQL 15+ and extensions:
+Install PostgreSQL 16+ and extensions (pins match GHCR postgres image):
 
 ```bash
-# macOS with Homebrew
-brew install postgresql@15
-brew services start postgresql@15
+# macOS with Homebrew (example: PG17)
+brew install postgresql@17
+brew services start postgresql@17
 
-# Build pgvector
-git clone --branch v0.7.4 https://github.com/pgvector/pgvector.git
+# Build pgvector 0.8.3
+git clone --branch v0.8.3 https://github.com/pgvector/pgvector.git
 cd pgvector && make && make install
 
-# Build Apache AGE
-git clone --branch PG16/v1.6.0-rc0 https://github.com/apache/age.git
+# Build Apache AGE (pick branch for your PG major)
+# PG16 → RELEASE_1.6.0   PG17/PG18 → RELEASE_1.7.0
+git clone --branch RELEASE_1.7.0 https://github.com/apache/age.git
 cd age && make && make install
 ```
 
@@ -191,10 +205,10 @@ sudo systemctl start edgequake
 
 ### Step 1: Create Environment File
 
-Create `.env` in project root:
+Create `.env` in project root (see `.env.example` for full reference):
 
 ```bash
-# Database
+# Database (quickstart default: edgequake_secret)
 POSTGRES_PASSWORD=your_secure_password_here
 
 # LLM Provider (choose one)
@@ -207,6 +221,20 @@ OLLAMA_EMBEDDING_MODEL=embeddinggemma:latest
 
 # Server (optional)
 EDGEQUAKE_PORT=8080
+FRONTEND_PORT=3000
+EDGEQUAKE_VERSION=0.19.0
+
+# Auth (production — auth is ON by default; quickstart sets EDGEQUAKE_DEV_MODE=true)
+EDGEQUAKE_DEV_MODE=false
+EDGEQUAKE_AUTH_ENABLED=true
+EDGEQUAKE_BOOTSTRAP_ADMIN_USERNAME=admin
+EDGEQUAKE_BOOTSTRAP_ADMIN_PASSWORD=ChangeMe123!
+JWT_SECRET=your-256-bit-secret-here
+
+# Multi-replica (SPEC-057 — required when EDGEQUAKE_REPLICAS>1)
+# EDGEQUAKE_REPLICAS=2
+# EDGEQUAKE_TASK_DELIVERY=bridged
+# EDGEQUAKE_TASK_LEASE_TTL_SECS=120
 ```
 
 ### Step 2: Start Services
@@ -343,7 +371,7 @@ spec:
     spec:
       containers:
         - name: edgequake
-          image: edgequake/edgequake:latest
+          image: ghcr.io/raphaelmansuy/edgequake:0.19.0
           ports:
             - containerPort: 8080
           envFrom:
@@ -404,6 +432,47 @@ spec:
 | `PORT`                   | No             | `8080`                   | Server port                  |
 | `RUST_LOG`               | No             | `edgequake=debug`        | Log level                    |
 | `WORKER_THREADS`         | No             | CPU count                | Background worker count      |
+| `EDGEQUAKE_DEV_MODE`     | No             | `false` (product)        | Open API without login (quickstart: `true`) |
+| `EDGEQUAKE_AUTH_ENABLED` | No             | `true`                   | Require JWT/API key on protected routes |
+| `EDGEQUAKE_BOOTSTRAP_ADMIN_USERNAME` | When auth on | `admin` | First-run admin username |
+| `EDGEQUAKE_BOOTSTRAP_ADMIN_PASSWORD` | When auth on | — | First-run admin password (required on fresh DB) |
+| `JWT_SECRET`             | When auth on   | —                        | JWT signing secret (256-bit recommended) |
+| `EDGEQUAKE_REPLICAS`     | No             | `1`                      | Intended API/worker process count |
+| `EDGEQUAKE_TASK_DELIVERY`| No             | `local`                  | `local` \| `bridged` \| `notify_only` (required non-`local` when replicas > 1) |
+| `EDGEQUAKE_TASK_LEASE_TTL_SECS` | No      | `120`                    | Task claim lease TTL (min 30; heartbeat every 60s) |
+
+See [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md) for multi-replica delivery, lease, and restart semantics.
+
+---
+
+## Auth Bootstrap (SPEC-027)
+
+Auth is **enabled by default** in v0.19.0. On a fresh PostgreSQL database, set bootstrap credentials before first boot:
+
+```bash
+EDGEQUAKE_AUTH_ENABLED=true
+EDGEQUAKE_BOOTSTRAP_ADMIN_USERNAME=admin
+EDGEQUAKE_BOOTSTRAP_ADMIN_PASSWORD='ChangeMe123!'
+JWT_SECRET='your-256-bit-secret-here'
+```
+
+Quickstart compose (`docker-compose.quickstart.yml`) defaults to `EDGEQUAKE_DEV_MODE=true` and `EDGEQUAKE_AUTH_ENABLED=false` for frictionless demos. **Never use `EDGEQUAKE_DEV_MODE=true` in production.**
+
+Upgrades from pre-v0.15 installs: legacy KV `auth:user:*` records are imported automatically on startup.
+
+---
+
+## Multi-Replica & Task Delivery (SPEC-057)
+
+When running more than one API/worker process against shared PostgreSQL:
+
+| Variable | Default | Notes |
+| -------- | ------- | ----- |
+| `EDGEQUAKE_REPLICAS` | `1` | Set to intended replica count |
+| `EDGEQUAKE_TASK_DELIVERY` | `local` | Must be `bridged` or `notify_only` when replicas > 1 |
+| `EDGEQUAKE_TASK_LEASE_TTL_SECS` | `120` | Claim lease TTL; workers refresh every 60s |
+
+Boot **fails** if `EDGEQUAKE_REPLICAS>1` and delivery is `local`. Correctness is always `claim_next` + lease — bridged/notify_only are **wake modes only**; never process from a channel payload without claim.
 
 ---
 
@@ -521,14 +590,16 @@ rag.yourdomain.com {
 
 ## Security Checklist
 
-- [ ] Use strong PostgreSQL password
-- [ ] Keep `OPENAI_API_KEY` in secrets manager
+- [ ] Use strong PostgreSQL password (not `edgequake_secret`)
+- [ ] Set `EDGEQUAKE_DEV_MODE=false` and configure auth bootstrap credentials
+- [ ] Keep `OPENAI_API_KEY` and `JWT_SECRET` in secrets manager
 - [ ] Enable TLS termination at reverse proxy
 - [ ] Set up firewall rules (only expose 443)
 - [ ] Use non-root user in Docker
 - [ ] Enable audit logging
 - [ ] Set up backup for PostgreSQL
 - [ ] Monitor rate limits on LLM providers
+- [ ] Set `EDGEQUAKE_TASK_DELIVERY=bridged` (or `notify_only`) when `EDGEQUAKE_REPLICAS>1`
 
 ---
 

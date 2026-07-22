@@ -62,6 +62,13 @@ fn default_min_chunk_budget_ratio() -> f32 {
     )
 }
 
+/// LightRAG `DEFAULT_MAX_ENTITY_TOKENS` (lightrag/constants.py).
+pub const LR_MAX_ENTITY_TOKENS: usize = 6000;
+/// LightRAG `DEFAULT_MAX_RELATION_TOKENS`.
+pub const LR_MAX_RELATION_TOKENS: usize = 8000;
+/// LightRAG `DEFAULT_MAX_TOTAL_TOKENS`.
+pub const LR_MAX_TOTAL_TOKENS: usize = 30000;
+
 /// Parse `EDGEQUAKE_MIN_CHUNK_BUDGET_RATIO` (pure — pass raw for tests).
 ///
 /// Empty / invalid → `0.40`. Clamp to `[0.0, 0.9]`.
@@ -78,25 +85,63 @@ pub fn parse_min_chunk_budget_ratio(raw: &str) -> f32 {
         .unwrap_or(0.40)
 }
 
+/// Parse `EDGEQUAKE_MAX_ENTITY_TOKENS` / `EDGEQUAKE_MAX_RELATION_TOKENS`.
+///
+/// Empty / invalid → LightRAG default. Clamp to `[256, max_total]`.
+pub fn parse_token_cap(raw: &str, default: usize, max_total: usize) -> usize {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return default;
+    }
+    trimmed
+        .parse::<usize>()
+        .ok()
+        .map(|v| v.clamp(256, max_total.max(256)))
+        .unwrap_or(default)
+}
+
+fn env_entity_token_cap() -> usize {
+    parse_token_cap(
+        &std::env::var("EDGEQUAKE_MAX_ENTITY_TOKENS").unwrap_or_default(),
+        LR_MAX_ENTITY_TOKENS,
+        LR_MAX_TOTAL_TOKENS,
+    )
+}
+
+fn env_relation_token_cap() -> usize {
+    parse_token_cap(
+        &std::env::var("EDGEQUAKE_MAX_RELATION_TOKENS").unwrap_or_default(),
+        LR_MAX_RELATION_TOKENS,
+        LR_MAX_TOTAL_TOKENS,
+    )
+}
+
 impl Default for TruncationConfig {
     fn default() -> Self {
-        // WHY 30000: LightRAG uses max_total_tokens=30000. Entity/relation caps
-        // are soft ceilings; chunks get the dynamic remainder (SPEC-046 P0.4).
+        // WHY match LightRAG constants.py (6000 / 8000 / 30000): after 032
+        // workspace-scoped AGE identity, EQ can admit ~LR-scale entities into
+        // Mix. A 10k/10k graph tax (legacy EQ default) overfills low-salience
+        // entities/rels and starves document chunks → ctx_rel / Acc drop.
+        // Chunks still get the dynamic remainder (SPEC-046 P0.4).
         Self {
-            max_entity_tokens: 10000,
-            max_relation_tokens: 10000,
-            max_total_tokens: 30000,
+            max_entity_tokens: env_entity_token_cap(),
+            max_relation_tokens: env_relation_token_cap(),
+            max_total_tokens: LR_MAX_TOTAL_TOKENS,
             buffer_tokens: default_truncation_buffer(),
             min_chunk_budget_ratio: default_min_chunk_budget_ratio(),
         }
     }
 }
 
-/// SPEC-047 / 020 A3: intent-aware graph tax.
+/// SPEC-047 / 020 A3 / 021 F1: intent-aware graph tax.
 ///
 /// Factual / L1 questions are page-chunk problems. Demote entity/rel budgets and
 /// raise the chunk floor so hybrid local entities cannot starve Document Chunks
 /// (post-B2 Acc tax: `n_sources` 20→115).
+///
+/// Summarize-like intents (Exploratory / Relational / Comparative) previously kept
+/// the base 0.40 floor and were starved by graph dumps (Acc-win E3/E3b). F1 raises
+/// their chunk floor to ≥0.60 and tightens E/R caps so evidence chunks get remainder.
 pub fn truncation_config_for_intent(
     base: &TruncationConfig,
     intent: crate::keywords::QueryIntent,
@@ -116,7 +161,10 @@ pub fn truncation_config_for_intent(
             cfg.min_chunk_budget_ratio = cfg.min_chunk_budget_ratio.max(0.50);
         }
         QueryIntent::Relational | QueryIntent::Exploratory | QueryIntent::Comparative => {
-            // Graph-heavy intents keep base budgets (BR0102).
+            // 021 F1: Summarize / multi-hop synthesis needs passage coverage.
+            cfg.max_entity_tokens = cfg.max_entity_tokens.min(4_000);
+            cfg.max_relation_tokens = cfg.max_relation_tokens.min(4_000);
+            cfg.min_chunk_budget_ratio = cfg.min_chunk_budget_ratio.max(0.60);
         }
     }
     cfg
@@ -356,17 +404,9 @@ mod tests {
     }
 
     fn create_test_relationship(source: &str, target: &str) -> RetrievedRelationship {
-        RetrievedRelationship {
-            source: source.to_string(),
-            target: target.to_string(),
-            relation_type: "TEST".to_string(),
-            description: "Test relationship".to_string(),
-            score: 1.0,
-            source_chunk_id: None,
-            source_document_id: None,
-            source_document_ids: Vec::new(),
-            source_file_path: None,
-        }
+        RetrievedRelationship::new(source, target, "TEST")
+            .with_description("Test relationship")
+            .with_score(1.0)
     }
 
     fn create_test_chunk(id: &str, content: &str) -> RetrievedChunk {
@@ -487,9 +527,18 @@ mod tests {
     #[test]
     fn test_truncation_config_default() {
         let config = TruncationConfig::default();
-        assert_eq!(config.max_entity_tokens, 10000);
-        assert_eq!(config.max_relation_tokens, 10000);
-        assert_eq!(config.max_total_tokens, 30000);
+        // LightRAG parity (env may override in-process — assert parse defaults).
+        assert_eq!(
+            parse_token_cap("", LR_MAX_ENTITY_TOKENS, LR_MAX_TOTAL_TOKENS),
+            LR_MAX_ENTITY_TOKENS
+        );
+        assert_eq!(
+            parse_token_cap("", LR_MAX_RELATION_TOKENS, LR_MAX_TOTAL_TOKENS),
+            LR_MAX_RELATION_TOKENS
+        );
+        assert_eq!(config.max_total_tokens, LR_MAX_TOTAL_TOKENS);
+        assert!(config.max_entity_tokens >= 256);
+        assert!(config.max_relation_tokens >= 256);
         assert!(
             (config.min_chunk_budget_ratio - 0.40).abs() < f32::EPSILON
                 || config.min_chunk_budget_ratio >= 0.0
@@ -552,6 +601,11 @@ mod tests {
         assert_eq!(factual.max_relation_tokens, 2_000);
         assert!(factual.min_chunk_budget_ratio >= 0.55);
         let exploratory = truncation_config_for_intent(&base, QueryIntent::Exploratory);
-        assert_eq!(exploratory.max_entity_tokens, base.max_entity_tokens);
+        assert_eq!(exploratory.max_entity_tokens, 4_000);
+        assert!(exploratory.min_chunk_budget_ratio >= 0.60);
+        let relational = truncation_config_for_intent(&base, QueryIntent::Relational);
+        assert!(relational.min_chunk_budget_ratio >= 0.60);
+        let comparative = truncation_config_for_intent(&base, QueryIntent::Comparative);
+        assert!(comparative.min_chunk_budget_ratio >= 0.60);
     }
 }

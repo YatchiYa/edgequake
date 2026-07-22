@@ -17,7 +17,9 @@ use edgequake_tasks::{PdfProcessingData, SharedTaskStorage, Task};
 use tracing::{debug, info};
 use uuid::Uuid;
 
+use crate::error::ApiResult;
 use crate::middleware::TenantContext;
+use crate::services::document_quota::enforce_max_documents_admission;
 use crate::services::pdf_workspace_dedup::find_kv_document_id_for_pdf;
 use crate::state::AppState;
 
@@ -46,21 +48,24 @@ pub async fn allocate_document_id_from_pool(
 }
 
 /// Resolve the document id to use for a PDF ingest at **enqueue** time.
+///
+/// SPEC-066: when minting a **new** document id, enforce `max_documents` fail-closed.
+/// Re-ingest / existing pdf→doc mappings skip the quota check.
 pub async fn resolve_pdf_ingest_document_id(
     state: &AppState,
     pdf_id: Uuid,
     explicit_document_id: Option<String>,
     tenant_ctx: &TenantContext,
-) -> String {
+) -> ApiResult<String> {
     if let Some(id) = explicit_document_id {
-        return id;
+        return Ok(id);
     }
 
     #[cfg(feature = "postgres")]
     if let Some(pdf_storage) = state.storage.pdf_storage.as_ref() {
         if let Ok(Some(pdf)) = pdf_storage.get_pdf(&pdf_id).await {
             if let Some(document_id) = pdf.document_id {
-                return document_id.to_string();
+                return Ok(document_id.to_string());
             }
         }
     }
@@ -70,10 +75,13 @@ pub async fn resolve_pdf_ingest_document_id(
         find_kv_document_id_for_pdf(state.storage.kv_storage.as_ref(), &pdf_id_str, tenant_ctx)
             .await
     {
-        return doc_id;
+        return Ok(doc_id);
     }
 
-    allocate_new_document_id(state).await
+    if let Some(ws) = tenant_ctx.workspace_id.as_deref() {
+        enforce_max_documents_admission(state, ws).await?;
+    }
+    Ok(allocate_new_document_id(state).await)
 }
 
 /// Inputs for [`resolve_worker_pdf_document_id`] (keeps arity within clippy limits).
@@ -85,6 +93,8 @@ pub struct WorkerPdfDocumentIdRequest<'a> {
     pub data: &'a PdfProcessingData,
     pub task_storage: Option<&'a SharedTaskStorage>,
     pub tenant_ctx: Option<&'a TenantContext>,
+    /// SPEC-067: when minting a new id, enforce max_documents if present.
+    pub workspace_service: Option<&'a dyn edgequake_core::WorkspaceService>,
     #[cfg(feature = "postgres")]
     pub pg_pool: Option<&'a sqlx::PgPool>,
     #[cfg(feature = "postgres")]
@@ -113,6 +123,19 @@ pub async fn resolve_worker_pdf_document_id(
         {
             persist_pdf_task_document_id(req.task, &doc_id, req.task_storage).await?;
             return Ok(doc_id);
+        }
+    }
+
+    // SPEC-067: fail-closed quota when worker mints a brand-new document id.
+    if let (Some(ws_svc), Some(tenant_ctx)) = (req.workspace_service, req.tenant_ctx) {
+        if let Some(ws) = tenant_ctx.workspace_id.as_deref() {
+            crate::services::document_quota::enforce_max_documents_admission_parts(
+                ws_svc,
+                req.kv_storage.as_ref(),
+                ws,
+            )
+            .await
+            .map_err(|e| edgequake_tasks::TaskError::Processing(format!("document quota: {e}")))?;
         }
     }
 

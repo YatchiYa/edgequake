@@ -4,6 +4,7 @@
 //! `extractor/llm.rs` and `extractor/gleaning.rs`.
 
 use super::entity_type_policy::{json_entity_types_prompt_section, EntityExtractionSchema};
+use super::extract_caps::ExtractionCaps;
 
 /// Canonical JSON output format section shared by all JSON extractors.
 pub const JSON_OUTPUT_FORMAT_SECTION: &str = r#"## Output Format
@@ -20,11 +21,19 @@ Respond with valid JSON in this exact format:
 /// Build the primary JSON entity-extraction user prompt.
 pub fn json_extraction_prompt(text: &str, schema: &EntityExtractionSchema) -> String {
     let types_section = json_entity_types_prompt_section(schema);
+    let caps = ExtractionCaps::from_env();
+    let limits = caps.prompt_quantity_limits_section();
 
     format!(
         r#"Extract entities and relationships from the following text.
 
 {types_section}
+
+{limits}
+
+## Naming Rules
+- Use human-readable semantic names for entities (title case when case-insensitive).
+- Do **not** use UUIDs, GUIDs, ULIDs, MongoDB ObjectIds, hex hashes, AWS ARNs, or other opaque machine/resource IDs as entity `name`. Prefer the human referent; opaque IDs may appear only in `description`.
 
 {JSON_OUTPUT_FORMAT_SECTION}
 
@@ -43,6 +52,8 @@ pub fn json_gleaning_prompt(
 ) -> String {
     let prev_entities_str = previous_entities.join(", ");
     let types_section = json_entity_types_prompt_section(schema);
+    let caps = ExtractionCaps::from_env();
+    let limits = caps.prompt_quantity_limits_section();
 
     format!(
         r#"MANY entities and relationships were missed in the last extraction.
@@ -56,9 +67,12 @@ Look for entities and relationships that were missed in the previous extraction.
 Focus on:
 - Implicit entities (mentioned indirectly)
 - Additional relationships between known entities
-- Contextual entities (dates, locations, concepts)
+- Contextual entities (locations, concepts, methods, natural objects)
+- Do **not** add UUIDs, GUIDs, hashes, ARNs, or other opaque machine IDs as entity names
 
 {types_section}
+
+{limits}
 
 {JSON_OUTPUT_FORMAT_SECTION}
 
@@ -82,6 +96,17 @@ mod tests {
         assert!(prompt.contains("Alice works at Acme."));
         assert!(prompt.contains("\"entities\""));
         assert!(prompt.contains("JSON Response"));
+        assert!(prompt.contains("Naming Rules"));
+        assert!(prompt.contains("UUID"));
+    }
+
+    #[test]
+    fn json_extraction_prompt_includes_quantity_caps() {
+        let schema = EntityExtractionSchema::server_default();
+        let prompt = json_extraction_prompt("Alice works at Acme.", &schema);
+        assert!(prompt.contains("Quantity Limits"));
+        assert!(prompt.contains("40"));
+        assert!(prompt.contains("100"));
     }
 
     #[test]
@@ -91,20 +116,18 @@ mod tests {
         assert!(prompt.contains("ALICE, ACME"));
         assert!(prompt.contains("Text to Re-Analyze"));
         assert!(prompt.contains("\"relationships\""));
+        assert!(!prompt.to_lowercase().contains("dates,"));
+        assert!(prompt.contains("Quantity Limits"));
     }
 
     #[test]
     fn json_gleaning_prompt_includes_strict_entity_types() {
         let schema = EntityExtractionSchema {
-            types: vec![
-                "API_OR_INTERFACE".into(),
-                "CODE_ELEMENT".into(),
-                "OTHER".into(),
-            ],
+            types: vec!["API_OR_INTERFACE".into(), "OTHER".into()],
             strict: true,
         };
-        let prompt = json_gleaning_prompt("Some text.", &[], &schema);
-        assert!(prompt.contains("STRICT"));
+        let prompt = json_gleaning_prompt("x", &[], &schema);
         assert!(prompt.contains("API_OR_INTERFACE"));
+        assert!(prompt.contains("STRICT") || prompt.contains("ONLY"));
     }
 }

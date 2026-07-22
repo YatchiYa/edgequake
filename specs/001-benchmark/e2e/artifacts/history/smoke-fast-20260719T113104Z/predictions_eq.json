@@ -1,0 +1,176 @@
+[
+  {
+    "id": "Medical-0cbbd549",
+    "question": "What diagnostic method is required for MGZL?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Diagnosis of MGZL requires expert hematopathologist review."
+    ],
+    "question_type": "Fact Retrieval",
+    "generated_answer": "",
+    "ground_truth": "Diagnosis of MGZL requires expert hematopathologist review.",
+    "gold_answer": "Diagnosis of MGZL requires expert hematopathologist review.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-e7b5ec54",
+    "question": "Which lymphoma is a subtype of gray zone lymphomas?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Mediastinal gray zone lymphoma (MGZL) is a subtype of gray zone lymphomas."
+    ],
+    "question_type": "Fact Retrieval",
+    "generated_answer": "",
+    "ground_truth": "Mediastinal gray zone lymphoma (MGZL) is a subtype of gray zone lymphomas.",
+    "gold_answer": "Mediastinal gray zone lymphoma (MGZL) is a subtype of gray zone lymphomas.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-2ca88e8f",
+    "question": "What factors determine the specific treatment regimen for a pediatric ALL patient?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Treatment for pediatric ALL depends on subtype.",
+      "Treatment for pediatric ALL depends on age at diagnosis.",
+      "Treatment for pediatric ALL depends on biomarkers.",
+      "Treatment for pediatric ALL depends on genetic alterations."
+    ],
+    "question_type": "Complex Reasoning",
+    "generated_answer": "",
+    "ground_truth": "Treatment for ALL depends on subtype, age at diagnosis, and other factors such as biomarkers and genetic alterations.",
+    "gold_answer": "Treatment for ALL depends on subtype, age at diagnosis, and other factors such as biomarkers and genetic alterations.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-54a3a465",
+    "question": "Which maintenance therapies are recommended for a patient with advanced ovarian cancer who is BRCA-mutated after initial treatment?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "PARP inhibitors are recommended as maintenance therapy for advanced ovarian cancer.",
+      "Olaparib is a recommended PARP inhibitor for advanced or BRCA-mutated ovarian cancer.",
+      "Niraparib is a recommended PARP inhibitor for advanced or BRCA-mutated ovarian cancer.",
+      "Rucaparib is a recommended PARP inhibitor for advanced or BRCA-mutated ovarian cancer.",
+      "Maintenance therapy is recommended after initial treatment for advanced or BRCA-mutated ovarian cancer."
+    ],
+    "question_type": "Complex Reasoning",
+    "generated_answer": "",
+    "ground_truth": "PARP inhibitors such as olaparib, niraparib, or rucaparib are recommended as maintenance therapy for advanced or BRCA-mutated ovarian cancer after initial treatment.",
+    "gold_answer": "PARP inhibitors such as olaparib, niraparib, or rucaparib are recommended as maintenance therapy for advanced or BRCA-mutated ovarian cancer after initial treatment.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-296c7595",
+    "question": "How are the stages of esophageal cancer defined and what are their distinguishing features?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Esophageal cancer stages include early-stage.",
+      "Early-stage esophageal cancer is confined to the esophagus.",
+      "Early-stage esophageal cancer is not in lymph nodes.",
+      "Esophageal cancer stages include locoregional.",
+      "Locoregional esophageal cancer invades the esophagus wall.",
+      "Locoregional esophageal cancer may involve nearby lymph nodes or organs.",
+      "Esophageal cancer stages include metastatic.",
+      "Metastatic esophageal cancer spreads to distant organs."
+    ],
+    "question_type": "Contextual Summarize",
+    "generated_answer": "",
+    "ground_truth": "Esophageal cancer stages include early-stage (confined to the esophagus and not in lymph nodes), locoregional (invading the esophagus wall and/or nearby lymph nodes or organs), and metastatic (spread to distant organs such as liver, lung, bone, and brain).",
+    "gold_answer": "Esophageal cancer stages include early-stage (confined to the esophagus and not in lymph nodes), locoregional (invading the esophagus wall and/or nearby lymph nodes or organs), and metastatic (spread to distant organs such as liver, lung, bone, and brain).",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-0002d2de",
+    "question": "How are bone cancers staged and what factors are considered in determining the stage?",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Bone cancers are staged using the TNM system.",
+      "The TNM system considers tumor size and location (T).",
+      "The TNM system considers lymph node involvement (N).",
+      "The TNM system considers metastasis (M).",
+      "The TNM system considers tumor grade (G).",
+      "The final stage of bone cancer is determined by combining TNM scores."
+    ],
+    "question_type": "Contextual Summarize",
+    "generated_answer": "",
+    "ground_truth": "Bone cancers are staged using the TNM system, which considers tumor size/location (T), lymph node involvement (N), metastasis (M), and tumor grade (G), with the final stage determined by combining these scores.",
+    "gold_answer": "Bone cancers are staged using the TNM system, which considers tumor size/location (T), lymph node involvement (N), metastasis (M), and tumor grade (G), with the final stage determined by combining these scores.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-7b694381",
+    "question": "Imagine you are a public health officer tasked with drafting a community advisory about the importance of recognizing symptoms and hereditary risk factors for adrenal tumors. Your advisory should integrate at least five key points from the guidelines.",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "Adrenal tumors can be benign or malignant.",
+      "Adrenal tumors are sometimes found incidentally during imaging tests.",
+      "Early recognition of symptoms is crucial for adrenal tumors.",
+      "Symptoms include unexplained weight gain or loss, muscle weakness, abdominal bloating, and changes in blood pressure.",
+      "Some adrenal tumors produce excess hormones.",
+      "Excess hormones can lead to specific syndromes like Cushing syndrome or high blood pressure.",
+      "Individuals with a family history of hereditary syndromes may be at higher risk for adrenal tumors.",
+      "Hereditary syndromes include Li-Fraumeni, MEN 1/2, and Lynch syndrome.",
+      "Consulting a healthcare provider is important if symptoms or relevant family history are present.",
+      "Appropriate blood, biochemical, and genetic testing may be necessary.",
+      "Early detection and monitoring can improve outcomes."
+    ],
+    "question_type": "Creative Generation",
+    "generated_answer": "",
+    "ground_truth": "**Community Health Advisory: Awareness of Adrenal Tumors**\n\nAdrenal tumors, which can be benign or malignant, are sometimes found incidentally during imaging tests. Early recognition of symptoms such as unexplained weight gain or loss, muscle weakness, abdominal bloating, and changes in blood pressure is crucial. Some adrenal tumors produce excess hormones, leading to specific syndromes like Cushing syndrome or high blood pressure. Individuals with a family history of hereditary syndromes (e.g., Li-Fraumeni, MEN 1/2, Lynch syndrome) may be at higher risk. If you or your relatives experience these symptoms or have a relevant family history, consult your healthcare provider for appropriate blood, biochemical, and genetic testing. Early detection and monitoring can improve outcomes.",
+    "gold_answer": "**Community Health Advisory: Awareness of Adrenal Tumors**\n\nAdrenal tumors, which can be benign or malignant, are sometimes found incidentally during imaging tests. Early recognition of symptoms such as unexplained weight gain or loss, muscle weakness, abdominal bloating, and changes in blood pressure is crucial. Some adrenal tumors produce excess hormones, leading to specific syndromes like Cushing syndrome or high blood pressure. Individuals with a family history of hereditary syndromes (e.g., Li-Fraumeni, MEN 1/2, Lynch syndrome) may be at higher risk. If you or your relatives experience these symptoms or have a relevant family history, consult your healthcare provider for appropriate blood, biochemical, and genetic testing. Early detection and monitoring can improve outcomes.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  },
+  {
+    "id": "Medical-a5356e35",
+    "question": "You are a medical oncologist tasked with drafting a referral letter to a tertiary cancer center for a patient with suspected chondrosarcoma. Transform the clinical findings into a formal referral note, including relevant diagnostics, biomarkers, and potential targeted therapies based on the provided guidelines.",
+    "source": "medical",
+    "context": [
+      "stub:eq_fail"
+    ],
+    "evidence": [
+      "The patient is a 54-year-old with a cartilage-forming bone lesion.",
+      "The lesion is radiographically and histologically consistent with chondrosarcoma.",
+      "Imaging with X-ray, CT, and MRI revealed a lobulated mass originating in cartilage-forming cells.",
+      "Core needle biopsy confirmed the diagnosis of chondrosarcoma.",
+      "Laboratory evaluation included alkaline phosphatase, CBC, CMP, and LDH.",
+      "Next-generation sequencing identified an IDH1 mutation.",
+      "Staging was performed using the TNM system.",
+      "Tumor grade was determined histologically.",
+      "The patient's ECOG performance status is 1.",
+      "Fertility preservation has been discussed due to the potential impact of systemic therapy."
+    ],
+    "question_type": "Creative Generation",
+    "generated_answer": "",
+    "ground_truth": "Dear Colleagues,\n\nI am referring a 54-year-old patient with a cartilage-forming bone lesion, radiographically and histologically consistent with chondrosarcoma. Imaging with X-ray, CT, and MRI revealed a lobulated mass originating in cartilage-forming cells. Core needle biopsy confirmed diagnosis. Laboratory evaluation included alkaline phosphatase, CBC, CMP, and LDH. Next-generation sequencing identified an IDH1 mutation. Staging was performed using the TNM system, and tumor grade was determined histologically. Given the presence of IDH1 mutation, consideration for ivosidenib as a targeted therapy is warranted. The patient\u2019s ECOG performance status is 1. Fertility preservation has been discussed given the potential impact of systemic therapy.",
+    "gold_answer": "Dear Colleagues,\n\nI am referring a 54-year-old patient with a cartilage-forming bone lesion, radiographically and histologically consistent with chondrosarcoma. Imaging with X-ray, CT, and MRI revealed a lobulated mass originating in cartilage-forming cells. Core needle biopsy confirmed diagnosis. Laboratory evaluation included alkaline phosphatase, CBC, CMP, and LDH. Next-generation sequencing identified an IDH1 mutation. Staging was performed using the TNM system, and tumor grade was determined histologically. Given the presence of IDH1 mutation, consideration for ivosidenib as a targeted therapy is warranted. The patient\u2019s ECOG performance status is 1. Fertility preservation has been discussed given the potential impact of systemic therapy.",
+    "latency_ms": 0,
+    "stub": "eq_fail"
+  }
+]

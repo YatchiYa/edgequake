@@ -73,7 +73,39 @@ pub fn node_list_filter(tenant_ctx: Option<&TenantContext>) -> NodeListFilter {
     }
 }
 
+/// Discovery filter for document cascade / deletion-impact (issue #305).
+///
+/// Sets `tenant_id` when present so an explicit *different* tenant never matches
+/// (SPEC-006 isolation). Missing/NULL tenant props still match via
+/// [`edgequake_storage::traits::scope_dim_matches_legacy_null`] /
+/// `LegacyNullAsWildcard` discovery SQL — legacy AGE rows without tenant props
+/// remain cascadeable.
+pub fn node_list_filter_for_document_scope(tenant_ctx: Option<&TenantContext>) -> NodeListFilter {
+    match tenant_ctx {
+        Some(ctx) => NodeListFilter {
+            tenant_id: ctx.tenant_id.clone(),
+            workspace_id: ctx.workspace_id.clone(),
+            entity_type: None,
+            search: None,
+            community_ids: None,
+        },
+        None => NodeListFilter::default(),
+    }
+}
+
 pub fn edge_list_filter(tenant_ctx: Option<&TenantContext>) -> EdgeListFilter {
+    match tenant_ctx {
+        Some(ctx) => EdgeListFilter {
+            tenant_id: ctx.tenant_id.clone(),
+            workspace_id: ctx.workspace_id.clone(),
+            relationship_type: None,
+        },
+        None => EdgeListFilter::default(),
+    }
+}
+
+/// Edge discovery filter aligned with [`node_list_filter_for_document_scope`].
+pub fn edge_list_filter_for_document_scope(tenant_ctx: Option<&TenantContext>) -> EdgeListFilter {
     match tenant_ctx {
         Some(ctx) => EdgeListFilter {
             tenant_id: ctx.tenant_id.clone(),
@@ -118,7 +150,7 @@ pub async fn find_document_nodes(
     tenant_ctx: Option<&TenantContext>,
     scope: &DocumentSourceScope,
 ) -> ApiResult<Vec<GraphNode>> {
-    let filter = node_list_filter(tenant_ctx);
+    let filter = node_list_filter_for_document_scope(tenant_ctx);
     graph
         .find_nodes_by_source_prefixes(&filter, &scope.source_prefixes)
         .await
@@ -131,7 +163,7 @@ pub async fn find_document_edges(
     tenant_ctx: Option<&TenantContext>,
     scope: &DocumentSourceScope,
 ) -> ApiResult<Vec<GraphEdge>> {
-    let filter = edge_list_filter(tenant_ctx);
+    let filter = edge_list_filter_for_document_scope(tenant_ctx);
     graph
         .find_edges_by_source_prefixes(&filter, &scope.source_prefixes)
         .await
@@ -143,16 +175,52 @@ fn edge_key(edge: &GraphEdge) -> (String, String) {
 }
 
 /// Cascade remove document sources from graph entities and relationships.
+///
+/// # First principles (reliable delete)
+///
+/// - Collect exclusive vs shared entities in one pass, then **batch** mutate:
+///   `delete_nodes_batch` (DETACH removes incident edges) + `upsert_nodes_batch`.
+/// - Edge membership uses the in-memory `deleted_node_ids` set — never N×`has_node`.
+/// - Edges touching a deleted node are already gone via DETACH; only surviving
+///   endpoints need `delete_edges_batch` / `upsert_edges_batch`.
+/// - Exclusive entity embeddings: one `delete_entities_batch` (not per-entity).
 pub async fn cascade_remove_document_sources(
     graph: &Arc<dyn GraphStorage>,
     vector_storage: Option<&Arc<dyn VectorStorage>>,
     tenant_ctx: Option<&TenantContext>,
     scope: &DocumentSourceScope,
 ) -> ApiResult<CascadeStats> {
+    cascade_remove_document_sources_with_progress(
+        graph,
+        vector_storage,
+        tenant_ctx,
+        scope,
+        |_, _| {},
+    )
+    .await
+}
+
+/// Same as [`cascade_remove_document_sources`], with SPEC-069 progress ticks.
+///
+/// `on_progress(processed, total)` is called after discovery and after each
+/// major mutate batch so WS clients see liveness during long shared upserts.
+pub async fn cascade_remove_document_sources_with_progress<F>(
+    graph: &Arc<dyn GraphStorage>,
+    vector_storage: Option<&Arc<dyn VectorStorage>>,
+    tenant_ctx: Option<&TenantContext>,
+    scope: &DocumentSourceScope,
+    mut on_progress: F,
+) -> ApiResult<CascadeStats>
+where
+    F: FnMut(u32, u32),
+{
     let mut stats = CascadeStats::default();
     let affected_nodes = find_document_nodes(graph, tenant_ctx, scope).await?;
+    let nodes_discovered = affected_nodes.len() as u32;
+    on_progress(0, nodes_discovered);
 
-    let mut deleted_node_ids = HashSet::new();
+    let mut node_ids_to_delete: Vec<String> = Vec::new();
+    let mut nodes_to_update: Vec<(String, HashMap<String, serde_json::Value>)> = Vec::new();
 
     for node in affected_nodes {
         let sources = collect_source_references(&node.properties);
@@ -161,12 +229,7 @@ pub async fn cascade_remove_document_sources(
         }
         let remaining = remaining_sources_after_removal(&node.properties, scope);
         if remaining.is_empty() {
-            graph.delete_node(&node.id).await.map_err(ApiError::from)?;
-            if let Some(vs) = vector_storage {
-                let _ = vs.delete_entity(&node.id).await;
-                stats.embeddings_deleted += 1;
-            }
-            deleted_node_ids.insert(node.id.clone());
+            node_ids_to_delete.push(node.id);
             stats.entities_removed += 1;
         } else if remaining.len() < sources.len() {
             let mut updated_props = node.properties.clone();
@@ -175,19 +238,19 @@ pub async fn cascade_remove_document_sources(
                 &mut updated_props,
                 &remaining,
             );
-            graph
-                .upsert_node(&node.id, updated_props)
-                .await
-                .map_err(ApiError::from)?;
+            nodes_to_update.push((node.id, updated_props));
             stats.entities_updated += 1;
         }
     }
 
+    let deleted_node_ids: HashSet<String> = node_ids_to_delete.iter().cloned().collect();
+
+    // Snapshot edges BEFORE DETACH so we can count incident edges and update
+    // surviving shared relationships (find after delete would miss DETACH'd rows).
     let mut edges_to_process: HashMap<(String, String), GraphEdge> = HashMap::new();
     for edge in find_document_edges(graph, tenant_ctx, scope).await? {
         edges_to_process.insert(edge_key(&edge), edge);
     }
-
     if !deleted_node_ids.is_empty() {
         let ids: Vec<String> = deleted_node_ids.iter().cloned().collect();
         for edge in graph
@@ -199,14 +262,53 @@ pub async fn cascade_remove_document_sources(
         }
     }
 
+    let edges_discovered = edges_to_process.len() as u32;
+    let items_total = nodes_discovered.saturating_add(edges_discovered);
+    // SPEC-069: second tick with real totals after full discovery.
+    on_progress(0, items_total);
+
+    let mut processed = 0u32;
+
+    if !node_ids_to_delete.is_empty() {
+        graph
+            .delete_nodes_batch(&node_ids_to_delete)
+            .await
+            .map_err(ApiError::from)?;
+        processed = processed.saturating_add(node_ids_to_delete.len() as u32);
+        on_progress(processed, items_total);
+        if let Some(vs) = vector_storage {
+            match vs.delete_entities_batch(&node_ids_to_delete).await {
+                Ok(n) => stats.embeddings_deleted += n,
+                Err(e) => {
+                    tracing::warn!(
+                        document_id = %scope.document_id,
+                        error = %e,
+                        "Batch entity embedding delete failed (non-fatal)"
+                    );
+                }
+            }
+        }
+    }
+
+    if !nodes_to_update.is_empty() {
+        on_progress(processed, items_total);
+        graph
+            .upsert_nodes_batch(&nodes_to_update)
+            .await
+            .map_err(ApiError::from)?;
+        processed = processed.saturating_add(nodes_to_update.len() as u32);
+        on_progress(processed, items_total);
+    }
+
+    let mut edges_to_delete: Vec<(String, String)> = Vec::new();
+    let mut edges_to_update: Vec<(String, String, HashMap<String, serde_json::Value>)> = Vec::new();
+
     for edge in edges_to_process.into_values() {
-        let source_exists = graph.has_node(&edge.source).await.map_err(ApiError::from)?;
-        let target_exists = graph.has_node(&edge.target).await.map_err(ApiError::from)?;
-        if !source_exists || !target_exists {
-            graph
-                .delete_edge(&edge.source, &edge.target)
-                .await
-                .map_err(ApiError::from)?;
+        let source_deleted = deleted_node_ids.contains(&edge.source);
+        let target_deleted = deleted_node_ids.contains(&edge.target);
+        if source_deleted || target_deleted {
+            // DETACH already removed the edge; count for stats parity with the
+            // historical path that explicitly deleted dangling edges.
             stats.relationships_removed += 1;
             continue;
         }
@@ -217,10 +319,7 @@ pub async fn cascade_remove_document_sources(
         }
         let remaining = remaining_sources_after_removal(&edge.properties, scope);
         if remaining.is_empty() {
-            graph
-                .delete_edge(&edge.source, &edge.target)
-                .await
-                .map_err(ApiError::from)?;
+            edges_to_delete.push((edge.source, edge.target));
             stats.relationships_removed += 1;
         } else if remaining.len() < sources.len() {
             let mut updated_props = edge.properties.clone();
@@ -228,14 +327,31 @@ pub async fn cascade_remove_document_sources(
                 &mut updated_props,
                 &remaining,
             );
-            graph
-                .upsert_edge(&edge.source, &edge.target, updated_props)
-                .await
-                .map_err(ApiError::from)?;
+            edges_to_update.push((edge.source, edge.target, updated_props));
             stats.relationships_updated += 1;
         }
     }
 
+    if !edges_to_delete.is_empty() {
+        graph
+            .delete_edges_batch(&edges_to_delete)
+            .await
+            .map_err(ApiError::from)?;
+        processed = processed.saturating_add(edges_to_delete.len() as u32);
+        on_progress(processed, items_total);
+    }
+
+    if !edges_to_update.is_empty() {
+        on_progress(processed, items_total);
+        graph
+            .upsert_edges_batch(&edges_to_update)
+            .await
+            .map_err(ApiError::from)?;
+        processed = processed.saturating_add(edges_to_update.len() as u32);
+        on_progress(processed, items_total);
+    }
+
+    on_progress(items_total.max(processed), items_total);
     Ok(stats)
 }
 
@@ -304,12 +420,25 @@ pub async fn find_relationships_for_document_lineage(
         }
     }
 
-    // Merge source-prefix hits (may carry richer chunk provenance on edge props).
-    for edge in find_document_edges(graph, tenant_ctx, scope).await? {
-        if sources_for_document(&edge.properties, scope).is_empty() {
-            continue;
+    // SPEC-071: provenance enrich is best-effort. Adjacency is SSOT for lineage UX —
+    // never 500 the request when source-prefix discovery times out / errors.
+    match find_document_edges(graph, tenant_ctx, scope).await {
+        Ok(prefix_edges) => {
+            for edge in prefix_edges {
+                if sources_for_document(&edge.properties, scope).is_empty() {
+                    continue;
+                }
+                edges.entry(edge_key(&edge)).or_insert(edge);
+            }
         }
-        edges.entry(edge_key(&edge)).or_insert(edge);
+        Err(err) => {
+            tracing::warn!(
+                document_id = %scope.document_id,
+                error = %err,
+                adjacency_edges = edges.len(),
+                "lineage source-prefix edge enrich failed; returning adjacency relationships"
+            );
+        }
     }
 
     Ok(edges.into_values().collect())
@@ -359,6 +488,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn cascade_discovery_filter_sets_tenant_and_workspace() {
+        let ctx = TenantContext {
+            tenant_id: Some("tenant-a".into()),
+            workspace_id: Some("ws-a".into()),
+            user_id: None,
+        };
+        // Tenant is set for SPEC-006 isolation; missing props still match via
+        // LegacyNullAsWildcard / scope_dim_matches_legacy_null.
+        let filter = node_list_filter_for_document_scope(Some(&ctx));
+        assert_eq!(filter.tenant_id.as_deref(), Some("tenant-a"));
+        assert_eq!(filter.workspace_id.as_deref(), Some("ws-a"));
+        let edge = edge_list_filter_for_document_scope(Some(&ctx));
+        assert_eq!(edge.tenant_id.as_deref(), Some("tenant-a"));
+        assert_eq!(edge.workspace_id.as_deref(), Some("ws-a"));
+    }
+
+    #[test]
     fn source_belongs_matches_chunk_and_doc_id() {
         let scope = DocumentSourceScope::from_document_id("doc-abc");
         assert!(source_belongs_to_document("doc-abc", &scope));
@@ -402,8 +548,59 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn batch_cascade_removes_exclusive_and_rebuilds_shared() {
+        use edgequake_storage::{MemoryGraphStorage, MemoryVectorStorage};
+
+        let graph: Arc<dyn GraphStorage> = Arc::new(MemoryGraphStorage::new("cascade-batch"));
+        let vectors: Arc<dyn VectorStorage> =
+            Arc::new(MemoryVectorStorage::new("cascade-batch", 8));
+        let doc_a = "doc-a";
+        let doc_b = "doc-b";
+        let scope = DocumentSourceScope::from_document_id(doc_a);
+
+        let mut exclusive = HashMap::new();
+        exclusive.insert(
+            "source_ids".to_string(),
+            serde_json::json!([format!("{doc_a}-chunk-0")]),
+        );
+        graph
+            .upsert_node("EXCLUSIVE", exclusive)
+            .await
+            .expect("exclusive");
+
+        let mut shared = HashMap::new();
+        shared.insert(
+            "source_ids".to_string(),
+            serde_json::json!([format!("{doc_a}-chunk-0"), format!("{doc_b}-chunk-0")]),
+        );
+        graph.upsert_node("SHARED", shared).await.expect("shared");
+
+        let mut edge_props = HashMap::new();
+        edge_props.insert(
+            "source_ids".to_string(),
+            serde_json::json!([format!("{doc_a}-chunk-0")]),
+        );
+        graph
+            .upsert_edge("EXCLUSIVE", "SHARED", edge_props)
+            .await
+            .expect("edge");
+
+        let stats = cascade_remove_document_sources(&graph, Some(&vectors), None, &scope)
+            .await
+            .expect("cascade");
+
+        assert_eq!(stats.entities_removed, 1);
+        assert_eq!(stats.entities_updated, 1);
+        assert!(stats.relationships_removed >= 1);
+        assert!(!graph.has_node("EXCLUSIVE").await.unwrap());
+        assert!(graph.has_node("SHARED").await.unwrap());
+        let shared_node = graph.get_node("SHARED").await.unwrap().unwrap();
+        let remaining = remaining_sources_after_removal(&shared_node.properties, &scope);
+        assert_eq!(remaining, vec![format!("{doc_b}-chunk-0")]);
+    }
+
+    #[tokio::test]
     async fn lineage_relationships_include_entity_adjacency_without_edge_source_ids() {
-        use edgequake_storage::traits::GraphStorageMutateOps;
         use edgequake_storage::MemoryGraphStorage;
 
         let graph: Arc<dyn GraphStorage> = Arc::new(MemoryGraphStorage::new("lineage-test"));
@@ -447,5 +644,48 @@ mod tests {
         assert_eq!(edges.len(), 1);
         assert_eq!(edges[0].source, "LIGHTRAG");
         assert_eq!(edges[0].target, "RETRIEVAL");
+    }
+
+    #[tokio::test]
+    async fn lineage_relationships_survive_source_prefix_timeout() {
+        use edgequake_storage::MemoryGraphStorage;
+
+        let mem = Arc::new(MemoryGraphStorage::new("lineage-fail-soft"));
+        let graph: Arc<dyn GraphStorage> = mem.clone();
+        let doc_id = "doc-timeout";
+        let scope = DocumentSourceScope::from_document_id(doc_id);
+
+        let mut a = HashMap::new();
+        a.insert(
+            "source_ids".to_string(),
+            serde_json::json!([format!("{doc_id}-chunk-0")]),
+        );
+        graph.upsert_node("A", a).await.expect("A");
+        let mut b = HashMap::new();
+        b.insert(
+            "source_ids".to_string(),
+            serde_json::json!([format!("{doc_id}-chunk-0")]),
+        );
+        graph.upsert_node("B", b).await.expect("B");
+        graph
+            .upsert_edge("A", "B", HashMap::new())
+            .await
+            .expect("edge");
+
+        mem.fail_next_find_edges_by_source_prefixes();
+
+        let edges = find_relationships_for_document_lineage(
+            &graph,
+            None,
+            &scope,
+            &["A".into(), "B".into()],
+        )
+        .await
+        .expect("lineage must not 500 when prefix enrich fails");
+
+        assert_eq!(edges.len(), 1, "adjacency SSOT must still return the edge");
+        assert_eq!(edges[0].source, "A");
+        assert_eq!(edges[0].target, "B");
+        assert_eq!(mem.find_edges_by_source_prefixes_call_count(), 1);
     }
 }

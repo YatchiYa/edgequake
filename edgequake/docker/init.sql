@@ -223,7 +223,15 @@ CREATE TABLE IF NOT EXISTS tasks (
         status IN ('pending', 'processing', 'indexed', 'failed', 'cancelled')
     ),
     CONSTRAINT tasks_valid_type CHECK (
-        task_type IN ('upload', 'insert', 'scan', 'reindex', 'pdf_processing')
+        task_type IN (
+            'upload',
+            'insert',
+            'scan',
+            'reindex',
+            'pdf_processing',
+            'knowledge_injection',
+            'deletion'
+        )
     )
 );
 

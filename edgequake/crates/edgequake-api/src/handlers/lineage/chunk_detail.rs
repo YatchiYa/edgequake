@@ -124,7 +124,10 @@ pub async fn get_chunk_detail(
     let chunk_nodes =
         find_document_nodes(&storage.graph_storage, Some(&tenant_ctx), &chunk_scope).await?;
     let mut entities: Vec<ExtractedEntityInfo> = Vec::new();
+    let mut node_by_id: std::collections::HashMap<String, &edgequake_storage::GraphNode> =
+        std::collections::HashMap::new();
     for node in &chunk_nodes {
+        node_by_id.insert(node.id.clone(), node);
         let entity_type = node
             .properties
             .get("entity_type")
@@ -138,7 +141,7 @@ pub async fn get_chunk_detail(
             .map(|s| s.to_string());
         entities.push(ExtractedEntityInfo {
             id: node.id.clone(),
-            name: node.id.clone(),
+            name: crate::handlers::graph::graph_node_label(node),
             entity_type,
             description,
         });
@@ -160,9 +163,34 @@ pub async fn get_chunk_detail(
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
+        let source_name = node_by_id
+            .get(&edge.source)
+            .map(|n| crate::handlers::graph::graph_node_label(n))
+            .unwrap_or_else(|| {
+                edgequake_pipeline::resolve_entity_display_label(
+                    &edge.source,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            });
+        let target_name = node_by_id
+            .get(&edge.target)
+            .map(|n| crate::handlers::graph::graph_node_label(n))
+            .unwrap_or_else(|| {
+                edgequake_pipeline::resolve_entity_display_label(
+                    &edge.target,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            });
+
         relationships.push(ExtractedRelationshipInfo {
-            source_name: edge.source.clone(),
-            target_name: edge.target.clone(),
+            source_name,
+            target_name,
             relation_type,
             description,
         });

@@ -19,6 +19,13 @@ pub struct TaskFailureInfo {
     pub suggestion: String,
     /// Whether this error is retryable.
     pub retryable: bool,
+    /// Whether real progress was made before this timeout (vision stall watchdog).
+    ///
+    /// When `true`, the circuit breaker must NOT advance toward permanent failure —
+    /// the attempt progressed and checkpoints can resume. Only no-progress hangs trip
+    /// the breaker. Defaults to `false` for backward-compatible deserialization.
+    #[serde(default)]
+    pub made_progress: bool,
 }
 
 impl TaskFailureInfo {
@@ -36,7 +43,14 @@ impl TaskFailureInfo {
             reason: reason.into(),
             suggestion: suggestion.into(),
             retryable,
+            made_progress: false,
         }
+    }
+
+    /// Attach progress-aware flag (vision stall / checkpoint resume).
+    pub fn with_made_progress(mut self, made_progress: bool) -> Self {
+        self.made_progress = made_progress;
+        self
     }
 
     /// Create a chunking error.
@@ -71,9 +85,14 @@ impl TaskFailureInfo {
     ///
     /// @implements CIRCUIT_BREAKER: Timeout detection
     pub fn is_timeout(&self) -> bool {
-        self.message.to_lowercase().contains("timeout")
-            || self.reason.to_lowercase().contains("timeout")
-            || self.reason.to_lowercase().contains("timed out")
+        let msg = self.message.to_lowercase();
+        let reason = self.reason.to_lowercase();
+        msg.contains("timeout")
+            || msg.contains("timed out")
+            || msg.contains("stalled")
+            || reason.contains("timeout")
+            || reason.contains("timed out")
+            || reason.contains("stalled")
     }
 
     /// Create an embedding error.
@@ -131,7 +150,10 @@ impl TaskFailureInfo {
         let step = failure_step(class);
         let retryable = !is_permanent_ingestion_failure(&message);
         let suggestion = class.recommended_action();
+        // Progress-aware circuit breaker: vision stall watchdog embeds this marker.
+        let made_progress = message.contains("[vision_progress=1]");
 
         Self::new(message.clone(), step, message, suggestion, retryable)
+            .with_made_progress(made_progress)
     }
 }

@@ -110,10 +110,13 @@ mod tests {
     #[test]
     fn test_entity_summary_response_serialization() {
         let response = EntitySummaryResponse {
+            id: "Alice".to_string(),
             name: "Alice".to_string(),
+            label: "Alice".to_string(),
             entity_type: "Person".to_string(),
             source_chunks: vec!["chunk1".to_string()],
             is_shared: true,
+            description: None,
         };
 
         let json = serde_json::to_string(&response).unwrap();

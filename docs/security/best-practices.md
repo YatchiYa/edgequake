@@ -4,6 +4,8 @@ title: 'Security Best Practices'
 
 # Security Best Practices
 
+> **Product: v0.19.0** · See also: [Runtime auth hardening](/docs/operations/runtime-auth-hardening/)
+
 > **Securing Your EdgeQuake Deployment**
 
 This guide covers security considerations for production EdgeQuake deployments.
@@ -121,16 +123,43 @@ iptables -A INPUT -p tcp --dport 5432 -j DROP
 
 ## Authentication
 
-### API Key Authentication
+EdgeQuake v0.19.0 uses a **fail-closed** auth model when enabled. Local dev (`make dev`, Docker quickstart) may set `EDGEQUAKE_DEV_MODE=true` for an open API — **never use that in production**.
 
-EdgeQuake supports API key authentication via headers:
+| Mode | When | What callers need |
+| ---- | ---- | ----------------- |
+| Dev / demo | `EDGEQUAKE_DEV_MODE=true` | No credentials (local only) |
+| Production | `EDGEQUAKE_AUTH_ENABLED=true` | Valid **JWT** (WebUI login) or **API key** |
+| Bootstrap | First admin, no users yet | `EDGEQUAKE_MASTER_API_KEY` or bootstrap env vars |
+
+Full setup: [Runtime auth hardening](/docs/operations/runtime-auth-hardening/).
+
+### JWT (interactive users)
+
+WebUI sessions use short-lived JWTs after login. SDKs and scripts should use the access token as a Bearer credential:
+
+```bash
+curl -H "Authorization: Bearer eyJ..." \
+     -H "X-Tenant-ID: tenant-uuid" \
+     -H "X-User-ID: user-uuid" \
+     -H "X-Workspace-ID: workspace-uuid" \
+     http://localhost:8080/api/v1/documents
+```
+
+Refresh tokens rotate via `/api/v1/auth/refresh`. Store JWTs in memory or secure client storage — not in URLs or logs.
+
+### API key authentication
+
+Programmatic access uses API keys (created via `/api/v1/api-keys` or bootstrap master key):
 
 ```bash
 # Via X-API-Key header
-curl -H "X-API-Key: your-secret-key" http://localhost:8080/api/v1/documents
+curl -H "X-API-Key: your-secret-key" \
+     -H "X-Workspace-ID: workspace-uuid" \
+     http://localhost:8080/api/v1/documents
 
-# Via Authorization Bearer
-curl -H "Authorization: Bearer your-secret-key" http://localhost:8080/api/v1/documents
+# Via Authorization Bearer (same key material)
+curl -H "Authorization: Bearer your-secret-key" \
+     http://localhost:8080/api/v1/documents
 ```
 
 **API Key Best Practices**:
@@ -143,9 +172,41 @@ curl -H "Authorization: Bearer your-secret-key" http://localhost:8080/api/v1/doc
 | Storage      | Environment variable or secret manager |
 | Logging      | Never log full keys                    |
 
-### External Authentication Proxy
+### Workspace and tenant headers
 
-For production, use an authentication proxy:
+Most `/api/v1/*` routes require explicit tenancy context:
+
+- `X-Tenant-ID` — organization boundary
+- `X-User-ID` — acting user (JWT flows)
+- `X-Workspace-ID` — data isolation scope (documents, graph, embeddings)
+
+Missing or invalid workspace context returns **403/404**, not silent cross-tenant reads. Configure headers once on your SDK client.
+
+### PostgreSQL row-level security (RLS)
+
+Data isolation is enforced at two layers:
+
+1. **Application layer** — Axum handlers validate tenant/workspace headers and filter queries.
+2. **Database layer** — PostgreSQL RLS policies filter rows by session variables (`tenant_id`, `workspace_id`) set per connection checkout.
+
+Do not bypass RLS with a superuser connection for application traffic. Use the `DATABASE_URL` role EdgeQuake expects. Pool checkout sets RLS context on each connection (SPEC-027 SEC-014); sharing connections across tenants without the guard is unsafe.
+
+### LLM provider identity (Vertex AI / SPEC-043)
+
+**Gemini Developer API** uses a static API key (`GOOGLE_API_KEY`).
+
+**Google Vertex AI** (enterprise `vertexai` provider) uses **OAuth2 identity** — short-lived bearer tokens from GCP Application Default Credentials or a service account — **not** a static API key. Leave `api_key_env` empty in `models.toml` for Vertex profiles.
+
+```bash
+export GOOGLE_CLOUD_PROJECT="your-project"
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/sa.json"  # or use gcloud ADC
+```
+
+The Settings → Provider Status Hub shows **Identity (ADC)** for Vertex. Treat service-account JSON like any other secret (Vault, K8s Secret, not Git).
+
+### External authentication proxy
+
+For SSO in front of the WebUI, use an authentication proxy:
 
 **OAuth2 Proxy (for SSO)**:
 
@@ -205,16 +266,9 @@ EdgeQuake enforces strict tenant boundaries:
 - All data includes `tenant_id` column
 - Cross-tenant access denied at database level
 
-### Role-Based Access (Future)
+### Roles
 
-Planned RBAC roles:
-
-| Role     | Permissions         |
-| -------- | ------------------- |
-| `admin`  | All operations      |
-| `editor` | Upload, query, view |
-| `viewer` | Query, view only    |
-| `api`    | Programmatic access |
+User records carry a `role` field (`admin`, `editor`, `viewer`, etc.). Sensitive admin routes (user management, API keys, workspace creation) require elevated roles. Prefer least-privilege API keys scoped to a single workspace where possible.
 
 ---
 
@@ -479,15 +533,40 @@ User question: {user_query}
 
 ---
 
+## Multi-replica operations (SPEC-057)
+
+When `EDGEQUAKE_REPLICAS>1`, task delivery must be `bridged` or `notify_only` — boot **fails** with `local` delivery.
+
+| Risk | Mitigation |
+| ---- | ---------- |
+| Duplicate task processing | Correctness is always `claim_next` + lease — never process from a channel payload without claim |
+| Stale cancel/progress UI | Use `track_id` SSOT; poll or WebSocket `/ws/progress/{track_id}` |
+| Cross-replica auth drift | Same `DATABASE_URL`, same auth env on every replica |
+| RLS context leaks | One connection per request scope; do not share pooled connections across tenants |
+
+See [Deployment § Multi-replica](/docs/operations/deployment/#multi-replica-task-delivery) and [Ingestion cancel & fairness](/docs/ingestion-cancel-and-fairness.md).
+
+---
+
+## Storage requirements
+
+`DATABASE_URL` is **required** for all server modes. In-memory storage has been removed — running without PostgreSQL exits with code 1.
+
+Supported PostgreSQL images: **16, 17, 18** (`ghcr.io/raphaelmansuy/edgequake-postgres:0.19.0-pg16|pg17|pg18`). Use TLS for remote databases (`sslmode=require` or stronger).
+
+---
+
 ## Production Hardening Checklist
 
 ### Pre-Deployment
 
 - [ ] TLS enabled (HTTPS)
 - [ ] Reverse proxy configured (nginx/Caddy)
-- [ ] API keys rotated from defaults
-- [ ] Database credentials secure
-- [ ] Secrets in secret manager (not env files)
+- [ ] `EDGEQUAKE_AUTH_ENABLED=true`, `EDGEQUAKE_DEV_MODE` unset
+- [ ] API keys rotated from defaults; master key not in compose files
+- [ ] `DATABASE_URL` set; PostgreSQL 16–18 with pgvector + AGE
+- [ ] Vertex/service-account secrets in secret manager (not env files in Git)
+- [ ] If `EDGEQUAKE_REPLICAS>1`: `EDGEQUAKE_TASK_DELIVERY=bridged` or `notify_only`
 - [ ] Rate limiting configured
 - [ ] Firewall rules applied
 - [ ] Logging to centralized system
@@ -530,6 +609,7 @@ For security vulnerabilities, contact: security@edgequake.dev
 
 ## See Also
 
-- [Deployment Guide](/docs/operations/deployment/) - Production setup
-- [Configuration Reference](/docs/operations/configuration/) - All settings
-- [Monitoring Guide](/docs/operations/monitoring/) - Observability
+- [Runtime auth hardening](/docs/operations/runtime-auth-hardening/) — JWT, API keys, bootstrap
+- [Deployment Guide](/docs/operations/deployment/) — Production setup, GHCR images, multi-replica
+- [Configuration Reference](/docs/operations/configuration/) — Vertex OAuth2, `EDGEQUAKE_REPLICAS`
+- [Monitoring Guide](/docs/operations/monitoring/) — Observability

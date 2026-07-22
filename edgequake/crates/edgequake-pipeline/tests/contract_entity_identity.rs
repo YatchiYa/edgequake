@@ -25,6 +25,11 @@ fn make_entity(name: &str, embedding: Vec<f32>) -> ExtractedEntity {
         embedding: Some(embedding),
         source_document_id: Some("doc-1".to_string()),
         source_file_path: None,
+        display_name: None,
+        page_num: None,
+        figure_index: None,
+        asset_id: None,
+        mm_subtype: None,
     }
 }
 

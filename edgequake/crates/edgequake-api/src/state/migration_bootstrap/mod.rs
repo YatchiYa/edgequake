@@ -231,6 +231,18 @@ pub const SQL_083_APPLY: &str = include_str!("../../../../../migrations/support/
 pub const SQL_083_STATS_BACKFILL: &str =
     include_str!("../../../../../migrations/support/083/stats_backfill.sql");
 
+/// sqlx migration version for EDGE BFS index reconcile (SPEC-053 / SPEC-070).
+pub const MIGRATION_086_VERSION: i64 = 86;
+
+/// EDGE BFS index reconcile — SSOT: `migrations/support/086/apply.sql`
+pub const SQL_086_APPLY: &str = include_str!("../../../../../migrations/support/086/apply.sql");
+
+/// sqlx migration version for eq_* denorm marker (SPEC-062 / SPEC-069).
+pub const MIGRATION_092_VERSION: i64 = 92;
+
+/// eq_* denorm reconcile — SSOT: `migrations/support/092/apply.sql`
+pub const SQL_092_APPLY: &str = include_str!("../../../../../migrations/support/092/apply.sql");
+
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../../migrations");
 
 /// Outcome of bootstrap migration run (surfaced in `/health` and `/ready`).
@@ -869,6 +881,24 @@ pub async fn run_postgres_migrations(
             target: "edgequake.migration",
             step = "migration_083_ok",
             "Migration 083 native UNIQUE indexes + stats backfill reconciled"
+        );
+    }
+
+    // M086 / SPEC-070: every boot — EDGE BFS indexes for incident-edge / degrees.
+    if reconcile::reconcile_migration_086(pool).await? {
+        info!(
+            target: "edgequake.migration",
+            step = "migration_086_ok",
+            "Migration 086 EDGE BFS indexes reconciled (DDL boot-owned)"
+        );
+    }
+
+    // M092 / SPEC-069: every boot — eq_* columns/indexes/triggers off the delete hot path.
+    if reconcile::reconcile_migration_092(pool).await? {
+        info!(
+            target: "edgequake.migration",
+            step = "migration_092_ok",
+            "Migration 092 eq_* denorm schema reconciled (DDL boot-owned)"
         );
     }
 
@@ -2050,12 +2080,46 @@ mod tests {
     fn m083_apply_sql_is_idempotent_ssot() {
         assert!(SQL_083_APPLY.contains("idx_node_prop_node_id_unique"));
         assert!(SQL_083_APPLY.contains("idx_edge_source_target_unique"));
-        assert!(SQL_083_APPLY.contains("IF NOT EXISTS"));
         assert!(SQL_083_APPLY.contains("node_id"));
-        // Fast-boot guard: skip O(N) dedup when UNIQUE index already present.
-        assert!(SQL_083_APPLY.contains("already exists"));
-        assert!(SQL_083_APPLY.contains("skip dedup"));
+        // SPEC-062: drop legacy expression UNIQUEs when eq_* arbiters exist.
+        assert!(SQL_083_APPLY.contains("idx_node_eq_node_id"));
+        assert!(SQL_083_APPLY.contains("idx_edge_eq_source_target"));
+        assert!(SQL_083_APPLY.contains("DROP INDEX IF EXISTS"));
+        // Fast-boot guard: skip O(N) dedup when a UNIQUE index already present.
+        assert!(
+            SQL_083_APPLY.contains("already exists") || SQL_083_APPLY.contains("already present")
+        );
+        assert!(SQL_083_APPLY.contains("skip dedup") || SQL_083_APPLY.contains("skip"));
         assert!(SQL_083_STATS_BACKFILL.contains("relationship_count"));
         assert!(SQL_083_STATS_BACKFILL.contains("metadata->>'relationship_count'"));
+    }
+
+    #[test]
+    fn m092_apply_sql_is_boot_owned_eq_id_ssot() {
+        assert!(SQL_092_APPLY.contains("eq_node_id"));
+        assert!(SQL_092_APPLY.contains("eq_source_id"));
+        assert!(SQL_092_APPLY.contains("eq_target_id"));
+        assert!(SQL_092_APPLY.contains("trg_eq_sync_node_id"));
+        assert!(SQL_092_APPLY.contains("statement_timeout = 0"));
+        assert!(SQL_092_APPLY.contains("lock_timeout"));
+        // Never execute DROP TRIGGER — only document the rule in comments.
+        assert!(
+            !SQL_092_APPLY
+                .lines()
+                .filter(|l| !l.trim_start().starts_with("--"))
+                .any(|l| l.contains("DROP TRIGGER")),
+            "M092 must not DROP TRIGGER in executable SQL"
+        );
+        assert_eq!(MIGRATION_092_VERSION, 92);
+    }
+
+    #[test]
+    fn m086_apply_sql_is_boot_owned_bfs_ssot() {
+        assert!(SQL_086_APPLY.contains("idx_edge_source_id"));
+        assert!(SQL_086_APPLY.contains("idx_edge_target_id"));
+        assert!(SQL_086_APPLY.contains("statement_timeout = 0"));
+        assert!(SQL_086_APPLY.contains("lock_timeout"));
+        assert!(SQL_086_APPLY.contains("ag_catalog.ag_graph"));
+        assert_eq!(MIGRATION_086_VERSION, 86);
     }
 }

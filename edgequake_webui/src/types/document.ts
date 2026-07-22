@@ -16,6 +16,8 @@ export interface Document {
     | "indexed"
     | "cancelled";
   error_message?: string;
+  /** Structured failure code (e.g. `server_restart_interrupted`). */
+  failure_code?: string;
   /** Non-fatal processing notice (e.g. vision parser fallback). */
   warning_message?: string;
   file_name?: string;
@@ -91,6 +93,17 @@ export interface Document {
    * @implements SPEC-002
    */
   stage_message?: string;
+
+  /**
+   * SPEC-057 P4: API SSOT badge key (cancelled|failed|completed|extracting|…).
+   * Prefer over local stage/status derivation when present.
+   */
+  display_status?: string;
+
+  /**
+   * SPEC-057 P4: idle|running|stopping|terminal — Stopping… when `stopping`.
+   */
+  ui_phase?: string;
 
   /**
    * Reprocess mode when this run was started via soft/hard reprocess (SPEC-048).

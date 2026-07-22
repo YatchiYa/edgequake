@@ -129,6 +129,10 @@ export interface QueryContext {
   relationships: Array<{
     source: string;
     target: string;
+    /** Human presentation for source (073). */
+    source_label?: string;
+    /** Human presentation for target (073). */
+    target_label?: string;
     type: string;
     relevance: number;
     /** Source document ID for citation link */

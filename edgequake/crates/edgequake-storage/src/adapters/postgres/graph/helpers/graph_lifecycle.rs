@@ -129,12 +129,21 @@ impl PostgresAGEGraphStorage {
     }
 
     pub(in crate::adapters::postgres::graph) async fn ensure_indexes(&self) -> Result<()> {
+        use std::sync::atomic::Ordering;
+
+        // SPEC-069: single-flight — concurrent deletion/ingest must not race DDL.
+        let _guard = self.ensure_indexes_lock.lock().await;
+        if self.indexes_verified.load(Ordering::Acquire) {
+            return Ok(());
+        }
+
         let pool = self.pool.get().await?;
         let mut conn = pool.acquire().await.map_err(|e| {
             StorageError::Connection(format!("Failed to acquire connection: {}", e))
         })?;
 
-        Self::setup_age_session_scoped(&mut conn, None).await?;
+        // DDL path: statement_timeout=0 + short lock_timeout (not query 15s).
+        Self::setup_age_ddl_session(&mut conn).await?;
 
         let index_queries = [
             // ── "Node" label indexes (child table — contains all node rows) ──────────
@@ -309,6 +318,271 @@ impl PostgresAGEGraphStorage {
             );
         }
 
+        // SPEC-062: denormalized text id columns — avoid per-row agtype_to_json on hot paths.
+        self.ensure_eq_id_columns(&mut conn).await?;
+
+        // Mark verified only when eq_* schema is fully present (lazy AGE tables may
+        // still be pending — leave flag false so first real upsert can finish DDL).
+        if self.eq_id_schema_ready(&mut conn).await? {
+            self.indexes_verified.store(true, Ordering::Release);
+            tracing::info!(
+                graph = %self.graph_name,
+                "SPEC-069: graph indexes + eq_* schema verified (DDL off hot path)"
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Catalog probe: eq_* columns, unique indexes, and sync triggers all present.
+    pub(in crate::adapters::postgres::graph) async fn eq_id_schema_ready(
+        &self,
+        conn: &mut sqlx::PgConnection,
+    ) -> Result<bool> {
+        let g = &self.graph_name;
+        let ready: bool = sqlx::query_scalar(
+            r#"
+            SELECT
+              EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = $1 AND table_name = 'Node' AND column_name = 'eq_node_id'
+              )
+              AND EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = $1 AND table_name = 'EDGE' AND column_name = 'eq_source_id'
+              )
+              AND EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = $1 AND table_name = 'EDGE' AND column_name = 'eq_target_id'
+              )
+              AND EXISTS (
+                SELECT 1 FROM pg_indexes
+                WHERE schemaname = $1 AND indexname = 'idx_node_eq_node_id'
+              )
+              AND EXISTS (
+                SELECT 1 FROM pg_indexes
+                WHERE schemaname = $1 AND indexname = 'idx_edge_eq_source_target'
+              )
+              AND EXISTS (
+                SELECT 1 FROM pg_trigger t
+                JOIN pg_class c ON c.oid = t.tgrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = $1 AND c.relname = 'Node'
+                  AND t.tgname = 'trg_eq_sync_node_id' AND NOT t.tgisinternal
+              )
+              AND EXISTS (
+                SELECT 1 FROM pg_trigger t
+                JOIN pg_class c ON c.oid = t.tgrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = $1 AND c.relname = 'EDGE'
+                  AND t.tgname = 'trg_eq_sync_edge_ids' AND NOT t.tgisinternal
+              )
+            "#,
+        )
+        .bind(g)
+        .fetch_one(&mut *conn)
+        .await
+        .unwrap_or(false);
+        Ok(ready)
+    }
+
+    /// Add `eq_node_id` / `eq_source_id` / `eq_target_id` + btree UNIQUE + sync triggers.
+    ///
+    /// AGE label tables remain the source of truth for `properties`; these columns are
+    /// maintained for native SQL JOIN / ON CONFLICT / degree aggregates (Wave 1).
+    ///
+    /// # Dual-unique hazard (Acc full-corpus blocker)
+    ///
+    /// Native upserts use `ON CONFLICT (eq_*)`. Postgres only suppresses violations on
+    /// the arbiter index. Leaving Migration 074/083 expression UNIQUEs
+    /// (`idx_node_prop_node_id_unique`, `idx_edge_source_target_unique`) in place causes
+    /// `duplicate key value violates unique constraint "idx_edge_source_target_unique"`
+    /// under concurrent/speculative inserts (Postgres INSERT ON CONFLICT docs + dual
+    /// unique index race). After `eq_*` UNIQUEs exist, drop the legacy expression
+    /// UNIQUEs so there is a single arbiter.
+    ///
+    /// # SPEC-069
+    ///
+    /// Catalog early-exit: when columns + indexes + triggers already exist, return
+    /// immediately. Never `DROP TRIGGER` on the hot path — that was racing workers
+    /// under the 15s query `statement_timeout`.
+    pub(in crate::adapters::postgres::graph) async fn ensure_eq_id_columns(
+        &self,
+        conn: &mut sqlx::pool::PoolConnection<sqlx::Postgres>,
+    ) -> Result<()> {
+        // O(1) catalog probe — modern graphs skip all DDL.
+        if self.eq_id_schema_ready(conn.as_mut()).await? {
+            tracing::debug!(
+                graph = %self.graph_name,
+                "SPEC-069: eq_* schema already present — skip DDL"
+            );
+            return Ok(());
+        }
+
+        let g = &self.graph_name;
+
+        // Columns + backfill + indexes (idempotent IF NOT EXISTS).
+        let column_stmts = [
+            format!(r#"ALTER TABLE {g}."Node" ADD COLUMN IF NOT EXISTS eq_node_id text"#),
+            format!(r#"ALTER TABLE {g}."EDGE" ADD COLUMN IF NOT EXISTS eq_source_id text"#),
+            format!(r#"ALTER TABLE {g}."EDGE" ADD COLUMN IF NOT EXISTS eq_target_id text"#),
+            format!(
+                r#"UPDATE {g}."Node" SET eq_node_id = ag_catalog.agtype_to_json(properties)->>'node_id'
+                   WHERE eq_node_id IS NULL"#
+            ),
+            format!(
+                r#"UPDATE {g}."EDGE" SET
+                     eq_source_id = ag_catalog.agtype_to_json(properties)->>'source_id',
+                     eq_target_id = ag_catalog.agtype_to_json(properties)->>'target_id'
+                   WHERE eq_source_id IS NULL OR eq_target_id IS NULL"#
+            ),
+            format!(
+                r#"CREATE UNIQUE INDEX IF NOT EXISTS idx_node_eq_node_id
+                   ON {g}."Node" (eq_node_id) WHERE eq_node_id IS NOT NULL"#
+            ),
+            format!(
+                r#"CREATE UNIQUE INDEX IF NOT EXISTS idx_edge_eq_source_target
+                   ON {g}."EDGE" (eq_source_id, eq_target_id)
+                   WHERE eq_source_id IS NOT NULL AND eq_target_id IS NOT NULL"#
+            ),
+            format!(
+                r#"CREATE INDEX IF NOT EXISTS idx_edge_eq_source_id
+                   ON {g}."EDGE" (eq_source_id) WHERE eq_source_id IS NOT NULL"#
+            ),
+            format!(
+                r#"CREATE INDEX IF NOT EXISTS idx_edge_eq_target_id
+                   ON {g}."EDGE" (eq_target_id) WHERE eq_target_id IS NOT NULL"#
+            ),
+        ];
+
+        for sql in &column_stmts {
+            if let Err(e) = sqlx::query(sql).execute(&mut **conn).await {
+                let msg = e.to_string();
+                if msg.contains("does not exist") || msg.contains("undefined_table") {
+                    tracing::debug!(error = %e, "SPEC-062 eq_id columns skipped (table pending)");
+                    return Ok(());
+                }
+                tracing::warn!(
+                    error = %e,
+                    sql = %sql.chars().take(80).collect::<String>(),
+                    "SPEC-062 eq_id DDL warning"
+                );
+            }
+        }
+
+        // Triggers: create only when missing — never unconditional DROP+CREATE.
+        let node_trig: bool = sqlx::query_scalar(
+            r#"
+            SELECT EXISTS (
+              SELECT 1 FROM pg_trigger t
+              JOIN pg_class c ON c.oid = t.tgrelid
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = $1 AND c.relname = 'Node'
+                AND t.tgname = 'trg_eq_sync_node_id' AND NOT t.tgisinternal
+            )
+            "#,
+        )
+        .bind(g)
+        .fetch_one(&mut **conn)
+        .await
+        .unwrap_or(false);
+
+        if !node_trig {
+            let fn_sql = format!(
+                r#"CREATE OR REPLACE FUNCTION {g}_eq_sync_node_id() RETURNS trigger AS $$
+                   BEGIN
+                     NEW.eq_node_id := ag_catalog.agtype_to_json(NEW.properties)->>'node_id';
+                     RETURN NEW;
+                   END;
+                   $$ LANGUAGE plpgsql"#
+            );
+            let trg_sql = format!(
+                r#"CREATE TRIGGER trg_eq_sync_node_id
+                   BEFORE INSERT OR UPDATE OF properties ON {g}."Node"
+                   FOR EACH ROW EXECUTE PROCEDURE {g}_eq_sync_node_id()"#
+            );
+            for sql in [&fn_sql, &trg_sql] {
+                if let Err(e) = sqlx::query(sql).execute(&mut **conn).await {
+                    let msg = e.to_string();
+                    if msg.contains("does not exist") || msg.contains("undefined_table") {
+                        return Ok(());
+                    }
+                    if msg.contains("already exists") {
+                        continue;
+                    }
+                    tracing::warn!(error = %e, "SPEC-062 eq_id node trigger DDL warning");
+                }
+            }
+        }
+
+        let edge_trig: bool = sqlx::query_scalar(
+            r#"
+            SELECT EXISTS (
+              SELECT 1 FROM pg_trigger t
+              JOIN pg_class c ON c.oid = t.tgrelid
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = $1 AND c.relname = 'EDGE'
+                AND t.tgname = 'trg_eq_sync_edge_ids' AND NOT t.tgisinternal
+            )
+            "#,
+        )
+        .bind(g)
+        .fetch_one(&mut **conn)
+        .await
+        .unwrap_or(false);
+
+        if !edge_trig {
+            let fn_sql = format!(
+                r#"CREATE OR REPLACE FUNCTION {g}_eq_sync_edge_ids() RETURNS trigger AS $$
+                   BEGIN
+                     NEW.eq_source_id := ag_catalog.agtype_to_json(NEW.properties)->>'source_id';
+                     NEW.eq_target_id := ag_catalog.agtype_to_json(NEW.properties)->>'target_id';
+                     RETURN NEW;
+                   END;
+                   $$ LANGUAGE plpgsql"#
+            );
+            let trg_sql = format!(
+                r#"CREATE TRIGGER trg_eq_sync_edge_ids
+                   BEFORE INSERT OR UPDATE OF properties ON {g}."EDGE"
+                   FOR EACH ROW EXECUTE PROCEDURE {g}_eq_sync_edge_ids()"#
+            );
+            for sql in [&fn_sql, &trg_sql] {
+                if let Err(e) = sqlx::query(sql).execute(&mut **conn).await {
+                    let msg = e.to_string();
+                    if msg.contains("does not exist") || msg.contains("undefined_table") {
+                        return Ok(());
+                    }
+                    if msg.contains("already exists") {
+                        continue;
+                    }
+                    tracing::warn!(error = %e, "SPEC-062 eq_id edge trigger DDL warning");
+                }
+            }
+        }
+
+        // Drop legacy expression UNIQUEs only when eq_* arbiters exist.
+        let drop_legacy = format!(
+            r#"DO $drop$
+               BEGIN
+                 IF EXISTS (
+                   SELECT 1 FROM pg_indexes
+                   WHERE schemaname = '{g}' AND indexname = 'idx_node_eq_node_id'
+                 ) THEN
+                   EXECUTE 'DROP INDEX IF EXISTS {g}.idx_node_prop_node_id_unique';
+                 END IF;
+                 IF EXISTS (
+                   SELECT 1 FROM pg_indexes
+                   WHERE schemaname = '{g}' AND indexname = 'idx_edge_eq_source_target'
+                 ) THEN
+                   EXECUTE 'DROP INDEX IF EXISTS {g}.idx_edge_source_target_unique';
+                 END IF;
+               END
+               $drop$"#
+        );
+        if let Err(e) = sqlx::query(&drop_legacy).execute(&mut **conn).await {
+            tracing::debug!(error = %e, "SPEC-062 legacy UNIQUE drop skipped");
+        }
+
         Ok(())
     }
 
@@ -405,47 +679,60 @@ impl PostgresAGEGraphStorage {
             "AGE graph bootstrap: checking critical indexes"
         );
 
-        // ── Critical unique index for MERGE/ON CONFLICT performance ────────────
-        // First principles: if a VALID unique index already exists, skip the
-        // O(N) expression-based DELETE dedup on every boot. On a 140k-node graph
-        // that DELETE was blocking HTTP listen for minutes (make-dev hang).
-        // Dedup is only required when we are about to CREATE the unique index.
-        let node_idx_name = "idx_node_prop_node_id_unique";
-        let node_idx_state = self.index_validity(&pool, node_idx_name).await;
-        if node_idx_state == Some(true) {
-            tracing::debug!(
-                index = %node_idx_name,
-                graph = %self.graph_name,
-                "Bootstrap: node unique index already valid — skip dedup + create"
+        // ── Critical unique indexes for MERGE/ON CONFLICT ─────────────────────
+        // SPEC-062: prefer denormalized eq_* UNIQUEs (native upsert arbiter).
+        // Do NOT keep Migration 074/083 expression UNIQUEs alongside eq_* —
+        // dual unique indexes break ON CONFLICT under concurrency.
+        let node_eq_ok = self.index_validity(&pool, "idx_node_eq_node_id").await == Some(true);
+        let edge_eq_ok = self
+            .index_validity(&pool, "idx_edge_eq_source_target")
+            .await
+            == Some(true);
+
+        if node_eq_ok {
+            let drop_sql = format!(
+                r#"DROP INDEX IF EXISTS {graph}.idx_node_prop_node_id_unique"#,
+                graph = self.graph_name
             );
-        } else {
-            // WHY UNIQUE: Migration 074/083. Dedup first — CREATE UNIQUE fails on
-            // duplicates and leaves the graph without ON CONFLICT support (edge #3).
-            if let Err(e) = self.dedup_nodes_for_unique_index(&pool).await {
-                tracing::warn!(
-                    graph = %self.graph_name,
-                    error = %e,
-                    "Bootstrap: node dedup before UNIQUE index failed (non-fatal)"
-                );
+            if let Err(e) = sqlx::query(&drop_sql).execute(&pool).await {
+                tracing::debug!(error = %e, "Bootstrap: drop legacy node expression UNIQUE skipped");
             }
-            let node_idx_sql = format!(
-                r#"CREATE UNIQUE INDEX {concurrent} IF NOT EXISTS {name}
-                   ON {graph}."Node"
-                   ((ag_catalog.agtype_to_json(properties)->>'node_id'))"#,
-                concurrent = if use_concurrent { "CONCURRENTLY" } else { "" },
-                name = node_idx_name,
-                graph = self.graph_name,
-            );
-            self.ensure_critical_index_concurrent(
-                &pool,
-                node_idx_name,
-                &node_idx_sql,
-                use_concurrent,
-            )
-            .await;
+        } else {
+            // Fallback until ensure_eq_id_columns creates idx_node_eq_node_id.
+            let node_idx_name = "idx_node_prop_node_id_unique";
+            let node_idx_state = self.index_validity(&pool, node_idx_name).await;
+            if node_idx_state == Some(true) {
+                tracing::debug!(
+                    index = %node_idx_name,
+                    graph = %self.graph_name,
+                    "Bootstrap: legacy node unique present (eq_* pending) — skip recreate"
+                );
+            } else {
+                if let Err(e) = self.dedup_nodes_for_unique_index(&pool).await {
+                    tracing::warn!(
+                        graph = %self.graph_name,
+                        error = %e,
+                        "Bootstrap: node dedup before UNIQUE index failed (non-fatal)"
+                    );
+                }
+                let node_idx_sql = format!(
+                    r#"CREATE UNIQUE INDEX {concurrent} IF NOT EXISTS {name}
+                       ON {graph}."Node"
+                       ((ag_catalog.agtype_to_json(properties)->>'node_id'))"#,
+                    concurrent = if use_concurrent { "CONCURRENTLY" } else { "" },
+                    name = node_idx_name,
+                    graph = self.graph_name,
+                );
+                self.ensure_critical_index_concurrent(
+                    &pool,
+                    node_idx_name,
+                    &node_idx_sql,
+                    use_concurrent,
+                )
+                .await;
+            }
         }
 
-        // EDGE source_id + target_id composite index
         let edge_table_exists: bool = sqlx::query_scalar(
             "SELECT EXISTS (
                SELECT 1 FROM pg_class c
@@ -459,40 +746,52 @@ impl PostgresAGEGraphStorage {
         .unwrap_or(false);
 
         if edge_table_exists {
-            let edge_idx_name = "idx_edge_source_target_unique";
-            let edge_idx_state = self.index_validity(&pool, edge_idx_name).await;
-            if edge_idx_state == Some(true) {
-                tracing::debug!(
-                    index = %edge_idx_name,
-                    graph = %self.graph_name,
-                    "Bootstrap: edge unique index already valid — skip dedup + create"
+            if edge_eq_ok {
+                let drop_sql = format!(
+                    r#"DROP INDEX IF EXISTS {graph}.idx_edge_source_target_unique"#,
+                    graph = self.graph_name
                 );
-            } else {
-                if let Err(e) = self.dedup_edges_for_unique_index(&pool).await {
-                    tracing::warn!(
-                        graph = %self.graph_name,
+                if let Err(e) = sqlx::query(&drop_sql).execute(&pool).await {
+                    tracing::debug!(
                         error = %e,
-                        "Bootstrap: edge dedup before UNIQUE index failed (non-fatal)"
+                        "Bootstrap: drop legacy edge expression UNIQUE skipped"
                     );
                 }
-                // WHY UNIQUE: Migration 074/083 for pg_upsert_edges_batch_native ON CONFLICT.
-                self.ensure_critical_index_concurrent(
-                    &pool,
-                    edge_idx_name,
-                    &format!(
-                        r#"CREATE UNIQUE INDEX {concurrent} IF NOT EXISTS {name}
-                           ON {graph}."EDGE"
-                           (
-                             (ag_catalog.agtype_to_json(properties)->>'source_id'),
-                             (ag_catalog.agtype_to_json(properties)->>'target_id')
-                           )"#,
-                        concurrent = if use_concurrent { "CONCURRENTLY" } else { "" },
-                        name = edge_idx_name,
-                        graph = self.graph_name,
-                    ),
-                    use_concurrent,
-                )
-                .await;
+            } else {
+                let edge_idx_name = "idx_edge_source_target_unique";
+                let edge_idx_state = self.index_validity(&pool, edge_idx_name).await;
+                if edge_idx_state == Some(true) {
+                    tracing::debug!(
+                        index = %edge_idx_name,
+                        graph = %self.graph_name,
+                        "Bootstrap: legacy edge unique present (eq_* pending) — skip recreate"
+                    );
+                } else {
+                    if let Err(e) = self.dedup_edges_for_unique_index(&pool).await {
+                        tracing::warn!(
+                            graph = %self.graph_name,
+                            error = %e,
+                            "Bootstrap: edge dedup before UNIQUE index failed (non-fatal)"
+                        );
+                    }
+                    self.ensure_critical_index_concurrent(
+                        &pool,
+                        edge_idx_name,
+                        &format!(
+                            r#"CREATE UNIQUE INDEX {concurrent} IF NOT EXISTS {name}
+                               ON {graph}."EDGE"
+                               (
+                                 (ag_catalog.agtype_to_json(properties)->>'source_id'),
+                                 (ag_catalog.agtype_to_json(properties)->>'target_id')
+                               )"#,
+                            concurrent = if use_concurrent { "CONCURRENTLY" } else { "" },
+                            name = edge_idx_name,
+                            graph = self.graph_name,
+                        ),
+                        use_concurrent,
+                    )
+                    .await;
+                }
             }
         }
 

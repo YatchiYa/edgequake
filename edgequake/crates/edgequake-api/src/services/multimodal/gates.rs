@@ -31,6 +31,11 @@ pub enum MultimodalFailMode {
 impl MultimodalFailMode {
     /// Default **strict** when unset (LightRAG parity). Set `EDGEQUAKE_MULTIMODAL_FAIL_MODE=degraded` for ops-friendly mode.
     pub fn from_env() -> Self {
+        Self::resolve(false)
+    }
+
+    /// Resolve fail mode: explicit env wins; otherwise local VLM defaults to degraded.
+    pub fn resolve(is_local_vlm: bool) -> Self {
         match std::env::var("EDGEQUAKE_MULTIMODAL_FAIL_MODE")
             .ok()
             .as_deref()
@@ -38,7 +43,10 @@ impl MultimodalFailMode {
             .map(str::to_ascii_lowercase)
         {
             Some(ref s) if s == "degraded" => Self::Degraded,
-            _ => Self::Strict,
+            Some(ref s) if s == "strict" => Self::Strict,
+            Some(_) => Self::Strict,
+            None if is_local_vlm => Self::Degraded,
+            None => Self::Strict,
         }
     }
 
@@ -50,7 +58,8 @@ impl MultimodalFailMode {
 
 /// Whether a multimodal hard_error should fail the caller (SSOT).
 pub fn should_abort_multimodal_hard_error(hard_error: Option<&str>) -> bool {
-    hard_error.is_some() && MultimodalFailMode::from_env().should_abort_on_hard_error()
+    let is_local = super::local_profile::LocalMmProfile::resolve_from_env().is_local;
+    hard_error.is_some() && MultimodalFailMode::resolve(is_local).should_abort_on_hard_error()
 }
 
 /// Whether inline image analysis should run for the given per-document flags.
@@ -97,6 +106,26 @@ mod tests {
     fn fail_mode_degraded_opt_in() {
         std::env::set_var("EDGEQUAKE_MULTIMODAL_FAIL_MODE", "degraded");
         assert_eq!(MultimodalFailMode::from_env(), MultimodalFailMode::Degraded);
+        std::env::remove_var("EDGEQUAKE_MULTIMODAL_FAIL_MODE");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn fail_mode_auto_degraded_for_local_when_unset() {
+        std::env::remove_var("EDGEQUAKE_MULTIMODAL_FAIL_MODE");
+        assert_eq!(
+            MultimodalFailMode::resolve(true),
+            MultimodalFailMode::Degraded
+        );
+        assert_eq!(
+            MultimodalFailMode::resolve(false),
+            MultimodalFailMode::Strict
+        );
+        std::env::set_var("EDGEQUAKE_MULTIMODAL_FAIL_MODE", "strict");
+        assert_eq!(
+            MultimodalFailMode::resolve(true),
+            MultimodalFailMode::Strict
+        );
         std::env::remove_var("EDGEQUAKE_MULTIMODAL_FAIL_MODE");
     }
 

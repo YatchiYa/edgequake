@@ -1915,8 +1915,9 @@ mod chunk_ranking_and_hybrid_tests {
             config.truncation.max_total_tokens, 30000,
             "Truncation budget must match max_context_tokens"
         );
-        assert_eq!(config.truncation.max_entity_tokens, 10000);
-        assert_eq!(config.truncation.max_relation_tokens, 10000);
+        // LightRAG constants.py parity (6000 / 8000), overridable via env.
+        assert_eq!(config.truncation.max_entity_tokens, 6000);
+        assert_eq!(config.truncation.max_relation_tokens, 8000);
         assert_eq!(config.default_mode, QueryMode::Mix);
         assert!(config.use_keyword_extraction);
         assert!(config.use_adaptive_mode);

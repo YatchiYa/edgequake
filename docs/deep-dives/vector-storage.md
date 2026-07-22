@@ -2,17 +2,21 @@
 title: 'Deep Dive: Vector Storage'
 ---
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 # Deep Dive: Vector Storage
 
 > **How EdgeQuake Stores and Searches Vector Embeddings**
 
 Vector storage powers EdgeQuake's semantic search capabilities. This document explains how embeddings are stored, indexed, and queried for similarity.
 
+**See also:** [Data Layer](data-layer.md) — physical `eq_eq_*_vectors` / workspace tables, halfvec policy, FTS→KV join, and the query×store matrix.
+
 ---
 
 ## Overview
 
-EdgeQuake uses a trait-based vector storage abstraction to support multiple backends:
+EdgeQuake uses a trait-based vector storage abstraction. **Production deployments use PostgreSQL + pgvector only** (in-memory vector storage was removed with v0.4.0).
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -63,7 +67,30 @@ EdgeQuake uses a trait-based vector storage abstraction to support multiple back
 | **Specialized Indices** | HNSW, IVFFlat optimized for nearest-neighbor    |
 | **GPU Acceleration**    | Backends like Faiss can use GPU                 |
 | **Different Scaling**   | Vectors scale differently than graph data       |
-| **Backend Flexibility** | Can use Pinecone, Weaviate, Qdrant, or pgvector |
+| **Backend Flexibility** | pgvector in PostgreSQL (required) |
+
+---
+
+## halfvec and dimension policy (M071 / M080+)
+
+pgvector HNSW has dimension ceilings: **`vector` ≤ 2000**, **`halfvec` ≤ 4000**. EdgeQuake resolves column type via `AnnIndexPolicy` in [`adapters/postgres/capabilities.rs`](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/edgequake/crates/edgequake-storage/src/adapters/postgres/capabilities.rs):
+
+| Condition | Column | HNSW |
+| --------- | ------ | ---- |
+| dim ≤ 2000 | `vector` or `halfvec` (see env) | ✅ |
+| 2000 < dim ≤ 4000 | `halfvec` (auto-promote from `vector`) | ✅ |
+| dim > 4000 | no ANN index | ❌ (sequential scan) |
+
+**`EDGEQUAKE_VECTOR_STORAGE`** (default `full`):
+
+| Value | Column type | Index opclass |
+| ----- | ----------- | ------------- |
+| `full` | `vector` | `vector_cosine_ops` |
+| `halfvec` / `half` | `halfvec` | `halfvec_cosine_ops` (~50% memory) |
+
+**Migration 080:** Marker migration records halfvec mode; actual `vector → halfvec` conversion runs from `migrations/support/080/apply.sql` when `EDGEQUAKE_VECTOR_STORAGE=halfvec` at bootstrap. **Migration 071** auto-promotes dims in (2000, 4000] to `halfvec` for HNSW viability.
+
+Changing embedding model/dimension requires workspace reconcile or rebuild — vectors from different models are not comparable. See [Embedding Models](/docs/deep-dives/embedding-models/).
 
 ---
 
@@ -228,57 +255,9 @@ Migrations 027-029 use dynamic table discovery (`pg_tables WHERE tablename LIKE 
 
 ## Storage Backends
 
-### MemoryVectorStorage
+### PgVectorStorage (production)
 
-In-memory implementation using brute-force cosine similarity:
-
-```rust
-pub struct MemoryVectorStorage {
-    namespace: String,
-    dimension: usize,
-    vectors: RwLock<HashMap<String, Vec<f32>>>,
-    metadata: RwLock<HashMap<String, serde_json::Value>>,
-}
-```
-
-**Characteristics:**
-
-| Attribute         | Value                    |
-| ----------------- | ------------------------ |
-| Index Type        | None (brute-force)       |
-| Search Complexity | O(n) per query           |
-| Memory Usage      | ~4KB per 1024-dim vector |
-| Best For          | Testing, <10K vectors    |
-
-**Cosine Similarity:**
-
-```rust
-fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
-    let dot: f32 = a.iter().zip(b.iter())
-        .map(|(x, y)| x * y).sum();
-    let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
-    let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
-
-    if norm_a == 0.0 || norm_b == 0.0 {
-        0.0
-    } else {
-        dot / (norm_a * norm_b)
-    }
-}
-```
-
-**Usage:**
-
-```rust
-let storage = MemoryVectorStorage::new("my_workspace", 1536);
-storage.initialize().await?;
-```
-
----
-
-### PgVectorStorage
-
-Production-grade storage using PostgreSQL with pgvector extension:
+Production-grade storage using PostgreSQL with the pgvector extension. Implementation: [`edgequake-storage/src/adapters/postgres/vector/`](https://github.com/raphaelmansuy/edgequake/tree/edgequake-main/edgequake/crates/edgequake-storage/src/adapters/postgres/vector/).
 
 ```rust
 pub struct PgVectorStorage {
@@ -305,10 +284,11 @@ pub struct PgVectorStorage {
 **Schema:**
 
 ```sql
-CREATE TABLE vectors (
+CREATE TABLE eq_{workspace}_vectors (
     id TEXT PRIMARY KEY,
-    embedding vector(1536) NOT NULL,
+    embedding vector(1536) NOT NULL,  -- or halfvec(1536) per AnnIndexPolicy
     metadata JSONB DEFAULT '{}',
+    document_id TEXT,  -- materialized for SPEC-007 filters
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ```
@@ -440,22 +420,9 @@ EdgeQuake supports multiple embedding models:
 | `mxbai-embed-large`      | 1024       | Ollama   |
 | `all-MiniLM-L6-v2`       | 384        | Local    |
 
-**Dimension Mismatch Handling:**
+### Dimension Mismatch Handling
 
-EdgeQuake automatically detects when stored vectors have a different dimension than the current provider:
-
-```rust
-// Check stored dimension from pg_attribute
-pub async fn get_stored_dimension(&self) -> Result<Option<usize>> {
-    // Query atttypmod from pg_attribute (works for empty tables!)
-    let sql = r#"
-        SELECT a.atttypmod FROM pg_attribute a
-        JOIN pg_class c ON a.attrelid = c.oid
-        WHERE c.relname = $1 AND a.attname = 'embedding'
-    "#;
-    // ...
-}
-```
+EdgeQuake detects stored vs provider dimension via `pg_attribute.atttypmod` (works on empty tables). When dimensions change, reconcile migrations (M071/M080) or rebuild embeddings — see [Embedding Models](/docs/deep-dives/embedding-models/).
 
 ---
 
@@ -560,7 +527,9 @@ storage.upsert(&data).await?;
 
 ## Benchmarks
 
-Performance on typical workloads (pgvector with HNSW, 100K vectors, 1536 dimensions):
+> **Honesty (SPEC-065):** Illustrative unfiltered/warm numbers below are **not** the product claim table. For proven floors, cold cliffs, and 100k Q1-d (Wave-2 opt-in), see [`docs/product-limits.md`](../product-limits.md).
+
+Performance on typical workloads (pgvector with HNSW, 100K vectors, 1536 dimensions) — **illustrative / warm / often unfiltered**:
 
 | Operation      | Latency | Notes         |
 | -------------- | ------- | ------------- |
@@ -570,7 +539,7 @@ Performance on typical workloads (pgvector with HNSW, 100K vectors, 1536 dimensi
 | `upsert(100)`  | ~50ms   | Batch insert  |
 | Index build    | ~30s    | 100K vectors  |
 
-**Memory Usage:**
+**Memory Usage (order-of-magnitude):**
 
 - 1536-dim vector: ~6KB (with overhead)
 - 100K vectors: ~600MB

@@ -2,6 +2,8 @@
 title: 'Monitoring Guide'
 ---
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 # Monitoring Guide
 
 > **Observability for EdgeQuake Deployments**
@@ -41,9 +43,10 @@ EdgeQuake provides built-in health endpoints:
 
 | Endpoint      | Purpose             | Response                  |
 | ------------- | ------------------- | ------------------------- |
-| `GET /health` | Basic health        | `{ "status": "healthy" }` |
-| `GET /ready`  | Readiness check     | Database + LLM status     |
+| `GET /health` | Basic health        | `{ "status": "healthy", "version": "0.19.0", ... }` |
+| `GET /ready`  | Readiness check     | JSON blockers; **503** when not ready |
 | `GET /live`   | Kubernetes liveness | Process check             |
+| `GET /api/v1/pipeline/queue-metrics` | Ingest backpressure + fairness | Pending depth, park waiters, store contention |
 
 ### Basic Health Check
 
@@ -54,7 +57,7 @@ curl http://localhost:8080/health
 ```json
 {
   "status": "healthy",
-  "version": "0.10.x",
+  "version": "0.19.0",
   "storage_mode": "postgresql"
 }
 ```
@@ -65,15 +68,58 @@ curl http://localhost:8080/health
 curl http://localhost:8080/ready
 ```
 
+**200 — ready for traffic:**
+
 ```json
 {
-  "status": "ready",
-  "checks": {
-    "database": "ok",
-    "llm_provider": "ok"
-  }
+  "ready": true,
+  "blockers": [],
+  "operator_action": null
 }
 ```
+
+**503 — not ready** (`ReadinessResponse` with actionable blockers):
+
+```json
+{
+  "ready": false,
+  "blockers": [
+    "store_contention_critical(pool_util=Some(0.92),quarantine=6)"
+  ],
+  "operator_action": "Scale DB pool or reduce ingest; inspect compensation quarantine DLQ"
+}
+```
+
+Common `/ready` blockers (v0.19.0):
+
+| Blocker prefix | Cause | Operator action |
+| -------------- | ----- | ----------------- |
+| Migration / M038 / pgvector | Schema or index not ready | Run migrations; see [PostgreSQL migration guide](../../edgequake/docs/migrations/postgres-triple-track-spec042.md) |
+| `storage_ping_failed` | KV / vector / graph ping timeout | Check `DATABASE_URL`, pool saturation |
+| `task_queue_critical` | Pending depth above critical threshold | Scale `WORKER_THREADS` or reduce ingest rate |
+| `store_contention_critical` | Pool util or compensation quarantine SLO breached | Tune pool; inspect `compensation_quarantine:{document_id}:*` KV keys |
+
+Env thresholds for store contention: `EDGEQUAKE_DB_POOL_UTIL_WARN=0.75`, `EDGEQUAKE_DB_POOL_UTIL_CRITICAL=0.90`, `EDGEQUAKE_COMPENSATION_QUARANTINE_WARN=1`, `EDGEQUAKE_COMPENSATION_QUARANTINE_CRITICAL=5`.
+
+### Queue Metrics
+
+```bash
+curl http://localhost:8080/api/v1/pipeline/queue-metrics | jq .
+```
+
+Key fields (SPEC-057):
+
+| Field | Meaning |
+| ----- | ------- |
+| `pressure` | `normal` \| `elevated` \| `critical` — mirrors `/ready` queue gate |
+| `tenant_park_waiters` | Tasks parked on fairness semaphore (expected under local LLM clamp) |
+| `cancel_intent_count` / `cancel_intent_total` | Cooperative cancel in flight / lifetime |
+| `max_tasks_per_tenant` | Effective cap (local providers clamp to 1 unless overridden) |
+| `store_contention.level` | `normal` \| `elevated` \| `critical` |
+| `store_contention.db_pool_utilization` | Active pool utilization |
+| `store_contention.compensation_quarantine_total` | Merge cleanup failures (not a park issue) |
+
+Prometheus: `edgequake_compensation_quarantine_total` tracks quarantine events. High `tenant_park_waiters` with low quarantine = fairness working; rising quarantine = AGE/pgvector delete errors — see [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md).
 
 ---
 

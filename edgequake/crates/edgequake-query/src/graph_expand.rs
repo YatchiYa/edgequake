@@ -14,25 +14,51 @@ use crate::graph_ppr::{
 /// - **Bfs**: classic hop expansion (`edges_within_depth`).
 /// - **Ppr**: fetch a generous BFS envelope, then re-rank edges by PPR mass
 ///   on that subgraph (HippoRAG-inspired; dual-node chunk mapping happens later).
+/// - When `EDGEQUAKE_RELATION_SELECT=lightrag`, bypasses walk and uses LightRAG
+///   incident-edge + `(rank, weight)` sort (051).
 pub async fn expand_neighborhood_edges(
     graph: &GraphReadView<'_>,
     seed_ids: &[String],
     depth: usize,
     max_edges: usize,
     walk: GraphWalkMode,
+    tenant_id: Option<&str>,
+    workspace_id: Option<&str>,
 ) -> edgequake_storage::error::Result<Vec<GraphEdge>> {
     if seed_ids.is_empty() || max_edges == 0 {
         return Ok(Vec::new());
     }
 
+    if crate::relation_select::RelationSelectMode::from_env()
+        == crate::relation_select::RelationSelectMode::LightRag
+    {
+        return crate::relation_select::select_edges_lightrag(
+            graph,
+            seed_ids,
+            max_edges,
+            tenant_id,
+            workspace_id,
+        )
+        .await;
+    }
+
     match walk {
-        GraphWalkMode::Bfs => edges_within_depth(graph, seed_ids, depth, max_edges).await,
+        GraphWalkMode::Bfs => {
+            edges_within_depth(graph, seed_ids, depth, max_edges, tenant_id, workspace_id).await
+        }
         GraphWalkMode::Ppr => {
             // Envelope: deeper / wider than final max so PPR has room to flow
             let envelope_depth = depth.max(2);
             let envelope_cap = max_edges.saturating_mul(4).max(max_edges).min(2_000);
-            let envelope =
-                edges_within_depth(graph, seed_ids, envelope_depth, envelope_cap).await?;
+            let envelope = edges_within_depth(
+                graph,
+                seed_ids,
+                envelope_depth,
+                envelope_cap,
+                tenant_id,
+                workspace_id,
+            )
+            .await?;
             if envelope.is_empty() {
                 return Ok(Vec::new());
             }
@@ -61,9 +87,17 @@ mod tests {
         graph.upsert_edge("X", "Y", HashMap::new()).await.unwrap();
 
         let view = GraphReadView::new(&graph);
-        let edges = expand_neighborhood_edges(&view, &["A".to_string()], 2, 10, GraphWalkMode::Ppr)
-            .await
-            .unwrap();
+        let edges = expand_neighborhood_edges(
+            &view,
+            &["A".to_string()],
+            2,
+            10,
+            GraphWalkMode::Ppr,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
         assert!(!edges.is_empty());
         assert!(
             edges.iter().any(|e| e.source == "A" || e.target == "A"),

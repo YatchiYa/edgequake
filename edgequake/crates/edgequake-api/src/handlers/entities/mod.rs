@@ -60,10 +60,12 @@ pub(super) fn normalize_entity_name_for_graph(name: &str) -> String {
 /// Convert GraphNode to EntityResponse.
 pub(super) fn node_to_entity_response(node: GraphNode, degree: usize) -> EntityResponse {
     let props = &node.properties;
+    // 072: presentation uses graph_node_label; `id` stays graph identity.
+    let presentation = crate::handlers::graph::graph_node_label(&node);
 
     EntityResponse {
         id: node.id.clone(),
-        entity_name: node.id.clone(),
+        entity_name: presentation,
         entity_type: props
             .get("entity_type")
             .and_then(|v| v.as_str())

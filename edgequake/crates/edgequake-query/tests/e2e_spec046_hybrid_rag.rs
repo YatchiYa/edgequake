@@ -79,9 +79,17 @@ async fn e2e_ppr_walk_expands_seed_neighborhood() {
         graph.upsert_edge(a, b, HashMap::new()).await.unwrap();
     }
     let view = GraphReadView::new(&graph);
-    let edges = expand_neighborhood_edges(&view, &["SEED".into()], 2, 10, GraphWalkMode::Ppr)
-        .await
-        .unwrap();
+    let edges = expand_neighborhood_edges(
+        &view,
+        &["SEED".into()],
+        2,
+        10,
+        GraphWalkMode::Ppr,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
     assert!(!edges.is_empty());
     assert!(
         edges
@@ -104,6 +112,7 @@ fn e2e_path_prune_reduces_relation_tax() {
         drop_fraction: 0.4,
         min_keep: 3,
         min_input: 5,
+        ..Default::default()
     };
     let kept = prune_relationships(rels, &cfg);
     assert_eq!(kept.len(), 12);
@@ -135,14 +144,19 @@ fn e2e_dynamic_truncation_gives_chunks_remainder() {
 
 #[tokio::test]
 async fn e2e_local_mode_with_ppr_config_completes() {
-    let mut config = QueryEngineConfig::default();
-    config.use_adaptive_mode = false;
-    config.use_keyword_extraction = false;
-    config.graph_walk = GraphWalkMode::Ppr;
-    config.enable_rerank = false;
-    config.enable_bm25_retrieval = false;
-    config.path_prune.drop_fraction = 0.0;
-    config.min_score = 0.0;
+    let config = QueryEngineConfig {
+        use_adaptive_mode: false,
+        use_keyword_extraction: false,
+        graph_walk: GraphWalkMode::Ppr,
+        enable_rerank: false,
+        enable_bm25_retrieval: false,
+        path_prune: PathPruneConfig {
+            drop_fraction: 0.0,
+            ..PathPruneConfig::default()
+        },
+        min_score: 0.0,
+        ..QueryEngineConfig::default()
+    };
 
     let vs = Arc::new(MemoryVectorStorage::new("ppr-local", 1536));
     vs.initialize().await.unwrap();
@@ -176,7 +190,7 @@ async fn e2e_local_mode_with_ppr_config_completes() {
         .map(|e| e.name.as_str())
         .collect();
     assert!(
-        names.iter().any(|n| *n == "ALPHA") || !resp.context.relationships.is_empty(),
+        names.contains(&"ALPHA") || !resp.context.relationships.is_empty(),
         "expected ALPHA or relationships, got entities={names:?} rels={}",
         resp.context.relationships.len()
     );
@@ -345,7 +359,7 @@ fn e2e_multimodal_orphan_injection_guarantees_entity() {
         modality: None,
     }];
     let mut extractions: Vec<ExtractionResult> = Vec::new();
-    inject_modality_relations(&mut extractions, &chunks, &[mm], "paper.pdf");
+    inject_modality_relations(&mut extractions, &chunks, &[mm], "paper.pdf", None);
     assert_eq!(extractions.len(), 1);
     assert!(extractions[0].entities.iter().any(|e| e.name == "eq1"));
     assert_eq!(extractions[0].entities[0].entity_type, "equation");
@@ -389,7 +403,7 @@ fn e2e_multimodal_injection_links_existing_entities() {
         output_tokens: 0,
         extraction_time_ms: 0,
     }];
-    inject_modality_relations(&mut extractions, &chunks, &[mm], "demo.pdf");
+    inject_modality_relations(&mut extractions, &chunks, &[mm], "demo.pdf", None);
     assert!(extractions[0].entities.iter().any(|e| e.name == "d1"));
     assert_eq!(extractions[0].relationships.len(), 1);
 }

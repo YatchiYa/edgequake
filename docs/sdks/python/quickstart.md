@@ -1,5 +1,9 @@
 # Python SDK — quickstart
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../../ingestion-cancel-and-fairness.md)
+
+> **SDK package: ~0.4.0** (≠ product version)
+
 ## 1. Install
 
 ```bash
@@ -44,7 +48,15 @@ with EdgeQuake(...) as c:
     )
 ```
 
-## 5. Tests
+## 5. Cancel / progress
+
+```python
+client.tasks.cancel(task_id)  # POST /api/v1/tasks/{track_id}/cancel
+```
+
+See [Ingestion cancel & fairness](../../ingestion-cancel-and-fairness.md) and [Python README](./README.md#pdf-upload--cancel).
+
+## 6. Tests
 
 ```bash
 cd sdks/python && uv run pytest -q

@@ -2,6 +2,8 @@
 title: "Configuration Reference"
 ---
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 # Configuration Reference
 
 > **Complete EdgeQuake Configuration Options**
@@ -187,10 +189,11 @@ Design reference: [SPEC-043 §011 — Vertex AI Authentication](../specs/043-upd
 > | Layer | When it applies | LLM provider / model | Embedding / dim |
 > | ----- | --------------- | -------------------- | --------------- |
 > | **Bundled catalog** (`models.toml` `[defaults]`, compiled constants) | No env overrides, direct `cargo run` | `openai` / `gpt-4.1-mini` | `text-embedding-3-small` / `1536` |
+> | **`.env.example`** (copy to `.env`) | Explicit operator pins for production / CI | `openai` / `gpt-5-mini` | `text-embedding-3-small` / `1536` |
 > | **`make dev`** (no `OPENAI_API_KEY`) | Local stack via Makefile | `ollama` / `gemma4:latest` | `embeddinggemma:latest` / `768` |
-> | **`make dev`** (with `OPENAI_API_KEY`) | Local stack via Makefile | `openai` / `gpt-5-nano`¹ | `text-embedding-3-small` / `1536` |
+> | **`make dev`** (with `OPENAI_API_KEY`) | Local stack via Makefile | `openai` / `gpt-5-nano` | `text-embedding-3-small` / `1536` |
 >
-> ¹ `gpt-5-nano` is set by the Makefile when an API key is present; the bundled catalog default LLM is `gpt-4.1-mini`. Override with `EDGEQUAKE_DEFAULT_LLM_MODEL` if needed.
+> **Makefile vs `.env.example`:** The Makefile pins models at launch time for local dev (`gpt-5-nano` when `OPENAI_API_KEY` is set, otherwise `gemma4:latest`). `.env.example` documents production-style pins (`gpt-5-mini`) — copy and edit for deployments; do not assume `make dev` reads your `.env` model pins unless exported before `make dev`.
 
 **Primary variables** (recommended — `make dev` sets these):
 
@@ -213,12 +216,14 @@ Design reference: [SPEC-043 §011 — Vertex AI Authentication](../specs/043-upd
 | `EDGEQUAKE_EMBEDDING_MODEL`     | String  | None              | Embedding model alias                          |
 | `EDGEQUAKE_EMBEDDING_DIMENSION` | Integer | `1536`            | Embedding vector dimension alias               |
 
-**Vision / PDF extraction** (inherits from LLM defaults when unset):
+**Vision / PDF extraction** (resolution chain in `vision_env.rs`):
 
-| Variable                   | Type   | Default              | Description                          |
+| Variable                   | Type   | Default (when unset) | Description                          |
 | -------------------------- | ------ | -------------------- | ------------------------------------ |
-| `EDGEQUAKE_VISION_PROVIDER`| String | same as LLM provider | Vision LLM provider for PDF→Markdown |
-| `EDGEQUAKE_VISION_MODEL`   | String | same as LLM model    | Vision LLM model for PDF→Markdown    |
+| `EDGEQUAKE_VISION_PROVIDER`| String | `EDGEQUAKE_VISION_PROVIDER` → `EDGEQUAKE_DEFAULT_LLM_PROVIDER` → `EDGEQUAKE_LLM_PROVIDER` → **`ollama`** | Vision LLM provider for PDF→Markdown |
+| `EDGEQUAKE_VISION_MODEL`   | String | First compatible env model in chain, else provider default: **`gemma4:latest`** (ollama), `gpt-4.1-nano` (openai), `mistral-small-latest` (mistral) | Vision LLM model for PDF→Markdown    |
+
+> **Unset vision env:** With no vision or LLM env vars, the server defaults to **`ollama` / `gemma4:latest`** — not the bundled `models.toml` openai pins. `make dev` sets vision to match the resolved `EDGEQUAKE_DEFAULT_*` pair. `.env.example` shows cloud pins (`openai` / `gpt-4.1-nano`) as commented production examples.
 
 ### Application Attribution (SPEC-043)
 
@@ -333,6 +338,36 @@ export EDGEQUAKE_LLM_TIMEOUT_SECS=3600        # 1-hour HTTP cap
 
 > **Note:** Values below the allowed minimum are automatically clamped.
 > Non-numeric values are silently ignored and the default is used.
+
+---
+
+### Worker Pool, Task Lease & Fairness (SPEC-057)
+
+Postgres task rows are the delivery SSOT; the in-memory channel is a wake signal only. See [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md).
+
+| Variable | Type | Default | Description |
+| -------- | ---- | ------- | ----------- |
+| `WORKER_THREADS` | Integer | CPU count | Background worker count |
+| `MAX_TASKS_PER_TENANT` | Integer | ≈ ¾ of `WORKER_THREADS` | Per-tenant concurrency cap; `0` disables |
+| `EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY` | Boolean | `0` | When unset/`0`, `ollama`/`lmstudio` clamp to **1** task/tenant |
+| `EDGEQUAKE_EXTRACT_PROVIDER` | String | — | Hybrid extract provider for local clamp (P2) |
+| `EDGEQUAKE_DEFAULT_EXTRACT_PROVIDER` | String | — | Fallback extract provider for clamp |
+| `EDGEQUAKE_TASK_LEASE_TTL_SECS` | Integer | `120` (min `30`) | Claim lease TTL; heartbeat every 60s |
+| `EDGEQUAKE_STARTUP_AUTO_RESUME` | Boolean | `1` (unset) | Default **ON**: reclaim stale **Processing** → Pending. Set `0`/`false`/`off` to mark Interrupted Failed (manual Reprocess) |
+| `EDGEQUAKE_STARTUP_RECONCILE_MAX` | Integer | `32` | Max orphan rows reconciled at boot |
+| `EDGEQUAKE_REPLICAS` | Integer | `1` | Intended API/worker process count |
+| `EDGEQUAKE_TASK_DELIVERY` | String | `local` | `local` \| `bridged` \| `notify_only`; boot fails if `REPLICAS>1` and `local` |
+| `EDGEQUAKE_DB_POOL_UTIL_WARN` | Float | `0.75` | Store contention warn threshold |
+| `EDGEQUAKE_DB_POOL_UTIL_CRITICAL` | Float | `0.90` | Store contention critical (`/ready` 503) |
+| `EDGEQUAKE_COMPENSATION_QUARANTINE_WARN` | Integer | `1` | Compensation DLQ warn |
+| `EDGEQUAKE_COMPENSATION_QUARANTINE_CRITICAL` | Integer | `5` | Compensation DLQ critical (`/ready` 503) |
+| `EDGEQUAKE_NATIVE_GRAPH_WRITES` | Boolean | `1` | Native AGE upserts; `0` forces Cypher MERGE fallback |
+| `EDGEQUAKE_HNSW_ITERATIVE_SCAN` | String | `relaxed_order` | pgvector ≥0.8 iterative scan mode |
+| `EDGEQUAKE_HNSW_EF_CONSTRUCTION` | Integer | `32` local / `128` prod | HNSW build param for **new** indexes only |
+
+**Multi-replica:** Set `EDGEQUAKE_REPLICAS>1` and `EDGEQUAKE_TASK_DELIVERY=bridged` (or `notify_only`). Correctness remains `claim_next` + lease — never process from channel payload alone.
+
+**Convert vs ingest (P2):** PDF admission enqueues convert-only (`pdf_processing`); after durable markdown, a separate `insert` task runs under its own lease/timeout. Cancel semantics: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md).
 
 ---
 
@@ -873,7 +908,7 @@ EdgeQuake validates configuration at startup:
 ```
 ╔══════════════════════════════════════════════════════════════╗
 ║                                                              ║
-║   ⚡ EdgeQuake v0.10.x                                        ║
+║   ⚡ EdgeQuake v0.19.0                                        ║
 ║                                                              ║
 ║   🐘 Storage: POSTGRESQL (persistent)
 ║   🌐 Server:  http://0.0.0.0:8080
@@ -895,5 +930,6 @@ HINT: Format: postgresql://user:password@host:port/database
 
 - [Deployment Guide](/docs/operations/deployment/) - Production deployment
 - [Monitoring Guide](/docs/operations/monitoring/) - Observability setup
+- [Ingestion cancel & fairness](/docs/ingestion-cancel-and-fairness/) - Worker lease, fairness, cancel
 - [REST API Reference](/docs/api-reference/rest-api/) - API documentation
 - [LLM Provider Docs](/docs/concepts/hybrid-retrieval/) - Provider integration

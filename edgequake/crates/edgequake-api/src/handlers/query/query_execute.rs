@@ -141,6 +141,7 @@ pub async fn execute_query(
         mix_weights: request.mix_weights.clone(),
         conversation_history: request.conversation_history.clone(),
         system_prompt: request.system_prompt.clone(),
+        question_type: request.question_type.clone(),
         allowed_document_ids,
         data_tenant_id,
         workspace_id: tenant_ctx.workspace_id.clone(),

@@ -110,6 +110,16 @@ impl PostgresKVStorage {
         );
         sqlx::query(&reverse_idx_sql).execute(&pool).await.ok();
 
+        // Local-ingest hardening: PK btree (default collation) cannot serve
+        // `LIKE 'prefix%'` under non-C locales (en_US.utf8 → Seq Scan over full KV).
+        // `text_pattern_ops` enables Index Only Scan + LIMIT short-circuit for
+        // `wsdoc:` workspace index enumeration (O(limit) not O(table)).
+        let key_pattern_idx_sql = format!(
+            "CREATE INDEX IF NOT EXISTS eq_{}_kv_key_pattern_idx ON {} (key text_pattern_ops)",
+            self.prefix, self.table_name
+        );
+        sqlx::query(&key_pattern_idx_sql).execute(&pool).await.ok();
+
         self.ensure_row_count_stats(&pool).await?;
 
         Ok(())
@@ -366,67 +376,125 @@ impl KVStorage for PostgresKVStorage {
     }
 
     async fn keys_like(&self, pattern: &str) -> Result<Vec<String>> {
+        // SPEC-070: never unbounded fetch_all — safety LIMIT on the wire.
+        const SAFETY_CAP: usize = 100_000;
         let pool = self.pool.get().await?;
-
-        let sql = format!("SELECT key FROM {} WHERE key LIKE $1", self.table_name);
-
+        let sql = format!(
+            "SELECT key FROM {} WHERE key LIKE $1 LIMIT $2",
+            self.table_name
+        );
         let rows: Vec<(String,)> = sqlx::query_as(&sql)
             .bind(pattern)
+            .bind(i64::try_from(SAFETY_CAP).unwrap_or(100_000))
             .fetch_all(&pool)
             .await
             .map_err(|e| StorageError::Database(format!("KV keys_like failed: {}", e)))?;
-
+        if rows.len() >= SAFETY_CAP {
+            tracing::warn!(
+                pattern,
+                cap = SAFETY_CAP,
+                "KV keys_like hit safety cap — prefer keys_with_prefix_limited (SPEC-070)"
+            );
+        }
         Ok(rows.into_iter().map(|(k,)| k).collect())
     }
 
     async fn keys_with_prefix(&self, prefix: &str) -> Result<Vec<String>> {
-        let pool = self.pool.get().await?;
-        let like_pattern = format!("{prefix}%");
-
-        let sql = format!("SELECT key FROM {} WHERE key LIKE $1", self.table_name);
-
-        let rows: Vec<(String,)> = sqlx::query_as(&sql)
-            .bind(&like_pattern)
-            .fetch_all(&pool)
-            .await
-            .map_err(|e| StorageError::Database(format!("KV keys_with_prefix failed: {}", e)))?;
-
-        Ok(rows.into_iter().map(|(k,)| k).collect())
+        // SPEC-070: delegate to limited path (O(limit), not unbounded SeqScan risk).
+        const SAFETY_CAP: usize = 100_000;
+        let (keys, truncated) = self.keys_with_prefix_limited(prefix, SAFETY_CAP).await?;
+        if truncated {
+            tracing::warn!(
+                prefix,
+                cap = SAFETY_CAP,
+                "KV keys_with_prefix hit safety cap — prefer keys_with_prefix_limited (SPEC-070)"
+            );
+        }
+        Ok(keys)
     }
 
-    async fn keys_with_suffix(&self, suffix: &str) -> Result<Vec<String>> {
-        // SPEC-011 iter 02 Fix C: convert `WHERE key LIKE '%suffix'` into an
-        // indexed prefix scan on the reverse-key expression index.
-        //
-        // Plain LIKE '%suffix' is a full table scan; LIKE 'reverse(suffix)%'
-        // over `reverse(key)` is a B-tree range scan over
-        // `eq_{prefix}_kv_reverse_key_idx` (created in `create_table`).
+    async fn keys_with_prefix_limited(
+        &self,
+        prefix: &str,
+        limit: usize,
+    ) -> Result<(Vec<String>, bool)> {
+        // Clamp before i64 cast — usize::MAX as i64 is -1 on 64-bit targets.
+        let limit = limit.clamp(1, 1_000_000);
         let pool = self.pool.get().await?;
+        let like_pattern = format!("{}%", escape_like_meta(prefix));
+        // Fetch limit+1 so we can report truncation without a second COUNT query.
+        let fetch_limit = i64::try_from(limit).unwrap_or(1_000_000).saturating_add(1);
 
-        // Escape LIKE meta-chars in the suffix to keep the prefix scan honest
-        // (defensive: today only literal suffixes like "-metadata" are passed).
-        let escaped: String = suffix
-            .chars()
-            .flat_map(|c| match c {
-                '%' | '_' | '\\' => vec!['\\', c],
-                _ => vec![c],
-            })
-            .collect();
-        let reversed: String = escaped.chars().rev().collect();
-        let like_pattern = format!("{reversed}%");
-
+        // No ORDER BY: with `key text_pattern_ops` the planner can Index Scan
+        // and stop after LIMIT (O(limit)). ORDER BY key forced Sort/SeqScan
+        // under en_US.utf8 before the pattern index existed.
         let sql = format!(
-            "SELECT key FROM {} WHERE reverse(key) LIKE $1",
+            "SELECT key FROM {} WHERE key LIKE $1 LIMIT $2",
             self.table_name
         );
 
         let rows: Vec<(String,)> = sqlx::query_as(&sql)
             .bind(&like_pattern)
+            .bind(fetch_limit)
             .fetch_all(&pool)
             .await
-            .map_err(|e| StorageError::Database(format!("KV keys_with_suffix failed: {}", e)))?;
+            .map_err(|e| {
+                StorageError::Database(format!("KV keys_with_prefix_limited failed: {}", e))
+            })?;
 
-        Ok(rows.into_iter().map(|(k,)| k).collect())
+        let truncated = rows.len() > limit;
+        Ok((
+            rows.into_iter().take(limit).map(|(k,)| k).collect(),
+            truncated,
+        ))
+    }
+
+    async fn keys_with_suffix(&self, suffix: &str) -> Result<Vec<String>> {
+        // SPEC-011 + SPEC-070: reverse-key index + safety LIMIT (no unbounded fetch).
+        const SAFETY_CAP: usize = 100_000;
+        let (keys, truncated) = self.keys_with_suffix_limited(suffix, SAFETY_CAP).await?;
+        if truncated {
+            tracing::warn!(
+                suffix,
+                cap = SAFETY_CAP,
+                "KV keys_with_suffix hit safety cap — prefer keys_with_suffix_limited (SPEC-070)"
+            );
+        }
+        Ok(keys)
+    }
+
+    async fn keys_with_suffix_limited(
+        &self,
+        suffix: &str,
+        limit: usize,
+    ) -> Result<(Vec<String>, bool)> {
+        let limit = limit.clamp(1, 1_000_000);
+        let pool = self.pool.get().await?;
+        let reversed: String = escape_like_meta(suffix).chars().rev().collect();
+        let like_pattern = format!("{reversed}%");
+        let fetch_limit = i64::try_from(limit).unwrap_or(1_000_000).saturating_add(1);
+
+        // No ORDER BY key: that forced Sort over the full reverse-index match
+        // set before LIMIT. Unordered LIMIT lets the bitmap/index path stop early.
+        let sql = format!(
+            "SELECT key FROM {} WHERE reverse(key) LIKE $1 LIMIT $2",
+            self.table_name
+        );
+
+        let rows: Vec<(String,)> = sqlx::query_as(&sql)
+            .bind(&like_pattern)
+            .bind(fetch_limit)
+            .fetch_all(&pool)
+            .await
+            .map_err(|e| {
+                StorageError::Database(format!("KV keys_with_suffix_limited failed: {}", e))
+            })?;
+
+        let truncated = rows.len() > limit;
+        Ok((
+            rows.into_iter().take(limit).map(|(k,)| k).collect(),
+            truncated,
+        ))
     }
 
     async fn keys(&self) -> Result<Vec<String>> {
@@ -516,6 +584,16 @@ impl std::fmt::Debug for PostgresKVStorage {
     }
 }
 
+/// Escape `%`, `_`, and `\` for PostgreSQL `LIKE` patterns (literal match).
+fn escape_like_meta(raw: &str) -> String {
+    raw.chars()
+        .flat_map(|c| match c {
+            '%' | '_' | '\\' => vec!['\\', c],
+            _ => vec![c],
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -527,5 +605,12 @@ mod tests {
 
         // Table name includes schema prefix for PostgreSQL
         assert_eq!(storage.table_name, "public.eq_eq_test_kv");
+    }
+
+    #[test]
+    fn escape_like_meta_escapes_wildcards() {
+        assert_eq!(escape_like_meta("wsdoc:ab"), "wsdoc:ab");
+        assert_eq!(escape_like_meta("a%b_c\\d"), "a\\%b\\_c\\\\d");
+        assert_eq!(escape_like_meta("-metadata"), "-metadata");
     }
 }

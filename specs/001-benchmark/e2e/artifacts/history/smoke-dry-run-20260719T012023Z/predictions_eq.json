@@ -1,0 +1,19 @@
+[
+  {
+    "id": "Medical-0cbbd549",
+    "question": "What diagnostic method is required for MGZL?",
+    "source": "medical",
+    "context": [
+      "Diagnosis of MGZL requires expert hematopathologist review."
+    ],
+    "evidence": [
+      "Diagnosis of MGZL requires expert hematopathologist review."
+    ],
+    "question_type": "Fact Retrieval",
+    "generated_answer": "Diagnosis of MGZL",
+    "ground_truth": "Diagnosis of MGZL requires expert hematopathologist review.",
+    "gold_answer": "Diagnosis of MGZL requires expert hematopathologist review.",
+    "latency_ms": 0,
+    "stub": "eq"
+  }
+]

@@ -39,7 +39,9 @@ use std::time::Duration;
 use tokio::sync::broadcast;
 use tracing::{debug, info};
 
+use crate::services::cancel_track_with_doc_and_pdf_chain;
 use crate::state::AppState;
+use std::sync::Arc;
 
 /// Optional bearer token for WebSocket auth when `EDGEQUAKE_AUTH_ENABLED=true` (SPEC-027 IMP-006).
 #[derive(Debug, Default, Deserialize)]
@@ -175,7 +177,6 @@ async fn handle_pipeline_socket(socket: WebSocket, state: AppState) {
                 match msg {
                     Ok(Message::Text(text)) => {
                         debug!("Received text message: {}", text);
-                        // Handle client commands if needed
                         if text.trim() == "status" {
                             let status = state.tasks.pipeline_state.get_status().await;
                             let snapshot = ProgressEvent::StatusSnapshot {
@@ -189,6 +190,41 @@ async fn handle_pipeline_socket(socket: WebSocket, state: AppState) {
                             if let Err(e) = send_event(&mut sender, &snapshot, "pipeline_progress").await {
                                 ws_log_error("send_status_snapshot", &e.to_string(), json!({ "endpoint": "pipeline_progress" }));
                                 break;
+                            }
+                        } else if let Ok(cmd) = serde_json::from_str::<serde_json::Value>(&text) {
+                            // FEAT-CANCEL: honor `{ "type": "cancel", "track_id": "..." }`
+                            if cmd.get("type").and_then(|v| v.as_str()) == Some("cancel") {
+                                if let Some(track_id) =
+                                    cmd.get("track_id").and_then(|v| v.as_str())
+                                {
+                                    let vector = state.storage.vector_registry.default_storage();
+                                    match cancel_track_with_doc_and_pdf_chain(
+                                        &state.tasks.storage,
+                                        &state.tasks.cancellation_registry,
+                                        Arc::clone(&state.storage.kv_storage),
+                                        &state.storage.graph_storage,
+                                        &vector,
+                                        track_id,
+                                    )
+                                    .await
+                                    {
+                                        Ok(applied) => {
+                                            info!(
+                                                track_id = %track_id,
+                                                was_running = applied.was_running,
+                                                cancelled = applied.cancelled,
+                                                "WebSocket cancel command applied"
+                                            );
+                                        }
+                                        Err(e) => {
+                                            tracing::warn!(
+                                                track_id = %track_id,
+                                                error = %e,
+                                                "WebSocket cancel failed"
+                                            );
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -398,7 +434,6 @@ async fn handle_filtered_progress_socket(socket: WebSocket, state: AppState, tra
                 match msg {
                     Ok(Message::Text(text)) => {
                         debug!("Received text message from track_id={}: {}", track_id, text);
-                        // Handle client commands if needed
                         if text.trim() == "status" {
                             // Send current progress snapshot
                             if let Some(progress) = state.tasks.pipeline_state.get_pdf_progress(&track_id).await {
@@ -411,6 +446,41 @@ async fn handle_filtered_progress_socket(socket: WebSocket, state: AppState, tra
                                         if sender.send(Message::Text(json_str.into())).await.is_err() {
                                             break;
                                         }
+                                    }
+                                }
+                            }
+                        } else if let Ok(cmd) = serde_json::from_str::<serde_json::Value>(&text) {
+                            // Cancel this track (or explicit track_id in payload).
+                            if cmd.get("type").and_then(|v| v.as_str()) == Some("cancel") {
+                                let id = cmd
+                                    .get("track_id")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or(track_id.as_str());
+                                let vector = state.storage.vector_registry.default_storage();
+                                match cancel_track_with_doc_and_pdf_chain(
+                                    &state.tasks.storage,
+                                    &state.tasks.cancellation_registry,
+                                    Arc::clone(&state.storage.kv_storage),
+                                    &state.storage.graph_storage,
+                                    &vector,
+                                    id,
+                                )
+                                .await
+                                {
+                                    Ok(applied) => {
+                                        info!(
+                                            track_id = %id,
+                                            was_running = applied.was_running,
+                                            cancelled = applied.cancelled,
+                                            "WebSocket per-track cancel applied"
+                                        );
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            track_id = %id,
+                                            error = %e,
+                                            "WebSocket per-track cancel failed"
+                                        );
                                     }
                                 }
                             }

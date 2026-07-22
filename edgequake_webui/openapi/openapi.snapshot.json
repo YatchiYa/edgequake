@@ -9,7 +9,7 @@
     "license": {
       "name": "Apache-2.0"
     },
-    "version": "0.18.0"
+    "version": "0.20.2"
   },
   "servers": [
     {
@@ -153,6 +153,49 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/admin/ann/warmup": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "POST /api/v1/admin/ann/warmup — create Wave-2 partial HNSW for hot workspaces.",
+        "description": "No-op when `EDGEQUAKE_HNSW_PARTIAL_BY_WORKSPACE` is off, table is dedicated,\nor row count is below threshold. Prefer this over chat UX for ops warmup.",
+        "operationId": "ann_warmup",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnnWarmupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Warmup results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnnWarmupResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Empty workspace_ids"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "api_key": []
+          }
+        ]
       }
     },
     "/api/v1/admin/config/defaults": {
@@ -1941,6 +1984,9 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Read path busy under ingest load"
           }
         },
         "security": [
@@ -2033,12 +2079,12 @@
         "tags": [
           "Documents"
         ],
-        "summary": "Delete all documents in the system (bulk deletion).",
-        "description": "This endpoint allows users to clear all documents from the system.\nDocuments that are actively being processed (pending/processing status)\nwill be skipped to prevent data corruption.\n\nWHY: Frontend \"Clear All\" button needs this endpoint to remove stuck\nor failed documents in bulk rather than deleting one by one.",
+        "summary": "Delete all documents in the workspace (bulk wipe).",
+        "description": "Returns **202 Accepted** with `wipe_track_id` after durable enqueue.\nTerminal counts arrive via WebSocket `BulkDeletionCompleted` / `BulkDeletionFailed`\nor `GET /api/v1/tasks/{wipe_track_id}`.",
         "operationId": "delete_all_documents",
         "responses": {
-          "200": {
-            "description": "Documents deleted",
+          "202": {
+            "description": "Bulk wipe accepted; track via wipe_track_id / WebSocket",
             "content": {
               "application/json": {
                 "schema": {
@@ -2046,6 +2092,12 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Missing confirm header when required"
+          },
+          "409": {
+            "description": "Workspace wipe already in flight"
           },
           "500": {
             "description": "Internal error"
@@ -2473,7 +2525,7 @@
           "handlers"
         ],
         "summary": "Cancel an in-progress PDF processing task.",
-        "description": "OODA-17: Request cancellation of an active PDF processing task.\n\n# Endpoint\n\n`DELETE /api/v1/documents/pdf/{pdf_id}/cancel`\n\n# Behavior\n\n1. Validate PDF exists and belongs to workspace\n2. Check status is Processing (cannot cancel Completed/Failed)\n3. Request cancellation via PipelineState\n4. Update status to Failed with cancellation message\n\n# Errors\n\n- 404 if PDF not found\n- 409 if PDF is not in cancellable state\n- 500 for internal errors",
+        "description": "OODA-17: Request cancellation of an active PDF processing task.\n\n# Endpoint\n\n`DELETE /api/v1/documents/pdf/{pdf_id}/cancel`\n\n# Behavior\n\n1. Validate PDF exists and belongs to workspace\n2. Check status is Processing or Pending (cannot cancel terminal)\n3. Request cancellation via CancellationRegistry / task row\n4. Update PDF status to Cancelled (SPEC-057 — not Failed)\n\n# Errors\n\n- 404 if PDF not found\n- 409 if PDF is not in cancellable state\n- 500 for internal errors",
         "operationId": "cancel_pdf_processing",
         "parameters": [
           {
@@ -3131,6 +3183,9 @@
           },
           "404": {
             "description": "Document not found"
+          },
+          "503": {
+            "description": "Read path busy under ingest load"
           }
         },
         "security": [
@@ -3150,7 +3205,7 @@
         "tags": [
           "Documents"
         ],
-        "summary": "Delete a document by ID.",
+        "summary": "Delete a document by ID (async job — 202 Accepted).",
         "operationId": "delete_document",
         "parameters": [
           {
@@ -3164,8 +3219,8 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "Document deleted",
+          "202": {
+            "description": "Deletion accepted; track via WebSocket",
             "content": {
               "application/json": {
                 "schema": {
@@ -3762,8 +3817,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "reanalyze_multimodal",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "reanalyze_multimodal"
       }
     },
     "/api/v1/documents/{document_id}/retry-chunks": {
@@ -5210,7 +5265,7 @@
         "tags": [
           "Pipeline"
         ],
-        "summary": "Get real-time ingestion progress for a track ID (SPEC-048 DEF-01).",
+        "summary": "Get real-time ingestion progress for a track ID (SPEC-048 DEF-01 / 068).",
         "operationId": "get_ingestion_progress",
         "parameters": [
           {
@@ -7304,7 +7359,7 @@
           "workspaces"
         ],
         "summary": "Create a new workspace.",
-        "description": "POST /api/v1/tenants/{tenant_id}/workspaces",
+        "description": "POST /api/v1/tenants/{tenant_id}/workspaces\n\nWhen `pdf_parser_backend` is omitted, the workspace persists `\"vision\"` so\nserver env (`EDGEQUAKE_PDF_PARSER_BACKEND`) cannot silently override new workspaces.",
         "operationId": "create_workspace",
         "parameters": [
           {
@@ -7330,7 +7385,7 @@
         },
         "responses": {
           "201": {
-            "description": "Workspace created",
+            "description": "Workspace created (pdf_parser_backend defaults to vision)",
             "content": {
               "application/json": {
                 "schema": {
@@ -8332,8 +8387,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "rebuild_embeddings"
+        "x-edgequake-v2-job-type": "rebuild_embeddings",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/workspaces/{workspace_id}/rebuild-knowledge-graph": {
@@ -8406,8 +8461,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "rebuild_knowledge_graph"
+        "x-edgequake-v2-job-type": "rebuild_knowledge_graph",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/workspaces/{workspace_id}/reprocess-documents": {
@@ -8945,14 +9000,14 @@
           "Health"
         ],
         "summary": "Readiness check (for Kubernetes).",
-        "description": "Returns 503 when migration 038 indexes are required but missing on a large graph\n(AGE present, indexes not ready). Prevents routing traffic to slow-prefix nodes.",
+        "description": "Returns 503 when:\n- migration 038 indexes are required but missing on a large graph, or\n- storage component pings fail / time out, or\n- the task queue is at critical pressure.\n\nPrevents routing traffic to nodes that cannot serve ingest/query reliably.",
         "operationId": "readiness_check",
         "responses": {
           "200": {
             "description": "Service is ready"
           },
           "503": {
-            "description": "Migration 038 indexes pending — not ready for traffic"
+            "description": "Not ready for traffic (migration, storage, or queue pressure)"
           }
         },
         "security": []
@@ -8974,8 +9029,8 @@
             "description": "WebSocket upgrade failed"
           }
         },
-        "x-edgequake-upgrade": "RFC6455",
-        "x-edgequake-transport": "websocket"
+        "x-edgequake-transport": "websocket",
+        "x-edgequake-upgrade": "RFC6455"
       }
     },
     "/ws/progress/{track_id}": {
@@ -9005,8 +9060,8 @@
             "description": "WebSocket upgrade failed"
           }
         },
-        "x-edgequake-transport": "websocket",
-        "x-edgequake-upgrade": "RFC6455"
+        "x-edgequake-upgrade": "RFC6455",
+        "x-edgequake-transport": "websocket"
       }
     }
   },
@@ -9046,6 +9101,77 @@
           "documents_touched": {},
           "dominant_entity_types": [],
           "suggested_followups": []
+        }
+      },
+      "AnnWarmupItem": {
+        "type": "object",
+        "description": "Per-workspace warmup result.",
+        "required": [
+          "workspace_id",
+          "created"
+        ],
+        "properties": {
+          "created": {
+            "type": "boolean",
+            "description": "True when a new partial HNSW was created."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "workspace_id": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "created": {},
+          "error": {},
+          "workspace_id": {}
+        }
+      },
+      "AnnWarmupRequest": {
+        "type": "object",
+        "description": "Request body for admin ANN warmup.",
+        "required": [
+          "workspace_ids"
+        ],
+        "properties": {
+          "workspace_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Workspace IDs to warm (partial HNSW when Wave-2 flag is on)."
+          }
+        },
+        "example": {
+          "workspace_ids": []
+        }
+      },
+      "AnnWarmupResponse": {
+        "type": "object",
+        "description": "Response for POST /api/v1/admin/ann/warmup.",
+        "required": [
+          "results",
+          "note"
+        ],
+        "properties": {
+          "note": {
+            "type": "string",
+            "description": "Operator note: /ready is catalog-only; first filtered query also warms."
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AnnWarmupItem"
+            }
+          }
+        },
+        "example": {
+          "note": {},
+          "results": []
         }
       },
       "ApiCapabilities": {
@@ -11334,10 +11460,20 @@
             "format": "float"
           },
           "source": {
-            "type": "string"
+            "type": "string",
+            "description": "Graph node id (identity / navigation)."
+          },
+          "source_label": {
+            "type": "string",
+            "description": "Human presentation for source (073)."
           },
           "target": {
-            "type": "string"
+            "type": "string",
+            "description": "Graph node id (identity / navigation)."
+          },
+          "target_label": {
+            "type": "string",
+            "description": "Human presentation for target (073)."
           }
         },
         "example": {
@@ -11347,7 +11483,9 @@
           "relation_type": {},
           "score": {},
           "source": {},
-          "target": {}
+          "source_label": {},
+          "target": {},
+          "target_label": {}
         }
       },
       "ContextRetrievalRequest": {
@@ -12584,14 +12722,26 @@
           "skipped_documents"
         ],
         "properties": {
+          "accepted": {
+            "type": "boolean",
+            "description": "When true, wipe was accepted and runs asynchronously (HTTP 202).\nFinal counts arrive via WebSocket `BulkDeletionCompleted` / task poll."
+          },
           "deleted_count": {
             "type": "integer",
-            "description": "Total number of documents deleted.",
+            "description": "Planned document count at admit time when `accepted` (not final deleted).\n\nFinal counts arrive via WebSocket `BulkDeletionCompleted` / task poll.\nKept for backward-compatible clients that read `deleted_count` on 202.",
+            "minimum": 0
+          },
+          "planned_delete_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Explicit planned wipe size (same as admit-time `deleted_count` when accepted).",
             "minimum": 0
           },
           "skipped_count": {
             "type": "integer",
-            "description": "Number of documents skipped (processing/pending status).",
+            "description": "Number of documents skipped (legacy; ForceCancelAll wipe leaves this 0).",
             "minimum": 0
           },
           "skipped_documents": {
@@ -12599,7 +12749,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Document IDs that were skipped due to active processing."
+            "description": "Document IDs that were skipped due to active processing (legacy)."
           },
           "total_chunks_deleted": {
             "type": "integer",
@@ -12620,21 +12770,31 @@
             "type": "integer",
             "description": "Total number of relationships removed.",
             "minimum": 0
+          },
+          "wipe_track_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Durable wipe correlation id (`TaskType::WorkspaceWipe` track_id)."
           }
         },
         "example": {
+          "accepted": {},
           "deleted_count": {},
+          "planned_delete_count": {},
           "skipped_count": {},
           "skipped_documents": [],
           "total_chunks_deleted": {},
           "total_entities_removed": {},
           "total_pdfs_deleted": {},
-          "total_relationships_removed": {}
+          "total_relationships_removed": {},
+          "wipe_track_id": {}
         }
       },
       "DeleteDocumentResponse": {
         "type": "object",
-        "description": "Document deletion response.",
+        "description": "Document deletion response.\n\nAsync path (default): HTTP returns 202 with `accepted=true` and `track_id`;\nWebSocket `DeletionCompleted` / `DeletionFailed` is the terminal SSOT.",
         "required": [
           "document_id",
           "deleted",
@@ -12643,14 +12803,18 @@
           "relationships_affected"
         ],
         "properties": {
+          "accepted": {
+            "type": "boolean",
+            "description": "True when the delete job was accepted (async) — wait for WebSocket terminal."
+          },
           "chunks_deleted": {
             "type": "integer",
-            "description": "Number of chunks deleted.",
+            "description": "Number of chunks deleted (0 when only accepted).",
             "minimum": 0
           },
           "deleted": {
             "type": "boolean",
-            "description": "Whether the document was deleted."
+            "description": "Whether the cascade has finished and the document is gone.\nFalse when the delete was accepted for async processing (`accepted=true`)."
           },
           "document_id": {
             "type": "string",
@@ -12681,9 +12845,17 @@
             "type": "integer",
             "description": "Number of relationships affected.",
             "minimum": 0
+          },
+          "track_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Deletion operation track id (WebSocket correlation)."
           }
         },
         "example": {
+          "accepted": {},
           "chunks_deleted": {},
           "deleted": {},
           "document_id": {},
@@ -12691,7 +12863,8 @@
           "entities_affected": {},
           "partial_failure": {},
           "partial_failure_reason": {},
-          "relationships_affected": {}
+          "relationships_affected": {},
+          "track_id": {}
         }
       },
       "DeleteEntityQuery": {
@@ -13025,6 +13198,13 @@
             ],
             "description": "Creation timestamp."
           },
+          "display_status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-057 P4: badge key from IngestionStatusMapper."
+          },
           "entity_count": {
             "type": [
               "integer",
@@ -13155,6 +13335,13 @@
             ],
             "description": "Track ID for batch grouping."
           },
+          "ui_phase": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-057 P4: `idle` | `running` | `stopping` | `terminal`."
+          },
           "updated_at": {
             "type": [
               "string",
@@ -13184,6 +13371,7 @@
           "content_length": {},
           "content_summary": {},
           "created_at": {},
+          "display_status": {},
           "entity_count": {},
           "error_message": {},
           "file_name": {},
@@ -13202,6 +13390,7 @@
           "tenant_id": {},
           "title": {},
           "track_id": {},
+          "ui_phase": {},
           "updated_at": {},
           "warning_message": {},
           "workspace_id": {}
@@ -13569,6 +13758,14 @@
             "description": "Current ingestion stage (aligned with UnifiedStage enum).\nStages: uploading, converting, preprocessing, chunking, extracting,\ngleaning, merging, summarizing, embedding, storing, completed, failed.\n@implements SPEC-002",
             "example": "extracting"
           },
+          "display_status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-057 P4: badge key from `IngestionStatusMapper` (prefer over status/stage).",
+            "example": "extracting"
+          },
           "embedding_model": {
             "type": [
               "string",
@@ -13687,6 +13884,14 @@
             ],
             "description": "Track ID for batch grouping."
           },
+          "ui_phase": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-057 P4: `idle` | `running` | `stopping` | `terminal`.",
+            "example": "running"
+          },
           "updated_at": {
             "type": [
               "string",
@@ -13709,6 +13914,7 @@
           "cost_usd": {},
           "created_at": {},
           "current_stage": {},
+          "display_status": {},
           "embedding_model": {},
           "entity_count": {},
           "error_message": {},
@@ -13725,6 +13931,7 @@
           "title": {},
           "total_tokens": {},
           "track_id": {},
+          "ui_phase": {},
           "updated_at": {},
           "warning_message": {}
         }
@@ -14516,23 +14723,40 @@
         "type": "object",
         "description": "Entity summary in lineage response.",
         "required": [
+          "id",
           "name",
+          "label",
           "entity_type",
           "source_chunks",
           "is_shared"
         ],
         "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional description for detail panels."
+          },
           "entity_type": {
             "type": "string",
             "description": "Entity type."
+          },
+          "id": {
+            "type": "string",
+            "description": "Graph node id (edge endpoints / stable identity)."
           },
           "is_shared": {
             "type": "boolean",
             "description": "Whether entity is shared with other documents."
           },
+          "label": {
+            "type": "string",
+            "description": "Human presentation label (`graph_node_label` SSOT)."
+          },
           "name": {
             "type": "string",
-            "description": "Entity name."
+            "description": "Bare semantic name, or soft-label when bare id is opaque (BC display)."
           },
           "source_chunks": {
             "type": "array",
@@ -14543,8 +14767,11 @@
           }
         },
         "example": {
+          "description": {},
           "entity_type": {},
+          "id": {},
           "is_shared": {},
+          "label": {},
           "name": {},
           "source_chunks": []
         }
@@ -16813,6 +17040,13 @@
             "type": "integer",
             "description": "Total number of pages.",
             "minimum": 0
+          },
+          "truncated": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "True when the workspace metadata scan was truncated for latency."
           }
         },
         "example": {
@@ -16822,7 +17056,8 @@
           "page_size": {},
           "status_counts": {},
           "total": {},
-          "total_pages": {}
+          "total_pages": {},
+          "truncated": {}
         }
       },
       "ListEntitiesQuery": {
@@ -18565,13 +18800,18 @@
           "id": {
             "type": "string",
             "description": "Node ID (entity name)."
+          },
+          "label": {
+            "type": "string",
+            "description": "Human presentation label (073 / graph_node_label SSOT)."
           }
         },
         "example": {
           "degree": {},
           "description": {},
           "entity_type": {},
-          "id": {}
+          "id": {},
+          "label": {}
         }
       },
       "NodeDegree": {
@@ -20957,6 +21197,13 @@
             "type": "string",
             "description": "The query text."
           },
+          "question_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional question-type label (e.g. GraphRAG-Bench `Complex Reasoning`).\nForwarded to the engine for type-scoped answer prompts (047)."
+          },
           "rerank_model": {
             "type": [
               "string",
@@ -21058,6 +21305,10 @@
           "sources_retrieved"
         ],
         "properties": {
+          "answer_cache_hit": {
+            "type": "boolean",
+            "description": "True when answer served from product answer cache (064)."
+          },
           "arm_global_chunks": {
             "type": [
               "integer",
@@ -21134,13 +21385,19 @@
           "embedding_time_ms": {
             "type": "integer",
             "format": "int64",
-            "description": "Embedding time in ms.",
+            "description": "Embedding time in ms (pure embed path; excludes keyword LLM — 059).",
             "minimum": 0
           },
           "generation_time_ms": {
             "type": "integer",
             "format": "int64",
             "description": "Generation time in ms.",
+            "minimum": 0
+          },
+          "keyword_time_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Keyword extraction time in ms (059 C1b stage honesty).",
             "minimum": 0
           },
           "llm_model": {
@@ -21156,6 +21413,13 @@
               "null"
             ],
             "description": "LLM provider used for generation (e.g., \"ollama\", \"openai\", \"lmstudio\")."
+          },
+          "query_intent": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "LLM / heuristic query intent (022 P3a Summarize truncation audit)."
           },
           "rerank_time_ms": {
             "type": [
@@ -21198,9 +21462,19 @@
             "format": "int64",
             "description": "Total time in ms.",
             "minimum": 0
+          },
+          "ttft_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Time to first token from generation start (ms), when measured (064).",
+            "minimum": 0
           }
         },
         "example": {
+          "answer_cache_hit": {},
           "arm_global_chunks": {},
           "arm_global_ms": {},
           "arm_local_chunks": {},
@@ -21213,14 +21487,17 @@
           "context_truncated": {},
           "embedding_time_ms": {},
           "generation_time_ms": {},
+          "keyword_time_ms": {},
           "llm_model": {},
           "llm_provider": {},
+          "query_intent": {},
           "rerank_time_ms": {},
           "retrieval_time_ms": {},
           "sources_retrieved": {},
           "tokens_per_second": {},
           "tokens_used": {},
-          "total_time_ms": {}
+          "total_time_ms": {},
+          "ttft_ms": {}
         }
       },
       "QueryStreamEvent": {
@@ -21387,6 +21664,10 @@
           "query_mode"
         ],
         "properties": {
+          "answer_cache_hit": {
+            "type": "boolean",
+            "description": "True when answer served from product answer cache."
+          },
           "embedding_time_ms": {
             "type": "integer",
             "format": "int64",
@@ -21433,9 +21714,28 @@
             "format": "int64",
             "description": "Total time in ms.",
             "minimum": 0
+          },
+          "ttft_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "LLM time-to-first-token from generation start (ms). 064 UX metric.",
+            "minimum": 0
+          },
+          "ux_ttft_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "User-felt TTFT: retrieve start → first token (ms). 064 UX metric.",
+            "minimum": 0
           }
         },
         "example": {
+          "answer_cache_hit": {},
           "embedding_time_ms": {},
           "generation_time_ms": {},
           "query_mode": {},
@@ -21443,7 +21743,9 @@
           "sources_retrieved": {},
           "tokens_per_second": {},
           "tokens_used": {},
-          "total_time_ms": {}
+          "total_time_ms": {},
+          "ttft_ms": {},
+          "ux_ttft_ms": {}
         }
       },
       "QueueMetricsResponse": {
@@ -21477,10 +21779,34 @@
             "format": "double",
             "description": "Average wait time in seconds for recently started tasks."
           },
+          "cancel_intent_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Outstanding cancel intents (pending drain + in-flight).",
+            "minimum": 0
+          },
+          "cancel_intent_total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Lifetime cancel intents recorded since process start.",
+            "minimum": 0
+          },
           "estimated_queue_time_seconds": {
             "type": "number",
             "format": "double",
             "description": "Estimated time to clear the queue in seconds."
+          },
+          "max_lifecycle_tasks_per_tenant": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Configured max concurrent **lifecycle** tasks per tenant (Deletion/Wipe).\n`0` = unlimited / lane disabled.",
+            "minimum": 0
+          },
+          "max_tasks_per_tenant": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Configured max concurrent **ingest** tasks per tenant (`0` = unlimited).",
+            "minimum": 0
           },
           "max_wait_time_seconds": {
             "type": "number",
@@ -21532,6 +21858,28 @@
             "type": "boolean",
             "description": "Whether the system is currently rate limited."
           },
+          "store_contention": {
+            "$ref": "#/components/schemas/StoreContentionMetrics",
+            "description": "SPEC-057 P3: store contention SLOs (pool util + compensation quarantine)."
+          },
+          "tenant_park_waiters": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Tasks parked waiting for a per-tenant concurrency permit (all lanes).",
+            "minimum": 0
+          },
+          "tenant_park_waiters_ingest": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Park waiters on the ingest fairness lane (Pdf/Insert/…).",
+            "minimum": 0
+          },
+          "tenant_park_waiters_lifecycle": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Park waiters on the lifecycle fairness lane (Deletion/Wipe).",
+            "minimum": 0
+          },
           "throughput_per_minute": {
             "type": "number",
             "format": "double",
@@ -21551,7 +21899,11 @@
         "example": {
           "active_workers": {},
           "avg_wait_time_seconds": {},
+          "cancel_intent_count": {},
+          "cancel_intent_total": {},
           "estimated_queue_time_seconds": {},
+          "max_lifecycle_tasks_per_tenant": {},
+          "max_tasks_per_tenant": {},
           "max_wait_time_seconds": {},
           "max_workers": {},
           "operator_action": {},
@@ -21561,6 +21913,10 @@
           "pressure": {},
           "processing_count": {},
           "rate_limited": {},
+          "store_contention": {},
+          "tenant_park_waiters": {},
+          "tenant_park_waiters_ingest": {},
+          "tenant_park_waiters_lifecycle": {},
           "throughput_per_minute": {},
           "timestamp": {},
           "worker_utilization": {}
@@ -22657,7 +23013,7 @@
           },
           "force": {
             "type": "boolean",
-            "description": "Force reprocess even if document is not failed. Default: false."
+            "description": "Force reprocess of completed / in-flight ingest documents.\n\nDoes **not** override lifecycle-exclusive states (`deleting`,\n`delete_failed`, cancel-in-flight). Those always skip with an explicit\n`skip_reasons` entry (fail closed)."
           },
           "max_documents": {
             "type": "integer",
@@ -23848,6 +24204,93 @@
           "type": {}
         }
       },
+      "StoreContentionMetrics": {
+        "type": "object",
+        "description": "Nested store contention projection for queue-metrics (SPEC-057 P3).",
+        "required": [
+          "level",
+          "db_pool_util_warn",
+          "db_pool_util_critical",
+          "compensation_quarantine_total",
+          "compensation_quarantine_warn",
+          "compensation_quarantine_critical"
+        ],
+        "properties": {
+          "compensate_shared_entity_skipped_total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "SPEC-059: shared entity/rel vectors skipped from compensate deletes.",
+            "minimum": 0
+          },
+          "compensation_quarantine_critical": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "compensation_quarantine_total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Process-local compensation quarantine total since boot.",
+            "minimum": 0
+          },
+          "compensation_quarantine_warn": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "db_pool_util_critical": {
+            "type": "number",
+            "format": "double"
+          },
+          "db_pool_util_warn": {
+            "type": "number",
+            "format": "double"
+          },
+          "db_pool_utilization": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Active/size pool utilization when a pool is available."
+          },
+          "level": {
+            "type": "string",
+            "description": "`normal` | `elevated` | `critical`"
+          },
+          "operator_action": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "retract_on_cancel_total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "SPEC-059: cancel/orphan index retract operations.",
+            "minimum": 0
+          },
+          "vector_dim_mismatch_rejected_total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "SPEC-059: fail-closed dimension mismatch rejections.",
+            "minimum": 0
+          }
+        },
+        "example": {
+          "compensate_shared_entity_skipped_total": {},
+          "compensation_quarantine_critical": {},
+          "compensation_quarantine_total": {},
+          "compensation_quarantine_warn": {},
+          "db_pool_util_critical": {},
+          "db_pool_util_warn": {},
+          "db_pool_utilization": {},
+          "level": {},
+          "operator_action": {},
+          "retract_on_cancel_total": {},
+          "vector_dim_mismatch_rejected_total": {}
+        }
+      },
       "StreamQueryRequest": {
         "type": "object",
         "description": "Streaming query request.\n\n@implements SPEC-006: Unified streaming protocol",
@@ -23912,6 +24355,13 @@
             "type": "string",
             "description": "The query text."
           },
+          "question_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional question-type label for type-scoped answer prompts (047)."
+          },
           "stream_format": {
             "type": [
               "string",
@@ -23936,6 +24386,7 @@
           "llm_provider": {},
           "mode": {},
           "query": {},
+          "question_type": {},
           "stream_format": {},
           "system_prompt": {}
         }
@@ -25879,7 +26330,7 @@
     "asyncapi": "2.6.0",
     "info": {
       "title": "EdgeQuake WebSocket Progress",
-      "version": "0.18.0",
+      "version": "0.20.2",
       "description": "Real-time pipeline and document processing progress over WebSocket (RFC 6455)."
     },
     "defaultContentType": "application/json",
@@ -25911,29 +26362,63 @@
           "message": {
             "name": "ProgressEvent",
             "payload": {
-              "type": "object",
-              "properties": {
-                "track_id": {
-                  "type": "string",
-                  "format": "uuid"
+              "oneOf": [
+                {
+                  "type": "object",
+                  "description": "Pipeline track progress",
+                  "properties": {
+                    "track_id": {
+                      "type": "string"
+                    },
+                    "phase": {
+                      "type": "string"
+                    },
+                    "progress": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
                 },
-                "phase": {
-                  "type": "string"
-                },
-                "progress": {
-                  "type": "number",
-                  "minimum": 0,
-                  "maximum": 100
-                },
-                "message": {
-                  "type": "string"
+                {
+                  "type": "object",
+                  "description": "BulkDeletion* events (issue #309)",
+                  "properties": {
+                    "event": {
+                      "type": "string",
+                      "enum": [
+                        "BulkDeletionStarted",
+                        "BulkDeletionItemProgress",
+                        "BulkDeletionCompleted",
+                        "BulkDeletionFailed"
+                      ]
+                    },
+                    "wipe_track_id": {
+                      "type": "string"
+                    },
+                    "workspace_id": {
+                      "type": "string"
+                    },
+                    "deleted_count": {
+                      "type": "integer"
+                    },
+                    "error_message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "wipe_track_id"
+                  ]
                 }
-              },
+              ],
               "example": {
-                "track_id": "f6fa9cad-bbff-4892-a855-3bd7d70da044",
-                "phase": "entity_extraction",
-                "progress": 42.5,
-                "message": "Extracting entities from chunk 3/10"
+                "event": "BulkDeletionFailed",
+                "wipe_track_id": "workspace_wipe-f6fa9cad",
+                "workspace_id": "940fadab-2390-4b29-af7e-ff27fd6d7755",
+                "error_message": "workspace wipe graph clear failed"
               }
             }
           }

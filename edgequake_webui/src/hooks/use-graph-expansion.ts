@@ -14,9 +14,10 @@
  */
 
 import { getEntityNeighborhood } from "@/lib/api/edgequake";
+import { displayEntityLabel } from "@/lib/graph/label-utils";
 import { useGraphStore } from "@/stores/use-graph-store";
 import { useSettingsStore } from "@/stores/use-settings-store";
-import type { GraphEdge } from "@/types";
+import type { GraphEdge, GraphNode } from "@/types";
 import forceAtlas2 from "graphology-layout-forceatlas2";
 import { useCallback, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
@@ -152,17 +153,31 @@ export function useGraphExpansion() {
 
           try {
             if (!sigmaGraph.hasNode(node.id)) {
+              // Neighborhood API returns entity_type; GraphNode uses node_type.
+              const apiNode = node as GraphNode & {
+                entity_type?: string;
+                label?: string;
+              };
+              const nodeType =
+                apiNode.node_type || apiNode.entity_type || "UNKNOWN";
+              const label = displayEntityLabel({
+                label: apiNode.label,
+                id: node.id,
+              });
               sigmaGraph.addNode(node.id, {
-                label: node.label,
+                label,
                 x,
                 y,
                 size: 10,
-                color: getNodeColor(node.node_type),
+                color: getNodeColor(nodeType),
                 borderColor: "#ffffff",
                 borderSize: 0.15,
-                entityType: node.node_type,
+                entityType: nodeType,
                 description: node.description,
               });
+              // Normalize into store shape before addNodesToGraph
+              node.label = label;
+              node.node_type = nodeType;
             }
           } catch (error) {
             console.error("Error adding node to sigma graph:", error);

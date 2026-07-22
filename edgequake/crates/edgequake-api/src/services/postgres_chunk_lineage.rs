@@ -76,32 +76,73 @@ pub async fn load_document_lineage_from_chunk_links(
 
     let mut entities = Vec::with_capacity(entity_rows.len());
     for (name, source_chunks) in entity_rows {
-        let entity_type = match lookup_entity_node_for_context(graph, &name, tenant_ctx).await {
-            Ok(node) => node
-                .properties
-                .get("entity_type")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown")
-                .to_string(),
-            Err(_) => sqlx::query_scalar::<_, String>(
-                "SELECT entity_type FROM entities
+        let summary = match lookup_entity_node_for_context(graph, &name, tenant_ctx).await {
+            Ok(node) => {
+                let label = crate::handlers::graph::graph_node_label(&node);
+                let bare = edgequake_pipeline::bare_entity_id(&node.id);
+                let display_name = if edgequake_storage::is_opaque_identifier(bare) {
+                    label.clone()
+                } else {
+                    bare.to_string()
+                };
+                let entity_type = node
+                    .properties
+                    .get("entity_type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+                let description = node
+                    .properties
+                    .get("description")
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string);
+                EntitySummaryResponse {
+                    id: node.id.clone(),
+                    name: display_name,
+                    label,
+                    entity_type,
+                    source_chunks,
+                    is_shared: shared_entities.contains(&name),
+                    description,
+                }
+            }
+            Err(_) => {
+                let entity_type = sqlx::query_scalar::<_, String>(
+                    "SELECT entity_type FROM entities
                      WHERE workspace_id = $1::uuid AND name = $2
                      LIMIT 1",
-            )
-            .bind(workspace_id)
-            .bind(&name)
-            .fetch_optional(pool)
-            .await
-            .map_err(|e| ApiError::Internal(format!("entities lookup failed: {e}")))?
-            .unwrap_or_else(|| "unknown".to_string()),
+                )
+                .bind(workspace_id)
+                .bind(&name)
+                .fetch_optional(pool)
+                .await
+                .map_err(|e| ApiError::Internal(format!("entities lookup failed: {e}")))?
+                .unwrap_or_else(|| "unknown".to_string());
+                let bare = edgequake_pipeline::bare_entity_id(&name);
+                let label = if edgequake_storage::is_opaque_identifier(bare) {
+                    edgequake_pipeline::soft_label_opaque(Some(&entity_type), None)
+                } else {
+                    bare.to_string()
+                };
+                let display_name = if edgequake_storage::is_opaque_identifier(bare) {
+                    label.clone()
+                } else {
+                    bare.to_string()
+                };
+                EntitySummaryResponse {
+                    id: name.clone(),
+                    name: display_name,
+                    label,
+                    entity_type,
+                    source_chunks,
+                    is_shared: shared_entities.contains(&name),
+                    description: None,
+                }
+            }
         };
-
-        entities.push(EntitySummaryResponse {
-            name: name.clone(),
-            entity_type,
-            source_chunks,
-            is_shared: shared_entities.contains(&name),
-        });
+        entities.push(summary);
     }
 
     let relation_rows: Vec<(String, String, Vec<String>)> = sqlx::query_as(

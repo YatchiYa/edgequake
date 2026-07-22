@@ -2,6 +2,8 @@
 title: 'Deep Dive: Chunking Strategies'
 ---
 
+> **Product: v0.19.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+
 # Deep Dive: Chunking Strategies
 
 > **How EdgeQuake Splits Documents for Processing**

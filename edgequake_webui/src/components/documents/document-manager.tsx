@@ -33,6 +33,7 @@ import {
   beginDeleteSession,
   dismissDeleteSession,
   formatDeleteCountsLabel,
+  formatDeleteStageMessage,
   patchDocumentsDeletingOptimistic,
 } from '@/lib/documents/deletion-session';
 import {
@@ -86,6 +87,7 @@ import { FeedbackZoneLiveRegion } from './feedback-zone-live-region';
 import { LargePdfAdmissionDialog } from './large-pdf-admission-dialog';
 import { ProgressPanelRow } from './progress-panel-row';
 import { ReprocessDialog, type ReprocessChoice } from './reprocess-dialog';
+import { ApiErrorBoundary } from '@/components/shared/api-error-boundary';
 import { Button } from '@/components/ui/button';
 import { UploadProgressList } from './upload-progress-list';
 import { X } from 'lucide-react';
@@ -256,6 +258,20 @@ export function DocumentManager() {
   // Feedback-zone delete sessions (WS phase updates).
   const deleteSessions = useDeletionSessions();
 
+  // SPEC-069: tick so long graph-phase "Still working…" updates without new WS.
+  const [deleteNow, setDeleteNow] = useState(() => Date.now());
+  useEffect(() => {
+    const needsTick = deleteSessions.some(
+      (s) =>
+        s.status === 'active' &&
+        ((s.phase ?? '').toLowerCase() === 'removing_graph' ||
+          s.phaseLabel.toLowerCase().includes('graph')),
+    );
+    if (!needsTick) return;
+    const id = window.setInterval(() => setDeleteNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [deleteSessions]);
+
   // OODA-29: Document queries extracted to useDocumentQueries hook
   // VS-03: page=1 with large pageSize fetches everything at once for virtual scroll
   const VIRTUAL_PAGE_SIZE = 500;
@@ -422,6 +438,14 @@ export function DocumentManager() {
     sessionReprocessEntries.length > 0 ||
     deleteSessions.length > 0;
 
+  // Honest empty state while first ingest is in flight but list is still empty.
+  const isBusyUpdating =
+    documents.length === 0 &&
+    (feedbackZoneOpen ||
+      isUploading ||
+      (pipelineStatus?.running_tasks ?? 0) > 0 ||
+      (pipelineStatus?.queued_tasks ?? 0) > 0);
+
   // Debounced AT announcement: Deleting / Cleaning → Queued → live stages.
   const feedbackAnnouncement = useMemo(() => {
     const deleting = deleteSessions[0];
@@ -581,7 +605,7 @@ export function DocumentManager() {
         <div className="shrink-0 px-4 pt-4 space-y-3 bg-background">
           <DocumentHeader
             totalCount={totalCount}
-            failedCount={statusCounts.failed + statusCounts.cancelled}
+            failedCount={statusCounts.failed}
             showPipelineIndicator={pipelineUi.showPipelineIndicator}
             pipelineAlertMode={pipelineUi.alertMode}
             activeDocCount={pipelineUi.activeDocCount}
@@ -662,6 +686,17 @@ export function DocumentManager() {
           On 760 px viewport: table ≥ 760×0.65−150 ≈ 344 px → ~5 rows always visible.
       ─────────────────────────────────────────────────────────────────────── */}
       {feedbackZoneOpen && (
+        <ApiErrorBoundary
+          fallback={() => (
+            <div
+              role="alert"
+              className="shrink-0 border-b px-4 py-2 text-sm text-muted-foreground"
+              data-testid="spec051-feedback-zone-fallback"
+            >
+              Progress unavailable — processing continues in the background.
+            </div>
+          )}
+        >
         <div
           className="shrink-0 overflow-y-auto border-b bg-background"
           style={{ maxHeight: '35vh' }}
@@ -768,7 +803,7 @@ export function DocumentManager() {
                         <AdmissionPhaseRow
                           phase="deleting"
                           documentName={entry.documentName}
-                          stageMessage={entry.phaseLabel}
+                          stageMessage={formatDeleteStageMessage(entry, deleteNow)}
                           countsLabel={formatDeleteCountsLabel(entry)}
                           variant="row"
                           data-testid="delete-progress-row"
@@ -795,6 +830,7 @@ export function DocumentManager() {
             )}
           </div>
         </div>
+        </ApiErrorBoundary>
       )}
 
       {/* OODA-26: Table section extracted to DocumentTableSection */}
@@ -802,6 +838,7 @@ export function DocumentManager() {
         documents={documents}
         totalCount={totalCount}
         isLoading={isLoading}
+        isBusyUpdating={isBusyUpdating}
         selectedIds={selectedIds}
         selectedDocument={selectedDocument}
         searchQuery={searchQuery}

@@ -9,9 +9,11 @@
 --     every-boot reconcile SSOT and may diverge from the frozen sqlx snapshot
 --     for fast-boot optimizations (skip O(N) work when UNIQUE index exists).
 --
--- Idempotent. If UNIQUE index already exists → skip O(N) dedup/ANALYZE (fast boot).
--- Otherwise: dedup before CREATE UNIQUE. Skips graphs without Node/EDGE.
--- Also deletes Node rows with NULL/empty node_id (cannot participate in ON CONFLICT).
+-- Idempotent. Prefer SPEC-062 denormalized eq_* UNIQUEs as the sole ON CONFLICT
+-- arbiter. When eq_* UNIQUEs exist, DROP legacy expression UNIQUEs
+-- (idx_node_prop_node_id_unique / idx_edge_source_target_unique) — dual unique
+-- indexes cause concurrent upsert failures on the non-arbiter index.
+-- Fallback: create expression UNIQUEs only when eq_* columns/indexes are absent.
 -- ============================================================================
 
 DO $$
@@ -22,6 +24,10 @@ DECLARE
   v_node_uniq  text := 'idx_node_prop_node_id_unique';
   v_old_btree  text := 'idx_node_prop_node_id_btree';
   v_edge_uniq  text := 'idx_edge_source_target_unique';
+  v_node_eq    text := 'idx_node_eq_node_id';
+  v_edge_eq    text := 'idx_edge_eq_source_target';
+  v_has_eq_node boolean;
+  v_has_eq_edge boolean;
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'age') THEN
     RAISE NOTICE 'M083 reconcile: AGE not installed — skipping';
@@ -38,17 +44,28 @@ BEGIN
     RAISE NOTICE 'M083 reconcile: Processing graph: %', v_graph;
 
     IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = v_graph AND tablename = 'Node') THEN
-      -- First principles: if UNIQUE index already exists, skip O(N) expression
-      -- scans (null count / GROUP BY dedup / ANALYZE) on every boot. A valid
-      -- UNIQUE index already enforces uniqueness for non-NULL keys.
-      IF EXISTS (
+      SELECT EXISTS (
+        SELECT 1 FROM pg_indexes WHERE schemaname = v_graph AND indexname = v_node_eq
+      ) INTO v_has_eq_node;
+
+      IF v_has_eq_node THEN
+        -- Single arbiter: drop legacy expression UNIQUE if present.
+        IF EXISTS (
+          SELECT 1 FROM pg_indexes WHERE schemaname = v_graph AND indexname = v_node_uniq
+        ) THEN
+          EXECUTE format('DROP INDEX IF EXISTS %I.%I', v_graph, v_node_uniq);
+          RAISE NOTICE 'M083 reconcile: dropped legacy % on %."Node" (eq_* arbiter present)',
+                       v_node_uniq, v_graph;
+        ELSE
+          RAISE NOTICE 'M083 reconcile: % already present on %."Node" — skip',
+                       v_node_eq, v_graph;
+        END IF;
+      ELSIF EXISTS (
         SELECT 1 FROM pg_indexes WHERE schemaname = v_graph AND indexname = v_node_uniq
       ) THEN
         RAISE NOTICE 'M083 reconcile: % already exists on %."Node" — skip dedup/ANALYZE',
                      v_node_uniq, v_graph;
       ELSE
-        -- Drop unusable rows (NULL/empty node_id) — UNIQUE allows multiple NULLs
-        -- which breaks native ON CONFLICT semantics.
         EXECUTE format(
           'SELECT count(*) FROM %I."Node"'
           ' WHERE COALESCE(ag_catalog.agtype_to_json(properties)->>''node_id'', '''') = ''''',
@@ -102,7 +119,22 @@ BEGIN
     END IF;
 
     IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = v_graph AND tablename = 'EDGE') THEN
-      IF EXISTS (
+      SELECT EXISTS (
+        SELECT 1 FROM pg_indexes WHERE schemaname = v_graph AND indexname = v_edge_eq
+      ) INTO v_has_eq_edge;
+
+      IF v_has_eq_edge THEN
+        IF EXISTS (
+          SELECT 1 FROM pg_indexes WHERE schemaname = v_graph AND indexname = v_edge_uniq
+        ) THEN
+          EXECUTE format('DROP INDEX IF EXISTS %I.%I', v_graph, v_edge_uniq);
+          RAISE NOTICE 'M083 reconcile: dropped legacy % on %."EDGE" (eq_* arbiter present)',
+                       v_edge_uniq, v_graph;
+        ELSE
+          RAISE NOTICE 'M083 reconcile: % already present on %."EDGE" — skip',
+                       v_edge_eq, v_graph;
+        END IF;
+      ELSIF EXISTS (
         SELECT 1 FROM pg_indexes WHERE schemaname = v_graph AND indexname = v_edge_uniq
       ) THEN
         RAISE NOTICE 'M083 reconcile: % already exists on %."EDGE" — skip dedup/ANALYZE',

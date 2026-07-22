@@ -6,10 +6,11 @@ use uuid::Uuid;
 
 use edgequake_llm::traits::LLMProvider;
 use edgequake_storage::traits::KVStorage;
+use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
 use super::super::vlm_provider_resolver::{
-    resolve_extract_provider_for_workspace, resolve_vlm_provider_for_workspace,
+    resolve_extract_provider_for_workspace, resolve_vlm_provider_for_pass_b,
 };
 use super::manifest_store::{metadata_multimodal_patch, persist_manifest};
 use super::providers::MultimodalProviders;
@@ -57,7 +58,39 @@ pub async fn run_multimodal_analyze_stage_outcome_with_substep(
     kv_storage: Option<Arc<dyn KVStorage>>,
     converting_substep: Option<super::super::ConvertingSubstepReporter>,
 ) -> super::analyzer::AnalyzeOutcome {
-    let vlm = resolve_vlm_provider_for_workspace(
+    run_multimodal_analyze_stage_outcome_with_cancel(
+        markdown,
+        process_options,
+        filename,
+        workspace_service,
+        workspace_id,
+        fallback_llm,
+        asset_base_dir,
+        document_id,
+        kv_storage,
+        converting_substep,
+        None,
+    )
+    .await
+}
+
+/// Pass B analyze with optional cancel token (checked between figures).
+#[allow(clippy::too_many_arguments)]
+pub async fn run_multimodal_analyze_stage_outcome_with_cancel(
+    markdown: String,
+    process_options: Option<&str>,
+    filename: &str,
+    workspace_service: Option<&SharedWorkspaceService>,
+    workspace_id: Uuid,
+    fallback_llm: Arc<dyn LLMProvider>,
+    asset_base_dir: Option<&Path>,
+    document_id: Option<&str>,
+    kv_storage: Option<Arc<dyn KVStorage>>,
+    converting_substep: Option<super::super::ConvertingSubstepReporter>,
+    cancel_token: Option<CancellationToken>,
+) -> super::analyzer::AnalyzeOutcome {
+    // Pass B uses shorter local VLM timeout than page OCR (never-stuck profile).
+    let vlm = resolve_vlm_provider_for_pass_b(
         workspace_service,
         workspace_id,
         None,
@@ -75,6 +108,7 @@ pub async fn run_multimodal_analyze_stage_outcome_with_substep(
         asset_base_dir,
         kv_storage.clone(),
         converting_substep,
+        cancel_token,
     )
     .await;
 
