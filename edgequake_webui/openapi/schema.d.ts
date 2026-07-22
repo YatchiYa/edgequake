@@ -9933,6 +9933,7 @@ export interface components {
          *       "cancel_intent_count": {},
          *       "cancel_intent_total": {},
          *       "estimated_queue_time_seconds": {},
+         *       "max_lifecycle_tasks_per_tenant": {},
          *       "max_tasks_per_tenant": {},
          *       "max_wait_time_seconds": {},
          *       "max_workers": {},
@@ -9945,6 +9946,8 @@ export interface components {
          *       "rate_limited": {},
          *       "store_contention": {},
          *       "tenant_park_waiters": {},
+         *       "tenant_park_waiters_ingest": {},
+         *       "tenant_park_waiters_lifecycle": {},
          *       "throughput_per_minute": {},
          *       "timestamp": {},
          *       "worker_utilization": {}
@@ -9978,7 +9981,13 @@ export interface components {
             estimated_queue_time_seconds: number;
             /**
              * Format: int64
-             * @description Configured max concurrent tasks per tenant (`0` = unlimited / disabled).
+             * @description Configured max concurrent **lifecycle** tasks per tenant (Deletion/Wipe).
+             *     `0` = unlimited / lane disabled.
+             */
+            max_lifecycle_tasks_per_tenant?: number;
+            /**
+             * Format: int64
+             * @description Configured max concurrent **ingest** tasks per tenant (`0` = unlimited).
              */
             max_tasks_per_tenant?: number;
             /**
@@ -10021,9 +10030,19 @@ export interface components {
             store_contention?: components["schemas"]["StoreContentionMetrics"];
             /**
              * Format: int64
-             * @description Tasks parked waiting for a per-tenant concurrency permit.
+             * @description Tasks parked waiting for a per-tenant concurrency permit (all lanes).
              */
             tenant_park_waiters?: number;
+            /**
+             * Format: int64
+             * @description Park waiters on the ingest fairness lane (Pdf/Insert/…).
+             */
+            tenant_park_waiters_ingest?: number;
+            /**
+             * Format: int64
+             * @description Park waiters on the lifecycle fairness lane (Deletion/Wipe).
+             */
+            tenant_park_waiters_lifecycle?: number;
             /**
              * Format: double
              * @description Current throughput in documents per minute.

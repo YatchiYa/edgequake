@@ -61,13 +61,24 @@ Cancel is **cooperative**: vision convert, LLM extract, and embed calls abort vi
 
 ## Tenant fairness (no requeue storm)
 
-When `MAX_TASKS_PER_TENANT` > 0 (default ≈ ¾ of `WORKER_THREADS`):
+Fairness uses **two per-tenant lanes** (operation class):
 
-- Workers `try_acquire` a per-tenant semaphore
-- If at capacity, the task **parks** on `acquire()` in a background waiter (no 500ms channel bounce)
-- Worker continues serving other tenants’ ready work
+| Lane | Task types | Env | Local Ollama/LM Studio default |
+| ---- | ---------- | --- | ------------------------------ |
+| **Workers** | pool size | `WORKER_THREADS` | capped at **4** |
+| **Ingest** | PdfProcessing, Insert, Upload, Scan, Reindex, KnowledgeInjection | `MAX_TASKS_PER_TENANT` | **2** (protects LLM/vision) |
+| **Lifecycle** | Deletion, WorkspaceWipe | `MAX_LIFECYCLE_TASKS_PER_TENANT` | **4** (DB/graph; not shared with ingest) |
 
-Local providers (`ollama` / `lmstudio`) clamp to **1** concurrent task per tenant unless `EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1`. SPEC-057 P2: the clamp uses the **runtime extract provider** (`EDGEQUAKE_EXTRACT_PROVIDER` → `EDGEQUAKE_DEFAULT_EXTRACT_PROVIDER` → `EDGEQUAKE_DEFAULT_LLM_PROVIDER` → `EDGEQUAKE_LLM_PROVIDER`), so hybrid OpenAI LLM + Ollama extract still applies the local clamp.
+When a lane max is `> 0`:
+
+- Workers `try_acquire(tenant, fairness_class)` on that lane’s semaphore
+- If at capacity, the task **parks** on `acquire()` in a background waiter (no channel bounce)
+- Process-local park dedupe: a `track_id` already parked is released on reclaim **without** spawning another waiter; the worker **immediately re-claims** (bounded) so newer ingest work is not stuck behind a 2s poll
+- Worker continues serving other tenants’ ready work (and the other lane for the same tenant)
+
+Local providers (`ollama` / `lmstudio`) clamp **ingest** to **2** and workers to **4** unless `EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1`. Do **not** raise that flag just to unblock deletes — use the lifecycle lane. SPEC-057 P2: the ingest clamp uses the **runtime extract provider** (`EDGEQUAKE_EXTRACT_PROVIDER` → `EDGEQUAKE_DEFAULT_EXTRACT_PROVIDER` → `EDGEQUAKE_DEFAULT_LLM_PROVIDER` → `EDGEQUAKE_LLM_PROVIDER`), so hybrid OpenAI LLM + Ollama extract still applies the local ingest clamp.
+
+Queue metrics: `max_tasks_per_tenant` (ingest), `max_lifecycle_tasks_per_tenant`, `tenant_park_waiters`, `tenant_park_waiters_ingest`, `tenant_park_waiters_lifecycle`.
 
 ## Convert then ingest (SPEC-057 P2)
 

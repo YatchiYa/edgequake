@@ -329,9 +329,14 @@ Cancel is **cooperative** — expect a short delay until the current LLM/vision 
 
 ### What is tenant fairness / why is my second upload waiting?
 
-When `MAX_TASKS_PER_TENANT` > 0 (default ≈ ¾ of `WORKER_THREADS`), workers limit concurrent tasks per tenant. Local providers (`ollama` / `lmstudio`) clamp to **1** concurrent task per tenant unless `EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1`.
+Workers limit concurrency **per tenant and per fairness lane**:
 
-Parked tasks wait on a semaphore — they are **not** requeued in a loop. Check `GET /api/v1/pipeline/queue-metrics` → `tenant_park_waiters`.
+- **Ingest** (`MAX_TASKS_PER_TENANT`): Pdf/Insert/… — local Ollama/LM Studio clamps to **2** (workers capped at **4**) unless `EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1`
+- **Lifecycle** (`MAX_LIFECYCLE_TASKS_PER_TENANT`, local default **4**): Deletion/Wipe — separate from ingest so deletes do not serialize new uploads
+
+Parked tasks wait on that lane’s semaphore — they are **not** requeued in a reclaim storm. Check `GET /api/v1/pipeline/queue-metrics` → `tenant_park_waiters`, `tenant_park_waiters_ingest`, `tenant_park_waiters_lifecycle`, `max_tasks_per_tenant`, `max_lifecycle_tasks_per_tenant`.
+
+If a new PDF stays **Queued** while deletes run, that was the old shared-lane bug; with dual lanes the PDF should take the ingest slot while lifecycle deletes continue.
 
 ### What are claim / lease semantics on restart?
 

@@ -17,7 +17,7 @@ use crate::handlers::websocket_types::DeletionPhaseKind;
 use crate::middleware::TenantContext;
 use crate::services::document_graph_cascade::{find_document_edges, find_document_nodes};
 use crate::services::document_metadata_scan::metadata_key_for_document;
-use crate::services::document_task_cleanup::purge_persisted_tasks_for_document;
+use crate::services::document_task_cleanup::purge_persisted_tasks_for_document_except;
 use crate::services::document_vector_storage::get_workspace_vector_storage_for_delete;
 use crate::services::{
     cascade_remove_document_sources, record_compliance_event, ContentHasher, DocumentSourceScope,
@@ -233,11 +233,14 @@ pub async fn perform_document_deletion(
         }
     }
 
-    let persisted_tasks_removed = purge_persisted_tasks_for_document(
+    // Keep the running deletion task itself (DRY with wipe keep-self). Matching
+    // on document_id alone used to cancel+delete this row mid-cascade.
+    let persisted_tasks_removed = purge_persisted_tasks_for_document_except(
         state,
         &document_id,
         data.ingest_track_id.as_deref(),
         Some(&workspace_id_for_storage),
+        &deletion_track_id,
     )
     .await;
 
@@ -693,7 +696,6 @@ pub async fn reconcile_stuck_deleting_documents(state: &AppState, max: usize) ->
             continue;
         }
 
-        let deletion_track_id = Uuid::new_v4().to_string();
         let tenant_id = meta
             .get("tenant_id")
             .and_then(|v| v.as_str())
@@ -704,7 +706,7 @@ pub async fn reconcile_stuck_deleting_documents(state: &AppState, max: usize) ->
             key_prefix: key_prefix.clone(),
             workspace_id: workspace_id.clone(),
             tenant_id: tenant_id.clone(),
-            deletion_track_id: deletion_track_id.clone(),
+            deletion_track_id: String::new(),
             metadata_key: Some(key),
             chunk_ids: Vec::new(),
             has_content: false,
@@ -722,12 +724,19 @@ pub async fn reconcile_stuck_deleting_documents(state: &AppState, max: usize) ->
                 .map(|s| s.to_string()),
             document_status: Some("deleting".to_string()),
         };
-        let task = Task::new(
+        let mut task = Task::new(
             Uuid::parse_str(&tenant_id).unwrap_or_else(|_| Uuid::nil()),
             Uuid::parse_str(&workspace_id).unwrap_or_else(|_| Uuid::nil()),
             TaskType::Deletion,
             serde_json::to_value(&data).unwrap_or_default(),
         );
+        let deletion_track_id = task.track_id.clone();
+        if let Some(obj) = task.task_data.as_object_mut() {
+            obj.insert(
+                "deletion_track_id".to_string(),
+                serde_json::json!(&deletion_track_id),
+            );
+        }
         match state.enqueue_task(task).await {
             Ok(()) => {
                 tracing::info!(

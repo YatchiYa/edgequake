@@ -46,6 +46,31 @@ pub enum TaskType {
     WorkspaceWipe,
 }
 
+/// Tenant fairness lane — SSOT for which scarce resource a task competes for.
+///
+/// - [`FairnessClass::Ingest`]: LLM / vision / embed bound (local clamp applies).
+/// - [`FairnessClass::Lifecycle`]: DB / graph delete & wipe (separate lane).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FairnessClass {
+    Ingest,
+    Lifecycle,
+}
+
+impl TaskType {
+    /// Map task type → fairness lane (single mapping; workers must not re-derive).
+    pub fn fairness_class(self) -> FairnessClass {
+        match self {
+            Self::Deletion | Self::WorkspaceWipe => FairnessClass::Lifecycle,
+            Self::Upload
+            | Self::Insert
+            | Self::Scan
+            | Self::Reindex
+            | Self::PdfProcessing
+            | Self::KnowledgeInjection => FairnessClass::Ingest,
+        }
+    }
+}
+
 impl fmt::Display for TaskType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -58,5 +83,28 @@ impl fmt::Display for TaskType {
             Self::Deletion => write!(f, "deletion"),
             Self::WorkspaceWipe => write!(f, "workspace_wipe"),
         }
+    }
+}
+
+#[cfg(test)]
+mod fairness_class_tests {
+    use super::*;
+
+    #[test]
+    fn deletion_and_wipe_are_lifecycle() {
+        assert_eq!(TaskType::Deletion.fairness_class(), FairnessClass::Lifecycle);
+        assert_eq!(
+            TaskType::WorkspaceWipe.fairness_class(),
+            FairnessClass::Lifecycle
+        );
+    }
+
+    #[test]
+    fn pdf_and_insert_are_ingest() {
+        assert_eq!(
+            TaskType::PdfProcessing.fairness_class(),
+            FairnessClass::Ingest
+        );
+        assert_eq!(TaskType::Insert.fairness_class(), FairnessClass::Ingest);
     }
 }

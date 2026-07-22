@@ -108,10 +108,13 @@ pub use storage::{
     Pagination, SharedTaskStorage, SortField, SortOrder, TaskFilter, TaskList, TaskStatistics,
     TaskStorage,
 };
-pub use tenant_limiter::{TenantConcurrencyLimiter, TenantLimiterStats};
+pub use tenant_limiter::{
+    TenantConcurrencyLimiter, TenantLimiterStats, TryAcquireOutcome,
+};
 pub use types::{
-    ChunkProgress, DeletionTaskData, DirectoryScanData, DocumentUploadData, KnowledgeInjectionData,
-    PdfProcessingData, ReindexData, ReprocessMode, Task, TaskFailureInfo, TaskProgress, TaskStatus,
-    TaskType, TextInsertData, WipeActivePolicy, WorkspaceWipePhase, WorkspaceWipeTaskData,
+    ChunkProgress, DeletionTaskData, DirectoryScanData, DocumentUploadData, FairnessClass,
+    KnowledgeInjectionData, PdfProcessingData, ReindexData, ReprocessMode, Task, TaskFailureInfo,
+    TaskProgress, TaskStatus, TaskType, TextInsertData, WipeActivePolicy, WorkspaceWipePhase,
+    WorkspaceWipeTaskData,
 };
 pub use worker::{SharedTaskProcessor, TaskProcessor, WorkerPool, WorkerPoolConfig};

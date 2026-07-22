@@ -3817,8 +3817,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "reanalyze_multimodal"
+        "x-edgequake-v2-job-type": "reanalyze_multimodal",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/documents/{document_id}/retry-chunks": {
@@ -8461,8 +8461,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "rebuild_knowledge_graph",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "rebuild_knowledge_graph"
       }
     },
     "/api/v1/workspaces/{workspace_id}/reprocess-documents": {
@@ -9029,8 +9029,8 @@
             "description": "WebSocket upgrade failed"
           }
         },
-        "x-edgequake-transport": "websocket",
-        "x-edgequake-upgrade": "RFC6455"
+        "x-edgequake-upgrade": "RFC6455",
+        "x-edgequake-transport": "websocket"
       }
     },
     "/ws/progress/{track_id}": {
@@ -21759,10 +21759,16 @@
             "format": "double",
             "description": "Estimated time to clear the queue in seconds."
           },
+          "max_lifecycle_tasks_per_tenant": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Configured max concurrent **lifecycle** tasks per tenant (Deletion/Wipe).\n`0` = unlimited / lane disabled.",
+            "minimum": 0
+          },
           "max_tasks_per_tenant": {
             "type": "integer",
             "format": "int64",
-            "description": "Configured max concurrent tasks per tenant (`0` = unlimited / disabled).",
+            "description": "Configured max concurrent **ingest** tasks per tenant (`0` = unlimited).",
             "minimum": 0
           },
           "max_wait_time_seconds": {
@@ -21822,7 +21828,19 @@
           "tenant_park_waiters": {
             "type": "integer",
             "format": "int64",
-            "description": "Tasks parked waiting for a per-tenant concurrency permit.",
+            "description": "Tasks parked waiting for a per-tenant concurrency permit (all lanes).",
+            "minimum": 0
+          },
+          "tenant_park_waiters_ingest": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Park waiters on the ingest fairness lane (Pdf/Insert/…).",
+            "minimum": 0
+          },
+          "tenant_park_waiters_lifecycle": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Park waiters on the lifecycle fairness lane (Deletion/Wipe).",
             "minimum": 0
           },
           "throughput_per_minute": {
@@ -21847,6 +21865,7 @@
           "cancel_intent_count": {},
           "cancel_intent_total": {},
           "estimated_queue_time_seconds": {},
+          "max_lifecycle_tasks_per_tenant": {},
           "max_tasks_per_tenant": {},
           "max_wait_time_seconds": {},
           "max_workers": {},
@@ -21859,6 +21878,8 @@
           "rate_limited": {},
           "store_contention": {},
           "tenant_park_waiters": {},
+          "tenant_park_waiters_ingest": {},
+          "tenant_park_waiters_lifecycle": {},
           "throughput_per_minute": {},
           "timestamp": {},
           "worker_utilization": {}

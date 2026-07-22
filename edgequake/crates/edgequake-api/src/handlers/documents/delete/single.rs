@@ -229,8 +229,6 @@ pub async fn delete_document(
         ));
     }
 
-    let deletion_track_id = Uuid::new_v4().to_string();
-
     let tenant_id_str = tenant_ctx
         .tenant_id
         .clone()
@@ -239,12 +237,14 @@ pub async fn delete_document(
     let workspace_uuid_for_task =
         Uuid::parse_str(&workspace_id_for_storage).unwrap_or_else(|_| Uuid::nil());
 
+    // Placeholder correlation id — overwritten with durable task.track_id below
+    // so WS/API/purge keep-self share one SSOT (same pattern as workspace wipe).
     let task_data = DeletionTaskData {
         document_id: document_id.clone(),
         key_prefix: actual_key_prefix.clone(),
         workspace_id: workspace_id_for_storage.clone(),
         tenant_id: tenant_id_str,
-        deletion_track_id: deletion_track_id.clone(),
+        deletion_track_id: String::new(),
         metadata_key: if has_metadata {
             Some(metadata_key.clone())
         } else {
@@ -258,7 +258,7 @@ pub async fn delete_document(
         document_status: Some(document_status),
     };
 
-    let task = Task::new(
+    let mut task = Task::new(
         tenant_uuid,
         workspace_uuid_for_task,
         TaskType::Deletion,
@@ -266,6 +266,13 @@ pub async fn delete_document(
             ApiError::Internal(format!("Failed to serialize DeletionTaskData: {e}"))
         })?,
     );
+    let deletion_track_id = task.track_id.clone();
+    if let Some(obj) = task.task_data.as_object_mut() {
+        obj.insert(
+            "deletion_track_id".to_string(),
+            serde_json::json!(&deletion_track_id),
+        );
+    }
 
     // First principle: durable job BEFORE status=deleting. Enqueue failure must
     // not leave the document stuck in a deleting badge with no worker task.

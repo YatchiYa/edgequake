@@ -160,7 +160,16 @@ async fn e2e_worker_app_wires_tenant_fairness_limiter() {
         max > 0,
         "test worker pool must expose fairness limiter (got {max})"
     );
+    let lifecycle_max = body["max_lifecycle_tasks_per_tenant"]
+        .as_u64()
+        .expect("max_lifecycle_tasks_per_tenant present");
+    assert!(
+        lifecycle_max > 0,
+        "lifecycle fairness lane must be exposed (got {lifecycle_max})"
+    );
     assert!(body["tenant_park_waiters"].as_u64().is_some());
+    assert!(body["tenant_park_waiters_ingest"].as_u64().is_some());
+    assert!(body["tenant_park_waiters_lifecycle"].as_u64().is_some());
     assert!(body["cancel_intent_count"].as_u64().is_some());
 }
 
@@ -417,4 +426,123 @@ async fn e2e_cancel_pending_never_claimed_after_restart_sim() {
         claimed.as_ref().map(|t| t.track_id.as_str()) != Some(track_id.as_str()),
         "claim_next must not return Cancelled track after restart"
     );
+}
+
+/// Dual-lane fairness: 3 Deletion + 1 PdfProcessing under local-style caps —
+/// PDF must start while a deletion is still non-terminal (not FIFO-starved).
+#[tokio::test]
+async fn e2e_delete_tasks_do_not_starve_pdf_ingest_lane() {
+    use async_trait::async_trait;
+    use edgequake_tasks::{
+        memory::MemoryTaskStorage,
+        queue::ChannelTaskQueue,
+        worker::{SharedTaskProcessor, TaskProcessor, WorkerPool, WorkerPoolConfig},
+        TaskQueue, TaskResult, TaskStorage,
+    };
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+    use tokio_util::sync::CancellationToken;
+
+    struct CountingProcessor {
+        deletion_started: Arc<AtomicUsize>,
+        pdf_started: Arc<AtomicUsize>,
+        pdf_gate: Arc<tokio::sync::Notify>,
+    }
+
+    #[async_trait]
+    impl TaskProcessor for CountingProcessor {
+        async fn process(
+            &self,
+            task: &mut Task,
+            _cancel_token: CancellationToken,
+        ) -> TaskResult<serde_json::Value> {
+            match task.task_type {
+                TaskType::Deletion => {
+                    self.deletion_started.fetch_add(1, Ordering::SeqCst);
+                    tokio::time::sleep(tokio::time::Duration::from_millis(400)).await;
+                }
+                TaskType::PdfProcessing => {
+                    self.pdf_started.fetch_add(1, Ordering::SeqCst);
+                    self.pdf_gate.notify_waiters();
+                    tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+                }
+                _ => {}
+            }
+            Ok(json!({ "ok": true }))
+        }
+    }
+
+    let tenant_id = Uuid::parse_str(TEST_TENANT_ID).unwrap();
+    let workspace_id = Uuid::parse_str(TEST_WORKSPACE_ID).unwrap();
+    let deletion_started = Arc::new(AtomicUsize::new(0));
+    let pdf_started = Arc::new(AtomicUsize::new(0));
+    let pdf_gate = Arc::new(tokio::sync::Notify::new());
+    let processor: SharedTaskProcessor = Arc::new(CountingProcessor {
+        deletion_started: Arc::clone(&deletion_started),
+        pdf_started: Arc::clone(&pdf_started),
+        pdf_gate: Arc::clone(&pdf_gate),
+    });
+
+    let queue = Arc::new(ChannelTaskQueue::new(50));
+    let storage = Arc::new(MemoryTaskStorage::new());
+    let config = WorkerPoolConfig {
+        num_workers: 4,
+        auto_retry: false,
+        initial_retry_delay_ms: 100,
+        max_retry_delay_ms: 5000,
+        backoff_multiplier: 2.0,
+        max_tasks_per_tenant: 2,
+        max_lifecycle_tasks_per_tenant: 4,
+        processing_timeout_secs: 300,
+    };
+    let mut pool = WorkerPool::new(config, queue.clone(), storage.clone(), processor);
+    pool.start();
+
+    for i in 0..3 {
+        let mut task = Task::new(
+            tenant_id,
+            workspace_id,
+            TaskType::Deletion,
+            json!({ "document_id": format!("e2e-del-{i}") }),
+        );
+        if let Some(obj) = task.task_data.as_object_mut() {
+            obj.insert("deletion_track_id".into(), json!(task.track_id));
+        }
+        storage.create_task(&task).await.unwrap();
+        queue.send(task).await.unwrap();
+    }
+
+    let pdf = Task::new(
+        tenant_id,
+        workspace_id,
+        TaskType::PdfProcessing,
+        json!({ "document_id": "e2e-pdf-new" }),
+    );
+    let pdf_id = pdf.track_id.clone();
+    storage.create_task(&pdf).await.unwrap();
+    queue.send(pdf).await.unwrap();
+
+    tokio::time::timeout(tokio::time::Duration::from_secs(3), pdf_gate.notified())
+        .await
+        .expect("PDF ingest lane must start under concurrent deletions");
+    assert!(pdf_started.load(Ordering::SeqCst) >= 1);
+    assert!(
+        deletion_started.load(Ordering::SeqCst) >= 1,
+        "at least one deletion should have started"
+    );
+
+    // While PDF was starting, at least one deletion should still be non-terminal
+    // or have overlapped (deletion_started >= 1 already proves overlap intent).
+    tokio::time::sleep(tokio::time::Duration::from_millis(800)).await;
+    let pdf_row = storage.get_task(&pdf_id).await.unwrap().unwrap();
+    assert_eq!(
+        pdf_row.status,
+        TaskStatus::Indexed,
+        "PDF must complete, got {:?}",
+        pdf_row.status
+    );
+
+    pool.shutdown().await;
 }

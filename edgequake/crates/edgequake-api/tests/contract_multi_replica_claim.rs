@@ -48,6 +48,7 @@ async fn dual_worker_pool_processes_pending_task_exactly_once() {
         max_retry_delay_ms: 200,
         backoff_multiplier: 2.0,
         max_tasks_per_tenant: 0,
+        max_lifecycle_tasks_per_tenant: 0,
         processing_timeout_secs: 30,
     };
 
