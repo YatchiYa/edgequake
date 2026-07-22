@@ -73,42 +73,58 @@ pub fn protect_first_for_intent(intent: QueryIntent) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    /// Process env is global — serialize these tests to avoid cross-test races.
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn clear_fact_rerank_env() {
+        std::env::remove_var("EDGEQUAKE_FACT_RERANKER");
+        std::env::remove_var("EDGEQUAKE_INTENT_RERANK");
+        std::env::remove_var("EDGEQUAKE_FACT_CE_SKIP");
+        std::env::remove_var("EDGEQUAKE_FACT_PROTECT_BM25");
+    }
 
     #[test]
     fn factual_routes_when_enabled() {
-        std::env::remove_var("EDGEQUAKE_INTENT_RERANK");
-        std::env::remove_var("EDGEQUAKE_FACT_CE_SKIP");
+        let _guard = env_lock();
+        clear_fact_rerank_env();
         std::env::set_var("EDGEQUAKE_FACT_RERANKER", "bm25");
         assert!(use_bm25_for_intent(QueryIntent::Factual));
         assert!(!use_bm25_for_intent(QueryIntent::Comparative));
-        std::env::remove_var("EDGEQUAKE_FACT_RERANKER");
+        clear_fact_rerank_env();
     }
 
     #[test]
     fn fact_ce_skip_alias_enables_bm25() {
-        std::env::remove_var("EDGEQUAKE_FACT_RERANKER");
-        std::env::remove_var("EDGEQUAKE_INTENT_RERANK");
+        let _guard = env_lock();
+        clear_fact_rerank_env();
         std::env::set_var("EDGEQUAKE_FACT_CE_SKIP", "1");
         assert!(use_bm25_for_intent(QueryIntent::Factual));
         assert!(!use_bm25_for_intent(QueryIntent::Exploratory));
-        std::env::remove_var("EDGEQUAKE_FACT_CE_SKIP");
+        clear_fact_rerank_env();
     }
 
     #[test]
     fn protect_bm25_only_when_factual_and_not_skip_ce() {
-        std::env::remove_var("EDGEQUAKE_FACT_RERANKER");
-        std::env::remove_var("EDGEQUAKE_INTENT_RERANK");
+        let _guard = env_lock();
+        clear_fact_rerank_env();
         std::env::set_var("EDGEQUAKE_FACT_PROTECT_BM25", "1");
         assert!(use_bm25_protect_for_intent(QueryIntent::Factual));
         assert!(!use_bm25_protect_for_intent(QueryIntent::Exploratory));
         std::env::set_var("EDGEQUAKE_FACT_RERANKER", "bm25");
         assert!(!use_bm25_protect_for_intent(QueryIntent::Factual));
-        std::env::remove_var("EDGEQUAKE_FACT_RERANKER");
-        std::env::remove_var("EDGEQUAKE_FACT_PROTECT_BM25");
+        clear_fact_rerank_env();
     }
 
     #[test]
     fn coverage_protect_overrides_exploratory_only() {
+        let _guard = env_lock();
         std::env::set_var("EDGEQUAKE_RERANK_PROTECT_FIRST", "12");
         std::env::set_var("EDGEQUAKE_COVERAGE_PROTECT_FIRST", "30");
         assert_eq!(protect_first_for_intent(QueryIntent::Exploratory), 30);
