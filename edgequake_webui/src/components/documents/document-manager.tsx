@@ -33,6 +33,7 @@ import {
   beginDeleteSession,
   dismissDeleteSession,
   formatDeleteCountsLabel,
+  formatDeleteStageMessage,
   patchDocumentsDeletingOptimistic,
 } from '@/lib/documents/deletion-session';
 import {
@@ -256,6 +257,20 @@ export function DocumentManager() {
 
   // Feedback-zone delete sessions (WS phase updates).
   const deleteSessions = useDeletionSessions();
+
+  // SPEC-069: tick so long graph-phase "Still working…" updates without new WS.
+  const [deleteNow, setDeleteNow] = useState(() => Date.now());
+  useEffect(() => {
+    const needsTick = deleteSessions.some(
+      (s) =>
+        s.status === 'active' &&
+        ((s.phase ?? '').toLowerCase() === 'removing_graph' ||
+          s.phaseLabel.toLowerCase().includes('graph')),
+    );
+    if (!needsTick) return;
+    const id = window.setInterval(() => setDeleteNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [deleteSessions]);
 
   // OODA-29: Document queries extracted to useDocumentQueries hook
   // VS-03: page=1 with large pageSize fetches everything at once for virtual scroll
@@ -788,7 +803,7 @@ export function DocumentManager() {
                         <AdmissionPhaseRow
                           phase="deleting"
                           documentName={entry.documentName}
-                          stageMessage={entry.phaseLabel}
+                          stageMessage={formatDeleteStageMessage(entry, deleteNow)}
                           countsLabel={formatDeleteCountsLabel(entry)}
                           variant="row"
                           data-testid="delete-progress-row"

@@ -14,6 +14,7 @@
  * @see WCAG 4.1.2 Name, Role, Value (Level A)
  */
 
+import { formatEntityLabel } from '@/lib/graph/label-utils';
 import { useGraphStore } from '@/stores/use-graph-store';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -44,8 +45,8 @@ export function GraphAccessibilityAnnouncer() {
       e => e.source === selectedNodeId || e.target === selectedNodeId
     ).length;
     
-    // Build announcement message
-    const label = node.label || node.id;
+    // Build announcement message (072: never announce bare UUID)
+    const label = formatEntityLabel(node.label || node.id);
     const type = node.node_type || t('graph.a11y.unknownType', 'unknown type');
     const connectionsText = degree === 1 
       ? t('graph.a11y.oneConnection', '1 connection')

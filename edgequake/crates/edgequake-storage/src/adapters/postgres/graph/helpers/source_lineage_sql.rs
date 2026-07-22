@@ -42,9 +42,13 @@ pub(in crate::adapters::postgres::graph) fn source_chunk_id_candidates(
     (0..n).map(|i| format!("{chunk_prefix}{i}")).collect()
 }
 
-/// Modern indexed path: `source_ids` / `source_chunk_ids` containment via `@>`.
+/// Modern indexed path: `source_ids` containment via `@>` only.
 ///
-/// Does **not** include LIKE — planners can use GIN without SeqScan fallback.
+/// WHY (deletion timeout / #305): OR-ing hundreds of `@>` probes **and**
+/// `source_chunk_ids` (no GIN) forces a Nested Loop Seq Scan over
+/// `_ag_label_vertex` and trips `statement_timeout` (~15s) during cascade
+/// post-proof. Keep this helper GIN-only on `source_ids`. Discovery hot paths
+/// in `scan_ops` use unnest/`generate_series` JOIN instead of giant OR trees.
 pub(in crate::adapters::postgres::graph) fn jsonb_matches_doc_source_prefix_modern(
     props: &str,
     doc_prefix: &str,
@@ -60,13 +64,7 @@ pub(in crate::adapters::postgres::graph) fn jsonb_matches_doc_source_prefix_mode
         parts.push(format!(
             "({props}->'source_ids') @> to_jsonb(('{chunk}' || '{i}')::text)"
         ));
-        parts.push(format!(
-            "({props}->'source_chunk_ids') @> to_jsonb(('{chunk}' || '{i}')::text)"
-        ));
     }
-    parts.push(format!(
-        "({props}->'source_chunk_ids') @> to_jsonb('{esc}'::text)"
-    ));
     format!("({})", parts.join(" OR "))
 }
 
@@ -124,10 +122,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn modern_path_is_gin_only() {
+    fn modern_path_is_gin_only_on_source_ids() {
         let sql = jsonb_matches_doc_source_prefix_modern("props", "doc-abc");
         assert!(sql.contains("@>"));
         assert!(!sql.contains("LIKE"));
+        assert!(sql.contains("source_ids"));
+        // Unindexed source_chunk_ids in the modern OR tree causes Seq Scan timeouts.
+        assert!(
+            !sql.contains("source_chunk_ids"),
+            "modern path must not touch source_chunk_ids: {sql}"
+        );
         assert!(sql.contains("doc-abc-chunk-"));
         // High chunk indices must be probeable (cascade discovery).
         assert!(

@@ -376,32 +376,41 @@ impl KVStorage for PostgresKVStorage {
     }
 
     async fn keys_like(&self, pattern: &str) -> Result<Vec<String>> {
+        // SPEC-070: never unbounded fetch_all — safety LIMIT on the wire.
+        const SAFETY_CAP: usize = 100_000;
         let pool = self.pool.get().await?;
-
-        let sql = format!("SELECT key FROM {} WHERE key LIKE $1", self.table_name);
-
+        let sql = format!(
+            "SELECT key FROM {} WHERE key LIKE $1 LIMIT $2",
+            self.table_name
+        );
         let rows: Vec<(String,)> = sqlx::query_as(&sql)
             .bind(pattern)
+            .bind(i64::try_from(SAFETY_CAP).unwrap_or(100_000))
             .fetch_all(&pool)
             .await
             .map_err(|e| StorageError::Database(format!("KV keys_like failed: {}", e)))?;
-
+        if rows.len() >= SAFETY_CAP {
+            tracing::warn!(
+                pattern,
+                cap = SAFETY_CAP,
+                "KV keys_like hit safety cap — prefer keys_with_prefix_limited (SPEC-070)"
+            );
+        }
         Ok(rows.into_iter().map(|(k,)| k).collect())
     }
 
     async fn keys_with_prefix(&self, prefix: &str) -> Result<Vec<String>> {
-        let pool = self.pool.get().await?;
-        let like_pattern = format!("{}%", escape_like_meta(prefix));
-
-        let sql = format!("SELECT key FROM {} WHERE key LIKE $1", self.table_name);
-
-        let rows: Vec<(String,)> = sqlx::query_as(&sql)
-            .bind(&like_pattern)
-            .fetch_all(&pool)
-            .await
-            .map_err(|e| StorageError::Database(format!("KV keys_with_prefix failed: {}", e)))?;
-
-        Ok(rows.into_iter().map(|(k,)| k).collect())
+        // SPEC-070: delegate to limited path (O(limit), not unbounded SeqScan risk).
+        const SAFETY_CAP: usize = 100_000;
+        let (keys, truncated) = self.keys_with_prefix_limited(prefix, SAFETY_CAP).await?;
+        if truncated {
+            tracing::warn!(
+                prefix,
+                cap = SAFETY_CAP,
+                "KV keys_with_prefix hit safety cap — prefer keys_with_prefix_limited (SPEC-070)"
+            );
+        }
+        Ok(keys)
     }
 
     async fn keys_with_prefix_limited(
@@ -441,29 +450,17 @@ impl KVStorage for PostgresKVStorage {
     }
 
     async fn keys_with_suffix(&self, suffix: &str) -> Result<Vec<String>> {
-        // SPEC-011 iter 02 Fix C: convert `WHERE key LIKE '%suffix'` into an
-        // indexed prefix scan on the reverse-key expression index.
-        //
-        // Plain LIKE '%suffix' is a full table scan; LIKE 'reverse(suffix)%'
-        // over `reverse(key)` is a B-tree range scan over
-        // `eq_{prefix}_kv_reverse_key_idx` (created in `create_table`).
-        let pool = self.pool.get().await?;
-
-        let reversed: String = escape_like_meta(suffix).chars().rev().collect();
-        let like_pattern = format!("{reversed}%");
-
-        let sql = format!(
-            "SELECT key FROM {} WHERE reverse(key) LIKE $1",
-            self.table_name
-        );
-
-        let rows: Vec<(String,)> = sqlx::query_as(&sql)
-            .bind(&like_pattern)
-            .fetch_all(&pool)
-            .await
-            .map_err(|e| StorageError::Database(format!("KV keys_with_suffix failed: {}", e)))?;
-
-        Ok(rows.into_iter().map(|(k,)| k).collect())
+        // SPEC-011 + SPEC-070: reverse-key index + safety LIMIT (no unbounded fetch).
+        const SAFETY_CAP: usize = 100_000;
+        let (keys, truncated) = self.keys_with_suffix_limited(suffix, SAFETY_CAP).await?;
+        if truncated {
+            tracing::warn!(
+                suffix,
+                cap = SAFETY_CAP,
+                "KV keys_with_suffix hit safety cap — prefer keys_with_suffix_limited (SPEC-070)"
+            );
+        }
+        Ok(keys)
     }
 
     async fn keys_with_suffix_limited(

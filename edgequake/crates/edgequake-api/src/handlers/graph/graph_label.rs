@@ -1,10 +1,10 @@
-//! SSOT for Graph API node `label` (066 Drawing Entity Naming).
+//! SSOT for Graph API node `label` (066 Drawing / 067 Opaque ID soft-label / 072).
 //!
 //! Law: `id` stays the scoped graph node id; `label` is the human surface form.
-//! Prefer `properties.display_name`, then lazy resolve for mm types from
-//! description + id, then bare `properties.label`, then node id.
+//! Delegates to [`edgequake_pipeline::resolve_entity_display_label`] so query
+//! and lineage share the same presentation rules.
 
-use edgequake_pipeline::resolve_mm_display_from_node_props;
+use edgequake_pipeline::resolve_entity_display_label;
 use edgequake_storage::traits::GraphNode;
 
 fn prop_str<'a>(node: &'a GraphNode, key: &str) -> Option<&'a str> {
@@ -13,36 +13,13 @@ fn prop_str<'a>(node: &'a GraphNode, key: &str) -> Option<&'a str> {
 
 /// Human-facing label for a graph node response.
 pub fn graph_node_label(node: &GraphNode) -> String {
-    let entity_type = prop_str(node, "entity_type");
-    let description = prop_str(node, "description");
-    let display_name = prop_str(node, "display_name");
-    let stored_label = prop_str(node, "label");
-
-    let is_mm = matches!(
-        entity_type.map(|s| s.to_ascii_lowercase()).as_deref(),
-        Some("drawing" | "table" | "equation")
-    );
-
-    if is_mm {
-        return resolve_mm_display_from_node_props(
-            &node.id,
-            description,
-            entity_type,
-            display_name.or(stored_label),
-        );
-    }
-
-    // Non-mm: prefer explicit display_name, then properties.label if it differs
-    // usefully from the scoped id, else bare id without workspace scope.
-    if let Some(d) = display_name.map(str::trim).filter(|s| !s.is_empty()) {
-        return d.to_string();
-    }
-    if let Some(l) = stored_label.map(str::trim).filter(|s| !s.is_empty()) {
-        if l != node.id.as_str() {
-            return l.to_string();
-        }
-    }
-    edgequake_pipeline::bare_entity_id(&node.id).to_string()
+    resolve_entity_display_label(
+        &node.id,
+        prop_str(node, "entity_type"),
+        prop_str(node, "description"),
+        prop_str(node, "display_name"),
+        prop_str(node, "label"),
+    )
 }
 
 #[cfg(test)]
@@ -105,5 +82,38 @@ mod tests {
             ],
         );
         assert_eq!(graph_node_label(&n), "SARAH_CHEN");
+    }
+
+    #[test]
+    fn opaque_uuid_uses_description_snippet() {
+        let n = node(
+            "00000000-0000-0000-0000-000000000003::84B69E27-E38B-444A-83DD-5E6A537C6F12",
+            &[
+                ("entity_type", serde_json::json!("ORGANIZATION")),
+                (
+                    "description",
+                    serde_json::json!("Anthropic API resource referenced in the guide"),
+                ),
+                (
+                    "label",
+                    serde_json::json!("84B69E27-E38B-444A-83DD-5E6A537C6F12"),
+                ),
+            ],
+        );
+        let label = graph_node_label(&n);
+        assert!(label.contains("Anthropic API resource"), "got {label}");
+        assert!(
+            !label.contains("84B69E27"),
+            "must not surface UUID: {label}"
+        );
+    }
+
+    #[test]
+    fn opaque_uuid_without_description_uses_type_badge() {
+        let n = node(
+            "84b69e27-e38b-444a-83dd-5e6a537c6f12",
+            &[("entity_type", serde_json::json!("CONCEPT"))],
+        );
+        assert_eq!(graph_node_label(&n), "Opaque ID · CONCEPT");
     }
 }

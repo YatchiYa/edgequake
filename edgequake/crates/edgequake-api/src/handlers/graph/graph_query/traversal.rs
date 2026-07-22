@@ -96,7 +96,7 @@ pub async fn get_graph(
             .filter(|n| !scoped || properties_match_tenant_context(&n.properties, &tenant_ctx))
             .map(|n| GraphNodeResponse {
                 id: n.id.clone(),
-                label: n.id.clone(),
+                label: crate::handlers::graph::graph_node_label(&n),
                 node_type: n
                     .properties
                     .get("entity_type")

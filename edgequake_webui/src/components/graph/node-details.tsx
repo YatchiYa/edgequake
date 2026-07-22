@@ -40,6 +40,7 @@ import { AuthenticatedMarkdownImage } from '@/components/query/markdown/Authenti
 import { deleteEntity, getDocumentMmAssetUrl } from '@/lib/api/edgequake';
 import {
     bareGraphId,
+    displayEntityLabel,
     formatEntityLabel,
     formatEntityType,
     formatMmEntitySubtitle,
@@ -47,6 +48,7 @@ import {
     graphPropString,
     graphSourceDocumentId,
     isMmItemId,
+    isOpaqueIdentifier,
 } from '@/lib/graph/label-utils';
 import { cn } from '@/lib/utils';
 import { useGraphStore } from '@/stores/use-graph-store';
@@ -174,7 +176,10 @@ export function NodeDetails({ node }: NodeDetailsProps) {
       isSource,
       node: otherNode,
       nodeId: otherNodeId,
-      label: otherNode?.label || otherNodeId.slice(0, 12),
+      label: displayEntityLabel({
+        label: otherNode?.label,
+        id: otherNodeId,
+      }),
       type: otherNode?.node_type || 'UNKNOWN',
     };
   });
@@ -209,6 +214,7 @@ export function NodeDetails({ node }: NodeDetailsProps) {
   const identityId = bareGraphId(node.id);
   const showIdentityRow =
     isMmItemId(identityId) ||
+    isOpaqueIdentifier(identityId) ||
     (node.label && identityId && node.label.trim() !== identityId);
 
   const mmThumbSrc = useMemo(() => {

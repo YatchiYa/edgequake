@@ -58,5 +58,15 @@ NNN_descriptive_name.sql
   descriptive_name: snake_case, describes what changed
 ```
 
-Current max: `038_add_source_ids_gin_indexes.sql`  
-Next available: `039_*`
+Current max: `095_extend_task_type_workspace_wipe.sql`  
+Next available: `096_*`
+
+### Every-boot reconcile SSOT (not checksum-locked)
+
+| Version | support path | Purpose |
+|---------|--------------|---------|
+| 083 | `support/083/apply.sql` | Native UNIQUE / eq_* arbiter preference |
+| 086 | `support/086/apply.sql` | EDGE BFS `idx_edge_source_id` / `idx_edge_target_id` (SPEC-070) |
+| 092 | `support/092/apply.sql` | eq_* denorm columns/triggers (SPEC-069); sqlx `092_*.sql` is marker-only |
+
+See SPEC-070: `specs/001-benchmark/001-edgquake-improvements/070-db-ops-excellence.md`.

@@ -140,12 +140,15 @@ pub fn build_sources_from_context(
 
         sources.push(SourceReference {
             source_type: "relationship".to_string(),
+            // Keep identity in id for dedupe; snippet uses presentation labels (073).
             id: format!("{}->{}", rel.source, rel.target),
             score: rel.score,
             rerank_score: None,
             snippet: Some(format!(
                 "{} {} {}",
-                rel.source, rel.relation_type, rel.target
+                rel.display_source(),
+                rel.relation_type,
+                rel.display_target()
             )),
             reference_id: ref_id,
             document_id: rel.source_document_id.clone(),

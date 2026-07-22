@@ -32,7 +32,7 @@ pub async fn search_labels(
     tenant_ctx: TenantContext,
     Query(params): Query<SearchLabelsQuery>,
 ) -> ApiResult<Json<SearchLabelsResponse>> {
-    let labels = storage
+    let raw_labels = storage
         .graph_storage
         .search_labels(
             &params.q,
@@ -41,6 +41,35 @@ pub async fn search_labels(
             tenant_ctx.workspace_id.as_deref(),
         )
         .await?;
+
+    // 072: never surface bare opaque machine IDs in autocomplete.
+    let mut labels = Vec::with_capacity(raw_labels.len());
+    for raw in raw_labels {
+        if edgequake_storage::is_opaque_identifier(&raw) {
+            match storage.graph_storage.get_node(&raw).await {
+                Ok(Some(node)) => {
+                    labels.push(crate::handlers::graph::graph_node_label(&node));
+                }
+                _ => {
+                    labels.push(edgequake_pipeline::soft_label_opaque(None, None));
+                }
+            }
+        } else {
+            let bare = edgequake_pipeline::bare_entity_id(&raw);
+            if edgequake_storage::is_opaque_identifier(bare) {
+                match storage.graph_storage.get_node(&raw).await {
+                    Ok(Some(node)) => {
+                        labels.push(crate::handlers::graph::graph_node_label(&node));
+                    }
+                    _ => {
+                        labels.push(edgequake_pipeline::soft_label_opaque(None, None));
+                    }
+                }
+            } else {
+                labels.push(raw);
+            }
+        }
+    }
 
     Ok(Json(SearchLabelsResponse { labels }))
 }

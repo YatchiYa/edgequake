@@ -286,11 +286,19 @@ impl RetrievedEntity {
 /// A retrieved relationship.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RetrievedRelationship {
-    /// Source entity.
+    /// Source entity graph node id (identity / navigation).
     pub source: String,
 
-    /// Target entity.
+    /// Target entity graph node id (identity / navigation).
     pub target: String,
+
+    /// Human presentation for source (073). Empty → fall back to [`Self::source`].
+    #[serde(default)]
+    pub source_label: String,
+
+    /// Human presentation for target (073). Empty → fall back to [`Self::target`].
+    #[serde(default)]
+    pub target_label: String,
 
     /// Relationship type.
     pub relation_type: String,
@@ -331,9 +339,13 @@ impl RetrievedRelationship {
         target: impl Into<String>,
         relation_type: impl Into<String>,
     ) -> Self {
+        let source = source.into();
+        let target = target.into();
         Self {
-            source: source.into(),
-            target: target.into(),
+            source_label: source.clone(),
+            target_label: target.clone(),
+            source,
+            target,
             relation_type: relation_type.into(),
             description: String::new(),
             score: 0.0,
@@ -342,6 +354,24 @@ impl RetrievedRelationship {
             source_document_id: None,
             source_document_ids: Vec::new(),
             source_file_path: None,
+        }
+    }
+
+    /// Presentation label for source (073).
+    pub fn display_source(&self) -> &str {
+        if self.source_label.trim().is_empty() {
+            &self.source
+        } else {
+            &self.source_label
+        }
+    }
+
+    /// Presentation label for target (073).
+    pub fn display_target(&self) -> &str {
+        if self.target_label.trim().is_empty() {
+            &self.target
+        } else {
+            &self.target_label
         }
     }
 

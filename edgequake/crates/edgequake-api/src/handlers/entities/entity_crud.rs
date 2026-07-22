@@ -129,6 +129,12 @@ pub async fn create_entity(
     Json(req): Json<CreateEntityRequest>,
 ) -> ApiResult<Json<CreateEntityResponse>> {
     let entity_name = normalize_entity_name_for_graph(&req.entity_name);
+    if entity_name.is_empty() {
+        return Err(ApiError::BadRequest(
+            "entity_name is empty or an opaque machine identifier (UUID/GUID/hash); provide a human-readable name"
+                .into(),
+        ));
+    }
 
     // Check if entity already exists in this tenant/workspace
     if let Some(existing) = state.storage.graph_storage.get_node(&entity_name).await? {

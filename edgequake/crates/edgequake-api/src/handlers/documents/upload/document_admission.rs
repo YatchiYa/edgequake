@@ -183,7 +183,8 @@ pub async fn admit_document_for_processing(
     let chunk_strategy = resolve_admission_chunk_strategy(&input);
 
     let document_id = crate::services::ingest_admission::allocate_new_document_id(state).await;
-    let track_id = input.build_track_id(track_prefix);
+    // Batch / client correlation only — never the progress SSOT (068 / SPEC-054).
+    let client_track_id = input.build_track_id(track_prefix);
     let content_summary = crate::validation::generate_content_summary(&input.text_content);
     let content_length = input.text_content.len();
 
@@ -193,6 +194,49 @@ pub async fn admit_document_for_processing(
         .kv_storage
         .upsert(&[(staging_hash_key, json!(document_id))])
         .await?;
+
+    let chunk_options_json = input
+        .chunk_options
+        .as_ref()
+        .and_then(|o| serde_json::to_value(o).ok());
+
+    // SPEC-025 6.1: task payload references KV only — no duplicate text in JSONB.
+    // Create task before metadata write so progress identity = insert-* (068).
+    let task_data = TextInsertData {
+        text: String::new(),
+        file_source: input.title.clone(),
+        workspace_id: workspace_id.clone(),
+        metadata: Some(json!({
+            "document_id": document_id,
+            "title": input.title,
+            "tenant_id": tenant_id,
+            "workspace_id": workspace_id,
+            "source_type": input.source_type,
+            "mime_type": input.mime_type,
+            "content_hash": input.content_hash,
+            "file_size_bytes": input.raw_byte_size,
+            "enable_gleaning": input.gleaning.enable_gleaning,
+            "max_gleaning": input.gleaning.max_gleaning,
+            "chunk_strategy": chunk_strategy.as_str(),
+            "chunk_options": chunk_options_json,
+        })),
+    };
+
+    let mut task = Task::new(
+        uuid::Uuid::parse_str(&tenant_id)
+            .map_err(|_| ApiError::ValidationError("Invalid tenant ID".to_string()))?,
+        uuid::Uuid::parse_str(&workspace_id)
+            .map_err(|_| ApiError::ValidationError("Invalid workspace ID".to_string()))?,
+        TaskType::Insert,
+        serde_json::to_value(task_data).unwrap(),
+    );
+    let task_id = task.track_id.clone();
+    // 068: metadata.track_id == task_id (insert-*) — sole progress / cancel / WS key.
+    let track_id = task_id.clone();
+
+    // SPEC-045 SRE-I03: wire processing timeout for text ingest (parity with PDF metadata).
+    let processing_timeout_secs = resolve_text_ingest_timeout_secs(state, &workspace_id).await;
+    task.metadata = Some(json!({ "processing_timeout_secs": processing_timeout_secs }));
 
     let staging_metadata_key = kv_keys::staging_doc_metadata(&document_id);
     let mut doc_metadata = json!({
@@ -204,6 +248,8 @@ pub async fn admit_document_for_processing(
         "content_hash": input.content_hash,
         "sha256_checksum": input.content_hash,
         "track_id": track_id,
+        "task_id": task_id,
+        "client_track_id": client_track_id,
         "created_at": Utc::now().to_rfc3339(),
         "status": "pending",
         "tenant_id": tenant_id,
@@ -290,47 +336,6 @@ pub async fn admit_document_for_processing(
             json!({ "content": input.text_content }),
         )])
         .await?;
-
-    let chunk_options_json = input
-        .chunk_options
-        .as_ref()
-        .and_then(|o| serde_json::to_value(o).ok());
-
-    // SPEC-025 6.1: task payload references KV only — no duplicate text in JSONB.
-    let task_data = TextInsertData {
-        text: String::new(),
-        file_source: input.title.clone(),
-        workspace_id: workspace_id.clone(),
-        metadata: Some(json!({
-            "document_id": document_id,
-            "title": input.title,
-            "tenant_id": tenant_id,
-            "workspace_id": workspace_id,
-            "source_type": input.source_type,
-            "mime_type": input.mime_type,
-            "content_hash": input.content_hash,
-            "file_size_bytes": input.raw_byte_size,
-            "enable_gleaning": input.gleaning.enable_gleaning,
-            "max_gleaning": input.gleaning.max_gleaning,
-            "chunk_strategy": chunk_strategy.as_str(),
-            "chunk_options": chunk_options_json,
-        })),
-    };
-
-    let task = Task::new(
-        uuid::Uuid::parse_str(&tenant_id)
-            .map_err(|_| ApiError::ValidationError("Invalid tenant ID".to_string()))?,
-        uuid::Uuid::parse_str(&workspace_id)
-            .map_err(|_| ApiError::ValidationError("Invalid workspace ID".to_string()))?,
-        TaskType::Insert,
-        serde_json::to_value(task_data).unwrap(),
-    );
-    let task_id = task.track_id.clone();
-
-    // SPEC-045 SRE-I03: wire processing timeout for text ingest (parity with PDF metadata).
-    let processing_timeout_secs = resolve_text_ingest_timeout_secs(state, &workspace_id).await;
-    let mut task = task;
-    task.metadata = Some(json!({ "processing_timeout_secs": processing_timeout_secs }));
 
     state.enqueue_task(task).await?;
 

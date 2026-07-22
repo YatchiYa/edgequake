@@ -69,13 +69,11 @@ impl PostgresAGEGraphStorage {
 
         self.cypher_execute(&cypher).await?;
 
-        // Ensure indexes exist after first node insertion
-        // AGE creates the Node table lazily, so we need to create indexes
-        // after the first node is inserted
-        if !self.indexes_verified.load(Ordering::Relaxed) {
+        // Ensure indexes exist after first node insertion.
+        // AGE creates the Node table lazily; SPEC-069: ensure_indexes owns
+        // indexes_verified (no force-set) so concurrent workers single-flight DDL.
+        if !self.indexes_verified.load(Ordering::Acquire) {
             self.ensure_indexes().await?;
-            self.indexes_verified.store(true, Ordering::Relaxed);
-            tracing::info!("Created AGE indexes after first node insertion");
         }
 
         Ok(())
@@ -172,12 +170,9 @@ impl PostgresAGEGraphStorage {
             self.cypher_execute(&cypher).await?;
         }
 
-        // Lazily create indexes after the first successful batch (AGE builds the
-        // Node table lazily, mirroring the single-node path).
-        if !self.indexes_verified.load(Ordering::Relaxed) {
+        // Lazily create indexes after the first successful batch (SPEC-069).
+        if !self.indexes_verified.load(Ordering::Acquire) {
             self.ensure_indexes().await?;
-            self.indexes_verified.store(true, Ordering::Relaxed);
-            tracing::info!("Created AGE indexes after first node batch");
         }
 
         Ok(())
@@ -345,11 +340,16 @@ impl PostgresAGEGraphStorage {
         let nodes = crate::graph_batch_dedupe::dedupe_nodes_by_id(nodes);
         let nodes = nodes.as_slice();
         let start = std::time::Instant::now();
-        // SPEC-062: eq_node_id columns/indexes must exist before native INSERT.
-        if !self.indexes_verified.load(Ordering::Relaxed) {
+        // SPEC-062 / SPEC-069: eq_* must exist before native INSERT.
+        // Boot owns DDL; hot path only ensures once (single-flight). Fail closed
+        // if schema still missing — never migrate mid-delete under query timeout.
+        if !self.indexes_verified.load(Ordering::Acquire) {
             self.ensure_indexes().await?;
-            self.indexes_verified.store(true, Ordering::Relaxed);
-            tracing::info!("Created AGE indexes before first native node batch");
+        }
+        if !self.indexes_verified.load(Ordering::Acquire) {
+            return Err(StorageError::Database(
+                "graph schema not bootstrapped (eq_id)".into(),
+            ));
         }
         // Mirror Cypher adaptive chunking — large unnest() statements lock longer
         // and risk statement-size / planner blowups on multi-thousand entity docs.

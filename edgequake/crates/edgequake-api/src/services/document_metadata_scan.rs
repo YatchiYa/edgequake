@@ -196,6 +196,50 @@ pub async fn load_scoped_document_metadata(
     )
 }
 
+/// Progress facade load (068): final workspace docs **plus** in-flight staging metadata.
+///
+/// Text/MD admits write `staging:{doc}-metadata` only until promote. The wsdoc index
+/// skips staging keys, so a non-empty workspace would otherwise 404
+/// `GET /ingestion/{insert-*}/progress` for active inserts.
+pub async fn load_scoped_document_metadata_for_progress(
+    kv_storage: &(dyn KVStorage + Send + Sync),
+    tenant_ctx: &TenantContext,
+) -> ApiResult<Vec<serde_json::Value>> {
+    let mut values = load_scoped_document_metadata(kv_storage, tenant_ctx).await?;
+
+    let staging_keys: Vec<String> = kv_storage
+        .keys_with_prefix("staging:")
+        .await?
+        .into_iter()
+        .filter(|k| k.ends_with(DOCUMENT_METADATA_SUFFIX) && !k.contains(":hash:"))
+        .collect();
+    if staging_keys.is_empty() {
+        return Ok(values);
+    }
+
+    let staging_values = kv_storage.get_by_ids_ordered(&staging_keys).await?;
+    let mut seen_ids: std::collections::HashSet<String> = values
+        .iter()
+        .filter_map(|v| v.get("id").and_then(|i| i.as_str()).map(str::to_string))
+        .collect();
+
+    for value in staging_values.into_iter().flatten() {
+        if !metadata_matches_tenant_context(&value, tenant_ctx) {
+            continue;
+        }
+        let Some(id) = value.get("id").and_then(|i| i.as_str()) else {
+            continue;
+        };
+        if id.is_empty() || seen_ids.contains(id) {
+            // Prefer final `{doc}-metadata` over staging when both exist.
+            continue;
+        }
+        seen_ids.insert(id.to_string());
+        values.push(value);
+    }
+    Ok(values)
+}
+
 /// KV keys to remove when cascade-deleting a workspace's documents.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct WorkspaceDocumentDeletePlan {

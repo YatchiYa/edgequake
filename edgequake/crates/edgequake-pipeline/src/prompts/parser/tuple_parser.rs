@@ -97,9 +97,20 @@ impl TupleParser {
 
                     let normalized_name = normalize_entity_name(raw_name);
 
-                    // BR0006 defense: Skip entities that normalize to empty string
+                    // BR0006 / 067: Skip entities that normalize to empty (numeric or opaque ID)
                     if normalized_name.is_empty() {
-                        tracing::debug!(raw_name = %raw_name, "Skipping entity with empty normalized name");
+                        if edgequake_storage::is_opaque_identifier(raw_name) {
+                            tracing::debug!(
+                                raw_name = %raw_name,
+                                metric = "opaque_entity_name_rejected",
+                                "Skipping opaque identifier entity name (067)"
+                            );
+                        } else {
+                            tracing::debug!(
+                                raw_name = %raw_name,
+                                "Skipping entity with empty normalized name"
+                            );
+                        }
                         continue;
                     }
 

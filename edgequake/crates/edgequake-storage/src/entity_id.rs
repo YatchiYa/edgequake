@@ -182,9 +182,16 @@ impl From<&EntityId> for String {
 ///
 /// Also rejects LightRAG `normalize_extracted_info` numeric empties (056):
 /// pure digits with `len < 3`, or digits+dots with `len < 6` and at least one dot.
+///
+/// Also rejects opaque machine identifiers (067): UUID/GUID, ULID, Mongo
+/// ObjectId, long hex hashes, AWS ARNs. Multimodal `im-…` identities are
+/// **kept** (066 Drawing path uses them as stable node ids).
 pub fn normalize_entity_name(raw_name: &str) -> String {
     let trimmed = raw_name.trim();
-    if trimmed.is_empty() || is_lightrag_rejected_numeric_name(trimmed) {
+    if trimmed.is_empty()
+        || is_lightrag_rejected_numeric_name(trimmed)
+        || is_opaque_identifier(trimmed)
+    {
         return String::new();
     }
 
@@ -212,10 +219,172 @@ pub fn normalize_entity_name(raw_name: &str) -> String {
         .to_uppercase();
 
     // Re-check after fold (e.g. dotted forms that survived whitespace split).
-    if is_lightrag_rejected_numeric_name(&normalized) {
+    if is_lightrag_rejected_numeric_name(&normalized) || is_opaque_identifier(&normalized) {
         return String::new();
     }
     normalized
+}
+
+/// True when `raw` is an opaque machine identifier unsuitable as a semantic
+/// entity name (067).
+///
+/// Strips a leading workspace scope (`{uuid}::NAME`) before checking so
+/// detection runs on the bare name. Multimodal `im-…` / `IM-…` item ids are
+/// **not** opaque for write-reject (they are valid Drawing/Table/Equation
+/// identities); callers that only need display soft-labels should still treat
+/// bare UUID-shaped names as opaque.
+pub fn is_opaque_identifier(raw: &str) -> bool {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+
+    let bare = EntityId::bare_name_from_graph_node_id(trimmed);
+    let bare_l = bare.to_ascii_lowercase();
+
+    // Multimodal item ids (066): stable identity, not rejected at write time.
+    if bare_l.starts_with("im-") {
+        return false;
+    }
+
+    // AWS ARN (conservative prefix match).
+    if bare_l.starts_with("arn:aws:") {
+        return true;
+    }
+
+    let mut candidate = bare.trim();
+    candidate = candidate
+        .strip_prefix('{')
+        .and_then(|s| s.strip_suffix('}'))
+        .unwrap_or(candidate);
+    if let Some(rest) = candidate
+        .strip_prefix("urn:uuid:")
+        .or_else(|| candidate.strip_prefix("URN:UUID:"))
+        .or_else(|| candidate.strip_prefix("uuid:"))
+        .or_else(|| candidate.strip_prefix("UUID:"))
+    {
+        candidate = rest;
+    }
+    // Underscore fold from normalizer: UUID segments may be joined with `_`
+    // only when whitespace was present; hyphenated forms stay hyphenated.
+    let compact = candidate.replace(['-', '_'], "");
+
+    if is_uuid_shape(candidate) {
+        return true;
+    }
+    // Prefixed / tokenized opaque forms: `RESOURCE_<uuid>`, `org:<uuid>`,
+    // or a name whose *only* underscore/colon-separated tokens are a short
+    // prefix plus a full RFC-4122 UUID (072). Do not reject names that merely
+    // contain a short hex substring.
+    if opaque_prefixed_or_token_uuid(candidate) {
+        return true;
+    }
+    // Compact UUID / 32-hex digest (no separators).
+    if compact.len() == 32 && compact.chars().all(|c| c.is_ascii_hexdigit()) {
+        return true;
+    }
+    // SHA-1 (40) / SHA-256 (64) / similar digests.
+    if (compact.len() == 40 || compact.len() == 64 || compact.len() == 128)
+        && compact.chars().all(|c| c.is_ascii_hexdigit())
+    {
+        return true;
+    }
+    // MongoDB ObjectId.
+    if compact.len() == 24 && compact.chars().all(|c| c.is_ascii_hexdigit()) {
+        return true;
+    }
+    // ULID (26 Crockford base32).
+    if is_ulid_shape(candidate) {
+        return true;
+    }
+
+    false
+}
+
+/// True when the whole candidate is a short prefix plus a UUID token.
+fn opaque_prefixed_or_token_uuid(s: &str) -> bool {
+    let s = s.trim();
+    if s.is_empty() {
+        return false;
+    }
+    // Split on `_` or `:` — require exactly one non-UUID prefix token and one UUID.
+    let tokens: Vec<&str> = s.split(['_', ':']).filter(|t| !t.is_empty()).collect();
+    if tokens.len() == 2 {
+        let (a, b) = (tokens[0], tokens[1]);
+        let a_uuid = is_uuid_shape(a);
+        let b_uuid = is_uuid_shape(b);
+        if a_uuid ^ b_uuid {
+            // Prefix must be short alphanumeric (RESOURCE, org, id, …).
+            let prefix = if b_uuid { a } else { b };
+            return prefix.len() <= 32
+                && prefix
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-');
+        }
+    }
+    // Trailing / leading UUID glued with a single underscore after strip of
+    // common `uuid` word already handled above; also catch `NAME_<uuid>` with
+    // multi-segment prefix when the *last* token is a UUID and the rest has
+    // no letters forming a long human phrase — keep conservative: only when
+    // the last token is UUID and every other token is ≤12 ASCII alnum chars.
+    if tokens.len() >= 2 {
+        if let Some(last) = tokens.last() {
+            if is_uuid_shape(last) {
+                let prefix_ok = tokens[..tokens.len() - 1]
+                    .iter()
+                    .all(|t| t.len() <= 12 && t.chars().all(|c| c.is_ascii_alphanumeric()));
+                if prefix_ok {
+                    return true;
+                }
+            }
+        }
+        if let Some(first) = tokens.first() {
+            if is_uuid_shape(first) {
+                let suffix_ok = tokens[1..]
+                    .iter()
+                    .all(|t| t.len() <= 12 && t.chars().all(|c| c.is_ascii_alphanumeric()));
+                if suffix_ok {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// RFC-4122 UUID shape: 8-4-4-4-12 hexadecimal groups.
+fn is_uuid_shape(s: &str) -> bool {
+    let s = s.trim();
+    if s.len() != 36 {
+        return false;
+    }
+    let b = s.as_bytes();
+    if b[8] != b'-' || b[13] != b'-' || b[18] != b'-' || b[23] != b'-' {
+        return false;
+    }
+    for (i, ch) in s.chars().enumerate() {
+        if i == 8 || i == 13 || i == 18 || i == 23 {
+            continue;
+        }
+        if !ch.is_ascii_hexdigit() {
+            return false;
+        }
+    }
+    true
+}
+
+/// ULID: 26 chars from Crockford's Base32 alphabet.
+fn is_ulid_shape(s: &str) -> bool {
+    let s = s.trim();
+    if s.len() != 26 {
+        return false;
+    }
+    s.chars().all(|c| {
+        matches!(
+            c.to_ascii_uppercase(),
+            '0'..='9' | 'A'..='H' | 'J'..='K' | 'M'..='N' | 'P'..='T' | 'V'..='Z'
+        )
+    })
 }
 
 /// LightRAG `normalize_extracted_info` empty-name filters for short numeric labels.
@@ -362,5 +531,89 @@ mod tests {
         assert_eq!(normalize_entity_name("2022"), "2022");
         assert_eq!(normalize_entity_name("BRCA1"), "BRCA1");
         assert_eq!(normalize_entity_name("5 Fluorouracil"), "5_FLUOROURACIL");
+    }
+
+    #[test]
+    fn opaque_uuid_names_normalize_empty() {
+        // 067 — UUID/GUID must not become entity identity
+        assert!(is_opaque_identifier("84b69e27-e38b-444a-83dd-5e6a537c6f12"));
+        assert!(is_opaque_identifier(
+            "{84B69E27-E38B-444A-83DD-5E6A537C6F12}"
+        ));
+        assert!(is_opaque_identifier(
+            "urn:uuid:84b69e27-e38b-444a-83dd-5e6a537c6f12"
+        ));
+        assert_eq!(
+            normalize_entity_name("84b69e27-e38b-444a-83dd-5e6a537c6f12"),
+            ""
+        );
+        assert!(EntityId::new("84b69e27-E38b-444a-83dd-5e6a537c6f12").is_empty());
+        // Compact 32-hex
+        assert_eq!(
+            normalize_entity_name("84b69e27e38b444a83dd5e6a537c6f12"),
+            ""
+        );
+    }
+
+    #[test]
+    fn opaque_ulid_objectid_hash_arn_rejected() {
+        assert!(is_opaque_identifier("01ARZ3NDEKTSV4RRFFQ69G5FAV"));
+        assert_eq!(normalize_entity_name("01ARZ3NDEKTSV4RRFFQ69G5FAV"), "");
+        assert!(is_opaque_identifier("507f1f77bcf86cd799439011"));
+        assert_eq!(normalize_entity_name("507f1f77bcf86cd799439011"), "");
+        let sha = "a".repeat(40);
+        assert!(is_opaque_identifier(&sha));
+        assert_eq!(normalize_entity_name(&sha), "");
+        assert!(is_opaque_identifier("arn:aws:s3:::my-bucket/object-key"));
+        assert_eq!(
+            normalize_entity_name("arn:aws:s3:::my-bucket/object-key"),
+            ""
+        );
+    }
+
+    #[test]
+    fn multimodal_im_ids_and_semantic_names_kept() {
+        // 066 Drawing identity must survive EntityId::new
+        let mm = "im-019f7028-d3e3-7684-8b3b-a9259368329a-page-0002-fig-01";
+        assert!(!is_opaque_identifier(mm));
+        assert!(!EntityId::new(mm).is_empty());
+        assert!(EntityId::new(mm).as_str().starts_with("IM-"));
+
+        assert!(!is_opaque_identifier("Acme Corp"));
+        assert_eq!(normalize_entity_name("Acme Corp"), "ACME_CORP");
+        assert_eq!(normalize_entity_name("New-York"), "NEW-YORK");
+        assert_eq!(normalize_entity_name("BRCA1"), "BRCA1");
+        assert_eq!(normalize_entity_name("2022"), "2022");
+    }
+
+    #[test]
+    fn opaque_check_strips_workspace_scope() {
+        let ws = "e0270f5f-0b6c-4e90-882f-5f9b0eac8cff";
+        let scoped_uuid = format!("{ws}::84b69e27-e38b-444a-83dd-5e6a537c6f12");
+        assert!(is_opaque_identifier(&scoped_uuid));
+        let scoped_name = format!("{ws}::ACME_CORP");
+        assert!(!is_opaque_identifier(&scoped_name));
+    }
+
+    #[test]
+    fn opaque_prefixed_uuid_rejected() {
+        // 072 — PREFIX_UUID / uuid: / org:uuid
+        assert!(is_opaque_identifier(
+            "RESOURCE_84B69E27-E38B-444A-83DD-5E6A537C6F12"
+        ));
+        assert!(is_opaque_identifier(
+            "org:84b69e27-e38b-444a-83dd-5e6a537c6f12"
+        ));
+        assert!(is_opaque_identifier(
+            "uuid:84b69e27-e38b-444a-83dd-5e6a537c6f12"
+        ));
+        assert_eq!(
+            normalize_entity_name("RESOURCE_84B69E27-E38B-444A-83DD-5E6A537C6F12"),
+            ""
+        );
+        // Human names that merely contain short hex must stay.
+        assert!(!is_opaque_identifier("Room 84b6"));
+        assert!(!is_opaque_identifier("ACME_CORP"));
+        assert_eq!(normalize_entity_name("Room 84b6"), "ROOM_84B6");
     }
 }

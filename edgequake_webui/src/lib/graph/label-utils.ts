@@ -48,15 +48,94 @@ export function isMmItemId(raw: string): boolean {
   return bare.startsWith('im-') || /^-?page-\d/.test(bare);
 }
 
+/**
+ * True when the string is an opaque machine identifier (067).
+ * Mirrors `edgequake_storage::is_opaque_identifier` for display defense-in-depth.
+ * Multimodal `im-…` ids are NOT opaque here (066 identity path).
+ */
+export function isOpaqueIdentifier(raw: string): boolean {
+  const bare = bareGraphId(raw).trim();
+  if (!bare) return false;
+  if (isMmItemId(bare)) return false;
+
+  const lower = bare.toLowerCase();
+  if (lower.startsWith('arn:aws:')) return true;
+
+  let candidate = bare.replace(/^\{|\}$/g, '');
+  const lowerCand = candidate.toLowerCase();
+  if (lowerCand.startsWith('urn:uuid:')) {
+    candidate = candidate.slice('urn:uuid:'.length);
+  } else if (lowerCand.startsWith('uuid:')) {
+    candidate = candidate.slice('uuid:'.length);
+  }
+
+  const uuidRe =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (uuidRe.test(candidate)) {
+    return true;
+  }
+
+  // 072 — PREFIX_UUID / org:uuid (sole prefix + UUID tokens)
+  const tokens = candidate.split(/[_:]/).filter(Boolean);
+  if (tokens.length >= 2) {
+    const last = tokens[tokens.length - 1]!;
+    const first = tokens[0]!;
+    const prefixOk = (t: string) =>
+      t.length <= 12 && /^[A-Za-z0-9]+$/.test(t);
+    if (uuidRe.test(last) && tokens.slice(0, -1).every(prefixOk)) {
+      return true;
+    }
+    if (uuidRe.test(first) && tokens.slice(1).every(prefixOk)) {
+      return true;
+    }
+    if (
+      tokens.length === 2 &&
+      ((uuidRe.test(tokens[0]!) && prefixOk(tokens[1]!)) ||
+        (uuidRe.test(tokens[1]!) &&
+          tokens[0]!.length <= 32 &&
+          /^[A-Za-z0-9-]+$/.test(tokens[0]!)))
+    ) {
+      return true;
+    }
+  }
+
+  const compact = candidate.replace(/[-_]/g, '');
+  if (/^[0-9a-f]{32}$/i.test(compact)) return true;
+  if (/^[0-9a-f]{24}$/i.test(compact)) return true;
+  if (/^[0-9a-f]{40}$/i.test(compact) || /^[0-9a-f]{64}$/i.test(compact)) {
+    return true;
+  }
+  // ULID (Crockford base32, 26 chars)
+  if (/^[0-9A-HJKMNP-TV-Z]{26}$/i.test(candidate)) return true;
+
+  return false;
+}
+
 /** True when the label already looks human (spaces, middot, mixed case words). */
 function looksHumanDisplayName(raw: string): boolean {
   if (!raw) return false;
   if (isMmItemId(raw)) return false;
+  if (isOpaqueIdentifier(raw)) return false;
   // Already has spaces or · separators from API display_name
   if (/\s|·/.test(raw)) return true;
   // Title-ish without underscores (avoid re-casing "Architecture")
   if (!/_/.test(raw) && /[a-z]/.test(raw) && /[A-Z]/.test(raw)) return true;
   return false;
+}
+
+/**
+ * Prefer API presentation label, else format identity (073 defense-in-depth).
+ * Never invents names — opaque ids still get short-form / soft-label treatment
+ * via {@link formatEntityLabel}.
+ */
+export function displayEntityLabel(opts: {
+  label?: string | null;
+  id?: string | null;
+  maxLen?: number;
+}): string {
+  const surface = (opts.label?.trim() || opts.id?.trim() || "").trim();
+  if (!surface) return "";
+  return formatEntityLabel(surface, opts.maxLen ?? 35);
 }
 
 /**
@@ -89,6 +168,18 @@ export function formatEntityLabel(raw: string, maxLen = 35): string {
     );
     if (short.length <= maxLen) return short;
     return short.slice(0, maxLen - 1) + '…';
+  }
+
+  // 067 — never title-case UUID/GUID soup into fake words
+  if (isOpaqueIdentifier(bare) || isOpaqueIdentifier(raw)) {
+    const src = isOpaqueIdentifier(raw) ? raw : bare;
+    // Prefer API soft-labels ("Opaque ID · …" / description snippets)
+    if (/\s|·/.test(src)) {
+      if (src.length <= maxLen) return src;
+      return src.slice(0, maxLen - 1) + '…';
+    }
+    if (src.length <= maxLen) return src;
+    return src.slice(0, 8) + '…' + src.slice(-4);
   }
 
   const formatted = bare

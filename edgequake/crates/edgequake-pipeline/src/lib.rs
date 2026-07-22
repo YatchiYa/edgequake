@@ -60,6 +60,7 @@ pub mod adaptive_chunking;
 pub mod cache;
 pub mod chunk_storage;
 pub mod chunker;
+pub mod entity_display;
 pub mod error;
 pub mod extractor;
 pub mod ingestion_pipeline;
@@ -118,6 +119,7 @@ pub use structure_induce::{
     StructureInduceMode, STRUCTURE_INDUCE_ENV,
 };
 // Re-export unified ingestion types for frontend compatibility
+pub use entity_display::{resolve_entity_display_label, soft_label_opaque};
 pub use ingestion_types::{
     error_codes, IngestionError as UnifiedIngestionError,
     IngestionProgress as UnifiedIngestionProgress, SourceType,
@@ -174,11 +176,6 @@ pub use pipeline::{
     resolve_gleaning_for_provider,
     resolve_worker_pool_limits,
     resolve_worker_pool_limits_from,
-    WorkerPoolLimits,
-    LOCAL_DEFAULT_LIFECYCLE_TASKS_PER_TENANT,
-    LOCAL_MAX_INGEST_TASKS_PER_TENANT_CAP,
-    LOCAL_MAX_LIFECYCLE_TASKS_PER_TENANT_CAP,
-    LOCAL_WORKER_THREADS_CAP,
     retry_delay_ms_for_chunk_error,
     ChunkErrorInfo,
     ChunkProgressCallback,
@@ -191,15 +188,20 @@ pub use pipeline::{
     PipelineConfig,
     ProcessingResult,
     ProcessingStats,
+    WorkerPoolLimits,
     ALLOW_LOCAL_HIGH_CONCURRENCY_ENV,
     DEFAULT_CHUNK_MAX_RETRIES,
     DEFAULT_CHUNK_TIMEOUT_SECS,
     DEFAULT_INITIAL_RETRY_DELAY_MS,
     DEFAULT_MAX_CONCURRENT_EXTRACTIONS,
     LOCAL_CHUNK_TIMEOUT_SECS,
+    LOCAL_DEFAULT_LIFECYCLE_TASKS_PER_TENANT,
     LOCAL_ENABLE_GLEANING_ENV,
     LOCAL_MAX_CONCURRENT_EXTRACTIONS,
+    LOCAL_MAX_INGEST_TASKS_PER_TENANT_CAP,
+    LOCAL_MAX_LIFECYCLE_TASKS_PER_TENANT_CAP,
     LOCAL_OVERLOAD_RETRY_DELAY_MS,
+    LOCAL_WORKER_THREADS_CAP,
     MAX_CHUNK_MAX_RETRIES,
     MAX_CONCURRENT_EXTRACTIONS_CAP,
     MAX_GLEANING_CAP,

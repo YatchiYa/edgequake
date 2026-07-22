@@ -3,6 +3,9 @@
  * @description Subscribes to single-doc Deletion* WebSocket events and mirrors
  * them into the delete-session SSOT for the feedback zone.
  *
+ * SPEC-069: poll fallback while sessions are active (mirror wipe) so missed WS
+ * still terminates the panel; long graph phase shows liveness via session fields.
+ *
  * @implements SPEC-050: Delete progress parity with ingestion.
  */
 
@@ -17,6 +20,7 @@ import {
   subscribeDeleteSessions,
   type DeletionSessionEntry,
 } from '@/lib/documents/deletion-session';
+import { getDocument, getTaskStatus } from '@/lib/api/edgequake';
 import { getWebSocketClient } from '@/lib/websocket';
 import type {
   DeletionCompletedEvent,
@@ -36,6 +40,14 @@ function subscribe(cb: () => void): () => void {
 
 function getSnapshot(): DeletionSessionEntry[] {
   return getDeleteSessions();
+}
+
+function isNotFoundError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { status?: number; statusCode?: number; message?: string };
+  if (e.status === 404 || e.statusCode === 404) return true;
+  const msg = (e.message || '').toLowerCase();
+  return msg.includes('404') || msg.includes('not found');
 }
 
 /**
@@ -99,6 +111,90 @@ export function useDeletionSessions(): DeletionSessionEntry[] {
       client.off('progress', handleMessage as (...args: unknown[]) => void);
     };
   }, [queryClient]);
+
+  // SPEC-069: poll document / deletion task while any session is active.
+  useEffect(() => {
+    const active = sessions.filter((s) => s.status === 'active');
+    if (active.length === 0) return;
+
+    let cancelled = false;
+    const pollOne = async (entry: DeletionSessionEntry) => {
+      if (entry.trackId) {
+        try {
+          const task = await getTaskStatus(entry.trackId);
+          if (cancelled) return;
+          const status = (task.status || '').toLowerCase();
+          if (status === 'failed' || status === 'cancelled') {
+            applyDeletionFailed(
+              entry.documentId,
+              task.error_message || 'Deletion failed',
+            );
+            queryClient.invalidateQueries({ queryKey: ['documents'] });
+            return;
+          }
+          if (status === 'indexed' || status === 'completed') {
+            applyDeletionCompleted({
+              documentId: entry.documentId,
+              chunksDeleted: 0,
+              entitiesRemoved: 0,
+              relationshipsRemoved: 0,
+              embeddingsDeleted: 0,
+              partialFailure: false,
+              error: null,
+            });
+            queryClient.invalidateQueries({ queryKey: ['documents'] });
+            invalidateKnowledgeGraph(queryClient);
+            return;
+          }
+        } catch {
+          // Task may not be visible yet; fall through to document poll.
+        }
+      }
+
+      try {
+        const doc = await getDocument(entry.documentId);
+        if (cancelled) return;
+        const status = (doc.status || '').toLowerCase();
+        if (status === 'delete_failed' || status === 'failed') {
+          applyDeletionFailed(
+            entry.documentId,
+            doc.error_message ||
+              doc.stage_message ||
+              'Deletion failed',
+          );
+          queryClient.invalidateQueries({ queryKey: ['documents'] });
+        }
+      } catch (err) {
+        if (cancelled) return;
+        // Gone from catalog → treat as successful delete when WS missed terminal.
+        if (isNotFoundError(err)) {
+          applyDeletionCompleted({
+            documentId: entry.documentId,
+            chunksDeleted: 0,
+            entitiesRemoved: 0,
+            relationshipsRemoved: 0,
+            embeddingsDeleted: 0,
+            partialFailure: false,
+            error: null,
+          });
+          queryClient.invalidateQueries({ queryKey: ['documents'] });
+          invalidateKnowledgeGraph(queryClient);
+        }
+      }
+    };
+
+    const pollAll = async () => {
+      await Promise.all(active.map((e) => pollOne(e)));
+    };
+    void pollAll();
+    const id = window.setInterval(() => {
+      void pollAll();
+    }, 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [sessions, queryClient]);
 
   return sessions;
 }

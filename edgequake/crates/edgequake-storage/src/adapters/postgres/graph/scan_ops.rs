@@ -163,21 +163,6 @@ impl PostgresAGEGraphStorage {
         })
     }
 
-    fn build_source_prefix_clause_modern(props_expr: &str, source_prefixes: &[String]) -> String {
-        let props = format!("({props_expr})::jsonb");
-        let mut conditions = Vec::new();
-        for prefix in source_prefixes {
-            conditions.push(super::helpers::jsonb_matches_doc_source_prefix_modern(
-                &props, prefix,
-            ));
-        }
-        if conditions.is_empty() {
-            "FALSE".to_string()
-        } else {
-            conditions.join(" OR ")
-        }
-    }
-
     fn build_source_prefix_clause_legacy(props_expr: &str, source_prefixes: &[String]) -> String {
         let props = format!("({props_expr})::jsonb");
         let mut conditions = Vec::new();
@@ -193,12 +178,47 @@ impl PostgresAGEGraphStorage {
         }
     }
 
+    /// SPEC-071: legacy LIKE / `source_chunk_ids` path — opt-in only.
+    /// Default off: modern GIN on child tables is the request-path SSOT.
+    fn source_prefix_legacy_enabled() -> bool {
+        match std::env::var("EDGEQUAKE_SOURCE_PREFIX_LEGACY") {
+            Ok(v) => {
+                let v = v.trim().to_ascii_lowercase();
+                matches!(v.as_str(), "1" | "true" | "on" | "yes")
+            }
+            Err(_) => false,
+        }
+    }
+
+    /// Deduplicate exact ids + normalized `{doc}-chunk-` prefixes for GIN probes.
+    fn source_prefix_probe_sets(source_prefixes: &[String]) -> (Vec<String>, Vec<String>) {
+        let mut exact: Vec<String> = source_prefixes
+            .iter()
+            .map(|p| p.trim().to_string())
+            .filter(|p| !p.is_empty())
+            .collect();
+        let mut chunk_prefixes: Vec<String> = exact
+            .iter()
+            .map(|p| super::helpers::normalize_doc_chunk_prefix(p))
+            .collect();
+        exact.sort();
+        exact.dedup();
+        chunk_prefixes.sort();
+        chunk_prefixes.dedup();
+        (exact, chunk_prefixes)
+    }
+
     pub(super) async fn pg_find_nodes_by_source_prefixes(
         &self,
         filter: &NodeListFilter,
         source_prefixes: &[String],
     ) -> Result<Vec<GraphNode>> {
         if source_prefixes.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let (exact_ids, chunk_prefixes) = Self::source_prefix_probe_sets(source_prefixes);
+        if exact_ids.is_empty() {
             return Ok(Vec::new());
         }
 
@@ -210,38 +230,75 @@ impl PostgresAGEGraphStorage {
         // Discovery uses legacy-null workspace match; never require tenant props.
         let tenant_where = Self::build_node_where_clause_for_discovery(filter);
         let props_expr = "ag_catalog.agtype_to_json(v.properties)";
-        let modern_where = Self::build_source_prefix_clause_modern(props_expr, source_prefixes);
-        let legacy_where = Self::build_source_prefix_clause_legacy(props_expr, source_prefixes);
+        let probe_limit = super::helpers::SOURCE_CHUNK_PROBE_LIMIT as i32;
 
-        // Two-path: indexed modern `@>` first, then bounded legacy-only fallback.
+        // SPEC-071: query child "Node" (owns idx_node_source_ids_gin), not parent.
         let modern_sql = format!(
-            "SELECT {props} AS props
-             FROM {graph}.\"_ag_label_vertex\" v
-             WHERE {tenant_where} AND ({modern_where})
-             ORDER BY {props}->>'node_id'",
+            r#"
+            WITH probes AS (
+              SELECT probe_id FROM unnest($1::text[]) AS t(probe_id)
+              UNION
+              SELECT (p.prefix || gs.i::text) AS probe_id
+              FROM unnest($2::text[]) AS p(prefix)
+              CROSS JOIN generate_series(0, $3::int - 1) AS gs(i)
+            )
+            SELECT {props} AS props
+            FROM {graph}."Node" v
+            JOIN probes pr
+              ON (({props})::jsonb -> 'source_ids') @> to_jsonb(pr.probe_id)
+            WHERE {tenant_where}
+            LIMIT 5000
+            "#,
             props = props_expr,
             graph = self.graph_name,
             tenant_where = tenant_where,
-            modern_where = modern_where
-        );
-        let legacy_sql = format!(
-            "SELECT {props} AS props
-             FROM {graph}.\"_ag_label_vertex\" v
-             WHERE {tenant_where} AND ({legacy_where})
-             ORDER BY {props}->>'node_id'
-             LIMIT 5000",
-            props = props_expr,
-            graph = self.graph_name,
-            tenant_where = tenant_where,
-            legacy_where = legacy_where
         );
 
         let mut by_id: HashMap<String, GraphNode> = HashMap::new();
-        for sql in [modern_sql, legacy_sql] {
-            let rows = sqlx::query(&sql).fetch_all(&mut *conn).await.map_err(|e| {
+
+        let modern_rows = sqlx::query(&modern_sql)
+            .bind(&exact_ids)
+            .bind(&chunk_prefixes)
+            .bind(probe_limit)
+            .fetch_all(&mut *conn)
+            .await
+            .map_err(|e| {
                 StorageError::Database(format!("Source-prefix node query failed: {}", e))
             })?;
-            for row in rows {
+        for row in modern_rows {
+            let props: serde_json::Value = row.get("props");
+            let Some(node_id) = props.get("node_id").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let Some(obj) = props.as_object() else {
+                continue;
+            };
+            by_id.entry(node_id.to_string()).or_insert(GraphNode {
+                id: node_id.to_string(),
+                properties: obj.clone().into_iter().collect(),
+            });
+        }
+
+        // SPEC-071: legacy SeqScan only when explicitly enabled (pre-source_ids graphs).
+        if Self::source_prefix_legacy_enabled() {
+            let legacy_where = Self::build_source_prefix_clause_legacy(props_expr, source_prefixes);
+            let legacy_sql = format!(
+                "SELECT {props} AS props
+                 FROM {graph}.\"Node\" v
+                 WHERE {tenant_where} AND ({legacy_where})
+                 LIMIT 5000",
+                props = props_expr,
+                graph = self.graph_name,
+                tenant_where = tenant_where,
+                legacy_where = legacy_where
+            );
+            let legacy_rows = sqlx::query(&legacy_sql)
+                .fetch_all(&mut *conn)
+                .await
+                .map_err(|e| {
+                    StorageError::Database(format!("Source-prefix node query failed: {}", e))
+                })?;
+            for row in legacy_rows {
                 let props: serde_json::Value = row.get("props");
                 let Some(node_id) = props.get("node_id").and_then(|v| v.as_str()) else {
                     continue;
@@ -270,6 +327,11 @@ impl PostgresAGEGraphStorage {
             return Ok(Vec::new());
         }
 
+        let (exact_ids, chunk_prefixes) = Self::source_prefix_probe_sets(source_prefixes);
+        if exact_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
         let pool = self.pool.get().await?;
         let mut conn = pool.acquire().await.map_err(|e| {
             StorageError::Connection(format!("Failed to acquire connection: {}", e))
@@ -277,37 +339,96 @@ impl PostgresAGEGraphStorage {
 
         let tenant_where = Self::build_edge_where_clause_for_discovery(filter);
         let props_expr = "ag_catalog.agtype_to_json(e.properties)";
-        let modern_where = Self::build_source_prefix_clause_modern(props_expr, source_prefixes);
-        let legacy_where = Self::build_source_prefix_clause_legacy(props_expr, source_prefixes);
+        let probe_limit = super::helpers::SOURCE_CHUNK_PROBE_LIMIT as i32;
 
         let mut by_key: HashMap<(String, String), GraphEdge> = HashMap::new();
-        for (source_where, limit_sql) in [
-            (modern_where.as_str(), ""),
-            (legacy_where.as_str(), " LIMIT 5000"),
-        ] {
-            let sql = format!(
+
+        // SPEC-071: child "EDGE" + eq_* endpoints (GIN on child; no parent text-cast JOINs).
+        let modern_sql = format!(
+            r#"
+            WITH probes AS (
+              SELECT probe_id FROM unnest($1::text[]) AS t(probe_id)
+              UNION
+              SELECT (p.prefix || gs.i::text) AS probe_id
+              FROM unnest($2::text[]) AS p(prefix)
+              CROSS JOIN generate_series(0, $3::int - 1) AS gs(i)
+            )
+            SELECT
+                {props} AS props,
+                e.eq_source_id AS source_id,
+                e.eq_target_id AS target_id
+            FROM {graph}."EDGE" e
+            JOIN probes pr
+              ON (({props})::jsonb -> 'source_ids') @> to_jsonb(pr.probe_id)
+            WHERE {tenant_where}
+              AND e.eq_source_id IS NOT NULL
+              AND e.eq_target_id IS NOT NULL
+            LIMIT 5000
+            "#,
+            props = props_expr,
+            graph = self.graph_name,
+            tenant_where = tenant_where,
+        );
+        let modern_rows = sqlx::query(&modern_sql)
+            .bind(&exact_ids)
+            .bind(&chunk_prefixes)
+            .bind(probe_limit)
+            .fetch_all(&mut *conn)
+            .await
+            .map_err(|e| {
+                StorageError::Database(format!("Source-prefix edge query failed: {}", e))
+            })?;
+        for row in modern_rows {
+            let props: serde_json::Value = row.get("props");
+            let source: String = row.get("source_id");
+            let target: String = row.get("target_id");
+            if source.is_empty() || target.is_empty() {
+                continue;
+            }
+            let Some(obj) = props.as_object() else {
+                continue;
+            };
+            by_key
+                .entry((source.clone(), target.clone()))
+                .or_insert(GraphEdge {
+                    source,
+                    target,
+                    properties: obj.clone().into_iter().collect(),
+                });
+        }
+
+        if Self::source_prefix_legacy_enabled() {
+            let legacy_where = Self::build_source_prefix_clause_legacy(props_expr, source_prefixes);
+            // Legacy enrich: still on child "EDGE"; endpoints via eq_* (no ORDER BY).
+            let legacy_sql = format!(
                 "SELECT
                     {props} AS props,
-                    ag_catalog.agtype_to_json(sv.properties)->>'node_id' AS source_id,
-                    ag_catalog.agtype_to_json(tv.properties)->>'node_id' AS target_id
-                 FROM {graph}.\"_ag_label_edge\" e
-                 JOIN {graph}.\"_ag_label_vertex\" sv ON e.start_id::text = sv.id::text
-                 JOIN {graph}.\"_ag_label_vertex\" tv ON e.end_id::text = tv.id::text
-                 WHERE {tenant_where} AND ({source_where})
-                 ORDER BY source_id, target_id{limit_sql}",
+                    e.eq_source_id AS source_id,
+                    e.eq_target_id AS target_id
+                 FROM {graph}.\"EDGE\" e
+                 WHERE {tenant_where}
+                   AND ({legacy_where})
+                   AND e.eq_source_id IS NOT NULL
+                   AND e.eq_target_id IS NOT NULL
+                 LIMIT 5000",
                 props = props_expr,
                 graph = self.graph_name,
                 tenant_where = tenant_where,
-                source_where = source_where,
-                limit_sql = limit_sql
+                legacy_where = legacy_where
             );
-            let rows = sqlx::query(&sql).fetch_all(&mut *conn).await.map_err(|e| {
-                StorageError::Database(format!("Source-prefix edge query failed: {}", e))
-            })?;
-            for row in rows {
+            let legacy_rows = sqlx::query(&legacy_sql)
+                .fetch_all(&mut *conn)
+                .await
+                .map_err(|e| {
+                    StorageError::Database(format!("Source-prefix edge query failed: {}", e))
+                })?;
+            for row in legacy_rows {
                 let props: serde_json::Value = row.get("props");
                 let source: String = row.get("source_id");
                 let target: String = row.get("target_id");
+                if source.is_empty() || target.is_empty() {
+                    continue;
+                }
                 let Some(obj) = props.as_object() else {
                     continue;
                 };
@@ -397,27 +518,48 @@ mod source_prefix_clause_tests {
     use super::PostgresAGEGraphStorage;
 
     #[test]
-    fn source_prefix_clause_casts_agtype_json_to_jsonb() {
+    fn source_prefix_legacy_clause_casts_agtype_json_to_jsonb() {
         let prefixes = ["doc-abc".to_string()];
         let props = "ag_catalog.agtype_to_json(v.properties)";
-        let modern = PostgresAGEGraphStorage::build_source_prefix_clause_modern(props, &prefixes);
         let legacy = PostgresAGEGraphStorage::build_source_prefix_clause_legacy(props, &prefixes);
-        for clause in [&modern, &legacy] {
-            assert!(
-                clause.contains("::jsonb"),
-                "jsonb_* functions require jsonb cast: {clause}"
-            );
-        }
         assert!(
-            modern.contains("@>") || modern.contains("jsonb_build_array"),
-            "modern path should use GIN-friendly containment: {modern}"
+            legacy.contains("::jsonb"),
+            "jsonb_* functions require jsonb cast: {legacy}"
         );
         assert!(legacy.contains("jsonb_typeof") || legacy.contains("jsonb_array_elements_text"));
-        // Combined helper keeps both paths for callers that need a single predicate.
-        let combined = crate::adapters::postgres::graph::helpers::jsonb_matches_doc_source_prefix(
-            &format!("({props})::jsonb"),
-            "doc-abc",
+        // Modern discovery uses probe JOIN (@>), not the removed giant-OR helper.
+        let modern =
+            crate::adapters::postgres::graph::helpers::jsonb_matches_doc_source_prefix_modern(
+                &format!("({props})::jsonb"),
+                "doc-abc",
+            );
+        assert!(modern.contains("@>") || modern.contains("jsonb_build_array"));
+        assert!(
+            !modern.contains("source_chunk_ids"),
+            "modern clause must stay GIN-only on source_ids: {modern}"
         );
-        assert!(combined.contains("::jsonb"));
+    }
+
+    #[test]
+    fn source_prefix_legacy_disabled_by_default() {
+        // Ensure unset / non-truthy does not enable residual SeqScan path.
+        std::env::remove_var("EDGEQUAKE_SOURCE_PREFIX_LEGACY");
+        assert!(!PostgresAGEGraphStorage::source_prefix_legacy_enabled());
+        std::env::set_var("EDGEQUAKE_SOURCE_PREFIX_LEGACY", "0");
+        assert!(!PostgresAGEGraphStorage::source_prefix_legacy_enabled());
+        std::env::set_var("EDGEQUAKE_SOURCE_PREFIX_LEGACY", "1");
+        assert!(PostgresAGEGraphStorage::source_prefix_legacy_enabled());
+        std::env::remove_var("EDGEQUAKE_SOURCE_PREFIX_LEGACY");
+    }
+
+    #[test]
+    fn source_prefix_probe_sets_dedup_exact_and_chunk_prefix() {
+        let (exact, chunks) = PostgresAGEGraphStorage::source_prefix_probe_sets(&[
+            "doc-a".to_string(),
+            "doc-a".to_string(),
+            "doc-a-chunk-".to_string(),
+        ]);
+        assert_eq!(exact, vec!["doc-a".to_string(), "doc-a-chunk-".to_string()]);
+        assert_eq!(chunks, vec!["doc-a-chunk-".to_string()]);
     }
 }

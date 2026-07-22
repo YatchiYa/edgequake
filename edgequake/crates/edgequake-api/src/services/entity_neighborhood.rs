@@ -81,6 +81,7 @@ pub async fn build_entity_neighborhood(
             let degree = degree_map.get(node_id).copied().unwrap_or(0);
             nodes.push(NeighborhoodNode {
                 id: node.id.clone(),
+                label: crate::handlers::graph::graph_node_label(&node),
                 entity_type: node
                     .properties
                     .get("entity_type")

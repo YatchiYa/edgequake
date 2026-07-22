@@ -133,15 +133,15 @@ pub fn format_entity_line(entity: &RetrievedEntity) -> String {
 
 /// Format string used when estimating relationship tokens.
 pub fn format_relationship_line(rel: &RetrievedRelationship) -> String {
+    // 073: use presentation labels so LLM context never embeds bare UUIDs.
+    let src = rel.display_source();
+    let tgt = rel.display_target();
     if rel.description.is_empty() {
-        format!(
-            "- {} --[{}]--> {}\n",
-            rel.source, rel.relation_type, rel.target
-        )
+        format!("- {} --[{}]--> {}\n", src, rel.relation_type, tgt)
     } else {
         format!(
             "- {} --[{}]--> {}: {}\n",
-            rel.source, rel.relation_type, rel.target, rel.description
+            src, rel.relation_type, tgt, rel.description
         )
     }
 }
@@ -470,5 +470,17 @@ mod tests {
         let chunk_pos = s.find("### Chunks").expect("chunks");
         assert!(rel_pos < ent_pos && ent_pos < chunk_pos);
         assert!(s.contains("PARTNERS_WITH"));
+    }
+
+    #[test]
+    fn relationship_line_uses_soft_labels_not_raw_uuid() {
+        let opaque = "84B69E27-E38B-444A-83DD-5E6A537C6F12";
+        let mut rel = RetrievedRelationship::new(opaque, "AI_NEXT_CONFERENCE", "HAS_THEME");
+        rel.source_label = "Future of work theme from the agenda".into();
+        rel.target_label = "AI Next Conference".into();
+        let line = format_relationship_line(&rel);
+        assert!(line.contains("Future of work"), "got {line}");
+        assert!(line.contains("AI Next Conference"), "got {line}");
+        assert!(!line.contains("84B69E27"), "must not embed UUID: {line}");
     }
 }

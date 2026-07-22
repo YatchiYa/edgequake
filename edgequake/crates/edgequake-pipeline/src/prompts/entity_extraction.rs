@@ -49,7 +49,8 @@ You are a Knowledge Graph Specialist responsible for extracting entities and rel
 1.  **Entity Extraction & Output:**
     *   **Identification:** Identify clearly defined and meaningful entities in the input text.
     *   **Entity Details:** For each identified entity, extract the following information:
-        *   `entity_name`: The name of the entity. If the entity name is case-insensitive, capitalize the first letter of each significant word (title case). Ensure **consistent naming** across the entire extraction process.
+        *   `entity_name`: The **human-readable semantic name** of the entity. If the entity name is case-insensitive, capitalize the first letter of each significant word (title case). Ensure **consistent naming** across the entire extraction process.
+        *   **Opaque identifiers (FORBIDDEN as entity_name):** Do **not** use UUIDs, GUIDs, ULIDs, MongoDB ObjectIds, hex hashes, AWS ARNs, or other opaque machine/resource IDs as `entity_name`. Prefer the human referent (e.g. organization, product, project, API resource type). If an opaque ID appears in the text, you may mention it inside `entity_description`, but never as the name.
         *   `entity_type`: {entity_type_instruction}
         *   `entity_description`: Provide a concise yet comprehensive description of the entity's attributes and activities, based *solely* on the information present in the input text.
     *   **Output Format - Entities:** Output a total of 4 fields for each entity, delimited by `{tuple_delimiter}`, on a single line. The first field *must* be the literal string `entity`.
@@ -254,6 +255,9 @@ mod tests {
         assert!(system.contains("PERSON, ORGANIZATION"));
         assert!(system.contains("<|#|>"));
         assert!(system.contains("<|COMPLETE|>"));
+        // 067 — opaque ID hygiene (intentional LightRAG divergence)
+        assert!(system.contains("Opaque identifiers"));
+        assert!(system.contains("UUID"));
     }
 
     #[test]

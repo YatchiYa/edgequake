@@ -129,6 +129,8 @@ pub async fn get_entity_provenance(
         });
     }
 
+    let presentation_name = crate::handlers::graph::graph_node_label(&node);
+
     // SPEC-006 P1: O(degree) lookup via get_node_edges (no full graph scan)
     let node_edges = storage.graph_storage.get_node_edges(&normalized_id).await?;
     let mut related: Vec<RelatedEntityInfo> = Vec::new();
@@ -140,9 +142,21 @@ pub async fn get_entity_provenance(
         } else {
             continue;
         };
+        let other_name = match crate::services::lookup_entity_node_for_context(
+            storage.graph_storage.as_ref(),
+            &other_id,
+            &tenant_ctx,
+        )
+        .await
+        {
+            Ok(other_node) => crate::handlers::graph::graph_node_label(&other_node),
+            Err(_) => {
+                edgequake_pipeline::resolve_entity_display_label(&other_id, None, None, None, None)
+            }
+        };
         related.push(RelatedEntityInfo {
-            entity_id: other_id.clone(),
-            entity_name: other_id,
+            entity_id: other_id,
+            entity_name: other_name,
             relationship_type: edge
                 .properties
                 .get("keywords")
@@ -154,8 +168,8 @@ pub async fn get_entity_provenance(
     }
 
     Ok(Json(EntityProvenanceResponse {
-        entity_id: normalized_id.clone(),
-        entity_name: normalized_id,
+        entity_id: normalized_id,
+        entity_name: presentation_name,
         entity_type,
         description,
         sources: entity_sources,

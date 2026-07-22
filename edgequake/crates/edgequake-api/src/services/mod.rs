@@ -136,7 +136,8 @@ pub use document_deletion::{
     reset_deleting_status, DocumentDeletionResult,
 };
 pub use document_graph_cascade::{
-    analyze_deletion_impact_stats, cascade_remove_document_sources, cleanup_document_graph_data,
+    analyze_deletion_impact_stats, cascade_remove_document_sources,
+    cascade_remove_document_sources_with_progress, cleanup_document_graph_data,
     find_document_edges, find_document_nodes, find_relationships_for_document_lineage,
     sources_for_document, CascadeStats, CleanupStats, DocumentSourceScope,
 };

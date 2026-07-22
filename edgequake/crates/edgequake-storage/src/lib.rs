@@ -97,7 +97,7 @@ pub mod vector_id;
 pub use storage_op_metrics::TimedStorageOp;
 
 // Re-export entity identity (RC-6 / P-G1): single normalization entry point.
-pub use entity_id::{normalize_entity_name, EntityId};
+pub use entity_id::{is_opaque_identifier, normalize_entity_name, EntityId};
 
 // Re-export community detection
 pub use crate::community_index_service::{

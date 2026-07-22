@@ -94,10 +94,13 @@ mod tests {
             document_id: "doc-123".to_string(),
             chunk_count: 5,
             entities: vec![EntitySummaryResponse {
+                id: "JOHN_DOE".to_string(),
                 name: "JOHN_DOE".to_string(),
+                label: "JOHN_DOE".to_string(),
                 entity_type: "person".to_string(),
                 source_chunks: vec!["doc-123-chunk-0".to_string()],
                 is_shared: false,
+                description: None,
             }],
             relationships: vec![RelationshipSummaryResponse {
                 source: "JOHN_DOE".to_string(),

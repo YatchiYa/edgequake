@@ -89,4 +89,40 @@ impl PostgresAGEGraphStorage {
         Self::setup_age_session(conn).await?;
         Self::apply_age_tenant_rls_context(conn, tenant_id).await
     }
+
+    /// SPEC-069: DDL-only session GUCs — never apply the query `statement_timeout`.
+    ///
+    /// Postgres ops guidance (2026): `statement_timeout = 0` so legitimate DDL can
+    /// finish; short `lock_timeout` so contended ShareLock/ACCESS EXCLUSIVE waits
+    /// fail fast instead of stacking behind delete/ingest traffic.
+    pub(in crate::adapters::postgres::graph) async fn setup_age_ddl_session(
+        conn: &mut sqlx::PgConnection,
+    ) -> Result<()> {
+        sqlx::query("LOAD 'age'")
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| StorageError::Database(format!("Failed to load AGE: {}", e)))?;
+        sqlx::query("SET search_path = ag_catalog, \"$user\", public")
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| StorageError::Database(format!("Failed to set AGE search path: {}", e)))?;
+        let lock_timeout = std::env::var("EDGEQUAKE_GRAPH_DDL_LOCK_TIMEOUT")
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .unwrap_or_else(|| "5s".to_string());
+        sqlx::query("SET statement_timeout = 0")
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                StorageError::Database(format!("Failed to clear statement_timeout for DDL: {}", e))
+            })?;
+        sqlx::query(&format!(
+            "SET lock_timeout = '{}'",
+            lock_timeout.replace('\'', "")
+        ))
+        .execute(&mut *conn)
+        .await
+        .map_err(|e| StorageError::Database(format!("Failed to set DDL lock_timeout: {}", e)))?;
+        Ok(())
+    }
 }

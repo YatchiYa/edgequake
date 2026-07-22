@@ -444,14 +444,20 @@ impl PostgresAGEGraphStorage {
         let edges = crate::graph_batch_dedupe::dedupe_edges_by_endpoints(edges);
         let edges = edges.as_slice();
         let start = std::time::Instant::now();
-        // SPEC-062: eq_source_id / eq_target_id / eq_node_id must exist before native INSERT.
+        // SPEC-062 / SPEC-069: eq_* must exist before native INSERT (fail closed).
         if !self
             .indexes_verified
-            .load(std::sync::atomic::Ordering::Relaxed)
+            .load(std::sync::atomic::Ordering::Acquire)
         {
             self.ensure_indexes().await?;
-            self.indexes_verified
-                .store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        if !self
+            .indexes_verified
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            return Err(crate::error::StorageError::Database(
+                "graph schema not bootstrapped (eq_id)".into(),
+            ));
         }
         let chunk_size = Self::adaptive_edge_chunk_size(edges);
         let mut inserted_or_updated = 0u64;

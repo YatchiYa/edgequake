@@ -404,18 +404,9 @@ mod tests {
     }
 
     fn create_test_relationship(source: &str, target: &str) -> RetrievedRelationship {
-        RetrievedRelationship {
-            source: source.to_string(),
-            target: target.to_string(),
-            relation_type: "TEST".to_string(),
-            description: "Test relationship".to_string(),
-            score: 1.0,
-            source_chunk_id: None,
-            source_chunk_ids: Vec::new(),
-            source_document_id: None,
-            source_document_ids: Vec::new(),
-            source_file_path: None,
-        }
+        RetrievedRelationship::new(source, target, "TEST")
+            .with_description("Test relationship")
+            .with_score(1.0)
     }
 
     fn create_test_chunk(id: &str, content: &str) -> RetrievedChunk {

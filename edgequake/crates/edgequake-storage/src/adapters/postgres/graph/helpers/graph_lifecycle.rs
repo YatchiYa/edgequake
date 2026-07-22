@@ -129,12 +129,21 @@ impl PostgresAGEGraphStorage {
     }
 
     pub(in crate::adapters::postgres::graph) async fn ensure_indexes(&self) -> Result<()> {
+        use std::sync::atomic::Ordering;
+
+        // SPEC-069: single-flight — concurrent deletion/ingest must not race DDL.
+        let _guard = self.ensure_indexes_lock.lock().await;
+        if self.indexes_verified.load(Ordering::Acquire) {
+            return Ok(());
+        }
+
         let pool = self.pool.get().await?;
         let mut conn = pool.acquire().await.map_err(|e| {
             StorageError::Connection(format!("Failed to acquire connection: {}", e))
         })?;
 
-        Self::setup_age_session_scoped(&mut conn, None).await?;
+        // DDL path: statement_timeout=0 + short lock_timeout (not query 15s).
+        Self::setup_age_ddl_session(&mut conn).await?;
 
         let index_queries = [
             // ── "Node" label indexes (child table — contains all node rows) ──────────
@@ -312,7 +321,69 @@ impl PostgresAGEGraphStorage {
         // SPEC-062: denormalized text id columns — avoid per-row agtype_to_json on hot paths.
         self.ensure_eq_id_columns(&mut conn).await?;
 
+        // Mark verified only when eq_* schema is fully present (lazy AGE tables may
+        // still be pending — leave flag false so first real upsert can finish DDL).
+        if self.eq_id_schema_ready(&mut conn).await? {
+            self.indexes_verified.store(true, Ordering::Release);
+            tracing::info!(
+                graph = %self.graph_name,
+                "SPEC-069: graph indexes + eq_* schema verified (DDL off hot path)"
+            );
+        }
+
         Ok(())
+    }
+
+    /// Catalog probe: eq_* columns, unique indexes, and sync triggers all present.
+    pub(in crate::adapters::postgres::graph) async fn eq_id_schema_ready(
+        &self,
+        conn: &mut sqlx::PgConnection,
+    ) -> Result<bool> {
+        let g = &self.graph_name;
+        let ready: bool = sqlx::query_scalar(
+            r#"
+            SELECT
+              EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = $1 AND table_name = 'Node' AND column_name = 'eq_node_id'
+              )
+              AND EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = $1 AND table_name = 'EDGE' AND column_name = 'eq_source_id'
+              )
+              AND EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = $1 AND table_name = 'EDGE' AND column_name = 'eq_target_id'
+              )
+              AND EXISTS (
+                SELECT 1 FROM pg_indexes
+                WHERE schemaname = $1 AND indexname = 'idx_node_eq_node_id'
+              )
+              AND EXISTS (
+                SELECT 1 FROM pg_indexes
+                WHERE schemaname = $1 AND indexname = 'idx_edge_eq_source_target'
+              )
+              AND EXISTS (
+                SELECT 1 FROM pg_trigger t
+                JOIN pg_class c ON c.oid = t.tgrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = $1 AND c.relname = 'Node'
+                  AND t.tgname = 'trg_eq_sync_node_id' AND NOT t.tgisinternal
+              )
+              AND EXISTS (
+                SELECT 1 FROM pg_trigger t
+                JOIN pg_class c ON c.oid = t.tgrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = $1 AND c.relname = 'EDGE'
+                  AND t.tgname = 'trg_eq_sync_edge_ids' AND NOT t.tgisinternal
+              )
+            "#,
+        )
+        .bind(g)
+        .fetch_one(&mut *conn)
+        .await
+        .unwrap_or(false);
+        Ok(ready)
     }
 
     /// Add `eq_node_id` / `eq_source_id` / `eq_target_id` + btree UNIQUE + sync triggers.
@@ -329,12 +400,29 @@ impl PostgresAGEGraphStorage {
     /// under concurrent/speculative inserts (Postgres INSERT ON CONFLICT docs + dual
     /// unique index race). After `eq_*` UNIQUEs exist, drop the legacy expression
     /// UNIQUEs so there is a single arbiter.
+    ///
+    /// # SPEC-069
+    ///
+    /// Catalog early-exit: when columns + indexes + triggers already exist, return
+    /// immediately. Never `DROP TRIGGER` on the hot path — that was racing workers
+    /// under the 15s query `statement_timeout`.
     pub(in crate::adapters::postgres::graph) async fn ensure_eq_id_columns(
         &self,
         conn: &mut sqlx::pool::PoolConnection<sqlx::Postgres>,
     ) -> Result<()> {
+        // O(1) catalog probe — modern graphs skip all DDL.
+        if self.eq_id_schema_ready(conn.as_mut()).await? {
+            tracing::debug!(
+                graph = %self.graph_name,
+                "SPEC-069: eq_* schema already present — skip DDL"
+            );
+            return Ok(());
+        }
+
         let g = &self.graph_name;
-        let stmts = [
+
+        // Columns + backfill + indexes (idempotent IF NOT EXISTS).
+        let column_stmts = [
             format!(r#"ALTER TABLE {g}."Node" ADD COLUMN IF NOT EXISTS eq_node_id text"#),
             format!(r#"ALTER TABLE {g}."EDGE" ADD COLUMN IF NOT EXISTS eq_source_id text"#),
             format!(r#"ALTER TABLE {g}."EDGE" ADD COLUMN IF NOT EXISTS eq_target_id text"#),
@@ -365,61 +453,11 @@ impl PostgresAGEGraphStorage {
                 r#"CREATE INDEX IF NOT EXISTS idx_edge_eq_target_id
                    ON {g}."EDGE" (eq_target_id) WHERE eq_target_id IS NOT NULL"#
             ),
-            // Triggers keep columns in sync when Cypher or legacy paths touch properties only.
-            format!(
-                r#"CREATE OR REPLACE FUNCTION {g}_eq_sync_node_id() RETURNS trigger AS $$
-                   BEGIN
-                     NEW.eq_node_id := ag_catalog.agtype_to_json(NEW.properties)->>'node_id';
-                     RETURN NEW;
-                   END;
-                   $$ LANGUAGE plpgsql"#
-            ),
-            format!(r#"DROP TRIGGER IF EXISTS trg_eq_sync_node_id ON {g}."Node""#),
-            format!(
-                r#"CREATE TRIGGER trg_eq_sync_node_id
-                   BEFORE INSERT OR UPDATE OF properties ON {g}."Node"
-                   FOR EACH ROW EXECUTE PROCEDURE {g}_eq_sync_node_id()"#
-            ),
-            format!(
-                r#"CREATE OR REPLACE FUNCTION {g}_eq_sync_edge_ids() RETURNS trigger AS $$
-                   BEGIN
-                     NEW.eq_source_id := ag_catalog.agtype_to_json(NEW.properties)->>'source_id';
-                     NEW.eq_target_id := ag_catalog.agtype_to_json(NEW.properties)->>'target_id';
-                     RETURN NEW;
-                   END;
-                   $$ LANGUAGE plpgsql"#
-            ),
-            format!(r#"DROP TRIGGER IF EXISTS trg_eq_sync_edge_ids ON {g}."EDGE""#),
-            format!(
-                r#"CREATE TRIGGER trg_eq_sync_edge_ids
-                   BEFORE INSERT OR UPDATE OF properties ON {g}."EDGE"
-                   FOR EACH ROW EXECUTE PROCEDURE {g}_eq_sync_edge_ids()"#
-            ),
-            // Drop legacy expression UNIQUEs only when eq_* arbiters exist.
-            format!(
-                r#"DO $drop$
-                   BEGIN
-                     IF EXISTS (
-                       SELECT 1 FROM pg_indexes
-                       WHERE schemaname = '{g}' AND indexname = 'idx_node_eq_node_id'
-                     ) THEN
-                       EXECUTE 'DROP INDEX IF EXISTS {g}.idx_node_prop_node_id_unique';
-                     END IF;
-                     IF EXISTS (
-                       SELECT 1 FROM pg_indexes
-                       WHERE schemaname = '{g}' AND indexname = 'idx_edge_eq_source_target'
-                     ) THEN
-                       EXECUTE 'DROP INDEX IF EXISTS {g}.idx_edge_source_target_unique';
-                     END IF;
-                   END
-                   $drop$"#
-            ),
         ];
 
-        for sql in &stmts {
+        for sql in &column_stmts {
             if let Err(e) = sqlx::query(sql).execute(&mut **conn).await {
                 let msg = e.to_string();
-                // Graph label tables may not exist yet on brand-new empty DBs.
                 if msg.contains("does not exist") || msg.contains("undefined_table") {
                     tracing::debug!(error = %e, "SPEC-062 eq_id columns skipped (table pending)");
                     return Ok(());
@@ -431,6 +469,120 @@ impl PostgresAGEGraphStorage {
                 );
             }
         }
+
+        // Triggers: create only when missing — never unconditional DROP+CREATE.
+        let node_trig: bool = sqlx::query_scalar(
+            r#"
+            SELECT EXISTS (
+              SELECT 1 FROM pg_trigger t
+              JOIN pg_class c ON c.oid = t.tgrelid
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = $1 AND c.relname = 'Node'
+                AND t.tgname = 'trg_eq_sync_node_id' AND NOT t.tgisinternal
+            )
+            "#,
+        )
+        .bind(g)
+        .fetch_one(&mut **conn)
+        .await
+        .unwrap_or(false);
+
+        if !node_trig {
+            let fn_sql = format!(
+                r#"CREATE OR REPLACE FUNCTION {g}_eq_sync_node_id() RETURNS trigger AS $$
+                   BEGIN
+                     NEW.eq_node_id := ag_catalog.agtype_to_json(NEW.properties)->>'node_id';
+                     RETURN NEW;
+                   END;
+                   $$ LANGUAGE plpgsql"#
+            );
+            let trg_sql = format!(
+                r#"CREATE TRIGGER trg_eq_sync_node_id
+                   BEFORE INSERT OR UPDATE OF properties ON {g}."Node"
+                   FOR EACH ROW EXECUTE PROCEDURE {g}_eq_sync_node_id()"#
+            );
+            for sql in [&fn_sql, &trg_sql] {
+                if let Err(e) = sqlx::query(sql).execute(&mut **conn).await {
+                    let msg = e.to_string();
+                    if msg.contains("does not exist") || msg.contains("undefined_table") {
+                        return Ok(());
+                    }
+                    if msg.contains("already exists") {
+                        continue;
+                    }
+                    tracing::warn!(error = %e, "SPEC-062 eq_id node trigger DDL warning");
+                }
+            }
+        }
+
+        let edge_trig: bool = sqlx::query_scalar(
+            r#"
+            SELECT EXISTS (
+              SELECT 1 FROM pg_trigger t
+              JOIN pg_class c ON c.oid = t.tgrelid
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = $1 AND c.relname = 'EDGE'
+                AND t.tgname = 'trg_eq_sync_edge_ids' AND NOT t.tgisinternal
+            )
+            "#,
+        )
+        .bind(g)
+        .fetch_one(&mut **conn)
+        .await
+        .unwrap_or(false);
+
+        if !edge_trig {
+            let fn_sql = format!(
+                r#"CREATE OR REPLACE FUNCTION {g}_eq_sync_edge_ids() RETURNS trigger AS $$
+                   BEGIN
+                     NEW.eq_source_id := ag_catalog.agtype_to_json(NEW.properties)->>'source_id';
+                     NEW.eq_target_id := ag_catalog.agtype_to_json(NEW.properties)->>'target_id';
+                     RETURN NEW;
+                   END;
+                   $$ LANGUAGE plpgsql"#
+            );
+            let trg_sql = format!(
+                r#"CREATE TRIGGER trg_eq_sync_edge_ids
+                   BEFORE INSERT OR UPDATE OF properties ON {g}."EDGE"
+                   FOR EACH ROW EXECUTE PROCEDURE {g}_eq_sync_edge_ids()"#
+            );
+            for sql in [&fn_sql, &trg_sql] {
+                if let Err(e) = sqlx::query(sql).execute(&mut **conn).await {
+                    let msg = e.to_string();
+                    if msg.contains("does not exist") || msg.contains("undefined_table") {
+                        return Ok(());
+                    }
+                    if msg.contains("already exists") {
+                        continue;
+                    }
+                    tracing::warn!(error = %e, "SPEC-062 eq_id edge trigger DDL warning");
+                }
+            }
+        }
+
+        // Drop legacy expression UNIQUEs only when eq_* arbiters exist.
+        let drop_legacy = format!(
+            r#"DO $drop$
+               BEGIN
+                 IF EXISTS (
+                   SELECT 1 FROM pg_indexes
+                   WHERE schemaname = '{g}' AND indexname = 'idx_node_eq_node_id'
+                 ) THEN
+                   EXECUTE 'DROP INDEX IF EXISTS {g}.idx_node_prop_node_id_unique';
+                 END IF;
+                 IF EXISTS (
+                   SELECT 1 FROM pg_indexes
+                   WHERE schemaname = '{g}' AND indexname = 'idx_edge_eq_source_target'
+                 ) THEN
+                   EXECUTE 'DROP INDEX IF EXISTS {g}.idx_edge_source_target_unique';
+                 END IF;
+               END
+               $drop$"#
+        );
+        if let Err(e) = sqlx::query(&drop_legacy).execute(&mut **conn).await {
+            tracing::debug!(error = %e, "SPEC-062 legacy UNIQUE drop skipped");
+        }
+
         Ok(())
     }
 

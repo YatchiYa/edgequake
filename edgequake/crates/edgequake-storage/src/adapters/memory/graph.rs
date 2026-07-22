@@ -20,10 +20,10 @@
 
 use async_trait::async_trait;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::RwLock;
 
-use crate::error::Result;
+use crate::error::{Result, StorageError};
 use crate::traits::{
     edge_matches_list_filter, edge_matches_relationship_id, edge_matches_scope_dims,
     node_matches_list_filter, sources_match_prefixes, EdgeListFilter, GraphEdge, GraphNode,
@@ -46,6 +46,8 @@ pub struct MemoryGraphStorage {
     clear_workspace_calls: AtomicU64,
     find_nodes_by_source_prefixes_calls: AtomicU64,
     find_edges_by_source_prefixes_calls: AtomicU64,
+    /// SPEC-071: next `find_edges_by_source_prefixes` returns Database error once.
+    fail_next_find_edges_by_source_prefixes: AtomicBool,
 }
 
 impl MemoryGraphStorage {
@@ -59,7 +61,14 @@ impl MemoryGraphStorage {
             clear_workspace_calls: AtomicU64::new(0),
             find_nodes_by_source_prefixes_calls: AtomicU64::new(0),
             find_edges_by_source_prefixes_calls: AtomicU64::new(0),
+            fail_next_find_edges_by_source_prefixes: AtomicBool::new(false),
         }
+    }
+
+    /// SPEC-071 test hook: inject a one-shot source-prefix edge discovery failure.
+    pub fn fail_next_find_edges_by_source_prefixes(&self) {
+        self.fail_next_find_edges_by_source_prefixes
+            .store(true, Ordering::Relaxed);
     }
 
     /// How many times [`GraphStorageMutateOps::clear_workspace`] was invoked.
@@ -1129,6 +1138,14 @@ impl GraphScanOps for MemoryGraphStorage {
     ) -> Result<Vec<GraphEdge>> {
         self.find_edges_by_source_prefixes_calls
             .fetch_add(1, Ordering::Relaxed);
+        if self
+            .fail_next_find_edges_by_source_prefixes
+            .swap(false, Ordering::Relaxed)
+        {
+            return Err(StorageError::Database(
+                "injected: canceling statement due to statement timeout".into(),
+            ));
+        }
         let edges = self.edges.read().map_err(super::lock::map_lock_err)?;
         let mut matched: Vec<GraphEdge> = edges
             .iter()
