@@ -39,14 +39,16 @@ Phase 3 — Local quality gates
 [x] 3-C  make test-e2e-lint + contract_067/072/073 + vitest label-utils/source-mapper
 
 Phase 4 — Commit + push
-[ ] 4-A  git commit -m "release: bump to v0.20.2"
-[ ] 4-B  git push origin edgequake-main
+[x] 4-A  git commit -m "release: bump to v0.20.2" (`48262c65`)
+[x] 4-B  git push origin edgequake-main
 
 Phase 5 — Tag + CI/CD
-[ ] 5-A  git tag v0.20.2 && git push origin v0.20.2
-[ ] 5-B  gh release view v0.20.2
-[ ] 5-C  docker buildx imagetools inspect GHCR tags (api/frontend/postgres + pg16/pg17/pg18)
+[x] 5-A  git tag v0.20.2 && git push origin v0.20.2
+[x] 5-B  gh release view v0.20.2 — https://github.com/raphaelmansuy/edgequake/releases/tag/v0.20.2
+[x] 5-C  docker buildx imagetools inspect GHCR tags (api/frontend/postgres + pg16/pg17/pg18)
 ```
+
+CD run: https://github.com/raphaelmansuy/edgequake/actions/runs/29902599057 (success)
 
 ### Local gate notes
 
