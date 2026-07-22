@@ -32,14 +32,18 @@ export function documentLineageToKnowledgeGraph(
   const bump = (id: string) => degree.set(id, (degree.get(id) ?? 0) + 1);
 
   const nodes: GraphNode[] = lineage.entities.map((entity) => {
-    const id = entity.name;
+    // 072: id = graph identity; label = API soft-label (never bare UUID).
+    const id = entity.id ?? entity.name;
+    const surface = entity.label ?? entity.name;
+    const sharedNote = entity.is_shared
+      ? "Shared with other documents in this workspace"
+      : undefined;
+    const description = entity.description?.trim() || sharedNote;
     return {
       id,
-      label: formatEntityLabel(id),
+      label: formatEntityLabel(surface),
       node_type: normalizeEntityType(entity.entity_type),
-      description: entity.is_shared
-        ? "Shared with other documents in this workspace"
-        : undefined,
+      description,
       properties: {
         source_chunks: entity.source_chunks,
         is_shared: entity.is_shared,

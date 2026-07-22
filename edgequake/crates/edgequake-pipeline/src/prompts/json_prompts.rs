@@ -31,6 +31,10 @@ pub fn json_extraction_prompt(text: &str, schema: &EntityExtractionSchema) -> St
 
 {limits}
 
+## Naming Rules
+- Use human-readable semantic names for entities (title case when case-insensitive).
+- Do **not** use UUIDs, GUIDs, ULIDs, MongoDB ObjectIds, hex hashes, AWS ARNs, or other opaque machine/resource IDs as entity `name`. Prefer the human referent; opaque IDs may appear only in `description`.
+
 {JSON_OUTPUT_FORMAT_SECTION}
 
 ## Text to Analyze
@@ -64,6 +68,7 @@ Focus on:
 - Implicit entities (mentioned indirectly)
 - Additional relationships between known entities
 - Contextual entities (locations, concepts, methods, natural objects)
+- Do **not** add UUIDs, GUIDs, hashes, ARNs, or other opaque machine IDs as entity names
 
 {types_section}
 
@@ -91,6 +96,8 @@ mod tests {
         assert!(prompt.contains("Alice works at Acme."));
         assert!(prompt.contains("\"entities\""));
         assert!(prompt.contains("JSON Response"));
+        assert!(prompt.contains("Naming Rules"));
+        assert!(prompt.contains("UUID"));
     }
 
     #[test]

@@ -18,12 +18,11 @@ mod source_lineage_sql;
 mod vertex_filter;
 
 pub(in crate::adapters::postgres::graph) use source_lineage_sql::{
-    jsonb_matches_doc_source_prefix_legacy, jsonb_matches_doc_source_prefix_modern,
-    normalize_doc_chunk_prefix, SOURCE_CHUNK_PROBE_LIMIT,
+    jsonb_matches_doc_source_prefix_legacy, normalize_doc_chunk_prefix, SOURCE_CHUNK_PROBE_LIMIT,
 };
 
 #[cfg(test)]
-pub(in crate::adapters::postgres::graph) use source_lineage_sql::jsonb_matches_doc_source_prefix;
+pub(in crate::adapters::postgres::graph) use source_lineage_sql::jsonb_matches_doc_source_prefix_modern;
 
 pub(in crate::adapters::postgres::graph) use vertex_filter::{
     EdgeTenantFilterMode, VertexTenantFilterMode,

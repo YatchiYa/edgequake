@@ -18,6 +18,8 @@ impl PostgresAGEGraphStorage {
 
         // CRITICAL: Create indexes for query performance
         // Without these, Cypher queries like MATCH (n:Node {node_id: 'xxx'}) scan all vertices
+        // SPEC-069: ensure_indexes is boot-owned + single-flight; sets indexes_verified
+        // when eq_* schema is ready so delete/ingest hot paths skip DDL.
         self.ensure_indexes().await?;
 
         // SPEC-032 W-01: Bootstrap critical btree indexes CONCURRENTLY for
@@ -27,11 +29,23 @@ impl PostgresAGEGraphStorage {
         // Edge cases: AGE not installed, graph not yet created, INVALID index → all handled.
         self.bootstrap_concurrent_indexes().await?;
 
+        // Re-check after concurrent bootstrap — mark verified when catalog is ready.
+        if !self.indexes_verified.load(Ordering::Acquire) {
+            let pool = self.pool.get().await?;
+            let mut conn = pool.acquire().await.map_err(|e| {
+                StorageError::Connection(format!("Failed to acquire connection: {}", e))
+            })?;
+            if self.eq_id_schema_ready(&mut conn).await? {
+                self.indexes_verified.store(true, Ordering::Release);
+            }
+        }
+
         self.initialized.store(true, Ordering::Relaxed);
 
         tracing::info!(
-            "Initialized PostgresAGEGraphStorage with graph '{}' (indexes verified, concurrent bootstrap done)",
-            self.graph_name
+            graph = %self.graph_name,
+            indexes_verified = self.indexes_verified.load(Ordering::Relaxed),
+            "Initialized PostgresAGEGraphStorage (SPEC-069 boot-owned DDL)"
         );
 
         Ok(())

@@ -124,10 +124,18 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         for entity in entities {
             let entity_id = EntityId::new(&entity.name);
             if entity_id.is_empty() {
-                tracing::warn!(
-                    raw_name = %entity.name,
-                    "Skipping entity with empty normalized name"
-                );
+                if edgequake_storage::is_opaque_identifier(&entity.name) {
+                    tracing::warn!(
+                        raw_name = %entity.name,
+                        metric = "opaque_entity_name_rejected",
+                        "Skipping opaque identifier entity name (067)"
+                    );
+                } else {
+                    tracing::warn!(
+                        raw_name = %entity.name,
+                        "Skipping entity with empty normalized name"
+                    );
+                }
                 continue;
             }
             // SPEC-032 / B3b: workspace-scoped AGE node_id so Acc WS cannot

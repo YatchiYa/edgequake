@@ -159,8 +159,16 @@ pub struct ContextEntity {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ContextRelationship {
     pub id: String,
+    /// Graph node id (identity / navigation).
     pub source: String,
+    /// Graph node id (identity / navigation).
     pub target: String,
+    /// Human presentation for source (073).
+    #[serde(default)]
+    pub source_label: String,
+    /// Human presentation for target (073).
+    #[serde(default)]
+    pub target_label: String,
     pub relation_type: String,
     pub description: String,
     pub score: f32,

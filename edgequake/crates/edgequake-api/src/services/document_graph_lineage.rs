@@ -10,7 +10,11 @@ use std::sync::Arc;
 
 use edgequake_storage::traits::{collect_source_references, GraphEdge, GraphNode, GraphStorage};
 
+use edgequake_pipeline::bare_entity_id;
+use edgequake_storage::is_opaque_identifier;
+
 use crate::error::ApiResult;
+use crate::handlers::graph::graph_node_label;
 use crate::handlers::lineage_types::{EntitySummaryResponse, RelationshipSummaryResponse};
 use crate::middleware::TenantContext;
 use crate::services::{
@@ -41,11 +45,28 @@ pub fn entity_summary_from_node(
         .and_then(|v| v.as_str())
         .unwrap_or("unknown")
         .to_string();
+    let label = graph_node_label(node);
+    let bare = bare_entity_id(&node.id);
+    let name = if is_opaque_identifier(bare) {
+        label.clone()
+    } else {
+        bare.to_string()
+    };
+    let description = node
+        .properties
+        .get("description")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
     Some(EntitySummaryResponse {
-        name: node.id.clone(),
+        id: node.id.clone(),
+        name,
+        label,
         entity_type,
         source_chunks: doc_sources,
         is_shared: all_sources.len() > 1,
+        description,
     })
 }
 
@@ -84,7 +105,7 @@ pub async fn build_document_graph_lineage(
         .filter_map(|node| entity_summary_from_node(node, &scope))
         .collect();
 
-    let entity_ids: Vec<String> = entities.iter().map(|e| e.name.clone()).collect();
+    let entity_ids: Vec<String> = entities.iter().map(|e| e.id.clone()).collect();
 
     let relationships: Vec<RelationshipSummaryResponse> =
         find_relationships_for_document_lineage(graph, Some(tenant_ctx), &scope, &entity_ids)
@@ -178,5 +199,79 @@ mod tests {
         assert_eq!(summary.source, "A");
         assert_eq!(summary.target, "B");
         assert_eq!(summary.keywords, "uses");
+    }
+
+    #[test]
+    fn entity_summary_soft_labels_opaque_uuid() {
+        let scope = DocumentSourceScope::from_document_id("doc-1");
+        let mut props = HashMap::new();
+        props.insert("entity_type".to_string(), serde_json::json!("CONCEPT"));
+        props.insert(
+            "description".to_string(),
+            serde_json::json!("Future of work theme from the agenda"),
+        );
+        props.insert(
+            "source_ids".to_string(),
+            serde_json::json!(["doc-1-chunk-0"]),
+        );
+        props.insert(
+            "label".to_string(),
+            serde_json::json!("84B69E27-E38B-444A-83DD-5E6A537C6F12"),
+        );
+        let node = GraphNode {
+            id: "84B69E27-E38B-444A-83DD-5E6A537C6F12".into(),
+            properties: props,
+        };
+        let summary = entity_summary_from_node(&node, &scope).expect("summary");
+        assert_eq!(summary.id, "84B69E27-E38B-444A-83DD-5E6A537C6F12");
+        assert!(
+            summary.label.contains("Future of work"),
+            "got {}",
+            summary.label
+        );
+        assert!(!summary.label.contains("84B69E27"));
+        assert_eq!(summary.name, summary.label);
+        assert!(summary.description.is_some());
+    }
+
+    #[test]
+    fn entity_summary_opaque_without_description_uses_type_badge() {
+        let scope = DocumentSourceScope::from_document_id("doc-1");
+        let mut props = HashMap::new();
+        props.insert("entity_type".to_string(), serde_json::json!("CONCEPT"));
+        props.insert(
+            "source_ids".to_string(),
+            serde_json::json!(["doc-1-chunk-0"]),
+        );
+        let node = GraphNode {
+            id: "84b69e27-e38b-444a-83dd-5e6a537c6f12".into(),
+            properties: props,
+        };
+        let summary = entity_summary_from_node(&node, &scope).expect("summary");
+        assert_eq!(summary.label, "Opaque ID · CONCEPT");
+        assert_eq!(summary.name, "Opaque ID · CONCEPT");
+    }
+
+    #[test]
+    fn entity_summary_human_name_keeps_bare_identity() {
+        let scope = DocumentSourceScope::from_document_id("doc-1");
+        let mut props = HashMap::new();
+        props.insert("entity_type".to_string(), serde_json::json!("PERSON"));
+        props.insert("label".to_string(), serde_json::json!("SARAH_CHEN"));
+        props.insert(
+            "source_ids".to_string(),
+            serde_json::json!(["doc-1-chunk-0"]),
+        );
+        let node = GraphNode {
+            id: "00000000-0000-0000-0000-000000000003::SARAH_CHEN".into(),
+            properties: props,
+        };
+        let summary = entity_summary_from_node(&node, &scope).expect("summary");
+        assert_eq!(
+            summary.id,
+            "00000000-0000-0000-0000-000000000003::SARAH_CHEN"
+        );
+        assert_eq!(summary.name, "SARAH_CHEN");
+        assert_eq!(summary.label, "SARAH_CHEN");
     }
 }

@@ -33,6 +33,8 @@ import { invalidateKnowledgeGraph } from "@/lib/cache-manager";
 import {
     applyDeletionFailed,
     beginDeleteSession,
+    bindDeleteSessionTrackId,
+    getDeleteSession,
     patchDocumentsDeletingOptimistic,
 } from "@/lib/documents/deletion-session";
 import {
@@ -197,16 +199,22 @@ export function useDocumentMutations(
   const deleteMutation = useMutation({
     mutationFn: deleteDocument,
     onMutate: (documentId: string) => {
-      // Paint-first fallback if caller did not begin a named session yet.
-      beginDeleteSession({
-        documentId,
-        documentName: documentId.slice(0, 8),
-      });
+      // SPEC-069: never overwrite a named session with hex id.slice(0,8).
+      // Caller (DocumentManager) begins with file_name/title first.
+      if (!getDeleteSession(documentId)) {
+        beginDeleteSession({
+          documentId,
+          documentName: documentId.slice(0, 8),
+        });
+      }
       patchDocumentsDeletingOptimistic(queryClient, documentId);
     },
-    onSuccess: (data, _documentId) => {
+    onSuccess: (data, documentId) => {
       // HTTP 202 admit — WebSocket DeletionCompleted is the terminal SSOT.
       // Do not toast "deleted" here (cascade may still be running).
+      if (data?.track_id) {
+        bindDeleteSessionTrackId(documentId, data.track_id);
+      }
       if (data?.accepted) {
         toast.success(t("documents.delete.accepted", "Deletion started"), {
           duration: 2500,

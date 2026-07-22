@@ -77,14 +77,20 @@ export interface DocumentGraphLineageResponse {
 
 /** Entity summary in lineage response. */
 export interface EntitySummaryResponse {
-  /** Entity name. */
+  /** Graph node id (edge endpoints / stable identity). */
+  id?: string;
+  /** Bare semantic name, or soft-label when opaque (BC). */
   name: string;
+  /** Human presentation label (072 SSOT). */
+  label?: string;
   /** Entity type. */
   entity_type: string;
   /** Source chunk IDs. */
   source_chunks: string[];
   /** Whether entity is shared with other documents. */
   is_shared: boolean;
+  /** Optional description for detail panels. */
+  description?: string | null;
 }
 
 /** Relationship summary in lineage response. */

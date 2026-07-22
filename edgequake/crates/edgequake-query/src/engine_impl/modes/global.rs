@@ -268,6 +268,16 @@ impl QueryEngine {
             context.add_chunk(chunk);
         }
 
+        // 073: soft-label relationship endpoints for Connections / LLM context.
+        if let Err(e) = crate::helpers::resolve_relationship_endpoint_labels(
+            &self.graph_read(),
+            &mut context.relationships,
+        )
+        .await
+        {
+            tracing::warn!(error = %e, "failed to resolve relationship endpoint labels");
+        }
+
         Ok(context)
     }
 }

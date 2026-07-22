@@ -39,7 +39,7 @@ Docker SSOT: `edgequake/docker/Dockerfile.postgres{,.pg17,.pg18}` + `extension-p
 | --- | --- | --- |
 | HNSW default for continuous ingest | `VectorIndexType::HNSW` | Aligned |
 | `m=16` | default | Aligned |
-| `ef_construction` 64–128 prod start | default **32** (SPEC-034 size tradeoff) | **Profile:** env `EDGEQUAKE_HNSW_EF_CONSTRUCTION` (32 dev / 128 prod); no boot REINDEX |
+| `ef_construction` 64–128 prod start | default **64** (pgvector upstream) | **Profile:** env `EDGEQUAKE_HNSW_EF_CONSTRUCTION`; no boot REINDEX |
 | Filtered ANN → `iterative_scan` | `relaxed_order` + `max_scan_tuples=20000` | Aligned |
 | Unfiltered ANN → iterative off | `query()` does not set it | Aligned |
 | `ef_search = f(top_k)` | `clamp(4×top_k, 40, 1000)` | Aligned |
@@ -62,9 +62,9 @@ Docker SSOT: `edgequake/docker/Dockerfile.postgres{,.pg17,.pg18}` + `extension-p
 
 | Practice (Microsoft Learn AGE performance) | EdgeQuake | Status |
 | --- | --- | --- |
-| AGE creates **no** indexes by default | `ensure_indexes` + M038/M083 | Aligned |
-| BTREE on id / start_id / end_id | lifecycle | Aligned |
-| GIN on properties + expr BTREE hot keys | GIN + UNIQUE node_id / edge ends | Aligned |
+| AGE 1.7+ may auto-index id/start_id/end_id; property indexes still required | `ensure_indexes` + M038/M083/M086/M092 every-boot | Aligned (SPEC-070) |
+| BTREE on id / start_id / end_id | lifecycle + AGE 1.7 | Aligned |
+| GIN on properties + expr BTREE hot keys | GIN + **eq_*** UNIQUE arbiters (+ legacy fallback) | Aligned |
 | EXPLAIN inside Cypher for plans | Q3-c style gates | Aligned |
 | Prefer SQL for aggregation / ID lookup | native upsert + batch get | Aligned |
 | Explicit labels in MATCH | `:Node` / `:EDGE` | Aligned |

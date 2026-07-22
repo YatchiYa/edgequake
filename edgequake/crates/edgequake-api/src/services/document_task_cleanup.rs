@@ -239,10 +239,7 @@ mod tests {
         );
         let deletion_id = deletion.track_id.clone();
         if let Some(obj) = deletion.task_data.as_object_mut() {
-            obj.insert(
-                "deletion_track_id".into(),
-                serde_json::json!(&deletion_id),
-            );
+            obj.insert("deletion_track_id".into(), serde_json::json!(&deletion_id));
         }
         deletion.status = TaskStatus::Processing;
         state.tasks.storage.create_task(&deletion).await.unwrap();
@@ -256,14 +253,9 @@ mod tests {
         let ingest_id = ingest.track_id.clone();
         state.tasks.storage.create_task(&ingest).await.unwrap();
 
-        let removed = purge_persisted_tasks_for_document_except(
-            &state,
-            doc_id,
-            None,
-            None,
-            &deletion_id,
-        )
-        .await;
+        let removed =
+            purge_persisted_tasks_for_document_except(&state, doc_id, None, None, &deletion_id)
+                .await;
         assert!(removed >= 1, "ingest task for doc should be purged");
 
         let kept = state

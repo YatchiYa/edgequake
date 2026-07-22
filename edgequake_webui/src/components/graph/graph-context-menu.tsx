@@ -7,6 +7,7 @@ import {
     ContextMenuLabel,
     ContextMenuSeparator,
 } from '@/components/ui/context-menu';
+import { formatEntityLabel } from '@/lib/graph/label-utils';
 import type { GraphNode } from '@/types';
 import {
     Copy,
@@ -72,7 +73,9 @@ export const GraphContextMenu = memo(function GraphContextMenu({
       {children}
       <ContextMenuContent className="w-56">
         <ContextMenuLabel className="flex items-center gap-2 font-normal">
-          <span className="font-semibold truncate">{node.label}</span>
+          <span className="font-semibold truncate">
+            {formatEntityLabel(node.label ?? node.id)}
+          </span>
           <span className="text-xs text-muted-foreground">({node.node_type})</span>
         </ContextMenuLabel>
         <ContextMenuSeparator />
@@ -180,7 +183,9 @@ export function StandaloneGraphContextMenu({
       >
         {/* Node label header */}
         <div className="px-2 py-1.5 text-sm">
-          <span className="font-semibold truncate">{node.label}</span>
+          <span className="font-semibold truncate">
+            {formatEntityLabel(node.label ?? node.id)}
+          </span>
           <span className="text-xs text-muted-foreground ml-1">({node.node_type})</span>
         </div>
         <div className="h-px bg-border my-1" />

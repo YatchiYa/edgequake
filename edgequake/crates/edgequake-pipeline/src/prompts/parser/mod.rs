@@ -475,4 +475,73 @@ relation<|#|>A<|#|>   <|#|>broken<|#|>Empty target
         assert_eq!(result.relationships.len(), 1);
         assert_eq!(result.relationships[0].relation_type, "VALID");
     }
+
+    // =========================================================================
+    // 067 — Opaque identifier entity names rejected
+    // =========================================================================
+
+    #[test]
+    fn test_tuple_opaque_uuid_entity_names_filtered() {
+        let parser = TupleParser::new();
+        let response = r#"entity<|#|>84b69e27-e38b-444a-83dd-5e6a537c6f12<|#|>ORGANIZATION<|#|>An Anthropic resource id
+entity<|#|>Acme Corp<|#|>ORGANIZATION<|#|>A real company
+relation<|#|>84b69e27-e38b-444a-83dd-5e6a537c6f12<|#|>Acme Corp<|#|>uses<|#|>Opaque endpoint dropped
+relation<|#|>Acme Corp<|#|>Gabriel Greenfield<|#|>employs<|#|>Valid edge
+entity<|#|>Gabriel Greenfield<|#|>PERSON<|#|>Author
+<|COMPLETE|>"#;
+
+        let result = parser.parse(response, "chunk-1").unwrap();
+        assert!(
+            result
+                .entities
+                .iter()
+                .all(|e| !e.name.contains("84B69E27") && !e.name.contains('-')),
+            "UUID entity must be filtered: {:?}",
+            result.entities
+        );
+        assert!(
+            result.entities.iter().any(|e| e.name == "ACME_CORP"),
+            "semantic org kept: {:?}",
+            result.entities
+        );
+        assert!(
+            result
+                .entities
+                .iter()
+                .any(|e| e.name == "GABRIEL_GREENFIELD"),
+            "person kept: {:?}",
+            result.entities
+        );
+        assert_eq!(result.relationships.len(), 1);
+        assert_eq!(result.relationships[0].source, "ACME_CORP");
+        assert_eq!(result.relationships[0].target, "GABRIEL_GREENFIELD");
+    }
+
+    #[test]
+    fn test_json_opaque_uuid_entity_names_filtered() {
+        let parser = JsonExtractionParser::new();
+        let response = r#"{
+            "entities": [
+                {"name": "84b69e27-e38b-444a-83dd-5e6a537c6f12", "type": "ORGANIZATION", "description": "Resource id"},
+                {"name": "Acme Corp", "type": "ORGANIZATION", "description": "A company"}
+            ],
+            "relationships": [
+                {"source": "84b69e27-e38b-444a-83dd-5e6a537c6f12", "target": "Acme Corp", "type": "USES", "description": "dropped"},
+                {"source": "Acme Corp", "target": "Acme Corp", "type": "SELF", "description": "self ref dropped"}
+            ]
+        }"#;
+
+        let result = parser.parse(response, "chunk-1").unwrap();
+        assert_eq!(result.entities.len(), 1);
+        assert_eq!(result.entities[0].name, "ACME_CORP");
+        assert!(result.relationships.is_empty());
+    }
+
+    #[test]
+    fn test_tuple_multimodal_im_id_not_rejected_by_parser_normalize() {
+        // Merger/mm path relies on EntityId keeping im- identities; parser should too
+        // if an inject path ever feeds through tuple parse with that name.
+        let mm = "im-019f7028-d3e3-7684-8b3b-a9259368329a-page-0002-fig-01";
+        assert!(!crate::prompts::normalize_entity_name(mm).is_empty());
+    }
 }

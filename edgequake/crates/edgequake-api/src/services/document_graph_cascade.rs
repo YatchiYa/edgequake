@@ -190,8 +190,34 @@ pub async fn cascade_remove_document_sources(
     tenant_ctx: Option<&TenantContext>,
     scope: &DocumentSourceScope,
 ) -> ApiResult<CascadeStats> {
+    cascade_remove_document_sources_with_progress(
+        graph,
+        vector_storage,
+        tenant_ctx,
+        scope,
+        |_, _| {},
+    )
+    .await
+}
+
+/// Same as [`cascade_remove_document_sources`], with SPEC-069 progress ticks.
+///
+/// `on_progress(processed, total)` is called after discovery and after each
+/// major mutate batch so WS clients see liveness during long shared upserts.
+pub async fn cascade_remove_document_sources_with_progress<F>(
+    graph: &Arc<dyn GraphStorage>,
+    vector_storage: Option<&Arc<dyn VectorStorage>>,
+    tenant_ctx: Option<&TenantContext>,
+    scope: &DocumentSourceScope,
+    mut on_progress: F,
+) -> ApiResult<CascadeStats>
+where
+    F: FnMut(u32, u32),
+{
     let mut stats = CascadeStats::default();
     let affected_nodes = find_document_nodes(graph, tenant_ctx, scope).await?;
+    let nodes_discovered = affected_nodes.len() as u32;
+    on_progress(0, nodes_discovered);
 
     let mut node_ids_to_delete: Vec<String> = Vec::new();
     let mut nodes_to_update: Vec<(String, HashMap<String, serde_json::Value>)> = Vec::new();
@@ -236,11 +262,20 @@ pub async fn cascade_remove_document_sources(
         }
     }
 
+    let edges_discovered = edges_to_process.len() as u32;
+    let items_total = nodes_discovered.saturating_add(edges_discovered);
+    // SPEC-069: second tick with real totals after full discovery.
+    on_progress(0, items_total);
+
+    let mut processed = 0u32;
+
     if !node_ids_to_delete.is_empty() {
         graph
             .delete_nodes_batch(&node_ids_to_delete)
             .await
             .map_err(ApiError::from)?;
+        processed = processed.saturating_add(node_ids_to_delete.len() as u32);
+        on_progress(processed, items_total);
         if let Some(vs) = vector_storage {
             match vs.delete_entities_batch(&node_ids_to_delete).await {
                 Ok(n) => stats.embeddings_deleted += n,
@@ -256,10 +291,13 @@ pub async fn cascade_remove_document_sources(
     }
 
     if !nodes_to_update.is_empty() {
+        on_progress(processed, items_total);
         graph
             .upsert_nodes_batch(&nodes_to_update)
             .await
             .map_err(ApiError::from)?;
+        processed = processed.saturating_add(nodes_to_update.len() as u32);
+        on_progress(processed, items_total);
     }
 
     let mut edges_to_delete: Vec<(String, String)> = Vec::new();
@@ -299,15 +337,21 @@ pub async fn cascade_remove_document_sources(
             .delete_edges_batch(&edges_to_delete)
             .await
             .map_err(ApiError::from)?;
+        processed = processed.saturating_add(edges_to_delete.len() as u32);
+        on_progress(processed, items_total);
     }
 
     if !edges_to_update.is_empty() {
+        on_progress(processed, items_total);
         graph
             .upsert_edges_batch(&edges_to_update)
             .await
             .map_err(ApiError::from)?;
+        processed = processed.saturating_add(edges_to_update.len() as u32);
+        on_progress(processed, items_total);
     }
 
+    on_progress(items_total.max(processed), items_total);
     Ok(stats)
 }
 
@@ -376,12 +420,25 @@ pub async fn find_relationships_for_document_lineage(
         }
     }
 
-    // Merge source-prefix hits (may carry richer chunk provenance on edge props).
-    for edge in find_document_edges(graph, tenant_ctx, scope).await? {
-        if sources_for_document(&edge.properties, scope).is_empty() {
-            continue;
+    // SPEC-071: provenance enrich is best-effort. Adjacency is SSOT for lineage UX —
+    // never 500 the request when source-prefix discovery times out / errors.
+    match find_document_edges(graph, tenant_ctx, scope).await {
+        Ok(prefix_edges) => {
+            for edge in prefix_edges {
+                if sources_for_document(&edge.properties, scope).is_empty() {
+                    continue;
+                }
+                edges.entry(edge_key(&edge)).or_insert(edge);
+            }
         }
-        edges.entry(edge_key(&edge)).or_insert(edge);
+        Err(err) => {
+            tracing::warn!(
+                document_id = %scope.document_id,
+                error = %err,
+                adjacency_edges = edges.len(),
+                "lineage source-prefix edge enrich failed; returning adjacency relationships"
+            );
+        }
     }
 
     Ok(edges.into_values().collect())
@@ -587,5 +644,48 @@ mod tests {
         assert_eq!(edges.len(), 1);
         assert_eq!(edges[0].source, "LIGHTRAG");
         assert_eq!(edges[0].target, "RETRIEVAL");
+    }
+
+    #[tokio::test]
+    async fn lineage_relationships_survive_source_prefix_timeout() {
+        use edgequake_storage::MemoryGraphStorage;
+
+        let mem = Arc::new(MemoryGraphStorage::new("lineage-fail-soft"));
+        let graph: Arc<dyn GraphStorage> = mem.clone();
+        let doc_id = "doc-timeout";
+        let scope = DocumentSourceScope::from_document_id(doc_id);
+
+        let mut a = HashMap::new();
+        a.insert(
+            "source_ids".to_string(),
+            serde_json::json!([format!("{doc_id}-chunk-0")]),
+        );
+        graph.upsert_node("A", a).await.expect("A");
+        let mut b = HashMap::new();
+        b.insert(
+            "source_ids".to_string(),
+            serde_json::json!([format!("{doc_id}-chunk-0")]),
+        );
+        graph.upsert_node("B", b).await.expect("B");
+        graph
+            .upsert_edge("A", "B", HashMap::new())
+            .await
+            .expect("edge");
+
+        mem.fail_next_find_edges_by_source_prefixes();
+
+        let edges = find_relationships_for_document_lineage(
+            &graph,
+            None,
+            &scope,
+            &["A".into(), "B".into()],
+        )
+        .await
+        .expect("lineage must not 500 when prefix enrich fails");
+
+        assert_eq!(edges.len(), 1, "adjacency SSOT must still return the edge");
+        assert_eq!(edges[0].source, "A");
+        assert_eq!(edges[0].target, "B");
+        assert_eq!(mem.find_edges_by_source_prefixes_call_count(), 1);
     }
 }

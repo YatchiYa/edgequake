@@ -132,6 +132,7 @@ describe("performFileUpload", () => {
     vi.mocked(uploadDocument).mockResolvedValue({
       document_id: "md-doc-1",
       status: "pending",
+      // Legacy shape: client batch ≠ task (still prefer task_id)
       track_id: "batch-1",
       task_id: "insert-task-md",
     });
@@ -149,6 +150,20 @@ describe("performFileUpload", () => {
     expect(uploadFile).not.toHaveBeenCalled();
     expect(result.source_type).toBe("text");
     expect(result.track_id).toBe("insert-task-md");
+  });
+
+  it("068: when server aligns track_id with insert-* task_id, progress key matches", async () => {
+    vi.mocked(uploadDocument).mockResolvedValue({
+      document_id: "md-doc-2",
+      status: "pending",
+      track_id: "insert-aligned",
+      task_id: "insert-aligned",
+    });
+
+    const md = new File(["# Hi"], "a.md", { type: "text/markdown" });
+    const result = await performFileUpload(md, { batchTrackId: "batch-x" });
+    expect(result.track_id).toBe("insert-aligned");
+    expect(result.task_id).toBe("insert-aligned");
   });
 
   it("maps multipart duplicate_processing to duplicate_of", async () => {

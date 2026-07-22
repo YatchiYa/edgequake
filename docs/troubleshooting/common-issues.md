@@ -940,6 +940,28 @@ If PDF extraction still fails after trying these solutions:
 
 ---
 
+### 3b. Knowledge Graph shows UUID/GUID entity names
+
+#### Symptom: Organization/Concept nodes labeled like `84b69e27-E38b-444a-…`
+
+**Cause (067):** The extractor treated opaque machine/resource IDs in the document as entity names. Those strings were stored as graph identity. Display was faithful — this was not a UI-only bug. (Drawing `im-…` labels are a separate case; see improvement **066**.)
+
+**After upgrade (067+):**
+
+- New ingest **rejects** UUID/GUID/ULID/ObjectId/hex-hash/ARN-shaped names at `EntityId` normalization.
+- Prompts instruct the model not to emit opaque IDs as `entity_name`.
+- Legacy opaque nodes get a soft label (`description` snippet or `Opaque ID · {type}`) without re-ingest.
+
+**Cleanup for a clean graph:**
+
+1. Re-ingest UUID-heavy documents after upgrading, **or**
+2. Manually delete low-value opaque nodes from the Graph UI / API, **or**
+3. Prune nodes whose bare id matches an opaque identifier pattern and have low degree.
+
+See: `specs/001-benchmark/001-edgquake-improvements/067-opaque-entity-name-reject.md`.
+
+---
+
 ### 4. Empty Query Results
 
 #### Symptom: Query returns empty answer

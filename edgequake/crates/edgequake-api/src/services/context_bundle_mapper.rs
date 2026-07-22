@@ -200,6 +200,8 @@ pub fn map_query_context_to_subgraph(
                 id: format!("rel:{}:{}:{}", rel.source, rel.relation_type, rel.target),
                 source: rel.source.clone(),
                 target: rel.target.clone(),
+                source_label: rel.display_source().to_string(),
+                target_label: rel.display_target().to_string(),
                 relation_type: rel.relation_type.clone(),
                 description: rel.description.clone(),
                 score: rel.score,

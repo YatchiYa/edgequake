@@ -80,6 +80,16 @@ pub fn message_context_from_subgraph(
             .map(|r| MessageContextRelationship {
                 source: r.source.clone(),
                 target: r.target.clone(),
+                source_label: if r.source_label.trim().is_empty() {
+                    r.source.clone()
+                } else {
+                    r.source_label.clone()
+                },
+                target_label: if r.target_label.trim().is_empty() {
+                    r.target.clone()
+                } else {
+                    r.target_label.clone()
+                },
                 relation_type: r.relation_type.clone(),
                 description: Some(r.description.clone()),
                 score: r.score,

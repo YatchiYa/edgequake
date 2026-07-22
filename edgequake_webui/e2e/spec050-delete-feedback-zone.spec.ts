@@ -178,4 +178,57 @@ test.describe("SPEC-050 Delete feedback zone", () => {
       !zoneOrPanel;
     expect(loadingToastAlone).toBe(false);
   });
+
+  test("SPEC-069: delete panel shows file_name/title — not hex id slice", async ({
+    page,
+    request,
+  }) => {
+    const docs = await listWorkspaceDocs(request);
+    const named = docs.find((d) => {
+      const label = (d.file_name || d.title || "").trim();
+      return label.length > 0 && !/^[0-9a-f]{8}$/i.test(label);
+    });
+    if (!named) {
+      test.skip(true, "No named document in seeded workspace");
+      return;
+    }
+    if (!(await openDocumentsWithSeed(page))) return;
+
+    const expectedName = (named.file_name || named.title || "").trim();
+    const row = page.locator(`[data-testid="document-row-${named.id}"]`);
+    if (!(await row.isVisible().catch(() => false))) {
+      test.skip(true, "Named document row not visible");
+      return;
+    }
+
+    const moreBtn = row
+      .locator(
+        'button[aria-label*="More"], button[aria-label*="Actions"], button[aria-haspopup="menu"]',
+      )
+      .first();
+    if (await moreBtn.isVisible().catch(() => false)) {
+      await moreBtn.click();
+      await page.getByRole("menuitem", { name: /Delete/i }).click();
+    } else {
+      await row.locator('[role="checkbox"], input[type="checkbox"]').first().click();
+      await page.locator('button:has-text("Delete")').first().click();
+    }
+
+    const dialog = page.locator('[role="dialog"]');
+    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await dialog
+      .locator('button:has-text("Delete"), button:has-text("Confirm")')
+      .last()
+      .click();
+
+    const panel = page.locator('[data-testid="spec050-delete-panel"]').first();
+    await expect(panel).toBeVisible({ timeout: 8_000 });
+
+    const panelText = await panel.innerText();
+    expect(panelText).toContain(expectedName.slice(0, Math.min(12, expectedName.length)));
+    // Must not show only an 8-char hex id as the document label.
+    const hexOnly = new RegExp(`^\\s*${named.id.slice(0, 8)}\\s*$`, "im");
+    expect(hexOnly.test(panelText.split("\n")[0] || "")).toBe(false);
+  });
+
 });

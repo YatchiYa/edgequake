@@ -128,7 +128,18 @@ fn populate_from_value(
                 let normalized_name = normalize_entity_name(name);
 
                 if normalized_name.is_empty() {
-                    tracing::debug!(raw_name = %name, "Skipping JSON entity with empty normalized name");
+                    if edgequake_storage::is_opaque_identifier(name) {
+                        tracing::debug!(
+                            raw_name = %name,
+                            metric = "opaque_entity_name_rejected",
+                            "Skipping opaque identifier JSON entity name (067)"
+                        );
+                    } else {
+                        tracing::debug!(
+                            raw_name = %name,
+                            "Skipping JSON entity with empty normalized name"
+                        );
+                    }
                     continue;
                 }
 

@@ -300,30 +300,18 @@ pub fn build_entity_from_node(
         .unwrap_or("")
         .to_string();
 
-    // 066: prefer human `display_name` (mm entities) over opaque IM-… identity.
-    // Fall back to bare `label`, then scoped-id strip for prompts.
+    // 066/067/072: shared presentation SSOT (mm display_name + opaque soft-label).
     let existing_display = props.get("display_name").and_then(|v| v.as_str());
     let stored_label = props.get("label").and_then(|v| v.as_str());
     let description_ref = props.get("description").and_then(|v| v.as_str());
     let entity_type_ref = props.get("entity_type").and_then(|v| v.as_str());
-    let is_mm = matches!(
-        entity_type_ref.map(|s| s.to_ascii_lowercase()).as_deref(),
-        Some("drawing" | "table" | "equation")
+    let display_name = edgequake_pipeline::resolve_entity_display_label(
+        node_id,
+        entity_type_ref,
+        description_ref,
+        existing_display,
+        stored_label,
     );
-    let display_name = if is_mm {
-        edgequake_pipeline::resolve_mm_display_from_node_props(
-            node_id,
-            description_ref,
-            entity_type_ref,
-            existing_display.or(stored_label),
-        )
-    } else if let Some(d) = existing_display.map(str::trim).filter(|s| !s.is_empty()) {
-        d.to_string()
-    } else if let Some(l) = stored_label.map(str::trim).filter(|s| !s.is_empty()) {
-        l.to_string()
-    } else {
-        edgequake_storage::EntityId::bare_name_from_graph_node_id(node_id).to_string()
-    };
 
     let source_tracking = extract_entity_source_tracking(props);
 
@@ -390,6 +378,64 @@ pub fn build_relationship_from_edge(
     }
 
     rel
+}
+
+/// Presentation label for a relationship endpoint (073).
+pub fn endpoint_display_label(node_id: &str, props: Option<&HashMap<String, Value>>) -> String {
+    if let Some(props) = props {
+        return edgequake_pipeline::resolve_entity_display_label(
+            node_id,
+            props.get("entity_type").and_then(|v| v.as_str()),
+            props.get("description").and_then(|v| v.as_str()),
+            props.get("display_name").and_then(|v| v.as_str()),
+            props.get("label").and_then(|v| v.as_str()),
+        );
+    }
+    let bare = edgequake_storage::EntityId::bare_name_from_graph_node_id(node_id);
+    if edgequake_storage::is_opaque_identifier(bare) {
+        edgequake_pipeline::soft_label_opaque(None, None)
+    } else {
+        bare.to_string()
+    }
+}
+
+/// Soft-label relationship endpoints from a node-id → properties map (073).
+pub fn apply_relationship_endpoint_labels(
+    relationships: &mut [RetrievedRelationship],
+    nodes_by_id: &HashMap<String, HashMap<String, Value>>,
+) {
+    for rel in relationships.iter_mut() {
+        let src_props = nodes_by_id.get(&rel.source);
+        let tgt_props = nodes_by_id.get(&rel.target);
+        rel.source_label = endpoint_display_label(&rel.source, src_props);
+        rel.target_label = endpoint_display_label(&rel.target, tgt_props);
+    }
+}
+
+/// Collect unique endpoint ids, batch-fetch nodes, apply presentation labels (073).
+pub async fn resolve_relationship_endpoint_labels(
+    graph: &edgequake_storage::traits::GraphReadView<'_>,
+    relationships: &mut [RetrievedRelationship],
+) -> Result<(), edgequake_storage::StorageError> {
+    if relationships.is_empty() {
+        return Ok(());
+    }
+    let mut ids: Vec<String> = Vec::new();
+    for rel in relationships.iter() {
+        if !ids.iter().any(|id| id == &rel.source) {
+            ids.push(rel.source.clone());
+        }
+        if !ids.iter().any(|id| id == &rel.target) {
+            ids.push(rel.target.clone());
+        }
+    }
+    let nodes_map = graph.get_nodes_batch(&ids).await?;
+    let props_map: HashMap<String, HashMap<String, Value>> = nodes_map
+        .into_iter()
+        .map(|(id, node)| (id, node.properties))
+        .collect();
+    apply_relationship_endpoint_labels(relationships, &props_map);
+    Ok(())
 }
 
 #[cfg(test)]
@@ -528,6 +574,28 @@ mod tests {
     }
 
     #[test]
+    fn test_build_entity_from_node_soft_labels_opaque_uuid() {
+        let mut props = HashMap::new();
+        props.insert("entity_type".to_string(), serde_json::json!("CONCEPT"));
+        props.insert(
+            "description".to_string(),
+            serde_json::json!("Future of work theme from the agenda"),
+        );
+        props.insert(
+            "label".to_string(),
+            serde_json::json!("84B69E27-E38B-444A-83DD-5E6A537C6F12"),
+        );
+
+        let entity = build_entity_from_node("84B69E27-E38B-444A-83DD-5E6A537C6F12", &props, 2, 0.5);
+        assert!(
+            entity.name.contains("Future of work"),
+            "got {}",
+            entity.name
+        );
+        assert!(!entity.name.contains("84B69E27"));
+    }
+
+    #[test]
     fn test_build_relationship_from_edge() {
         let mut props = HashMap::new();
         props.insert("relation_type".to_string(), serde_json::json!("WORKS_FOR"));
@@ -551,5 +619,42 @@ mod tests {
             rel.all_source_chunk_ids(),
             vec!["chunk-1".to_string(), "chunk-7".to_string()]
         );
+    }
+
+    #[test]
+    fn apply_relationship_endpoint_labels_soft_labels_opaque_uuids() {
+        let opaque = "84B69E27-E38B-444A-83DD-5E6A537C6F12";
+        let mut rel = RetrievedRelationship::new(opaque, "AI_NEXT_CONFERENCE", "HAS_THEME");
+        let mut nodes = HashMap::new();
+        let mut opaque_props = HashMap::new();
+        opaque_props.insert("entity_type".to_string(), serde_json::json!("CONCEPT"));
+        opaque_props.insert(
+            "description".to_string(),
+            serde_json::json!("Future of work theme from the agenda"),
+        );
+        opaque_props.insert("label".to_string(), serde_json::json!(opaque));
+        nodes.insert(opaque.to_string(), opaque_props);
+        let mut conf_props = HashMap::new();
+        conf_props.insert("entity_type".to_string(), serde_json::json!("EVENT"));
+        conf_props.insert("label".to_string(), serde_json::json!("AI_NEXT_CONFERENCE"));
+        nodes.insert("AI_NEXT_CONFERENCE".to_string(), conf_props);
+
+        apply_relationship_endpoint_labels(std::slice::from_mut(&mut rel), &nodes);
+        assert_eq!(rel.source, opaque);
+        assert!(
+            rel.source_label.contains("Future of work"),
+            "got {}",
+            rel.source_label
+        );
+        assert!(!rel.source_label.contains("84B69E27"));
+        assert_eq!(rel.target_label, "AI_NEXT_CONFERENCE");
+        assert_eq!(rel.display_source(), rel.source_label.as_str());
+    }
+
+    #[test]
+    fn endpoint_display_label_opaque_without_node_uses_badge() {
+        let opaque = "84b69e27-e38b-444a-83dd-5e6a537c6f12";
+        let label = endpoint_display_label(opaque, None);
+        assert_eq!(label, "Opaque ID · Entity");
     }
 }

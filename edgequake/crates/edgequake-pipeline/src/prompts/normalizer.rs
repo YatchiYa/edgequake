@@ -12,7 +12,7 @@
 //! (`edgequake_pipeline::prompts::normalize_entity_name`) keep working with no
 //! behavioral change.
 
-pub use edgequake_storage::entity_id::normalize_entity_name;
+pub use edgequake_storage::entity_id::{is_opaque_identifier, normalize_entity_name};
 
 /// Normalize for comparison (more lenient than storage normalization).
 ///

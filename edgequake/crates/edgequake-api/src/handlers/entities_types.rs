@@ -373,6 +373,10 @@ pub struct NeighborhoodNode {
     /// Node ID (entity name).
     pub id: String,
 
+    /// Human presentation label (073 / graph_node_label SSOT).
+    #[serde(default)]
+    pub label: String,
+
     /// Entity type.
     pub entity_type: String,
 

@@ -6,6 +6,10 @@
 //! - Never wipe metadata before graph provenance is proved absent.
 //! - Fail closed with `delete_failed` status (never leave permanent `deleting`).
 
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
+
 use uuid::Uuid;
 
 use edgequake_audit::{AuditEventType, AuditResult};
@@ -20,7 +24,8 @@ use crate::services::document_metadata_scan::metadata_key_for_document;
 use crate::services::document_task_cleanup::purge_persisted_tasks_for_document_except;
 use crate::services::document_vector_storage::get_workspace_vector_storage_for_delete;
 use crate::services::{
-    cascade_remove_document_sources, record_compliance_event, ContentHasher, DocumentSourceScope,
+    cascade_remove_document_sources_with_progress, record_compliance_event, ContentHasher,
+    DocumentSourceScope,
 };
 use crate::state::AppState;
 
@@ -303,18 +308,59 @@ pub async fn perform_document_deletion(
         }
 
         // ISSUE-305: fail closed — never wipe KV/docs if graph cascade cannot run.
+        // SPEC-069: progress ticks + periodic heartbeats during long shared upserts.
         let cascade_stats = {
             let mut last_err: Option<ApiError> = None;
             let mut stats = None;
+            let last_processed = Arc::new(AtomicU32::new(0));
+            let last_total = Arc::new(AtomicU32::new(0));
             for attempt in 1u8..=2 {
-                match cascade_remove_document_sources(
+                let hb_doc = document_id.clone();
+                let hb_track = deletion_track_id.clone();
+                let hb_proc = Arc::clone(&last_processed);
+                let hb_tot = Arc::clone(&last_total);
+                let hb_broadcast = state.tasks.progress_broadcaster.clone();
+                let heartbeat = tokio::spawn(async move {
+                    let mut tick = tokio::time::interval(Duration::from_secs(3));
+                    tick.tick().await; // skip immediate first fire
+                    loop {
+                        tick.tick().await;
+                        hb_broadcast.deletion_phase(
+                            &hb_doc,
+                            &hb_track,
+                            DeletionPhaseKind::RemovingGraph,
+                            hb_proc.load(Ordering::Relaxed),
+                            hb_tot.load(Ordering::Relaxed),
+                        );
+                    }
+                });
+
+                let broadcast = state.tasks.progress_broadcaster.clone();
+                let doc_id = document_id.clone();
+                let track = deletion_track_id.clone();
+                let proc_ref = Arc::clone(&last_processed);
+                let tot_ref = Arc::clone(&last_total);
+                let result = cascade_remove_document_sources_with_progress(
                     &state.storage.graph_storage,
                     Some(&workspace_vector_storage),
                     Some(tenant_ctx),
                     &scope,
+                    |processed, total| {
+                        proc_ref.store(processed, Ordering::Relaxed);
+                        tot_ref.store(total, Ordering::Relaxed);
+                        broadcast.deletion_phase(
+                            &doc_id,
+                            &track,
+                            DeletionPhaseKind::RemovingGraph,
+                            processed,
+                            total,
+                        );
+                    },
                 )
-                .await
-                {
+                .await;
+                heartbeat.abort();
+
+                match result {
                     Ok(s) => {
                         stats = Some(s);
                         break;

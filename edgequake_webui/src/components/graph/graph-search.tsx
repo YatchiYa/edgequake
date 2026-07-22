@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/popover';
 import { searchNodes } from '@/lib/api/edgequake';
 import { focusCameraOnNode } from '@/lib/graph/camera-utils';
+import { displayEntityLabel } from '@/lib/graph/label-utils';
 import { useGraphStore } from '@/stores/use-graph-store';
 import type { GraphNode } from '@/types';
 import { Circle, Cloud, Loader2, Search } from 'lucide-react';
@@ -186,7 +187,7 @@ export function GraphSearch({ onSelect }: GraphSearchProps) {
         .slice(0, 8)
         .map((node) => ({
           id: node.id,
-          label: node.label || node.id,
+          label: displayEntityLabel({ label: node.label, id: node.id }),
           entityType: node.node_type,
           description: node.description,
           score: 0,
@@ -200,7 +201,7 @@ export function GraphSearch({ onSelect }: GraphSearchProps) {
       // Convert to our SearchResult format
       const searchResults: SearchResult[] = miniSearchResults.map((r) => ({
         id: r.id,
-        label: r.label || r.id,
+        label: displayEntityLabel({ label: r.label, id: r.id }),
         entityType: r.node_type,
       description: r.description,
       score: r.score,
@@ -220,7 +221,7 @@ export function GraphSearch({ onSelect }: GraphSearchProps) {
         .slice(0, 5 - searchResults.length)
         .map((node): SearchResult => ({
           id: node.id,
-          label: node.label || node.id,
+          label: displayEntityLabel({ label: node.label, id: node.id }),
           entityType: node.node_type,
           description: node.description,
           score: 0.1, // Lower score for fallback matches
@@ -288,7 +289,7 @@ export function GraphSearch({ onSelect }: GraphSearchProps) {
         // Convert to search results
         const serverSearchResults: SearchResult[] = response.nodes.map((node) => ({
           id: node.id,
-          label: node.label || node.id,
+          label: displayEntityLabel({ label: node.label, id: node.id }),
           entityType: node.node_type,
           description: node.description,
           score: 1, // Server results ranked by relevance

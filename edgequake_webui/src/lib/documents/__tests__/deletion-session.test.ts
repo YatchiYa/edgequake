@@ -13,8 +13,11 @@ import {
   clearDeleteSessionsForTests,
   dismissDeleteSession,
   formatDeleteCountsLabel,
+  formatDeleteLivenessLabel,
   formatDeleteSuccessDetail,
   getDeleteSessions,
+  isHexShortDocumentLabel,
+  preferDocumentName,
   patchDocumentsDeletingOptimistic,
 } from "../deletion-session";
 
@@ -33,6 +36,34 @@ describe("deletion-session", () => {
     expect(sessions[0].documentName).toBe("paper.pdf");
     expect(sessions[0].status).toBe("active");
     expect(sessions[0].phaseLabel).toMatch(/Removing document data/i);
+  });
+
+  it("SPEC-069: beginDeleteSession does not downgrade filename to hex", () => {
+    beginDeleteSession({
+      documentId: "019f878a-bbbb-cccc-dddd-eeeeeeeeeeee",
+      documentName: "report.pdf",
+    });
+    beginDeleteSession({
+      documentId: "019f878a-bbbb-cccc-dddd-eeeeeeeeeeee",
+      documentName: "019f878a",
+    });
+    expect(getDeleteSessions()[0].documentName).toBe("report.pdf");
+    expect(preferDocumentName("report.pdf", "019f878a")).toBe("report.pdf");
+    expect(isHexShortDocumentLabel("019f878a")).toBe(true);
+  });
+
+  it("SPEC-069: liveness label after silent graph phase", () => {
+    beginDeleteSession({ documentId: "doc-1", documentName: "a.pdf" });
+    applyDeletionPhase({
+      documentId: "doc-1",
+      phase: "removing_graph",
+      phaseLabel: "Removing graph entities & edges",
+      itemsProcessed: 0,
+      itemsTotal: 0,
+    });
+    const entry = getDeleteSessions()[0];
+    const now = entry.phaseUpdatedAt + 5000;
+    expect(formatDeleteLivenessLabel(entry, now)).toMatch(/Still working/);
   });
 
   it("applies WS phases and counts", () => {

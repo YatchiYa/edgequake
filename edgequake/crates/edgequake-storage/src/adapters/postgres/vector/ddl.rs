@@ -8,7 +8,72 @@ use super::super::schema;
 use super::PgVectorStorage;
 use crate::error::{Result, StorageError};
 
+/// SPEC-070: sanitize `maintenance_work_mem` / lock_timeout env values (digits + unit only).
+fn sanitize_pg_setting(raw: &str, fallback: &str) -> String {
+    let t = raw.trim();
+    if t.is_empty() {
+        return fallback.to_string();
+    }
+    if t.chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
+    {
+        t.to_string()
+    } else {
+        fallback.to_string()
+    }
+}
+
 impl PgVectorStorage {
+    /// SPEC-070: DDL-only session GUCs for index builds (never apply query timeout).
+    ///
+    /// July 2026 pgvector practice: `statement_timeout=0`, short `lock_timeout`,
+    /// elevated `maintenance_work_mem` on the **build connection only**.
+    pub(crate) async fn setup_vector_ddl_session(conn: &mut sqlx::PgConnection) -> Result<()> {
+        let lock_timeout = sanitize_pg_setting(
+            &std::env::var("EDGEQUAKE_GRAPH_DDL_LOCK_TIMEOUT").unwrap_or_default(),
+            "5s",
+        );
+        let maint_mem = sanitize_pg_setting(
+            &std::env::var("EDGEQUAKE_INDEX_MAINTENANCE_WORK_MEM").unwrap_or_default(),
+            "256MB",
+        );
+        sqlx::query("SET statement_timeout = 0")
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                StorageError::Database(format!(
+                    "Failed to clear statement_timeout for vector DDL: {e}"
+                ))
+            })?;
+        sqlx::query(&format!("SET lock_timeout = '{lock_timeout}'"))
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                StorageError::Database(format!("Failed to set vector DDL lock_timeout: {e}"))
+            })?;
+        sqlx::query(&format!("SET maintenance_work_mem = '{maint_mem}'"))
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                StorageError::Database(format!(
+                    "Failed to set maintenance_work_mem for vector DDL: {e}"
+                ))
+            })?;
+        Ok(())
+    }
+
+    /// Run index/DDL SQL on a dedicated connection with vector DDL session GUCs.
+    async fn execute_index_ddl(pool: &sqlx::PgPool, sql: &str) -> Result<()> {
+        let mut conn = pool.acquire().await.map_err(|e| {
+            StorageError::Connection(format!("Failed to acquire connection for vector DDL: {e}"))
+        })?;
+        Self::setup_vector_ddl_session(&mut conn).await?;
+        sqlx::query(sql)
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| StorageError::Database(format!("Vector index DDL failed: {e}")))?;
+        Ok(())
+    }
     /// Create the vectors table and indexes.
     pub(crate) async fn create_table(&self) -> Result<()> {
         let pool = self.pool.get().await?;
@@ -63,12 +128,15 @@ impl PgVectorStorage {
         if !index_sql.is_empty() {
             // SPEC-046 OPS-P0.3: fail-closed — never swallow ANN index DDL errors.
             // Missing HNSW silently degrades to seq-scan (latency/recall cliff).
-            sqlx::query(&index_sql).execute(&pool).await.map_err(|e| {
-                StorageError::Database(format!(
-                    "Failed to create ANN index on {}: {}",
-                    self.table_name, e
-                ))
-            })?;
+            // SPEC-070: DDL session GUCs on dedicated connection.
+            Self::execute_index_ddl(&pool, &index_sql)
+                .await
+                .map_err(|e| {
+                    StorageError::Database(format!(
+                        "Failed to create ANN index on {}: {}",
+                        self.table_name, e
+                    ))
+                })?;
         }
 
         // SPEC-034 IMP-08: Vector metadata GIN index removed.
@@ -97,13 +165,13 @@ impl PgVectorStorage {
             "CREATE INDEX IF NOT EXISTS eq_{}_vectors_doc_id_idx ON {} (document_id) WHERE document_id IS NOT NULL",
             self.prefix, self.table_name
         );
-        sqlx::query(&doc_idx).execute(&pool).await.ok();
+        let _ = Self::execute_index_ddl(&pool, &doc_idx).await;
 
         let tenant_idx = format!(
             "CREATE INDEX IF NOT EXISTS eq_{}_vectors_tenant_ws_idx ON {} (tenant_id, workspace_id) WHERE tenant_id IS NOT NULL",
             self.prefix, self.table_name
         );
-        sqlx::query(&tenant_idx).execute(&pool).await.ok();
+        let _ = Self::execute_index_ddl(&pool, &tenant_idx).await;
 
         self.ensure_content_fts(&pool).await?;
 
@@ -180,12 +248,14 @@ impl PgVectorStorage {
                 self.prefix, self.table_name, opclass, self.ivfflat_lists
             ),
         };
-        sqlx::query(&index_sql).execute(&pool).await.map_err(|e| {
-            StorageError::Database(format!(
-                "Failed to ensure ANN index on {}: {}",
-                self.table_name, e
-            ))
-        })?;
+        Self::execute_index_ddl(&pool, &index_sql)
+            .await
+            .map_err(|e| {
+                StorageError::Database(format!(
+                    "Failed to ensure ANN index on {}: {}",
+                    self.table_name, e
+                ))
+            })?;
         self.mark_deferred_ann_ready();
         Ok(())
     }
@@ -217,12 +287,14 @@ impl PgVectorStorage {
             "CREATE INDEX IF NOT EXISTS {index_name} ON {} USING hnsw (embedding {}) WITH (m = {}, ef_construction = {}) WHERE workspace_id = {lit}",
             self.table_name, opclass, self.hnsw_m, self.hnsw_ef_construction
         );
-        sqlx::query(&index_sql).execute(&pool).await.map_err(|e| {
-            StorageError::Database(format!(
-                "Failed to create partial HNSW {index_name} on {}: {}",
-                self.table_name, e
-            ))
-        })?;
+        Self::execute_index_ddl(&pool, &index_sql)
+            .await
+            .map_err(|e| {
+                StorageError::Database(format!(
+                    "Failed to create partial HNSW {index_name} on {}: {}",
+                    self.table_name, e
+                ))
+            })?;
         self.mark_deferred_ann_ready();
         tracing::info!(
             table = %self.table_name,
@@ -452,7 +524,8 @@ impl PgVectorStorage {
             "CREATE INDEX IF NOT EXISTS eq_{}_vectors_content_tsv_idx ON {} USING GIN (content_tsv)",
             self.prefix, self.table_name
         );
-        sqlx::query(&fts_idx).execute(pool).await.ok();
+        // SPEC-070: GIN build also uses DDL session (timeout=0 + maintenance_work_mem).
+        let _ = Self::execute_index_ddl(pool, &fts_idx).await;
 
         Ok(())
     }

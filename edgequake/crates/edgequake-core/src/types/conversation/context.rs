@@ -79,10 +79,16 @@ impl MessageContextEntity {
 /// Relationship in message context with source tracking for citations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MessageContextRelationship {
-    /// Source entity name.
+    /// Source entity graph id (identity).
     pub source: String,
-    /// Target entity name.
+    /// Target entity graph id (identity).
     pub target: String,
+    /// Human presentation for source (073).
+    #[serde(default)]
+    pub source_label: String,
+    /// Human presentation for target (073).
+    #[serde(default)]
+    pub target_label: String,
     /// Relationship type.
     pub relation_type: String,
     /// Relationship description.
@@ -106,9 +112,13 @@ impl MessageContextRelationship {
         relation_type: impl Into<String>,
         score: f32,
     ) -> Self {
+        let source = source.into();
+        let target = target.into();
         Self {
-            source: source.into(),
-            target: target.into(),
+            source_label: source.clone(),
+            target_label: target.clone(),
+            source,
+            target,
             relation_type: relation_type.into(),
             description: None,
             score,

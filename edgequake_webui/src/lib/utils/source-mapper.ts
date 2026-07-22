@@ -66,6 +66,9 @@ function mapFlatRelationshipSources(
       return {
         source: sourceEntity,
         target: targetEntity,
+        // Flat sources lack structured labels; UI uses displayEntityLabel fallback.
+        source_label: sourceEntity,
+        target_label: targetEntity,
         type: extractRelationType(s.snippet) || "RELATED_TO",
         relevance: s.score,
         source_document_id: s.document_id,
@@ -92,6 +95,8 @@ export function mapSubgraphToQueryContext(
     relationships: (subgraph.relationships ?? []).map((r) => ({
       source: r.source,
       target: r.target,
+      source_label: r.source_label || r.source,
+      target_label: r.target_label || r.target,
       type: r.relation_type,
       relevance: r.score,
       source_document_id: r.lineage?.source_document_id,
@@ -137,6 +142,8 @@ export function mapServerMessageContextToQueryContext(
       ctx.relationships?.map((relationship) => ({
         source: relationship.source,
         target: relationship.target,
+        source_label: relationship.source_label || relationship.source,
+        target_label: relationship.target_label || relationship.target,
         type: relationship.relation_type,
         relevance: relationship.score,
         source_document_id: relationship.source_document_id,

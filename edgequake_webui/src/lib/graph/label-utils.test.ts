@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  displayEntityLabel,
   ENTITY_TYPE_COLORS,
   formatEntityLabel,
   formatMmEntitySubtitle,
   getEntityTypeColor,
   isMmItemId,
+  isOpaqueIdentifier,
 } from "./label-utils";
 
 describe("label-utils 066 drawing display", () => {
@@ -46,5 +48,71 @@ describe("label-utils 066 drawing display", () => {
         mm_subtype: "Flowchart",
       }),
     ).toBe("Drawing · Flowchart · p.2 · Fig 1");
+  });
+});
+
+describe("label-utils 067 opaque identifiers", () => {
+  it("detects UUID / GUID shapes", () => {
+    expect(
+      isOpaqueIdentifier("84b69e27-e38b-444a-83dd-5e6a537c6f12"),
+    ).toBe(true);
+    expect(
+      isOpaqueIdentifier(
+        "00000000-0000-0000-0000-000000000003::84B69E27-E38B-444A-83DD-5E6A537C6F12",
+      ),
+    ).toBe(true);
+    expect(isOpaqueIdentifier("ACME_CORP")).toBe(false);
+    expect(isOpaqueIdentifier("im-page-0001-fig-01")).toBe(false);
+  });
+
+  it("does not title-case raw UUID labels", () => {
+    const uuid = "84b69e27-e38b-444a-83dd-5e6a537c6f12";
+    const formatted = formatEntityLabel(uuid, 35);
+    expect(formatted).not.toMatch(/^84b69e27-E38b/);
+    expect(formatted.includes("…") || formatted === uuid).toBe(true);
+  });
+
+  it("preserves Opaque ID soft-labels from API", () => {
+    expect(formatEntityLabel("Opaque ID · ORGANIZATION", 40)).toBe(
+      "Opaque ID · ORGANIZATION",
+    );
+  });
+});
+
+describe("label-utils 072 prefixed opaque identifiers", () => {
+  it("detects RESOURCE_UUID and org:uuid shapes", () => {
+    expect(
+      isOpaqueIdentifier(
+        "RESOURCE_84B69E27-E38B-444A-83DD-5E6A537C6F12",
+      ),
+    ).toBe(true);
+    expect(
+      isOpaqueIdentifier("org:84b69e27-e38b-444a-83dd-5e6a537c6f12"),
+    ).toBe(true);
+    expect(
+      isOpaqueIdentifier("uuid:84b69e27-e38b-444a-83dd-5e6a537c6f12"),
+    ).toBe(true);
+    expect(isOpaqueIdentifier("ACME_CORP")).toBe(false);
+    expect(isOpaqueIdentifier("Room 84b6")).toBe(false);
+  });
+});
+
+describe("label-utils 073 displayEntityLabel", () => {
+  it("prefers API soft-label over opaque id", () => {
+    expect(
+      displayEntityLabel({
+        label: "Future of work theme from the agenda",
+        id: "84b69e27-e38b-444a-83dd-5e6a537c6f12",
+        maxLen: 80,
+      }),
+    ).toContain("Future of work");
+  });
+
+  it("falls back to formatted id when label missing", () => {
+    const out = displayEntityLabel({
+      id: "SARAH_CHEN",
+      maxLen: 40,
+    });
+    expect(out).toContain("Sarah");
   });
 });
