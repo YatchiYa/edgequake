@@ -1,13 +1,15 @@
 # EdgeQuake — Architecture, algorithmes et récupération
 
 > Document de référence pour comprendre EdgeQuake en profondeur, et pour re-développer un système équivalent.
-> Établi par lecture du code réel (v0.18.0, commit `0e1d319c`), pas de la documentation.
-> Quand code et doc divergent, **le code fait foi** et l'écart est signalé.
+> **Version couverte : v0.20.2** (commit `d96f0725`). Établi par lecture du code réel, pas de la documentation.
+> Chaque section algorithmique a d'abord été écrite contre v0.18.0 (`0e1d319c`) puis **re-vérifiée contre v0.20.2** ; les 30 commits du delta et l'état de chaque défaut (corrigé / toujours présent / rétracté) sont recensés en [§0](#0-statut-de-la-version-et-delta-018--0202) et [§14](#14-annexe--défauts-vérifiés).
+> Quand code et doc divergent, **le code fait foi** et l'écart est signalé. Destiné à être transmis aux mainteneurs.
 
 ---
 
 ## Table des matières
 
+0. [Statut de la version et delta 0.18 → 0.20.2](#0-statut-de-la-version-et-delta-018--0202)
 1. [Ce qu'est EdgeQuake](#1-ce-quest-edgequake)
 2. [Cartographie du dépôt](#2-cartographie-du-dépôt)
 3. [Le modèle de domaine](#3-le-modèle-de-domaine)
@@ -21,7 +23,55 @@
 11. [Frontend, déploiement, intégrations](#11-frontend-déploiement-intégrations)
 12. [Qualité mesurée : les vrais chiffres](#12-qualité-mesurée--les-vrais-chiffres)
 13. [Blueprint de ré-implémentation](#13-blueprint-de-ré-implémentation)
-14. [Annexe : défauts vérifiés](#14-annexe--défauts-vérifiés)
+14. [Annexe : défauts vérifiés (verdict 0.20.2)](#14-annexe--défauts-vérifiés)
+
+---
+
+## 0. Statut de la version et delta 0.18 → 0.20.2
+
+> Cette section est le résumé exécutif pour les mainteneurs. Le reste du document décrit l'architecture ; ici on dit **ce qui a bougé** entre 0.18.0 et 0.20.2 (30 commits, ~44k lignes) et **quel défaut est corrigé ou non**.
+
+### 0.1 L'incident de prod actif (SPEC-062) — à traiter en premier
+
+Un incident documenté séparément dans **`INCIDENT-PROD-DIAGNOSIS.md`**. En une phrase : la migration **SPEC-062** ajoute des colonnes dénormalisées `eq_node_id` / `eq_source_id` / `eq_target_id` sur les tables du graphe AGE ; sur un gros graphe de prod (178k+ nœuds), l'`ALTER TABLE` ne peut pas prendre son verrou `ACCESS EXCLUSIVE` (bloqué par de longues requêtes `agtype` de 30 min) → il **timeout à 300 s** → les colonnes ne sont jamais créées → le chat casse (`column e.eq_source_id does not exist`, aucun fallback dans `pg_node_degrees_batch`) et l'ingestion boucle (merge natif `ON CONFLICT (eq_*)` sans arbitre). En PPD le graphe est petit → migration instantanée → zéro symptôme. **Cause racine et remédiation SQL dans `INCIDENT-PROD-DIAGNOSIS.md`** ; détail code en [§5.9](#59-spec-062069071--dénormalisation-eq_-et-ddl-hors-hot-path-020x).
+
+### 0.2 Ce qui a été VRAIMENT corrigé entre 0.18 et 0.20.2
+
+| Sujet | 0.18 | 0.20.2 | Preuve |
+|---|---|---|---|
+| **Queue de tâches** | mpsc in-process, pas de claim | **claim SQL `FOR UPDATE SKIP LOCKED` + leases** (migration 088) ; Postgres = SSOT de livraison, mpsc rétrogradée en simple réveil + poll 2 s | `edgequake-tasks/src/postgres.rs:500-543` |
+| **Retry non durable** | `spawn { sleep; send }` — perdu au crash | tâche repassée `Pending` + lease cleared **et persistée** avant le spawn ; le poll 2 s rattrape | `worker.rs:740-742,825` |
+| **Enqueue fantôme** | create OK + send KO = tâche perdue | le send raté ne crée plus de fantôme (row `Pending` claimée par le poll) | `delivery/mod.rs:26-40` |
+| **Pas de fencing** | heartbeat 60 s / seuil 10 min seulement | **`lease_token` UUID + CAS**, TTL 120 s, perte de lease ⇒ cancel du processing | `types/task.rs:97-105`, `lease.rs:7` |
+| **Tâche `Cancelled` exécutée quand même** | statut pas relu | `claim_next` ne claim jamais cancelled + relecture storage post-claim | `worker.rs:454,890-895` |
+| **`size()` de la queue = 0** | toujours faux | compteur approximatif dans `ChannelTaskQueue` | `queue.rs:130-132` |
+| **Migration de dimension = drop+create sans backup** | destruction silencieuse | **fail-closed SPEC-058** (`dimension_policy.rs`) : mismatch ⇒ erreur + métrique, recreate seulement si table vide ou opt-in | `vector/migration.rs:88-210` |
+| **Tests `include_str!` cassés** (nodes_ops splitté) | 2 tests non compilables | corrigé (commit `7938e931`) — *mais un nouveau test contractuel auto-contradictoire est cassé, cf. §14* | `spec022_*.rs:63-74` |
+| **AUTO_RESUME off par défaut** | opt-in | **défaut INVERSÉ → ON** (opt-out `EDGEQUAKE_STARTUP_AUTO_RESUME=0`) — pour ne plus strander les docs Vision au restart | `startup_task_hydrate.rs:24-33` |
+
+### 0.3 Ce que j'avais mal dit en 0.18 — RÉTRACTATIONS
+
+Deux entrées de l'ancienne annexe étaient fausses, je les retire :
+
+| Ancienne affirmation | Réalité vérifiée en 0.20.2 (et déjà en 0.18) |
+|---|---|
+| « `drop_workspace_table` ne droppe rien (un `eq_` manquant) » | **FAUX.** Le préfixe `eq_` est bien présent aux deux révisions : `format!("public.eq_{ns}_ws_{short_id}_vectors")` (`workspace_vector.rs:209`). À retirer. |
+| « Table `unk_ids` inexistante référencée par le clear workspace » | **Mal attribué.** `pg_clear_workspace` passe par un Cypher `DETACH DELETE` (`analytics_ops.rs:301`) ; `unk_ids` est une **relation interne à l'extension Apache AGE** (son plan d'exécution du DETACH DELETE), pas un identifiant EdgeQuake — d'où son absence du repo. L'erreur naît **dans AGE** (version installée en prod). Effet réel confirmé : le delete de workspace laisse des restes graphe (loggé « continuing »). |
+
+### 0.4 Ce qui est NOUVEAU en 0.19–0.20.2 (au-delà de SPEC-062)
+
+- **Runtime tokio splitté** : Axum sur `serving_rt`, WorkerPool sur `ingest_rt` (threads = num_workers) — le CPU PDF/Ollama n'affame plus le HTTP interactif (`main.rs:985-1004`).
+- **Bulkhead lecture DB** : `read_path.rs` (nouveau) — sémaphore `max(2, pool/8)` + enveloppe wall-clock 2,5 s ⇒ 503 `read_path_busy` au lieu de pendre ; protège `/live`, `/health`, documents/tenants list.
+- **Fairness dual-lane** : Ingest vs Lifecycle (Deletion/Wipe) séparés pour que les deletes n'affament plus l'ingest PDF (`tenant_limiter.rs`, commit `0ff3d5a9`).
+- **Multi-replica** : gate de démarrage (`delivery/mode.rs`, échoue si `replicas>1` + delivery `Local`), leases respectées en multi-process. Défaut mono-process.
+- **Identité d'entité scopée workspace** `{workspace_id}::NAME` (SPEC-032 B3b, `entity_id.rs:79-120`) — corrige le vol de vertex inter-workspaces sur graphe AGE partagé.
+- **HNSW réglable** : partial-index par workspace, iterative-scan, exact-reorder — tous **opt-in** (`hnsw_runtime_policy.rs`, `ann_exact_reorder_policy.rs`).
+- **DiskANN / quantization binaire / filtered-labels** : **étudiés uniquement** (SPEC-070/077/078). Les builders SQL existent mais ne sont consommés **que par les tests de bakeoff** — aucun chemin runtime. Ne pas les présenter comme des features actives.
+- **Query** : modes de fusion `round_robin` (`EDGEQUAKE_MIX_FUSION`), styles de prompt `default/lightrag/specific`, answer-cache produit (opt-in), routage Fact→BM25, protect-slots au reranking — **tous env-gated, défauts inchangés**.
+
+### 0.5 Ce qui n'a PAS changé — les défauts qui persistent
+
+**Aucun des ~45 défauts de fond listés en §14 n'a été corrigé** hormis ceux du tableau 0.2. En particulier restent présents, vérifiés ligne à ligne en 0.20.2 : les **3 bugs de normalisation d'entités** (`entity_id.rs` a pourtant été retravaillé deux fois sans les toucher), la **RLS de facto inerte** + fail-open + `document_originals` sans RLS, **aucune isolation tenant sur WebSocket**, `Role::parse` fail-open, JWT `iss`/`aud`/`jti` non validés, rate-limit sur header brut, audit unbounded sans flush, gleaning sans `CompletionOptions`, cache d'extraction inerte, les **3 estimateurs de tokens divergents**, le graphe non-multigraphe, Louvain phase-1-only, et l'**accuracy réelle 0.458 @40 docs** (inchangée, SPEC-055 « Completed: none yet »). Détail et verdict par item en [§14](#14-annexe--défauts-vérifiés).
 
 ---
 
@@ -64,11 +114,11 @@ edgequake/                    ← racine git
 │                                (dont edgequake-graph, crate qui n'existe plus)
 ├── edgequake/                ← ★ LE WORKSPACE CARGO RÉEL
 │   ├── Cargo.toml            ← workspace + binaire
-│   ├── src/main.rs           ← 1207 l. de bootstrap
+│   ├── src/main.rs           ← ~1200 l. de bootstrap (réécrit en 0.20 : runtime split, cf. §9.1)
 │   ├── crates/               ← les 11 vraies crates
-│   ├── migrations/           ← 86 fichiers SQL (001→086, le 018 manque)
+│   ├── migrations/           ← 95 fichiers SQL (001→095 en 0.20.2, le 018 manque) + support/NNN/apply.sql
 │   └── models.toml           ← 2727 l., catalogue modèles/coûts
-├── specs/                    ← 64 packs de spécification
+├── specs/                    ← 82 packs de spécification (058→082 ajoutés en 0.19–0.20)
 ├── edgequake_webui/          ← Next.js 16
 ├── sdks/                     ← 10 langages, tous manuels
 ├── mcp/                      ← serveur MCP TypeScript (voir §11.5)
@@ -388,7 +438,7 @@ ON CONFLICT (id) DO UPDATE SET embedding = EXCLUDED.embedding, metadata = EXCLUD
 
 Chunk de 1000, tous dans **une seule transaction**. La dédup intra-batch est **obligatoire** avant (sinon : « ON CONFLICT DO UPDATE cannot affect row a second time »).
 
-**⚠️ Migration de dimension = destruction.** `migration.rs:78` lit `pg_attribute.atttypmod` ; si mismatch → `drop_table()` + `create_table()`. **Sans backup ni re-embedding.**
+**✅ Migration de dimension — corrigé en 0.20 (SPEC-058).** En 0.18, un mismatch de dimension déclenchait `drop_table()` + `create_table()` **sans backup**. Au HEAD, `reconcile_dimension` (`vector/migration.rs:88-210`) est piloté par `dimension_policy.rs::decide_dimension_action` : mismatch non-vide → **`FailClosed`** avec erreur explicite + métrique `record_vector_dim_mismatch_rejected` ; recreate seulement si la table est vide ou opt-in `EDGEQUAKE_ALLOW_VECTOR_TABLE_REBUILD=1` ; au boot serveur, mode `PreferExisting` (garde le schéma existant, warn). Plus de destruction silencieuse.
 
 ### 5.5 Apache AGE
 
@@ -476,6 +526,33 @@ Trois brèches supplémentaires, chacune vérifiée :
 - **Suppressions massives d'index chiffrées** : KV GIN **112 Mo pour 760 Ko de heap (155×), 0 scans** (M068) ; metadata GIN 13 Mo/workspace, 0 scans (M073) ; `idx_edge_props_gin` 17 Mo, 0 scans (M070).
 
 **M077 documente une course réelle** : les migrations 068-073 droppaient des index que le **code de démarrage de l'ancien binaire recréait aussitôt**.
+
+### 5.9 SPEC-062/069/071 — dénormalisation `eq_*` et DDL hors hot path (0.20.x)
+
+C'est le plus gros changement storage de 0.20, et **la source de l'incident de prod** ([§0.1](#01-lincident-de-prod-actif-spec-062--à-traiter-en-premier)). Introduit par le commit `936b9236`, durci par `ebf384c0`/`45301863`.
+
+**Le problème résolu.** Les requêtes graphe faisaient `agtype_to_json(properties)->>'source_id'` par ligne — une extraction JSON coûteuse, non indexable sous `LIKE '%…%'`. SPEC-062 ajoute des **colonnes texte dénormalisées** `eq_node_id` (sur `"Node"`), `eq_source_id`/`eq_target_id` (sur `"EDGE"`), avec index btree, index UNIQUE (arbitres d'upsert) et triggers de synchro.
+
+**Création — deux SSOT complémentaires :**
+- **Au boot** : `migrations/support/092/apply.sql` (reconcile à chaque démarrage, `reconcile/m092.rs`) — boucle sur tous les graphes AGE : `ADD COLUMN IF NOT EXISTS` (nullable, pas de rewrite) → backfill null-only → index → triggers. GUC : `SET statement_timeout = 0; SET lock_timeout = '5s'`.
+- **Runtime (lazy)** : `ensure_eq_id_columns` (`graph_lifecycle.rs:409-587`), filet pour les graphes créés après le boot (AGE crée les tables label paresseusement).
+
+**SPEC-069 « DDL off hot path »** — quatre garde-fous : single-flight (`tokio::Mutex` + flag `AtomicBool`), **session DDL dédiée** (`statement_timeout=0` pour laisser finir la DDL, `lock_timeout` court pour fail-fast), early-exit catalogue O(1) (`eq_id_schema_ready`), et **fail-closed** : si le schéma `eq_*` n'est pas prêt, les écritures natives renvoient `"graph schema not bootstrapped (eq_id)"` au lieu de migrer en plein hot path.
+
+**⚠️ Le point de fragilité (l'incident).** Un `ALTER TABLE … ADD COLUMN` est instantané *si* le verrou `ACCESS EXCLUSIVE` est libre. Sous un gros graphe avec de longues requêtes concurrentes, il **attend puis timeout**. Et plusieurs chemins consomment `eq_*` **sans fallback** — colonnes absentes = erreur SQL sèche :
+
+| Chemin | Fichier | Comportement si `eq_*` absent |
+|---|---|---|
+| `pg_node_degrees_batch` (degrés, chat/local/global) | `nodes_ops/read.rs:148-171` | **`column e.eq_source_id does not exist`** — pas de gate, pas de fallback |
+| `pg_get_incident_edges_batch` (traversée) | `edges_ops.rs:362-364` | idem, aucun gate |
+| upsert natif nodes/edges | `mutate.rs:400`, `edges_ops.rs:566` | protégé par le gate fail-closed (erreur explicite) |
+| scans par préfixe source | `scan_ops.rs:321-448` | ligne non-backfillée **silencieusement exclue** |
+
+**SPEC-071 — GIN moderne vs LIKE legacy.** `pg_find_nodes/edges_by_source_prefixes` : chemin **moderne par défaut** = containment jsonb `@>` sur les GIN `idx_node_source_ids_gin` / `idx_edge_source_ids_gin` (tables enfants) ; chemin **legacy** (`EDGEQUAKE_SOURCE_PREFIX_LEGACY`, **défaut OFF**) = scan `LIKE` en enrichissement pour les vieux graphes. La **requête de 30 min de la prod est le chemin legacy** — soit le flag est activé, soit les GIN modernes manquent (même racine que `eq_*`).
+
+**Écriture native, mode par défaut en 0.20.** `native_graph_writes_enabled()` retourne `true` par défaut (`Err(_) => true`) : le Cypher MERGE est devenu l'opt-out *debug*. Le merge SQL de propriétés (M090, `eq_merge_graph_properties`) a été **remplacé** par `properties = EXCLUDED.properties` en SPEC-060 Wave 4 (union des `source_ids` faite côté Rust avant l'upsert).
+
+**Nouvelles migrations 087→095** (les principales) : 088 (`tasks.lease_*` + index `FOR UPDATE SKIP LOCKED`, cf. §10), 090 (fonctions merge de propriétés AGE), 091 (`content_tsv` writable — corrige le FTS vide des lignes content-ref), 092 (marqueur eq_id), 094/095 (types de tâche `deletion`/`workspace_wipe`).
 
 ---
 
@@ -1344,12 +1421,14 @@ QueryIntent::Comparative | Procedural => (true, true, true),
 
 ```
 Total: 30 000
-├── Entities:      ≤ 10 000
-├── Relationships: ≤ 10 000
+├── Entities:      ≤ 6 000     (0.18 = 10 000 ; abaissé en 0.20 pour parité LightRAG constants.py)
+├── Relationships: ≤ 8 000     (0.18 = 10 000)
 ├── Buffer:        200
 └── Chunks:        remainder, mais JAMAIS < min_chunk_budget_ratio × (total − buffer)
                    défaut 0.40 → floor(29800 × 0.40) = 11 920
 ```
+
+Overrides env ajoutés en 0.20 : `EDGEQUAKE_MAX_ENTITY_TOKENS` / `EDGEQUAKE_MAX_RELATION_TOKENS`. Le total 30 000 et les défauts `max_entities/max_relationships/max_chunks` (60/60/20) sont inchangés.
 
 **Taxe graphe par intention :**
 
@@ -1540,7 +1619,9 @@ Fallbacks : provider sans streaming → `complete()` enveloppé dans `stream::on
 15. Server::run()
 ```
 
-**La politique de reprise** (`EDGEQUAKE_STARTUP_AUTO_RESUME`, **défaut off**) : par défaut le travail orphelin est marqué `failed` et l'utilisateur clique *Reprocess* — **pour ne pas relancer des milliers de jobs LLM payants à chaque `make dev`**. Excellent défaut.
+**⚠️ La politique de reprise a été INVERSÉE en 0.20.** En 0.18, `EDGEQUAKE_STARTUP_AUTO_RESUME` était **off** par défaut (travail orphelin → `failed`, reprise manuelle). Au HEAD, le défaut est **ON** (opt-out `=0`), motivé par la fiabilité Vision (`startup_task_hydrate.rs:24-33`) : un restart ne doit plus strander les docs en « Task heartbeat lost ». ⚠️ **Le commentaire `main.rs:778` (« SPEC-054: default = manual resume ») est périmé et contredit le code** — ne pas s'y fier. Conséquence : orphelins `Processing` → re-`Pending` + resume checkpoint au lieu de `Failed`. Ce changement fait aussi que la reprise **peut** relancer des jobs LLM au boot, atténué par les leases (§10) et un budget `EDGEQUAKE_STARTUP_RECONCILE_MAX`.
+
+**Nouveautés bootstrap 0.20 (cf. §0.4)** : le runtime est désormais **splitté en deux** (`serving_rt` pour Axum, `ingest_rt` pour le WorkerPool, `main.rs:985-1004`), un **bulkhead lecture DB** (`read_path.rs`) protège `/live`·`/health`·documents des permis de pool saturés par l'ingest, et un gate multi-replica (`delivery/mode.rs`) fait échouer le boot si `replicas>1` avec delivery `Local`.
 
 ### 9.2 AppState + FromRef — le meilleur pattern du codebase
 
@@ -1721,13 +1802,31 @@ Le `Lagged` est avalé **en deux points** (bridge + handler). Aggravant : sur `/
 
 ## 10. Tâches, fiabilité et reprise
 
-### 10.1 Le constat central : il n'y a pas de queue Postgres
+### 10.1 La queue — refondue en 0.20 (SPEC-057) : Postgres SSOT + leases
 
-`TaskQueue` est un trait sur **`tokio::sync::mpsc`**. Postgres n'implémente que `TaskStorage` (persistance/lecture). Lecture intégrale de `postgres.rs` : **aucun `SKIP LOCKED`, aucun claim, aucun lease, aucun visibility timeout, aucun `LISTEN/NOTIFY`**. **La queue vit en mémoire d'un seul process.**
+> ⚠️ **Changement majeur vs 0.18.** L'ancienne version de ce document disait « il n'y a pas de queue Postgres ». **C'était vrai en 0.18, ça ne l'est plus.** SPEC-057 (commit `1e6813db`, migration 088) a fait de **PostgreSQL la source de vérité de la livraison**, avec claim atomique et leases.
 
-Le `Receiver` est derrière `Arc<Mutex<...>>` : les N workers se disputent **un seul mutex**. Et `size()` **retourne toujours `Ok(0)`** → toute métrique de profondeur est fausse.
+Le système est désormais **hybride, en trois couches** — décrire l'une sans les autres serait faux :
 
-**Le plus frustrant :** `scheduled_at` et l'index partiel `idx_tasks_scheduled ON tasks(scheduled_at) WHERE status='pending'` **existent déjà en base depuis la migration 001** — vestiges d'une queue SQL jamais construite, jamais lus ni écrits.
+1. **Claim SQL** — `claim_next` (`edgequake-tasks/src/postgres.rs:500-543`) :
+   ```sql
+   WITH candidate AS (
+     SELECT track_id FROM tasks
+     WHERE status='pending' OR (status='processing' AND lease_expires_at < now())
+     ORDER BY created_at
+     FOR UPDATE SKIP LOCKED LIMIT 1
+   )
+   UPDATE tasks SET status='processing',
+     lease_owner=$1, lease_token=$2, lease_expires_at=now()+interval '120s'
+   ...
+   ```
+   C'est une **vraie queue Postgres** : `FOR UPDATE SKIP LOCKED`, reclaim des leases expirés, fencing par `lease_token` UUID.
+2. **mpsc rétrogradée en signal de réveil** — le payload du channel est **ignoré** (`worker.rs:381-412`, *« claim_next authorizes work »*) ; le channel ne sert qu'à réveiller un worker.
+3. **Poll de sécurité 2 s** (`worker.rs:375`) — rattrape les réveils perdus et les `Pending` survivants d'un restart.
+
+Migration 088 : colonnes `tasks.lease_owner/lease_token/lease_expires_at` + index partiels `idx_tasks_claimable_pending` et `idx_tasks_stale_processing_lease`. Le `scheduled_at`/`idx_tasks_scheduled` de M001 (vestige) reste inutilisé — le claim s'appuie sur `created_at` + lease.
+
+Le `Receiver` mpsc est toujours derrière `Arc<Mutex<...>>`, mais ce n'est plus le point de sérialisation critique (le claim SQL l'est). `ChannelTaskQueue::size()` retourne désormais un **compteur approximatif** (plus le `0` en dur de 0.18) ; `UnboundedChannelTaskQueue::size()` renvoie encore 0.
 
 ### 10.2 Checkpoints
 
@@ -1808,19 +1907,23 @@ pub enum IngestionFailureClass {
 
 **Couplé à des chaînes anglaises de providers tiers** : un changement de wording chez OpenAI fait retomber en `Unknown` → `retryable: true` → 3 retries inutiles sur une erreur déterministe.
 
-### 10.6 Les trous de récupération — vérifiés
+### 10.6 Les trous de récupération — état 0.20.2
 
-| # | Trou | Conséquence |
+SPEC-057 a comblé la majorité des trous de 0.18. État vérifié au HEAD :
+
+| # | Trou (0.18) | Verdict 0.20.2 |
 |---|---|---|
-| 1 | **Le retry n'est pas durable** — `tokio::spawn { sleep; queue.send() }` | Crash pendant le sleep ⇒ **retry perdu**, ligne reste `Failed` |
-| 2 | **Écriture non atomique à l'enqueue** — `create_task` OK + `send` échoue | Tâche `Pending` en base, jamais en queue. Récupérée **seulement au prochain boot**, et **uniquement si `AUTO_RESUME=1`** (off par défaut) ⇒ **fuite silencieuse** |
-| 3 | **Pas de fencing token** — heartbeat 60 s / seuil 10 min | **Ne protège pas du double-traitement** |
-| 4 | **Registry d'annulation in-process** | En multi-process, annuler ne touche que le nœud qui reçoit l'appel HTTP |
-| 5 | **Tâche `Cancelled` en queue sera quand même exécutée** | La boucle worker ne relit jamais le statut avant `mark_processing()` |
-| 6 | **Shutdown semi-gracieux** | Un PDF à 2 h **bloque l'arrêt 2 h**, sans timeout de drain |
-| 7 | **`Pas de jitter`** sur aucun backoff | Troupeau tonnant |
+| 1 | Retry non durable (`spawn { sleep; send }`) | **✅ corrigé en substance** — avant le spawn, la tâche est repassée `Pending` + lease cleared **et persistée** (`worker.rs:740-742,825`) ; le poll 2 s la reclaim. Résidu : le *délai* de backoff n'est pas durable (retry immédiat possible au reboot). |
+| 2 | Enqueue non atomique (fantôme) | **✅ corrigé en pratique** — un send raté ne crée plus de fantôme, la row `Pending` est claimée par le poll. Résidu : le handler peut renvoyer une erreur pour une tâche qui sera quand même traitée. |
+| 3 | Pas de fencing token | **✅ corrigé** — `lease_token` UUID + CAS, TTL 120 s (`EDGEQUAKE_TASK_LEASE_TTL_SECS`), heartbeat `refresh_lease` 60 s, **perte de lease ⇒ cancel du processing** (`worker.rs:609-641`). |
+| 4 | Registry d'annulation in-process | **🟠 atténué** — le cancel-intent est aussi relu depuis le storage post-claim ; en pur multi-process l'appel HTTP direct ne touche toujours qu'un nœud, mais la relecture + les leases limitent le double-traitement. |
+| 5 | Tâche `Cancelled` exécutée quand même | **✅ corrigé** — `claim_next` ne claim jamais `cancelled` (SQL `status='pending'`) + `should_skip_task` **relit le storage** avant traitement (`worker.rs:454`). |
+| 6 | Shutdown semi-gracieux | **🔴 toujours présent** — un PDF à 2 h bloque l'arrêt (pas de timeout de drain). |
+| 7 | Pas de jitter sur le backoff | **🔴 toujours présent** — backoff exponentiel pur (`worker.rs`), troupeau tonnant possible. |
 
-**Échec partiel accepté** : `is_complete_failure()` → erreur ; sinon **partiel accepté** avec `stats.chunk_errors`. Un document à 0 entité est **accepté** — *« Document chunks are stored for semantic search. »* Bonne décision.
+**Bilan : la fiabilité de queue est le domaine le plus amélioré de 0.20.** Le double-traitement inter-process est désormais borné par les leases + `SKIP LOCKED`, et un crash ne perd plus de tâches (elles restent `Pending`/`Processing`-expiré et sont reclaimées).
+
+**Échec partiel accepté** (inchangé) : `is_complete_failure()` → erreur ; sinon **partiel accepté** avec `stats.chunk_errors`. Un document à 0 entité est **accepté** — *« Document chunks are stored for semantic search. »* Bonne décision.
 
 ### 10.7 Progression
 
@@ -1888,7 +1991,7 @@ Perf budgets (nightly only) : ANN filtré worst < **100 ms** · `get_nodes_batch
 
 ### 11.4 SDKs
 
-**10 langages** (python, typescript, rust, go, java, kotlin, csharp, swift, ruby, php), tous en **0.4.0** (le repo est en 0.18.0). **Tous écrits à la main, aucun n'est généré** — preuves négatives exhaustives (zéro `.openapi-generator/`, zéro `openapitools.json`) et positives (surfaces **divergentes** entre langages : `pdf` est top-level en Python/Rust mais fusionné dans `documents` en TS/Go/PHP).
+**10 langages** (python, typescript, rust, go, java, kotlin, csharp, swift, ruby, php), tous en **0.4.0** (le repo est en 0.20.2 — les SDK n'ont pas suivi). **Tous écrits à la main, aucun n'est généré** — preuves négatives exhaustives (zéro `.openapi-generator/`, zéro `openapitools.json`) et positives (surfaces **divergentes** entre langages : `pdf` est top-level en Python/Rust mais fusionné dans `documents` en TS/Go/PHP).
 
 **⚠️ Anomalie de publication majeure** : les workflows par-SDK vivent dans des `.github/workflows/` **imbriqués** (`sdks/python/.github/…`). GitHub Actions ne lit que le `.github/workflows/` **racine** → ces 11 workflows, dont le publish npm, **ne s'exécutent jamais**. Seul `publish-java-sdk.yml` (racine) tourne. PyPI/crates.io/NuGet/RubyGems : publication **manuelle** via Makefile — dont les cibles utilisent `sed -i ''` (**syntaxe BSD/macOS**, cassée sur Linux).
 
@@ -2004,9 +2107,10 @@ De même, les fixtures de routage sont formulées pour que `classify_heuristic` 
   ├── ★ unique-before-embed dès le départ (économie O(mentions) → O(unique))
   └── Saga de compensation cross-store
 
-Étape 5 — Queue (2 semaines) — FAIRE DIFFÉREMMENT
+Étape 5 — Queue (2 semaines)
   └── ★ SELECT … FOR UPDATE SKIP LOCKED + lease + fencing token
       remplace queue + retry + orphelins + annulation d'un coup
+      (EdgeQuake 0.20 l'a fait via SPEC-057 — cf. §10.1, à reprendre tel quel)
 
 Étape 6 — Query (3-4 semaines)
   ├── 3 embeddings (query / high_level / low_level)
@@ -2052,7 +2156,7 @@ De même, les fixtures de routage sont formulées pour que `classify_heuristic` 
 
 | Anti-pattern | Faire à la place |
 |---|---|
-| **Queue mpsc in-process** | `FOR UPDATE SKIP LOCKED` + lease + fencing |
+| ~~Queue mpsc in-process~~ *(corrigé en 0.20 : SPEC-057 leases)* | déjà `FOR UPDATE SKIP LOCKED` + lease + fencing |
 | **Retry par matching de `"429"` dans un `to_string()`** | Brancher `LlmError::retry_strategy()` |
 | **Trois systèmes de config divergents** | Un seul, un `from_env()`, une précédence |
 | **Trois estimateurs de tokens (2.5 / 4 / 4), aucun tokenizer** | tiktoken, un seul |
@@ -2089,88 +2193,96 @@ De même, les fixtures de routage sont formulées pour que `classify_heuristic` 
 
 ---
 
-## 14. Annexe : défauts vérifiés
+## 14. Annexe : défauts vérifiés (verdict 0.20.2)
 
-Classés par gravité. Tous confirmés dans le code, pas des suppositions.
+Chaque item a été **re-vérifié ligne à ligne au HEAD `d96f0725` (v0.20.2)**. Colonne verdict : 🔴 toujours présent · ✅ corrigé · 🟠 atténué · ⛔ **rétracté** (affirmation 0.18 erronée). Emplacements = lignes 0.20.2.
 
 ### Sécurité
 
-| # | Défaut | Emplacement |
-|---|---|---|
-| 1 | **Aucune isolation tenant sur WebSocket** — identité jetée après validation | `websocket.rs:44-64` |
-| 2 | **Pas de vérif d'ownership du `track_id`** (WS + SSE PDF) | `status.rs:329`, `websocket.rs:348` |
-| 3 | **RLS de facto inerte** — GUC transaction-local posées en autocommit | `rls.rs:220-232` |
-| 4 | **RLS fail-open** `tenant_id IS NULL` + colonne nullable | `001:507-516` |
-| 5 | **Deux namespaces RLS incohérents** + AGE toujours appelé avec `tenant_id = None` | `support/081` |
-| 6 | **`document_originals` sans RLS** | M082 |
-| 7 | **Pas de révocation d'access token** (`jti` jamais stocké) | `jwt.rs` |
-| 8 | **`Role::parse` fail-open vers `User`** | `types.rs:28-30` |
-| 9 | **JWT_SECRET par défaut** ne bloque pas le boot ; règle ≥32 bytes jamais vérifiée | `startup_security.rs:39` |
-| 10 | **CORS `Any/Any/Any`** par défaut ; `ws_validate_origin` fail-open | `server.rs:89` |
-| 11 | **Rate limit sur header non authentifié** + fuite mémoire (cleanup jamais appelé) | `middleware.rs:631`, `limiter.rs:162` |
-| 12 | **Filename jamais assaini**, MIME jamais confronté au contenu | `upload.rs:112` |
-| 13 | `eval()` sur données de dataset | `mmlongbench_eval_score.py:138` |
+| # | Défaut | Verdict | Emplacement |
+|---|---|:---:|---|
+| 1 | **Aucune isolation tenant sur WebSocket** — identité jetée après validation | 🔴 | `websocket.rs:53-66,167` |
+| 2 | **Pas de vérif d'ownership du `track_id`** (WS cancel + SSE PDF) | 🔴 | `cancel_facade.rs:18-25`, `pdf_upload/status.rs:262-278` |
+| 3 | **RLS de facto inerte** — `set_tenant_context` en autocommit, GUC transaction-local perdue | 🔴 | `rls.rs:220-232` (marqué `#[deprecated]` mais toujours le chemin actif) |
+| 4 | **RLS fail-open** `tenant_id IS NULL` + `documents.tenant_id` nullable | 🔴 | `001:510-516`, `001:177` |
+| 5 | **Deux namespaces RLS** (`app.current_tenant_id` vs `edgequake.tenant_id`) + AGE appelé avec `tenant_id=None` | 🔴 | `001:441`, `support/081:40`, `cypher_exec.rs:60+` (AGE RLS opt-in, défaut off) |
+| 6 | **`document_originals` sans RLS** | 🔴 | M082 (aucun `ENABLE ROW LEVEL SECURITY`) |
+| 7 | **Pas de révocation d'access token** — `iss`/`aud` jamais validés, `jti` jamais stocké | 🔴 | `jwt.rs:85,162-168` |
+| 8 | **`Role::parse` fail-open vers `User`** | 🔴 | `types.rs:28-30` |
+| 9 | **JWT_SECRET par défaut** ne bloque pas le boot ; règle ≥32 bytes jamais vérifiée | 🔴 | `startup_security.rs:39-43`, `jwt.rs:18` |
+| 10 | **CORS `Any/Any/Any`** par défaut ; `ws_validate_origin` fail-open si Origin absent | 🔴 | `server.rs:84-92`, `middleware.rs:553-557` |
+| 11 | **Rate limit sur header brut `x-tenant-id`** + `cleanup_stale_buckets` jamais appelé | 🔴 | `middleware.rs:631-635`, `limiter.rs:162` |
+| 12 | **Filename jamais assaini**, MIME dérivé de l'extension | 🔴 | `pdf_upload/upload.rs:112,224`, `file_validation.rs:111` |
+| 13 | `eval()` sur données de dataset | 🔴 | `mmlongbench_eval_score.py:138,142,178-179` |
 
 ### Correction
 
-| # | Défaut | Emplacement |
-|---|---|---|
-| 14 | **Normalisation : 3 bugs** (article en majuscules, branche possessive morte ASCII vs U+2019, possessif case-sensitive) | `entity_id.rs:135-150` |
-| 15 | **Offsets faux pour Pdf/Markdown** — spans relatifs au segment, jamais rebasés | `page_aware.rs:157` |
-| 16 | **Blocs atomiques sans garde de taille** — un gros tableau = un chunk qui casse l'embedder | `recursive.rs:385` |
-| 17 | **Gleaning sans `CompletionOptions`** | `gleaning.rs:204` |
-| 18 | **`CHUNK_MAX_RETRIES=0` → `for attempt in 1..=0` → zéro tentative** | `extraction.rs:302` |
-| 19 | **`drop_workspace_table` ne droppe rien** (un `eq_` manquant) | `workspace_vector.rs:197` |
-| 20 | **Deux tests ne compilent pas** (`include_str!` sur `nodes_ops.rs` splitté) | `spec022_*.rs:64` |
-| 21 | **`batch_fetch_chunk_contents` est un N+1** malgré son nom | `chunk_content.rs:35` |
-| 22 | **`kv.rs::upsert` non transactionnel entre chunks** | `kv.rs` |
-| 23 | **Dédup `documents` cassée** (prédicat `WHERE status='indexed'` vs `'completed'` moderne) | M023 vs M032 |
-| 24 | **`matches_track_id` ignore les 3 variantes `Deletion*`** | `websocket.rs:503` |
-| 25 | **`from_url()` non géré par Anthropic** → requête invalide silencieuse | `anthropic.rs:896` |
-| 26 | **`MAX_SOURCE_IDS` (300) déclaré mais jamais appliqué** | `entity.rs:50` |
-| 27 | **`last_accessed` jamais rafraîchi** → l'éviction « LRU » est FIFO | `tenant_manager.rs:162` |
-| 28 | **`cosine_similarity` panique** sur mismatch de dimension | `embedding.rs:83` |
-| 29 | **Migration de dimension = drop + create**, sans backup | `migration.rs:78` |
+| # | Défaut | Verdict | Emplacement / note |
+|---|---|:---:|---|
+| 14 | **Normalisation entités : 3 bugs** (article en majuscules `THE COMPANY`→`THE_COMPANY` ; branche possessive morte, deux littéraux `"'s"` ASCII au lieu de U+2019 ; possessif case-sensitive) | 🔴 | `entity_id.rs:198-213` — **fichier retravaillé 2× (scoping ws, ids opaques) sans corriger ces bugs** |
+| 15 | **Offsets faux pour Pdf/Markdown** — spans relatifs au segment, jamais rebasés | 🔴 | `page_aware.rs:171-178`, `markdown_chunking.rs:49-54` (aggravé par `structure_induce` qui réécrit le contenu) |
+| 16 | **Blocs atomiques sans garde de taille** — un gros tableau = un chunk qui casse l'embedder | 🔴 | `recursive.rs:385-390` |
+| 17 | **Gleaning sans `CompletionOptions`** | 🔴 | `gleaning.rs:204` |
+| 18 | **`CHUNK_MAX_RETRIES=0` → `for attempt in 1..=0` → zéro tentative** | 🔴 | `extraction.rs:302`, min env 0 (`config.rs:469`) |
+| 19 | ~~`drop_workspace_table` ne droppe rien (un `eq_` manquant)~~ | ⛔ | **RÉTRACTÉ** — le préfixe `eq_` est correct : `format!("public.eq_{ns}_ws_…")` `workspace_vector.rs:209` |
+| 20 | **Tests `include_str!` cassés** (nodes_ops splitté) | ✅ | corrigé (`7938e931`). ⚠️ **mais nouveau test cassé** : `contract_spec058_native_upsert_uses_eq_merge_graph_properties` exige une chaîne que SPEC-060 a supprimée → échoue à l'exécution |
+| 21 | **`batch_fetch_chunk_contents` est un N+1** malgré son nom | 🔴 | `chunk_content.rs:30-43` (`get_by_ids` existe, non utilisé ici) |
+| 22 | **`kv.rs::upsert` non transactionnel entre chunks** | 🔴 | `kv.rs:257-290` |
+| 23 | **Dédup `documents` cassée** (prédicat `WHERE status='indexed'` vs `'completed'` moderne) | 🔴 | M023 vs M032 |
+| 24 | **`matches_track_id` ignore les 3 variantes `Deletion*`** | 🔴 | `websocket.rs:573-581` |
+| 25 | **`from_url()` non géré par Anthropic** → requête invalide silencieuse | 🔴 | crate LLM `anthropic.rs` (dépendance externe, inchangée) |
+| 26 | **`MAX_SOURCE_IDS` (300) déclaré jamais appliqué** | 🟠 | constante morte `entity.rs:50` ; **mais** un cap fonctionnel séparé (200, env) EST appliqué depuis SPEC-047 (`merge_limits.rs`) |
+| 27 | **`last_accessed` jamais rafraîchi** → l'éviction « LRU » est FIFO | 🔴 | `tenant_manager.rs:255-269,484` |
+| 28 | **`cosine_similarity` panique** sur mismatch de dimension | 🔴 | `embedding.rs:84-88` |
+| 29 | **Migration de dimension = drop+create sans backup** | ✅ | **corrigé SPEC-058** — fail-closed, cf. §5.4 (`migration.rs:88-210`) |
 
 ### Conception / dette
 
-| # | Défaut | Impact |
-|---|---|---|
-| 30 | **Le graphe n'est pas un multigraphe** (clé arête sans le type) | Contrainte AGE — deux relations de types différents s'écrasent |
-| 31 | **Poids de relation `(a+b)/2`** — order-dependent, non associatif | Ni somme, ni moyenne |
-| 32 | **Types d'entité : le premier gagne définitivement**, sans log | Aucune détection de conflit |
-| 33 | **Le cap 200 précède la lignée** | Un document peut disparaître de la lignée |
-| 34 | **Double gate divergent** merger (1200) vs summarizer (4000) | `NeedsLlm` dans `[1200,4000)` n'appelle jamais le LLM |
-| 35 | **Doc vs code : « weighted sum » vs max** | `mix.rs:200` |
-| 36 | **`EDGEQUAKE_SPARSE_FUSION=weighted` n'est pas pondéré** — c'est sparse-first | `sparse_retrieval.rs:169` |
-| 37 | **`chunk.score` porte 3 échelles** (cosinus / RRF / rerank) | Incomparable entre modes |
-| 38 | **`query_vec` = embedding de historique+question**, réutilisé comme question seule | `query_pipeline.rs:258` vs `:281` |
-| 39 | **`min_score` sauté silencieusement** quand `preserve_order` | `chunk_retrieval.rs:155` |
-| 40 | **`QueryStats` vs `QueryStreamStats` ont divergé** | Zéro diagnostic en streaming |
-| 41 | **Pourcentage de progression = moyenne non pondérée** | Upload pèse autant qu'Extraction |
-| 42 | **ETA repart de zéro** après sérialisation (`#[serde(skip)]`) | — |
-| 43 | **`size()` de la queue retourne toujours 0** | Métriques de profondeur fausses |
-| 44 | **Contrat 100 MiB PDF inatteignable** (body limit 50 MiB) | Le contrat public ment ×2 |
-| 45 | **`audit_logs` défini 4 fois** ; partitions jamais planifiées | **Les INSERT casseront** au-delà de la dernière partition |
-| 46 | **Layer OTEL monté avant `env_filter`** | Échappe à `RUST_LOG` |
-| 47 | **`make postgres-start` n'existe pas** (recommandé par CONTRIBUTING et AGENTS) | La CI fait `\|\| make db-start \|\| true` |
-| 48 | **Workflows SDK dans des `.github/` imbriqués** | **Ne s'exécutent jamais** |
-| 49 | **`sed -i ''`** (BSD/macOS) dans les cibles de publication | Cassé sur Linux |
-| 50 | **`.env.example` fixe `VISION_PROVIDER=openai` en dur** | **Un utilisateur Ollama enverra ses PDF à OpenAI** |
+| # | Défaut | Verdict | Impact / emplacement |
+|---|---|:---:|---|
+| 30 | **Le graphe n'est pas un multigraphe** (clé arête sans le type) | 🔴 | contrainte AGE — deux relations de types différents s'écrasent |
+| 31 | **Poids de relation `(a+b)/2`** — order-dependent, non associatif | 🔴 | ni somme, ni moyenne |
+| 32 | **Types d'entité : le premier gagne définitivement**, sans log | 🔴 | `update_entity_node` n'écrit jamais `entity_type` |
+| 33 | **Le cap 200 précède la lignée** | 🔴 | un document peut disparaître de la lignée |
+| 34 | **Double gate divergent** merger (1200) vs summarizer (4000) | 🔴 | `NeedsLlm` dans `[1200,4000)` n'appelle jamais le LLM |
+| 35 | **Doc « weighted blend » vs code max** | 🔴 | `modes/mix.rs:216-222` |
+| 36 | **`EDGEQUAKE_SPARSE_FUSION=weighted` n'est pas pondéré** — sparse-first (mais mode `rrf` ajouté en SPEC-076) | 🔴 | `sparse_retrieval.rs` |
+| 37 | **`chunk.score` porte 3 échelles** (cosinus / RRF / rerank) | 🔴 | incomparable entre modes |
+| 38 | **`query_vec` = embedding de historique+question**, réutilisé comme question seule | 🔴 | `query_pipeline.rs:465,497` (C1c le propage même aux slots high/low) |
+| 39 | **`min_score` sauté silencieusement** quand `preserve_order` | 🔴 | `chunk_retrieval.rs:159,237` |
+| 40 | **`QueryStats` vs `QueryStreamStats` ont divergé** (streaming sans diagnostics de bras) | 🔴 | `query_types.rs:330-367` vs `:477+` (écart accru) |
+| 41 | **Pourcentage de progression = moyenne non pondérée** des 6 phases | 🔴 | `progress.rs:548-553` (TODO assumé) |
+| 42 | **ETA repart de zéro** après sérialisation (`#[serde(skip)]`) | 🔴 | `progress.rs` |
+| 43 | **`size()` de la queue retourne toujours 0** | ✅ | `ChannelTaskQueue` tient un compteur ; `Unbounded` renvoie encore 0 |
+| 44 | **Contrat 100 MiB PDF inatteignable** (body limit 50 MiB) + message « 10 MB » faux | 🔴 | `pdf_storage.rs:565`, `injection_file.rs:82` |
+| 45 | **`audit_logs` défini 4 fois** ; partitions/archivage jamais planifiés | 🔴 | **les INSERT casseront** au-delà de la dernière partition pré-créée (12 mois) |
+| 46 | **Layer OTEL monté avant `env_filter`** → échappe à `RUST_LOG` | 🔴 | `observability/subscriber.rs:121-124` |
+| 47 | **`make postgres-start` n'existe pas** (recommandé par CONTRIBUTING/AGENTS) | 🔴 | Makefile n'a que `db-start`/`test-postgres-start` |
+| 48 | **Workflows SDK dans des `.github/` imbriqués** → jamais exécutés | 🔴 | `sdks/*/.github/workflows/` |
+| 49 | **`sed -i ''`** (BSD/macOS) dans les cibles de publication | 🔴 | Makefile — cassé sur Linux |
+| 50 | **`.env.example` fixe `VISION_PROVIDER=openai` en dur** | 🔴 | `.env.example:36` — un utilisateur Ollama enverra ses PDF à OpenAI |
+| 51 | **Multipart 100 % en RAM**, batch sans cap de nombre de fichiers | 🔴 | `upload/file_upload.rs:69`, `pdf_upload/upload.rs:115` (garde-fou : body limit global) |
+| 52 | **Cache d'extraction inerte** — jamais de `set` | 🔴 | `pipeline/cache.rs:358` (TODO) |
+| 53 | **Trois estimateurs de tokens divergents** (2.5 / 4 / 4), aucun tokenizer réel dans le pipeline | 🔴 | `embeddings.rs:26`, `text_utils.rs:38`, `summarizer.rs:174` |
+| 54 | **Louvain phase-1-only** (pas de hiérarchie) + community reports extractifs | 🔴 | `community.rs`, `community_reports.rs` |
+| 55 | **Deux serveurs MCP concurrents** (TS stdio v0.2.0 / Rust streamable-http), aucun déprécié | 🔴 | `mcp/`, `crates/edgequake-api/src/mcp/` |
+
+**Bilan verdict :** sur 55 items, **4 corrigés** (#19 rétracté, #20/#29/#43 corrigés — plus les 8 corrections de fiabilité de queue du §0.2), **2 atténués** (#26, et #4 côté cancel), **le reste toujours présent**. Le fichier `entity_id.rs`, retravaillé deux fois en 0.20, n'a jamais touché ses 3 bugs de normalisation (#14).
 
 ---
 
 ## Le mot de la fin
 
-**Ce qui est excellent :** l'ingénierie autour de PostgreSQL. Les contournements AGE, les gains chiffrés (69× sur l'upsert natif, 155× d'index inutile supprimé), le `search_path`, les migrations embarquées avec `/ready` piloté par leur état, la stack de 8 MiB pour les bras parallèles, le checkpoint sans embeddings, `AUTO_RESUME` off par défaut. Ce sont des cicatrices d'incidents réels, chacune documentée avec son WHY. **On ne les redécouvre pas gratuitement — c'est la vraie valeur de ce code.**
+**Ce qui est excellent :** l'ingénierie autour de PostgreSQL. Les contournements AGE, les gains chiffrés (69× sur l'upsert natif, 155× d'index inutile supprimé), le `search_path`, les migrations embarquées avec `/ready` piloté par leur état, la stack de 8 MiB pour les bras parallèles, le checkpoint sans embeddings. Ce sont des cicatrices d'incidents réels, chacune documentée avec son WHY. **On ne les redécouvre pas gratuitement — c'est la vraie valeur de ce code.**
 
-**Ce qui est solide :** le modèle de retrieval (3 embeddings, PPR, RRF, troncature avec plancher), les prompts sous contrat de test, le pattern `FromRef`, `ErrorEvent`.
+**Ce qui est solide :** le modèle de retrieval (3 embeddings, PPR, RRF, troncature avec plancher), les prompts sous contrat de test, le pattern `FromRef`, `ErrorEvent`, et — nouveau en 0.20 — la **fiabilité de queue** (SPEC-057 : claim `SKIP LOCKED` + leases + fencing), le **runtime splitté** et le **bulkhead lecture**.
 
-**Ce qui est à refaire :** la queue (mpsc in-process — `SKIP LOCKED` réglerait queue + retry + orphelins + annulation d'un coup), le retry (brancher `retry_strategy()` au lieu de grepper `"429"`), l'isolation (choisir **un** modèle), les tokens (un tokenizer, pas trois estimateurs).
+**Ce qui reste à refaire :** le retry LLM (brancher `retry_strategy()` typé au lieu de grepper `"429"`), l'isolation (choisir **un** modèle — la RLS est de facto inerte), les tokens (un tokenizer réel, pas trois estimateurs), l'isolation tenant WebSocket, et les 3 bugs de normalisation d'entités. Détail et verdict item par item en [§14](#14-annexe--défauts-vérifiés).
 
-**Ce qui est à savoir avant d'y toucher :** l'accuracy réelle est **0.458 @40 docs**, pas 0.549 ; elle **décroît avec la taille du corpus** ; le golden set n'est jamais évalué ; plusieurs gates n'en sont pas ; et le quickstart démarre sans authentification.
+**Ce qui est à savoir avant d'y toucher :** l'accuracy réelle est **0.458 @40 docs**, pas 0.549 (le 0.549 est un checkpoint à 5 docs) ; elle **décroît avec la taille du corpus** ; le golden set n'est jamais évalué ; plusieurs gates CI n'en sont pas ; le quickstart démarre sans authentification ; et **l'incident de prod SPEC-062 est actif** (cf. §0.1 et `INCIDENT-PROD-DIAGNOSIS.md`).
 
 ---
 
-*Document généré par analyse du code source EdgeQuake v0.18.0 (`0e1d319c`), 2026-07-17.
-Chaque affirmation est vérifiée dans le code. Les écarts entre documentation et implémentation sont signalés explicitement.*
+*Document établi par analyse du code source EdgeQuake. Base écrite contre v0.18.0 (`0e1d319c`) le 2026-07-17, **re-vérifiée intégralement contre v0.20.2 (`d96f0725`) le 2026-07-22**.
+Chaque affirmation est vérifiée dans le code aux lignes citées ; les défauts portent un verdict (présent / corrigé / rétracté) au HEAD 0.20.2. Les écarts entre documentation interne et implémentation sont signalés explicitement.
+Document compagnon : `INCIDENT-PROD-DIAGNOSIS.md` (diagnostic de l'incident SPEC-062 en production).*
