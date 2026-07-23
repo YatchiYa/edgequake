@@ -30,8 +30,10 @@ RUN npm install -g pnpm
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
 
-# Copy source code
+# Copy source code (openapi/ must be present for `@/openapi/schema`)
 COPY edgequake_webui/ ./
+RUN test -f openapi/schema.d.ts \
+  || (echo "FATAL: openapi/schema.d.ts missing from Docker context" && ls -la openapi 2>/dev/null; exit 1)
 
 # Build application
 RUN pnpm run build
