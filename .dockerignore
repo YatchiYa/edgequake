@@ -69,5 +69,7 @@ edgequake_webui/*.txt
 !edgequake_webui/vitest.config.mjs
 !edgequake_webui/src/
 !edgequake_webui/public/
+# OpenAPI generated types required by Next.js build (`@/openapi/schema`)
+!edgequake_webui/openapi/
 
 
