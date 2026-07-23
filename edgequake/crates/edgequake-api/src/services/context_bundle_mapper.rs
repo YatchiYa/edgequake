@@ -446,6 +446,7 @@ mod tests {
             page_start: None,
             page_end: None,
             modality: None,
+            citation_id: None,
         });
 
         let bundle = map_query_context_to_bundle(
@@ -484,6 +485,7 @@ mod tests {
                 retrieval_time_ms: 20,
                 ..Default::default()
             },
+            explain: None,
         };
         assert_eq!(
             build_retrieval_stats(&response, false).embedding_time_ms,

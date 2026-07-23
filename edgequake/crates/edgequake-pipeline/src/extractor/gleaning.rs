@@ -5,6 +5,7 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+use super::completion_options::extraction_completion_options;
 use super::{EntityExtractor, ExtractedEntity, ExtractedRelationship, ExtractionResult};
 use crate::chunker::TextChunk;
 use crate::error::{PipelineError, Result};
@@ -199,9 +200,11 @@ impl EntityExtractor for GleaningExtractor {
             // Build and execute gleaning prompt
             let gleaning_prompt = self.build_gleaning_prompt(chunk, &entity_names);
 
+            // C-17: share extraction CompletionOptions (temp=0, reasoning=none).
+            let options = extraction_completion_options(self.llm_provider.model(), 16_384);
             let response = self
                 .llm_provider
-                .complete(&gleaning_prompt)
+                .complete_with_options(&gleaning_prompt, &options)
                 .await
                 .map_err(|e| {
                     PipelineError::ExtractionError(format!("Gleaning LLM error: {}", e))

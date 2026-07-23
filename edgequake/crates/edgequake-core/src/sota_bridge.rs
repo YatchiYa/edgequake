@@ -98,6 +98,7 @@ fn sota_response_to_core(response: QueryResponse) -> QueryResult {
         context,
         mode,
         stats,
+        explain: _,
     } = response;
 
     let entities_len = context.entities.len();

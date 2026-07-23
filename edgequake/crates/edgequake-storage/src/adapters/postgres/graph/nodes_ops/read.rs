@@ -145,20 +145,38 @@ impl PostgresAGEGraphStorage {
         //   We don't need graphids; edge properties already hold the text node_id.
         //   The VALUES CTE is a constant — zero DB I/O — and lets LEFT JOIN return
         //   degree 0 for isolated nodes without a second table scan.
-        // SPEC-062: aggregate on denormalized eq_source_id / eq_target_id (btree).
+        // SPEC-083 / X-03: COALESCE(eq_*, props) when columns exist; prop-only otherwise.
+        let eq_present = self.eq_columns_present(&mut conn).await?;
+        let src = if eq_present {
+            super::super::helpers::coalesce_endpoint("e", "source")
+        } else {
+            super::super::helpers::prop_only_endpoint("e", "source")
+        };
+        let tgt = if eq_present {
+            super::super::helpers::coalesce_endpoint("e", "target")
+        } else {
+            super::super::helpers::prop_only_endpoint("e", "target")
+        };
+        if !eq_present || super::super::helpers::eq_id_fallback_env_enabled() {
+            tracing::debug!(
+                target: "edgequake_storage",
+                eq_present,
+                "eq_id_fallback_used: pg_node_degrees_batch"
+            );
+        }
         let sql = format!(
             "WITH input(node_id) AS ( VALUES {values_list} ), \
              out_deg AS ( \
-               SELECT e.eq_source_id AS node_id, COUNT(*)::bigint AS cnt \
+               SELECT {src} AS node_id, COUNT(*)::bigint AS cnt \
                FROM {graph}.\"EDGE\" e \
-               WHERE e.eq_source_id IN ({in_list}) \
-               GROUP BY e.eq_source_id \
+               WHERE {src} IN ({in_list}) \
+               GROUP BY 1 \
              ), \
              in_deg AS ( \
-               SELECT e.eq_target_id AS node_id, COUNT(*)::bigint AS cnt \
+               SELECT {tgt} AS node_id, COUNT(*)::bigint AS cnt \
                FROM {graph}.\"EDGE\" e \
-               WHERE e.eq_target_id IN ({in_list}) \
-               GROUP BY e.eq_target_id \
+               WHERE {tgt} IN ({in_list}) \
+               GROUP BY 1 \
              ) \
              SELECT i.node_id, \
                     COALESCE(o.cnt, 0) + COALESCE(d.cnt, 0) AS degree \
@@ -167,13 +185,16 @@ impl PostgresAGEGraphStorage {
              LEFT JOIN in_deg  d ON d.node_id = i.node_id",
             values_list = values_list,
             graph = self.graph_name,
-            in_list = in_list
+            in_list = in_list,
+            src = src,
+            tgt = tgt,
         );
 
         tracing::debug!(
             target: "edgequake_storage",
             node_count = node_ids.len(),
-            "Batch degree SQL (SPEC-053 indexed): {}",
+            eq_present,
+            "Batch degree SQL (SPEC-083): {}",
             sql.chars().take(300).collect::<String>()
         );
 

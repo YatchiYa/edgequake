@@ -95,9 +95,9 @@ pub enum DescriptionMergeDecision {
     NeedsLlm { fragments: Vec<String> },
 }
 
-/// Rough token estimate (LightRAG uses a real tokenizer; we use chars/4).
+/// Token estimate via SSOT [`crate::token_estimator`] (D-53 / D-34).
 pub fn approx_token_count(text: &str) -> usize {
-    text.len().div_ceil(4)
+    crate::token_estimator::count_tokens(text)
 }
 
 /// Split a stored description into fragments on [`GRAPH_FIELD_SEP`].

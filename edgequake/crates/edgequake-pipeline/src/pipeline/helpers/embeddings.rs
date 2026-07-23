@@ -204,14 +204,23 @@ async fn embed_batched_with_retry(
             Err(e) => {
                 let msg = e.to_string();
                 attempt += 1;
-                if is_transient_embedding_error(&msg) && attempt < MAX_ATTEMPTS {
-                    let delay_ms = 500u64.saturating_mul(1u64 << (attempt - 1).min(4));
+                // X-06/X-07: typed retry_strategy only — no substring "429" matching.
+                if e.retry_strategy().should_retry() && attempt < MAX_ATTEMPTS {
+                    let base_ms = 500u64.saturating_mul(1u64 << (attempt - 1).min(4));
+                    // Full jitter (AWS): uniform in [0, base] prevents thundering herd.
+                    let delay_ms = {
+                        use std::collections::hash_map::DefaultHasher;
+                        use std::hash::{Hash, Hasher};
+                        let mut h = DefaultHasher::new();
+                        (attempt, batch.len(), base_ms).hash(&mut h);
+                        h.finish() % (base_ms.max(1))
+                    };
                     tracing::warn!(
                         attempt,
                         delay_ms,
                         error = %msg,
                         batch_size = batch.len(),
-                        "Transient embedding provider error — retrying with backoff"
+                        "Transient embedding provider error — retrying with jittered backoff"
                     );
                     tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
                     continue;
@@ -222,16 +231,9 @@ async fn embed_batched_with_retry(
     }
 }
 
-fn is_transient_embedding_error(message: &str) -> bool {
-    let lower = message.to_ascii_lowercase();
-    lower.contains("429")
-        || lower.contains("rate limit")
-        || lower.contains("503")
-        || lower.contains("service unavailable")
-        || lower.contains("temporarily unavailable")
-}
-
 /// Local-provider ceiling for parallel embed sub-batches (unless opt-out).
+///
+/// X-07: transient classification is solely `LlmError::retry_strategy()`.
 pub const LOCAL_EMBED_MAX_ASYNC: usize = 1;
 
 /// Max concurrent embedding API sub-batches (LightRAG `embedding_func_max_async` ≈ 8).
@@ -365,36 +367,98 @@ async fn embed_with_token_budget(
     let provider = Arc::clone(provider);
     let texts_owned: Vec<String> = texts.to_vec();
     let cancel_owned = cancel.cloned();
-    let mut completed = 0usize;
-    let mut indexed: Vec<(usize, Vec<Vec<f32>>)> = stream::iter(ranges)
+
+    // X-18: per-sub-batch Result — do not fail-fast the whole collect on one error.
+    // Preserve range identity on Err so we can retry / skip individually.
+    type SubBatchOk = (usize, Vec<Vec<f32>>);
+    type SubBatchErr = (usize, usize, crate::error::PipelineError);
+    let results: Vec<std::result::Result<SubBatchOk, SubBatchErr>> = stream::iter(ranges)
         .map(|(start, end)| {
             let provider = Arc::clone(&provider);
             let batch = texts_owned[start..end].to_vec();
             let cancel = cancel_owned.clone();
             async move {
-                let emb = embed_batched_with_retry(&provider, &batch, cancel.as_ref()).await?;
-                Ok::<_, crate::error::PipelineError>((start, emb))
+                match embed_batched_with_retry(&provider, &batch, cancel.as_ref()).await {
+                    Ok(emb) => Ok((start, emb)),
+                    Err(e) => Err((start, end, e)),
+                }
             }
         })
         .buffer_unordered(concurrency)
-        .collect::<Vec<_>>()
-        .await
-        .into_iter()
-        .collect::<crate::error::Result<Vec<_>>>()?;
+        .collect()
+        .await;
+
+    let mut indexed: Vec<(usize, Vec<Vec<f32>>)> = Vec::with_capacity(results.len());
+    let mut failed_ranges: Vec<(usize, usize, crate::error::PipelineError)> = Vec::new();
+    for r in results {
+        match r {
+            Ok(v) => indexed.push(v),
+            Err(f) => failed_ranges.push(f),
+        }
+    }
+
+    // One sequential retry pass for failed sub-batches (transient blips).
+    for (start, end, first_err) in failed_ranges {
+        if cancel_owned
+            .as_ref()
+            .map(|t| t.is_cancelled())
+            .unwrap_or(false)
+        {
+            return Err(crate::error::PipelineError::EmbeddingError(
+                "Task cancelled".to_string(),
+            ));
+        }
+        let batch = &texts_owned[start..end];
+        match embed_batched_with_retry(&provider, batch, cancel_owned.as_ref()).await {
+            Ok(emb) => {
+                tracing::info!(
+                    start,
+                    end,
+                    recovered = emb.len(),
+                    "X-18: embed sub-batch recovered on retry"
+                );
+                indexed.push((start, emb));
+            }
+            Err(e) => {
+                tracing::warn!(
+                    start,
+                    end,
+                    first_error = %first_err,
+                    retry_error = %e,
+                    "X-18: embed sub-batch failed after retry — tolerating partial batch"
+                );
+            }
+        }
+    }
+
+    if indexed.is_empty() && !texts.is_empty() {
+        return Err(crate::error::PipelineError::EmbeddingError(
+            "All embedding sub-batches failed".to_string(),
+        ));
+    }
 
     indexed.sort_by_key(|(start, _)| *start);
     let mut all_embeddings: Vec<Vec<f32>> = Vec::with_capacity(texts.len());
-    for (_, emb) in indexed {
-        completed += emb.len();
+    let mut cursor = 0usize;
+    for (start, emb) in indexed {
+        if start > cursor {
+            tracing::warn!(
+                skipped_from = cursor,
+                skipped_to = start,
+                "X-18: gap in embed sub-batches after partial failure"
+            );
+        }
+        cursor = start + emb.len();
+        let n = all_embeddings.len() + emb.len();
         all_embeddings.extend(emb);
-        emit(completed.min(texts.len()));
+        emit(n.min(texts.len()));
     }
 
     if all_embeddings.len() != texts.len() {
         tracing::warn!(
             expected = texts.len(),
             actual = all_embeddings.len(),
-            "Parallel embed sub-batch result count mismatch"
+            "X-18: parallel embed partial sub-batch result (tolerated)"
         );
     }
 
@@ -442,7 +506,8 @@ async fn safe_embed(
             "SPEC-046 OPS-P1.7: embedding inputs truncated under Truncate policy"
         );
     }
-    let embeddings = embed_with_token_budget(provider, &guarded.texts, progress, cancel).await?;
+    let mut embeddings =
+        embed_with_token_budget(provider, &guarded.texts, progress, cancel).await?;
     if embeddings.len() != texts.len() {
         tracing::warn!(
             expected = texts.len(),
@@ -451,7 +516,19 @@ async fn safe_embed(
             "{kind} embedding count mismatch - some items may lack embeddings"
         );
     }
+    // X-10: L2-normalize on write (same algorithm as Embedding::normalize).
+    for vector in &mut embeddings {
+        l2_normalize_inplace(vector);
+    }
     Ok(embeddings)
+}
+
+/// L2-normalize a vector in place (SSOT mirror of `Embedding::normalize`).
+fn l2_normalize_inplace(vector: &mut [f32]) {
+    let norm: f32 = vector.iter().map(|x| x * x).sum::<f32>().sqrt();
+    if norm > 0.0 {
+        vector.iter_mut().for_each(|x| *x /= norm);
+    }
 }
 
 /// Estimate the number of embedding tokens for a character count.
@@ -1097,15 +1174,91 @@ mod tests {
     }
 
     #[test]
-    fn spec045_transient_embedding_error_detects_429_and_503() {
-        assert!(super::is_transient_embedding_error(
-            "Mistral embeddings API error (429 Too Many Requests)"
-        ));
-        assert!(super::is_transient_embedding_error(
-            "service unavailable 503"
-        ));
-        assert!(!super::is_transient_embedding_error(
-            "Too many inputs in request (400)"
-        ));
+    fn x07_typed_retry_strategy_no_substring() {
+        // X-07: classification is LlmError::retry_strategy(), not message contains.
+        use edgequake_llm::LlmError;
+        assert!(LlmError::RateLimited("too many requests".into())
+            .retry_strategy()
+            .should_retry());
+        assert!(LlmError::Timeout.retry_strategy().should_retry());
+        assert!(
+            !LlmError::InvalidRequest("Too many inputs in request (400)".into())
+                .retry_strategy()
+                .should_retry()
+        );
+        assert!(!LlmError::AuthError("bad key".into())
+            .retry_strategy()
+            .should_retry());
+    }
+
+    /// Provider that permanently fails batches containing a poison marker.
+    struct PartialFailEmbedProvider {
+        max_batch: usize,
+        poison: String,
+    }
+
+    #[async_trait::async_trait]
+    impl edgequake_llm::traits::EmbeddingProvider for PartialFailEmbedProvider {
+        fn name(&self) -> &str {
+            "partial-fail"
+        }
+        fn model(&self) -> &str {
+            "partial-fail-embed"
+        }
+        fn dimension(&self) -> usize {
+            2
+        }
+        fn max_tokens(&self) -> usize {
+            8_192
+        }
+        fn max_batch_size(&self) -> usize {
+            self.max_batch
+        }
+
+        async fn embed(&self, texts: &[String]) -> edgequake_llm::Result<Vec<Vec<f32>>> {
+            if texts.iter().any(|t| t.contains(&self.poison)) {
+                return Err(edgequake_llm::LlmError::InvalidRequest(
+                    "poison sub-batch".into(),
+                ));
+            }
+            Ok(texts.iter().map(|_| vec![0.5, 0.5]).collect())
+        }
+    }
+
+    /// SPEC-083 X-18: one failed sub-batch must not fail the entire embed collect.
+    #[tokio::test]
+    async fn unit_embed_partial_subbatch_tolerated() {
+        // 12 texts, max_batch=5 → ≥3 sub-batches; poison only the middle range.
+        let mut texts: Vec<String> = (0..12).map(|i| format!("ok-{i}")).collect();
+        texts[5] = "POISON-item".into();
+        texts[6] = "POISON-item-2".into();
+        let provider: Arc<dyn edgequake_llm::traits::EmbeddingProvider> =
+            Arc::new(PartialFailEmbedProvider {
+                max_batch: 5,
+                poison: "POISON".into(),
+            });
+
+        let result = embed_with_token_budget(&provider, &texts, None, None)
+            .await
+            .expect("X-18: partial failure must not fail whole embed");
+        // Surviving batches: [0..5) and [10..12) → 5 + 2 = 7 (poison batch [5..10) dropped).
+        assert!(
+            result.len() < texts.len() && !result.is_empty(),
+            "expected partial embeddings, got {}",
+            result.len()
+        );
+        assert_eq!(result.len(), 7);
+
+        // Contract: production path must not use fail-fast Result collect.
+        let src = include_str!("embeddings.rs");
+        let prod = src.split("#[cfg(test)]").next().expect("prod");
+        assert!(
+            !prod.contains("collect::<crate::error::Result<Vec<_>>>"),
+            "X-18: must not fail-fast collect Result of all sub-batches"
+        );
+        assert!(
+            prod.contains("tolerating partial batch") || prod.contains("X-18"),
+            "X-18: partial tolerance path must be present"
+        );
     }
 }

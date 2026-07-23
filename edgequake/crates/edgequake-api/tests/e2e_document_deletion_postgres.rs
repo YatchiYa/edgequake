@@ -167,8 +167,10 @@ async fn create_postgres_test_state(pool: &PgPool) -> AppState {
     ));
 
     // Auth services — disable for local cascade/wipe contract tests.
-    let mut auth_config = AuthConfig::default();
-    auth_config.auth_enabled = false;
+    let auth_config = AuthConfig {
+        auth_enabled: false,
+        ..AuthConfig::default()
+    };
     let vector_registry: Arc<dyn edgequake_storage::traits::WorkspaceVectorRegistry> =
         Arc::new(MemoryWorkspaceVectorRegistry::new(
             Arc::clone(&vector_storage) as Arc<dyn edgequake_storage::traits::VectorStorage>,

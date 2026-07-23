@@ -98,7 +98,39 @@ impl PipelineStage {
             PipelineStage::Finalizing => "Finalizing",
         }
     }
+
+    /// Relative work units for weighted overall progress (D-41).
+    ///
+    /// Early stages (preprocess/chunk) finish in seconds; extraction and
+    /// gleaning dominate wall time. Equal-weight averages made a completed
+    /// upload look like ~50% done — these weights keep the bar honest.
+    pub fn weight(self) -> f32 {
+        match self {
+            PipelineStage::Preprocessing => 1.0,
+            PipelineStage::Chunking => 2.0,
+            PipelineStage::Extracting => 40.0,
+            PipelineStage::Gleaning => 20.0,
+            PipelineStage::Merging => 8.0,
+            PipelineStage::Summarizing => 10.0,
+            PipelineStage::Embedding => 12.0,
+            PipelineStage::Storing => 5.0,
+            PipelineStage::Finalizing => 2.0,
+        }
+    }
 }
+
+/// SSOT table of phase weights (sum ≈ 100). See [`PipelineStage::weight`].
+pub const PHASE_WEIGHTS: &[(PipelineStage, f32)] = &[
+    (PipelineStage::Preprocessing, 1.0),
+    (PipelineStage::Chunking, 2.0),
+    (PipelineStage::Extracting, 40.0),
+    (PipelineStage::Gleaning, 20.0),
+    (PipelineStage::Merging, 8.0),
+    (PipelineStage::Summarizing, 10.0),
+    (PipelineStage::Embedding, 12.0),
+    (PipelineStage::Storing, 5.0),
+    (PipelineStage::Finalizing, 2.0),
+];
 
 /// Progress for a single pipeline stage (internal job tracker).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -326,20 +358,26 @@ impl IngestionProgress {
         }
     }
 
-    /// Calculate overall completion percentage.
+    /// Calculate overall completion percentage using [`PHASE_WEIGHTS`] (D-41).
     pub fn calculate_completion(&mut self) {
-        let total_stages = self.stages.len() as f32;
-        let completed: f32 = self
-            .stages
-            .iter()
-            .map(|s| match s.status {
+        let mut weighted_done = 0.0_f32;
+        let mut weight_total = 0.0_f32;
+        for s in &self.stages {
+            let w = s.stage.weight();
+            weight_total += w;
+            let frac = match s.status {
                 StageStatus::Completed | StageStatus::Skipped => 1.0,
                 StageStatus::Running => s.completion_percentage / 100.0,
                 _ => 0.0,
-            })
-            .sum();
+            };
+            weighted_done += w * frac;
+        }
 
-        self.completion_percentage = (completed / total_stages) * 100.0;
+        self.completion_percentage = if weight_total > 0.0 {
+            (weighted_done / weight_total) * 100.0
+        } else {
+            0.0
+        };
     }
 }
 
@@ -472,6 +510,35 @@ mod tests {
         assert_eq!(stages.len(), 9);
         assert_eq!(stages[0], PipelineStage::Preprocessing);
         assert_eq!(stages[8], PipelineStage::Finalizing);
+    }
+
+    #[test]
+    fn test_progress_weighted_phases_d41() {
+        let sum: f32 = PHASE_WEIGHTS.iter().map(|(_, w)| w).sum();
+        assert!(
+            (sum - 100.0).abs() < 0.01,
+            "PHASE_WEIGHTS should sum to 100"
+        );
+
+        let mut progress = IngestionProgress::new("job-1", "doc-1");
+        // Only preprocessing complete → ~1% not ~11% (equal-weight would be 1/9).
+        for s in &mut progress.stages {
+            if s.stage == PipelineStage::Preprocessing {
+                s.complete();
+            }
+        }
+        progress.calculate_completion();
+        assert!(
+            progress.completion_percentage < 5.0,
+            "early stage alone must not look half-done: {}",
+            progress.completion_percentage
+        );
+    }
+
+    /// SPEC-083 matrix name (D-41).
+    #[test]
+    fn unit_progress_weighted() {
+        test_progress_weighted_phases_d41();
     }
 
     #[test]

@@ -47,7 +47,9 @@ pub struct GraphEntity {
 
 impl GraphEntity {
     /// Maximum number of source IDs to retain per entity.
-    pub const MAX_SOURCE_IDS: usize = 300;
+    ///
+    /// SPEC-083 C-26 SSOT: must match `edgequake_pipeline::DEFAULT_MAX_SOURCE_IDS` (200).
+    pub const MAX_SOURCE_IDS: usize = 200;
 
     /// Normalize entity name for consistent storage.
     ///
@@ -101,18 +103,24 @@ impl GraphEntity {
 
     /// Add a new source ID to the entity.
     ///
-    /// Source IDs are appended with a pipe separator. If the maximum
-    /// number of sources is exceeded, older sources may be removed
-    /// based on the retention strategy.
+    /// Source IDs are appended with a pipe separator. When saturated at
+    /// [`MAX_SOURCE_IDS`], new ids are dropped (KEEP / oldest-wins — C-26).
     pub fn add_source(&mut self, source_id: &str) {
+        if source_id.is_empty() {
+            return;
+        }
         if self.source_id.is_empty() {
             self.source_id = source_id.to_string();
-        } else {
-            let sources: Vec<&str> = self.source_id.split('|').collect();
-            if !sources.contains(&source_id) {
-                self.source_id = format!("{}|{}", self.source_id, source_id);
-            }
+            return;
         }
+        let sources: Vec<&str> = self.source_id.split('|').collect();
+        if sources.contains(&source_id) {
+            return;
+        }
+        if sources.len() >= Self::MAX_SOURCE_IDS {
+            return;
+        }
+        self.source_id = format!("{}|{}", self.source_id, source_id);
     }
 
     /// Get the number of source chunks.
@@ -214,6 +222,25 @@ mod tests {
         // Adding duplicate should not increase count
         entity.add_source("chunk-1");
         assert_eq!(entity.source_count(), 2);
+    }
+
+    #[test]
+    fn contract_single_source_id_cap() {
+        // SPEC-083 C-26: live cap matches merge_limits DEFAULT_MAX_SOURCE_IDS (200).
+        assert_eq!(GraphEntity::MAX_SOURCE_IDS, 200);
+        let mut entity = GraphEntity::new(
+            "Cap".to_string(),
+            "CONCEPT".to_string(),
+            "d".to_string(),
+            "chunk-0".to_string(),
+            None,
+        );
+        for i in 1..250 {
+            entity.add_source(&format!("chunk-{i}"));
+        }
+        assert_eq!(entity.source_count(), GraphEntity::MAX_SOURCE_IDS);
+        assert!(entity.get_sources().contains(&"chunk-0"));
+        assert!(!entity.get_sources().contains(&"chunk-249"));
     }
 
     #[test]

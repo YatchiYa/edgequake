@@ -29,8 +29,9 @@
 
 use async_trait::async_trait;
 
+use super::page_marker::{parse_page_marker, PAGE_MARKER_PREFIX};
 use super::recursive::RecursiveCharacterChunking;
-use super::types::{parse_page_marker, ChunkResult, ChunkerConfig, ChunkingStrategy};
+use super::types::{ChunkResult, ChunkerConfig, ChunkingStrategy};
 use crate::error::Result;
 
 /// Wraps an inner chunker; splits content at page boundaries first so no chunk
@@ -64,6 +65,8 @@ pub struct PageSegment {
     page: u32,
     /// Content of this page (page marker stripped).
     content: String,
+    /// Byte offset of `content` within the original document (C-15).
+    base_offset: usize,
 }
 
 /// Split markdown at `<!-- edgequake-page:N -->` markers.
@@ -84,30 +87,44 @@ pub fn split_into_page_segments(content: &str) -> Vec<PageSegment> {
     }
 
     // No page markers → treat entire content as page 1
-    if !content.contains(super::types::PAGE_MARKER_PREFIX) {
+    if !content.contains(PAGE_MARKER_PREFIX) {
         return vec![PageSegment {
             page: 1,
             content: content.to_string(),
+            base_offset: 0,
         }];
     }
 
     let mut segments: Vec<PageSegment> = Vec::new();
     let mut current_page: u32 = 1;
     let mut current_lines: Vec<&str> = Vec::new();
+    let mut segment_base: Option<usize> = None;
+    let mut byte_offset = 0usize;
 
     for line in content.lines() {
+        let line_start = byte_offset;
+        // Advance past this line (+ optional `\n` that `lines()` strips).
+        byte_offset += line.len();
+        if byte_offset < content.len() && content.as_bytes()[byte_offset] == b'\n' {
+            byte_offset += 1;
+        }
+
         if let Some(page_num) = parse_page_marker(line) {
-            // Flush current segment
             let text = current_lines.join("\n");
             if !text.trim().is_empty() {
                 segments.push(PageSegment {
                     page: current_page,
                     content: text,
+                    base_offset: segment_base.unwrap_or(0),
                 });
             }
             current_page = page_num;
             current_lines.clear();
+            segment_base = None;
         } else {
+            if segment_base.is_none() {
+                segment_base = Some(line_start);
+            }
             current_lines.push(line);
         }
     }
@@ -118,6 +135,7 @@ pub fn split_into_page_segments(content: &str) -> Vec<PageSegment> {
         segments.push(PageSegment {
             page: current_page,
             content: text,
+            base_offset: segment_base.unwrap_or(0),
         });
     }
 
@@ -142,10 +160,7 @@ impl ChunkingStrategy for PageAwareChunking {
         let segments = split_into_page_segments(content);
 
         // No markers → plain fallback (page fields stay None)
-        if segments.len() == 1
-            && segments[0].page == 1
-            && !content.contains(super::types::PAGE_MARKER_PREFIX)
-        {
+        if segments.len() == 1 && segments[0].page == 1 && !content.contains(PAGE_MARKER_PREFIX) {
             return self.inner.chunk(content, config).await;
         }
 
@@ -154,6 +169,7 @@ impl ChunkingStrategy for PageAwareChunking {
 
         for seg in segments {
             let page = seg.page;
+            let base_offset = seg.base_offset;
             let sub_chunks = self.inner.chunk(&seg.content, config).await?;
 
             if sub_chunks.is_empty() && !seg.content.trim().is_empty() {
@@ -164,11 +180,20 @@ impl ChunkingStrategy for PageAwareChunking {
                     chunk_order_index: order,
                     page_start: Some(page),
                     page_end: Some(page),
+                    start_offset: Some(base_offset),
+                    end_offset: Some(base_offset.saturating_add(seg.content.len())),
                     ..Default::default()
                 });
                 order += 1;
             } else {
                 for mut sub in sub_chunks {
+                    // C-15: rebase segment-local offsets onto the full document.
+                    if let Some(start) = sub.start_offset.as_mut() {
+                        *start = start.saturating_add(base_offset);
+                    }
+                    if let Some(end) = sub.end_offset.as_mut() {
+                        *end = end.saturating_add(base_offset);
+                    }
                     sub.chunk_order_index = order;
                     sub.page_start = Some(page);
                     sub.page_end = Some(page);
@@ -189,7 +214,7 @@ impl ChunkingStrategy for PageAwareChunking {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chunker::types::make_page_marker;
+    use crate::chunker::page_marker::make_page_marker;
 
     fn make_pdf_markdown(pages: &[(u32, &str)]) -> String {
         pages
@@ -232,6 +257,37 @@ mod tests {
             assert_eq!(
                 chunk.page_start, chunk.page_end,
                 "page_start must equal page_end — no cross-page chunks"
+            );
+        }
+    }
+
+    /// Matrix Cluster 04: rebased offsets slice back to chunk text in the doc.
+    #[tokio::test]
+    async fn e2e_page_aware_offsets_rebase() {
+        let page2 = "UNIQUE_PAGE_TWO_MARKER_TEXT for offset rebase.";
+        let md = make_pdf_markdown(&[
+            (1, "First page padding content that is long enough."),
+            (2, page2),
+        ]);
+        let config = ChunkerConfig {
+            chunk_size: 200,
+            chunk_overlap: 0,
+            ..Default::default()
+        };
+        let chunks = PageAwareChunking::default()
+            .chunk(&md, &config)
+            .await
+            .unwrap();
+        let page2_chunks: Vec<_> = chunks.iter().filter(|c| c.page_start == Some(2)).collect();
+        assert!(!page2_chunks.is_empty());
+        for c in page2_chunks {
+            let (start, end) = (c.start_offset.expect("start"), c.end_offset.expect("end"));
+            assert!(end > start && end <= md.len());
+            let sliced = &md[start..end.min(md.len())];
+            assert!(
+                sliced.contains(c.content.trim()) || c.content.trim().contains(sliced.trim()),
+                "slice(doc)=chunk.text invariant failed: slice={sliced:?} chunk={:?}",
+                c.content
             );
         }
     }
@@ -309,7 +365,7 @@ mod tests {
     /// make_page_marker and parse_page_marker are inverses.
     #[test]
     fn marker_roundtrip() {
-        use crate::chunker::types::parse_page_marker;
+        use crate::chunker::page_marker::parse_page_marker;
         for page in [1, 5, 100, 999] {
             let marker = make_page_marker(page);
             assert_eq!(parse_page_marker(&marker), Some(page));

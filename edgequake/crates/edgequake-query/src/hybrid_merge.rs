@@ -160,13 +160,7 @@ pub fn round_robin_merge_chunks(
     naive: &[RetrievedChunk],
     max_chunks: usize,
 ) -> Vec<RetrievedChunk> {
-    round_robin_merge_chunks_ordered(
-        local,
-        global,
-        naive,
-        max_chunks,
-        rr_arm_order_from_env(),
-    )
+    round_robin_merge_chunks_ordered(local, global, naive, max_chunks, rr_arm_order_from_env())
 }
 
 /// Pure round-robin merge with explicit arm order (testable without env).

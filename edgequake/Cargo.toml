@@ -165,6 +165,8 @@ edgequake-api = { path = "crates/edgequake-api" }
 edgequake-auth = { path = "crates/edgequake-auth" }
 edgequake-core = { path = "crates/edgequake-core" }
 edgequake-pdf = { path = "crates/edgequake-pdf" }
+# Workspace pin. Transitive diamond: edgequake-pdf2md@0.9.7 still pulls edgequake-llm 0.6.x
+# (X-09). Contract allows that documented pair until pdf2md upgrades; no third version.
 edgequake-llm = "0.10.1"
 edgequake-pipeline = { path = "crates/edgequake-pipeline" }
 edgequake-query = { path = "crates/edgequake-query" }

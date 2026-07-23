@@ -25,7 +25,7 @@ use sqlx::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use super::rls::{acquire_rls_connection, release_rls_connection};
+use super::rls::with_rls_transaction;
 use crate::conversation_types::{ConversationRow, FolderRow, MessageRow};
 use crate::error::{Result, StorageError};
 
@@ -139,29 +139,39 @@ impl PostgresConversationStorage {
         mode: String,
         folder_id: Option<Uuid>,
     ) -> Result<ConversationRow> {
-        let mut conn =
-            acquire_rls_connection(&self.pool, tenant_id, workspace_id, Some(user_id)).await?;
-
-        let row = sqlx::query_as::<_, ConversationRow>(
-            r#"
-            INSERT INTO conversations (
-                tenant_id, workspace_id, user_id, title, mode, folder_id, meta
-            ) VALUES ($1, $2, $3, $4, $5, $6, '{}')
-            RETURNING *
-            "#,
+        // SPEC-083 S-03: GUC must live inside BEGIN…COMMIT (with_rls_transaction).
+        with_rls_transaction(
+            &self.pool,
+            tenant_id,
+            workspace_id,
+            Some(user_id),
+            move |conn| {
+                let title = title.clone();
+                let mode = mode.clone();
+                Box::pin(async move {
+                    sqlx::query_as::<_, ConversationRow>(
+                        r#"
+                        INSERT INTO conversations (
+                            tenant_id, workspace_id, user_id, title, mode, folder_id, meta
+                        ) VALUES ($1, $2, $3, $4, $5, $6, '{}')
+                        RETURNING *
+                        "#,
+                    )
+                    .bind(tenant_id)
+                    .bind(workspace_id)
+                    .bind(user_id)
+                    .bind(&title)
+                    .bind(&mode)
+                    .bind(folder_id)
+                    .fetch_one(&mut *conn)
+                    .await
+                    .map_err(|e| {
+                        StorageError::Database(format!("Failed to create conversation: {e}"))
+                    })
+                })
+            },
         )
-        .bind(tenant_id)
-        .bind(workspace_id)
-        .bind(user_id)
-        .bind(&title)
-        .bind(&mode)
-        .bind(folder_id)
-        .fetch_one(&mut *conn)
         .await
-        .map_err(|e| StorageError::Database(format!("Failed to create conversation: {e}")))?;
-
-        release_rls_connection(&mut conn).await?;
-        Ok(row)
     }
 
     /// Get a conversation by ID.
@@ -222,22 +232,26 @@ impl PostgresConversationStorage {
         }
 
         if updates.is_empty() {
-            let mut conn =
-                acquire_rls_connection(&self.pool, tenant_id, None, Some(user_id)).await?;
-            let row = sqlx::query_as::<_, ConversationRow>(
-                "SELECT * FROM conversations WHERE conversation_id = $1",
-            )
-            .bind(conversation_id)
-            .fetch_optional(&mut *conn)
-            .await
-            .map_err(|e| StorageError::Database(format!("Failed to get conversation: {e}")))
-            .and_then(|row| {
-                row.ok_or_else(|| {
-                    StorageError::NotFound(format!("Conversation {conversation_id} not found"))
+            // SPEC-083 S-03: GUC must live inside BEGIN…COMMIT (with_rls_transaction).
+            return with_rls_transaction(&self.pool, tenant_id, None, Some(user_id), move |conn| {
+                Box::pin(async move {
+                    sqlx::query_as::<_, ConversationRow>(
+                        "SELECT * FROM conversations WHERE conversation_id = $1",
+                    )
+                    .bind(conversation_id)
+                    .fetch_optional(&mut *conn)
+                    .await
+                    .map_err(|e| StorageError::Database(format!("Failed to get conversation: {e}")))
+                    .and_then(|row| {
+                        row.ok_or_else(|| {
+                            StorageError::NotFound(format!(
+                                "Conversation {conversation_id} not found"
+                            ))
+                        })
+                    })
                 })
-            })?;
-            release_rls_connection(&mut conn).await?;
-            return Ok(row);
+            })
+            .await;
         }
 
         let tenant_param = param_count + 1;
@@ -250,35 +264,36 @@ impl PostgresConversationStorage {
             user_param
         );
 
-        let mut conn = acquire_rls_connection(&self.pool, tenant_id, None, Some(user_id)).await?;
+        // SPEC-083 S-03: GUC must live inside BEGIN…COMMIT (with_rls_transaction).
+        with_rls_transaction(&self.pool, tenant_id, None, Some(user_id), move |conn| {
+            Box::pin(async move {
+                let mut query_builder =
+                    sqlx::query_as::<_, ConversationRow>(&query).bind(conversation_id);
 
-        let mut query_builder = sqlx::query_as::<_, ConversationRow>(&query).bind(conversation_id);
+                if let Some(t) = &title {
+                    query_builder = query_builder.bind(t);
+                }
+                if let Some(m) = &mode {
+                    query_builder = query_builder.bind(m);
+                }
+                if let Some(p) = is_pinned {
+                    query_builder = query_builder.bind(p);
+                }
+                if let Some(a) = is_archived {
+                    query_builder = query_builder.bind(a);
+                }
+                if let Some(inner_folder) = &folder_id {
+                    query_builder = query_builder.bind(inner_folder);
+                }
 
-        if let Some(t) = &title {
-            query_builder = query_builder.bind(t);
-        }
-        if let Some(m) = &mode {
-            query_builder = query_builder.bind(m);
-        }
-        if let Some(p) = is_pinned {
-            query_builder = query_builder.bind(p);
-        }
-        if let Some(a) = is_archived {
-            query_builder = query_builder.bind(a);
-        }
-        if let Some(inner_folder) = &folder_id {
-            query_builder = query_builder.bind(inner_folder);
-        }
+                query_builder = query_builder.bind(tenant_id).bind(user_id);
 
-        query_builder = query_builder.bind(tenant_id).bind(user_id);
-
-        let row = query_builder
-            .fetch_one(&mut *conn)
-            .await
-            .map_err(|e| StorageError::Database(format!("Failed to update conversation: {e}")))?;
-
-        release_rls_connection(&mut conn).await?;
-        Ok(row)
+                query_builder.fetch_one(&mut *conn).await.map_err(|e| {
+                    StorageError::Database(format!("Failed to update conversation: {e}"))
+                })
+            })
+        })
+        .await
     }
 
     /// Delete a conversation.
@@ -373,47 +388,48 @@ impl PostgresConversationStorage {
 
         let search_owned = search.map(|s| s.to_string());
 
-        let mut conn = acquire_rls_connection(&self.pool, tenant_id, None, Some(user_id)).await?;
+        // SPEC-083 S-03: GUC must live inside BEGIN…COMMIT (with_rls_transaction).
+        with_rls_transaction(&self.pool, tenant_id, None, Some(user_id), move |conn| {
+            Box::pin(async move {
+                let mut query_builder = sqlx::query_as::<_, ConversationRow>(&query)
+                    .bind(tenant_id)
+                    .bind(user_id);
 
-        let mut query_builder = sqlx::query_as::<_, ConversationRow>(&query)
-            .bind(tenant_id)
-            .bind(user_id);
+                let mut count_builder = sqlx::query_scalar::<_, i64>(&count_query)
+                    .bind(tenant_id)
+                    .bind(user_id);
 
-        let mut count_builder = sqlx::query_scalar::<_, i64>(&count_query)
-            .bind(tenant_id)
-            .bind(user_id);
+                if let Some(a) = archived {
+                    query_builder = query_builder.bind(a);
+                    count_builder = count_builder.bind(a);
+                }
+                if let Some(p) = pinned {
+                    query_builder = query_builder.bind(p);
+                    count_builder = count_builder.bind(p);
+                }
+                if let Some(f) = folder_id {
+                    query_builder = query_builder.bind(f);
+                    count_builder = count_builder.bind(f);
+                }
+                if let Some(s) = search_owned.as_deref() {
+                    query_builder = query_builder.bind(s);
+                    count_builder = count_builder.bind(s);
+                }
 
-        if let Some(a) = archived {
-            query_builder = query_builder.bind(a);
-            count_builder = count_builder.bind(a);
-        }
-        if let Some(p) = pinned {
-            query_builder = query_builder.bind(p);
-            count_builder = count_builder.bind(p);
-        }
-        if let Some(f) = folder_id {
-            query_builder = query_builder.bind(f);
-            count_builder = count_builder.bind(f);
-        }
-        if let Some(s) = search_owned.as_deref() {
-            query_builder = query_builder.bind(s);
-            count_builder = count_builder.bind(s);
-        }
+                query_builder = query_builder.bind(limit).bind(offset);
 
-        query_builder = query_builder.bind(limit).bind(offset);
+                let rows = query_builder.fetch_all(&mut *conn).await.map_err(|e| {
+                    StorageError::Database(format!("Failed to list conversations: {e}"))
+                })?;
 
-        let rows = query_builder
-            .fetch_all(&mut *conn)
-            .await
-            .map_err(|e| StorageError::Database(format!("Failed to list conversations: {e}")))?;
+                let total = count_builder.fetch_one(&mut *conn).await.map_err(|e| {
+                    StorageError::Database(format!("Failed to count conversations: {e}"))
+                })?;
 
-        let total = count_builder
-            .fetch_one(&mut *conn)
-            .await
-            .map_err(|e| StorageError::Database(format!("Failed to count conversations: {e}")))?;
-
-        release_rls_connection(&mut conn).await?;
-        Ok((rows, total))
+                Ok((rows, total))
+            })
+        })
+        .await
     }
 
     /// Share a conversation (generate share_id).
@@ -685,61 +701,70 @@ impl PostgresConversationStorage {
         parent_id: Option<Uuid>,
     ) -> Result<FolderRow> {
         let name = name.to_string();
-        let mut conn =
-            acquire_rls_connection(&self.pool, tenant_id, workspace_id, Some(user_id)).await?;
+        // SPEC-083 S-03: GUC must live inside BEGIN…COMMIT (with_rls_transaction).
+        with_rls_transaction(
+            &self.pool,
+            tenant_id,
+            workspace_id,
+            Some(user_id),
+            move |conn| {
+                Box::pin(async move {
+                    let max_pos: Option<i32> = sqlx::query_scalar(
+                        "SELECT MAX(position) FROM folders WHERE tenant_id = $1 AND user_id = $2 AND parent_id IS NOT DISTINCT FROM $3",
+                    )
+                    .bind(tenant_id)
+                    .bind(user_id)
+                    .bind(parent_id)
+                    .fetch_one(&mut *conn)
+                    .await
+                    .map_err(|e| {
+                        StorageError::Database(format!("Failed to get max position: {e}"))
+                    })?;
 
-        let max_pos: Option<i32> = sqlx::query_scalar(
-            "SELECT MAX(position) FROM folders WHERE tenant_id = $1 AND user_id = $2 AND parent_id IS NOT DISTINCT FROM $3",
+                    let position = max_pos.unwrap_or(0) + 1;
+
+                    sqlx::query_as::<_, FolderRow>(
+                        r#"
+                        INSERT INTO folders (tenant_id, workspace_id, user_id, name, parent_id, position)
+                        VALUES ($1, $2, $3, $4, $5, $6)
+                        RETURNING *
+                        "#,
+                    )
+                    .bind(tenant_id)
+                    .bind(workspace_id)
+                    .bind(user_id)
+                    .bind(&name)
+                    .bind(parent_id)
+                    .bind(position)
+                    .fetch_one(&mut *conn)
+                    .await
+                    .map_err(|e| StorageError::Database(format!("Failed to create folder: {e}")))
+                })
+            },
         )
-        .bind(tenant_id)
-        .bind(user_id)
-        .bind(parent_id)
-        .fetch_one(&mut *conn)
         .await
-        .map_err(|e| StorageError::Database(format!("Failed to get max position: {e}")))?;
-
-        let position = max_pos.unwrap_or(0) + 1;
-
-        let row = sqlx::query_as::<_, FolderRow>(
-            r#"
-            INSERT INTO folders (tenant_id, workspace_id, user_id, name, parent_id, position)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING *
-            "#,
-        )
-        .bind(tenant_id)
-        .bind(workspace_id)
-        .bind(user_id)
-        .bind(&name)
-        .bind(parent_id)
-        .bind(position)
-        .fetch_one(&mut *conn)
-        .await
-        .map_err(|e| StorageError::Database(format!("Failed to create folder: {e}")))?;
-
-        release_rls_connection(&mut conn).await?;
-        Ok(row)
     }
 
     /// List folders for a user.
     pub async fn list_folders(&self, tenant_id: Uuid, user_id: Uuid) -> Result<Vec<FolderRow>> {
-        let mut conn = acquire_rls_connection(&self.pool, tenant_id, None, Some(user_id)).await?;
-
-        let rows = sqlx::query_as::<_, FolderRow>(
-            r#"
-            SELECT * FROM folders
-            WHERE tenant_id = $1 AND user_id = $2
-            ORDER BY position ASC
-            "#,
-        )
-        .bind(tenant_id)
-        .bind(user_id)
-        .fetch_all(&mut *conn)
+        // SPEC-083 S-03: GUC must live inside BEGIN…COMMIT (with_rls_transaction).
+        with_rls_transaction(&self.pool, tenant_id, None, Some(user_id), move |conn| {
+            Box::pin(async move {
+                sqlx::query_as::<_, FolderRow>(
+                    r#"
+                        SELECT * FROM folders
+                        WHERE tenant_id = $1 AND user_id = $2
+                        ORDER BY position ASC
+                        "#,
+                )
+                .bind(tenant_id)
+                .bind(user_id)
+                .fetch_all(&mut *conn)
+                .await
+                .map_err(|e| StorageError::Database(format!("Failed to list folders: {e}")))
+            })
+        })
         .await
-        .map_err(|e| StorageError::Database(format!("Failed to list folders: {e}")))?;
-
-        release_rls_connection(&mut conn).await?;
-        Ok(rows)
     }
 
     /// Update a folder.
@@ -770,20 +795,22 @@ impl PostgresConversationStorage {
         }
 
         if updates.is_empty() {
-            let mut conn =
-                acquire_rls_connection(&self.pool, tenant_id, None, Some(user_id)).await?;
-            let row = sqlx::query_as::<_, FolderRow>("SELECT * FROM folders WHERE folder_id = $1")
-                .bind(folder_id)
-                .fetch_optional(&mut *conn)
-                .await
-                .map_err(|e| StorageError::Database(format!("Failed to get folder: {e}")))
-                .and_then(|row| {
-                    row.ok_or_else(|| {
-                        StorageError::NotFound(format!("Folder {folder_id} not found"))
-                    })
-                })?;
-            release_rls_connection(&mut conn).await?;
-            return Ok(row);
+            // SPEC-083 S-03: GUC must live inside BEGIN…COMMIT (with_rls_transaction).
+            return with_rls_transaction(&self.pool, tenant_id, None, Some(user_id), move |conn| {
+                Box::pin(async move {
+                    sqlx::query_as::<_, FolderRow>("SELECT * FROM folders WHERE folder_id = $1")
+                        .bind(folder_id)
+                        .fetch_optional(&mut *conn)
+                        .await
+                        .map_err(|e| StorageError::Database(format!("Failed to get folder: {e}")))
+                        .and_then(|row| {
+                            row.ok_or_else(|| {
+                                StorageError::NotFound(format!("Folder {folder_id} not found"))
+                            })
+                        })
+                })
+            })
+            .await;
         }
 
         let tenant_param = param_count + 1;
@@ -798,29 +825,30 @@ impl PostgresConversationStorage {
 
         let name_owned = name.map(|n| n.to_string());
 
-        let mut conn = acquire_rls_connection(&self.pool, tenant_id, None, Some(user_id)).await?;
+        // SPEC-083 S-03: GUC must live inside BEGIN…COMMIT (with_rls_transaction).
+        with_rls_transaction(&self.pool, tenant_id, None, Some(user_id), move |conn| {
+            Box::pin(async move {
+                let mut query_builder = sqlx::query_as::<_, FolderRow>(&query).bind(folder_id);
 
-        let mut query_builder = sqlx::query_as::<_, FolderRow>(&query).bind(folder_id);
+                if let Some(n) = name_owned.as_deref() {
+                    query_builder = query_builder.bind(n);
+                }
+                if let Some(p) = parent_id {
+                    query_builder = query_builder.bind(p);
+                }
+                if let Some(pos) = position {
+                    query_builder = query_builder.bind(pos);
+                }
 
-        if let Some(n) = name_owned.as_deref() {
-            query_builder = query_builder.bind(n);
-        }
-        if let Some(p) = parent_id {
-            query_builder = query_builder.bind(p);
-        }
-        if let Some(pos) = position {
-            query_builder = query_builder.bind(pos);
-        }
+                query_builder = query_builder.bind(tenant_id).bind(user_id);
 
-        query_builder = query_builder.bind(tenant_id).bind(user_id);
-
-        let row = query_builder
-            .fetch_one(&mut *conn)
-            .await
-            .map_err(|e| StorageError::Database(format!("Failed to update folder: {e}")))?;
-
-        release_rls_connection(&mut conn).await?;
-        Ok(row)
+                query_builder
+                    .fetch_one(&mut *conn)
+                    .await
+                    .map_err(|e| StorageError::Database(format!("Failed to update folder: {e}")))
+            })
+        })
+        .await
     }
 
     /// Get a folder by ID.
@@ -841,37 +869,49 @@ impl PostgresConversationStorage {
         user_id: Uuid,
         folder_id: Uuid,
     ) -> Result<()> {
-        let mut conn = acquire_rls_connection(&self.pool, tenant_id, None, Some(user_id)).await?;
+        // SPEC-083 S-03: GUC must live inside BEGIN…COMMIT (with_rls_transaction).
+        with_rls_transaction(
+            &self.pool,
+            tenant_id,
+            None,
+            Some(user_id),
+            move |conn| {
+                Box::pin(async move {
+                    sqlx::query(
+                        "UPDATE conversations SET folder_id = NULL WHERE folder_id = $1 AND tenant_id = $2 AND user_id = $3",
+                    )
+                    .bind(folder_id)
+                    .bind(tenant_id)
+                    .bind(user_id)
+                    .execute(&mut *conn)
+                    .await
+                    .map_err(|e| {
+                        StorageError::Database(format!("Failed to update conversations: {e}"))
+                    })?;
 
-        sqlx::query(
-            "UPDATE conversations SET folder_id = NULL WHERE folder_id = $1 AND tenant_id = $2 AND user_id = $3",
+                    let result = sqlx::query(
+                        "DELETE FROM folders WHERE folder_id = $1 AND tenant_id = $2 AND user_id = $3",
+                    )
+                    .bind(folder_id)
+                    .bind(tenant_id)
+                    .bind(user_id)
+                    .execute(&mut *conn)
+                    .await
+                    .map_err(|e| {
+                        StorageError::Database(format!("Failed to delete folder: {e}"))
+                    })?;
+
+                    if result.rows_affected() == 0 {
+                        return Err(StorageError::NotFound(format!(
+                            "Folder {folder_id} not found"
+                        )));
+                    }
+
+                    Ok(())
+                })
+            },
         )
-        .bind(folder_id)
-        .bind(tenant_id)
-        .bind(user_id)
-        .execute(&mut *conn)
         .await
-        .map_err(|e| StorageError::Database(format!("Failed to update conversations: {e}")))?;
-
-        let result = sqlx::query(
-            "DELETE FROM folders WHERE folder_id = $1 AND tenant_id = $2 AND user_id = $3",
-        )
-        .bind(folder_id)
-        .bind(tenant_id)
-        .bind(user_id)
-        .execute(&mut *conn)
-        .await
-        .map_err(|e| StorageError::Database(format!("Failed to delete folder: {e}")))?;
-
-        if result.rows_affected() == 0 {
-            release_rls_connection(&mut conn).await?;
-            return Err(StorageError::NotFound(format!(
-                "Folder {folder_id} not found"
-            )));
-        }
-
-        release_rls_connection(&mut conn).await?;
-        Ok(())
     }
 
     // ============ Bulk Operations ============

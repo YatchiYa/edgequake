@@ -357,6 +357,38 @@ pub struct QueryResponse {
 
     /// Processing statistics.
     pub stats: QueryStats,
+
+    /// SPEC-083 X-21: lightweight explainability derived from [`QueryStats`] arms.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub explain: Option<ExplainTrace>,
+}
+
+/// Minimal retrieval explainability surface (X-21 MVP).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ExplainTrace {
+    /// Query mode label (`mix`, `hybrid`, `local`, …).
+    pub mode: String,
+    /// Comma-separated arms that ran (`local,global`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arms_run: Option<String>,
+    /// Sparse fusion / FTS outcome label when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sparse_outcome: Option<String>,
+    /// Intent label when keyword/intent extraction ran.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub query_intent: Option<String>,
+}
+
+impl ExplainTrace {
+    /// Build from mode + absorbed [`QueryStats`] arm metadata.
+    pub fn from_stats(mode: &QueryMode, stats: &QueryStats) -> Self {
+        Self {
+            mode: mode.to_string(),
+            arms_run: stats.arms_run.clone(),
+            sparse_outcome: stats.sparse_outcome.clone(),
+            query_intent: stats.query_intent.clone(),
+        }
+    }
 }
 
 /// Query processing statistics.
@@ -626,10 +658,7 @@ mod tests {
         let back: QueryRequest = serde_json::from_str(&json).unwrap();
         assert_eq!(
             back.keyword_override_lists(),
-            Some((
-                vec!["staging".into(), "NSCLC".into()],
-                vec!["TNM".into()]
-            ))
+            Some((vec!["staging".into(), "NSCLC".into()], vec!["TNM".into()]))
         );
         assert!(!QueryRequest::new("q").has_keyword_override());
         assert_eq!(
@@ -659,5 +688,36 @@ mod tests {
         assert_eq!(stats.arms_run.as_deref(), Some("naive"));
         assert_eq!(stats.arms_gated, Some(true));
         assert!(stats.context_empty);
+    }
+
+    #[test]
+    fn contract_explain_trace_on_query_response() {
+        let stats = QueryStats {
+            arms_run: Some("local,global".into()),
+            ..Default::default()
+        };
+        let explain = ExplainTrace::from_stats(&QueryMode::Mix, &stats);
+        assert_eq!(explain.mode, "mix");
+        assert_eq!(explain.arms_run.as_deref(), Some("local,global"));
+        let resp = QueryResponse {
+            answer: String::new(),
+            context: QueryContext::new(),
+            mode: QueryMode::Mix,
+            stats,
+            explain: Some(explain),
+        };
+        assert!(resp.explain.is_some());
+    }
+
+    #[test]
+    fn e2e_query_vec_matches_question_only_embedding() {
+        // D-38: pipeline embeds request.query only (not conversation history).
+        let src = include_str!("engine_impl/query_entry/query_pipeline.rs");
+        assert!(src.contains("D-38"));
+        assert!(src.contains("embed_one(&request.query)"));
+        assert!(
+            !src.contains("embed_one(&keyword_query)") && !src.contains("embed_one(&conversation"),
+            "must not embed conversation/keyword blob as query_vec"
+        );
     }
 }

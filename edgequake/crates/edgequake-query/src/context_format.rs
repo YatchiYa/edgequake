@@ -107,11 +107,28 @@ pub fn format_chunk_meta(chunk: &RetrievedChunk) -> String {
     }
 }
 
+/// Assign stable `citation_id` = 1..n when unset (SPEC-083 X-20).
+///
+/// Never renumber after format — callers must stamp before prompt/API emit.
+pub fn assign_stable_citation_ids(chunks: &mut [RetrievedChunk]) {
+    for (i, chunk) in chunks.iter_mut().enumerate() {
+        if chunk.citation_id.is_none() {
+            chunk.citation_id = Some(i + 1);
+        }
+    }
+}
+
+/// Resolve the citation index for a chunk (stable id, else positional fallback).
+pub fn chunk_citation_ref(chunk: &RetrievedChunk, fallback: usize) -> usize {
+    chunk.citation_id.unwrap_or(fallback)
+}
+
 /// One chunk block as injected into the LLM context.
 ///
 /// Example: `[1] (score: 0.850) page=12 modality=chart\n…content…\n\n`
 pub fn format_chunk_block(ref_id: usize, chunk: &RetrievedChunk) -> String {
     let meta = format_chunk_meta(chunk);
+    let ref_id = chunk_citation_ref(chunk, ref_id);
     format!(
         "[{ref_id}] (score: {:.3}){meta}\n{}\n\n",
         chunk.score, chunk.content
@@ -159,7 +176,11 @@ fn format_chunks_section(chunks: &[RetrievedChunk], start_ref: usize) -> String 
     parts.push("### Chunks\n\n".to_string());
     parts.push(chunk_legend().to_string());
     for (i, chunk) in chunks.iter().enumerate() {
-        parts.push(format_chunk_block(start_ref + i, chunk));
+        // X-20: prefer stable citation_id over positional i+1.
+        parts.push(format_chunk_block(
+            chunk_citation_ref(chunk, start_ref + i),
+            chunk,
+        ));
     }
     parts.join("")
 }
@@ -482,5 +503,45 @@ mod tests {
         assert!(line.contains("Future of work"), "got {line}");
         assert!(line.contains("AI Next Conference"), "got {line}");
         assert!(!line.contains("84B69E27"), "must not embed UUID: {line}");
+    }
+
+    /// SPEC-083 X-20: prompt [N] follows citation_id, not list position after reorder.
+    #[test]
+    fn contract_citation_stable_ids() {
+        let mut chunks = vec![
+            RetrievedChunk::new("a", "first", 0.9),
+            RetrievedChunk::new("b", "second", 0.8),
+            RetrievedChunk::new("c", "third", 0.7),
+        ];
+        assign_stable_citation_ids(&mut chunks);
+        assert_eq!(chunks[0].citation_id, Some(1));
+        assert_eq!(chunks[1].citation_id, Some(2));
+        assert_eq!(chunks[2].citation_id, Some(3));
+
+        // Reorder after stamp — [N] must follow citation_id, not new position.
+        // After swap(0,2): c@id=3 score=0.7 first, a@id=1 score=0.9 last.
+        chunks.swap(0, 2);
+        let s = format_query_context_flat(&[], &[], &chunks);
+        assert!(
+            s.contains("[3] (score: 0.700)") && s.contains("[1] (score: 0.900)"),
+            "stable citation_id must survive reorder; got:\n{s}"
+        );
+
+        // Contract: sources of truth mention citation_id.
+        let fmt_src = include_str!("context_format.rs");
+        assert!(
+            fmt_src.contains("citation_id") && fmt_src.contains("assign_stable_citation_ids"),
+            "X-20: context_format must use citation_id"
+        );
+        let builder = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../edgequake-api/src/services/source_reference_builder.rs"
+        );
+        let api_src = std::fs::read_to_string(builder)
+            .unwrap_or_else(|e| panic!("read source_reference_builder.rs: {e}"));
+        assert!(
+            api_src.contains("citation_id"),
+            "X-20: API source builder must use citation_id for reference_id"
+        );
     }
 }

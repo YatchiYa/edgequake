@@ -177,13 +177,16 @@ impl RateLimiter {
         }
     }
 
-    /// Start background task to cleanup stale buckets
-    pub fn start_cleanup_task(self, interval: Duration, max_age: Duration) {
+    /// Start background task to cleanup stale buckets (SPEC-083 S-11).
+    ///
+    /// Clones the shared bucket map so callers can keep using `self`.
+    pub fn start_cleanup_task(&self, interval: Duration, max_age: Duration) {
+        let this = self.clone();
         tokio::spawn(async move {
             let mut interval_timer = time::interval(interval);
             loop {
                 interval_timer.tick().await;
-                self.cleanup_stale_buckets(max_age);
+                this.cleanup_stale_buckets(max_age);
             }
         });
     }

@@ -199,10 +199,7 @@ impl QueryEngine {
                 Ok(response) => {
                     if let Some(cache) = self.answer_cache.as_ref() {
                         if !response.content.is_empty() {
-                            cache.set(
-                                &crate::cache::answer_cache_key(&prompt),
-                                &response.content,
-                            );
+                            cache.set(&crate::cache::answer_cache_key(&prompt), &response.content);
                         }
                     }
                     futures::stream::once(async move { Ok(response.content) }).boxed()

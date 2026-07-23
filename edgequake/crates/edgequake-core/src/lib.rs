@@ -108,16 +108,19 @@ pub use token_budget::{BudgetAllocation, BudgetSource, ContextSource, TokenBudge
 
 // SPEC-006: Resource safety SSOT
 pub use resource::{
-    AdmissionDecision, GraphMaterializationSemaphore, GraphOperation, PdfVisionSemaphore,
-    ResourceBudgetConfig, ResourceGuard, MAX_GRAPH_DEPTH, MAX_GRAPH_NODES,
-    MAX_ORCHESTRATOR_CONTEXT_TOKENS, MAX_UPLOAD_BYTES,
+    max_batch_upload_files, AdmissionDecision, GraphMaterializationSemaphore, GraphOperation,
+    PdfVisionSemaphore, ResourceBudgetConfig, ResourceGuard, MAX_BATCH_UPLOAD_FILES,
+    MAX_BATCH_UPLOAD_FILES_ENV, MAX_GRAPH_DEPTH, MAX_GRAPH_NODES, MAX_ORCHESTRATOR_CONTEXT_TOKENS,
+    MAX_UPLOAD_BYTES,
 };
 
 // Re-export commonly used types
 pub use config::Config;
 pub use error::{Error, Result};
 #[cfg(feature = "pipeline")]
-pub use orchestrator::{EdgeQuake, EdgeQuakeConfig, StorageBackend, StorageConfig};
+pub use orchestrator::{
+    EdgeQuake, EdgeQuakeConfig, EdgeQuakeConfigOverrides, StorageBackend, StorageConfig,
+};
 pub use types::{
     Chunk, ContextChunk, ContextEntity, ContextRelationship, Conversation, ConversationFilter,
     ConversationMode, ConversationSortField, CreateConversationRequest, CreateFolderRequest,

@@ -50,10 +50,8 @@ jobs:
     name: PostgreSQL Integration Tests
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    # WHY: continue-on-error - This job requires both pgvector AND Apache AGE extensions,
-    # but no single Docker image has both. The AGE-specific tests are covered in postgres-age-tests job.
-    # The pgvector-only tests pass, AGE-dependent tests fail expectedly.
-    continue-on-error: true
+    # SPEC-083 / X-32: job is disabled (if: false). When re-enabled, do NOT set
+    # continue-on-error on RLS / workspace / task gates — those must block.
 
     services:
       postgres:
@@ -155,8 +153,8 @@ jobs:
         run: |
           echo "Running PostgreSQL storage integration tests..."
           cargo test --package edgequake-storage --test postgres_integration --features postgres -- --test-threads=1
-        # WHY: continue-on-error - Tests require both pgvector AND Apache AGE, but pgvector/pgvector:pg16
-        # only has pgvector. AGE-specific tests are covered in postgres-age-tests job.
+        # SPEC-083 / X-32: optional quarantine — pgvector-only image lacks AGE;
+        # AGE coverage is blocking in postgres-age-tests.
         continue-on-error: true
 
       - name: Run PostgreSQL Conversation Integration Tests
@@ -164,28 +162,25 @@ jobs:
         run: |
           echo "Running PostgreSQL conversation integration tests..."
           cargo test --package edgequake-storage --test postgres_conversation_integration --features postgres -- --test-threads=1
-        continue-on-error: false
 
       - name: Run PostgreSQL RLS E2E Tests
         working-directory: edgequake
         run: |
           echo "Running PostgreSQL RLS E2E tests..."
           cargo test --package edgequake-api --test e2e_postgres_rls --features postgres -- --ignored --test-threads=1
-        continue-on-error: true # RLS tests may need additional setup
+        # SPEC-083 / X-32: RLS is a required gate (no continue-on-error).
 
       - name: Run PostgreSQL Workspace Service Tests
         working-directory: edgequake
         run: |
           echo "Running PostgreSQL workspace service tests..."
           cargo test --package edgequake-api --test e2e_postgres_workspace --features postgres -- --test-threads=1
-        continue-on-error: false
 
       - name: Run PostgreSQL Task Storage Tests
         working-directory: edgequake
         run: |
           echo "Running PostgreSQL task storage tests..."
           cargo test --package edgequake-tasks --features postgres -- --test-threads=1
-        continue-on-error: false
 
       - name: Run All Integration Tests (optional)
         if: github.event.inputs.run_all_tests == 'true'
@@ -282,7 +277,6 @@ jobs:
           cargo test -p edgequake-storage --test storage_backend_contract --features postgres -- --test-threads=1
           cargo test -p edgequake-storage --test backend_e2e_contract --features postgres -- --test-threads=1
           cargo test -p edgequake-storage --test graph_isp_contract --features postgres -- --test-threads=1
-        continue-on-error: false
 
       - name: Run SPEC-044 Cypher parameter + compensation tests (postgres)
         working-directory: edgequake
@@ -294,7 +288,6 @@ jobs:
           echo "Running SPEC-044 parameterized Cypher + saga compensation tests..."
           cargo test -p edgequake-storage --test spec022_cypher_prepared_postgres --features postgres -- --test-threads=1
           cargo test -p edgequake-storage --test spec044_compensation_postgres --features postgres -- --test-threads=1
-        continue-on-error: false
 
       - name: Run SPEC-006 migration bootstrap postgres e2e
         working-directory: edgequake
@@ -305,7 +298,6 @@ jobs:
           echo "Running SPEC-006 migration bootstrap + readiness battle tests..."
           cargo test -p edgequake-api --test migration_bootstrap_proof --features postgres -- --test-threads=1
           cargo test -p edgequake-api --test migration_readiness_proof --features postgres -- --test-threads=1
-        continue-on-error: false
 
       - name: Run PostgreSQL AGE Graph Tests
         working-directory: edgequake
@@ -316,7 +308,6 @@ jobs:
         run: |
           echo "Running PostgreSQL AGE graph integration tests..."
           cargo test --package edgequake-storage --test postgres_integration --features postgres -- test_postgres_age --test-threads=1
-        continue-on-error: false
 
   coverage-postgres:
     # WHY: Tarpaulin across the PostgreSQL feature set is significantly slower
@@ -402,6 +393,9 @@ jobs:
 
       - name: Generate PostgreSQL-specific coverage
         working-directory: edgequake
+        # SPEC-083 / X-32: optional coverage audit (manual workflow_dispatch only) —
+        # disk pressure on runners must not block required gates.
+        continue-on-error: true
         run: |
           cargo tarpaulin \
             --packages edgequake-storage edgequake-api edgequake-tasks \
@@ -409,7 +403,6 @@ jobs:
             --timeout 600 \
             --out xml \
             --output-dir ./coverage
-        continue-on-error: true
 
       - name: Upload PostgreSQL coverage
         uses: codecov/codecov-action@v4

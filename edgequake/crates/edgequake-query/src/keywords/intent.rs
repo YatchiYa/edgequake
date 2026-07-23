@@ -32,7 +32,7 @@ pub enum QueryIntent {
     Exploratory,
 
     /// "Compare X and Y" — multi-entity parallel.
-    /// Preferred mode: Mix (weighted/RRF fusion of all arms).
+    /// Preferred mode: Mix (max-after-minmax / RRF fusion of all arms).
     Comparative,
 
     /// "How to do X?" — step-by-step instructions.

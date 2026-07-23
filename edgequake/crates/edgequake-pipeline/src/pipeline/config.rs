@@ -466,10 +466,11 @@ impl PipelineConfig {
             MIN_CHUNK_TIMEOUT_SECS,
             u64::MAX,
         );
+        // C-18: min 1 attempt — `0` previously skipped extraction silently.
         let max_retries = read_env_u32(
             "EDGEQUAKE_CHUNK_MAX_RETRIES",
             DEFAULT_CHUNK_MAX_RETRIES,
-            0,
+            1,
             MAX_CHUNK_MAX_RETRIES,
         );
         let retry_delay = read_env_u64(

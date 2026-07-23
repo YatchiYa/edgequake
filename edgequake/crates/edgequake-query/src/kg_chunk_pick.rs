@@ -442,8 +442,11 @@ mod tests {
         // 081 F2 / 052: plural relation lineage must weight every chunk id.
         let mut ctx = QueryContext::new();
         ctx.add_relationship(
-            RetrievedRelationship::new("A", "B", "KNOWS")
-                .with_source_chunk_ids(vec!["rel-a".into(), "rel-b".into(), "rel-b".into()]),
+            RetrievedRelationship::new("A", "B", "KNOWS").with_source_chunk_ids(vec![
+                "rel-a".into(),
+                "rel-b".into(),
+                "rel-b".into(),
+            ]),
         );
         let picked = pick_chunks_by_weight(&ctx, 2);
         assert!(picked.contains(&"rel-a".to_string()), "{picked:?}");

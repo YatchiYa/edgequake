@@ -231,10 +231,11 @@ pub(super) async fn append_score_ranked_chunks(
         )
         .await
     } else {
+        // D-39: always enforce min_score (preserve_order must not bypass threshold).
         (
             results
                 .iter()
-                .filter(|r| preserve_order || r.score >= retrieval_config.min_score)
+                .filter(|r| r.score >= retrieval_config.min_score)
                 .take(vector_take)
                 .map(build_chunk_from_result)
                 .collect(),

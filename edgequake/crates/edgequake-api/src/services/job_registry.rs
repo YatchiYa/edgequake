@@ -38,12 +38,13 @@ pub struct V2MigrationHint {
     pub note: String,
 }
 
-/// All job types creatable via `POST .../jobs` (SSOT — must match `job_catalog` entries).
+/// All job types creatable via `POST .../jobs` (SSOT — must match creatable catalog entries).
+///
+/// SPEC-083 X-11: `scan` / `reindex` TaskTypes are not implemented — excluded here;
+/// API returns 501 if submitted.
 pub const CREATABLE_V2_JOB_TYPES: &[&str] = &[
     "upload",
     "insert",
-    "scan",
-    "reindex",
     "pdf_processing",
     "knowledge_injection",
     "rebuild_embeddings",
@@ -53,6 +54,9 @@ pub const CREATABLE_V2_JOB_TYPES: &[&str] = &[
     "recover_stuck",
     "reanalyze_multimodal",
 ];
+
+/// Job types that exist in the catalog but return HTTP 501 (not implemented).
+pub const NOT_IMPLEMENTED_V2_JOB_TYPES: &[&str] = &["scan", "reindex"];
 
 /// Returns true when `job_type` is a known creatable v2 job (case-insensitive).
 pub fn is_creatable_v2_job_type(job_type: &str) -> bool {
@@ -119,8 +123,16 @@ pub fn job_catalog(workspace_id: &str) -> JobCatalogResponse {
                 "insert",
                 "Insert pre-chunked text content into the knowledge graph.",
             ),
-            job_entry(workspace_id, "scan", "Scan a document source for new content."),
-            job_entry(workspace_id, "reindex", "Reindex existing vectors for a document."),
+            job_entry_not_implemented(
+                workspace_id,
+                "scan",
+                "Directory Scan TaskType — not implemented (use POST /api/v1/documents/scan which enqueues inserts).",
+            ),
+            job_entry_not_implemented(
+                workspace_id,
+                "reindex",
+                "Reindex TaskType — not implemented (HTTP 501 until embedding reindex job lands).",
+            ),
             job_entry(
                 workspace_id,
                 "pdf_processing",
@@ -180,6 +192,26 @@ fn job_entry(workspace_id: &str, job_type: &str, description: &str) -> JobCatalo
     }
 }
 
+fn job_entry_not_implemented(
+    workspace_id: &str,
+    job_type: &str,
+    description: &str,
+) -> JobCatalogEntry {
+    let base = ws_base(workspace_id);
+    JobCatalogEntry {
+        job_type: job_type.to_string(),
+        description: description.to_string(),
+        creatable_via_v2: false,
+        v1_equivalent: match job_type {
+            "scan" => Some("POST /api/v1/documents/scan".into()),
+            _ => None,
+        },
+        endpoints: vec![format!(
+            "POST {base} {{ \"job_type\": \"{job_type}\" }} → 501 Not Implemented"
+        )],
+    }
+}
+
 fn v1_hint(job_type: &str) -> Option<String> {
     match job_type {
         "rebuild_embeddings" => {
@@ -206,20 +238,36 @@ mod tests {
     fn creatable_job_types_match_catalog() {
         let ws = "cccccccc-0027-0027-0027-cccccccccccc";
         let catalog = job_catalog(ws);
-        assert_eq!(catalog.entries.len(), CREATABLE_V2_JOB_TYPES.len());
-        for entry in &catalog.entries {
+        let creatable: Vec<_> = catalog
+            .entries
+            .iter()
+            .filter(|e| e.creatable_via_v2)
+            .collect();
+        assert_eq!(creatable.len(), CREATABLE_V2_JOB_TYPES.len());
+        for entry in &creatable {
             assert!(is_creatable_v2_job_type(&entry.job_type));
         }
     }
 
     #[test]
-    fn catalog_is_workspace_scoped_and_all_creatable() {
+    fn catalog_is_workspace_scoped_and_marks_scan_reindex_501() {
         let ws = "cccccccc-0027-0027-0027-cccccccccccc";
         let catalog = job_catalog(ws);
         assert_eq!(catalog.workspace_id, ws);
         assert!(catalog.links.create.contains(ws));
         assert_eq!(catalog.entries.len(), 12);
-        assert!(catalog.entries.iter().all(|e| e.creatable_via_v2));
+        for ty in NOT_IMPLEMENTED_V2_JOB_TYPES {
+            let entry = catalog
+                .entries
+                .iter()
+                .find(|e| e.job_type == *ty)
+                .unwrap_or_else(|| panic!("missing {ty}"));
+            assert!(!entry.creatable_via_v2, "{ty} must not be creatable (X-11)");
+            assert!(
+                entry.endpoints.iter().any(|e| e.contains("501")),
+                "{ty} catalog must advertise 501"
+            );
+        }
         let rebuild = catalog
             .entries
             .iter()

@@ -780,14 +780,19 @@ END;
 $$ LANGUAGE plpgsql STABLE;
 
 -- Function to set tenant context
+-- SPEC-083 S-03/S-04: is_local=true (transaction-scoped GUC) — MUST match
+-- migrations/001_init_database.sql and 009_add_rls_policies.sql.
+-- With connection pooling, is_local=false leaks tenant context across requests;
+-- with is_local=true outside an explicit transaction, the GUC dies with the statement
+-- (inert RLS). App code must call this inside BEGIN…COMMIT (with_rls_transaction).
 CREATE OR REPLACE FUNCTION set_tenant_context(
     p_tenant_id UUID, 
     p_workspace_id UUID DEFAULT NULL
 )
 RETURNS void AS $$
 BEGIN
-    PERFORM set_config('app.current_tenant_id', COALESCE(p_tenant_id::text, ''), false);
-    PERFORM set_config('app.current_workspace_id', COALESCE(p_workspace_id::text, ''), false);
+    PERFORM set_config('app.current_tenant_id', COALESCE(p_tenant_id::text, ''), true);
+    PERFORM set_config('app.current_workspace_id', COALESCE(p_workspace_id::text, ''), true);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
@@ -795,9 +800,9 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE OR REPLACE FUNCTION clear_tenant_context()
 RETURNS void AS $$
 BEGIN
-    PERFORM set_config('app.current_tenant_id', '', false);
-    PERFORM set_config('app.current_workspace_id', '', false);
-    PERFORM set_config('app.current_user_id', '', false);
+    PERFORM set_config('app.current_tenant_id', '', true);
+    PERFORM set_config('app.current_workspace_id', '', true);
+    PERFORM set_config('app.current_user_id', '', true);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 

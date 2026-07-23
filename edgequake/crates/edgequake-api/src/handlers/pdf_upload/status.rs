@@ -261,8 +261,12 @@ pub async fn delete_pdf(
 )]
 pub async fn get_pdf_progress(
     State(state): State<AppState>,
+    context: TenantContext,
     Path(track_id): Path<String>,
 ) -> ApiResult<Json<PdfUploadProgress>> {
+    // SPEC-083 S-02: ownership check — foreign track → 404.
+    crate::services::task_scope::get_task_for_context(&state, &track_id, &context).await?;
+
     let progress = state
         .tasks
         .pipeline_state
@@ -328,8 +332,12 @@ pub async fn get_pdf_progress(
 )]
 pub async fn get_pdf_progress_stream(
     State(state): State<AppState>,
+    context: TenantContext,
     Path(track_id): Path<String>,
-) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, ApiError> {
+    // SPEC-083 S-02: ownership check before opening the SSE stream.
+    crate::services::task_scope::get_task_for_context(&state, &track_id, &context).await?;
+
     let pipeline_state = state.tasks.pipeline_state.clone();
     let tid = track_id.clone();
 
@@ -386,9 +394,9 @@ pub async fn get_pdf_progress_stream(
         }
     };
 
-    Sse::new(stream).keep_alive(
+    Ok(Sse::new(stream).keep_alive(
         KeepAlive::new()
             .interval(Duration::from_secs(15))
             .text("ping"),
-    )
+    ))
 }

@@ -217,7 +217,7 @@ pub struct QueryEngineHealthSnapshot {
     pub community_refresh_debounce_secs: u64,
     /// Hybrid mode chunk merge: `"round_robin"` (LightRAG) or `"rrf"`.
     pub hybrid_fusion: String,
-    /// Mix mode chunk merge: `"rrf"` (default) or `"weighted"`.
+    /// Mix mode chunk merge: `"rrf"` (default), `"max_after_minmax"` (legacy env `weighted`), or `"round_robin"`.
     pub mix_fusion: String,
     /// Workspaces with debounced Louvain refresh scheduled (scale coalescing signal).
     pub community_refresh_scheduled_workspaces: u64,
@@ -283,6 +283,14 @@ pub struct SchemaHealth {
     /// SPEC-045: M080 halfvec conversion applied at last bootstrap.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub halfvec_conversion_applied: Option<bool>,
+
+    /// SPEC-083: AGE graphs with missing `eq_*` columns after M092 reconcile.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eq_id_graphs_degraded: Option<Vec<String>>,
+
+    /// SPEC-083: operator opted into property-path SQL (`EDGEQUAKE_EQ_ID_FALLBACK`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eq_id_fallback_enabled: Option<bool>,
 }
 
 /// Migration 038 index health surfaced at bootstrap.
@@ -313,6 +321,13 @@ pub struct ComponentHealth {
 
     /// LLM provider status.
     pub llm_provider: bool,
+
+    /// SPEC-083 / P0: AGE `eq_*` denorm columns ready (or fallback env enabled).
+    ///
+    /// When false, `/ready` refuses traffic unless `EDGEQUAKE_EQ_ID_FALLBACK=1`.
+    /// Liveness `/health` stays HTTP 200 with `status: degraded`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eq_id_schema: Option<bool>,
 }
 
 // ============================================================================
@@ -383,6 +398,7 @@ mod tests {
                 vector_storage: true,
                 graph_storage: true,
                 llm_provider: true,
+                eq_id_schema: None,
             },
             llm_provider_name: Some("openai".to_string()),
             schema: None,
@@ -417,6 +433,7 @@ mod tests {
                 vector_storage: true,
                 graph_storage: true,
                 llm_provider: true,
+                eq_id_schema: Some(true),
             },
             llm_provider_name: Some("ollama".to_string()),
             schema: Some(SchemaHealth {
@@ -425,6 +442,8 @@ mod tests {
                 last_applied_at: Some("2025-01-26T10:00:00Z".to_string()),
                 source_ids_indexes: None,
                 halfvec_conversion_applied: None,
+                eq_id_graphs_degraded: None,
+                eq_id_fallback_enabled: None,
             }),
             providers: None,
             pdf_storage_enabled: None,
@@ -446,6 +465,8 @@ mod tests {
             last_applied_at: None,
             source_ids_indexes: None,
             halfvec_conversion_applied: None,
+            eq_id_graphs_degraded: None,
+            eq_id_fallback_enabled: None,
         };
         let json = serde_json::to_string(&schema).unwrap();
         assert!(json.contains("\"latest_version\":14"));
@@ -461,12 +482,14 @@ mod tests {
             vector_storage: false,
             graph_storage: false,
             llm_provider: false,
+            eq_id_schema: Some(false),
         };
         let json = serde_json::to_string(&components).unwrap();
         assert!(json.contains("\"kv_storage\":false"));
         assert!(json.contains("\"vector_storage\":false"));
         assert!(json.contains("\"graph_storage\":false"));
         assert!(json.contains("\"llm_provider\":false"));
+        assert!(json.contains("\"eq_id_schema\":false"));
     }
 
     #[test]
@@ -482,6 +505,7 @@ mod tests {
                 vector_storage: true,
                 graph_storage: true,
                 llm_provider: false,
+                eq_id_schema: Some(true),
             },
             llm_provider_name: None,
             schema: None,
@@ -504,10 +528,12 @@ mod tests {
             vector_storage: true,
             graph_storage: true,
             llm_provider: true,
+            eq_id_schema: Some(true),
         };
         let json = serde_json::to_string(&components).unwrap();
         assert!(json.contains("\"kv_storage\":true"));
         assert!(json.contains("\"graph_storage\":true"));
+        assert!(json.contains("\"eq_id_schema\":true"));
     }
 
     /// OODA-11: Test providers health serialization.
@@ -545,6 +571,7 @@ mod tests {
                 vector_storage: true,
                 graph_storage: true,
                 llm_provider: true,
+                eq_id_schema: Some(true),
             },
             llm_provider_name: Some("openai".to_string()),
             schema: None,

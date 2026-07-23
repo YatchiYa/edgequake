@@ -71,6 +71,8 @@ bytes = "1.9"
 tokio-util = "0.7"
 # SSE streaming for real-time PDF progress events
 async-stream = "0.3"
+# SPEC-083 D-51: stream multipart uploads to disk
+tempfile = "3"
 
 [dev-dependencies]
 edgequake-tasks = { path = "../edgequake-tasks", features = ["postgres"] }
@@ -87,7 +89,6 @@ sqlx = { workspace = true, features = [
     "chrono",
 ] }
 serial_test = "3.2"
-tempfile = "3"
 urlencoding = "2.1"
 wiremock = "0.6"
 jsonwebtoken = "9.3"

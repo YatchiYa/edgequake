@@ -18,6 +18,14 @@ pub(super) const M071_CHECKSUM_PRE_275: &str =
 pub(super) const M071_CHECKSUM_FIXED_275: &str =
     "fea7b113e1aab4f88d0c22a071ba78e043b94e38023450c8257c0a0027647193b5c0ca382a6009577e5f4f823a46cda2";
 
+/// SPEC-083 X-02: silent checksum rewrite is DEV_MODE-only.
+fn allow_checksum_repair() -> bool {
+    matches!(
+        std::env::var("EDGEQUAKE_DEV_MODE").map(|v| v == "1" || v.eq_ignore_ascii_case("true")),
+        Ok(true)
+    )
+}
+
 pub async fn repair_migration_071_checksum_if_needed(pool: &PgPool) -> Result<bool, sqlx::Error> {
     if !sqlx_migrations_table_exists(pool).await? {
         return Ok(false);
@@ -39,6 +47,18 @@ pub async fn repair_migration_071_checksum_if_needed(pool: &PgPool) -> Result<bo
         return Ok(false);
     }
 
+    // SPEC-083 X-02: fail loud in prod — do not silently rewrite history.
+    if !allow_checksum_repair() {
+        return Err(sqlx::Error::Protocol(
+            "Migration 071 checksum drift detected (pre-#275). \
+             Refusing silent repair without EDGEQUAKE_DEV_MODE. \
+             Runbook: set EDGEQUAKE_DEV_MODE=true once on a controlled upgrade, \
+             or UPDATE _sqlx_migrations checksum for version 71 to the fixed SHA-384 \
+             in migrations/checksums.lock / M071_CHECKSUM_FIXED_275, then restart."
+                .into(),
+        ));
+    }
+
     sqlx::query(
         "UPDATE _sqlx_migrations SET checksum = decode($1, 'hex') \
          WHERE version = $2 AND success = true",
@@ -53,7 +73,7 @@ pub async fn repair_migration_071_checksum_if_needed(pool: &PgPool) -> Result<bo
         step = "migration_071_checksum_repair",
         from = M071_CHECKSUM_PRE_275,
         to = M071_CHECKSUM_FIXED_275,
-        "Repaired migration 071 checksum (SPEC-042 #275 HNSW dimension guard)"
+        "Repaired migration 071 checksum (SPEC-042 #275 HNSW dimension guard; DEV_MODE)"
     );
 
     Ok(true)
@@ -68,5 +88,16 @@ mod tests {
         assert_ne!(M071_CHECKSUM_PRE_275, M071_CHECKSUM_FIXED_275);
         assert_eq!(M071_CHECKSUM_PRE_275.len(), 96);
         assert_eq!(M071_CHECKSUM_FIXED_275.len(), 96);
+    }
+
+    #[test]
+    fn contract_checksum_drift_fails_loud_without_dev_mode() {
+        let src = include_str!("m071.rs");
+        assert!(
+            src.contains("allow_checksum_repair")
+                && src.contains("EDGEQUAKE_DEV_MODE")
+                && src.contains("Refusing silent repair"),
+            "X-02: M071 repair must fail loud when not DEV_MODE"
+        );
     }
 }

@@ -33,9 +33,9 @@ pub fn calculate_line_numbers(
     (start_line, end_line)
 }
 
-/// Estimate token count (rough approximation: 1 token ≈ 4 chars).
+/// Estimate token count via SSOT [`crate::token_estimator`] (D-53).
 pub fn estimate_tokens(text: &str) -> usize {
-    (text.len() as f32 / 4.0).ceil() as usize
+    crate::token_estimator::count_tokens(text)
 }
 
 /// Split text into sentences using simple heuristics.

@@ -18,7 +18,7 @@
 //! ## Enforces
 //!
 //! - **BR0910**: Worker count bounded to prevent resource exhaustion
-//! - **BR0911**: In-flight tasks must complete before shutdown
+//! - **BR0911**: In-flight tasks drain within shutdown budget (then cancel/abort)
 //! - **BR0912**: Retry delays use exponential backoff (2^n * base_delay)
 //! - **BR0913**: Per-tenant concurrency capped at max_tasks_per_tenant
 //!
@@ -40,6 +40,7 @@
 //! saturated. Override via the `WORKER_THREADS` environment variable.
 
 use crate::{
+    admission::{estimate_task_bytes, AdmissionOutcome, AdmissionPermit, InFlightByteBudget},
     cancellation::CancellationRegistry,
     error::{TaskError, TaskResult},
     queue::TaskQueue,
@@ -275,6 +276,8 @@ pub struct WorkerPool {
     handles: Vec<JoinHandle<()>>,
     shutdown_tx: Option<tokio::sync::broadcast::Sender<()>>,
     tenant_limiter: Option<TenantConcurrencyLimiter>,
+    /// SPEC-083 / X-19: global in-flight byte budget (shared across workers).
+    admission: Arc<InFlightByteBudget>,
     cancellation_registry: CancellationRegistry,
     /// Rate-limit fairness park DEBUG logs (one line per N parks).
     fairness_park_logs: Arc<AtomicU64>,
@@ -309,10 +312,16 @@ impl WorkerPool {
             handles: Vec::new(),
             shutdown_tx: None,
             tenant_limiter,
+            admission: InFlightByteBudget::from_env(),
             cancellation_registry: CancellationRegistry::new(),
             fairness_park_logs: Arc::new(AtomicU64::new(0)),
             fairness_park_set: FairnessParkSet::default(),
         }
+    }
+
+    /// Shared in-flight byte admission budget (X-19).
+    pub fn admission_budget(&self) -> Arc<InFlightByteBudget> {
+        Arc::clone(&self.admission)
     }
 
     /// Get a reference to the cancellation registry.
@@ -364,6 +373,7 @@ impl WorkerPool {
             let mut shutdown_rx = shutdown_tx.subscribe();
             let park_shutdown_tx = shutdown_tx.clone();
             let tenant_limiter = self.tenant_limiter.clone();
+            let admission = Arc::clone(&self.admission);
             let cancel_registry = self.cancellation_registry.clone();
             let fairness_park_logs = Arc::clone(&self.fairness_park_logs);
             let fairness_park_set = self.fairness_park_set.clone();
@@ -413,8 +423,12 @@ impl WorkerPool {
 
                     // Claim loop: skip already-parked rows and re-claim immediately
                     // (bounded) so FIFO Pending deletions do not starve newer ingest.
-                    let mut claimed: Option<(Task, uuid::Uuid, Option<tokio::sync::OwnedSemaphorePermit>)> =
-                        None;
+                    let mut claimed: Option<(
+                        Task,
+                        uuid::Uuid,
+                        Option<tokio::sync::OwnedSemaphorePermit>,
+                        AdmissionPermit,
+                    )> = None;
                     for _reclaim in 0..=MAX_PARK_SKIP_RECLAIMS {
                         let mut task = match storage.claim_next(&worker_name, lease_ttl).await {
                             Ok(Some(t)) => t,
@@ -583,11 +597,46 @@ impl WorkerPool {
                             None
                         };
 
-                        claimed = Some((task, lease_token, tenant_permit));
+                        // SPEC-083 / X-19: byte-budget admission after fairness slot.
+                        let cost = estimate_task_bytes(&task);
+                        let admission_permit = match admission.try_admit(cost) {
+                            AdmissionOutcome::Admitted(p) => p,
+                            AdmissionOutcome::Rejected {
+                                requested,
+                                in_flight,
+                                max_bytes,
+                            } => {
+                                debug!(
+                                    worker_id = worker_id,
+                                    task_id = %task.track_id,
+                                    requested,
+                                    in_flight,
+                                    max_bytes,
+                                    "Admission over budget — releasing claim for later retry"
+                                );
+                                // Drop fairness permit before release so the lane frees immediately.
+                                drop(tenant_permit);
+                                if let Err(e) = storage
+                                    .release_claim(&task.track_id, &worker_name, lease_token)
+                                    .await
+                                {
+                                    warn!(
+                                        task_id = %task.track_id,
+                                        error = %e,
+                                        "Failed to release claim after admission reject"
+                                    );
+                                }
+                                // Brief backoff so we do not hot-spin on the same oversized queue.
+                                tokio::time::sleep(Duration::from_millis(200)).await;
+                                break;
+                            }
+                        };
+
+                        claimed = Some((task, lease_token, tenant_permit, admission_permit));
                         break;
                     }
 
-                    let (mut task, lease_token, _tenant_permit) = match claimed {
+                    let (mut task, lease_token, _tenant_permit, _admission_permit) = match claimed {
                         Some(c) => c,
                         None => continue,
                     };
@@ -854,19 +903,50 @@ impl WorkerPool {
         }
     }
 
-    /// Shutdown the worker pool gracefully
+    /// Shutdown the worker pool gracefully within the drain budget (SPEC-083 X-31).
+    ///
+    /// 1. Signal workers to stop claiming new work
+    /// 2. Cancel in-flight tasks cooperatively
+    /// 3. Await worker joins up to `EDGEQUAKE_SHUTDOWN_DRAIN_SECS` (default 30)
+    /// 4. Abort any remaining worker tasks after the budget
     pub async fn shutdown(self) {
-        info!("Shutting down worker pool");
+        let drain = crate::shutdown_drain_budget();
+        info!(
+            drain_secs = drain.as_secs(),
+            "Shutting down worker pool (SPEC-083 X-31 drain budget)"
+        );
 
         if let Some(shutdown_tx) = self.shutdown_tx {
             let _ = shutdown_tx.send(());
         }
 
-        for handle in self.handles {
-            let _ = handle.await;
+        let cancelled = self.cancellation_registry.cancel_all_active().await;
+        if !cancelled.is_empty() {
+            info!(
+                count = cancelled.len(),
+                "Cancelled in-flight tasks for shutdown drain"
+            );
         }
 
-        info!("Worker pool shut down complete");
+        let aborts: Vec<_> = self.handles.iter().map(|h| h.abort_handle()).collect();
+        let join_fut = async {
+            for handle in self.handles {
+                let _ = handle.await;
+            }
+        };
+
+        match tokio::time::timeout(drain, join_fut).await {
+            Ok(()) => info!("Worker pool shut down within drain budget"),
+            Err(_) => {
+                warn!(
+                    drain_secs = drain.as_secs(),
+                    "SPEC-083 X-31: shutdown drain budget exceeded — aborting remaining workers"
+                );
+                for abort in aborts {
+                    abort.abort();
+                }
+            }
+        }
     }
 
     /// Get number of workers
@@ -1096,6 +1176,71 @@ mod tests {
 
         // Shutdown immediately
         pool.shutdown().await;
+    }
+
+    /// SPEC-083 X-31: a stuck in-flight task must not block shutdown past the drain budget.
+    #[tokio::test]
+    async fn e2e_shutdown_drains_or_cancels_within_budget() {
+        std::env::set_var(crate::SHUTDOWN_DRAIN_SECS_ENV, "1");
+
+        struct StickyProcessor;
+        #[async_trait::async_trait]
+        impl TaskProcessor for StickyProcessor {
+            async fn process(
+                &self,
+                _task: &mut Task,
+                cancel_token: CancellationToken,
+            ) -> TaskResult<serde_json::Value> {
+                tokio::select! {
+                    _ = cancel_token.cancelled() => {
+                        Err(TaskError::Cancelled("shutdown drain".into()))
+                    }
+                    _ = tokio::time::sleep(Duration::from_secs(120)) => {
+                        Ok(serde_json::json!({"status": "unexpected_complete"}))
+                    }
+                }
+            }
+        }
+
+        let queue = Arc::new(ChannelTaskQueue::new(10));
+        let storage = Arc::new(MemoryTaskStorage::new());
+        let processor = Arc::new(StickyProcessor);
+
+        let config = WorkerPoolConfig {
+            num_workers: 1,
+            auto_retry: false,
+            initial_retry_delay_ms: 100,
+            max_retry_delay_ms: 5000,
+            backoff_multiplier: 2.0,
+            max_tasks_per_tenant: 0,
+            max_lifecycle_tasks_per_tenant: 0,
+            processing_timeout_secs: 300,
+        };
+
+        let mut pool = WorkerPool::new(config, queue.clone(), storage.clone(), processor);
+        pool.start_on(&tokio::runtime::Handle::current());
+
+        let task = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::Insert,
+            serde_json::json!({"sticky": true}),
+        );
+        storage.create_task(&task).await.unwrap();
+        queue.send(task).await.unwrap();
+
+        // Let the worker claim and enter the sticky process loop.
+        tokio::time::sleep(Duration::from_millis(150)).await;
+
+        let started = std::time::Instant::now();
+        pool.shutdown().await;
+        let elapsed = started.elapsed();
+
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "shutdown must finish within drain budget + slack, took {:?}",
+            elapsed
+        );
     }
 
     #[tokio::test]

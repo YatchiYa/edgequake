@@ -4,12 +4,18 @@
 .PHONY: sdk-java-build sdk-java-publish sdk-java-version
 .PHONY: sdk-kotlin-build sdk-kotlin-publish sdk-kotlin-version
 
+# Portable in-place sed (GNU vs BSD/macOS). Temp-file rewrite avoids `sed -i ''`.
+define SED_INPLACE
+tmp=$$(mktemp "$${TMPDIR:-/tmp}/edgequake-sed.XXXXXX"); \
+sed -E $(1) $(2) > "$$tmp" && mv "$$tmp" $(2)
+endef
+
 sdk-rust-version: ## Update the version of the Rust SDK (sdks/rust). Usage: make sdk-rust-version VERSION=0.2.0
 	@if [ -z "$(VERSION)" ]; then \
 		echo "Usage: make sdk-rust-version VERSION=<new_version>"; \
 		exit 1; \
 	fi
-	sed -i '' -E 's/^version = ".*"/version = "$(VERSION)"/' sdks/rust/Cargo.toml
+	@$(call SED_INPLACE,'s/^version = ".*"/version = "$(VERSION)"/',sdks/rust/Cargo.toml)
 	@echo "$(GREEN)✓ Updated Rust SDK version to $(VERSION) in sdks/rust/Cargo.toml$(RESET)"
 
 # Python SDK targets
@@ -28,7 +34,7 @@ sdk-python-version: ## Update the version of the Python SDK (sdks/python). Usage
 		echo "Usage: make sdk-python-version VERSION=<new_version>"; \
 		exit 1; \
 	fi
-	sed -i '' -E 's/^version = ".*"/version = "$(VERSION)"/' sdks/python/pyproject.toml
+	@$(call SED_INPLACE,'s/^version = ".*"/version = "$(VERSION)"/',sdks/python/pyproject.toml)
 	@echo "$(GREEN)✓ Updated Python SDK version to $(VERSION) in sdks/python/pyproject.toml$(RESET)"
 
 # TypeScript SDK targets
@@ -45,7 +51,7 @@ sdk-typescript-version: ## Update the version of the TypeScript SDK (sdks/typesc
 		echo "Usage: make sdk-typescript-version VERSION=<new_version>"; \
 		exit 1; \
 	fi
-	sed -i '' -E 's/"version": ".*"/"version": "$(VERSION)"/' sdks/typescript/package.json
+	@$(call SED_INPLACE,'s/"version": ".*"/"version": "$(VERSION)"/',sdks/typescript/package.json)
 	@echo "$(GREEN)✓ Updated TypeScript SDK version to $(VERSION) in sdks/typescript/package.json$(RESET)"
 
 # Java SDK targets
@@ -62,7 +68,7 @@ sdk-java-version: ## Update the version of the Java SDK (sdks/java). Usage: make
 		echo "Usage: make sdk-java-version VERSION=<new_version>"; \
 		exit 1; \
 	fi
-	sed -i '' -E 's/<version>.*<\/version>/<version>$(VERSION)<\/version>/' sdks/java/pom.xml
+	@$(call SED_INPLACE,'s/<version>.*<\/version>/<version>$(VERSION)<\/version>/',sdks/java/pom.xml)
 	@echo "$(GREEN)✓ Updated Java SDK version to $(VERSION) in sdks/java/pom.xml$(RESET)"
 
 # Kotlin SDK targets
@@ -79,7 +85,7 @@ sdk-kotlin-version: ## Update the version of the Kotlin SDK (sdks/kotlin). Usage
 		echo "Usage: make sdk-kotlin-version VERSION=<new_version>"; \
 		exit 1; \
 	fi
-	sed -i '' -E 's/<version>.*<\/version>/<version>$(VERSION)<\/version>/' sdks/kotlin/pom.xml
+	@$(call SED_INPLACE,'s/<version>.*<\/version>/<version>$(VERSION)<\/version>/',sdks/kotlin/pom.xml)
 	@echo "$(GREEN)✓ Updated Kotlin SDK version to $(VERSION) in sdks/kotlin/pom.xml$(RESET)"
 
  
@@ -137,7 +143,7 @@ release: ## Bump all crate versions and tag release using cargo-release (uses VE
         backend-dev backend-db backend-memory backend-bg backend-build backend-build-online backend-sqlx-prepare backend-test backend-run \
         frontend-dev frontend-bg frontend-build frontend-test frontend-lint \
         openapi-snapshot codegen-openapi codegen-openapi-refresh codegen-openapi-live \
-        db-start db-start-pg16 db-start-pg17 db-start-pg18 db-stop db-wait db-logs db-shell postgres-image-build postgres-image-build-pg17 postgres-image-build-pg18 postgres-image-build-pg18-vectorscale postgres-image-build-unified check-extension-pins postgres-battle-test hnsw-dimension-battle-test spec042-battle-test-all spec044-battle-test-all dev-e2e-proof dev-e2e-proof-all docker-network-diagnose stop-docker-services \
+        db-start postgres-start db-start-pg16 db-start-pg17 db-start-pg18 db-stop db-wait db-logs db-shell postgres-image-build postgres-image-build-pg17 postgres-image-build-pg18 postgres-image-build-pg18-vectorscale postgres-image-build-unified check-extension-pins postgres-battle-test hnsw-dimension-battle-test spec042-battle-test-all spec044-battle-test-all dev-e2e-proof dev-e2e-proof-all docker-network-diagnose stop-docker-services \
         docker-build docker-up docker-prebuilt docker-prebuilt-down docker-prebuilt-logs docker-ps-prebuilt docker-api-only docker-down docker-logs \
         stack stack-down stack-logs stack-status stack-restart stack-pull \
         check-deps status \
@@ -1189,7 +1195,8 @@ frontend-lint: ## Lint frontend code
 
 frontend-test: ## Run frontend tests
 	@echo "$(BLUE)Running frontend tests...$(RESET)"
-	@cd $(FRONTEND_DIR) && (pnpm test 2>/dev/null || bun test) || echo "$(YELLOW)No tests configured$(RESET)"
+	@# SPEC-083 / X-32: fail closed when tests fail (no echo fallback).
+	@cd $(FRONTEND_DIR) && if command -v pnpm >/dev/null 2>&1; then pnpm test; else bun test; fi
 
 # ============================================================================
 # OpenAPI / TypeScript codegen (SPEC-027 OAS-009)
@@ -1260,6 +1267,8 @@ docker-network-diagnose: ## Diagnose common OrbStack/Docker network route confli
 		echo "$(GREEN)✓ No broad private-network route collision detected from the local route table$(RESET)"; \
 	fi
 
+
+postgres-start: db-start ## Alias for db-start (AGENTS.md / wiki compatibility)
 
 db-start: ## Start PostgreSQL container
 	@echo "$(BLUE)Starting PostgreSQL...$(RESET)"
@@ -2441,8 +2450,8 @@ test-postgres-tasks: test-postgres-start ## Run PostgreSQL task storage tests
 test-postgres-rls: test-postgres-start ## Run PostgreSQL RLS (Row Level Security) tests
 	@echo "$(BLUE)Running PostgreSQL RLS tests...$(RESET)"
 	@cd $(BACKEND_DIR) && \
-		TEST_DATABASE_URL="postgresql://app_user:app_password_123@localhost:5433/edgequake_test" \
-		ADMIN_DATABASE_URL="postgresql://edgequake_test:test_password_123@localhost:5433/edgequake_test" \
+		TEST_DATABASE_URL="postgresql://app_user:app_password_123@localhost:$${POSTGRES_TEST_PORT:-5433}/edgequake_test" \
+		ADMIN_DATABASE_URL="postgresql://edgequake_test:test_password_123@localhost:$${POSTGRES_TEST_PORT:-5433}/edgequake_test" \
 		cargo test --package edgequake-api --test e2e_postgres_rls --features postgres -- --ignored --test-threads=1
 	@echo "$(GREEN)✓ PostgreSQL RLS tests complete$(RESET)"
 

@@ -96,7 +96,8 @@ where
             JsonParseOptions {
                 entity_schema: Some(&self.entity_schema),
                 recover_truncated: true,
-                empty_on_missing_json: true,
+                // X-16: fail-closed — silent empty on missing JSON marked docs processed.
+                empty_on_missing_json: false,
             },
         )
     }
@@ -173,14 +174,16 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_response_empty_on_non_json() {
+    fn test_parse_response_errors_on_non_json() {
+        // X-16: fail-closed — missing JSON must not silently mark chunks processed.
         let provider = Arc::new(edgequake_llm::MockProvider::default());
         let extractor = LLMExtractor::new(provider);
 
         let result = extractor.parse_response("this is not json", "chunk_bad");
-        assert!(result.is_ok());
-        let extraction = result.unwrap();
-        assert_eq!(extraction.entities.len(), 0);
+        assert!(
+            result.is_err(),
+            "non-JSON must error when empty_on_missing_json=false"
+        );
     }
 
     #[test]

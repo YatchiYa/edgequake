@@ -1,3 +1,4 @@
+import ast
 import re
 from math import isclose
 from collections import defaultdict
@@ -135,11 +136,11 @@ def eval_score(gt, pred, answer_type):
             score = anls_compute(gt, pred)
     else:
         if isinstance(gt, str) and gt.startswith("["):
-            gt = eval(gt)
+            gt = ast.literal_eval(gt)
         if not isinstance(gt, list):
             gt = [gt]
         if isinstance(pred, str) and pred.startswith("["):
-            pred = eval(pred)
+            pred = ast.literal_eval(pred)
         if not isinstance(pred, list):
             pred = [pred]
         print(len(gt), len(pred))
@@ -175,8 +176,8 @@ def eval_acc_and_f1(samples):
 
 def show_results(samples, show_path=None):
     for sample in samples:
-        sample["evidence_pages"] = eval(sample["evidence_pages"])
-        sample["evidence_sources"] = eval(sample["evidence_sources"])
+        sample["evidence_pages"] = ast.literal_eval(sample["evidence_pages"])
+        sample["evidence_sources"] = ast.literal_eval(sample["evidence_sources"])
     
     with open(show_path, 'w') as f:
         acc, f1 = eval_acc_and_f1(samples)

@@ -106,10 +106,22 @@ impl PostgresAGEGraphStorage {
             .execute(&mut *conn)
             .await
             .map_err(|e| StorageError::Database(format!("Failed to set AGE search path: {}", e)))?;
+        // SPEC-083 / P0: maintenance window prefers longer lock waits so ADD COLUMN
+        // can succeed on large AGE graphs; boot path stays fail-fast at 5s.
+        let maintenance = matches!(
+            std::env::var("EDGEQUAKE_EQ_MAINTENANCE").as_deref(),
+            Ok("1") | Ok("true") | Ok("TRUE") | Ok("yes") | Ok("YES")
+        );
         let lock_timeout = std::env::var("EDGEQUAKE_GRAPH_DDL_LOCK_TIMEOUT")
             .ok()
             .filter(|v| !v.trim().is_empty())
-            .unwrap_or_else(|| "5s".to_string());
+            .unwrap_or_else(|| {
+                if maintenance {
+                    "120s".to_string()
+                } else {
+                    "5s".to_string()
+                }
+            });
         sqlx::query("SET statement_timeout = 0")
             .execute(&mut *conn)
             .await

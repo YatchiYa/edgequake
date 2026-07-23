@@ -414,10 +414,16 @@ async fn persist_processing_result_impl(
             })
         }
         Ok(stats) => {
-            let cause = format!(
-                "{} knowledge-graph merge error(s) during persist",
-                stats.errors
-            );
+            let cause = match stats.first_error.as_deref() {
+                Some(detail) => format!(
+                    "{} knowledge-graph merge error(s) during persist: {detail}",
+                    stats.errors
+                ),
+                None => format!(
+                    "{} knowledge-graph merge error(s) during persist",
+                    stats.errors
+                ),
+            };
             compensate_merge_failure(
                 graph_storage.as_ref(),
                 vector_storage.as_ref(),

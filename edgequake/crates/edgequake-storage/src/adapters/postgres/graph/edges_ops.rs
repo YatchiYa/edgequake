@@ -357,15 +357,35 @@ impl PostgresAGEGraphStorage {
             //   deduplicates via equality) raises "could not identify an equality
             //   operator for type json". OR evaluates as a BitmapOr of two index
             //   scans without ever comparing the json column values.
-            // SPEC-062: filter on denormalized eq_* columns; still project props via agtype.
+            // SPEC-083 / X-03: COALESCE(eq_*, props) when columns exist; prop-only otherwise.
+            let eq_present = self.eq_columns_present(&mut conn).await?;
+            let src = if eq_present {
+                super::helpers::coalesce_endpoint("e", "source")
+            } else {
+                super::helpers::prop_only_endpoint("e", "source")
+            };
+            let tgt = if eq_present {
+                super::helpers::coalesce_endpoint("e", "target")
+            } else {
+                super::helpers::prop_only_endpoint("e", "target")
+            };
+            if !eq_present || super::helpers::eq_id_fallback_env_enabled() {
+                tracing::debug!(
+                    target: "edgequake_storage",
+                    eq_present,
+                    "eq_id_fallback_used: pg_get_incident_edges_batch"
+                );
+            }
             let sql = format!(
                 "SELECT ag_catalog.agtype_to_json(e.properties) AS props \
                  FROM {graph}.\"EDGE\" e \
-                 WHERE (e.eq_source_id IN ({in_list}) OR e.eq_target_id IN ({in_list}))\
+                 WHERE ({src} IN ({in_list}) OR {tgt} IN ({in_list}))\
                  {scope}",
                 graph = self.graph_name,
                 in_list = in_list,
-                scope = scope_clause
+                scope = scope_clause,
+                src = src,
+                tgt = tgt,
             );
 
             let rows = sqlx::query(&sql).fetch_all(&mut *conn).await.map_err(|e| {
@@ -506,11 +526,14 @@ impl PostgresAGEGraphStorage {
 
         let mut source_ids: Vec<String> = Vec::with_capacity(edges.len());
         let mut target_ids: Vec<String> = Vec::with_capacity(edges.len());
+        let mut rel_types: Vec<String> = Vec::with_capacity(edges.len());
         let mut props_json: Vec<String> = Vec::with_capacity(edges.len());
 
         for (src, tgt, props) in edges {
             source_ids.push(src.clone());
             target_ids.push(tgt.clone());
+            let rel = crate::graph_batch_dedupe::normalize_rel_type(props);
+            rel_types.push(rel.clone());
             let mut full = props.clone();
             full.insert(
                 "source_id".to_string(),
@@ -520,55 +543,58 @@ impl PostgresAGEGraphStorage {
                 "target_id".to_string(),
                 serde_json::Value::String(tgt.clone()),
             );
+            // Keep properties.relation_type aligned with arbiter column.
+            full.insert("relation_type".to_string(), serde_json::Value::String(rel));
             props_json.push(serde_json::to_string(&full).unwrap_or_else(|_| "{}".to_string()));
         }
 
-        // Conflict target matches idx_edge_eq_source_target (SPEC-062).
+        // D-30 / SPEC-083: arbiter is (eq_source_id, eq_target_id, eq_rel_type)
+        // so Alice-KNOWS-Bob and Alice-WORKS_WITH-Bob both persist.
         // DISTINCT ON is a SQL safety net if a caller bypasses Rust dedupe
         // (Postgres forbids ON CONFLICT DO UPDATE affecting a row twice).
         // ORDER BY … ord DESC → last-write-wins, matching Rust policy.
-        // Re-DISTINCT after JOIN: duplicate endpoint nodes must not propose the
-        // same arbiter key twice. Legacy expression UNIQUE
-        // idx_edge_source_target_unique is dropped once eq_* exists.
-        // Rust always sends full properties → DO UPDATE replaces (skip eq_merge).
         let sql = format!(
             r#"
-            INSERT INTO {graph}."EDGE" (id, start_id, end_id, properties, eq_source_id, eq_target_id)
+            INSERT INTO {graph}."EDGE" (id, start_id, end_id, properties, eq_source_id, eq_target_id, eq_rel_type)
             SELECT
                 eq_next_edge_id('{graph}'),
                 j.start_id,
                 j.end_id,
                 j.props_text::ag_catalog.agtype,
                 j.source_id_val,
-                j.target_id_val
+                j.target_id_val,
+                j.rel_type_val
             FROM (
-                SELECT DISTINCT ON (d.source_id_val, d.target_id_val)
+                SELECT DISTINCT ON (d.source_id_val, d.target_id_val, d.rel_type_val)
                     sn.id AS start_id,
                     tn.id AS end_id,
                     d.props_text,
                     d.source_id_val,
-                    d.target_id_val
+                    d.target_id_val,
+                    d.rel_type_val
                 FROM (
-                    SELECT DISTINCT ON (source_id_val, target_id_val)
+                    SELECT DISTINCT ON (source_id_val, target_id_val, rel_type_val)
                         source_id_val,
                         target_id_val,
+                        rel_type_val,
                         props_text
-                    FROM unnest($1::text[], $2::text[], $3::text[])
-                           WITH ORDINALITY AS p(source_id_val, target_id_val, props_text, ord)
-                    ORDER BY source_id_val, target_id_val, ord DESC
+                    FROM unnest($1::text[], $2::text[], $3::text[], $4::text[])
+                           WITH ORDINALITY AS p(source_id_val, target_id_val, rel_type_val, props_text, ord)
+                    ORDER BY source_id_val, target_id_val, rel_type_val, ord DESC
                 ) AS d
                 JOIN {graph}."Node" sn
                   ON sn.eq_node_id = d.source_id_val
                 JOIN {graph}."Node" tn
                   ON tn.eq_node_id = d.target_id_val
-                ORDER BY d.source_id_val, d.target_id_val
+                ORDER BY d.source_id_val, d.target_id_val, d.rel_type_val
             ) AS j
-            ON CONFLICT (eq_source_id, eq_target_id)
-                WHERE eq_source_id IS NOT NULL AND eq_target_id IS NOT NULL
+            ON CONFLICT (eq_source_id, eq_target_id, eq_rel_type)
+                WHERE eq_source_id IS NOT NULL AND eq_target_id IS NOT NULL AND eq_rel_type IS NOT NULL
             DO UPDATE SET
                 properties = EXCLUDED.properties,
                 eq_source_id = EXCLUDED.eq_source_id,
                 eq_target_id = EXCLUDED.eq_target_id,
+                eq_rel_type = EXCLUDED.eq_rel_type,
                 start_id = EXCLUDED.start_id,
                 end_id = EXCLUDED.end_id
             "#,
@@ -578,6 +604,7 @@ impl PostgresAGEGraphStorage {
         let result = sqlx::query(&sql)
             .bind(&source_ids)
             .bind(&target_ids)
+            .bind(&rel_types)
             .bind(&props_json)
             .execute(&pool)
             .await

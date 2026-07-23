@@ -29,6 +29,16 @@ fn bt045_ec03_graph_merge_class_and_action() {
 }
 
 #[test]
+fn bt045_ec03_graph_merge_class_with_first_error_suffix() {
+    // LAW-5: persist may append the first underlying SQL/cause after the count.
+    let msg = "Pipeline processing failed: 1 knowledge-graph merge error(s) during persist: \
+               Native SQL edge batch upsert failed: column \"eq_rel_type\" of relation \"EDGE\" does not exist";
+    let class = classify_ingestion_failure(msg);
+    assert_eq!(class, IngestionFailureClass::GraphMerge);
+    assert!(is_permanent_ingestion_failure(msg));
+}
+
+#[test]
 fn bt045_ec07_provider_unavailable_retriable() {
     let msg = "Entity extraction error: Network error: error sending request for url (http://localhost:11434/api/chat)";
     let class = classify_ingestion_failure(msg);

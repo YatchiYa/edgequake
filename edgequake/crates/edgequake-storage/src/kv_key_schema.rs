@@ -155,6 +155,43 @@ pub mod kv_keys {
         Some((workspace_id, document_id))
     }
 
+    /// Parse workspace id from a staging workspace-hash key (`staging:hash:{ws}:{hash}`).
+    pub fn parse_staging_workspace_hash(key: &str) -> Option<(&str, &str)> {
+        let rest = key.strip_prefix("staging:hash:")?;
+        let (workspace_id, content_hash) = rest.split_once(':')?;
+        if workspace_id.is_empty() || content_hash.is_empty() {
+            return None;
+        }
+        Some((workspace_id, content_hash))
+    }
+
+    /// Extract embedded workspace id from workspace-scoped KV keys (SPEC-083 X-37).
+    ///
+    /// Returns `None` for global/unscoped keys (doc metadata, caches, …).
+    pub fn embedded_workspace_id(key: &str) -> Option<&str> {
+        if let Some((ws, _)) = parse_workspace_doc_index(key) {
+            return Some(ws);
+        }
+        if let Some((ws, _)) = parse_staging_workspace_hash(key) {
+            return Some(ws);
+        }
+        None
+    }
+
+    /// Fail closed when a workspace-scoped key targets a foreign workspace.
+    pub fn assert_key_matches_workspace(key: &str, workspace_id: &str) -> Result<(), String> {
+        match embedded_workspace_id(key) {
+            Some(embedded) if embedded != workspace_id => Err(format!(
+                "KV key workspace mismatch: key embeds '{embedded}' but scope is '{workspace_id}'"
+            )),
+            // Malformed workspace-prefixed keys — reject rather than accept silently.
+            None if key.starts_with("wsdoc:") || key.starts_with("staging:hash:") => {
+                Err(format!("Malformed workspace-scoped KV key: {key}"))
+            }
+            _ => Ok(()),
+        }
+    }
+
     /// Key for an LLM extraction cache entry.
     ///
     /// `hash` is the SHA-256 hex of the prompt + model string.
@@ -265,6 +302,14 @@ mod tests {
         assert_eq!(key, format!("wsdoc:{ws}:{doc}"));
         assert_eq!(kv_keys::parse_workspace_doc_index(&key), Some((ws, doc)));
         assert!(kv_keys::workspace_doc_index_prefix(ws).starts_with("wsdoc:"));
+    }
+
+    #[test]
+    fn e2e_kv_cross_tenant_denied() {
+        let key = kv_keys::workspace_doc_index("ws-a", "doc1");
+        assert!(kv_keys::assert_key_matches_workspace(&key, "ws-a").is_ok());
+        assert!(kv_keys::assert_key_matches_workspace(&key, "ws-b").is_err());
+        assert!(kv_keys::assert_key_matches_workspace("wsdoc:broken", "ws-a").is_err());
     }
 
     #[test]

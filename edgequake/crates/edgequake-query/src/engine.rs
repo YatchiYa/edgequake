@@ -18,4 +18,6 @@
 //! `strategies/` module that only it used have been deleted alongside this
 //! shim. There is now exactly one query engine implementation in the crate.
 
-pub use crate::types::{ConversationMessage, QueryRequest, QueryResponse, QueryStats};
+pub use crate::types::{
+    ConversationMessage, ExplainTrace, QueryRequest, QueryResponse, QueryStats,
+};

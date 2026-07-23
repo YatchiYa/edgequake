@@ -142,6 +142,8 @@ SDK packages are independently versioned (typically **0.4.0**) and are **not** t
 | [Operations Overview](operations/index.md)                       | Local and CI/CD operating model          |
 | [Observability](OBSERVABILITY.md)                                | OTEL / tracing                           |
 | [SQLx offline mode](sqlx-offline-mode.md)                        | Offline query metadata                   |
+| [SPEC-083 improvements](083-improvements/README.md)              | First-principles defect pack + register  |
+| [Prod eq_* incident](083-improvements/INCIDENT-PROD-DIAGNOSIS.md) | Schema readiness / M092 maintenance     |
 
 ### Security & Troubleshooting
 

@@ -83,16 +83,10 @@ impl TaskFailureInfo {
 
     /// Check if this error represents a timeout.
     ///
-    /// @implements CIRCUIT_BREAKER: Timeout detection
+    /// X-30: typed detection only — the [`Self::timeout`] factory sets a fixed
+    /// message. Business text containing the word "timeout" must not trip the breaker.
     pub fn is_timeout(&self) -> bool {
-        let msg = self.message.to_lowercase();
-        let reason = self.reason.to_lowercase();
-        msg.contains("timeout")
-            || msg.contains("timed out")
-            || msg.contains("stalled")
-            || reason.contains("timeout")
-            || reason.contains("timed out")
-            || reason.contains("stalled")
+        self.message == "Operation timed out"
     }
 
     /// Create an embedding error.

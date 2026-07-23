@@ -1,8 +1,22 @@
 //! PostgreSQL runtime capability probes (SPEC-042-E SSOT).
 //!
 //! Gates Phase E features: uuidv7, halfvec, AGE RLS, AGE COPY loader.
+//!
+//! ## Vector distance metric (SPEC-083 X-04)
+//!
+//! EdgeQuake indexes and queries are **cosine-only**
+//! (`vector_cosine_ops` / `halfvec_cosine_ops`, operator `<=>`).
+//! pgvector also supports L2 (`<->`) and inner product (`<#>`), but those
+//! opclasses are not created or queried by this codebase. Do not configure
+//! non-cosine metrics expecting a runtime effect.
 
 use sqlx::PgPool;
+
+/// Sole ANN distance metric supported by EdgeQuake (X-04 honesty).
+pub const SUPPORTED_VECTOR_METRIC: &str = "cosine";
+
+/// Opclass suffix used for full `vector` columns (cosine only).
+pub const VECTOR_COSINE_OPCLASS: &str = "vector_cosine_ops";
 
 /// Vector column storage mode (`EDGEQUAKE_VECTOR_STORAGE`, default `full`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -93,9 +107,15 @@ impl VectorStorageMode {
 
     pub fn cosine_opclass(self) -> &'static str {
         match self {
-            Self::Full => "vector_cosine_ops",
+            Self::Full => VECTOR_COSINE_OPCLASS,
             Self::Half => "halfvec_cosine_ops",
         }
+    }
+
+    /// Distance metric label — always `"cosine"` until L2/IP ops exist (X-04).
+    pub fn distance_metric(self) -> &'static str {
+        let _ = self;
+        SUPPORTED_VECTOR_METRIC
     }
 }
 
@@ -231,6 +251,29 @@ mod ann_index_policy_tests {
             "0.8.5",
             PGVECTOR_MIN_ITERATIVE_SCAN
         ));
+    }
+
+    #[test]
+    fn contract_vector_metric_cosine_only() {
+        assert_eq!(SUPPORTED_VECTOR_METRIC, "cosine");
+        assert_eq!(
+            VectorStorageMode::Full.distance_metric(),
+            SUPPORTED_VECTOR_METRIC
+        );
+        assert_eq!(
+            VectorStorageMode::Half.distance_metric(),
+            SUPPORTED_VECTOR_METRIC
+        );
+        let p = AnnIndexPolicy::resolve(1536, VectorStorageMode::Full);
+        assert_eq!(p.opclass, VECTOR_COSINE_OPCLASS);
+        assert!(
+            p.opclass.contains("cosine"),
+            "X-04: ANN opclass must be cosine-only"
+        );
+        assert!(
+            !p.opclass.contains("l2") && !p.opclass.contains("ip"),
+            "X-04: must not expose L2/IP opclasses"
+        );
     }
 
     #[test]

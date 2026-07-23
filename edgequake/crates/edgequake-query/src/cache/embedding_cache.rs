@@ -25,6 +25,18 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use edgequake_llm::traits::EmbeddingProvider;
 
+/// L2-normalize embedding vector (SPEC-083 X-10).
+///
+/// Same math as `edgequake_core::types::Embedding::normalize` — kept local to
+/// avoid a `edgequake-query` → `edgequake-core` dependency cycle.
+fn l2_normalize_vec(mut vector: Vec<f32>) -> Vec<f32> {
+    let norm: f32 = vector.iter().map(|x| x * x).sum::<f32>().sqrt();
+    if norm > 0.0 {
+        vector.iter_mut().for_each(|x| *x /= norm);
+    }
+    vector
+}
+
 /// A hashed cache key bundling the embedding version (model identity) and the
 /// text. Two equal texts under different models must NOT collide (E27).
 fn cache_key(version: &str, text: &str) -> String {
@@ -168,6 +180,8 @@ impl EmbeddingProvider for CachingEmbeddingProvider {
             let mut cache = self.cache.write().unwrap();
             let store_at = Instant::now();
             for ((i, text), embedding) in missing.into_iter().zip(vectors) {
+                // X-10: normalize before cache store so hits share unit vectors.
+                let embedding = l2_normalize_vec(embedding);
                 let key = cache_key(&self.version, &text);
                 cache.insert(
                     key,

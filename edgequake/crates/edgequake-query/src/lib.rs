@@ -26,7 +26,7 @@
 //! | Local | FEAT0102 | Entity-centric search with graph context |
 //! | Global | FEAT0103 | Community-based search (relationship focus) |
 //! | Hybrid | FEAT0104 | Combines local and global approaches |
-//! | Mix | FEAT0105 | Weighted combination of naive + graph |
+//! | Mix | FEAT0105 | Max-after-minmax / RRF fusion of naive + graph |
 //! | Bypass | FEAT0106 | Direct LLM, no RAG retrieval |
 //!
 //! # Architecture
@@ -88,6 +88,7 @@ pub mod relation_select;
 pub mod relevancy_prune;
 pub mod rerank_protect;
 pub mod retrieval_telemetry;
+pub mod score_scale;
 pub mod sparse_retrieval;
 pub mod tokenizer;
 pub mod topic_entity_admit;
@@ -98,7 +99,7 @@ pub mod vector_filter;
 pub use context::{
     QueryContext, RetrievedChunk, RetrievedContext, RetrievedEntity, RetrievedRelationship,
 };
-pub use engine::{ConversationMessage, QueryRequest, QueryResponse, QueryStats};
+pub use engine::{ConversationMessage, ExplainTrace, QueryRequest, QueryResponse, QueryStats};
 pub use error::{QueryError, Result};
 // Re-export keywords module types
 pub use bootstrap::{
@@ -107,13 +108,17 @@ pub use bootstrap::{
 };
 pub use cache::{QueryResultCache, QueryResultCacheInvalidator};
 pub use context_format::{
-    format_chunk_block, format_chunk_meta, format_entity_line, format_query_context,
-    format_query_context_flat, format_query_context_passage_pack, format_query_context_path,
-    format_query_context_with_mode, format_relationship_line, passage_pack_enabled,
-    ContextFormatMode,
+    assign_stable_citation_ids, chunk_citation_ref, format_chunk_block, format_chunk_meta,
+    format_entity_line, format_query_context, format_query_context_flat,
+    format_query_context_passage_pack, format_query_context_path, format_query_context_with_mode,
+    format_relationship_line, passage_pack_enabled, ContextFormatMode,
 };
 pub use engine_impl::{QueryEmbeddings, QueryEngine, QueryEngineConfig};
 pub use entity_rank::{rank_entities_for_prompt, EntityRankMode};
+pub use fusion::{
+    chunks_from_rrf_ranking, mix_fusion_mode_from_env, mix_fusion_mode_label,
+    reciprocal_rank_fusion, MixFusionMode, RRF_K,
+};
 pub use graph_ppr::{parse_graph_walk_mode, GraphWalkMode, PprConfig};
 pub use grounding::{allows_honest_refusal, grounding_instructions, is_entailment_first};
 #[cfg(feature = "postgres")]
@@ -138,9 +143,15 @@ pub use modes::QueryMode;
 pub use path_prune::{
     prune_orphan_entities, prune_relationships, prune_relationships_for_query, PathPruneConfig,
 };
-pub use query_reliability::{classify_query_failure, query_failure_diagnostic, QueryFailureClass};
+pub use query_reliability::{
+    classify_query_failure, is_typed_timeout_message, query_failure_diagnostic, QueryFailureClass,
+};
 pub use relevancy_prune::{RelevancyPruneConfig, RelevancyScoreMode};
 pub use rerank_protect::{blend_protect_first, blend_protect_ids, protect_first_from_env};
+pub use score_scale::{
+    max_minmax, min_max_normalize_to_fusion_scale, weighted_minmax_contribution, ScaleMismatch,
+    ScaledScore, ScoreScale,
+};
 pub use tokenizer::{MockTokenizer, SimpleTokenizer, Tokenizer};
 pub use truncation::{
     balance_context, min_chunk_token_budget, parse_min_chunk_budget_ratio, parse_token_cap,

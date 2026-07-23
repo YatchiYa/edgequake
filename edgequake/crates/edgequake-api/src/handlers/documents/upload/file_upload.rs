@@ -8,6 +8,7 @@ use edgequake_audit::{AuditEventType, AuditResult};
 
 use crate::error::{ApiError, ApiResult};
 use crate::middleware::TenantContext;
+use crate::multipart_upload::stream_field_to_tempfile;
 use crate::services::{record_compliance_event, ContentHasher};
 use crate::state::AppState;
 
@@ -49,8 +50,7 @@ pub async fn upload_file(
         "Uploading file with tenant context"
     );
 
-    let mut filename = String::new();
-    let mut content = Vec::new();
+    let mut streamed = None;
     let mut multipart_fields = MultipartUploadFields::default();
 
     while let Some(field) = multipart
@@ -61,17 +61,11 @@ pub async fn upload_file(
         let field_name = field.name().unwrap_or("").to_string();
         match field_name.as_str() {
             "file" => {
-                filename = field
-                    .file_name()
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| "unnamed.txt".to_string());
-                content = field
-                    .bytes()
-                    .await
-                    .map_err(|e| {
-                        ApiError::BadRequest(format!("Failed to read file content: {}", e))
-                    })?
-                    .to_vec();
+                // SPEC-083 D-51: stream to temp (not field.bytes() into RAM).
+                let filename = crate::file_validation::sanitize_filename(
+                    field.file_name().unwrap_or("unnamed.txt"),
+                );
+                streamed = Some(stream_field_to_tempfile(field, filename).await?);
             }
             "metadata" | "chunk_strategy" | "chunk_options" => {
                 let text = field.text().await.map_err(|e| {
@@ -83,6 +77,8 @@ pub async fn upload_file(
         }
     }
 
+    let streamed = streamed.ok_or_else(|| ApiError::BadRequest("No file provided".to_string()))?;
+    let (filename, content) = streamed.into_bytes()?;
     if content.is_empty() {
         return Err(ApiError::BadRequest("No file provided".to_string()));
     }

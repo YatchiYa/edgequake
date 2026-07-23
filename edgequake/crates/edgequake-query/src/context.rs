@@ -73,6 +73,36 @@ impl QueryContext {
         self.relationships.push(rel);
     }
 
+    /// Stamp stable [`RetrievedChunk::citation_id`] values before format/API (X-20).
+    ///
+    /// Prompt chunks get `1..n`. Dual-list `citation_chunks` reuse the same id for
+    /// overlapping chunk ids, then continue the sequence for Mix-only members.
+    pub fn ensure_stable_citation_ids(&mut self) {
+        crate::context_format::assign_stable_citation_ids(&mut self.chunks);
+        if let Some(ref mut citation) = self.citation_chunks {
+            let by_id: HashMap<String, usize> = self
+                .chunks
+                .iter()
+                .filter_map(|c| c.citation_id.map(|id| (c.id.clone(), id)))
+                .collect();
+            let mut next = self
+                .chunks
+                .iter()
+                .filter_map(|c| c.citation_id)
+                .max()
+                .unwrap_or(0)
+                + 1;
+            for chunk in citation.iter_mut() {
+                if let Some(&id) = by_id.get(&chunk.id) {
+                    chunk.citation_id = Some(id);
+                } else if chunk.citation_id.is_none() {
+                    chunk.citation_id = Some(next);
+                    next += 1;
+                }
+            }
+        }
+    }
+
     /// Build a text representation for LLM context.
     ///
     /// SPEC-047 Q1.1: chunk headers include `page=` / `modality=` via
@@ -132,6 +162,12 @@ pub struct RetrievedChunk {
     /// Retrieval modality stamped at ingest (`chart`, `figure`, `table`, `equation`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub modality: Option<String>,
+
+    /// Stable citation index for prompt `[N]` and API `reference_id` (SPEC-083 X-20).
+    ///
+    /// Assigned once before format; never renumbered after reorder.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub citation_id: Option<usize>,
 }
 
 impl RetrievedChunk {
@@ -151,7 +187,14 @@ impl RetrievedChunk {
             page_start: None,
             page_end: None,
             modality: None,
+            citation_id: None,
         }
+    }
+
+    /// Set a stable citation id (prompt `[N]` / API `reference_id`).
+    pub fn with_citation_id(mut self, citation_id: usize) -> Self {
+        self.citation_id = Some(citation_id);
+        self
     }
 
     /// Set the document ID.

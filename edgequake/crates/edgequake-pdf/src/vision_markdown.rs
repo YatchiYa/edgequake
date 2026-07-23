@@ -11,13 +11,11 @@ use crate::drawing_tags::{
     page_figure_drawing_item_id, EMPTY_VISION_PAGE_PLACEHOLDER,
 };
 use crate::embedded_images::WrittenFigureAsset;
+use crate::page_marker::{PageMarkerWriter, PAGE_MARKER_PREFIX, PAGE_MARKER_SUFFIX};
 use crate::region_assets::WrittenTableAsset;
 
-const PAGE_MARKER_PREFIX: &str = "<!-- edgequake-page:";
-const PAGE_MARKER_SUFFIX: &str = " -->";
-
 fn page_marker(page_num: usize) -> String {
-    format!("{PAGE_MARKER_PREFIX}{page_num}{PAGE_MARKER_SUFFIX}")
+    PageMarkerWriter::write(page_num as u32)
 }
 
 /// Collect 1-indexed page numbers from `<!-- edgequake-page:N -->` markers.

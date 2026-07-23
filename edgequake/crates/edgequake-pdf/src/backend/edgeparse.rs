@@ -9,15 +9,7 @@ use tracing::info;
 
 use super::{PdfConversionConfig, PdfConverter};
 use crate::error::PdfConversionError;
-
-/// The page marker format injected between pages in the markdown output.
-/// Parsed by `PageAwareChunking` to enforce page-boundary chunk splits.
-const PAGE_MARKER_PREFIX: &str = "<!-- edgequake-page:";
-const PAGE_MARKER_SUFFIX: &str = " -->";
-
-fn page_marker(n: u32) -> String {
-    format!("{}{}{}", PAGE_MARKER_PREFIX, n, PAGE_MARKER_SUFFIX)
-}
+use crate::page_marker::PageMarkerWriter;
 
 /// Fast CPU-only PDF converter powered by EdgeParse.
 ///
@@ -144,7 +136,7 @@ fn build_page_marked_markdown(document: &PdfDocument) -> Result<String, String> 
         if page_md.trim().is_empty() {
             return Ok(String::new());
         }
-        return Ok(format!("{}\n{}", page_marker(1), page_md));
+        return Ok(format!("{}\n{}", PageMarkerWriter::write(1), page_md));
     }
 
     let mut parts: Vec<String> = Vec::with_capacity(page_groups.len());
@@ -171,7 +163,11 @@ fn build_page_marked_markdown(document: &PdfDocument) -> Result<String, String> 
 
         let page_md = markdown::to_markdown(&page_doc).map_err(|e| e.to_string())?;
         if !page_md.trim().is_empty() {
-            parts.push(format!("{}\n{}", page_marker(page_num), page_md));
+            parts.push(format!(
+                "{}\n{}",
+                PageMarkerWriter::write(page_num),
+                page_md
+            ));
         }
     }
 

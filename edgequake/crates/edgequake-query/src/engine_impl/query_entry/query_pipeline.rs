@@ -415,6 +415,8 @@ impl QueryEngine {
             };
             context.citation_chunks = Some(citation);
         }
+        // X-20: stamp stable citation_id before any prompt format / API sources emit.
+        context.ensure_stable_citation_ids();
         if let Some(s) = stats.as_mut() {
             s.context_truncated = context.is_truncated;
             s.context_empty = context.chunks.is_empty()
@@ -482,8 +484,22 @@ impl QueryEngine {
                 let t0 = Instant::now();
                 // Skip embed_one when keywords are disabled — compute_with_query_vec
                 // batch-embeds three levels (MockProvider / LightRAG parity).
+                // D-38: embed the question only; conversation history stays in
+                // keyword_query for prompt/keyword extraction, not the vector.
+                // X-10: L2-normalize via Embedding::normalize after embed_one.
                 let result = if self.config.use_keyword_extraction {
-                    providers.embedding.embed_one(&keyword_query).await
+                    match providers.embedding.embed_one(&request.query).await {
+                        Ok(mut vector) => {
+                            // X-10: L2-normalize (same math as Embedding::normalize;
+                            // local to avoid query→core dependency cycle).
+                            let norm: f32 = vector.iter().map(|x| x * x).sum::<f32>().sqrt();
+                            if norm > 0.0 {
+                                vector.iter_mut().for_each(|x| *x /= norm);
+                            }
+                            Ok(vector)
+                        }
+                        Err(e) => Err(e),
+                    }
                 } else {
                     Ok(vec![])
                 };
@@ -831,11 +847,13 @@ impl QueryEngine {
             stats.faithfulness_score = Some(score);
         }
 
+        let explain = Some(crate::types::ExplainTrace::from_stats(&mode, stats));
         Ok(QueryResponse {
             answer,
             context: final_context,
             mode,
             stats: stats.clone(),
+            explain,
         })
     }
 }
@@ -970,10 +988,7 @@ mod keyword_override_tests {
             Ok(Keywords::new(vec!["from_extractor".into()], vec![]))
         }
 
-        async fn extract_extended(
-            &self,
-            query: &str,
-        ) -> crate::error::Result<ExtractedKeywords> {
+        async fn extract_extended(&self, query: &str) -> crate::error::Result<ExtractedKeywords> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             Ok(ExtractedKeywords::new(
                 vec!["from_extractor".into()],

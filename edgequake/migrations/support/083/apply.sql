@@ -25,7 +25,9 @@ DECLARE
   v_old_btree  text := 'idx_node_prop_node_id_btree';
   v_edge_uniq  text := 'idx_edge_source_target_unique';
   v_node_eq    text := 'idx_node_eq_node_id';
-  v_edge_eq    text := 'idx_edge_eq_source_target';
+  -- D-30: prefer 3-col multigraph arbiter; accept legacy 2-col name during upgrade.
+  v_edge_eq    text := 'idx_edge_eq_source_target_rel';
+  v_edge_eq_legacy text := 'idx_edge_eq_source_target';
   v_has_eq_node boolean;
   v_has_eq_edge boolean;
 BEGIN
@@ -120,7 +122,9 @@ BEGIN
 
     IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = v_graph AND tablename = 'EDGE') THEN
       SELECT EXISTS (
-        SELECT 1 FROM pg_indexes WHERE schemaname = v_graph AND indexname = v_edge_eq
+        SELECT 1 FROM pg_indexes
+        WHERE schemaname = v_graph
+          AND indexname IN (v_edge_eq, v_edge_eq_legacy)
       ) INTO v_has_eq_edge;
 
       IF v_has_eq_edge THEN
@@ -131,8 +135,8 @@ BEGIN
           RAISE NOTICE 'M083 reconcile: dropped legacy % on %."EDGE" (eq_* arbiter present)',
                        v_edge_uniq, v_graph;
         ELSE
-          RAISE NOTICE 'M083 reconcile: % already present on %."EDGE" — skip',
-                       v_edge_eq, v_graph;
+          RAISE NOTICE 'M083 reconcile: eq_* edge arbiter already present on %."EDGE" — skip',
+                       v_graph;
         END IF;
       ELSIF EXISTS (
         SELECT 1 FROM pg_indexes WHERE schemaname = v_graph AND indexname = v_edge_uniq

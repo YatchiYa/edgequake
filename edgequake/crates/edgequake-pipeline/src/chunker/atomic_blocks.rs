@@ -10,7 +10,7 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use super::types::PAGE_MARKER_PREFIX;
+use super::page_marker::PAGE_MARKER_PREFIX;
 
 static MM_HEAD_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^\[(?:Image|Chart|Figure|Table|Equation) Name\]").expect("mm head regex")
