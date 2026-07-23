@@ -40,19 +40,26 @@ Phase 3 — Local quality gates
 [x] 3-C  make test-e2e-lint
 
 Phase 4 — Commit + push
-[ ] 4-A  git commit -m "release: bump to v0.21.0"
-[ ] 4-B  git push origin edgequake-main
+[x] 4-A  git commit -m "release: bump to v0.21.0"
+[x] 4-B  git push origin edgequake-main
 
 Phase 5 — Tag + CI/CD
-[ ] 5-A  git tag v0.21.0 && git push origin v0.21.0
-[ ] 5-B  gh release view v0.21.0
-[ ] 5-C  docker buildx imagetools inspect GHCR tags (api/frontend/postgres + pg16/pg17/pg18)
+[x] 5-A  git tag v0.21.0 && git push origin v0.21.0
+[x] 5-B  gh release view v0.21.0 — https://github.com/raphaelmansuy/edgequake/releases/tag/v0.21.0
+[x] 5-C  docker buildx imagetools inspect GHCR tags (api/frontend/postgres + pg16/pg17/pg18)
 ```
+
+CD run (final success after frontend Dockerfile openapi COPY): https://github.com/raphaelmansuy/edgequake/actions/runs/30030224000
 
 ### Local gate notes
 
 - `edgequake-pdf` `page_count::*` pdfium lib tests hang at 0% CPU on this host — workspace lib suite proved with `--skip page_count::`.
 - Pre-bump fixes: X-30 typed vision timeout messages + `from_processing_error` timeout factory; startup_security remote-auth-off strict test; clippy `field_reassign_with_default` in orchestrator config precedence test.
+- Push required rewriting unpushed history to drop medical-full eval/prediction JSON (>100MB GitHub limit); gitignored going forward.
+- CI Security Audit: ignore RUSTSEC-2026-0173 (unmaintained proc-macro-error2); bump crossbeam-epoch for RUSTSEC-2026-0204.
+- D-30 batch upsert contract updated for multigraph (src,tgt,rel_type) LWW.
+- Frontend CD: `edgequake_webui/Dockerfile` must `COPY openapi/`; relative import in `openapi-schema.ts` (not `@/openapi/*` shadowed by `@/*`).
+- Baseline red (same as 0.20.2 cut): Test Quality Gates E2E UI (072/073); PostgreSQL Integration AGE attribute flakes.
 
 ---
 
