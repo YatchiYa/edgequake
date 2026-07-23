@@ -62,7 +62,9 @@ pub struct GraphRelationship {
 
 impl GraphRelationship {
     /// Maximum number of source IDs to retain per relationship.
-    pub const MAX_SOURCE_IDS: usize = 300;
+    ///
+    /// SPEC-083 C-26 SSOT: must match `edgequake_pipeline::DEFAULT_MAX_SOURCE_IDS` (200).
+    pub const MAX_SOURCE_IDS: usize = 200;
 
     /// Generate relationship ID from source and target entities.
     ///
@@ -146,15 +148,24 @@ impl GraphRelationship {
     }
 
     /// Add a new source ID to the relationship.
+    ///
+    /// When saturated at [`MAX_SOURCE_IDS`], new ids are dropped (KEEP — C-26).
     pub fn add_source(&mut self, source_id: &str) {
+        if source_id.is_empty() {
+            return;
+        }
         if self.source_id.is_empty() {
             self.source_id = source_id.to_string();
-        } else {
-            let sources: Vec<&str> = self.source_id.split('|').collect();
-            if !sources.contains(&source_id) {
-                self.source_id = format!("{}|{}", self.source_id, source_id);
-            }
+            return;
         }
+        let sources: Vec<&str> = self.source_id.split('|').collect();
+        if sources.contains(&source_id) {
+            return;
+        }
+        if sources.len() >= Self::MAX_SOURCE_IDS {
+            return;
+        }
+        self.source_id = format!("{}|{}", self.source_id, source_id);
     }
 
     /// Get the number of source chunks.

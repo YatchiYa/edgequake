@@ -94,6 +94,8 @@ pub struct PostgresAGEGraphStorage {
     /// AGE creates label tables lazily on first use, so indexes must be
     /// created after the first node/edge is inserted.
     indexes_verified: AtomicBool,
+    /// SPEC-083: whether `eq_*` columns exist on Node/EDGE (0=unknown, 1=yes, 2=no).
+    eq_columns_state: std::sync::atomic::AtomicU8,
     /// Single-flight lock for `ensure_indexes` / SPEC-062 eq_* DDL (069).
     /// Prevents concurrent deletion/ingest workers from racing ALTER/TRIGGER DDL.
     ensure_indexes_lock: Arc<Mutex<()>>,
@@ -118,8 +120,63 @@ impl PostgresAGEGraphStorage {
             prefix,
             initialized: AtomicBool::new(false),
             indexes_verified: AtomicBool::new(false),
+            eq_columns_state: std::sync::atomic::AtomicU8::new(0),
             ensure_indexes_lock: Arc::new(Mutex::new(())),
         }
+    }
+
+    /// SPEC-083: probe (cached) whether denormalized `eq_*` columns exist.
+    ///
+    /// D-30: requires `eq_rel_type` so native EDGE upserts are not gated by a
+    /// pre-multigraph schema that would still fail INSERT.
+    pub(crate) async fn eq_columns_present(&self, conn: &mut sqlx::PgConnection) -> Result<bool> {
+        use std::sync::atomic::Ordering;
+        match self.eq_columns_state.load(Ordering::Acquire) {
+            1 => return Ok(true),
+            2 => return Ok(false),
+            _ => {}
+        }
+        let g = &self.graph_name;
+        let present: bool = sqlx::query_scalar(
+            r#"
+            SELECT
+              EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = $1 AND table_name = 'EDGE'
+                  AND column_name = 'eq_source_id'
+              )
+              AND EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = $1 AND table_name = 'EDGE'
+                  AND column_name = 'eq_target_id'
+              )
+              AND EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = $1 AND table_name = 'EDGE'
+                  AND column_name = 'eq_rel_type'
+              )
+            "#,
+        )
+        .bind(g)
+        .fetch_one(&mut *conn)
+        .await
+        .unwrap_or(false);
+        self.eq_columns_state
+            .store(if present { 1 } else { 2 }, Ordering::Release);
+        if !present {
+            tracing::warn!(
+                target: "edgequake_storage",
+                graph = %g,
+                "SPEC-083: eq_* columns missing — using property-path SQL fallback"
+            );
+        }
+        Ok(present)
+    }
+
+    /// Invalidate cached eq_* column presence (after DDL reconcile).
+    pub fn invalidate_eq_columns_cache(&self) {
+        self.eq_columns_state
+            .store(0, std::sync::atomic::Ordering::Release);
     }
 
     /// Get the underlying pool.

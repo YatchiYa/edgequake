@@ -132,6 +132,9 @@ fn compute_safe_pdf_resource_profile(
     let large_file = file_size_bytes >= 25 * 1024 * 1024;
     let huge_file = file_size_bytes >= 50 * 1024 * 1024;
 
+    // SPEC-083 X-12: cloud page-count match was decorative (all arms → 2).
+    // Documented constant until a real VRAM/pages schedule exists.
+    const CLOUD_PDF_PAGE_CONCURRENCY: usize = 2;
     let concurrency = {
         let computed = if is_local {
             if huge_file || page_count >= 200 {
@@ -144,12 +147,7 @@ fn compute_safe_pdf_resource_profile(
         } else {
             // P-G13: cap cloud concurrency — N concurrent PDF tasks × page
             // parallelism → multi-MiB base64 buffers can OOM-kill the API.
-            match page_count {
-                0..=49 => 2,
-                50..=199 => 2,
-                200..=499 => 2,
-                _ => 2,
-            }
+            CLOUD_PDF_PAGE_CONCURRENCY
         };
         std::env::var("EDGEQUAKE_PDF_CONCURRENCY")
             .ok()

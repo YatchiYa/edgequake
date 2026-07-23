@@ -15,7 +15,8 @@ use edgequake_api::state::migration_bootstrap::{
     Migration053Report, Migration054Report, Migration055Report, Migration056Report,
     Migration057Report, Migration058Report, Migration059Report, Migration060Report,
     Migration061Report, Migration062Report, Migration063Report, Migration064Report,
-    Migration065Report, Migration080Report, Migration081Report, MigrationBootstrapReport,
+    Migration065Report, Migration080Report, Migration081Report, Migration092Report,
+    MigrationBootstrapReport,
 };
 use edgequake_api::AppState;
 
@@ -151,6 +152,14 @@ fn degraded_bootstrap_report() -> MigrationBootstrapReport {
             apply_executed: false,
             skipped_age_version: false,
         },
+        migration_092: Migration092Report {
+            age_available: true,
+            apply_executed: false,
+            graphs_checked: 0,
+            graphs_ready: 0,
+            graphs_degraded: vec![],
+            fallback_env_enabled: false,
+        },
     }
 }
 
@@ -180,6 +189,53 @@ async fn migration_readiness_proof_ok_when_indexes_ready() {
     // CVE-2026-3172 floor: readiness also blocks pgvector < 0.8.2.
     report.migration_042.extversion_before = Some("0.8.3".into());
     report.migration_042.extversion_after = Some("0.8.3".into());
+    state.migration_bootstrap = Some(report);
+    let response = readiness_check(State(state)).await.into_response();
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+/// SPEC-083: missing eq_* columns block `/ready` unless fallback env is set.
+#[tokio::test]
+async fn e2e_schema_ready_refuses_traffic_when_eq_id_degraded() {
+    let mut state = AppState::test_state();
+    let mut report = degraded_bootstrap_report();
+    report.migration_038.indexes_ready = true;
+    report.migration_038.missing_indexes.clear();
+    report.migration_038.deferred_large_graphs.clear();
+    report.migration_038.operator_action = None;
+    report.migration_042.extversion_before = Some("0.8.3".into());
+    report.migration_042.extversion_after = Some("0.8.3".into());
+    report.migration_092 = Migration092Report {
+        age_available: true,
+        apply_executed: true,
+        graphs_checked: 1,
+        graphs_ready: 0,
+        graphs_degraded: vec!["ws_default".into()],
+        fallback_env_enabled: false,
+    };
+    state.migration_bootstrap = Some(report);
+    let response = readiness_check(State(state)).await.into_response();
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+}
+
+#[tokio::test]
+async fn e2e_schema_ready_ok_when_eq_id_fallback_enabled() {
+    let mut state = AppState::test_state();
+    let mut report = degraded_bootstrap_report();
+    report.migration_038.indexes_ready = true;
+    report.migration_038.missing_indexes.clear();
+    report.migration_038.deferred_large_graphs.clear();
+    report.migration_038.operator_action = None;
+    report.migration_042.extversion_before = Some("0.8.3".into());
+    report.migration_042.extversion_after = Some("0.8.3".into());
+    report.migration_092 = Migration092Report {
+        age_available: true,
+        apply_executed: true,
+        graphs_checked: 1,
+        graphs_ready: 0,
+        graphs_degraded: vec!["ws_default".into()],
+        fallback_env_enabled: true,
+    };
     state.migration_bootstrap = Some(report);
     let response = readiness_check(State(state)).await.into_response();
     assert_eq!(response.status(), StatusCode::OK);

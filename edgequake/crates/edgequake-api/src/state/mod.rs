@@ -56,7 +56,7 @@
 //!
 //! let config = AppConfig {
 //!     storage_mode: StorageMode::Memory,
-//!     max_document_size: 10_000_000, // 10MB
+//!     max_document_size: 50 * 1024 * 1024, // 50 MiB (MAX_UPLOAD_BYTES)
 //!     max_query_length: 10_000,
 //!     ..Default::default()
 //! };
@@ -191,6 +191,15 @@ impl AppState {
     #[inline]
     pub fn resource_budget(&self) -> &ResourceBudgetConfig {
         self.resource_guard.budget()
+    }
+
+    /// SPEC-083 S-11: schedule periodic rate-limit bucket cleanup (prevents DashMap leak).
+    pub fn start_rate_limit_cleanup(&self) {
+        use std::time::Duration;
+        // Interval 5m, drop buckets idle > 1h. Safe no-op when rate limiting is disabled
+        // (buckets are only created on check_rate_limit).
+        self.rate_limiter
+            .start_cleanup_task(Duration::from_secs(300), Duration::from_secs(3600));
     }
 
     /// Initialize default tenant and workspace for non-authenticated mode.

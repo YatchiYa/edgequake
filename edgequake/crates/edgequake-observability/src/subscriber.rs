@@ -114,13 +114,17 @@ pub fn init_observability(config: ObservabilityConfig) -> ObservabilityGuard {
         FmtSpan::NONE
     };
 
-    // Layer order: OTLP bridge on registry first, then filter → stdout.
+    // SPEC-083 D-46: EnvFilter must bound OTEL export (RUST_LOG). Use per-layer
+    // `with_filter` so the OTLP bridge does not see unfiltered spans/events.
     #[cfg(feature = "otel")]
     {
+        use tracing_subscriber::Layer as _;
         match (config.log_format, otel_layer) {
             (LogFormat::Json, Some(otel)) => {
+                let otel_filter = EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| EnvFilter::new(&config.default_filter));
                 tracing_subscriber::registry()
-                    .with(otel)
+                    .with(otel.with_filter(otel_filter))
                     .with(env_filter)
                     .with(json_log_layer(span_events).boxed())
                     .init();
@@ -132,8 +136,10 @@ pub fn init_observability(config: ObservabilityConfig) -> ObservabilityGuard {
                     .init();
             }
             (LogFormat::Plain, Some(otel)) => {
+                let otel_filter = EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| EnvFilter::new(&config.default_filter));
                 tracing_subscriber::registry()
-                    .with(otel)
+                    .with(otel.with_filter(otel_filter))
                     .with(env_filter)
                     .with(plain_log_layer(span_events).boxed())
                     .init();
@@ -324,5 +330,34 @@ mod tests {
             assert_eq!(cfg.log_format, LogFormat::Plain);
             assert_eq!(log_format_label(cfg.log_format), "plain");
         });
+    }
+
+    /// SPEC-083 D-46: source contract — EnvFilter applied on OTEL layer.
+    #[test]
+    fn contract_otel_respects_rust_log() {
+        let src = include_str!("subscriber.rs");
+        assert!(
+            src.contains("D-46") && src.contains("otel.with_filter(otel_filter)"),
+            "D-46: EnvFilter must filter OTEL export via with_filter"
+        );
+        // Live code must not mount bare `otel` without with_filter in the Some(otel) arms.
+        let live: String = src
+            .lines()
+            .filter(|l| {
+                let t = l.trim_start();
+                !t.starts_with("//") && !t.starts_with("///")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            live.contains("otel.with_filter(otel_filter)"),
+            "D-46: OTEL layer must use with_filter(otel_filter)"
+        );
+        // Reject bare `.with(otel)` (not followed by `.with_filter`).
+        let bare = live.lines().any(|l| {
+            let t = l.trim();
+            t == ".with(otel)" || t.ends_with(".with(otel)")
+        });
+        assert!(!bare, "D-46: bare .with(otel) must not appear");
     }
 }

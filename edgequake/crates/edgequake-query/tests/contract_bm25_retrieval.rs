@@ -71,7 +71,7 @@ fn contract_sparse_fusion_env_modes() {
     std::env::remove_var("EDGEQUAKE_SPARSE_FUSION");
     assert_eq!(
         sparse_retrieval::sparse_fusion_mode_from_env(),
-        MixFusionMode::Weighted
+        MixFusionMode::MaxAfterMinMax
     );
 
     std::env::set_var("EDGEQUAKE_SPARSE_FUSION", "rrf");

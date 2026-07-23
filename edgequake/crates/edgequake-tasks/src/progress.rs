@@ -303,7 +303,8 @@ pub struct PhaseProgress {
 
     /// Average time per item in milliseconds.
     /// Used for ETA calculation.
-    #[serde(skip)]
+    /// SPEC-083 D-42: persist across serialize/restart so ETA does not reset to 0.
+    #[serde(default)]
     avg_item_time_ms: f64,
 }
 
@@ -694,5 +695,40 @@ mod tests {
         assert_eq!(progress.status, PhaseStatus::Failed);
         assert!(progress.error.is_some());
         assert!(progress.error.as_ref().unwrap().retryable);
+    }
+
+    /// SPEC-083 D-42: avg_item_time_ms must survive serde round-trip (restart).
+    #[test]
+    fn e2e_progress_survives_restart() {
+        let mut phase = PhaseProgress::new(PipelinePhase::Embedding);
+        phase.start(10);
+        phase.avg_item_time_ms = 42.5;
+        phase.update(4, "chunk 4");
+        // update() recomputes EMA; force a known value for persistence proof.
+        phase.avg_item_time_ms = 42.5;
+
+        let json = serde_json::to_string(&phase).expect("serialize");
+        assert!(
+            json.contains("avg_item_time_ms"),
+            "D-42: avg_item_time_ms must be in serialized JSON"
+        );
+        let restored: PhaseProgress = serde_json::from_str(&json).expect("deserialize");
+        assert!(
+            (restored.avg_item_time_ms - 42.5).abs() < f64::EPSILON,
+            "D-42: avg_item_time_ms must survive restart; got {}",
+            restored.avg_item_time_ms
+        );
+
+        let mut upload = PdfUploadProgress::new("t1".into(), "p1".into(), "f.pdf".into());
+        upload.start_phase(PipelinePhase::Embedding, 5);
+        if let Some(p) = upload.phase_mut(PipelinePhase::Embedding) {
+            p.avg_item_time_ms = 99.0;
+        }
+        let uj = serde_json::to_string(&upload).unwrap();
+        let ur: PdfUploadProgress = serde_json::from_str(&uj).unwrap();
+        assert!(
+            (ur.phase(PipelinePhase::Embedding).unwrap().avg_item_time_ms - 99.0).abs()
+                < f64::EPSILON
+        );
     }
 }

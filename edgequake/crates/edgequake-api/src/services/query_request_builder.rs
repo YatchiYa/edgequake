@@ -212,10 +212,7 @@ mod tests {
         assert_eq!(req.response_type_or_default(), "Bullet Points");
         assert_eq!(
             req.keyword_override_lists(),
-            Some((
-                vec!["staging".into(), "NSCLC".into()],
-                vec!["TNM".into()]
-            ))
+            Some((vec!["staging".into(), "NSCLC".into()], vec!["TNM".into()]))
         );
     }
 

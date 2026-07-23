@@ -67,6 +67,40 @@ pub fn validate_file_size(size: usize, max_size: usize) -> ApiResult<()> {
     Ok(())
 }
 
+/// Sanitize an upload filename (SPEC-083 S-12).
+///
+/// Strips path components and replaces unsafe characters so callers never
+/// persist or echo path traversal / control characters from client input.
+pub fn sanitize_filename(filename: &str) -> String {
+    let base = filename
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(filename)
+        .trim();
+
+    let mut sanitized: String = base
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+
+    while sanitized.starts_with('.') {
+        sanitized.remove(0);
+    }
+
+    if sanitized.is_empty() || sanitized == "." || sanitized == ".." {
+        "upload.bin".to_string()
+    } else {
+        // Cap length to avoid pathological storage keys.
+        sanitized.chars().take(255).collect()
+    }
+}
+
 /// Extract and validate file extension.
 ///
 /// # Arguments
@@ -76,6 +110,7 @@ pub fn validate_file_size(size: usize, max_size: usize) -> ApiResult<()> {
 /// * `Ok(extension)` - Lowercased extension string if valid
 /// * `Err(ApiError::BadRequest)` if extension is not in allowed list
 pub fn validate_extension(filename: &str) -> ApiResult<String> {
+    let filename = sanitize_filename(filename);
     let extension = filename.rsplit('.').next().unwrap_or("").to_lowercase();
 
     if !ALLOWED_EXTENSIONS.contains(&extension.as_str()) {
@@ -117,11 +152,93 @@ pub fn get_mime_type(extension: &str) -> &'static str {
         "html" | "htm" => "text/html",
         "xml" => "application/xml",
         "yaml" | "yml" => "application/x-yaml",
+        "pdf" => "application/pdf",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
         _ => "application/octet-stream",
     }
 }
 
-/// Comprehensive file validation combining size, extension, and UTF-8 checks.
+/// Magic-byte MIME sniff for common binary types (SPEC-083 S-12).
+///
+/// Returns `None` when content has no recognized binary signature (typical for
+/// UTF-8 text uploads). Does not depend on an external MIME database.
+pub fn sniff_magic_mime(content: &[u8]) -> Option<&'static str> {
+    if content.starts_with(b"%PDF-") {
+        return Some("application/pdf");
+    }
+    if content.len() >= 8 && content.starts_with(b"\x89PNG\r\n\x1a\n") {
+        return Some("image/png");
+    }
+    if content.len() >= 3 && content.starts_with(b"\xff\xd8\xff") {
+        return Some("image/jpeg");
+    }
+    if content.len() >= 6 && (content.starts_with(b"GIF87a") || content.starts_with(b"GIF89a")) {
+        return Some("image/gif");
+    }
+    if content.len() >= 12 && content.starts_with(b"RIFF") && &content[8..12] == b"WEBP" {
+        return Some("image/webp");
+    }
+    // PE / MZ executable
+    if content.len() >= 2 && content.starts_with(b"MZ") {
+        return Some("application/vnd.microsoft.portable-executable");
+    }
+    // ZIP / Office Open XML / JAR
+    if content.len() >= 4 && content.starts_with(b"PK\x03\x04") {
+        return Some("application/zip");
+    }
+    None
+}
+
+/// Reject extension/MIME mismatch when magic bytes identify a different type (SPEC-083 S-12).
+///
+/// Text uploads (txt/md/…) must not carry binary magic. Binary uploads (pdf/images)
+/// must match their declared extension.
+pub fn validate_magic_matches_extension(extension: &str, content: &[u8]) -> ApiResult<()> {
+    let sniffed = sniff_magic_mime(content);
+    let declared = get_mime_type(extension);
+
+    match sniffed {
+        None => {
+            // No binary magic — OK for text types; reject for binary extensions.
+            if matches!(extension, "pdf" | "png" | "jpg" | "jpeg" | "gif" | "webp") {
+                return Err(ApiError::BadRequest(format!(
+                    "File content does not match .{extension} magic bytes"
+                )));
+            }
+            Ok(())
+        }
+        Some(magic_mime) => {
+            let text_ext = ALLOWED_EXTENSIONS.contains(&extension);
+            if text_ext {
+                return Err(ApiError::BadRequest(format!(
+                    "File content looks like {magic_mime} but extension is .{extension}"
+                )));
+            }
+            // Normalize jpeg aliases.
+            let declared_norm = if declared == "image/jpeg" {
+                "image/jpeg"
+            } else {
+                declared
+            };
+            let magic_norm = if magic_mime == "image/jpeg" {
+                "image/jpeg"
+            } else {
+                magic_mime
+            };
+            if declared_norm != magic_norm && declared != "application/octet-stream" {
+                return Err(ApiError::BadRequest(format!(
+                    "File content MIME {magic_mime} does not match extension .{extension} ({declared})"
+                )));
+            }
+            Ok(())
+        }
+    }
+}
+
+/// Comprehensive file validation combining size, extension, magic MIME, and UTF-8 checks.
 ///
 /// # Arguments
 /// * `filename` - Name of the file
@@ -137,7 +254,9 @@ pub fn validate_file(
     max_size: usize,
 ) -> ApiResult<(String, String, &'static str)> {
     validate_file_size(content.len(), max_size)?;
+    let _safe_name = sanitize_filename(filename);
     let extension = validate_extension(filename)?;
+    validate_magic_matches_extension(&extension, content)?;
     let text_content = validate_utf8(content)?;
 
     if text_content.trim().is_empty() {
@@ -249,5 +368,58 @@ mod tests {
         let content = "Hello".as_bytes();
         let result = validate_file("test.exe", content, 1000);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn contract_filename_strips_path() {
+        assert_eq!(sanitize_filename("../../etc/passwd.txt"), "passwd.txt");
+        assert_eq!(sanitize_filename("report (1).md"), "report__1_.md");
+        assert_eq!(sanitize_filename(""), "upload.bin");
+        assert_eq!(sanitize_filename(".."), "upload.bin");
+    }
+
+    #[test]
+    fn test_sniff_magic_mime_pdf_png_exe() {
+        assert_eq!(sniff_magic_mime(b"%PDF-1.4\n"), Some("application/pdf"));
+        assert_eq!(
+            sniff_magic_mime(b"\x89PNG\r\n\x1a\nxxxx"),
+            Some("image/png")
+        );
+        assert_eq!(
+            sniff_magic_mime(b"MZ\x90\x00"),
+            Some("application/vnd.microsoft.portable-executable")
+        );
+        assert_eq!(sniff_magic_mime(b"hello text"), None);
+    }
+
+    #[test]
+    fn test_exe_renamed_as_txt_rejected() {
+        let exe = b"MZ\x90\x00fake-pe";
+        let err = validate_magic_matches_extension("txt", exe).unwrap_err();
+        let msg = format!("{err:?}");
+        assert!(
+            msg.contains("portable-executable") || msg.contains("looks like"),
+            "unexpected error: {msg}"
+        );
+    }
+
+    #[test]
+    fn e2e_exe_as_pdf_rejected() {
+        let exe = b"MZ\x90\x00fake-pe";
+        let err = validate_magic_matches_extension("pdf", exe).unwrap_err();
+        let msg = format!("{err:?}");
+        assert!(
+            msg.contains("portable-executable")
+                || msg.contains("looks like")
+                || msg.contains("magic"),
+            "unexpected error: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_pdf_magic_mismatch_rejected() {
+        let err = validate_magic_matches_extension("pdf", b"not a pdf").unwrap_err();
+        let msg = format!("{err:?}");
+        assert!(msg.contains("magic"), "unexpected error: {msg}");
     }
 }

@@ -43,7 +43,10 @@ impl Default for SummarizerConfig {
             max_input_length: 2048,
             target_length: 512,
             preserve_entities: true,
-            max_tokens_per_chunk: 4000,
+            // D-34: must match merger::description_merge::DEFAULT_SUMMARY_MAX_TOKENS
+            // (1200). A higher gate here skipped LLM when merger said NeedsLlm.
+            // Literal kept here to avoid a summarizer ↔ merger import cycle.
+            max_tokens_per_chunk: 1200,
             // SPEC-047 P7a / LightRAG DEFAULT_FORCE_LLM_SUMMARY_ON_MERGE=8
             // (SSOT for the merger gate lives in merger::description_merge;
             // keep this aligned — do not import merger here to avoid a cycle.)
@@ -169,11 +172,10 @@ impl LLMSummarizer {
         self.prompts.simple_summary_prompt(description)
     }
 
-    /// Estimate token count from text (rough approximation).
+    /// Estimate token count via SSOT TokenEstimator (D-53).
     #[allow(dead_code)]
     fn estimate_tokens(&self, text: &str) -> usize {
-        // Average ~4 chars per token for English
-        text.len() / 4
+        crate::token_estimator::count_tokens(text)
     }
 
     /// Merge multiple entity descriptions into a coherent summary.
@@ -195,9 +197,11 @@ impl LLMSummarizer {
             return Ok(descriptions[0].clone());
         }
 
-        // Check if we need LLM summarization
-        let total_length: usize = descriptions.iter().map(|d| d.len()).sum();
-        let estimated_tokens = total_length / 4; // Rough estimate
+        // D-34/D-53: same TokenEstimator gate as merger description_merge.
+        let estimated_tokens: usize = descriptions
+            .iter()
+            .map(|d| crate::token_estimator::count_tokens(d))
+            .sum();
 
         if descriptions.len() < self.config.force_llm_summary_threshold
             && estimated_tokens < self.config.max_tokens_per_chunk

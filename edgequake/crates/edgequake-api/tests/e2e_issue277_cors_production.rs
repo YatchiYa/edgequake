@@ -19,6 +19,8 @@ fn production_cors_state() -> AppState {
     state.auth.config.dev_mode = false;
     state.auth.config.api_keys = vec![API_KEY.to_string()];
     state.security.cors_origins = Some(vec![ALLOWED_ORIGIN.to_string()]);
+    // SPEC-083 S-10: prod fail-closed CORS / WS Origin.
+    state.security.cors_fail_closed = true;
     state
 }
 
@@ -104,7 +106,9 @@ async fn issue_277_websocket_auth_accepts_query_token() {
 
     assert!(edgequake_api::middleware::ws_validate_origin(&state, &headers).is_ok());
     assert!(
-        edgequake_api::middleware::ws_validate_token(&state, Some(API_KEY)).await,
+        edgequake_api::middleware::ws_validate_token(&state, Some(API_KEY))
+            .await
+            .is_some(),
         "production mode must accept API key via ?token= query param"
     );
 }
@@ -117,7 +121,9 @@ async fn issue_277_websocket_auth_accepts_bearer_token_value() {
 
     assert!(edgequake_api::middleware::ws_validate_origin(&state, &headers).is_ok());
     assert!(
-        edgequake_api::middleware::ws_validate_token(&state, Some(API_KEY)).await,
+        edgequake_api::middleware::ws_validate_token(&state, Some(API_KEY))
+            .await
+            .is_some(),
         "same token validated whether from ?token= or Authorization bearer"
     );
 }
@@ -126,7 +132,9 @@ async fn issue_277_websocket_auth_accepts_bearer_token_value() {
 async fn issue_277_websocket_auth_rejects_missing_token() {
     let state = production_cors_state();
     assert!(
-        !edgequake_api::middleware::ws_validate_token(&state, None).await,
+        edgequake_api::middleware::ws_validate_token(&state, None)
+            .await
+            .is_none(),
         "missing token must fail when auth enabled and dev_mode=false"
     );
 }
@@ -139,6 +147,29 @@ async fn issue_277_websocket_origin_rejects_disallowed() {
     assert_eq!(
         edgequake_api::middleware::ws_validate_origin(&state, &denied),
         Err(StatusCode::FORBIDDEN)
+    );
+}
+
+#[tokio::test]
+async fn issue_277_websocket_origin_rejects_missing_in_prod() {
+    let state = production_cors_state();
+    let headers = axum::http::HeaderMap::new();
+    assert_eq!(
+        edgequake_api::middleware::ws_validate_origin(&state, &headers),
+        Err(StatusCode::FORBIDDEN),
+        "SPEC-083 S-10: missing Origin must fail closed in production"
+    );
+}
+
+/// SPEC-083 matrix name (S-10) — alias of `issue_277_websocket_origin_rejects_missing_in_prod`.
+#[tokio::test]
+async fn e2e_ws_missing_origin_rejected_prod() {
+    let state = production_cors_state();
+    let headers = axum::http::HeaderMap::new();
+    assert_eq!(
+        edgequake_api::middleware::ws_validate_origin(&state, &headers),
+        Err(StatusCode::FORBIDDEN),
+        "SPEC-083 S-10: missing Origin must fail closed in production"
     );
 }
 

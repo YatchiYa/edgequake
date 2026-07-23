@@ -580,10 +580,7 @@ Generate a comprehensive, well-structured answer that integrates observations fr
         } else if use_complete_blob {
             provider.complete(&prompt).await?
         } else {
-            let messages = vec![
-                ChatMessage::system(&system_text),
-                ChatMessage::user(query),
-            ];
+            let messages = vec![ChatMessage::system(&system_text), ChatMessage::user(query)];
             match provider.chat(&messages, None).await {
                 Ok(r) => r,
                 Err(e) => {
@@ -605,10 +602,7 @@ Generate a comprehensive, well-structured answer that integrates observations fr
             let retry = if use_complete_blob {
                 provider.complete(&prompt).await?
             } else {
-                let messages = vec![
-                    ChatMessage::system(&system_text),
-                    ChatMessage::user(query),
-                ];
+                let messages = vec![ChatMessage::system(&system_text), ChatMessage::user(query)];
                 match provider.chat(&messages, None).await {
                     Ok(r) => r,
                     Err(_) => provider.complete(&prompt).await?,

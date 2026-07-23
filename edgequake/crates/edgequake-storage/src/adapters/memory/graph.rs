@@ -31,15 +31,20 @@ use crate::traits::{
     GraphStorageReadOps, KnowledgeGraph, NodeListFilter, PagedGraphResult,
 };
 
+type PropMap = HashMap<String, serde_json::Value>;
+/// Multigraph edge key: (source, target, relation_type).
+type EdgeKey = (String, String, String);
+type EdgeMap = HashMap<EdgeKey, PropMap>;
+
 /// In-memory graph storage implementation.
 ///
 /// Uses adjacency lists for efficient traversal.
 /// Suitable for testing and small graphs.
 pub struct MemoryGraphStorage {
     namespace: String,
-    nodes: RwLock<HashMap<String, HashMap<String, serde_json::Value>>>,
-    // edges stored as (source, target) -> properties
-    edges: RwLock<HashMap<(String, String), HashMap<String, serde_json::Value>>>,
+    nodes: RwLock<HashMap<String, PropMap>>,
+    // edges stored as (source, target, rel_type) -> properties (D-30 multigraph)
+    edges: RwLock<EdgeMap>,
     // adjacency list: node -> set of neighbors
     adjacency: RwLock<HashMap<String, HashSet<String>>>,
     /// Test/op-count instrumentation (issue #309 wipe proofs).
@@ -97,13 +102,100 @@ impl MemoryGraphStorage {
             .store(0, Ordering::Relaxed);
     }
 
-    /// Normalize edge key (alphabetically sorted for consistency).
-    fn edge_key(source: &str, target: &str) -> (String, String) {
-        if source <= target {
-            (source.to_string(), target.to_string())
+    /// Normalize edge key: undirected endpoints + relation type (D-30).
+    fn edge_key(source: &str, target: &str, rel_type: &str) -> (String, String, String) {
+        let rel = if rel_type.trim().is_empty() {
+            "RELATED_TO".to_string()
         } else {
-            (target.to_string(), source.to_string())
+            rel_type.trim().to_ascii_uppercase()
+        };
+        if source <= target {
+            (source.to_string(), target.to_string(), rel)
+        } else {
+            (target.to_string(), source.to_string(), rel)
         }
+    }
+
+    fn rel_type_from_props(properties: &HashMap<String, serde_json::Value>) -> String {
+        crate::graph_batch_dedupe::normalize_rel_type(properties)
+    }
+
+    fn graph_edge_from_stored(
+        source: String,
+        target: String,
+        rel_type: &str,
+        mut properties: HashMap<String, serde_json::Value>,
+    ) -> GraphEdge {
+        properties
+            .entry("relation_type".to_string())
+            .or_insert_with(|| serde_json::Value::String(rel_type.to_string()));
+        GraphEdge {
+            source,
+            target,
+            properties,
+        }
+    }
+
+    fn endpoints_match(s: &str, t: &str, source: &str, target: &str) -> bool {
+        (s == source && t == target) || (s == target && t == source)
+    }
+
+    /// Find an edge by endpoints (any relation type; first match).
+    fn find_edge_by_endpoints<'a>(
+        edges: &'a EdgeMap,
+        source: &str,
+        target: &str,
+    ) -> Option<((&'a String, &'a String, &'a String), &'a PropMap)> {
+        edges.iter().find_map(|((s, t, r), p)| {
+            if Self::endpoints_match(s, t, source, target) {
+                Some(((s, t, r), p))
+            } else {
+                None
+            }
+        })
+    }
+
+    /// True if any relation-typed edge remains between the two endpoints.
+    fn has_edge_between_endpoints(edges: &EdgeMap, source: &str, target: &str) -> bool {
+        edges
+            .keys()
+            .any(|(s, t, _)| Self::endpoints_match(s, t, source, target))
+    }
+
+    /// Drop undirected adjacency link only when no edges remain between endpoints.
+    fn maybe_clear_adjacency_link(
+        adjacency: &mut HashMap<String, HashSet<String>>,
+        edges: &HashMap<(String, String, String), HashMap<String, serde_json::Value>>,
+        source: &str,
+        target: &str,
+    ) {
+        if Self::has_edge_between_endpoints(edges, source, target) {
+            return;
+        }
+        if let Some(neighbors) = adjacency.get_mut(source) {
+            neighbors.remove(target);
+        }
+        if let Some(neighbors) = adjacency.get_mut(target) {
+            neighbors.remove(source);
+        }
+    }
+
+    /// Remove every edge between endpoints (all rel_types) and refresh adjacency.
+    fn remove_all_edges_between(
+        edges: &mut HashMap<(String, String, String), HashMap<String, serde_json::Value>>,
+        adjacency: &mut HashMap<String, HashSet<String>>,
+        source: &str,
+        target: &str,
+    ) {
+        let keys: Vec<_> = edges
+            .keys()
+            .filter(|(s, t, _)| Self::endpoints_match(s, t, source, target))
+            .cloned()
+            .collect();
+        for key in keys {
+            edges.remove(&key);
+        }
+        Self::maybe_clear_adjacency_link(adjacency, edges, source, target);
     }
 }
 
@@ -210,11 +302,9 @@ impl GraphStorageReadOps for MemoryGraphStorage {
 
         Ok(edges
             .iter()
-            .filter(|((s, t), _)| node_set.contains(s.as_str()) && node_set.contains(t.as_str()))
-            .map(|((s, t), props)| GraphEdge {
-                source: s.clone(),
-                target: t.clone(),
-                properties: props.clone(),
+            .filter(|((s, t, _), _)| node_set.contains(s.as_str()) && node_set.contains(t.as_str()))
+            .map(|((s, t, rel_type), props)| {
+                Self::graph_edge_from_stored(s.clone(), t.clone(), rel_type, props.clone())
             })
             .collect())
     }
@@ -246,19 +336,18 @@ impl GraphStorageReadOps for MemoryGraphStorage {
 
     async fn has_edge(&self, source: &str, target: &str) -> Result<bool> {
         let edges = self.edges.read().map_err(super::lock::map_lock_err)?;
-        let key = Self::edge_key(source, target);
-        Ok(edges.contains_key(&key))
+        Ok(Self::find_edge_by_endpoints(&edges, source, target).is_some())
     }
 
     async fn get_edge(&self, source: &str, target: &str) -> Result<Option<GraphEdge>> {
         let edges = self.edges.read().map_err(super::lock::map_lock_err)?;
-        let key = Self::edge_key(source, target);
-
-        Ok(edges.get(&key).map(|props| GraphEdge {
-            source: key.0.clone(),
-            target: key.1.clone(),
-            properties: props.clone(),
-        }))
+        Ok(
+            Self::find_edge_by_endpoints(&edges, source, target).map(
+                |((s, t, rel_type), props)| {
+                    Self::graph_edge_from_stored(s.clone(), t.clone(), rel_type, props.clone())
+                },
+            ),
+        )
     }
 
     async fn get_node_edges(&self, node_id: &str) -> Result<Vec<GraphEdge>> {
@@ -266,11 +355,9 @@ impl GraphStorageReadOps for MemoryGraphStorage {
 
         Ok(edges
             .iter()
-            .filter(|((s, t), _)| s == node_id || t == node_id)
-            .map(|((s, t), props)| GraphEdge {
-                source: s.clone(),
-                target: t.clone(),
-                properties: props.clone(),
+            .filter(|((s, t, _), _)| s == node_id || t == node_id)
+            .map(|((s, t, rel_type), props)| {
+                Self::graph_edge_from_stored(s.clone(), t.clone(), rel_type, props.clone())
             })
             .collect())
     }
@@ -290,11 +377,9 @@ impl GraphStorageReadOps for MemoryGraphStorage {
         let edges = self.edges.read().map_err(super::lock::map_lock_err)?;
         Ok(edges
             .iter()
-            .filter(|((s, t), _)| node_set.contains(s.as_str()) || node_set.contains(t.as_str()))
-            .map(|((s, t), props)| GraphEdge {
-                source: s.clone(),
-                target: t.clone(),
-                properties: props.clone(),
+            .filter(|((s, t, _), _)| node_set.contains(s.as_str()) || node_set.contains(t.as_str()))
+            .map(|((s, t, rel_type), props)| {
+                Self::graph_edge_from_stored(s.clone(), t.clone(), rel_type, props.clone())
             })
             .filter(|e| edge_matches_scope_dims(&e.properties, tenant_id, workspace_id))
             .collect())
@@ -305,10 +390,8 @@ impl GraphStorageReadOps for MemoryGraphStorage {
 
         Ok(edges
             .iter()
-            .map(|((s, t), props)| GraphEdge {
-                source: s.clone(),
-                target: t.clone(),
-                properties: props.clone(),
+            .map(|((s, t, rel_type), props)| {
+                Self::graph_edge_from_stored(s.clone(), t.clone(), rel_type, props.clone())
             })
             .collect())
     }
@@ -329,15 +412,16 @@ impl GraphStorageReadOps for MemoryGraphStorage {
         let edges = self.edges.read().map_err(super::lock::map_lock_err)?;
         Ok(edges
             .iter()
-            .filter_map(|((source, target), props)| {
+            .filter_map(|((source, target, rel_type), props)| {
                 if !node_set.contains(source.as_str()) || !node_set.contains(target.as_str()) {
                     return None;
                 }
-                let edge = GraphEdge {
-                    source: source.clone(),
-                    target: target.clone(),
-                    properties: props.clone(),
-                };
+                let edge = Self::graph_edge_from_stored(
+                    source.clone(),
+                    target.clone(),
+                    rel_type,
+                    props.clone(),
+                );
                 if let Some(tid) = tenant_id {
                     let edge_tenant = edge
                         .properties
@@ -451,13 +535,14 @@ impl GraphStorageReadOps for MemoryGraphStorage {
         }
 
         // Collect edges between visited nodes
-        for ((s, t), props) in edges_map.iter() {
+        for ((s, t, rel_type), props) in edges_map.iter() {
             if visited.contains(s) && visited.contains(t) {
-                result_edges.push(GraphEdge {
-                    source: s.clone(),
-                    target: t.clone(),
-                    properties: props.clone(),
-                });
+                result_edges.push(Self::graph_edge_from_stored(
+                    s.clone(),
+                    t.clone(),
+                    rel_type,
+                    props.clone(),
+                ));
             }
         }
 
@@ -724,9 +809,9 @@ impl GraphStorageMutateOps for MemoryGraphStorage {
         for node_id in node_ids {
             nodes.remove(node_id);
 
-            let to_remove: Vec<(String, String)> = edges
+            let to_remove: Vec<(String, String, String)> = edges
                 .keys()
-                .filter(|(s, t)| s == node_id || t == node_id)
+                .filter(|(s, t, _)| s == node_id || t == node_id)
                 .cloned()
                 .collect();
             for key in to_remove {
@@ -777,7 +862,8 @@ impl GraphStorageMutateOps for MemoryGraphStorage {
         let mut edges = self.edges.write().map_err(super::lock::map_lock_err)?;
         let mut adjacency = self.adjacency.write().map_err(super::lock::map_lock_err)?;
 
-        let key = Self::edge_key(source, target);
+        let rel = Self::rel_type_from_props(&properties);
+        let key = Self::edge_key(source, target, &rel);
         edges.insert(key, properties);
 
         // Update adjacency (bidirectional)
@@ -801,7 +887,8 @@ impl GraphStorageMutateOps for MemoryGraphStorage {
         let mut edges_map = self.edges.write().map_err(super::lock::map_lock_err)?;
         let mut adjacency = self.adjacency.write().map_err(super::lock::map_lock_err)?;
         for (source, target, properties) in edges {
-            let key = Self::edge_key(source, target);
+            let rel = Self::rel_type_from_props(properties);
+            let key = Self::edge_key(source, target, &rel);
             edges_map.insert(key, properties.clone());
             adjacency
                 .entry(source.clone())
@@ -818,18 +905,8 @@ impl GraphStorageMutateOps for MemoryGraphStorage {
     async fn delete_edge(&self, source: &str, target: &str) -> Result<()> {
         let mut edges = self.edges.write().map_err(super::lock::map_lock_err)?;
         let mut adjacency = self.adjacency.write().map_err(super::lock::map_lock_err)?;
-
-        let key = Self::edge_key(source, target);
-        edges.remove(&key);
-
-        // Update adjacency
-        if let Some(neighbors) = adjacency.get_mut(source) {
-            neighbors.remove(target);
-        }
-        if let Some(neighbors) = adjacency.get_mut(target) {
-            neighbors.remove(source);
-        }
-
+        // Batch/public API is still (source, target): remove ALL rel_types between endpoints.
+        Self::remove_all_edges_between(&mut edges, &mut adjacency, source, target);
         Ok(())
     }
 
@@ -840,14 +917,7 @@ impl GraphStorageMutateOps for MemoryGraphStorage {
         let mut edge_store = self.edges.write().map_err(super::lock::map_lock_err)?;
         let mut adjacency = self.adjacency.write().map_err(super::lock::map_lock_err)?;
         for (source, target) in edges {
-            let key = Self::edge_key(source, target);
-            edge_store.remove(&key);
-            if let Some(neighbors) = adjacency.get_mut(source) {
-                neighbors.remove(target);
-            }
-            if let Some(neighbors) = adjacency.get_mut(target) {
-                neighbors.remove(source);
-            }
+            Self::remove_all_edges_between(&mut edge_store, &mut adjacency, source, target);
         }
         Ok(())
     }
@@ -859,10 +929,9 @@ impl GraphStorageMutateOps for MemoryGraphStorage {
         tenant_id: &str,
         workspace_id: &str,
     ) -> Result<bool> {
-        let key = Self::edge_key(source, target);
         let matches = {
             let edges = self.edges.read().map_err(super::lock::map_lock_err)?;
-            edges.get(&key).is_some_and(|props| {
+            Self::find_edge_by_endpoints(&edges, source, target).is_some_and(|(_, props)| {
                 props
                     .get("tenant_id")
                     .and_then(|v| v.as_str())
@@ -929,9 +998,9 @@ impl GraphStorageMutateOps for MemoryGraphStorage {
         let node_set: std::collections::HashSet<&str> =
             node_ids_to_remove.iter().map(|s| s.as_str()).collect();
 
-        let edge_keys_to_remove: Vec<(String, String)> = edges
+        let edge_keys_to_remove: Vec<(String, String, String)> = edges
             .iter()
-            .filter_map(|((src, tgt), edge_props)| {
+            .filter_map(|((src, tgt, rel), edge_props)| {
                 // Remove if either endpoint was deleted OR if edge has workspace_id property
                 let endpoint_deleted =
                     node_set.contains(src.as_str()) || node_set.contains(tgt.as_str());
@@ -942,7 +1011,7 @@ impl GraphStorageMutateOps for MemoryGraphStorage {
                     .unwrap_or(false);
 
                 if endpoint_deleted || edge_workspace_match {
-                    Some((src.clone(), tgt.clone()))
+                    Some((src.clone(), tgt.clone(), rel.clone()))
                 } else {
                     None
                 }
@@ -950,15 +1019,25 @@ impl GraphStorageMutateOps for MemoryGraphStorage {
             .collect();
 
         let edges_deleted = edge_keys_to_remove.len();
+        let mut endpoint_pairs: HashSet<(String, String)> = HashSet::new();
 
-        // Remove edges
+        // Remove edges (full 3-tuple keys for D-30 multigraph)
         for key in &edge_keys_to_remove {
+            let (a, b) = if key.0 <= key.1 {
+                (key.0.clone(), key.1.clone())
+            } else {
+                (key.1.clone(), key.0.clone())
+            };
+            endpoint_pairs.insert((a, b));
             edges.remove(key);
         }
 
-        // Update adjacency for remaining nodes (remove edges to deleted nodes)
+        // Drop adjacency to deleted nodes, and clear A–B links when last edge of any type is gone.
         for neighbors in adjacency.values_mut() {
             neighbors.retain(|neighbor| !node_set.contains(neighbor.as_str()));
+        }
+        for (source, target) in endpoint_pairs {
+            Self::maybe_clear_adjacency_link(&mut adjacency, &edges, &source, &target);
         }
 
         Ok((nodes_deleted, edges_deleted))
@@ -1078,10 +1157,13 @@ impl GraphScanOps for MemoryGraphStorage {
 
         let mut matching: Vec<GraphEdge> = edges
             .iter()
-            .map(|((source, target), props)| GraphEdge {
-                source: source.clone(),
-                target: target.clone(),
-                properties: props.clone(),
+            .map(|((source, target, rel_type), props)| {
+                Self::graph_edge_from_stored(
+                    source.clone(),
+                    target.clone(),
+                    rel_type,
+                    props.clone(),
+                )
             })
             .filter(|edge| edge_matches_list_filter(edge, filter))
             .collect();
@@ -1149,10 +1231,13 @@ impl GraphScanOps for MemoryGraphStorage {
         let edges = self.edges.read().map_err(super::lock::map_lock_err)?;
         let mut matched: Vec<GraphEdge> = edges
             .iter()
-            .map(|((source, target), props)| GraphEdge {
-                source: source.clone(),
-                target: target.clone(),
-                properties: props.clone(),
+            .map(|((source, target, rel_type), props)| {
+                Self::graph_edge_from_stored(
+                    source.clone(),
+                    target.clone(),
+                    rel_type,
+                    props.clone(),
+                )
             })
             .filter(|edge| {
                 edge_matches_list_filter(edge, filter)
@@ -1173,12 +1258,13 @@ impl GraphScanOps for MemoryGraphStorage {
         relationship_id: &str,
     ) -> Result<Option<GraphEdge>> {
         let edges = self.edges.read().map_err(super::lock::map_lock_err)?;
-        for ((source, target), props) in edges.iter() {
-            let edge = GraphEdge {
-                source: source.clone(),
-                target: target.clone(),
-                properties: props.clone(),
-            };
+        for ((source, target, rel_type), props) in edges.iter() {
+            let edge = Self::graph_edge_from_stored(
+                source.clone(),
+                target.clone(),
+                rel_type,
+                props.clone(),
+            );
             if edge_matches_list_filter(&edge, filter)
                 && edge_matches_relationship_id(&edge, relationship_id)
             {
@@ -1322,5 +1408,44 @@ mod tests {
 
         assert_eq!(storage.edge_count().await.unwrap(), 0);
         assert!(storage.has_node("A").await.unwrap());
+    }
+
+    /// D-30: distinct relation types between the same endpoints must not overwrite.
+    #[tokio::test]
+    async fn e2e_multigraph_two_rel_types_persist() {
+        let storage = MemoryGraphStorage::new("multigraph");
+        storage.upsert_node("alice", HashMap::new()).await.unwrap();
+        storage.upsert_node("bob", HashMap::new()).await.unwrap();
+
+        let mut knows = HashMap::new();
+        knows.insert("relation_type".to_string(), serde_json::json!("KNOWS"));
+        storage.upsert_edge("alice", "bob", knows).await.unwrap();
+
+        let mut works = HashMap::new();
+        works.insert("relation_type".to_string(), serde_json::json!("WORKS_WITH"));
+        storage.upsert_edge("alice", "bob", works).await.unwrap();
+
+        assert_eq!(storage.edge_count().await.unwrap(), 2);
+
+        let edges = storage.get_node_edges("alice").await.unwrap();
+        assert_eq!(edges.len(), 2);
+        let mut types: Vec<String> = edges
+            .iter()
+            .filter_map(|e| {
+                e.properties
+                    .get("relation_type")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+            })
+            .collect();
+        types.sort();
+        assert_eq!(types, vec!["KNOWS".to_string(), "WORKS_WITH".to_string()]);
+
+        // 2-tuple delete removes ALL rel_types between endpoints and clears adjacency.
+        storage.delete_edge("alice", "bob").await.unwrap();
+        assert_eq!(storage.edge_count().await.unwrap(), 0);
+        assert!(!storage.has_edge("alice", "bob").await.unwrap());
+        assert_eq!(storage.node_degree("alice").await.unwrap(), 0);
+        assert_eq!(storage.node_degree("bob").await.unwrap(), 0);
     }
 }

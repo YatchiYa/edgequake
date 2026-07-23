@@ -41,6 +41,7 @@
 mod atomic_blocks;
 mod markdown_chunking;
 mod page_aware;
+mod page_marker;
 mod recursive;
 pub mod registry;
 mod semantic;
@@ -53,11 +54,11 @@ use std::sync::Arc;
 use crate::error::Result;
 
 // Re-export types
-pub use registry::{resolve_chunker, resolve_chunker_with_embedder, ChunkOptions, ChunkStrategy};
-pub use types::{
-    make_page_marker, parse_page_marker, ChunkResult, ChunkerConfig, ChunkingStrategy,
-    SectionMetadata, TextChunk, PAGE_MARKER_PREFIX, PAGE_MARKER_SUFFIX,
+pub use page_marker::{
+    make_page_marker, parse_page_marker, PageMarkerWriter, PAGE_MARKER_PREFIX, PAGE_MARKER_SUFFIX,
 };
+pub use registry::{resolve_chunker, resolve_chunker_with_embedder, ChunkOptions, ChunkStrategy};
+pub use types::{ChunkResult, ChunkerConfig, ChunkingStrategy, SectionMetadata, TextChunk};
 
 // Re-export text utilities needed by external consumers
 pub use text_utils::calculate_line_numbers;

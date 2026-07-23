@@ -4,6 +4,28 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt;
+
+/// Dimension mismatch when comparing embeddings (SPEC-083 C-28).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DimensionMismatch {
+    /// Left-hand embedding dimension.
+    pub left: usize,
+    /// Right-hand embedding dimension.
+    pub right: usize,
+}
+
+impl fmt::Display for DimensionMismatch {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "embedding dimension mismatch: {} vs {}",
+            self.left, self.right
+        )
+    }
+}
+
+impl std::error::Error for DimensionMismatch {}
 
 /// Vector representation of text.
 ///
@@ -77,15 +99,16 @@ impl Embedding {
     ///
     /// Returns a value between -1 and 1, where 1 means identical direction.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if the embeddings have different dimensions.
-    pub fn cosine_similarity(&self, other: &Embedding) -> f32 {
-        assert_eq!(
-            self.dimension(),
-            other.dimension(),
-            "Embeddings must have the same dimension"
-        );
+    /// Returns [`DimensionMismatch`] when vector lengths differ (C-28).
+    pub fn cosine_similarity(&self, other: &Embedding) -> Result<f32, DimensionMismatch> {
+        if self.dimension() != other.dimension() {
+            return Err(DimensionMismatch {
+                left: self.dimension(),
+                right: other.dimension(),
+            });
+        }
 
         let dot_product: f32 = self
             .vector
@@ -98,9 +121,9 @@ impl Embedding {
         let norm_b: f32 = other.vector.iter().map(|x| x * x).sum::<f32>().sqrt();
 
         if norm_a == 0.0 || norm_b == 0.0 {
-            0.0
+            Ok(0.0)
         } else {
-            dot_product / (norm_a * norm_b)
+            Ok(dot_product / (norm_a * norm_b))
         }
     }
 
@@ -230,12 +253,21 @@ mod tests {
         let emb3 = Embedding::new("3".to_string(), vec![0.0, 1.0, 0.0], None);
 
         // Identical vectors
-        let sim1 = emb1.cosine_similarity(&emb2);
+        let sim1 = emb1.cosine_similarity(&emb2).unwrap();
         assert!((sim1 - 1.0).abs() < 1e-6);
 
         // Orthogonal vectors
-        let sim2 = emb1.cosine_similarity(&emb3);
+        let sim2 = emb1.cosine_similarity(&emb3).unwrap();
         assert!(sim2.abs() < 1e-6);
+    }
+
+    #[test]
+    fn unit_cosine_dim_mismatch_is_err() {
+        let emb1 = Embedding::new("1".to_string(), vec![1.0, 0.0], None);
+        let emb2 = Embedding::new("2".to_string(), vec![1.0, 0.0, 0.0], None);
+        let err = emb1.cosine_similarity(&emb2).unwrap_err();
+        assert_eq!(err.left, 2);
+        assert_eq!(err.right, 3);
     }
 
     #[test]

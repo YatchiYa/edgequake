@@ -68,6 +68,12 @@ pub struct AuthConfig {
 
     /// Additional static API keys accepted by the API middleware.
     pub api_keys: Vec<String>,
+
+    /// Optional JWT issuer (`iss`) — validated when set (SPEC-083 S-07).
+    pub jwt_issuer: Option<String>,
+
+    /// Optional JWT audience (`aud`) — validated when set (SPEC-083 S-07).
+    pub jwt_audience: Option<Vec<String>>,
 }
 
 impl Default for AuthConfig {
@@ -90,6 +96,8 @@ impl Default for AuthConfig {
             dev_mode: false,
             master_api_key: None,
             api_keys: Vec::new(),
+            jwt_issuer: None,
+            jwt_audience: None,
         }
     }
 }
@@ -209,6 +217,23 @@ impl AuthConfig {
             }
         }
 
+        let jwt_issuer = std::env::var("JWT_ISSUER")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+
+        let jwt_audience = std::env::var("JWT_AUDIENCE")
+            .ok()
+            .map(|value| {
+                value
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|item| !item.is_empty())
+                    .map(ToOwned::to_owned)
+                    .collect::<Vec<_>>()
+            })
+            .filter(|list| !list.is_empty());
+
         Self {
             jwt_secret,
             jwt_expiry: Duration::from_secs(jwt_expiry_hours * 60 * 60),
@@ -221,6 +246,8 @@ impl AuthConfig {
             dev_mode,
             master_api_key,
             api_keys,
+            jwt_issuer,
+            jwt_audience,
             ..Default::default()
         }
     }

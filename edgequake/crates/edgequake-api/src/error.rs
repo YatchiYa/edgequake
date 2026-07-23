@@ -613,14 +613,8 @@ fn storage_error_diagnostic(e: &edgequake_storage::error::StorageError) -> Value
 }
 
 fn llm_error_retryable(e: &edgequake_llm::error::LlmError) -> bool {
-    let msg = e.to_string().to_ascii_lowercase();
-    msg.contains("timeout")
-        || msg.contains("rate limit")
-        || msg.contains("rate_limit")
-        || msg.contains("429")
-        || msg.contains("503")
-        || msg.contains("overloaded")
-        || msg.contains("unavailable")
+    // SPEC-083 X-07/X-30: typed retry_strategy only — no substring matching.
+    e.retry_strategy().should_retry()
 }
 
 fn pipeline_error_retryable(e: &edgequake_pipeline::error::PipelineError) -> bool {

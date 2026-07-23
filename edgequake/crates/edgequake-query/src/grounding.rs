@@ -72,7 +72,12 @@ pub fn strip_gold_citation_artifacts(answer: &str) -> String {
         return text;
     }
     // Drop References section (LR-style or accidental).
-    for marker in ["### References", "## References", "### references", "## references"] {
+    for marker in [
+        "### References",
+        "## References",
+        "### references",
+        "## references",
+    ] {
         if let Some(idx) = text.find(marker) {
             text.truncate(idx);
             text = text.trim_end().to_string();
@@ -183,7 +188,6 @@ fn normalize_span_text(s: &str) -> String {
         .join(" ")
 }
 
-
 /// True if policy text still allows honest "Not answerable" (019 Q8 / 020 reject ban).
 pub fn allows_honest_refusal(instructions: &str) -> bool {
     let lower = instructions.to_lowercase();
@@ -257,7 +261,8 @@ mod tests {
 
     #[test]
     fn coverage_retry_triggers_only_on_ungrounded_answers() {
-        let corpus = "Patients with stage IIIA non-small cell lung cancer received cisplatin chemotherapy.";
+        let corpus =
+            "Patients with stage IIIA non-small cell lung cancer received cisplatin chemotherapy.";
         assert!(!needs_groundedness_retry(
             "Stage IIIA non-small cell lung cancer received cisplatin chemotherapy.",
             corpus
@@ -274,7 +279,9 @@ mod tests {
             "You are answering a GraphRAG-Bench medical question for accuracy scoring.\n\
              7) Do NOT append citation markers, chunk ids, or brackets like [1], [16]"
         )));
-        assert!(!is_gold_answer_extension(Some("Be helpful and cite sources.")));
+        assert!(!is_gold_answer_extension(Some(
+            "Be helpful and cite sources."
+        )));
         assert!(!is_gold_answer_extension(None));
     }
 
@@ -303,5 +310,4 @@ mod tests {
         assert!(!cleaned.contains('['));
         assert!(!cleaned.to_lowercase().contains("references"));
     }
-
 }

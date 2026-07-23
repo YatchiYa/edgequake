@@ -75,6 +75,7 @@ pub use dimension_policy::{
     decide_dimension_action, DimensionAction, DimensionEnsureOutcome, DimensionReconcilePolicy,
 };
 pub mod document_metadata_integrity;
+pub mod entity_fuzzy;
 pub mod entity_id;
 pub mod entity_reconcile;
 pub mod error;
@@ -98,6 +99,11 @@ pub use storage_op_metrics::TimedStorageOp;
 
 // Re-export entity identity (RC-6 / P-G1): single normalization entry point.
 pub use entity_id::{is_opaque_identifier, normalize_entity_name, EntityId};
+// SPEC-083 X-17: optional fuzzy / blocking resolution (default off).
+pub use entity_fuzzy::{
+    blocking_key, entity_fuzzy_enabled, find_best_fuzzy_match, fuzzy_match_threshold,
+    fuzzy_name_similarity, normalized_levenshtein_similarity, token_jaccard_similarity,
+};
 
 // Re-export community detection
 pub use crate::community_index_service::{
@@ -110,8 +116,8 @@ pub use chunk_content::{
     batch_fetch_chunk_contents, content_from_kv_value, content_from_metadata_or_kv,
 };
 pub use community::{
-    community_max_nodes_from_env, load_graph_bounded, BoundedGraphLoad, Community,
-    CommunityAlgorithm, CommunityConfig, CommunityDetectionResult,
+    community_max_nodes_from_env, load_graph_bounded, louvain_hierarchy_enabled, BoundedGraphLoad,
+    Community, CommunityAlgorithm, CommunityConfig, CommunityDetectionResult,
 };
 pub use community_persist::{
     backfill_communities_if_needed, community_auto_max_nodes, community_features_enabled,
@@ -130,7 +136,7 @@ pub use document_metadata_integrity::{
 };
 pub use failed_chunks::{FailedChunkInsert, FailedChunkRecord, InMemoryFailedChunkStore};
 pub use graph_batch_dedupe::{
-    dedupe_edges_by_endpoints, dedupe_nodes_by_id, graph_upsert_chunk_size,
+    dedupe_edges_by_endpoints, dedupe_nodes_by_id, graph_upsert_chunk_size, normalize_rel_type,
     parse_graph_upsert_chunk, resolve_graph_upsert_chunk, DEFAULT_GRAPH_UPSERT_CHUNK,
 };
 pub use graph_metrics::{

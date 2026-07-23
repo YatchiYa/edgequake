@@ -46,7 +46,7 @@ impl AuthState {
 
         let claims = self.jwt_service.verify_token(token)?;
         let user_id = claims.user_id()?;
-        let role = claims.role();
+        let role = claims.role()?;
 
         Ok(AuthUser {
             user_id,

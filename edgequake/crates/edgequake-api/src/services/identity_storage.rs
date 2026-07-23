@@ -120,53 +120,64 @@ pub(crate) async fn sync_auth_user_to_postgres(
     security: &ApiSecurityConfig,
     record: &UserRecord,
 ) -> Result<(), ApiError> {
-    use crate::services::tenant_isolation::{
-        acquire_optional_pg_connection, release_optional_pg_connection, PgIsolationScope,
-    };
+    use crate::services::tenant_isolation::{with_optional_pg_rls, PgIsolationScope};
+    use edgequake_storage::StorageError;
 
     let user_uuid = Uuid::parse_str(&record.user_id)
         .map_err(|_| ApiError::Internal("Invalid user_id for PG sync".into()))?;
     let (tenant_id, _) = default_identity_scope();
     let scope = Some(PgIsolationScope::default_identity(Some(user_uuid)));
+    let username = record.username.clone();
+    let email = record.email.clone();
+    let password_hash = record.password_hash.clone();
+    let role = record.role.clone();
+    let is_active = record.is_active;
+    let failed_login_attempts = record.failed_login_attempts as i32;
+    let locked_until = record.locked_until;
+    let created_at = record.created_at;
+    let updated_at = record.updated_at;
+    let last_login_at = record.last_login_at;
 
-    let mut conn = acquire_optional_pg_connection(pool, security, scope).await?;
-
-    sqlx::query(
-        r#"
-        INSERT INTO users (
-            user_id, tenant_id, username, email, password_hash, role, is_active,
-            failed_login_attempts, locked_until, created_at, updated_at, last_login_at
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-        ON CONFLICT (user_id) DO UPDATE SET
-            username = EXCLUDED.username,
-            email = EXCLUDED.email,
-            password_hash = EXCLUDED.password_hash,
-            role = EXCLUDED.role,
-            is_active = EXCLUDED.is_active,
-            failed_login_attempts = EXCLUDED.failed_login_attempts,
-            locked_until = EXCLUDED.locked_until,
-            updated_at = EXCLUDED.updated_at,
-            last_login_at = EXCLUDED.last_login_at
-        "#,
-    )
-    .bind(user_uuid)
-    .bind(tenant_id)
-    .bind(&record.username)
-    .bind(&record.email)
-    .bind(&record.password_hash)
-    .bind(&record.role)
-    .bind(record.is_active)
-    .bind(record.failed_login_attempts as i32)
-    .bind(record.locked_until)
-    .bind(record.created_at)
-    .bind(record.updated_at)
-    .bind(record.last_login_at)
-    .execute(&mut *conn)
-    .await
-    .map_err(|e| ApiError::Internal(format!("PG user sync failed: {e}")))?;
-
-    release_optional_pg_connection(&mut conn, security, scope).await;
+    with_optional_pg_rls(pool, security, scope, move |conn| {
+        Box::pin(async move {
+            sqlx::query(
+                r#"
+                INSERT INTO users (
+                    user_id, tenant_id, username, email, password_hash, role, is_active,
+                    failed_login_attempts, locked_until, created_at, updated_at, last_login_at
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                ON CONFLICT (user_id) DO UPDATE SET
+                    username = EXCLUDED.username,
+                    email = EXCLUDED.email,
+                    password_hash = EXCLUDED.password_hash,
+                    role = EXCLUDED.role,
+                    is_active = EXCLUDED.is_active,
+                    failed_login_attempts = EXCLUDED.failed_login_attempts,
+                    locked_until = EXCLUDED.locked_until,
+                    updated_at = EXCLUDED.updated_at,
+                    last_login_at = EXCLUDED.last_login_at
+                "#,
+            )
+            .bind(user_uuid)
+            .bind(tenant_id)
+            .bind(username)
+            .bind(email)
+            .bind(password_hash)
+            .bind(role)
+            .bind(is_active)
+            .bind(failed_login_attempts)
+            .bind(locked_until)
+            .bind(created_at)
+            .bind(updated_at)
+            .bind(last_login_at)
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| StorageError::Database(format!("PG user sync failed: {e}")))?;
+            Ok(())
+        })
+    })
+    .await?;
 
     sync_default_membership_to_postgres(pool, security, user_uuid, &record.role).await?;
 
@@ -179,45 +190,48 @@ pub async fn ensure_default_tenant_workspace(
     pool: &sqlx::PgPool,
     security: &ApiSecurityConfig,
 ) -> Result<(), ApiError> {
-    use crate::services::tenant_isolation::{
-        acquire_optional_pg_connection, release_optional_pg_connection, PgIsolationScope,
-    };
+    use crate::services::tenant_isolation::{with_optional_pg_rls, PgIsolationScope};
+    use edgequake_storage::StorageError;
 
     let (tenant_id, workspace_id) = default_identity_scope();
     let scope = Some(PgIsolationScope::default_identity(None));
-    let mut conn = acquire_optional_pg_connection(pool, security, scope).await?;
 
-    sqlx::query(
-        r#"
-        INSERT INTO tenants (tenant_id, name, slug, is_active, metadata, settings, created_at, updated_at)
-        VALUES ($1, 'Default', 'default', TRUE,
-                '{"plan": "pro", "max_workspaces": 100, "max_users": 100, "description": "Default tenant"}'::jsonb,
-                '{}'::jsonb, NOW(), NOW())
-        ON CONFLICT (tenant_id) DO NOTHING
-        "#,
-    )
-    .bind(tenant_id)
-    .execute(&mut *conn)
+    with_optional_pg_rls(pool, security, scope, move |conn| {
+        Box::pin(async move {
+            sqlx::query(
+                r#"
+                INSERT INTO tenants (tenant_id, name, slug, is_active, metadata, settings, created_at, updated_at)
+                VALUES ($1, 'Default', 'default', TRUE,
+                        '{"plan": "pro", "max_workspaces": 100, "max_users": 100, "description": "Default tenant"}'::jsonb,
+                        '{}'::jsonb, NOW(), NOW())
+                ON CONFLICT (tenant_id) DO NOTHING
+                "#,
+            )
+            .bind(tenant_id)
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| StorageError::Database(format!("PG default tenant ensure failed: {e}")))?;
+
+            sqlx::query(
+                r#"
+                INSERT INTO workspaces (workspace_id, tenant_id, name, slug, description, is_active, metadata, settings, created_at, updated_at)
+                VALUES ($1, $2, 'Default Workspace', 'default', 'Default knowledge base', TRUE,
+                        '{}'::jsonb, '{}'::jsonb, NOW(), NOW())
+                ON CONFLICT (workspace_id) DO NOTHING
+                "#,
+            )
+            .bind(workspace_id)
+            .bind(tenant_id)
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                StorageError::Database(format!("PG default workspace ensure failed: {e}"))
+            })?;
+
+            Ok(())
+        })
+    })
     .await
-    .map_err(|e| ApiError::Internal(format!("PG default tenant ensure failed: {e}")))?;
-
-    sqlx::query(
-        r#"
-        INSERT INTO workspaces (workspace_id, tenant_id, name, slug, description, is_active, metadata, settings, created_at, updated_at)
-        VALUES ($1, $2, 'Default Workspace', 'default', 'Default knowledge base', TRUE,
-                '{}'::jsonb, '{}'::jsonb, NOW(), NOW())
-        ON CONFLICT (workspace_id) DO NOTHING
-        "#,
-    )
-    .bind(workspace_id)
-    .bind(tenant_id)
-    .execute(&mut *conn)
-    .await
-    .map_err(|e| ApiError::Internal(format!("PG default workspace ensure failed: {e}")))?;
-
-    release_optional_pg_connection(&mut conn, security, scope).await;
-
-    Ok(())
 }
 
 /// Upsert default tenant/workspace membership for a user (SPEC-027 phase 34).
@@ -228,37 +242,36 @@ pub async fn sync_default_membership_to_postgres(
     user_id: Uuid,
     global_role: &str,
 ) -> Result<(), ApiError> {
-    use crate::services::tenant_isolation::{
-        acquire_optional_pg_connection, release_optional_pg_connection, PgIsolationScope,
-    };
+    use crate::services::tenant_isolation::{with_optional_pg_rls, PgIsolationScope};
+    use edgequake_storage::StorageError;
 
     ensure_default_tenant_workspace(pool, security).await?;
     let (tenant_id, workspace_id) = default_identity_scope();
     let membership_role = membership_role_from_global_role(global_role);
     let scope = Some(PgIsolationScope::default_identity(Some(user_id)));
 
-    let mut conn = acquire_optional_pg_connection(pool, security, scope).await?;
-
-    sqlx::query(
-        r#"
-        INSERT INTO memberships (tenant_id, workspace_id, user_id, role, is_active)
-        VALUES ($1, $2, $3, $4, TRUE)
-        ON CONFLICT (user_id, tenant_id, workspace_id) DO UPDATE SET
-            role = EXCLUDED.role,
-            is_active = TRUE
-        "#,
-    )
-    .bind(tenant_id)
-    .bind(workspace_id)
-    .bind(user_id)
-    .bind(membership_role)
-    .execute(&mut *conn)
+    with_optional_pg_rls(pool, security, scope, move |conn| {
+        Box::pin(async move {
+            sqlx::query(
+                r#"
+                INSERT INTO memberships (tenant_id, workspace_id, user_id, role, is_active)
+                VALUES ($1, $2, $3, $4, TRUE)
+                ON CONFLICT (user_id, tenant_id, workspace_id) DO UPDATE SET
+                    role = EXCLUDED.role,
+                    is_active = TRUE
+                "#,
+            )
+            .bind(tenant_id)
+            .bind(workspace_id)
+            .bind(user_id)
+            .bind(membership_role)
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| StorageError::Database(format!("PG membership sync failed: {e}")))?;
+            Ok(())
+        })
+    })
     .await
-    .map_err(|e| ApiError::Internal(format!("PG membership sync failed: {e}")))?;
-
-    release_optional_pg_connection(&mut conn, security, scope).await;
-
-    Ok(())
 }
 
 /// Verify active membership when strict tenant bind + PostgreSQL are available.
@@ -270,35 +283,36 @@ pub async fn verify_membership_active(
     tenant_id: Uuid,
     workspace_id: Uuid,
 ) -> Result<bool, ApiError> {
-    use crate::services::tenant_isolation::{
-        acquire_optional_pg_connection, release_optional_pg_connection, PgIsolationScope,
-    };
+    use crate::services::tenant_isolation::{with_optional_pg_rls, PgIsolationScope};
+    use edgequake_storage::StorageError;
 
     let scope = Some(PgIsolationScope::for_membership(
         tenant_id,
         workspace_id,
         user_id,
     ));
-    let mut conn = acquire_optional_pg_connection(pool, security, scope).await?;
 
-    let exists = sqlx::query_scalar::<_, bool>(
-        r#"
-        SELECT EXISTS(
-            SELECT 1 FROM memberships
-            WHERE user_id = $1 AND tenant_id = $2 AND workspace_id = $3 AND is_active = TRUE
-        )
-        "#,
-    )
-    .bind(user_id)
-    .bind(tenant_id)
-    .bind(workspace_id)
-    .fetch_one(&mut *conn)
+    with_optional_pg_rls(pool, security, scope, move |conn| {
+        Box::pin(async move {
+            let exists = sqlx::query_scalar::<_, bool>(
+                r#"
+                SELECT EXISTS(
+                    SELECT 1 FROM memberships
+                    WHERE user_id = $1 AND tenant_id = $2 AND workspace_id = $3 AND is_active = TRUE
+                )
+                "#,
+            )
+            .bind(user_id)
+            .bind(tenant_id)
+            .bind(workspace_id)
+            .fetch_one(&mut *conn)
+            .await
+            .map_err(|e| StorageError::Database(format!("Membership lookup failed: {e}")))?;
+
+            Ok(exists)
+        })
+    })
     .await
-    .map_err(|e| ApiError::Internal(format!("Membership lookup failed: {e}")))?;
-
-    release_optional_pg_connection(&mut conn, security, scope).await;
-
-    Ok(exists)
 }
 
 /// Ensure anonymous user row exists for chat/conversation FK safety (SPEC-027 phase 43).
@@ -309,9 +323,8 @@ pub async fn ensure_anonymous_user_in_postgres(
     tenant_id: Uuid,
     user_id: Uuid,
 ) -> Result<(), ApiError> {
-    use crate::services::tenant_isolation::{
-        acquire_optional_pg_connection, release_optional_pg_connection, PgIsolationScope,
-    };
+    use crate::services::tenant_isolation::{with_optional_pg_rls, PgIsolationScope};
+    use edgequake_storage::StorageError;
 
     let workspace_id = edgequake_core::default_workspace_uuid();
     let scope = Some(PgIsolationScope::for_membership(
@@ -319,26 +332,29 @@ pub async fn ensure_anonymous_user_in_postgres(
         workspace_id,
         user_id,
     ));
-    let mut conn = acquire_optional_pg_connection(pool, security, scope).await?;
+    let username = format!("anon_{}", &user_id.to_string()[..8]);
+    let email = format!("{}@anonymous.local", &user_id.to_string()[..8]);
 
-    sqlx::query(
-        r#"
-        INSERT INTO users (user_id, tenant_id, username, email, password_hash, role, is_active, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, 'anonymous', 'user', TRUE, NOW(), NOW())
-        ON CONFLICT (user_id) DO NOTHING
-        "#,
-    )
-    .bind(user_id)
-    .bind(tenant_id)
-    .bind(format!("anon_{}", &user_id.to_string()[..8]))
-    .bind(format!("{}@anonymous.local", &user_id.to_string()[..8]))
-    .execute(&mut *conn)
+    with_optional_pg_rls(pool, security, scope, move |conn| {
+        Box::pin(async move {
+            sqlx::query(
+                r#"
+                INSERT INTO users (user_id, tenant_id, username, email, password_hash, role, is_active, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, 'anonymous', 'user', TRUE, NOW(), NOW())
+                ON CONFLICT (user_id) DO NOTHING
+                "#,
+            )
+            .bind(user_id)
+            .bind(tenant_id)
+            .bind(username)
+            .bind(email)
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| StorageError::Database(format!("anonymous user ensure failed: {e}")))?;
+            Ok(())
+        })
+    })
     .await
-    .map_err(|e| ApiError::Internal(format!("anonymous user ensure failed: {e}")))?;
-
-    release_optional_pg_connection(&mut conn, security, scope).await;
-
-    Ok(())
 }
 
 #[cfg(feature = "postgres")]
@@ -381,35 +397,35 @@ async fn load_user_record_pg(
     security: &ApiSecurityConfig,
     user_id: &str,
 ) -> Result<Option<UserRecord>, ApiError> {
-    use crate::services::tenant_isolation::{
-        acquire_optional_pg_connection, release_optional_pg_connection, PgIsolationScope,
-    };
+    use crate::services::tenant_isolation::{with_optional_pg_rls, PgIsolationScope};
+    use edgequake_storage::StorageError;
 
     let user_uuid = Uuid::parse_str(user_id)
         .map_err(|_| ApiError::Internal("Invalid user_id for PG load".into()))?;
     let (tenant_id, _) = default_identity_scope();
     let scope = Some(PgIsolationScope::default_identity(Some(user_uuid)));
 
-    let mut conn = acquire_optional_pg_connection(pool, security, scope).await?;
+    with_optional_pg_rls(pool, security, scope, move |conn| {
+        Box::pin(async move {
+            let row = sqlx::query_as::<_, PgUserRow>(
+                r#"
+                SELECT user_id, username, email, password_hash, role, is_active,
+                       COALESCE(failed_login_attempts, 0) AS failed_login_attempts,
+                       locked_until, created_at, updated_at, last_login_at
+                FROM users
+                WHERE user_id = $1 AND tenant_id = $2
+                "#,
+            )
+            .bind(user_uuid)
+            .bind(tenant_id)
+            .fetch_optional(&mut *conn)
+            .await
+            .map_err(|e| StorageError::Database(format!("PG user load failed: {e}")))?;
 
-    let row = sqlx::query_as::<_, PgUserRow>(
-        r#"
-        SELECT user_id, username, email, password_hash, role, is_active,
-               COALESCE(failed_login_attempts, 0) AS failed_login_attempts,
-               locked_until, created_at, updated_at, last_login_at
-        FROM users
-        WHERE user_id = $1 AND tenant_id = $2
-        "#,
-    )
-    .bind(user_uuid)
-    .bind(tenant_id)
-    .fetch_optional(&mut *conn)
+            Ok(row.map(pg_row_to_user_record))
+        })
+    })
     .await
-    .map_err(|e| ApiError::Internal(format!("PG user load failed: {e}")))?;
-
-    release_optional_pg_connection(&mut conn, security, scope).await;
-
-    Ok(row.map(pg_row_to_user_record))
 }
 
 #[cfg(feature = "postgres")]
@@ -418,36 +434,36 @@ async fn find_user_record_by_login_pg(
     security: &ApiSecurityConfig,
     login: &str,
 ) -> Result<Option<UserRecord>, ApiError> {
-    use crate::services::tenant_isolation::{
-        acquire_optional_pg_connection, release_optional_pg_connection, PgIsolationScope,
-    };
+    use crate::services::tenant_isolation::{with_optional_pg_rls, PgIsolationScope};
+    use edgequake_storage::StorageError;
 
     let (tenant_id, _) = default_identity_scope();
     let login_lower = login.to_ascii_lowercase();
     let scope = Some(PgIsolationScope::default_identity(None));
 
-    let mut conn = acquire_optional_pg_connection(pool, security, scope).await?;
+    with_optional_pg_rls(pool, security, scope, move |conn| {
+        Box::pin(async move {
+            let row = sqlx::query_as::<_, PgUserRow>(
+                r#"
+                SELECT user_id, username, email, password_hash, role, is_active,
+                       COALESCE(failed_login_attempts, 0) AS failed_login_attempts,
+                       locked_until, created_at, updated_at, last_login_at
+                FROM users
+                WHERE tenant_id = $1
+                  AND (lower(username) = $2 OR lower(email) = $2)
+                LIMIT 1
+                "#,
+            )
+            .bind(tenant_id)
+            .bind(&login_lower)
+            .fetch_optional(&mut *conn)
+            .await
+            .map_err(|e| StorageError::Database(format!("PG user login lookup failed: {e}")))?;
 
-    let row = sqlx::query_as::<_, PgUserRow>(
-        r#"
-        SELECT user_id, username, email, password_hash, role, is_active,
-               COALESCE(failed_login_attempts, 0) AS failed_login_attempts,
-               locked_until, created_at, updated_at, last_login_at
-        FROM users
-        WHERE tenant_id = $1
-          AND (lower(username) = $2 OR lower(email) = $2)
-        LIMIT 1
-        "#,
-    )
-    .bind(tenant_id)
-    .bind(&login_lower)
-    .fetch_optional(&mut *conn)
+            Ok(row.map(pg_row_to_user_record))
+        })
+    })
     .await
-    .map_err(|e| ApiError::Internal(format!("PG user login lookup failed: {e}")))?;
-
-    release_optional_pg_connection(&mut conn, security, scope).await;
-
-    Ok(row.map(pg_row_to_user_record))
 }
 
 /// List all users for default tenant from PostgreSQL.
@@ -456,33 +472,33 @@ pub(crate) async fn list_user_records_pg(
     pool: &sqlx::PgPool,
     security: &ApiSecurityConfig,
 ) -> Result<Vec<UserRecord>, ApiError> {
-    use crate::services::tenant_isolation::{
-        acquire_optional_pg_connection, release_optional_pg_connection, PgIsolationScope,
-    };
+    use crate::services::tenant_isolation::{with_optional_pg_rls, PgIsolationScope};
+    use edgequake_storage::StorageError;
 
     let (tenant_id, _) = default_identity_scope();
     let scope = Some(PgIsolationScope::default_identity(None));
 
-    let mut conn = acquire_optional_pg_connection(pool, security, scope).await?;
+    with_optional_pg_rls(pool, security, scope, move |conn| {
+        Box::pin(async move {
+            let rows = sqlx::query_as::<_, PgUserRow>(
+                r#"
+                SELECT user_id, username, email, password_hash, role, is_active,
+                       COALESCE(failed_login_attempts, 0) AS failed_login_attempts,
+                       locked_until, created_at, updated_at, last_login_at
+                FROM users
+                WHERE tenant_id = $1
+                ORDER BY username
+                "#,
+            )
+            .bind(tenant_id)
+            .fetch_all(&mut *conn)
+            .await
+            .map_err(|e| StorageError::Database(format!("PG user list failed: {e}")))?;
 
-    let rows = sqlx::query_as::<_, PgUserRow>(
-        r#"
-        SELECT user_id, username, email, password_hash, role, is_active,
-               COALESCE(failed_login_attempts, 0) AS failed_login_attempts,
-               locked_until, created_at, updated_at, last_login_at
-        FROM users
-        WHERE tenant_id = $1
-        ORDER BY username
-        "#,
-    )
-    .bind(tenant_id)
-    .fetch_all(&mut *conn)
+            Ok(rows.into_iter().map(pg_row_to_user_record).collect())
+        })
+    })
     .await
-    .map_err(|e| ApiError::Internal(format!("PG user list failed: {e}")))?;
-
-    release_optional_pg_connection(&mut conn, security, scope).await;
-
-    Ok(rows.into_iter().map(pg_row_to_user_record).collect())
 }
 
 /// Delete user from PostgreSQL (identity SSOT).
@@ -492,27 +508,26 @@ pub async fn delete_user_pg(
     security: &ApiSecurityConfig,
     user_id: &str,
 ) -> Result<(), ApiError> {
-    use crate::services::tenant_isolation::{
-        acquire_optional_pg_connection, release_optional_pg_connection, PgIsolationScope,
-    };
+    use crate::services::tenant_isolation::{with_optional_pg_rls, PgIsolationScope};
+    use edgequake_storage::StorageError;
 
     let user_uuid = Uuid::parse_str(user_id)
         .map_err(|_| ApiError::Internal("Invalid user_id for PG delete".into()))?;
     let (tenant_id, _) = default_identity_scope();
     let scope = Some(PgIsolationScope::default_identity(Some(user_uuid)));
 
-    let mut conn = acquire_optional_pg_connection(pool, security, scope).await?;
-
-    sqlx::query("DELETE FROM users WHERE user_id = $1 AND tenant_id = $2")
-        .bind(user_uuid)
-        .bind(tenant_id)
-        .execute(&mut *conn)
-        .await
-        .map_err(|e| ApiError::Internal(format!("PG user delete failed: {e}")))?;
-
-    release_optional_pg_connection(&mut conn, security, scope).await;
-
-    Ok(())
+    with_optional_pg_rls(pool, security, scope, move |conn| {
+        Box::pin(async move {
+            sqlx::query("DELETE FROM users WHERE user_id = $1 AND tenant_id = $2")
+                .bind(user_uuid)
+                .bind(tenant_id)
+                .execute(&mut *conn)
+                .await
+                .map_err(|e| StorageError::Database(format!("PG user delete failed: {e}")))?;
+            Ok(())
+        })
+    })
+    .await
 }
 
 /// Load user record — PG SSOT when pool + policy; KV only when no pool (tests).

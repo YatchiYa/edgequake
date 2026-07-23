@@ -2072,11 +2072,12 @@ dependencies = [
  "edgequake-observability",
  "edgequake-storage",
  "futures",
+ "parking_lot",
  "regex",
  "serde",
  "serde_json",
- "sha2 0.10.9",
  "thiserror 2.0.18",
+ "tiktoken-rs",
  "tokio",
  "tokio-util",
  "tracing",
@@ -2144,6 +2145,7 @@ dependencies = [
  "tokio",
  "tokio-test",
  "tracing",
+ "unicode-normalization",
  "uuid",
 ]
 

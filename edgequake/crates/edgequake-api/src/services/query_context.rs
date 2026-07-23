@@ -498,5 +498,6 @@ pub fn build_legacy_query_response(
         ),
         conversation_id,
         reranked,
+        explain: result.explain.map(Into::into),
     }
 }

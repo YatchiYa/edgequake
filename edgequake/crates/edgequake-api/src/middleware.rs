@@ -473,17 +473,52 @@ fn unauthorized_response(method: &Method, path: &str) -> Response {
         .into_response()
 }
 
-pub async fn ws_validate_token(state: &crate::state::AppState, token: Option<&str>) -> bool {
-    if !state.auth.config.auth_enabled {
-        return true;
+/// WebSocket session identity derived from JWT/API-key (SPEC-083 S-01).
+#[derive(Debug, Clone, Default)]
+pub struct WsSession {
+    pub tenant_id: Option<String>,
+    pub workspace_id: Option<String>,
+    pub user_id: Option<String>,
+}
+
+impl WsSession {
+    /// Convert to [`TenantContext`] for reuse with `get_task_for_context`.
+    pub fn to_tenant_context(&self) -> TenantContext {
+        TenantContext {
+            tenant_id: self.tenant_id.clone(),
+            workspace_id: self.workspace_id.clone(),
+            user_id: self.user_id.clone(),
+        }
     }
-    let Some(token) = token.filter(|value| !value.is_empty()) else {
-        return false;
-    };
-    matches!(
-        crate::services::auth_validation::validate_presented_token(state, token).await,
-        Ok(Some(_))
-    )
+}
+
+/// Validate WS token and return session claims when auth succeeds (SPEC-083 S-01).
+///
+/// Returns `Some(WsSession)` when auth is disabled (dev open) or credentials are valid.
+pub async fn ws_validate_token(
+    state: &crate::state::AppState,
+    token: Option<&str>,
+) -> Option<WsSession> {
+    if !state.auth.config.auth_enabled {
+        return Some(WsSession::default());
+    }
+    let token = token.filter(|value| !value.is_empty())?;
+    match crate::services::auth_validation::validate_presented_token(state, token).await {
+        Ok(Some(auth)) => {
+            let workspace_id = auth.jwt_workspace_id.or_else(|| {
+                // EC-T2: API-key without workspace → bind default (fail closed vs global bus).
+                Some(default_workspace_uuid().to_string())
+            });
+            Some(WsSession {
+                tenant_id: auth
+                    .jwt_tenant_id
+                    .or_else(|| Some(default_tenant_uuid().to_string())),
+                workspace_id,
+                user_id: Some(auth.auth.user_id),
+            })
+        }
+        _ => None,
+    }
 }
 
 fn is_public_request(state: &crate::state::AppState, method: &Method, path: &str) -> bool {
@@ -538,29 +573,44 @@ pub(crate) fn extract_token_from_headers(headers: &axum::http::HeaderMap) -> Opt
     None
 }
 
-/// Validate WebSocket `Origin` against `EDGEQUAKE_CORS_ORIGINS` when configured (GitHub #277).
+/// Validate WebSocket `Origin` against `EDGEQUAKE_CORS_ORIGINS` (GitHub #277 / SPEC-083 S-10).
+///
+/// Production (`cors_fail_closed`): Origin header is required and must match the allow-list.
+/// Dev mode without an allow-list: accept (open for local tooling / native clients).
 pub fn ws_validate_origin(
     state: &crate::state::AppState,
     headers: &axum::http::HeaderMap,
 ) -> Result<(), StatusCode> {
-    let Some(allowed) = state.security.cors_origins.as_deref() else {
-        return Ok(());
-    };
+    let allowed = state.security.cors_origins.as_deref().unwrap_or(&[]);
+    let origin = headers
+        .get("origin")
+        .and_then(|v| v.to_str().ok())
+        .filter(|o| !o.is_empty());
+
+    if state.security.cors_fail_closed {
+        // Prod: require allow-list + Origin.
+        if allowed.is_empty() {
+            return Err(StatusCode::FORBIDDEN);
+        }
+        let Some(origin) = origin else {
+            return Err(StatusCode::FORBIDDEN);
+        };
+        return if allowed.iter().any(|o| o == origin) {
+            Ok(())
+        } else {
+            Err(StatusCode::FORBIDDEN)
+        };
+    }
+
+    // Dev: if an allow-list is configured, enforce it when Origin is present;
+    // missing Origin is allowed for non-browser clients.
     if allowed.is_empty() {
         return Ok(());
     }
-
-    let Some(origin) = headers.get("origin").and_then(|v| v.to_str().ok()) else {
-        return Ok(());
-    };
-    if origin.is_empty() {
-        return Ok(());
-    }
-
-    if allowed.iter().any(|o| o == origin) {
-        Ok(())
-    } else {
-        Err(StatusCode::FORBIDDEN)
+    match origin {
+        None => Ok(()),
+        Some(origin) if allowed.iter().any(|o| o == origin) => Ok(()),
+        Some(_) => Err(StatusCode::FORBIDDEN),
     }
 }
 
@@ -613,9 +663,33 @@ pub struct RateLimitError {
     pub retryable: bool,
 }
 
+/// Authenticated rate-limit key from JWT/API-key context (SPEC-083 S-11).
+///
+/// Never trust spoofable `x-tenant-id` — key only from authenticated Claims /
+/// `RequestAuthContext` + resolved `TenantContext` inserted by `protected_api_auth`.
+fn authenticated_rate_limit_key(request: &Request<Body>) -> String {
+    use crate::handlers::auth::RequestAuthContext;
+
+    let user_id = request
+        .extensions()
+        .get::<RequestAuthContext>()
+        .map(|auth| auth.user_id.as_str());
+    let tenant_id = request
+        .extensions()
+        .get::<TenantContext>()
+        .and_then(|ctx| ctx.tenant_id.as_deref());
+
+    match (tenant_id, user_id) {
+        (Some(tenant), Some(user)) => format!("tenant:{tenant}:user:{user}"),
+        (None, Some(user)) => format!("user:{user}"),
+        (Some(tenant), None) => format!("tenant:{tenant}"),
+        (None, None) => "anonymous".to_string(),
+    }
+}
+
 /// Tenant-based rate limiting middleware.
 ///
-/// Extracts tenant ID from `X-Tenant-ID` header and applies rate limiting per tenant.
+/// Keys buckets from authenticated Claims/user identity (not raw `X-Tenant-ID`).
 /// Returns 429 Too Many Requests when rate limit is exceeded.
 pub async fn tenant_rate_limit(
     axum::extract::State(rate_state): axum::extract::State<RateLimitState>,
@@ -627,15 +701,10 @@ pub async fn tenant_rate_limit(
         return next.run(request).await;
     }
 
-    // Extract tenant ID from header
-    let tenant_id = request
-        .headers()
-        .get("x-tenant-id")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("anonymous");
+    let tenant_id = authenticated_rate_limit_key(&request);
 
     // Check rate limit
-    let (allowed, retry_after) = rate_state.limiter.check_rate_limit(tenant_id);
+    let (allowed, retry_after) = rate_state.limiter.check_rate_limit(&tenant_id);
 
     if !allowed {
         let request_id =
@@ -643,7 +712,7 @@ pub async fn tenant_rate_limit(
 
         edgequake_observability::ErrorEvent::log_rate_limit_exceeded(
             &request_id,
-            tenant_id,
+            &tenant_id,
             retry_after,
         );
         edgequake_observability::record_http_error(
@@ -683,7 +752,7 @@ pub async fn tenant_rate_limit(
     }
 
     // Get remaining tokens for headers
-    let state = rate_state.limiter.get_state(tenant_id);
+    let state = rate_state.limiter.get_state(&tenant_id);
     let mut response = next.run(request).await;
 
     // Add rate limit headers to successful responses
@@ -1082,6 +1151,7 @@ mod tests {
     fn ws_validate_origin_rejects_unknown_origin_when_allowlisted() {
         let mut state = crate::state::AppState::test_state();
         state.security.cors_origins = Some(vec!["https://app.example.com".to_string()]);
+        state.security.cors_fail_closed = true;
 
         let mut denied = axum::http::HeaderMap::new();
         denied.insert("origin", "https://evil.example.com".parse().unwrap());
@@ -1089,5 +1159,48 @@ mod tests {
             super::ws_validate_origin(&state, &denied),
             Err(StatusCode::FORBIDDEN)
         );
+    }
+
+    #[test]
+    fn ws_validate_origin_requires_origin_when_fail_closed() {
+        let mut state = crate::state::AppState::test_state();
+        state.security.cors_origins = Some(vec!["https://app.example.com".to_string()]);
+        state.security.cors_fail_closed = true;
+
+        let headers = axum::http::HeaderMap::new();
+        assert_eq!(
+            super::ws_validate_origin(&state, &headers),
+            Err(StatusCode::FORBIDDEN)
+        );
+    }
+
+    #[test]
+    fn authenticated_rate_limit_key_ignores_spoofed_tenant_header() {
+        use crate::handlers::auth::RequestAuthContext;
+        use edgequake_auth::Role;
+
+        let mut request = axum::http::Request::builder()
+            .header("x-tenant-id", "spoofed-tenant")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        request.extensions_mut().insert(RequestAuthContext {
+            user_id: "user-1".into(),
+            role: Role::User,
+        });
+        request.extensions_mut().insert(TenantContext {
+            tenant_id: Some("real-tenant".into()),
+            workspace_id: Some("ws-1".into()),
+            user_id: Some("user-1".into()),
+        });
+
+        let key = authenticated_rate_limit_key(&request);
+        assert_eq!(key, "tenant:real-tenant:user:user-1");
+        assert!(!key.contains("spoofed"));
+    }
+
+    /// SPEC-083 matrix name (S-11) — alias of spoofed-header unit above.
+    #[test]
+    fn e2e_rate_limit_ignores_spoofed_header() {
+        authenticated_rate_limit_key_ignores_spoofed_tenant_header();
     }
 }

@@ -91,7 +91,7 @@ pub struct PipelineCheckpoint {
     /// Unix timestamp when the checkpoint was created.
     pub created_at_epoch: u64,
 
-    /// Content hash (first 64 bytes of source text SHA-256) for integrity.
+    /// Full-text SHA-256 hex digest of source text (SPEC-083 X-28).
     pub content_hash: String,
 
     /// When true, embeddings were omitted to stay under jsonb size limits
@@ -101,16 +101,14 @@ pub struct PipelineCheckpoint {
 }
 
 impl PipelineCheckpoint {
-    /// Compute a short content hash for integrity checking.
+    /// Compute a full SHA-256 content hash for integrity checking (X-28).
+    ///
+    /// Hashes the entire document so suffix-only edits invalidate checkpoints.
     fn compute_content_hash(text: &str) -> String {
         use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
-        // Hash prefix to avoid hashing multi-MB documents entirely.
-        let target_len = text.len().min(65_536);
-        let safe_len = text.floor_char_boundary(target_len);
-        let prefix = &text[..safe_len];
-        hasher.update(prefix.as_bytes());
-        hex::encode(&hasher.finalize()[..8]) // 16-char hex = 64-bit fingerprint
+        hasher.update(text.as_bytes());
+        hex::encode(hasher.finalize())
     }
 }
 
@@ -562,7 +560,7 @@ mod tests {
         let hash1 = PipelineCheckpoint::compute_content_hash("hello world");
         let hash2 = PipelineCheckpoint::compute_content_hash("hello world");
         assert_eq!(hash1, hash2);
-        assert_eq!(hash1.len(), 16); // 8 bytes = 16 hex chars
+        assert_eq!(hash1.len(), 64); // full SHA-256 = 32 bytes = 64 hex chars
     }
 
     #[test]
@@ -573,15 +571,14 @@ mod tests {
     }
 
     #[test]
-    fn test_content_hash_long_text_uses_prefix() {
-        // Hashes only first 64KB — two texts differing after 64KB produce same hash
+    fn e2e_checkpoint_rejects_suffix_change() {
+        // X-28: full SHA-256 — suffix-only edits must invalidate the checkpoint.
         let base = "x".repeat(65_536);
         let text1 = format!("{}AAA", base);
         let text2 = format!("{}BBB", base);
-        // Both should hash the same 64KB prefix
         let hash1 = PipelineCheckpoint::compute_content_hash(&text1);
         let hash2 = PipelineCheckpoint::compute_content_hash(&text2);
-        assert_eq!(hash1, hash2);
+        assert_ne!(hash1, hash2);
     }
 
     #[test]

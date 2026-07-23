@@ -25,13 +25,20 @@ pub enum Role {
 
 impl Role {
     /// Parse role from string. Defaults to User if not recognized.
+    ///
+    /// Prefer [`Self::try_parse`] for untrusted input (JWT claims) — fail closed.
     pub fn parse(s: &str) -> Self {
         s.parse().unwrap_or_default()
     }
 
+    /// Fail-closed role parse for untrusted input (SPEC-083 S-08).
+    pub fn try_parse(s: &str) -> Result<Self, String> {
+        s.parse()
+    }
+
     /// Try to parse role from string, returns None if not recognized.
     pub fn try_from_str(s: &str) -> Option<Self> {
-        s.parse().ok()
+        Self::try_parse(s).ok()
     }
 
     /// Convert role to string.
@@ -436,6 +443,13 @@ mod tests {
         assert_eq!(Role::try_from_str("user"), Some(Role::User));
         assert_eq!(Role::try_from_str("readonly"), Some(Role::Readonly));
         assert_eq!(Role::try_from_str("invalid"), None);
+    }
+
+    #[test]
+    fn test_role_try_parse_fail_closed() {
+        assert_eq!(Role::try_parse("admin").unwrap(), Role::Admin);
+        assert!(Role::try_parse("superuser").is_err());
+        assert!(Role::try_parse("").is_err());
     }
 
     #[test]

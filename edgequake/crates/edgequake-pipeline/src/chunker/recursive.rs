@@ -382,12 +382,24 @@ impl ChunkingStrategy for RecursiveCharacterChunking {
         let mut order = 0usize;
 
         for region in regions {
+            // C-16: atomic regions larger than chunk_size must still split so
+            // huge tables/charts stay within the embedder window.
             let pieces = if region.atomic.is_some() {
-                vec![(
-                    region.text.clone(),
-                    region.start,
-                    region.end.min(content.len()),
-                )]
+                if recursive_token_len(&region.text) > chunk_size {
+                    Self::split_text_with_spans(
+                        &region.text,
+                        region.start,
+                        &separators,
+                        chunk_size,
+                        chunk_overlap,
+                    )
+                } else {
+                    vec![(
+                        region.text.clone(),
+                        region.start,
+                        region.end.min(content.len()),
+                    )]
+                }
             } else {
                 Self::split_text_with_spans(
                     &region.text,
@@ -435,8 +447,10 @@ mod tests {
         let block =
             "[Chart Name]rev_q4\n[Image Type]Chart\n\n**Key values:**\n- Q4: 42\n\nRevenue rose.";
         let md = format!("Preamble text.\n\n{block}\n\nEpilogue text.");
+        // chunk_size above the chart's token length so C-16 does not force a split;
+        // the invariant under test is "no split on internal paragraph breaks".
         let config = ChunkerConfig {
-            chunk_size: 6,
+            chunk_size: 64,
             chunk_overlap: 0,
             min_chunk_size: 1,
             separators: default_recursive_separators(),
@@ -453,10 +467,82 @@ mod tests {
         assert_eq!(
             with_header.len(),
             1,
-            "chart block must stay in one chunk, got: {:?}",
+            "chart block must stay in one chunk when under chunk_size, got: {:?}",
             chunks.iter().map(|c| &c.content).collect::<Vec<_>>()
         );
         assert!(with_header[0].content.contains("42"));
+    }
+
+    #[tokio::test]
+    async fn unit_atomic_respects_max_chunk_size() {
+        // C-16: oversized atomic regions must split.
+        let row = "| a | b | c | d | e |\n";
+        let huge_table = format!("[Table Name]big\n[Image Type]Table\n\n{}", row.repeat(80));
+        let md = format!("Intro.\n\n{huge_table}\n\nOutro.");
+        let config = ChunkerConfig {
+            chunk_size: 8,
+            chunk_overlap: 0,
+            min_chunk_size: 1,
+            separators: default_recursive_separators(),
+            ..Default::default()
+        };
+        let chunks = RecursiveCharacterChunking
+            .chunk(&md, &config)
+            .await
+            .unwrap();
+        let table_chunks: Vec<_> = chunks
+            .iter()
+            .filter(|c| c.content.contains("| a |") || c.content.contains("[Table Name]"))
+            .collect();
+        assert!(
+            table_chunks.len() > 1,
+            "huge atomic table must split across chunks, got {}",
+            table_chunks.len()
+        );
+    }
+
+    /// SPEC-083 C-16 matrix name: huge atomic table must not stay one oversize chunk.
+    #[tokio::test]
+    async fn e2e_huge_table_splits() {
+        let row = "| col1 | col2 | col3 | value |\n";
+        let huge_table = format!("[Table Name]mega\n[Image Type]Table\n\n{}", row.repeat(200));
+        let md = format!("Preamble.\n\n{huge_table}\n\nEpilogue.");
+        let config = ChunkerConfig {
+            chunk_size: 16,
+            chunk_overlap: 2,
+            min_chunk_size: 1,
+            ..ChunkerConfig::default()
+        };
+        assert!(
+            config.separators.last().is_some_and(|s| s.is_empty()),
+            "prod default must include LightRAG final empty separator"
+        );
+        let chunks = RecursiveCharacterChunking
+            .chunk(&md, &config)
+            .await
+            .unwrap();
+        let max_tokens = chunks.iter().map(|c| c.tokens).max().unwrap_or(0);
+        assert!(
+            chunks.len() > 1,
+            "e2e_huge_table_splits: expected multiple chunks, got {}",
+            chunks.len()
+        );
+        assert!(
+            max_tokens <= config.chunk_size * 2,
+            "e2e_huge_table_splits: chunk tokens {max_tokens} far over chunk_size {}",
+            config.chunk_size
+        );
+    }
+
+    #[test]
+    fn contract_x_14_default_separators_are_lightrag_cascade() {
+        let cfg = ChunkerConfig::default();
+        assert_eq!(cfg.separators, default_recursive_separators());
+        assert_eq!(
+            cfg.separators.last().map(String::as_str),
+            Some(""),
+            "LightRAG cascade must end with empty string for char split"
+        );
     }
 
     #[test]

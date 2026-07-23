@@ -284,7 +284,7 @@ Configuration for the REST API server.
 | -                    | `api.cors_enabled` | bool     | `true`     | Enable CORS             |
 | -                    | `api.cors_origins` | string[] | `["*"]`    | Allowed origins         |
 | -                    | `api.auth_enabled` | bool     | `false`    | Require authentication  |
-| -                    | `api.body_limit`   | usize    | `10485760` | Max request body (10MB) |
+| -                    | `api.body_limit`   | usize    | `52428800` | Max request body (50 MiB) |
 | -                    | `api.timeout_secs` | u64      | `300`      | Request timeout         |
 
 ### Authentication

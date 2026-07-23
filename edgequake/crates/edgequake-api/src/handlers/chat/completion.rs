@@ -185,10 +185,22 @@ pub async fn chat_completion(
     }
 
     // FEAT0203: Forward image attachments to the query engine for vision queries.
+    // SPEC-083 C-25: materialize data: URL images before Anthropic (crates.io llm bug).
     if let Some(ref images) = request.images {
-        let image_data: Vec<edgequake_llm::traits::ImageData> = images
+        let mut image_data: Vec<edgequake_llm::traits::ImageData> = images
             .iter()
-            .map(|i| edgequake_llm::traits::ImageData::new(&i.data, &i.mime_type))
+            .map(|i| {
+                if i.mime_type.eq_ignore_ascii_case("url") {
+                    edgequake_llm::traits::ImageData::from_url(&i.data)
+                } else {
+                    edgequake_llm::traits::ImageData::new(&i.data, &i.mime_type)
+                }
+            })
+            .collect();
+        // Prefer data: → base64 for Anthropic compat; leave https URLs for OpenAI.
+        image_data = image_data
+            .into_iter()
+            .map(|img| edgequake_pipeline::materialize_image_for_anthropic(&img).unwrap_or(img))
             .collect();
         if !image_data.is_empty() {
             engine_request = engine_request.with_images(image_data);

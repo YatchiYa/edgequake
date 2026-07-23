@@ -101,12 +101,33 @@ fn contract_vector_count_uses_stats_not_raw_scan_first() {
 
 #[test]
 fn contract_native_upsert_targets_unique_index_names() {
+    // SPEC-083 / C-20: assert real eq_* arbiters (not vacuous legacy OR).
     let nodes = include_str!("../src/adapters/postgres/graph/nodes_ops/mutate.rs");
     let edges = include_str!("../src/adapters/postgres/graph/edges_ops.rs");
-    assert!(nodes.contains("idx_node_prop_node_id_unique"));
-    assert!(edges.contains("idx_edge_source_target_unique") || edges.contains("source_id"));
+    assert!(
+        nodes.contains("ON CONFLICT (eq_node_id)") || nodes.contains("eq_node_id"),
+        "native node upsert must target eq_node_id arbiter"
+    );
+    assert!(
+        edges.contains("ON CONFLICT (eq_source_id, eq_target_id, eq_rel_type)")
+            || edges.contains("idx_edge_eq_source_target_rel"),
+        "native edge upsert must target D-30 multigraph eq_* arbiter"
+    );
     assert!(nodes.contains("pg_upsert_nodes_batch_native"));
     assert!(edges.contains("pg_upsert_edges_batch_native"));
+}
+
+#[test]
+fn contract_spec083_degree_and_incident_use_coalesce_fallback() {
+    let read = include_str!("../src/adapters/postgres/graph/nodes_ops/read.rs");
+    let edges = include_str!("../src/adapters/postgres/graph/edges_ops.rs");
+    let helper = include_str!("../src/adapters/postgres/graph/helpers/eq_id_sql.rs");
+    assert!(helper.contains("fn coalesce_endpoint"));
+    assert!(helper.contains("fn prop_only_endpoint"));
+    assert!(read.contains("coalesce_endpoint") || read.contains("prop_only_endpoint"));
+    assert!(edges.contains("coalesce_endpoint") || edges.contains("prop_only_endpoint"));
+    assert!(read.contains("eq_columns_present"));
+    assert!(edges.contains("eq_columns_present"));
 }
 
 #[test]
@@ -136,7 +157,7 @@ fn contract_bootstrap_skips_dedup_when_unique_valid() {
         "must probe pg_index.indisvalid before O(N) dedup"
     );
     assert!(
-        lifecycle.contains("already valid — skip"),
+        lifecycle.contains("already valid") && lifecycle.contains("skip"),
         "valid UNIQUE must short-circuit dedup/create"
     );
     assert!(

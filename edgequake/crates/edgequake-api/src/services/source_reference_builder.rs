@@ -26,6 +26,7 @@ pub fn build_sources_from_context(
     granularity: ContentGranularity,
 ) -> Vec<SourceReference> {
     let mut sources = Vec::new();
+    // X-20: continue entity/relationship refs after the highest chunk citation_id.
     let mut ref_counter = 1usize;
 
     // 026/034: prefer citation_chunks (Mix∪CE) for L2/sources when dual-list is set.
@@ -42,9 +43,15 @@ pub fn build_sources_from_context(
         .filter(|chunk| !is_injection_source(chunk.document_id.as_deref(), None))
         .map(|chunk| {
             let ref_id = if include_reference_ids {
-                let id = ref_counter;
-                ref_counter += 1;
-                Some(id)
+                // X-20: stable citation_id stamped before format — never renumber by position.
+                if let Some(id) = chunk.citation_id {
+                    ref_counter = ref_counter.max(id + 1);
+                    Some(id)
+                } else {
+                    let id = ref_counter;
+                    ref_counter += 1;
+                    Some(id)
+                }
             } else {
                 None
             };
@@ -187,6 +194,7 @@ mod tests {
             page_start: None,
             page_end: None,
             modality: None,
+            citation_id: None,
         });
         ctx.chunks.push(RetrievedChunk {
             id: "c2".into(),
@@ -200,6 +208,7 @@ mod tests {
             page_start: None,
             page_end: None,
             modality: None,
+            citation_id: None,
         });
 
         let sources =
@@ -247,6 +256,7 @@ mod tests {
             page_start: None,
             page_end: None,
             modality: None,
+            citation_id: None,
         });
         ctx.citation_chunks = Some(vec![
             RetrievedChunk {
@@ -261,6 +271,7 @@ mod tests {
                 page_start: None,
                 page_end: None,
                 modality: None,
+                citation_id: None,
             },
             RetrievedChunk {
                 id: "mix-only".into(),
@@ -274,6 +285,7 @@ mod tests {
                 page_start: None,
                 page_end: None,
                 modality: None,
+                citation_id: None,
             },
         ]);
 
@@ -302,6 +314,7 @@ mod tests {
                 page_start: None,
                 page_end: None,
                 modality: None,
+                citation_id: None,
             });
         }
         citation.push(RetrievedChunk {
@@ -316,6 +329,7 @@ mod tests {
             page_start: None,
             page_end: None,
             modality: None,
+            citation_id: None,
         });
         ctx.chunks = citation[..30].to_vec();
         ctx.citation_chunks = Some(citation);
@@ -346,6 +360,7 @@ mod tests {
             page_start: None,
             page_end: None,
             modality: None,
+            citation_id: None,
         });
 
         let citation =
@@ -354,5 +369,25 @@ mod tests {
 
         let agent = build_sources_from_context(&ctx, true, None, false, ContentGranularity::Agent);
         assert_eq!(agent[0].snippet.as_ref().unwrap().len(), 500);
+    }
+
+    #[test]
+    fn contract_citation_stable_ids() {
+        let mut ctx = QueryContext::default();
+        ctx.chunks.push(
+            RetrievedChunk::new("a", "first", 0.9)
+                .with_document_id("d1")
+                .with_citation_id(7),
+        );
+        ctx.chunks.push(
+            RetrievedChunk::new("b", "second", 0.8)
+                .with_document_id("d1")
+                .with_citation_id(3),
+        );
+        // Reorder relative to citation_id sequence — refs must follow stamped ids.
+        let sources =
+            build_sources_from_context(&ctx, true, None, false, ContentGranularity::Citation);
+        assert_eq!(sources[0].reference_id, Some(7));
+        assert_eq!(sources[1].reference_id, Some(3));
     }
 }

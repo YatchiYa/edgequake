@@ -35,6 +35,7 @@ impl ChunkingStrategy for MarkdownChunking {
             ));
             let _breadcrumb = format_breadcrumb(&block.parent_headings, &block.heading);
 
+            let base_offset = block.start_offset;
             let sub_chunks = recursive.chunk(&block.content, config).await?;
             if sub_chunks.is_empty() && !block.content.trim().is_empty() {
                 results.push(ChunkResult {
@@ -42,11 +43,21 @@ impl ChunkingStrategy for MarkdownChunking {
                     tokens: estimate_tokens(&block.content),
                     chunk_order_index: order,
                     section: section.clone(),
+                    // C-15: offsets are relative to the full document.
+                    start_offset: Some(base_offset),
+                    end_offset: Some(block.end_offset),
                     ..Default::default()
                 });
                 order += 1;
             } else {
                 for mut sub in sub_chunks {
+                    // C-15: rebase sub-chunk offsets onto the block's document base.
+                    if let Some(start) = sub.start_offset.as_mut() {
+                        *start = start.saturating_add(base_offset);
+                    }
+                    if let Some(end) = sub.end_offset.as_mut() {
+                        *end = end.saturating_add(base_offset);
+                    }
                     sub.chunk_order_index = order;
                     sub.section = section.clone();
                     order += 1;

@@ -14,7 +14,7 @@
 //! # Enforces
 //!
 //! - **BR0701**: PDFs must be scoped to workspace
-//! - **BR0702**: PDFs cannot exceed 100MB
+//! - **BR0702**: PDFs cannot exceed 50 MiB (SPEC-083 D-44 / MAX_UPLOAD_BYTES)
 //! - **BR0703**: Processing status must be valid enum
 //!
 //! # Use Cases
@@ -554,17 +554,18 @@ pub fn calculate_pdf_checksum(data: &[u8]) -> String {
 /// # Checks
 ///
 /// - Starts with PDF magic number (%PDF-)
-/// - Size is within limits (0 < size <= 100MB)
+/// - Size is within limits (0 < size <= 50 MiB; SPEC-083 D-44)
 pub fn validate_pdf_data(data: &[u8]) -> Result<()> {
     // Check size
     if data.is_empty() {
         return Err(StorageError::InvalidData("PDF data is empty".to_string()));
     }
 
-    if data.len() > 104_857_600 {
-        // 100MB
+    // SPEC-083 D-44: must match edgequake_core::MAX_UPLOAD_BYTES (50 MiB).
+    const MAX_PDF_BYTES: usize = 50 * 1024 * 1024;
+    if data.len() > MAX_PDF_BYTES {
         return Err(StorageError::InvalidData(format!(
-            "PDF size {} exceeds 100MB limit",
+            "PDF size {} exceeds 50 MiB limit",
             data.len()
         )));
     }

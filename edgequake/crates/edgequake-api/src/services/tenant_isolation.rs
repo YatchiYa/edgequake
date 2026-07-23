@@ -1,4 +1,14 @@
-//! Tenant isolation SSOT — three defense layers (SPEC-027 phase 35).
+//! Tenant isolation SSOT — three defense layers (SPEC-027 phase 35 / SPEC-083 X-37).
+//!
+//! ## IsolationPolicy (SSOT — code is law)
+//!
+//! | Surface | Mechanism | Enforcement |
+//! |---------|-----------|-------------|
+//! | **Relational PG** | RLS GUC `app.current_*` inside `with_rls_transaction` (`is_local=true`) | FORCE RLS + fail-closed policies |
+//! | **Graph (AGE)** | `workspace_id` / `tenant_id` properties (+ `eq_*` columns when present) | Query filters; property COALESCE fallback |
+//! | **Vectors** | Per-workspace table suffix (`eq_*_ws_{short}_vectors`) | Table isolation; avoid 8-hex collisions |
+//! | **KV** | Workspace-prefixed keys (`wsdoc:`, `staging:hash:`) | Malformed / mixed-workspace upsert rejected in `PostgresKVStorage` |
+//! | **WebSocket / tasks** | `WsSession` + `get_task_for_context` | No cross-tenant progress/cancel |
 //!
 //! ## Isolation layers (code is law)
 //!
@@ -6,7 +16,7 @@
 //! |-------|-----------|---------|-------------|
 //! | **1 — App (KV/graph)** | Handler filters + metadata match | Always on | `handlers/isolation.rs`, `isolation_context.rs` |
 //! | **2 — Auth bind** | JWT/header merge + membership verify | Opt-in | `middleware.rs`, `identity_storage.rs` |
-//! | **3 — PostgreSQL RLS** | `acquire_rls_connection` on dedicated conn | **Default on** | `edgequake-storage/rls.rs`, `conversation.rs` |
+//! | **3 — PostgreSQL RLS** | `with_rls_transaction` / `with_optional_pg_rls` | **Default on** | `edgequake-storage/rls.rs`, `conversation.rs` |
 //!
 //! ## Dual KV + PG for auth — First Principles verdict (phase 38)
 //!
@@ -73,14 +83,17 @@ pub fn attach_pg_isolation_scope(
 }
 
 #[cfg(feature = "postgres")]
-pub async fn run_with_pg_rls<F, Fut, T>(
+pub async fn run_with_pg_rls<F, T>(
     pool: &sqlx::PgPool,
     scope: PgIsolationScope,
     operation: F,
 ) -> Result<T, crate::error::ApiError>
 where
-    F: for<'c> FnOnce(&'c mut sqlx::PgConnection) -> Fut,
-    Fut: std::future::Future<Output = edgequake_storage::error::Result<T>>,
+    for<'c> F: FnOnce(
+            &'c mut sqlx::PgConnection,
+        ) -> edgequake_storage::adapters::postgres::RlsTxFuture<'c, T>
+        + Send,
+    T: Send,
 {
     edgequake_storage::adapters::postgres::with_acquired_tenant_context(
         pool,
@@ -93,60 +106,24 @@ where
     .map_err(|e| crate::error::ApiError::Internal(format!("PG RLS operation failed: {e}")))
 }
 
-/// Acquire a PG connection with optional RLS context (SPEC-027 phase 42).
-#[cfg(feature = "postgres")]
-pub async fn acquire_optional_pg_connection(
-    pool: &sqlx::PgPool,
-    security: &crate::state::ApiSecurityConfig,
-    scope: Option<PgIsolationScope>,
-) -> Result<sqlx::pool::PoolConnection<sqlx::Postgres>, crate::error::ApiError> {
-    if security.pg_rls_enabled {
-        if let Some(scope) = scope {
-            return edgequake_storage::adapters::postgres::acquire_rls_connection(
-                pool,
-                scope.tenant_id,
-                scope.workspace_id,
-                scope.user_id,
-            )
-            .await
-            .map_err(|e| crate::error::ApiError::Internal(format!("PG RLS acquire failed: {e}")));
-        }
-    }
-
-    pool.acquire()
-        .await
-        .map_err(|e| crate::error::ApiError::Internal(format!("PG acquire failed: {e}")))
-}
-
-/// Release a PG connection after an optional RLS operation.
-#[cfg(feature = "postgres")]
-pub async fn release_optional_pg_connection(
-    conn: &mut sqlx::PgConnection,
-    security: &crate::state::ApiSecurityConfig,
-    scope: Option<PgIsolationScope>,
-) {
-    if security.pg_rls_enabled && scope.is_some() {
-        if let Err(e) = edgequake_storage::adapters::postgres::release_rls_connection(conn).await {
-            tracing::warn!(
-                target: "edgequake.tenant_isolation",
-                error = %e,
-                "Failed to clear RLS context after PG operation"
-            );
-        }
-    }
-}
-
 /// Run a PG operation with RLS when enabled and scope is present; otherwise plain acquire (SPEC-027 phase 41).
+///
+/// SPEC-083 S-03: this is the only supported API-layer entry for tenant-scoped PG.
+/// Autocommit `acquire_rls_connection` was removed from this module — GUC must live
+/// inside `with_rls_transaction` (via [`run_with_pg_rls`]).
 #[cfg(feature = "postgres")]
-pub async fn with_optional_pg_rls<F, Fut, T>(
+pub async fn with_optional_pg_rls<F, T>(
     pool: &sqlx::PgPool,
     security: &crate::state::ApiSecurityConfig,
     scope: Option<PgIsolationScope>,
     operation: F,
 ) -> Result<T, crate::error::ApiError>
 where
-    F: for<'c> FnOnce(&'c mut sqlx::PgConnection) -> Fut,
-    Fut: std::future::Future<Output = edgequake_storage::error::Result<T>>,
+    for<'c> F: FnOnce(
+            &'c mut sqlx::PgConnection,
+        ) -> edgequake_storage::adapters::postgres::RlsTxFuture<'c, T>
+        + Send,
+    T: Send,
 {
     if security.pg_rls_enabled {
         if let Some(scope) = scope {

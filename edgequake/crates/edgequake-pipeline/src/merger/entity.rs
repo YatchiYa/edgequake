@@ -16,6 +16,9 @@ use futures::stream::{self, StreamExt};
 use crate::error::Result;
 use crate::extractor::{ExtractedEntity, ExtractionResult};
 
+use super::entity_type_vote::{
+    apply_entity_type_vote, merge_type_into_entity, ENTITY_TYPE_VOTES_KEY,
+};
 use super::merge_limits::{
     apply_source_ids_limit, merge_source_ids, should_skip_description_update_keep,
     source_chunk_ids_from_properties,
@@ -103,8 +106,11 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
     /// in-memory (concatenating source_chunk_ids, taking the longer description)
     /// before a single get_nodes_batch reads the existing graph state.
     ///
-    /// Edge case: entity with same name but different types → keep first type,
-    /// append description (LightRAG convention: type is stable once set).
+    /// Edge case (D-32): same name but different types → majority/confidence
+    /// vote (never silent first-wins); conflicts are logged.
+    ///
+    /// X-17: when `EDGEQUAKE_ENTITY_FUZZY=1`, near-duplicate names may collapse
+    /// onto an existing EntityId via blocking + Levenshtein/Jaccard.
     pub(super) async fn merge_entities_batch(
         &self,
         entities: Vec<ExtractedEntity>,
@@ -120,6 +126,7 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         // Use Vec<(key, entity)> to preserve first-seen order for determinism.
         let mut dedup_keys: Vec<String> = Vec::new();
         let mut dedup_map: HashMap<String, ExtractedEntity> = HashMap::new();
+        let mut type_votes_by_key: HashMap<String, HashMap<String, f64>> = HashMap::new();
 
         for entity in entities {
             let entity_id = EntityId::new(&entity.name);
@@ -158,18 +165,39 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
                         existing.source_spans.push(span.clone());
                     }
                 }
+                // D-32: majority/confidence type vote (not silent first-wins)
+                let votes = type_votes_by_key.entry(key.clone()).or_default();
+                merge_type_into_entity(
+                    &mut existing.entity_type,
+                    votes,
+                    &entity.entity_type,
+                    entity.importance,
+                    &entity.name,
+                );
                 // Take max importance
                 if entity.importance > existing.importance {
                     existing.importance = entity.importance;
                 }
             } else {
+                let mut votes = HashMap::new();
+                let mut seeded_type = entity.entity_type.clone();
+                merge_type_into_entity(
+                    &mut seeded_type,
+                    &mut votes,
+                    &entity.entity_type,
+                    entity.importance,
+                    &entity.name,
+                );
+                let mut entity = entity;
+                entity.entity_type = seeded_type;
+                type_votes_by_key.insert(key.clone(), votes);
                 dedup_keys.push(key.clone());
                 dedup_map.insert(key, entity);
             }
         }
 
         // Collect in insertion order (deterministic)
-        let (keys, valid): (Vec<String>, Vec<ExtractedEntity>) = dedup_keys
+        let (mut keys, mut valid): (Vec<String>, Vec<ExtractedEntity>) = dedup_keys
             .into_iter()
             .filter_map(|k| dedup_map.remove(&k).map(|e| (k, e)))
             .unzip();
@@ -178,13 +206,27 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
             return Ok(());
         }
 
+        // X-17: optional within-batch fuzzy collapse (default off).
+        if edgequake_storage::entity_fuzzy_enabled() {
+            self.apply_within_batch_fuzzy(&mut keys, &mut valid);
+        }
+
         // Store entity types for relational sink (borrow before move into loop)
         let entity_types: Vec<String> = valid.iter().map(|e| e.entity_type.clone()).collect();
         let descriptions: Vec<String> = valid.iter().map(|e| e.description.clone()).collect();
         let source_chunk_ids: Vec<Vec<String>> =
             valid.iter().map(|e| e.source_chunk_ids.clone()).collect();
 
-        let existing_map = self.graph_storage.get_nodes_batch(&keys).await?;
+        let mut existing_map = self.graph_storage.get_nodes_batch(&keys).await?;
+
+        // X-17: fuzzy resolve against graph for exact misses (bounded sample).
+        if edgequake_storage::entity_fuzzy_enabled() {
+            self.apply_graph_fuzzy_resolution(&mut keys, &mut valid, &mut existing_map)
+                .await?;
+            // Collapse any duplicate keys created by fuzzy remapping.
+            self.collapse_duplicate_keys(&mut keys, &mut valid);
+        }
+
         let concurrency = self.config.merge_max_async.max(1);
 
         // SPEC-047 P7b: resolve unique entity merges concurrently (LLM-bound).
@@ -214,7 +256,7 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
             match item {
                 Ok(pair) => ordered.push(pair),
                 Err(e) => {
-                    stats.errors += 1;
+                    stats.record_error(e.to_string());
                     tracing::warn!(
                         error.source = "pipeline_merger",
                         error.action = "merge_entity",
@@ -397,6 +439,14 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
             serde_json::Value::String(merged_desc),
         );
 
+        // D-32: majority/confidence type vote; always log concrete conflicts.
+        apply_entity_type_vote(
+            &mut node.properties,
+            &entity.name,
+            &entity.entity_type,
+            entity.importance,
+        );
+
         // Update importance (take max)
         let existing_importance = node
             .properties
@@ -426,19 +476,21 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         node.properties
             .insert("sources".to_string(), serde_json::json!(sources));
 
-        // Merge + cap source chunk IDs (P7d KEEP/FIFO)
+        // Merge + cap source chunk IDs (P7d KEEP/FIFO).
+        // D-33: compute document lineage from the full merged set BEFORE capping
+        // stored chunk ids, so docs beyond the cap remain in source_document_ids.
         let merged_ids = merge_source_ids(&existing_chunk_ids, &entity.source_chunk_ids);
+        super::lineage::merge_and_insert_document_lineage(
+            &mut node.properties,
+            entity.source_document_id.as_deref(),
+            &merged_ids,
+        );
         let source_chunk_ids = apply_source_ids_limit(
             &merged_ids,
             self.config.max_source_ids_per_entity,
             self.config.source_ids_limit_method,
         );
         super::lineage::insert_chunk_lineage_properties(&mut node.properties, &source_chunk_ids);
-        super::lineage::merge_and_insert_document_lineage(
-            &mut node.properties,
-            entity.source_document_id.as_deref(),
-            &source_chunk_ids,
-        );
 
         // Update source file path if not already set
         if !node.properties.contains_key("source_file_path") {
@@ -498,6 +550,13 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
             "entity_type".to_string(),
             serde_json::Value::String(entity.entity_type.clone()),
         );
+        // Seed D-32 vote map so later conflicts have a baseline.
+        properties.insert(
+            ENTITY_TYPE_VOTES_KEY.to_string(),
+            serde_json::json!({
+                (entity.entity_type.as_str()): f64::from(entity.importance.clamp(0.05, 1.0))
+            }),
+        );
         properties.insert(
             "description".to_string(),
             serde_json::Value::String(entity.description.clone()),
@@ -544,18 +603,19 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
             );
         }
 
-        // Source tracking for citations (LightRAG parity) + analytics reconcile
+        // Source tracking for citations (LightRAG parity) + analytics reconcile.
+        // D-33: document lineage from full chunk set, then cap stored chunk ids.
+        super::lineage::merge_and_insert_document_lineage(
+            &mut properties,
+            entity.source_document_id.as_deref(),
+            &entity.source_chunk_ids,
+        );
         let capped = apply_source_ids_limit(
             &entity.source_chunk_ids,
             self.config.max_source_ids_per_entity,
             self.config.source_ids_limit_method,
         );
         super::lineage::insert_chunk_lineage_properties(&mut properties, &capped);
-        super::lineage::merge_and_insert_document_lineage(
-            &mut properties,
-            entity.source_document_id.as_deref(),
-            &capped,
-        );
         if let Some(ref file_path) = entity.source_file_path {
             properties.insert(
                 "source_file_path".to_string(),
@@ -581,5 +641,312 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
             id: entity_key,
             properties,
         })
+    }
+
+    /// X-17: collapse near-duplicate keys inside the current batch onto the
+    /// first-seen canonical key when fuzzy matching is enabled.
+    fn apply_within_batch_fuzzy(&self, keys: &mut Vec<String>, valid: &mut Vec<ExtractedEntity>) {
+        if keys.len() < 2 {
+            return;
+        }
+        let threshold = edgequake_storage::fuzzy_match_threshold();
+        let mut remap: HashMap<usize, usize> = HashMap::new();
+        for i in 1..keys.len() {
+            let bare_i = EntityId::bare_name_from_graph_node_id(&keys[i]).to_string();
+            let prior: Vec<&str> = keys[..i]
+                .iter()
+                .enumerate()
+                .filter(|(j, _)| !remap.contains_key(j))
+                .map(|(_, k)| EntityId::bare_name_from_graph_node_id(k))
+                .collect();
+            if let Some(hit) =
+                edgequake_storage::find_best_fuzzy_match(&bare_i, prior.iter().copied(), threshold)
+            {
+                if let Some(j) = keys[..i]
+                    .iter()
+                    .enumerate()
+                    .find(|(idx, k)| {
+                        !remap.contains_key(idx) && EntityId::bare_name_from_graph_node_id(k) == hit
+                    })
+                    .map(|(idx, _)| idx)
+                {
+                    tracing::info!(
+                        from = %keys[i],
+                        onto = %keys[j],
+                        metric = "entity_fuzzy_within_batch",
+                        "X-17: fuzzy merge within batch"
+                    );
+                    remap.insert(i, j);
+                }
+            }
+        }
+        if remap.is_empty() {
+            return;
+        }
+        // Fold remapped entities into targets, then drop remapped slots.
+        let mut keep = vec![true; keys.len()];
+        for (from, onto) in &remap {
+            keep[*from] = false;
+            // Merge description / chunks / type votes into target.
+            if valid[*from].description.len() > valid[*onto].description.len() {
+                valid[*onto].description = valid[*from].description.clone();
+            }
+            for cid in valid[*from].source_chunk_ids.clone() {
+                if !valid[*onto].source_chunk_ids.contains(&cid) {
+                    valid[*onto].source_chunk_ids.push(cid);
+                }
+            }
+            let incoming_type = valid[*from].entity_type.clone();
+            let incoming_importance = valid[*from].importance;
+            let incoming_name = valid[*from].name.clone();
+            let mut votes = HashMap::new();
+            merge_type_into_entity(
+                &mut valid[*onto].entity_type,
+                &mut votes,
+                &incoming_type,
+                incoming_importance,
+                &incoming_name,
+            );
+            if incoming_importance > valid[*onto].importance {
+                valid[*onto].importance = incoming_importance;
+            }
+        }
+        let mut new_keys = Vec::new();
+        let mut new_valid = Vec::new();
+        for (i, keep_i) in keep.into_iter().enumerate() {
+            if keep_i {
+                new_keys.push(keys[i].clone());
+                new_valid.push(valid[i].clone());
+            }
+        }
+        *keys = new_keys;
+        *valid = new_valid;
+    }
+
+    /// X-17: for exact EntityId misses, try bounded fuzzy match against graph.
+    async fn apply_graph_fuzzy_resolution(
+        &self,
+        keys: &mut [String],
+        valid: &mut [ExtractedEntity],
+        existing_map: &mut HashMap<String, GraphNode>,
+    ) -> Result<()> {
+        use edgequake_storage::traits::NodeListFilter;
+
+        let miss_idxs: Vec<usize> = keys
+            .iter()
+            .enumerate()
+            .filter(|(i, k)| !existing_map.contains_key(k.as_str()) && valid.get(*i).is_some())
+            .map(|(i, _)| i)
+            .collect();
+        if miss_idxs.is_empty() {
+            return Ok(());
+        }
+
+        let page = self
+            .graph_storage
+            .list_nodes_filtered(&NodeListFilter::default(), 0, 500)
+            .await?;
+        if page.items.is_empty() {
+            return Ok(());
+        }
+        let candidates: Vec<String> = page.items.iter().map(|n| n.id.clone()).collect();
+        let threshold = edgequake_storage::fuzzy_match_threshold();
+
+        for i in miss_idxs {
+            let bare = EntityId::bare_name_from_graph_node_id(&keys[i]).to_string();
+            let Some(hit) = edgequake_storage::find_best_fuzzy_match(
+                &bare,
+                candidates.iter().map(String::as_str),
+                threshold,
+            ) else {
+                continue;
+            };
+            if hit == keys[i] {
+                continue;
+            }
+            // Load the fuzzy target if not already in the map.
+            if !existing_map.contains_key(hit) {
+                if let Some(node) = self.graph_storage.get_node(hit).await? {
+                    existing_map.insert(hit.to_string(), node);
+                } else {
+                    continue;
+                }
+            }
+            tracing::info!(
+                from = %keys[i],
+                onto = %hit,
+                metric = "entity_fuzzy_graph",
+                "X-17: fuzzy resolve onto existing graph node"
+            );
+            keys[i] = hit.to_string();
+            // Align entity name so build_entity_merge_outcome uses the same key.
+            valid[i].name = EntityId::bare_name_from_graph_node_id(hit).to_string();
+        }
+        Ok(())
+    }
+
+    /// Fold entities that share the same graph key after fuzzy remapping.
+    fn collapse_duplicate_keys(&self, keys: &mut Vec<String>, valid: &mut Vec<ExtractedEntity>) {
+        let mut seen: HashMap<String, usize> = HashMap::new();
+        let mut keep = vec![true; keys.len()];
+        for i in 0..keys.len() {
+            if let Some(&onto) = seen.get(&keys[i]) {
+                keep[i] = false;
+                if valid[i].description.len() > valid[onto].description.len() {
+                    valid[onto].description = valid[i].description.clone();
+                }
+                for cid in valid[i].source_chunk_ids.clone() {
+                    if !valid[onto].source_chunk_ids.contains(&cid) {
+                        valid[onto].source_chunk_ids.push(cid);
+                    }
+                }
+                let incoming_type = valid[i].entity_type.clone();
+                let incoming_importance = valid[i].importance;
+                let incoming_name = valid[i].name.clone();
+                let mut votes = HashMap::new();
+                merge_type_into_entity(
+                    &mut valid[onto].entity_type,
+                    &mut votes,
+                    &incoming_type,
+                    incoming_importance,
+                    &incoming_name,
+                );
+                if incoming_importance > valid[onto].importance {
+                    valid[onto].importance = incoming_importance;
+                }
+            } else {
+                seen.insert(keys[i].clone(), i);
+            }
+        }
+        if keep.iter().all(|&k| k) {
+            return;
+        }
+        let mut new_keys = Vec::new();
+        let mut new_valid = Vec::new();
+        for (i, keep_i) in keep.into_iter().enumerate() {
+            if keep_i {
+                new_keys.push(keys[i].clone());
+                new_valid.push(valid[i].clone());
+            }
+        }
+        *keys = new_keys;
+        *valid = new_valid;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::merger::{KnowledgeGraphMerger, MergeStats, MergerConfig};
+    use edgequake_storage::traits::{GraphStorage, GraphStorageReadOps};
+    use edgequake_storage::{MemoryGraphStorage, MemoryVectorStorage};
+    use std::sync::Arc;
+
+    fn make_entity(name: &str, entity_type: &str, importance: f32, chunk: &str) -> ExtractedEntity {
+        ExtractedEntity {
+            name: name.to_string(),
+            entity_type: entity_type.to_string(),
+            description: format!("{name} as {entity_type}"),
+            importance,
+            source_spans: vec![],
+            source_chunk_ids: vec![chunk.to_string()],
+            embedding: None,
+            source_document_id: Some("doc-d32".to_string()),
+            source_file_path: None,
+            display_name: None,
+            page_num: None,
+            figure_index: None,
+            asset_id: None,
+            mm_subtype: None,
+        }
+    }
+
+    /// D-32: conflicting types resolve by majority/confidence (not silent first-wins).
+    #[tokio::test]
+    async fn e2e_entity_type_conflict_logged_and_resolved() {
+        let graph = Arc::new(MemoryGraphStorage::new("d32"));
+        let vector = Arc::new(MemoryVectorStorage::new("d32", 4));
+        graph.initialize().await.unwrap();
+        vector.initialize().await.unwrap();
+
+        let merger = KnowledgeGraphMerger::new(MergerConfig::default(), graph.clone(), vector);
+
+        // First mention: PERSON (weak)
+        let mut stats = MergeStats::default();
+        merger
+            .merge_entities_batch(
+                vec![make_entity("Acme Corp", "PERSON", 0.4, "c0")],
+                &mut stats,
+            )
+            .await
+            .unwrap();
+
+        // Two stronger ORGANIZATION votes should win.
+        merger
+            .merge_entities_batch(
+                vec![
+                    make_entity("Acme Corp", "ORGANIZATION", 0.9, "c1"),
+                    make_entity("Acme Corp", "ORGANIZATION", 0.85, "c2"),
+                ],
+                &mut stats,
+            )
+            .await
+            .unwrap();
+
+        let node = graph
+            .get_node("ACME_CORP")
+            .await
+            .unwrap()
+            .expect("node must exist");
+        assert_eq!(
+            node.properties.get("entity_type").and_then(|v| v.as_str()),
+            Some("ORGANIZATION"),
+            "majority/confidence must override first-wins PERSON"
+        );
+        assert!(
+            node.properties.contains_key(ENTITY_TYPE_VOTES_KEY),
+            "vote map must be persisted for observability"
+        );
+    }
+
+    #[tokio::test]
+    async fn contract_x_17_fuzzy_collapses_near_duplicate_when_enabled() {
+        std::env::set_var("EDGEQUAKE_ENTITY_FUZZY", "1");
+        // Lower threshold so ACME_CORP ↔ ACME_CORP_INC collapses in CI.
+        std::env::set_var("EDGEQUAKE_ENTITY_FUZZY_THRESHOLD", "0.60");
+
+        let graph = Arc::new(MemoryGraphStorage::new("x17"));
+        let vector = Arc::new(MemoryVectorStorage::new("x17", 4));
+        graph.initialize().await.unwrap();
+        vector.initialize().await.unwrap();
+        let merger = KnowledgeGraphMerger::new(MergerConfig::default(), graph.clone(), vector);
+
+        let mut stats = MergeStats::default();
+        merger
+            .merge_entities_batch(
+                vec![make_entity("Acme Corp Inc", "ORGANIZATION", 0.8, "c0")],
+                &mut stats,
+            )
+            .await
+            .unwrap();
+        merger
+            .merge_entities_batch(
+                vec![make_entity("Acme Corp", "ORGANIZATION", 0.8, "c1")],
+                &mut stats,
+            )
+            .await
+            .unwrap();
+
+        // Fuzzy should map ACME_CORP onto ACME_CORP_INC (or vice versa) → 1 node.
+        let a = graph.get_node("ACME_CORP_INC").await.unwrap();
+        let b = graph.get_node("ACME_CORP").await.unwrap();
+        let present = a.is_some() as u8 + b.is_some() as u8;
+        assert_eq!(
+            present, 1,
+            "fuzzy on: near-duplicate names must collapse to one node"
+        );
+
+        std::env::remove_var("EDGEQUAKE_ENTITY_FUZZY");
+        std::env::remove_var("EDGEQUAKE_ENTITY_FUZZY_THRESHOLD");
     }
 }

@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **SPEC-083 first-principles pack** — Defect register, laws, cluster studies, e2e matrix, and roadmap under [`docs/083-improvements/`](docs/083-improvements/README.md) (89 FIXED / 1 RETRACTED).
+- **D-30 multigraph arbiter** — Native EDGE upserts use `(eq_source_id, eq_target_id, eq_rel_type)`; every-boot M092 support SQL adds `eq_rel_type` + `idx_edge_eq_source_target_rel` (checksum-safe: support/ only, not versioned markers).
+- **Merge error surfacing** — Persist messages include the first underlying graph merge cause while keeping GraphMerge classification.
+- **SDK CI / CODEOWNERS** — SDK workflow and ownership gates from the SPEC-083 ops cluster.
+
+### Fixed
+
+- **KG persist merge (eq_rel_type split-brain)** — Pre–D-30 AGE graphs no longer look “ready” while native INSERT fails; readiness probes require `eq_rel_type` + 3-col unique.
+- **`/ready` false positives from incomplete AGE stubs** — M092 readiness scores only graphs with both `Node` and `EDGE` (orphan `bind_probe*` stubs no longer block traffic).
+- **Schema / RLS / pipeline / query honesty** — Waves 0–D closure for open SPEC-083 IDs (CORS Origin, typed failure markers, Mix fusion rename, Thinking SSE, Scan/Reindex 501, Acc gates, etc.). See register for per-ID evidence.
+
+### Docs
+
+- Linked SPEC-083 pack from [`docs/README.md`](docs/README.md) and [`docs/index.md`](docs/index.md).
+- Prod eq_* incident runbook: [`docs/083-improvements/INCIDENT-PROD-DIAGNOSIS.md`](docs/083-improvements/INCIDENT-PROD-DIAGNOSIS.md).
+
 ---
 
 ## [0.20.2] — 2026-07-22

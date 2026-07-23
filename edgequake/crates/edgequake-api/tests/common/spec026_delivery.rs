@@ -41,7 +41,9 @@ pub fn spawn_hydrating_workers(
                     };
                     let cancel = cancel_registry.register(&task.track_id).await;
                     match processor.process(&mut task, cancel).await {
-                        Ok(result) => task.mark_success(result),
+                        Ok(result) => {
+                            let _ = task.mark_success(result);
+                        }
                         Err(e) => task.mark_failed(e.to_string()),
                     }
                     cancel_registry.deregister(&task.track_id).await;

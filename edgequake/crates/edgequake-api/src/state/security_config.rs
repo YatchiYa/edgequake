@@ -20,8 +20,10 @@ pub struct ApiSecurityConfig {
     pub kv_identity_mirror: bool,
     /// Use PostgreSQL RLS via acquired connections for PG handlers (SEC-014 — default on).
     pub pg_rls_enabled: bool,
-    /// Comma-separated CORS origins; `None` = allow any (legacy default).
+    /// Comma-separated CORS origins; `None` = allow any only when `cors_fail_closed` is false.
     pub cors_origins: Option<Vec<String>>,
+    /// When true and `cors_origins` is empty/None, deny all cross-origin (SPEC-083 S-10).
+    pub cors_fail_closed: bool,
     /// Require `X-EdgeQuake-Confirm: delete-all-documents` for bulk DELETE.
     pub require_delete_all_confirm: bool,
     /// Return HTTP 202 Accepted (with Location) on v1 async RPC when a job/track id is present.
@@ -40,6 +42,8 @@ impl Default for ApiSecurityConfig {
             kv_identity_mirror: false,
             pg_rls_enabled: true,
             cors_origins: None,
+            // Default open for unit tests; from_env sets fail-closed unless DEV_MODE.
+            cors_fail_closed: false,
             require_delete_all_confirm: false,
             v1_rpc_return_202: true,
         }
@@ -65,6 +69,8 @@ impl ApiSecurityConfig {
                     .map(ToOwned::to_owned)
                     .collect()
             }),
+            // SPEC-083 S-10: open CORS only in EDGEQUAKE_DEV_MODE.
+            cors_fail_closed: !parse_bool_env("EDGEQUAKE_DEV_MODE", false),
             require_delete_all_confirm: parse_bool_env(
                 "EDGEQUAKE_REQUIRE_DELETE_ALL_CONFIRM",
                 false,

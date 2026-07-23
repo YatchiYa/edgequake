@@ -13,6 +13,9 @@ use edgequake_audit::{AuditEventType, AuditResult};
 
 use crate::error::{ApiError, ApiResult};
 use crate::middleware::TenantContext;
+use crate::multipart_upload::{
+    ensure_batch_file_cap, stream_field_to_tempfile, StreamedUploadFile,
+};
 use crate::services::{
     record_compliance_event, recycle_orphan_workspace_pdf, workspace_has_visible_document_for_pdf,
 };
@@ -30,7 +33,7 @@ use edgequake_storage::{
 ///
 /// @implements SPEC-007: PDF Upload Support
 /// @implements UC0701: Upload PDF for processing
-/// @implements BR0702: 100MB file size limit
+/// @implements BR0702: 50 MiB file size limit (SPEC-083 D-44 / MAX_UPLOAD_BYTES)
 /// @implements BR0703: Deduplication via SHA-256
 ///
 /// # Flow
@@ -56,7 +59,7 @@ use edgequake_storage::{
 ///
 /// # Errors
 ///
-/// - `ApiError::PayloadTooLarge` - File exceeds 100MB
+/// - `ApiError::PayloadTooLarge` - File exceeds 50 MiB
 /// - `ApiError::BadRequest` - Invalid PDF format
 /// - `ApiError::Conflict` - Duplicate PDF detected
 /// - `ApiError::Internal` - Storage failure
@@ -87,9 +90,8 @@ pub async fn upload_pdf_document(
         context.workspace_id, context.tenant_id
     );
 
-    // 1. Parse multipart fields
-    let mut file_data: Option<Vec<u8>> = None;
-    let mut filename = String::from("document.pdf");
+    // 1. Parse multipart fields (SPEC-083 D-51: stream file to temp, not field.bytes())
+    let mut streamed_file: Option<StreamedUploadFile> = None;
     let mut options = PdfUploadOptions {
         enable_vision: true,
         vision_provider: None, // None = apply workspace config then server default
@@ -109,14 +111,11 @@ pub async fn upload_pdf_document(
     {
         match field.name() {
             Some("file") => {
-                filename = field.file_name().unwrap_or("document.pdf").to_string();
-                file_data = Some(
-                    field
-                        .bytes()
-                        .await
-                        .map_err(|e| ApiError::BadRequest(format!("Failed to read file: {}", e)))?
-                        .to_vec(),
+                // SPEC-083 S-12: never persist raw multipart path components.
+                let filename = crate::file_validation::sanitize_filename(
+                    field.file_name().unwrap_or("document.pdf"),
                 );
+                streamed_file = Some(stream_field_to_tempfile(field, filename).await?);
             }
             Some("enable_vision") => {
                 if let Ok(text) = field.text().await {
@@ -174,9 +173,10 @@ pub async fn upload_pdf_document(
         }
     }
 
-    let file_data = file_data.ok_or_else(|| {
+    let streamed = streamed_file.ok_or_else(|| {
         ApiError::BadRequest("Missing 'file' field in multipart request".to_string())
     })?;
+    let (filename, file_data) = streamed.into_bytes()?;
     let response = process_pdf_upload_parts(&state, &context, filename, file_data, options).await?;
     Ok(Json(response))
 }
@@ -212,7 +212,8 @@ pub async fn upload_pdf_batch_document(
         pdf_parser_backend: None,
         process_options: None,
     };
-    let mut files: Vec<(String, Vec<u8>)> = Vec::new();
+    // SPEC-083 D-51: stream each file to temp; cap batch count; process sequentially.
+    let mut files: Vec<StreamedUploadFile> = Vec::new();
 
     while let Some(field) = multipart
         .next_field()
@@ -221,13 +222,11 @@ pub async fn upload_pdf_batch_document(
     {
         match field.name() {
             Some("file") | Some("files") => {
-                let filename = field.file_name().unwrap_or("document.pdf").to_string();
-                let bytes = field
-                    .bytes()
-                    .await
-                    .map_err(|e| ApiError::BadRequest(format!("Failed to read file: {}", e)))?
-                    .to_vec();
-                files.push((filename, bytes));
+                ensure_batch_file_cap(files.len())?;
+                let filename = crate::file_validation::sanitize_filename(
+                    field.file_name().unwrap_or("document.pdf"),
+                );
+                files.push(stream_field_to_tempfile(field, filename).await?);
             }
             Some("enable_vision") => {
                 if let Ok(text) = field.text().await {
@@ -294,7 +293,8 @@ pub async fn upload_pdf_batch_document(
     let mut duplicates = 0usize;
     let mut failed = 0usize;
 
-    for (filename, file_data) in files {
+    for streamed in files {
+        let (filename, file_data) = streamed.into_bytes()?;
         let result = process_pdf_upload_parts(
             &state,
             &context,
@@ -353,6 +353,8 @@ async fn process_pdf_upload_parts(
     file_data: Vec<u8>,
     mut options: PdfUploadOptions,
 ) -> ApiResult<PdfUploadResponse> {
+    // SPEC-083 S-12: magic-byte MIME must match .pdf (rejects exe-as-pdf, etc.).
+    crate::file_validation::validate_magic_matches_extension("pdf", &file_data)?;
     validate_pdf_data(&file_data)
         .map_err(|e| ApiError::BadRequest(format!("Invalid PDF: {}", e)))?;
 

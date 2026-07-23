@@ -1,4 +1,4 @@
-//! Mix query mode — intent-gated weighted/RRF blend of local, global, and naive arms.
+//! Mix query mode — intent-gated max-after-minmax / RRF blend of local, global, and naive arms.
 //!
 //! SPEC-046 OPS-P1: skip zero-weight / intent-gated arms (DRY via [`resolve_arm_plan`]).
 
@@ -258,7 +258,7 @@ impl QueryEngine {
     }
 }
 
-/// Shared Mix fusion (weighted or RRF) — pure relative to arm execution.
+/// Shared Mix fusion (max-after-minmax or RRF) — pure relative to arm execution.
 fn fuse_mix_contexts(
     local_context: &QueryContext,
     global_context: &QueryContext,
@@ -312,7 +312,8 @@ fn fuse_mix_contexts(
                 merged.add_chunk(chunk);
             }
         }
-        crate::fusion::MixFusionMode::Weighted => {
+        // D-35: max of weighted min-max contributions (not a weighted sum).
+        crate::fusion::MixFusionMode::MaxAfterMinMax => {
             let mut blended: HashMap<String, (RetrievedChunk, f32)> = HashMap::new();
             for (ctx, weight) in [
                 (&local_context, w_local),
@@ -322,9 +323,14 @@ fn fuse_mix_contexts(
                 if weight <= 0.0 {
                     continue;
                 }
-                let norm = min_max_normalize_scores(&ctx.chunks);
-                for (chunk, &norm_score) in ctx.chunks.iter().zip(norm.iter()) {
-                    let contribution = weight * norm_score;
+                // D-37: convert raw arm scores → MinMax only at fusion boundary.
+                let raw: Vec<f32> = ctx.chunks.iter().map(|c| c.score).collect();
+                let norm = crate::score_scale::min_max_normalize_to_fusion_scale(&raw);
+                for (chunk, scaled) in ctx.chunks.iter().zip(norm.iter()) {
+                    let contribution =
+                        crate::score_scale::weighted_minmax_contribution(*scaled, weight)
+                            .map(|s| s.value())
+                            .unwrap_or(0.0);
                     blended
                         .entry(chunk.id.clone())
                         .and_modify(|(_, score)| {
@@ -450,28 +456,6 @@ pub(crate) fn attach_arm_metadata(
     let gated = !(plan.run_local && plan.run_global && plan.run_naive);
     ctx.metadata
         .insert(META_ARMS_GATED.into(), serde_json::json!(gated));
-}
-
-fn min_max_normalize_scores(chunks: &[crate::context::RetrievedChunk]) -> Vec<f32> {
-    if chunks.is_empty() {
-        return Vec::new();
-    }
-    let (min, max) = chunks
-        .iter()
-        .fold((f32::INFINITY, f32::NEG_INFINITY), |(mn, mx), c| {
-            (mn.min(c.score), mx.max(c.score))
-        });
-    let range = max - min;
-    chunks
-        .iter()
-        .map(|c| {
-            if range <= 0.0 {
-                1.0
-            } else {
-                (c.score - min) / range
-            }
-        })
-        .collect()
 }
 
 #[cfg(test)]

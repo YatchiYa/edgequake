@@ -112,7 +112,7 @@ wc -c < document.txt
 
 **Resolution**:
 
-1. Verify document is under size limit (default 10MB)
+1. Verify document is under size limit (default 50 MiB)
 2. Check LLM API key is valid
 3. Verify storage backend is accessible
 4. Check for malformed content

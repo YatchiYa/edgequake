@@ -1,18 +1,27 @@
 //! Retrieval fusion helpers (SPEC-023 I5).
 //!
-//! Mix mode supports weighted min-max blending, Reciprocal Rank Fusion (RRF),
+//! Mix mode supports max-after-minmax blending, Reciprocal Rank Fusion (RRF),
 //! or LightRAG-style round-robin merge.
-//! Default: RRF. Set `EDGEQUAKE_MIX_FUSION=weighted` or `round_robin` to ablate.
+//! Default: RRF. Set `EDGEQUAKE_MIX_FUSION=max_after_minmax` (legacy alias:
+//! `weighted`) or `round_robin` to ablate.
+//!
+//! SPEC-083 D-35: the historical "weighted" label implied a weighted sum; the
+//! implementation takes the **max** of per-arm weighted min-max contributions.
 
 use std::collections::HashMap;
 
 use crate::context::RetrievedChunk;
 
 /// How Mix mode combines Local, Global, and Naive chunk lists.
+///
+/// Note (D-36): when reused by `sparse_retrieval`, [`MixFusionMode::MaxAfterMinMax`]
+/// means **sparse_first** (sparse rank order), not Mix max-after-minmax fusion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MixFusionMode {
-    /// Min-max normalize per arm, then weighted sum (P-G8 default).
-    Weighted,
+    /// Mix: min-max normalize per arm, weight, then take **max** contribution
+    /// across arms (not a weighted sum — D-35).
+    /// Sparse path (`EDGEQUAKE_SPARSE_FUSION`): **sparse_first** order (D-36).
+    MaxAfterMinMax,
     /// Reciprocal Rank Fusion across ranked ID lists.
     Rrf,
     /// LightRAG-style round-robin interleave (local → global → naive).
@@ -26,16 +35,19 @@ pub fn mix_fusion_mode_from_env() -> MixFusionMode {
         .to_ascii_lowercase()
         .as_str()
     {
-        "weighted" => MixFusionMode::Weighted,
+        // D-35: honest name; `weighted` kept as legacy alias.
+        "weighted" | "max_after_minmax" | "max-after-minmax" | "max" => {
+            MixFusionMode::MaxAfterMinMax
+        }
         "round_robin" | "round-robin" | "rr" | "lightrag" => MixFusionMode::RoundRobin,
         _ => MixFusionMode::Rrf,
     }
 }
 
-/// Operator-visible label for health / dashboards.
+/// Operator-visible label for health / dashboards (D-35 honesty).
 pub fn mix_fusion_mode_label(mode: MixFusionMode) -> &'static str {
     match mode {
-        MixFusionMode::Weighted => "weighted",
+        MixFusionMode::MaxAfterMinMax => "max_after_minmax",
         MixFusionMode::Rrf => "rrf",
         MixFusionMode::RoundRobin => "round_robin",
     }
@@ -115,5 +127,23 @@ mod tests {
         let fused = reciprocal_rank_fusion(&lists, &weights, RRF_K);
         assert_eq!(fused.len(), 1);
         assert_eq!(fused[0].0, "only_local");
+    }
+
+    #[test]
+    fn contract_mix_fusion_semantics_documented() {
+        // D-35: operator label must not claim "weighted" for max-after-minmax.
+        assert_eq!(
+            mix_fusion_mode_label(MixFusionMode::MaxAfterMinMax),
+            "max_after_minmax"
+        );
+        std::env::set_var("EDGEQUAKE_MIX_FUSION", "weighted");
+        assert_eq!(
+            mix_fusion_mode_from_env(),
+            MixFusionMode::MaxAfterMinMax,
+            "legacy weighted alias still selects max-after-minmax"
+        );
+        std::env::set_var("EDGEQUAKE_MIX_FUSION", "max_after_minmax");
+        assert_eq!(mix_fusion_mode_from_env(), MixFusionMode::MaxAfterMinMax);
+        std::env::remove_var("EDGEQUAKE_MIX_FUSION");
     }
 }

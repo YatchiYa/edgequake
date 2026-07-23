@@ -222,6 +222,14 @@ pub async fn cancel_task(
     tenant_ctx: TenantContext,
     Path(track_id): Path<String>,
 ) -> ApiResult<Json<TaskResponse>> {
+    // SPEC-083 S-02: ownership via get_task_for_context (foreign track → 404).
+    // Task may already be gone while scoped doc metadata still needs cancel sync.
+    let existing = match get_task_for_context(&state, &track_id, &tenant_ctx).await {
+        Ok(task) => Some(task),
+        Err(ApiError::NotFound(_)) => None,
+        Err(e) => return Err(e),
+    };
+
     // SPEC-002: Update document status for this track_id within tenant/workspace scope.
     // SPEC-027 pass 11: scoped metadata scan — never cancel cross-tenant documents.
     let mut doc_updated = false;
@@ -264,21 +272,7 @@ pub async fn cancel_task(
         }
     }
 
-    let existing = state
-        .tasks
-        .storage
-        .get_task(&track_id)
-        .await
-        .map_err(|e| ApiError::Internal(format!("Failed to get task: {}", e)))?;
-
-    // SECURITY: Verify task belongs to the requester's workspace before mutate.
-    if let Some(ref task) = existing {
-        if let Some(ctx_workspace_id) = tenant_ctx.workspace_id_uuid() {
-            if task.workspace_id != ctx_workspace_id {
-                return Err(ApiError::NotFound(format!("Task not found: {}", track_id)));
-            }
-        }
-    } else if !doc_updated {
+    if existing.is_none() && !doc_updated {
         return Err(ApiError::NotFound(format!("Task not found: {}", track_id)));
     }
 
@@ -360,20 +354,8 @@ pub async fn retry_task(
     tenant_ctx: TenantContext,
     Path(track_id): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let mut task = state
-        .tasks
-        .storage
-        .get_task(&track_id)
-        .await
-        .map_err(|e| ApiError::Internal(format!("Failed to get task: {}", e)))?
-        .ok_or_else(|| ApiError::NotFound(format!("Task not found: {}", track_id)))?;
-
-    // SECURITY: Verify task belongs to the requester's workspace
-    if let Some(ctx_workspace_id) = tenant_ctx.workspace_id_uuid() {
-        if task.workspace_id != ctx_workspace_id {
-            return Err(ApiError::NotFound(format!("Task not found: {}", track_id)));
-        }
-    }
+    // SPEC-083 S-02: ownership via get_task_for_context (foreign track → 404).
+    let mut task = get_task_for_context(&state, &track_id, &tenant_ctx).await?;
 
     // Check if task can be retried
     if !task.can_retry() {
@@ -422,6 +404,7 @@ fn parse_task_type(s: &str) -> Result<TaskType, String> {
     match s.to_lowercase().as_str() {
         "upload" => Ok(TaskType::Upload),
         "insert" => Ok(TaskType::Insert),
+        // SPEC-083 X-11: filter may still match historical rows; creation returns 501 via v2.
         "scan" => Ok(TaskType::Scan),
         "reindex" => Ok(TaskType::Reindex),
         "pdf_processing" => Ok(TaskType::PdfProcessing),

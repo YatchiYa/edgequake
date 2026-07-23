@@ -41,7 +41,17 @@ fn contract_mix_fusion_env_modes() {
     std::env::set_var("EDGEQUAKE_MIX_FUSION", "weighted");
     assert_eq!(
         edgequake_query::fusion::mix_fusion_mode_from_env(),
-        MixFusionMode::Weighted
+        MixFusionMode::MaxAfterMinMax,
+        "D-35: legacy weighted alias → MaxAfterMinMax"
+    );
+    std::env::set_var("EDGEQUAKE_MIX_FUSION", "max_after_minmax");
+    assert_eq!(
+        edgequake_query::fusion::mix_fusion_mode_from_env(),
+        MixFusionMode::MaxAfterMinMax
+    );
+    assert_eq!(
+        edgequake_query::fusion::mix_fusion_mode_label(MixFusionMode::MaxAfterMinMax),
+        "max_after_minmax"
     );
 
     std::env::set_var("EDGEQUAKE_MIX_FUSION", "round_robin");

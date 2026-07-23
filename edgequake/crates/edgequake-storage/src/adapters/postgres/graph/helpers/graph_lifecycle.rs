@@ -335,6 +335,10 @@ impl PostgresAGEGraphStorage {
     }
 
     /// Catalog probe: eq_* columns, unique indexes, and sync triggers all present.
+    ///
+    /// D-30 / SPEC-083: readiness requires `eq_rel_type` +
+    /// `idx_edge_eq_source_target_rel` (3-col multigraph arbiter). The legacy
+    /// 2-col `idx_edge_eq_source_target` alone must **not** short-circuit DDL.
     pub(in crate::adapters::postgres::graph) async fn eq_id_schema_ready(
         &self,
         conn: &mut sqlx::PgConnection,
@@ -356,12 +360,16 @@ impl PostgresAGEGraphStorage {
                 WHERE table_schema = $1 AND table_name = 'EDGE' AND column_name = 'eq_target_id'
               )
               AND EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = $1 AND table_name = 'EDGE' AND column_name = 'eq_rel_type'
+              )
+              AND EXISTS (
                 SELECT 1 FROM pg_indexes
                 WHERE schemaname = $1 AND indexname = 'idx_node_eq_node_id'
               )
               AND EXISTS (
                 SELECT 1 FROM pg_indexes
-                WHERE schemaname = $1 AND indexname = 'idx_edge_eq_source_target'
+                WHERE schemaname = $1 AND indexname = 'idx_edge_eq_source_target_rel'
               )
               AND EXISTS (
                 SELECT 1 FROM pg_trigger t
@@ -422,10 +430,14 @@ impl PostgresAGEGraphStorage {
         let g = &self.graph_name;
 
         // Columns + backfill + indexes (idempotent IF NOT EXISTS).
+        // D-30: eq_rel_type completes the multigraph arbiter
+        // (eq_source_id, eq_target_id, eq_rel_type). Drop the legacy 2-col
+        // UNIQUE before creating the 3-col one when both would conflict.
         let column_stmts = [
             format!(r#"ALTER TABLE {g}."Node" ADD COLUMN IF NOT EXISTS eq_node_id text"#),
             format!(r#"ALTER TABLE {g}."EDGE" ADD COLUMN IF NOT EXISTS eq_source_id text"#),
             format!(r#"ALTER TABLE {g}."EDGE" ADD COLUMN IF NOT EXISTS eq_target_id text"#),
+            format!(r#"ALTER TABLE {g}."EDGE" ADD COLUMN IF NOT EXISTS eq_rel_type text"#),
             format!(
                 r#"UPDATE {g}."Node" SET eq_node_id = ag_catalog.agtype_to_json(properties)->>'node_id'
                    WHERE eq_node_id IS NULL"#
@@ -433,17 +445,24 @@ impl PostgresAGEGraphStorage {
             format!(
                 r#"UPDATE {g}."EDGE" SET
                      eq_source_id = ag_catalog.agtype_to_json(properties)->>'source_id',
-                     eq_target_id = ag_catalog.agtype_to_json(properties)->>'target_id'
-                   WHERE eq_source_id IS NULL OR eq_target_id IS NULL"#
+                     eq_target_id = ag_catalog.agtype_to_json(properties)->>'target_id',
+                     eq_rel_type = UPPER(COALESCE(
+                       NULLIF(TRIM(ag_catalog.agtype_to_json(properties)->>'relation_type'), ''),
+                       'RELATED_TO'
+                     ))
+                   WHERE eq_source_id IS NULL OR eq_target_id IS NULL OR eq_rel_type IS NULL"#
             ),
             format!(
                 r#"CREATE UNIQUE INDEX IF NOT EXISTS idx_node_eq_node_id
                    ON {g}."Node" (eq_node_id) WHERE eq_node_id IS NOT NULL"#
             ),
+            // Drop 2-column unique so KNOWS vs WORKS_WITH can coexist (D-30).
+            format!(r#"DROP INDEX IF EXISTS {g}.idx_edge_eq_source_target"#),
             format!(
-                r#"CREATE UNIQUE INDEX IF NOT EXISTS idx_edge_eq_source_target
-                   ON {g}."EDGE" (eq_source_id, eq_target_id)
-                   WHERE eq_source_id IS NOT NULL AND eq_target_id IS NOT NULL"#
+                r#"CREATE UNIQUE INDEX IF NOT EXISTS idx_edge_eq_source_target_rel
+                   ON {g}."EDGE" (eq_source_id, eq_target_id, eq_rel_type)
+                   WHERE eq_source_id IS NOT NULL AND eq_target_id IS NOT NULL
+                     AND eq_rel_type IS NOT NULL"#
             ),
             format!(
                 r#"CREATE INDEX IF NOT EXISTS idx_edge_eq_source_id
@@ -531,31 +550,42 @@ impl PostgresAGEGraphStorage {
         .await
         .unwrap_or(false);
 
-        if !edge_trig {
+        // Always refresh the sync function so eq_rel_type stays aligned (D-30).
+        {
             let fn_sql = format!(
                 r#"CREATE OR REPLACE FUNCTION {g}_eq_sync_edge_ids() RETURNS trigger AS $$
                    BEGIN
                      NEW.eq_source_id := ag_catalog.agtype_to_json(NEW.properties)->>'source_id';
                      NEW.eq_target_id := ag_catalog.agtype_to_json(NEW.properties)->>'target_id';
+                     NEW.eq_rel_type := UPPER(COALESCE(
+                       NULLIF(TRIM(ag_catalog.agtype_to_json(NEW.properties)->>'relation_type'), ''),
+                       'RELATED_TO'
+                     ));
                      RETURN NEW;
                    END;
                    $$ LANGUAGE plpgsql"#
             );
-            let trg_sql = format!(
-                r#"CREATE TRIGGER trg_eq_sync_edge_ids
-                   BEFORE INSERT OR UPDATE OF properties ON {g}."EDGE"
-                   FOR EACH ROW EXECUTE PROCEDURE {g}_eq_sync_edge_ids()"#
-            );
-            for sql in [&fn_sql, &trg_sql] {
-                if let Err(e) = sqlx::query(sql).execute(&mut **conn).await {
+            if let Err(e) = sqlx::query(&fn_sql).execute(&mut **conn).await {
+                let msg = e.to_string();
+                if msg.contains("does not exist") || msg.contains("undefined_table") {
+                    return Ok(());
+                }
+                tracing::warn!(error = %e, "SPEC-062/D-30 eq_id edge trigger fn warning");
+            }
+            if !edge_trig {
+                let trg_sql = format!(
+                    r#"CREATE TRIGGER trg_eq_sync_edge_ids
+                       BEFORE INSERT OR UPDATE OF properties ON {g}."EDGE"
+                       FOR EACH ROW EXECUTE PROCEDURE {g}_eq_sync_edge_ids()"#
+                );
+                if let Err(e) = sqlx::query(&trg_sql).execute(&mut **conn).await {
                     let msg = e.to_string();
                     if msg.contains("does not exist") || msg.contains("undefined_table") {
                         return Ok(());
                     }
-                    if msg.contains("already exists") {
-                        continue;
+                    if !msg.contains("already exists") {
+                        tracing::warn!(error = %e, "SPEC-062 eq_id edge trigger DDL warning");
                     }
-                    tracing::warn!(error = %e, "SPEC-062 eq_id edge trigger DDL warning");
                 }
             }
         }
@@ -572,9 +602,11 @@ impl PostgresAGEGraphStorage {
                  END IF;
                  IF EXISTS (
                    SELECT 1 FROM pg_indexes
-                   WHERE schemaname = '{g}' AND indexname = 'idx_edge_eq_source_target'
+                   WHERE schemaname = '{g}'
+                     AND indexname IN ('idx_edge_eq_source_target_rel', 'idx_edge_eq_source_target')
                  ) THEN
                    EXECUTE 'DROP INDEX IF EXISTS {g}.idx_edge_source_target_unique';
+                   EXECUTE 'DROP INDEX IF EXISTS {g}.idx_edge_eq_source_target';
                  END IF;
                END
                $drop$"#
@@ -685,9 +717,13 @@ impl PostgresAGEGraphStorage {
         // dual unique indexes break ON CONFLICT under concurrency.
         let node_eq_ok = self.index_validity(&pool, "idx_node_eq_node_id").await == Some(true);
         let edge_eq_ok = self
-            .index_validity(&pool, "idx_edge_eq_source_target")
+            .index_validity(&pool, "idx_edge_eq_source_target_rel")
             .await
-            == Some(true);
+            == Some(true)
+            || self
+                .index_validity(&pool, "idx_edge_eq_source_target")
+                .await
+                == Some(true);
 
         if node_eq_ok {
             let drop_sql = format!(

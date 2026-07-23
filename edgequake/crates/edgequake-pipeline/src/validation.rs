@@ -24,7 +24,7 @@
 //! | 16 | Concurrent upload of same | Mutex/transaction |
 //! | 17 | Upload during workspace deletion | FK constraint |
 //! | 18 | Invalid workspace ID | Validate exists |
-//! | 19 | Very long document (>100MB) | `validate_max_size` |
+//! | 19 | Very long document (>50 MiB) | `validate_max_size` |
 //! | 20 | Very small chunks (<10 tokens) | `validate_min_chunk_size` |
 //!
 //! # Example
@@ -47,7 +47,7 @@ use std::collections::HashSet;
 /// All limits are configurable to allow different deployment scenarios.
 #[derive(Debug, Clone)]
 pub struct ValidationConfig {
-    /// Maximum document size in bytes (default: 100MB)
+    /// Maximum document size in bytes (default: 50 MiB — SPEC-083 D-44 / `edgequake_core::MAX_UPLOAD_BYTES`).
     pub max_size_bytes: usize,
 
     /// Minimum content length in characters (default: 10)
@@ -81,7 +81,9 @@ impl Default for ValidationConfig {
         }
 
         Self {
-            max_size_bytes: 100 * 1024 * 1024, // 100MB
+            // SPEC-083 D-44: must equal edgequake_core::MAX_UPLOAD_BYTES (50 MiB).
+            // Not imported directly to avoid core↔pipeline feature cycle.
+            max_size_bytes: 50 * 1024 * 1024,
             min_content_chars: 10,
             min_chunk_tokens: 10,
             max_filename_length: 255,

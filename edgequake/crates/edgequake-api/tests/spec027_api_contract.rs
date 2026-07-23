@@ -887,7 +887,11 @@ fn spec027_conversation_rls_acquired_phase36() {
             .join("../edgequake-storage/src/adapters/postgres/conversation.rs"),
     )
     .expect("conversation.rs");
-    assert!(conversation.contains("acquire_rls_connection"));
+    assert!(
+        conversation.contains("with_rls_transaction")
+            || conversation.contains("acquire_rls_connection"),
+        "must use rls.rs SSOT with_rls_transaction / acquire_rls_connection"
+    );
     assert!(
         !conversation.contains("acquire_tenant_conn"),
         "must use rls.rs SSOT acquire_rls_connection"
@@ -911,13 +915,14 @@ fn spec027_rls_acquire_ssot_phase37() {
     .expect("rls.rs");
     assert!(rls.contains("pub async fn acquire_rls_connection"));
     assert!(rls.contains("pub async fn release_rls_connection"));
+    assert!(rls.contains("pub async fn with_rls_transaction"));
     assert!(
         rls.contains("#[deprecated"),
         "legacy pool-level RlsContext must be deprecated"
     );
     assert!(
-        rls.contains("acquire_rls_connection(pool, tenant_id, workspace_id, user_id)"),
-        "with_acquired_tenant_context must delegate to acquire_rls_connection"
+        rls.contains("with_rls_transaction(pool, tenant_id, workspace_id, user_id, operation)"),
+        "with_acquired_tenant_context must delegate to with_rls_transaction (SPEC-083 S-03)"
     );
     let postgres_mod = std::fs::read_to_string(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -1052,22 +1057,27 @@ fn spec027_pg_auth_test_harness_phase41() {
 #[test]
 fn spec027_handler_rls_wiring_phase42() {
     let pdf_lineage = read_crate_src("src/services/pdf_lineage.rs");
-    assert!(pdf_lineage.contains("acquire_optional_pg_connection"));
+    // SPEC-083 S-03: transaction-local RLS via with_optional_pg_rls (not autocommit acquire).
+    assert!(pdf_lineage.contains("with_optional_pg_rls"));
+    assert!(!pdf_lineage.contains("acquire_optional_pg_connection"));
     assert!(pdf_lineage.contains("pdf_documents"));
     let detail = read_crate_src("src/handlers/documents/query/detail.rs");
     assert!(detail.contains("pdf_lineage::fetch_pdf_extraction_metadata"));
     let isolation = read_crate_src("src/services/tenant_isolation.rs");
-    assert!(isolation.contains("acquire_optional_pg_connection"));
+    assert!(isolation.contains("with_optional_pg_rls"));
+    assert!(!isolation.contains("acquire_optional_pg_connection"));
     assert!(isolation.contains("default_identity"));
 }
 
 #[test]
 fn spec027_identity_pg_rls_envelope_phase43() {
     let identity = read_crate_src("src/services/identity_storage.rs");
-    assert!(identity.contains("acquire_optional_pg_connection"));
+    assert!(identity.contains("with_optional_pg_rls"));
+    assert!(!identity.contains("acquire_optional_pg_connection"));
     assert!(identity.contains("ensure_anonymous_user_in_postgres"));
     let session = read_crate_src("src/services/session_storage.rs");
-    assert!(session.contains("acquire_optional_pg_connection"));
+    assert!(session.contains("with_optional_pg_rls"));
+    assert!(!session.contains("acquire_optional_pg_connection"));
     let bootstrap = read_crate_src("src/handlers/postgres_user_bootstrap.rs");
     assert!(bootstrap.contains("ensure_anonymous_user_in_postgres"));
 }

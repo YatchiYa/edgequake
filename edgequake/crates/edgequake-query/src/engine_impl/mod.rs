@@ -133,16 +133,17 @@ pub struct QueryEngineConfig {
     pub rerank_top_k: usize,
 
     /// Mix-mode weights (P-G8 / RC-13). Mix runs the Local, Global, and Naive
-    /// arms in parallel and blends them with these weights after min-max
-    /// normalizing each arm's scores. Weights need not sum to 1 (they are
-    /// normalized at use). When all three are equal, Mix ordering matches the
-    /// round-robin Hybrid ordering on identical fixtures (backward compatible).
-    /// A weight of 0 for an arm means it contributes 0 to the blend (E25).
+    /// arms in parallel, min-max normalizes each arm, then takes the **max**
+    /// weighted contribution per chunk (D-35: not a weighted sum). When
+    /// `EDGEQUAKE_MIX_FUSION=rrf` (default), RRF is used instead. A weight of 0
+    /// skips that arm (E25).
     pub mix_local_weight: f32,
     pub mix_global_weight: f32,
     pub mix_naive_weight: f32,
 
-    /// Enable BM25 sparse retrieval fused with vector ANN (SPEC-023 I10, default on).
+    /// Enable sparse retrieval (`ts_rank_cd` FTS / in-memory BM25 fallback)
+    /// fused with vector ANN (SPEC-023 I10, default on). Env name remains
+    /// `EDGEQUAKE_BM25_RETRIEVAL` for compatibility (X-05).
     pub enable_bm25_retrieval: bool,
 
     /// Expand global mode with co-community entities (SPEC-023 I6, default on).
@@ -827,8 +828,14 @@ mod tests {
             assert!(!prompt.contains("---Additional Instructions---"));
 
             // Whitespace-only should also behave like None
-            let prompt =
-                engine.build_prompt("What is Rust?", &context, Some("   \n\t  "), &[], None, None);
+            let prompt = engine.build_prompt(
+                "What is Rust?",
+                &context,
+                Some("   \n\t  "),
+                &[],
+                None,
+                None,
+            );
             assert!(!prompt.contains("---Additional Instructions---"));
         }
 
@@ -932,13 +939,8 @@ mod tests {
         fn test_response_type_in_system_prompt() {
             let engine = create_prompt_test_engine();
             let context = test_context();
-            let system = engine.build_system_prompt(
-                &context,
-                None,
-                &[],
-                None,
-                Some("Bullet Points"),
-            );
+            let system =
+                engine.build_system_prompt(&context, None, &[], None, Some("Bullet Points"));
             assert!(system.contains("Structure the answer as: Bullet Points."));
             assert!(!system.contains("---User Query---"));
             let combined = engine.build_prompt(
@@ -978,10 +980,7 @@ mod tests {
                 fn max_context_length(&self) -> usize {
                     8192
                 }
-                async fn complete(
-                    &self,
-                    _prompt: &str,
-                ) -> edgequake_llm::Result<LLMResponse> {
+                async fn complete(&self, _prompt: &str) -> edgequake_llm::Result<LLMResponse> {
                     self.complete_calls.fetch_add(1, Ordering::SeqCst);
                     Ok(LLMResponse::new("blob", "chat-count"))
                 }
@@ -998,8 +997,10 @@ mod tests {
                     _options: Option<&CompletionOptions>,
                 ) -> edgequake_llm::Result<LLMResponse> {
                     self.chat_calls.fetch_add(1, Ordering::SeqCst);
-                    *self.last_roles.lock().unwrap() =
-                        messages.iter().map(|m| m.role.as_str().to_string()).collect();
+                    *self.last_roles.lock().unwrap() = messages
+                        .iter()
+                        .map(|m| m.role.as_str().to_string())
+                        .collect();
                     Ok(LLMResponse::new(
                         "Rust is a systems language [1].",
                         "chat-count",
@@ -1016,11 +1017,6 @@ mod tests {
                 }
             }
 
-            let _guard = ANSWER_PROMPT_ENV_LOCK
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
-            std::env::remove_var("EDGEQUAKE_ANSWER_COMPLETE_BLOB");
-
             let provider = Arc::new(ChatCountingProvider {
                 chat_calls: AtomicUsize::new(0),
                 complete_calls: AtomicUsize::new(0),
@@ -1030,13 +1026,19 @@ mod tests {
             let graph_storage = Arc::new(MemoryGraphStorage::new("chat-split"));
             let embedding_provider: Arc<dyn crate::EmbeddingProvider> =
                 Arc::new(MockProvider::default());
-            let engine = QueryEngine::new(
-                QueryEngineConfig::default(),
-                vector_storage,
-                graph_storage,
-                embedding_provider,
-                provider.clone() as Arc<dyn crate::LLMProvider>,
-            );
+            let engine = {
+                let _guard = ANSWER_PROMPT_ENV_LOCK
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                std::env::remove_var("EDGEQUAKE_ANSWER_COMPLETE_BLOB");
+                QueryEngine::new(
+                    QueryEngineConfig::default(),
+                    vector_storage,
+                    graph_storage,
+                    embedding_provider,
+                    provider.clone() as Arc<dyn crate::LLMProvider>,
+                )
+            };
             let context = test_context();
             let (answer, _) = engine
                 .generate_answer(

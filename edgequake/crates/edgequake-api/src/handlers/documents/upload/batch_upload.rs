@@ -10,6 +10,9 @@ use crate::handlers::documents::upload::{
 };
 use crate::handlers::documents_types::*;
 use crate::middleware::TenantContext;
+use crate::multipart_upload::{
+    ensure_batch_file_cap, stream_field_to_tempfile, StreamedUploadFile,
+};
 #[cfg(feature = "postgres")]
 use crate::services::persist_uploaded_original;
 use crate::services::{resolve_upload_content, ContentHasher};
@@ -40,7 +43,8 @@ pub async fn upload_files_batch(
     let mut processed = 0usize;
     let mut duplicates = 0usize;
     let mut failed = 0usize;
-    let mut files: Vec<(String, Vec<u8>)> = Vec::new();
+    // SPEC-083 D-51: stream to temp + file-count cap (not Vec of all bytes).
+    let mut files: Vec<StreamedUploadFile> = Vec::new();
     let mut multipart_fields = MultipartUploadFields::default();
 
     while let Some(field) = multipart
@@ -51,16 +55,12 @@ pub async fn upload_files_batch(
         let field_name = field.name().unwrap_or("").to_string();
         match field_name.as_str() {
             "files" | "file" => {
-                let filename = field
-                    .file_name()
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| format!("file_{}.txt", files.len()));
-                let content = field
-                    .bytes()
-                    .await
-                    .map_err(|e| ApiError::BadRequest(format!("Failed to read file: {}", e)))?
-                    .to_vec();
-                files.push((filename, content));
+                ensure_batch_file_cap(files.len())?;
+                let fallback = format!("file_{}.txt", files.len());
+                let filename = crate::file_validation::sanitize_filename(
+                    field.file_name().unwrap_or(&fallback),
+                );
+                files.push(stream_field_to_tempfile(field, filename).await?);
             }
             "metadata" | "chunk_strategy" | "chunk_options" => {
                 let text = field.text().await.map_err(|e| {
@@ -75,7 +75,8 @@ pub async fn upload_files_batch(
     let (batch_chunk_strategy, batch_chunk_options, batch_metadata) =
         multipart_fields.effective_chunk_fields();
 
-    for (filename, content) in files {
+    for streamed in files {
+        let (filename, content) = streamed.into_bytes()?;
         match enqueue_single_file(
             &state,
             &tenant_ctx,

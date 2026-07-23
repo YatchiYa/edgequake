@@ -12,12 +12,23 @@ fi
 NEW_VERSION="$1"
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
+# Portable in-place sed (GNU sed vs BSD/macOS sed -i '' difference).
+# Prefer temp-file rewrite over `sed -i` so Linux CI and macOS both work.
+sed_inplace() {
+  local expr="$1"
+  local file="$2"
+  local tmp
+  tmp="$(mktemp "${TMPDIR:-/tmp}/edgequake-sed.XXXXXX")"
+  sed -E "$expr" "$file" > "$tmp"
+  mv "$tmp" "$file"
+}
+
 # Update root VERSION file
 echo "$NEW_VERSION" > "$ROOT_DIR/VERSION"
 
 # Update all Cargo.toml files
 find "$ROOT_DIR/edgequake" -name Cargo.toml | while read -r file; do
-  sed -i '' -E "s/^version ?= ?\"[0-9]+\.[0-9]+\.[0-9]+\"/version = \"$NEW_VERSION\"/" "$file"
+  sed_inplace "s/^version ?= ?\"[0-9]+\.[0-9]+\.[0-9]+\"/version = \"$NEW_VERSION\"/" "$file"
 done
 
 # Update frontend package.json
@@ -25,8 +36,8 @@ jq ".version = \"$NEW_VERSION\"" "$ROOT_DIR/edgequake_webui/package.json" > "$RO
 
 # Keep README version badge in parity with VERSION (release_gates checks this)
 if [[ -f "$ROOT_DIR/README.md" ]]; then
-  sed -i '' -E "s|badge/version-[0-9]+\.[0-9]+\.[0-9]+-|badge/version-${NEW_VERSION}-|" "$ROOT_DIR/README.md"
-  sed -i '' -E "s|EDGEQUAKE_VERSION=[0-9]+\.[0-9]+\.[0-9]+|EDGEQUAKE_VERSION=${NEW_VERSION}|g" "$ROOT_DIR/README.md"
+  sed_inplace "s|badge/version-[0-9]+\.[0-9]+\.[0-9]+-|badge/version-${NEW_VERSION}-|" "$ROOT_DIR/README.md"
+  sed_inplace "s|EDGEQUAKE_VERSION=[0-9]+\.[0-9]+\.[0-9]+|EDGEQUAKE_VERSION=${NEW_VERSION}|g" "$ROOT_DIR/README.md"
 fi
 
 # Optionally update CHANGELOG.md (manual step recommended)

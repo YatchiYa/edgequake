@@ -39,7 +39,9 @@ pub(crate) async fn validate_presented_token(
                     .user_id()
                     .map_err(|_| crate::error::ApiError::unauthorized())?
                     .to_string(),
-                role: claims.role(),
+                role: claims
+                    .role()
+                    .map_err(|_| crate::error::ApiError::unauthorized())?,
             },
             jwt_tenant_id: claims.tenant_id.clone(),
             jwt_workspace_id: claims.workspace_id.clone(),

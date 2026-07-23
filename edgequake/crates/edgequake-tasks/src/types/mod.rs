@@ -72,10 +72,25 @@ mod tests {
         assert_eq!(task.status, TaskStatus::Processing);
         assert!(task.started_at.is_some());
 
-        task.mark_success(serde_json::json!({"result": "success"}));
+        assert!(task.mark_success(serde_json::json!({"result": "success"})));
         assert_eq!(task.status, TaskStatus::Indexed);
         assert!(task.completed_at.is_some());
         assert!(task.result.is_some());
+    }
+
+    #[test]
+    fn e2e_cancelled_cannot_mark_success() {
+        // X-29 / matrix: Cancelled ↛ Success
+        let mut task = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::Insert,
+            serde_json::json!({}),
+        );
+        task.status = TaskStatus::Cancelled;
+        assert!(!task.mark_success(serde_json::json!({ "ok": true })));
+        assert_eq!(task.status, TaskStatus::Cancelled);
+        assert!(task.result.is_none());
     }
 
     #[test]
@@ -435,21 +450,20 @@ mod tests {
 
     #[test]
     fn test_is_timeout_detection() {
-        // Test various timeout error messages
-        let timeout_cases = vec![
-            "LLM request timed out after 300s",
-            "Operation timed out",
-            "Request timeout",
-            "TIMEOUT: exceeded 120s limit",
-            "Embedding timeout after 30s",
-        ];
+        // X-30: typed — only the timeout() factory trips the breaker.
+        let typed = TaskFailureInfo::timeout("extract", "LLM request timed out after 300s");
+        assert!(typed.is_timeout());
 
-        for msg in timeout_cases {
-            let failure = TaskFailureInfo::timeout("test", msg);
-            assert!(failure.is_timeout(), "Should detect '{}' as timeout", msg);
-        }
+        // Business text mentioning "timeout" must NOT classify as timeout.
+        let business = TaskFailureInfo::new(
+            "User asked about timeout policy",
+            "extract",
+            "business",
+            "n/a",
+            true,
+        );
+        assert!(!business.is_timeout());
 
-        // Test non-timeout error messages
         let non_timeout_cases = vec![
             "Connection refused",
             "Invalid API key",

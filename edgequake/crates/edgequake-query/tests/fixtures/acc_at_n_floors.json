@@ -1,0 +1,13 @@
+{
+  "source": "SPEC-047 core ladder / SPEC-083 X-35",
+  "disclaimer": "Do not quote Acc@5 as system accuracy. Acc falls with corpus size.",
+  "protocol": "026-listmem-2026-07-15",
+  "curve": [
+    { "n_docs": 5, "acc": 0.5494, "f1": 0.4910 },
+    { "n_docs": 10, "acc": 0.5290, "f1": 0.4220 },
+    { "n_docs": 20, "acc": 0.4670, "f1": 0.3800 },
+    { "n_docs": 40, "acc": 0.4581, "f1": 0.3564 }
+  ],
+  "regression_floor_acc_at_40": 0.40,
+  "measured_fixture_acc_at_40": 0.4581
+}

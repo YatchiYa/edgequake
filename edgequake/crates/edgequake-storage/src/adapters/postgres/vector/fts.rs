@@ -1,8 +1,12 @@
 //! PostgreSQL native FTS for chunk sparse retrieval (SPEC-023 I10).
 //!
-//! Uses GIN-indexed `content_tsv` + `ts_rank_cd` (BM25-like ranking) instead of
-//! re-scoring vector candidates in application memory. Chunk text SSOT is the
-//! shared default KV table (SPEC-024 2.5); workspace vector tables only hold embeddings.
+//! Uses GIN-indexed `content_tsv` + `ts_rank_cd` (cover-density ranking — **not**
+//! Okapi BM25; see SPEC-083 X-05) instead of re-scoring vector candidates in
+//! application memory. Chunk text SSOT is the shared default KV table
+//! (SPEC-024 2.5); workspace vector tables only hold embeddings.
+//!
+//! Text search language is configurable via `EDGEQUAKE_FTS_LANGUAGE`
+//! (default `english`).
 
 use sqlx::Row;
 
@@ -11,10 +15,45 @@ use crate::adapters::postgres::schema;
 use crate::error::{Result, StorageError};
 use crate::traits::{MetadataFilter, VectorSearchResult};
 
-/// SPEC-058: NULLIF empty tsvector so coalesce reaches KV for legacy rows.
-const FTS_CONTENT_WITH_KV: &str = "coalesce(NULLIF(v.content_tsv, ''::tsvector), to_tsvector('english', coalesce(v.metadata->>'content', k.value->>'content', '')))";
-const FTS_CONTENT_METADATA_ONLY: &str =
-    "coalesce(NULLIF(v.content_tsv, ''::tsvector), to_tsvector('english', coalesce(v.metadata->>'content', '')))";
+/// Env key for Postgres text-search configuration name (X-05).
+pub const FTS_LANGUAGE_ENV: &str = "EDGEQUAKE_FTS_LANGUAGE";
+
+/// Default Postgres text-search config when env is unset.
+pub const DEFAULT_FTS_LANGUAGE: &str = "english";
+
+/// Sanitize a Postgres `regconfig` name: lowercase ASCII letters only.
+///
+/// Rejects anything that could break out of a SQL string literal.
+pub fn sanitize_fts_language(raw: &str) -> String {
+    let lower = raw.trim().to_ascii_lowercase();
+    if lower.is_empty()
+        || !lower.chars().all(|c| c.is_ascii_lowercase() || c == '_')
+        || lower.len() > 32
+    {
+        return DEFAULT_FTS_LANGUAGE.to_string();
+    }
+    lower
+}
+
+/// Resolve FTS language from `EDGEQUAKE_FTS_LANGUAGE` (default `english`).
+pub fn fts_language_from_env() -> String {
+    match std::env::var(FTS_LANGUAGE_ENV) {
+        Ok(v) => sanitize_fts_language(&v),
+        Err(_) => DEFAULT_FTS_LANGUAGE.to_string(),
+    }
+}
+
+fn fts_content_expr(join_kv: bool, lang: &str) -> String {
+    if join_kv {
+        format!(
+            "coalesce(NULLIF(v.content_tsv, ''::tsvector), to_tsvector('{lang}', coalesce(v.metadata->>'content', k.value->>'content', '')))"
+        )
+    } else {
+        format!(
+            "coalesce(NULLIF(v.content_tsv, ''::tsvector), to_tsvector('{lang}', coalesce(v.metadata->>'content', '')))"
+        )
+    }
+}
 
 impl PgVectorStorage {
     pub(crate) async fn chunk_kv_table_exists_cached(&self) -> Result<bool> {
@@ -28,15 +67,7 @@ impl PgVectorStorage {
         Ok(exists)
     }
 
-    fn fts_content_expr(join_kv: bool) -> &'static str {
-        if join_kv {
-            FTS_CONTENT_WITH_KV
-        } else {
-            FTS_CONTENT_METADATA_ONLY
-        }
-    }
-
-    /// Full-text search with `ts_rank_cd` over chunk content (native Postgres BM25-like ranking).
+    /// Full-text search with `ts_rank_cd` over chunk content (cover-density rank).
     pub(crate) async fn postgres_text_search_filtered(
         &self,
         query_text: &str,
@@ -48,15 +79,16 @@ impl PgVectorStorage {
             return Ok(Vec::new());
         }
 
+        let lang = fts_language_from_env();
         let pool = self.pool.get().await?;
         let join_kv = self.chunk_kv_table_exists_cached().await?;
-        let content_expr = Self::fts_content_expr(join_kv);
+        let content_expr = fts_content_expr(join_kv, &lang);
         let mf = metadata_filter.cloned().unwrap_or_default();
         let has_id_filter = filter_ids.map(|ids| !ids.is_empty()).unwrap_or(false);
         let filter_sql = mf.build_sql_with_alias(has_id_filter, 2, Some("v"));
 
         let mut conditions = vec![format!(
-            "{content_expr} @@ websearch_to_tsquery('english', $1)"
+            "{content_expr} @@ websearch_to_tsquery('{lang}', $1)"
         )];
         conditions.extend(filter_sql.conditions);
 
@@ -76,7 +108,7 @@ impl PgVectorStorage {
             SELECT v.id, v.metadata,
                    ts_rank_cd(
                        {content_expr},
-                       websearch_to_tsquery('english', $1)
+                       websearch_to_tsquery('{lang}', $1)
                    )::float4 AS score
             FROM {vectors} v
             {kv_join}
@@ -85,6 +117,7 @@ impl PgVectorStorage {
             LIMIT ${limit_param}
             "#,
             content_expr = content_expr,
+            lang = lang,
             vectors = self.table_name,
             kv_join = kv_join,
             where_clause = where_clause,
@@ -148,5 +181,38 @@ impl PgVectorStorage {
                 metadata: row.get("metadata"),
             })
             .collect())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn e2e_fts_language_config() {
+        assert_eq!(sanitize_fts_language("french"), "french");
+        assert_eq!(sanitize_fts_language("SIMPLE"), "simple");
+        assert_eq!(
+            sanitize_fts_language("english'; drop table x"),
+            DEFAULT_FTS_LANGUAGE
+        );
+        assert_eq!(sanitize_fts_language(""), DEFAULT_FTS_LANGUAGE);
+        assert_eq!(sanitize_fts_language("fr-FR"), DEFAULT_FTS_LANGUAGE);
+
+        std::env::remove_var(FTS_LANGUAGE_ENV);
+        assert_eq!(fts_language_from_env(), DEFAULT_FTS_LANGUAGE);
+
+        std::env::set_var(FTS_LANGUAGE_ENV, "french");
+        assert_eq!(fts_language_from_env(), "french");
+        let expr = fts_content_expr(false, &fts_language_from_env());
+        assert!(
+            expr.contains("to_tsvector('french'"),
+            "FTS content expr must use configured language: {expr}"
+        );
+        assert!(
+            !expr.contains("BM25"),
+            "X-05: postgres FTS path must not claim BM25"
+        );
+        std::env::remove_var(FTS_LANGUAGE_ENV);
     }
 }

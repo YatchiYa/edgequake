@@ -11,11 +11,16 @@ mod age_parse;
 mod agtype_bind;
 mod cypher_exec;
 mod cypher_format;
+mod eq_id_sql;
 mod escape;
 mod graph_lifecycle;
 mod session;
 mod source_lineage_sql;
 mod vertex_filter;
+
+pub(in crate::adapters::postgres::graph) use eq_id_sql::{
+    coalesce_endpoint, eq_id_fallback_env_enabled, prop_only_endpoint,
+};
 
 pub(in crate::adapters::postgres::graph) use source_lineage_sql::{
     jsonb_matches_doc_source_prefix_legacy, normalize_doc_chunk_prefix, SOURCE_CHUNK_PROBE_LIMIT,

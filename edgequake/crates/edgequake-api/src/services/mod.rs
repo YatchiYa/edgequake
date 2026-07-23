@@ -71,6 +71,7 @@ pub mod pdf_auto_routing;
 pub mod pdf_lineage;
 pub mod pdf_workspace_dedup;
 pub mod pending_doc_task_reconcile;
+pub mod pipeline_failure_classify;
 pub mod pipeline_ws_bridge;
 #[cfg(feature = "postgres")]
 pub mod postgres_chunk_lineage;
@@ -236,6 +237,7 @@ pub use pdf_workspace_dedup::{
     workspace_has_visible_document_for_pdf,
 };
 pub use pending_doc_task_reconcile::{ensure_task_for_pending_document, EnsureTaskOutcome};
+pub use pipeline_failure_classify::{classify_from_llm_error, classify_from_pipeline_error};
 pub use query_context::{
     build_legacy_query_response, build_legacy_query_sources, fetch_context_by_id,
     resolve_query_llm_override, retrieve_context, search_context, FetchContextOptions,

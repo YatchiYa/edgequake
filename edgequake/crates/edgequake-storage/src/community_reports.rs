@@ -206,6 +206,7 @@ mod tests {
             ],
             node_to_community: map,
             modularity: 0.0,
+            hierarchy_levels: 1,
         };
         let records = build_community_report_records(&result, 10, Some("ws"), None);
         assert_eq!(records.len(), 2);

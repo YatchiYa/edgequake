@@ -17,7 +17,8 @@
 //! - **BR0850**: Tokens must include expiration claim
 //! - **BR0851**: Secret key must be at least 32 bytes
 
-use std::sync::Arc;
+use std::collections::HashSet;
+use std::sync::{Arc, RwLock};
 
 use chrono::{Duration, Utc};
 use jsonwebtoken::{
@@ -128,9 +129,9 @@ impl Claims {
         })
     }
 
-    /// Get role from claims.
-    pub fn role(&self) -> Role {
-        Role::parse(&self.role)
+    /// Get role from claims (fail-closed — SPEC-083 S-08).
+    pub fn role(&self) -> Result<Role, AuthError> {
+        Role::try_parse(&self.role).map_err(|reason| AuthError::InvalidToken { reason })
     }
 
     /// Check if token is expired.
@@ -151,6 +152,8 @@ pub struct JwtService {
     encoding_key: EncodingKey,
     decoding_key: DecodingKey,
     validation: Validation,
+    /// SPEC-083 S-07: in-process jti denylist (logout / explicit revoke).
+    revoked_jti: Arc<RwLock<HashSet<String>>>,
 }
 
 impl JwtService {
@@ -167,18 +170,49 @@ impl JwtService {
         // 30 seconds is the industry standard balance between security and usability.
         validation.leeway = 30;
 
+        // SPEC-083 S-07: validate iss/aud only when configured (fail-closed when set).
+        if let Some(ref issuer) = config.jwt_issuer {
+            validation.set_issuer(&[issuer.as_str()]);
+        }
+        if let Some(ref audience) = config.jwt_audience {
+            let aud: Vec<&str> = audience.iter().map(String::as_str).collect();
+            validation.set_audience(&aud);
+        }
+
         Self {
             config: Arc::new(config),
             encoding_key,
             decoding_key,
             validation,
+            revoked_jti: Arc::new(RwLock::new(HashSet::new())),
         }
+    }
+
+    /// Revoke an access-token jti (SPEC-083 S-07 logout denylist).
+    pub fn revoke_jti(&self, jti: impl AsRef<str>) {
+        if let Ok(mut set) = self.revoked_jti.write() {
+            set.insert(jti.as_ref().to_string());
+        }
+    }
+
+    /// True when jti was previously revoked.
+    pub fn is_jti_revoked(&self, jti: &str) -> bool {
+        self.revoked_jti
+            .read()
+            .map(|set| set.contains(jti))
+            .unwrap_or(false)
     }
 
     /// Generate a new access token for a user.
     pub fn generate_token(&self, user_id: Uuid, role: Role) -> Result<String, AuthError> {
         let expiry_seconds = self.config.jwt_expiry.as_secs() as i64;
-        let claims = Claims::new(user_id, role, expiry_seconds);
+        let mut claims = Claims::new(user_id, role, expiry_seconds);
+        if let Some(ref issuer) = self.config.jwt_issuer {
+            claims = claims.with_issuer(issuer.clone());
+        }
+        if let Some(ref audience) = self.config.jwt_audience {
+            claims = claims.with_audience(audience.clone());
+        }
         self.encode_claims(&claims)
     }
 
@@ -212,6 +246,12 @@ impl JwtService {
                     ErrorKind::ImmatureSignature => AuthError::InvalidToken {
                         reason: "Token not yet valid".to_string(),
                     },
+                    ErrorKind::InvalidIssuer => AuthError::InvalidToken {
+                        reason: "Invalid issuer".to_string(),
+                    },
+                    ErrorKind::InvalidAudience => AuthError::InvalidToken {
+                        reason: "Invalid audience".to_string(),
+                    },
                     _ => AuthError::InvalidToken {
                         reason: e.to_string(),
                     },
@@ -224,6 +264,16 @@ impl JwtService {
                 );
                 auth_err
             })?;
+
+        // SPEC-083 S-08: unknown roles must not become User.
+        let _ = token_data.claims.role()?;
+
+        // SPEC-083 S-07: reject logged-out / revoked jti.
+        if self.is_jti_revoked(&token_data.claims.jti) {
+            return Err(AuthError::InvalidToken {
+                reason: "Token revoked (jti denylist)".to_string(),
+            });
+        }
 
         Ok(token_data.claims)
     }
@@ -242,13 +292,19 @@ impl JwtService {
     /// Refresh an access token (generate new token from valid claims).
     pub fn refresh_token(&self, claims: &Claims) -> Result<String, AuthError> {
         let user_id = claims.user_id()?;
-        let role = claims.role();
+        let role = claims.role()?;
         let expiry_seconds = self.config.jwt_expiry.as_secs() as i64;
 
         let mut new_claims = Claims::new(user_id, role, expiry_seconds);
         new_claims.tenant_id = claims.tenant_id.clone();
         new_claims.workspace_id = claims.workspace_id.clone();
         new_claims.metadata = claims.metadata.clone();
+        if let Some(ref issuer) = self.config.jwt_issuer {
+            new_claims.iss = Some(issuer.clone());
+        }
+        if let Some(ref audience) = self.config.jwt_audience {
+            new_claims.aud = Some(audience.clone());
+        }
 
         self.encode_claims(&new_claims)
     }
@@ -291,7 +347,40 @@ mod tests {
         let claims = service.verify_token(&token).unwrap();
 
         assert_eq!(claims.user_id().unwrap(), user_id);
-        assert_eq!(claims.role(), role);
+        assert_eq!(claims.role().unwrap(), role);
+    }
+
+    #[test]
+    fn contract_unknown_role_rejected() {
+        let service = JwtService::new(test_config());
+        let user_id = Uuid::new_v4();
+        let mut claims = Claims::new(user_id, Role::User, 3600);
+        claims.role = "superadmin".to_string();
+        let token = service.generate_token_with_claims(claims).unwrap();
+        assert!(matches!(
+            service.verify_token(&token),
+            Err(AuthError::InvalidToken { .. })
+        ));
+    }
+
+    #[test]
+    fn contract_jwt_requires_iss_aud() {
+        let mut config = test_config();
+        config.jwt_issuer = Some("edgequake".to_string());
+        config.jwt_audience = Some(vec!["api".to_string()]);
+        let service = JwtService::new(config);
+        let token = service.generate_token(Uuid::new_v4(), Role::User).unwrap();
+        assert!(service.verify_token(&token).is_ok());
+
+        let mut wrong = Claims::new(Uuid::new_v4(), Role::User, 3600)
+            .with_issuer("other")
+            .with_audience(vec!["api".to_string()]);
+        let bad = service.generate_token_with_claims(wrong.clone()).unwrap();
+        assert!(service.verify_token(&bad).is_err());
+        wrong.iss = Some("edgequake".to_string());
+        wrong.aud = Some(vec!["wrong-aud".to_string()]);
+        let bad_aud = service.generate_token_with_claims(wrong).unwrap();
+        assert!(service.verify_token(&bad_aud).is_err());
     }
 
     #[test]
@@ -349,5 +438,18 @@ mod tests {
 
         assert_eq!(new_claims.user_id().unwrap(), user_id);
         assert_ne!(new_claims.jti, claims.jti); // New token ID
+    }
+
+    #[test]
+    fn e2e_logout_rejects_access_jti() {
+        // Matrix Cluster 02 / S-07: logout denylist rejects access token jti.
+        let service = JwtService::new(test_config());
+        let token = service.generate_token(Uuid::new_v4(), Role::User).unwrap();
+        let claims = service.verify_token(&token).unwrap();
+        service.revoke_jti(&claims.jti);
+        assert!(matches!(
+            service.verify_token(&token),
+            Err(AuthError::InvalidToken { .. })
+        ));
     }
 }

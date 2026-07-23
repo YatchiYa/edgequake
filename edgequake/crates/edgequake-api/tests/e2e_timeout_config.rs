@@ -279,18 +279,17 @@ fn test_max_concurrent_above_cap_is_clamped() {
 // Test 10 — Max retries zero is valid (fail-fast mode)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Proves `EDGEQUAKE_CHUNK_MAX_RETRIES=0` is accepted.
-/// This enables a "fail fast, no retries" mode for CI or debugging.
+/// C-18: `EDGEQUAKE_CHUNK_MAX_RETRIES=0` clamps to 1 attempt (never skip extract).
 #[test]
 #[serial]
-fn test_max_retries_zero_is_valid() {
+fn test_max_retries_zero_clamps_to_one_attempt() {
     let _guard = EnvGuard::set(&[(MAX_RETRIES_VAR, "0")]);
 
     let config = PipelineConfig::from_env();
 
     assert_eq!(
-        config.chunk_max_retries, 0,
-        "max_retries=0 is valid — fail-fast mode with no retries"
+        config.chunk_max_retries, 1,
+        "max_retries=0 must clamp to 1 attempt (C-18)"
     );
 }
 
