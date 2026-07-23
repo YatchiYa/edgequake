@@ -394,9 +394,10 @@ mod tests {
         assert_eq!(task.consecutive_timeout_failures, 1);
         assert!(!task.circuit_breaker_tripped);
 
-        // from_processing_error must parse the marker
-        let parsed =
-            TaskFailureInfo::from_processing_error("Timeout: Vision stalled [vision_progress=1]");
+        // from_processing_error must parse the marker (X-30 typed timeout prefix)
+        let parsed = TaskFailureInfo::from_processing_error(
+            "Operation timed out: Vision stalled [vision_progress=1]",
+        );
         assert!(parsed.made_progress);
         assert!(parsed.is_timeout());
     }

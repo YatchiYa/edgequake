@@ -768,7 +768,7 @@ export interface paths {
          * Upload a PDF document.
          * @description @implements SPEC-007: PDF Upload Support
          *     @implements UC0701: Upload PDF for processing
-         *     @implements BR0702: 100MB file size limit
+         *     @implements BR0702: 50 MiB file size limit (SPEC-083 D-44 / MAX_UPLOAD_BYTES)
          *     @implements BR0703: Deduplication via SHA-256
          *
          *     # Flow
@@ -794,7 +794,7 @@ export interface paths {
          *
          *     # Errors
          *
-         *     - `ApiError::PayloadTooLarge` - File exceeds 100MB
+         *     - `ApiError::PayloadTooLarge` - File exceeds 50 MiB
          *     - `ApiError::BadRequest` - Invalid PDF format
          *     - `ApiError::Conflict` - Duplicate PDF detected
          *     - `ApiError::Internal` - Storage failure
@@ -3247,39 +3247,6 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * WebSocket connection for pipeline progress streaming.
-         * @description Upgrades an HTTP connection to a WebSocket for real-time progress events.
-         *
-         *     # WebSocket Messages
-         *
-         *     The server sends JSON-encoded `ProgressEvent` messages:
-         *     - `JobStarted`: When a pipeline job begins
-         *     - `DocumentProgress`: Progress update for each document
-         *     - `DocumentFailed`: When document processing fails
-         *     - `BatchCompleted`: When a batch finishes
-         *     - `JobFinished`: When the entire job completes
-         *     - `Message`: Pipeline log messages
-         *     - `StatusSnapshot`: Full status at connection start
-         *     - `Heartbeat`: Periodic keepalive
-         *
-         *     # Example Client Usage
-         *
-         *     ```javascript
-         *     const ws = new WebSocket('ws://localhost:8020/ws/pipeline/progress');
-         *     ws.onmessage = (event) => {
-         *         const data = JSON.parse(event.data);
-         *         switch (data.type) {
-         *             case 'DocumentProgress':
-         *                 console.log(`Processed ${data.data.processed}/${data.data.total}`);
-         *                 break;
-         *             case 'JobFinished':
-         *                 console.log('Pipeline complete!');
-         *                 break;
-         *         }
-         *     };
-         *     ```
-         */
         get: operations["ws_pipeline_progress"];
         put?: never;
         post?: never;
@@ -3296,40 +3263,6 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * WebSocket connection for filtered PDF upload progress.
-         * @description @implements SPEC-001-upload-pdf: Filtered progress streaming
-         *     @implements OODA-15: Track-specific WebSocket endpoint
-         *
-         *     Upgrades an HTTP connection to a WebSocket that streams only events
-         *     for the specified `track_id`. This allows clients to subscribe to
-         *     progress updates for their specific upload without receiving
-         *     unrelated events.
-         *
-         *     # Path Parameters
-         *
-         *     * `track_id` - Upload tracking ID (returned from upload response)
-         *
-         *     # WebSocket Messages (Server → Client)
-         *
-         *     - `PdfPageProgress`: Page-by-page extraction progress
-         *     - `StatusSnapshot`: Initial progress snapshot on connection
-         *     - `Heartbeat`: Periodic keepalive (every 30 seconds)
-         *     - `Connected`: Connection established confirmation
-         *
-         *     # Example Client Usage
-         *
-         *     ```javascript
-         *     const trackId = uploadResponse.track_id;
-         *     const ws = new WebSocket(`ws://localhost:8020/ws/progress/${trackId}`);
-         *     ws.onmessage = (event) => {
-         *         const data = JSON.parse(event.data);
-         *         if (data.type === 'PdfPageProgress') {
-         *             console.log(`Page ${data.data.page_num}/${data.data.total_pages}`);
-         *         }
-         *     };
-         *     ```
-         */
         get: operations["ws_progress_by_track_id"];
         put?: never;
         post?: never;
@@ -4139,6 +4072,7 @@ export interface components {
         /**
          * @description Component health status.
          * @example {
+         *       "eq_id_schema": {},
          *       "graph_storage": {},
          *       "kv_storage": {},
          *       "llm_provider": {},
@@ -4146,6 +4080,13 @@ export interface components {
          *     }
          */
         ComponentHealth: {
+            /**
+             * @description SPEC-083 / P0: AGE `eq_*` denorm columns ready (or fallback env enabled).
+             *
+             *     When false, `/ready` refuses traffic unless `EDGEQUAKE_EQ_ID_FALLBACK=1`.
+             *     Liveness `/health` stays HTTP 200 with `status: degraded`.
+             */
+            eq_id_schema?: boolean | null;
             /** @description Graph storage status. */
             graph_storage: boolean;
             /** @description KV storage status. */
@@ -6317,6 +6258,21 @@ export interface components {
             model: string;
             /** @description Output tokens. */
             output_tokens: number;
+        };
+        /**
+         * @description API projection of engine [`edgequake_query::ExplainTrace`].
+         * @example {
+         *       "arms_run": {},
+         *       "mode": {},
+         *       "query_intent": {},
+         *       "sparse_outcome": {}
+         *     }
+         */
+        ExplainTraceDto: {
+            arms_run?: string | null;
+            mode: string;
+            query_intent?: string | null;
+            sparse_outcome?: string | null;
         };
         /**
          * @description Query parameters for lineage export.
@@ -9215,6 +9171,7 @@ export interface components {
          *
          *     @implements SPEC-001-upload-pdf: Phase-level progress tracking
          * @example {
+         *       "avg_item_time_ms": {},
          *       "completed_at": {},
          *       "current": {},
          *       "error": {},
@@ -9228,6 +9185,13 @@ export interface components {
          *     }
          */
         PhaseProgress: {
+            /**
+             * Format: double
+             * @description Average time per item in milliseconds.
+             *     Used for ETA calculation.
+             *     SPEC-083 D-42: persist across serialize/restart so ETA does not reset to 0.
+             */
+            avg_item_time_ms?: number;
             /**
              * Format: date-time
              * @description When this phase completed (success or failure).
@@ -9597,7 +9561,7 @@ export interface components {
             default_mode: string;
             /** @description Hybrid mode chunk merge: `"round_robin"` (LightRAG) or `"rrf"`. */
             hybrid_fusion: string;
-            /** @description Mix mode chunk merge: `"rrf"` (default) or `"weighted"`. */
+            /** @description Mix mode chunk merge: `"rrf"` (default), `"max_after_minmax"` (legacy env `weighted`), or `"round_robin"`. */
             mix_fusion: string;
             reranker_configured: boolean;
         };
@@ -9640,7 +9604,7 @@ export interface components {
             extra_headers?: {
                 [key: string]: string;
             } | null;
-            /** @description Pre-supplied high-level keywords (LightRAG `hl_keywords`). 083: skips keyword LLM when set with ll. */
+            /** @description Pre-supplied high-level keywords (LightRAG `hl_keywords`). 083: skips keyword LLM when either hl or ll is non-empty. */
             hl_keywords?: string[] | null;
             /** @description Include detailed reference metadata (document_id, file_path, reference_id) in sources. */
             include_references?: boolean;
@@ -9714,6 +9678,7 @@ export interface components {
             answer: string;
             /** @description Conversation ID for multi-turn context. */
             conversation_id?: string | null;
+            explain?: null | components["schemas"]["ExplainTraceDto"];
             /** @description Query mode used. */
             mode: string;
             /** @description Whether reranking was applied. */
@@ -9875,12 +9840,31 @@ export interface components {
         /**
          * @description Statistics emitted in the `done` event.
          *
+         *     SPEC-083 D-40: stream stats mirror sync [`QueryStats`] arm/timing diagnostics
+         *     plus stream-only UX fields (`ux_ttft_ms`, `query_mode`). Build via
+         *     [`QueryStreamStats::from_query_stats`].
+         *
          *     @implements SPEC-006 FR-003: Retrieval statistics in streaming events
          * @example {
          *       "answer_cache_hit": {},
+         *       "arm_global_chunks": {},
+         *       "arm_global_ms": {},
+         *       "arm_local_chunks": {},
+         *       "arm_local_ms": {},
+         *       "arm_naive_chunks": {},
+         *       "arm_naive_ms": {},
+         *       "arms_gated": {},
+         *       "arms_run": {},
+         *       "context_empty": {},
+         *       "context_truncated": {},
          *       "embedding_time_ms": {},
          *       "generation_time_ms": {},
+         *       "keyword_time_ms": {},
+         *       "llm_model": {},
+         *       "llm_provider": {},
+         *       "query_intent": {},
          *       "query_mode": {},
+         *       "rerank_time_ms": {},
          *       "retrieval_time_ms": {},
          *       "sources_retrieved": {},
          *       "tokens_per_second": {},
@@ -9893,6 +9877,21 @@ export interface components {
         QueryStreamStats: {
             /** @description True when answer served from product answer cache. */
             answer_cache_hit?: boolean;
+            arm_global_chunks?: number | null;
+            /** Format: int64 */
+            arm_global_ms?: number | null;
+            arm_local_chunks?: number | null;
+            /** Format: int64 */
+            arm_local_ms?: number | null;
+            arm_naive_chunks?: number | null;
+            /** Format: int64 */
+            arm_naive_ms?: number | null;
+            arms_gated?: boolean | null;
+            arms_run?: string | null;
+            /** @description True when retrieval returned no chunks/entities/relationships. */
+            context_empty?: boolean;
+            /** @description True when post-retrieval truncation removed context items. */
+            context_truncated?: boolean;
             /**
              * Format: int64
              * @description Embedding time in ms.
@@ -9903,8 +9902,23 @@ export interface components {
              * @description Generation time in ms.
              */
             generation_time_ms: number;
+            /**
+             * Format: int64
+             * @description Keyword extraction time in ms.
+             */
+            keyword_time_ms?: number;
+            /** @description LLM model name used for generation. */
+            llm_model?: string | null;
+            /** @description LLM provider used for generation. */
+            llm_provider?: string | null;
+            query_intent?: string | null;
             /** @description Query mode used (after adaptive selection). */
             query_mode: string;
+            /**
+             * Format: int64
+             * @description Rerank time in ms (if reranking was applied).
+             */
+            rerank_time_ms?: number | null;
             /**
              * Format: int64
              * @description Retrieval time in ms.
@@ -9919,7 +9933,7 @@ export interface components {
             tokens_per_second?: number | null;
             /**
              * Format: int32
-             * @description Tokens used for generation.
+             * @description Tokens used for generation (SSE non-optional historical field).
              */
             tokens_used: number;
             /**
@@ -10902,6 +10916,8 @@ export interface components {
          *     WHY: OODA-14 - Provides visibility into database migration state.
          *     Operators can verify schema is up-to-date before deployment.
          * @example {
+         *       "eq_id_fallback_enabled": {},
+         *       "eq_id_graphs_degraded": [],
          *       "halfvec_conversion_applied": {},
          *       "last_applied_at": {},
          *       "latest_version": {},
@@ -10910,6 +10926,10 @@ export interface components {
          *     }
          */
         SchemaHealth: {
+            /** @description SPEC-083: operator opted into property-path SQL (`EDGEQUAKE_EQ_ID_FALLBACK`). */
+            eq_id_fallback_enabled?: boolean | null;
+            /** @description SPEC-083: AGE graphs with missing `eq_*` columns after M092 reconcile. */
+            eq_id_graphs_degraded?: string[] | null;
             /** @description SPEC-045: M080 halfvec conversion applied at last bootstrap. */
             halfvec_conversion_applied?: boolean | null;
             /** @description When the last migration was applied (ISO 8601 timestamp). */
@@ -18160,6 +18180,13 @@ export interface operations {
             };
             /** @description WebSocket upgrade failed */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Track not found for this workspace */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
