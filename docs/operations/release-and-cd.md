@@ -148,6 +148,8 @@ See [PostgreSQL migration guide](../../edgequake/docs/migrations/postgres-triple
 
 - **OpenAPI refresh is mandatory** after `version-bump` — `openapi.snapshot.json` `info.version` must equal `VERSION` or release-gates fail.
 - **X-30 typed timeouts** — vision stall messages must carry `Operation timed out` + `failure_class=`; `from_processing_error` must use the timeout factory or the progress-aware breaker never trips.
+- **Frontend CD Dockerfile** — `release-docker.yml` builds [`edgequake_webui/Dockerfile`](../../edgequake_webui/Dockerfile) (not `edgequake/docker/Dockerfile.frontend`); must `COPY openapi/` and prefer relative imports for `schema.d.ts` (`@/*` shadows `@/openapi/*`).
+- **medical-full raw JSON** — predictions/eval exceed GitHub 100MB; keep scorecards only; gitignore patterns under `artifacts/medical-full*` / `history/medical-full-*`.
 - **Do not use `make version-tag`** — it auto-pushes; prefer explicit `git tag` + `git push origin vX.Y.Z` after local gates.
 
 ## Lessons from 0.20.2 cut
