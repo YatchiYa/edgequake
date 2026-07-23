@@ -21,6 +21,7 @@ All notable changes to this project will be documented in this file.
 
 - Linked SPEC-083 pack from [`docs/README.md`](docs/README.md) and [`docs/index.md`](docs/index.md).
 - Prod eq_* incident runbook: [`docs/083-improvements/INCIDENT-PROD-DIAGNOSIS.md`](docs/083-improvements/INCIDENT-PROD-DIAGNOSIS.md).
+- **SPEC-001 Acc publish refresh (2026-07-23)** — medical-mid n=200 Acc **statistical tie** (EQ 0.770 / LR 0.779; Δ CI includes 0); fair cold latency **1.02×** (`C1COLD_v1`). Scorecard: [`docs/comparisons/eq-vs-lightrag-acc-bench.md`](docs/comparisons/eq-vs-lightrag-acc-bench.md) · [`publish/latest`](specs/001-benchmark/e2e/artifacts/publish/latest/).
 
 ---
 

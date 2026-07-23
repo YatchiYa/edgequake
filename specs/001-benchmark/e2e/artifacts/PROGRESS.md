@@ -20,6 +20,7 @@ Smoke → core Acc history (newest last). Each row is an archived `scorecard.jso
 | medical-mid-20260723T024205Z | medical-mid | True | 200 | 0.7639 | 0.7860 | -0.0222 | generation_eval | 8 | 16 | 0.0000 | 0.0000 |
 | medical-mid-20260723T041648Z | medical-mid | True | 200 | 0.7918 | 0.7761 | +0.0157 | generation_eval | 8 | 16 | 0.0000 | 0.0000 |
 | medical-mid-20260723T043401Z | medical-mid | True | 200 | 0.7905 | 0.7752 | +0.0153 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
+| medical-mid-20260723T134124Z | medical-mid | True | 200 | 0.7700 | 0.7789 | -0.0089 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
 | smoke-20260719T011512Z | smoke | False | 40 | 0.2289 | 0.2311 | -0.0023 | generation_eval | 8 | 8 | 1.0000 | 1.0000 |
 | smoke-20260719T011516Z | smoke | False | 8 | 1.0000 | 1.0000 | +0.0000 | rouge_proxy | 4 | 4 | 0.0000 | 0.0000 |
 | smoke-20260719T011554Z | smoke | False | 40 | 0.2289 | 0.2311 | -0.0023 | generation_eval | 8 | 8 | 1.0000 | 1.0000 |
@@ -135,6 +136,8 @@ Smoke → core Acc history (newest last). Each row is an archived `scorecard.jso
 | smoke-20260723T020852Z | smoke | True | 40 | 0.7280 | 0.7752 | -0.0472 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
 | smoke-20260723T022038Z | smoke | True | 40 | 0.7888 | 0.7644 | +0.0244 | generation_eval | 8 | 16 | 0.0000 | 0.0000 |
 | smoke-20260723T023833Z | smoke | True | 40 | 0.8265 | 0.7820 | +0.0445 | generation_eval | 8 | 16 | 0.0000 | 0.0000 |
+| smoke-20260723T132527Z | smoke | True | 40 | 0.7590 | 0.7973 | -0.0383 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
+| smoke-20260723T134452Z | smoke | True | 40 | 0.7935 | 0.7731 | +0.0203 | generation_eval | 4 | 24 | 0.0000 | 0.0000 |
 | smoke-dry-run-20260719T011554Z | smoke-dry-run | False | 4 | 1.0000 | 1.0000 | +0.0000 | rouge_proxy | 2 | 8 | 0.0000 | 0.0000 |
 | smoke-dry-run-20260719T011604Z | smoke-dry-run | False | 2 | 1.0000 | 1.0000 | +0.0000 | rouge_proxy | 8 | 8 | 0.0000 | 0.0000 |
 | smoke-dry-run-20260719T012012Z | smoke-dry-run | False | 2 | 1.0000 | 1.0000 | +0.0000 | rouge_proxy | 8 | 8 | 0.0000 | 0.0000 |

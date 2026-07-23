@@ -22,50 +22,50 @@
 
 | SUT | Acc | F1 | cos |
 |-----|-----|----|-----|
-| EdgeQuake mix | 0.7064 | 0.6221 | 0.9595 |
-| LightRAG mix | 0.7740 | 0.7098 | 0.9663 |
-| Δ (EQ − LR) | -0.0675 | -0.0877 | -0.0069 |
+| EdgeQuake mix | 0.7700 | 0.7043 | 0.9672 |
+| LightRAG mix | 0.7789 | 0.7165 | 0.9663 |
+| Δ (EQ − LR) | -0.0089 | -0.0122 | 0.0008 |
 
-- **Δ Acc 95% CI (bootstrap):** [-0.1069, -0.0329] (n=199)
+- **Δ Acc 95% CI (bootstrap):** [-0.0449, +0.0258] (n=200)
 
 ## Retrieval (L2)
 
 | SUT | evidence_recall | context_relevancy |
 |-----|-----------------|-------------------|
-| EdgeQuake | 0.8868 | 0.3962 |
-| LightRAG | 0.9506 | 0.4912 |
+| EdgeQuake | 0.9261 | 0.4075 |
+| LightRAG | 0.9502 | 0.5112 |
 
 ## By question_type (EQ Acc)
 
-- **Fact Retrieval:** 0.6727
-- **Complex Reasoning:** 0.7081
-- **Contextual Summarize:** 0.7795
-- **Creative Generation:** 0.6654
+- **Fact Retrieval:** 0.6919
+- **Complex Reasoning:** 0.7691
+- **Contextual Summarize:** 0.8453
+- **Creative Generation:** 0.7738
 
 ## By question_type (LR Acc)
 
-- **Fact Retrieval:** 0.7799
-- **Complex Reasoning:** 0.7544
-- **Contextual Summarize:** 0.8243
-- **Creative Generation:** 0.7372
+- **Fact Retrieval:** 0.7616
+- **Complex Reasoning:** 0.7703
+- **Contextual Summarize:** 0.8121
+- **Creative Generation:** 0.7717
 
 ## Ops
 
-- EQ empty-answer rate: 0.035
+- EQ empty-answer rate: 0.005
 - LR empty-answer rate: 0.000
 - EQ empty-context rate: 0.000
 - LR empty-context rate: 0.000
-- EQ query p50/p95 ms: 5962 / 7774
-- LR query p50/p95 ms: 5288 / 8701
-- ingest wall s: 0.0
-- EQ/LR p50 ratio: 1.127 (SLO ≤1.5×: PASS)
-- EQ stage p50 ms: keyword=1648, embed=1948, retrieve=1132, rerank=74, generate=2248
+- EQ query p50/p95 ms: 4089 / 10127
+- LR query p50/p95 ms: 1016 / 1845
+- ingest wall s: 598.4
+- EQ/LR p50 ratio: 4.025 (SLO ≤1.5×: FAIL/WAIVE)
+- EQ stage p50 ms: keyword=1011, embed=1064, retrieve=587, rerank=9, generate=2025
 
 ## Pins
 
 ```json
 {
-  "edgequake_git_sha": "a67be7e3",
+  "edgequake_git_sha": "fa62d6e7",
   "dataset_id": "GraphRAG-Bench/GraphRAG-Bench",
   "dataset_revision": "dc3a111e77dbaf8bbaf51ef331f3cfc9b1b5c546",
   "fixture_id": "medical_publish_question_ids_v1",
@@ -106,12 +106,18 @@
   "lr_enable_llm_cache": true,
   "eq_max_results": 30,
   "eq_rerank_top_k": 30,
+  "eq_enable_rerank": true,
+  "graph_walk": "ppr",
+  "kg_chunk_pick": "vector",
   "l2_retrieval_required": true,
   "mix_arm_gate": false,
   "eq_mix_arm_gate_env": "false",
   "mix_fusion": "rrf",
+  "rr_order": "local_first",
   "related_chunk_number": 5,
   "kg_chunk_occurrence_sort": false,
+  "bm25_retrieval": true,
+  "kg_chunk_pick_timing": "per_arm",
   "kg_chunk_pick_lr_budget": false,
   "mix_relevancy_prune": false,
   "mix_relevancy_keep": 12,
@@ -155,6 +161,7 @@
   "l2_bm25_union": false,
   "l2_bm25_mix_top_k": 30,
   "l2_bm25_mode": "union",
+  "mix_intent_weights": false,
   "intent_factual_bias": false,
   "answer_prompt": "default",
   "answer_specific_types": "",

@@ -84,15 +84,22 @@ EdgeQuake adds production features not in the original LightRAG:
 | **CPU Utilization**        | Near-optimal | 30-50% overhead | No GIL, native code         |
 | **Binary Size**            | ~30MB        | ~500MB+ deps    | Single static binary        |
 
-### Real-World Performance
+### Measured Acc (SPEC-001)
 
-Both implementations are **I/O bound** for typical RAG workloads:
+Fair dual-SUT on GraphRAG-Bench medical-mid (**n=200**), Mix↔Mix, Mistral Small + `mistral-embed` — not UltraDomain win-rates:
 
-- LLM API latency dominates (100-2000ms per call)
-- Vector search latency (10-50ms)
-- Graph traversal (5-20ms)
+| Metric | EdgeQuake | LightRAG |
+|--------|-----------|----------|
+| Acc | **0.770** | **0.779** |
+| Δ Acc 95% CI | **[-0.045, +0.026]** → statistical **tie** | |
+| Evidence recall | 0.926 | 0.950 |
+| Cold query p50 | 4447 ms | 4359 ms (**1.02×**) |
 
-**Conclusion**: For most use cases, performance difference is negligible. EdgeQuake advantages appear at scale (>1000 concurrent users).
+Do **not** claim “EdgeQuake beats LightRAG.” Full scorecard, by-type Acc, warm-cache confound, and reproduce steps: **[EQ vs LightRAG Acc Bench](./eq-vs-lightrag-acc-bench.md)**.
+
+### Real-World ops
+
+Both implementations are **I/O bound** for typical RAG workloads (LLM API latency dominates). EdgeQuake advantages appear at scale (multi-tenant Postgres stack, concurrency) — a different job from Acc.
 
 ---
 

@@ -1,7 +1,7 @@
 {
   "spec": "001-benchmark",
-  "updated_at_utc": "2026-07-23T04:45:00Z",
-  "honesty": "Split peers \u2014 never merge Acc / L2 / latency / gap-close. Ship product Equal = 083 PRODUCT_QUERY_API_v1. Acc CI = labeled keep only (gap_close_occ E2 / e2_chat_split_fair). Acc Equal mid path STOP (085). Mid Parity unfinished (binding). Acc Beat fishing STOP. Acc headline = P0 medical-mid (publish/latest) on B5 = medical-mid-20260722T104918Z. 080\u2013082 packing REJECT. Acc latest frozen. No further Acc mid for ctx. Labeled peers must not overwrite Acc warm.",
+  "updated_at_utc": "2026-07-23T13:45:00Z",
+  "honesty": "Split peers \u2014 never merge Acc / L2 / latency / gap-close. Ship product Equal = 083 PRODUCT_QUERY_API_v1. Acc CI = labeled keep only (gap_close_occ E2 / e2_chat_split_fair). Acc Equal mid path STOP (085). Mid Parity unfinished (binding). Acc Beat fishing STOP. Acc headline = P0 medical-mid (publish/latest) = medical-mid-20260723T134124Z (Acc statistical tie EQ 0.770 / LR 0.779). Cold latency SSOT = C1COLD_v1 / smoke-20260723T134452Z (1.02\u00d7). 080\u2013082 packing REJECT. Labeled peers must not overwrite Acc warm.",
   "claim_surface": {
     "product_equal": "product_query_api",
     "acc_ci_labeled_keep": "gap_close_occ",
@@ -12,21 +12,25 @@
   "peers": {
     "acc_headline": {
       "label": "Acc publish headline (P0 medical-mid)",
-      "workspace_id": "8e990410-43b5-44f4-9f56-87bd154570ce",
+      "workspace_id": "a992e80a-6b1c-4f92-9645-4226b8b82fea",
       "pack": "P0_rrf_bm25",
       "profile_id": "P0_mistral_small_mix_chunk1200_v1_lrlike_arms_v2",
-      "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260722T104918Z",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260723T134124Z",
       "publish": "specs/001-benchmark/e2e/artifacts/publish/latest",
       "metrics": {
-        "eq_acc": 0.706,
-        "lr_acc": 0.774,
-        "eq_ctx_rel": 0.396,
-        "eq_evidence_recall": 0.887,
-        "fact_er": 0.79,
+        "eq_acc": 0.77,
+        "lr_acc": 0.779,
+        "eq_ctx_rel": 0.408,
+        "eq_evidence_recall": 0.926,
+        "lr_ctx_rel": 0.511,
+        "lr_evidence_recall": 0.95,
+        "fact_er": 0.893,
         "acc_delta_ci": [
-          -0.107,
-          -0.033
-        ]
+          -0.045,
+          0.026
+        ],
+        "n_questions": 200,
+        "verdict": "STATISTICAL_TIE"
       },
       "use_for": [
         "acc_publish_ssot",
@@ -477,19 +481,20 @@
     },
     "latency_c1cold": {
       "label": "Latency C1cold (fair cold \u2014 LR LLM cache OFF)",
-      "workspace_id": "8e990410-43b5-44f4-9f56-87bd154570ce",
+      "workspace_id": "a992e80a-6b1c-4f92-9645-4226b8b82fea",
       "pack": "c1cold",
       "profile_id": "C1COLD_a1_rr_cer_bm25_lr_nocache_v1_lrlike_arms_v2",
-      "archive": "specs/001-benchmark/e2e/artifacts/history/smoke-20260721T022103Z",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/smoke-20260723T134452Z",
+      "publish_peer": "specs/001-benchmark/e2e/artifacts/publish/peers/C1COLD_v1",
       "metrics": {
-        "eq_acc": 0.731,
-        "lr_acc": 0.76,
-        "eq_query_p50_ms": 5891,
-        "lr_query_p50_ms": 5817,
-        "eq_lr_p50_ratio": 1.013,
+        "eq_acc": 0.793,
+        "lr_acc": 0.773,
+        "eq_query_p50_ms": 4447,
+        "lr_query_p50_ms": 4359,
+        "eq_lr_p50_ratio": 1.02,
         "lr_enable_llm_cache": false,
-        "eq_keyword_p50_ms": 1678,
-        "eq_generate_p50_ms": 2311,
+        "eq_keyword_p50_ms": 1069,
+        "eq_generate_p50_ms": 2119,
         "latency_slo_1_5x": true
       },
       "use_for": [

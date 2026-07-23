@@ -1,41 +1,41 @@
 {
   "judge": "retrieval_eval",
-  "overall_context_relevancy": 0.5,
-  "overall_evidence_recall": 0.9454166666666666,
+  "overall_context_relevancy": 0.34375,
+  "overall_evidence_recall": 0.8821678321678321,
   "by_type": {
     "Fact Retrieval": {
-      "context_relevancy": 0.525,
-      "evidence_recall": 0.95
+      "context_relevancy": 0.45,
+      "evidence_recall": 0.85
     },
     "Complex Reasoning": {
-      "context_relevancy": 0.525,
-      "evidence_recall": 1.0
+      "context_relevancy": 0.35,
+      "evidence_recall": 0.95
     },
     "Contextual Summarize": {
-      "context_relevancy": 0.475,
-      "evidence_recall": 0.8399999999999999
+      "context_relevancy": 0.275,
+      "evidence_recall": 0.7666666666666667
     },
     "Creative Generation": {
-      "context_relevancy": 0.475,
-      "evidence_recall": 0.9916666666666666
+      "context_relevancy": 0.3,
+      "evidence_recall": 0.9620046620046621
     }
   },
   "raw": {
     "Fact Retrieval": {
-      "context_relevancy": 0.525,
-      "evidence_recall": 0.95
+      "context_relevancy": 0.45,
+      "evidence_recall": 0.85
     },
     "Complex Reasoning": {
-      "context_relevancy": 0.525,
-      "evidence_recall": 1.0
+      "context_relevancy": 0.35,
+      "evidence_recall": 0.95
     },
     "Contextual Summarize": {
-      "context_relevancy": 0.475,
-      "evidence_recall": 0.8399999999999999
+      "context_relevancy": 0.275,
+      "evidence_recall": 0.7666666666666667
     },
     "Creative Generation": {
-      "context_relevancy": 0.475,
-      "evidence_recall": 0.9916666666666666
+      "context_relevancy": 0.3,
+      "evidence_recall": 0.9620046620046621
     }
   }
 }

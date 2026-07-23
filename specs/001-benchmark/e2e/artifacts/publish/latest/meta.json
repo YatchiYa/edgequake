@@ -1,10 +1,12 @@
 {
-  "created_at_utc": "2026-07-22T10:49:18Z",
+  "created_at_utc": "2026-07-23T13:41:24Z",
   "profile_id": "P0_mistral_small_mix_chunk1200_v1_lrlike_arms_v2",
   "valid": true,
-  "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260722T104918Z",
+  "verdict": "STATISTICAL TIE on answer quality",
+  "git_sha": "fa62d6e7",
+  "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260723T134124Z",
+  "task_name": "GraphRAG-Bench/EQ-vs-LR",
+  "can_claim_beats_lightrag": false,
   "n_questions": 200,
-  "fixture_id": "medical_publish_question_ids_v1",
-  "restored_from": "medical-mid-20260722T104918Z",
-  "note": "Restored after LR_IDENTITY smoke; medical-mid remains publish Acc SSOT"
+  "fixture_id": "medical_publish_question_ids_v1"
 }
