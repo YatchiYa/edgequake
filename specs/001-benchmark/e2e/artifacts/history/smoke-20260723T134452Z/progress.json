@@ -1,7 +1,7 @@
 {
   "stage": "smoke",
   "started_at_utc": "2026-07-23T13:42:22Z",
-  "updated_at_utc": "2026-07-23T13:44:53Z",
+  "updated_at_utc": "2026-07-23T13:44:52Z",
   "phases": [
     {
       "phase": "prepare",
@@ -285,20 +285,9 @@
       "at_utc": "2026-07-23T13:44:52Z",
       "run_elapsed_s": 150.14250837499276,
       "detail": "elapsed=30s"
-    },
-    {
-      "phase": "report",
-      "status": "done",
-      "at_utc": "2026-07-23T13:44:53Z",
-      "run_elapsed_s": 150.25970820803195,
-      "detail": "valid=True archive=smoke-20260723T134452Z",
-      "counts": {
-        "eq_acc": 0.7934772927951147,
-        "lr_acc": 0.7731429551613789
-      }
     }
   ],
-  "current_phase": "report",
+  "current_phase": "score_parallel",
   "counts": {
     "n_questions": 40,
     "n_docs": 1,
@@ -312,9 +301,7 @@
     "total": 10,
     "eta_s": 0.0,
     "eq_empty_context_rate": 0.0,
-    "lr_empty_context_rate": 0.0,
-    "eq_acc": 0.7934772927951147,
-    "lr_acc": 0.7731429551613789
+    "lr_empty_context_rate": 0.0
   },
-  "run_elapsed_s": 150.25971612497233
+  "run_elapsed_s": 150.1425142500084
 }

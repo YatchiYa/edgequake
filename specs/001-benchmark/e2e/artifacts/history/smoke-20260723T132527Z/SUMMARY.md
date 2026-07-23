@@ -1,11 +1,11 @@
-# SPEC-001 medical-mid SUMMARY
+# SPEC-001 smoke SUMMARY
 
 > EQ mix vs LR mix on GraphRAG-Bench (mistral/mistral-small-latest + mistral/mistral-embed) — publishable dual-SUT under matched top-k + L2 retrieval metrics. Not UltraDomain win-rates; Acc is not paper Table-2 comparable unless P0_paper ablation pins are used.
 
 - **valid:** `True`
 - **profile:** `P0_mistral_small_mix_chunk1200_v1_lrlike_arms_v2`
 - **judge:** `generation_eval`
-- **fixture:** `medical_publish_question_ids_v1` (n=200)
+- **fixture:** `smoke_question_ids_v1` (n=40)
 - **dataset revision:** `dc3a111e77dbaf8bbaf51ef331f3cfc9b1b5c546`
 
 ## Model lineage
@@ -22,44 +22,44 @@
 
 | SUT | Acc | F1 | cos |
 |-----|-----|----|-----|
-| EdgeQuake mix | 0.7700 | 0.7043 | 0.9672 |
-| LightRAG mix | 0.7789 | 0.7165 | 0.9663 |
-| Δ (EQ − LR) | -0.0089 | -0.0122 | 0.0008 |
+| EdgeQuake mix | 0.7590 | 0.6895 | 0.9675 |
+| LightRAG mix | 0.7973 | 0.7410 | 0.9662 |
+| Δ (EQ − LR) | -0.0383 | -0.0515 | 0.0013 |
 
-- **Δ Acc 95% CI (bootstrap):** [-0.0449, +0.0258] (n=200)
+- **Δ Acc 95% CI (bootstrap):** [-0.1150, +0.0261] (n=40)
 
 ## Retrieval (L2)
 
 | SUT | evidence_recall | context_relevancy |
 |-----|-----------------|-------------------|
-| EdgeQuake | 0.9261 | 0.4075 |
-| LightRAG | 0.9502 | 0.5112 |
+| EdgeQuake | 0.9481 | 0.3875 |
+| LightRAG | 0.9666 | 0.5500 |
 
 ## By question_type (EQ Acc)
 
-- **Fact Retrieval:** 0.6919
-- **Complex Reasoning:** 0.7691
-- **Contextual Summarize:** 0.8453
-- **Creative Generation:** 0.7738
+- **Fact Retrieval:** 0.7500
+- **Complex Reasoning:** 0.7363
+- **Contextual Summarize:** 0.8422
+- **Creative Generation:** 0.7075
 
 ## By question_type (LR Acc)
 
-- **Fact Retrieval:** 0.7616
-- **Complex Reasoning:** 0.7703
-- **Contextual Summarize:** 0.8121
-- **Creative Generation:** 0.7717
+- **Fact Retrieval:** 0.7721
+- **Complex Reasoning:** 0.8372
+- **Contextual Summarize:** 0.8378
+- **Creative Generation:** 0.7421
 
 ## Ops
 
-- EQ empty-answer rate: 0.005
+- EQ empty-answer rate: 0.000
 - LR empty-answer rate: 0.000
 - EQ empty-context rate: 0.000
 - LR empty-context rate: 0.000
-- EQ query p50/p95 ms: 4089 / 10127
-- LR query p50/p95 ms: 1016 / 1845
-- ingest wall s: 598.4
-- EQ/LR p50 ratio: 4.025 (SLO ≤1.5×: FAIL/WAIVE)
-- EQ stage p50 ms: keyword=1011, embed=1064, retrieve=587, rerank=9, generate=2025
+- EQ query p50/p95 ms: 3754 / 11942
+- LR query p50/p95 ms: 1113 / 1706
+- ingest wall s: 588.7
+- EQ/LR p50 ratio: 3.373 (SLO ≤1.5×: FAIL/WAIVE)
+- EQ stage p50 ms: keyword=1001, embed=1208, retrieve=186, rerank=9, generate=1974
 
 ## Pins
 
@@ -68,7 +68,7 @@
   "edgequake_git_sha": "fa62d6e7",
   "dataset_id": "GraphRAG-Bench/GraphRAG-Bench",
   "dataset_revision": "dc3a111e77dbaf8bbaf51ef331f3cfc9b1b5c546",
-  "fixture_id": "medical_publish_question_ids_v1",
+  "fixture_id": "smoke_question_ids_v1",
   "profile_id": "P0_mistral_small_mix_chunk1200_v1_lrlike_arms_v2",
   "llm_provider": "mistral",
   "llm_model": "mistral-small-latest",
