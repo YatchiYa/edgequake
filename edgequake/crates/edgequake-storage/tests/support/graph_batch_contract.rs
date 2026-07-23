@@ -105,18 +105,10 @@ pub async fn assert_graph_batch_upsert_dedupes_duplicate_endpoints<G: GraphStora
 
     let works = ab
         .iter()
-        .find(|e| {
-            e.properties
-                .get("relation_type")
-                .and_then(|v| v.as_str())
-                == Some("WORKS_WITH")
-        })
+        .find(|e| e.properties.get("relation_type").and_then(|v| v.as_str()) == Some("WORKS_WITH"))
         .expect("WORKS_WITH edge");
     assert_eq!(
-        works
-            .properties
-            .get("description")
-            .and_then(|v| v.as_str()),
+        works.properties.get("description").and_then(|v| v.as_str()),
         Some("second-wins"),
         "last-write-wins on duplicate (src,tgt,rel_type) upsert"
     );
