@@ -45,9 +45,25 @@ Local cache root: `~/.cache/edgequake/bench001/` (override with `EDGEQUAKE_BENCH
 | n | **40** |
 | Stratification | 10 per `question_type` |
 | Seed | **42** |
-| Role | Daily / CI plumbing + Acc signal |
+| Role | Daily / CI plumbing + Acc signal — **not** the release publish claim |
 
 File: [`fixtures/smoke_question_ids_v1.txt`](./fixtures/smoke_question_ids_v1.txt)
+
+---
+
+## 3b. Medical-mid publish fixture (`medical_publish_question_ids_v1.txt`)
+
+| Property | Value |
+|----------|-------|
+| Corpus | medical only (same FULL NCCN-style blob as smoke) |
+| n | **200** |
+| Stratification | **50** per `question_type` |
+| Seed | **42** |
+| Continuity | **Superset of** smoke (first 10 IDs per type = smoke IDs) |
+| Role | **Defendable publish Acc** dual-SUT (`make bench`) |
+| Why 200 | Bootstrap Acc CI is underpowered at n=40; n≈200 is the industry mid ladder before full core |
+
+File: [`fixtures/medical_publish_question_ids_v1.txt`](./fixtures/medical_publish_question_ids_v1.txt)
 
 ---
 
@@ -58,7 +74,7 @@ File: [`fixtures/smoke_question_ids_v1.txt`](./fixtures/smoke_question_ids_v1.tx
 | Corpus | medical full + novel sample 100 |
 | n | **2162** (2062 medical + 100 novel) |
 | Novel sample | 25 per type × 4, seed 42 |
-| Role | Publishable scorecard |
+| Role | Ultimate publishable scorecard (cost-gated) |
 | Gate | `--i-accept-cost` |
 
 File: [`fixtures/core_question_ids_v1.txt`](./fixtures/core_question_ids_v1.txt)

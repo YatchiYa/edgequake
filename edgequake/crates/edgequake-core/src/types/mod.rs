@@ -20,7 +20,7 @@ pub use conversation::{
     UpdateConversationRequest, UpdateFolderRequest, UpdateMessageRequest,
 };
 pub use document::{Document, DocumentStatus};
-pub use embedding::{Embedding, EmbeddingConfig};
+pub use embedding::{DimensionMismatch, Embedding, EmbeddingConfig};
 pub use entity::GraphEntity;
 pub use multitenancy::{
     CreateWorkspaceRequest,

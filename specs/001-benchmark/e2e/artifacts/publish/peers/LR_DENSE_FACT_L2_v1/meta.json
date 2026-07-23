@@ -1,0 +1,15 @@
+{
+  "created_at_utc": "2026-07-22T13:21:47Z",
+  "profile_id": "LR_DENSE_FACT_L2_v1_lrlike_arms_v2",
+  "valid": true,
+  "verdict": "LightRAG ahead on answer quality (CI excludes 0)",
+  "git_sha": "a67be7e3",
+  "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260722T132147Z",
+  "task_name": "GraphRAG-Bench/EQ-vs-LR",
+  "can_claim_beats_lightrag": false,
+  "n_questions": 200,
+  "fixture_id": "medical_publish_question_ids_v1",
+  "publish_peer": "LR_DENSE_FACT_L2_v1",
+  "labeled_peer": true,
+  "not_acc_headline": true
+}

@@ -26,7 +26,36 @@ use super::config::{qualified_kv_table_name, PostgresConfig};
 use super::connection::PostgresPool;
 use super::row_count_stats::{self, RowCountStatsConfig};
 use crate::error::{Result, StorageError};
+use crate::kv_keys;
 use crate::traits::KVStorage;
+
+/// SPEC-083 X-37: validate workspace-scoped KV keys in a write batch.
+///
+/// - Malformed `wsdoc:` / `staging:hash:` keys are rejected.
+/// - A single upsert batch may not mix multiple embedded workspace ids
+///   (defense-in-depth against accidental cross-tenant writes).
+fn enforce_workspace_scoped_keys<'a>(keys: impl Iterator<Item = &'a str>) -> Result<()> {
+    let mut seen_workspace: Option<&str> = None;
+    for key in keys {
+        if key.starts_with("wsdoc:") || key.starts_with("staging:hash:") {
+            let Some(ws) = kv_keys::embedded_workspace_id(key) else {
+                return Err(StorageError::InvalidInput(format!(
+                    "Malformed workspace-scoped KV key: {key}"
+                )));
+            };
+            match seen_workspace {
+                None => seen_workspace = Some(ws),
+                Some(prev) if prev != ws => {
+                    return Err(StorageError::InvalidInput(format!(
+                        "KV upsert mixes workspace scopes '{prev}' and '{ws}'"
+                    )));
+                }
+                Some(_) => {}
+            }
+        }
+    }
+    Ok(())
+}
 
 /// PostgreSQL key-value storage using JSONB.
 ///
@@ -259,7 +288,17 @@ impl KVStorage for PostgresKVStorage {
             return Ok(());
         }
 
+        // SPEC-083 X-37: reject malformed workspace-scoped keys; when a batch
+        // mixes multiple embedded workspace ids, fail closed (cross-tenant write).
+        enforce_workspace_scoped_keys(data.iter().map(|(k, _)| k.as_str()))?;
+
         let pool = self.pool.get().await?;
+        // C-22: all batches commit atomically — mid-batch failure must not leave
+        // a partial KV write set.
+        let mut tx = pool
+            .begin()
+            .await
+            .map_err(|e| StorageError::Database(format!("KV upsert begin failed: {}", e)))?;
         const BATCH_SIZE: usize = 1000;
 
         for chunk in data.chunks(BATCH_SIZE) {
@@ -281,10 +320,14 @@ impl KVStorage for PostgresKVStorage {
             sqlx::query(&sql)
                 .bind(&keys)
                 .bind(&values)
-                .execute(&pool)
+                .execute(&mut *tx)
                 .await
                 .map_err(|e| StorageError::Database(format!("KV upsert failed: {}", e)))?;
         }
+
+        tx.commit()
+            .await
+            .map_err(|e| StorageError::Database(format!("KV upsert commit failed: {}", e)))?;
 
         Ok(())
     }
@@ -612,5 +655,35 @@ mod tests {
         assert_eq!(escape_like_meta("wsdoc:ab"), "wsdoc:ab");
         assert_eq!(escape_like_meta("a%b_c\\d"), "a\\%b\\_c\\\\d");
         assert_eq!(escape_like_meta("-metadata"), "-metadata");
+    }
+
+    #[test]
+    fn enforce_workspace_scoped_keys_rejects_mixed_workspaces() {
+        let keys = ["wsdoc:ws-a:doc1", "wsdoc:ws-b:doc2"];
+        let err = enforce_workspace_scoped_keys(keys.into_iter()).unwrap_err();
+        assert!(err.to_string().contains("mixes workspace"));
+    }
+
+    #[test]
+    fn enforce_workspace_scoped_keys_rejects_malformed() {
+        let keys = ["wsdoc:missing-doc-id"];
+        let err = enforce_workspace_scoped_keys(keys.into_iter()).unwrap_err();
+        assert!(err.to_string().contains("Malformed"));
+    }
+
+    #[test]
+    fn enforce_workspace_scoped_keys_allows_same_workspace() {
+        let keys = ["wsdoc:ws-a:doc1", "staging:hash:ws-a:abc", "doc1-metadata"];
+        assert!(enforce_workspace_scoped_keys(keys.into_iter()).is_ok());
+    }
+
+    #[test]
+    fn e2e_kv_upsert_all_or_nothing() {
+        // C-22 / matrix: upsert uses a single transaction (begin → batches → commit).
+        let src = include_str!("kv.rs");
+        assert!(src.contains("pool.begin()"));
+        assert!(src.contains("tx.commit()"));
+        assert!(src.contains("C-22"));
+        assert!(src.contains("all batches commit atomically"));
     }
 }

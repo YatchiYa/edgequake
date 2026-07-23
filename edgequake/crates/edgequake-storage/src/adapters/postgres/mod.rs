@@ -65,7 +65,8 @@ pub use capabilities::{
     age_copy_loader_min_rows, age_rls_requested, age_supports_copy_loader, age_supports_rls,
     extension_version_at_least, pgvector_meets_cve_floor, AnnIndexPolicy, DocumentIdGenerator,
     PostgresCapabilities, VectorStorageMode, HNSW_MAX_DIM_HALFVEC, HNSW_MAX_DIM_VECTOR,
-    PGVECTOR_MIN_CVE_SAFE, PGVECTOR_MIN_ITERATIVE_SCAN,
+    PGVECTOR_MIN_CVE_SAFE, PGVECTOR_MIN_ITERATIVE_SCAN, SUPPORTED_VECTOR_METRIC,
+    VECTOR_COSINE_OPCLASS,
 };
 pub use config::{hnsw_ef_construction_from_env, PostgresConfig, VectorIndexType};
 pub use connection::PostgresPool;
@@ -92,11 +93,14 @@ pub use pdf_storage_impl::PostgresPdfStorage;
 pub use rls::{
     acquire_rls_connection, clear_tenant_context, clear_tenant_context_on_conn,
     release_rls_connection, set_tenant_context, set_tenant_context_on_conn,
-    with_acquired_tenant_context, RlsQueryBuilder,
+    with_acquired_tenant_context, with_rls_transaction, RlsQueryBuilder, RlsTxFuture,
 };
 
 // SPEC-046 OPS-P2.16: `RlsContext` is no longer re-exported from `postgres::`.
 // Use `acquire_rls_connection` / `with_acquired_tenant_context` (SEC-014 SSOT).
 // The type remains in `rls` for transitional `#[deprecated]` compile errors.
-pub use vector::{allow_vector_table_rebuild, PgVectorStorage};
+pub use vector::{
+    allow_vector_table_rebuild, fts_language_from_env, sanitize_fts_language, PgVectorStorage,
+    DEFAULT_FTS_LANGUAGE, FTS_LANGUAGE_ENV,
+};
 pub use workspace_vector::PgWorkspaceVectorRegistry;

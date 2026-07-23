@@ -343,6 +343,19 @@ impl PostgresAGEGraphStorage {
 
         let mut by_key: HashMap<(String, String), GraphEdge> = HashMap::new();
 
+        // SPEC-083 / X-03: never drop non-backfilled edges (eq_* IS NULL).
+        let eq_present = self.eq_columns_present(&mut conn).await?;
+        let src_expr = if eq_present {
+            super::helpers::coalesce_endpoint("e", "source")
+        } else {
+            super::helpers::prop_only_endpoint("e", "source")
+        };
+        let tgt_expr = if eq_present {
+            super::helpers::coalesce_endpoint("e", "target")
+        } else {
+            super::helpers::prop_only_endpoint("e", "target")
+        };
+
         // SPEC-071: child "EDGE" + eq_* endpoints (GIN on child; no parent text-cast JOINs).
         let modern_sql = format!(
             r#"
@@ -355,19 +368,21 @@ impl PostgresAGEGraphStorage {
             )
             SELECT
                 {props} AS props,
-                e.eq_source_id AS source_id,
-                e.eq_target_id AS target_id
+                {src} AS source_id,
+                {tgt} AS target_id
             FROM {graph}."EDGE" e
             JOIN probes pr
               ON (({props})::jsonb -> 'source_ids') @> to_jsonb(pr.probe_id)
             WHERE {tenant_where}
-              AND e.eq_source_id IS NOT NULL
-              AND e.eq_target_id IS NOT NULL
+              AND {src} IS NOT NULL
+              AND {tgt} IS NOT NULL
             LIMIT 5000
             "#,
             props = props_expr,
             graph = self.graph_name,
             tenant_where = tenant_where,
+            src = src_expr,
+            tgt = tgt_expr,
         );
         let modern_rows = sqlx::query(&modern_sql)
             .bind(&exact_ids)
@@ -403,18 +418,20 @@ impl PostgresAGEGraphStorage {
             let legacy_sql = format!(
                 "SELECT
                     {props} AS props,
-                    e.eq_source_id AS source_id,
-                    e.eq_target_id AS target_id
+                    {src} AS source_id,
+                    {tgt} AS target_id
                  FROM {graph}.\"EDGE\" e
                  WHERE {tenant_where}
                    AND ({legacy_where})
-                   AND e.eq_source_id IS NOT NULL
-                   AND e.eq_target_id IS NOT NULL
+                   AND {src} IS NOT NULL
+                   AND {tgt} IS NOT NULL
                  LIMIT 5000",
                 props = props_expr,
                 graph = self.graph_name,
                 tenant_where = tenant_where,
-                legacy_where = legacy_where
+                legacy_where = legacy_where,
+                src = src_expr,
+                tgt = tgt_expr,
             );
             let legacy_rows = sqlx::query(&legacy_sql)
                 .fetch_all(&mut *conn)

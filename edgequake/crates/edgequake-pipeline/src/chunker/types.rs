@@ -29,27 +29,7 @@ impl SectionMetadata {
     }
 }
 
-/// Standard page marker embedded in PDF-derived markdown by PDF converters.
-///
-/// Format: `<!-- edgequake-page:N -->` (1-indexed page number).
-/// The chunker parses these markers to split content at page boundaries so
-/// that **no chunk ever spans two PDF pages** (First Principle: page attribution).
-pub const PAGE_MARKER_PREFIX: &str = "<!-- edgequake-page:";
-pub const PAGE_MARKER_SUFFIX: &str = " -->";
-
-/// Build the page marker string for a given 1-indexed page number.
-pub fn make_page_marker(page: u32) -> String {
-    format!("{}{}{}", PAGE_MARKER_PREFIX, page, PAGE_MARKER_SUFFIX)
-}
-
-/// Parse page number from a marker line, returns None if not a marker.
-pub fn parse_page_marker(line: &str) -> Option<u32> {
-    let trimmed = line.trim();
-    let inner = trimmed
-        .strip_prefix(PAGE_MARKER_PREFIX)?
-        .strip_suffix(PAGE_MARKER_SUFFIX)?;
-    inner.trim().parse::<u32>().ok()
-}
+// Page marker SSOT: `page_marker::PageMarkerWriter` (SPEC-083 X-13).
 
 /// Result of a custom chunking operation.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -138,16 +118,8 @@ impl Default for ChunkerConfig {
             chunk_size: 800,
             chunk_overlap: 100,
             min_chunk_size: 100,
-            separators: vec![
-                "\n\n".to_string(),
-                "\n".to_string(),
-                ". ".to_string(),
-                "! ".to_string(),
-                "? ".to_string(),
-                "; ".to_string(),
-                ", ".to_string(),
-                " ".to_string(),
-            ],
+            // X-14: production default = LightRAG cascade (incl. CJK + final "").
+            separators: super::recursive::default_recursive_separators(),
             preserve_sentences: true,
             split_by_character: None,
             split_by_character_only: false,

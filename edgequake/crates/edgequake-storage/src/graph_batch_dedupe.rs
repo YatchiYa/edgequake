@@ -6,8 +6,8 @@
 //! statement must not propose two rows that collide on the arbiter unique key
 //! ([Postgres INSERT docs](https://www.postgresql.org/docs/current/sql-insert.html)).
 //! Native AGE upserts use:
-//! - Node: unique on `properties->>'node_id'`
-//! - Edge: unique on `(properties->>'source_id', properties->>'target_id')`
+//! - Node: unique on `eq_node_id`
+//! - Edge: unique on `(eq_source_id, eq_target_id, eq_rel_type)` (SPEC-083 D-30)
 //!
 //! Callers (merger, community persist, etc.) may still emit duplicates. This
 //! module is the **single** place that collapses a batch to one row per key
@@ -39,15 +39,28 @@ pub fn dedupe_nodes_by_id(
         .collect()
 }
 
-/// Collapse `(source, target, properties)` so each endpoint pair appears once
-/// (last wins). Matches `idx_edge_source_target_unique`.
+/// Normalize relation type for multigraph keys (empty → RELATED_TO).
+pub fn normalize_rel_type(props: &HashMap<String, serde_json::Value>) -> String {
+    props
+        .get("relation_type")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("RELATED_TO")
+        .to_ascii_uppercase()
+}
+
+/// Collapse `(source, target, properties)` so each `(src, tgt, rel_type)` appears
+/// once (last wins). Matches `idx_edge_eq_source_target_rel` (D-30).
 pub fn dedupe_edges_by_endpoints(
     edges: &[(String, String, HashMap<String, serde_json::Value>)],
 ) -> Vec<(String, String, HashMap<String, serde_json::Value>)> {
-    let mut order: Vec<(String, String)> = Vec::new();
-    let mut map: HashMap<(String, String), HashMap<String, serde_json::Value>> = HashMap::new();
+    let mut order: Vec<(String, String, String)> = Vec::new();
+    let mut map: HashMap<(String, String, String), HashMap<String, serde_json::Value>> =
+        HashMap::new();
     for (src, tgt, props) in edges {
-        let key = (src.clone(), tgt.clone());
+        let rel = normalize_rel_type(props);
+        let key = (src.clone(), tgt.clone(), rel);
         if map.insert(key.clone(), props.clone()).is_none() {
             order.push(key);
         }
@@ -55,7 +68,7 @@ pub fn dedupe_edges_by_endpoints(
     order
         .into_iter()
         .filter_map(|key| {
-            let (src, tgt) = key.clone();
+            let (src, tgt, _) = key.clone();
             map.remove(&key).map(|props| (src, tgt, props))
         })
         .collect()
@@ -108,6 +121,12 @@ mod tests {
         m
     }
 
+    fn props_rel(label: &str, rel: &str) -> HashMap<String, serde_json::Value> {
+        let mut m = props(label);
+        m.insert("relation_type".to_string(), serde_json::json!(rel));
+        m
+    }
+
     #[test]
     fn parse_graph_upsert_chunk_clamps() {
         assert_eq!(parse_graph_upsert_chunk("100"), Some(100));
@@ -141,6 +160,17 @@ mod tests {
         );
         assert_eq!(out[1].0, "C");
         assert_eq!(out[1].1, "D");
+    }
+
+    #[test]
+    fn dedupe_edges_multigraph_keeps_distinct_rel_types() {
+        // D-30: KNOWS and WORKS_WITH between same endpoints both persist.
+        let edges = vec![
+            ("A".into(), "B".into(), props_rel("knows", "KNOWS")),
+            ("A".into(), "B".into(), props_rel("works", "WORKS_WITH")),
+        ];
+        let out = dedupe_edges_by_endpoints(&edges);
+        assert_eq!(out.len(), 2);
     }
 
     #[test]

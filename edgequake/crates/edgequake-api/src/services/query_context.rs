@@ -157,6 +157,9 @@ async fn run_context_retrieval(
         conversation_history,
         system_prompt: None,
         question_type: None,
+        hl_keywords: None,
+        ll_keywords: None,
+        response_type: None,
         allowed_document_ids,
         data_tenant_id,
         workspace_id: tenant_ctx.workspace_id.clone(),
@@ -495,5 +498,6 @@ pub fn build_legacy_query_response(
         ),
         conversation_id,
         reranked,
+        explain: result.explain.map(Into::into),
     }
 }

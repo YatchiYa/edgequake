@@ -253,10 +253,94 @@ impl Default for EdgeQuakeConfig {
     }
 }
 
+/// Explicit overrides for [`EdgeQuakeConfig::resolve`] (highest precedence).
+#[derive(Debug, Clone, Default)]
+pub struct EdgeQuakeConfigOverrides {
+    pub llm_model_name: Option<String>,
+    pub embedding_model_name: Option<String>,
+    pub embedding_dim: Option<usize>,
+    pub entity_types: Option<Vec<String>>,
+    pub namespace: Option<String>,
+    pub working_dir: Option<String>,
+    pub enable_gleaning: Option<bool>,
+    pub max_gleaning: Option<usize>,
+}
+
 impl EdgeQuakeConfig {
     /// Create a new config with default settings.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// SPEC-083 X-36 SSOT precedence:
+    /// `explicit overrides > environment > workspace snapshot > defaults`.
+    ///
+    /// `workspace` is a previously resolved workspace-level config (may be `None`).
+    pub fn resolve(
+        overrides: EdgeQuakeConfigOverrides,
+        workspace: Option<&EdgeQuakeConfig>,
+    ) -> Self {
+        let mut cfg = Self::default();
+        if let Some(ws) = workspace {
+            cfg = ws.clone();
+        }
+
+        // Environment layer (below explicit overrides).
+        if let Ok(v) = std::env::var("EDGEQUAKE_LLM_MODEL") {
+            if !v.trim().is_empty() {
+                cfg.llm_model_name = v;
+            }
+        } else if let Ok(v) = std::env::var("CHAT_MODEL") {
+            if !v.trim().is_empty() {
+                cfg.llm_model_name = v;
+            }
+        }
+        if let Ok(v) = std::env::var("EDGEQUAKE_EMBEDDING_MODEL") {
+            if !v.trim().is_empty() {
+                cfg.embedding_model_name = v;
+            }
+        } else if let Ok(v) = std::env::var("EMBEDDING_MODEL") {
+            if !v.trim().is_empty() {
+                cfg.embedding_model_name = v;
+            }
+        }
+        if let Ok(v) = std::env::var("EDGEQUAKE_NAMESPACE") {
+            if !v.trim().is_empty() {
+                cfg.namespace = v;
+            }
+        }
+        if let Ok(v) = std::env::var("EDGEQUAKE_WORKING_DIR") {
+            if !v.trim().is_empty() {
+                cfg.working_dir = v;
+            }
+        }
+
+        // Explicit overrides win.
+        if let Some(v) = overrides.llm_model_name {
+            cfg.llm_model_name = v;
+        }
+        if let Some(v) = overrides.embedding_model_name {
+            cfg.embedding_model_name = v;
+        }
+        if let Some(v) = overrides.embedding_dim {
+            cfg.embedding_dim = v;
+        }
+        if let Some(v) = overrides.entity_types {
+            cfg.entity_types = v;
+        }
+        if let Some(v) = overrides.namespace {
+            cfg.namespace = v;
+        }
+        if let Some(v) = overrides.working_dir {
+            cfg.working_dir = v;
+        }
+        if let Some(v) = overrides.enable_gleaning {
+            cfg.enable_gleaning = v;
+        }
+        if let Some(v) = overrides.max_gleaning {
+            cfg.max_gleaning = v;
+        }
+        cfg
     }
 
     /// Set the working directory.
@@ -647,6 +731,50 @@ mod tests {
         let config = EdgeQuakeConfig::new().with_gleaning(true, 3);
         assert!(config.enable_gleaning);
         assert_eq!(config.max_gleaning, 3);
+    }
+
+    /// SPEC-083 X-36: explicit > env > workspace > defaults.
+    #[test]
+    fn contract_config_precedence() {
+        let prev_llm = std::env::var("EDGEQUAKE_LLM_MODEL").ok();
+        let prev_chat = std::env::var("CHAT_MODEL").ok();
+        std::env::remove_var("CHAT_MODEL");
+        std::env::set_var("EDGEQUAKE_LLM_MODEL", "from-env");
+
+        let workspace = EdgeQuakeConfig {
+            llm_model_name: "from-workspace".into(),
+            namespace: "ws-ns".into(),
+            ..Default::default()
+        };
+
+        let via_ws =
+            EdgeQuakeConfig::resolve(EdgeQuakeConfigOverrides::default(), Some(&workspace));
+        assert_eq!(via_ws.llm_model_name, "from-env", "env beats workspace");
+        assert_eq!(
+            via_ws.namespace, "ws-ns",
+            "workspace beats default for unset fields"
+        );
+
+        let via_explicit = EdgeQuakeConfig::resolve(
+            EdgeQuakeConfigOverrides {
+                llm_model_name: Some("from-explicit".into()),
+                ..Default::default()
+            },
+            Some(&workspace),
+        );
+        assert_eq!(
+            via_explicit.llm_model_name, "from-explicit",
+            "explicit beats env"
+        );
+
+        match prev_llm {
+            Some(v) => std::env::set_var("EDGEQUAKE_LLM_MODEL", v),
+            None => std::env::remove_var("EDGEQUAKE_LLM_MODEL"),
+        }
+        match prev_chat {
+            Some(v) => std::env::set_var("CHAT_MODEL", v),
+            None => std::env::remove_var("CHAT_MODEL"),
+        }
     }
 
     #[test]

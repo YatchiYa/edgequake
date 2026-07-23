@@ -74,8 +74,9 @@ FORBIDDEN                                              REQUIRED
 • Feeding gold evidence into the retriever             • Blind query: question text only
 • Editing questions / answers                          • Exact official strings
 • Softening empty answers into scored zeros            • Fail closed → valid:false
-• Publishing smoke as release score                    • Smoke → core ladder
+• Publishing smoke as release score                    • Smoke → medical-mid → core ladder
 • Claiming UltraDomain win-rates from this SPEC        • Task name GraphRAG-Bench/EQ-vs-LR
+• Publishing n=40 Acc as the stakeholder score         • Publish Acc = medical-mid n=200 (`make bench`)
 ```
 
 ---

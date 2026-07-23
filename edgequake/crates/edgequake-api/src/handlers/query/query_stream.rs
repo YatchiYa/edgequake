@@ -164,6 +164,9 @@ pub async fn stream_query(
         conversation_history: None,
         system_prompt: request.system_prompt.clone(),
         question_type: request.question_type.clone(),
+        hl_keywords: request.hl_keywords.clone(),
+        ll_keywords: request.ll_keywords.clone(),
+        response_type: request.response_type.clone(),
         allowed_document_ids,
         data_tenant_id: data_tenant_id.clone(),
         workspace_id: tenant_ctx.workspace_id.clone(),
@@ -312,6 +315,24 @@ pub async fn stream_query(
                 Ok((context, used_mode, mut stream)) => {
                     let retrieval_time_ms = retrieval_start.elapsed().as_millis() as u64;
 
+                    // SPEC-083 X-22: emit Thinking before Context (do not delete variant).
+                    let thinking = QueryStreamEvent::Thinking {
+                        content: format!(
+                            "Retrieved context via {used_mode} ({} chunks, {} entities, {} relationships)",
+                            context.chunks.len(),
+                            context.entities.len(),
+                            context.relationships.len()
+                        ),
+                    };
+                    if tx.send(thinking).await.is_err() {
+                        ErrorEvent::log_stream_disconnect(
+                            &stream_request_id,
+                            "query_stream",
+                            "thinking_event",
+                        );
+                        return;
+                    }
+
                     // Build and enrich sources
                     let mut sources = build_sources(&context, stream_content_granularity);
                     resolve_chunk_file_paths(state_clone.storage.kv_storage.as_ref(), &mut sources)
@@ -452,23 +473,20 @@ pub async fn stream_query(
 
                     let _ = tx
                         .send(QueryStreamEvent::Done {
-                            stats: QueryStreamStats {
-                                embedding_time_ms: 0, // Included in retrieval_time_ms
-                                retrieval_time_ms,
-                                generation_time_ms,
-                                ttft_ms,
-                                ux_ttft_ms,
-                                total_time_ms,
-                                sources_retrieved: context.chunks.len()
-                                    + context.entities.len()
-                                    + context.relationships.len(),
-                                tokens_used,
-                                tokens_per_second,
-                                query_mode: used_mode.to_string(),
-                                // Stream path does not currently surface engine answer-cache hits
-                                // (cache short-circuit returns a single chunk; leave false).
-                                answer_cache_hit: false,
-                            },
+                            stats: crate::services::query_stats_mapper::stream_stats_from_context(
+                                &context,
+                                crate::services::query_stats_mapper::StreamStatsInput {
+                                    query_mode: used_mode.to_string(),
+                                    retrieval_time_ms,
+                                    generation_time_ms,
+                                    ttft_ms,
+                                    ux_ttft_ms,
+                                    tokens_used,
+                                    tokens_per_second,
+                                    llm_provider: used_provider.clone(),
+                                    llm_model: used_model.clone(),
+                                },
+                            ),
                             llm_provider: used_provider,
                             llm_model: used_model,
                         })

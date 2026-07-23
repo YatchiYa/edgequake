@@ -41,6 +41,25 @@ impl IngestionFailureClass {
         }
     }
 
+    /// Parse a structured `failure_class=` / ingestion token (SPEC-083 X-30).
+    pub fn from_token(token: &str) -> Option<Self> {
+        match token.trim().to_ascii_lowercase().as_str() {
+            "timeout_phase_convert" => Some(Self::TimeoutPhaseConvert),
+            "timeout_phase_extract" | "timeout" | "extraction_timeout" => {
+                Some(Self::TimeoutPhaseExtract)
+            }
+            "circuit_breaker" | "circuit_breaker_open" => Some(Self::CircuitBreaker),
+            "document_too_large" => Some(Self::DocumentTooLarge),
+            "embedding_limit" => Some(Self::EmbeddingLimit),
+            "graph_merge" => Some(Self::GraphMerge),
+            "provider_unavailable" | "rate_limited" => Some(Self::ProviderUnavailable),
+            "provider_misconfigured" => Some(Self::ProviderMisconfigured),
+            "cancelled" => Some(Self::Cancelled),
+            "unknown" => Some(Self::Unknown),
+            _ => None,
+        }
+    }
+
     pub fn recommended_action(self) -> &'static str {
         match self {
             Self::TimeoutPhaseConvert => "reprocess_edgeparse",
@@ -107,8 +126,68 @@ pub fn is_cancel_failure_message(error_msg: &str) -> bool {
         || lower.contains("cancelled during")
 }
 
+/// True when the message carries a **typed** timeout marker (SPEC-083 X-30).
+///
+/// Prefers [`crate::types::TaskFailureInfo::timeout`]'s fixed message
+/// `"Operation timed out"`, structured `failure_class=timeout` tokens, or an
+/// explicit `[timeout]` marker — not a bare English substring match on business text.
+pub fn is_typed_timeout_message(error_msg: &str) -> bool {
+    let lower = error_msg.to_ascii_lowercase();
+    lower.starts_with("operation timed out")
+        || lower.contains("operation timed out")
+        || lower.contains("task processing timed out")
+        || lower.contains("task timed out")
+        || lower.contains("llm request timed out")
+        || lower.contains("request timed out")
+        || lower.contains("extraction timeout after")
+        || lower.contains("failure_class=timeout")
+        || lower.contains("[timeout]")
+        || lower.contains("[ingestion_failure_class=timeout")
+}
+
+/// Parse structured `failure_class=` / `[ingestion_failure_class=…]` tokens first (X-30).
+///
+/// Typed Display markers (and API `classify_from_pipeline_error`) emit these so
+/// string `contains` taxonomy is never needed when the enum path is available.
+pub fn classify_from_failure_markers(error_msg: &str) -> Option<IngestionFailureClass> {
+    let lower = error_msg.to_ascii_lowercase();
+    // Prefer explicit failure_class=<token> (and bracketed forms).
+    for key in ["failure_class=", "ingestion_failure_class="] {
+        if let Some(idx) = lower.find(key) {
+            let rest = &lower[idx + key.len()..];
+            let token: String = rest
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            if let Some(class) = IngestionFailureClass::from_token(&token) {
+                return Some(class);
+            }
+        }
+    }
+    None
+}
+
 /// Classify a permanent failure message into a stable `failure_class` key.
+///
+/// Order (SPEC-083 X-30):
+/// 1. Structured `failure_class=` tokens (typed enum → Display markers)
+/// 2. Cancel / misconfig / other stable markers
+/// 3. String taxonomy last resort for Unknown-wrapped payloads only
 pub fn classify_ingestion_failure(error_msg: &str) -> IngestionFailureClass {
+    if let Some(class) = classify_from_failure_markers(error_msg) {
+        // Generic timeout token may still need convert-phase refinement from body.
+        if matches!(
+            class,
+            IngestionFailureClass::TimeoutPhaseExtract | IngestionFailureClass::TimeoutPhaseConvert
+        ) {
+            let lower = error_msg.to_ascii_lowercase();
+            if lower.contains("vision") || lower.contains("convert") || lower.contains("markdown") {
+                return IngestionFailureClass::TimeoutPhaseConvert;
+            }
+            return IngestionFailureClass::TimeoutPhaseExtract;
+        }
+        return class;
+    }
     let lower = error_msg.to_ascii_lowercase();
     if is_cancel_failure_message(error_msg) {
         return IngestionFailureClass::Cancelled;
@@ -137,7 +216,8 @@ pub fn classify_ingestion_failure(error_msg: &str) -> IngestionFailureClass {
     {
         return IngestionFailureClass::GraphMerge;
     }
-    if lower.contains("timed out") || lower.contains("timeout") {
+    // X-30: phase convert heuristic only when a typed timeout marker is present.
+    if is_typed_timeout_message(error_msg) {
         if lower.contains("vision") || lower.contains("convert") || lower.contains("markdown") {
             return IngestionFailureClass::TimeoutPhaseConvert;
         }
@@ -289,5 +369,92 @@ mod tests {
             IngestionFailureClass::Cancelled
         );
         assert!(is_permanent_ingestion_failure(msg));
+    }
+
+    /// SPEC-083 X-30: business text mentioning "timeout" must not classify as Timeout.
+    #[test]
+    fn unit_failure_class_typed() {
+        let msg = "Entity description: the project timeout policy is 30 days";
+        assert!(!is_typed_timeout_message(msg));
+        assert_eq!(
+            classify_ingestion_failure(msg),
+            IngestionFailureClass::Unknown
+        );
+        assert_eq!(
+            classify_ingestion_failure("Operation timed out: extraction hung"),
+            IngestionFailureClass::TimeoutPhaseExtract
+        );
+        assert_eq!(
+            classify_ingestion_failure("Operation timed out during vision convert"),
+            IngestionFailureClass::TimeoutPhaseConvert
+        );
+        // Typed markers win over prose.
+        assert_eq!(
+            classify_ingestion_failure(
+                "wrapper: LLM error: Request timed out [failure_class=timeout_phase_extract]"
+            ),
+            IngestionFailureClass::TimeoutPhaseExtract
+        );
+        assert_eq!(
+            classify_ingestion_failure("Circuit breaker open … [failure_class=circuit_breaker]"),
+            IngestionFailureClass::CircuitBreaker
+        );
+        assert_eq!(
+            IngestionFailureClass::from_token("rate_limited"),
+            Some(IngestionFailureClass::ProviderUnavailable)
+        );
+    }
+
+    /// SPEC-083 X-30: breaker / classify must ignore business "timeout" wording.
+    #[test]
+    fn unit_breaker_ignores_business_timeout_word() {
+        let business = "User asked about query timeout policy in the handbook";
+        assert!(!is_typed_timeout_message(business));
+        assert_eq!(
+            classify_ingestion_failure(business),
+            IngestionFailureClass::Unknown
+        );
+        assert!(classify_from_failure_markers(business).is_none());
+        // Bare "429" in prose must not trip provider / rate-limit class.
+        assert_eq!(
+            classify_ingestion_failure("section 429 of the user guide"),
+            IngestionFailureClass::Unknown
+        );
+    }
+
+    /// SPEC-083 X-30: no bare substring retry/timeout matching in hot paths.
+    #[test]
+    fn contract_no_substring_retry_matching() {
+        let ingestion = include_str!("ingestion_reliability.rs");
+        // Inspect production code only (tests may mention the forbidden pattern).
+        let prod = ingestion
+            .split("#[cfg(test)]")
+            .next()
+            .expect("production section");
+        let bare_timeout = format!("{}{}{}", "contains(", "\"timeout\"", ")");
+        assert!(
+            !prod.contains(&bare_timeout),
+            "X-30: production classify path must not use bare timeout substring matching"
+        );
+        assert!(
+            prod.contains("Operation timed out") && prod.contains("is_typed_timeout_message"),
+            "X-30: timeout branch must use Operation timed out / is_typed_timeout_message"
+        );
+
+        let embeddings_path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../edgequake-pipeline/src/pipeline/helpers/embeddings.rs"
+        );
+        let embeddings = std::fs::read_to_string(embeddings_path)
+            .unwrap_or_else(|e| panic!("read embeddings.rs at {embeddings_path}: {e}"));
+        let bare_429 = format!("{}{}{}", "contains(", "\"429\"", ")");
+        assert!(
+            !embeddings.contains(&bare_429),
+            "X-06/X-07: pipeline embeddings must not use bare 429 substring matching"
+        );
+        assert!(
+            embeddings.contains("retry_strategy()"),
+            "pipeline embeddings must use typed retry_strategy()"
+        );
     }
 }

@@ -19,6 +19,10 @@ pub struct QueryExecutionParams {
     pub system_prompt: Option<String>,
     /// GraphRAG-Bench / product question type (047 type-scoped prompts).
     pub question_type: Option<String>,
+    /// 083 LightRAG-shaped keyword override.
+    pub hl_keywords: Option<Vec<String>>,
+    pub ll_keywords: Option<Vec<String>>,
+    pub response_type: Option<String>,
     pub allowed_document_ids: Option<Vec<String>>,
     pub data_tenant_id: Option<String>,
     pub workspace_id: Option<String>,
@@ -106,6 +110,18 @@ pub fn build_engine_request(params: &QueryExecutionParams) -> EngineQueryRequest
     if let Some(ref allowed_ids) = params.allowed_document_ids {
         engine_request = engine_request.with_allowed_document_ids(allowed_ids.clone());
     }
+    if let Some(ref hl) = params.hl_keywords {
+        engine_request = engine_request.with_hl_keywords(hl.clone());
+    }
+    if let Some(ref ll) = params.ll_keywords {
+        engine_request = engine_request.with_ll_keywords(ll.clone());
+    }
+    if let Some(ref rt) = params.response_type {
+        let trimmed = rt.trim();
+        if !trimmed.is_empty() {
+            engine_request = engine_request.with_response_type(trimmed);
+        }
+    }
 
     engine_request
 }
@@ -128,6 +144,9 @@ mod tests {
             conversation_history: None,
             system_prompt: None,
             question_type: None,
+            hl_keywords: None,
+            ll_keywords: None,
+            response_type: None,
             allowed_document_ids: None,
             data_tenant_id: None,
             workspace_id: None,
@@ -152,6 +171,9 @@ mod tests {
             conversation_history: None,
             system_prompt: None,
             question_type: Some("Complex Reasoning".into()),
+            hl_keywords: None,
+            ll_keywords: None,
+            response_type: None,
             allowed_document_ids: None,
             data_tenant_id: None,
             workspace_id: None,
@@ -160,6 +182,38 @@ mod tests {
         };
         let req = build_engine_request(&params);
         assert_eq!(req.question_type(), Some("Complex Reasoning"));
+    }
+
+    #[test]
+    fn builds_keyword_override_and_response_type() {
+        let params = QueryExecutionParams {
+            query: "staging for NSCLC".into(),
+            mode: QueryMode::Mix,
+            max_results: None,
+            context_only: false,
+            prompt_only: false,
+            enable_rerank: true,
+            rerank_top_k: None,
+            mix_weights: None,
+            conversation_history: None,
+            system_prompt: None,
+            question_type: None,
+            hl_keywords: Some(vec!["staging".into(), "NSCLC".into()]),
+            ll_keywords: Some(vec!["TNM".into()]),
+            response_type: Some("Bullet Points".into()),
+            allowed_document_ids: None,
+            data_tenant_id: None,
+            workspace_id: None,
+            llm_provider: None,
+            llm_model: None,
+        };
+        let req = build_engine_request(&params);
+        assert!(req.has_keyword_override());
+        assert_eq!(req.response_type_or_default(), "Bullet Points");
+        assert_eq!(
+            req.keyword_override_lists(),
+            Some((vec!["staging".into(), "NSCLC".into()], vec!["TNM".into()]))
+        );
     }
 
     #[test]

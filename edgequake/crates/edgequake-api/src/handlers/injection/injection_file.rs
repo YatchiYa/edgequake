@@ -79,7 +79,7 @@ pub async fn put_injection_file(
 
     if file_bytes.len() > MAX_FILE_BYTES {
         return Err(ApiError::BadRequest(format!(
-            "File exceeds 10 MB limit ({} bytes)",
+            "File exceeds 50 MiB limit ({} bytes)",
             file_bytes.len()
         )));
     }

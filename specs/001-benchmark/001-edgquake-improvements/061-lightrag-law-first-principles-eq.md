@@ -146,6 +146,8 @@ EQ roles exist — pin EXTRACT to a schema-strong model and keep Acc Fact peer o
 LR skips keyword LLM when hl/ll provided; can return context without answer LLM.  
 EQ: expose agent-facing APIs for “retrieve only” and “keywords override” to cut double LLM tax in tool loops.
 
+**Shipped:** [083](./083-lightrag-query-api-law.md) — `hl_keywords` / `ll_keywords` / `response_type` on query API + keyword-LLM skip + system/user generate (not Acc Beat).
+
 ---
 
 ### P2 — Copy carefully / do not copy

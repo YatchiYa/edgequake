@@ -524,6 +524,7 @@ impl AppState {
             std::sync::Arc::new(inspector).spawn_hourly_monitor();
         }
 
+        // Rate-limit cleanup is started from create_router (SPEC-083 S-11).
         Ok(app_state)
     }
 }

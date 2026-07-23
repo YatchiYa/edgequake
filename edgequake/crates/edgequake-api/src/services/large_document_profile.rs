@@ -294,7 +294,10 @@ mod tests {
 
     #[test]
     fn classify_timeout_convert() {
-        let class = super::classify_ingestion_failure("Vision extraction timed out after 4944s");
+        // X-30: typed marker (not bare "timed out" prose).
+        let class = super::classify_ingestion_failure(
+            "Operation timed out during vision convert [failure_class=timeout]",
+        );
         assert_eq!(class, super::IngestionFailureClass::TimeoutPhaseConvert);
     }
 

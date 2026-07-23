@@ -99,6 +99,20 @@ pub struct QueryRequest {
     /// Unset fields inherit from `QueryEngineConfig` defaults (1.0 each).
     #[serde(default)]
     pub mix_weights: Option<MixWeightOverride>,
+
+    /// Pre-supplied high-level keywords (LightRAG `QueryParam.hl_keywords`).
+    /// When either hl or ll is non-empty, keyword LLM extraction is skipped (083).
+    #[serde(default)]
+    pub hl_keywords: Option<Vec<String>>,
+
+    /// Pre-supplied low-level keywords (LightRAG `QueryParam.ll_keywords`).
+    #[serde(default)]
+    pub ll_keywords: Option<Vec<String>>,
+
+    /// Answer formatting cue (LightRAG `QueryParam.response_type`).
+    /// Default when unset: `"Multiple Paragraphs"`.
+    #[serde(default)]
+    pub response_type: Option<String>,
 }
 
 /// A single message in conversation history.
@@ -130,7 +144,64 @@ impl QueryRequest {
             allowed_document_ids: None,
             images: None,
             mix_weights: None,
+            hl_keywords: None,
+            ll_keywords: None,
+            response_type: None,
         }
+    }
+
+    /// 083: LightRAG-shaped keyword override — skip KEYWORD LLM when either list is non-empty.
+    pub fn has_keyword_override(&self) -> bool {
+        self.hl_keywords
+            .as_ref()
+            .is_some_and(|v| v.iter().any(|s| !s.trim().is_empty()))
+            || self
+                .ll_keywords
+                .as_ref()
+                .is_some_and(|v| v.iter().any(|s| !s.trim().is_empty()))
+    }
+
+    /// Cleaned hl/ll lists for override (empty strings dropped).
+    pub fn keyword_override_lists(&self) -> Option<(Vec<String>, Vec<String>)> {
+        if !self.has_keyword_override() {
+            return None;
+        }
+        let clean = |v: &Option<Vec<String>>| -> Vec<String> {
+            v.as_ref()
+                .map(|items| {
+                    items
+                        .iter()
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        Some((clean(&self.hl_keywords), clean(&self.ll_keywords)))
+    }
+
+    pub fn with_hl_keywords(mut self, keywords: Vec<String>) -> Self {
+        self.hl_keywords = Some(keywords);
+        self
+    }
+
+    pub fn with_ll_keywords(mut self, keywords: Vec<String>) -> Self {
+        self.ll_keywords = Some(keywords);
+        self
+    }
+
+    pub fn with_response_type(mut self, response_type: impl Into<String>) -> Self {
+        self.response_type = Some(response_type.into());
+        self
+    }
+
+    /// LightRAG default `"Multiple Paragraphs"` when unset/blank.
+    pub fn response_type_or_default(&self) -> &str {
+        self.response_type
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or("Multiple Paragraphs")
     }
 
     /// Set the query mode.
@@ -286,6 +357,38 @@ pub struct QueryResponse {
 
     /// Processing statistics.
     pub stats: QueryStats,
+
+    /// SPEC-083 X-21: lightweight explainability derived from [`QueryStats`] arms.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub explain: Option<ExplainTrace>,
+}
+
+/// Minimal retrieval explainability surface (X-21 MVP).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ExplainTrace {
+    /// Query mode label (`mix`, `hybrid`, `local`, …).
+    pub mode: String,
+    /// Comma-separated arms that ran (`local,global`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arms_run: Option<String>,
+    /// Sparse fusion / FTS outcome label when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sparse_outcome: Option<String>,
+    /// Intent label when keyword/intent extraction ran.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub query_intent: Option<String>,
+}
+
+impl ExplainTrace {
+    /// Build from mode + absorbed [`QueryStats`] arm metadata.
+    pub fn from_stats(mode: &QueryMode, stats: &QueryStats) -> Self {
+        Self {
+            mode: mode.to_string(),
+            arms_run: stats.arms_run.clone(),
+            sparse_outcome: stats.sparse_outcome.clone(),
+            query_intent: stats.query_intent.clone(),
+        }
+    }
 }
 
 /// Query processing statistics.
@@ -541,6 +644,30 @@ mod tests {
     }
 
     #[test]
+    fn keyword_override_and_response_type_serde() {
+        let request = QueryRequest::new("staging for NSCLC")
+            .with_hl_keywords(vec!["staging".into(), "NSCLC".into()])
+            .with_ll_keywords(vec!["TNM".into()])
+            .with_response_type("Bullet Points");
+        assert!(request.has_keyword_override());
+        assert_eq!(request.response_type_or_default(), "Bullet Points");
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains("hl_keywords"));
+        assert!(json.contains("ll_keywords"));
+        assert!(json.contains("Bullet Points"));
+        let back: QueryRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            back.keyword_override_lists(),
+            Some((vec!["staging".into(), "NSCLC".into()], vec!["TNM".into()]))
+        );
+        assert!(!QueryRequest::new("q").has_keyword_override());
+        assert_eq!(
+            QueryRequest::new("q").response_type_or_default(),
+            "Multiple Paragraphs"
+        );
+    }
+
+    #[test]
     fn absorb_arm_metadata_from_context() {
         use crate::mix_weights::{
             META_ARMS_GATED, META_ARMS_RUN, META_ARM_NAIVE_CHUNKS, META_ARM_NAIVE_MS,
@@ -561,5 +688,36 @@ mod tests {
         assert_eq!(stats.arms_run.as_deref(), Some("naive"));
         assert_eq!(stats.arms_gated, Some(true));
         assert!(stats.context_empty);
+    }
+
+    #[test]
+    fn contract_explain_trace_on_query_response() {
+        let stats = QueryStats {
+            arms_run: Some("local,global".into()),
+            ..Default::default()
+        };
+        let explain = ExplainTrace::from_stats(&QueryMode::Mix, &stats);
+        assert_eq!(explain.mode, "mix");
+        assert_eq!(explain.arms_run.as_deref(), Some("local,global"));
+        let resp = QueryResponse {
+            answer: String::new(),
+            context: QueryContext::new(),
+            mode: QueryMode::Mix,
+            stats,
+            explain: Some(explain),
+        };
+        assert!(resp.explain.is_some());
+    }
+
+    #[test]
+    fn e2e_query_vec_matches_question_only_embedding() {
+        // D-38: pipeline embeds request.query only (not conversation history).
+        let src = include_str!("engine_impl/query_entry/query_pipeline.rs");
+        assert!(src.contains("D-38"));
+        assert!(src.contains("embed_one(&request.query)"));
+        assert!(
+            !src.contains("embed_one(&keyword_query)") && !src.contains("embed_one(&conversation"),
+            "must not embed conversation/keyword blob as query_vec"
+        );
     }
 }

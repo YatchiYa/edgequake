@@ -224,7 +224,9 @@ impl Pipeline {
 
         let total_chunks = chunks.len();
         let timeout_secs = self.config.chunk_extraction_timeout_secs;
-        let max_retries = self.config.chunk_max_retries;
+        // C-18: treat max_retries=0 as one attempt (config name means retries,
+        // but a zero loop would silently skip extraction).
+        let max_retries = self.config.chunk_max_retries.max(1);
         let initial_delay_ms = self.config.initial_retry_delay_ms;
 
         // Atomic counters for cumulative tracking

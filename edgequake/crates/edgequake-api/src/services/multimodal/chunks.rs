@@ -251,7 +251,8 @@ pub fn append_mm_chunks_to_text(text: &str, chunks: &[MultimodalChunk]) -> Strin
     for chunk in chunks {
         out.push_str("\n\n");
         if let Some(page) = chunk.page_start {
-            out.push_str(&format!("<!-- edgequake-page:{page} -->\n"));
+            out.push_str(&edgequake_pipeline::PageMarkerWriter::write(page));
+            out.push('\n');
         }
         out.push_str(&chunk.text);
     }

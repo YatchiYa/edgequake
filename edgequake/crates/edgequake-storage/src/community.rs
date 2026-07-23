@@ -57,6 +57,9 @@ pub struct CommunityDetectionResult {
     pub node_to_community: HashMap<String, usize>,
     /// Modularity score of the partition.
     pub modularity: f64,
+    /// Number of Louvain hierarchy levels executed (1 = phase-1 only).
+    /// When `EDGEQUAKE_LOUVAIN_HIERARCHY=1`, phase-2 aggregation may raise this.
+    pub hierarchy_levels: usize,
 }
 
 impl CommunityDetectionResult {
@@ -66,6 +69,7 @@ impl CommunityDetectionResult {
             communities: Vec::new(),
             node_to_community: HashMap::new(),
             modularity: 0.0,
+            hierarchy_levels: 0,
         }
     }
 
@@ -120,6 +124,11 @@ pub struct CommunityConfig {
     /// Hard cap on nodes loaded for detection (SPEC-046 OPS-P0.2).
     /// Default from `EDGEQUAKE_COMMUNITY_MAX_NODES` (50_000).
     pub max_nodes: usize,
+    /// Enable Louvain phase-2 hierarchy (community aggregation levels).
+    /// Default from `EDGEQUAKE_LOUVAIN_HIERARCHY` (off).
+    pub enable_hierarchy: bool,
+    /// Max hierarchy levels when hierarchy is enabled (default 3).
+    pub max_hierarchy_levels: usize,
 }
 
 impl Default for CommunityConfig {
@@ -130,8 +139,17 @@ impl Default for CommunityConfig {
             max_iterations: 100,
             resolution: 1.0,
             max_nodes: community_max_nodes_from_env(),
+            enable_hierarchy: louvain_hierarchy_enabled(),
+            max_hierarchy_levels: 3,
         }
     }
+}
+
+/// True when `EDGEQUAKE_LOUVAIN_HIERARCHY=1` / `true` / `on`.
+pub fn louvain_hierarchy_enabled() -> bool {
+    std::env::var("EDGEQUAKE_LOUVAIN_HIERARCHY")
+        .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "on" | "yes"))
+        .unwrap_or(false)
 }
 
 /// Default community node cap (aligned with ResourceGuard graph_scan_threshold).
@@ -253,10 +271,10 @@ pub async fn detect_communities_unchecked(
 
 /// Louvain community detection algorithm.
 ///
-/// This is a simplified implementation of the Louvain method that:
-/// 1. Starts with each node in its own community
-/// 2. Iteratively moves nodes to maximize modularity gain
-/// 3. Continues until no improvement is made
+/// Phase 1: local modularity moves (always).
+/// Phase 2 (optional, `EDGEQUAKE_LOUVAIN_HIERARCHY=1`): aggregate communities
+/// into super-nodes and repeat, producing a hierarchy of levels (NetworkX /
+/// Blondel et al. style).
 async fn louvain_communities(
     graph: &Arc<dyn GraphStorage>,
     config: &CommunityConfig,
@@ -269,7 +287,7 @@ async fn louvain_communities(
         return Ok(CommunityDetectionResult::new());
     }
 
-    // Build adjacency list
+    // Build adjacency list (original node ids)
     let mut adjacency: HashMap<String, Vec<(String, f64)>> = HashMap::new();
     let mut total_weight = 0.0;
 
@@ -297,91 +315,9 @@ async fn louvain_communities(
         total_weight = 1.0; // Prevent division by zero
     }
 
-    // Initialize: each node in its own community
-    let mut node_to_community: HashMap<String, usize> = HashMap::new();
-    let mut community_weights: HashMap<usize, f64> = HashMap::new();
-
-    for (idx, node) in nodes.iter().enumerate() {
-        node_to_community.insert(node.id.clone(), idx);
-
-        let node_weight = adjacency
-            .get(&node.id)
-            .map(|neighbors| neighbors.iter().map(|(_, w)| w).sum::<f64>())
-            .unwrap_or(0.0);
-
-        community_weights.insert(idx, node_weight);
-    }
-
-    // Louvain phase 1: Move nodes to maximize modularity
-    for _iteration in 0..config.max_iterations {
-        let mut improved = false;
-
-        for node in &nodes {
-            let node_id = &node.id;
-            let current_community = *node_to_community.get(node_id).unwrap();
-
-            let neighbors = adjacency.get(node_id).cloned().unwrap_or_default();
-            let node_weight: f64 = neighbors.iter().map(|(_, w)| w).sum();
-
-            // Calculate neighbor communities and their weights
-            let mut neighbor_communities: HashMap<usize, f64> = HashMap::new();
-            for (neighbor_id, weight) in &neighbors {
-                if let Some(&comm) = node_to_community.get(neighbor_id) {
-                    *neighbor_communities.entry(comm).or_default() += weight;
-                }
-            }
-
-            // Find best community to join
-            let mut best_community = current_community;
-            let mut best_gain = 0.0;
-
-            // Calculate current community's weight without this node
-            let current_comm_weight = community_weights.get(&current_community).unwrap_or(&0.0);
-            let ki_in_current = neighbor_communities.get(&current_community).unwrap_or(&0.0);
-
-            for (&candidate_community, &ki_in) in &neighbor_communities {
-                if candidate_community == current_community {
-                    continue;
-                }
-
-                let sigma_tot = community_weights.get(&candidate_community).unwrap_or(&0.0);
-
-                // Modularity gain calculation (simplified)
-                let delta_q = (ki_in / total_weight)
-                    - config.resolution * (sigma_tot * node_weight)
-                        / (2.0 * total_weight * total_weight);
-
-                let current_delta_q = (ki_in_current / total_weight)
-                    - config.resolution * ((current_comm_weight - node_weight) * node_weight)
-                        / (2.0 * total_weight * total_weight);
-
-                let gain = delta_q - current_delta_q;
-
-                if gain > best_gain {
-                    best_gain = gain;
-                    best_community = candidate_community;
-                }
-            }
-
-            // Move node if beneficial
-            if best_community != current_community && best_gain > 1e-9 {
-                // Update community assignments
-                if let Some(old_weight) = community_weights.get_mut(&current_community) {
-                    *old_weight -= node_weight;
-                }
-                if let Some(new_weight) = community_weights.get_mut(&best_community) {
-                    *new_weight += node_weight;
-                }
-
-                node_to_community.insert(node_id.clone(), best_community);
-                improved = true;
-            }
-        }
-
-        if !improved {
-            break;
-        }
-    }
+    let node_ids: Vec<String> = nodes.iter().map(|n| n.id.clone()).collect();
+    let (mut node_to_community, levels_run) =
+        louvain_partition_with_hierarchy(&node_ids, &adjacency, total_weight, config);
 
     // Build result
     let mut communities_map: HashMap<usize, Vec<String>> = HashMap::new();
@@ -394,6 +330,7 @@ async fn louvain_communities(
 
     // Renumber communities and filter by minimum size
     let mut result = CommunityDetectionResult::new();
+    result.hierarchy_levels = levels_run;
     let mut new_id = 0;
     let mut id_mapping: HashMap<usize, usize> = HashMap::new();
 
@@ -403,6 +340,10 @@ async fn louvain_communities(
 
             let mut community = Community::new(new_id);
             community.members = members;
+            community.properties.insert(
+                "hierarchy_level".to_string(),
+                serde_json::json!(levels_run.saturating_sub(1)),
+            );
             result.communities.push(community);
 
             new_id += 1;
@@ -410,7 +351,7 @@ async fn louvain_communities(
     }
 
     // Update node_to_community with new IDs
-    for (node_id, old_comm) in node_to_community {
+    for (node_id, old_comm) in node_to_community.drain() {
         if let Some(&new_comm) = id_mapping.get(&old_comm) {
             result.node_to_community.insert(node_id, new_comm);
         }
@@ -420,6 +361,235 @@ async fn louvain_communities(
     result.modularity = calculate_modularity(&result, &adjacency, total_weight);
 
     Ok(result)
+}
+
+/// Run Louvain phase-1 (+ optional phase-2 hierarchy). Returns (node→comm, levels).
+fn louvain_partition_with_hierarchy(
+    node_ids: &[String],
+    adjacency: &HashMap<String, Vec<(String, f64)>>,
+    total_weight: f64,
+    config: &CommunityConfig,
+) -> (HashMap<String, usize>, usize) {
+    // Level-0: original nodes
+    let mut current_nodes = node_ids.to_vec();
+    let mut current_adj = adjacency.clone();
+    let mut current_total = total_weight;
+
+    // Maps original node → community id at the finest (last) level
+    let mut original_to_comm: HashMap<String, usize> = HashMap::new();
+    for (idx, id) in node_ids.iter().enumerate() {
+        original_to_comm.insert(id.clone(), idx);
+    }
+
+    // For hierarchy: track how super-node ids map back to original membership
+    let mut super_members: HashMap<String, Vec<String>> = HashMap::new();
+    for id in node_ids {
+        super_members.insert(id.clone(), vec![id.clone()]);
+    }
+
+    let max_levels = if config.enable_hierarchy {
+        config.max_hierarchy_levels.max(1)
+    } else {
+        1
+    };
+
+    let mut levels_run = 0usize;
+    for level in 0..max_levels {
+        let partition = louvain_phase1_local_move(
+            &current_nodes,
+            &current_adj,
+            current_total,
+            config.resolution,
+            config.max_iterations,
+        );
+        levels_run = level + 1;
+
+        // Remap original nodes through this level's partition
+        let mut next_super_members: HashMap<String, Vec<String>> = HashMap::new();
+        for (node, &comm) in &partition {
+            let super_id = format!("c{level}_{comm}");
+            let members = super_members
+                .get(node)
+                .cloned()
+                .unwrap_or_else(|| vec![node.clone()]);
+            next_super_members
+                .entry(super_id)
+                .or_default()
+                .extend(members);
+        }
+        // Dedup members
+        for members in next_super_members.values_mut() {
+            members.sort();
+            members.dedup();
+        }
+
+        // Update original → community (use densest renumber later)
+        let mut comm_of_original: HashMap<String, usize> = HashMap::new();
+        for (super_id, members) in &next_super_members {
+            let comm_num = super_id
+                .rsplit('_')
+                .next()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0);
+            for m in members {
+                comm_of_original.insert(m.clone(), comm_num);
+            }
+        }
+        original_to_comm = comm_of_original;
+        super_members = next_super_members;
+
+        if !config.enable_hierarchy || level + 1 >= max_levels {
+            break;
+        }
+
+        // Phase 2: aggregate communities into a super-graph
+        let (agg_nodes, agg_adj, agg_total) =
+            aggregate_communities(&partition, &current_adj, level);
+        // Stop if aggregation did not reduce the graph
+        if agg_nodes.len() >= current_nodes.len() || agg_nodes.len() <= 1 {
+            break;
+        }
+        current_nodes = agg_nodes;
+        current_adj = agg_adj;
+        current_total = agg_total.max(1.0);
+    }
+
+    (original_to_comm, levels_run)
+}
+
+/// Louvain phase-1 local moving on an explicit node list + adjacency.
+fn louvain_phase1_local_move(
+    node_ids: &[String],
+    adjacency: &HashMap<String, Vec<(String, f64)>>,
+    total_weight: f64,
+    resolution: f64,
+    max_iterations: usize,
+) -> HashMap<String, usize> {
+    let mut node_to_community: HashMap<String, usize> = HashMap::new();
+    let mut community_weights: HashMap<usize, f64> = HashMap::new();
+
+    for (idx, node_id) in node_ids.iter().enumerate() {
+        node_to_community.insert(node_id.clone(), idx);
+        let node_weight = adjacency
+            .get(node_id)
+            .map(|neighbors| neighbors.iter().map(|(_, w)| w).sum::<f64>())
+            .unwrap_or(0.0);
+        community_weights.insert(idx, node_weight);
+    }
+
+    let total_weight = total_weight.max(1.0);
+
+    for _iteration in 0..max_iterations {
+        let mut improved = false;
+
+        for node_id in node_ids {
+            let current_community = *node_to_community.get(node_id).unwrap();
+            let neighbors = adjacency.get(node_id).cloned().unwrap_or_default();
+            let node_weight: f64 = neighbors.iter().map(|(_, w)| w).sum();
+
+            let mut neighbor_communities: HashMap<usize, f64> = HashMap::new();
+            for (neighbor_id, weight) in &neighbors {
+                if let Some(&comm) = node_to_community.get(neighbor_id) {
+                    *neighbor_communities.entry(comm).or_default() += weight;
+                }
+            }
+
+            let mut best_community = current_community;
+            let mut best_gain = 0.0;
+            let current_comm_weight = community_weights.get(&current_community).unwrap_or(&0.0);
+            let ki_in_current = neighbor_communities.get(&current_community).unwrap_or(&0.0);
+
+            for (&candidate_community, &ki_in) in &neighbor_communities {
+                if candidate_community == current_community {
+                    continue;
+                }
+                let sigma_tot = community_weights.get(&candidate_community).unwrap_or(&0.0);
+                let delta_q = (ki_in / total_weight)
+                    - resolution * (sigma_tot * node_weight) / (2.0 * total_weight * total_weight);
+                let current_delta_q = (ki_in_current / total_weight)
+                    - resolution * ((current_comm_weight - node_weight) * node_weight)
+                        / (2.0 * total_weight * total_weight);
+                let gain = delta_q - current_delta_q;
+                if gain > best_gain {
+                    best_gain = gain;
+                    best_community = candidate_community;
+                }
+            }
+
+            if best_community != current_community && best_gain > 1e-9 {
+                if let Some(old_weight) = community_weights.get_mut(&current_community) {
+                    *old_weight -= node_weight;
+                }
+                if let Some(new_weight) = community_weights.get_mut(&best_community) {
+                    *new_weight += node_weight;
+                }
+                node_to_community.insert(node_id.clone(), best_community);
+                improved = true;
+            }
+        }
+
+        if !improved {
+            break;
+        }
+    }
+
+    node_to_community
+}
+
+type WeightedAdj = HashMap<String, Vec<(String, f64)>>;
+
+/// Phase-2: build super-graph where each community is a node; edge weights sum
+/// inter-community links (Blondel / NetworkX Louvain aggregation).
+fn aggregate_communities(
+    partition: &HashMap<String, usize>,
+    adjacency: &WeightedAdj,
+    level: usize,
+) -> (Vec<String>, WeightedAdj, f64) {
+    let mut edge_weights: HashMap<(String, String), f64> = HashMap::new();
+    let mut total = 0.0;
+
+    for (src, neighbors) in adjacency {
+        let Some(&src_c) = partition.get(src) else {
+            continue;
+        };
+        let src_super = format!("c{level}_{src_c}");
+        for (tgt, w) in neighbors {
+            let Some(&tgt_c) = partition.get(tgt) else {
+                continue;
+            };
+            let tgt_super = format!("c{level}_{tgt_c}");
+            // Count each undirected edge once (src_id <= tgt_id lexicographically)
+            if src > tgt {
+                continue;
+            }
+            let (a, b) = if src_super <= tgt_super {
+                (src_super.clone(), tgt_super)
+            } else {
+                (tgt_super, src_super.clone())
+            };
+            *edge_weights.entry((a, b)).or_default() += *w;
+            // Internal edges (self-loops) still contribute to total weight
+            total += *w;
+        }
+    }
+
+    let mut agg_adj: HashMap<String, Vec<(String, f64)>> = HashMap::new();
+    let mut nodes_set: HashSet<String> = HashSet::new();
+    for ((a, b), w) in edge_weights {
+        nodes_set.insert(a.clone());
+        nodes_set.insert(b.clone());
+        if a == b {
+            // Self-loop: store once
+            agg_adj.entry(a).or_default().push((b, w));
+        } else {
+            agg_adj.entry(a.clone()).or_default().push((b.clone(), w));
+            agg_adj.entry(b).or_default().push((a, w));
+        }
+    }
+
+    let mut nodes: Vec<String> = nodes_set.into_iter().collect();
+    nodes.sort();
+    (nodes, agg_adj, total)
 }
 
 /// Label propagation community detection.
@@ -596,6 +766,7 @@ async fn connected_components(
         communities,
         node_to_community,
         modularity: 0.0,
+        hierarchy_levels: 1,
     })
 }
 
@@ -765,6 +936,69 @@ mod tests {
         for e in &loaded.edges {
             assert!(ids.contains(&e.source) && ids.contains(&e.target));
         }
+    }
+
+    #[tokio::test]
+    async fn unit_louvain_hierarchy_levels() {
+        // D-54: with hierarchy enabled, phase-2 aggregation reports levels >= 1
+        // and can coarsen a nested two-clique graph.
+        let graph = test_graph();
+        graph.initialize().await.unwrap();
+
+        // Two dense triangles weakly linked — classic hierarchy toy graph.
+        for id in ["A", "B", "C", "D", "E", "F"] {
+            let mut props = HashMap::new();
+            props.insert("name".to_string(), serde_json::json!(id));
+            graph.upsert_node(id, props).await.unwrap();
+        }
+        for (src, tgt, w) in [
+            ("A", "B", 1.0),
+            ("B", "C", 1.0),
+            ("A", "C", 1.0),
+            ("D", "E", 1.0),
+            ("E", "F", 1.0),
+            ("D", "F", 1.0),
+            ("C", "D", 0.05),
+        ] {
+            let mut edge_props = HashMap::new();
+            edge_props.insert("weight".to_string(), serde_json::json!(w));
+            graph.upsert_edge(src, tgt, edge_props).await.unwrap();
+        }
+
+        let config = CommunityConfig {
+            algorithm: CommunityAlgorithm::Louvain,
+            min_community_size: 1,
+            enable_hierarchy: true,
+            max_hierarchy_levels: 3,
+            ..Default::default()
+        };
+        let result = detect_communities_unchecked(&graph, &config).await.unwrap();
+        assert!(
+            result.hierarchy_levels >= 1,
+            "hierarchy mode must record at least one Louvain level"
+        );
+        assert!(
+            !result.communities.is_empty(),
+            "expected communities on hierarchical toy graph"
+        );
+        // Phase-2 path must stamp hierarchy_level on community properties.
+        assert!(
+            result
+                .communities
+                .iter()
+                .any(|c| c.properties.contains_key("hierarchy_level")),
+            "communities should expose hierarchy_level property"
+        );
+
+        // Flat mode still works and reports a single level.
+        let flat = CommunityConfig {
+            algorithm: CommunityAlgorithm::Louvain,
+            min_community_size: 1,
+            enable_hierarchy: false,
+            ..Default::default()
+        };
+        let flat_result = detect_communities_unchecked(&graph, &flat).await.unwrap();
+        assert_eq!(flat_result.hierarchy_levels, 1);
     }
 
     #[tokio::test]

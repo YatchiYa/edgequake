@@ -12,6 +12,13 @@ fn contract_postgres_vector_fts_joins_shared_kv_for_chunk_text() {
     // SPEC-058: empty generated tsv must not block KV fallthrough.
     assert!(fts.contains("NULLIF(v.content_tsv"));
     assert!(fts.contains("content_ref"));
+    // X-05: honest ts_rank_cd naming + configurable language.
+    assert!(fts.contains("EDGEQUAKE_FTS_LANGUAGE") || fts.contains("FTS_LANGUAGE_ENV"));
+    assert!(fts.contains("fts_language_from_env"));
+    assert!(
+        fts.contains("cover-density") && fts.contains("not") && fts.contains("Okapi BM25"),
+        "X-05: docs must not market postgres FTS as BM25"
+    );
 }
 
 #[test]

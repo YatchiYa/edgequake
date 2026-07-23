@@ -24,28 +24,40 @@
 //! PostgreSQL RLS policies use session variables (set via `set_config()`) to
 //! determine which rows a query can access. This module provides:
 //!
-//! 1. `RlsContext` - A guard that sets context on creation and clears on drop
-//! 2. `set_tenant_context()` - Low-level function to set session variables
-//! 3. `clear_tenant_context()` - Clears the session variables
+//! 1. [`with_rls_transaction`] — **preferred** (SPEC-083 S-03): BEGIN → set GUC → work → COMMIT
+//! 2. [`with_acquired_tenant_context`] — delegates to `with_rls_transaction`
+//! 3. `set_tenant_context_on_conn` / `clear_tenant_context_on_conn` — low-level helpers
+//!
+//! **Legacy:** [`acquire_rls_connection`] sets transaction-local GUCs (`is_local=true`)
+//! outside an explicit `BEGIN`, so the GUC dies when that statement ends. Prefer
+//! [`with_rls_transaction`] for all multi-statement (and most single-statement) work.
 //!
 //! # Example
 //!
 //! ```ignore
-//! use edgequake_storage::postgres::RlsContext;
+//! use edgequake_storage::adapters::postgres::with_rls_transaction;
 //!
-//! // Create context - automatically sets session vars
-//! let ctx = RlsContext::new(&pool, tenant_id, Some(workspace_id)).await?;
-//!
-//! // All queries in this scope will be filtered by RLS
-//! let docs = sqlx::query!("SELECT * FROM documents").fetch_all(&pool).await?;
-//!
-//! // Context is automatically cleared when `ctx` goes out of scope
+//! let row = with_rls_transaction(&pool, tenant_id, workspace_id, Some(user_id), move |conn| {
+//!     Box::pin(async move {
+//!         sqlx::query_as::<_, MyRow>("SELECT * FROM t WHERE id = $1")
+//!             .bind(id)
+//!             .fetch_one(&mut *conn)
+//!             .await
+//!             .map_err(|e| /* ... */)
+//!     })
+//! }).await?;
 //! ```
+
+use std::future::Future;
+use std::pin::Pin;
 
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::error::{Result, StorageError};
+
+/// Boxed future returned by RLS transaction callbacks (ties Future lifetime to conn).
+pub type RlsTxFuture<'c, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'c>>;
 
 /// Guard for PostgreSQL RLS context.
 ///
@@ -213,10 +225,14 @@ pub async fn set_tenant_context_on_conn(
     Ok(())
 }
 
-/// Acquire a pooled connection with RLS tenant context set (SPEC-027 SEC-014 SSOT).
+/// Acquire a pooled connection with RLS tenant context set (SPEC-027 SEC-014).
 ///
-/// Prefer this over pool-level `set_tenant_context` — session variables must not leak
-/// across concurrent pool checkouts.
+/// **Legacy** — prefer [`with_rls_transaction`]. `set_tenant_context` uses
+/// `set_config(..., is_local = true)`, so the GUC is cleared when the setting
+/// statement ends unless it runs inside an explicit `BEGIN`…`COMMIT`.
+#[deprecated(
+    note = "SPEC-083 S-03: use with_rls_transaction — is_local=true GUC dies outside BEGIN"
+)]
 pub async fn acquire_rls_connection(
     pool: &PgPool,
     tenant_id: Uuid,
@@ -236,11 +252,18 @@ pub async fn release_rls_connection(conn: &mut sqlx::PgConnection) -> Result<()>
     clear_tenant_context_on_conn(conn).await
 }
 
-/// Run an operation with RLS context on a **single acquired connection** (SPEC-027 SEC-014).
+/// Run an operation inside an explicit transaction with RLS GUC set (SPEC-083 S-03).
 ///
-/// Session variables are transaction-local; using the pool directly without `acquire()`
-/// can leak or miss context across concurrent requests.
-pub async fn with_acquired_tenant_context<F, Fut, T>(
+/// # Why this exists
+///
+/// `set_tenant_context()` uses `set_config(..., is_local = true)` (transaction-local GUC).
+/// Calling it in autocommit clears the GUC when that statement ends, so the next query
+/// sees `current_tenant_id() = NULL` and RLS policies never match.
+///
+/// **Invariant**: GUC MUST be set inside `BEGIN` … `COMMIT` on the same connection.
+/// Prefer this helper (or [`with_acquired_tenant_context`], which delegates here) over
+/// bare `acquire_rls_connection` + autocommit queries.
+pub async fn with_rls_transaction<F, T>(
     pool: &PgPool,
     tenant_id: Uuid,
     workspace_id: Option<Uuid>,
@@ -248,22 +271,60 @@ pub async fn with_acquired_tenant_context<F, Fut, T>(
     operation: F,
 ) -> Result<T>
 where
-    F: for<'c> FnOnce(&'c mut sqlx::PgConnection) -> Fut,
-    Fut: std::future::Future<Output = Result<T>>,
+    for<'c> F: FnOnce(&'c mut sqlx::PgConnection) -> RlsTxFuture<'c, T> + Send,
+    T: Send,
 {
-    let mut conn = acquire_rls_connection(pool, tenant_id, workspace_id, user_id).await?;
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| StorageError::Database(format!("Failed to begin RLS transaction: {e}")))?;
 
-    let result = operation(&mut conn).await;
-
-    if let Err(e) = release_rls_connection(&mut conn).await {
-        tracing::warn!(
-            error.source = "postgres_rls",
-            error.message = %e,
-            "Failed to clear RLS context after operation"
-        );
+    // GUC is transaction-local — must run after BEGIN (see module docs / migration 096).
+    // WHY `&mut *tx`: sqlx Executor is implemented for `&mut PgConnection`, not
+    // `&mut Transaction` in this sqlx version — explicit deref is required.
+    #[allow(clippy::explicit_auto_deref)]
+    {
+        set_tenant_context_on_conn(&mut *tx, tenant_id, workspace_id, user_id).await?;
     }
 
-    result
+    #[allow(clippy::explicit_auto_deref)]
+    let op_result = operation(&mut *tx).await;
+    match op_result {
+        Ok(value) => {
+            tx.commit().await.map_err(|e| {
+                StorageError::Database(format!("Failed to commit RLS transaction: {e}"))
+            })?;
+            Ok(value)
+        }
+        Err(err) => {
+            if let Err(rollback_err) = tx.rollback().await {
+                tracing::warn!(
+                    error.source = "postgres_rls",
+                    error.message = %rollback_err,
+                    "Failed to rollback RLS transaction after operation error"
+                );
+            }
+            Err(err)
+        }
+    }
+}
+
+/// Run an operation with RLS context on a **single acquired connection** (SPEC-027 SEC-014).
+///
+/// Delegates to [`with_rls_transaction`] so GUCs remain visible for the whole operation
+/// (SPEC-083 S-03). Prefer this or `with_rls_transaction` over pool-level context.
+pub async fn with_acquired_tenant_context<F, T>(
+    pool: &PgPool,
+    tenant_id: Uuid,
+    workspace_id: Option<Uuid>,
+    user_id: Option<Uuid>,
+    operation: F,
+) -> Result<T>
+where
+    for<'c> F: FnOnce(&'c mut sqlx::PgConnection) -> RlsTxFuture<'c, T> + Send,
+    T: Send,
+{
+    with_rls_transaction(pool, tenant_id, workspace_id, user_id, operation).await
 }
 
 /// Get the current tenant ID from the session.

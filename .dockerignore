@@ -32,7 +32,9 @@
 !**/README.md
 # Exclude everything except edgequake/ and edgequake-pdf2md/ subdirs
 edgequake-website/
-edgequake_webui/
+# Do NOT blanket-exclude edgequake_webui/ — OpenAPI schema + Next configs must
+# be in the frontend image build context (parent exclude blocks !re-includes).
+# Artifact excludes below keep context lean.
 sdks/
 tools/
 tests/
@@ -62,6 +64,7 @@ edgequake_webui/playwright-report
 edgequake_webui/.playwright
 edgequake_webui/*.pid
 edgequake_webui/*.txt
+edgequake_webui/e2e
 !edgequake_webui/package.json
 !edgequake_webui/pnpm-lock.yaml
 !edgequake_webui/postcss.config.mjs
@@ -69,5 +72,6 @@ edgequake_webui/*.txt
 !edgequake_webui/vitest.config.mjs
 !edgequake_webui/src/
 !edgequake_webui/public/
+!edgequake_webui/openapi/
 
 

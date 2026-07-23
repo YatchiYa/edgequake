@@ -1,5 +1,6 @@
 [package]
 name = "edgequake-sdk"
+# Client package semver (not product 0.20.x) — see docs/sdks/VERSION-POLICY.md (X-33).
 version = "0.4.0"
 edition = "2021"
 rust-version = "1.75"

@@ -22,50 +22,50 @@
 
 | SUT | Acc | F1 | cos |
 |-----|-----|----|-----|
-| EdgeQuake mix | 0.7315 | 0.6552 | 0.9603 |
-| LightRAG mix | 0.7604 | 0.6924 | 0.9646 |
-| Δ (EQ − LR) | -0.0290 | -0.0372 | -0.0043 |
+| EdgeQuake mix | 0.7935 | 0.7364 | 0.9648 |
+| LightRAG mix | 0.7731 | 0.7098 | 0.9632 |
+| Δ (EQ − LR) | +0.0203 | 0.0266 | 0.0017 |
 
-- **Δ Acc 95% CI (bootstrap):** [-0.1074, +0.0518] (n=40)
+- **Δ Acc 95% CI (bootstrap):** [-0.0728, +0.1131] (n=40)
 
 ## Retrieval (L2)
 
 | SUT | evidence_recall | context_relevancy |
 |-----|-----------------|-------------------|
-| EdgeQuake | 0.9355 | 0.3812 |
-| LightRAG | 0.9508 | 0.4938 |
+| EdgeQuake | 0.8822 | 0.3438 |
+| LightRAG | 0.9633 | 0.5000 |
 
 ## By question_type (EQ Acc)
 
-- **Fact Retrieval:** 0.7140
-- **Complex Reasoning:** 0.7072
-- **Contextual Summarize:** 0.8027
-- **Creative Generation:** 0.7018
+- **Fact Retrieval:** 0.8117
+- **Complex Reasoning:** 0.6741
+- **Contextual Summarize:** 0.8737
+- **Creative Generation:** 0.8145
 
 ## By question_type (LR Acc)
 
-- **Fact Retrieval:** 0.6856
-- **Complex Reasoning:** 0.7801
-- **Contextual Summarize:** 0.8609
-- **Creative Generation:** 0.7150
+- **Fact Retrieval:** 0.6422
+- **Complex Reasoning:** 0.8890
+- **Contextual Summarize:** 0.8055
+- **Creative Generation:** 0.7559
 
 ## Ops
 
-- EQ empty-answer rate: 0.000
+- EQ empty-answer rate: 0.025
 - LR empty-answer rate: 0.000
 - EQ empty-context rate: 0.000
 - LR empty-context rate: 0.000
-- EQ query p50/p95 ms: 5891 / 8314
-- LR query p50/p95 ms: 5817 / 7896
+- EQ query p50/p95 ms: 4447 / 13199
+- LR query p50/p95 ms: 4359 / 11925
 - ingest wall s: 0.0
-- EQ/LR p50 ratio: 1.013 (SLO ≤1.5×: PASS)
-- EQ stage p50 ms: keyword=1678, embed=2275, retrieve=843, rerank=11, generate=2311
+- EQ/LR p50 ratio: 1.02 (SLO ≤1.5×: PASS)
+- EQ stage p50 ms: keyword=1069, embed=1070, retrieve=341, rerank=9, generate=2119
 
 ## Pins
 
 ```json
 {
-  "edgequake_git_sha": "936b9236",
+  "edgequake_git_sha": "fa62d6e7",
   "dataset_id": "GraphRAG-Bench/GraphRAG-Bench",
   "dataset_revision": "dc3a111e77dbaf8bbaf51ef331f3cfc9b1b5c546",
   "fixture_id": "smoke_question_ids_v1",
@@ -106,12 +106,18 @@
   "lr_enable_llm_cache": false,
   "eq_max_results": 30,
   "eq_rerank_top_k": 30,
+  "eq_enable_rerank": true,
+  "graph_walk": "ppr",
+  "kg_chunk_pick": "vector",
   "l2_retrieval_required": true,
   "mix_arm_gate": false,
   "eq_mix_arm_gate_env": "false",
   "mix_fusion": "rrf",
+  "rr_order": "local_first",
   "related_chunk_number": 5,
   "kg_chunk_occurrence_sort": false,
+  "bm25_retrieval": true,
+  "kg_chunk_pick_timing": "per_arm",
   "kg_chunk_pick_lr_budget": false,
   "mix_relevancy_prune": false,
   "mix_relevancy_keep": 12,
@@ -155,10 +161,11 @@
   "l2_bm25_union": false,
   "l2_bm25_mix_top_k": 30,
   "l2_bm25_mode": "union",
+  "mix_intent_weights": false,
   "intent_factual_bias": false,
   "answer_prompt": "default",
   "answer_specific_types": "",
-  "structure_induce": "0",
+  "structure_induce": "off",
   "min_chunk_budget_ratio": 0.4,
   "query_arm_concurrency": 16,
   "adaptive_chunking": false,
@@ -172,7 +179,7 @@
   "lr_query_mode": "mix",
   "chunk_size": 1200,
   "query_concurrency": 4,
-  "eval_concurrency": 8,
+  "eval_concurrency": 24,
   "judge": "generation_eval"
 }
 ```

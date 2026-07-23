@@ -1,8 +1,256 @@
 {
   "spec": "001-benchmark",
-  "updated_at_utc": "2026-07-21T02:30:00Z",
-  "honesty": "Split peers — never merge Acc / L2 / latency. Beat CI unmet. Warm Acc LR p50 (~1.5s) is LLM-cache-aided (063); fair cold peer c1cold ≈1.01× PASS. Acc Fact peer unchanged. 064 product TTFT/answer-cache (default OFF) is not an Acc latency peer.",
+  "updated_at_utc": "2026-07-23T13:45:00Z",
+  "honesty": "Split peers \u2014 never merge Acc / L2 / latency / gap-close. Ship product Equal = 083 PRODUCT_QUERY_API_v1. Acc CI = labeled keep only (gap_close_occ E2 / e2_chat_split_fair). Acc Equal mid path STOP (085). Mid Parity unfinished (binding). Acc Beat fishing STOP. Acc headline = P0 medical-mid (publish/latest) = medical-mid-20260723T134124Z (Acc statistical tie EQ 0.770 / LR 0.779). Cold latency SSOT = C1COLD_v1 / smoke-20260723T134452Z (1.02\u00d7). 080\u2013082 packing REJECT. Labeled peers must not overwrite Acc warm.",
+  "claim_surface": {
+    "product_equal": "product_query_api",
+    "acc_ci_labeled_keep": "gap_close_occ",
+    "acc_headline": "acc_headline",
+    "acc_equal_parity": "STOP",
+    "acc_beat": "STOP"
+  },
   "peers": {
+    "acc_headline": {
+      "label": "Acc publish headline (P0 medical-mid)",
+      "workspace_id": "a992e80a-6b1c-4f92-9645-4226b8b82fea",
+      "pack": "P0_rrf_bm25",
+      "profile_id": "P0_mistral_small_mix_chunk1200_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260723T134124Z",
+      "publish": "specs/001-benchmark/e2e/artifacts/publish/latest",
+      "metrics": {
+        "eq_acc": 0.77,
+        "lr_acc": 0.779,
+        "eq_ctx_rel": 0.408,
+        "eq_evidence_recall": 0.926,
+        "lr_ctx_rel": 0.511,
+        "lr_evidence_recall": 0.95,
+        "fact_er": 0.893,
+        "acc_delta_ci": [
+          -0.045,
+          0.026
+        ],
+        "n_questions": 200,
+        "verdict": "STATISTICAL_TIE"
+      },
+      "use_for": [
+        "acc_publish_ssot",
+        "release_claims"
+      ],
+      "not_for": [
+        "gap_close_peer_claims",
+        "beat_claims"
+      ]
+    },
+    "acc_headline_full": {
+      "label": "Acc P0 medical-full scale check (n=2062) \u2014 not publish/latest",
+      "workspace_id": "8e990410-43b5-44f4-9f56-87bd154570ce",
+      "pack": "P0_rrf_bm25",
+      "profile_id": "P0_path_off_bm25_restore_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/medical-full-20260722T204100Z",
+      "publish_peer": "specs/001-benchmark/e2e/artifacts/publish/peers/P0_MEDICAL_FULL_v1",
+      "metrics": {
+        "eq_acc": 0.724,
+        "lr_acc": 0.784,
+        "eq_ctx_rel": 0.394,
+        "eq_evidence_recall": 0.913,
+        "fact_er": 0.905,
+        "acc_delta_ci": [
+          -0.107,
+          -0.042
+        ],
+        "n_questions": 2062
+      },
+      "use_for": [
+        "acc_scale_check",
+        "medical_full_labeled"
+      ],
+      "not_for": [
+        "acc_headline",
+        "beat_claims",
+        "silent_publish_latest"
+      ],
+      "verdict": "SCALE \u2014 LR Acc CI excludes 0 at n=2062; Acc latest stays mid P0 (079)"
+    },
+    "gap_close_occ": {
+      "label": "Gap-close E2 (L1.5 + occurrence_sort) \u2014 keep (best Acc CI)",
+      "workspace_id": "8e990410-43b5-44f4-9f56-87bd154570ce",
+      "pack": "lr-occ-fact-l2",
+      "profile_id": "LR_OCC_FACT_L2_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260722T133053Z",
+      "publish_peer": "specs/001-benchmark/e2e/artifacts/publish/peers/LR_OCC_FACT_L2_v1",
+      "metrics": {
+        "eq_acc": 0.765,
+        "lr_acc": 0.76,
+        "eq_ctx_rel": 0.491,
+        "eq_evidence_recall": 0.943,
+        "fact_er": 0.917,
+        "acc_delta_ci": [
+          -0.031,
+          0.04
+        ],
+        "n_questions": 200
+      },
+      "use_for": [
+        "gap_close_labeled",
+        "acc_ci_tie_claims",
+        "acc_ci_labeled_keep"
+      ],
+      "not_for": [
+        "acc_headline",
+        "beat_claims",
+        "parity_claims",
+        "silent_publish_latest",
+        "fact_er_gate_pass"
+      ],
+      "verdict": "Acc CI labeled KEEP only — Acc tie; ctx 0.491 < 0.50; not Parity/Equal/Beat (085 STOP)"
+    },
+    "gap_close_occ_full": {
+      "label": "Gap-close E2 occ medical-full scale check (n=2062) \u2014 LR Acc",
+      "workspace_id": "8e990410-43b5-44f4-9f56-87bd154570ce",
+      "pack": "lr-occ-fact-l2",
+      "profile_id": "LR_OCC_FACT_L2_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/medical-full-20260722T171906Z",
+      "publish_peer": "specs/001-benchmark/e2e/artifacts/publish/peers/LR_OCC_FACT_L2_medical_full_v1",
+      "metrics": {
+        "eq_acc": 0.739,
+        "lr_acc": 0.784,
+        "eq_ctx_rel": 0.472,
+        "eq_evidence_recall": 0.945,
+        "fact_er": 0.918,
+        "acc_delta_ci": [
+          -0.069,
+          -0.017
+        ],
+        "n_questions": 2062
+      },
+      "use_for": [
+        "gap_close_scale_check",
+        "medical_full_labeled"
+      ],
+      "not_for": [
+        "acc_headline",
+        "beat_claims",
+        "silent_publish_latest",
+        "mid_tie_extrapolation"
+      ],
+      "verdict": "SCALE \u2014 mid E2 Acc tie does not hold at n=2062; LR Acc CI excludes 0; Acc latest stays mid P0"
+    },
+    "gap_close_l15": {
+      "label": "Gap-close L1.5 (LR identity + Fact L2 BM25) \u2014 prior keep",
+      "workspace_id": "8e990410-43b5-44f4-9f56-87bd154570ce",
+      "pack": "lr-identity-fact-l2",
+      "profile_id": "LR_IDENTITY_FACT_L2_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260722T125400Z",
+      "publish_peer": "specs/001-benchmark/e2e/artifacts/publish/peers/LR_IDENTITY_FACT_L2_v1",
+      "metrics": {
+        "eq_acc": 0.746,
+        "lr_acc": 0.768,
+        "eq_ctx_rel": 0.474,
+        "eq_evidence_recall": 0.946,
+        "fact_er": 0.919,
+        "acc_delta_ci": [
+          -0.061,
+          0.013
+        ],
+        "n_questions": 200
+      },
+      "use_for": [
+        "gap_close_baseline",
+        "l2_er_near_parity"
+      ],
+      "not_for": [
+        "acc_headline",
+        "beat_claims",
+        "silent_publish_latest"
+      ]
+    },
+    "gap_close_dense": {
+      "label": "Gap-close E1 (L1.5 + BM25_RETRIEVAL=0) \u2014 Acc CI REJECT",
+      "workspace_id": "8e990410-43b5-44f4-9f56-87bd154570ce",
+      "pack": "lr-dense-fact-l2",
+      "profile_id": "LR_DENSE_FACT_L2_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260722T132147Z",
+      "publish_peer": "specs/001-benchmark/e2e/artifacts/publish/peers/LR_DENSE_FACT_L2_v1",
+      "metrics": {
+        "eq_acc": 0.729,
+        "lr_acc": 0.776,
+        "eq_ctx_rel": 0.504,
+        "eq_evidence_recall": 0.954,
+        "fact_er": 0.943,
+        "acc_delta_ci": [
+          -0.083,
+          -0.01
+        ],
+        "n_questions": 200
+      },
+      "use_for": [
+        "exploratory_mix_law"
+      ],
+      "not_for": [
+        "acc_headline",
+        "gap_close_keep",
+        "beat_claims"
+      ],
+      "verdict": "REJECT vs L1.5 \u2014 Acc CI excludes 0 for LR (ci_low worse); L2 ctx/Fact ER improved"
+    },
+    "gap_close_posttrunc": {
+      "label": "Gap-close R3 (E2 + post_truncate KG pick) \u2014 Acc CI REJECT",
+      "workspace_id": "8e990410-43b5-44f4-9f56-87bd154570ce",
+      "pack": "lr-posttrunc-fact-l2",
+      "profile_id": "LR_POSTTRUNC_FACT_L2_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260722T141105Z",
+      "publish_peer": "specs/001-benchmark/e2e/artifacts/publish/peers/LR_POSTTRUNC_FACT_L2_v1",
+      "metrics": {
+        "eq_acc": 0.736,
+        "lr_acc": 0.774,
+        "eq_ctx_rel": 0.484,
+        "eq_evidence_recall": 0.944,
+        "fact_er": 0.93,
+        "acc_delta_ci": [
+          -0.076,
+          -0.001
+        ],
+        "n_questions": 200
+      },
+      "use_for": [
+        "exploratory_mix_law"
+      ],
+      "not_for": [
+        "acc_headline",
+        "gap_close_keep",
+        "beat_claims"
+      ],
+      "verdict": "REJECT vs E2 \u2014 Acc CI excludes 0 for LR; Fact ER \u2265 LR\u22120.03 but Acc tax"
+    },
+    "gap_close_nf": {
+      "label": "Gap-close NF (L1.5 + naive-first RR) \u2014 Acc CI REJECT",
+      "workspace_id": "8e990410-43b5-44f4-9f56-87bd154570ce",
+      "pack": "lr-nf-fact-l2",
+      "profile_id": "LR_NF_FACT_L2_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260722T130356Z",
+      "publish_peer": "specs/001-benchmark/e2e/artifacts/publish/peers/LR_NF_FACT_L2_v1",
+      "metrics": {
+        "eq_acc": 0.742,
+        "lr_acc": 0.785,
+        "eq_ctx_rel": 0.474,
+        "eq_evidence_recall": 0.956,
+        "fact_er": 0.923,
+        "acc_delta_ci": [
+          -0.08,
+          -0.007
+        ],
+        "n_questions": 200
+      },
+      "use_for": [
+        "exploratory_mix_law"
+      ],
+      "not_for": [
+        "acc_headline",
+        "gap_close_keep",
+        "beat_claims"
+      ],
+      "verdict": "REJECT vs L1.5 \u2014 Acc CI excludes 0 for LR; ctx flat"
+    },
     "acc_fact": {
       "label": "Acc Fact peer",
       "workspace_id": "8e990410-43b5-44f4-9f56-87bd154570ce",
@@ -20,8 +268,16 @@
         "lr_query_p50_ms": 1350,
         "eq_lr_p50_ratio": 5.093
       },
-      "use_for": ["answer_quality", "fact_lookup", "acc_claims"],
-      "not_for": ["l2_parity_claims", "beat_claims", "latency_parity_claims"]
+      "use_for": [
+        "answer_quality",
+        "fact_lookup",
+        "acc_claims"
+      ],
+      "not_for": [
+        "l2_parity_claims",
+        "beat_claims",
+        "latency_parity_claims"
+      ]
     },
     "l2_parity": {
       "label": "L2 Parity peer",
@@ -39,8 +295,15 @@
         "lr_query_p50_ms": 1473,
         "eq_lr_p50_ratio": 4.864
       },
-      "use_for": ["evidence_recall", "context_relevancy", "l2_parity_claims"],
-      "not_for": ["acc_headline_without_tax_disclosure", "beat_claims"]
+      "use_for": [
+        "evidence_recall",
+        "context_relevancy",
+        "l2_parity_claims"
+      ],
+      "not_for": [
+        "acc_headline_without_tax_disclosure",
+        "beat_claims"
+      ]
     },
     "latency_c1a": {
       "label": "Latency C1a (Fact CE-skip)",
@@ -54,8 +317,13 @@
         "eq_lr_p50_ratio": 4.347,
         "fact_rerank_p50_ms": 9
       },
-      "use_for": ["product_latency_fact_path"],
-      "not_for": ["acc_headline", "beat_claims"]
+      "use_for": [
+        "product_latency_fact_path"
+      ],
+      "not_for": [
+        "acc_headline",
+        "beat_claims"
+      ]
     },
     "latency_c1b": {
       "label": "Latency C1b (BM25-all + keyword/embed split)",
@@ -74,8 +342,16 @@
         "eq_rerank_p50_ms": 9,
         "eq_generate_p50_ms": 2421
       },
-      "use_for": ["product_latency_ops", "stage_honesty_claims"],
-      "not_for": ["acc_headline", "acc_fact_peer", "beat_claims", "latency_slo_1_5x_claim"]
+      "use_for": [
+        "product_latency_ops",
+        "stage_honesty_claims"
+      ],
+      "not_for": [
+        "acc_headline",
+        "acc_fact_peer",
+        "beat_claims",
+        "latency_slo_1_5x_claim"
+      ]
     },
     "latency_c1d": {
       "label": "Latency C1d (heuristic KEYWORD)",
@@ -90,8 +366,94 @@
         "eq_keyword_p50_ms": 0,
         "eq_generate_p50_ms": 2985
       },
-      "use_for": ["keyword_stage_proof"],
-      "not_for": ["acc_headline", "latency_slo_1_5x_claim", "wall_latency_win_claim"]
+      "use_for": [
+        "keyword_stage_proof"
+      ],
+      "not_for": [
+        "acc_headline",
+        "latency_slo_1_5x_claim",
+        "wall_latency_win_claim"
+      ]
+    },
+    "e2_chat_split": {
+      "label": "084 E2_CHAT_SPLIT_v1 — E2 occ + 083 chat generate (not Acc)",
+      "workspace_id": "8e990410-43b5-44f4-9f56-87bd154570ce",
+      "pack": "e2-chat-split",
+      "profile_id": "E2_CHAT_SPLIT_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260723T041648Z",
+      "publish_peer": "specs/001-benchmark/e2e/artifacts/publish/peers/E2_CHAT_SPLIT_v1",
+      "metrics": {
+        "eq_acc": 0.792,
+        "lr_acc": 0.776,
+        "eq_ctx_rel": 0.473,
+        "eq_evidence_recall": 0.952,
+        "fact_er": 0.95,
+        "acc_delta_ci": [-0.016, 0.048]
+      },
+      "use_for": [
+        "generation_role_split_labeled",
+        "acc_ci_keep_candidate"
+      ],
+      "not_for": [
+        "acc_headline",
+        "beat_claims",
+        "parity_claims",
+        "silent_publish_latest"
+      ],
+      "verdict": "REJECT Parity — Acc CI tie/EQ-ahead vs E2 but ctx 0.473 tax; H4 skipped; Acc latest frozen"
+    },
+    "e2_chat_split_fair": {
+      "label": "085 E2_CHAT_SPLIT_fair_v1 — chat-split + concurrency=4 (not Acc)",
+      "workspace_id": "8e990410-43b5-44f4-9f56-87bd154570ce",
+      "pack": "e2-chat-split-fair",
+      "profile_id": "E2_CHAT_SPLIT_fair_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260723T043401Z",
+      "publish_peer": "specs/001-benchmark/e2e/artifacts/publish/peers/E2_CHAT_SPLIT_fair_v1",
+      "metrics": {
+        "eq_acc": 0.791,
+        "lr_acc": 0.775,
+        "eq_ctx_rel": 0.488,
+        "eq_evidence_recall": 0.94,
+        "fact_er": 0.91,
+        "acc_delta_ci": [-0.022, 0.05]
+      },
+      "use_for": [
+        "fairness_concurrency_attribution",
+        "acc_ci_keep_candidate"
+      ],
+      "not_for": [
+        "acc_headline",
+        "beat_claims",
+        "parity_claims",
+        "silent_publish_latest"
+      ],
+      "verdict": "REJECT Parity — ctx 0.488 + Fact ER miss; Acc Equal STOP; Acc latest frozen"
+    },
+    "product_query_api": {
+      "label": "083 PRODUCT_QUERY_API_v1 — hl/ll keyword-skip latency (not Acc)",
+      "workspace_id": "8e990410-43b5-44f4-9f56-87bd154570ce",
+      "pack": "product-query-api",
+      "profile_id": "PRODUCT_QUERY_API_v1",
+      "publish_peer": "specs/001-benchmark/e2e/artifacts/publish/peers/PRODUCT_QUERY_API_v1",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/product-query-api-20260723T035127Z",
+      "closeout_smoke": "specs/001-benchmark/e2e/artifacts/history/product-query-api-20260723T035417Z",
+      "script": "tools/bench001/scripts/run_product_query_api_latency.sh",
+      "metrics": {
+        "control_keyword_time_ms": 909,
+        "override_keyword_time_ms": 0,
+        "keyword_skip_pass": true,
+        "closeout_note": "T035417Z both legs 0ms (warm/heuristic env); primary delta remains T035127Z 909→0"
+      },
+      "use_for": [
+        "product_query_api_law",
+        "keyword_override_latency"
+      ],
+      "not_for": [
+        "acc_headline",
+        "beat_claims",
+        "silent_publish_latest"
+      ],
+      "verdict": "SHIPPED product Equal — hl/ll override keyword_time_ms 909→0; Acc latest frozen; not Acc Beat/Parity"
     },
     "latency_c1e": {
       "label": "Latency C1e (KEYWORD=ministral-3b env role)",
@@ -108,28 +470,258 @@
         "eq_generate_p50_ms": 3039,
         "keyword_llm_model": "ministral-3b-latest"
       },
-      "use_for": ["keyword_role_env_proof"],
-      "not_for": ["acc_headline", "latency_slo_1_5x_claim", "wall_latency_win_claim"]
+      "use_for": [
+        "keyword_role_env_proof"
+      ],
+      "not_for": [
+        "acc_headline",
+        "latency_slo_1_5x_claim",
+        "wall_latency_win_claim"
+      ]
     },
     "latency_c1cold": {
-      "label": "Latency C1cold (fair cold — LR LLM cache OFF)",
-      "workspace_id": "8e990410-43b5-44f4-9f56-87bd154570ce",
+      "label": "Latency C1cold (fair cold \u2014 LR LLM cache OFF)",
+      "workspace_id": "a992e80a-6b1c-4f92-9645-4226b8b82fea",
       "pack": "c1cold",
       "profile_id": "C1COLD_a1_rr_cer_bm25_lr_nocache_v1_lrlike_arms_v2",
-      "archive": "specs/001-benchmark/e2e/artifacts/history/smoke-20260721T022103Z",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/smoke-20260723T134452Z",
+      "publish_peer": "specs/001-benchmark/e2e/artifacts/publish/peers/C1COLD_v1",
       "metrics": {
-        "eq_acc": 0.731,
-        "lr_acc": 0.760,
-        "eq_query_p50_ms": 5891,
-        "lr_query_p50_ms": 5817,
-        "eq_lr_p50_ratio": 1.013,
+        "eq_acc": 0.793,
+        "lr_acc": 0.773,
+        "eq_query_p50_ms": 4447,
+        "lr_query_p50_ms": 4359,
+        "eq_lr_p50_ratio": 1.02,
         "lr_enable_llm_cache": false,
-        "eq_keyword_p50_ms": 1678,
-        "eq_generate_p50_ms": 2311,
+        "eq_keyword_p50_ms": 1069,
+        "eq_generate_p50_ms": 2119,
         "latency_slo_1_5x": true
       },
-      "use_for": ["fair_cold_latency_claims", "eq_lr_latency_parity"],
-      "not_for": ["acc_headline", "warm_cache_latency_claims", "beat_claims"]
+      "use_for": [
+        "fair_cold_latency_claims",
+        "eq_lr_latency_parity"
+      ],
+      "not_for": [
+        "acc_headline",
+        "warm_cache_latency_claims",
+        "beat_claims"
+      ]
+    },
+    "d1_unify_reject": {
+      "label": "080 D1 R6 unify \u2014 REJECT (not gap-close keep)",
+      "workspace_id": "8e990410-43b5-44f4-9f56-87bd154570ce",
+      "pack": "lr-unify-fact-l2",
+      "profile_id": "LR_UNIFY_FACT_L2_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260723T011525Z",
+      "publish_peer": "specs/001-benchmark/e2e/artifacts/publish/peers/LR_UNIFY_FACT_L2_v1",
+      "metrics": {
+        "eq_acc": 0.734,
+        "lr_acc": 0.787,
+        "eq_ctx_rel": 0.503,
+        "eq_evidence_recall": 0.943,
+        "fact_er": 0.903,
+        "acc_delta_ci": [
+          -0.084,
+          -0.022
+        ],
+        "n_questions": 200
+      },
+      "use_for": [
+        "ablation_reject_labeled"
+      ],
+      "not_for": [
+        "acc_headline",
+        "gap_close_keep",
+        "beat_claims",
+        "silent_publish_latest"
+      ],
+      "verdict": "REJECT \u2014 Acc CI LR-ahead vs E2 tie; Fact ER miss; ctx-only win; do not stack unify under D2"
+    },
+    "d2_intent_w_reject": {
+      "label": "080 D2 MIX_INTENT_WEIGHTS \u2014 REJECT (not gap-close keep)",
+      "workspace_id": "8e990410-43b5-44f4-9f56-87bd154570ce",
+      "pack": "lr-intent-w-fact-l2",
+      "profile_id": "LR_INTENT_W_FACT_L2_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260723T012436Z",
+      "publish_peer": "specs/001-benchmark/e2e/artifacts/publish/peers/LR_INTENT_W_FACT_L2_v1",
+      "metrics": {
+        "eq_acc": 0.718,
+        "lr_acc": 0.764,
+        "eq_ctx_rel": 0.477,
+        "eq_evidence_recall": 0.94,
+        "fact_er": 0.913,
+        "acc_delta_ci": [
+          -0.082,
+          -0.014
+        ],
+        "n_questions": 200
+      },
+      "use_for": [
+        "ablation_reject_labeled"
+      ],
+      "not_for": [
+        "acc_headline",
+        "gap_close_keep",
+        "beat_claims"
+      ],
+      "verdict": "REJECT \u2014 Acc CI LR-ahead vs E2; ctx\u2193; Fact ER flat at LR\u22120.03"
+    },
+    "d3_relsel_smoke_stop": {
+      "label": "080 D3 RELATION_SELECT=lightrag \u2014 STOP at smoke",
+      "workspace_id": "8e990410-43b5-44f4-9f56-87bd154570ce",
+      "pack": "lr-relsel-fact-l2",
+      "profile_id": "LR_RELSEL_FACT_L2_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/smoke-20260723T012653Z",
+      "metrics": {
+        "eq_acc": 0.709,
+        "lr_acc": 0.775,
+        "eq_ctx_rel": 0.475,
+        "fact_er": 0.95,
+        "acc_delta_ci": [
+          -0.164,
+          0.031
+        ],
+        "n_questions": 40
+      },
+      "use_for": [
+        "ablation_reject_labeled"
+      ],
+      "not_for": [
+        "acc_headline",
+        "gap_close_keep",
+        "beat_claims",
+        "medical_mid"
+      ],
+      "verdict": "STOP smoke \u2014 Acc \u22128.5pp vs E2 OCC smoke; Fact ER flat; no mid"
+    },
+    "d4_b6_e2_fact_er": {
+      "label": "080 D4 E2 packing on B6 ge2 WS \u2014 Fact ER labeled (not gap-close keep)",
+      "workspace_id": "58ffe7da-d181-4a31-8941-9621b051a678",
+      "pack": "lr-occ-fact-l2",
+      "profile_id": "LR_OCC_FACT_L2_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260723T013716Z",
+      "publish_peer": "specs/001-benchmark/e2e/artifacts/publish/peers/LR_OCC_FACT_L2_B6_v1",
+      "ingest_audit": "specs/001-benchmark/e2e/artifacts/ingest-audit/20260723T013324Z",
+      "metrics": {
+        "eq_acc": 0.75,
+        "lr_acc": 0.775,
+        "eq_ctx_rel": 0.459,
+        "eq_evidence_recall": 0.944,
+        "fact_er": 0.93,
+        "acc_delta_ci": [
+          -0.062,
+          0.008
+        ],
+        "n_questions": 200,
+        "eq_edges_ge2_rate": 0.1247
+      },
+      "use_for": [
+        "fact_er_ge2_labeled",
+        "ingest_ceiling_evidence"
+      ],
+      "not_for": [
+        "acc_headline",
+        "gap_close_keep",
+        "beat_claims",
+        "acc_warm_pointer"
+      ],
+      "verdict": "LABEL \u2014 Fact ER \u2265LR\u22120.03 on ge2 WS; Acc/ctx miss vs E2-B5 keep; warm stays B5"
+    },
+    "f3_b10_naming": {
+      "label": "081 F3 B10 naming identity reingest \u2014 REJECT vs E2-B5",
+      "workspace_id": "54806068-4a82-47b8-a7f9-aeb658f5eddc",
+      "pack": "lr-occ-fact-l2",
+      "profile_id": "LR_OCC_FACT_L2_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260723T021330Z",
+      "publish_peer": "specs/001-benchmark/e2e/artifacts/publish/peers/LR_OCC_FACT_L2_B10_v1",
+      "ingest_audit": "specs/001-benchmark/e2e/artifacts/ingest-audit/20260723T020853Z",
+      "metrics": {
+        "eq_acc": 0.742,
+        "lr_acc": 0.792,
+        "eq_ctx_rel": 0.489,
+        "eq_evidence_recall": 0.941,
+        "fact_er": 0.923,
+        "acc_delta_ci": [
+          -0.087,
+          -0.015
+        ],
+        "n_questions": 200
+      },
+      "use_for": [
+        "naming_identity_labeled",
+        "ingest_confound_closed"
+      ],
+      "not_for": [
+        "acc_headline",
+        "gap_close_keep",
+        "beat_claims",
+        "acc_warm_pointer"
+      ],
+      "verdict": "REJECT \u2014 Acc CI LR-ahead vs E2-B5 keep; ctx <0.50; warm stays B5; F4 generation next"
+    },
+    "f4_groundedness": {
+      "label": "081 F4 generation groundedness (always-on trial) \u2014 REJECT vs E2-B5",
+      "workspace_id": "8e990410-43b5-44f4-9f56-87bd154570ce",
+      "pack": "lr-occ-fact-l2",
+      "profile_id": "LR_OCC_FACT_L2_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260723T022412Z",
+      "publish_peer": "specs/001-benchmark/e2e/artifacts/publish/peers/LR_OCC_FACT_L2_F4_v1",
+      "smoke": "specs/001-benchmark/e2e/artifacts/history/smoke-20260723T022038Z",
+      "metrics": {
+        "eq_acc": 0.733,
+        "lr_acc": 0.767,
+        "eq_ctx_rel": 0.484,
+        "eq_evidence_recall": 0.937,
+        "fact_er": 0.907,
+        "acc_delta_ci": [
+          -0.073,
+          0.004
+        ],
+        "n_questions": 200
+      },
+      "use_for": [
+        "generation_path_labeled",
+        "f4_reject_evidence"
+      ],
+      "not_for": [
+        "acc_headline",
+        "gap_close_keep",
+        "beat_claims",
+        "silent_publish_latest"
+      ],
+      "verdict": "REJECT \u2014 Acc \u22123.2pp vs E2-B5; ctx/Fact ER miss; retry now EDGEQUAKE_ANSWER_GROUNDED_RETRY opt-in default off; Phase G blocked"
+    },
+    "g1_gold_citation": {
+      "label": "082 G1 gold/citation compat \u2014 REJECT (ctx tax vs E2-B5)",
+      "workspace_id": "8e990410-43b5-44f4-9f56-87bd154570ce",
+      "pack": "lr-occ-fact-l2",
+      "profile_id": "LR_OCC_FACT_L2_v1_lrlike_arms_v2",
+      "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260723T024205Z",
+      "publish_peer": "specs/001-benchmark/e2e/artifacts/publish/peers/LR_OCC_FACT_L2_G1_v1",
+      "smoke": "specs/001-benchmark/e2e/artifacts/history/smoke-20260723T023833Z",
+      "metrics": {
+        "eq_acc": 0.764,
+        "lr_acc": 0.786,
+        "eq_ctx_rel": 0.461,
+        "eq_evidence_recall": 0.937,
+        "fact_er": 0.917,
+        "acc_delta_ci": [
+          -0.057,
+          0.01
+        ],
+        "n_questions": 200
+      },
+      "use_for": [
+        "generation_gold_compat_labeled",
+        "g1_reject_evidence"
+      ],
+      "not_for": [
+        "acc_headline",
+        "gap_close_keep",
+        "beat_claims",
+        "silent_publish_latest"
+      ],
+      "verdict": "REJECT \u2014 Acc held vs E2 but ctx 0.461 tax; mid Parity unfinished; Acc Beat fishing STOP; gold-compat code kept"
     }
   },
   "warm_workspace_pointer": "specs/001-benchmark/e2e/artifacts/warm_workspace.json",

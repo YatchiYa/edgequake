@@ -40,36 +40,38 @@ async fn persist_refresh_token_pg(
     security: &ApiSecurityConfig,
     record: &RefreshTokenRecord,
 ) -> Result<(), ApiError> {
-    use crate::services::tenant_isolation::{
-        acquire_optional_pg_connection, release_optional_pg_connection, PgIsolationScope,
-    };
+    use crate::services::tenant_isolation::{with_optional_pg_rls, PgIsolationScope};
+    use edgequake_storage::StorageError;
 
     let user_uuid = Uuid::parse_str(&record.user_id)
         .map_err(|_| ApiError::Internal("invalid user_id for refresh token".into()))?;
     let token_hash = refresh_token_lookup_hash(&record.token);
     let scope = Some(PgIsolationScope::default_identity(Some(user_uuid)));
+    let expires_at = record.expires_at;
+    let revoked = record.revoked;
+    let created_at = record.created_at;
 
-    let mut conn = acquire_optional_pg_connection(pool, security, scope).await?;
-
-    sqlx::query(
-        r#"
-        INSERT INTO refresh_tokens (token_id, user_id, token_hash, expires_at, revoked, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        "#,
-    )
-    .bind(Uuid::new_v4())
-    .bind(user_uuid)
-    .bind(token_hash)
-    .bind(record.expires_at)
-    .bind(record.revoked)
-    .bind(record.created_at)
-    .execute(&mut *conn)
+    with_optional_pg_rls(pool, security, scope, move |conn| {
+        Box::pin(async move {
+            sqlx::query(
+                r#"
+                INSERT INTO refresh_tokens (token_id, user_id, token_hash, expires_at, revoked, created_at)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                "#,
+            )
+            .bind(Uuid::new_v4())
+            .bind(user_uuid)
+            .bind(token_hash)
+            .bind(expires_at)
+            .bind(revoked)
+            .bind(created_at)
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| StorageError::Database(format!("refresh token PG insert: {e}")))?;
+            Ok(())
+        })
+    })
     .await
-    .map_err(|e| ApiError::Internal(format!("refresh token PG insert: {e}")))?;
-
-    release_optional_pg_connection(&mut conn, security, scope).await;
-
-    Ok(())
 }
 
 #[cfg(feature = "postgres")]
@@ -78,48 +80,49 @@ async fn load_refresh_token_pg(
     security: &ApiSecurityConfig,
     token: &str,
 ) -> Result<Option<RefreshTokenRecord>, ApiError> {
-    use crate::services::tenant_isolation::{
-        acquire_optional_pg_connection, release_optional_pg_connection, PgIsolationScope,
-    };
+    use crate::services::tenant_isolation::{with_optional_pg_rls, PgIsolationScope};
+    use edgequake_storage::StorageError;
 
     let token_hash = refresh_token_lookup_hash(token);
     let scope = Some(PgIsolationScope::default_identity(None));
+    let token_str = token.to_string();
 
-    let mut conn = acquire_optional_pg_connection(pool, security, scope).await?;
+    with_optional_pg_rls(pool, security, scope, move |conn| {
+        Box::pin(async move {
+            let row = sqlx::query_as::<
+                _,
+                (
+                    Uuid,
+                    Uuid,
+                    bool,
+                    chrono::DateTime<chrono::Utc>,
+                    chrono::DateTime<chrono::Utc>,
+                ),
+            >(
+                r#"
+                SELECT token_id, user_id, revoked, created_at, expires_at
+                FROM refresh_tokens
+                WHERE token_hash = $1
+                LIMIT 1
+                "#,
+            )
+            .bind(token_hash)
+            .fetch_optional(&mut *conn)
+            .await
+            .map_err(|e| StorageError::Database(format!("refresh token PG load: {e}")))?;
 
-    let row = sqlx::query_as::<
-        _,
-        (
-            Uuid,
-            Uuid,
-            bool,
-            chrono::DateTime<chrono::Utc>,
-            chrono::DateTime<chrono::Utc>,
-        ),
-    >(
-        r#"
-        SELECT token_id, user_id, revoked, created_at, expires_at
-        FROM refresh_tokens
-        WHERE token_hash = $1
-        LIMIT 1
-        "#,
-    )
-    .bind(token_hash)
-    .fetch_optional(&mut *conn)
+            Ok(row.map(
+                |(_, user_id, revoked, created_at, expires_at)| RefreshTokenRecord {
+                    token: token_str,
+                    user_id: user_id.to_string(),
+                    created_at,
+                    expires_at,
+                    revoked,
+                },
+            ))
+        })
+    })
     .await
-    .map_err(|e| ApiError::Internal(format!("refresh token PG load: {e}")))?;
-
-    release_optional_pg_connection(&mut conn, security, scope).await;
-
-    Ok(row.map(
-        |(_, user_id, revoked, created_at, expires_at)| RefreshTokenRecord {
-            token: token.to_string(),
-            user_id: user_id.to_string(),
-            created_at,
-            expires_at,
-            revoked,
-        },
-    ))
 }
 
 #[cfg(feature = "postgres")]
@@ -128,30 +131,30 @@ async fn revoke_refresh_token_pg(
     security: &ApiSecurityConfig,
     token: &str,
 ) -> Result<bool, ApiError> {
-    use crate::services::tenant_isolation::{
-        acquire_optional_pg_connection, release_optional_pg_connection, PgIsolationScope,
-    };
+    use crate::services::tenant_isolation::{with_optional_pg_rls, PgIsolationScope};
+    use edgequake_storage::StorageError;
 
     let token_hash = refresh_token_lookup_hash(token);
     let scope = Some(PgIsolationScope::default_identity(None));
 
-    let mut conn = acquire_optional_pg_connection(pool, security, scope).await?;
+    with_optional_pg_rls(pool, security, scope, move |conn| {
+        Box::pin(async move {
+            let result = sqlx::query(
+                r#"
+                UPDATE refresh_tokens
+                SET revoked = true, revoked_at = NOW()
+                WHERE token_hash = $1 AND revoked = false
+                "#,
+            )
+            .bind(token_hash)
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| StorageError::Database(format!("refresh token PG revoke: {e}")))?;
 
-    let result = sqlx::query(
-        r#"
-        UPDATE refresh_tokens
-        SET revoked = true, revoked_at = NOW()
-        WHERE token_hash = $1 AND revoked = false
-        "#,
-    )
-    .bind(token_hash)
-    .execute(&mut *conn)
+            Ok(result.rows_affected() > 0)
+        })
+    })
     .await
-    .map_err(|e| ApiError::Internal(format!("refresh token PG revoke: {e}")))?;
-
-    release_optional_pg_connection(&mut conn, security, scope).await;
-
-    Ok(result.rows_affected() > 0)
 }
 
 /// Persist refresh token — PG SSOT when pool + policy; optional KV mirror.
@@ -255,51 +258,58 @@ async fn persist_api_key_pg(
     security: &ApiSecurityConfig,
     record: &ApiKeyRecord,
 ) -> Result<(), ApiError> {
-    use crate::services::tenant_isolation::{
-        acquire_optional_pg_connection, release_optional_pg_connection, PgIsolationScope,
-    };
+    use crate::services::tenant_isolation::{with_optional_pg_rls, PgIsolationScope};
+    use edgequake_storage::StorageError;
 
     let key_uuid = Uuid::parse_str(&record.key_id)
         .map_err(|_| ApiError::Internal("invalid key_id for api key".into()))?;
     let user_uuid = Uuid::parse_str(&record.user_id)
         .map_err(|_| ApiError::Internal("invalid user_id for api key".into()))?;
     let scope = Some(PgIsolationScope::default_identity(Some(user_uuid)));
+    let key_hash = record.key_hash.clone();
+    let prefix = record.prefix.clone();
+    let name = record.name.clone();
+    let scopes = record.scopes.clone();
+    let is_active = record.is_active;
+    let created_at = record.created_at;
+    let last_used_at = record.last_used_at;
+    let expires_at = record.expires_at;
 
-    let mut conn = acquire_optional_pg_connection(pool, security, scope).await?;
-
-    sqlx::query(
-        r#"
-        INSERT INTO api_keys (
-            key_id, user_id, key_hash, key_prefix, name, scopes,
-            is_active, created_at, last_used_at, expires_at
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        ON CONFLICT (key_id) DO UPDATE SET
-            key_hash = EXCLUDED.key_hash,
-            key_prefix = EXCLUDED.key_prefix,
-            name = EXCLUDED.name,
-            scopes = EXCLUDED.scopes,
-            is_active = EXCLUDED.is_active,
-            expires_at = EXCLUDED.expires_at
-        "#,
-    )
-    .bind(key_uuid)
-    .bind(user_uuid)
-    .bind(&record.key_hash)
-    .bind(&record.prefix)
-    .bind(&record.name)
-    .bind(&record.scopes)
-    .bind(record.is_active)
-    .bind(record.created_at)
-    .bind(record.last_used_at)
-    .bind(record.expires_at)
-    .execute(&mut *conn)
+    with_optional_pg_rls(pool, security, scope, move |conn| {
+        Box::pin(async move {
+            sqlx::query(
+                r#"
+                INSERT INTO api_keys (
+                    key_id, user_id, key_hash, key_prefix, name, scopes,
+                    is_active, created_at, last_used_at, expires_at
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                ON CONFLICT (key_id) DO UPDATE SET
+                    key_hash = EXCLUDED.key_hash,
+                    key_prefix = EXCLUDED.key_prefix,
+                    name = EXCLUDED.name,
+                    scopes = EXCLUDED.scopes,
+                    is_active = EXCLUDED.is_active,
+                    expires_at = EXCLUDED.expires_at
+                "#,
+            )
+            .bind(key_uuid)
+            .bind(user_uuid)
+            .bind(key_hash)
+            .bind(prefix)
+            .bind(name)
+            .bind(scopes)
+            .bind(is_active)
+            .bind(created_at)
+            .bind(last_used_at)
+            .bind(expires_at)
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| StorageError::Database(format!("api key PG upsert: {e}")))?;
+            Ok(())
+        })
+    })
     .await
-    .map_err(|e| ApiError::Internal(format!("api key PG upsert: {e}")))?;
-
-    release_optional_pg_connection(&mut conn, security, scope).await;
-
-    Ok(())
 }
 
 #[cfg(feature = "postgres")]
@@ -350,33 +360,33 @@ async fn list_api_keys_pg(
     security: &ApiSecurityConfig,
     user_id: &str,
 ) -> Result<Vec<ApiKeyRecord>, ApiError> {
-    use crate::services::tenant_isolation::{
-        acquire_optional_pg_connection, release_optional_pg_connection, PgIsolationScope,
-    };
+    use crate::services::tenant_isolation::{with_optional_pg_rls, PgIsolationScope};
+    use edgequake_storage::StorageError;
 
     let user_uuid = Uuid::parse_str(user_id)
         .map_err(|_| ApiError::Internal("invalid user_id for api key list".into()))?;
     let scope = Some(PgIsolationScope::default_identity(Some(user_uuid)));
 
-    let mut conn = acquire_optional_pg_connection(pool, security, scope).await?;
+    with_optional_pg_rls(pool, security, scope, move |conn| {
+        Box::pin(async move {
+            let rows = sqlx::query_as::<_, ApiKeyRow>(
+                r#"
+                SELECT key_id, user_id, key_hash, key_prefix, name, scopes,
+                       is_active, created_at, last_used_at, expires_at
+                FROM api_keys
+                WHERE user_id = $1
+                ORDER BY created_at DESC
+                "#,
+            )
+            .bind(user_uuid)
+            .fetch_all(&mut *conn)
+            .await
+            .map_err(|e| StorageError::Database(format!("api key PG list: {e}")))?;
 
-    let rows = sqlx::query_as::<_, ApiKeyRow>(
-        r#"
-        SELECT key_id, user_id, key_hash, key_prefix, name, scopes,
-               is_active, created_at, last_used_at, expires_at
-        FROM api_keys
-        WHERE user_id = $1
-        ORDER BY created_at DESC
-        "#,
-    )
-    .bind(user_uuid)
-    .fetch_all(&mut *conn)
+            Ok(rows.into_iter().map(api_key_from_row).collect())
+        })
+    })
     .await
-    .map_err(|e| ApiError::Internal(format!("api key PG list: {e}")))?;
-
-    release_optional_pg_connection(&mut conn, security, scope).await;
-
-    Ok(rows.into_iter().map(api_key_from_row).collect())
 }
 
 #[cfg(feature = "postgres")]
@@ -385,30 +395,31 @@ async fn find_api_keys_by_prefix_pg(
     security: &ApiSecurityConfig,
     prefix: &str,
 ) -> Result<Vec<ApiKeyRecord>, ApiError> {
-    use crate::services::tenant_isolation::{
-        acquire_optional_pg_connection, release_optional_pg_connection, PgIsolationScope,
-    };
+    use crate::services::tenant_isolation::{with_optional_pg_rls, PgIsolationScope};
+    use edgequake_storage::StorageError;
 
     let scope = Some(PgIsolationScope::default_identity(None));
+    let prefix = prefix.to_string();
 
-    let mut conn = acquire_optional_pg_connection(pool, security, scope).await?;
+    with_optional_pg_rls(pool, security, scope, move |conn| {
+        Box::pin(async move {
+            let rows = sqlx::query_as::<_, ApiKeyRow>(
+                r#"
+                SELECT key_id, user_id, key_hash, key_prefix, name, scopes,
+                       is_active, created_at, last_used_at, expires_at
+                FROM api_keys
+                WHERE key_prefix = $1 AND is_active = true
+                "#,
+            )
+            .bind(prefix)
+            .fetch_all(&mut *conn)
+            .await
+            .map_err(|e| StorageError::Database(format!("api key PG prefix lookup: {e}")))?;
 
-    let rows = sqlx::query_as::<_, ApiKeyRow>(
-        r#"
-        SELECT key_id, user_id, key_hash, key_prefix, name, scopes,
-               is_active, created_at, last_used_at, expires_at
-        FROM api_keys
-        WHERE key_prefix = $1 AND is_active = true
-        "#,
-    )
-    .bind(prefix)
-    .fetch_all(&mut *conn)
+            Ok(rows.into_iter().map(api_key_from_row).collect())
+        })
+    })
     .await
-    .map_err(|e| ApiError::Internal(format!("api key PG prefix lookup: {e}")))?;
-
-    release_optional_pg_connection(&mut conn, security, scope).await;
-
-    Ok(rows.into_iter().map(api_key_from_row).collect())
 }
 
 #[cfg(feature = "postgres")]
@@ -417,33 +428,33 @@ async fn revoke_api_key_pg(
     security: &ApiSecurityConfig,
     key_id: &str,
 ) -> Result<Option<ApiKeyRecord>, ApiError> {
-    use crate::services::tenant_isolation::{
-        acquire_optional_pg_connection, release_optional_pg_connection, PgIsolationScope,
-    };
+    use crate::services::tenant_isolation::{with_optional_pg_rls, PgIsolationScope};
+    use edgequake_storage::StorageError;
 
     let key_uuid = Uuid::parse_str(key_id)
         .map_err(|_| ApiError::Internal("invalid key_id for api key revoke".into()))?;
     let scope = Some(PgIsolationScope::default_identity(None));
 
-    let mut conn = acquire_optional_pg_connection(pool, security, scope).await?;
+    with_optional_pg_rls(pool, security, scope, move |conn| {
+        Box::pin(async move {
+            let row = sqlx::query_as::<_, ApiKeyRow>(
+                r#"
+                UPDATE api_keys
+                SET is_active = false
+                WHERE key_id = $1
+                RETURNING key_id, user_id, key_hash, key_prefix, name, scopes,
+                          is_active, created_at, last_used_at, expires_at
+                "#,
+            )
+            .bind(key_uuid)
+            .fetch_optional(&mut *conn)
+            .await
+            .map_err(|e| StorageError::Database(format!("api key PG revoke: {e}")))?;
 
-    let row = sqlx::query_as::<_, ApiKeyRow>(
-        r#"
-        UPDATE api_keys
-        SET is_active = false
-        WHERE key_id = $1
-        RETURNING key_id, user_id, key_hash, key_prefix, name, scopes,
-                  is_active, created_at, last_used_at, expires_at
-        "#,
-    )
-    .bind(key_uuid)
-    .fetch_optional(&mut *conn)
+            Ok(row.map(api_key_from_row))
+        })
+    })
     .await
-    .map_err(|e| ApiError::Internal(format!("api key PG revoke: {e}")))?;
-
-    release_optional_pg_connection(&mut conn, security, scope).await;
-
-    Ok(row.map(api_key_from_row))
 }
 
 async fn list_api_keys_kv(

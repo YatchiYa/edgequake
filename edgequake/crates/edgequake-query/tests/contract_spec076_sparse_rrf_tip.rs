@@ -12,13 +12,13 @@ fn sparse_fusion_default_weighted_rrf_tip_opt_in() {
     std::env::remove_var("EDGEQUAKE_SPARSE_FUSION");
     assert_eq!(
         sparse_fusion_mode_from_env(),
-        MixFusionMode::Weighted,
+        MixFusionMode::MaxAfterMinMax,
         "SPEC-076 must not silent-flip sparse fusion default"
     );
     std::env::set_var("EDGEQUAKE_SPARSE_FUSION", "rrf");
     assert_eq!(sparse_fusion_mode_from_env(), MixFusionMode::Rrf);
     std::env::remove_var("EDGEQUAKE_SPARSE_FUSION");
-    assert_eq!(sparse_fusion_mode_from_env(), MixFusionMode::Weighted);
+    assert_eq!(sparse_fusion_mode_from_env(), MixFusionMode::MaxAfterMinMax);
 }
 
 /// Lexical eval: code/name token lives in FTS rank-1; ANN buries it.

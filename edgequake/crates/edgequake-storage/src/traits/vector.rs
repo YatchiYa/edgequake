@@ -421,8 +421,9 @@ pub trait VectorStorage: Send + Sync {
 
     /// Full-text search over chunk content with the same metadata filters as [`Self::query_filtered`].
     ///
-    /// PostgreSQL adapters rank with `ts_rank_cd` (BM25-like) over a GIN-indexed `content_tsv`
-    /// column. Default: empty vec (not supported).
+    /// PostgreSQL adapters rank with `ts_rank_cd` (cover-density — not Okapi BM25; X-05)
+    /// over a GIN-indexed `content_tsv` column. Language via `EDGEQUAKE_FTS_LANGUAGE`.
+    /// Default: empty vec (not supported).
     async fn text_search_filtered(
         &self,
         query_text: &str,

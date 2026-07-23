@@ -1,12 +1,12 @@
 # bench001 LIVE — `smoke`
 
-- **updated:** `2026-07-21T02:21:03Z`
-- **started:** `2026-07-21T02:18:18Z`
-- **run elapsed:** `2m45s`
+- **updated:** `2026-07-23T13:44:53Z`
+- **started:** `2026-07-23T13:42:22Z`
+- **run elapsed:** `2m30s`
 - **phase:** `report` (done)
 - **progress:** `10/10`
 - **ETA (phase):** `0s`
-- **detail:** valid=True archive=smoke-20260721T022103Z
+- **detail:** valid=True archive=smoke-20260723T134452Z
 
 ## Corpus / chunking
 
@@ -24,18 +24,18 @@
 
 | at (UTC) | phase | status | detail | eta | run |
 |----------|-------|--------|--------|-----|-----|
-| 2026-07-21T02:19:33Z | query_lr | running | LR query 25/40 | 44s | 1m15s |
-| 2026-07-21T02:19:48Z | query_parallel | running | EQ=done LR=running | — | 1m30s |
-| 2026-07-21T02:19:49Z | query_lr | running | LR query 30/40 | 30s | 1m31s |
-| 2026-07-21T02:20:03Z | query_parallel | running | EQ=done LR=running | — | 1m45s |
-| 2026-07-21T02:20:08Z | query_lr | running | LR query 35/40 | 15s | 1m50s |
-| 2026-07-21T02:20:18Z | query_parallel | running | EQ=done LR=running | — | 2m00s |
-| 2026-07-21T02:20:24Z | query_lr | running | LR query 40/40 | 0s | 2m06s |
-| 2026-07-21T02:20:33Z | query_parallel | running | EQ=done LR=done | — | 2m15s |
-| 2026-07-21T02:20:33Z | query_parallel | done | eq=40 lr=40 | — | 2m15s |
-| 2026-07-21T02:21:03Z | score_parallel | running | EQ=done LR=done eval∥=8 | — | 2m45s |
-| 2026-07-21T02:21:03Z | score_parallel | done | elapsed=30s | — | 2m45s |
-| 2026-07-21T02:21:03Z | report | done | valid=True archive=smoke-20260721T022103Z | — | 2m45s |
+| 2026-07-23T13:43:20Z | query_eq | running | EQ query 40/40 id=Medical-fa8b9196 | 0s | 58s |
+| 2026-07-23T13:43:22Z | query_parallel | running | EQ=done LR=running | — | 1m00s |
+| 2026-07-23T13:43:37Z | query_lr | running | LR query 30/40 | 25s | 1m15s |
+| 2026-07-23T13:43:52Z | query_parallel | running | EQ=done LR=running | — | 1m30s |
+| 2026-07-23T13:44:00Z | query_lr | running | LR query 35/40 | 14s | 1m37s |
+| 2026-07-23T13:44:07Z | query_parallel | running | EQ=done LR=running | — | 1m45s |
+| 2026-07-23T13:44:12Z | query_lr | running | LR query 40/40 | 0s | 1m50s |
+| 2026-07-23T13:44:22Z | query_parallel | running | EQ=done LR=done | — | 2m00s |
+| 2026-07-23T13:44:22Z | query_parallel | done | eq=40 lr=40 | — | 2m00s |
+| 2026-07-23T13:44:52Z | score_parallel | running | EQ=done LR=done eval∥=24 | — | 2m30s |
+| 2026-07-23T13:44:52Z | score_parallel | done | elapsed=30s | — | 2m30s |
+| 2026-07-23T13:44:53Z | report | done | valid=True archive=smoke-20260723T134452Z | — | 2m30s |
 
 ## Monitor
 

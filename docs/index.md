@@ -26,6 +26,7 @@ hero:
 - **[API Reference](/docs/api-reference/)** — Guided REST overlays; full contract in OpenAPI.
 - **[Deep Dives](/docs/deep-dives/)** — In-depth technical explorations (progress, PDF vision, storage).
 - **[Operations](/docs/operations/)** — Docker quickstart, deployment, auth, cancel/lease, release CD.
+- **[SPEC-083 improvements](/docs/083-improvements/)** — First-principles defect register, roadmap, prod eq_* incident.
 - **[SDKs](/docs/sdks/)** — Official clients (SDK package version ≠ product version).
 - **[Integrations](/docs/integrations/)** — Open WebUI, LangChain, thin custom HTTP.
 - **[Comparisons](/docs/comparisons/)** — LightRAG, GraphRAG, traditional RAG.

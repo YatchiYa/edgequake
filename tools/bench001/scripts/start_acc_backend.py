@@ -20,6 +20,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
 RELEASE_BIN = REPO / "edgequake" / "target" / "release" / "edgequake"
+DEBUG_BIN = REPO / "edgequake" / "target" / "debug" / "edgequake"
 PORTS_ENV = REPO / ".edgequake-dev-ports.env"
 START_SH = Path("/tmp/edgequake-start.sh")
 PID_FILE = Path("/tmp/edgequake-backend.pid")
@@ -61,6 +62,8 @@ ACC_EXPORTS = {
     "EDGEQUAKE_DEFAULT_EMBEDDING_MODEL": "mistral-embed",
     "EDGEQUAKE_MIX_FUSION": "rrf",
     "EDGEQUAKE_HYBRID_FUSION": "rrf",
+    # 076: local_first (Acc) · naive_first = LightRAG _merge_all_chunks order.
+    "EDGEQUAKE_RR_ORDER": "local_first",
     # SPEC-001 Phase 1 relevancy prune — OFF by default for Acc headline.
     # Cosine ablation: EDGEQUAKE_MIX_RELEVANCY_PRUNE=1 SCORE=cosine (postprocess).
     "EDGEQUAKE_MIX_RELEVANCY_PRUNE": "0",
@@ -87,6 +90,10 @@ ACC_EXPORTS = {
     "EDGEQUAKE_RERANK_PROTECT_FIRST": "0",
     # Acc-win E2: query_score | degree | retrieval (default degree = headline).
     "EDGEQUAKE_ENTITY_RANK": "degree",
+    # Acc headline: PPR walk. LR-identity / bfs ablations override via shell.
+    "EDGEQUAKE_GRAPH_WALK": "ppr",
+    # KG→chunk: VECTOR (cosine) default; WEIGHT escape. Acc LR budget off below.
+    "EDGEQUAKE_KG_CHUNK_PICK": "vector",
     # 051: default | lightrag (incident edges sorted by rank+weight).
     "EDGEQUAKE_RELATION_SELECT": "default",
     # Acc-win E3b: Mix RRF arm weights (default equal 1/1/1).
@@ -105,6 +112,10 @@ ACC_EXPORTS = {
     "EDGEQUAKE_KEYWORD_LEXICAL_BOOST": "0",
     # 024 Fact VECTOR parity — off for Acc headline until Q4 promote.
     "EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT": "0",
+    # In-arm BM25/FTS fusion (default on). Fair LR Mix dense-only → set 0 (077 E1).
+    "EDGEQUAKE_BM25_RETRIEVAL": "1",
+    # Mix KG→chunk timing: per_arm (default) | post_truncate (078 R3 / LR order).
+    "EDGEQUAKE_KG_CHUNK_PICK_TIMING": "per_arm",
     "EDGEQUAKE_KG_CHUNK_PICK_LR_BUDGET": "0",
     # 025 CE recall recovery — default min_rerank stays engine 0.1 unless overridden.
     "EDGEQUAKE_MIN_RERANK_SCORE": "0.1",
@@ -129,6 +140,8 @@ ACC_EXPORTS = {
     "EDGEQUAKE_L2_BM25_UNION": "0",
     "EDGEQUAKE_L2_BM25_MIX_TOP_K": "30",
     "EDGEQUAKE_L2_BM25_MODE": "union",
+    # 080 D2 — type-aware Mix arm weights (off until lr-intent-w-fact-l2).
+    "EDGEQUAKE_MIX_INTENT_WEIGHTS": "0",
     # 035 Fact CE∩BM25 protect — off until a1fp Acc promote.
     "EDGEQUAKE_FACT_PROTECT_BM25": "0",
     # 036 Exploratory coverage protect — off until a1fpcov Acc promote.
@@ -196,9 +209,24 @@ def _load_mistral_key() -> str:
     )
 
 
+def resolve_backend_bin() -> Path:
+    """Prefer release binary; fall back to debug for local Acc runs."""
+    if RELEASE_BIN.is_file() and os.access(RELEASE_BIN, os.X_OK):
+        return RELEASE_BIN
+    if DEBUG_BIN.is_file() and os.access(DEBUG_BIN, os.X_OK):
+        print(
+            f"WARN: release binary missing — using debug Acc backend: {DEBUG_BIN}",
+            flush=True,
+        )
+        return DEBUG_BIN
+    raise SystemExit(
+        f"Acc backend binary missing (tried {RELEASE_BIN} and {DEBUG_BIN}). "
+        "Run: cd edgequake && cargo build --release  (or cargo build)"
+    )
+
+
 def write_start_sh(*, port: int) -> None:
-    if not RELEASE_BIN.is_file():
-        raise SystemExit(f"release binary missing: {RELEASE_BIN} (cargo build --release)")
+    bin_path = resolve_backend_bin()
     key = _load_mistral_key()
     db = _load_database_url()
     ports = str(PORTS_ENV if PORTS_ENV.is_file() else "")
@@ -215,6 +243,8 @@ def write_start_sh(*, port: int) -> None:
         "EDGEQUAKE_VISION_PROVIDER EDGEQUAKE_VISION_MODEL "
         "EDGEQUAKE_EMBEDDING_PROVIDER EDGEQUAKE_EMBEDDING_MODEL "
         "MISTRAL_MODEL MISTRAL_EMBEDDING_MODEL "
+        # 084: Acc default = 083 chat(system,user); never inherit COMPLETE_BLOB=1.
+        "EDGEQUAKE_ANSWER_COMPLETE_BLOB "
         "2>/dev/null || true"
     )
     # Allow shell overrides for labeled Acc ablations (cosine prune / CE / PathRAG).
@@ -236,6 +266,8 @@ def write_start_sh(*, port: int) -> None:
         "EDGEQUAKE_PATH_PRUNE",
         "EDGEQUAKE_RERANK_PROTECT_FIRST",
         "EDGEQUAKE_ENTITY_RANK",
+        "EDGEQUAKE_GRAPH_WALK",
+        "EDGEQUAKE_KG_CHUNK_PICK",
         "EDGEQUAKE_RELATION_SELECT",
         "EDGEQUAKE_RELATED_CHUNK_NUMBER",
         "EDGEQUAKE_MIX_LOCAL_WEIGHT",
@@ -255,6 +287,8 @@ def write_start_sh(*, port: int) -> None:
         "EDGEQUAKE_KEYWORD_LEXICAL_BOOST",
         "EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT",
         "EDGEQUAKE_KG_CHUNK_PICK_LR_BUDGET",
+        "EDGEQUAKE_BM25_RETRIEVAL",
+        "EDGEQUAKE_KG_CHUNK_PICK_TIMING",
         "EDGEQUAKE_MIN_RERANK_SCORE",
         "EDGEQUAKE_MIN_CHUNK_BUDGET_RATIO",
         "EDGEQUAKE_L2_SOURCES_UNION",
@@ -278,7 +312,9 @@ def write_start_sh(*, port: int) -> None:
         "EDGEQUAKE_L2_BM25_UNION",
         "EDGEQUAKE_L2_BM25_MIX_TOP_K",
         "EDGEQUAKE_L2_BM25_MODE",
+        "EDGEQUAKE_MIX_INTENT_WEIGHTS",
         "EDGEQUAKE_MIX_FUSION",
+        "EDGEQUAKE_RR_ORDER",
         "EDGEQUAKE_INTENT_FACTUAL_BIAS",
         "EDGEQUAKE_ANSWER_PROMPT",
         "EDGEQUAKE_ANSWER_SPECIFIC_TYPES",
@@ -317,7 +353,7 @@ def write_start_sh(*, port: int) -> None:
     lines.append('export EDGEQUAKE_DEFAULT_EMBEDDING_MODEL="mistral-embed"')
     lines.append('export EDGEQUAKE_VISION_PROVIDER="mistral"')
     lines.append('export EDGEQUAKE_VISION_MODEL="mistral-small-latest"')
-    lines.append(f"exec {RELEASE_BIN}")
+    lines.append(f"exec {bin_path}")
     START_SH.write_text("\n".join(lines) + "\n", encoding="utf-8")
     START_SH.chmod(0o755)
 
@@ -377,7 +413,6 @@ def wait_health(*, port: int, timeout_s: int) -> int:
             if r.returncode == 0 and "healthy" in (r.stdout or ""):
                 try:
                     import json
-                    import sys
 
                     sys.path.insert(0, str(REPO / "tools" / "bench001"))
                     from bench001.acc_env import backend_pin_mismatches

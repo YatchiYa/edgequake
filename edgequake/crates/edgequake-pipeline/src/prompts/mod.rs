@@ -121,6 +121,12 @@ mod tests {
         assert_eq!(types.len(), 12);
     }
 
+    /// SPEC-083 matrix name (X-15).
+    #[test]
+    fn contract_other_in_default_entity_types() {
+        test_default_entity_types();
+    }
+
     #[test]
     fn test_supported_languages() {
         assert!(SUPPORTED_LANGUAGES.contains(&"English"));

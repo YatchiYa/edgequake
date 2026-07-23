@@ -220,6 +220,18 @@ pub struct QueryRequest {
     /// @implements SPEC-037 + SPEC-028
     #[serde(default = "default_content_granularity")]
     pub content_granularity: ContentGranularity,
+
+    /// Pre-supplied high-level keywords (LightRAG `hl_keywords`). 083: skips keyword LLM when either hl or ll is non-empty.
+    #[serde(default)]
+    pub hl_keywords: Option<Vec<String>>,
+
+    /// Pre-supplied low-level keywords (LightRAG `ll_keywords`).
+    #[serde(default)]
+    pub ll_keywords: Option<Vec<String>>,
+
+    /// Answer formatting cue (LightRAG `response_type`). Default: Multiple Paragraphs.
+    #[serde(default)]
+    pub response_type: Option<String>,
 }
 
 /// Streaming query request.
@@ -242,6 +254,18 @@ pub struct StreamQueryRequest {
     /// Optional question-type label for type-scoped answer prompts (047).
     #[serde(default)]
     pub question_type: Option<String>,
+
+    /// Pre-supplied high-level keywords (083 / LightRAG).
+    #[serde(default)]
+    pub hl_keywords: Option<Vec<String>>,
+
+    /// Pre-supplied low-level keywords (083 / LightRAG).
+    #[serde(default)]
+    pub ll_keywords: Option<Vec<String>>,
+
+    /// Answer formatting cue (083 / LightRAG `response_type`).
+    #[serde(default)]
+    pub response_type: Option<String>,
 
     /// Optional document filter to narrow query scope by date range or name pattern.
     /// @implements SPEC-005 + SPEC-006: Document filters for streaming queries
@@ -325,11 +349,19 @@ pub enum QueryStreamEvent {
 
 /// Statistics emitted in the `done` event.
 ///
+/// SPEC-083 D-40: stream stats mirror sync [`QueryStats`] arm/timing diagnostics
+/// plus stream-only UX fields (`ux_ttft_ms`, `query_mode`). Build via
+/// [`QueryStreamStats::from_query_stats`].
+///
 /// @implements SPEC-006 FR-003: Retrieval statistics in streaming events
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct QueryStreamStats {
     /// Embedding time in ms.
     pub embedding_time_ms: u64,
+
+    /// Keyword extraction time in ms.
+    #[serde(default)]
+    pub keyword_time_ms: u64,
 
     /// Retrieval time in ms.
     pub retrieval_time_ms: u64,
@@ -351,7 +383,11 @@ pub struct QueryStreamStats {
     /// Number of sources retrieved.
     pub sources_retrieved: usize,
 
-    /// Tokens used for generation.
+    /// Rerank time in ms (if reranking was applied).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rerank_time_ms: Option<u64>,
+
+    /// Tokens used for generation (SSE non-optional historical field).
     pub tokens_used: u32,
 
     /// Tokens per second generation speed.
@@ -364,6 +400,84 @@ pub struct QueryStreamStats {
     /// True when answer served from product answer cache.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub answer_cache_hit: bool,
+
+    /// LLM provider used for generation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_provider: Option<String>,
+
+    /// LLM model name used for generation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_model: Option<String>,
+
+    /// True when retrieval returned no chunks/entities/relationships.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub context_empty: bool,
+
+    /// True when post-retrieval truncation removed context items.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub context_truncated: bool,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arm_local_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arm_global_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arm_naive_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arm_local_chunks: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arm_global_chunks: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arm_naive_chunks: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arms_run: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arms_gated: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub query_intent: Option<String>,
+}
+
+impl QueryStreamStats {
+    /// Project sync [`QueryStats`] into stream stats (D-40 SSOT).
+    pub fn from_query_stats(
+        stats: QueryStats,
+        query_mode: String,
+        ux_ttft_ms: Option<u64>,
+        tokens_used: u32,
+    ) -> Self {
+        Self {
+            embedding_time_ms: stats.embedding_time_ms,
+            keyword_time_ms: stats.keyword_time_ms,
+            retrieval_time_ms: stats.retrieval_time_ms,
+            generation_time_ms: stats.generation_time_ms,
+            ttft_ms: stats.ttft_ms,
+            ux_ttft_ms,
+            total_time_ms: stats.total_time_ms,
+            sources_retrieved: stats.sources_retrieved,
+            rerank_time_ms: stats.rerank_time_ms,
+            tokens_used: if tokens_used > 0 {
+                tokens_used
+            } else {
+                stats.tokens_used.unwrap_or(0) as u32
+            },
+            tokens_per_second: stats.tokens_per_second,
+            query_mode,
+            answer_cache_hit: stats.answer_cache_hit,
+            llm_provider: stats.llm_provider,
+            llm_model: stats.llm_model,
+            context_empty: stats.context_empty,
+            context_truncated: stats.context_truncated,
+            arm_local_ms: stats.arm_local_ms,
+            arm_global_ms: stats.arm_global_ms,
+            arm_naive_ms: stats.arm_naive_ms,
+            arm_local_chunks: stats.arm_local_chunks,
+            arm_global_chunks: stats.arm_global_chunks,
+            arm_naive_chunks: stats.arm_naive_chunks,
+            arms_run: stats.arms_run,
+            arms_gated: stats.arms_gated,
+            query_intent: stats.query_intent,
+        }
+    }
 }
 
 // ============================================================================
@@ -396,6 +510,33 @@ pub struct QueryResponse {
     /// Whether reranking was applied.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub reranked: bool,
+
+    /// SPEC-083 X-21: retrieval explainability (arms / sparse / intent).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub explain: Option<ExplainTraceDto>,
+}
+
+/// API projection of engine [`edgequake_query::ExplainTrace`].
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ExplainTraceDto {
+    pub mode: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arms_run: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sparse_outcome: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub query_intent: Option<String>,
+}
+
+impl From<edgequake_query::ExplainTrace> for ExplainTraceDto {
+    fn from(t: edgequake_query::ExplainTrace) -> Self {
+        Self {
+            mode: t.mode,
+            arms_run: t.arms_run,
+            sparse_outcome: t.sparse_outcome,
+            query_intent: t.query_intent,
+        }
+    }
 }
 
 /// A source reference.
@@ -719,6 +860,30 @@ mod tests {
     }
 
     #[test]
+    fn contract_x_22_thinking_stream_event() {
+        let event = QueryStreamEvent::Thinking {
+            content: "Retrieved context via mix".into(),
+        };
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(json["type"], "thinking");
+        assert!(json["content"].as_str().unwrap().contains("mix"));
+
+        let stream = QueryStreamStats::from_query_stats(
+            QueryStats {
+                arms_run: Some("local,naive".into()),
+                ..Default::default()
+            },
+            "mix".into(),
+            Some(12),
+            7,
+        );
+        assert_eq!(stream.arms_run.as_deref(), Some("local,naive"));
+        assert_eq!(stream.query_mode, "mix");
+        assert_eq!(stream.ux_ttft_ms, Some(12));
+        assert_eq!(stream.tokens_used, 7);
+    }
+
+    #[test]
     fn test_query_response_serialization() {
         let response = QueryResponse {
             answer: "RAG is Retrieval Augmented Generation".to_string(),
@@ -735,6 +900,7 @@ mod tests {
             },
             conversation_id: None,
             reranked: false,
+            explain: None,
         };
         let json = serde_json::to_value(&response).unwrap();
         assert_eq!(json["mode"], "hybrid");

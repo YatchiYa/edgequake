@@ -202,7 +202,13 @@ impl DocumentTaskProcessor {
                         result
                     }
                     Err(e) => {
-                        let error_msg = format!("Pipeline processing failed: {}", e);
+                        // X-30: typed class first; embed failure_class= for string consumers.
+                        let class = crate::services::classify_from_pipeline_error(&e);
+                        let error_msg = format!(
+                            "Pipeline processing failed: {} [failure_class={}]",
+                            e.display_with_failure_class(),
+                            class.as_str()
+                        );
                         if crate::services::task_cancel::is_cancel_error_message(&error_msg) {
                             let _ = self
                                 .update_document_status(&document_id, "cancelled", Some(&error_msg))

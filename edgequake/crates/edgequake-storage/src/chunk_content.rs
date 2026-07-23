@@ -27,13 +27,19 @@ pub fn content_from_metadata_or_kv(metadata: &Value, kv_content: Option<&str>) -
 }
 
 /// Batch-fetch chunk contents from KV by id.
+///
+/// C-21: one round-trip via [`KVStorage::get_by_ids_ordered`] (not N× get_by_id).
 pub async fn batch_fetch_chunk_contents(
     kv: &dyn KVStorage,
     chunk_ids: &[String],
 ) -> Result<HashMap<String, String>> {
+    if chunk_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let values = kv.get_by_ids_ordered(chunk_ids).await?;
     let mut out = HashMap::new();
-    for id in chunk_ids {
-        if let Some(value) = kv.get_by_id(id).await? {
+    for (id, value) in chunk_ids.iter().zip(values) {
+        if let Some(value) = value {
             if let Some(content) = content_from_kv_value(&value) {
                 out.insert(id.clone(), content);
             }

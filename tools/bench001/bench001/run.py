@@ -14,6 +14,8 @@ from .client import EdgeQuakeClient
 from .download import download_dataset
 from .eval_score import score_predictions
 from .fixtures import (
+    freeze_medical_full_verify,
+    freeze_publish_verify,
     freeze_smoke_verify,
     load_corpus,
     select_questions,
@@ -27,6 +29,8 @@ from .paths import (
     CORE_FIXTURE,
     DATASET_REVISION,
     FAST_SMOKE_FIXTURE,
+    MEDICAL_FULL_FIXTURE,
+    PUBLISH_FIXTURE,
     SMOKE_FIXTURE,
     api_base,
     corpus_path,
@@ -56,7 +60,7 @@ def doctor(*, base_url: str | None = None) -> int:
     fx = verify_fixtures()
     print(
         f"fixtures: smoke_n={fx['smoke_n']} fast_n={fx.get('fast_n')} "
-        f"core_n={fx['core_n']}"
+        f"publish_n={fx.get('publish_n')} core_n={fx['core_n']}"
     )
     ok = True
 
@@ -109,13 +113,24 @@ def doctor(*, base_url: str | None = None) -> int:
     if not fx["smoke_exists"] or fx["smoke_n"] != 40:
         print("WARN: smoke fixture missing or wrong size")
         ok = False
+    if not fx.get("publish_exists") or fx.get("publish_n") != 200:
+        print("WARN: medical-publish fixture missing or wrong size (expected n=200)")
+        ok = False
+    if not fx.get("medical_full_exists") or int(fx.get("medical_full_n") or 0) < 2000:
+        print(
+            "WARN: medical-full fixture missing or wrong size "
+            f"(expected n≈2062, got {fx.get('medical_full_n')})"
+        )
+        ok = False
     return 0 if ok else 1
 
 
 def freeze_smoke() -> None:
     download_dataset(revision=DATASET_REVISION)
     freeze_smoke_verify()
-    print("freeze-smoke OK")
+    freeze_publish_verify()
+    freeze_medical_full_verify()
+    print("freeze-smoke OK (smoke + medical-publish + medical-full)")
 
 
 def _corpus_texts_for_questions(questions: list[dict[str, Any]]) -> list[str]:
@@ -471,6 +486,10 @@ def run_stage(
         fixture = FAST_SMOKE_FIXTURE
     elif stage == "smoke":
         fixture = SMOKE_FIXTURE
+    elif stage == "medical-mid":
+        fixture = PUBLISH_FIXTURE
+    elif stage == "medical-full":
+        fixture = MEDICAL_FULL_FIXTURE
     else:
         fixture = CORE_FIXTURE
     fixture_id = fixture.replace(".txt", "")
@@ -481,14 +500,22 @@ def run_stage(
     elif max_questions is not None and stage != "smoke-fast":
         art_stage = f"{stage}-debug"
     art = stage_artifact_dir(art_stage)
-    # Fast smoke reuses warm smoke indexes (EQ workspace env + LR smoke dir).
+    # Fast smoke / medical-mid reuse warm medical indexes (EQ workspace env + LR smoke dir).
     # When ingest is capped, isolate workspaces/dirs so full-corpus caches are not reused.
     from .ingest_cap import eq_workspace_name_for_cap, lr_stage_for_cap
 
-    lr_index_stage = lr_stage_for_cap("smoke" if stage == "smoke-fast" else stage)
+    # medical-mid/full share the same FULL medical corpus as smoke — reuse smoke LR/EQ indexes.
+    index_stage = (
+        "smoke" if stage in {"smoke-fast", "medical-mid", "medical-full"} else stage
+    )
+    lr_index_stage = lr_stage_for_cap(index_stage)
+    default_ws = (
+        "bench001-smoke"
+        if stage in {"smoke-fast", "medical-mid", "medical-full"}
+        else f"bench001-{stage}"
+    )
     eq_workspace_name = eq_workspace_name_for_cap(
-        os.environ.get("BENCH001_EQ_WORKSPACE_NAME")
-        or ("bench001-smoke" if stage == "smoke-fast" else f"bench001-{stage}")
+        os.environ.get("BENCH001_EQ_WORKSPACE_NAME") or default_ws
     )
     os.environ["BENCH001_PROGRESS_STAGE"] = art_stage
 
@@ -856,7 +883,13 @@ def run_stage(
         valid = False
 
     # Publishable runs require L2 retrieval metrics (2026 RAG Triad practice).
-    if valid and not dry_run and publish_fairness_enabled() and stage in {"smoke", "smoke-fast", "core"}:
+    if valid and not dry_run and publish_fairness_enabled() and stage in {
+        "smoke",
+        "smoke-fast",
+        "medical-mid",
+        "medical-full",
+        "core",
+    }:
         eq_l2 = bool(eq_metrics.get("l2_retrieval"))
         lr_l2 = bool(lr_metrics.get("l2_retrieval"))
         if not (eq_l2 and lr_l2):
@@ -892,8 +925,18 @@ def run_stage(
     write_summary(scorecard, art / "SUMMARY.md")
     # First principles: never overwrite Acc *global* warm pointer on invalid /
     # empty-context runs (032 B3b: disk-full saga rollback left WS empty).
+    # Also skip global warm on labeled peers (SKIP_PUBLISH_LATEST / PUBLISH_PEER)
+    # so gap-close / ingest ablations cannot hijack Acc B5 warm (080 D4).
     # Still write per-stage eq_workspace.json for audit/forensics.
     persist_warm = bool(eq_workspace_id) and (not dry_run) and bool(valid)
+    _skip_latest = (os.environ.get("BENCH001_SKIP_PUBLISH_LATEST") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    _labeled_peer = bool((os.environ.get("BENCH001_PUBLISH_PEER") or "").strip())
+    update_global_warm = persist_warm and not _skip_latest and not _labeled_peer
     if eq_workspace_id and not dry_run:
         meta["eq_workspace_id"] = eq_workspace_id
         (art / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
@@ -907,7 +950,7 @@ def run_stage(
         (art / "eq_workspace.json").write_text(
             json.dumps(eq_blob, indent=2) + "\n", encoding="utf-8"
         )
-        if persist_warm:
+        if update_global_warm:
             from .warm_workspace import persist_warm_workspace
 
             persist_warm_workspace(
@@ -921,6 +964,12 @@ def run_stage(
                 },
             )
             print(f"EQ warm workspace pointer: {eq_workspace_id}", flush=True)
+        elif persist_warm:
+            print(
+                f"EQ warm workspace NOT updated (labeled peer / skip-latest); "
+                f"keeping Acc warm pointer (this run ws={eq_workspace_id})",
+                flush=True,
+            )
         else:
             print(
                 f"EQ warm workspace NOT updated (valid=False reason={invalid_reason}); "
@@ -928,7 +977,7 @@ def run_stage(
                 flush=True,
             )
     hist = archive_run(art_stage, scorecard)
-    if persist_warm:
+    if update_global_warm:
         from .warm_workspace import persist_warm_workspace
 
         persist_warm_workspace(

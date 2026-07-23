@@ -21,7 +21,7 @@ FROM node:20-alpine AS builder
 
 # Build args for Next.js public environment variables
 ARG NEXT_PUBLIC_API_URL=http://localhost:8080
-ARG NEXT_PUBLIC_APP_VERSION=0.15.1
+ARG NEXT_PUBLIC_APP_VERSION=0.21.0
 
 WORKDIR /app
 
@@ -48,6 +48,10 @@ COPY edgequake_webui/vitest.config.mjs ./
 # Copy source directories
 COPY edgequake_webui/src ./src
 COPY edgequake_webui/public ./public
+# Generated OpenAPI types (required by src/types/openapi-schema.ts)
+COPY edgequake_webui/openapi ./openapi
+RUN test -f openapi/schema.d.ts \
+  || (echo "FATAL: openapi/schema.d.ts missing from Docker context" && exit 1)
 
 # Set Next.js public environment variables for build time
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}

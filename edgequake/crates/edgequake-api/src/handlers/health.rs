@@ -82,11 +82,26 @@ pub async fn health_check(State(state): State<AppState>) -> ApiResult<Json<Healt
         Arc::clone(&state.storage.graph_storage),
     )
     .await;
+    // SPEC-083: eq_* readiness — healthy when no bootstrap (memory) or not degraded.
+    #[cfg(feature = "postgres")]
+    let eq_id_ok = state
+        .migration_bootstrap
+        .as_ref()
+        .map(|r| !r.migration_092.is_degraded())
+        .unwrap_or(true);
+    #[cfg(not(feature = "postgres"))]
+    let eq_id_ok = true;
+    #[cfg(feature = "postgres")]
+    let eq_id_schema = state.migration_bootstrap.as_ref().map(|_| eq_id_ok);
+    #[cfg(not(feature = "postgres"))]
+    let eq_id_schema = None;
+
     let components = ComponentHealth {
         kv_storage: kv_ok,
         vector_storage: vector_ok,
         graph_storage: graph_ok,
         llm_provider: true, // Assume available, actual check would require API call
+        eq_id_schema,
     };
 
     // Get the LLM provider name from the configured provider
@@ -108,6 +123,7 @@ pub async fn health_check(State(state): State<AppState>) -> ApiResult<Json<Healt
         .is_some_and(|m| !m.ready)
         || storage_degraded
         || queue_overloaded
+        || !eq_id_ok
     {
         "degraded"
     } else {
@@ -395,12 +411,26 @@ async fn get_schema_health_inner(state: &AppState) -> Option<SchemaHealth> {
         .as_ref()
         .map(|r| r.migration_080.halfvec_conversion_applied);
 
+    let (eq_id_graphs_degraded, eq_id_fallback_enabled) = state
+        .migration_bootstrap
+        .as_ref()
+        .map_or((None, None), |r| {
+            let degraded = if r.migration_092.graphs_degraded.is_empty() {
+                None
+            } else {
+                Some(r.migration_092.graphs_degraded.clone())
+            };
+            (degraded, Some(r.migration_092.fallback_env_enabled))
+        });
+
     Some(SchemaHealth {
         latest_version: stats.latest_version,
         migrations_applied: stats.applied_count as usize,
         last_applied_at: stats.last_applied_at.map(|dt| dt.to_rfc3339()),
         source_ids_indexes,
         halfvec_conversion_applied,
+        eq_id_graphs_degraded,
+        eq_id_fallback_enabled,
     })
 }
 

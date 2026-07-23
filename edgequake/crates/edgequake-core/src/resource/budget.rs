@@ -20,6 +20,21 @@ pub const MIN_PAGE_SIZE: usize = 1;
 /// Default upload / body size limit (50 MiB).
 pub const MAX_UPLOAD_BYTES: usize = 50 * 1024 * 1024;
 
+/// Default max files per multipart batch upload (SPEC-083 D-51).
+pub const MAX_BATCH_UPLOAD_FILES: usize = 20;
+
+/// Env override for [`MAX_BATCH_UPLOAD_FILES`].
+pub const MAX_BATCH_UPLOAD_FILES_ENV: &str = "EDGEQUAKE_MAX_BATCH_UPLOAD_FILES";
+
+/// Resolve max files per batch upload (clamped to `[1, 500]`).
+pub fn max_batch_upload_files() -> usize {
+    std::env::var(MAX_BATCH_UPLOAD_FILES_ENV)
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(MAX_BATCH_UPLOAD_FILES)
+        .clamp(1, 500)
+}
+
 /// Default max query string length.
 pub const MAX_QUERY_CHARS: usize = 10_000;
 

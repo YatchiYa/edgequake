@@ -72,6 +72,25 @@ pub fn mix_arm_gate_enabled() -> bool {
     parse_mix_arm_gate(&std::env::var("EDGEQUAKE_MIX_ARM_GATE").unwrap_or_default())
 }
 
+/// `EDGEQUAKE_MIX_INTENT_WEIGHTS=1` — type-aware Mix arm weights (080 D2).
+///
+/// Arms always run (LightRAG Mix law); fusion weights tilt by intent:
+/// Fact → naive-heavy; relational/comparative → local+global; exploratory → global.
+pub fn mix_intent_weights_enabled() -> bool {
+    parse_mix_arm_gate(&std::env::var("EDGEQUAKE_MIX_INTENT_WEIGHTS").unwrap_or_default())
+}
+
+/// Relative multipliers before re-normalization (local, global, naive).
+pub fn intent_weight_multipliers(intent: QueryIntent) -> (f32, f32, f32) {
+    match intent {
+        QueryIntent::Factual => (0.5, 0.5, 2.0),
+        QueryIntent::Relational | QueryIntent::Comparative | QueryIntent::Procedural => {
+            (1.5, 1.5, 0.75)
+        }
+        QueryIntent::Exploratory => (0.75, 1.75, 1.0),
+    }
+}
+
 /// Mix arm mask — LightRAG `mix` law (product Smart).
 ///
 /// Always `(local, global, naive)` for every intent. Cost-aware arm collapse lives
@@ -151,6 +170,19 @@ pub fn resolve_arm_plan(
     let (mut w_local, mut w_global, mut w_naive) = normalized_mix_weights(config, override_weights);
 
     let explicit = override_weights.is_some_and(|o| o.is_set());
+    // 080 D2: tilt fusion weights by intent (all arms stay on unless gate zeros them).
+    if mix_intent_weights_enabled() && !explicit {
+        let (ml, mg, mn) = intent_weight_multipliers(intent);
+        w_local *= ml;
+        w_global *= mg;
+        w_naive *= mn;
+        let sum = w_local + w_global + w_naive;
+        if sum > 0.0 && sum.is_finite() {
+            w_local /= sum;
+            w_global /= sum;
+            w_naive /= sum;
+        }
+    }
     if gate_enabled && !explicit {
         let (ml, mg, mn) = intent_arm_mask(intent);
         if !ml {
@@ -319,6 +351,14 @@ mod tests {
             intent_arm_mask_hybrid(QueryIntent::Exploratory),
             (false, true, true)
         );
+    }
+
+    #[test]
+    fn intent_weight_multipliers_fact_naive_heavy() {
+        let (l, g, n) = intent_weight_multipliers(QueryIntent::Factual);
+        assert!(n > l && n > g);
+        let (l2, g2, n2) = intent_weight_multipliers(QueryIntent::Relational);
+        assert!(l2 >= n2 && g2 >= n2);
     }
 
     #[test]

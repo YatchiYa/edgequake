@@ -71,6 +71,7 @@
 //! # }
 //! ```
 
+pub mod admission;
 pub mod cancellation;
 pub mod delivery;
 pub mod error;
@@ -82,12 +83,17 @@ pub mod pipeline_state;
 pub mod postgres;
 pub mod progress;
 pub mod queue;
+pub mod shutdown;
 pub mod storage;
 pub mod tenant_limiter;
 pub mod types;
 pub mod worker;
 
 // Re-export commonly used types
+pub use admission::{
+    estimate_task_bytes, AdmissionOutcome, AdmissionPermit, InFlightByteBudget,
+    ADMISSION_MAX_BYTES_ENV, DEFAULT_MAX_IN_FLIGHT_BYTES, DEFAULT_TASK_BYTE_COST,
+};
 pub use cancellation::CancellationRegistry;
 pub use delivery::{
     delivery_mode_from_env, enqueue_with_delivery, is_multi_replica_deployment,
@@ -97,13 +103,15 @@ pub use delivery::{
 };
 pub use error::{TaskError, TaskResult};
 pub use ingestion_reliability::{
-    classify_ingestion_failure, failure_step, is_cancel_failure_message,
-    is_permanent_ingestion_failure, is_provider_misconfig_message, IngestionFailureClass,
+    classify_from_failure_markers, classify_ingestion_failure, failure_step,
+    is_cancel_failure_message, is_permanent_ingestion_failure, is_provider_misconfig_message,
+    is_typed_timeout_message, IngestionFailureClass,
 };
 pub use lease::{lease_expires_at, task_lease_ttl_from_env};
 pub use pipeline_state::{PipelineEvent, PipelineMessage, PipelineState, PipelineStatusSnapshot};
 pub use progress::{PdfUploadProgress, PhaseError, PhaseProgress, PhaseStatus, PipelinePhase};
 pub use queue::{ChannelTaskQueue, SharedTaskQueue, TaskQueue, UnboundedChannelTaskQueue};
+pub use shutdown::{shutdown_drain_budget, DEFAULT_SHUTDOWN_DRAIN_SECS, SHUTDOWN_DRAIN_SECS_ENV};
 pub use storage::{
     Pagination, SharedTaskStorage, SortField, SortOrder, TaskFilter, TaskList, TaskStatistics,
     TaskStorage,

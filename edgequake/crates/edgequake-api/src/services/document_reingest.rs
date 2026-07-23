@@ -65,6 +65,7 @@ pub async fn delete_document_for_reingestion(
     let allowed_from_statuses = [
         "failed",
         "completed",
+        "indexed", // C-23: modern terminal status (status_updates completed→indexed)
         "partial_failure",
         "processed",
         "cancelled",

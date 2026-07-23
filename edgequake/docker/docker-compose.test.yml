@@ -30,7 +30,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-test_password_123}
       POSTGRES_HOST_AUTH_METHOD: md5
     ports:
-      - "5433:5432" # Use 5433 to avoid conflicts with local postgres
+      # Override with POSTGRES_TEST_PORT when 5433 is already taken (e.g. other local PG).
+      - "${POSTGRES_TEST_PORT:-5433}:5432"
     volumes:
       - postgres_test_data:/var/lib/postgresql/data
       - ../migrations:/docker-entrypoint-initdb.d/migrations:ro

@@ -1,0 +1,17 @@
+# SPEC-083 / X-32 — default review owners for merge hygiene.
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for the whole tree
+* @raphaelmansuy
+
+# Security-sensitive surfaces
+/.github/ @raphaelmansuy
+/.github/workflows/ @raphaelmansuy
+/edgequake/migrations/ @raphaelmansuy
+/edgequake/crates/edgequake-auth/ @raphaelmansuy
+/edgequake/crates/edgequake-api/src/startup_security.rs @raphaelmansuy
+/edgequake/crates/edgequake-api/src/middleware.rs @raphaelmansuy
+
+# SDKs + docs site
+/sdks/ @raphaelmansuy
+/docs/ @raphaelmansuy

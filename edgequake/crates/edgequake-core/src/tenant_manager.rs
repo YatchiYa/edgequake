@@ -250,12 +250,19 @@ impl TenantRAGManager {
 
         let cache_key = TenantKBKey::new(&tenant_id, &kb_id);
 
-        // First check (fast path - read lock only)
+        // First check (fast path - read lock only). On hit, upgrade to write
+        // lock to refresh last_accessed so eviction is true LRU (C-27).
         {
             let cache = self.instances.read().await;
-            if let Some(entry) = cache.get(&cache_key) {
-                tracing::debug!(tenant_id = %tenant_id, kb_id = %kb_id, "Cache hit");
-                return Ok(Arc::clone(&entry.instance));
+            if cache.contains_key(&cache_key) {
+                drop(cache);
+                let mut cache = self.instances.write().await;
+                if let Some(entry) = cache.get_mut(&cache_key) {
+                    entry.last_accessed = std::time::Instant::now();
+                    tracing::debug!(tenant_id = %tenant_id, kb_id = %kb_id, "Cache hit");
+                    return Ok(Arc::clone(&entry.instance));
+                }
+                // Rare race: entry evicted between locks — fall through to create.
             }
         }
 
@@ -263,7 +270,8 @@ impl TenantRAGManager {
         let mut cache = self.instances.write().await;
 
         // Second check (double-check locking pattern)
-        if let Some(entry) = cache.get(&cache_key) {
+        if let Some(entry) = cache.get_mut(&cache_key) {
+            entry.last_accessed = std::time::Instant::now();
             tracing::debug!(tenant_id = %tenant_id, kb_id = %kb_id, "Cache hit (after lock)");
             return Ok(Arc::clone(&entry.instance));
         }

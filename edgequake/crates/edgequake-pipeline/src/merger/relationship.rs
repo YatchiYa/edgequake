@@ -90,12 +90,11 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
     /// SPEC-045: Emits incremental merge progress per chunk and batches lineage
     /// writes so the UI advances during long runs (fixes frozen 0/N counters).
     ///
-    /// # Within-batch endpoint dedup (parity with entity W-03)
+    /// # Within-batch dedup (SPEC-083 D-30 multigraph)
     ///
-    /// AGE unique index `idx_edge_source_target_unique` is `(source_id, target_id)`
-    /// only — not `relation_type`. Multiple extracted edges for the same pair
-    /// (cross-chunk, multi-type) must collapse before `upsert_edges_batch`, or
-    /// native `ON CONFLICT DO UPDATE` fails with "cannot affect row a second time".
+    /// Arbiter is `(source, target, relation_type)`. Same endpoints with
+    /// different types both persist. Same type collapses (last-write + weight
+    /// policy) before `upsert_edges_batch`.
     pub(super) async fn merge_relationships_batch(
         &self,
         relationships: Vec<ExtractedRelationship>,
@@ -145,8 +144,7 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
             return Ok(());
         }
 
-        // Domain dedup: one ExtractedRelationship per (source_key, target_key).
-        // Last-write-wins on relation_type/description; merge keywords + weight.
+        // Domain dedup: one ExtractedRelationship per (source, target, rel_type).
         let valid = dedupe_relationships_by_endpoints(valid);
 
         let total_valid = valid.len();
@@ -163,9 +161,11 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
             .graph_storage
             .get_edges_for_nodes_batch(&endpoint_keys)
             .await?;
-        let mut edge_map: HashMap<(String, String), GraphEdge> = HashMap::new();
+        // D-30: key includes relation_type so KNOWS ≠ WORKS_WITH.
+        let mut edge_map: HashMap<(String, String, String), GraphEdge> = HashMap::new();
         for edge in incident_edges {
-            edge_map.insert((edge.source.clone(), edge.target.clone()), edge);
+            let rel = edgequake_storage::normalize_rel_type(&edge.properties);
+            edge_map.insert((edge.source.clone(), edge.target.clone(), rel), edge);
         }
 
         // Horizon B5 (044): relation endpoints missing a full entity extract still
@@ -248,13 +248,14 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         for (key, chunk_ids) in stub_enrich_chunk_ids {
             if let Some(node) = existing_nodes.get(&key) {
                 let mut props = node.properties.clone();
+                // D-33: document lineage from full chunk set, then cap stored chunk ids.
+                super::lineage::merge_and_insert_document_lineage(&mut props, None, &chunk_ids);
                 let capped = apply_source_ids_limit(
                     &chunk_ids,
                     self.config.max_source_ids_per_entity,
                     self.config.source_ids_limit_method,
                 );
                 super::lineage::insert_chunk_lineage_properties(&mut props, &capped);
-                super::lineage::merge_and_insert_document_lineage(&mut props, None, &capped);
                 placeholder_batch.push((key, props));
             }
         }
@@ -296,8 +297,13 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
                 .iter()
                 .enumerate()
                 .map(|(offset, (rel, source_key, target_key))| {
-                    let pair = (source_key.clone(), target_key.clone());
-                    let existing = edge_map.get(&pair).cloned();
+                    let rel_type = if rel.relation_type.trim().is_empty() {
+                        "RELATED_TO".to_string()
+                    } else {
+                        rel.relation_type.trim().to_ascii_uppercase()
+                    };
+                    let key = (source_key.clone(), target_key.clone(), rel_type);
+                    let existing = edge_map.get(&key).cloned();
                     (
                         chunk_start + offset,
                         rel.clone(),
@@ -336,7 +342,7 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
                 match item {
                     Ok(pair) => ordered.push(pair),
                     Err(e) => {
-                        stats.errors += 1;
+                        stats.record_error(e.to_string());
                         tracing::warn!(
                             error.source = "pipeline_merger",
                             error.action = "merge_relationship",
@@ -365,7 +371,8 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
                     stats.relationships_updated += 1;
                 }
                 if let Some(edge) = outcome.edge_for_map {
-                    edge_map.insert((edge.source.clone(), edge.target.clone()), edge);
+                    let rel = edgequake_storage::normalize_rel_type(&edge.properties);
+                    edge_map.insert((edge.source.clone(), edge.target.clone(), rel), edge);
                 }
                 edge_batch.push((outcome.source, outcome.target, outcome.properties));
             }
@@ -501,13 +508,14 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         );
         // Inherit relation chunk lineage so Mix/graph can still surface evidence
         // for endpoints that never received a full entity extract.
+        // D-33: document lineage from full chunk set, then cap stored chunk ids.
+        super::lineage::merge_and_insert_document_lineage(&mut properties, None, source_chunk_ids);
         let capped = apply_source_ids_limit(
             source_chunk_ids,
             self.config.max_source_ids_per_entity,
             self.config.source_ids_limit_method,
         );
         super::lineage::insert_chunk_lineage_properties(&mut properties, &capped);
-        super::lineage::merge_and_insert_document_lineage(&mut properties, None, &capped);
         if let Some(tenant_id) = &self.tenant_id {
             properties.insert(
                 "tenant_id".to_string(),
@@ -616,18 +624,8 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
             serde_json::Value::String(merged_desc),
         );
 
-        // Update weight (use weighted average)
-        let existing_weight = edge
-            .properties
-            .get("weight")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.5) as f32;
-
-        let new_weight = (existing_weight + rel.weight) / 2.0;
-        edge.properties.insert(
-            "weight".to_string(),
-            serde_json::Value::Number(serde_json::Number::from_f64(new_weight as f64).unwrap()),
-        );
+        // D-31: WeightPolicy SSOT (default Max — associative).
+        super::WeightPolicy::from_env().apply(&mut edge.properties, rel.weight);
 
         // Prefer newer relation_type when present (last-write-wins for type label).
         if !rel.relation_type.is_empty() {
@@ -659,7 +657,13 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
             .insert("keywords".to_string(), serde_json::json!(keywords));
 
         // Merge + cap source chunk IDs (P7d)
+        // D-33: document lineage from full merged set BEFORE capping stored chunks.
         let merged_ids = merge_source_ids(&existing_chunk_ids, &incoming_ids);
+        super::lineage::merge_and_insert_document_lineage(
+            &mut edge.properties,
+            rel.source_document_id.as_deref(),
+            &merged_ids,
+        );
         let capped = apply_source_ids_limit(
             &merged_ids,
             self.config.max_source_ids_per_relation,
@@ -672,11 +676,6 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
                 serde_json::Value::String(first.clone()),
             );
         }
-        super::lineage::merge_and_insert_document_lineage(
-            &mut edge.properties,
-            rel.source_document_id.as_deref(),
-            &capped,
-        );
 
         Ok(true)
     }
@@ -704,7 +703,13 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         properties.insert("keywords".to_string(), serde_json::json!(rel.keywords));
 
         // Source tracking for citations (LightRAG parity / 049 multi-chunk union)
+        // D-33: document lineage from full incoming set BEFORE capping stored chunks.
         let incoming = rel.all_source_chunk_ids();
+        super::lineage::merge_and_insert_document_lineage(
+            &mut properties,
+            rel.source_document_id.as_deref(),
+            &incoming,
+        );
         let capped = apply_source_ids_limit(
             &incoming,
             self.config.max_source_ids_per_relation,
@@ -717,11 +722,6 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
                 serde_json::Value::String(first.clone()),
             );
         }
-        super::lineage::merge_and_insert_document_lineage(
-            &mut properties,
-            rel.source_document_id.as_deref(),
-            &capped,
-        );
         if let Some(ref file_path) = rel.source_file_path {
             properties.insert(
                 "source_file_path".to_string(),
@@ -751,33 +751,32 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
     }
 }
 
-/// Collapse extracted relationships to one row per `(source_key, target_key)`.
+/// Collapse extracted relationships to one row per `(source, target, rel_type)`.
 ///
-/// # Policy (First Principles / AGE unique index)
+/// # Policy (SPEC-083 D-30 / D-31)
 ///
-/// - Last-write-wins for `relation_type`, `description`, embeddings
-/// - Keywords union (capped later at write time)
-/// - Weight = max of seen weights (preserve strongest signal)
-/// - **049:** `source_chunk_ids` **union** (entity / LightRAG `merge_source_ids` parity —
-///   never last-write a singular chunk id and drop sibling-chunk lineage)
+/// - Distinct relation types between the same endpoints **both** persist
+/// - Same type: last-write description/embeddings; keyword union; WeightPolicy
+/// - **049:** `source_chunk_ids` **union**
 fn dedupe_relationships_by_endpoints(
     rows: Vec<(ExtractedRelationship, String, String)>,
 ) -> Vec<(ExtractedRelationship, String, String)> {
-    let mut order: Vec<(String, String)> = Vec::new();
-    let mut map: HashMap<(String, String), ExtractedRelationship> = HashMap::new();
+    let weight_policy = super::WeightPolicy::from_env();
+    let mut order: Vec<(String, String, String)> = Vec::new();
+    let mut map: HashMap<(String, String, String), ExtractedRelationship> = HashMap::new();
 
     for (rel, source_key, target_key) in rows {
-        let key = (source_key.clone(), target_key.clone());
+        let rel_type = if rel.relation_type.trim().is_empty() {
+            "RELATED_TO".to_string()
+        } else {
+            rel.relation_type.trim().to_ascii_uppercase()
+        };
+        let key = (source_key.clone(), target_key.clone(), rel_type.clone());
         if let Some(existing) = map.get_mut(&key) {
             if rel.description.len() > existing.description.len() {
                 existing.description = rel.description.clone();
             }
-            if !rel.relation_type.is_empty() {
-                existing.relation_type = rel.relation_type.clone();
-            }
-            if rel.weight > existing.weight {
-                existing.weight = rel.weight;
-            }
+            existing.weight = weight_policy.combine(existing.weight, rel.weight);
             for kw in &rel.keywords {
                 if !existing.keywords.contains(kw) {
                     existing.keywords.push(kw.clone());
@@ -796,8 +795,8 @@ fn dedupe_relationships_by_endpoints(
                 existing.source_file_path = rel.source_file_path.clone();
             }
         } else {
-            // Normalize singular → Vec so later merges see a complete list.
             let mut normalized = rel;
+            normalized.relation_type = rel_type;
             for cid in normalized.all_source_chunk_ids() {
                 normalized.add_source_chunk_id(cid);
             }
@@ -808,8 +807,8 @@ fn dedupe_relationships_by_endpoints(
 
     order
         .into_iter()
-        .filter_map(|(src, tgt)| {
-            map.remove(&(src.clone(), tgt.clone()))
+        .filter_map(|(src, tgt, rel)| {
+            map.remove(&(src.clone(), tgt.clone(), rel))
                 .map(|rel| (rel, src, tgt))
         })
         .collect()
@@ -819,7 +818,7 @@ fn dedupe_relationships_by_endpoints(
 mod tests {
     use super::*;
     use crate::extractor::ExtractionResult;
-    use crate::merger::{KnowledgeGraphMerger, MergerConfig};
+    use crate::merger::{KnowledgeGraphMerger, MergerConfig, SourceIdsLimitMethod};
     use async_trait::async_trait;
     use edgequake_storage::{
         EntityId, MemoryGraphStorage, MemoryVectorStorage, TextEmbedder, VectorStorage,
@@ -888,6 +887,38 @@ mod tests {
         assert!(props.contains_key("source_ids"));
     }
 
+    /// SPEC-083 D-33: document lineage keeps docs beyond the stored chunk-id cap.
+    #[test]
+    fn e2e_lineage_includes_docs_beyond_source_cap() {
+        let cfg = MergerConfig {
+            max_source_ids_per_entity: 2,
+            source_ids_limit_method: SourceIdsLimitMethod::Fifo,
+            ..Default::default()
+        };
+        let graph = Arc::new(MemoryGraphStorage::new("d33-lineage"));
+        let vector = Arc::new(MemoryVectorStorage::new("d33-lineage", 4));
+        let merger = KnowledgeGraphMerger::new(cfg, graph, vector)
+            .with_tenant_context(Some("t".into()), Some("w".into()));
+
+        // Three docs → three derived document ids; chunk storage capped at 2.
+        let chunks = vec![
+            "doc-a-chunk-1".to_string(),
+            "doc-b-chunk-1".to_string(),
+            "doc-c-chunk-1".to_string(),
+        ];
+        let props = merger.placeholder_node_properties("ENTITY", &chunks, "desc");
+        let stored = source_chunk_ids_from_properties(&props);
+        assert_eq!(stored.len(), 2, "chunk ids must be capped");
+        let docs = crate::merger::lineage::source_document_ids_from_properties(&props);
+        assert!(
+            docs.len() >= 3,
+            "document lineage must retain all docs beyond chunk cap, got {docs:?}"
+        );
+        assert!(docs.iter().any(|d| d == "doc-a"));
+        assert!(docs.iter().any(|d| d == "doc-b"));
+        assert!(docs.iter().any(|d| d == "doc-c"));
+    }
+
     #[test]
     fn retain_longest_description_keeps_longer_candidate() {
         let mut map = HashMap::new();
@@ -937,7 +968,8 @@ mod tests {
     }
 
     #[test]
-    fn dedupe_relationships_collapses_same_endpoints() {
+    fn dedupe_relationships_keeps_multigraph_types() {
+        // D-30: distinct types between same endpoints both survive.
         let rows = vec![
             (
                 ExtractedRelationship::new("Alice", "Bob", "KNOWS").with_description("a"),
@@ -959,18 +991,18 @@ mod tests {
             ),
         ];
         let out = dedupe_relationships_by_endpoints(rows);
-        assert_eq!(out.len(), 2);
-        assert_eq!(out[0].1, "ALICE");
-        assert_eq!(out[0].2, "BOB");
-        assert_eq!(out[0].0.relation_type, "WORKS_WITH");
-        assert_eq!(out[0].0.description, "longer description");
-        assert!((out[0].0.weight - 0.9).abs() < f32::EPSILON);
-        assert_eq!(out[0].0.keywords, vec!["x".to_string()]);
-        assert_eq!(out[1].1, "CAROL");
+        assert_eq!(out.len(), 3);
+        let types: Vec<_> = out
+            .iter()
+            .map(|(r, _, _)| r.relation_type.as_str())
+            .collect();
+        assert!(types.contains(&"KNOWS"));
+        assert!(types.contains(&"WORKS_WITH"));
+        assert!(types.contains(&"RELATED"));
     }
 
     #[test]
-    fn dedupe_relationships_unions_source_chunk_ids() {
+    fn dedupe_relationships_unions_source_chunk_ids_same_type() {
         let rows = vec![
             (
                 ExtractedRelationship::new("Alice", "Bob", "KNOWS")
@@ -980,7 +1012,7 @@ mod tests {
                 "BOB".into(),
             ),
             (
-                ExtractedRelationship::new("Alice", "Bob", "WORKS_WITH")
+                ExtractedRelationship::new("Alice", "Bob", "KNOWS")
                     .with_description("longer description")
                     .with_source_chunk_id("chunk-1"),
                 "ALICE".into(),

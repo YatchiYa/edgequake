@@ -276,9 +276,17 @@ pub async fn chat_completion_stream(
 
         // FEAT0203: Forward image attachments to the query engine for vision queries.
         if let Some(ref images) = request.images {
+            // SPEC-083 C-25: materialize data: URL images before Anthropic path.
             let image_data: Vec<edgequake_llm::traits::ImageData> = images
                 .iter()
-                .map(|i| edgequake_llm::traits::ImageData::new(&i.data, &i.mime_type))
+                .map(|i| {
+                    let img = if i.mime_type.eq_ignore_ascii_case("url") {
+                        edgequake_llm::traits::ImageData::from_url(&i.data)
+                    } else {
+                        edgequake_llm::traits::ImageData::new(&i.data, &i.mime_type)
+                    };
+                    edgequake_pipeline::materialize_image_for_anthropic(&img).unwrap_or(img)
+                })
                 .collect();
             if !image_data.is_empty() {
                 engine_request = engine_request.with_images(image_data);
@@ -432,6 +440,22 @@ pub async fn chat_completion_stream(
                 saved_message_context = Some(build_message_context_from_engine(&context, &sources));
 
                 let retrieval_elapsed_ms = retrieval_start.elapsed().as_millis() as u64;
+
+                // SPEC-083 X-22: emit Thinking before Context (keep variant live).
+                let thinking = ChatStreamEvent::Thinking {
+                    content: format!(
+                        "Retrieved context via {used_mode} ({} sources in {retrieval_elapsed_ms}ms)",
+                        sources.len()
+                    ),
+                };
+                if tx.send(thinking).await.is_err() {
+                    ErrorEvent::log_stream_disconnect(
+                        &stream_request_id_spawn,
+                        "chat_stream",
+                        "thinking_event",
+                    );
+                    return;
+                }
 
                 if !sources.is_empty() {
                     let subgraph = Some(map_query_context_to_subgraph(

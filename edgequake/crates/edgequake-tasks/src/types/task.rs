@@ -184,8 +184,18 @@ impl Task {
         self.updated_at = Utc::now();
     }
 
-    /// Mark task as completed successfully
-    pub fn mark_success(&mut self, result: serde_json::Value) {
+    /// Mark task as completed successfully.
+    ///
+    /// Returns `false` and leaves the task unchanged when the current status is
+    /// [`TaskStatus::Cancelled`] (X-29: Cancelled ↛ Success).
+    pub fn mark_success(&mut self, result: serde_json::Value) -> bool {
+        if matches!(self.status, TaskStatus::Cancelled) {
+            tracing::warn!(
+                track_id = %self.track_id,
+                "mark_success ignored: task is Cancelled"
+            );
+            return false;
+        }
         self.status = TaskStatus::Indexed;
         self.completed_at = Some(Utc::now());
         self.updated_at = Utc::now();
@@ -195,6 +205,7 @@ impl Task {
         // Reset timeout counter on success
         self.consecutive_timeout_failures = 0;
         self.clear_lease();
+        true
     }
 
     /// Mark task as failed with simple error message (backward compatible)
@@ -206,17 +217,17 @@ impl Task {
         self.clear_lease();
         self.retry_count += 1;
 
-        // Check if this is a timeout error
-        let error_lower = error.to_lowercase();
-        if error_lower.contains("timeout") || error_lower.contains("timed out") {
-            // Progress-aware: marker from vision stall watchdog.
+        // X-30: typed timeout — only structured markers trip the breaker
+        // (not business text that happens to contain the word "timeout").
+        let is_typed_timeout = error.starts_with("Operation timed out")
+            || error.contains("[ingestion_failure_class=Timeout");
+        if is_typed_timeout {
             let made_progress = error.contains("[vision_progress=1]");
             if !made_progress {
                 self.consecutive_timeout_failures += 1;
                 self.check_circuit_breaker();
             }
         } else {
-            // Non-timeout failures reset the counter
             self.consecutive_timeout_failures = 0;
         }
     }

@@ -351,8 +351,15 @@ impl QueryEngine {
             let citation = if crate::l2_bm25_union::l2_bm25_union_enabled() {
                 let k = crate::l2_bm25_union::l2_bm25_mix_top_k();
                 let mode = crate::l2_bm25_union::l2_bm25_mode();
-                // FactReplace: BM25 L2 only for factual intents; else CE sources.
-                if matches!(mode, crate::l2_bm25_union::L2Bm25Mode::FactReplace) {
+                // 080 R6: Acc prompt list == Fact citations (LightRAG one-list).
+                if matches!(mode, crate::l2_bm25_union::L2Bm25Mode::Unified) {
+                    tracing::debug!(
+                        chunks = context.chunks.len(),
+                        "080 L2 Unified: citation_chunks = Acc prompt chunks"
+                    );
+                    context.chunks.clone()
+                } else if matches!(mode, crate::l2_bm25_union::L2Bm25Mode::FactReplace) {
+                    // FactReplace: BM25 L2 only for factual intents; else CE sources.
                     // LLM/metadata intent only — heuristic OR was Acc/ctx toxic
                     // (T034914Z: Fact ER 1.0 but ctx 0.44 from over-routing).
                     let intent = intent_for_truncation(request, &context);
@@ -408,6 +415,8 @@ impl QueryEngine {
             };
             context.citation_chunks = Some(citation);
         }
+        // X-20: stamp stable citation_id before any prompt format / API sources emit.
+        context.ensure_stable_citation_ids();
         if let Some(s) = stats.as_mut() {
             s.context_truncated = context.is_truncated;
             s.context_empty = context.chunks.is_empty()
@@ -430,8 +439,10 @@ impl QueryEngine {
 
         // 059: time keyword vs embed futures separately (they run in parallel).
         // 060: KEYWORD_MODE=heuristic skips keyword LLM (product latency; Acc keeps llm).
+        // 083: request hl/ll override skips keyword LLM (LightRAG QueryParam law).
         let keyword_llm = providers.keyword_llm.clone();
         let keyword_mode = crate::keywords::keyword_mode_from_env();
+        let keyword_override = request.keyword_override_lists();
         let (raw_keywords_result, query_vec_result) = tokio::join!(
             async {
                 let t0 = Instant::now();
@@ -440,6 +451,18 @@ impl QueryEngine {
                         vec![],
                         vec![],
                         QueryIntent::Exploratory,
+                    ))
+                } else if let Some((hl, ll)) = keyword_override {
+                    tracing::info!(
+                        keyword_source = "request_override",
+                        hl_count = hl.len(),
+                        ll_count = ll.len(),
+                        "083 hl/ll override — skip keyword LLM"
+                    );
+                    Ok(ExtractedKeywords::new(
+                        hl,
+                        ll,
+                        QueryIntent::classify_heuristic(&keyword_query),
                     ))
                 } else if matches!(keyword_mode, crate::keywords::KeywordMode::Heuristic) {
                     tracing::debug!("060 KEYWORD_MODE=heuristic — skip keyword LLM");
@@ -461,8 +484,22 @@ impl QueryEngine {
                 let t0 = Instant::now();
                 // Skip embed_one when keywords are disabled — compute_with_query_vec
                 // batch-embeds three levels (MockProvider / LightRAG parity).
+                // D-38: embed the question only; conversation history stays in
+                // keyword_query for prompt/keyword extraction, not the vector.
+                // X-10: L2-normalize via Embedding::normalize after embed_one.
                 let result = if self.config.use_keyword_extraction {
-                    providers.embedding.embed_one(&keyword_query).await
+                    match providers.embedding.embed_one(&request.query).await {
+                        Ok(mut vector) => {
+                            // X-10: L2-normalize (same math as Embedding::normalize;
+                            // local to avoid query→core dependency cycle).
+                            let norm: f32 = vector.iter().map(|x| x * x).sum::<f32>().sqrt();
+                            if norm > 0.0 {
+                                vector.iter_mut().for_each(|x| *x /= norm);
+                            }
+                            Ok(vector)
+                        }
+                        Err(e) => Err(e),
+                    }
                 } else {
                     Ok(vec![])
                 };
@@ -714,6 +751,7 @@ impl QueryEngine {
                     request.system_prompt.as_deref(),
                     &request.conversation_history,
                     question_type,
+                    Some(request.response_type_or_default()),
                 ),
                 0,
             )
@@ -747,6 +785,7 @@ impl QueryEngine {
                 request.system_prompt.as_deref(),
                 &request.conversation_history,
                 question_type,
+                Some(request.response_type_or_default()),
             );
             let cache_key = crate::cache::answer_cache_key(&prompt);
 
@@ -808,11 +847,13 @@ impl QueryEngine {
             stats.faithfulness_score = Some(score);
         }
 
+        let explain = Some(crate::types::ExplainTrace::from_stats(&mode, stats));
         Ok(QueryResponse {
             answer,
             context: final_context,
             mode,
             stats: stats.clone(),
+            explain,
         })
     }
 }
@@ -847,6 +888,7 @@ impl QueryEngine {
         providers: &QueryProviders<'_>,
         question_type: Option<&str>,
     ) -> Result<(String, usize)> {
+        let response_type = Some(request.response_type_or_default());
         if let Some(ref llm) = providers.answer_llm {
             self.generate_answer_with_provider(
                 &request.query,
@@ -856,6 +898,7 @@ impl QueryEngine {
                 request.images.as_deref(),
                 &request.conversation_history,
                 question_type,
+                response_type,
             )
             .await
         } else {
@@ -865,6 +908,7 @@ impl QueryEngine {
                 request.system_prompt.as_deref(),
                 &request.conversation_history,
                 question_type,
+                response_type,
             )
             .await
         }
@@ -920,5 +964,94 @@ mod intent_truncation_tests {
         let ctx = QueryContext::new();
         let req = QueryRequest::new("What is machine learning?");
         assert_eq!(intent_for_truncation(&req, &ctx), QueryIntent::Factual);
+    }
+}
+
+#[cfg(test)]
+mod keyword_override_tests {
+    use super::*;
+    use crate::keywords::{KeywordExtractor, Keywords};
+    use async_trait::async_trait;
+    use edgequake_llm::MockProvider;
+    use edgequake_storage::{MemoryGraphStorage, MemoryVectorStorage};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    struct CountingKeywordExtractor {
+        calls: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl KeywordExtractor for CountingKeywordExtractor {
+        async fn extract(&self, _query: &str) -> crate::error::Result<Keywords> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(Keywords::new(vec!["from_extractor".into()], vec![]))
+        }
+
+        async fn extract_extended(&self, query: &str) -> crate::error::Result<ExtractedKeywords> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(ExtractedKeywords::new(
+                vec!["from_extractor".into()],
+                vec![],
+                QueryIntent::classify_heuristic(query),
+            ))
+        }
+
+        async fn extract_with_llm_override(
+            &self,
+            query: &str,
+            _llm_override: Option<Arc<dyn LLMProvider>>,
+        ) -> crate::error::Result<ExtractedKeywords> {
+            self.extract_extended(query).await
+        }
+    }
+
+    #[tokio::test]
+    async fn hl_ll_override_skips_keyword_extractor() {
+        let vector = Arc::new(MemoryVectorStorage::new("kw-override", 1536));
+        let graph = Arc::new(MemoryGraphStorage::new("kw-override"));
+        let embed: Arc<dyn crate::EmbeddingProvider> = Arc::new(MockProvider::default());
+        let llm: Arc<dyn LLMProvider> = Arc::new(MockProvider::default());
+        let counter = Arc::new(CountingKeywordExtractor {
+            calls: AtomicUsize::new(0),
+        });
+        let engine = QueryEngine::with_mock_keywords(
+            crate::QueryEngineConfig::default(),
+            vector,
+            graph,
+            embed,
+            llm,
+        )
+        .with_keyword_extractor(counter.clone());
+
+        let request = QueryRequest::new("staging for NSCLC")
+            .context_only()
+            .with_hl_keywords(vec!["staging".into(), "NSCLC".into()])
+            .with_ll_keywords(vec!["TNM".into()]);
+
+        let response = engine.query(request).await.expect("query");
+        assert_eq!(
+            counter.calls.load(Ordering::SeqCst),
+            0,
+            "keyword extractor must not run when hl/ll override present"
+        );
+        let kw = response
+            .context
+            .metadata
+            .get("extracted_keywords")
+            .expect("keywords metadata");
+        assert_eq!(
+            kw.get("high_level")
+                .and_then(|v| v.as_array())
+                .map(|a| a.len()),
+            Some(2)
+        );
+        assert_eq!(
+            kw.get("low_level")
+                .and_then(|v| v.as_array())
+                .and_then(|a| a.first())
+                .and_then(|v| v.as_str()),
+            Some("TNM")
+        );
     }
 }

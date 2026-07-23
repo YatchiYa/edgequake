@@ -18,12 +18,26 @@ const TRACEPARENT_STORAGE_KEY = "edgequake_traceparent";
 let accessToken: string | null = null;
 let refreshToken: string | null = null;
 
+const AUTH_COOKIE = "edgequake_access_token";
+
+/** Mirror access token to a cookie so Next middleware (X-27) can guard routes. */
+function syncAuthCookie(access: string | null): void {
+  if (typeof document === "undefined") return;
+  if (access) {
+    // Session cookie (no Max-Age) — cleared on logout / browser close.
+    document.cookie = `${AUTH_COOKIE}=${encodeURIComponent(access)}; Path=/; SameSite=Lax`;
+  } else {
+    document.cookie = `${AUTH_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`;
+  }
+}
+
 export function setTokens(access: string, refresh: string): void {
   accessToken = access;
   refreshToken = refresh;
   if (typeof window !== "undefined") {
     localStorage.setItem("accessToken", access);
     localStorage.setItem("refreshToken", refresh);
+    syncAuthCookie(access);
   }
 }
 
@@ -34,6 +48,10 @@ export function getTokens(): {
   if (typeof window !== "undefined" && !accessToken) {
     accessToken = localStorage.getItem("accessToken");
     refreshToken = localStorage.getItem("refreshToken");
+    // Keep middleware cookie in sync after hard refresh (X-27).
+    if (accessToken) {
+      syncAuthCookie(accessToken);
+    }
   }
   return { accessToken, refreshToken };
 }
@@ -44,6 +62,7 @@ export function clearTokens(): void {
   if (typeof window !== "undefined") {
     localStorage.removeItem("accessToken");
     localStorage.removeItem("refreshToken");
+    syncAuthCookie(null);
   }
 }
 

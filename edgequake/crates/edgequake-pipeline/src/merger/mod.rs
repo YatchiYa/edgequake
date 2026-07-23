@@ -34,11 +34,13 @@
 
 mod description_merge;
 mod entity;
+mod entity_type_vote;
 pub mod lineage;
 mod merge_limits;
 mod merge_progress;
 mod metadata;
 mod relationship;
+mod weight_policy;
 
 pub use description_merge::{
     approx_token_count, collect_unique_fragments, decide_description_merge,
@@ -47,6 +49,7 @@ pub use description_merge::{
     DEFAULT_FORCE_LLM_SUMMARY_ON_MERGE, DEFAULT_SUMMARY_MAX_TOKENS, GRAPH_FIELD_SEP,
 };
 pub use entity::description_similarity;
+pub use entity_type_vote::{apply_entity_type_vote, resolve_majority_type, ENTITY_TYPE_VOTES_KEY};
 pub use lineage::{
     document_id_from_chunk_id, document_ids_from_chunk_ids, insert_chunk_lineage_properties,
     insert_document_lineage_properties, merge_and_insert_document_lineage, merge_document_ids,
@@ -59,6 +62,7 @@ pub use merge_limits::{
     source_chunk_ids_from_properties, source_ids_limit_method_from_env, truncate_keep_doc_diverse,
     SourceIdsLimitMethod, DEFAULT_MAX_SOURCE_IDS, DEFAULT_MERGE_MAX_ASYNC, LOCAL_MERGE_MAX_ASYNC,
 };
+pub use weight_policy::WeightPolicy;
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -719,7 +723,7 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
             if let Err(e) = entity_vec_result {
                 // SPEC-057 P3: abort with partial artifacts (Ok + errors) so
                 // persister compensates written IDs instead of MergeArtifacts::default().
-                stats.errors += 1;
+                stats.record_error(e.to_string());
                 tracing::warn!(
                     error.source = "pipeline_merger",
                     error.action = "upsert_entity_vectors",
@@ -762,7 +766,7 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
             if let Err(e) = entity_graph_result {
                 // SPEC-058: fail-fast — do not amplify partial state by continuing
                 // into relationship vector/graph phases after entity AGE failure.
-                stats.errors += 1;
+                stats.record_error(e.to_string());
                 tracing::warn!(
                     error.source = "pipeline_merger",
                     error.action = "merge_entities_batch_global",
@@ -814,7 +818,7 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
             // SPEC-060: relationship vector upsert stage
             record_ingest_stage_duration("rel_vector_upsert", stage_start.elapsed().as_secs_f64());
             if let Err(e) = rel_vec_result {
-                stats.errors += 1;
+                stats.record_error(e.to_string());
                 tracing::warn!(
                     error.source = "pipeline_merger",
                     error.action = "upsert_relationship_vectors",
@@ -866,7 +870,7 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
             record_ingest_stage_duration("age_edge_upsert", stage_start.elapsed().as_secs_f64());
             if let Err(e) = rel_graph_result {
                 // SPEC-058: fail-fast on relationship AGE errors.
-                stats.errors += 1;
+                stats.record_error(e.to_string());
                 tracing::warn!(
                     error.source = "pipeline_merger",
                     error.action = "merge_relationships_batch_global",
@@ -987,8 +991,22 @@ pub struct MergeStats {
     /// Number of errors encountered.
     pub errors: usize,
 
+    /// First underlying error message (LAW-5 — surface cause, not count-only).
+    pub first_error: Option<String>,
+
     /// Graph/vector IDs written in this session — used for P-G5 saga compensation.
     pub artifacts: MergeArtifacts,
+}
+
+impl MergeStats {
+    /// Increment `errors` and capture the first cause for persist/UI.
+    pub fn record_error(&mut self, message: impl Into<String>) {
+        let message = message.into();
+        if self.first_error.is_none() {
+            self.first_error = Some(message);
+        }
+        self.errors += 1;
+    }
 }
 
 /// IDs **created** during a single merge attempt (for rollback on failure).
@@ -1087,6 +1105,15 @@ mod tests {
         assert_eq!(normalize_entity_name("O'Brien"), "O'BRIEN");
         assert_eq!(normalize_entity_name("AI/ML"), "AI/ML");
         assert_eq!(normalize_entity_name("The Company"), "COMPANY");
+    }
+
+    #[test]
+    fn test_merge_stats_record_error_keeps_first_cause() {
+        let mut stats = MergeStats::default();
+        stats.record_error("first boom");
+        stats.record_error("second boom");
+        assert_eq!(stats.errors, 2);
+        assert_eq!(stats.first_error.as_deref(), Some("first boom"));
     }
 
     /// Parse→merge path must use the same key as extraction parsers (SPEC-017 P0).
@@ -1586,10 +1613,9 @@ mod tests {
         );
     }
 
-    /// Duplicate (source,target) across chunks / relation types must collapse to
-    /// one edge — AGE unique index is endpoint-only (ultrag.pdf native-write RCA).
+    /// D-30: distinct relation types between the same endpoints both persist.
     #[tokio::test]
-    async fn test_relationship_endpoint_dedup_across_chunks() {
+    async fn test_relationship_multigraph_two_types_persist() {
         let graph = Arc::new(edgequake_storage::MemoryGraphStorage::new("rel-dedupe"));
         let vector = Arc::new(edgequake_storage::MemoryVectorStorage::new("rel-dedupe", 4));
         graph.initialize().await.unwrap();
@@ -1650,33 +1676,29 @@ mod tests {
             .expect("merge must succeed");
         assert_eq!(
             stats.errors, 0,
-            "duplicate endpoints must not count as merge errors"
+            "multigraph merge must not count as merge errors"
         );
         assert_eq!(
-            stats.relationships_created, 1,
-            "expected one edge after endpoint dedup, got {}",
+            stats.relationships_created, 2,
+            "expected two edges (KNOWS + WORKS_WITH), got {}",
             stats.relationships_created
         );
 
-        let edge = graph
-            .get_edge("ALICE", "BOB")
+        let alice_bob = graph
+            .get_edges_for_nodes_batch(&["ALICE".into(), "BOB".into()])
             .await
-            .unwrap()
-            .expect("edge ALICE->BOB");
+            .unwrap();
         assert_eq!(
-            edge.properties
-                .get("relation_type")
-                .and_then(|v| v.as_str()),
-            Some("WORKS_WITH"),
-            "last-write-wins relation_type"
+            alice_bob.len(),
+            2,
+            "expected multigraph pair, got {alice_bob:?}"
         );
-        // 049: within-batch endpoint collapse must union chunk lineage (not last-write).
-        let chunk_ids = crate::merger::source_chunk_ids_from_properties(&edge.properties);
-        assert!(
-            chunk_ids.contains(&"chunk-0".to_string())
-                && chunk_ids.contains(&"chunk-1".to_string()),
-            "expected unioned source_chunk_ids {{chunk-0, chunk-1}}, got {chunk_ids:?}"
-        );
+        let types: Vec<_> = alice_bob
+            .iter()
+            .filter_map(|e| e.properties.get("relation_type").and_then(|v| v.as_str()))
+            .collect();
+        assert!(types.contains(&"KNOWS"), "{types:?}");
+        assert!(types.contains(&"WORKS_WITH"), "{types:?}");
     }
 
     /// SPEC-058: shared entity vector must not appear in compensate artifacts.

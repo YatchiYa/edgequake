@@ -1,6 +1,6 @@
-//! Production startup security checks — SPEC-027 IMP-001.
+//! Production startup security checks — SPEC-027 IMP-001 / SPEC-083 S-09/S-10.
 
-use edgequake_auth::AuthConfig;
+use edgequake_auth::{AuthConfig, DEFAULT_INSECURE_JWT_SECRET};
 use tracing::{error, warn};
 
 use crate::state::security_config::ApiSecurityConfig;
@@ -22,6 +22,22 @@ pub fn validate_startup_security(
     let mut warnings = Vec::new();
     let production_db = database_url.map(is_non_local_database).unwrap_or(false);
 
+    // SPEC-083 S-09: default/short JWT secret is fatal unless EDGEQUAKE_DEV_MODE.
+    if auth.jwt_secret == DEFAULT_INSECURE_JWT_SECRET || auth.jwt_secret.len() < 32 {
+        let msg = if auth.jwt_secret == DEFAULT_INSECURE_JWT_SECRET {
+            "JWT_SECRET is the insecure default — set a strong secret (≥32 bytes) or EDGEQUAKE_DEV_MODE=true for local only"
+                .to_string()
+        } else {
+            "JWT_SECRET is shorter than 32 bytes — refuse to start without EDGEQUAKE_DEV_MODE"
+                .to_string()
+        };
+        if auth.dev_mode {
+            warnings.push(msg);
+        } else {
+            return StartupSecurityOutcome::Fatal(msg);
+        }
+    }
+
     if production_db && !auth.auth_enabled && !auth.dev_mode {
         warnings.push(
             "Authentication disabled with non-local DATABASE_URL — set EDGEQUAKE_DEV_MODE only on local dev"
@@ -36,9 +52,16 @@ pub fn validate_startup_security(
         );
     }
 
-    if auth.jwt_secret == edgequake_auth::DEFAULT_INSECURE_JWT_SECRET {
-        warnings.push(
-            "JWT_SECRET is the insecure default — set a strong secret in production".to_string(),
+    // SPEC-083 S-10: production CORS must be an explicit allow-list.
+    let cors_empty = security
+        .cors_origins
+        .as_ref()
+        .map(|o| o.is_empty())
+        .unwrap_or(true);
+    if !auth.dev_mode && production_db && cors_empty {
+        return StartupSecurityOutcome::Fatal(
+            "EDGEQUAKE_CORS_ORIGINS is required in production (non-local DATABASE_URL); refuse open CORS"
+                .to_string(),
         );
     }
 
@@ -81,7 +104,7 @@ pub fn enforce_startup_security(outcome: StartupSecurityOutcome) {
         StartupSecurityOutcome::Ok => {}
         StartupSecurityOutcome::Warn(_) => {}
         StartupSecurityOutcome::Fatal(message) => {
-            error!(message = %message, "Refusing to start — fix configuration or unset EDGEQUAKE_STRICT_STARTUP");
+            error!(message = %message, "Refusing to start — fix configuration or enable EDGEQUAKE_DEV_MODE for local development only");
             std::process::exit(1);
         }
     }
@@ -93,7 +116,7 @@ mod tests {
 
     #[test]
     fn local_db_with_auth_off_only_warns() {
-        let mut auth = AuthConfig::new("secure-test-secret-spec027");
+        let mut auth = AuthConfig::new("secure-test-secret-spec027-long-enough");
         auth.auth_enabled = false;
         auth.dev_mode = true;
         let security = ApiSecurityConfig::default();
@@ -106,8 +129,35 @@ mod tests {
     }
 
     #[test]
-    fn default_jwt_secret_warns_even_on_local_db() {
+    fn contract_startup_rejects_default_secret() {
         let auth = AuthConfig::default();
+        let security = ApiSecurityConfig::default();
+        let outcome = validate_startup_security(
+            Some("postgres://edgequake:edgequake@localhost/edgequake"),
+            &auth,
+            &security,
+        );
+        assert!(matches!(outcome, StartupSecurityOutcome::Fatal(_)));
+    }
+
+    #[test]
+    fn short_jwt_secret_fatal_without_dev_mode() {
+        let auth = AuthConfig::new("too-short-secret");
+        let security = ApiSecurityConfig::default();
+        let outcome = validate_startup_security(
+            Some("postgres://edgequake:edgequake@localhost/edgequake"),
+            &auth,
+            &security,
+        );
+        assert!(matches!(outcome, StartupSecurityOutcome::Fatal(_)));
+    }
+
+    #[test]
+    fn default_jwt_secret_warns_in_dev_mode() {
+        let auth = AuthConfig {
+            dev_mode: true,
+            ..AuthConfig::default()
+        };
         let security = ApiSecurityConfig::default();
         let outcome = validate_startup_security(
             Some("postgres://edgequake:edgequake@localhost/edgequake"),
@@ -119,13 +169,19 @@ mod tests {
 
     #[test]
     fn remote_db_auth_off_strict_exits_message() {
+        // SPEC-083 S-09/S-10: remote DB + auth off is a warning; strict_startup
+        // promotes it to Fatal. Must not set dev_mode (that opts out of both
+        // the auth-off warning and the prod CORS fatal).
         let auth = AuthConfig {
             auth_enabled: false,
-            dev_mode: true,
+            dev_mode: false,
+            jwt_secret: "secure-test-secret-spec027-long-enough".to_string(),
             ..AuthConfig::default()
         };
         let security = ApiSecurityConfig {
             strict_startup: true,
+            // Explicit CORS so we exercise the auth-off → strict path, not S-10 CORS fatal.
+            cors_origins: Some(vec!["https://app.example.com".into()]),
             ..Default::default()
         };
         let outcome = validate_startup_security(
@@ -134,11 +190,58 @@ mod tests {
             &security,
         );
         assert!(matches!(outcome, StartupSecurityOutcome::Fatal(_)));
+        if let StartupSecurityOutcome::Fatal(msg) = outcome {
+            assert!(
+                msg.contains("STRICT_STARTUP") && msg.contains("Authentication disabled"),
+                "expected strict auth-off fatal, got: {msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn production_cors_missing_is_fatal() {
+        let auth = AuthConfig::new("secure-test-secret-spec027-long-enough");
+        let security = ApiSecurityConfig::default();
+        let outcome = validate_startup_security(
+            Some("postgres://user:pass@db.example.com:5432/edgequake"),
+            &auth,
+            &security,
+        );
+        assert!(matches!(outcome, StartupSecurityOutcome::Fatal(_)));
+        if let StartupSecurityOutcome::Fatal(msg) = outcome {
+            assert!(msg.contains("CORS"));
+        }
+    }
+
+    /// SPEC-083 matrix name (S-10) — prod CORS missing is fatal; fail-closed layer has no Any origin.
+    #[test]
+    fn contract_cors_default_fail_closed_prod() {
+        production_cors_missing_is_fatal();
+
+        // Fail-closed without origins must build (AllowOrigin::Any unreachable).
+        let security = ApiSecurityConfig {
+            cors_origins: None,
+            cors_fail_closed: true,
+            ..Default::default()
+        };
+        let _layer = crate::server::build_cors_layer(&security);
+
+        let server_src = include_str!("server.rs");
+        assert!(
+            server_src.contains("apply_cors_methods_headers")
+                && server_src.contains("CORS_FAIL_CLOSED_METHODS"),
+            "fail-closed CORS must use explicit method/header allow-lists"
+        );
+        assert!(
+            server_src.contains("AllowOrigin::Any is intentionally unreachable")
+                || server_src.contains("AllowOrigin::Any is unreachable"),
+            "S-10: document that AllowOrigin::Any is unreachable when cors_fail_closed"
+        );
     }
 
     #[test]
     fn auth_enabled_no_keys_warns() {
-        let auth = AuthConfig::new("secure-test-secret-spec027");
+        let auth = AuthConfig::new("secure-test-secret-spec027-long-enough");
         let security = ApiSecurityConfig::default();
         let outcome = validate_startup_security(
             Some("postgres://edgequake:edgequake@localhost/edgequake"),
@@ -150,7 +253,7 @@ mod tests {
 
     #[test]
     fn kv_identity_mirror_deprecated_warns() {
-        let auth = AuthConfig::new("secure-test-secret-spec027");
+        let auth = AuthConfig::new("secure-test-secret-spec027-long-enough");
         let security = ApiSecurityConfig {
             kv_identity_mirror: true,
             ..Default::default()

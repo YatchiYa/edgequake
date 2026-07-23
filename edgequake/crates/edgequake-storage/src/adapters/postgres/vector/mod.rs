@@ -8,7 +8,8 @@
 //! - [`FEAT0203`]: PostgreSQL with pgvector adapter
 //! - [`FEAT0320`]: IVFFlat index for approximate nearest neighbor
 //! - [`FEAT0321`]: HNSW index for faster queries on large datasets
-//! - [`FEAT0322`]: Configurable distance metrics (cosine, L2, inner product)
+//! - [`FEAT0322`]: Distance metric — **cosine only** (SPEC-083 X-04).
+//!   Indexes use `vector_cosine_ops` / `halfvec_cosine_ops`; L2/IP are not wired.
 //!
 //! ## Use Cases
 //!
@@ -38,14 +39,17 @@ mod migration;
 mod search_tuning;
 mod storage_impl;
 
+pub use fts::{
+    fts_language_from_env, sanitize_fts_language, DEFAULT_FTS_LANGUAGE, FTS_LANGUAGE_ENV,
+};
 pub use migration::allow_vector_table_rebuild;
 
 /// PostgreSQL vector storage using pgvector.
 ///
 /// Supports:
 /// - IVFFlat index for approximate nearest neighbor search
-/// - HNSW index for faster queries on large datasets  
-/// - Cosine, L2, and inner product distance metrics
+/// - HNSW index for faster queries on large datasets
+/// - **Cosine distance only** (`<=>` / `*_cosine_ops`) — X-04
 pub struct PgVectorStorage {
     pub(crate) pool: PostgresPool,
     pub(crate) table_name: String,

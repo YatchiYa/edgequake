@@ -22,6 +22,21 @@ fn contract_ensure_indexes_single_flight_and_verified_flag() {
             && life.contains("SPEC-069: eq_* schema already present"),
         "ensure_eq_id_columns must catalog early-exit when columns/indexes/triggers exist"
     );
+    // D-30: readiness must require multigraph arbiter (not legacy 2-col alone).
+    let ready_fn = life
+        .split("async fn eq_id_schema_ready")
+        .nth(1)
+        .and_then(|s| s.split("async fn ensure_eq_id_columns").next())
+        .expect("eq_id_schema_ready before ensure_eq_id_columns");
+    assert!(
+        ready_fn.contains("eq_rel_type")
+            && ready_fn.contains("indexname = 'idx_edge_eq_source_target_rel'"),
+        "eq_id_schema_ready must require eq_rel_type + idx_edge_eq_source_target_rel"
+    );
+    assert!(
+        !ready_fn.contains("indexname = 'idx_edge_eq_source_target'"),
+        "eq_id_schema_ready must not treat legacy 2-col idx as ready"
+    );
     assert!(
         !life.contains("DROP TRIGGER IF EXISTS trg_eq_sync_node_id")
             && !life.contains("DROP TRIGGER IF EXISTS trg_eq_sync_edge_ids"),

@@ -613,14 +613,8 @@ fn storage_error_diagnostic(e: &edgequake_storage::error::StorageError) -> Value
 }
 
 fn llm_error_retryable(e: &edgequake_llm::error::LlmError) -> bool {
-    let msg = e.to_string().to_ascii_lowercase();
-    msg.contains("timeout")
-        || msg.contains("rate limit")
-        || msg.contains("rate_limit")
-        || msg.contains("429")
-        || msg.contains("503")
-        || msg.contains("overloaded")
-        || msg.contains("unavailable")
+    // SPEC-083 X-07/X-30: typed retry_strategy only — no substring matching.
+    e.retry_strategy().should_retry()
 }
 
 fn pipeline_error_retryable(e: &edgequake_pipeline::error::PipelineError) -> bool {
@@ -1068,9 +1062,10 @@ mod tests {
     #[test]
     fn test_llm_timeout_is_retryable_not_auth_error() {
         use edgequake_llm::error::LlmError;
-        let timeout = ApiError::Llm(LlmError::ApiError("request timeout after 30s".into()));
+        // SPEC-083 X-30: typed variants only — no ApiError substring matching.
+        let timeout = ApiError::Llm(LlmError::Timeout);
         assert!(timeout.is_retryable());
-        let auth = ApiError::Llm(LlmError::ApiError("invalid_api_key: unauthorized".into()));
+        let auth = ApiError::Llm(LlmError::AuthError("invalid_api_key: unauthorized".into()));
         assert!(!auth.is_retryable());
     }
 

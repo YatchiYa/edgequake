@@ -1,0 +1,194 @@
+{
+  "archive": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/001-benchmark/e2e/artifacts/history/medical-mid-20260722T133053Z",
+  "n_eq_preds": 200,
+  "n_lr_preds": 200,
+  "n_paired_eval": 200,
+  "scorecard": {
+    "eq_acc": 0.7649315692455878,
+    "lr_acc": 0.7604891356961878,
+    "eq_ctx": 0.49125,
+    "lr_ctx": 0.505,
+    "eq_er": 0.9429049957395546,
+    "lr_er": 0.9436468817130581,
+    "eq_fact_er": 0.9166666666666665,
+    "lr_fact_er": 0.9533333333333333,
+    "eq_empty_answer_rate": 0.0,
+    "lr_empty_answer_rate": 0.0
+  },
+  "by_type_acc": {
+    "Complex Reasoning": {
+      "n": 50,
+      "mean_acc_delta_eq_minus_lr": 0.0123,
+      "eq_ahead": 20,
+      "lr_ahead": 22,
+      "near_tie": 8
+    },
+    "Contextual Summarize": {
+      "n": 50,
+      "mean_acc_delta_eq_minus_lr": -0.033,
+      "eq_ahead": 20,
+      "lr_ahead": 21,
+      "near_tie": 9
+    },
+    "Creative Generation": {
+      "n": 50,
+      "mean_acc_delta_eq_minus_lr": -0.0417,
+      "eq_ahead": 18,
+      "lr_ahead": 28,
+      "near_tie": 4
+    },
+    "Fact Retrieval": {
+      "n": 50,
+      "mean_acc_delta_eq_minus_lr": 0.0802,
+      "eq_ahead": 17,
+      "lr_ahead": 11,
+      "near_tie": 22
+    }
+  },
+  "empty_answers": {
+    "eq_count": 0,
+    "lr_count": 0,
+    "eq_ids_sample": []
+  },
+  "snr_proxy": {
+    "eq_mean_jaccard_gold_vs_context": 0.0163,
+    "lr_mean_jaccard_gold_vs_context": 0.0154,
+    "eq_lt_lr_count": 120
+  },
+  "fact_lr_wins_top": [
+    {
+      "id": "Medical-9797af69",
+      "eq_acc": 0.2384,
+      "lr_acc": 0.925,
+      "delta": -0.6866,
+      "eq_snr": 0.0051,
+      "lr_snr": 0.0082,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "What is recurrence in the context of BCC?"
+    },
+    {
+      "id": "Medical-4cf524cb",
+      "eq_acc": 0.608,
+      "lr_acc": 0.9862,
+      "delta": -0.3782,
+      "eq_snr": 0.0177,
+      "lr_snr": 0.0045,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "Do tanning beds increase the risk of BCC?"
+    },
+    {
+      "id": "Medical-306b4531",
+      "eq_acc": 0.619,
+      "lr_acc": 0.9911,
+      "delta": -0.3721,
+      "eq_snr": 0.0027,
+      "lr_snr": 0.0035,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "What is an intraductal tumor in the context of cancer staging?"
+    },
+    {
+      "id": "Medical-d587c0c2",
+      "eq_acc": 0.6484,
+      "lr_acc": 0.9924,
+      "delta": -0.3439,
+      "eq_snr": 0.0065,
+      "lr_snr": 0.0038,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "Which chemotherapy regimens are used for bladder cancer?"
+    },
+    {
+      "id": "Medical-20454e30",
+      "eq_acc": 0.6118,
+      "lr_acc": 0.8806,
+      "delta": -0.2687,
+      "eq_snr": 0.0084,
+      "lr_snr": 0.0066,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "Which factors are considered risk factors for head and neck cancers?"
+    },
+    {
+      "id": "Medical-189210ec",
+      "eq_acc": 0.7325,
+      "lr_acc": 1.0,
+      "delta": -0.2675,
+      "eq_snr": 0.0018,
+      "lr_snr": 0.0025,
+      "gold_token_coverage": 0.8333,
+      "miss_class": "generation",
+      "question": "Which adrenal tumor originates from the adrenal medulla?"
+    },
+    {
+      "id": "Medical-390dfa49",
+      "eq_acc": 0.6221,
+      "lr_acc": 0.8871,
+      "delta": -0.265,
+      "eq_snr": 0.0095,
+      "lr_snr": 0.0059,
+      "gold_token_coverage": 0.9,
+      "miss_class": "generation",
+      "question": "List urinary diversion procedures after bladder surgery."
+    },
+    {
+      "id": "Medical-13fe78ff",
+      "eq_acc": 0.7389,
+      "lr_acc": 0.9899,
+      "delta": -0.251,
+      "eq_snr": 0.004,
+      "lr_snr": 0.0066,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "What is the typical genetic alteration found in almost all FL cases?"
+    },
+    {
+      "id": "Medical-198aa7f0",
+      "eq_acc": 0.7469,
+      "lr_acc": 0.9948,
+      "delta": -0.2479,
+      "eq_snr": 0.0029,
+      "lr_snr": 0.0046,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "What is the purpose of follow-up MRI in glioma patients?"
+    },
+    {
+      "id": "Medical-fca41ac7",
+      "eq_acc": 0.8415,
+      "lr_acc": 0.9851,
+      "delta": -0.1436,
+      "eq_snr": 0.0032,
+      "lr_snr": 0.0039,
+      "gold_token_coverage": 0.8889,
+      "miss_class": "generation",
+      "question": "What are the tumor characteristics of Tis stage in intrahepatic bile duct cancer?"
+    }
+  ],
+  "fact_miss_split": {
+    "fact_lr_wins_n": 10,
+    "membership_n": 0,
+    "generation_n": 10,
+    "membership_share": 0.0,
+    "generation_share": 1.0,
+    "note": "081 F1: membership = gold token coverage <0.15 in EQ Acc context; generation = coverage \u22650.15 but Acc still lags LR"
+  },
+  "ranked_failure_modes": [
+    {
+      "mode": "Fact_Acc_LR_ahead",
+      "count": 11,
+      "mean_delta": 0.0802,
+      "note": "Primary Acc type gap \u2014 often R6 list split / evidence miss"
+    },
+    {
+      "mode": "Fact_ER_gap",
+      "eq_fact_er": 0.9167,
+      "lr_fact_er": 0.9533,
+      "note": "Supports D1 R6 Acc/L2 unify before packing retries"
+    }
+  ],
+  "recommended_next_phase": "F4_generation_after_F3",
+  "honesty": "Labeled forensics only \u2014 not Acc Beat; Acc publish/latest stays P0 mid"
+}

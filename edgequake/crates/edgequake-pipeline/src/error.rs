@@ -373,7 +373,13 @@ pub enum PipelineError {
     ///
     /// WHY: LLM calls can hang indefinitely. This error indicates the
     /// extraction exceeded the configured timeout and was aborted.
-    #[error("Extraction timeout after {timeout_secs}s for chunk {chunk_index}: {message}")]
+    ///
+    /// X-30: Display includes `failure_class=` so string classifiers prefer the
+    /// typed token over business-text substring matching.
+    #[error(
+        "Extraction timeout after {timeout_secs}s for chunk {chunk_index}: {message} \
+         [failure_class=timeout]"
+    )]
     ExtractionTimeout {
         /// Chunk index that timed out.
         chunk_index: usize,
@@ -406,7 +412,10 @@ pub enum PipelineError {
     /// WHY: When the LLM provider is having issues (rate limits, outages),
     /// we should stop hammering it and fail fast. The circuit breaker
     /// opens after too many consecutive failures.
-    #[error("Circuit breaker open: LLM provider is unavailable. {failures} consecutive failures. Retry after {retry_after_secs}s")]
+    #[error(
+        "Circuit breaker open: LLM provider is unavailable. {failures} consecutive failures. \
+         Retry after {retry_after_secs}s [failure_class=circuit_breaker]"
+    )]
     CircuitBreakerOpen {
         /// Number of consecutive failures.
         failures: u32,
@@ -422,4 +431,51 @@ pub enum PipelineError {
     /// early and provide clear error messages to users.
     #[error("Validation error: {0}")]
     Validation(String),
+}
+
+impl PipelineError {
+    /// Stable ingestion `failure_class=` token for typed variants (SPEC-083 X-30).
+    ///
+    /// Prefer matching on this (or [`Self::display_with_failure_class`]) before any
+    /// English substring taxonomy. Returns `None` for string-wrapped variants that
+    /// still need last-resort message classification.
+    pub fn ingestion_failure_class_token(&self) -> Option<&'static str> {
+        use edgequake_llm::error::LlmError;
+        match self {
+            Self::CircuitBreakerOpen { .. } => Some("circuit_breaker"),
+            Self::ExtractionTimeout { message, .. } => {
+                let lower = message.to_ascii_lowercase();
+                if lower.contains("vision")
+                    || lower.contains("convert")
+                    || lower.contains("markdown")
+                {
+                    Some("timeout_phase_convert")
+                } else {
+                    Some("timeout_phase_extract")
+                }
+            }
+            Self::LlmError(le) => match le {
+                LlmError::Timeout => Some("timeout_phase_extract"),
+                LlmError::RateLimited(_) | LlmError::NetworkError(_) => {
+                    Some("provider_unavailable")
+                }
+                LlmError::AuthError(_) | LlmError::ConfigError(_) => Some("provider_misconfigured"),
+                _ => None,
+            },
+            Self::ConfigError(_) => Some("provider_misconfigured"),
+            _ => None,
+        }
+    }
+
+    /// Display text with a structured `failure_class=` marker when typed.
+    pub fn display_with_failure_class(&self) -> String {
+        let base = self.to_string();
+        if base.to_ascii_lowercase().contains("failure_class=") {
+            return base;
+        }
+        match self.ingestion_failure_class_token() {
+            Some(token) => format!("{base} [failure_class={token}]"),
+            None => base,
+        }
+    }
 }

@@ -4,7 +4,11 @@
 //! @implements FEAT0804 (JWT login with access and refresh tokens)
 //! @implements FEAT0805 (Token refresh without re-authentication)
 
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{
+    extract::State,
+    http::{header::AUTHORIZATION, HeaderMap, StatusCode},
+    Json,
+};
 use chrono::{Duration, Utc};
 use tracing::info;
 use uuid::Uuid;
@@ -265,10 +269,12 @@ pub async fn refresh_token(
     )
 )]
 pub async fn logout(
+    State(auth): State<AuthRuntime>,
     State(storage): State<StorageRuntime>,
     State(pg_runtime): State<PostgresRuntime>,
     State(security): State<ApiSecurityConfig>,
     State(compliance): State<ComplianceRuntime>,
+    headers: HeaderMap,
     Json(request): Json<RefreshTokenRequest>,
 ) -> Result<StatusCode, ApiError> {
     let user_id = crate::services::session_storage::load_refresh_token(
@@ -287,6 +293,18 @@ pub async fn logout(
         &request.refresh_token,
     )
     .await?;
+
+    // SPEC-083 S-07: denylist access-token jti when Bearer is presented at logout.
+    if let Some(header) = headers.get(AUTHORIZATION).and_then(|v| v.to_str().ok()) {
+        if let Some(token) = header.strip_prefix("Bearer ") {
+            if let Ok(claims) = auth.jwt.verify_token(token) {
+                auth.jwt.revoke_jti(&claims.jti);
+            } else if let Ok(claims) = auth.jwt.decode_unverified(token) {
+                // Still denylist even if already expired — prevent refresh race reuse.
+                auth.jwt.revoke_jti(&claims.jti);
+            }
+        }
+    }
 
     record_compliance_event_runtime(
         &compliance,

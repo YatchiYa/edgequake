@@ -20,6 +20,66 @@ enum AnswerPromptStyle {
     Specific,
 }
 
+/// 081 F4: flatten admitted chunks + entity text for span groundedness checks.
+fn context_corpus_for_span_check(context: &QueryContext) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    for c in &context.chunks {
+        parts.push(c.content.as_str());
+    }
+    for e in &context.entities {
+        parts.push(e.name.as_str());
+        parts.push(e.description.as_str());
+    }
+    parts.join("\n")
+}
+
+/// 080 D5: last-resort non-empty answer from admitted Mix context.
+/// 082 G1: Acc gold → ≤240 chars / ~2 sentences (gold-shaped), not 800-char dump.
+fn extractive_fallback_answer(context: &QueryContext, gold_compat: bool) -> String {
+    let max_chars: usize = if gold_compat { 240 } else { 800 };
+    let truncate = |text: &str| -> String {
+        let take: String = text.chars().take(max_chars).collect();
+        if !gold_compat {
+            return take;
+        }
+        // Prefer end of first or second sentence within budget.
+        let mut end = take.len();
+        let mut sentences = 0usize;
+        for (i, c) in take.char_indices() {
+            if matches!(c, '.' | '!' | '?') {
+                sentences += 1;
+                end = i + c.len_utf8();
+                if sentences >= 2 {
+                    break;
+                }
+            }
+        }
+        take[..end].trim().to_string()
+    };
+    if let Some(chunk) = context.chunks.first() {
+        let text = chunk.content.trim();
+        if !text.is_empty() {
+            return truncate(text);
+        }
+    }
+    if let Some(ent) = context.entities.first() {
+        let desc = ent.description.trim();
+        if !desc.is_empty() {
+            return truncate(&format!("{}: {desc}", ent.name));
+        }
+        return ent.name.clone();
+    }
+    "I'm sorry, but I couldn't produce an answer from the retrieved context.".to_string()
+}
+
+fn finalize_answer_text(content: String, gold_compat: bool) -> String {
+    if gold_compat {
+        crate::grounding::strip_gold_citation_artifacts(&content)
+    } else {
+        content
+    }
+}
+
 impl QueryEngine {
     /// Check if metadata matches tenant/workspace filter.
     ///
@@ -92,8 +152,30 @@ impl QueryEngine {
     /// `system_prompt_extension`: Optional additional instructions injected between
     /// the base instructions and the context section (SPEC-004).
     ///
+    /// 083: rollback to monolithic `complete()` when set (`1`/`true`/`yes`/`on`).
+    fn answer_complete_blob_enabled() -> bool {
+        matches!(
+            std::env::var("EDGEQUAKE_ANSWER_COMPLETE_BLOB")
+                .unwrap_or_default()
+                .trim()
+                .to_ascii_lowercase()
+                .as_str(),
+            "1" | "true" | "yes" | "on"
+        )
+    }
+
+    /// LightRAG `response_type` default.
+    fn resolve_response_type(response_type: Option<&str>) -> &str {
+        response_type
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or("Multiple Paragraphs")
+    }
+
     /// `question_type`: Optional GraphRAG-Bench / product type label (047). Used when
     /// `EDGEQUAKE_ANSWER_SPECIFIC_TYPES` scopes `ANSWER_PROMPT=specific`.
+    ///
+    /// `response_type`: LightRAG formatting cue (083). Default Multiple Paragraphs.
     pub(super) fn build_prompt(
         &self,
         query: &str,
@@ -101,11 +183,35 @@ impl QueryEngine {
         system_prompt_extension: Option<&str>,
         conversation_history: &[ConversationMessage],
         question_type: Option<&str>,
+        response_type: Option<&str>,
+    ) -> String {
+        let system = self.build_system_prompt(
+            context,
+            system_prompt_extension,
+            conversation_history,
+            question_type,
+            response_type,
+        );
+        if context.is_empty() {
+            return system;
+        }
+        format!("{system}\n---User Query---\n\n{query}")
+    }
+
+    /// 083: system half of LightRAG-shaped generate (role + instructions + context).
+    pub(super) fn build_system_prompt(
+        &self,
+        context: &QueryContext,
+        system_prompt_extension: Option<&str>,
+        conversation_history: &[ConversationMessage],
+        question_type: Option<&str>,
+        response_type: Option<&str>,
     ) -> String {
         if context.is_empty() {
             return "I'm sorry, but I couldn't find any relevant information in my knowledge base to answer your question.".to_string();
         }
 
+        let response_type = Self::resolve_response_type(response_type);
         let (context_text, additional_instructions) =
             Self::format_context_section(context, system_prompt_extension);
         let conversation_section = conversation_context::format_conversation_history(
@@ -117,25 +223,32 @@ impl QueryEngine {
 
         match Self::answer_prompt_style(question_type) {
             AnswerPromptStyle::LightRag => {
-                return Self::build_prompt_lightrag(
-                    query,
+                return Self::build_system_prompt_lightrag(
                     &context_text,
                     &additional_instructions,
                     &conversation_section,
+                    response_type,
                 );
             }
             AnswerPromptStyle::Specific => {
-                return Self::build_prompt_specific(
-                    query,
+                return Self::build_system_prompt_specific(
                     &context_text,
                     &additional_instructions,
                     &conversation_section,
+                    system_prompt_extension,
+                    response_type,
                 );
             }
             AnswerPromptStyle::Default => {}
         }
 
-        let grounding = crate::grounding::grounding_instructions();
+        let gold = crate::grounding::is_gold_answer_extension(system_prompt_extension);
+        let grounding = crate::grounding::grounding_instructions_for(system_prompt_extension);
+        let arith_line = if gold {
+            "  - Grounded arithmetic is allowed when BOTH operands (e.g. percentage and sample size N) are explicit in Context — compute the count (not the bare percentage)."
+        } else {
+            "  - Grounded arithmetic is allowed when BOTH operands (e.g. percentage and sample size N) are explicit in Context — compute the count (not the bare percentage) and cite both sources (see Citations & Page Grounding)."
+        };
 
         format!(
             r#"---Role---
@@ -156,7 +269,7 @@ The answer must integrate relevant facts from the Knowledge Graph and Document C
 
 2. Content & Grounding:
   - Strictly adhere to the provided context; DO NOT invent facts from general knowledge or assume missing numbers.
-  - Grounded arithmetic is allowed when BOTH operands (e.g. percentage and sample size N) are explicit in Context — compute the count (not the bare percentage) and cite both sources (see Citations & Page Grounding).
+{arith_line}
   - If the answer cannot be fully determined from the **Context**, state what information IS available and note what is missing. A partial answer with specific data is better than a generic "insufficient information" response.
 
 {grounding}
@@ -164,14 +277,12 @@ The answer must integrate relevant facts from the Knowledge Graph and Document C
 3. Formatting & Language:
   - The response MUST be in the same language as the user query.
   - Use Markdown formatting for clarity (headings, bold text, bullet points).
+  - Structure the answer as: {response_type}.
 {additional_instructions}
 ---Context---
 
 {context_text}
-{conversation_section}
----User Query---
-
-{query}"#
+{conversation_section}"#
         )
     }
 
@@ -225,13 +336,20 @@ The answer must integrate relevant facts from the Knowledge Graph and Document C
     /// 046: prefer concrete Context names over category paraphrases (Complex Acc).
     ///
     /// Keeps EQ grounded-arithmetic / partial-answer rules (unlike LR abstain).
-    fn build_prompt_specific(
-        query: &str,
+    fn build_system_prompt_specific(
         context_text: &str,
         additional_instructions: &str,
         conversation_section: &str,
+        system_prompt_extension: Option<&str>,
+        response_type: &str,
     ) -> String {
-        let grounding = crate::grounding::grounding_instructions();
+        let gold = crate::grounding::is_gold_answer_extension(system_prompt_extension);
+        let grounding = crate::grounding::grounding_instructions_for(system_prompt_extension);
+        let arith_line = if gold {
+            "  - Grounded arithmetic is allowed when BOTH operands (e.g. percentage and sample size N) are explicit in Context — compute the count (not the bare percentage)."
+        } else {
+            "  - Grounded arithmetic is allowed when BOTH operands (e.g. percentage and sample size N) are explicit in Context — compute the count (not the bare percentage) and cite both sources (see Citations & Page Grounding)."
+        };
         format!(
             r#"---Role---
 
@@ -254,7 +372,7 @@ Prefer **specific named items from Context** (drug names, test names, staging sy
 
 2. Content & Grounding:
   - Strictly adhere to the provided context; DO NOT invent facts from general knowledge or assume missing numbers.
-  - Grounded arithmetic is allowed when BOTH operands (e.g. percentage and sample size N) are explicit in Context — compute the count (not the bare percentage) and cite both sources (see Citations & Page Grounding).
+{arith_line}
   - If the answer cannot be fully determined from the **Context**, state what information IS available and note what is missing. A partial answer with specific data is better than a generic "insufficient information" response.
 
 {grounding}
@@ -262,14 +380,12 @@ Prefer **specific named items from Context** (drug names, test names, staging sy
 3. Formatting & Language:
   - The response MUST be in the same language as the user query.
   - Use Markdown formatting for clarity (headings, bold text, bullet points).
+  - Structure the answer as: {response_type}.
 {additional_instructions}
 ---Context---
 
 {context_text}
-{conversation_section}
----User Query---
-
-{query}"#
+{conversation_section}"#
         )
     }
 
@@ -277,11 +393,11 @@ Prefer **specific named items from Context** (drug names, test names, staging sy
     ///
     /// Diff vs EQ default: stricter "do not guess", explicit References section,
     /// Knowledge Graph Data + Document Chunks wording, no grounded-arithmetic block.
-    fn build_prompt_lightrag(
-        query: &str,
+    fn build_system_prompt_lightrag(
         context_text: &str,
         additional_instructions: &str,
         conversation_section: &str,
+        response_type: &str,
     ) -> String {
         format!(
             r#"---Role---
@@ -310,15 +426,12 @@ Consider the conversation history if provided to maintain conversational flow an
 3. Formatting & Language:
   - The response MUST be in the same language as the user query.
   - The response MUST utilize Markdown formatting for enhanced clarity and structure (e.g., headings, bold text, bullet points).
-  - Prefer a Multiple Paragraphs style unless the query clearly asks for a short fact.
+  - Structure the answer as: {response_type}.
 {additional_instructions}
 ---Context---
 
 {context_text}
-{conversation_section}
----User Query---
-
-{query}"#
+{conversation_section}"#
         )
     }
 
@@ -340,7 +453,13 @@ Consider the conversation history if provided to maintain conversational flow an
     ) -> String {
         let (context_text, additional_instructions) =
             Self::format_context_section(context, system_prompt_extension);
-        let grounding = crate::grounding::grounding_instructions();
+        let gold = crate::grounding::is_gold_answer_extension(system_prompt_extension);
+        let grounding = crate::grounding::grounding_instructions_for(system_prompt_extension);
+        let arith_line = if gold {
+            "  - Grounded arithmetic is allowed when BOTH operands (e.g. percentage and sample size N) are explicit in Context — compute the count (not the bare percentage)."
+        } else {
+            "  - Grounded arithmetic is allowed when BOTH operands (e.g. percentage and sample size N) are explicit in Context — compute the count (not the bare percentage) and cite both sources (see Citations & Page Grounding)."
+        };
 
         format!(
             r#"---Role---
@@ -367,7 +486,7 @@ Generate a comprehensive, well-structured answer that integrates observations fr
 
 3. Content & Grounding:
   - Prefer explicit visual evidence from images and stated facts from the context.
-  - Grounded arithmetic is allowed when BOTH operands (e.g. percentage and sample size N) are explicit in Context — compute the count (not the bare percentage) and cite both sources (see Citations & Page Grounding).
+{arith_line}
   - If the answer cannot be fully determined, state what IS available and note what is missing.
 
 {grounding}
@@ -389,6 +508,9 @@ Generate a comprehensive, well-structured answer that integrates observations fr
     ///
     /// If `images` is Some and non-empty, uses `provider.chat()` with image
     /// attachments instead of `provider.complete()` (FEAT0203: vision queries).
+    ///
+    /// 083: text-only default is LightRAG-shaped `chat(system, user)`; set
+    /// `EDGEQUAKE_ANSWER_COMPLETE_BLOB=1` to keep the old monolithic `complete()`.
     #[allow(clippy::too_many_arguments)] // answer path needs provider + vision + history knobs
     pub(super) async fn generate_answer_with_provider(
         &self,
@@ -399,6 +521,7 @@ Generate a comprehensive, well-structured answer that integrates observations fr
         images: Option<&[ImageData]>,
         conversation_history: &[ConversationMessage],
         question_type: Option<&str>,
+        response_type: Option<&str>,
     ) -> Result<(String, usize)> {
         if context.is_empty() {
             return Ok((
@@ -419,8 +542,23 @@ Generate a comprehensive, well-structured answer that integrates observations fr
         // This gives the LLM the full context AND the visual content in the correct
         // roles, so it can use both freely.
         //
-        // Text-only path keeps using provider.complete() to avoid an unnecessary
-        // chat-API round-trip for providers that support both.
+        // 083: text-only default matches LightRAG kg_query (system=rag_response, user=query).
+        let prompt = self.build_prompt(
+            query,
+            context,
+            system_prompt_extension,
+            conversation_history,
+            question_type,
+            response_type,
+        );
+        let system_text = self.build_system_prompt(
+            context,
+            system_prompt_extension,
+            conversation_history,
+            question_type,
+            response_type,
+        );
+        let use_complete_blob = Self::answer_complete_blob_enabled();
         let response = if let Some(imgs) = images.filter(|i| !i.is_empty()) {
             let system_text = self.build_vision_system_message(context, system_prompt_extension);
             let user_text = conversation_context::query_with_conversation_context(
@@ -436,30 +574,93 @@ Generate a comprehensive, well-structured answer that integrates observations fr
                 Ok(r) => r,
                 Err(e) => {
                     tracing::warn!(error = %e, "Vision chat failed; retrying as text-only query");
-                    provider
-                        .complete(&self.build_prompt(
-                            query,
-                            context,
-                            system_prompt_extension,
-                            conversation_history,
-                            question_type,
-                        ))
-                        .await?
+                    provider.complete(&prompt).await?
                 }
             }
+        } else if use_complete_blob {
+            provider.complete(&prompt).await?
         } else {
-            provider
-                .complete(&self.build_prompt(
-                    query,
-                    context,
-                    system_prompt_extension,
-                    conversation_history,
-                    question_type,
-                ))
-                .await?
+            let messages = vec![ChatMessage::system(&system_text), ChatMessage::user(query)];
+            match provider.chat(&messages, None).await {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        "083 chat generate failed; falling back to complete blob"
+                    );
+                    provider.complete(&prompt).await?
+                }
+            }
         };
 
-        Ok((response.content, response.completion_tokens))
+        let gold_compat = crate::grounding::is_gold_answer_extension(system_prompt_extension);
+
+        // 080 D5 / R5: never emit empty when Mix admitted context (LightRAG fail_response only when empty KG).
+        let content = response.content.trim().to_string();
+        if content.is_empty() {
+            tracing::warn!("080 empty LLM answer with non-empty context — retry once");
+            let retry = if use_complete_blob {
+                provider.complete(&prompt).await?
+            } else {
+                let messages = vec![ChatMessage::system(&system_text), ChatMessage::user(query)];
+                match provider.chat(&messages, None).await {
+                    Ok(r) => r,
+                    Err(_) => provider.complete(&prompt).await?,
+                }
+            };
+            let retry_content = retry.content.trim().to_string();
+            if !retry_content.is_empty() {
+                return Ok((
+                    finalize_answer_text(retry_content, gold_compat),
+                    retry.completion_tokens,
+                ));
+            }
+            let fallback = extractive_fallback_answer(context, gold_compat);
+            tracing::warn!(
+                fallback_chars = fallback.len(),
+                gold_compat,
+                "080 empty LLM after retry — extractive fallback from context"
+            );
+            return Ok((finalize_answer_text(fallback, gold_compat), 0));
+        }
+
+        // 081 F4: opt-in groundedness retry (EDGEQUAKE_ANSWER_GROUNDED_RETRY=1).
+        // Mid gate T022412Z Acc-regressed vs E2-B5 → default OFF; Acc prompt unchanged.
+        if !context.is_empty() && crate::grounding::grounded_retry_enabled() {
+            let corpus = context_corpus_for_span_check(context);
+            if crate::grounding::needs_groundedness_retry(&content, &corpus) {
+                tracing::warn!(
+                    coverage = crate::grounding::answer_context_token_coverage(&content, &corpus),
+                    "081 F4 low answer↔context coverage — groundedness retry once"
+                );
+                let reinforced = format!(
+                    "{prompt}\n\n---Additional Grounding---\n\
+Rewrite so the answer includes at least one contiguous phrase (3+ words) copied \
+exactly from a Document Chunk (or entity description) that supports the claim, \
+then elaborate. Do not invent facts outside Context.\n"
+                );
+                if let Ok(retry) = provider.complete(&reinforced).await {
+                    let retry_content = retry.content.trim().to_string();
+                    if !retry_content.is_empty()
+                        && (crate::grounding::answer_context_token_coverage(
+                            &retry_content,
+                            &corpus,
+                        ) > crate::grounding::answer_context_token_coverage(&content, &corpus)
+                            || crate::grounding::answer_has_context_span(&retry_content, &corpus))
+                    {
+                        return Ok((
+                            finalize_answer_text(retry_content, gold_compat),
+                            retry.completion_tokens,
+                        ));
+                    }
+                }
+            }
+        }
+
+        Ok((
+            finalize_answer_text(content, gold_compat),
+            response.completion_tokens,
+        ))
     }
 
     /// Generate answer using the default LLM.
@@ -470,6 +671,7 @@ Generate a comprehensive, well-structured answer that integrates observations fr
         system_prompt_extension: Option<&str>,
         conversation_history: &[ConversationMessage],
         question_type: Option<&str>,
+        response_type: Option<&str>,
     ) -> Result<(String, usize)> {
         self.generate_answer_with_provider(
             query,
@@ -479,6 +681,7 @@ Generate a comprehensive, well-structured answer that integrates observations fr
             None,
             conversation_history,
             question_type,
+            response_type,
         )
         .await
     }
@@ -571,7 +774,8 @@ Generate a comprehensive, well-structured answer that integrates observations fr
                     "Streaming vision chat failed; falling back to text-only stream"
                 );
                 // Text-only fallback: prefer streaming if supported, else one-shot.
-                let prompt = self.build_prompt(query, context, system_prompt_extension, &[], None);
+                let prompt =
+                    self.build_prompt(query, context, system_prompt_extension, &[], None, None);
                 if provider.supports_streaming() {
                     provider
                         .stream(&prompt)

@@ -146,12 +146,29 @@ impl QueryEngine {
             ));
         }
 
+        let response_type = Some(request.response_type_or_default());
         let prompt = self.build_prompt(
             &request.query,
             &context,
             request.system_prompt.as_deref(),
             &request.conversation_history,
             request.question_type(),
+            response_type,
+        );
+        let system_text = self.build_system_prompt(
+            &context,
+            request.system_prompt.as_deref(),
+            &request.conversation_history,
+            request.question_type(),
+            response_type,
+        );
+        let use_complete_blob = matches!(
+            std::env::var("EDGEQUAKE_ANSWER_COMPLETE_BLOB")
+                .unwrap_or_default()
+                .trim()
+                .to_ascii_lowercase()
+                .as_str(),
+            "1" | "true" | "yes" | "on"
         );
 
         // 064 product answer cache (opt-in): stream cached answer as one chunk.
@@ -170,7 +187,40 @@ impl QueryEngine {
 
         let llm = llm_override.unwrap_or_else(|| self.llm_provider.clone());
 
-        let stream = if llm.supports_streaming() {
+        // 083: prefer system/user chat when not COMPLETE_BLOB (even for stream entry —
+        // token stream API is one-blob; chat preserves LR roles as a one-shot stream).
+        let stream = if !use_complete_blob {
+            use edgequake_llm::traits::ChatMessage;
+            let messages = vec![
+                ChatMessage::system(&system_text),
+                ChatMessage::user(&request.query),
+            ];
+            match llm.chat(&messages, None).await {
+                Ok(response) => {
+                    if let Some(cache) = self.answer_cache.as_ref() {
+                        if !response.content.is_empty() {
+                            cache.set(&crate::cache::answer_cache_key(&prompt), &response.content);
+                        }
+                    }
+                    futures::stream::once(async move { Ok(response.content) }).boxed()
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        "083 stream chat failed; falling back to text stream/complete"
+                    );
+                    if llm.supports_streaming() {
+                        llm.stream(&prompt)
+                            .await
+                            .map(|stream| stream.map(|res| res.map_err(QueryError::from)).boxed())
+                            .map_err(QueryError::from)?
+                    } else {
+                        let response = llm.complete(&prompt).await.map_err(QueryError::from)?;
+                        futures::stream::once(async move { Ok(response.content) }).boxed()
+                    }
+                }
+            }
+        } else if llm.supports_streaming() {
             llm.stream(&prompt)
                 .await
                 .map(|stream| stream.map(|res| res.map_err(QueryError::from)).boxed())

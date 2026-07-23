@@ -109,7 +109,7 @@ Useful flags:
 
 All provider/judge pins are written to `scorecard.pins.lineage` and `SUMMARY.md` → **Model lineage**.
 
-**Publishable smoke (n=40):**
+**Publishable smoke (n=40) — daily gate only (not release):**
 
 ```bash
 export BENCH001_PUBLISH_FAIRNESS=1
@@ -120,6 +120,25 @@ python3 -m bench001.cli smoke --api "$EDGEQUAKE_API_URL" --query-only
 ```
 
 Artifacts: `specs/001-benchmark/e2e/artifacts/smoke/`
+
+---
+
+## Medical-mid publish (n=200) — stakeholder release Acc
+
+Same FULL medical corpus as smoke; 50 questions per type (seed 42); supersets smoke IDs.
+
+```bash
+export MISTRAL_API_KEY=...
+make bench                    # Acc backend → doctor → medical-mid → publish/latest/
+# or warm:
+export BENCH001_EQ_WORKSPACE_ID=<warm-workspace>
+make bench-warm
+
+# Direct:
+python3 -m bench001.cli medical-mid --api "$EDGEQUAKE_API_URL" --query-only
+```
+
+Artifacts: `specs/001-benchmark/e2e/artifacts/medical-mid/` + `publish/latest/`
 
 ---
 
@@ -136,30 +155,32 @@ python3 -m bench001.cli core --api "$EDGEQUAKE_API_URL" --i-accept-cost
 ## Report & progression
 
 ```bash
-python3 -m bench001.cli report smoke
-python3 -m bench001.cli report smoke --compare history/smoke-<utc>
+python3 -m bench001.cli report medical-mid
+python3 -m bench001.cli report medical-mid --compare history/medical-mid-<utc>
 # Ladder ledger (auto-updated each run):
 cat specs/001-benchmark/e2e/artifacts/PROGRESS.md
 # Live phase ticks:
-cat specs/001-benchmark/e2e/artifacts/smoke/progress.json
+cat specs/001-benchmark/e2e/artifacts/medical-mid/progress.json
 ```
 
 After fixing harness bugs (e.g. context export), re-score with:
 
 ```bash
 # Warm indexes already present:
-python3 -m bench001.cli smoke --query-only --api "$EDGEQUAKE_API_URL"
+python3 -m bench001.cli medical-mid --query-only --api "$EDGEQUAKE_API_URL"
 ```
 
 ---
 
-## Expected smoke timings
+## Expected timings
 
 | Path | Target |
 |------|--------|
 | `--dry-run` | < 30 s |
-| `--query-only` (warm) | ≤ 20 min |
-| Cold ingest + query (medical) | ≤ 60 min |
+| smoke `--query-only` (warm, n=40) | ≤ 20 min |
+| medical-mid `--query-only` (warm, n=200) | ~1–3 h (query + judge) |
+| Cold ingest + smoke query (medical) | ≤ 60 min |
+| Core (n=2162) | hours · `--i-accept-cost` |
 
 ---
 

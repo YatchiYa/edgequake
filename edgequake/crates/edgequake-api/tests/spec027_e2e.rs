@@ -263,12 +263,16 @@ async fn spec027_websocket_auth_rejects_missing_token_when_auth_enabled() {
     state.auth.config.auth_enabled = true;
 
     assert!(
-        !edgequake_api::middleware::ws_validate_token(&state, None).await,
+        edgequake_api::middleware::ws_validate_token(&state, None)
+            .await
+            .is_none(),
         "missing token must fail when auth enabled"
     );
 
     assert!(
-        edgequake_api::middleware::ws_validate_token(&state, Some("master-test-key")).await,
+        edgequake_api::middleware::ws_validate_token(&state, Some("master-test-key"))
+            .await
+            .is_some(),
         "valid static API key must pass ws auth gate"
     );
 }
@@ -1479,7 +1483,9 @@ async fn spec027_websocket_auth_allows_missing_token_when_auth_disabled() {
     );
 
     assert!(
-        edgequake_api::middleware::ws_validate_token(&state, None).await,
+        edgequake_api::middleware::ws_validate_token(&state, None)
+            .await
+            .is_some(),
         "websocket must be open when auth disabled — opt-in hardening required"
     );
 }

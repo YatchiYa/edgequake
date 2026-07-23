@@ -278,6 +278,28 @@ pub struct MigrationBootstrapReport {
     pub migration_065: Migration065Report,
     pub migration_080: Migration080Report,
     pub migration_081: Migration081Report,
+    /// SPEC-083 / P0: eq_* denorm readiness after every-boot M092 reconcile.
+    pub migration_092: Migration092Report,
+}
+
+/// Post-reconcile status for migration 092 eq_* denorm (SPEC-083).
+#[derive(Debug, Clone)]
+pub struct Migration092Report {
+    pub age_available: bool,
+    pub apply_executed: bool,
+    pub graphs_checked: usize,
+    pub graphs_ready: usize,
+    pub graphs_degraded: Vec<String>,
+    /// When true, traffic may proceed with property-path SQL fallback.
+    pub fallback_env_enabled: bool,
+}
+
+impl Migration092Report {
+    /// Degraded when AGE graphs exist but eq_* columns are still missing,
+    /// unless operator opted into `EDGEQUAKE_EQ_ID_FALLBACK=1`.
+    pub fn is_degraded(&self) -> bool {
+        self.age_available && !self.graphs_degraded.is_empty() && !self.fallback_env_enabled
+    }
 }
 
 /// Post-sqlx status for migration 038 indexes.
@@ -719,6 +741,10 @@ pub fn readiness_blockers(report: &Option<MigrationBootstrapReport>) -> Vec<Stri
     push_if_degraded!(migration_065, "migration_065");
     push_if_degraded!(migration_080, "migration_080");
     push_if_degraded!(migration_081, "migration_081");
+    if r.migration_092.is_degraded() {
+        blockers.push("eq_id_schema".to_string());
+        blockers.push("migration_092".to_string());
+    }
 
     blockers
 }
@@ -726,6 +752,12 @@ pub fn readiness_blockers(report: &Option<MigrationBootstrapReport>) -> Vec<Stri
 /// Operator-facing remediation hint for the first readiness blocker.
 pub fn readiness_operator_action(report: &Option<MigrationBootstrapReport>) -> Option<String> {
     let r = report.as_ref()?;
+    if r.migration_092.is_degraded() {
+        return Some(format!(
+            "eq_* AGE columns missing on graphs {:?}; run maintenance DDL (docs/083-improvements/INCIDENT-PROD-DIAGNOSIS.md) or set EDGEQUAKE_EQ_ID_FALLBACK=1 for property-path SQL",
+            r.migration_092.graphs_degraded
+        ));
+    }
     if r.migration_038.is_degraded() {
         return r
             .migration_038
@@ -893,11 +925,14 @@ pub async fn run_postgres_migrations(
         );
     }
 
-    // M092 / SPEC-069: every boot — eq_* columns/indexes/triggers off the delete hot path.
-    if reconcile::reconcile_migration_092(pool).await? {
+    // M092 / SPEC-069 / SPEC-083: every boot — eq_* columns/indexes/triggers off the delete hot path.
+    let migration_092 = reconcile::reconcile_migration_092(pool).await?;
+    if migration_092.apply_executed && !migration_092.is_degraded() {
         info!(
             target: "edgequake.migration",
             step = "migration_092_ok",
+            graphs_ready = migration_092.graphs_ready,
+            graphs_checked = migration_092.graphs_checked,
             "Migration 092 eq_* denorm schema reconciled (DDL boot-owned)"
         );
     }
@@ -1241,6 +1276,32 @@ pub async fn run_postgres_migrations(
         );
     }
 
+    // SPEC-083 D-45: ensure next-month audit partition exists so inserts past the
+    // initial window do not fail. Function is SSOT in 001_init_database.sql.
+    match sqlx::query_scalar::<_, String>("SELECT create_next_audit_log_partition()")
+        .fetch_optional(pool)
+        .await
+    {
+        Ok(Some(msg)) => {
+            info!(
+                target: "edgequake.migration",
+                step = "audit_next_month_partition",
+                result = %msg,
+                "Ensured next-month audit_logs partition"
+            );
+        }
+        Ok(None) => {}
+        Err(e) => {
+            // Non-fatal: older DBs may lack the function until 001/012 applied.
+            tracing::warn!(
+                target: "edgequake.migration",
+                step = "audit_next_month_partition",
+                error = %e,
+                "Could not ensure next-month audit partition (will retry next boot)"
+            );
+        }
+    }
+
     info!(
         target: "edgequake.migration",
         step = "bootstrap_complete",
@@ -1269,7 +1330,8 @@ pub async fn run_postgres_migrations(
             && !migration_062.is_degraded()
             && !migration_063.is_degraded()
             && !migration_064.is_degraded()
-            && !migration_065.is_degraded(),
+            && !migration_065.is_degraded()
+            && !migration_092.is_degraded(),
         "Database migration bootstrap complete"
     );
 
@@ -1311,6 +1373,7 @@ pub async fn run_postgres_migrations(
             apply_executed: migration_081_applied,
             skipped_age_version: false,
         },
+        migration_092,
     })
 }
 
@@ -1530,6 +1593,17 @@ mod tests {
         }
     }
 
+    fn noop_migration_092() -> Migration092Report {
+        Migration092Report {
+            age_available: true,
+            apply_executed: true,
+            graphs_checked: 0,
+            graphs_ready: 0,
+            graphs_degraded: Vec::new(),
+            fallback_env_enabled: false,
+        }
+    }
+
     #[test]
     fn migration_041_apply_sql_embedded() {
         assert!(SQL_041_APPLY.contains("cost_usd"));
@@ -1598,6 +1672,7 @@ mod tests {
             migration_065: noop_migration_065(),
             migration_080: noop_migration_080(),
             migration_081: noop_migration_081(),
+            migration_092: noop_migration_092(),
         })));
     }
 
@@ -1697,6 +1772,7 @@ mod tests {
             migration_065: noop_migration_065(),
             migration_080: noop_migration_080(),
             migration_081: noop_migration_081(),
+            migration_092: noop_migration_092(),
         }));
         assert!(
             blockers.iter().any(|b| b == "pgvector_cve_floor"),
@@ -1742,6 +1818,7 @@ mod tests {
             migration_065: noop_migration_065(),
             migration_080: noop_migration_080(),
             migration_081: noop_migration_081(),
+            migration_092: noop_migration_092(),
         }));
         assert!(!blockers_ok.iter().any(|b| b == "pgvector_cve_floor"));
     }
@@ -1807,6 +1884,7 @@ mod tests {
             migration_065: noop_migration_065(),
             migration_080: noop_migration_080(),
             migration_081: noop_migration_081(),
+            migration_092: noop_migration_092(),
         })));
     }
 
@@ -1862,6 +1940,7 @@ mod tests {
             migration_065: noop_migration_065(),
             migration_080: noop_migration_080(),
             migration_081: noop_migration_081(),
+            migration_092: noop_migration_092(),
         })));
     }
 
@@ -1908,6 +1987,7 @@ mod tests {
             migration_065: noop_migration_065(),
             migration_080: noop_migration_080(),
             migration_081: noop_migration_081(),
+            migration_092: noop_migration_092(),
         })));
     }
 
@@ -1963,6 +2043,7 @@ mod tests {
             migration_065: noop_migration_065(),
             migration_080: noop_migration_080(),
             migration_081: noop_migration_081(),
+            migration_092: noop_migration_092(),
         }));
         assert!(blockers.iter().any(|b| b == "missing_hnsw_index"));
         assert!(!is_ready_for_traffic(&Some(MigrationBootstrapReport {
@@ -2013,6 +2094,7 @@ mod tests {
             migration_065: noop_migration_065(),
             migration_080: noop_migration_080(),
             migration_081: noop_migration_081(),
+            migration_092: noop_migration_092(),
         })));
     }
 
@@ -2071,6 +2153,7 @@ mod tests {
             migration_065: noop_migration_065(),
             migration_080: noop_migration_080(),
             migration_081: noop_migration_081(),
+            migration_092: noop_migration_092(),
         };
         let blockers = readiness_blockers(&Some(healthy.clone()));
         assert_eq!(is_ready_for_traffic(&Some(healthy)), blockers.is_empty());
@@ -2081,8 +2164,9 @@ mod tests {
         assert!(SQL_083_APPLY.contains("idx_node_prop_node_id_unique"));
         assert!(SQL_083_APPLY.contains("idx_edge_source_target_unique"));
         assert!(SQL_083_APPLY.contains("node_id"));
-        // SPEC-062: drop legacy expression UNIQUEs when eq_* arbiters exist.
+        // SPEC-062 / D-30: drop legacy expression UNIQUEs when eq_* arbiters exist.
         assert!(SQL_083_APPLY.contains("idx_node_eq_node_id"));
+        assert!(SQL_083_APPLY.contains("idx_edge_eq_source_target_rel"));
         assert!(SQL_083_APPLY.contains("idx_edge_eq_source_target"));
         assert!(SQL_083_APPLY.contains("DROP INDEX IF EXISTS"));
         // Fast-boot guard: skip O(N) dedup when a UNIQUE index already present.
@@ -2099,6 +2183,10 @@ mod tests {
         assert!(SQL_092_APPLY.contains("eq_node_id"));
         assert!(SQL_092_APPLY.contains("eq_source_id"));
         assert!(SQL_092_APPLY.contains("eq_target_id"));
+        // D-30: every-boot SSOT must add multigraph arbiter (support/ only — not checksummed).
+        assert!(SQL_092_APPLY.contains("eq_rel_type"));
+        assert!(SQL_092_APPLY.contains("idx_edge_eq_source_target_rel"));
+        assert!(SQL_092_APPLY.contains("DROP INDEX IF EXISTS %I.idx_edge_eq_source_target"));
         assert!(SQL_092_APPLY.contains("trg_eq_sync_node_id"));
         assert!(SQL_092_APPLY.contains("statement_timeout = 0"));
         assert!(SQL_092_APPLY.contains("lock_timeout"));
@@ -2111,6 +2199,18 @@ mod tests {
             "M092 must not DROP TRIGGER in executable SQL"
         );
         assert_eq!(MIGRATION_092_VERSION, 92);
+    }
+
+    #[test]
+    fn m092_readiness_skips_incomplete_age_graphs_without_node_edge() {
+        // Incomplete AGE stubs (Node XOR EDGE) must not block /ready — same gate as apply.sql.
+        let src = include_str!("reconcile/m092.rs");
+        assert!(
+            src.contains("tablename = 'Node'")
+                && src.contains("tablename = 'EDGE'")
+                && src.contains("leftover bind_probe"),
+            "M092 post-reconcile scoring must require Node+EDGE before degraded"
+        );
     }
 
     #[test]

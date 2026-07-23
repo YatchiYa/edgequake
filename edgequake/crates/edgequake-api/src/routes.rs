@@ -97,6 +97,8 @@ pub fn create_router(state: AppState) -> Router {
         state.tasks.pipeline_state.clone(),
         state.tasks.progress_broadcaster.clone(),
     );
+    // SPEC-083 S-11: ensure cleanup runs for memory/test AppState paths too.
+    state.start_rate_limit_cleanup();
     create_router_inner(state)
 }
 

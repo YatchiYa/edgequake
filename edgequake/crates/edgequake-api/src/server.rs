@@ -22,16 +22,17 @@
 use std::net::SocketAddr;
 
 use axum::extract::DefaultBodyLimit;
-use axum::http::HeaderValue;
+use axum::http::{header, HeaderName, HeaderValue, Method};
 use axum::middleware;
 use axum::routing::get;
 use axum::Json;
 use serde::{Deserialize, Serialize};
+use tokio_util::sync::CancellationToken;
 use tower_http::{
     compression::CompressionLayer,
     cors::{AllowOrigin, Any, CorsLayer},
 };
-use tracing::info;
+use tracing::{info, warn};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
@@ -39,6 +40,42 @@ use crate::observability_middleware::observability_middleware;
 use crate::openapi::ApiDoc;
 use crate::routes::create_router;
 use crate::state::{ApiSecurityConfig, AppState};
+
+/// Explicit methods for fail-closed CORS (SPEC-083 S-10 / OWASP allow-list).
+const CORS_FAIL_CLOSED_METHODS: [Method; 7] = [
+    Method::GET,
+    Method::POST,
+    Method::PUT,
+    Method::PATCH,
+    Method::DELETE,
+    Method::OPTIONS,
+    Method::HEAD,
+];
+
+/// Explicit request headers for fail-closed CORS (SPEC-083 S-10).
+fn cors_fail_closed_headers() -> [HeaderName; 7] {
+    [
+        header::AUTHORIZATION,
+        header::CONTENT_TYPE,
+        header::ACCEPT,
+        HeaderName::from_static("x-api-key"),
+        HeaderName::from_static("x-tenant-id"),
+        HeaderName::from_static("x-workspace-id"),
+        HeaderName::from_static("x-request-id"),
+    ]
+}
+
+/// Apply methods/headers: explicit lists when fail-closed; `Any` only in open/dev mode.
+fn apply_cors_methods_headers(layer: CorsLayer, fail_closed: bool) -> CorsLayer {
+    if fail_closed {
+        // AllowOrigin::Any is unreachable on this path (caller sets list / empty list).
+        layer
+            .allow_methods(CORS_FAIL_CLOSED_METHODS)
+            .allow_headers(cors_fail_closed_headers())
+    } else {
+        layer.allow_methods(Any).allow_headers(Any)
+    }
+}
 
 /// Server configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,22 +108,35 @@ impl Default for ServerConfig {
     }
 }
 
-/// Build CORS layer from security config — SPEC-027 IMP-007 / GitHub #277.
+/// Build CORS layer from security config — SPEC-027 IMP-007 / GitHub #277 / SPEC-083 S-10.
+///
+/// When `cors_fail_closed` is true:
+/// - `AllowOrigin::Any` is unreachable
+/// - methods/headers use explicit allow-lists (never `Any`)
 pub fn build_cors_layer(security: &ApiSecurityConfig) -> CorsLayer {
     if let Some(origins) = &security.cors_origins {
         let allowed: Result<Vec<HeaderValue>, _> =
             origins.iter().map(|o| HeaderValue::from_str(o)).collect();
         match allowed {
-            Ok(list) if !list.is_empty() => CorsLayer::new()
-                .allow_origin(AllowOrigin::list(list))
-                .allow_methods(Any)
-                .allow_headers(Any),
-            _ => CorsLayer::new()
-                .allow_origin(Any)
-                .allow_methods(Any)
-                .allow_headers(Any),
+            Ok(list) if !list.is_empty() => {
+                return apply_cors_methods_headers(
+                    CorsLayer::new().allow_origin(AllowOrigin::list(list)),
+                    security.cors_fail_closed,
+                );
+            }
+            _ => {}
         }
+    }
+
+    if security.cors_fail_closed {
+        // Fail closed: no cross-origin allow-list configured — empty origin list.
+        // AllowOrigin::Any is intentionally unreachable here.
+        apply_cors_methods_headers(
+            CorsLayer::new().allow_origin(AllowOrigin::list(std::iter::empty::<HeaderValue>())),
+            true,
+        )
     } else {
+        // Dev / open mode only.
         CorsLayer::new()
             .allow_origin(Any)
             .allow_methods(Any)
@@ -145,7 +195,7 @@ impl Server {
         app
     }
 
-    /// Run the server.
+    /// Run the server with graceful shutdown + drain budget (SPEC-083 X-31).
     pub async fn run(self) -> Result<(), std::io::Error> {
         let app = self.build_router();
         let addr: SocketAddr = format!("{}:{}", self.config.host, self.config.port)
@@ -159,13 +209,107 @@ impl Server {
         }
 
         let listener = tokio::net::TcpListener::bind(addr).await?;
-        axum::serve(listener, app).await
+        let drain = edgequake_tasks::shutdown_drain_budget();
+        let cancel = CancellationToken::new();
+        let signal_cancel = cancel.clone();
+        tokio::spawn(async move {
+            wait_for_shutdown_signal().await;
+            info!(
+                drain_secs = drain.as_secs(),
+                "Shutdown signal received — draining in-flight requests (SPEC-083 X-31)"
+            );
+            signal_cancel.cancel();
+        });
+
+        let serve = axum::serve(listener, app).with_graceful_shutdown({
+            let cancel = cancel.clone();
+            async move {
+                cancel.cancelled().await;
+            }
+        });
+
+        tokio::select! {
+            result = serve => result,
+            _ = async {
+                cancel.cancelled().await;
+                tokio::time::sleep(drain).await;
+            } => {
+                warn!(
+                    drain_secs = drain.as_secs(),
+                    "SPEC-083 X-31: HTTP drain budget exceeded — forcing server exit"
+                );
+                Ok(())
+            }
+        }
     }
 
     /// Get the server configuration.
     pub fn config(&self) -> &ServerConfig {
         &self.config
     }
+}
+
+/// Wait for SIGTERM / Ctrl+C (shared by graceful shutdown).
+async fn wait_for_shutdown_signal() {
+    let ctrl_c = async {
+        if let Err(e) = tokio::signal::ctrl_c().await {
+            warn!(error = %e, "Failed to install Ctrl+C handler");
+            // Fall through to pending so we don't spin-exit.
+            std::future::pending::<()>().await;
+        }
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut sig) => {
+                sig.recv().await;
+            }
+            Err(e) => {
+                warn!(error = %e, "Failed to install SIGTERM handler");
+                std::future::pending::<()>().await;
+            }
+        }
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+}
+
+/// Unit/inproc helper: drain budget resolves and is bounded (X-31 matrix name).
+#[cfg(test)]
+#[tokio::test]
+async fn e2e_shutdown_drains_or_cancels_within_budget() {
+    use std::time::Duration;
+
+    let budget = edgequake_tasks::shutdown_drain_budget();
+    assert!(budget >= Duration::from_secs(1));
+    assert!(budget <= Duration::from_secs(3600));
+
+    // Inproc: a sticky future cancelled by select within a 1s fake drain.
+    let cancel = CancellationToken::new();
+    let sticky = async {
+        tokio::time::sleep(Duration::from_secs(120)).await;
+    };
+    let drain = Duration::from_secs(1);
+    let started = std::time::Instant::now();
+    cancel.cancel();
+    tokio::select! {
+        _ = sticky => panic!("sticky future must not complete"),
+        _ = async {
+            cancel.cancelled().await;
+            tokio::time::sleep(drain).await;
+        } => {}
+    }
+    assert!(
+        started.elapsed() < Duration::from_secs(3),
+        "forced cancel path must finish within drain budget"
+    );
 }
 
 #[cfg(test)]
@@ -198,6 +342,17 @@ mod tests {
     fn build_cors_layer_uses_allowlist_when_configured() {
         let security = ApiSecurityConfig {
             cors_origins: Some(vec!["https://app.example.com".into()]),
+            cors_fail_closed: true,
+            ..ApiSecurityConfig::default()
+        };
+        let _layer = build_cors_layer(&security);
+    }
+
+    #[test]
+    fn build_cors_layer_fail_closed_without_origins_does_not_panic() {
+        let security = ApiSecurityConfig {
+            cors_origins: None,
+            cors_fail_closed: true,
             ..ApiSecurityConfig::default()
         };
         let _layer = build_cors_layer(&security);

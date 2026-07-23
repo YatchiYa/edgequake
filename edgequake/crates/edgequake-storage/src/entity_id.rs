@@ -172,11 +172,13 @@ impl From<&EntityId> for String {
 /// `edgequake_pipeline::prompts::normalize_entity_name` for backwards
 /// compatibility; do not duplicate the logic elsewhere (DRY).
 ///
-/// Transformations:
-/// - Trims surrounding whitespace.
-/// - Strips common leading articles ("The", "A", "An" in any case).
-/// - Strips possessive suffixes (`'s`) per word.
-/// - Title-cases each word, joins with `_`, uppercases the result.
+/// Transformations (SPEC-083 C-14):
+/// 1. Trim surrounding whitespace
+/// 2. Unicode NFC
+/// 3. Casefold (`to_lowercase` — stable Unicode case-folding proxy)
+/// 4. Strip leading articles (`the` / `a` / `an`, case-insensitive via fold)
+/// 5. Strip possessive suffixes per word (`'s` ASCII and U+2019 `’s`)
+/// 6. Title-case each word, join with `_`, uppercase the result
 ///
 /// Empty / whitespace-only input yields the empty string (E1).
 ///
@@ -187,6 +189,8 @@ impl From<&EntityId> for String {
 /// ObjectId, long hex hashes, AWS ARNs. Multimodal `im-…` identities are
 /// **kept** (066 Drawing path uses them as stable node ids).
 pub fn normalize_entity_name(raw_name: &str) -> String {
+    use unicode_normalization::UnicodeNormalization;
+
     let trimmed = raw_name.trim();
     if trimmed.is_empty()
         || is_lightrag_rejected_numeric_name(trimmed)
@@ -195,23 +199,16 @@ pub fn normalize_entity_name(raw_name: &str) -> String {
         return String::new();
     }
 
-    let without_prefix = trimmed
-        .strip_prefix("The ")
-        .or_else(|| trimmed.strip_prefix("the "))
-        .or_else(|| trimmed.strip_prefix("A "))
-        .or_else(|| trimmed.strip_prefix("a "))
-        .or_else(|| trimmed.strip_prefix("An "))
-        .or_else(|| trimmed.strip_prefix("an "))
-        .unwrap_or(trimmed);
+    // NFC → casefold before article/possessive strips so THE/The/the unify.
+    let nfc: String = trimmed.nfc().collect();
+    let folded = nfc.to_lowercase();
+    let without_articles = strip_leading_articles(folded.trim());
 
-    let normalized = without_prefix
+    let normalized = without_articles
         .split_whitespace()
         .filter(|w| !w.is_empty())
         .map(|word| {
-            let without_possessive = word
-                .strip_suffix("'s")
-                .or_else(|| word.strip_suffix("'s"))
-                .unwrap_or(word);
+            let without_possessive = strip_possessive_suffix(word);
             to_title_case(without_possessive)
         })
         .collect::<Vec<_>>()
@@ -223,6 +220,29 @@ pub fn normalize_entity_name(raw_name: &str) -> String {
         return String::new();
     }
     normalized
+}
+
+/// Strip leading English articles after casefold (`the` / `a` / `an`).
+fn strip_leading_articles(s: &str) -> &str {
+    let mut rest = s;
+    loop {
+        let next = rest
+            .strip_prefix("the ")
+            .or_else(|| rest.strip_prefix("a "))
+            .or_else(|| rest.strip_prefix("an "));
+        match next {
+            Some(n) => rest = n.trim_start(),
+            None => break,
+        }
+    }
+    rest
+}
+
+/// Strip trailing possessive `'s` (ASCII) or `’s` (U+2019).
+fn strip_possessive_suffix(word: &str) -> &str {
+    word.strip_suffix("'s")
+        .or_else(|| word.strip_suffix("\u{2019}s"))
+        .unwrap_or(word)
 }
 
 /// True when `raw` is an opaque machine identifier unsuitable as a semantic
@@ -474,6 +494,24 @@ mod tests {
     fn prefixes_and_possessives_stripped() {
         assert_eq!(EntityId::new("The Company").as_str(), "COMPANY");
         assert_eq!(EntityId::new("John's").as_str(), "JOHN");
+    }
+
+    #[test]
+    #[allow(non_snake_case)] // Matrix ID: unit_normalize_THE_COMPANY
+    fn unit_normalize_THE_COMPANY() {
+        // Matrix Cluster 03 / C-14: article strip after casefold.
+        assert_eq!(normalize_entity_name("THE COMPANY"), "COMPANY");
+        assert_eq!(normalize_entity_name("The Company"), "COMPANY");
+        assert_eq!(normalize_entity_name("the company"), "COMPANY");
+        assert_eq!(EntityId::new("THE COMPANY"), EntityId::new("The Company"));
+    }
+
+    #[test]
+    fn unit_normalize_curly_apostrophe() {
+        // Matrix Cluster 03 / C-14: U+2019 RIGHT SINGLE QUOTATION MARK.
+        assert_eq!(normalize_entity_name("John's"), "JOHN");
+        assert_eq!(normalize_entity_name("John\u{2019}s"), "JOHN");
+        assert_eq!(EntityId::new("John's"), EntityId::new("John\u{2019}s"));
     }
 
     #[test]

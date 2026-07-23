@@ -188,19 +188,22 @@ pub enum VisionWatchdogAbort {
 
 impl VisionWatchdogAbort {
     pub fn as_timeout_message(&self, pdf_id: &str, provider: &str) -> String {
+        // SPEC-083 X-30: prefix with typed "Operation timed out" so circuit
+        // breaker / from_processing_error classify as Timeout (not Unknown).
         match self {
             Self::Stall {
                 stall_secs,
                 idle_secs,
             } => format!(
-                "Vision extraction stalled: no progress for {idle_secs}s \
+                "Operation timed out: Vision extraction stalled: no progress for {idle_secs}s \
                  (stall limit {stall_secs}s) for PDF {pdf_id}. \
                  Provider '{provider}' may be hung. Progress during this attempt \
-                 is preserved for resume."
+                 is preserved for resume. [failure_class=timeout_phase_convert]"
             ),
             Self::AbsoluteDeadline { absolute_secs } => format!(
-                "Vision extraction exceeded absolute deadline of {absolute_secs}s \
-                 for PDF {pdf_id}. Provider '{provider}'."
+                "Operation timed out: Vision extraction exceeded absolute deadline of \
+                 {absolute_secs}s for PDF {pdf_id}. Provider '{provider}'. \
+                 [failure_class=timeout_phase_convert]"
             ),
         }
     }

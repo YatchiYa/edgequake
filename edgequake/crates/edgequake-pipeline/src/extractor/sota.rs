@@ -316,9 +316,15 @@ where
             let response = match self.llm_provider.chat(&messages, Some(&options)).await {
                 Ok(resp) => resp,
                 Err(e) => {
+                    // SPEC-083 X-30: prefer typed LlmError::Timeout; string markers only as fallback.
+                    use edgequake_llm::error::LlmError;
                     let error_str = e.to_string().to_lowercase();
-                    let is_timeout =
-                        error_str.contains("timeout") || error_str.contains("timed out");
+                    let is_timeout = matches!(&e, LlmError::Timeout)
+                        || error_str.contains("operation timed out")
+                        || error_str.contains("task processing timed out")
+                        || error_str.contains("llm request timed out")
+                        || error_str.contains("failure_class=timeout")
+                        || error_str.contains("[timeout]");
 
                     tracing::warn!(
                         attempt = attempt,

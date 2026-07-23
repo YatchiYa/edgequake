@@ -104,8 +104,9 @@ fn test_chunk_ids() {
 
 #[test]
 fn test_token_estimation() {
-    assert_eq!(estimate_tokens("test"), 1);
-    assert_eq!(estimate_tokens("hello world"), 3); // 11 chars / 4 ≈ 3
+    // D-53: tiktoken SSOT — counts are model tokens, not chars/4.
+    assert!(estimate_tokens("test") >= 1);
+    assert!(estimate_tokens("hello world") >= 2);
 }
 
 #[test]

@@ -87,23 +87,16 @@ pub const MAXIMUM_TIMEOUT_SECS: u64 = 3600;
 
 /// Default safe maximum embedding batch count (512).
 ///
-/// WHY 512: Mistral's `mistral-embed` API enforces a hard limit on the NUMBER
-/// of input strings per embedding request, independent of total token count.
-/// Exceeding this limit returns HTTP 400 error code 3210:
-///   "Too many inputs in request, split into more batches."
+/// Recommended operator default when setting `EDGEQUAKE_EMBEDDING_BATCH_SIZE`
+/// for providers without a hard-coded provider clamp (documentation / tests).
 ///
-/// Evidence: EU AI Act (231 764 chars) extracts 1 000+ short legal entities.
-/// With token budget 6 963 and entities averaging 10 tokens each, the token-
-/// based splitter builds sub-batches of 696 items — exceeding Mistral's 256
-/// input limit (empirically confirmed: n=256→OK, n=257→HTTP 400 code 3210).
-///
-/// NOTE: The Mistral hard limit is 256 (not 512 as previously assumed). This
-/// cap is used as a ceiling for all providers; provider-specific limits in
-/// edgequake-llm further constrain the effective batch size via min().
-///
-/// OpenAI and Ollama support larger batches; this cap can be raised via
-/// `EDGEQUAKE_EMBEDDING_BATCH_SIZE` environment variable.
+/// SPEC-083 X-08: this is **not** applied as a silent secondary clamp when the
+/// env var is unset — `provider.max_batch_size()` is the live default, and the
+/// env (when set) is min'd once in the safety wrapper.
 pub const DEFAULT_SAFE_EMBED_BATCH_SIZE: usize = 256;
+
+/// Sentinel meaning "no env override" — wrapper passes through provider batch size.
+const EMBED_BATCH_NO_OVERRIDE: usize = usize::MAX;
 
 /// Configuration for safety limits.
 #[derive(Debug, Clone)]
@@ -114,12 +107,11 @@ pub struct SafetyLimitsConfig {
     pub timeout: Duration,
     /// Whether to log when limits are enforced.
     pub log_enforcement: bool,
-    /// Maximum number of inputs per embedding request.
+    /// Optional operator cap from `EDGEQUAKE_EMBEDDING_BATCH_SIZE`.
     ///
-    /// Acts as a safety cap on `EmbeddingProvider::max_batch_size()`. The inner
-    /// provider value is clamped to `min(inner, max_embed_batch_size)` so that
-    /// providers that advertise a large batch size (e.g. Mistral returning 2048)
-    /// are still limited to the provider's actual API input count limit.
+    /// SPEC-083 X-08 SSOT: when unset (`usize::MAX`), use
+    /// `provider.max_batch_size()` alone. When set, clamp once via
+    /// `min(provider, env)`.
     pub max_embed_batch_size: usize,
 }
 
@@ -135,13 +127,13 @@ impl Default for SafetyLimitsConfig {
 }
 
 impl SafetyLimitsConfig {
-    /// Read max_embed_batch_size from env, falling back to DEFAULT_SAFE_EMBED_BATCH_SIZE.
+    /// Read `EDGEQUAKE_EMBEDDING_BATCH_SIZE` (X-08 SSOT). Unset → no override.
     fn env_embed_batch_size() -> usize {
         std::env::var("EDGEQUAKE_EMBEDDING_BATCH_SIZE")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
-            .unwrap_or(DEFAULT_SAFE_EMBED_BATCH_SIZE)
-            .max(1) // must be at least 1
+            .filter(|&n| n > 0)
+            .unwrap_or(EMBED_BATCH_NO_OVERRIDE)
     }
 
     /// Create a new config with custom limits.
@@ -386,22 +378,19 @@ impl EmbeddingProvider for SafetyLimitedEmbeddingProviderWrapper {
     }
 
     fn max_batch_size(&self) -> usize {
-        // Clamp the inner provider's batch size to the configured safety cap.
-        //
-        // WHY: Providers like Mistral advertise `max_batch_size()` = 2048 (the
-        // trait default) but their actual API enforces a 512-input limit per
-        // request. Sending more inputs returns HTTP 400 code 3210
-        // "Too many inputs in request". By clamping here, `embed_with_token_budget`
-        // (which reads this value) produces sub-batches that satisfy both
-        // the token-count AND input-count limits.
-        let inner = self.inner.max_batch_size();
+        // SPEC-083 X-08: single clamp — min(provider, EDGEQUAKE_EMBEDDING_BATCH_SIZE)
+        // when env is set; otherwise pass through provider.max_batch_size().
+        let inner = self.inner.max_batch_size().max(1);
         let cap = self.config.max_embed_batch_size;
-        let effective = inner.min(cap);
+        if cap == EMBED_BATCH_NO_OVERRIDE {
+            return inner;
+        }
+        let effective = inner.min(cap.max(1));
         if effective < inner && self.config.log_enforcement {
             tracing::debug!(
                 inner_batch_size = inner,
                 effective_batch_size = effective,
-                "Safety limit: embedding batch size clamped"
+                "Safety limit: embedding batch size clamped via EDGEQUAKE_EMBEDDING_BATCH_SIZE"
             );
         }
         effective

@@ -26,7 +26,6 @@
 //! - Entity and relationship extraction via LLM (SOTA tuple format)
 //! - Knowledge graph construction
 //! - Embedding generation and storage
-//! - LLM response caching
 //!
 //! # Pipeline Stages
 //!
@@ -57,7 +56,7 @@
 //! - [`crate::chunker`] for document chunking
 
 pub mod adaptive_chunking;
-pub mod cache;
+pub mod anthropic_images;
 pub mod chunk_storage;
 pub mod chunker;
 pub mod entity_display;
@@ -80,15 +79,16 @@ pub mod summarizer;
 pub mod table_preprocessor;
 pub mod test_fixtures;
 pub mod text_embedder;
+pub mod token_estimator;
 pub mod validation;
 
 pub use adaptive_chunking::{
     adaptive_chunk_overlap, adaptive_chunking_enabled, calculate_adaptive_chunk_size,
     env_fixed_chunk_overlap, env_fixed_chunk_size, resolve_base_chunk_size_overlap,
 };
-pub use cache::{
-    generate_cache_key, generate_cache_key_multi, CacheEntry, CacheStats, CacheType,
-    CachedExtractor, LLMCache, MemoryLLMCache,
+pub use anthropic_images::{
+    anthropic_image_source_json, materialize_image_for_anthropic, materialize_images_for_anthropic,
+    AnthropicImageError,
 };
 pub use chunk_storage::build_chunk_kv_records;
 pub use chunker::{
@@ -96,7 +96,7 @@ pub use chunker::{
     parse_page_marker, resolve_chunker, split_into_page_segments, split_preserving_atomic_regions,
     AtomicKind, CharacterBasedChunking, ChunkOptions, ChunkResult, ChunkStrategy, Chunker,
     ChunkerConfig, ChunkingStrategy, ContentRegion, MarkdownChunking, PageAwareChunking,
-    ParagraphBoundaryChunking, RecursiveCharacterChunking, SectionMetadata,
+    PageMarkerWriter, ParagraphBoundaryChunking, RecursiveCharacterChunking, SectionMetadata,
     SentenceBoundaryChunking, TextChunk, TokenBasedChunking, PAGE_MARKER_PREFIX,
     PAGE_MARKER_SUFFIX,
 };
@@ -117,6 +117,9 @@ pub use markdown_ir::{extract_markdown_blocks, format_breadcrumb, PREFACE_HEADIN
 pub use structure_induce::{
     induce_faq_markdown, maybe_induce_structure, structure_induce_mode_from_env,
     StructureInduceMode, STRUCTURE_INDUCE_ENV,
+};
+pub use token_estimator::{
+    count_tokens, heuristic_token_count, DefaultTokenEstimator, TokenEstimator,
 };
 // Re-export unified ingestion types for frontend compatibility
 pub use entity_display::{resolve_entity_display_label, soft_label_opaque};
@@ -211,7 +214,7 @@ pub use pipeline::{
 pub use progress::{
     default_model_pricing, CostBreakdown, CostTracker, IngestionError, IngestionProgress,
     IngestionStatus, MessageLevel, ModelPricing, OperationCost, PipelineStage, ProgressMessage,
-    ProgressTracker, StageProgress, StageStatus,
+    ProgressTracker, StageProgress, StageStatus, PHASE_WEIGHTS,
 };
 pub use prompts::{
     default_entity_types, detect_format_markers, format_section_context, normalize_entity_name,

@@ -269,6 +269,7 @@ async fn e2e_community_report_index_with_embedder() {
         }],
         node_to_community: map,
         modularity: 0.1,
+        hierarchy_levels: 1,
     };
     let vs = MemoryVectorStorage::new("comm-index-e2e", 8);
     vs.initialize().await.unwrap();

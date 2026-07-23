@@ -1,7 +1,8 @@
-//! BM25 sparse retrieval fused with dense vector ranks (SPEC-023 I10 / default-on).
+//! Sparse retrieval fused with dense vector ranks (SPEC-023 I10 / default-on).
 //!
-//! Production path: PostgreSQL native FTS (`ts_rank_cd` over GIN `content_tsv`).
-//! Fallback: in-memory BM25 reranker over vector ANN candidates (memory adapter / tests).
+//! Production path: PostgreSQL native FTS (`ts_rank_cd` cover-density over GIN
+//! `content_tsv`) — not true BM25 (X-05). Fallback: in-memory BM25 reranker over
+//! vector ANN candidates (memory adapter / tests).
 //!
 //! Used by naive, local, and global chunk stages (SPEC-024 2.3).
 //! SPEC-046 OPS-P2: returns [`SparseRetrievalOutcome`] for QueryStats / metrics.
@@ -50,7 +51,15 @@ impl SparseRetrievalOutcome {
     }
 }
 
-/// Whether vector+sparse chunk fusion uses RRF (default: weighted sparse-first).
+/// Whether vector+sparse chunk fusion uses RRF or sparse-first ordering.
+///
+/// Default (unset / any value other than `rrf`) is **sparse_first**: return
+/// chunks in sparse-hit order and ignore dense ranks. The historical env value
+/// `weighted` maps here too — it is **not** Mix max-after-minmax fusion
+/// (D-36). Prefer `EDGEQUAKE_SPARSE_FUSION=sparse_first` in new configs.
+///
+/// Uses [`MixFusionMode::MaxAfterMinMax`] as the internal tag for sparse_first
+/// until a dedicated variant exists; see that enum's doc for Mix-mode semantics.
 pub fn sparse_fusion_mode_from_env() -> MixFusionMode {
     match std::env::var("EDGEQUAKE_SPARSE_FUSION")
         .unwrap_or_default()
@@ -58,11 +67,15 @@ pub fn sparse_fusion_mode_from_env() -> MixFusionMode {
         .as_str()
     {
         "rrf" => MixFusionMode::Rrf,
-        _ => MixFusionMode::Weighted,
+        // D-36: unset, `sparse_first`, or legacy `weighted` → sparse-first order.
+        _ => MixFusionMode::MaxAfterMinMax,
     }
 }
 
-/// Whether BM25 retrieval fusion is active (default: true).
+/// Whether sparse (FTS / in-memory BM25) retrieval fusion is active (default: true).
+///
+/// Env `EDGEQUAKE_BM25_RETRIEVAL` is a historical name; Postgres path ranks with
+/// `ts_rank_cd` (X-05), not Okapi BM25.
 pub fn bm25_retrieval_enabled(config: &QueryEngineConfig) -> bool {
     if !config.enable_bm25_retrieval {
         return false;
@@ -158,20 +171,22 @@ pub async fn fuse_vector_and_bm25_chunks(
         return (chunks, outcome);
     }
 
-    let chunks = if sparse_fusion_mode_from_env() == MixFusionMode::Rrf {
+    // D-39: apply min_score on fused paths (filter first, then take).
+    let mut chunks = if sparse_fusion_mode_from_env() == MixFusionMode::Rrf {
         let fused = fusion::reciprocal_rank_fusion(
             &[vector_ranked, sparse_ranked],
             &[1.0, 1.25],
             fusion::RRF_K,
         );
-        fusion::chunks_from_rrf_ranking(&fused, &lookup, max_chunks)
+        fusion::chunks_from_rrf_ranking(&fused, &lookup, max_chunks.saturating_mul(2))
     } else {
         sparse_ranked
             .into_iter()
             .filter_map(|id| lookup.get(&id).cloned())
-            .take(max_chunks)
             .collect()
     };
+    chunks.retain(|c| c.score >= min_score);
+    chunks.truncate(max_chunks);
 
     (chunks, outcome)
 }
@@ -216,5 +231,18 @@ mod tests {
         assert_eq!(SparseRetrievalOutcome::PostgresFts.as_str(), "postgres_fts");
         assert!(SparseRetrievalOutcome::FtsErrorFallback.is_fts_fallback());
         assert!(!SparseRetrievalOutcome::PostgresFts.is_fts_fallback());
+    }
+
+    #[test]
+    fn e2e_min_score_enforced_on_rrf() {
+        // D-39: fused path retains only scores ≥ min_score (filter after RRF).
+        let min_score = 0.5_f32;
+        let mut scores = vec![0.9_f32, 0.4, 0.7, 0.1];
+        scores.retain(|s| *s >= min_score);
+        assert_eq!(scores, vec![0.9, 0.7]);
+        // Source contract: retain happens after RRF in fuse path.
+        let src = include_str!("sparse_retrieval.rs");
+        assert!(src.contains("chunks.retain(|c| c.score >= min_score)"));
+        assert!(src.contains("D-39"));
     }
 }

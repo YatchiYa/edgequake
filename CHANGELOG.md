@@ -6,6 +6,33 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.21.0] — 2026-07-23
+
+Minor: LightRAG query-API parity (074–085), D-30 `eq_rel_type` multigraph arbiter, and SPEC-083 defect closure.
+
+### Added
+
+- **LightRAG query-API parity (074–085)** — Mix/local/global grounding, BM25/L2 fusion honesty, Acc honesty freeze.
+- **SPEC-083 first-principles pack** — Defect register, laws, cluster studies, e2e matrix, and roadmap under [`docs/083-improvements/`](docs/083-improvements/README.md) (89 FIXED / 1 RETRACTED).
+- **D-30 multigraph arbiter** — Native EDGE upserts use `(eq_source_id, eq_target_id, eq_rel_type)`; every-boot M092 support SQL adds `eq_rel_type` + `idx_edge_eq_source_target_rel` (checksum-safe: support/ only, not versioned markers).
+- **Merge error surfacing** — Persist messages include the first underlying graph merge cause while keeping GraphMerge classification.
+- **SDK CI / CODEOWNERS** — SDK workflow and ownership gates from the SPEC-083 ops cluster.
+
+### Fixed
+
+- **KG persist merge (eq_rel_type split-brain)** — Pre–D-30 AGE graphs no longer look “ready” while native INSERT fails; readiness probes require `eq_rel_type` + 3-col unique.
+- **`/ready` false positives from incomplete AGE stubs** — M092 readiness scores only graphs with both `Node` and `EDGE` (orphan `bind_probe*` stubs no longer block traffic).
+- **Schema / RLS / pipeline / query honesty** — Waves 0–D closure for open SPEC-083 IDs (CORS Origin, typed failure markers, Mix fusion rename, Thinking SSE, Scan/Reindex 501, Acc gates, etc.). See register for per-ID evidence.
+- **X-30 typed vision timeouts** — Stall watchdog messages carry `Operation timed out` + `failure_class=timeout_phase_convert`; `from_processing_error` uses the timeout factory so progress-aware circuit breaker works under typed detection.
+
+### Docs
+
+- Linked SPEC-083 pack from [`docs/README.md`](docs/README.md) and [`docs/index.md`](docs/index.md).
+- Prod eq_* incident runbook: [`docs/083-improvements/INCIDENT-PROD-DIAGNOSIS.md`](docs/083-improvements/INCIDENT-PROD-DIAGNOSIS.md).
+- **SPEC-001 Acc publish refresh (2026-07-23)** — medical-mid n=200 Acc **statistical tie** (EQ 0.770 / LR 0.779; Δ CI includes 0); fair cold latency **1.02×** (`C1COLD_v1`). Scorecard: [`docs/comparisons/eq-vs-lightrag-acc-bench.md`](docs/comparisons/eq-vs-lightrag-acc-bench.md) · [`publish/latest`](specs/001-benchmark/e2e/artifacts/publish/latest/).
+
+---
+
 ## [0.20.2] — 2026-07-22
 
 Patch: opaque entity soft-labels across lineage/query, reliable delete/DDL-off-hotpath, text-ingest progress parity, and dual fairness lanes so deletes do not starve PDF ingest (SPEC-067–073).

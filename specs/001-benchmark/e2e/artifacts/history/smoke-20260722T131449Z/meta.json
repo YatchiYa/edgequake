@@ -1,0 +1,15 @@
+{
+  "created_at_utc": "2026-07-22T13:14:49Z",
+  "profile_id": "LR_DENSE_FACT_L2_v1_lrlike_arms_v2",
+  "valid": true,
+  "verdict": "STATISTICAL TIE on answer quality",
+  "git_sha": "a67be7e3",
+  "archive": "specs/001-benchmark/e2e/artifacts/history/smoke-20260722T131449Z",
+  "task_name": "GraphRAG-Bench/EQ-vs-LR",
+  "can_claim_beats_lightrag": false,
+  "n_questions": 40,
+  "fixture_id": "smoke_question_ids_v1",
+  "publish_peer": "LR_DENSE_FACT_L2_v1",
+  "labeled_peer": true,
+  "not_acc_headline": true
+}

@@ -104,7 +104,10 @@ def main(argv: list[str] | None = None) -> int:
     p_doc.add_argument("--api", default=None)
     _add_provider_flags(p_doc)
 
-    sub.add_parser("freeze-smoke", help="Download dataset + verify smoke fixture IDs")
+    sub.add_parser(
+        "freeze-smoke",
+        help="Download dataset + verify smoke and medical-publish fixture IDs",
+    )
 
     def add_run_flags(p: argparse.ArgumentParser) -> None:
         p.add_argument("--api", default=None)
@@ -140,6 +143,14 @@ def main(argv: list[str] | None = None) -> int:
             "smoke-fast",
             "Fast smoke gate (8 IDs: 2/type); reuses warm smoke indexes; high concurrency",
         ),
+        (
+            "medical-mid",
+            "Publish Acc ladder (200 stratified medical IDs; supersets smoke)",
+        ),
+        (
+            "medical-full",
+            "Scale Acc check (all ~2062 medical IDs; same corpus as mid; not Acc SSOT)",
+        ),
         ("core", "Run core (cost-gated)"),
     ):
         p = sub.add_parser(name, help=help_txt)
@@ -148,7 +159,10 @@ def main(argv: list[str] | None = None) -> int:
             p.set_defaults(query_only=True)  # overridden if --force-ingest / explicit
 
     p_rep = sub.add_parser("report", help="Print SUMMARY / compare scorecards")
-    p_rep.add_argument("stage_or_path", help="smoke|core or path to artifacts dir")
+    p_rep.add_argument(
+        "stage_or_path",
+        help="smoke|medical-mid|medical-full|core or path to artifacts dir",
+    )
     p_rep.add_argument("--compare", default=None)
 
     p_live = sub.add_parser(
@@ -244,7 +258,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "freeze-smoke":
         freeze_smoke()
         return 0
-    if args.cmd in {"smoke", "smoke-fast", "core"}:
+    if args.cmd in {"smoke", "smoke-fast", "medical-mid", "medical-full", "core"}:
         import os
 
         from .acc_env import (
@@ -259,7 +273,7 @@ def main(argv: list[str] | None = None) -> int:
             "true",
             "yes",
         }
-        if args.cmd == "smoke" and (
+        if args.cmd in {"smoke", "medical-mid", "medical-full"} and (
             publication or os.environ.get("BENCH001_FULL_ACC", "").strip() in {"1", "true", "yes"}
         ):
             # Publication / full Acc: force mistral-small + mistral-embed + full corpus.
@@ -281,10 +295,16 @@ def main(argv: list[str] | None = None) -> int:
             if args.force_ingest:
                 query_only = False
         # Publication Acc defaults to force-ingest unless explicitly query-only.
-        if args.cmd == "smoke" and publication and not args.query_only:
+        if args.cmd in {"smoke", "medical-mid", "medical-full"} and publication and not args.query_only:
             if os.environ.get("BENCH001_FORCE_INGEST", "").strip() in {"1", "true", "yes"}:
                 query_only = False
                 args.force_ingest = True
+        # medical-mid/full default to query-only when a warm workspace is set (same corpus as smoke).
+        if args.cmd in {"medical-mid", "medical-full"} and not args.force_ingest:
+            if os.environ.get("BENCH001_EQ_WORKSPACE_ID", "").strip() or os.environ.get(
+                "BENCH001_QUERY_ONLY", ""
+            ).strip().lower() in {"1", "true", "yes"}:
+                query_only = True
         return run_stage(
             args.cmd,
             api=args.api,

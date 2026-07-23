@@ -1,0 +1,15 @@
+{
+  "created_at_utc": "2026-07-22T20:41:00Z",
+  "profile_id": "P0_path_off_bm25_restore_v1_lrlike_arms_v2",
+  "valid": true,
+  "verdict": "LightRAG ahead on answer quality (CI excludes 0)",
+  "git_sha": "a67be7e3",
+  "archive": "specs/001-benchmark/e2e/artifacts/history/medical-full-20260722T204100Z",
+  "task_name": "GraphRAG-Bench/EQ-vs-LR",
+  "can_claim_beats_lightrag": false,
+  "n_questions": 2062,
+  "fixture_id": "medical_full_question_ids_v1",
+  "publish_peer": "P0_MEDICAL_FULL_v1",
+  "labeled_peer": true,
+  "not_acc_headline": true
+}

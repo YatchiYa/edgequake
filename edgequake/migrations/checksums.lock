@@ -1,5 +1,5 @@
 # Migration Immutability Lockfile
-# Updated: 2026-07-21
+# Updated: 2026-07-23
 #
 # PURPOSE: Every line records the SHA-384 of a migration file at the time it was
 # declared stable. This file is the source of truth for the migration-guard CI
@@ -108,4 +108,6 @@ cd3fd7d1bd21a30f9144c7fe386316e63af46615348ed96a6ee027ce94e4945ac299762474699da8
 e16eb9458a30486523c47df266ae8bf2a05fb2468287034acb41c8784d7e36682be8a8a41b989ad663f00c886d20adf7  093_eq_serving_chunk_presence.sql
 896e91ea9d89fa4fd855e4d7fc7cad72691d196ab27042c0c6805d5b03ea2be6318dff728f143908cfa5c5ee950e7fae  094_extend_task_type_deletion.sql
 0c365f577a9efac84707f7c2eab546ee7b196b789c45a5259d545d118f8c6b011069960966fe0cc6c9bd10e3448d6590  095_extend_task_type_workspace_wipe.sql
+66d1fbd417fdb3bb73d2bbfc0cfbbb6af626a3fbd26801876c86beef616a9c4912aa342277c2e90b36aa7072762bba4b  096_rls_fail_closed_force.sql
+63e34e63ad9e372425e093f38137afa60c93c1400b8f6ed9c3544ec55c89de2170a1f36e044a2e839b27cd4a238024c4  097_edge_multigraph_rel_type.sql
 

@@ -22,7 +22,7 @@ use crate::handlers::workspaces_types::{
     RebuildEmbeddingsRequest, RebuildKnowledgeGraphRequest, ReprocessAllRequest,
 };
 use crate::middleware::TenantContext;
-use crate::services::job_registry::is_creatable_v2_job_type;
+use crate::services::job_registry::{is_creatable_v2_job_type, NOT_IMPLEMENTED_V2_JOB_TYPES};
 use crate::state::AppState;
 
 /// Result of submitting a v2 job (always yields a track/job id).
@@ -58,8 +58,10 @@ fn parse_task_type(raw: &str) -> ApiResult<TaskType> {
     match raw.to_ascii_lowercase().as_str() {
         "upload" => Ok(TaskType::Upload),
         "insert" => Ok(TaskType::Insert),
-        "scan" => Ok(TaskType::Scan),
-        "reindex" => Ok(TaskType::Reindex),
+        // SPEC-083 X-11: Scan/Reindex TaskTypes return 501 — not enqueueable.
+        "scan" | "reindex" => Err(ApiError::NotImplemented {
+            feature: format!("job_type '{raw}'"),
+        }),
         "pdf_processing" => Ok(TaskType::PdfProcessing),
         "knowledge_injection" => Ok(TaskType::KnowledgeInjection),
         "deletion" => Ok(TaskType::Deletion),
@@ -82,6 +84,13 @@ pub async fn submit_workspace_job(
 
     let job_type = request.job_type.to_ascii_lowercase();
 
+    // SPEC-083 X-11: explicit 501 for unimplemented Scan/Reindex task types.
+    if NOT_IMPLEMENTED_V2_JOB_TYPES.contains(&job_type.as_str()) {
+        return Err(ApiError::NotImplemented {
+            feature: format!("job_type '{job_type}'"),
+        });
+    }
+
     if !is_creatable_v2_job_type(&job_type) {
         return Err(ApiError::BadRequest(format!(
             "Unsupported job_type '{job_type}'. See GET .../jobs/catalog for supported types."
@@ -89,7 +98,7 @@ pub async fn submit_workspace_job(
     }
 
     match job_type.as_str() {
-        "upload" | "insert" | "scan" | "reindex" | "pdf_processing" | "knowledge_injection" => {
+        "upload" | "insert" | "pdf_processing" | "knowledge_injection" => {
             let task_type = parse_task_type(&job_type)?;
             let payload = if request.payload.is_null() {
                 serde_json::json!({})

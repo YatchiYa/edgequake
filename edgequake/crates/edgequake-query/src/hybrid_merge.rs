@@ -1,8 +1,9 @@
 //! LightRAG-style Hybrid merge (SPEC-024 Phase 2 / FEAT0104).
 //!
 //! Combines Local, Global, and Naive retrieval arms with:
-//! - **Round-robin interleave** (default): KG-derived arms first at each slot
-//!   (local → global → naive), deduplicating by chunk ID — matches LightRAG.
+//! - **Round-robin interleave** (default): local → global → naive (EQ Acc-era).
+//!   LightRAG `_merge_all_chunks` is naive → entity → relation; set
+//!   `EDGEQUAKE_RR_ORDER=naive_first` for that order (076 L1.5 peer follow-up).
 //! - **RRF** (optional): set `EDGEQUAKE_HYBRID_FUSION=rrf` for reciprocal rank fusion.
 //!
 //! Entities and relationships are unioned across local+global (scores are not
@@ -125,19 +126,61 @@ fn merge_hybrid_chunks(
     }
 }
 
-/// LightRAG round-robin: at each index, take local then global then naive (dedup by id).
+/// Round-robin arm order for Mix/Hybrid chunk merge.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RoundRobinArmOrder {
+    /// EQ Acc-era: local → global → naive.
+    #[default]
+    LocalFirst,
+    /// LightRAG `_merge_all_chunks`: naive → entity(local) → relation(global).
+    NaiveFirst,
+}
+
+/// Parse `EDGEQUAKE_RR_ORDER` (`local_first` default · `naive_first` = LR law).
+pub fn rr_arm_order_from_env() -> RoundRobinArmOrder {
+    match std::env::var("EDGEQUAKE_RR_ORDER")
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "naive_first" | "naive-first" | "lightrag" | "vector_first" => {
+            RoundRobinArmOrder::NaiveFirst
+        }
+        _ => RoundRobinArmOrder::LocalFirst,
+    }
+}
+
+/// Round-robin merge with dedup by chunk id.
+///
+/// Default order local→global→naive. Pass [`RoundRobinArmOrder::NaiveFirst`] (or
+/// set `EDGEQUAKE_RR_ORDER=naive_first`) for LightRAG naive→entity→relation.
 pub fn round_robin_merge_chunks(
     local: &[RetrievedChunk],
     global: &[RetrievedChunk],
     naive: &[RetrievedChunk],
     max_chunks: usize,
 ) -> Vec<RetrievedChunk> {
+    round_robin_merge_chunks_ordered(local, global, naive, max_chunks, rr_arm_order_from_env())
+}
+
+/// Pure round-robin merge with explicit arm order (testable without env).
+pub fn round_robin_merge_chunks_ordered(
+    local: &[RetrievedChunk],
+    global: &[RetrievedChunk],
+    naive: &[RetrievedChunk],
+    max_chunks: usize,
+    order: RoundRobinArmOrder,
+) -> Vec<RetrievedChunk> {
     let mut out = Vec::with_capacity(max_chunks.min(local.len() + global.len() + naive.len()));
     let mut seen = HashSet::new();
     let max_len = local.len().max(global.len()).max(naive.len());
+    let sources: [&[RetrievedChunk]; 3] = match order {
+        RoundRobinArmOrder::LocalFirst => [local, global, naive],
+        RoundRobinArmOrder::NaiveFirst => [naive, local, global],
+    };
 
     'outer: for i in 0..max_len {
-        for source in [local, global, naive] {
+        for source in sources {
             if let Some(c) = source.get(i) {
                 if seen.insert(c.id.clone()) {
                     out.push(c.clone());
@@ -194,12 +237,18 @@ mod tests {
     }
 
     #[test]
-    fn round_robin_kg_first_and_dedup() {
+    fn round_robin_local_first_and_dedup() {
         let local = vec![chunk("shared", 0.9), chunk("local_only", 0.8)];
         let global = vec![chunk("shared", 0.85), chunk("global_only", 0.7)];
         let naive = vec![chunk("naive_only", 0.6)];
 
-        let merged = round_robin_merge_chunks(&local, &global, &naive, 10);
+        let merged = round_robin_merge_chunks_ordered(
+            &local,
+            &global,
+            &naive,
+            10,
+            RoundRobinArmOrder::LocalFirst,
+        );
         let ids: Vec<_> = merged.iter().map(|c| c.id.as_str()).collect();
         assert_eq!(
             ids,
@@ -208,11 +257,38 @@ mod tests {
     }
 
     #[test]
+    fn round_robin_naive_first_matches_lightrag_merge_order() {
+        let local = vec![chunk("shared", 0.9), chunk("local_only", 0.8)];
+        let global = vec![chunk("shared", 0.85), chunk("global_only", 0.7)];
+        let naive = vec![chunk("naive_only", 0.6)];
+
+        let merged = round_robin_merge_chunks_ordered(
+            &local,
+            &global,
+            &naive,
+            10,
+            RoundRobinArmOrder::NaiveFirst,
+        );
+        let ids: Vec<_> = merged.iter().map(|c| c.id.as_str()).collect();
+        // LR: vector(naive) → entity(local) → relation(global) per index.
+        assert_eq!(
+            ids,
+            vec!["naive_only", "shared", "local_only", "global_only"]
+        );
+    }
+
+    #[test]
     fn round_robin_respects_max_chunks() {
         let local: Vec<_> = (0..5).map(|i| chunk(&format!("l{i}"), 1.0)).collect();
         let global: Vec<_> = (0..5).map(|i| chunk(&format!("g{i}"), 1.0)).collect();
         let naive: Vec<_> = (0..5).map(|i| chunk(&format!("n{i}"), 1.0)).collect();
-        let merged = round_robin_merge_chunks(&local, &global, &naive, 3);
+        let merged = round_robin_merge_chunks_ordered(
+            &local,
+            &global,
+            &naive,
+            3,
+            RoundRobinArmOrder::LocalFirst,
+        );
         assert_eq!(merged.len(), 3);
     }
 

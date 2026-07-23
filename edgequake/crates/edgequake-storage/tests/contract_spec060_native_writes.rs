@@ -40,8 +40,10 @@ fn contract_batch_uses_eq_id_on_conflict() {
     assert!(
         edges.contains("eq_source_id")
             && edges.contains("eq_target_id")
+            && edges.contains("eq_rel_type")
+            && edges.contains("ON CONFLICT (eq_source_id, eq_target_id, eq_rel_type)")
             && edges.contains("EXCLUDED.properties"),
-        "native edge upsert must JOIN/CONFLICT on eq_source_id/eq_target_id"
+        "native edge upsert must JOIN/CONFLICT on eq_source_id/eq_target_id/eq_rel_type (D-30)"
     );
 }
 

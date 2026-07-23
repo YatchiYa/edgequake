@@ -7,6 +7,7 @@ Primary entry: ``make bench`` → publish/latest/{BUSINESS_REPORT.md, EXEC_SUMMA
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from pathlib import Path
 from typing import Any
@@ -187,6 +188,17 @@ def build_business_report_md(
     archive_line = archive_rel or "(see history/ after archive)"
     llm = f"{pins.get('llm_provider', 'mistral')}/{pins.get('llm_model', 'mistral-small-latest')}"
     emb = f"{pins.get('embedding_provider', 'mistral')}/{pins.get('embedding_model', 'mistral-embed')}"
+    fixture_id = str(
+        (pins.get("fixture_id") if isinstance(pins, dict) else None)
+        or scorecard.get("fixture_id")
+        or ""
+    )
+    n_why = (
+        "n=200 medical-mid (50/type) — bootstrap Acc CI is underpowered at smoke n=40; "
+        "this is the defendable publish ladder before full core"
+        if n >= 200
+        else f"n={n} (smoke gate — not a release publish claim; use medical-mid n=200)"
+    )
 
     lines = [
         "# EdgeQuake vs LightRAG — Business Performance Report",
@@ -194,12 +206,27 @@ def build_business_report_md(
         f"**Generated:** {scorecard.get('created_at_utc', '—')}  ",
         f"**Task:** GraphRAG-Bench Acc dual-SUT (July 2026 fair pins)  ",
         f"**Profile:** `{scorecard.get('profile_id', '—')}`  ",
+        f"**Fixture:** `{fixture_id or '—'}` (n={n})  ",
         f"**Valid run:** `{scorecard.get('valid')}`"
         + (
             f" ({scorecard.get('invalid_reason')})"
             if scorecard.get("invalid_reason")
             else ""
         ),
+        "",
+        "## One-screen first principles",
+        "",
+        "```text",
+        "  Task     GraphRAG-Bench/EQ-vs-LR  (same corpus · questions · judge · Mix↔Mix)",
+        f"  Sample   {n_why}",
+        f"  Acc      EQ {_f(eq_acc)} · LR {_f(lr_acc)} · Δ {_f(d.get('overall_acc'), 3)}",
+        f"  Δ Acc CI {ci_line}",
+        f"  L2       evidence recall EQ {_f(eq_er)} / LR {_f(lr_er)} · "
+        f"ctx_rel EQ {_f(eq_cr)} / LR {_f(lr_cr)}",
+        f"  Latency  query p50 EQ {eq_p50 if eq_p50 is not None else '—'} ms / "
+        f"LR {lr_p50 if lr_p50 is not None else '—'} ms",
+        f"  Verdict  {verdict}",
+        "```",
         "",
         "## Verdict",
         "",
@@ -215,7 +242,9 @@ def build_business_report_md(
         f"- Same generator/judge stack: `{llm}` · embeddings `{emb}`",
         "- Same Mix mode, matched top-k / chunk size, official `generation_eval` Acc",
         "- Fairness: Mix arms always on, RRF fusion, chunk 1200/100, related_chunk=5",
+        "- L2 required: official `retrieval_eval` (evidence recall + context relevancy)",
         "- **Not** UltraDomain win-rates · **not** paper Table-2 (GPT-4o-mini + BGE)",
+        f"- **Why this n:** {n_why}",
         "",
         "## Scorecard for decisions",
         "",
@@ -260,12 +289,15 @@ def build_business_report_md(
             "“#1 on GraphRAG-Bench” without matching paper protocol |",
             "| “Actively closing retrieval noise / multi-hop / latency gaps” | "
             "Silent Acc headline = CE+protect without promotion gate |",
+            "| “Publish Acc on medical-mid n=200 under fair pins” | "
+            "Publishing smoke n=40 as the release score |",
             "",
             "## How to reproduce",
             "",
             "```bash",
-            "make bench                 # cold full Acc (n=40) + this publish pack",
+            "make bench                 # medical-mid Acc (n=200) + this publish pack",
             "make bench-warm            # query-only (auto latest warm EQ workspace)",
+            "make bench001-smoke-acc    # daily smoke gate only (n=40; not release)",
             "```",
             "",
             f"- Pins: Mix arms on · RRF · chunk 1200/100 · top-k {pins.get('retrieve_topk', 30)} · "
@@ -297,14 +329,29 @@ def build_exec_summary(scorecard: dict[str, Any]) -> str:
     ratio = ops.get("eq_over_lr_p50_ratio")
     if ratio is None and eq_p50 and lr_p50 and int(lr_p50) > 0:
         ratio = round(int(eq_p50) / int(lr_p50), 3)
-    claim = (
-        "Publishable claim: EdgeQuake beats LightRAG on Acc (CI + L2)."
-        if can_claim_beats_lightrag(scorecard)
-        else "Publishable claim: peer / statistical tie with LightRAG on Acc — not SOTA win."
-    )
+    includes0 = ci_includes_zero(scorecard)
+    d = (scorecard.get("metrics") or {}).get("delta_eq_minus_lr") or {}
+    delta = float(d.get("overall_acc") or 0.0)
+    if can_claim_beats_lightrag(scorecard):
+        claim = "Publishable claim: EdgeQuake beats LightRAG on Acc (CI + L2)."
+    elif includes0 is False and delta < 0:
+        claim = (
+            "Publishable claim: LightRAG ahead on Acc (Δ Acc CI excludes 0) — "
+            "do not claim EdgeQuake beats LightRAG."
+        )
+    elif includes0 is True:
+        claim = "Publishable claim: peer / statistical tie with LightRAG on Acc — not SOTA win."
+    else:
+        claim = (
+            "Publishable claim: Acc point estimates only (no CI or L2 incomplete) — "
+            "not a beat claim."
+        )
+    n = int(ops.get("n_questions") or 0)
     lines = [
         "EdgeQuake vs LightRAG — GraphRAG-Bench Acc (EXEC SUMMARY)",
         f"Verdict: {verdict}",
+        f"Sample: n={n} medical"
+        + (" (publish mid)" if n >= 200 else " (smoke gate — not release)"),
         f"Acc: EQ {_f(eq.get('overall_acc'))} · LR {_f(lr.get('overall_acc'))}",
         f"Context cleanliness (ctx_rel): EQ {_f(eq_ret.get('overall_context_relevancy'))} · "
         f"LR {_f(lr_ret.get('overall_context_relevancy'))}",
@@ -314,7 +361,7 @@ def build_exec_summary(scorecard: dict[str, Any]) -> str:
         f"LR {lr_p50 if lr_p50 is not None else '—'} · ratio {ratio if ratio is not None else '—'}×",
         claim,
         "Not paper Table-2 / UltraDomain; Mistral Acc pins. HippoRAG2 = aspirational retrieval SOTA.",
-        "Reproduce: make bench",
+        "Reproduce: make bench  (n=200 medical-mid)",
         f"Publish: specs/001-benchmark/e2e/artifacts/publish/latest/",
         f"Valid: {scorecard.get('valid')} · {scorecard.get('created_at_utc', '')}",
     ]
@@ -367,13 +414,30 @@ def print_business_verdict(scorecard: dict[str, Any]) -> None:
     _ = d  # reserved for future Δ print
 
 
+def publish_peer_dir(peer_id: str) -> Path:
+    """Labeled peer pack path: ``publish/peers/<peer_id>/`` (never Acc ``latest``)."""
+    safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in peer_id.strip())
+    if not safe:
+        raise ValueError("BENCH001_PUBLISH_PEER must be a non-empty peer id")
+    return PUBLISH_DIR / "peers" / safe
+
+
 def write_publish_pack(
     scorecard: dict[str, Any],
     *,
     stage_dir: Path,
     archive_dir: Path | None = None,
+    publish_dir: Path | None = None,
 ) -> Path:
-    """Write BUSINESS_REPORT + EXEC_SUMMARY to stage, archive, and publish/latest."""
+    """Write BUSINESS_REPORT + EXEC_SUMMARY to stage, archive, and publish/latest.
+
+    ``publish_dir`` defaults to the real stakeholder pack path. Tests should pass
+    a temp directory so they never clobber ``publish/latest``.
+
+    Env:
+    - ``BENCH001_SKIP_PUBLISH_LATEST=1`` — do not write Acc ``publish/latest``
+    - ``BENCH001_PUBLISH_PEER=<id>`` — also write ``publish/peers/<id>/`` (labeled peer)
+    """
     archive_rel = None
     if archive_dir is not None:
         try:
@@ -381,6 +445,7 @@ def write_publish_pack(
         except ValueError:
             archive_rel = str(archive_dir)
 
+    peer_id = (os.environ.get("BENCH001_PUBLISH_PEER") or "").strip()
     report_md = build_business_report_md(scorecard, archive_rel=archive_rel)
     exec_txt = build_exec_summary(scorecard)
     meta = {
@@ -392,13 +457,31 @@ def write_publish_pack(
         "archive": archive_rel,
         "task_name": scorecard.get("task_name"),
         "can_claim_beats_lightrag": can_claim_beats_lightrag(scorecard),
+        "n_questions": (scorecard.get("ops") or {}).get("n_questions"),
+        "fixture_id": (scorecard.get("pins") or {}).get("fixture_id"),
     }
+    if peer_id:
+        meta["publish_peer"] = peer_id
+        meta["labeled_peer"] = True
+        meta["not_acc_headline"] = True
 
     targets: list[Path] = [stage_dir]
     if archive_dir is not None:
         targets.append(archive_dir)
-    latest = publish_latest_dir()
-    targets.append(latest)
+    skip_latest = (os.environ.get("BENCH001_SKIP_PUBLISH_LATEST") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    latest = publish_dir if publish_dir is not None else publish_latest_dir()
+    if not skip_latest:
+        targets.append(latest)
+
+    peer_dir: Path | None = None
+    if peer_id:
+        peer_dir = publish_peer_dir(peer_id)
+        targets.append(peer_dir)
 
     for dest in targets:
         dest.mkdir(parents=True, exist_ok=True)
@@ -406,13 +489,33 @@ def write_publish_pack(
         (dest / "EXEC_SUMMARY.txt").write_text(exec_txt, encoding="utf-8")
         (dest / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
+    def _copy_tech(dest: Path) -> None:
+        for name in ("scorecard.json", "SUMMARY.md"):
+            src = stage_dir / name
+            if src.exists():
+                shutil.copy2(src, dest / name)
+            elif archive_dir is not None and (archive_dir / name).exists():
+                shutil.copy2(archive_dir / name, dest / name)
+
+    if peer_dir is not None:
+        _copy_tech(peer_dir)
+        (peer_dir / "README.md").write_text(
+            f"# Labeled publish peer — `{peer_id}`\n\n"
+            "Not Acc headline. Acc SSOT remains `publish/latest/` (P0 medical-mid).\n\n"
+            "- [BUSINESS_REPORT.md](./BUSINESS_REPORT.md)\n"
+            "- [EXEC_SUMMARY.txt](./EXEC_SUMMARY.txt)\n"
+            "- [SUMMARY.md](./SUMMARY.md)\n"
+            "- [scorecard.json](./scorecard.json)\n",
+            encoding="utf-8",
+        )
+
+    if skip_latest:
+        return peer_dir if peer_dir is not None else (
+            stage_dir if archive_dir is None else archive_dir
+        )
+
     # Stable copies of technical artifacts into publish/latest
-    for name in ("scorecard.json", "SUMMARY.md"):
-        src = stage_dir / name
-        if src.exists():
-            shutil.copy2(src, latest / name)
-        elif archive_dir is not None and (archive_dir / name).exists():
-            shutil.copy2(archive_dir / name, latest / name)
+    _copy_tech(latest)
 
     # Pointer file for humans
     (latest / "README.md").write_text(

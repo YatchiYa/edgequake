@@ -775,8 +775,8 @@ async fn async_main() -> Result<()> {
         },
     };
 
-    // SPEC-054: default = manual resume (no surprise LLM spend on every boot).
-    // Opt in: EDGEQUAKE_STARTUP_AUTO_RESUME=1
+    // X-24: default ON when unset (resume Interrupted work from checkpoints).
+    // Opt out: EDGEQUAKE_STARTUP_AUTO_RESUME=0 (manual reprocess; avoids surprise spend).
     let auto_resume = edgequake_api::services::startup_task_hydrate::startup_auto_resume_enabled();
     if auto_resume {
         info!(
