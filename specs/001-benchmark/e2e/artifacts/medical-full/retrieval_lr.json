@@ -1,0 +1,41 @@
+{
+  "judge": "retrieval_eval",
+  "overall_context_relevancy": 0.4915698778908718,
+  "overall_evidence_recall": 0.9523065823222799,
+  "by_type": {
+    "Fact Retrieval": {
+      "context_relevancy": 0.5946553446553446,
+      "evidence_recall": 0.9479819067084235
+    },
+    "Complex Reasoning": {
+      "context_relevancy": 0.49942528735632186,
+      "evidence_recall": 0.9469253380364491
+    },
+    "Contextual Summarize": {
+      "context_relevancy": 0.5976890756302521,
+      "evidence_recall": 0.9504064094341871
+    },
+    "Creative Generation": {
+      "context_relevancy": 0.27450980392156865,
+      "evidence_recall": 0.96391267511006
+    }
+  },
+  "raw": {
+    "Fact Retrieval": {
+      "context_relevancy": 0.5946553446553446,
+      "evidence_recall": 0.9479819067084235
+    },
+    "Complex Reasoning": {
+      "context_relevancy": 0.49942528735632186,
+      "evidence_recall": 0.9469253380364491
+    },
+    "Contextual Summarize": {
+      "context_relevancy": 0.5976890756302521,
+      "evidence_recall": 0.9504064094341871
+    },
+    "Creative Generation": {
+      "context_relevancy": 0.27450980392156865,
+      "evidence_recall": 0.96391267511006
+    }
+  }
+}

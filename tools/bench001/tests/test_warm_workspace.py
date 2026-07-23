@@ -73,10 +73,10 @@ def test_ablation_note_markdown_bold(tmp_path: Path, monkeypatch: pytest.MonkeyP
 
 
 def test_repo_seed_pointer_resolves():
-    """Seeded warm_workspace.json must resolve without env (B3b identity+packing Acc warm)."""
+    """Seeded warm_workspace.json must resolve without env (Acc B5 headline WS)."""
     import os
 
     os.environ.pop("BENCH001_EQ_WORKSPACE_ID", None)
     wid = resolve_warm_workspace_id(prefer_env=False)
-    # Acc warm pointer tracks the last *valid* full-corpus WS (B2 until B3b promotes).
-    assert wid == "2a7bcb2f-b156-4c49-9229-67f5bcde22a4"
+    # Acc warm SSOT = B5 peer used by publish/latest (not B6 ge2 ablation WS).
+    assert wid == "8e990410-43b5-44f4-9f56-87bd154570ce"

@@ -1,0 +1,15 @@
+{
+  "created_at_utc": "2026-07-23T04:16:48Z",
+  "profile_id": "E2_CHAT_SPLIT_v1_lrlike_arms_v2",
+  "valid": true,
+  "verdict": "STATISTICAL TIE on answer quality",
+  "git_sha": "a67be7e3",
+  "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260723T041648Z",
+  "task_name": "GraphRAG-Bench/EQ-vs-LR",
+  "can_claim_beats_lightrag": false,
+  "n_questions": 200,
+  "fixture_id": "medical_publish_question_ids_v1",
+  "publish_peer": "E2_CHAT_SPLIT_v1",
+  "labeled_peer": true,
+  "not_acc_headline": true
+}

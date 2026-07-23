@@ -18,6 +18,7 @@ use edgequake_storage::traits::VectorStorage;
 
 use super::super::{QueryEmbeddings, QueryEngine};
 use super::arm_timed::run_arm_timed;
+use super::chunk_retrieval::append_score_ranked_chunks;
 
 impl QueryEngine {
     #[allow(clippy::too_many_arguments)]
@@ -40,65 +41,72 @@ impl QueryEngine {
             mix_arm_gate_enabled(),
         );
 
+        // 078 R3: LightRAG truncate-E/R-then-VECTOR — skip per-arm KG chunks during arms.
+        let post_truncate = crate::kg_chunk_pick::KgChunkPickTiming::from_env().is_post_truncate();
+
         // Box each arm so join! holds three pointers, not three full retrieval FSMs
         // (same stack-overflow class as Hybrid — SPEC-047).
-        let local_fut = Box::pin(run_arm_timed(
-            plan.run_local,
-            "local",
-            "mix",
-            query_text,
-            max_chunks,
-            || {
-                self.query_local_with_vector_storage(
-                    query_text,
-                    keywords,
-                    embeddings,
-                    tenant_id.clone(),
-                    workspace_id.clone(),
-                    allowed_document_ids,
-                    vector_storage,
-                    max_chunks,
-                )
-            },
-        ));
-        let global_fut = Box::pin(run_arm_timed(
-            plan.run_global,
-            "global",
-            "mix",
-            query_text,
-            max_chunks,
-            || {
-                self.query_global_with_vector_storage(
-                    query_text,
-                    keywords,
-                    embeddings,
-                    tenant_id.clone(),
-                    workspace_id.clone(),
-                    allowed_document_ids,
-                    vector_storage,
-                    max_chunks,
-                )
-            },
-        ));
-        let naive_fut = Box::pin(run_arm_timed(
-            plan.run_naive,
-            "naive",
-            "mix",
-            query_text,
-            max_chunks,
-            || {
-                self.query_naive_with_vector_storage(
-                    query_text,
-                    embeddings,
-                    tenant_id.clone(),
-                    workspace_id.clone(),
-                    allowed_document_ids,
-                    vector_storage,
-                    max_chunks,
-                )
-            },
-        ));
-        let (local_res, global_res, naive_res) = tokio::join!(local_fut, global_fut, naive_fut);
+        let (local_res, global_res, naive_res) = {
+            let _skip_arm_chunks =
+                post_truncate.then(crate::kg_chunk_pick::SkipArmKgChunksGuard::enter);
+            let local_fut = Box::pin(run_arm_timed(
+                plan.run_local,
+                "local",
+                "mix",
+                query_text,
+                max_chunks,
+                || {
+                    self.query_local_with_vector_storage(
+                        query_text,
+                        keywords,
+                        embeddings,
+                        tenant_id.clone(),
+                        workspace_id.clone(),
+                        allowed_document_ids,
+                        vector_storage,
+                        max_chunks,
+                    )
+                },
+            ));
+            let global_fut = Box::pin(run_arm_timed(
+                plan.run_global,
+                "global",
+                "mix",
+                query_text,
+                max_chunks,
+                || {
+                    self.query_global_with_vector_storage(
+                        query_text,
+                        keywords,
+                        embeddings,
+                        tenant_id.clone(),
+                        workspace_id.clone(),
+                        allowed_document_ids,
+                        vector_storage,
+                        max_chunks,
+                    )
+                },
+            ));
+            let naive_fut = Box::pin(run_arm_timed(
+                plan.run_naive,
+                "naive",
+                "mix",
+                query_text,
+                max_chunks,
+                || {
+                    self.query_naive_with_vector_storage(
+                        query_text,
+                        embeddings,
+                        tenant_id.clone(),
+                        workspace_id.clone(),
+                        allowed_document_ids,
+                        vector_storage,
+                        max_chunks,
+                    )
+                },
+            ));
+            tokio::join!(local_fut, global_fut, naive_fut)
+        };
 
         let (local_context, local_ms) = local_res?;
         let (global_context, global_ms) = global_res?;
@@ -115,6 +123,22 @@ impl QueryEngine {
             plan,
             max_chunks,
         );
+
+        if post_truncate {
+            merged = self
+                .mix_post_truncate_kg_chunks(
+                    merged,
+                    query_text,
+                    keywords,
+                    embeddings,
+                    tenant_id.clone(),
+                    workspace_id.clone(),
+                    allowed_document_ids,
+                    vector_storage,
+                    max_chunks,
+                )
+                .await?;
+        }
 
         attach_arm_metadata(
             &mut merged,
@@ -137,10 +161,97 @@ impl QueryEngine {
             w_local = plan.w_local,
             w_global = plan.w_global,
             w_naive = plan.w_naive,
+            post_truncate,
             local_ms,
             global_ms,
             naive_ms,
             "Mix merge complete (intent-gated)"
+        );
+
+        Ok(merged)
+    }
+
+    /// 078 R3: truncate fused E/R by token budget → one VECTOR(+LR budget) pick →
+    /// RR-merge with naive chunks (LightRAG `_build_query_context` stage order).
+    #[allow(clippy::too_many_arguments)]
+    async fn mix_post_truncate_kg_chunks(
+        &self,
+        mut merged: QueryContext,
+        query_text: &str,
+        keywords: &ExtractedKeywords,
+        embeddings: &QueryEmbeddings,
+        tenant_id: Option<String>,
+        workspace_id: Option<String>,
+        allowed_document_ids: Option<&[String]>,
+        vector_storage: &Arc<dyn VectorStorage>,
+        max_chunks: usize,
+    ) -> Result<QueryContext> {
+        let trunc_cfg = crate::truncation::truncation_config_for_intent(
+            &self.config.truncation,
+            keywords.query_intent,
+        );
+        let pre_e = merged.entities.len();
+        let pre_r = merged.relationships.len();
+        merged.entities = crate::truncation::truncate_entities(
+            std::mem::take(&mut merged.entities),
+            trunc_cfg.max_entity_tokens,
+            self.tokenizer.as_ref(),
+        );
+        merged.relationships = crate::truncation::truncate_relationships(
+            std::mem::take(&mut merged.relationships),
+            trunc_cfg.max_relation_tokens,
+            self.tokenizer.as_ref(),
+        );
+
+        let naive_chunks = std::mem::take(&mut merged.chunks);
+        let retrieval_config = self.config_with_max_chunks(max_chunks);
+        // Prefer low-level embed for VECTOR pick (local/entity path); fall back high.
+        let query_embedding = if !embeddings.low_level.is_empty() {
+            embeddings.low_level.as_slice()
+        } else {
+            embeddings.high_level.as_slice()
+        };
+        let (kg_chunks, sparse_outcome) = append_score_ranked_chunks(
+            self,
+            &merged,
+            query_text,
+            query_embedding,
+            tenant_id,
+            workspace_id,
+            vector_storage,
+            &retrieval_config,
+            allowed_document_ids,
+            "mix_post_truncate",
+        )
+        .await?;
+        crate::retrieval_telemetry::mark_sparse_outcome(
+            &mut merged,
+            sparse_outcome.as_str(),
+            sparse_outcome.is_fts_fallback(),
+        );
+
+        // Empty global list: one KG pool (entities∪relations) + naive, via RR arm order.
+        let empty: Vec<RetrievedChunk> = Vec::new();
+        for chunk in crate::hybrid_merge::round_robin_merge_chunks(
+            &kg_chunks,
+            &empty,
+            &naive_chunks,
+            max_chunks,
+        ) {
+            merged.add_chunk(chunk);
+        }
+
+        tracing::info!(
+            pre_entities = pre_e,
+            post_entities = merged.entities.len(),
+            pre_relationships = pre_r,
+            post_relationships = merged.relationships.len(),
+            kg_chunks = kg_chunks.len(),
+            naive_chunks = naive_chunks.len(),
+            merged_chunks = merged.chunks.len(),
+            max_entity_tokens = trunc_cfg.max_entity_tokens,
+            max_relation_tokens = trunc_cfg.max_relation_tokens,
+            "078 Mix post_truncate: truncate E/R → VECTOR pick → RR with naive"
         );
 
         Ok(merged)

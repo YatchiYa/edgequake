@@ -117,12 +117,19 @@ def lr_query_param_overrides() -> dict[str, Any]:
     }
 
 
+def eq_enable_rerank() -> bool:
+    """Whether EQ query requests post-fuse rerank (default on; LR-identity sets 0)."""
+    raw = (os.environ.get("BENCH001_EQ_ENABLE_RERANK") or "1").strip().lower()
+    return raw not in {"0", "false", "off", "no"}
+
+
 def eq_query_overrides() -> dict[str, Any]:
     """EdgeQuake query payload knobs matching the LR retrieval budget."""
     k = retrieve_topk()
     return {
         "max_results": int(os.environ.get("BENCH001_EQ_MAX_RESULTS", k)),
         "rerank_top_k": int(os.environ.get("BENCH001_EQ_RERANK_TOP_K", k)),
+        "enable_rerank": eq_enable_rerank(),
         "include_references": True,
         "content_granularity": "agent",
     }
@@ -148,11 +155,26 @@ def publish_pin_fields() -> dict[str, Any]:
         not in {"0", "false", "off", "no"},
         "eq_max_results": eq_query_overrides()["max_results"],
         "eq_rerank_top_k": eq_query_overrides()["rerank_top_k"],
+        "eq_enable_rerank": eq_query_overrides()["enable_rerank"],
+        "graph_walk": (os.environ.get("EDGEQUAKE_GRAPH_WALK") or "ppr").strip().lower()
+        or "ppr",
+        "kg_chunk_pick": (
+            os.environ.get("EDGEQUAKE_KG_CHUNK_PICK")
+            or os.environ.get("KG_CHUNK_PICK_METHOD")
+            or "vector"
+        )
+        .strip()
+        .lower()
+        or "vector",
         "l2_retrieval_required": True,
         "mix_arm_gate": gate_on,
         "eq_mix_arm_gate_env": os.environ.get("EDGEQUAKE_MIX_ARM_GATE", ""),
         "mix_fusion": (os.environ.get("EDGEQUAKE_MIX_FUSION") or "rrf").strip().lower()
         or "rrf",
+        "rr_order": (
+            (os.environ.get("EDGEQUAKE_RR_ORDER") or "local_first").strip().lower()
+            or "local_first"
+        ),
         "related_chunk_number": int(
             os.environ.get("EDGEQUAKE_RELATED_CHUNK_NUMBER")
             or os.environ.get("RELATED_CHUNK_NUMBER")
@@ -164,6 +186,18 @@ def publish_pin_fields() -> dict[str, Any]:
         .strip()
         .lower()
         in {"1", "true", "yes", "on"},
+        # Default on (empty/unset → true). Dense-only Mix arms pin 0/false/off (077 E1).
+        "bm25_retrieval": (
+            (os.environ.get("EDGEQUAKE_BM25_RETRIEVAL") or "1").strip().lower()
+            not in {"0", "false", "off", "no"}
+        ),
+        # Default per_arm. LR-like truncate→VECTOR → post_truncate (078 R3).
+        "kg_chunk_pick_timing": (
+            (os.environ.get("EDGEQUAKE_KG_CHUNK_PICK_TIMING") or "per_arm")
+            .strip()
+            .lower()
+            or "per_arm"
+        ),
         "kg_chunk_pick_lr_budget": (
             os.environ.get("EDGEQUAKE_KG_CHUNK_PICK_LR_BUDGET") or ""
         )
@@ -377,6 +411,12 @@ def publish_pin_fields() -> dict[str, Any]:
         .strip()
         .lower()
         or "union",
+        "mix_intent_weights": (
+            os.environ.get("EDGEQUAKE_MIX_INTENT_WEIGHTS") or ""
+        )
+        .strip()
+        .lower()
+        in {"1", "true", "yes", "on"},
         "intent_factual_bias": (
             os.environ.get("EDGEQUAKE_INTENT_FACTUAL_BIAS") or ""
         )

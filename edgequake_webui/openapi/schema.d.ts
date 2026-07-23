@@ -9640,10 +9640,14 @@ export interface components {
             extra_headers?: {
                 [key: string]: string;
             } | null;
+            /** @description Pre-supplied high-level keywords (LightRAG `hl_keywords`). 083: skips keyword LLM when set with ll. */
+            hl_keywords?: string[] | null;
             /** @description Include detailed reference metadata (document_id, file_path, reference_id) in sources. */
             include_references?: boolean;
             /** @description Include structured query-matched graph (entities + relationships) in the response. */
             include_subgraph?: boolean;
+            /** @description Pre-supplied low-level keywords (LightRAG `ll_keywords`). */
+            ll_keywords?: string[] | null;
             /**
              * @description Specific model name within the provider (e.g., "gpt-4o-mini", "gemma3:12b").
              *     When combined with provider, allows full model selection from models.toml.
@@ -9685,6 +9689,8 @@ export interface components {
             rerank_model?: string | null;
             /** @description Top K chunks to keep after reranking. */
             rerank_top_k?: number | null;
+            /** @description Answer formatting cue (LightRAG `response_type`). Default: Multiple Paragraphs. */
+            response_type?: string | null;
             /**
              * @description Optional system prompt extension injected into the LLM prompt.
              *     Extends (not replaces) the base RAG prompt with additional instructions.
@@ -11383,12 +11389,15 @@ export interface components {
          *       "content_granularity": {},
          *       "document_filter": {},
          *       "extra_headers": {},
+         *       "hl_keywords": [],
          *       "include_subgraph": {},
+         *       "ll_keywords": [],
          *       "llm_model": {},
          *       "llm_provider": {},
          *       "mode": {},
          *       "query": {},
          *       "question_type": {},
+         *       "response_type": {},
          *       "stream_format": {},
          *       "system_prompt": {}
          *     }
@@ -11410,8 +11419,12 @@ export interface components {
             extra_headers?: {
                 [key: string]: string;
             } | null;
+            /** @description Pre-supplied high-level keywords (083 / LightRAG). */
+            hl_keywords?: string[] | null;
             /** @description Include structured query-matched graph in stream context events (v2+). */
             include_subgraph?: boolean;
+            /** @description Pre-supplied low-level keywords (083 / LightRAG). */
+            ll_keywords?: string[] | null;
             /**
              * @description Specific model name within the provider.
              *     @implements SPEC-006 + SPEC-032: Model selection in streaming queries
@@ -11428,6 +11441,8 @@ export interface components {
             query: string;
             /** @description Optional question-type label for type-scoped answer prompts (047). */
             question_type?: string | null;
+            /** @description Answer formatting cue (083 / LightRAG `response_type`). */
+            response_type?: string | null;
             /**
              * @description Stream format version: "v1" (raw text) or "v2" (structured JSON events, default).
              *     @implements SPEC-006: Backward compatibility

@@ -220,6 +220,18 @@ pub struct QueryRequest {
     /// @implements SPEC-037 + SPEC-028
     #[serde(default = "default_content_granularity")]
     pub content_granularity: ContentGranularity,
+
+    /// Pre-supplied high-level keywords (LightRAG `hl_keywords`). 083: skips keyword LLM when either hl or ll is non-empty.
+    #[serde(default)]
+    pub hl_keywords: Option<Vec<String>>,
+
+    /// Pre-supplied low-level keywords (LightRAG `ll_keywords`).
+    #[serde(default)]
+    pub ll_keywords: Option<Vec<String>>,
+
+    /// Answer formatting cue (LightRAG `response_type`). Default: Multiple Paragraphs.
+    #[serde(default)]
+    pub response_type: Option<String>,
 }
 
 /// Streaming query request.
@@ -242,6 +254,18 @@ pub struct StreamQueryRequest {
     /// Optional question-type label for type-scoped answer prompts (047).
     #[serde(default)]
     pub question_type: Option<String>,
+
+    /// Pre-supplied high-level keywords (083 / LightRAG).
+    #[serde(default)]
+    pub hl_keywords: Option<Vec<String>>,
+
+    /// Pre-supplied low-level keywords (083 / LightRAG).
+    #[serde(default)]
+    pub ll_keywords: Option<Vec<String>>,
+
+    /// Answer formatting cue (083 / LightRAG `response_type`).
+    #[serde(default)]
+    pub response_type: Option<String>,
 
     /// Optional document filter to narrow query scope by date range or name pattern.
     /// @implements SPEC-005 + SPEC-006: Document filters for streaming queries

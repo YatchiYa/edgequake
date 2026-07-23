@@ -49,6 +49,7 @@ def test_business_report_contains_decision_layers_and_honesty():
     assert "make bench" in md
     assert "Forbidden" in md or "forbidden" in md.lower()
     assert "SOTA" in md
+    assert "One-screen first principles" in md
     assert "beats LightRAG" not in md.lower().split("forbidden")[0] or "Peer" in md
     # Must not claim beats when CI includes 0
     assert "EdgeQuake beats LightRAG on Acc under these pins" not in md
@@ -70,13 +71,46 @@ def test_write_publish_pack(tmp_path: Path):
     (stage / "SUMMARY.md").write_text("# tech\n", encoding="utf-8")
     hist = tmp_path / "history" / "smoke-test"
     hist.mkdir(parents=True)
-    latest = write_publish_pack(sc, stage_dir=stage, archive_dir=hist)
+    pub = tmp_path / "publish" / "latest"
+    latest = write_publish_pack(
+        sc, stage_dir=stage, archive_dir=hist, publish_dir=pub
+    )
+    assert latest == pub
     assert (stage / "BUSINESS_REPORT.md").is_file()
     assert (stage / "EXEC_SUMMARY.txt").is_file()
     assert (hist / "BUSINESS_REPORT.md").is_file()
     assert (latest / "BUSINESS_REPORT.md").is_file()
     assert (latest / "scorecard.json").is_file()
     assert "STATISTICAL TIE" in (latest / "BUSINESS_REPORT.md").read_text(encoding="utf-8")
+
+
+def test_write_publish_peer_skips_latest(tmp_path: Path, monkeypatch):
+    """Labeled peer writes publish/peers/<id>/ without touching Acc latest."""
+    import bench001.business_report as br
+
+    monkeypatch.setattr(br, "PUBLISH_DIR", tmp_path / "publish")
+    monkeypatch.setenv("BENCH001_SKIP_PUBLISH_LATEST", "1")
+    monkeypatch.setenv("BENCH001_PUBLISH_PEER", "LR_IDENTITY_FACT_L2_v1")
+    sc = _load_scorecard()
+    stage = tmp_path / "medical-mid"
+    stage.mkdir()
+    (stage / "scorecard.json").write_text(json.dumps(sc), encoding="utf-8")
+    (stage / "SUMMARY.md").write_text("# tech\n", encoding="utf-8")
+    hist = tmp_path / "history" / "medical-mid-test"
+    hist.mkdir(parents=True)
+    latest_sentinel = tmp_path / "publish" / "latest"
+    latest_sentinel.mkdir(parents=True)
+    (latest_sentinel / "KEEP.md").write_text("acc ssot\n", encoding="utf-8")
+    peer = write_publish_pack(sc, stage_dir=stage, archive_dir=hist)
+    assert peer == tmp_path / "publish" / "peers" / "LR_IDENTITY_FACT_L2_v1"
+    assert (peer / "BUSINESS_REPORT.md").is_file()
+    assert (peer / "scorecard.json").is_file()
+    assert (peer / "meta.json").is_file()
+    meta = json.loads((peer / "meta.json").read_text(encoding="utf-8"))
+    assert meta.get("labeled_peer") is True
+    assert meta.get("not_acc_headline") is True
+    assert (latest_sentinel / "KEEP.md").read_text(encoding="utf-8") == "acc ssot\n"
+    assert not (latest_sentinel / "BUSINESS_REPORT.md").exists()
 
 
 def test_beats_claim_only_when_ci_and_l2():

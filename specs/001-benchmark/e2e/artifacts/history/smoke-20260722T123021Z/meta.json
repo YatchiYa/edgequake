@@ -1,0 +1,12 @@
+{
+  "created_at_utc": "2026-07-22T12:30:21Z",
+  "profile_id": "LR_PACK_BM25_v1_lrlike_arms_v2",
+  "valid": true,
+  "verdict": "LightRAG ahead on answer quality (CI excludes 0)",
+  "git_sha": "a67be7e3",
+  "archive": "specs/001-benchmark/e2e/artifacts/history/smoke-20260722T123021Z",
+  "task_name": "GraphRAG-Bench/EQ-vs-LR",
+  "can_claim_beats_lightrag": false,
+  "n_questions": 40,
+  "fixture_id": "smoke_question_ids_v1"
+}

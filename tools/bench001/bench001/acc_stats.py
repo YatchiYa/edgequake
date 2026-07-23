@@ -59,10 +59,18 @@ def extract_per_sample_metric(
     key: str = "answer_correctness",
 ) -> list[float]:
     """Pull per-sample scores from official detailed eval (metrics['raw'])."""
+    return list(extract_per_sample_metric_by_id(metrics, key).values())
+
+
+def extract_per_sample_metric_by_id(
+    metrics: dict[str, Any] | None,
+    key: str = "answer_correctness",
+) -> dict[str, float]:
+    """Pull per-sample scores keyed by question id from official detailed eval."""
     if not metrics:
-        return []
+        return {}
     raw = metrics.get("raw") or {}
-    out: list[float] = []
+    out: dict[str, float] = {}
     for _qtype, block in raw.items():
         if not isinstance(block, dict):
             continue
@@ -70,12 +78,16 @@ def extract_per_sample_metric(
         for row in detailed:
             if not isinstance(row, dict):
                 continue
+            qid = row.get("id")
+            if not qid:
+                continue
             m = row.get("metrics") or {}
-            if key in m:
-                try:
-                    out.append(float(m[key]))
-                except (TypeError, ValueError):
-                    continue
+            if key not in m:
+                continue
+            try:
+                out[str(qid)] = float(m[key])
+            except (TypeError, ValueError):
+                continue
     return out
 
 
@@ -92,16 +104,29 @@ def delta_stats_block(
     eq_metrics: dict[str, Any] | None,
     lr_metrics: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    """Build delta CI block for Acc and F1 when per-sample detailed scores exist."""
+    """Build delta CI block for Acc and F1 when per-sample detailed scores exist.
+
+    Pairs on shared question ids so a single judge 429 / missing row does not
+    drop the entire bootstrap CI (common on medical-mid n=200).
+    """
     out: dict[str, Any] = {}
     for key, label in (
         ("answer_correctness", "overall_acc"),
         ("factuality_f1", "overall_f1"),
         ("embed_cosine", "overall_cos"),
     ):
-        eq_s = extract_per_sample_metric(eq_metrics, key)
-        lr_s = extract_per_sample_metric(lr_metrics, key)
+        eq_by = extract_per_sample_metric_by_id(eq_metrics, key)
+        lr_by = extract_per_sample_metric_by_id(lr_metrics, key)
+        shared = sorted(set(eq_by) & set(lr_by))
+        if len(shared) < 2:
+            continue
+        eq_s = [eq_by[i] for i in shared]
+        lr_s = [lr_by[i] for i in shared]
         ci = paired_delta_ci(eq_s, lr_s)
         if ci is not None:
+            ci = dict(ci)
+            ci["n_paired"] = float(len(shared))
+            ci["n_eq"] = float(len(eq_by))
+            ci["n_lr"] = float(len(lr_by))
             out[f"{label}_delta_ci"] = ci
     return out

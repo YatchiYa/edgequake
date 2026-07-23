@@ -772,7 +772,7 @@ mod tests {
             let engine = create_prompt_test_engine();
             let context = test_context();
 
-            let prompt = engine.build_prompt("What is Rust?", &context, None, &[], None);
+            let prompt = engine.build_prompt("What is Rust?", &context, None, &[], None, None);
 
             assert!(prompt.contains("---Role---"));
             assert!(prompt.contains("---Instructions---"));
@@ -792,6 +792,7 @@ mod tests {
                 &context,
                 Some("Always respond in French. Be concise."),
                 &[],
+                None,
                 None,
             );
 
@@ -822,12 +823,12 @@ mod tests {
             let context = test_context();
 
             // Empty string should behave like None
-            let prompt = engine.build_prompt("What is Rust?", &context, Some(""), &[], None);
+            let prompt = engine.build_prompt("What is Rust?", &context, Some(""), &[], None, None);
             assert!(!prompt.contains("---Additional Instructions---"));
 
             // Whitespace-only should also behave like None
             let prompt =
-                engine.build_prompt("What is Rust?", &context, Some("   \n\t  "), &[], None);
+                engine.build_prompt("What is Rust?", &context, Some("   \n\t  "), &[], None, None);
             assert!(!prompt.contains("---Additional Instructions---"));
         }
 
@@ -845,6 +846,7 @@ mod tests {
                 &context,
                 None,
                 &[],
+                None,
                 None,
             );
             assert!(
@@ -874,6 +876,7 @@ mod tests {
                 None,
                 &[],
                 Some("Complex Reasoning"),
+                None,
             );
             assert!(
                 complex.contains("name those members") || complex.contains("specific named items"),
@@ -886,13 +889,14 @@ mod tests {
                 None,
                 &[],
                 Some("Fact Retrieval"),
+                None,
             );
             assert!(
                 !fact.contains("name those members") && !fact.contains("specific named items"),
                 "Fact question_type must keep default prompt under SPECIFIC_TYPES=complex"
             );
 
-            let missing = engine.build_prompt("q", &context, None, &[], None);
+            let missing = engine.build_prompt("q", &context, None, &[], None, None);
             assert!(
                 !missing.contains("name those members")
                     && !missing.contains("specific named items"),
@@ -910,7 +914,7 @@ mod tests {
 
             // Empty context should return a "no information" message regardless of system_prompt
             let prompt =
-                engine.build_prompt("query", &empty_context, Some("Be concise"), &[], None);
+                engine.build_prompt("query", &empty_context, Some("Be concise"), &[], None, None);
             assert!(prompt.contains("couldn't find any relevant information"));
             assert!(!prompt.contains("---Additional Instructions---"));
         }
@@ -922,6 +926,137 @@ mod tests {
         fn test_has_reranker_false_by_default() {
             let engine = create_prompt_test_engine();
             assert!(!engine.has_reranker());
+        }
+
+        #[test]
+        fn test_response_type_in_system_prompt() {
+            let engine = create_prompt_test_engine();
+            let context = test_context();
+            let system = engine.build_system_prompt(
+                &context,
+                None,
+                &[],
+                None,
+                Some("Bullet Points"),
+            );
+            assert!(system.contains("Structure the answer as: Bullet Points."));
+            assert!(!system.contains("---User Query---"));
+            let combined = engine.build_prompt(
+                "What is Rust?",
+                &context,
+                None,
+                &[],
+                None,
+                Some("Bullet Points"),
+            );
+            assert!(combined.contains("---User Query---"));
+            assert!(combined.contains("What is Rust?"));
+        }
+
+        #[tokio::test]
+        async fn test_generate_uses_chat_system_user_by_default() {
+            use async_trait::async_trait;
+            use edgequake_llm::traits::{
+                ChatMessage, CompletionOptions, LLMProvider, LLMResponse, ToolDefinition,
+            };
+            use std::sync::atomic::{AtomicUsize, Ordering};
+
+            struct ChatCountingProvider {
+                chat_calls: AtomicUsize,
+                complete_calls: AtomicUsize,
+                last_roles: std::sync::Mutex<Vec<String>>,
+            }
+
+            #[async_trait]
+            impl LLMProvider for ChatCountingProvider {
+                fn name(&self) -> &str {
+                    "chat-count"
+                }
+                fn model(&self) -> &str {
+                    "chat-count"
+                }
+                fn max_context_length(&self) -> usize {
+                    8192
+                }
+                async fn complete(
+                    &self,
+                    _prompt: &str,
+                ) -> edgequake_llm::Result<LLMResponse> {
+                    self.complete_calls.fetch_add(1, Ordering::SeqCst);
+                    Ok(LLMResponse::new("blob", "chat-count"))
+                }
+                async fn complete_with_options(
+                    &self,
+                    prompt: &str,
+                    _options: &CompletionOptions,
+                ) -> edgequake_llm::Result<LLMResponse> {
+                    self.complete(prompt).await
+                }
+                async fn chat(
+                    &self,
+                    messages: &[ChatMessage],
+                    _options: Option<&CompletionOptions>,
+                ) -> edgequake_llm::Result<LLMResponse> {
+                    self.chat_calls.fetch_add(1, Ordering::SeqCst);
+                    *self.last_roles.lock().unwrap() =
+                        messages.iter().map(|m| m.role.as_str().to_string()).collect();
+                    Ok(LLMResponse::new(
+                        "Rust is a systems language [1].",
+                        "chat-count",
+                    ))
+                }
+                async fn chat_with_tools(
+                    &self,
+                    messages: &[ChatMessage],
+                    _tools: &[ToolDefinition],
+                    _tool_choice: Option<edgequake_llm::traits::ToolChoice>,
+                    options: Option<&CompletionOptions>,
+                ) -> edgequake_llm::Result<LLMResponse> {
+                    self.chat(messages, options).await
+                }
+            }
+
+            let _guard = ANSWER_PROMPT_ENV_LOCK
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            std::env::remove_var("EDGEQUAKE_ANSWER_COMPLETE_BLOB");
+
+            let provider = Arc::new(ChatCountingProvider {
+                chat_calls: AtomicUsize::new(0),
+                complete_calls: AtomicUsize::new(0),
+                last_roles: std::sync::Mutex::new(Vec::new()),
+            });
+            let vector_storage = Arc::new(MemoryVectorStorage::new("chat-split", 384));
+            let graph_storage = Arc::new(MemoryGraphStorage::new("chat-split"));
+            let embedding_provider: Arc<dyn crate::EmbeddingProvider> =
+                Arc::new(MockProvider::default());
+            let engine = QueryEngine::new(
+                QueryEngineConfig::default(),
+                vector_storage,
+                graph_storage,
+                embedding_provider,
+                provider.clone() as Arc<dyn crate::LLMProvider>,
+            );
+            let context = test_context();
+            let (answer, _) = engine
+                .generate_answer(
+                    "What is Rust?",
+                    &context,
+                    None,
+                    &[],
+                    None,
+                    Some("Multiple Paragraphs"),
+                )
+                .await
+                .unwrap();
+            assert_eq!(provider.chat_calls.load(Ordering::SeqCst), 1);
+            assert_eq!(provider.complete_calls.load(Ordering::SeqCst), 0);
+            assert_eq!(
+                *provider.last_roles.lock().unwrap(),
+                vec!["system".to_string(), "user".to_string()]
+            );
+            // 082 gold-compat not active → citations may remain; non-empty answer.
+            assert!(!answer.is_empty());
         }
     }
 }
