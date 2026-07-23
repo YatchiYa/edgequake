@@ -50,8 +50,9 @@ pub async fn assert_graph_batch_upsert<G: GraphStorage + ?Sized>(storage: &G) {
     assert_eq!(storage.edge_count().await.unwrap(), 4);
 }
 
-/// Duplicate `(source, target)` rows in one batch must upsert as a single edge
-/// (Postgres ON CONFLICT DO UPDATE forbids affecting a row twice).
+/// D-30 multigraph: distinct `relation_type` values between the same endpoints
+/// are separate edges. Duplicate `(source, target, relation_type)` rows in one
+/// batch must last-write-wins (Postgres ON CONFLICT cardinality).
 pub async fn assert_graph_batch_upsert_dedupes_duplicate_endpoints<G: GraphStorage + ?Sized>(
     storage: &G,
 ) {
@@ -70,31 +71,53 @@ pub async fn assert_graph_batch_upsert_dedupes_duplicate_endpoints<G: GraphStora
     let mut first = HashMap::new();
     first.insert("relation_type".to_string(), serde_json::json!("KNOWS"));
     first.insert("description".to_string(), serde_json::json!("first"));
-    let mut second = HashMap::new();
-    second.insert("relation_type".to_string(), serde_json::json!("WORKS_WITH"));
-    second.insert("description".to_string(), serde_json::json!("second-wins"));
+    let mut second_v1 = HashMap::new();
+    second_v1.insert("relation_type".to_string(), serde_json::json!("WORKS_WITH"));
+    second_v1.insert("description".to_string(), serde_json::json!("second-v1"));
+    let mut second_v2 = HashMap::new();
+    second_v2.insert("relation_type".to_string(), serde_json::json!("WORKS_WITH"));
+    second_v2.insert("description".to_string(), serde_json::json!("second-wins"));
 
     storage
         .upsert_edges_batch(&[
             ("DEDUP_A".to_string(), "DEDUP_B".to_string(), first),
-            ("DEDUP_A".to_string(), "DEDUP_B".to_string(), second.clone()),
-            ("DEDUP_A".to_string(), "DEDUP_B".to_string(), second),
+            ("DEDUP_A".to_string(), "DEDUP_B".to_string(), second_v1),
+            ("DEDUP_A".to_string(), "DEDUP_B".to_string(), second_v2),
         ])
         .await
-        .expect("duplicate endpoint batch must not fail ON CONFLICT cardinality");
+        .expect("duplicate (src,tgt,rel) batch must not fail ON CONFLICT cardinality");
 
     assert!(
         storage.has_edge("DEDUP_A", "DEDUP_B").await.unwrap(),
-        "deduped edge must exist"
+        "multigraph edge must exist"
     );
-    let edge = storage
-        .get_edge("DEDUP_A", "DEDUP_B")
-        .await
-        .unwrap()
-        .expect("edge after dedupe");
+
+    let edges = storage.get_node_edges("DEDUP_A").await.unwrap();
+    let ab: Vec<_> = edges
+        .into_iter()
+        .filter(|e| e.source == "DEDUP_A" && e.target == "DEDUP_B")
+        .collect();
     assert_eq!(
-        edge.properties.get("description").and_then(|v| v.as_str()),
+        ab.len(),
+        2,
+        "D-30: KNOWS + WORKS_WITH are two edges between the same endpoints"
+    );
+
+    let works = ab
+        .iter()
+        .find(|e| {
+            e.properties
+                .get("relation_type")
+                .and_then(|v| v.as_str())
+                == Some("WORKS_WITH")
+        })
+        .expect("WORKS_WITH edge");
+    assert_eq!(
+        works
+            .properties
+            .get("description")
+            .and_then(|v| v.as_str()),
         Some("second-wins"),
-        "last-write-wins on duplicate endpoint upsert"
+        "last-write-wins on duplicate (src,tgt,rel_type) upsert"
     );
 }

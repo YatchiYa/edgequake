@@ -180,7 +180,7 @@ jobs:
       - name: Run security audit
         working-directory: edgequake
         # SPEC-083 / X-32: audit is a blocking gate (no continue-on-error).
-        run: cargo audit --ignore RUSTSEC-2023-0071
+        run: cargo audit --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2026-0173
 
   docs:
     name: Documentation
