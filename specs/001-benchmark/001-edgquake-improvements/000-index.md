@@ -18,11 +18,10 @@
 │  Acc-win CLOSED: EQ vs LR = persistent STATISTICAL TIE (all Δ Acc CIs        │
 │  include 0). Soft Mix knobs exhausted. Headline stays BM25/PRUNE=0.          │
 │                                                                              │
-│  Acc Beat fishing STOP. Split peers = publishable truth (peers.json).         │
-│  Acc B5+a1fp 0.801 · latency C1b/C1d: generate ceiling; keyword=0 no wall win │
-│  Latency truth: warm LR cache → false 4×; cold c1cold ≈ 1.01× PASS (063)     │
-│  Product polish 064: TTFT + opt-in answer cache + batch embed (not Acc Beat) │
-│  Detail: 028 · 043 · 055–064                                                 │
+│  Acc Beat / Acc Equal mid STOP (085). Product Equal = 083 query API.         │
+│  Acc CI = labeled keep only (E2 / fair chat-split) — not Parity / Beat.      │
+│  Acc B5+a1fp 0.801 · latency: cold ≈1.01× PASS (063); warm LR cache false 4× │
+│  Detail: 019 · 083 · 085 · 028 · 043 · 055–064 · 074                         │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -67,25 +66,23 @@ Reproduce: warm query-only Acc against workspace from baseline ingest, or force-
 ## Reading order
 
 1. **[019 Business brief](../019-business-eq-vs-lightrag-and-rag.md)** — EQ vs LightRAG & other RAG (non-technical)
-2. [001 First Principles](./001-first-principles.md) — what to optimize vs ignore
-3. **[018 E4 Acc-tie close](./018-e4-acc-tie-close.md)** — Acc-win honesty verdict (persistent tie)
-4. **[028 First-principles beat roadmap](./028-first-principles-beat-roadmap.md)** — gap + Horizons A/B/C
-5. **[027 Fact→BM25 intent](./027-fact-bm25-intent-rerank.md)** — Fact lexical under P2b (no promote)
-6. **[026 L2 Mix∪CE under P2b](./026-l2-sources-union-under-p2b.md)** — dual-list (no promote; Fact flat)
-7. **[025 Recall under P2b](./025-recall-parity-under-p2b.md)** — CE protect↑ / min_rerank / chunk floor (no promote)
-8. **[024 Acc parity / beat](./024-acc-parity-beat-plan.md)** — Q0–Q4 close (no promote; peer = P2b)
-9. **[022 Deep top-performance plan](./022-deep-top-performance-plan.md)** — P0–P5 hard paths after T011703Z
-10. **[021 Grounded plan F1–F4](./021-grounded-improvement-plan.md)** — truncation · path pack · latency · passage
-11. **[017 Beat LightRAG](./017-beat-lightrag.md)** — EQ↔LR architecture diff + Acc-win ladder E0–E4
-12. Lenses by priority (P0 → P3, then product/eval):
-  - [010 Retrieval noise](./010-lens-retrieval-noise.md) **P0** — S1 cleared  
-  - [011 Evidence coverage](./011-lens-evidence-coverage.md) **P1**  
-  - [012 Multi-hop / graph](./012-lens-multihop-graph.md) **P2** — Complex packing (E2)  
-  - [013 Latency / ops](./013-lens-latency-ops.md) **P3** — L1/L2 shipped; F3/P5 next  
-  - [014 Generation & routing](./014-lens-generation-routing.md)  
-  - [015 Ingest & chunking](./015-lens-ingest-chunking.md)  
-  - [016 Eval & fairness](./016-lens-eval-fairness.md)
-13. [020 Roadmap](./020-roadmap.md) — phases, ablation ladder · **028 supersedes next Acc steps**
+2. **[085 Fairness concurrency Equal STOP](./085-fairness-concurrency-equal-stop.md)** — F3 REJECT Parity · Acc Equal STOP · Acc latest frozen
+3. **[084 Honest Equal rebench](./084-honest-equal-lightrag-rebench.md)** — H3 REJECT Parity (ctx) · Acc Beat STOP · no packing
+4. **[083 LightRAG Query API Law](./083-lightrag-query-api-law.md)** — hl/ll override · system/user generate · product parity (not Acc Beat)
+5. **[082 Gold / Citation Compat](./082-gold-citation-compat.md)** — Acc gold↔`[N]` · G1 REJECT · honesty freeze
+6. **[081 Beat / Parity first principles](./081-beat-parity-first-principles.md)** — F1 generation · B10/F4 REJECT · packing STOP
+7. **[080 Beat LightRAG evidence roadmap](./080-beat-lightrag-evidence-roadmap.md)** — D0–G program · medical-full Beat gates · packing STOP
+8. **[074 Why EQ lags LR (medical-mid)](./074-why-eq-lags-lightrag-medical-mid.md)** — R1–R5 first principles + LR-identity pack
+9. **[079 Medical-full scale](./079-medical-full-scale-compare.md)** — n≈2062 mid↔full Acc CI · E2 + P0 peers
+10. **[078 EQ vs LR next](./078-eq-vs-lightrag-first-principles-next.md)** — easy scorecard · R3 post-truncate REJECT Acc
+11. **[077 Dense arms + Fact L2](./077-dense-arms-fact-l2.md)** — E1 dense REJECT Acc · E2 occ keep Acc CI
+12. **[076 Mix-law after L1.5](./076-mix-law-remaining-after-l15.md)** — remaining LR↔EQ Mix gaps · medical-mid peer
+13. [001 First Principles](./001-first-principles.md) — what to optimize vs ignore
+14. **[018 E4 Acc-tie close](./018-e4-acc-tie-close.md)** — Acc-win honesty verdict (persistent tie)
+15. **[028 First-principles beat roadmap](./028-first-principles-beat-roadmap.md)** — gap + Horizons A/B/C · Acc superseded by **083** product law
+16. **[017 Beat LightRAG](./017-beat-lightrag.md)** — EQ↔LR architecture diff + Acc-win ladder E0–E4
+17. Lenses by priority (P0 → P3): [010](./010-lens-retrieval-noise.md) · [011](./011-lens-evidence-coverage.md) · [012](./012-lens-multihop-graph.md) · [013](./013-lens-latency-ops.md)
+18. [020 Roadmap](./020-roadmap.md) — phases, ablation ladder · **085** fair mid · **084** · **083**
 
 ---
 
@@ -153,6 +150,20 @@ Reproduce: warm query-only Acc against workspace from baseline ingest, or force-
 | 063 | [Why LR faster / cache fairness](./063-why-lightrag-faster-cache-fairness.md) | T022103Z cold ≈1.01× · warm 4× was LLM cache            |
 | 064 | [Product TTFT / cache / batch embed](./064-product-ttft-cache-batch-embed.md) | Stream TTFT · opt-in answer cache · batch embed cache   |
 | 065 | [Vision fail-loud + size timeout](./065-vision-fail-loud-deterministic-timeout.md) | Explicit Vision fail-closed · page-scaled budget · no flake |
+| 074 | [Why EQ lags LR (medical-mid)](./074-why-eq-lags-lightrag-medical-mid.md) | R1–R5 L2/Acc gap · LR-identity pack · not Acc Beat |
+| 075 | [LR pack + BM25 close gap](./075-lr-pack-bm25-close-gap.md) | L1 after 074 · identity packing keep BM25 · Fact ER |
+| 076 | [Mix-law remaining after L1.5](./076-mix-law-remaining-after-l15.md) | RR order · in-arm BM25 · KG timing · medical-mid peer |
+| 077 | [Dense arms + Fact L2](./077-dense-arms-fact-l2.md) | E1 BM25_RETRIEVAL=0 · E2 occurrence_sort · close ctx/FactER |
+| 078 | [EQ vs LR next](./078-eq-vs-lightrag-first-principles-next.md) | Easy scorecard · R3 post-truncate KG pick |
+| 079 | [Medical-full scale compare](./079-medical-full-scale-compare.md) | n≈2062 mid↔full · E2 + P0 labeled peers |
+| 080 | [Beat LightRAG evidence roadmap](./080-beat-lightrag-evidence-roadmap.md) | D0–G · R6 unify · type weights · medical-full Beat gates |
+| 080b | [D3/D4 deferred](./080-d3-d4-deferred.md) | Rel-select last-resort · ingest ge2 gate |
+| 080c | [Phase G promote checklist](./080-phase-g-promote-checklist.md) | Acc latest frozen until Beat gates |
+| 081 | [Beat / Parity first principles](./081-beat-parity-first-principles.md) | F1 generation · B10/F4 REJECT |
+| 082 | [Gold / Citation Compat](./082-gold-citation-compat.md) | Acc gold↔`[N]` · G1 · honesty freeze |
+| 083 | [LightRAG Query API Law](./083-lightrag-query-api-law.md) | hl/ll override · chat roles · product parity |
+| 084 | [Honest Equal rebench](./084-honest-equal-lightrag-rebench.md) | H3 REJECT Parity (ctx 0.473) · Acc CI ↑ labeled · Beat STOP |
+| 085 | [Fairness concurrency Equal STOP](./085-fairness-concurrency-equal-stop.md) | F3 REJECT (ctx 0.488) · Acc Equal STOP · product Equal=083 |
 
 
 ---

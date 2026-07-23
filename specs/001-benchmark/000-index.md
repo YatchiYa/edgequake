@@ -1,10 +1,10 @@
 # SPEC-001 — EdgeQuake HybridRAG vs LightRAG Benchmark
 
-**Status:** HARNESS LIVE · smoke→core protocol locked · GraphRAG-Bench (ICLR 2026)  
+**Status:** HARNESS LIVE · smoke→medical-mid→core protocol locked · GraphRAG-Bench (ICLR 2026)  
 **Primary benchmark:** [GraphRAG-Bench](https://huggingface.co/datasets/GraphRAG-Bench/GraphRAG-Bench) ([arXiv:2506.05690](https://arxiv.org/abs/2506.05690), [eval repo](https://github.com/GraphRAG-Bench/GraphRAG-Benchmark))  
 **Headline modes (locked):** EdgeQuake `mix` ↔ LightRAG `mix`  
 **Provider stack (locked):** Mistral Small (`mistral-small-latest`) LLM + vision · `mistral-embed` (1024-d)  
-**Law:** Same corpus · same questions · same judge · fail-closed · no UltraDomain win-rate cosplay
+**Law:** Same corpus · same questions · same judge · fail-closed · no UltraDomain win-rate cosplay · **smoke ≠ release publish**
 
 ---
 
@@ -13,13 +13,12 @@
 ```text
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │  SPEC-001 is the official dual-SUT head-to-head for HybridRAG quality.       │
-│  Dataset: GraphRAG-Bench (medical smoke / medical+novel core).               │
+│  Dataset: GraphRAG-Bench (medical smoke / medical-mid publish / core).       │
 │  Metrics: official generation_eval Acc (+ ROUGE / Coverage / Faithfulness).  │
 │                                                                              │
 │  Pins:         mistral-small-latest (LLM+vision) · mistral-embed (1024-d)    │
-│  Progression:  smoke (40 Q, medical)  →  core (medical full + novel 100)     │
-│  Launch:       make bench001-install && make bench001-freeze-smoke           │
-│                make bench001-smoke                                           │
+│  Progression:  smoke (40) → medical-mid (200) → core (medical+novel)         │
+│  Publish:      make bench  (= medical-mid n=200 + BUSINESS_REPORT)           │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -33,7 +32,7 @@
 | 001 | [First Principles](./001-first-principles.md) | Irreducible fairness axioms |
 | 002 | [Benchmark Selection](./002-benchmark-selection.md) | July 2026 landscape + why GraphRAG-Bench |
 | 003 | [Fair Evaluation Protocol](./003-fair-evaluation-protocol.md) | Dual-SUT prepare→ingest→query→score |
-| 004 | [Dataset & Fixtures](./004-dataset-and-fixtures.md) | HF pins, smoke/core IDs |
+| 004 | [Dataset & Fixtures](./004-dataset-and-fixtures.md) | HF pins, smoke / medical-mid / core IDs |
 | 005 | [Mode Map & Pins](./005-mode-map-and-pins.md) | EQ mix ↔ LR mix, provider pins |
 | 006 | [Scorecard Schema](./006-scorecard-schema.md) | Normative `scorecard.json` |
 | 010 | [Smoke → Core Runbook](./010-smoke-then-core-runbook.md) | Copy-paste ops |
@@ -61,7 +60,7 @@
 | EQ query mode | `mix` | Graph + vector hybrid (headline) |
 | LR query mode | `mix` | LightRAG default; true hybrid |
 | Chunk size | 1200 | LightRAG paper default |
-| retrieve_topk | 5 (smoke) | GraphRAG-Bench example default |
+| retrieve_topk | **30** (publish fairness) | Matched retrieval budget |
 | Judge | Official `generation_eval` (Mistral Small) | Acc / ROUGE / Coverage / Faithfulness |
 
 ---
@@ -69,12 +68,12 @@
 ## Progression
 
 ```text
-Stage A — SMOKE                 Stage B — CORE
-─────────────────               ──────────────────────────────
-medical corpus                  medical full + novel sample 100
-40 stratified questions         publishable side-by-side scorecard
-≤60 min cold / ≤20 min hot      hours · requires --i-accept-cost
-make bench001-smoke             make bench001-core
+Stage A — SMOKE              Stage B — MEDICAL-MID          Stage C — CORE
+─────────────────            ───────────────────────        ──────────────────────────────
+medical corpus               same FULL medical corpus       medical full + novel sample 100
+40 stratified questions      200 stratified (50/type)       2162 questions
+daily / CI gate              **publish Acc claim**          ultimate ladder · --i-accept-cost
+make bench001-smoke-acc      make bench                     make bench001-core
 ```
 
 ---
@@ -82,7 +81,7 @@ make bench001-smoke             make bench001-core
 ## Quick start
 
 ```bash
-# One command — fair Acc dual-SUT (EQ vs LightRAG, n=40) + business publish pack
+# One command — fair Acc dual-SUT (EQ vs LightRAG, n=200 medical-mid) + business publish pack
 export MISTRAL_API_KEY=...
 make bench
 
@@ -92,20 +91,12 @@ make bench-warm
 ```
 
 **Publish pack (stakeholder):** [`e2e/artifacts/publish/latest/BUSINESS_REPORT.md`](./e2e/artifacts/publish/latest/BUSINESS_REPORT.md)  
-**Technical SUMMARY:** [`e2e/artifacts/smoke/SUMMARY.md`](./e2e/artifacts/smoke/SUMMARY.md)
+**Technical SUMMARY:** [`e2e/artifacts/medical-mid/SUMMARY.md`](./e2e/artifacts/medical-mid/SUMMARY.md)
 
 ```bash
 # Optional plumbing
 make bench001-install
-make bench001-freeze-smoke            # download GraphRAG-Bench + freeze smoke IDs
-make bench001-doctor                  # preflight only
-BENCH001_DRY_RUN=1 make bench001-smoke   # offline harness smoke (no LLM)
+make bench001-freeze-smoke            # download GraphRAG-Bench + verify smoke + medical-publish IDs
+make bench001-smoke-acc               # n=40 daily gate (not release publish)
+make bench001-medical-mid             # n=200 publish Acc (same as make bench body)
 ```
-
----
-
-## What this SPEC does *not* claim
-
-- UltraDomain pairwise win-rates (LightRAG EMNLP paper protocol) — rejected as default; see [002](./002-benchmark-selection.md).
-- MMLongBench-Doc Acc (SPEC-047) — multimodal PDF RAG adaptation, EQ-only.
-- HybridRAG-Bench Neo4j path — too heavy for easy launch.

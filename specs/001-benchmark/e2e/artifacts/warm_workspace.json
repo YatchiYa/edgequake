@@ -1,8 +1,9 @@
 {
   "workspace_id": "8e990410-43b5-44f4-9f56-87bd154570ce",
   "full_corpus": true,
-  "updated_at_utc": "2026-07-21T02:21:03Z",
-  "eq_workspace_name": "bench001-smoke",
-  "stage": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/001-benchmark/e2e/artifacts/smoke",
-  "archive": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/001-benchmark/e2e/artifacts/history/smoke-20260721T022103Z"
+  "updated_at_utc": "2026-07-23T01:37:49Z",
+  "eq_workspace_name": "bench001-acc-b5-peer",
+  "note": "Restored Acc B5 warm after D4 B6 labeled mid hijacked pointer (080). Acc publish/latest stays P0 mid on this WS.",
+  "acc_headline_archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260722T104918Z",
+  "gap_close_e2_archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20260722T133053Z"
 }

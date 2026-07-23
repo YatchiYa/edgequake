@@ -1,9 +1,10 @@
 # 056 — Naming identity = LightRAG extract normalize (no Acc fishing)
 
-**Status:** Law✓ code + unit tests · Acc re-ingest **deferred** (B10)  
-**Date:** 2026-07-21  
-**Peer keep:** B5+`a1fp` [`T120315Z`](../e2e/artifacts/history/smoke-20260720T120315Z/) Acc **0.801**  
-**Cross-ref:** [055](./055-post-acc-ceiling-first-principles.md) · [053](./053-entity-types-lr-parity.md) · LightRAG `lightrag/utils.py::normalize_extracted_info`
+**Status:** Law✓ code + unit tests · Acc re-ingest **ran** · **REJECT** ([081](./081-beat-parity-first-principles.md) F3 [`T021330Z`](../e2e/artifacts/history/medical-mid-20260723T021330Z/))  
+**Date:** 2026-07-21 · updated 2026-07-23  
+**Peer keep:** E2-B5 gap-close [`T133053Z`](../e2e/artifacts/history/medical-mid-20260722T133053Z/) · Acc headline P0 mid  
+**B10 WS (labeled only):** `54806068-4a82-47b8-a7f9-aeb658f5eddc` · peer `LR_OCC_FACT_L2_B10_v1`  
+**Cross-ref:** [081](./081-beat-parity-first-principles.md) · [055](./055-post-acc-ceiling-first-principles.md) · [053](./053-entity-types-lr-parity.md) · LightRAG `normalize_extracted_info`
 
 ---
 
@@ -27,15 +28,17 @@
 |--------|----------|
 | Reject empty after LR-style numeric filters | `edgequake-storage` `normalize_entity_name` or extract pre-filter |
 | Unit tests | digits `<3`, dotted `<6` → empty; real names unchanged |
-| Acc | **Deferred** `make bench001-b10-reingest` — promote only if Acc gates clear |
+| Acc | `make bench001-b10-reingest` → E2 mid **REJECT** vs E2-B5 (Acc CI LR-ahead; ctx 0.489) |
 
 ---
 
-## 3. Gates (when B10 runs)
+## 3. Gates (B10 mid `T021330Z`)
 
-| Gate | Threshold |
-|------|-----------|
-| STRUCT | fewer pure-year/digit-only `only_eq` samples; coverage not crash |
-| Acc | ≥ 0.781 (prefer ≥ 0.801) · Fact ER ≥ 0.83 · ctx ≥ 0.50 |
+| Gate | Threshold | Result |
+|------|-----------|--------|
+| STRUCT / audit | stub zero-rate ≤0.01 | PASS |
+| Acc CI vs E2-B5 | not clearly LR-ahead | **FAIL** [−0.087, −0.015] |
+| ctx | ≥0.50 or ≥E2+0.02 | **FAIL** 0.489 |
+| Fact ER | ≥LR−0.03 or ≥E2+0.02 | PASS ≥LR−0.03 alone |
 
-On REJECT: keep code (law), keep B5 peer.
+**REJECT:** keep naming filters (law), keep E2-B5 peer, do not Acc-promote B10.

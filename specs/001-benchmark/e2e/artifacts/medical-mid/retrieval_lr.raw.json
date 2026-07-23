@@ -1,0 +1,18 @@
+{
+  "Fact Retrieval": {
+    "context_relevancy": 0.59,
+    "evidence_recall": 0.95
+  },
+  "Complex Reasoning": {
+    "context_relevancy": 0.51,
+    "evidence_recall": 0.9355555555555555
+  },
+  "Contextual Summarize": {
+    "context_relevancy": 0.58,
+    "evidence_recall": 0.9523809523809524
+  },
+  "Creative Generation": {
+    "context_relevancy": 0.33,
+    "evidence_recall": 0.9695932988580047
+  }
+}

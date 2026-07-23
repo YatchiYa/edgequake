@@ -14,7 +14,14 @@ DATASET_ID = "GraphRAG-Bench/GraphRAG-Bench"
 DATASET_REVISION = "dc3a111e77dbaf8bbaf51ef331f3cfc9b1b5c546"
 SMOKE_FIXTURE = "smoke_question_ids_v1.txt"
 FAST_SMOKE_FIXTURE = "smoke_fast_question_ids_v1.txt"
+PUBLISH_FIXTURE = "medical_publish_question_ids_v1.txt"
+MEDICAL_FULL_FIXTURE = "medical_full_question_ids_v1.txt"
 CORE_FIXTURE = "core_question_ids_v1.txt"
+
+# Stages that use medical-only question subsets (no novel).
+MEDICAL_ONLY_FIXTURES = frozenset(
+    {SMOKE_FIXTURE, FAST_SMOKE_FIXTURE, PUBLISH_FIXTURE, MEDICAL_FULL_FIXTURE}
+)
 
 QUESTION_TYPES = (
     "Fact Retrieval",

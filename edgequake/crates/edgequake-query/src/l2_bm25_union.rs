@@ -65,6 +65,8 @@ pub enum L2Bm25Mode {
     Replace,
     /// BM25 replace only when query intent is Factual (else CE prompt set).
     FactReplace,
+    /// 080 R6: Acc prompt chunks == Fact L2 citation list (LightRAG one-list law).
+    Unified,
 }
 
 pub fn l2_bm25_mode() -> L2Bm25Mode {
@@ -75,7 +77,22 @@ pub fn l2_bm25_mode() -> L2Bm25Mode {
     {
         "replace" | "bm25" | "bm25_only" => L2Bm25Mode::Replace,
         "fact_replace" | "fact" => L2Bm25Mode::FactReplace,
+        // off / none / same / prompt: Acc Mix (post-trunc) is the citation list.
+        "off" | "none" | "0" | "false" | "unified" | "same" | "prompt" | "acc" => {
+            L2Bm25Mode::Unified
+        }
         _ => L2Bm25Mode::UnionBm25First,
+    }
+}
+
+impl L2Bm25Mode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::UnionBm25First => "union",
+            Self::Replace => "replace",
+            Self::FactReplace => "fact_replace",
+            Self::Unified => "unified",
+        }
     }
 }
 
@@ -87,7 +104,7 @@ pub fn union_bm25_ce_chunks(
 ) -> Vec<RetrievedChunk> {
     let mut out = Vec::with_capacity(ce_final.len().saturating_add(bm25_mix.len()));
     let mut seen: HashSet<String> = HashSet::new();
-    // FactReplace is resolved in the query pipeline before calling this helper.
+    // FactReplace / Unified are resolved in the query pipeline before calling this helper.
     let include_ce_fill = matches!(mode, L2Bm25Mode::UnionBm25First);
     for chunk in bm25_mix {
         if seen.insert(chunk.id.clone()) {
@@ -133,5 +150,16 @@ mod tests {
             u.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(),
             vec!["a"]
         );
+    }
+
+    #[test]
+    fn unified_mode_parses_from_env_aliases() {
+        std::env::set_var("EDGEQUAKE_L2_BM25_MODE", "unified");
+        assert_eq!(l2_bm25_mode(), L2Bm25Mode::Unified);
+        std::env::set_var("EDGEQUAKE_L2_BM25_MODE", "off");
+        assert_eq!(l2_bm25_mode(), L2Bm25Mode::Unified);
+        std::env::set_var("EDGEQUAKE_L2_BM25_MODE", "fact_replace");
+        assert_eq!(l2_bm25_mode(), L2Bm25Mode::FactReplace);
+        std::env::remove_var("EDGEQUAKE_L2_BM25_MODE");
     }
 }

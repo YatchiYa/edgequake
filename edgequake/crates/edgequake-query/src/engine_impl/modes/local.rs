@@ -198,27 +198,30 @@ impl QueryEngine {
         }
 
         // Chunk fetch SSOT uses vector_type=chunk (not the entity ANN `mf` above).
-        let (chunks, sparse_outcome) = append_score_ranked_chunks(
-            self,
-            &context,
-            query_text,
-            &embeddings.low_level,
-            tenant_id,
-            workspace_id,
-            vector_storage,
-            &retrieval_config,
-            allowed_document_ids,
-            "local",
-        )
-        .await?;
+        // 078 R3: Mix post_truncate skips per-arm pick (re-pick after E/R truncate).
+        if !crate::kg_chunk_pick::arm_kg_chunks_skipped() {
+            let (chunks, sparse_outcome) = append_score_ranked_chunks(
+                self,
+                &context,
+                query_text,
+                &embeddings.low_level,
+                tenant_id,
+                workspace_id,
+                vector_storage,
+                &retrieval_config,
+                allowed_document_ids,
+                "local",
+            )
+            .await?;
 
-        crate::retrieval_telemetry::mark_sparse_outcome(
-            &mut context,
-            sparse_outcome.as_str(),
-            sparse_outcome.is_fts_fallback(),
-        );
-        for chunk in chunks {
-            context.add_chunk(chunk);
+            crate::retrieval_telemetry::mark_sparse_outcome(
+                &mut context,
+                sparse_outcome.as_str(),
+                sparse_outcome.is_fts_fallback(),
+            );
+            for chunk in chunks {
+                context.add_chunk(chunk);
+            }
         }
 
         // 073: soft-label relationship endpoints for Connections / LLM context.

@@ -4,14 +4,14 @@
 # Usage:
 #   export BENCH001_EQ_WORKSPACE_ID=<warm-full-corpus-ws>   # or rely on warm_workspace.json
 #   cargo build --release --bin edgequake
-#   ./tools/bench001/scripts/run_p_ladder_acc.sh p0|…|t0|t0b|t1|…|a0|a1|a1l2|…
+#   ./tools/bench001/scripts/run_p_ladder_acc.sh p0|…|t0|t0b|t1|…|a0|a1|a1l2|…|lr-identity
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$ROOT"
 
 STEP="${1:-}"
 if [[ -z "$STEP" ]]; then
-  echo "usage: $0 p0|…|a1fp|c1a|c1b|c1d|c1e|c1cold|a1fplr|…|a4" >&2
+  echo "usage: $0 p0|…|a1fp|c1a|c1b|c1d|c1e|c1cold|a1fplr|…|a4|lr-identity" >&2
   exit 2
 fi
 
@@ -36,12 +36,16 @@ export EDGEQUAKE_MIX_FUSION=rrf
 export EDGEQUAKE_MIX_ARM_GATE=false
 export EDGEQUAKE_CONTEXT_FORMAT=flat
 export EDGEQUAKE_PASSAGE_PACK=0
+export EDGEQUAKE_GRAPH_WALK=ppr
 export EDGEQUAKE_GRAPH_WALK_COMPRESS=0
 export EDGEQUAKE_POPULAR_NODE_FALLBACK=0
 export EDGEQUAKE_KEYWORD_LEXICAL_BOOST=0
 export EDGEQUAKE_CONTENT_HEADINGS=0
 export EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT=0
+export EDGEQUAKE_KG_CHUNK_PICK=vector
 export EDGEQUAKE_KG_CHUNK_PICK_LR_BUDGET=0
+export BENCH001_EQ_ENABLE_RERANK=1
+unset BENCH001_ALLOW_ROUND_ROBIN || true
 export EDGEQUAKE_L2_SOURCES_UNION=0
 export EDGEQUAKE_L2_SOURCES_MIX_TOP_K=30
 unset EDGEQUAKE_FACT_RERANKER || true
@@ -66,6 +70,7 @@ export EDGEQUAKE_INTENT_RERANK=0
 export EDGEQUAKE_L2_BM25_UNION=0
 export EDGEQUAKE_L2_BM25_MIX_TOP_K=30
 export EDGEQUAKE_L2_BM25_MODE=union
+export EDGEQUAKE_MIX_INTENT_WEIGHTS=0
 export EDGEQUAKE_INTENT_FACTUAL_BIAS=0
 export EDGEQUAKE_ANSWER_PROMPT=default
 unset EDGEQUAKE_ANSWER_SPECIFIC_TYPES || true
@@ -387,6 +392,230 @@ case "$STEP" in
     PROFILE=A1LRL2_p2b_rr_cer_lr_budget_l2_union_v1
     NOTE="034 a1lrl2: A1 + LR VECTOR budget + L2_SOURCES_UNION (Parity decision)"
     ;;
+  lr-identity|lr_identity|lrid)
+    # 074: labeled LR-identity pack on Acc base (NOT Acc Beat / not a1fp∪a1lrl2 merge).
+    # Pins match fair LR Mix: RR fuse · rerank off · VECTOR+LR budget · retrieval entity order · bfs walk.
+    export EDGEQUAKE_MIX_FUSION=round_robin
+    export BENCH001_ALLOW_ROUND_ROBIN=1
+    export BENCH001_EQ_ENABLE_RERANK=0
+    export EDGEQUAKE_GRAPH_WALK=bfs
+    export EDGEQUAKE_KG_CHUNK_PICK=vector
+    export EDGEQUAKE_KG_CHUNK_PICK_LR_BUDGET=1
+    export EDGEQUAKE_ENTITY_RANK=retrieval
+    PROFILE=LR_IDENTITY_v1
+    NOTE="074 lr-identity: RR fuse · enable_rerank=0 · GRAPH_WALK=bfs · VECTOR+LR_BUDGET · ENTITY_RANK=retrieval — L2 confound pack; not Acc Beat"
+    # Do not clobber medical-mid publish/latest (stakeholder Acc SSOT).
+    export BENCH001_SKIP_PUBLISH_LATEST=1
+    ;;
+  lr-pack-bm25|lr_pack_bm25|lridbm25)
+    # 075: L1 after 074 — LR packing identity + BM25 kept (Fact ER recovery).
+    # L0 turned rerank off and Fact ER collapsed (0.70); ingest audit shows B5 provenance OK.
+    export EDGEQUAKE_MIX_FUSION=round_robin
+    export BENCH001_ALLOW_ROUND_ROBIN=1
+    export BENCH001_EQ_ENABLE_RERANK=1
+    export EDGEQUAKE_RERANKER=bm25
+    export EDGEQUAKE_GRAPH_WALK=bfs
+    export EDGEQUAKE_KG_CHUNK_PICK=vector
+    export EDGEQUAKE_KG_CHUNK_PICK_LR_BUDGET=1
+    export EDGEQUAKE_ENTITY_RANK=retrieval
+    PROFILE=LR_PACK_BM25_v1
+    NOTE="075 lr-pack-bm25: RR fuse · BM25 on · GRAPH_WALK=bfs · VECTOR+LR_BUDGET · ENTITY_RANK=retrieval — L1 Fact ER; not Acc Beat"
+    export BENCH001_SKIP_PUBLISH_LATEST=1
+    ;;
+  lr-identity-fact-l2|lr_identity_fact_l2|lridfactl2)
+    # 075 L1.5: L0 clean Mix prompt + Fact-only BM25 L2 citations (027 fact_replace).
+    # Avoids global BM25 ctx_rel tax from L1 while recovering Fact ER on L2 sources.
+    export EDGEQUAKE_MIX_FUSION=round_robin
+    export BENCH001_ALLOW_ROUND_ROBIN=1
+    export BENCH001_EQ_ENABLE_RERANK=0
+    export EDGEQUAKE_GRAPH_WALK=bfs
+    export EDGEQUAKE_KG_CHUNK_PICK=vector
+    export EDGEQUAKE_KG_CHUNK_PICK_LR_BUDGET=1
+    export EDGEQUAKE_ENTITY_RANK=retrieval
+    export EDGEQUAKE_L2_BM25_UNION=1
+    export EDGEQUAKE_L2_BM25_MODE=fact_replace
+    export EDGEQUAKE_L2_BM25_MIX_TOP_K="${EDGEQUAKE_L2_BM25_MIX_TOP_K:-30}"
+    PROFILE=LR_IDENTITY_FACT_L2_v1
+    NOTE="075 lr-identity-fact-l2: L0 identity + L2_BM25 fact_replace — Fact ER without global BM25; not Acc Beat"
+    export BENCH001_SKIP_PUBLISH_LATEST=1
+    export BENCH001_PUBLISH_PEER="${BENCH001_PUBLISH_PEER:-LR_IDENTITY_FACT_L2_v1}"
+    ;;
+  lr-nf-fact-l2|lr_nf_fact_l2|lridnf)
+    # 076 Phase 4: L1.5 + naive-first RR (LR _merge_all_chunks order).
+    export EDGEQUAKE_MIX_FUSION=round_robin
+    export BENCH001_ALLOW_ROUND_ROBIN=1
+    export BENCH001_EQ_ENABLE_RERANK=0
+    export EDGEQUAKE_GRAPH_WALK=bfs
+    export EDGEQUAKE_KG_CHUNK_PICK=vector
+    export EDGEQUAKE_KG_CHUNK_PICK_LR_BUDGET=1
+    export EDGEQUAKE_ENTITY_RANK=retrieval
+    export EDGEQUAKE_L2_BM25_UNION=1
+    export EDGEQUAKE_L2_BM25_MODE=fact_replace
+    export EDGEQUAKE_L2_BM25_MIX_TOP_K="${EDGEQUAKE_L2_BM25_MIX_TOP_K:-30}"
+    export EDGEQUAKE_RR_ORDER=naive_first
+    PROFILE=LR_NF_FACT_L2_v1
+    NOTE="076 lr-nf-fact-l2: L1.5 + RR_ORDER=naive_first (LR merge order); not Acc Beat"
+    export BENCH001_SKIP_PUBLISH_LATEST=1
+    export BENCH001_PUBLISH_PEER="${BENCH001_PUBLISH_PEER:-LR_NF_FACT_L2_v1}"
+    ;;
+  lr-dense-fact-l2|lr_dense_fact_l2|lriddense)
+    # 077 E1: L1.5 + dense-only Mix arms (BM25_RETRIEVAL=0; Fact L2 BM25 kept).
+    export EDGEQUAKE_MIX_FUSION=round_robin
+    export BENCH001_ALLOW_ROUND_ROBIN=1
+    export BENCH001_EQ_ENABLE_RERANK=0
+    export EDGEQUAKE_GRAPH_WALK=bfs
+    export EDGEQUAKE_KG_CHUNK_PICK=vector
+    export EDGEQUAKE_KG_CHUNK_PICK_LR_BUDGET=1
+    export EDGEQUAKE_ENTITY_RANK=retrieval
+    export EDGEQUAKE_L2_BM25_UNION=1
+    export EDGEQUAKE_L2_BM25_MODE=fact_replace
+    export EDGEQUAKE_L2_BM25_MIX_TOP_K="${EDGEQUAKE_L2_BM25_MIX_TOP_K:-30}"
+    export EDGEQUAKE_BM25_RETRIEVAL=0
+    PROFILE=LR_DENSE_FACT_L2_v1
+    NOTE="077 lr-dense-fact-l2: L1.5 + BM25_RETRIEVAL=0 (dense Mix arms); not Acc Beat"
+    export BENCH001_SKIP_PUBLISH_LATEST=1
+    export BENCH001_PUBLISH_PEER="${BENCH001_PUBLISH_PEER:-LR_DENSE_FACT_L2_v1}"
+    ;;
+  lr-occ-fact-l2|lr_occ_fact_l2|lridocc)
+    # 077 E2: keep-base L1.5 + occurrence_sort (Fact ER; after E1 settles).
+    # Override BENCH001_PUBLISH_PEER / base pins if E1 was keep.
+    export EDGEQUAKE_MIX_FUSION=round_robin
+    export BENCH001_ALLOW_ROUND_ROBIN=1
+    export BENCH001_EQ_ENABLE_RERANK=0
+    export EDGEQUAKE_GRAPH_WALK=bfs
+    export EDGEQUAKE_KG_CHUNK_PICK=vector
+    export EDGEQUAKE_KG_CHUNK_PICK_LR_BUDGET=1
+    export EDGEQUAKE_ENTITY_RANK=retrieval
+    export EDGEQUAKE_L2_BM25_UNION=1
+    export EDGEQUAKE_L2_BM25_MODE=fact_replace
+    export EDGEQUAKE_L2_BM25_MIX_TOP_K="${EDGEQUAKE_L2_BM25_MIX_TOP_K:-30}"
+    export EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT=1
+    # Inherit dense-only if caller set it (E1 keep base); default leave BM25_RETRIEVAL unset → Acc default 1.
+    PROFILE=LR_OCC_FACT_L2_v1
+    NOTE="077 lr-occ-fact-l2: L1.5 + KG_CHUNK_OCCURRENCE_SORT=1; not Acc Beat"
+    export BENCH001_SKIP_PUBLISH_LATEST=1
+    export BENCH001_PUBLISH_PEER="${BENCH001_PUBLISH_PEER:-LR_OCC_FACT_L2_v1}"
+    ;;
+  e2-chat-split|e2_chat_split|e2cs)
+    # 084: E2 occ pins + Acc binary with 083 chat(system,user) generate (one confound).
+    # Not Acc Beat; SKIP_PUBLISH_LATEST. Rebuild release before start_acc_backend.
+    export EDGEQUAKE_MIX_FUSION=round_robin
+    export BENCH001_ALLOW_ROUND_ROBIN=1
+    export BENCH001_EQ_ENABLE_RERANK=0
+    export EDGEQUAKE_GRAPH_WALK=bfs
+    export EDGEQUAKE_KG_CHUNK_PICK=vector
+    export EDGEQUAKE_KG_CHUNK_PICK_LR_BUDGET=1
+    export EDGEQUAKE_ENTITY_RANK=retrieval
+    export EDGEQUAKE_L2_BM25_UNION=1
+    export EDGEQUAKE_L2_BM25_MODE=fact_replace
+    export EDGEQUAKE_L2_BM25_MIX_TOP_K="${EDGEQUAKE_L2_BM25_MIX_TOP_K:-30}"
+    export EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT=1
+    unset EDGEQUAKE_ANSWER_COMPLETE_BLOB || true
+    PROFILE=E2_CHAT_SPLIT_v1
+    NOTE="084 e2-chat-split: E2 occ + 083 chat generate; not Acc Beat"
+    export BENCH001_SKIP_PUBLISH_LATEST=1
+    export BENCH001_PUBLISH_PEER="${BENCH001_PUBLISH_PEER:-E2_CHAT_SPLIT_v1}"
+    ;;
+  e2-chat-split-fair|e2_chat_split_fair|e2csfair)
+    # 085: same 084 chat-split + E2 fairness concurrency (4) + eval 24.
+    # Attributes 084 ctx tax; not Acc Beat; SKIP_PUBLISH_LATEST.
+    export EDGEQUAKE_MIX_FUSION=round_robin
+    export BENCH001_ALLOW_ROUND_ROBIN=1
+    export BENCH001_EQ_ENABLE_RERANK=0
+    export EDGEQUAKE_GRAPH_WALK=bfs
+    export EDGEQUAKE_KG_CHUNK_PICK=vector
+    export EDGEQUAKE_KG_CHUNK_PICK_LR_BUDGET=1
+    export EDGEQUAKE_ENTITY_RANK=retrieval
+    export EDGEQUAKE_L2_BM25_UNION=1
+    export EDGEQUAKE_L2_BM25_MODE=fact_replace
+    export EDGEQUAKE_L2_BM25_MIX_TOP_K="${EDGEQUAKE_L2_BM25_MIX_TOP_K:-30}"
+    export EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT=1
+    unset EDGEQUAKE_ANSWER_COMPLETE_BLOB || true
+    export BENCH001_ACC_QUERY_CONCURRENCY=4
+    export BENCH001_QUERY_CONCURRENCY=4
+    export BENCH001_EVAL_CONCURRENCY=24
+    export BENCH001_ACC_EVAL_CONCURRENCY=24
+    PROFILE=E2_CHAT_SPLIT_fair_v1
+    NOTE="085 e2-chat-split-fair: 084 chat-split + concurrency=4/eval=24; not Acc Beat"
+    export BENCH001_SKIP_PUBLISH_LATEST=1
+    export BENCH001_PUBLISH_PEER="${BENCH001_PUBLISH_PEER:-E2_CHAT_SPLIT_fair_v1}"
+    ;;
+  lr-posttrunc-fact-l2|lr_posttrunc_fact_l2|lridposttrunc)
+    # 078 R3: E2 keep + post_truncate KG→chunk (truncate E/R → one VECTOR → RR naive).
+    export EDGEQUAKE_MIX_FUSION=round_robin
+    export BENCH001_ALLOW_ROUND_ROBIN=1
+    export BENCH001_EQ_ENABLE_RERANK=0
+    export EDGEQUAKE_GRAPH_WALK=bfs
+    export EDGEQUAKE_KG_CHUNK_PICK=vector
+    export EDGEQUAKE_KG_CHUNK_PICK_LR_BUDGET=1
+    export EDGEQUAKE_ENTITY_RANK=retrieval
+    export EDGEQUAKE_L2_BM25_UNION=1
+    export EDGEQUAKE_L2_BM25_MODE=fact_replace
+    export EDGEQUAKE_L2_BM25_MIX_TOP_K="${EDGEQUAKE_L2_BM25_MIX_TOP_K:-30}"
+    export EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT=1
+    export EDGEQUAKE_KG_CHUNK_PICK_TIMING=post_truncate
+    PROFILE=LR_POSTTRUNC_FACT_L2_v1
+    NOTE="078 lr-posttrunc-fact-l2: E2 + KG_CHUNK_PICK_TIMING=post_truncate; not Acc Beat"
+    export BENCH001_SKIP_PUBLISH_LATEST=1
+    export BENCH001_PUBLISH_PEER="${BENCH001_PUBLISH_PEER:-LR_POSTTRUNC_FACT_L2_v1}"
+    ;;
+  lr-unify-fact-l2|lr_unify_fact_l2|lridunify)
+    # 080 D1 R6: E2 keep + Acc/L2 list unify (citation_chunks = Acc prompt).
+    export EDGEQUAKE_MIX_FUSION=round_robin
+    export BENCH001_ALLOW_ROUND_ROBIN=1
+    export BENCH001_EQ_ENABLE_RERANK=0
+    export EDGEQUAKE_GRAPH_WALK=bfs
+    export EDGEQUAKE_KG_CHUNK_PICK=vector
+    export EDGEQUAKE_KG_CHUNK_PICK_LR_BUDGET=1
+    export EDGEQUAKE_ENTITY_RANK=retrieval
+    export EDGEQUAKE_L2_BM25_UNION=1
+    export EDGEQUAKE_L2_BM25_MODE=unified
+    export EDGEQUAKE_L2_BM25_MIX_TOP_K="${EDGEQUAKE_L2_BM25_MIX_TOP_K:-30}"
+    export EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT=1
+    PROFILE=LR_UNIFY_FACT_L2_v1
+    NOTE="080 lr-unify-fact-l2: E2 + L2_BM25_MODE=unified (R6 Acc=L2 list); not Acc Beat"
+    export BENCH001_SKIP_PUBLISH_LATEST=1
+    export BENCH001_PUBLISH_PEER="${BENCH001_PUBLISH_PEER:-LR_UNIFY_FACT_L2_v1}"
+    ;;
+  lr-intent-w-fact-l2|lr_intent_w_fact_l2|lridintentw)
+    # 080 D2: E2 keep + intent Mix weights. Force fact_replace (script-top default is union;
+    # ${VAR:-fact_replace} would keep that union). D1 unify REJECT — do not stack.
+    export EDGEQUAKE_MIX_FUSION=round_robin
+    export BENCH001_ALLOW_ROUND_ROBIN=1
+    export BENCH001_EQ_ENABLE_RERANK=0
+    export EDGEQUAKE_GRAPH_WALK=bfs
+    export EDGEQUAKE_KG_CHUNK_PICK=vector
+    export EDGEQUAKE_KG_CHUNK_PICK_LR_BUDGET=1
+    export EDGEQUAKE_ENTITY_RANK=retrieval
+    export EDGEQUAKE_L2_BM25_UNION=1
+    export EDGEQUAKE_L2_BM25_MODE=fact_replace
+    export EDGEQUAKE_L2_BM25_MIX_TOP_K="${EDGEQUAKE_L2_BM25_MIX_TOP_K:-30}"
+    export EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT=1
+    export EDGEQUAKE_MIX_INTENT_WEIGHTS=1
+    PROFILE=LR_INTENT_W_FACT_L2_v1
+    NOTE="080 lr-intent-w-fact-l2: E2 + MIX_INTENT_WEIGHTS=1 (fact_replace); not Acc Beat"
+    export BENCH001_SKIP_PUBLISH_LATEST=1
+    export BENCH001_PUBLISH_PEER="${BENCH001_PUBLISH_PEER:-LR_INTENT_W_FACT_L2_v1}"
+    ;;
+  lr-relsel-fact-l2|lr_relsel_fact_l2|lridrelsel)
+    # 080 D3 last-resort: E2 + RELATION_SELECT=lightrag (historically Acc REJECT).
+    export EDGEQUAKE_MIX_FUSION=round_robin
+    export BENCH001_ALLOW_ROUND_ROBIN=1
+    export BENCH001_EQ_ENABLE_RERANK=0
+    export EDGEQUAKE_GRAPH_WALK=bfs
+    export EDGEQUAKE_KG_CHUNK_PICK=vector
+    export EDGEQUAKE_KG_CHUNK_PICK_LR_BUDGET=1
+    export EDGEQUAKE_ENTITY_RANK=retrieval
+    export EDGEQUAKE_L2_BM25_UNION=1
+    export EDGEQUAKE_L2_BM25_MODE=fact_replace
+    export EDGEQUAKE_L2_BM25_MIX_TOP_K="${EDGEQUAKE_L2_BM25_MIX_TOP_K:-30}"
+    export EDGEQUAKE_KG_CHUNK_OCCURRENCE_SORT=1
+    export EDGEQUAKE_RELATION_SELECT=lightrag
+    PROFILE=LR_RELSEL_FACT_L2_v1
+    NOTE="080 lr-relsel-fact-l2: E2 + RELATION_SELECT=lightrag (high-risk); not Acc Beat"
+    export BENCH001_SKIP_PUBLISH_LATEST=1
+    export BENCH001_PUBLISH_PEER="${BENCH001_PUBLISH_PEER:-LR_RELSEL_FACT_L2_v1}"
+    ;;
   a1fp)
     # 035: A1 + Fact BM25 first-stage for CE protect (no dual-list / no LR budget)
     _apply_p2b
@@ -640,8 +869,16 @@ case "$STEP" in
 esac
 
 ACC_PORT="${BENCH001_ACC_PORT:-8090}"
+STAGE="${BENCH001_LADDER_STAGE:-smoke}"
+case "$STAGE" in
+  smoke|medical-mid|medical-full|core) ;;
+  *)
+    echo "unsupported BENCH001_LADDER_STAGE=$STAGE (use smoke|medical-mid|medical-full|core)" >&2
+    exit 2
+    ;;
+esac
 echo "==> $NOTE"
-echo "==> profile=$PROFILE workspace=$BENCH001_EQ_WORKSPACE_ID port=$ACC_PORT"
+echo "==> profile=$PROFILE stage=$STAGE workspace=$BENCH001_EQ_WORKSPACE_ID port=$ACC_PORT"
 
 python3 tools/bench001/scripts/start_acc_backend.py --port "$ACC_PORT"
 
@@ -659,7 +896,7 @@ export PYTHONPATH="tools/bench001:${PYTHONPATH:-}"
 export PYTHONUNBUFFERED=1
 export LLM_API_KEY="${LLM_API_KEY:-${MISTRAL_API_KEY:-}}"
 
-python3 -m bench001.cli smoke --api "$EDGEQUAKE_API_URL" --query-only \
+python3 -m bench001.cli "$STAGE" --api "$EDGEQUAKE_API_URL" --query-only \
   --llm-provider mistral --llm-model "${BENCH001_ACC_LLM_MODEL:-mistral-small-latest}" \
   --vision-provider mistral --vision-model "${BENCH001_ACC_LLM_MODEL:-mistral-small-latest}" \
   --embedding-provider mistral --embedding-model mistral-embed --embedding-dim 1024 \
@@ -670,12 +907,54 @@ python3 -m bench001.cli smoke --api "$EDGEQUAKE_API_URL" --query-only \
   --query-concurrency "${BENCH001_ACC_QUERY_CONCURRENCY:-8}" \
   --eval-concurrency "${BENCH001_ACC_EVAL_CONCURRENCY:-16}"
 
-ART="$(ls -td specs/001-benchmark/e2e/artifacts/history/smoke-* 2>/dev/null | head -1 || true)"
+ART="$(ls -td "specs/001-benchmark/e2e/artifacts/history/${STAGE}-"* 2>/dev/null | head -1 || true)"
 if [[ -n "$ART" && ! -f "$ART/ABLATION_NOTE.md" ]]; then
-  cat >"$ART/ABLATION_NOTE.md" <<EOF
+  if [[ "$STEP" == "lr-identity" || "$STEP" == "lr_identity" || "$STEP" == "lrid" \
+     || "$STEP" == "lr-pack-bm25" || "$STEP" == "lr_pack_bm25" || "$STEP" == "lridbm25" \
+     || "$STEP" == "lr-identity-fact-l2" || "$STEP" == "lr_identity_fact_l2" || "$STEP" == "lridfactl2" \
+     || "$STEP" == "lr-nf-fact-l2" || "$STEP" == "lr_nf_fact_l2" || "$STEP" == "lridnf" ]]; then
+    MEMO_PATH="076-mix-law-remaining-after-l15.md"
+    MEMO_LABEL="076"
+    if [[ "$STEP" == "lr-identity" || "$STEP" == "lr_identity" || "$STEP" == "lrid" ]]; then
+      MEMO_PATH="074-why-eq-lags-lightrag-medical-mid.md"
+      MEMO_LABEL="074"
+    elif [[ "$STEP" == "lr-pack-bm25" || "$STEP" == "lr_pack_bm25" || "$STEP" == "lridbm25" \
+         || "$STEP" == "lr-identity-fact-l2" || "$STEP" == "lr_identity_fact_l2" || "$STEP" == "lridfactl2" ]]; then
+      MEMO_PATH="075-lr-pack-bm25-close-gap.md"
+      MEMO_LABEL="075"
+    fi
+    cat >"$ART/ABLATION_NOTE.md" <<EOF
 # Ablation — $PROFILE
 
 **Step:** $STEP  
+**Stage:** $STAGE  
+**Pins:** $NOTE  
+**Workspace:** \`${BENCH001_EQ_WORKSPACE_ID}\`  
+**Memo:** [${MEMO_LABEL}](../../../../001-edgquake-improvements/${MEMO_PATH})  
+**Peer:** \`${BENCH001_PUBLISH_PEER:-}\` (Acc \`publish/latest\` skipped=\`${BENCH001_SKIP_PUBLISH_LATEST:-0}\`)
+
+## Gates (fill from SUMMARY)
+
+| Gate | Target | Result |
+|------|--------|--------|
+| Honesty | No “EQ beats LightRAG” claim | |
+| Not Acc headline | Acc pin remains RRF+BM25+PPR+degree until promote gates | |
+| ctx_rel | ≥0.48 smoke / ≥0.50 medical-mid preferred | |
+| Fact ER | ≥LR−0.03 preferred | |
+| overall ER | ≥LR−0.03 preferred | |
+| Δ Acc 95% CI | report; Beat only if CI excludes 0 EQ **and** L2 gates | |
+
+## Verdict
+
+- [ ] L2 / Acc peer signal useful (keep labeled)
+- [ ] No Acc promote / no peer merge with a1fp or a1lrl2
+EOF
+  else
+    cat >"$ART/ABLATION_NOTE.md" <<EOF
+# Ablation — $PROFILE
+
+**Step:** $STEP  
+**Stage:** $STAGE  
 **Pins:** $NOTE  
 **Workspace:** \`${BENCH001_EQ_WORKSPACE_ID}\`
 
@@ -695,5 +974,6 @@ if [[ -n "$ART" && ! -f "$ART/ABLATION_NOTE.md" ]]; then
 - [ ] Gate met
 - [ ] Gate missed (do not promote)
 EOF
+  fi
   echo "==> wrote $ART/ABLATION_NOTE.md"
 fi

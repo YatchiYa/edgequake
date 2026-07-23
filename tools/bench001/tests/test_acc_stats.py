@@ -44,3 +44,36 @@ def test_extract_per_sample_metric():
     f1s = extract_per_sample_metric(metrics, "factuality_f1")
     assert accs == [0.5, 0.6]
     assert f1s == [0.2, 0.3]
+
+
+def test_delta_stats_pairs_on_shared_ids():
+    """One missing EQ row must not drop the Acc bootstrap CI."""
+    from bench001.acc_stats import delta_stats_block
+
+    eq = {
+        "raw": {
+            "Fact Retrieval": {
+                "detailed": [
+                    {"id": "a", "metrics": {"answer_correctness": 0.5}},
+                    {"id": "b", "metrics": {"answer_correctness": 0.6}},
+                ]
+            }
+        }
+    }
+    lr = {
+        "raw": {
+            "Fact Retrieval": {
+                "detailed": [
+                    {"id": "a", "metrics": {"answer_correctness": 0.4}},
+                    {"id": "b", "metrics": {"answer_correctness": 0.55}},
+                    {"id": "c", "metrics": {"answer_correctness": 0.9}},
+                ]
+            }
+        }
+    }
+    block = delta_stats_block(eq, lr)
+    ci = block["overall_acc_delta_ci"]
+    assert ci["n_paired"] == 2.0
+    assert ci["n_eq"] == 2.0
+    assert ci["n_lr"] == 3.0
+    assert ci["ci_low"] <= ci["mean"] <= ci["ci_high"]

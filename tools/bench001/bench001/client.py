@@ -535,6 +535,7 @@ class EdgeQuakeClient:
             "content_granularity": fair["content_granularity"],
             "max_results": max_results if max_results is not None else fair["max_results"],
             "rerank_top_k": rerank_top_k if rerank_top_k is not None else fair["rerank_top_k"],
+            "enable_rerank": bool(fair.get("enable_rerank", True)),
         }
         # Per-request SUT LLM pin (fair dual-SUT when using larger Mistral).
         try:

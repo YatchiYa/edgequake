@@ -2780,8 +2780,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "recover_stuck"
+        "x-edgequake-v2-job-type": "recover_stuck",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/documents/reprocess": {
@@ -3817,8 +3817,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "reanalyze_multimodal"
+        "x-edgequake-v2-job-type": "reanalyze_multimodal",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/documents/{document_id}/retry-chunks": {
@@ -8387,8 +8387,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "rebuild_embeddings",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "rebuild_embeddings"
       }
     },
     "/api/v1/workspaces/{workspace_id}/rebuild-knowledge-graph": {
@@ -8461,8 +8461,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "rebuild_knowledge_graph",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "rebuild_knowledge_graph"
       }
     },
     "/api/v1/workspaces/{workspace_id}/reprocess-documents": {
@@ -9029,8 +9029,8 @@
             "description": "WebSocket upgrade failed"
           }
         },
-        "x-edgequake-transport": "websocket",
-        "x-edgequake-upgrade": "RFC6455"
+        "x-edgequake-upgrade": "RFC6455",
+        "x-edgequake-transport": "websocket"
       }
     },
     "/ws/progress/{track_id}": {
@@ -9060,8 +9060,8 @@
             "description": "WebSocket upgrade failed"
           }
         },
-        "x-edgequake-upgrade": "RFC6455",
-        "x-edgequake-transport": "websocket"
+        "x-edgequake-transport": "websocket",
+        "x-edgequake-upgrade": "RFC6455"
       }
     }
   },
@@ -21141,6 +21141,16 @@
               "type": "string"
             }
           },
+          "hl_keywords": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Pre-supplied high-level keywords (LightRAG `hl_keywords`). 083: skips keyword LLM when set with ll."
+          },
           "include_references": {
             "type": "boolean",
             "description": "Include detailed reference metadata (document_id, file_path, reference_id) in sources."
@@ -21148,6 +21158,16 @@
           "include_subgraph": {
             "type": "boolean",
             "description": "Include structured query-matched graph (entities + relationships) in the response."
+          },
+          "ll_keywords": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Pre-supplied low-level keywords (LightRAG `ll_keywords`)."
           },
           "llm_model": {
             "type": [
@@ -21218,6 +21238,13 @@
             ],
             "description": "Top K chunks to keep after reranking.",
             "minimum": 0
+          },
+          "response_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Answer formatting cue (LightRAG `response_type`). Default: Multiple Paragraphs."
           },
           "system_prompt": {
             "type": [
@@ -24326,9 +24353,29 @@
               "type": "string"
             }
           },
+          "hl_keywords": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Pre-supplied high-level keywords (083 / LightRAG)."
+          },
           "include_subgraph": {
             "type": "boolean",
             "description": "Include structured query-matched graph in stream context events (v2+)."
+          },
+          "ll_keywords": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Pre-supplied low-level keywords (083 / LightRAG)."
           },
           "llm_model": {
             "type": [
@@ -24362,6 +24409,13 @@
             ],
             "description": "Optional question-type label for type-scoped answer prompts (047)."
           },
+          "response_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Answer formatting cue (083 / LightRAG `response_type`)."
+          },
           "stream_format": {
             "type": [
               "string",
@@ -24381,12 +24435,15 @@
           "content_granularity": {},
           "document_filter": {},
           "extra_headers": {},
+          "hl_keywords": [],
           "include_subgraph": {},
+          "ll_keywords": [],
           "llm_model": {},
           "llm_provider": {},
           "mode": {},
           "query": {},
           "question_type": {},
+          "response_type": {},
           "stream_format": {},
           "system_prompt": {}
         }

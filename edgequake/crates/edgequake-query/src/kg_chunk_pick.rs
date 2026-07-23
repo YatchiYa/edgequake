@@ -4,11 +4,71 @@
 //! - **Vector** (default): rank candidate chunk IDs by query embedding similarity
 //! - **Weight**: prefer chunks that appear as sources for more entities/relations
 
+use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
 use crate::context::QueryContext;
+
+thread_local! {
+    /// Mix-only: skip per-arm KG→chunk pick while arms run (078 R3 post_truncate).
+    static SKIP_ARM_KG_CHUNKS: Cell<bool> = const { Cell::new(false) };
+}
+
+/// When to run KG→chunk VECTOR pick relative to entity/relation token truncate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum KgChunkPickTiming {
+    /// Today's Mix: each arm picks chunks, then fuse, truncate later (default).
+    #[default]
+    PerArm,
+    /// LightRAG `_build_query_context`: truncate E/R → one VECTOR pick → merge naive.
+    PostTruncate,
+}
+
+impl KgChunkPickTiming {
+    pub fn from_env() -> Self {
+        match std::env::var("EDGEQUAKE_KG_CHUNK_PICK_TIMING")
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "post_truncate" | "post-truncate" | "after_truncate" | "lr" => Self::PostTruncate,
+            _ => Self::PerArm,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::PerArm => "per_arm",
+            Self::PostTruncate => "post_truncate",
+        }
+    }
+
+    pub fn is_post_truncate(self) -> bool {
+        matches!(self, Self::PostTruncate)
+    }
+}
+
+/// RAII: Mix arms skip KG chunk fetch; Mix re-picks after E/R truncate.
+pub struct SkipArmKgChunksGuard;
+
+impl SkipArmKgChunksGuard {
+    pub fn enter() -> Self {
+        SKIP_ARM_KG_CHUNKS.with(|c| c.set(true));
+        Self
+    }
+}
+
+impl Drop for SkipArmKgChunksGuard {
+    fn drop(&mut self) {
+        SKIP_ARM_KG_CHUNKS.with(|c| c.set(false));
+    }
+}
+
+pub fn arm_kg_chunks_skipped() -> bool {
+    SKIP_ARM_KG_CHUNKS.with(|c| c.get())
+}
 
 /// How to pick text chunks linked from KG entities/relations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -155,8 +215,9 @@ pub fn pick_chunks_by_weight(context: &QueryContext, max_chunks: usize) -> Vec<S
         }
     }
     for rel in &context.relationships {
-        if let Some(chunk_id) = &rel.source_chunk_id {
-            *weights.entry(chunk_id.clone()).or_insert(0) += 1;
+        // 052 / 081 F2: count every multi-chunk relation source_id (not singular only).
+        for chunk_id in rel.all_source_chunk_ids() {
+            *weights.entry(chunk_id).or_insert(0) += 1;
         }
     }
 
@@ -342,6 +403,25 @@ mod tests {
     }
 
     #[test]
+    fn kg_chunk_pick_timing_from_env() {
+        std::env::remove_var("EDGEQUAKE_KG_CHUNK_PICK_TIMING");
+        assert_eq!(KgChunkPickTiming::from_env(), KgChunkPickTiming::PerArm);
+        std::env::set_var("EDGEQUAKE_KG_CHUNK_PICK_TIMING", "post_truncate");
+        assert!(KgChunkPickTiming::from_env().is_post_truncate());
+        std::env::remove_var("EDGEQUAKE_KG_CHUNK_PICK_TIMING");
+    }
+
+    #[test]
+    fn skip_arm_kg_chunks_guard_toggles() {
+        assert!(!arm_kg_chunks_skipped());
+        {
+            let _g = SkipArmKgChunksGuard::enter();
+            assert!(arm_kg_chunks_skipped());
+        }
+        assert!(!arm_kg_chunks_skipped());
+    }
+
+    #[test]
     fn weight_pick_prefers_frequent_chunks() {
         let mut ctx = QueryContext::new();
         let mut e1 = RetrievedEntity::new("A", "PERSON", "d");
@@ -355,6 +435,21 @@ mod tests {
         );
         let picked = pick_chunks_by_weight(&ctx, 2);
         assert_eq!(picked[0], "hot");
+    }
+
+    #[test]
+    fn weight_pick_counts_all_relation_source_chunk_ids() {
+        // 081 F2 / 052: plural relation lineage must weight every chunk id.
+        let mut ctx = QueryContext::new();
+        ctx.add_relationship(
+            RetrievedRelationship::new("A", "B", "KNOWS")
+                .with_source_chunk_ids(vec!["rel-a".into(), "rel-b".into(), "rel-b".into()]),
+        );
+        let picked = pick_chunks_by_weight(&ctx, 2);
+        assert!(picked.contains(&"rel-a".to_string()), "{picked:?}");
+        assert!(picked.contains(&"rel-b".to_string()), "{picked:?}");
+        // rel-b appears twice in lineage → higher weight → first.
+        assert_eq!(picked[0], "rel-b");
     }
 
     #[test]

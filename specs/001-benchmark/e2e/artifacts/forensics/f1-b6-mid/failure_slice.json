@@ -1,0 +1,265 @@
+{
+  "archive": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/001-benchmark/e2e/artifacts/history/medical-mid-20260723T013716Z",
+  "n_eq_preds": 200,
+  "n_lr_preds": 200,
+  "n_paired_eval": 200,
+  "scorecard": {
+    "eq_acc": 0.7495132732626798,
+    "lr_acc": 0.7753971148169302,
+    "eq_ctx": 0.45875,
+    "lr_ctx": 0.495,
+    "eq_er": 0.9439204178174767,
+    "lr_er": 0.952426317554994,
+    "eq_fact_er": 0.93,
+    "lr_fact_er": 0.95,
+    "eq_empty_answer_rate": 0.0,
+    "lr_empty_answer_rate": 0.0
+  },
+  "by_type_acc": {
+    "Complex Reasoning": {
+      "n": 50,
+      "mean_acc_delta_eq_minus_lr": -0.0016,
+      "eq_ahead": 22,
+      "lr_ahead": 22,
+      "near_tie": 6
+    },
+    "Contextual Summarize": {
+      "n": 50,
+      "mean_acc_delta_eq_minus_lr": -0.0271,
+      "eq_ahead": 23,
+      "lr_ahead": 24,
+      "near_tie": 3
+    },
+    "Creative Generation": {
+      "n": 50,
+      "mean_acc_delta_eq_minus_lr": -0.0593,
+      "eq_ahead": 15,
+      "lr_ahead": 31,
+      "near_tie": 4
+    },
+    "Fact Retrieval": {
+      "n": 50,
+      "mean_acc_delta_eq_minus_lr": -0.0155,
+      "eq_ahead": 11,
+      "lr_ahead": 19,
+      "near_tie": 20
+    }
+  },
+  "empty_answers": {
+    "eq_count": 0,
+    "lr_count": 0,
+    "eq_ids_sample": []
+  },
+  "snr_proxy": {
+    "eq_mean_jaccard_gold_vs_context": 0.0162,
+    "lr_mean_jaccard_gold_vs_context": 0.0154,
+    "eq_lt_lr_count": 120
+  },
+  "fact_lr_wins_top": [
+    {
+      "id": "Medical-e05d0922",
+      "eq_acc": 0.2266,
+      "lr_acc": 0.9896,
+      "delta": -0.763,
+      "eq_snr": 0.0196,
+      "lr_snr": 0.0065,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "Which procedure is performed if cancer cells are found in the cerebrospinal fluid?"
+    },
+    {
+      "id": "Medical-ba2c8007",
+      "eq_acc": 0.2396,
+      "lr_acc": 0.9882,
+      "delta": -0.7486,
+      "eq_snr": 0.0022,
+      "lr_snr": 0.003,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "Is autoimmune disease associated with increased BCC risk?"
+    },
+    {
+      "id": "Medical-9797af69",
+      "eq_acc": 0.2357,
+      "lr_acc": 0.925,
+      "delta": -0.6893,
+      "eq_snr": 0.0051,
+      "lr_snr": 0.0082,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "What is recurrence in the context of BCC?"
+    },
+    {
+      "id": "Medical-7a495600",
+      "eq_acc": 0.2399,
+      "lr_acc": 0.6146,
+      "delta": -0.3748,
+      "eq_snr": 0.0063,
+      "lr_snr": 0.0052,
+      "gold_token_coverage": 0.9,
+      "miss_class": "generation",
+      "question": "What are the main risk factors for bone cancer?"
+    },
+    {
+      "id": "Medical-7959a3b5",
+      "eq_acc": 0.2451,
+      "lr_acc": 0.5388,
+      "delta": -0.2937,
+      "eq_snr": 0.0113,
+      "lr_snr": 0.0041,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "What additional therapy is required for high-grade gliomas after surgery?"
+    },
+    {
+      "id": "Medical-7ed82690",
+      "eq_acc": 0.7443,
+      "lr_acc": 0.9968,
+      "delta": -0.2525,
+      "eq_snr": 0.0138,
+      "lr_snr": 0.0036,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "How is grade 3B follicular lymphoma treated?"
+    },
+    {
+      "id": "Medical-fca41ac7",
+      "eq_acc": 0.7338,
+      "lr_acc": 0.9851,
+      "delta": -0.2513,
+      "eq_snr": 0.0032,
+      "lr_snr": 0.0039,
+      "gold_token_coverage": 0.8889,
+      "miss_class": "generation",
+      "question": "What are the tumor characteristics of Tis stage in intrahepatic bile duct cancer?"
+    },
+    {
+      "id": "Medical-4361d3ae",
+      "eq_acc": 0.5108,
+      "lr_acc": 0.7383,
+      "delta": -0.2275,
+      "eq_snr": 0.0296,
+      "lr_snr": 0.0102,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "What surveillance methods are used after T1 rectal tumor resection?"
+    },
+    {
+      "id": "Medical-973bc3d0",
+      "eq_acc": 0.5406,
+      "lr_acc": 0.7393,
+      "delta": -0.1987,
+      "eq_snr": 0.005,
+      "lr_snr": 0.0051,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "How are pMMR/MSS colon cancers generally treated?"
+    },
+    {
+      "id": "Medical-14c841bc",
+      "eq_acc": 0.6186,
+      "lr_acc": 0.8073,
+      "delta": -0.1887,
+      "eq_snr": 0.0036,
+      "lr_snr": 0.0053,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "On what basis is bile duct cancer staging determined?"
+    },
+    {
+      "id": "Medical-306b4531",
+      "eq_acc": 0.7416,
+      "lr_acc": 0.9078,
+      "delta": -0.1662,
+      "eq_snr": 0.0028,
+      "lr_snr": 0.0035,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "What is an intraductal tumor in the context of cancer staging?"
+    },
+    {
+      "id": "Medical-0ce3e959",
+      "eq_acc": 0.6505,
+      "lr_acc": 0.8093,
+      "delta": -0.1588,
+      "eq_snr": 0.0351,
+      "lr_snr": 0.0134,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "What are the treatment options for platinum-resistant ovarian cancer?"
+    },
+    {
+      "id": "Medical-d587c0c2",
+      "eq_acc": 0.8366,
+      "lr_acc": 0.9924,
+      "delta": -0.1557,
+      "eq_snr": 0.0054,
+      "lr_snr": 0.0038,
+      "gold_token_coverage": 0.8571,
+      "miss_class": "generation",
+      "question": "Which chemotherapy regimens are used for bladder cancer?"
+    },
+    {
+      "id": "Medical-20454e30",
+      "eq_acc": 0.7332,
+      "lr_acc": 0.8806,
+      "delta": -0.1474,
+      "eq_snr": 0.0085,
+      "lr_snr": 0.0066,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "Which factors are considered risk factors for head and neck cancers?"
+    },
+    {
+      "id": "Medical-390dfa49",
+      "eq_acc": 0.7463,
+      "lr_acc": 0.8871,
+      "delta": -0.1408,
+      "eq_snr": 0.0103,
+      "lr_snr": 0.0059,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "List urinary diversion procedures after bladder surgery."
+    },
+    {
+      "id": "Medical-adb77b8f",
+      "eq_acc": 0.6661,
+      "lr_acc": 0.7998,
+      "delta": -0.1337,
+      "eq_snr": 0.0034,
+      "lr_snr": 0.0036,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "What is the role of imaging in NPC management?"
+    },
+    {
+      "id": "Medical-c1a69780",
+      "eq_acc": 0.8197,
+      "lr_acc": 0.8992,
+      "delta": -0.0794,
+      "eq_snr": 0.0179,
+      "lr_snr": 0.0109,
+      "gold_token_coverage": 1.0,
+      "miss_class": "generation",
+      "question": "What diagnostic methods are used to diagnose breast cancer?"
+    }
+  ],
+  "fact_miss_split": {
+    "fact_lr_wins_n": 17,
+    "membership_n": 0,
+    "generation_n": 17,
+    "membership_share": 0.0,
+    "generation_share": 1.0,
+    "note": "081 F1: membership = gold token coverage <0.15 in EQ Acc context; generation = coverage \u22650.15 but Acc still lags LR"
+  },
+  "ranked_failure_modes": [
+    {
+      "mode": "Fact_Acc_LR_ahead",
+      "count": 19,
+      "mean_delta": -0.0155,
+      "note": "Primary Acc type gap \u2014 often R6 list split / evidence miss"
+    }
+  ],
+  "recommended_next_phase": "F4_generation_after_F3",
+  "honesty": "Labeled forensics only \u2014 not Acc Beat; Acc publish/latest stays P0 mid"
+}

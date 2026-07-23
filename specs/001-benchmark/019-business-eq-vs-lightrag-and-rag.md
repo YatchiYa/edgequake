@@ -1,8 +1,8 @@
 # How EdgeQuake Compares to LightRAG and Other RAG
 
 **Audience:** Business / product stakeholders  
-**Date:** 2026-07-21 (refresh — split peers + cold latency fairness)  
-**Evidence base:** Fair head-to-head Acc on GraphRAG-Bench medical smoke (n=40) · [peers.json](./e2e/artifacts/peers.json) · [055 First Principles hub](./001-edgquake-improvements/055-post-acc-ceiling-first-principles.md) · [063 why LR looked faster](./001-edgquake-improvements/063-why-lightrag-faster-cache-fairness.md) · [043 honesty](./001-edgquake-improvements/043-honesty-can-we-push.md)
+**Date:** 2026-07-23 (refresh — product Equal **083** shipped · Acc Equal mid **STOP** / Acc Beat fishing STOP)  
+**Evidence base:** Fair head-to-head Acc on GraphRAG-Bench medical publish mid (n=200) · smoke n=40 peers for labeled Acc Fact / L2 packs · [peers.json](./e2e/artifacts/peers.json) · [085 fairness Equal STOP](./001-edgquake-improvements/085-fairness-concurrency-equal-stop.md) · [083 product query API](./001-edgquake-improvements/083-lightrag-query-api-law.md) · [082 gold/citation](./001-edgquake-improvements/082-gold-citation-compat.md) · [081 Beat/Parity](./001-edgquake-improvements/081-beat-parity-first-principles.md) · [080 Beat roadmap](./001-edgquake-improvements/080-beat-lightrag-evidence-roadmap.md) · [055 First Principles hub](./001-edgquake-improvements/055-post-acc-ceiling-first-principles.md) · [063 why LR looked faster](./001-edgquake-improvements/063-why-lightrag-faster-cache-fairness.md) · [043 honesty](./001-edgquake-improvements/043-honesty-can-we-push.md)
 
 ---
 
@@ -10,21 +10,26 @@
 
 | Question | Plain answer |
 |----------|----------------|
-| Does EdgeQuake beat LightRAG on answer quality today? | **No — statistical tie** on n=40 (difference within noise). Do not claim “beats LightRAG.” |
-| Is EdgeQuake a serious GraphRAG peer? | **Yes.** Under Acc Fact peer pins, answer accuracy matches LightRAG Mix. |
-| How do we report fairly? | **Two labeled peers** — never one unlabeled “winner.” Acc Fact ≠ L2 Parity. |
-| Where is LightRAG ahead? | **Evidence coverage** under the L2 Parity pack. Warm Acc “~5× faster” was **LLM-cache-aided** — fair cold Mix is ≈ **1.0×**. |
-| Where is EdgeQuake ahead? | **Fact Acc** on the Acc Fact peer slice; **product/platform** (API, Postgres, multi-tenant). |
+| Does EdgeQuake beat LightRAG on answer quality today? | **No.** Acc headline (P0 medical-mid) still has LightRAG Acc ahead. Do not claim “EdgeQuake beats LightRAG.” |
+| Do we equal LightRAG anywhere? | **Yes — product query API** ([083](./001-edgquake-improvements/083-lightrag-query-api-law.md)): `hl_keywords`/`ll_keywords` skip keyword LLM + system/user generate. **Not** Acc mid Parity. |
+| What is Acc CI “keep”? | Labeled only: gap-close E2 occ mid Acc **statistical tie** (0.765, CI includes 0). Fair chat-split mid also Acc-ties ([085](./001-edgquake-improvements/085-fairness-concurrency-equal-stop.md)) — still **not** Parity (ctx&lt;0.50). |
+| What is the publish sample? | **n=200 medical-mid** (`make bench`). Smoke n=40 is a daily gate only — first principles forbid publishing smoke as the release score. |
+| Is EdgeQuake a serious GraphRAG peer? | **Yes as a product stack** (Postgres, API, PDF) with LightRAG-shaped query contract. On Acc under fair Mistral pins, LightRAG currently leads headline; EQ remains LightRAG-class on cold latency (~1.1×). |
+| How do we report fairly? | **Split peers** — never one unlabeled “winner.” Product Equal ≠ Acc CI keep ≠ Acc headline ≠ L2 Parity. |
+| Where is LightRAG ahead? | **Publish Acc** (P0 medical-mid): Acc 0.774 vs 0.706. **Scale** medical-full n=2062: LR Acc CI excludes 0. Mid E2 Acc tie does **not** clear Parity and does not hold at full-N. Warm “~5× faster” was **LLM-cache-aided**. |
+| Where is EdgeQuake ahead? | **Product/platform** (API, Postgres, multi-tenant) · **query API law** (083) · Fact Acc on Acc Fact peer slice (labeled). |
 | Are we “state of the art” vs all RAG? | **Peer on Acc with LightRAG; not retrieval SOTA.** HippoRAG2-class leads on clean+complete retrieval. |
 
-**Bottom line:** Credible LightRAG-class GraphRAG product on answer quality **and** cold query latency. Next investment is **UX (TTFT) / product caches**, **ingest naming fidelity**, and **honest packaging** — not another Soft Mix Acc knob.
+**Bottom line:** Ship **product Equal LightRAG** on the query contract ([083](./001-edgquake-improvements/083-lightrag-query-api-law.md)). Acc mid Parity / Beat remain **STOP** after 080–085. Report Acc CI only as a **labeled keep** (E2 / fair chat-split) — never as Equal or Beat. Next investment: **UX (TTFT) / product caches** — not another Acc mid for ctx.
 
 ### Split peers (required reading)
 
-| Peer | What it optimizes | Headline numbers (n=40) |
-|------|-------------------|-------------------------|
-| **Acc Fact** (`a1fp` / B5) | Answer quality + Fact | EQ Acc **0.801** vs LR ~0.782 · ctx 0.519 · recall 0.926 · [T120315Z](./e2e/artifacts/history/smoke-20260720T120315Z/) |
-| **L2 Parity** (`a1lrl2`) | Evidence recall + clean context | EQ Acc 0.718 (tax) · ctx 0.525 · recall **0.933** · [T093152Z](./e2e/artifacts/history/smoke-20260720T093152Z/) |
+| Peer | What it optimizes | Headline numbers |
+|------|-------------------|------------------|
+| **Product Equal** ([083](./001-edgquake-improvements/083-lightrag-query-api-law.md)) | Query API = LightRAG (hl/ll + chat roles) | keyword_time_ms **909→0** · peer `PRODUCT_QUERY_API_v1` |
+| **Acc CI keep** (E2 occ mid) | Labeled Acc statistical tie | EQ Acc **0.765** · CI [−0.031, +0.040] · ctx 0.491 · [T133053Z](./e2e/artifacts/history/medical-mid-20260722T133053Z/) — **not** Parity |
+| **Acc Fact** (`a1fp` / B5, n=40) | Answer quality + Fact | EQ Acc **0.801** · ctx 0.519 · [T120315Z](./e2e/artifacts/history/smoke-20260720T120315Z/) |
+| **L2 Parity** (`a1lrl2`, n=40) | Evidence recall + clean context | EQ Acc 0.718 (tax) · recall **0.933** · [T093152Z](./e2e/artifacts/history/smoke-20260720T093152Z/) |
 
 Machine index: [`e2e/artifacts/peers.json`](./e2e/artifacts/peers.json).
 ---
@@ -63,12 +68,14 @@ Think of three layers:
 
 ### By question type (where each system feels stronger)
 
-| User need | Who tends to lead on Acc | Takeaway |
+Publish medical-mid n=200 ([074](./001-edgquake-improvements/074-why-eq-lags-lightrag-medical-mid.md)): LightRAG leads **all four** Acc types. Fact (−0.107) is the largest gap (evidence miss). Smoke Acc Fact peer can still show EQ ahead on a labeled pin pack — do not merge peers.
+
+| User need | Who leads on publish Acc | Takeaway |
 |-----------|--------------------------|----------|
-| Simple fact lookup | **EdgeQuake** | Competitive for “what / who / when” style questions |
-| Multi-hop reasoning | **LightRAG** | Still the main quality gap to close |
+| Simple fact lookup | **LightRAG** (publish); EQ Acc Fact peer labeled only | Close provenance / VECTOR chunk pick |
+| Multi-hop reasoning | **LightRAG** | Cleaner packing + less BM25 demotion |
 | Long summarization | **LightRAG** | Needs broader, cleaner coverage |
-| Creative / open-ended | **EdgeQuake** | Competitive on faithfulness-style Acc |
+| Creative / open-ended | **LightRAG** | Context noise hurts open-ended Acc |
 
 ---
 
@@ -102,15 +109,16 @@ We ran a disciplined improvement program (noise control, reranking, path pruning
 
 Allowed external language (recommended):
 
-- “EdgeQuake matches LightRAG on answer accuracy under our Acc Fact peer pins.”  
+- “EdgeQuake equals LightRAG on the **product query API** (hl/ll keyword override + system/user generate) — [083](./001-edgquake-improvements/083-lightrag-query-api-law.md).”  
+- “Under a **labeled** gap-close Acc pack, answer Acc is a statistical tie with LightRAG — not Acc headline, not Beat.”  
 - “Evidence-coverage parity is a separate labeled pack (L2 Parity) with an Acc trade-off — we disclose both.”  
 - “Peer GraphRAG system with a full production stack (Postgres, API, document pipeline).”  
 - “Fair cold Mix latency is ≈ LightRAG (≤1.5× PASS); warm Acc LR looks faster only with LLM cache hits.”
 
 Avoid:
 
-- “Beats LightRAG” / “wins Acc” without a confidence interval that excludes a tie  
-- Merging Acc Fact and L2 Parity into one unlabeled “we’re better” claim  
+- “Beats LightRAG” / “wins Acc” / “Equal on Acc mid Parity” (ctx≥0.50 unmet; Acc Equal STOP)  
+- Merging Product Equal, Acc CI keep, Acc Fact, and L2 Parity into one unlabeled claim  
 - “#1 on GraphRAG-Bench” without matching the paper’s model and full evaluation protocol  
 
 ---

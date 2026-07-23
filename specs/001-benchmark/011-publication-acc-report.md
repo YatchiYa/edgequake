@@ -1,8 +1,9 @@
 # 011 — Publication Acc Report: EQ vs LightRAG (First Principles + July 2026 SOTA)
 
-**Date:** 2026-07-19  
-**Archive:** [`e2e/artifacts/history/smoke-20260719T124903Z`](./e2e/artifacts/history/smoke-20260719T124903Z/)  
-**Cross-ref:** [001 First Principles](./001-first-principles.md) · [002 Selection](./002-benchmark-selection.md) · [003 Protocol](./003-fair-evaluation-protocol.md) · [010 Runbook](./010-smoke-then-core-runbook.md) · [019 Business brief](./019-business-eq-vs-lightrag-and-rag.md) · [Improvements pack](./001-edgquake-improvements/000-index.md) · [017 Beat LightRAG](./001-edgquake-improvements/017-beat-lightrag.md)
+**Date:** 2026-07-22 (medical-mid ladder)  
+**Smoke archive (peer reference):** [`e2e/artifacts/history/smoke-20260721T022103Z`](./e2e/artifacts/history/smoke-20260721T022103Z/)  
+**Publish claim:** `make bench` → medical-mid **n=200** → [`e2e/artifacts/publish/latest/`](./e2e/artifacts/publish/latest/)  
+**Cross-ref:** [001 First Principles](./001-first-principles.md) · [002 Selection](./002-benchmark-selection.md) · [003 Protocol](./003-fair-evaluation-protocol.md) · [004 Fixtures](./004-dataset-and-fixtures.md) · [010 Runbook](./010-smoke-then-core-runbook.md) · [019 Business brief](./019-business-eq-vs-lightrag-and-rag.md) · [Improvements pack](./001-edgquake-improvements/000-index.md) · [017 Beat LightRAG](./001-edgquake-improvements/017-beat-lightrag.md)
 
 ---
 
@@ -14,15 +15,17 @@
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│  Publishable dual-SUT Acc (n=40 medical, FULL corpus, fair pins):            │
-│    EQ Acc 0.765  ·  LR Acc 0.754  ·  Δ +0.011  ·  CI [-0.061, +0.083]       │
-│    → STATISTICAL TIE on Acc. EQ slightly ahead on point estimate.            │
+│  Publish Acc ladder (first principles):                                      │
+│    smoke n=40  = daily / CI gate only (CI too wide for release claims)       │
+│    medical-mid n=200 = defendable publish Acc (make bench)                   │
+│    core n=2162 = ultimate ladder (--i-accept-cost)                           │
 │                                                                              │
-│  Real gap (not Acc): Context Relevancy  EQ 0.375  vs  LR 0.544  (−0.17)     │
-│                      Evidence Recall    EQ 0.928  vs  LR 0.991  (−0.06)     │
-│                      Latency p50        EQ ~9.6s  vs  LR ~3.0s  (~3×)       │
+│  Smoke peer snapshot (T022103Z, n=40, cold fair):                            │
+│    EQ Acc 0.731  ·  LR Acc 0.760  ·  Δ −0.029  ·  CI includes 0 ⇒ TIE        │
+│    L2 ctx_rel EQ 0.381 vs LR 0.494 · evidence recall EQ 0.936 vs LR 0.951    │
 │                                                                              │
-│  To exceed LightRAG: win L2 relevancy (noise pruning), then Acc Δ with CI>0. │
+│  External claim: peer / statistical tie under named pins — not Acc Beat.     │
+│  After make bench (n=200), prefer publish/latest/BUSINESS_REPORT.md.         │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -37,7 +40,8 @@ Per [001](./001-first-principles.md) Axiom A1:
 | Pin | Value |
 |-----|-------|
 | Task | `GraphRAG-Bench/EQ-vs-LR` |
-| Fixture | `smoke_question_ids_v1` (n=40 stratified) |
+| Publish fixture | `medical_publish_question_ids_v1` (n=200, 50/type, seed 42) |
+| Smoke fixture (gate) | `smoke_question_ids_v1` (n=40; subset of publish) |
 | Corpus | FULL medical (~1.05M chars, uncapped) |
 | Chunk | 1200 / overlap 100, adaptive **off** |
 | Text / vision / judge | `mistral-small-latest` |
