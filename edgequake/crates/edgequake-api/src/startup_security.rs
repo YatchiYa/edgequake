@@ -169,14 +169,19 @@ mod tests {
 
     #[test]
     fn remote_db_auth_off_strict_exits_message() {
+        // SPEC-083 S-09/S-10: remote DB + auth off is a warning; strict_startup
+        // promotes it to Fatal. Must not set dev_mode (that opts out of both
+        // the auth-off warning and the prod CORS fatal).
         let auth = AuthConfig {
             auth_enabled: false,
-            dev_mode: true,
+            dev_mode: false,
             jwt_secret: "secure-test-secret-spec027-long-enough".to_string(),
             ..AuthConfig::default()
         };
         let security = ApiSecurityConfig {
             strict_startup: true,
+            // Explicit CORS so we exercise the auth-off → strict path, not S-10 CORS fatal.
+            cors_origins: Some(vec!["https://app.example.com".into()]),
             ..Default::default()
         };
         let outcome = validate_startup_security(
@@ -185,6 +190,12 @@ mod tests {
             &security,
         );
         assert!(matches!(outcome, StartupSecurityOutcome::Fatal(_)));
+        if let StartupSecurityOutcome::Fatal(msg) = outcome {
+            assert!(
+                msg.contains("STRICT_STARTUP") && msg.contains("Authentication disabled"),
+                "expected strict auth-off fatal, got: {msg}"
+            );
+        }
     }
 
     #[test]

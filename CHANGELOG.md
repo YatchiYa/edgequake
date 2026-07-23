@@ -4,8 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+---
+
+## [0.21.0] — 2026-07-23
+
+Minor: LightRAG query-API parity (074–085), D-30 `eq_rel_type` multigraph arbiter, and SPEC-083 defect closure.
+
 ### Added
 
+- **LightRAG query-API parity (074–085)** — Mix/local/global grounding, BM25/L2 fusion honesty, Acc honesty freeze.
 - **SPEC-083 first-principles pack** — Defect register, laws, cluster studies, e2e matrix, and roadmap under [`docs/083-improvements/`](docs/083-improvements/README.md) (89 FIXED / 1 RETRACTED).
 - **D-30 multigraph arbiter** — Native EDGE upserts use `(eq_source_id, eq_target_id, eq_rel_type)`; every-boot M092 support SQL adds `eq_rel_type` + `idx_edge_eq_source_target_rel` (checksum-safe: support/ only, not versioned markers).
 - **Merge error surfacing** — Persist messages include the first underlying graph merge cause while keeping GraphMerge classification.
@@ -16,6 +23,7 @@ All notable changes to this project will be documented in this file.
 - **KG persist merge (eq_rel_type split-brain)** — Pre–D-30 AGE graphs no longer look “ready” while native INSERT fails; readiness probes require `eq_rel_type` + 3-col unique.
 - **`/ready` false positives from incomplete AGE stubs** — M092 readiness scores only graphs with both `Node` and `EDGE` (orphan `bind_probe*` stubs no longer block traffic).
 - **Schema / RLS / pipeline / query honesty** — Waves 0–D closure for open SPEC-083 IDs (CORS Origin, typed failure markers, Mix fusion rename, Thinking SSE, Scan/Reindex 501, Acc gates, etc.). See register for per-ID evidence.
+- **X-30 typed vision timeouts** — Stall watchdog messages carry `Operation timed out` + `failure_class=timeout_phase_convert`; `from_processing_error` uses the timeout factory so progress-aware circuit breaker works under typed detection.
 
 ### Docs
 

@@ -741,9 +741,11 @@ mod tests {
         std::env::remove_var("CHAT_MODEL");
         std::env::set_var("EDGEQUAKE_LLM_MODEL", "from-env");
 
-        let mut workspace = EdgeQuakeConfig::default();
-        workspace.llm_model_name = "from-workspace".into();
-        workspace.namespace = "ws-ns".into();
+        let workspace = EdgeQuakeConfig {
+            llm_model_name: "from-workspace".into(),
+            namespace: "ws-ns".into(),
+            ..Default::default()
+        };
 
         let via_ws =
             EdgeQuakeConfig::resolve(EdgeQuakeConfigOverrides::default(), Some(&workspace));

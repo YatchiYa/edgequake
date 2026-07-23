@@ -137,6 +137,7 @@ impl TaskFailureInfo {
     pub fn from_processing_error(message: impl Into<String>) -> Self {
         use crate::ingestion_reliability::{
             classify_ingestion_failure, failure_step, is_permanent_ingestion_failure,
+            IngestionFailureClass,
         };
 
         let message = message.into();
@@ -146,6 +147,15 @@ impl TaskFailureInfo {
         let suggestion = class.recommended_action();
         // Progress-aware circuit breaker: vision stall watchdog embeds this marker.
         let made_progress = message.contains("[vision_progress=1]");
+
+        // X-30: TimeoutPhase* must use the timeout() factory so `is_timeout()`
+        // is true (fixed message) while `reason` preserves the raw payload.
+        if matches!(
+            class,
+            IngestionFailureClass::TimeoutPhaseConvert | IngestionFailureClass::TimeoutPhaseExtract
+        ) {
+            return Self::timeout(step, message).with_made_progress(made_progress);
+        }
 
         Self::new(message.clone(), step, message, suggestion, retryable)
             .with_made_progress(made_progress)

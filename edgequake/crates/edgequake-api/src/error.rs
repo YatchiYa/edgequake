@@ -1062,9 +1062,10 @@ mod tests {
     #[test]
     fn test_llm_timeout_is_retryable_not_auth_error() {
         use edgequake_llm::error::LlmError;
-        let timeout = ApiError::Llm(LlmError::ApiError("request timeout after 30s".into()));
+        // SPEC-083 X-30: typed variants only — no ApiError substring matching.
+        let timeout = ApiError::Llm(LlmError::Timeout);
         assert!(timeout.is_retryable());
-        let auth = ApiError::Llm(LlmError::ApiError("invalid_api_key: unauthorized".into()));
+        let auth = ApiError::Llm(LlmError::AuthError("invalid_api_key: unauthorized".into()));
         assert!(!auth.is_retryable());
     }
 
