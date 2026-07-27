@@ -19,8 +19,7 @@ import { Button } from "@/components/ui/button";
 import { cancelTask } from "@/lib/api/edgequake";
 import type { IngestionRunView } from "@/lib/pipeline/ingestion-run-view";
 import {
-  CANCELLED_ACTIVE_RUN_TTL_MS,
-  cancelledRetentionAnchorMs,
+  cancelledRetentionDeadlines,
   createCancelledObservationClock,
   filterWorkingRunsForRetention,
   isCancelledRun,
@@ -181,34 +180,44 @@ export function ActiveRunsPanel({
     dismissedCancelledIds,
   });
 
-  // Schedule TTL expiry ticks for cancelled dwell cards.
+  // Delay until each in-window cancelled card expires. Stable primitive deps —
+  // never sync-bump when remaining <= 0 (that + fresh `runs` arrays loops).
+  const cancelledTtlDeadlines = cancelledRetentionDeadlines(rawWorking, {
+    clock: clockRef.current,
+    dismissedCancelledIds,
+  });
+  const cancelledTtlScheduleKey = cancelledTtlDeadlines
+    .map((e) => `${e.id}:${e.deadline}`)
+    .join("|");
+
   useEffect(() => {
-    const now = Date.now();
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    for (const run of rawWorking) {
-      if (!isCancelledRun(run)) continue;
-      if (dismissedCancelledIds.has(run.documentId)) continue;
-      const anchor =
-        cancelledRetentionAnchorMs(run, clockRef.current) ?? now;
-      const remaining = CANCELLED_ACTIVE_RUN_TTL_MS - (now - anchor);
-      if (remaining <= 0) {
-        bumpRetention();
-        continue;
-      }
-      timers.push(setTimeout(() => bumpRetention(), remaining + 1));
-    }
+    if (cancelledTtlDeadlines.length === 0) return;
+    const timers = cancelledTtlDeadlines.map((entry) => {
+      const remaining = Math.max(1, entry.deadline - Date.now());
+      return setTimeout(() => bumpRetention(), remaining);
+    });
     return () => {
       for (const t of timers) clearTimeout(t);
     };
-  }, [rawWorking, dismissedCancelledIds]);
+    // Schedule key is the stable identity; deadlines array is from this render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- key encodes deadlines
+  }, [cancelledTtlScheduleKey]);
 
   // Prune durable dismiss when docs leave cancelled (e.g. reprocess).
   useEffect(() => {
     const cancelledIds = new Set(
       runs.filter(isCancelledRun).map((r) => r.documentId),
     );
-    const pruned = pruneDismissedCancelledIds(cancelledIds);
-    setDismissedCancelledIds(pruned);
+    setDismissedCancelledIds((prev) => {
+      const pruned = pruneDismissedCancelledIds(cancelledIds);
+      if (
+        prev.size === pruned.size &&
+        [...prev].every((id) => pruned.has(id))
+      ) {
+        return prev;
+      }
+      return pruned;
+    });
   }, [runs]);
 
   if (working.length === 0 && attention.length === 0) return null;

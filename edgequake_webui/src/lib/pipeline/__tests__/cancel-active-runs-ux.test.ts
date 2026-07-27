@@ -9,6 +9,7 @@ import {
 import { partitionActiveRuns } from "@/components/documents/active-runs-panel";
 import {
   CANCELLED_ACTIVE_RUN_TTL_MS,
+  cancelledRetentionDeadlines,
   createCancelledObservationClock,
   filterWorkingRunsForRetention,
   workingSectionTitleForRuns,
@@ -272,6 +273,32 @@ describe("active-runs retention", () => {
       nowMs: Date.now(),
     });
     expect(filtered).toHaveLength(0);
+  });
+
+  it("schedules no TTL deadline once already expired (avoids sync bump loop)", () => {
+    const clock = createCancelledObservationClock();
+    const t0 = 1_000_000;
+    const cancelled = run({
+      documentId: "c-expired",
+      stage: "cancelled",
+      stageStatus: "cancelled",
+      updatedAt: new Date(t0).toISOString(),
+    });
+    const deadlines = cancelledRetentionDeadlines([cancelled], {
+      clock,
+      dismissedCancelledIds: new Set(),
+      nowMs: t0 + CANCELLED_ACTIVE_RUN_TTL_MS + 1,
+    });
+    expect(deadlines).toEqual([]);
+
+    const live = cancelledRetentionDeadlines([cancelled], {
+      clock,
+      dismissedCancelledIds: new Set(),
+      nowMs: t0 + 1_000,
+    });
+    expect(live).toEqual([
+      { id: "c-expired", deadline: t0 + CANCELLED_ACTIVE_RUN_TTL_MS },
+    ]);
   });
 
   it("dismiss excludes cancelled immediately", () => {

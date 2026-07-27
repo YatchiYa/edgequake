@@ -107,6 +107,37 @@ export function filterWorkingRunsForRetention(
   });
 }
 
+/**
+ * Future TTL deadlines for cancelled Active Run cards still within the dwell.
+ * Already-expired rows are omitted — callers must not sync-bump for those
+ * (render-time filter already hides them; sync setState loops).
+ */
+export function cancelledRetentionDeadlines(
+  working: IngestionRunView[],
+  opts: {
+    clock: CancelledObservationClock;
+    dismissedCancelledIds: ReadonlySet<string>;
+    nowMs?: number;
+    ttlMs?: number;
+  },
+): Array<{ id: string; deadline: number }> {
+  const nowMs = opts.nowMs ?? Date.now();
+  const ttlMs = opts.ttlMs ?? CANCELLED_ACTIVE_RUN_TTL_MS;
+  noteCancelledObservations(opts.clock, working, nowMs);
+  const out: Array<{ id: string; deadline: number }> = [];
+  for (const run of working) {
+    if (!isCancelledRun(run)) continue;
+    if (opts.dismissedCancelledIds.has(run.documentId)) continue;
+    const anchor = cancelledRetentionAnchorMs(run, opts.clock) ?? nowMs;
+    const deadline = anchor + ttlMs;
+    if (deadline > nowMs) {
+      out.push({ id: run.documentId, deadline });
+    }
+  }
+  out.sort((a, b) => a.id.localeCompare(b.id));
+  return out;
+}
+
 /** Section title when only cancelled dwell remains. */
 export function workingSectionTitleForRuns(working: IngestionRunView[]): string {
   const anyLive = working.some(
