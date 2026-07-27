@@ -703,6 +703,30 @@ async fn process_pdf_upload_parts(
     .await
     .map_err(|e| ApiError::Internal(format!("Failed to provision queued document: {e}")))?;
 
+    if let Err(error) = crate::services::provision_relational_document_shell(
+        state,
+        &enqueue.document_id,
+        &crate::services::RelationalDocumentShell {
+            title: filename.clone(),
+            tenant_id,
+            workspace_id,
+            track_id: enqueue.track_id.clone(),
+            source_type: "pdf".to_string(),
+            file_size_bytes: file_size_bytes.min(i64::MAX as u64) as i64,
+            content_hash: Some(checksum.clone()),
+            content_type: Some("application/pdf".to_string()),
+        },
+    )
+    .await
+    {
+        tracing::warn!(
+            document_id = %enqueue.document_id,
+            track_id = %enqueue.track_id,
+            error = %error,
+            "PDF admitted but relational queue shell could not be projected"
+        );
+    }
+
     // SPEC-054 / #300: seed progress under server task_id only.
     seed_pdf_job_progress(
         state,

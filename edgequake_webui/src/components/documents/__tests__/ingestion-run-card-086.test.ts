@@ -6,7 +6,10 @@ import {
   isOrphanFailedAttention,
   partitionActiveRuns,
 } from "@/components/documents/active-runs-panel";
-import { canDismissFailedRun } from "@/components/documents/ingestion-run-card";
+import {
+  canDismissCancelledRun,
+  canDismissFailedRun,
+} from "@/components/documents/ingestion-run-card";
 import type { IngestionRunView } from "@/lib/pipeline/ingestion-run-view";
 
 /** Mirrors showPdfDetail gate in ingestion-run-card.tsx (keep in sync). */
@@ -104,5 +107,21 @@ describe("ActiveRunsPanel partition (dual-run UX)", () => {
     const { working, attention } = partitionActiveRuns([orphan]);
     expect(working).toHaveLength(0);
     expect(attention).toHaveLength(1);
+  });
+
+  it("keeps cancelled in Working (not attention)", () => {
+    const cancelled: IngestionRunView = {
+      documentId: "doc-cancel",
+      trackId: "insert-cancel",
+      filename: "stop.md",
+      sourceType: "markdown",
+      stage: "cancelled",
+      stageStatus: "cancelled",
+      message: "Cancelled by user",
+    };
+    const { working, attention } = partitionActiveRuns([cancelled, orphan]);
+    expect(working.map((r) => r.documentId)).toEqual(["doc-cancel"]);
+    expect(attention.map((r) => r.documentId)).toEqual(["doc-orphan"]);
+    expect(canDismissCancelledRun(cancelled, true)).toBe(true);
   });
 });

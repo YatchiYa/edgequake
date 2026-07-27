@@ -41,6 +41,28 @@ export function canDismissFailedRun(
   );
 }
 
+/** Cancelled Working cards get Dismiss (local AR suppress — not document delete). */
+export function canDismissCancelledRun(
+  run: Pick<IngestionRunView, "stage" | "stageStatus">,
+  hasDismissHandler: boolean,
+): boolean {
+  return (
+    hasDismissHandler &&
+    (run.stageStatus === "cancelled" || run.stage === "cancelled")
+  );
+}
+
+function isCancelTerminal(
+  run: Pick<IngestionRunView, "stage" | "stageStatus">,
+): boolean {
+  return (
+    run.stageStatus === "cancelled" ||
+    run.stage === "cancelled" ||
+    run.stageStatus === "stopping" ||
+    run.stage === "stopping"
+  );
+}
+
 export function IngestionRunCard({
   run,
   nestedDetail,
@@ -53,6 +75,7 @@ export function IngestionRunCard({
   const timeline = buildStageTimeline(run);
   const admission = timeline.admissionPhase;
   const isAdmission = Boolean(admission);
+  const cancelTerminal = isCancelTerminal(run);
   const overallPct = Math.round(timeline.overallProgress01 * 100);
   const stagePct =
     typeof timeline.stageProgress01 === "number"
@@ -66,11 +89,12 @@ export function IngestionRunCard({
   const canCancel =
     Boolean(onCancel) &&
     !isAdmission &&
+    !cancelTerminal &&
     run.stage !== "completed" &&
-    run.stage !== "failed" &&
-    run.stage !== "cancelled" &&
-    run.stage !== "stopping";
-  const canDismiss = canDismissFailedRun(run, Boolean(onDismiss));
+    run.stage !== "failed";
+  const canDismissFailed = canDismissFailedRun(run, Boolean(onDismiss));
+  const canDismissCancelled = canDismissCancelledRun(run, Boolean(onDismiss));
+  const canDismiss = canDismissFailed || canDismissCancelled;
 
   return (
     <div
@@ -83,6 +107,7 @@ export function IngestionRunCard({
       data-testid={testId ?? "spec086-ingestion-run-card"}
       data-document-id={run.documentId}
       data-stage={run.stage}
+      data-stage-status={run.stageStatus}
       data-source-type={run.sourceType}
       data-mode={run.mode ?? "full"}
       data-admission={admission ?? "running"}
@@ -93,10 +118,16 @@ export function IngestionRunCard({
         </span>
         <div className="flex shrink-0 items-center gap-2">
           <span
-            className="text-xs tabular-nums text-sky-700 dark:text-sky-300"
+            className={
+              run.stageStatus === "cancelled" || run.stage === "cancelled"
+                ? "text-xs tabular-nums text-orange-700 dark:text-orange-300"
+                : run.stageStatus === "stopping" || run.stage === "stopping"
+                  ? "text-xs tabular-nums text-orange-700/80 dark:text-orange-300/80"
+                  : "text-xs tabular-nums text-sky-700 dark:text-sky-300"
+            }
             data-testid="spec048-run-headline"
           >
-            {run.counts
+            {run.counts && !cancelTerminal
               ? `${stageDisplayName(run.stage, run.sourceType)} · ${run.counts.current}/${run.counts.total}`
               : stageDisplayName(run.stage, run.sourceType)}
           </span>
@@ -115,7 +146,11 @@ export function IngestionRunCard({
               type="button"
               className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
               onClick={onDismiss}
-              title="Remove this failed upload. Re-upload the file to try again."
+              title={
+                canDismissCancelled
+                  ? "Hide this cancelled run from Active Runs. The document stays in the list."
+                  : "Remove this failed upload. Re-upload the file to try again."
+              }
               data-testid="spec086-run-dismiss"
             >
               Dismiss
@@ -145,6 +180,24 @@ export function IngestionRunCard({
                 : "h-full w-1/3 animate-pulse rounded bg-amber-400/70"
             }
           />
+        </div>
+      ) : cancelTerminal ? (
+        <div className="space-y-1.5" data-testid="spec086-cancel-progress-frozen">
+          <div className="space-y-0.5" data-testid="spec048-overall-progress">
+            <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+              <span>Overall (frozen)</span>
+              <span
+                className="tabular-nums"
+                data-testid="spec048-run-overall-pct"
+              >
+                {overallPct}%
+              </span>
+            </div>
+            <Progress
+              value={overallPct}
+              className="h-1 [&_[data-slot=progress-indicator]]:bg-orange-400/70"
+            />
+          </div>
         </div>
       ) : (
         <div className="space-y-1.5">

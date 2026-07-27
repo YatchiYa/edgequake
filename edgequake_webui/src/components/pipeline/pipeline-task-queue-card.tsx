@@ -1,7 +1,13 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCurrentTime } from "@/hooks/use-current-time";
 import { getTasksList } from "@/lib/api/edgequake";
@@ -10,6 +16,7 @@ import {
   formatWaitTimeMs,
   partitionTasksByStatus,
 } from "@/lib/pipeline/pipeline-formatters";
+import { hiddenPreviewCount } from "@/lib/pipeline/pipeline-monitor-counts";
 import {
   scopedQueryKey,
   usePipelineWorkspace,
@@ -22,10 +29,24 @@ import { useMemo } from "react";
 export function PipelineTaskQueueCard() {
   const { selectedTenantId, selectedWorkspaceId } = usePipelineWorkspace();
   const now = useCurrentTime(1000);
+  const page = 1;
+  const pageSize = 50;
 
   const { data: tasks, isLoading } = useQuery({
-    queryKey: scopedQueryKey("tasks", selectedTenantId, selectedWorkspaceId),
-    queryFn: () => getTasksList({ page_size: 50 }),
+    queryKey: [
+      ...scopedQueryKey("tasks", selectedTenantId, selectedWorkspaceId),
+      page,
+      pageSize,
+      null,
+      null,
+    ],
+    queryFn: () =>
+      getTasksList({
+        tenant_id: selectedTenantId ?? undefined,
+        workspace_id: selectedWorkspaceId ?? undefined,
+        page,
+        page_size: pageSize,
+      }),
     refetchInterval: 3000,
   });
 
@@ -37,7 +58,14 @@ export function PipelineTaskQueueCard() {
   const formatWaitTime = (createdAt: string) =>
     formatWaitTimeMs(now - new Date(createdAt).getTime());
 
-  const totalWaiting = pendingTasks.length;
+  const totalWaiting = tasks?.statistics.pending ?? 0;
+  const totalProcessing = tasks?.statistics.processing ?? 0;
+  const pendingPreview = pendingTasks.slice(0, 10);
+  const hiddenPending = hiddenPreviewCount(totalWaiting, pendingPreview.length);
+  const hiddenProcessing = hiddenPreviewCount(
+    totalProcessing,
+    processingTasks.length,
+  );
 
   return (
     <Card>
@@ -48,34 +76,41 @@ export function PipelineTaskQueueCard() {
             Task Queue
           </CardTitle>
           {totalWaiting > 0 && (
-            <Badge variant="outline" className="text-yellow-500 border-yellow-500">
+            <Badge
+              variant="outline"
+              className="text-yellow-500 border-yellow-500"
+            >
               {totalWaiting} waiting
             </Badge>
           )}
         </div>
-        <CardDescription>Pending and processing tasks with wait times</CardDescription>
+        <CardDescription>
+          Pending and processing tasks with wait times
+        </CardDescription>
       </CardHeader>
       <CardContent>
         {isLoading ? (
           <div className="flex flex-col justify-center items-center gap-2 py-4">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">Loading task queue...</p>
+            <p className="text-sm text-muted-foreground">
+              Loading task queue...
+            </p>
           </div>
-        ) : pendingTasks.length === 0 && processingTasks.length === 0 ? (
+        ) : totalWaiting === 0 && totalProcessing === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-4">
             No pending or processing tasks
           </p>
         ) : (
           <ScrollArea className="h-64">
             <div className="space-y-4">
-              {pendingTasks.length > 0 && (
+              {totalWaiting > 0 && (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                     <Clock className="h-3 w-3" />
-                    PENDING ({pendingTasks.length})
+                    PENDING ({totalWaiting})
                   </div>
                   <div className="space-y-1">
-                    {pendingTasks.slice(0, 10).map((task: TaskResponse, index: number) => (
+                    {pendingPreview.map((task: TaskResponse, index: number) => (
                       <div
                         key={task.track_id}
                         className="flex items-center justify-between py-1.5 px-2 rounded bg-yellow-50/50 dark:bg-yellow-950/30 text-xs"
@@ -94,20 +129,20 @@ export function PipelineTaskQueueCard() {
                         </div>
                       </div>
                     ))}
-                    {pendingTasks.length > 10 && (
+                    {hiddenPending > 0 && (
                       <p className="text-xs text-muted-foreground text-center py-1">
-                        +{pendingTasks.length - 10} more in queue
+                        +{hiddenPending} more in queue
                       </p>
                     )}
                   </div>
                 </div>
               )}
 
-              {processingTasks.length > 0 && (
+              {totalProcessing > 0 && (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                     <Loader2 className="h-3 w-3 animate-spin" />
-                    PROCESSING ({processingTasks.length})
+                    PROCESSING ({totalProcessing})
                   </div>
                   <div className="space-y-1">
                     {processingTasks.map((task: TaskResponse) => (
@@ -124,11 +159,17 @@ export function PipelineTaskQueueCard() {
                         <div className="flex items-center gap-2 text-muted-foreground">
                           <span>
                             Started{" "}
-                            {formatWaitTime(task.started_at || task.created_at)} ago
+                            {formatWaitTime(task.started_at || task.created_at)}{" "}
+                            ago
                           </span>
                         </div>
                       </div>
                     ))}
+                    {hiddenProcessing > 0 && (
+                      <p className="text-xs text-muted-foreground text-center py-1">
+                        +{hiddenProcessing} more processing
+                      </p>
+                    )}
                   </div>
                 </div>
               )}

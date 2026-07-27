@@ -43,6 +43,7 @@ use crate::{
     admission::{estimate_task_bytes, AdmissionOutcome, AdmissionPermit, InFlightByteBudget},
     cancellation::CancellationRegistry,
     error::{TaskError, TaskResult},
+    fairness_hold::{ClaimFairnessPolicy, DEFAULT_FAIRNESS_HOLD_TTL},
     queue::TaskQueue,
     storage::TaskStorage,
     task_lease_ttl_from_env,
@@ -127,9 +128,8 @@ impl Drop for HeartbeatGuard {
 /// seconds for LLM API round-trips.
 const MIN_PROCESSING_TIMEOUT_SECS: u64 = 60;
 
-/// After releasing an already-parked claim, re-claim immediately (bounded)
-/// so newer ingest work is not stuck behind the 2s poll interval.
-const MAX_PARK_SKIP_RECLAIMS: usize = 8;
+/// Claim attempt bound (hold-visible claim makes multi-skip obsolete; kept at 1).
+const MAX_PARK_SKIP_RECLAIMS: usize = 1;
 
 /// Task processor trait - implement this to process different task types.
 ///
@@ -382,6 +382,10 @@ impl WorkerPool {
                 info!("Worker {} started", worker_id);
                 let worker_name = format!("worker-{worker_id}");
                 let lease_ttl = task_lease_ttl_from_env();
+                let claim_policy = ClaimFairnessPolicy::from_lane_caps(
+                    config.max_tasks_per_tenant,
+                    config.max_lifecycle_tasks_per_tenant,
+                );
                 let mut poll_interval = tokio::time::interval(Duration::from_secs(2));
                 poll_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
                 // Skip the immediate first tick so we don't race startup hydrate.
@@ -421,16 +425,20 @@ impl WorkerPool {
                         }
                     }
 
-                    // Claim loop: skip already-parked rows and re-claim immediately
-                    // (bounded) so FIFO Pending deletions do not starve newer ingest.
+                    // Single claim attempt (holds exclude parked rows). Loop form kept
+                    // so `break` exits the attempt cleanly; never iterates twice.
                     let mut claimed: Option<(
                         Task,
                         uuid::Uuid,
                         Option<crate::tenant_limiter::FairnessPermit>,
                         AdmissionPermit,
                     )> = None;
+                    #[allow(clippy::never_loop)] // hold-visible claim: at most one attempt
                     for _reclaim in 0..=MAX_PARK_SKIP_RECLAIMS {
-                        let mut task = match storage.claim_next(&worker_name, lease_ttl).await {
+                        let mut task = match storage
+                            .claim_next_with_policy(&worker_name, lease_ttl, claim_policy)
+                            .await
+                        {
                             Ok(Some(t)) => t,
                             Ok(None) => break,
                             Err(e) => {
@@ -464,6 +472,12 @@ impl WorkerPool {
                             }
                         };
 
+                        // Take staged park→worker handoff *before* cancel/park-skip
+                        // so those paths can drop the permit (no lane leak).
+                        let staged_handoff = tenant_limiter
+                            .as_ref()
+                            .and_then(|l| l.take_handoff(&task.track_id));
+
                         // FEAT-CANCEL: Drop terminal / cancel-intent after claim.
                         if should_skip_task(&storage, &cancel_registry, &task).await {
                             debug!(
@@ -471,6 +485,7 @@ impl WorkerPool {
                                 task_id = %task.track_id,
                                 "Skipping cancelled or terminal task after claim"
                             );
+                            drop(staged_handoff);
                             if cancel_registry.has_cancel_intent(&task.track_id).await {
                                 task.mark_cancelled();
                                 let _ = storage.update_task(&task).await;
@@ -488,13 +503,15 @@ impl WorkerPool {
                             break;
                         }
 
-                        // Already parked: release and re-claim (do not wait for poll).
+                        // Already parked (process-local): release + refresh durable hold
+                        // so TTL expiry cannot resume a reclaim storm (FP-5 / C2).
                         if fairness_park_set.contains(&task.track_id) {
-                            debug!(
+                            tracing::trace!(
                                 worker_id = worker_id,
                                 task_id = %task.track_id,
-                                "Claimed task already fairness-parked — releasing without re-park"
+                                "Claimed task already fairness-parked — releasing and refreshing hold"
                             );
+                            drop(staged_handoff);
                             if let Err(e) = storage
                                 .release_claim(&task.track_id, &worker_name, lease_token)
                                 .await
@@ -504,14 +521,24 @@ impl WorkerPool {
                                     error = %e,
                                     "Failed to release claim for already-parked task"
                                 );
-                                break;
+                            } else if let Err(e) = storage
+                                .mark_fairness_hold(&task.track_id, DEFAULT_FAIRNESS_HOLD_TTL)
+                                .await
+                            {
+                                warn!(
+                                    task_id = %task.track_id,
+                                    error = %e,
+                                    "Failed to refresh fairness hold after already-parked release"
+                                );
                             }
-                            continue;
+                            break;
                         }
 
                         // FEAT-TENANT-FAIRNESS: release claim before park (no double-process).
                         let fairness_class = task.task_type.fairness_class();
-                        let tenant_permit = if let Some(ref limiter) = tenant_limiter {
+                        let tenant_permit = if let Some(handed) = staged_handoff {
+                            Some(handed)
+                        } else if let Some(ref limiter) = tenant_limiter {
                             match limiter
                                 .try_acquire(task.tenant_id, task.workspace_id, fairness_class)
                                 .await
@@ -546,9 +573,39 @@ impl WorkerPool {
                                                 error = %e,
                                                 "Failed to release claim for duplicate park skip"
                                             );
-                                            break;
                                         }
-                                        continue;
+                                        break;
+                                    }
+                                    // FP-5: mark durable hold before release so reclaim
+                                    // cannot race an unmarked Pending row.
+                                    if let Err(e) = storage
+                                        .mark_fairness_hold(
+                                            &task.track_id,
+                                            DEFAULT_FAIRNESS_HOLD_TTL,
+                                        )
+                                        .await
+                                    {
+                                        warn!(
+                                            task_id = %task.track_id,
+                                            error = %e,
+                                            "Failed to mark fairness hold before park"
+                                        );
+                                        fairness_park_set.end(&task.track_id);
+                                        if let Err(re) = storage
+                                            .release_claim(
+                                                &task.track_id,
+                                                &worker_name,
+                                                lease_token,
+                                            )
+                                            .await
+                                        {
+                                            warn!(
+                                                task_id = %task.track_id,
+                                                error = %re,
+                                                "Failed to release claim after hold-mark failure"
+                                            );
+                                        }
+                                        break;
                                     }
                                     if let Err(e) = storage
                                         .release_claim(
@@ -563,6 +620,7 @@ impl WorkerPool {
                                             error = %e,
                                             "Failed to release claim before fairness park"
                                         );
+                                        let _ = storage.clear_fairness_hold(&task.track_id).await;
                                         fairness_park_set.end(&task.track_id);
                                     } else if let Ok(Some(pending)) =
                                         storage.get_task(&task.track_id).await
@@ -1046,6 +1104,7 @@ fn spawn_fairness_park(
                             task_id = %track_id,
                             "Fairness park aborted — semaphore closed"
                         );
+                        let _ = storage.clear_fairness_hold(&track_id).await;
                         return;
                     }
                 }
@@ -1058,14 +1117,11 @@ fn spawn_fairness_park(
                 );
                 // End park before send so reclaim is not skipped as "already parked".
                 drop(park_guard.take());
+                let _ = storage.clear_fairness_hold(&track_id).await;
                 let _ = queue.send(task).await;
                 return;
             }
         };
-
-        // Release immediately — the worker will try_acquire when it dequeues.
-        // Park waiters are FIFO on the semaphore, so churn is O(completions), not O(polls).
-        drop(permit);
 
         if should_skip_task(&storage, &cancel_registry, &task).await {
             debug!(
@@ -1073,11 +1129,33 @@ fn spawn_fairness_park(
                 task_id = %track_id,
                 "Fairness park complete — dropping cancelled/terminal task"
             );
+            drop(permit);
+            let _ = storage.clear_fairness_hold(&track_id).await;
+            // INV-03: cancel during park must become terminal, not linger Pending.
+            if cancel_registry.has_cancel_intent(&track_id).await {
+                let mut cancelled = task;
+                cancelled.mark_cancelled();
+                let _ = storage.update_task(&cancelled).await;
+            }
             cancel_registry.deregister(&track_id).await;
             return;
         }
 
-        // Plan order: remove from park set, then single queue.send.
+        // Stage handoff *before* clear/send so sibling waiters cannot steal the
+        // permit, and cancel/send-fail paths can take_handoff + drop it.
+        limiter.stage_handoff(&track_id, permit);
+
+        if let Err(e) = storage.clear_fairness_hold(&track_id).await {
+            warn!(
+                task_id = %track_id,
+                error = %e,
+                "Failed to clear fairness hold after park — dropping staged handoff"
+            );
+            if let Some(p) = limiter.take_handoff(&track_id) {
+                drop(p);
+            }
+            return;
+        }
         drop(park_guard.take());
 
         if let Err(e) = queue.send(task).await {
@@ -1089,6 +1167,13 @@ fn spawn_fairness_park(
                 error.message = %e,
                 "Failed to requeue task after fairness park"
             );
+            if let Some(p) = limiter.take_handoff(&track_id) {
+                drop(p);
+            }
+            // Keep claim-invisible until a later wake path can retry.
+            let _ = storage
+                .mark_fairness_hold(&track_id, DEFAULT_FAIRNESS_HOLD_TTL)
+                .await;
         }
     });
 }
@@ -1716,9 +1801,12 @@ mod tests {
         }
 
         // Let workers reclaim the same Pending repeatedly via poll interval.
+        // Let workers park under the tenant cap; hold-visible claim must not storm.
         tokio::time::sleep(tokio::time::Duration::from_millis(2500)).await;
         let stats = limiter.stats().await;
-        // Deduped park: waiters ≤ backlog tasks; completions stay O(tasks), not O(polls×workers).
+        let claims = storage.claim_count();
+        let releases = storage.release_claim_count();
+        // Deduped park + durable hold: claim/release stay O(tasks), not O(polls×workers).
         assert!(
             stats.park_waiters <= 5,
             "unexpected park waiter count {}",
@@ -1730,12 +1818,113 @@ mod tests {
             stats.park_completions
         );
         assert!(
+            claims <= 24,
+            "claim storm: claims={claims} releases={releases}"
+        );
+        assert!(
+            releases <= 16,
+            "release storm: claims={claims} releases={releases}"
+        );
+        assert!(
             queue.approximate_depth() <= 8,
             "queue storm detected: depth={}",
             queue.approximate_depth()
         );
 
         tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+        pool.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn test_tenant_priority_under_cap_tenant_progresses_first() {
+        struct OrderProcessor {
+            b_started: Arc<tokio::sync::Notify>,
+        }
+
+        #[async_trait::async_trait]
+        impl TaskProcessor for OrderProcessor {
+            async fn process(
+                &self,
+                task: &mut Task,
+                _cancel_token: CancellationToken,
+            ) -> TaskResult<serde_json::Value> {
+                if task.tenant_id
+                    == uuid::Uuid::parse_str("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb").unwrap()
+                {
+                    self.b_started.notify_waiters();
+                }
+                tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+                Ok(serde_json::json!({"ok": true}))
+            }
+        }
+
+        let tenant_a = uuid::Uuid::parse_str("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").unwrap();
+        let tenant_b = uuid::Uuid::parse_str("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb").unwrap();
+        let ws_a = uuid::Uuid::parse_str("aaaaaaaa-0000-0000-0000-000000000001").unwrap();
+        let ws_b = uuid::Uuid::parse_str("bbbbbbbb-0000-0000-0000-000000000001").unwrap();
+
+        let queue = Arc::new(ChannelTaskQueue::new(50));
+        let storage = Arc::new(MemoryTaskStorage::new());
+        let b_started = Arc::new(tokio::sync::Notify::new());
+
+        let config = WorkerPoolConfig {
+            num_workers: 2,
+            auto_retry: false,
+            initial_retry_delay_ms: 100,
+            max_retry_delay_ms: 5000,
+            backoff_multiplier: 2.0,
+            max_tasks_per_tenant: 1,
+            max_lifecycle_tasks_per_tenant: 1,
+            processing_timeout_secs: 300,
+        };
+
+        let mut pool = WorkerPool::new(
+            config,
+            queue.clone(),
+            storage.clone(),
+            Arc::new(OrderProcessor {
+                b_started: b_started.clone(),
+            }),
+        );
+        pool.start();
+
+        // Saturate A with a long holder + held pending; B has free capacity.
+        let holder = Task::new(
+            tenant_a,
+            ws_a,
+            TaskType::Insert,
+            serde_json::json!({"h": 1}),
+        );
+        storage.create_task(&holder).await.unwrap();
+        queue.send(holder).await.unwrap();
+        tokio::time::sleep(tokio::time::Duration::from_millis(80)).await;
+
+        let pending_a = Task::new(
+            tenant_a,
+            ws_a,
+            TaskType::Insert,
+            serde_json::json!({"a": 1}),
+        );
+        storage.create_task(&pending_a).await.unwrap();
+        storage
+            .mark_fairness_hold(&pending_a.track_id, Duration::from_secs(30))
+            .await
+            .unwrap();
+        queue.send(pending_a).await.unwrap();
+
+        let pending_b = Task::new(
+            tenant_b,
+            ws_b,
+            TaskType::Insert,
+            serde_json::json!({"b": 1}),
+        );
+        storage.create_task(&pending_b).await.unwrap();
+        queue.send(pending_b).await.unwrap();
+
+        tokio::time::timeout(tokio::time::Duration::from_secs(2), b_started.notified())
+            .await
+            .expect("tenant B must progress while A is saturated");
+
         pool.shutdown().await;
     }
 
@@ -1848,6 +2037,136 @@ mod tests {
             "PDF must complete, got {:?}",
             stored.status
         );
+        pool.shutdown().await;
+    }
+
+    /// Cancel while fairness-parked must terminalize and free the tenant lane
+    /// (park drop + claim-time handoff drop; handoff map unit-tested separately).
+    #[tokio::test]
+    async fn test_cancel_while_parked_frees_tenant_lane() {
+        struct HoldThenDone {
+            release: Arc<tokio::sync::Notify>,
+            holder_started: Arc<tokio::sync::Notify>,
+        }
+
+        #[async_trait::async_trait]
+        impl TaskProcessor for HoldThenDone {
+            async fn process(
+                &self,
+                task: &mut Task,
+                _cancel_token: CancellationToken,
+            ) -> TaskResult<serde_json::Value> {
+                if task
+                    .task_data
+                    .get("role")
+                    .and_then(|v| v.as_str())
+                    == Some("holder")
+                {
+                    self.holder_started.notify_waiters();
+                    self.release.notified().await;
+                }
+                Ok(serde_json::json!({"ok": true}))
+            }
+        }
+
+        let queue = Arc::new(ChannelTaskQueue::new(20));
+        let storage = Arc::new(MemoryTaskStorage::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let holder_started = Arc::new(tokio::sync::Notify::new());
+
+        let config = WorkerPoolConfig {
+            num_workers: 2,
+            auto_retry: false,
+            initial_retry_delay_ms: 50,
+            max_retry_delay_ms: 500,
+            backoff_multiplier: 2.0,
+            max_tasks_per_tenant: 1,
+            max_lifecycle_tasks_per_tenant: 1,
+            processing_timeout_secs: 300,
+        };
+
+        let mut pool = WorkerPool::new(
+            config,
+            queue.clone(),
+            storage.clone(),
+            Arc::new(HoldThenDone {
+                release: release.clone(),
+                holder_started: holder_started.clone(),
+            }),
+        );
+        let registry = pool.cancellation_registry();
+        let limiter = pool.tenant_limiter().expect("limiter");
+        pool.start();
+
+        let holder = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::Insert,
+            serde_json::json!({"role": "holder"}),
+        );
+        let parked = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::Insert,
+            serde_json::json!({"role": "parked"}),
+        );
+        let parked_id = parked.track_id.clone();
+        let follower = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::Insert,
+            serde_json::json!({"role": "follower"}),
+        );
+        let follower_id = follower.track_id.clone();
+
+        storage.create_task(&holder).await.unwrap();
+        storage.create_task(&parked).await.unwrap();
+        storage.create_task(&follower).await.unwrap();
+        queue.send(holder).await.unwrap();
+        queue.send(parked).await.unwrap();
+
+        tokio::time::timeout(Duration::from_secs(2), holder_started.notified())
+            .await
+            .expect("holder should start");
+        // Allow park path to mark hold + spawn waiter.
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        registry.mark_cancel_intent(&parked_id).await;
+
+        // Free holder → park acquire completes, sees cancel, marks Cancelled, drops permit.
+        release.notify_waiters();
+
+        for _ in 0..40 {
+            let parked_row = storage.get_task(&parked_id).await.unwrap().unwrap();
+            if parked_row.status == TaskStatus::Cancelled {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        let parked_row = storage.get_task(&parked_id).await.unwrap().unwrap();
+        assert_eq!(
+            parked_row.status,
+            TaskStatus::Cancelled,
+            "parked task must become Cancelled (not linger Pending)"
+        );
+
+        queue.send(follower).await.unwrap();
+        for _ in 0..40 {
+            let follower_row = storage.get_task(&follower_id).await.unwrap().unwrap();
+            if follower_row.status == TaskStatus::Indexed {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        let follower_row = storage.get_task(&follower_id).await.unwrap().unwrap();
+        assert_eq!(
+            follower_row.status,
+            TaskStatus::Indexed,
+            "follower must acquire lane after park cancel freed it; limiter active={}",
+            limiter
+                .active_count(&test_tenant_id(), FairnessClass::Ingest)
+                .await
+        );
+
         pool.shutdown().await;
     }
 }

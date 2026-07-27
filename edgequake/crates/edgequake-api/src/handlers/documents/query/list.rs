@@ -137,6 +137,7 @@ async fn list_documents_inner(
         stage_message: Option<String>,
         pdf_id: Option<String>,
         chunk_count: Option<usize>,
+        cancelled_from_stage: Option<String>,
     }
 
     impl DocMetadata {
@@ -309,6 +310,11 @@ async fn list_documents_inner(
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
 
+            meta.cancelled_from_stage = obj
+                .get("cancelled_from_stage")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+
             meta.chunk_count = obj
                 .get("chunk_count")
                 .and_then(|v| v.as_u64())
@@ -363,6 +369,7 @@ async fn list_documents_inner(
                 pdf_id: meta.pdf_id,
                 display_status: None,
                 ui_phase: None,
+                cancelled_from_stage: meta.cancelled_from_stage,
             }
         })
         .collect();

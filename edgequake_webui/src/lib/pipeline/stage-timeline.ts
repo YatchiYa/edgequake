@@ -2,7 +2,7 @@
  * SPEC-048: Stage timeline SSOT — per-step status + detail progress.
  *
  * Projects IngestionRunView → ordered steps with:
- *   pending | active | done | skipped | failed
+ *   pending | active | done | skipped | failed | cancelled
  *
  * Edge cases covered:
  * - Non-PDF: converting skipped
@@ -10,6 +10,7 @@
  * - mode=entities: uploading/converting skipped
  * - gleaning / summarizing / preprocessing: first-class steps
  * - queued admission: no server step active
+ * - stopping / cancelled: freeze at cancelledAtStage; Cancelled chip (never Failed)
  * - failed: failed step marked; prior done; later pending
  * - completed: all applicable steps done
  */
@@ -28,7 +29,8 @@ export type StageStepStatus =
   | "active"
   | "done"
   | "skipped"
-  | "failed";
+  | "failed"
+  | "cancelled";
 
 export interface StageStepDetail {
   current?: number;
@@ -144,7 +146,11 @@ export function computeWeightedOverallProgress(
     weightSum += w;
     if (step.status === "done") {
       progressSum += w;
-    } else if (step.status === "active" || step.status === "failed") {
+    } else if (
+      step.status === "active" ||
+      step.status === "failed" ||
+      step.status === "cancelled"
+    ) {
       const frac = resolveActiveFraction(step.detail);
       progressSum += w * frac;
       stageProgress01 = frac;
@@ -306,11 +312,21 @@ export function buildStageTimeline(run: IngestionRunView): StageTimeline {
   const steps = applicableSteps(run);
   const current = run.stage;
   const currentRank = rank(current);
-  const isFailed = run.stageStatus === "failed" || current === "failed";
+  const isStopping =
+    run.stageStatus === "stopping" || current === "stopping";
+  const isCancelled =
+    run.stageStatus === "cancelled" || current === "cancelled";
+  // Cancel branches must run before failed — never paint Cancelled as Failed.
+  const isFailed =
+    !isStopping &&
+    !isCancelled &&
+    (run.stageStatus === "failed" || current === "failed");
   const isComplete =
     run.stageStatus === "complete" || current === "completed";
 
   const detail = !isAdmission ? formatDetail(run) : undefined;
+  const freezeStage = run.cancelledAtStage;
+  const freezeRank = freezeStage ? rank(freezeStage) : -1;
 
   const timelineSteps: StageTimelineStep[] = steps.map((step) => {
     const skipped =
@@ -330,6 +346,88 @@ export function buildStageTimeline(run: IngestionRunView): StageTimeline {
         id: step,
         label: stageDisplayName(step, run.sourceType),
         status: "done" as const,
+      };
+    }
+
+    // Terminal cancel: freeze prior steps; completed chip = Cancelled (never Failed).
+    if (isCancelled) {
+      if (step === "completed") {
+        return {
+          id: step,
+          label: "Cancelled",
+          status: "cancelled" as const,
+          detail,
+        };
+      }
+      if (freezeRank >= 0) {
+        const stepRank = rank(step);
+        if (stepRank < freezeRank) {
+          return {
+            id: step,
+            label: stageDisplayName(step, run.sourceType),
+            status: "done" as const,
+          };
+        }
+        if (step === freezeStage) {
+          return {
+            id: step,
+            label: stageDisplayName(step, run.sourceType),
+            status: "cancelled" as const,
+            detail,
+          };
+        }
+        return {
+          id: step,
+          label: stageDisplayName(step, run.sourceType),
+          status: "pending" as const,
+        };
+      }
+      // Unknown freeze point — mark processing steps done, terminal Cancelled.
+      return {
+        id: step,
+        label: stageDisplayName(step, run.sourceType),
+        status: "done" as const,
+      };
+    }
+
+    // Transitional Stopping: keep last known stage active; no Failed chip.
+    if (isStopping) {
+      if (step === "completed") {
+        return {
+          id: step,
+          label: stageDisplayName(step, run.sourceType),
+          status: "pending" as const,
+        };
+      }
+      const stopAt = freezeStage;
+      if (stopAt && step === stopAt) {
+        return {
+          id: step,
+          label: stageDisplayName(step, run.sourceType),
+          status: "active" as const,
+          detail,
+        };
+      }
+      if (freezeRank >= 0) {
+        const stepRank = rank(step);
+        if (stepRank < freezeRank) {
+          return {
+            id: step,
+            label: stageDisplayName(step, run.sourceType),
+            status: "done" as const,
+          };
+        }
+        return {
+          id: step,
+          label: stageDisplayName(step, run.sourceType),
+          status: "pending" as const,
+        };
+      }
+      // No freeze stage — admission-style mute (all pending).
+      return {
+        id: step,
+        label: stageDisplayName(step, run.sourceType),
+        status: "pending" as const,
       };
     }
 
@@ -412,13 +510,23 @@ export function buildStageTimeline(run: IngestionRunView): StageTimeline {
     stageCountsLabel,
   } = computeWeightedOverallProgress(timelineSteps, {
     isComplete,
-    admissionQueued,
-    admissionCleaning,
+    admissionQueued: isAdmission ? admissionQueued : false,
+    admissionCleaning: isAdmission ? admissionCleaning : false,
   });
 
   const activeStepId =
-    timelineSteps.find((s) => s.status === "active" || s.status === "failed")
-      ?.id ?? null;
+    timelineSteps.find(
+      (s) =>
+        s.status === "active" ||
+        s.status === "failed" ||
+        s.status === "cancelled",
+    )?.id ?? null;
+
+  // Terminal cancel: freeze overall bar (no fake completion).
+  const frozenOverall =
+    isCancelled || isStopping
+      ? Math.min(0.99, overall01)
+      : overall01;
 
   return {
     steps: timelineSteps,
@@ -426,7 +534,7 @@ export function buildStageTimeline(run: IngestionRunView): StageTimeline {
     admissionQueued,
     admissionCleaning,
     admissionPhase,
-    overallProgress01: overall01,
+    overallProgress01: frozenOverall,
     overallIsEstimate: !isComplete,
     stageProgress01,
     stageCountsLabel,

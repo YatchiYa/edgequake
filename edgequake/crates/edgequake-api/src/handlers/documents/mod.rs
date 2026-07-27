@@ -183,6 +183,7 @@ mod tests {
             pdf_id: None,
             display_status: None,
             ui_phase: None,
+            cancelled_from_stage: None,
         };
 
         let json = serde_json::to_string(&summary).unwrap();
@@ -221,6 +222,7 @@ mod tests {
                 pdf_id: None,
                 display_status: None,
                 ui_phase: None,
+                cancelled_from_stage: None,
             }],
             total: 1,
             page: 1,
@@ -349,6 +351,7 @@ mod tests {
                 pdf_id: None,
                 display_status: None,
                 ui_phase: None,
+                cancelled_from_stage: None,
             }],
             total_count: 1,
             status_summary: StatusCounts {

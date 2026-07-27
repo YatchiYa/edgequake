@@ -14,6 +14,10 @@ import {
   isOrphanAdmissionShell,
   isWaitingStatus,
 } from "./pipeline-document-state";
+import {
+  loadCancelledFromStage,
+  rememberCancelledFromStage,
+} from "./cancelled-active-run-dismiss";
 
 export { bareDocumentId };
 
@@ -34,19 +38,34 @@ export interface IngestionRunCounts {
   unit: IngestionCountUnit;
 }
 
+/** Stage lifecycle status — cancel is first-class, never overloaded as failed. */
+export type IngestionRunStageStatus =
+  | "pending"
+  | "active"
+  | "complete"
+  | "failed"
+  | "skipped"
+  | "stopping"
+  | "cancelled";
+
 export interface IngestionRunView {
   documentId: string;
   trackId: string | null;
   filename: string;
   sourceType: "pdf" | "markdown" | "text" | "image" | "unknown";
   stage: IngestionRunStage;
-  stageStatus: "pending" | "active" | "complete" | "failed" | "skipped";
+  stageStatus: IngestionRunStageStatus;
   message: string;
   counts?: IngestionRunCounts;
   progress01?: number;
   mode?: IngestionRunMode;
   costUsd?: number;
   updatedAt?: string;
+  /**
+   * Last non-terminal pipeline stage when cancel stopped the run.
+   * Used by the timeline to freeze honest progress (INV-10).
+   */
+  cancelledAtStage?: IngestionRunStage;
 }
 
 const STAGE_LABELS: Record<string, string> = {
@@ -152,6 +171,44 @@ const ACTIVE_PIPELINE_STAGES = new Set([
 ]);
 
 /**
+ * Resolve Stopping / Cancelled terminals from display status or stage.
+ * Shared by list-path and progress-path builders (INV-05 one status story).
+ */
+export function resolveRunTerminal(
+  displayStatus: string,
+  stage?: IngestionRunStage,
+): { stage: "stopping" | "cancelled"; stageStatus: "stopping" | "cancelled" } | null {
+  const s = displayStatus.toLowerCase();
+  if (s === "stopping" || stage === "stopping") {
+    return { stage: "stopping", stageStatus: "stopping" };
+  }
+  if (s === "cancelled" || stage === "cancelled") {
+    return { stage: "cancelled", stageStatus: "cancelled" };
+  }
+  return null;
+}
+
+/** Infer last honest pipeline stage before a cancel terminal. */
+export function resolveCancelledAtStage(
+  currentStage?: string | null,
+  status?: string | null,
+): IngestionRunStage | undefined {
+  const raw = (currentStage || status || "").toLowerCase();
+  if (!raw || raw === "cancelled" || raw === "stopping" || raw === "failed") {
+    return undefined;
+  }
+  const normalized = normalizeRunStage(currentStage, status);
+  if (
+    ACTIVE_PIPELINE_STAGES.has(normalized) ||
+    normalized === "queued" ||
+    normalized === "cleaning"
+  ) {
+    return normalized;
+  }
+  return undefined;
+}
+
+/**
  * Resolve run stage status.
  * Prefer fine-grained `current_stage` over coarse `status=pending` —
  * otherwise converting/chunking is mislabeled Queued (SPEC-048).
@@ -160,6 +217,8 @@ export function stageStatusFor(
   stage: IngestionRunStage,
   status: string,
 ): IngestionRunView["stageStatus"] {
+  const terminal = resolveRunTerminal(status, stage);
+  if (terminal) return terminal.stageStatus;
   const s = status.toLowerCase();
   if (s === "failed" || stage === "failed") return "failed";
   if (s === "completed" || stage === "completed") return "complete";
@@ -211,21 +270,37 @@ export function buildIngestionRunView(
   }
 
   // SPEC-057 / 086 ops: Cancel → Stopping… then Cancelled on ActiveRuns.
-  if (status === "stopping" || status === "cancelled") {
-    const stage: IngestionRunStage =
-      status === "stopping" ? "stopping" : "cancelled";
+  // Cancel is first-class — never encoded as stageStatus=failed (INV-05).
+  const cancelTerminal = resolveRunTerminal(status);
+  if (cancelTerminal) {
+    // Prefer durable KV cancelled_from_stage, then live stage, then session cache.
+    const fromApi = resolveCancelledAtStage(
+      doc.cancelled_from_stage,
+      doc.cancelled_from_stage,
+    );
+    const fromLive = resolveCancelledAtStage(doc.current_stage, doc.status);
+    const fromSession = resolveCancelledAtStage(
+      loadCancelledFromStage(doc.id),
+      loadCancelledFromStage(doc.id),
+    );
+    const freezeStage = fromApi ?? fromLive ?? fromSession;
+    if (freezeStage) {
+      rememberCancelledFromStage(doc.id, freezeStage);
+    }
     return {
       documentId: doc.id,
       trackId: doc.track_id ?? null,
       filename: doc.file_name || doc.title || doc.id,
       sourceType: sourceTypeOf(doc),
-      stage,
-      stageStatus: status === "stopping" ? "active" : "failed",
+      stage: cancelTerminal.stage,
+      stageStatus: cancelTerminal.stageStatus,
       message:
         (doc.stage_message && doc.stage_message.trim()) ||
-        stageDisplayName(stage),
-      progress01: status === "stopping" ? doc.stage_progress : 0,
+        stageDisplayName(cancelTerminal.stage),
+      // Honest freeze: do not carry a near-100% stage_progress as "alive".
+      progress01: undefined,
       updatedAt: doc.updated_at,
+      cancelledAtStage: freezeStage,
     };
   }
 
@@ -307,22 +382,43 @@ export function buildIngestionRunViewFromProgress(
     mode?: IngestionRunMode;
   },
 ): IngestionRunView {
-  const stage = normalizeRunStage(
+  const rawStage = normalizeRunStage(
     progress.progress?.current_stage,
     progress.status,
   );
+  const cancelTerminal = resolveRunTerminal(String(progress.status), rawStage);
+  const stage = cancelTerminal?.stage ?? rawStage;
   const message =
     (progress.progress?.latest_message &&
       progress.progress.latest_message.trim()) ||
     stageDisplayName(stage);
-  const counts = parseCountsFromMessage(message);
+  const counts = cancelTerminal ? undefined : parseCountsFromMessage(message);
   const pct = progress.progress?.completion_percentage ?? progress.overall_progress;
-  const progress01 =
-    typeof pct === "number"
+  const progress01 = cancelTerminal
+    ? undefined
+    : typeof pct === "number"
       ? pct > 1
         ? pct / 100
         : pct
       : undefined;
+  const cancelledAtStage = cancelTerminal
+    ? resolveCancelledAtStage(
+        progress.progress?.current_stage,
+        progress.status,
+      ) ??
+      (ACTIVE_PIPELINE_STAGES.has(rawStage) ||
+      rawStage === "queued" ||
+      rawStage === "cleaning"
+        ? rawStage
+        : undefined) ??
+      resolveCancelledAtStage(
+        loadCancelledFromStage(progress.document_id),
+        loadCancelledFromStage(progress.document_id),
+      )
+    : undefined;
+  if (cancelledAtStage) {
+    rememberCancelledFromStage(progress.document_id, cancelledAtStage);
+  }
 
   return {
     documentId: progress.document_id,
@@ -330,12 +426,15 @@ export function buildIngestionRunViewFromProgress(
     filename: opts.filename || progress.document_name || progress.document_id,
     sourceType: opts.sourceType,
     stage,
-    stageStatus: stageStatusFor(stage, String(progress.status)),
+    stageStatus: cancelTerminal
+      ? cancelTerminal.stageStatus
+      : stageStatusFor(stage, String(progress.status)),
     message,
     counts,
     progress01,
     mode: opts.mode,
     updatedAt: progress.updated_at,
+    cancelledAtStage,
   };
 }
 
@@ -345,10 +444,51 @@ function runStageRank(stage: string): number {
   return idx < 0 ? -1 : idx;
 }
 
+/** Carry freeze stage across Stopping→Cancelled merges (INV-10). */
+function withPreservedCancelFreeze(
+  winner: IngestionRunView,
+  other: IngestionRunView,
+): IngestionRunView {
+  if (
+    (winner.stageStatus === "cancelled" ||
+      winner.stageStatus === "stopping") &&
+    !winner.cancelledAtStage &&
+    other.cancelledAtStage
+  ) {
+    return { ...winner, cancelledAtStage: other.cancelledAtStage };
+  }
+  // Stopping→Cancelled: keep prior freeze even if winner has a weaker one.
+  if (
+    winner.stageStatus === "cancelled" &&
+    other.stageStatus === "stopping" &&
+    other.cancelledAtStage
+  ) {
+    return {
+      ...winner,
+      cancelledAtStage: winner.cancelledAtStage ?? other.cancelledAtStage,
+    };
+  }
+  return winner;
+}
+
 function preferRunView(
   a: IngestionRunView,
   b: IngestionRunView,
 ): IngestionRunView {
+  // Terminal cancel / stopping always wins (INV-03 / INV-05).
+  if (b.stageStatus === "cancelled" || b.stage === "cancelled") {
+    return withPreservedCancelFreeze(b, a);
+  }
+  if (a.stageStatus === "cancelled" || a.stage === "cancelled") {
+    return withPreservedCancelFreeze(a, b);
+  }
+  if (b.stageStatus === "stopping" || b.stage === "stopping") {
+    return withPreservedCancelFreeze(b, a);
+  }
+  if (a.stageStatus === "stopping" || a.stage === "stopping") {
+    return withPreservedCancelFreeze(a, b);
+  }
+
   const ra = runStageRank(a.stage);
   const rb = runStageRank(b.stage);
   if (rb > ra) return b;
@@ -403,7 +543,9 @@ export function selectPrimaryRun(
 ): IngestionRunView | null {
   const list = [...runs.values()];
   const working = list.find(
-    (r) => r.stageStatus === "active" && r.stage !== "completed",
+    (r) =>
+      (r.stageStatus === "active" || r.stageStatus === "stopping") &&
+      r.stage !== "completed",
   );
   if (working) return working;
   return list.find((r) => r.stageStatus === "pending") ?? null;

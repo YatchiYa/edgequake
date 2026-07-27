@@ -228,6 +228,12 @@ pub struct DocumentSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "running")]
     pub ui_phase: Option<String>,
+
+    /// Last non-terminal pipeline stage when cancel froze the run (INV-10).
+    /// Present when `status`/`current_stage` is `cancelled`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "extracting")]
+    pub cancelled_from_stage: Option<String>,
 }
 
 // ── SPEC-031: Lightweight document search for the scope picker ───────────────

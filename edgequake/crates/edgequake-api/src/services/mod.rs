@@ -173,15 +173,18 @@ pub use graph_materialization::{
 pub use include_pdf_assets::{include_extracted_pdf_assets, IncludePdfAssetsResult};
 pub use ingest_admission::{
     admit_pdf_processing_enqueue, persist_pdf_task_document_id,
-    provision_queued_pdf_document_shell, resolve_pdf_ingest_document_id,
-    resolve_worker_pdf_document_id, QueuedPdfDocumentShell, WorkerPdfDocumentIdRequest,
+    provision_queued_pdf_document_shell, provision_relational_document_shell,
+    resolve_pdf_ingest_document_id, resolve_worker_pdf_document_id, QueuedPdfDocumentShell,
+    RelationalDocumentShell, WorkerPdfDocumentIdRequest,
 };
 pub use ingestion_persist::{
     build_chunk_kv_records, persist_ingestion_result, persist_with_providers,
     persist_with_providers_and_progress, persist_with_providers_progress_and_embedder,
     resolve_relational_sink, tag_injection_sources, PersistIngestionParams,
 };
-pub use ingestion_status::{apply_doc_cancelled_fields, pdf_status_for_cancel};
+pub use ingestion_status::{
+    apply_doc_cancelled_fields, capture_cancelled_from_stage, pdf_status_for_cancel,
+};
 pub use ingestion_status_mapper::{
     enrich_document_summaries, enrich_document_summaries_with_cancel,
     enrich_document_summary_status, legacy_status_to_unified_stage, map_ingestion_status,

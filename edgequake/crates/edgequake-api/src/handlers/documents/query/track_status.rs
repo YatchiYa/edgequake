@@ -147,6 +147,10 @@ pub async fn get_track_status(
                     pdf_id: obj.get("pdf_id").and_then(|v| v.as_str()).map(String::from),
                     display_status: None,
                     ui_phase: None,
+                    cancelled_from_stage: obj
+                        .get("cancelled_from_stage")
+                        .and_then(|v| v.as_str())
+                        .map(String::from),
                 });
             }
         }
