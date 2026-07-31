@@ -809,10 +809,11 @@ mod tests {
 
     #[tokio::test]
     async fn persist_writes_chunk_kv_when_configured() {
-        // SPEC-091 Wave A/D: the authority default is now `relational` (no KV
-        // chunk write). This test exercises the KV-write path, so opt into
-        // `dual` authority explicitly.
+        // SPEC-091 Wave A/D: authority default is `relational` (no KV chunk
+        // write) and vector default is typed (fail-closed without typed ports).
+        // This test exercises the legacy dual-KV path explicitly.
         std::env::set_var("EDGEQUAKE_CHUNK_TEXT_AUTHORITY", "dual");
+        std::env::set_var("EDGEQUAKE_VECTOR_BACKEND", "legacy_tables");
         let graph = Arc::new(MemoryGraphStorage::new("kv-test"));
         let vector = Arc::new(MemoryVectorStorage::new("kv-test", 4));
         let kv = Arc::new(MemoryKVStorage::new("kv-test"));
@@ -836,6 +837,7 @@ mod tests {
         .await
         .expect("persist");
         std::env::remove_var("EDGEQUAKE_CHUNK_TEXT_AUTHORITY");
+        std::env::remove_var("EDGEQUAKE_VECTOR_BACKEND");
 
         let chunk_kv = kv.get_by_id("doc1-chunk-0").await.unwrap();
         assert!(
