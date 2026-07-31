@@ -181,8 +181,8 @@ edgequake-storage = { path = "crates/edgequake-storage" }
 edgequake-tasks = { path = "crates/edgequake-tasks" }
 edgequake-observability = { path = "crates/edgequake-observability" }
 edgeparse-core = "0.2.5"
-# SSOT with published pdf2md 0.9.9 (pdfium-auto 0.3.1: atomic extract + chromium/7961).
-edgequake-pdf2md = { version = "0.9.9", default-features = false, features = [
+# SSOT with published pdf2md 0.9.10 (pdfium-auto 0.3.1: atomic extract + chromium/7961).
+edgequake-pdf2md = { version = "0.9.10", default-features = false, features = [
     "bundled",
 ] }
 

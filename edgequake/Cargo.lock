@@ -2024,9 +2024,9 @@ dependencies = [
 
 [[package]]
 name = "edgequake-pdf2md"
-version = "0.9.9"
+version = "0.9.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7bd382c79f3eaad0cfd9f0a4904833318f580ec38917a8704624cd8e11464bb2"
+checksum = "f83c0701a8da9c8d7d4067332bf8ed3d8ea395befb6c65d052d8faa7f076b53c"
 dependencies = [
  "base64 0.22.1",
  "edgequake-llm",
