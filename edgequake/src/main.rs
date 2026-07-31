@@ -14,6 +14,7 @@ use edgequake_api::{AppState, DocumentTaskProcessor, Server, ServerConfig, Stora
 use edgequake_observability::{
     init_observability, record_db_pool_stats, ErrorEvent, ObservabilityConfig,
 };
+use edgequake_pdf::prime_pdfium;
 use edgequake_tasks::{
     Pagination, TaskFilter, TaskQueue, TaskStatus, TaskStorage, WorkerPool, WorkerPoolConfig,
 };
@@ -1772,6 +1773,33 @@ async fn async_main() -> Result<()> {
         &state.auth.config,
         &state.security,
     ));
+
+    // SPEC-095: extract + bind PDFium before accepting PDF traffic (cold-cache race).
+    // Opt out with EDGEQUAKE_SKIP_PDFIUM_PRIME=1 (dev only; PDF ingest will fail closed later).
+    let skip_pdfium_prime = std::env::var("EDGEQUAKE_SKIP_PDFIUM_PRIME")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    if skip_pdfium_prime {
+        warn!(
+            target: "edgequake.pdfium",
+            "EDGEQUAKE_SKIP_PDFIUM_PRIME set — skipping PDFium prime (PDF conversion may fail on first use)"
+        );
+    } else {
+        match tokio::task::spawn_blocking(prime_pdfium).await {
+            Ok(Ok(())) => {
+                info!(target: "edgequake.pdfium", "PDFium primed (extract + bind ok)");
+            }
+            Ok(Err(e)) => {
+                anyhow::bail!(
+                    "PDFium prime failed: {e}. Fix the library / cache, or set \
+                     EDGEQUAKE_SKIP_PDFIUM_PRIME=1 to boot without PDF support."
+                );
+            }
+            Err(e) => {
+                anyhow::bail!("PDFium prime task panicked: {e}");
+            }
+        }
+    }
 
     // Run server (this blocks until shutdown) on the serving runtime.
     let listen_port = config.port;
