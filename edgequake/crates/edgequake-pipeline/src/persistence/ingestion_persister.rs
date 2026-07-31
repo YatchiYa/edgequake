@@ -772,15 +772,7 @@ mod tests {
     use edgequake_storage::{
         GraphStorageReadOps, MemoryGraphStorage, MemoryKVStorage, MemoryVectorStorage,
     };
-    use std::sync::{Mutex, OnceLock};
-
-    /// Serialize env-mutating persist tests — `EDGEQUAKE_VECTOR_BACKEND` is process-global.
-    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-    }
+    use serial_test::serial;
 
     fn sample_result() -> ProcessingResult {
         let chunk = TextChunk {
@@ -817,8 +809,8 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn persist_writes_chunk_kv_when_configured() {
-        let _guard = env_lock();
         // SPEC-091 Wave A/D: authority default is `relational` (no KV chunk
         // write) and vector default is typed (fail-closed without typed ports).
         // This test exercises the legacy dual-KV path explicitly.
@@ -864,8 +856,8 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn persist_writes_chunk_vectors_and_graph_nodes() {
-        let _guard = env_lock();
         // Legacy path: typed default skips eq_* upsert (IP0). Opt into legacy.
         std::env::set_var("EDGEQUAKE_VECTOR_BACKEND", "legacy_tables");
         let graph = Arc::new(MemoryGraphStorage::new("test"));
@@ -898,8 +890,8 @@ mod tests {
 
     /// SPEC-091 IP0 / IP-AC-01: typed authority must not call legacy vector upsert.
     #[tokio::test]
+    #[serial]
     async fn typed_authority_skips_legacy_chunk_vector_upsert() {
-        let _guard = env_lock();
         use async_trait::async_trait;
         use edgequake_storage::traits::domain::{
             EmbeddingCapabilities, EmbeddingIndex, EmbeddingRow, ModelId, ScoredChunk,
@@ -983,8 +975,8 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn typed_persist_fails_closed_when_typed_index_missing() {
-        let _guard = env_lock();
         std::env::set_var("EDGEQUAKE_VECTOR_BACKEND", "typed_embeddings");
         let graph = Arc::new(MemoryGraphStorage::new("typed-fc"));
         let vector = Arc::new(MemoryVectorStorage::new("typed-fc", 4));

@@ -271,11 +271,14 @@ test.describe("SPEC-091 IS2–IS3 queue / phase / fence", () => {
       admission_staging: false,
       query_ready: false,
     });
-    await mockSpec086BusyPipeline(page);
-    await mockSpec086DocumentList(page, [ready, indexed]);
+    // Completed rows live in the table (not ActiveRuns) — admission + list mocks only.
+    await mockSpec038AdmissionRoutes(page);
     await seedSpec038TenantContext(page);
+    await mockSpec086DocumentList(page, [ready, indexed]);
     await page.goto("/documents", GOTO_OPTS);
-    // Completed docs leave ActiveRuns; fence badges live on the table.
+    await expect(page.getByText("ready.pdf").first()).toBeVisible({
+      timeout: 20_000,
+    });
     await expect(
       page.locator('[data-testid="spec091-serving-fence-badge"][data-query-ready="true"]'),
     ).toBeVisible({ timeout: 20_000 });

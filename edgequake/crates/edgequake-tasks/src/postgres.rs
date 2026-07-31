@@ -635,12 +635,19 @@ impl TaskStorage for PostgresTaskStorage {
         }
     }
 
-    // DATA-PG-TASKS-CLAIM-NEXT-140 — non-doc comment (avoid rustdoc indented doctests).
-    // @dataop DATA-PG-TASKS-CLAIM-NEXT-140 | postgres | workspace-fair claim + lease
-    // @tables tasks | @indexes claim_pending + stale_processing_lease
-    // @limits FOR UPDATE SKIP LOCKED; lease TTL; deadlock risk on track_id locks
-    // @tests e2e_spec090_claim_bounded.rs, postgres_claim_lease.rs
-    // @docs specs/088-data-layer/postgres.md#data-pg-tasks-claim-next-140
+    /**
+     * @dataop      DATA-PG-TASKS-CLAIM-NEXT-140
+     * @engine      postgres
+     * @intent      Workspace-fair task claim with lease (SKIP LOCKED).
+     * @tables      tasks
+     * @indexes     idx_tasks_claim_pending_workspace_created, idx_tasks_stale_processing_lease
+     * @complexity  time: O(B + W) bounded sample B≈1000 + ws_load; space: O(1)
+     * @limits      Concurrent workers safe via FOR UPDATE SKIP LOCKED; lease TTL required; expired processing reclaimable; deadlock risk if other paths lock tasks by track_id inconsistently
+     * @scaling     Cost bounded by sample size, not full backlog depth (SPEC-090 F-090-11)
+     * @tests       tests/e2e_spec090_claim_bounded.rs, tests/postgres_claim_lease.rs
+     * @pgversions  16: ok | 17: ok | 18: ok
+     * @docs        specs/088-data-layer/postgres.md#data-pg-tasks-claim-next-140
+     */
     async fn claim_next(&self, worker_id: &str, lease_ttl: Duration) -> TaskResult<Option<Task>> {
         let lease_token = Uuid::new_v4();
         let lease_expires_at = crate::lease_expires_at(Utc::now(), lease_ttl);
