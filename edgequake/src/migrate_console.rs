@@ -98,12 +98,6 @@ pub fn is_irreversible_drop(version: i64) -> bool {
     is_irreversible_drop_version(version)
 }
 
-/// Highest pending expandable below the lowest pending irreversible (CLI partial apply).
-#[cfg(feature = "postgres")]
-pub fn max_expandable_target(pending: &[(i64, String)]) -> Option<i64> {
-    edgequake_api::state::migration_bootstrap::max_expandable_target(pending)
-}
-
 /// All pending expandable versions (including those after a gated DROP).
 #[cfg(feature = "postgres")]
 pub fn pending_expandable_versions(pending: &[(i64, String)]) -> Vec<i64> {
