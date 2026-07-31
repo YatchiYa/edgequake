@@ -17,7 +17,7 @@ use edgequake_api::services::pending_doc_task_reconcile::{
 };
 use edgequake_api::state::AppState;
 use edgequake_tasks::storage::{Pagination, TaskFilter};
-use edgequake_tasks::TaskStatus;
+use edgequake_tasks::{Task, TaskStatus, TaskType};
 use serde_json::json;
 use tower::ServiceExt;
 use uuid::Uuid;
@@ -598,4 +598,210 @@ async fn issue304_interrupted_failed_force_entities_requeues() {
         requeued >= 1,
         "falsifiable ISSUE-304: Interrupted failed + force/entities must requeue, body={parsed}"
     );
+}
+
+/// Mid-pipeline converting doc with no live task and no recoverable content
+/// must fail-closed (not stay Converting forever).
+#[tokio::test]
+async fn mid_pipeline_orphan_without_task_fail_closed() {
+    let state = AppState::test_state();
+    let doc_id = "zombie-converting-no-task";
+    let metadata = json!({
+        "id": doc_id,
+        "title": "stuck.pdf",
+        "status": "converting",
+        "current_stage": "converting",
+        "tenant_id": TEST_TENANT_ID,
+        "workspace_id": TEST_WORKSPACE_ID,
+        "source_type": "pdf",
+        // No pdf_id and no content → cannot re-enqueue.
+    });
+    state
+        .storage
+        .kv_storage
+        .upsert(&[(format!("{doc_id}-metadata"), metadata)])
+        .await
+        .expect("seed zombie metadata");
+
+    assert!(
+        !has_active_task_for_document(
+            state.tasks.storage.as_ref(),
+            doc_id,
+            Some(Uuid::parse_str(TEST_WORKSPACE_ID).unwrap()),
+        )
+        .await
+        .unwrap()
+    );
+
+    let report = reconcile_pending_documents_missing_tasks(&state, 10, "zombie_fail_closed")
+        .await
+        .expect("reconcile");
+
+    assert!(
+        report.failed_closed >= 1,
+        "mid-pipeline orphan must fail-closed, report={report:?}"
+    );
+
+    let stored = state
+        .storage
+        .kv_storage
+        .get_by_id(&format!("{doc_id}-metadata"))
+        .await
+        .unwrap()
+        .expect("metadata after reconcile");
+    assert_eq!(
+        stored["status"].as_str(),
+        Some("failed"),
+        "zombie converting must become failed"
+    );
+}
+
+/// KV mid-pipeline + cancelled task (no active work) must sync cancelled, not re-enqueue.
+#[tokio::test]
+async fn mid_pipeline_orphan_with_cancelled_task_syncs_cancelled() {
+    let state = AppState::test_state();
+    let doc_id = "zombie-embedding-cancelled-task";
+    let tenant_id = Uuid::parse_str(TEST_TENANT_ID).unwrap();
+    let workspace_id = Uuid::parse_str(TEST_WORKSPACE_ID).unwrap();
+
+    let mut task = Task::new(
+        tenant_id,
+        workspace_id,
+        TaskType::Insert,
+        json!({ "document_id": doc_id }),
+    );
+    task.mark_cancelled();
+    let track_id = task.track_id.clone();
+    state.tasks.storage.create_task(&task).await.unwrap();
+
+    let metadata = json!({
+        "id": doc_id,
+        "title": "01-databricks-ticket.pdf",
+        "status": "extracting",
+        "current_stage": "embedding",
+        "stage_progress": 0.99,
+        "stage_message": "Embedding chunks: 0/58 (0%)",
+        "track_id": track_id,
+        "tenant_id": TEST_TENANT_ID,
+        "workspace_id": TEST_WORKSPACE_ID,
+        "source_type": "pdf",
+    });
+    state
+        .storage
+        .kv_storage
+        .upsert(&[(format!("{doc_id}-metadata"), metadata)])
+        .await
+        .expect("seed zombie metadata");
+
+    let report = reconcile_pending_documents_missing_tasks(&state, 10, "zombie_cancel_heal")
+        .await
+        .expect("reconcile");
+
+    assert!(
+        report.cancelled_synced >= 1,
+        "cancelled-task orphan must sync cancelled, report={report:?}"
+    );
+    assert_eq!(
+        report.enqueued, 0,
+        "must not re-enqueue when task is already cancelled"
+    );
+
+    let stored = state
+        .storage
+        .kv_storage
+        .get_by_id(&format!("{doc_id}-metadata"))
+        .await
+        .unwrap()
+        .expect("metadata after reconcile");
+    assert_eq!(stored["status"].as_str(), Some("cancelled"));
+    assert_eq!(stored["current_stage"].as_str(), Some("cancelled"));
+    assert_eq!(stored["stage_progress"].as_f64(), Some(0.0));
+}
+
+/// recover-stuck must heal cancelled-task zombies — never requeue them as pending.
+#[tokio::test]
+async fn recover_stuck_heals_cancelled_task_does_not_requeue() {
+    let state = AppState::test_state();
+    let app = Server::new(test_config(), state.clone()).build_router();
+    let doc_id = "recover-stuck-cancelled-zombie";
+    let tenant_id = Uuid::parse_str(TEST_TENANT_ID).unwrap();
+    let workspace_id = Uuid::parse_str(TEST_WORKSPACE_ID).unwrap();
+
+    let mut task = Task::new(
+        tenant_id,
+        workspace_id,
+        TaskType::Insert,
+        json!({ "document_id": doc_id }),
+    );
+    task.mark_cancelled();
+    let track_id = task.track_id.clone();
+    state.tasks.storage.create_task(&task).await.unwrap();
+
+    let metadata = json!({
+        "id": doc_id,
+        "title": "stuck-cancelled.pdf",
+        "status": "embedding",
+        "current_stage": "embedding",
+        "stage_progress": 0.99,
+        "track_id": track_id,
+        "tenant_id": TEST_TENANT_ID,
+        "workspace_id": TEST_WORKSPACE_ID,
+        "source_type": "text",
+        "updated_at": "2020-01-01T00:00:00Z",
+    });
+    state
+        .storage
+        .kv_storage
+        .upsert(&[(format!("{doc_id}-metadata"), metadata)])
+        .await
+        .expect("seed");
+
+    let before = count_pending_tasks(&state).await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/documents/recover-stuck")
+                .header("Content-Type", "application/json")
+                .header("X-Tenant-ID", TEST_TENANT_ID)
+                .header("X-Workspace-ID", TEST_WORKSPACE_ID)
+                .body(Body::from(
+                    json!({
+                        "max_documents": 10,
+                        "stuck_threshold_minutes": 1,
+                        "document_ids": [doc_id]
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert!(response.status().is_success(), "recover-stuck must succeed");
+    let body = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+        parsed["requeued"].as_u64().unwrap_or(99),
+        0,
+        "must not requeue cancelled-task doc, body={parsed}"
+    );
+    assert_eq!(
+        count_pending_tasks(&state).await,
+        before,
+        "no new pending tasks after cancel heal"
+    );
+
+    let stored = state
+        .storage
+        .kv_storage
+        .get_by_id(&format!("{doc_id}-metadata"))
+        .await
+        .unwrap()
+        .expect("metadata");
+    assert_eq!(stored["status"].as_str(), Some("cancelled"));
+    assert_eq!(stored["stage_progress"].as_f64(), Some(0.0));
 }

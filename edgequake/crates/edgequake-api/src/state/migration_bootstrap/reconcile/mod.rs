@@ -2,16 +2,16 @@
 
 use sqlx::PgPool;
 
-/// True when heavy support DDL apply is allowed (migrate CLI or boot escape).
+/// True when heavy support DDL apply is allowed (SPEC-091 LD-15: migrate CLI
+/// only — the boot escape flag was removed; serving boot is verify-only).
 fn heavy_bootstrap_apply_allowed() -> bool {
-    crate::state::migration_bootstrap::allow_boot_migrate()
-        || crate::state::migration_bootstrap::migrate_cli_mode()
+    crate::state::migration_bootstrap::migrate_cli_mode()
 }
 
 /// Execute bootstrap `apply.sql` scripts (multi-statement; not compatible with `sqlx::query`).
 ///
-/// SPEC-090 F-090-20b: skip heavy apply on serving boot unless
-/// `EDGEQUAKE_ALLOW_BOOT_MIGRATE=1` or `EDGEQUAKE_MIGRATE_CLI=1`.
+/// SPEC-091 Doc 17 (LD-15): heavy apply runs only via `edgequake migrate`
+/// (`EDGEQUAKE_MIGRATE_CLI=1`); serving boot degrades these hooks to read-only probes.
 pub(super) async fn execute_bootstrap_apply_sql(
     pool: &PgPool,
     sql: &str,

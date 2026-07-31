@@ -42,13 +42,24 @@ use edgequake_storage::{
     PostgresAGEGraphStorage, PostgresConfig, PostgresKVStorage, VectorStorage,
 };
 
+// WHY: route these tests to a dedicated scratch database (`{db}_test`) instead
+// of the shared dev DB — this suite inserts many `documents` rows (the
+// historical "Wipe Scale"/duplicate-title dev pollution). See common/test_db.rs.
+#[path = "common/test_db.rs"]
+mod test_db;
+
 // ============================================================================
 // Test Infrastructure
 // ============================================================================
 
-/// Get database URL from environment variables.
+/// Canonical default tenant/workspace UUIDs (mirror `seed_default_workspace`).
+const DEFAULT_TENANT_ID: &str = "00000000-0000-0000-0000-000000000002";
+const DEFAULT_WORKSPACE_ID: &str = "00000000-0000-0000-0000-000000000003";
+
+/// Get database URL from environment variables, redirected to the dedicated
+/// scratch test database (see `common/test_db.rs`).
 fn get_database_url() -> Option<String> {
-    env::var("DATABASE_URL").ok().or_else(|| {
+    let base = env::var("DATABASE_URL").ok().or_else(|| {
         let password = env::var("POSTGRES_PASSWORD").ok()?;
         let host = env::var("POSTGRES_HOST").unwrap_or_else(|_| "localhost".to_string());
         let port = env::var("POSTGRES_PORT").unwrap_or_else(|_| "5432".to_string());
@@ -58,7 +69,19 @@ fn get_database_url() -> Option<String> {
             "postgresql://{}:{}@{}:{}/{}",
             user, password, host, port, db
         ))
-    })
+    })?;
+    Some(test_db::isolated_test_url(&base))
+}
+
+/// Serialize every test in this binary: they share ONE PostgreSQL database
+/// (global `documents` / `ingestion_dedup` tables) and `create_postgres_test_state`
+/// purges dedup rows, so parallel execution races (one test's setup wipes
+/// another's in-flight dedup reservation). A process-wide async mutex makes the
+/// suite deterministic regardless of `RUST_TEST_THREADS`.
+static DB_TEST_SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+async fn db_test_serial() -> tokio::sync::MutexGuard<'static, ()> {
+    DB_TEST_SERIAL.lock().await
 }
 
 /// Create test database pool.
@@ -150,8 +173,35 @@ async fn create_postgres_test_state(pool: &PgPool) -> AppState {
 
     // Services (use in-memory for simplicity)
     let workspace_service: Arc<dyn WorkspaceService> = Arc::new(InMemoryWorkspaceService::new());
+    // SPEC-091 queue/admission gates require the workspace row to exist —
+    // seed the canonical default tenant + workspace (...-0002 / ...-0003).
+    workspace_service.seed_default_workspace().await;
+    // Register the PG pool for relational workspace-membership reads (the
+    // wsdoc Wave B3 cutover) — production does this in `state/postgres.rs`,
+    // but this harness builds `AppState` manually.
+    edgequake_api::services::workspace_document_index::register_membership_pool(pool.clone());
+    // Admission inserts `documents` rows referencing the default tenant /
+    // workspace FK — production seeds these at startup
+    // (`ensure_default_tenant_workspace`); replicate on a fresh schema.
+    edgequake_api::services::identity_storage::ensure_default_tenant_workspace(
+        pool,
+        &edgequake_api::state::ApiSecurityConfig::default(),
+    )
+    .await
+    .expect("seed default tenant/workspace rows");
     let conversation_service: Arc<dyn ConversationService> =
         Arc::new(InMemoryConversationService::new());
+
+    // Idempotent reruns: purge dedup reservations left by previous
+    // (possibly aborted) runs — fixture content hashes are deterministic.
+    sqlx::query("DELETE FROM public.ingestion_dedup")
+        .execute(pool)
+        .await
+        .ok();
+    sqlx::query("DELETE FROM public.eq_eq_default_kv WHERE key LIKE 'doc:hash:%' OR key LIKE 'staging:hash:%'")
+        .execute(pool)
+        .await
+        .ok(); // 42P01 post-Wave-D drop: nothing to purge.
 
     // Task infrastructure
     let task_storage = Arc::new(edgequake_tasks::memory::MemoryTaskStorage::new());
@@ -247,6 +297,56 @@ async fn extract_json(response: axum::response::Response) -> Value {
     serde_json::from_slice(&bytes).expect("Failed to parse JSON")
 }
 
+/// Insert a workspace row for tests that use synthetic (non-default)
+/// tenant/workspace UUIDs — admission gates fail-closed on unknown workspaces.
+async fn seed_test_workspace(state: &AppState, tenant_id: Uuid, workspace_id: Uuid) {
+    // Parent tenant first (insert_workspace validates nothing, but the
+    // quota/admission reads resolve the tenant).
+    if state
+        .workspace_service
+        .get_tenant(tenant_id)
+        .await
+        .ok()
+        .flatten()
+        .is_none()
+    {
+        let mut tenant = edgequake_core::Tenant::new("Test Tenant", "test");
+        tenant.tenant_id = tenant_id;
+        state
+            .workspace_service
+            .create_tenant(tenant)
+            .await
+            .expect("seed test tenant");
+    }
+    let now = chrono::Utc::now();
+    let (llm_model, llm_provider) = edgequake_core::Workspace::default_llm_config();
+    let (embedding_model, embedding_provider, embedding_dimension) =
+        edgequake_core::Workspace::default_embedding_config();
+    state
+        .workspace_service
+        .insert_workspace(edgequake_core::Workspace {
+            workspace_id,
+            tenant_id,
+            name: format!("test-{workspace_id}"),
+            slug: format!("test-{workspace_id}"),
+            description: None,
+            is_active: true,
+            created_at: now,
+            updated_at: now,
+            metadata: HashMap::new(),
+            llm_model,
+            llm_provider,
+            embedding_model,
+            embedding_provider,
+            embedding_dimension,
+            vision_llm_provider: None,
+            vision_llm_model: None,
+            pdf_parser_backend: None,
+        })
+        .await
+        .expect("seed test workspace");
+}
+
 /// Helper to upload a document via HTTP.
 async fn upload_document_http(
     app: &axum::Router,
@@ -277,6 +377,72 @@ async fn upload_document_http(
     (status, body)
 }
 
+/// SPEC-091 queue/admission: upload ADMITS asynchronously (202 + task on the
+/// durable queue). Drive the insert task inline so the test observes the
+/// completed pipeline state (same drain pattern as the deletion helpers).
+async fn drain_insert_task(state: &AppState) {
+    let mut task = state
+        .tasks
+        .queue
+        .try_receive()
+        .await
+        .expect("queue receive")
+        .expect("Insert task on queue");
+    for _ in 0..20 {
+        if matches!(
+            task.task_type,
+            edgequake_tasks::TaskType::Insert | edgequake_tasks::TaskType::Upload
+        ) {
+            break;
+        }
+        task = state
+            .tasks
+            .queue
+            .try_receive()
+            .await
+            .expect("queue receive")
+            .expect("expected Insert task");
+    }
+    let processor = edgequake_api::DocumentTaskProcessor::new(
+        Arc::clone(&state.query.pipeline),
+        Arc::clone(&state.query.llm_provider),
+        Arc::clone(&state.storage.kv_storage),
+        Arc::clone(&state.storage.vector_storage),
+        Arc::clone(&state.storage.vector_registry),
+        Arc::clone(&state.storage.graph_storage),
+        edgequake_tasks::PipelineState::default(),
+    )
+    .with_app_state(state.clone());
+    edgequake_tasks::TaskProcessor::process(
+        &processor,
+        &mut task,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await
+    .expect("drain insert task");
+}
+
+/// Upload + admit + inline-drain, returning the admitted document id.
+async fn upload_and_process(
+    state: &AppState,
+    app: &axum::Router,
+    title: &str,
+    content: &str,
+) -> String {
+    let (status, resp) = upload_document_http(app, title, content).await;
+    assert!(
+        status == StatusCode::CREATED || status == StatusCode::ACCEPTED,
+        "Upload should admit (201 legacy or 202 async admit), got {status}: {resp:?}"
+    );
+    let doc_id = resp
+        .get("document_id")
+        .and_then(|v| v.as_str())
+        .expect("document_id")
+        .to_string();
+    drain_insert_task(state).await;
+    doc_id
+}
+
 /// Admit delete (202) then drain durable `Deletion` task from the queue.
 async fn delete_document_http(
     app: &axum::Router,
@@ -289,6 +455,8 @@ async fn delete_document_http(
             Request::builder()
                 .method("DELETE")
                 .uri(format!("/api/v1/documents/{}", document_id))
+                .header("X-Tenant-ID", DEFAULT_TENANT_ID)
+                .header("X-Workspace-ID", DEFAULT_WORKSPACE_ID)
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -420,13 +588,15 @@ async fn query_rag_http(app: &axum::Router, query_text: &str) -> (StatusCode, Va
 /// Verifies basic cascade delete works with PostgreSQL constraints.
 #[tokio::test]
 async fn test_single_document_deletion_pg() {
+    let _serial = db_test_serial().await;
     let pool = require_postgres!();
     let state = create_postgres_test_state(&pool).await;
     let server = Server::new(create_test_config(), state.clone());
     let app = server.build_router();
 
-    // Upload document
-    let (status, upload_resp) = upload_document_http(
+    // Upload document (202 admit + inline drain per SPEC-091 queue/admission)
+    let doc_id = upload_and_process(
+        &state,
         &app,
         "Tech Article PG",
         "Alice is a software engineer at Google. She works with Bob on AI projects. \
@@ -434,22 +604,8 @@ async fn test_single_document_deletion_pg() {
     )
     .await;
 
-    if status != StatusCode::CREATED {
-        eprintln!("Upload failed with status {}: {:?}", status, upload_resp);
-    }
-    assert_eq!(
-        status,
-        StatusCode::CREATED,
-        "Upload should succeed, got: {:?}",
-        upload_resp
-    );
-    let doc_id = upload_resp
-        .get("document_id")
-        .and_then(|v| v.as_str())
-        .expect("Should have document_id");
-
     // Delete document
-    let (delete_status, delete_resp) = delete_document_http(&app, &state, doc_id).await;
+    let (delete_status, delete_resp) = delete_document_http(&app, &state, &doc_id).await;
 
     if delete_status != StatusCode::ACCEPTED {
         eprintln!(
@@ -489,33 +645,32 @@ async fn test_single_document_deletion_pg() {
 /// Verifies source_ids tracking works with PostgreSQL UPSERT.
 #[tokio::test]
 async fn test_delete_preserves_shared_entities_pg() {
+    let _serial = db_test_serial().await;
     let pool = require_postgres!();
     let state = create_postgres_test_state(&pool).await;
     let server = Server::new(create_test_config(), state.clone());
     let app = server.build_router();
 
     // Upload first document
-    let (status1, upload1) = upload_document_http(
+    let doc1_id = upload_and_process(
+        &state,
         &app,
         "Doc1 PG",
         "John Smith is a researcher at MIT. He studies quantum computing and AI.",
     )
     .await;
-    assert_eq!(status1, StatusCode::CREATED);
-    let doc1_id = upload1.get("document_id").and_then(|v| v.as_str()).unwrap();
 
     // Upload second document with overlapping entity (John Smith)
-    let (status2, upload2) = upload_document_http(
+    let doc2_id = upload_and_process(
+        &state,
         &app,
         "Doc2 PG",
         "John Smith published a paper on quantum algorithms. He collaborates with researchers worldwide.",
     )
     .await;
-    assert_eq!(status2, StatusCode::CREATED);
-    let doc2_id = upload2.get("document_id").and_then(|v| v.as_str()).unwrap();
 
     // Delete first document
-    let (delete_status, delete_resp) = delete_document_http(&app, &state, doc1_id).await;
+    let (delete_status, delete_resp) = delete_document_http(&app, &state, &doc1_id).await;
     assert_eq!(delete_status, StatusCode::ACCEPTED);
 
     // Check metrics (at top level, not nested)
@@ -528,7 +683,7 @@ async fn test_delete_preserves_shared_entities_pg() {
     println!("Entities affected: {}", entities_affected);
 
     // Delete second document to clean up
-    let (cleanup_status, _) = delete_document_http(&app, &state, doc2_id).await;
+    let (cleanup_status, _) = delete_document_http(&app, &state, &doc2_id).await;
     assert_eq!(cleanup_status, StatusCode::ACCEPTED);
 
     println!("✅ Shared entity preservation with PostgreSQL: PASSED");
@@ -539,23 +694,20 @@ async fn test_delete_preserves_shared_entities_pg() {
 /// Verifies query engine handles missing chunks gracefully with PostgreSQL.
 #[tokio::test]
 async fn test_query_after_deletion_pg() {
+    let _serial = db_test_serial().await;
     let pool = require_postgres!();
     let state = create_postgres_test_state(&pool).await;
     let server = Server::new(create_test_config(), state.clone());
     let app = server.build_router();
 
     // Upload document
-    let (status, upload_resp) = upload_document_http(
+    let doc_id = upload_and_process(
+        &state,
         &app,
         "Queryable Doc PG",
         "EdgeQuake is a RAG framework. It uses graph-based knowledge representation.",
     )
     .await;
-    assert_eq!(status, StatusCode::CREATED);
-    let doc_id = upload_resp
-        .get("document_id")
-        .and_then(|v| v.as_str())
-        .unwrap();
 
     // Query should work
     let (query_status1, _) = query_rag_http(&app, "What is EdgeQuake?").await;
@@ -566,7 +718,7 @@ async fn test_query_after_deletion_pg() {
     );
 
     // Delete document
-    let (delete_status, _) = delete_document_http(&app, &state, doc_id).await;
+    let (delete_status, _) = delete_document_http(&app, &state, &doc_id).await;
     assert_eq!(delete_status, StatusCode::ACCEPTED);
 
     // Query should still work (no dangling references)
@@ -585,13 +737,17 @@ async fn test_query_after_deletion_pg() {
 /// Verifies cleanup of partial data with PostgreSQL transactions.
 #[tokio::test]
 async fn test_delete_failed_document_cleans_partial_entities_pg() {
+    let _serial = db_test_serial().await;
     let pool = require_postgres!();
     let state = create_postgres_test_state(&pool).await;
     let server = Server::new(create_test_config(), state.clone());
     let app = server.build_router();
 
-    // Directly insert a "failed" document with some entities
-    let doc_id = format!("failed-doc-pg-{}", Uuid::new_v4());
+    // Directly insert a "failed" document with some entities.
+    // SPEC-091 Wave D: metadata keys route to the typed `documents` shell,
+    // which requires a UUID doc id (non-UUID keys would fall back to the
+    // dropped generic KV table).
+    let doc_id = Uuid::new_v4().to_string();
     let metadata_key = format!("{}-metadata", doc_id);
     let metadata = json!({
         "id": doc_id,
@@ -599,7 +755,7 @@ async fn test_delete_failed_document_cleans_partial_entities_pg() {
         "status": "failed",
         "error": "Processing failed due to mock error",
         "created_at": "2026-01-26T00:00:00Z",
-        "workspace_id": "default"
+        "workspace_id": DEFAULT_WORKSPACE_ID
     });
 
     state
@@ -653,6 +809,7 @@ async fn test_delete_failed_document_cleans_partial_entities_pg() {
 /// Verifies multi-document entities are properly handled with PostgreSQL.
 #[tokio::test]
 async fn test_accumulated_source_ids_deletion_pg() {
+    let _serial = db_test_serial().await;
     let pool = require_postgres!();
     let state = create_postgres_test_state(&pool).await;
     let server = Server::new(create_test_config(), state.clone());
@@ -667,14 +824,7 @@ async fn test_accumulated_source_ids_deletion_pg() {
 
     let mut doc_ids = Vec::new();
     for (title, content) in docs {
-        let (status, resp) = upload_document_http(&app, title, content).await;
-        assert_eq!(status, StatusCode::CREATED);
-        doc_ids.push(
-            resp.get("document_id")
-                .and_then(|v| v.as_str())
-                .unwrap()
-                .to_string(),
-        );
+        doc_ids.push(upload_and_process(&state, &app, title, content).await);
     }
 
     // Delete first document
@@ -717,6 +867,7 @@ async fn test_accumulated_source_ids_deletion_pg() {
 /// Memory suite asserts exact op-counts; this PG path proves AGE clear at reporter scale.
 #[tokio::test]
 async fn issue309_workspace_wipe_admit_and_drain_pg() {
+    let _serial = db_test_serial().await;
     let pool = require_postgres!();
     let state = create_postgres_test_state(&pool).await;
     let workspace_id = Uuid::new_v4();
@@ -726,8 +877,13 @@ async fn issue309_workspace_wipe_admit_and_drain_pg() {
     // Reporter-scale: 200 documents + exclusive graph nodes.
     let n = 200usize;
     let tenant_id = "00000000-0000-0000-0000-000000000001";
+    seed_test_workspace(&state, Uuid::parse_str(tenant_id).unwrap(), workspace_id).await;
+    // SPEC-091 Wave D: metadata keys route to the typed `documents` shell,
+    // which requires a UUID doc id. Collect ids for post-wipe verification.
+    let mut doc_ids: Vec<String> = Vec::with_capacity(n);
     for i in 0..n {
-        let doc_id = format!("wipe-scale-{i}-{}", workspace_id);
+        let doc_id = Uuid::new_v4().to_string();
+        doc_ids.push(doc_id.clone());
         let meta = json!({
             "id": doc_id,
             "title": format!("Wipe Scale {i}"),
@@ -766,8 +922,7 @@ async fn issue309_workspace_wipe_admit_and_drain_pg() {
         "planned wipe count; body={body}"
     );
 
-    for i in 0..n {
-        let doc_id = format!("wipe-scale-{i}-{}", workspace_id);
+    for (i, doc_id) in doc_ids.iter().enumerate() {
         assert!(
             state
                 .storage
@@ -793,6 +948,7 @@ async fn issue309_workspace_wipe_admit_and_drain_pg() {
 /// ISSUE-304: AUTO_RESUME=0 orphan → structured Interrupted; force entities requeues Full PDF.
 #[tokio::test]
 async fn issue304_interrupted_pdf_force_entities_enqueues_full_pg() {
+    let _serial = db_test_serial().await;
     let pool = require_postgres!();
     let _guard = std::sync::Mutex::new(());
     // Scoped env for this test process — restore after.
@@ -802,8 +958,11 @@ async fn issue304_interrupted_pdf_force_entities_enqueues_full_pg() {
     let state = create_postgres_test_state(&pool).await;
     let workspace_id = Uuid::new_v4();
     let tenant_id = Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap();
+    seed_test_workspace(&state, tenant_id, workspace_id).await;
     let pdf_id = Uuid::new_v4();
-    let doc_id = format!("issue304-pdf-{}", pdf_id);
+    // SPEC-091 Wave D: metadata keys route to the typed `documents` shell,
+    // which requires a UUID doc id.
+    let doc_id = pdf_id.to_string();
 
     let metadata = json!({
         "id": doc_id,

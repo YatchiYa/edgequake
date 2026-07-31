@@ -70,9 +70,18 @@ pub fn build_engine_request(params: &QueryExecutionParams) -> EngineQueryRequest
     if let Some(ref tenant_id) = params.data_tenant_id {
         engine_request = engine_request.with_tenant_id(tenant_id.clone());
     }
-    if let Some(ref workspace_id) = params.workspace_id {
-        engine_request = engine_request.with_workspace_id(workspace_id.clone());
-    }
+    // SPEC-091 IW0 (GAP-091-11, LAW-I4): vector scope is never unscoped.
+    // Headerless requests clamp to the default workspace UUID (the form
+    // ingestion persists into vector metadata); a malformed header passes
+    // through raw so it matches nothing instead of silently defaulting.
+    let scoped_workspace = match params.workspace_id.as_deref().map(str::trim) {
+        None | Some("") => crate::middleware::default_workspace_uuid().to_string(),
+        Some(raw) => match crate::middleware::resolve_workspace_uuid(Some(raw)) {
+            Some(uuid) => uuid.to_string(),
+            None => raw.to_string(),
+        },
+    };
+    engine_request = engine_request.with_workspace_id(scoped_workspace);
     if let Some(max) = params.max_results {
         engine_request.max_results = Some(max);
     }

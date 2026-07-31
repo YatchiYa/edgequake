@@ -83,8 +83,12 @@ pub mod pipeline_state;
 #[cfg(feature = "postgres")]
 pub mod postgres;
 pub mod progress;
+pub mod provider_budget;
+pub mod provider_class;
 pub mod queue;
+pub mod queue_estimate;
 pub mod shutdown;
+pub mod state_machine;
 pub mod storage;
 pub mod tenant_limiter;
 pub mod types;
@@ -116,14 +120,33 @@ pub use ingestion_reliability::{
 pub use lease::{lease_expires_at, task_lease_ttl_from_env};
 pub use pipeline_state::{PipelineEvent, PipelineMessage, PipelineState, PipelineStatusSnapshot};
 pub use progress::{PdfUploadProgress, PhaseError, PhaseProgress, PhaseStatus, PipelinePhase};
+#[cfg(feature = "postgres")]
+pub use provider_budget::PostgresProviderBudget;
+pub use provider_budget::{
+    provider_budget_from_env, MemoryProviderBudget, ProviderBudget, ProviderSlotGuard,
+    ProviderSlotLease, SharedProviderBudget, DEFAULT_PROVIDER_BUDGET, LOCAL_MAX_INFLIGHT_ENV,
+    MAX_PROVIDER_BUDGET, PROVIDER_BUDGET_ENV,
+};
+pub use provider_class::{
+    SharedTaskProviderClassifier, StaticProviderClassifier, TaskProviderClass,
+    TaskProviderClassifier,
+};
 pub use queue::{ChannelTaskQueue, SharedTaskQueue, TaskQueue, UnboundedChannelTaskQueue};
+pub use queue_estimate::{
+    estimate_queue, estimate_queues_batch, QueueEstimate, QueueEtaBasis, DEFAULT_ETA_CLAMP_MAX_SECS,
+    DEFAULT_ETA_WINDOW_SECS, ETA_CLAMP_MAX_SECS_ENV, ETA_WINDOW_SECS_ENV,
+};
 pub use shutdown::{shutdown_drain_budget, DEFAULT_SHUTDOWN_DRAIN_SECS, SHUTDOWN_DRAIN_SECS_ENV};
+pub use state_machine::{
+    is_legal as task_transition_is_legal, transition as task_transition, TaskEvent,
+    TransitionError, CLAIM_PENDING_GUARD_SQL, CLAIM_STALE_GUARD_SQL, RELEASE_GUARD_SQL,
+};
 pub use storage::{
     Pagination, SharedTaskStorage, SortField, SortOrder, TaskFilter, TaskList, TaskStatistics,
     TaskStorage,
 };
 pub use tenant_limiter::{
-    FairnessPermit, TenantConcurrencyLimiter, TenantLimiterStats, TryAcquireOutcome,
+    FairShareLane, FairnessPermit, TenantConcurrencyLimiter, TenantLimiterStats, TryAcquireOutcome,
 };
 pub use types::{
     BatchDeletionTaskData, ChunkProgress, DeletionTaskData, DirectoryScanData, DocumentUploadData,

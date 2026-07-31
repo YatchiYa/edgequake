@@ -158,6 +158,8 @@ async fn create_test_app_with_state_and_workers() -> (axum::Router, AppState) {
         max_tasks_per_tenant: 4,
         max_lifecycle_tasks_per_tenant: 4,
         processing_timeout_secs: 120,
+        provider_budget: 0,
+        tenant_lane_weight: 1,
     };
     let mut worker_pool = WorkerPool::new(
         worker_config,

@@ -330,6 +330,20 @@ impl DocumentTaskProcessor {
             .enqueue_pdf_ingest_insert(task, data, text_data, ingest_timeout_secs)
             .await?;
 
+        // Progress/cancel + list enrichment must follow the Insert, not the
+        // completed convert task (otherwise display_status paints as indexed).
+        if let Err(e) = self
+            .retarget_document_ingest_track(early_doc_id, &ingest_track_id)
+            .await
+        {
+            tracing::warn!(
+                document_id = %early_doc_id,
+                ingest_track_id = %ingest_track_id,
+                error = %e,
+                "Failed to retarget document track_id to PDF ingest Insert"
+            );
+        }
+
         self.bump_task_progress(task, "complete".to_string(), 6, 100)
             .await;
         info!(

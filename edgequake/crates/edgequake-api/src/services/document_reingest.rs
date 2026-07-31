@@ -17,30 +17,34 @@ pub enum DuplicateReingestAction {
 }
 
 /// Resolve workspace duplicate content hash (ingestion uniformity SSOT).
+///
+/// SPEC-091 W2: the durable lookup routes through `ingestion_dedup_store`
+/// (KV `doc:hash:` or typed `public.ingestion_dedup` per family flag).
 pub async fn resolve_workspace_duplicate_for_reingestion(
     state: &AppState,
     tenant_ctx: &TenantContext,
-    hash_key: &str,
+    content_hash: &str,
     workspace_id: &str,
 ) -> Result<DuplicateReingestAction, ApiError> {
-    let Some(existing_doc_id) = state.storage.kv_storage.get_by_id(hash_key).await? else {
-        return Ok(DuplicateReingestAction::NoDuplicate);
-    };
-    let Some(doc_id_str) = existing_doc_id.as_str() else {
+    let hash_key = crate::services::ContentHasher::workspace_hash_key(workspace_id, content_hash);
+    let Some(doc_id_str) =
+        crate::services::ingestion_dedup_store::lookup_durable(state, workspace_id, content_hash)
+            .await?
+    else {
         return Ok(DuplicateReingestAction::NoDuplicate);
     };
 
-    if !workspace_has_visible_document_for_hash(state, doc_id_str, tenant_ctx).await? {
-        recycle_orphan_workspace_hash(state, hash_key, workspace_id, doc_id_str).await?;
+    if !workspace_has_visible_document_for_hash(state, &doc_id_str, tenant_ctx).await? {
+        recycle_orphan_workspace_hash(state, &hash_key, workspace_id, &doc_id_str).await?;
         return Ok(DuplicateReingestAction::NoDuplicate);
     }
 
-    match delete_document_for_reingestion(doc_id_str, state, workspace_id).await {
+    match delete_document_for_reingestion(&doc_id_str, state, workspace_id).await {
         Ok(true) => Ok(DuplicateReingestAction::ClearedForReingestion {
-            old_document_id: doc_id_str.to_string(),
+            old_document_id: doc_id_str.clone(),
         }),
         Ok(false) => Ok(DuplicateReingestAction::StillProcessing {
-            existing_document_id: doc_id_str.to_string(),
+            existing_document_id: doc_id_str.clone(),
         }),
         Err(e) => {
             // SPEC-086 ops: fail closed — never allocate a second admit while the
@@ -52,7 +56,7 @@ pub async fn resolve_workspace_duplicate_for_reingestion(
                 "Failed to delete old document data — blocking re-ingestion"
             );
             Ok(DuplicateReingestAction::StillProcessing {
-                existing_document_id: doc_id_str.to_string(),
+                existing_document_id: doc_id_str,
             })
         }
     }

@@ -100,6 +100,9 @@ pub async fn upload_document(
                 entity_count: None,
                 relationship_count: None,
                 cost: None,
+                queue_position: None,
+                eta_seconds: None,
+                eta_basis: None,
             }),
         )),
         DocumentAdmissionOutcome::Accepted(accepted) => Ok((
@@ -114,6 +117,12 @@ pub async fn upload_document(
                 entity_count: None,
                 relationship_count: None,
                 cost: None,
+                queue_position: accepted.queue.as_ref().map(|q| q.position),
+                eta_seconds: accepted.queue.as_ref().map(|q| q.eta_seconds),
+                eta_basis: accepted
+                    .queue
+                    .as_ref()
+                    .map(|q| q.basis.as_str().to_string()),
             }),
         )),
     }

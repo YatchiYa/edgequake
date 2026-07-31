@@ -40,13 +40,70 @@ export interface IngestionRunView {
   filename: string;
   sourceType: "pdf" | "markdown" | "text" | "image" | "unknown";
   stage: IngestionRunStage;
-  stageStatus: "pending" | "active" | "complete" | "failed" | "skipped";
+  /** cancelled is terminal cancel — never map to failed (Failed chip / green priors). */
+  stageStatus:
+    | "pending"
+    | "active"
+    | "complete"
+    | "failed"
+    | "skipped"
+    | "cancelled";
   message: string;
   counts?: IngestionRunCounts;
   progress01?: number;
   mode?: IngestionRunMode;
   costUsd?: number;
   updatedAt?: string;
+  /** SPEC-091 IS2: 1-based FCFS position when queued. */
+  queuePosition?: number;
+  /** Estimated seconds until claim. */
+  etaSeconds?: number;
+  /** `measured` | `no_history` */
+  etaBasis?: string;
+}
+
+/** Compact ActiveRuns phase strip (IS3) — wire stages collapse into 4 phases. */
+export type IngestionPhaseId = "admit" | "prepare" | "extract" | "materialize";
+
+export const PHASE_STRIP_ORDER: IngestionPhaseId[] = [
+  "admit",
+  "prepare",
+  "extract",
+  "materialize",
+];
+
+export const PHASE_STRIP_LABELS: Record<IngestionPhaseId, string> = {
+  admit: "Admit",
+  prepare: "Prepare",
+  extract: "Extract",
+  materialize: "Materialize",
+};
+
+/** Map wire UnifiedStage → default phase strip (IS-AC-06). */
+export function mapWireStageToPhase(
+  stage: string | undefined | null,
+): IngestionPhaseId {
+  const key = (stage || "").toLowerCase();
+  if (
+    key === "cleaning" ||
+    key === "queued" ||
+    key === "pending" ||
+    key === "uploading"
+  ) {
+    return "admit";
+  }
+  if (key === "converting" || key === "preprocessing" || key === "chunking") {
+    return "prepare";
+  }
+  if (
+    key === "extracting" ||
+    key === "gleaning" ||
+    key === "merging" ||
+    key === "summarizing"
+  ) {
+    return "extract";
+  }
+  return "materialize";
 }
 
 const STAGE_LABELS: Record<string, string> = {
@@ -57,8 +114,8 @@ const STAGE_LABELS: Record<string, string> = {
   preprocessing: "Preprocessing",
   chunking: "Chunking",
   extracting: "Extracting Entities",
-  gleaning: "Gleaning",
-  merging: "Merging Graph",
+  gleaning: "Refining entities",
+  merging: "Updating knowledge graph",
   summarizing: "Summarizing",
   embedding: "Generating Embeddings",
   storing: "Storing",
@@ -70,6 +127,60 @@ const STAGE_LABELS: Record<string, string> = {
   stopping: "Stopping…",
   cancelled: "Cancelled",
 };
+
+/** Format queue ETA for ActiveRuns (honest about no_history). */
+export function formatQueueEta(
+  etaSeconds?: number | null,
+  etaBasis?: string | null,
+): string | null {
+  if (typeof etaSeconds !== "number" || !Number.isFinite(etaSeconds)) {
+    return null;
+  }
+  if (etaBasis === "no_history") {
+    return "ETA unknown";
+  }
+  if (etaSeconds <= 0) {
+    return "Next";
+  }
+  if (etaSeconds < 60) {
+    return `~${Math.round(etaSeconds)}s`;
+  }
+  if (etaSeconds < 3600) {
+    return `~${Math.round(etaSeconds / 60)} min`;
+  }
+  return `~${Math.round(etaSeconds / 3600)} h`;
+}
+
+/** Queue chrome line: "Queued · #3 · ~2 min" (LAW-IS4). */
+export function formatQueueChrome(run: {
+  queuePosition?: number;
+  etaSeconds?: number;
+  etaBasis?: string;
+}): string | null {
+  const parts: string[] = ["Queued"];
+  if (typeof run.queuePosition === "number" && run.queuePosition > 0) {
+    parts.push(`#${run.queuePosition}`);
+  }
+  const eta = formatQueueEta(run.etaSeconds, run.etaBasis);
+  if (eta) parts.push(eta);
+  return parts.length > 1 ? parts.join(" · ") : parts[0] ?? null;
+}
+
+/**
+ * Capacity-bound copy when overall estimate is ~0 and stage is provider-bound
+ * (never paint Extracting@0% as the sole story — IS-AC-04).
+ */
+export function capacityWaitingMessage(run: IngestionRunView): string | null {
+  const providerBound = ["extracting", "gleaning", "summarizing", "embedding"];
+  if (!providerBound.includes(run.stage)) return null;
+  const overallNearZero =
+    typeof run.progress01 === "number" ? run.progress01 < 0.02 : true;
+  const noCounts = !run.counts || run.counts.total <= 0;
+  if (overallNearZero && noCounts) {
+    return "Waiting for provider slot…";
+  }
+  return null;
+}
 
 /** Server UnifiedStage order (+ admission cleaning → queued). */
 export const SERVER_STAGE_ORDER: IngestionRunStage[] = [
@@ -134,6 +245,62 @@ export function parseCountsFromMessage(
   const total = Number(m[2]);
   if (!total) return undefined;
   return { current, total, unit };
+}
+
+const COUNT_UNITS = new Set<IngestionCountUnit>([
+  "pages",
+  "chunks",
+  "entities",
+  "relationships",
+  "figures",
+]);
+
+/** LAW-IS1: structured progress_counts beat message regex. */
+export function resolveProgressCounts(
+  structured:
+    | { unit?: string; current?: number; total?: number }
+    | null
+    | undefined,
+  message: string,
+): IngestionRunCounts | undefined {
+  if (
+    structured &&
+    typeof structured.current === "number" &&
+    typeof structured.total === "number" &&
+    structured.total > 0
+  ) {
+    const unitRaw = (structured.unit || "chunks").toLowerCase();
+    const unit = (COUNT_UNITS.has(unitRaw as IngestionCountUnit)
+      ? unitRaw
+      : "chunks") as IngestionCountUnit;
+    return {
+      current: structured.current,
+      total: structured.total,
+      unit,
+    };
+  }
+  return parseCountsFromMessage(message);
+}
+
+/**
+ * LAW-IS2: nest PDF page meter only when list SSOT lacks page/figure counts.
+ * PDF-only; never for markdown/text/image.
+ */
+export function shouldNestPdfPageMeter(
+  run: Pick<IngestionRunView, "sourceType" | "stage" | "counts">,
+): boolean {
+  if (run.sourceType !== "pdf" || run.stage !== "converting") return false;
+  if (run.counts && run.counts.total > 0) return false;
+  return true;
+}
+
+/** LAW-IS2: show overall bar only when stage has no determinate N/M. */
+export function shouldShowOverallMeter(
+  run: Pick<IngestionRunView, "counts">,
+  isAdmission: boolean,
+): boolean {
+  if (isAdmission) return false;
+  return !(run.counts && run.counts.total > 0);
 }
 
 const ACTIVE_PIPELINE_STAGES = new Set([
@@ -210,20 +377,24 @@ export function buildIngestionRunView(
     return null;
   }
 
-  // SPEC-057 / 086 ops: Cancel → Stopping… then Cancelled on ActiveRuns.
+  // SPEC-057 / 086 ops: Cancel → Stopping… then compact Cancelled ack.
+  // stageStatus "cancelled" (not "failed") — never paint Failed + green priors.
   if (status === "stopping" || status === "cancelled") {
     const stage: IngestionRunStage =
       status === "stopping" ? "stopping" : "cancelled";
+    const rawMessage = doc.stage_message?.trim() || "";
+    const cancelMessage =
+      status === "cancelled"
+        ? rawMessage || "Processing cancelled"
+        : rawMessage || stageDisplayName(stage);
     return {
       documentId: doc.id,
       trackId: doc.track_id ?? null,
       filename: doc.file_name || doc.title || doc.id,
       sourceType: sourceTypeOf(doc),
       stage,
-      stageStatus: status === "stopping" ? "active" : "failed",
-      message:
-        (doc.stage_message && doc.stage_message.trim()) ||
-        stageDisplayName(stage),
+      stageStatus: status === "stopping" ? "active" : "cancelled",
+      message: cancelMessage,
       progress01: status === "stopping" ? doc.stage_progress : 0,
       updatedAt: doc.updated_at,
     };
@@ -267,18 +438,57 @@ export function buildIngestionRunView(
       })()
     : (doc.stage_message && doc.stage_message.trim()) ||
       stageDisplayName(stage);
-  const counts = orphanShell ? undefined : parseCountsFromMessage(message);
+  const counts = orphanShell
+    ? undefined
+    : resolveProgressCounts(doc.progress_counts, message);
   const progress01 = orphanShell
     ? 0
     : typeof doc.stage_progress === "number"
       ? doc.stage_progress
-      : undefined;
+      : counts && counts.total > 0
+        ? counts.current / counts.total
+        : undefined;
 
   const modeRaw = (doc.reprocess_mode || "").toLowerCase();
   const mode: IngestionRunMode | undefined =
     modeRaw === "full" || modeRaw === "entities" || modeRaw === "merge"
       ? modeRaw
       : undefined;
+
+  const queuePosition =
+    typeof doc.queue_position === "number" ? doc.queue_position : undefined;
+  const etaSeconds =
+    typeof doc.eta_seconds === "number" ? doc.eta_seconds : undefined;
+  const etaBasis = doc.eta_basis ?? undefined;
+
+  // LAW-IS4: queued runs keep Queued message with position/ETA; never leave
+  // Extracting@0% as the sole headline when still in admission.
+  let displayMessage = message;
+  if (stage === "queued" || stage === "cleaning") {
+    const chrome = formatQueueChrome({
+      queuePosition,
+      etaSeconds,
+      etaBasis: etaBasis ?? undefined,
+    });
+    if (chrome && stage === "queued") {
+      displayMessage = chrome;
+    }
+  } else {
+    const capacity = capacityWaitingMessage({
+      documentId: doc.id,
+      trackId: doc.track_id ?? null,
+      filename: doc.file_name || doc.title || doc.id,
+      sourceType: sourceTypeOf(doc),
+      stage,
+      stageStatus: stageStatusFor(stage, displayStatus),
+      message,
+      counts,
+      progress01,
+    });
+    if (capacity && (!message || message === stageDisplayName(stage))) {
+      displayMessage = capacity;
+    }
+  }
 
   return {
     documentId: doc.id,
@@ -287,12 +497,15 @@ export function buildIngestionRunView(
     sourceType: sourceTypeOf(doc),
     stage,
     stageStatus: stageStatusFor(stage, displayStatus),
-    message,
+    message: displayMessage,
     counts,
     progress01,
     mode,
     costUsd: doc.cost_usd,
     updatedAt: doc.updated_at,
+    queuePosition,
+    etaSeconds,
+    etaBasis: etaBasis ?? undefined,
   };
 }
 
@@ -315,7 +528,13 @@ export function buildIngestionRunViewFromProgress(
     (progress.progress?.latest_message &&
       progress.progress.latest_message.trim()) ||
     stageDisplayName(stage);
-  const counts = parseCountsFromMessage(message);
+  // Track progress API may carry counts on the response root (OpenAPI IngestionProgressResponse).
+  const apiCounts = (
+    progress as IngestionProgress & {
+      counts?: { unit?: string; current?: number; total?: number };
+    }
+  ).counts;
+  const counts = resolveProgressCounts(apiCounts, message);
   const pct = progress.progress?.completion_percentage ?? progress.overall_progress;
   const progress01 =
     typeof pct === "number"
@@ -410,7 +629,13 @@ export function selectPrimaryRun(
 }
 
 export function formatRunHeadline(run: IngestionRunView): string {
-  const stage = stageDisplayName(run.stage);
+  if (run.stage === "queued") {
+    return (
+      formatQueueChrome(run) ??
+      `${stageDisplayName(run.stage)} · ${run.filename}`
+    );
+  }
+  const stage = stageDisplayName(run.stage, run.sourceType);
   if (run.counts) {
     return `${stage} · ${run.counts.current}/${run.counts.total} ${run.counts.unit}`;
   }

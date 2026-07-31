@@ -46,16 +46,16 @@ env:
 
 jobs:
   postgres-tests:
-    if: false # TEMPORARILY DISABLED: Failing due to missing AGE extension. Remove to re-enable.
     name: PostgreSQL Integration Tests
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    # SPEC-083 / X-32: job is disabled (if: false). When re-enabled, do NOT set
+    # SPEC-091 IW0 (GAP-091-27): re-enabled on the GHCR AGE image — the original
+    # disable reason ("missing AGE extension") no longer exists. Do NOT set
     # continue-on-error on RLS / workspace / task gates — those must block.
 
     services:
       postgres:
-        image: pgvector/pgvector:pg16
+        image: ghcr.io/raphaelmansuy/edgequake-postgres:latest
         env:
           POSTGRES_DB: edgequake_test
           POSTGRES_USER: edgequake_test
@@ -68,7 +68,7 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 10
-          --health-start-period 30s
+          --health-start-period 60s
 
     steps:
       - uses: actions/checkout@v6
@@ -106,8 +106,9 @@ jobs:
         run: |
           echo "Setting up test database..."
 
-          # Install pgvector extension
+          # Install pgvector + AGE extensions (GHCR image ships both; SPEC-091 IW0)
           PGPASSWORD=test_password_123 psql -h localhost -p 5432 -U edgequake_test -d edgequake_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
+          PGPASSWORD=test_password_123 psql -h localhost -p 5432 -U edgequake_test -d edgequake_test -c "CREATE EXTENSION IF NOT EXISTS age;"
 
           # Create app_user for RLS testing (non-superuser)
           PGPASSWORD=test_password_123 psql -h localhost -p 5432 -U edgequake_test -d edgequake_test << 'EOSQL'
@@ -167,7 +168,9 @@ jobs:
         working-directory: edgequake
         run: |
           echo "Running PostgreSQL RLS E2E tests..."
-          cargo test --package edgequake-api --test e2e_postgres_rls --features postgres -- --ignored --test-threads=1
+          # SPEC-091 IW0 (GAP-091-27): suite is un-ignored (soft-skips without the rig);
+          # here the rig exists so all 11 tests execute for real.
+          cargo test --package edgequake-api --test e2e_postgres_rls --features postgres -- --test-threads=1
         # SPEC-083 / X-32: RLS is a required gate (no continue-on-error).
 
       - name: Run PostgreSQL Workspace Service Tests

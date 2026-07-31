@@ -371,10 +371,17 @@ export function DocumentManager() {
   }, [documents, statusCounts.failed]);
 
   // Only mute siblings while a run is actively working (not merely queued)
+  // LAW-IS3: any doc painted in ActiveRuns (active or queued) — table demotes stage line.
   const workingRunDocumentIds = useMemo(() => {
     const ids = new Set<string>();
     for (const run of buildIngestionRunViews(documents, runViewOpts).values()) {
-      if (run.stageStatus === 'active') ids.add(run.documentId);
+      if (
+        run.stageStatus === 'active' ||
+        run.stageStatus === 'pending' ||
+        run.stage === 'stopping'
+      ) {
+        ids.add(run.documentId);
+      }
     }
     return ids;
   }, [documents, runViewOpts]);
@@ -660,6 +667,7 @@ export function DocumentManager() {
             showPipelineIndicator={pipelineUi.showPipelineIndicator}
             pipelineAlertMode={pipelineUi.alertMode}
             activeDocCount={pipelineUi.activeDocCount}
+            waitingDocCount={pipelineUi.waitingDocCount}
             pipelineWaitingOnly={pipelineUi.isQueuedOnly}
             pipelineDialogOpen={pipelineDialogOpen}
             onPipelineDialogChange={setPipelineDialogOpen}

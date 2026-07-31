@@ -6,7 +6,7 @@ use crate::{
     types::{Task, TaskStatus},
 };
 use async_trait::async_trait;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
@@ -18,6 +18,9 @@ use uuid::Uuid;
 #[derive(Debug, Clone)]
 pub struct MemoryTaskStorage {
     tasks: Arc<RwLock<HashMap<String, Task>>>,
+    /// SPEC-091 R-18: park markers mirror the Postgres `fairness_parked_at`
+    /// column (migration 111) so memory claim semantics match the SSOT guard.
+    fairness_parked: Arc<RwLock<std::collections::HashMap<String, chrono::DateTime<Utc>>>>,
 }
 
 impl MemoryTaskStorage {
@@ -25,6 +28,7 @@ impl MemoryTaskStorage {
     pub fn new() -> Self {
         Self {
             tasks: Arc::new(RwLock::new(HashMap::new())),
+            fairness_parked: Arc::new(RwLock::new(std::collections::HashMap::new())),
         }
     }
 }
@@ -231,14 +235,17 @@ impl TaskStorage for MemoryTaskStorage {
         let now = Utc::now();
 
         // SPEC-084 / GH-316: mirror postgres least-loaded workspace-fair claim.
+        // SPEC-091 R-18: exclude fairness-parked rows (state-machine guard parity).
+        let parked = self.fairness_parked.read().unwrap();
         let eligible: Vec<&Task> = tasks
             .values()
             .filter(|t| match t.status {
-                TaskStatus::Pending => true,
+                TaskStatus::Pending => !parked.contains_key(&t.track_id),
                 TaskStatus::Processing => t.lease_is_expired(now),
                 _ => false,
             })
             .collect();
+        drop(parked);
         let active_count = |ws: uuid::Uuid| -> usize {
             tasks
                 .values()
@@ -339,6 +346,36 @@ impl TaskStorage for MemoryTaskStorage {
         Ok(true)
     }
 
+    async fn mark_fairness_parked(
+        &self,
+        track_id: &str,
+        worker_id: &str,
+        lease_token: Uuid,
+    ) -> TaskResult<bool> {
+        if !self.release_claim(track_id, worker_id, lease_token).await? {
+            return Ok(false);
+        }
+        self.fairness_parked
+            .write()
+            .unwrap()
+            .insert(track_id.to_string(), Utc::now());
+        Ok(true)
+    }
+
+    async fn clear_fairness_park(&self, track_id: &str) -> TaskResult<()> {
+        self.fairness_parked.write().unwrap().remove(track_id);
+        Ok(())
+    }
+
+    async fn clear_stale_fairness_parks(&self, max_age: Duration) -> TaskResult<u64> {
+        let cutoff =
+            Utc::now() - chrono::Duration::from_std(max_age).unwrap_or(chrono::Duration::MAX);
+        let mut parked = self.fairness_parked.write().unwrap();
+        let before = parked.len();
+        parked.retain(|_, parked_at| *parked_at > cutoff);
+        Ok((before - parked.len()) as u64)
+    }
+
     async fn get_queue_metrics_filtered(
         &self,
         tenant_id: Option<uuid::Uuid>,
@@ -437,7 +474,12 @@ impl TaskStorage for MemoryTaskStorage {
             max_wait_time_seconds: max_wait_time,
             throughput_per_minute,
             estimated_queue_time_seconds,
-            rate_limited: false, // TODO: Track rate limiting separately
+            rate_limited: QueueMetrics::compute_rate_limited(
+                pending_count,
+                active_workers,
+                max_workers,
+                throughput_per_minute,
+            ),
             timestamp: now,
         })
     }
@@ -458,6 +500,52 @@ impl TaskStorage for MemoryTaskStorage {
                 .unwrap_or(true)
         });
         Ok((before - tasks.len()) as u64)
+    }
+
+    async fn count_pending_older_than(&self, created_at: DateTime<Utc>) -> TaskResult<u64> {
+        let tasks = self.tasks.read().unwrap();
+        Ok(tasks
+            .values()
+            .filter(|t| t.status == TaskStatus::Pending && t.created_at < created_at)
+            .count() as u64)
+    }
+
+    async fn count_completed_within(&self, window: Duration) -> TaskResult<u64> {
+        let since = Utc::now()
+            - chrono::Duration::from_std(window).unwrap_or(chrono::Duration::minutes(10));
+        let tasks = self.tasks.read().unwrap();
+        Ok(tasks
+            .values()
+            .filter(|t| t.completed_at.map(|c| c >= since).unwrap_or(false))
+            .count() as u64)
+    }
+
+    async fn pending_queue_ahead_batch(
+        &self,
+        track_ids: &[String],
+    ) -> TaskResult<Vec<(String, u64)>> {
+        if track_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let wanted: std::collections::HashSet<&str> =
+            track_ids.iter().map(String::as_str).collect();
+        let tasks = self.tasks.read().unwrap();
+        let mut pending: Vec<&Task> = tasks
+            .values()
+            .filter(|t| t.status == TaskStatus::Pending)
+            .collect();
+        pending.sort_by(|a, b| {
+            a.created_at
+                .cmp(&b.created_at)
+                .then_with(|| a.track_id.cmp(&b.track_id))
+        });
+        let mut out = Vec::new();
+        for (ahead, task) in pending.into_iter().enumerate() {
+            if wanted.contains(task.track_id.as_str()) {
+                out.push((task.track_id.clone(), ahead as u64));
+            }
+        }
+        Ok(out)
     }
 }
 
@@ -627,6 +715,8 @@ mod tests {
             TaskType::Scan,
             serde_json::json!({}),
         );
+        // SPEC-091 QW0: Complete requires Processing (state machine SSOT).
+        task3.mark_processing();
         task3.mark_success(serde_json::json!({"result": "ok"}));
         storage.create_task(&task3).await.unwrap();
 

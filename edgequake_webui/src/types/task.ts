@@ -109,4 +109,9 @@ export interface HealthResponse {
   };
   /** Whether PDF storage is enabled */
   pdf_storage_enabled?: boolean;
+  /** Operator discovery hints (OpenAPI URLs, auth posture, serving fence). */
+  capabilities?: {
+    serving_fence_enabled?: boolean | null;
+    [key: string]: unknown;
+  };
 }

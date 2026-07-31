@@ -13,7 +13,7 @@ See [01-issue-register.md](01-issue-register.md): **6 FIXED / 0 PARTIAL / 0 CONF
 |----|---------|----------|
 | GH-331 | FIXED | Count SQL JOINs `"Node"`; child GIN EXPLAIN + pool e2e |
 | GH-319 | FIXED | Server `status` before paginate; Failed filter beyond page 100 |
-| GH-318 | FIXED | Track `expected_count`; Query soft-gate + “Query anyway” |
+| GH-318 | FIXED | Track `expected_count`; Query stays available mid-ingest (FE soft-gate superseded) |
 | GH-317 | FIXED | `POST /documents/batch-delete` → one `BatchDeletion` task |
 | GH-316 | FIXED | Workspace-fair claim + nested workspace ingest lanes |
 | GH-255 | FIXED | COMPAT-GUARD slash allow + `llm_full_id` no double-prefix |

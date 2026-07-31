@@ -34,26 +34,37 @@ mod age_csv_loader;
 mod ann_exact_reorder_policy;
 mod binary_quantize_policy;
 mod capabilities;
+pub mod chunk_embedding_index;
+pub(crate) mod chunk_repository;
 mod config;
+pub(crate) mod typed_embedding_dims;
 mod connection;
 mod conversation;
 mod diskann_runtime_policy;
+pub mod document_shell;
 mod filtered_diskann_label_policy;
+pub mod fleet_embedding_index;
 mod graph;
 mod hnsw_manifest;
 mod hnsw_runtime_policy;
 mod id_allocation;
+pub mod ingestion_dedup;
 mod kv;
+mod kv_relation_state;
+pub mod llm_cache;
 mod mm_asset_storage_impl;
 mod original_storage_impl;
 mod pdf_list_query;
 mod pdf_storage_impl;
 mod pool_bundle;
+mod quarantine_sink;
 pub mod rls;
 mod row_count_stats;
+mod scale_gates;
 mod schema;
+pub(crate) mod serving_fence_query;
 mod statement_timeout;
-mod vector;
+pub mod vector;
 mod workspace_probe_cache;
 mod workspace_table;
 mod workspace_vector;
@@ -69,12 +80,18 @@ pub use binary_quantize_policy::{
 pub use capabilities::{
     age_copy_loader_min_rows, age_rls_requested, age_supports_copy_loader, age_supports_rls,
     extension_version_at_least, pgvector_meets_cve_floor, AnnIndexPolicy, DocumentIdGenerator,
-    PostgresCapabilities, VectorStorageMode, HNSW_MAX_DIM_HALFVEC, HNSW_MAX_DIM_VECTOR,
-    PGVECTOR_MIN_CVE_SAFE, PGVECTOR_MIN_ITERATIVE_SCAN, SUPPORTED_VECTOR_METRIC,
-    VECTOR_COSINE_OPCLASS,
+    PostgresCapabilities, PostgresCapabilityProbe, VectorStorageMode, HNSW_MAX_DIM_HALFVEC,
+    HNSW_MAX_DIM_VECTOR, PGVECTOR_MIN_CVE_SAFE, PGVECTOR_MIN_ITERATIVE_SCAN,
+    SUPPORTED_VECTOR_METRIC, VECTOR_COSINE_OPCLASS,
 };
+pub use chunk_embedding_index::PgChunkEmbeddingIndex;
+pub use chunk_repository::{
+    ensure_admission_document_row, ensure_admission_document_row_with_track, PostgresChunkRepository,
+};
+pub use kv_relation_state::{KvRelationPresence, KvRelationState};
 pub use config::{
-    hnsw_ef_construction_from_env, resolve_pool_max_connections, PostgresConfig, VectorIndexType,
+    hnsw_ef_construction_from_env, qualified_kv_table_name, resolve_pool_max_connections,
+    PostgresConfig, VectorIndexType,
 };
 pub use connection::{with_session_hygiene, PostgresPool};
 pub use conversation::PostgresConversationStorage;
@@ -87,6 +104,7 @@ pub use filtered_diskann_label_policy::{
     build_filtered_diskann_label_select_sql, build_postfilter_diskann_select_sql,
     FilteredDiskannLabelPolicy, WorkspaceLabelMap, MAX_WORKSPACE_LABELS,
 };
+pub use fleet_embedding_index::PgFleetEmbeddingIndex;
 pub use graph::{
     interactive_statement_timeout_ms, PostgresAGEGraphStorage, LAST_SOURCE_PREFIX_COUNT_LEN,
     SOURCE_PREFIX_DISCOVERY_CALLS,
@@ -102,6 +120,7 @@ pub use mm_asset_storage_impl::PostgresMmAssetStorage;
 pub use original_storage_impl::PostgresOriginalStorage;
 pub use pdf_storage_impl::PostgresPdfStorage;
 pub use pool_bundle::{pool_role_max_connections, PgPoolBundle, PoolRole};
+pub use quarantine_sink::PgQuarantineSink;
 #[allow(deprecated)]
 pub use rls::{
     acquire_rls_connection, clear_tenant_context, clear_tenant_context_on_conn,
@@ -112,6 +131,8 @@ pub use rls::{
 // SPEC-046 OPS-P2.16: `RlsContext` is no longer re-exported from `postgres::`.
 // Use `acquire_rls_connection` / `with_acquired_tenant_context` (SEC-014 SSOT).
 // The type remains in `rls` for transitional `#[deprecated]` compile errors.
+pub use scale_gates::{partition_allowed, quantization_allowed, ScaleGateEvidence};
+pub use serving_fence_query::{apply_serving_fence, serving_fence_filtered_total};
 pub use vector::{
     allow_vector_table_rebuild, fts_language_from_env, sanitize_fts_language, PgVectorStorage,
     DEFAULT_FTS_LANGUAGE, FTS_LANGUAGE_ENV,

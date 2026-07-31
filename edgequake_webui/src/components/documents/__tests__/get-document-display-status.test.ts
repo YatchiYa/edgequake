@@ -45,4 +45,26 @@ describe("getDocumentDisplayStatus (SPEC-057 P4)", () => {
       }),
     ).toBe("re_embedding");
   });
+
+  it("terminal status cancelled beats stale display_status extracting", () => {
+    expect(
+      getDocumentDisplayStatus({
+        status: "cancelled",
+        current_stage: "cancelled",
+        display_status: "extracting",
+        ui_phase: "running",
+      }),
+    ).toBe("cancelled");
+  });
+
+  it("ui_phase terminal with cancelled display beats extracting stage", () => {
+    expect(
+      getDocumentDisplayStatus({
+        status: "extracting",
+        current_stage: "embedding",
+        display_status: "cancelled",
+        ui_phase: "terminal",
+      }),
+    ).toBe("cancelled");
+  });
 });

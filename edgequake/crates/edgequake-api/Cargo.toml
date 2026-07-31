@@ -87,6 +87,9 @@ sqlx = { workspace = true, features = [
     "postgres",
     "uuid",
     "chrono",
+    # WHY: test-only auto-provisioning of the dedicated scratch database runs
+    # `sqlx::migrate!` (see tests/common/spec013_postgres.rs). Test-only feature.
+    "migrate",
 ] }
 serial_test = "3.2"
 urlencoding = "2.1"

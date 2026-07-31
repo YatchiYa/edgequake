@@ -139,7 +139,7 @@ export function EntityProvenancePanel({
         </Button>
       </CardHeader>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         <CardContent className="space-y-6">
           {/* Description */}
           {provenance.description && (

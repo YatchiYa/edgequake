@@ -148,6 +148,15 @@ See [AGENTS.md](../../AGENTS.md) for the full developer workflow, including:
 
 See [PostgreSQL migration guide](../../edgequake/docs/migrations/postgres-triple-track-spec042.md) for tier details.
 
+## SPEC-091 upgrade (v0.22.0 → HEAD with migrations 106–125)
+
+Published **v0.22.0** stops at migration **105**. The working tree adds migrations **106–125**, including the irreversible generic KV drop (`125`). Do **not** treat a routine image bump as safe until the soak gate is green.
+
+- Operator runbook: [spec091-upgrade-from-v0.22.0.md](./spec091-upgrade-from-v0.22.0.md)
+- Automated multi-tenant soak: `make spec93-migration-assessment` (PG16/17/18 realism; see [`specs/93-migration-assessment/`](../../specs/93-migration-assessment/)); smoke: `make spec091-upgrade-soak`
+- Spec status: [`specs/091-simplify-data-layer/README.md`](../../specs/091-simplify-data-layer/README.md)
+- **Boot migration gating (LD-15, behavior change)**: images built from HEAD never auto-migrate at container start — boot exits **78** with a dry-run/migrate hint when schema is behind or newer. Release notes must call this out: deploys need a one-shot migrate step (compose service / K8s Job — examples in the runbook) before new replicas can start. Spec: [`specs/091-simplify-data-layer/17-boot-migration-gating.md`](../../specs/091-simplify-data-layer/17-boot-migration-gating.md)
+
 ## Lessons from 0.21.0 cut
 
 - **OpenAPI refresh is mandatory** after `version-bump` — `openapi.snapshot.json` `info.version` must equal `VERSION` or release-gates fail.

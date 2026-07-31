@@ -34,6 +34,14 @@ mod kv;
 mod vector;
 mod workspace_vector;
 
+pub mod domain;
+
+pub use domain::{
+    Chunk, ChunkCursor, ChunkId, ChunkRepository, ChunkText, DocumentId, DocumentRepository,
+    EmbeddingCapabilities, EmbeddingIndex, EmbeddingRow, FleetEmbeddingIndex, FleetEmbeddingKey,
+    FleetEmbeddingRow, InsertReport, MigrationJobSnapshot, MigrationLedger, ModelId, Page,
+    ScoredChunk, ScoredFleet, TenantId, UnitOfWork, UpsertReport, VectorQuery, WorkspaceId,
+};
 pub use embedder::TextEmbedder;
 pub use graph::{GraphEdge, GraphNode, GraphStorage, KnowledgeGraph};
 pub use graph_analytics_ops::GraphStorageAnalyticsOps;

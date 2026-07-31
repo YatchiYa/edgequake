@@ -135,6 +135,7 @@ async fn list_documents_inner(
         current_stage: Option<String>,
         stage_progress: Option<f32>,
         stage_message: Option<String>,
+        progress_counts: Option<crate::handlers::ingestion_types::IngestionProgressCounts>,
         pdf_id: Option<String>,
         chunk_count: Option<usize>,
     }
@@ -303,6 +304,16 @@ async fn list_documents_inner(
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
 
+            // LAW-IS1: structured progress_counts (prefer over message regex on FE).
+            meta.progress_counts = obj
+                .get("progress_counts")
+                .and_then(crate::services::progress_counts_from_value)
+                .or_else(|| {
+                    meta.stage_message
+                        .as_deref()
+                        .and_then(crate::services::parse_counts_from_message)
+                });
+
             // SPEC-002: Get pdf_id (linked PDF document for viewing)
             meta.pdf_id = obj
                 .get("pdf_id")
@@ -363,6 +374,11 @@ async fn list_documents_inner(
                 pdf_id: meta.pdf_id,
                 display_status: None,
                 ui_phase: None,
+                progress_counts: meta.progress_counts,
+                queue_position: None,
+                eta_seconds: None,
+                eta_basis: None,
+                query_ready: None,
             }
         })
         .collect();
@@ -586,6 +602,7 @@ async fn list_documents_inner(
     crate::services::ingestion_status_mapper::enrich_document_summaries_with_cancel(
         &mut documents,
         &tasks.cancellation_registry,
+        tasks.storage.as_ref(),
     )
     .await;
 
@@ -600,6 +617,21 @@ async fn list_documents_inner(
         // Serve KV/relational counts under queue/storage pressure — never hang on AGE.
     } else {
         crate::document_read_model::reconcile_entity_counts_with_graph(&storage, &mut documents)
+            .await;
+    }
+
+    // SPEC-091 IS2: queue position + ETA on the visible page (LAW-IS4).
+    crate::services::list_run_enrich::enrich_page_queue_estimates(
+        tasks.storage.as_ref(),
+        &mut documents,
+    )
+    .await;
+
+    // SPEC-091 IS3 / LD-09: query_ready when serving fence is on.
+    #[cfg(feature = "postgres")]
+    if let Some(pool) = _pg_runtime.pool.as_ref() {
+        let fence_on = edgequake_storage::serving_fence::serving_fence_enabled_from_env();
+        crate::services::list_run_enrich::enrich_page_query_ready(pool, fence_on, &mut documents)
             .await;
     }
 

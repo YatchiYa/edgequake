@@ -145,6 +145,7 @@ export function QueryScopeBar({
             <button
               type="button"
               disabled={disabled}
+              data-testid="query-scope-trigger"
               className={cn(
                 'inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs',
                 'text-muted-foreground/60 hover:text-muted-foreground',
@@ -183,17 +184,22 @@ function ScopePill({
   disabled: boolean;
 }) {
   const { t } = useTranslation();
-  const label = useScopeDocumentLabel(documentId);
+  const { label, isLoading } = useScopeDocumentLabel(documentId);
 
-  const displayLabel = label
-    ? label.length > MAX_PILL_CHARS
-      ? `${label.slice(0, MAX_PILL_CHARS)}\u2026`
-      : label
-    : `${documentId.slice(0, 8)}\u2026`;
+  const resolved =
+    label ??
+    (isLoading
+      ? '\u2026'
+      : t('query.scope.unknownDoc', 'Unknown document'));
+  const displayLabel =
+    resolved.length > MAX_PILL_CHARS
+      ? `${resolved.slice(0, MAX_PILL_CHARS)}\u2026`
+      : resolved;
 
   return (
     <li role="listitem" className="shrink-0">
       <span
+        data-testid="query-scope-document-pill"
         className={cn(
           'group inline-flex items-center gap-1 rounded-full',
           'pl-2.5 pr-1.5 py-0.5 text-xs font-medium',
@@ -201,7 +207,7 @@ function ScopePill({
           'ring-1 ring-primary/20',
           'max-w-[190px]',
         )}
-        title={label ?? documentId}
+        title={label ?? undefined}
       >
         <span className="truncate">{displayLabel}</span>
         <button
@@ -215,7 +221,7 @@ function ScopePill({
             'transition-colors',
           )}
           aria-label={t('query.scope.removeDoc', 'Remove {{title}} from scope', {
-            title: label ?? documentId,
+            title: label ?? resolved,
           })}
         >
           <X className="h-2.5 w-2.5" />

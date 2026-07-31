@@ -176,6 +176,30 @@ export async function mockGraphDocumentFilterRoutes(page: Page): Promise<void> {
       return;
     }
 
+    // Single-document detail (pill label SSOT on cold ?document= deep link)
+    const detailMatch = url.match(/\/documents\/([^/?]+)(?:\?|$)/);
+    if (detailMatch && method === "GET" && !url.includes("/documents/search")) {
+      const docId = decodeURIComponent(detailMatch[1] ?? "");
+      const titles: Record<string, string> = {
+        [GRAPH_FILTER_DOC_A]: "manifold_2605.13438v3.pdf",
+        [GRAPH_FILTER_DOC_B]: "cognifold_2605.13438v3.pdf",
+      };
+      const title = titles[docId];
+      if (title) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            id: docId,
+            title,
+            file_name: title,
+            status: "completed",
+          }),
+        });
+        return;
+      }
+    }
+
     if (url.includes("/documents") && method === "GET") {
       await route.fulfill({
         status: 200,

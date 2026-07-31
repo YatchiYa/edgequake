@@ -78,8 +78,8 @@ const statusConfig = {
 
   // === AI PROCESSING (Purple family — LLM-driven stages) ===
   extracting: { icon: Brain, color: 'bg-purple-500', textColor: 'text-purple-600 dark:text-purple-400', label: 'Extracting', animate: true },
-  gleaning: { icon: Search, color: 'bg-purple-500', textColor: 'text-purple-600 dark:text-purple-400', label: 'Refining', animate: true },
-  merging: { icon: GitMerge, color: 'bg-purple-500', textColor: 'text-purple-600 dark:text-purple-400', label: 'Merging', animate: true },
+  gleaning: { icon: Search, color: 'bg-purple-500', textColor: 'text-purple-600 dark:text-purple-400', label: 'Refining entities', animate: true },
+  merging: { icon: GitMerge, color: 'bg-purple-500', textColor: 'text-purple-600 dark:text-purple-400', label: 'Updating knowledge graph', animate: true },
   summarizing: { icon: FileText, color: 'bg-purple-500', textColor: 'text-purple-600 dark:text-purple-400', label: 'Summarizing', animate: true },
 
   // === SUCCESS (Green) ===
@@ -110,8 +110,8 @@ const PROCESSING_STAGES = [
   { key: 'preprocessing', label: 'Preprocessing', description: 'Validating and preparing document' },
   { key: 'chunking', label: 'Chunking', description: 'Splitting document into chunks' },
   { key: 'extracting', label: 'Extracting', description: 'Running LLM entity extraction' },
-  { key: 'gleaning', label: 'Gleaning', description: 'Second pass for missed entities' },
-  { key: 'merging', label: 'Merging', description: 'Merging into knowledge graph' },
+  { key: 'gleaning', label: 'Refining entities', description: 'Second pass for missed entities' },
+  { key: 'merging', label: 'Updating knowledge graph', description: 'Merging into knowledge graph' },
   { key: 'summarizing', label: 'Summarizing', description: 'Generating descriptions' },
   { key: 'embedding', label: 'Embedding', description: 'Generating vector embeddings' },
   { key: 're_embedding', label: 'Re-embedding', description: 'Re-generating embeddings after slim checkpoint' },
@@ -198,17 +198,28 @@ export function getDocumentDisplayStatus(doc: {
   display_status?: string | null;
   ui_phase?: string | null;
 }): DocumentStatus {
-  // SPEC-057 P4: API SSOT — Stopping… even when stage is still extracting/converting.
+  // SPEC-057 P4 + cancel dual-SSOT: stopping → terminal status → terminal
+  // display_status → in-flight display_status → current_stage.
   if (doc.ui_phase?.toLowerCase() === 'stopping') {
     return 'stopping';
   }
-  if (doc.display_status) {
-    return normalizeStatus(doc.display_status);
-  }
   const legacy = normalizeStatus(doc.status);
-  // Completed/failed/cancelled beat leftover stage labels from the last run.
+  const display = doc.display_status
+    ? normalizeStatus(doc.display_status)
+    : null;
+  const uiTerminal = doc.ui_phase?.toLowerCase() === 'terminal';
+
   if (isTerminalStatus(legacy)) {
     return legacy;
+  }
+  if (uiTerminal && display && isTerminalStatus(display)) {
+    return display;
+  }
+  if (display && isTerminalStatus(display)) {
+    return display;
+  }
+  if (display) {
+    return display;
   }
   if (doc.current_stage) {
     return normalizeStatus(doc.current_stage);

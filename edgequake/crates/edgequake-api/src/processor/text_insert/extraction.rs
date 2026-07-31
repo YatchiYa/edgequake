@@ -134,7 +134,10 @@ impl DocumentTaskProcessor {
                 (reused, true)
             }
             super::pipeline_checkpoint::ExtractionReusePlan::Fresh => {
-                // No valid checkpoint — run the full pipeline
+                // No valid checkpoint — run the full pipeline (extract + embed).
+                // SPEC-091 WP1: cancel before embed-bearing pipeline work.
+                self.check_cancelled(&cancel_token, "pre-embed", &document_id)
+                    .await?;
                 let fresh_result = match pipeline
                     .process_with_resilience_cancellable(
                         &document_id,
@@ -210,9 +213,12 @@ impl DocumentTaskProcessor {
                             class.as_str()
                         );
                         if crate::services::task_cancel::is_cancel_error_message(&error_msg) {
-                            let _ = self
-                                .update_document_status(&document_id, "cancelled", Some(&error_msg))
-                                .await;
+                            let _ = crate::services::sync_doc_cancelled_by_document_id(
+                                Arc::clone(&self.kv_storage),
+                                &document_id,
+                                &error_msg,
+                            )
+                            .await;
                             return Err(edgequake_tasks::TaskError::Cancelled(error_msg));
                         }
                         error!(
@@ -251,6 +257,14 @@ impl DocumentTaskProcessor {
                             let _ = crate::services::release_staging_reservation(
                                 &self.kv_storage,
                                 &document_id,
+                                ws,
+                                hash,
+                            )
+                            .await;
+                            // SPEC-091 W2: typed ingestion_dedup staging release.
+                            #[cfg(feature = "postgres")]
+                            crate::services::ingestion_dedup_store::dual_release_staging(
+                                self.pg_pool.as_ref(),
                                 ws,
                                 hash,
                             )
@@ -299,6 +313,8 @@ impl DocumentTaskProcessor {
                 embeddings_omitted = true,
                 "Re-generating embeddings (slim checkpoint or incomplete embed)"
             );
+            self.check_cancelled(&cancel_token, "pre-embed", &document_id)
+                .await?;
             self.update_document_status(
                 &document_id,
                 "re_embedding",
@@ -420,15 +436,15 @@ impl DocumentTaskProcessor {
                     ((current as f64 / total as f64) * 100.0).round() as u32
                 };
                 let label = stage;
-                let msg = if current == 0 {
-                    format!("Embedding {label}: starting ({total} total)")
-                } else {
-                    format!("Embedding {label}: {current}/{total} ({pct}%)")
-                };
+                // Always emit N/M + structured progress_counts (LAW-IS1).
+                let msg = format!("Embedding {label}: {current}/{total} ({pct}%)");
                 let _ =
                     crate::services::patch_document_metadata(&kv_clone, &doc_id_clone, |updated| {
                         updated.insert("current_stage".to_string(), json!("embedding"));
+                        crate::services::sync_progress_counts_from_message(updated, &msg);
                         updated.insert("stage_message".to_string(), json!(msg));
+                        // Overall ingest band is 0.99–1.0 (SPEC/#197): 0.99 means
+                        // "embedding sub-stage started", not "chunks almost done".
                         updated.insert(
                             "stage_progress".to_string(),
                             json!(0.99 + (0.01 * pct as f64 / 100.0)),

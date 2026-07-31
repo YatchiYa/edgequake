@@ -100,6 +100,28 @@ export interface Document {
   stage_message?: string;
 
   /**
+   * Structured stage counts (LAW-IS1 / SPEC-091). Prefer over parsing stage_message.
+   * Wire: { unit, current, total } — unit pages|chunks|entities|relationships|figures.
+   */
+  progress_counts?: {
+    unit: string;
+    current: number;
+    total: number;
+  };
+
+  /** SPEC-091 IS2 / LAW-IS4: 1-based FCFS queue position (pending admission). */
+  queue_position?: number | null;
+  /** Estimated seconds until claim (clamped; see eta_basis). */
+  eta_seconds?: number | null;
+  /** `measured` | `no_history` */
+  eta_basis?: string | null;
+  /**
+   * SPEC-091 IS3 / LD-09: set only when serving fence is on.
+   * true = Ready (queryable); false = Indexed (not yet queryable).
+   */
+  query_ready?: boolean | null;
+
+  /**
    * SPEC-057 P4: API SSOT badge key (cancelled|failed|completed|extracting|…).
    * Prefer over local stage/status derivation when present.
    */

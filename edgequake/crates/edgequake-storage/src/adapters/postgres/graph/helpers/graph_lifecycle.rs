@@ -205,9 +205,19 @@ impl PostgresAGEGraphStorage {
                     self.graph_name
                 ),
             ),
+            // SPEC-091 RM3: citation contract — GIN on source_chunk_ids
+            (
+                "idx_node_source_chunk_ids_gin",
+                format!(
+                    r#"CREATE INDEX IF NOT EXISTS idx_node_source_chunk_ids_gin
+                       ON {}."Node"
+                       USING gin ((ag_catalog.agtype_to_json(properties)::jsonb -> 'source_chunk_ids') jsonb_ops)"#,
+                    self.graph_name
+                ),
+            ),
             // ── "EDGE" label indexes ────────────────────────────────────────────────
             // REMOVED: idx_edge_start_end (composite, 0 scans — superseded by text-cast indexes)
-            // REMOVED: idx_edge_props_gin (GIN on edge properties, 0 scans)
+            // SPEC-091 RM3: restore edge props GIN + citation + workspace/tenant
             (
                 "idx_edge_start_id",
                 format!(
@@ -250,6 +260,43 @@ impl PostgresAGEGraphStorage {
                     r#"CREATE INDEX IF NOT EXISTS idx_edge_source_ids_gin 
                        ON {}."EDGE" 
                        USING gin ((ag_catalog.agtype_to_json(properties)::jsonb -> 'source_ids') jsonb_ops)"#,
+                    self.graph_name
+                ),
+            ),
+            (
+                "idx_edge_source_chunk_ids_gin",
+                format!(
+                    r#"CREATE INDEX IF NOT EXISTS idx_edge_source_chunk_ids_gin
+                       ON {}."EDGE"
+                       USING gin ((ag_catalog.agtype_to_json(properties)::jsonb -> 'source_chunk_ids') jsonb_ops)"#,
+                    self.graph_name
+                ),
+            ),
+            (
+                "idx_edge_props_gin",
+                format!(
+                    r#"CREATE INDEX IF NOT EXISTS idx_edge_props_gin
+                       ON {}."EDGE" USING gin(properties)"#,
+                    self.graph_name
+                ),
+            ),
+            (
+                "idx_edge_tenant_id",
+                format!(
+                    r#"CREATE INDEX IF NOT EXISTS idx_edge_tenant_id
+                       ON {}."EDGE" (
+                         (ag_catalog.agtype_to_json(properties)->>'tenant_id')
+                       )"#,
+                    self.graph_name
+                ),
+            ),
+            (
+                "idx_edge_workspace_id",
+                format!(
+                    r#"CREATE INDEX IF NOT EXISTS idx_edge_workspace_id
+                       ON {}."EDGE" (
+                         (ag_catalog.agtype_to_json(properties)->>'workspace_id')
+                       )"#,
                     self.graph_name
                 ),
             ),

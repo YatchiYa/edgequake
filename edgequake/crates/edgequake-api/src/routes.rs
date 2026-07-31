@@ -253,6 +253,25 @@ fn api_v1_routes() -> Router<AppState> {
         .route("/admin/storage/repair", post(handlers::storage_repair))
         // SPEC-071: Wave-2 ANN warmup (admin/ops — not chat UX)
         .route("/admin/ann/warmup", post(handlers::ann_warmup))
+        // SPEC-091: automatic migration progress (progressive operator information)
+        .route("/admin/migration-jobs", get(handlers::list_migration_jobs))
+        // SPEC-091 P1: job detail + operator control (pause/resume/cancel)
+        .route(
+            "/admin/migration-jobs/{job_id}",
+            get(handlers::get_migration_job),
+        )
+        .route(
+            "/admin/migration-jobs/{job_id}/pause",
+            post(handlers::pause_migration_job),
+        )
+        .route(
+            "/admin/migration-jobs/{job_id}/resume",
+            post(handlers::resume_migration_job),
+        )
+        .route(
+            "/admin/migration-jobs/{job_id}/cancel",
+            post(handlers::cancel_migration_job),
+        )
         // SPEC-021 P-G1b: legacy entity reconciliation (admin-gated, dry-run + confirm).
         .route(
             "/admin/entities/reconcile",

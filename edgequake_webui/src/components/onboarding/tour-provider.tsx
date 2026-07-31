@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { ChevronLeft, ChevronRight, HelpCircle, X } from 'lucide-react';
 import * as React from 'react';
-import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 // ============================================================================
@@ -195,6 +195,26 @@ function TourOverlay() {
   const { currentStepData, currentStep, totalSteps, nextStep, prevStep, endTour } = useTour();
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
   const mounted = typeof window !== 'undefined';
+  // Refs/ids for a11y: focus trap, initial focus, focus return, aria wiring.
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const titleId = useId();
+  const descriptionId = useId();
+
+  // Capture the element that had focus before the tour opened so it can be
+  // restored when the tour ends (standard modal focus-return behaviour).
+  useEffect(() => {
+    restoreFocusRef.current = document.activeElement as HTMLElement | null;
+    return () => {
+      restoreFocusRef.current?.focus?.();
+    };
+  }, []);
+
+  // Move focus into the dialog whenever the step changes so keyboard and
+  // screen-reader users land on the current step.
+  useEffect(() => {
+    popoverRef.current?.focus();
+  }, [currentStep]);
 
   // Find and track target element
   useEffect(() => {
@@ -229,14 +249,58 @@ function TourOverlay() {
     };
   }, [currentStepData]);
 
-  // Keyboard navigation
+  // Keyboard navigation + focus trap. Guards against hijacking keystrokes while
+  // the user is typing in a form control, and traps Tab within the popover.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isEditable = Boolean(
+        target &&
+          (target.tagName === 'INPUT' ||
+            target.tagName === 'TEXTAREA' ||
+            target.tagName === 'SELECT' ||
+            target.isContentEditable),
+      );
+
       if (e.key === 'Escape') {
+        e.preventDefault();
         endTour();
-      } else if (e.key === 'ArrowRight' || e.key === 'Enter') {
+        return;
+      }
+
+      // Focus trap: keep Tab/Shift+Tab cycling through the popover's controls.
+      if (e.key === 'Tab') {
+        const root = popoverRef.current;
+        if (!root) return;
+        const focusable = Array.from(
+          root.querySelectorAll<HTMLElement>(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+          ),
+        ).filter((el) => !el.hasAttribute('disabled'));
+        if (focusable.length === 0) {
+          e.preventDefault();
+          root.focus();
+          return;
+        }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = document.activeElement as HTMLElement | null;
+        const leaving = !root.contains(active);
+        if (e.shiftKey ? active === first || leaving : active === last || leaving) {
+          e.preventDefault();
+          (e.shiftKey ? last : first).focus();
+        }
+        return;
+      }
+
+      // Don't advance/rewind the tour while the user is typing in an input.
+      if (isEditable) return;
+
+      if (e.key === 'ArrowRight' || e.key === 'Enter') {
+        e.preventDefault();
         nextStep();
       } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
         prevStep();
       }
     };
@@ -294,7 +358,13 @@ function TourOverlay() {
   };
 
   const overlay = (
-    <div className="fixed inset-0 z-9999" role="dialog" aria-modal="true">
+    <div
+      className="fixed inset-0 z-9999"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      aria-describedby={descriptionId}
+    >
       {/* Backdrop with cutout for target */}
       <svg
         className="absolute inset-0 w-full h-full"
@@ -340,17 +410,21 @@ function TourOverlay() {
         />
       )}
 
-      {/* Popover */}
+      {/* Popover — the focusable dialog box (focus trap root) */}
       <div
+        ref={popoverRef}
+        tabIndex={-1}
+        data-testid="tour-popover"
         className={cn(
           'w-80 bg-popover text-popover-foreground rounded-lg shadow-xl border',
+          'outline-none',
           'animate-in fade-in-0 zoom-in-95 duration-200'
         )}
         style={getPopoverStyle()}
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">
-          <h3 className="font-semibold text-sm">{currentStepData.title}</h3>
+          <h3 id={titleId} className="font-semibold text-sm">{currentStepData.title}</h3>
           <Button
             variant="ghost"
             size="icon"
@@ -364,7 +438,7 @@ function TourOverlay() {
 
         {/* Content */}
         <div className="p-4">
-          <div className="text-sm text-muted-foreground">
+          <div id={descriptionId} className="text-sm text-muted-foreground">
             {currentStepData.content}
           </div>
         </div>
@@ -426,6 +500,7 @@ export function TourTrigger({ className, variant = 'ghost' }: TourTriggerProps) 
       className={cn('h-8 w-8', className)}
       onClick={startTour}
       aria-label="Start guided tour"
+      data-testid="tour-trigger"
     >
       <HelpCircle className="h-4 w-4" />
     </Button>

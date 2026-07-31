@@ -156,3 +156,4 @@ Thumbs.db
 ehthumbs.db
 ./metals
 .edgecrab-artifacts/
+specs/93-migration-assessment/reports/*/pre-upgrade.dump

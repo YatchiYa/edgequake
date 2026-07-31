@@ -29,13 +29,6 @@ use tower::ServiceExt;
 // via UUID parsing; non-UUID strings fall back to the default tenant/workspace,
 // so two "different" non-UUID tenants silently resolve to the same default and
 // isolation tests see cross-tenant data. Distinct UUIDs make isolation real.
-const TENANT_A: &str = "00000000-0000-0000-0000-000000000001";
-const TENANT_B: &str = "00000000-0000-0000-0000-000000000002";
-const WS_A: &str = "00000000-0000-0000-0000-0000000000a1";
-const WS_B: &str = "00000000-0000-0000-0000-0000000000a2";
-const SHARED_TENANT: &str = "00000000-0000-0000-0000-000000000003";
-const WS_1: &str = "00000000-0000-0000-0000-0000000000b1";
-const WS_2: &str = "00000000-0000-0000-0000-0000000000b2";
 const VICTIM_TENANT: &str = "00000000-0000-0000-0000-000000000004";
 const VICTIM_WS: &str = "00000000-0000-0000-0000-0000000000c1";
 const ATTACKER_TENANT: &str = "00000000-0000-0000-0000-000000000005";
@@ -63,6 +56,47 @@ fn create_test_app() -> axum::Router {
     create_test_server().build_router()
 }
 
+/// Provision real tenant + workspace rows, then build the app.
+///
+/// SPEC-066 (document_quota): admission fails CLOSED when the workspace row
+/// does not exist, so tests that upload under a concrete scope must create
+/// that scope first. Returns the router plus the provisioned
+/// `(tenant_id, [workspace_id...])` strings in input order (SPEC-091 IW0).
+async fn provision_test_app(
+    scopes: &[(&str, &[&str])],
+) -> (axum::Router, Vec<(String, Vec<String>)>) {
+    let state = AppState::test_state();
+    let mut provisioned = Vec::new();
+    for (tenant_slug, workspace_names) in scopes {
+        let tenant = state
+            .workspace_service
+            .create_tenant(edgequake_core::Tenant::new(*tenant_slug, *tenant_slug))
+            .await
+            .expect("provision tenant");
+        let mut ws_ids = Vec::new();
+        for name in *workspace_names {
+            let workspace = state
+                .workspace_service
+                .create_workspace(
+                    tenant.tenant_id,
+                    edgequake_core::CreateWorkspaceRequest {
+                        name: (*name).to_string(),
+                        slug: Some((*name).to_string()),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .expect("provision workspace");
+            ws_ids.push(workspace.workspace_id.to_string());
+        }
+        provisioned.push((tenant.tenant_id.to_string(), ws_ids));
+    }
+    (
+        Server::new(create_test_config(), state).build_router(),
+        provisioned,
+    )
+}
+
 async fn extract_json(response: axum::response::Response) -> Value {
     let bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
         .await
@@ -86,7 +120,12 @@ mod tenant_isolation_tests {
     /// Test that documents uploaded by Tenant A are not visible to Tenant B
     #[tokio::test]
     async fn test_document_isolation_between_tenants() {
-        let app = create_test_app();
+        let (app, scopes) =
+            provision_test_app(&[("tenant-a", &["ws-a"]), ("tenant-b", &["ws-b"])]).await;
+        let tenant_a: &str = &scopes[0].0;
+        let ws_a: &str = &scopes[0].1[0];
+        let tenant_b: &str = &scopes[1].0;
+        let ws_b: &str = &scopes[1].1[0];
 
         // Tenant A uploads a document
         let upload_response = app
@@ -96,8 +135,8 @@ mod tenant_isolation_tests {
                     .method("POST")
                     .uri("/api/v1/documents")
                     .header("Content-Type", "application/json")
-                    .header("X-Tenant-ID", TENANT_A)
-                    .header("X-Workspace-ID", WS_A)
+                    .header("X-Tenant-ID", tenant_a)
+                    .header("X-Workspace-ID", ws_a)
                     .body(Body::from(
                         json!({
                             "content": "This is a secret document for Tenant A about Project Alpha",
@@ -117,8 +156,9 @@ mod tenant_isolation_tests {
         // WHY: POST /documents returns 201 Created per REST semantics (UC0001)
         assert!(
             status == StatusCode::CREATED || status == StatusCode::ACCEPTED,
-            "Upload failed: {:?}",
-            status
+            "Upload failed: {:?} body: {:?}",
+            status,
+            upload_json
         );
 
         let doc_id_a = upload_json["document_id"]
@@ -133,8 +173,8 @@ mod tenant_isolation_tests {
                 Request::builder()
                     .method("GET")
                     .uri("/api/v1/documents")
-                    .header("X-Tenant-ID", TENANT_B)
-                    .header("X-Workspace-ID", WS_B)
+                    .header("X-Tenant-ID", tenant_b)
+                    .header("X-Workspace-ID", ws_b)
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -170,7 +210,10 @@ mod tenant_isolation_tests {
     /// Test that workspaces within the same tenant are isolated
     #[tokio::test]
     async fn test_workspace_isolation_within_tenant() {
-        let app = create_test_app();
+        let (app, scopes) = provision_test_app(&[("shared-tenant", &["ws-1", "ws-2"])]).await;
+        let shared_tenant: &str = &scopes[0].0;
+        let ws_1: &str = &scopes[0].1[0];
+        let ws_2: &str = &scopes[0].1[1];
 
         // Upload to Workspace 1
         let upload1_response = app
@@ -180,8 +223,8 @@ mod tenant_isolation_tests {
                     .method("POST")
                     .uri("/api/v1/documents")
                     .header("Content-Type", "application/json")
-                    .header("X-Tenant-ID", SHARED_TENANT)
-                    .header("X-Workspace-ID", WS_1)
+                    .header("X-Tenant-ID", shared_tenant)
+                    .header("X-Workspace-ID", ws_1)
                     .body(Body::from(
                         json!({
                             "content": "Workspace 1 specific content about Finance Reports",
@@ -208,8 +251,8 @@ mod tenant_isolation_tests {
                     .method("POST")
                     .uri("/api/v1/documents")
                     .header("Content-Type", "application/json")
-                    .header("X-Tenant-ID", SHARED_TENANT)
-                    .header("X-Workspace-ID", WS_2)
+                    .header("X-Tenant-ID", shared_tenant)
+                    .header("X-Workspace-ID", ws_2)
                     .body(Body::from(
                         json!({
                             "content": "Workspace 2 specific content about HR Policies",
@@ -235,8 +278,8 @@ mod tenant_isolation_tests {
                 Request::builder()
                     .method("GET")
                     .uri("/api/v1/documents")
-                    .header("X-Tenant-ID", SHARED_TENANT)
-                    .header("X-Workspace-ID", WS_1)
+                    .header("X-Tenant-ID", shared_tenant)
+                    .header("X-Workspace-ID", ws_1)
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -266,8 +309,8 @@ mod tenant_isolation_tests {
                 Request::builder()
                     .method("GET")
                     .uri("/api/v1/documents")
-                    .header("X-Tenant-ID", SHARED_TENANT)
-                    .header("X-Workspace-ID", WS_2)
+                    .header("X-Tenant-ID", shared_tenant)
+                    .header("X-Workspace-ID", ws_2)
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -655,6 +698,83 @@ mod attack_vector_tests {
             }
         }
     }
+
+    /// GAP-091-08 (SPEC-091 IW0): a malformed X-Workspace-ID must fail CLOSED —
+    /// it must never act as a wildcard matching documents stored under a
+    /// concrete workspace (pre-IW0 `metadata_matches_workspace_context`
+    /// returned `true` for any unparseable header).
+    #[tokio::test]
+    async fn test_malformed_workspace_header_matches_nothing() {
+        let (app, scopes) = provision_test_app(&[("victim-tenant", &["victim-ws"])]).await;
+        let victim_tenant: &str = &scopes[0].0;
+        let victim_ws: &str = &scopes[0].1[0];
+
+        // Victim uploads under a concrete workspace UUID.
+        let upload_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/documents")
+                    .header("Content-Type", "application/json")
+                    .header("X-Tenant-ID", victim_tenant)
+                    .header("X-Workspace-ID", victim_ws)
+                    .body(Body::from(
+                        json!({
+                            "content": "Victim workspace secrets — malformed headers must not see this",
+                            "title": "Victim Malformed-Header Probe"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let (upload_status, upload_json) = extract_status_and_json(upload_response).await;
+        assert!(
+            upload_status == StatusCode::CREATED || upload_status == StatusCode::ACCEPTED,
+            "victim upload failed: {upload_status:?} {upload_json:?}"
+        );
+
+        // Attacker presents a syntactically invalid workspace id. Pre-fix this
+        // matched every workspace; it must now match none.
+        for malformed in ["not-a-uuid", "default;'--", "12345", "../../../etc/passwd"] {
+            let list_response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("GET")
+                        .uri("/api/v1/documents")
+                        .header("X-Tenant-ID", victim_tenant)
+                        .header("X-Workspace-ID", malformed)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+
+            let (status, list_json) = extract_status_and_json(list_response).await;
+            assert!(
+                status == StatusCode::OK
+                    || status == StatusCode::BAD_REQUEST
+                    || status == StatusCode::FORBIDDEN,
+                "malformed header {malformed:?}: unexpected status {status:?}"
+            );
+
+            let documents = list_json["documents"]
+                .as_array()
+                .or(list_json.as_array())
+                .cloned()
+                .unwrap_or_default();
+            for doc in &documents {
+                let title = doc["title"].as_str().unwrap_or("");
+                assert!(
+                    !title.contains("Victim Malformed-Header Probe"),
+                    "malformed X-Workspace-ID {malformed:?} leaked victim document (GAP-091-08)"
+                );
+            }
+        }
+    }
 }
 
 // ============================================================================
@@ -821,7 +941,9 @@ mod persistence_tests {
     /// Test that tenant context is properly stored with documents
     #[tokio::test]
     async fn test_tenant_context_persisted_in_document_metadata() {
-        let app = create_test_app();
+        let (app, scopes) = provision_test_app(&[("persist-tenant", &["persist-workspace"])]).await;
+        let persist_tenant: &str = &scopes[0].0;
+        let persist_workspace: &str = &scopes[0].1[0];
 
         // Upload document with tenant context
         let upload_response = app
@@ -831,8 +953,8 @@ mod persistence_tests {
                     .method("POST")
                     .uri("/api/v1/documents")
                     .header("Content-Type", "application/json")
-                    .header("X-Tenant-ID", "persist-tenant")
-                    .header("X-Workspace-ID", "persist-workspace")
+                    .header("X-Tenant-ID", persist_tenant)
+                    .header("X-Workspace-ID", persist_workspace)
                     .body(Body::from(
                         json!({
                             "content": "Test document for persistence verification",
@@ -849,8 +971,9 @@ mod persistence_tests {
         // WHY: POST /documents returns 201 Created per REST semantics (UC0001)
         assert!(
             status == StatusCode::CREATED || status == StatusCode::ACCEPTED,
-            "Upload failed: {:?}",
-            status
+            "Upload failed: {:?} body: {:?}",
+            status,
+            upload_json
         );
 
         let doc_id = upload_json["document_id"]
@@ -869,8 +992,8 @@ mod persistence_tests {
                     Request::builder()
                         .method("GET")
                         .uri(format!("/api/v1/documents/{}", doc_id))
-                        .header("X-Tenant-ID", "persist-tenant")
-                        .header("X-Workspace-ID", "persist-workspace")
+                        .header("X-Tenant-ID", persist_tenant)
+                        .header("X-Workspace-ID", persist_workspace)
                         .body(Body::empty())
                         .unwrap(),
                 )

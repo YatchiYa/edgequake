@@ -1100,14 +1100,15 @@ async fn data_pg_kv_transition_if_status_091() {
     .await;
 }
 
-/// DATA-PG-KV-DDL-CREATE-TABLE-092 — harness class `ddl_catalog`
+/// DATA-PG-KV-DDL-CREATE-TABLE-092 — harness class `ddl_catalog` — RETIRED by
+/// SPEC-091 Wave D: runtime KV DDL removed; anchor points at the guarded drop.
 #[tokio::test]
 async fn data_pg_kv_ddl_create_table_092() {
     data_layer_harness::run_op(
         "ddl_catalog",
         "DATA-PG-KV-DDL-CREATE-TABLE-092",
         "DDL-CREATE-TABLE",
-        "edgequake/crates/edgequake-storage/src/adapters/postgres/kv.rs:107",
+        "edgequake/migrations/125_spec091_kv_drop.sql:1",
     )
     .await;
 }

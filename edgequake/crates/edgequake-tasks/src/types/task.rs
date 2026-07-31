@@ -177,28 +177,55 @@ impl Task {
         }
     }
 
-    /// Mark task as processing
-    pub fn mark_processing(&mut self) {
-        self.status = TaskStatus::Processing;
-        self.started_at = Some(Utc::now());
+    /// SPEC-091 QW0 (LAW-Q2): every status mutation is a state-machine event.
+    ///
+    /// Applies `event` via the single transition table
+    /// ([`crate::state_machine::transition`]); an illegal event leaves the task
+    /// unchanged and returns the error so callers can degrade loudly instead of
+    /// occupying an impossible state.
+    pub fn apply_event(
+        &mut self,
+        event: crate::state_machine::TaskEvent,
+    ) -> Result<TaskStatus, crate::state_machine::TransitionError> {
+        let next = crate::state_machine::transition(Some(self.status), event)?;
+        self.status = next;
         self.updated_at = Utc::now();
+        Ok(next)
     }
 
-    /// Mark task as completed successfully.
-    ///
-    /// Returns `false` and leaves the task unchanged when the current status is
-    /// [`TaskStatus::Cancelled`] (X-29: Cancelled ↛ Success).
-    pub fn mark_success(&mut self, result: serde_json::Value) -> bool {
-        if matches!(self.status, TaskStatus::Cancelled) {
+    /// Mark task as processing (state machine: `Claim`).
+    pub fn mark_processing(&mut self) {
+        if self
+            .apply_event(crate::state_machine::TaskEvent::Claim)
+            .is_err()
+        {
             tracing::warn!(
                 track_id = %self.track_id,
-                "mark_success ignored: task is Cancelled"
+                status = ?self.status,
+                "mark_processing ignored: illegal Claim transition"
+            );
+            return;
+        }
+        self.started_at = Some(Utc::now());
+    }
+
+    /// Mark task as completed successfully (state machine: `Complete`).
+    ///
+    /// Returns `false` and leaves the task unchanged when the transition is
+    /// illegal for the current status (e.g. X-29: Cancelled ↛ Success).
+    pub fn mark_success(&mut self, result: serde_json::Value) -> bool {
+        if self
+            .apply_event(crate::state_machine::TaskEvent::Complete)
+            .is_err()
+        {
+            tracing::warn!(
+                track_id = %self.track_id,
+                status = ?self.status,
+                "mark_success ignored: illegal Complete transition"
             );
             return false;
         }
-        self.status = TaskStatus::Indexed;
         self.completed_at = Some(Utc::now());
-        self.updated_at = Utc::now();
         self.result = Some(result);
         self.error = None;
         self.error_message = None;
@@ -208,11 +235,20 @@ impl Task {
         true
     }
 
-    /// Mark task as failed with simple error message (backward compatible)
+    /// Mark task as failed with simple error message (state machine: `Fail`).
     pub fn mark_failed(&mut self, error: String) {
-        self.status = TaskStatus::Failed;
+        if self
+            .apply_event(crate::state_machine::TaskEvent::Fail)
+            .is_err()
+        {
+            tracing::warn!(
+                track_id = %self.track_id,
+                status = ?self.status,
+                "mark_failed ignored: illegal Fail transition"
+            );
+            return;
+        }
         self.completed_at = Some(Utc::now());
-        self.updated_at = Utc::now();
         self.error_message = Some(error.clone());
         self.clear_lease();
         self.retry_count += 1;
@@ -232,11 +268,20 @@ impl Task {
         }
     }
 
-    /// Mark task as failed with detailed error information (Phase 1 enhancement)
+    /// Mark task as failed with detailed error information (state machine: `Fail`).
     pub fn mark_failed_with_details(&mut self, error: TaskFailureInfo) {
-        self.status = TaskStatus::Failed;
+        if self
+            .apply_event(crate::state_machine::TaskEvent::Fail)
+            .is_err()
+        {
+            tracing::warn!(
+                track_id = %self.track_id,
+                status = ?self.status,
+                "mark_failed_with_details ignored: illegal Fail transition"
+            );
+            return;
+        }
         self.completed_at = Some(Utc::now());
-        self.updated_at = Utc::now();
         self.error_message = Some(error.message.clone());
         self.clear_lease();
 
@@ -293,12 +338,121 @@ impl Task {
         }
     }
 
-    /// Mark task as cancelled
+    /// Mark task as cancelled (state machine: `Cancel`).
     pub fn mark_cancelled(&mut self) {
-        self.status = TaskStatus::Cancelled;
+        if self
+            .apply_event(crate::state_machine::TaskEvent::Cancel)
+            .is_err()
+        {
+            tracing::warn!(
+                track_id = %self.track_id,
+                status = ?self.status,
+                "mark_cancelled ignored: illegal Cancel transition"
+            );
+            return;
+        }
         self.completed_at = Some(Utc::now());
-        self.updated_at = Utc::now();
         self.clear_lease();
+    }
+
+    /// Requeue for automatic retry (state machine: `RetryRequeue`, failed → pending).
+    ///
+    /// SSOT for the worker retry path: the claim channel is wake-only, so a
+    /// retryable task must be persisted as Pending again (SPEC-057 P1). Error
+    /// details are retained for observability; lease + completion markers reset.
+    pub fn requeue_for_retry(&mut self) {
+        if self
+            .apply_event(crate::state_machine::TaskEvent::RetryRequeue)
+            .is_err()
+        {
+            tracing::warn!(
+                track_id = %self.track_id,
+                status = ?self.status,
+                "requeue_for_retry ignored: illegal RetryRequeue transition"
+            );
+            return;
+        }
+        self.completed_at = None;
+        self.clear_lease();
+    }
+
+    /// Recover an orphaned Processing task back to Pending after restart
+    /// (state machine: `LeaseLost`, processing → pending).
+    pub fn recover_to_pending(&mut self, note: String) {
+        if self
+            .apply_event(crate::state_machine::TaskEvent::LeaseLost)
+            .is_err()
+        {
+            tracing::warn!(
+                track_id = %self.track_id,
+                status = ?self.status,
+                "recover_to_pending ignored: illegal LeaseLost transition"
+            );
+            return;
+        }
+        self.clear_lease();
+        self.started_at = None;
+        self.error_message = Some(note);
+    }
+
+    /// Mark an orphaned Processing task failed for manual resume when
+    /// auto-resume is disabled (state machine: `Fail`, processing → failed).
+    ///
+    /// Unlike [`Task::mark_failed`], no retry bookkeeping: the attempt was
+    /// interrupted by the restart, not by a processing error — retry_count and
+    /// the timeout breaker are untouched, and `completed_at` stays unset.
+    pub fn fail_orphaned(&mut self, message: String) {
+        if self
+            .apply_event(crate::state_machine::TaskEvent::Fail)
+            .is_err()
+        {
+            tracing::warn!(
+                track_id = %self.track_id,
+                status = ?self.status,
+                "fail_orphaned ignored: illegal Fail transition"
+            );
+            return;
+        }
+        self.clear_lease();
+        self.error_message = Some(message);
+    }
+
+    /// Reflect a released claim on the in-memory copy (state machine:
+    /// `Release`, processing → pending). The DB row is updated by
+    /// `release_claim`; this keeps the worker's copy consistent for the
+    /// fairness-park re-wake path.
+    pub fn release_to_pending(&mut self) {
+        if self
+            .apply_event(crate::state_machine::TaskEvent::Release)
+            .is_err()
+        {
+            tracing::warn!(
+                track_id = %self.track_id,
+                status = ?self.status,
+                "release_to_pending ignored: illegal Release transition"
+            );
+            return;
+        }
+        self.clear_lease();
+    }
+
+    /// Auto-close an orphaned Processing task whose document already reached a
+    /// terminal-success state (state machine: `Complete`, processing → indexed).
+    /// The close note rides in `error_message` for operator visibility.
+    pub fn close_orphaned_indexed(&mut self, note: String) {
+        if self
+            .apply_event(crate::state_machine::TaskEvent::Complete)
+            .is_err()
+        {
+            tracing::warn!(
+                track_id = %self.track_id,
+                status = ?self.status,
+                "close_orphaned_indexed ignored: illegal Complete transition"
+            );
+            return;
+        }
+        self.clear_lease();
+        self.error_message = Some(note);
     }
 
     /// Update task progress

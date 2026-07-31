@@ -1,11 +1,13 @@
 use super::super::*;
 use super::types::TextInsertPrepared;
+use tokio_util::sync::CancellationToken;
 
 impl DocumentTaskProcessor {
     pub(super) async fn text_insert_prepare(
         &self,
         task: &mut Task,
         data: TextInsertData,
+        cancel_token: CancellationToken,
     ) -> TaskResult<TextInsertPrepared> {
         let document_id = data
             .metadata
@@ -14,6 +16,10 @@ impl DocumentTaskProcessor {
             .and_then(|v| v.as_str())
             .unwrap_or(&data.file_source)
             .to_string();
+
+        // SPEC-091 WP1: cancel before prepare side effects.
+        self.check_cancelled(&cancel_token, "pre-prepare", &document_id)
+            .await?;
 
         // SPEC-002: Extract source_type from task metadata for unified pipeline tracking
         let source_type = data

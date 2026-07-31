@@ -11,6 +11,7 @@
  */
 'use client';
 
+import { Badge } from '@/components/ui/badge';
 import { formatOverallProgress } from '@/lib/utils/progress-formatter';
 import {
   resolveDocumentDisplayStatus,
@@ -20,6 +21,38 @@ import { useIngestionStore } from '@/stores/use-ingestion-store';
 import type { Document } from '@/types';
 import { useMemo } from 'react';
 import { StatusBadge } from './status-badge';
+
+/** SPEC-091 IS3 / LD-09: Ready vs Indexed when serving fence projects query_ready. */
+export function ServingFenceBadge({
+  queryReady,
+}: {
+  queryReady: boolean | null | undefined;
+}) {
+  if (typeof queryReady !== 'boolean') return null;
+  if (queryReady) {
+    return (
+      <Badge
+        variant="outline"
+        className="gap-1 text-emerald-700 border-emerald-400 dark:text-emerald-400"
+        data-testid="spec091-serving-fence-badge"
+        data-query-ready="true"
+      >
+        Ready
+      </Badge>
+    );
+  }
+  return (
+    <Badge
+      variant="outline"
+      className="gap-1 text-amber-700 border-amber-400 dark:text-amber-400"
+      data-testid="spec091-serving-fence-badge"
+      data-query-ready="false"
+      title="Indexed but not yet queryable (serving fence)"
+    >
+      Indexed (not yet queryable)
+    </Badge>
+  );
+}
 
 interface EnhancedStatusBadgeProps {
   document: Document;
@@ -70,14 +103,21 @@ export function EnhancedStatusBadge({
     return undefined;
   }, [track, document.stage_progress]);
 
+  const fenceBadge = (
+    <ServingFenceBadge queryReady={document.query_ready} />
+  );
+
   return (
-    <StatusBadge
-      status={displayStatus}
-      stageMessage={progressMessage}
-      stageProgressValue={progressValue}
-      compact={compact}
-      disableTooltip={disableTooltip}
-    />
+    <div className="inline-flex flex-wrap items-center gap-1">
+      <StatusBadge
+        status={displayStatus}
+        stageMessage={progressMessage}
+        stageProgressValue={progressValue}
+        compact={compact}
+        disableTooltip={disableTooltip}
+      />
+      {fenceBadge}
+    </div>
   );
 }
 

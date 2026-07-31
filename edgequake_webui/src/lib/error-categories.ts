@@ -89,10 +89,13 @@ const ERROR_PATTERNS: ErrorPattern[] = [
     suggestion:
       "The document may be too large. Try splitting it into smaller parts.",
   },
-  // Embedding Errors
+  // Embedding Errors (must precede storage — pgvector dim errors often wrap as StorageError)
   {
     category: "embedding",
     patterns: [
+      /expected\s+\d+\s+dimensions,\s*not/i,
+      /embedding\s+dimension\s+mismatch/i,
+      /mixed\s+dimensions\s+in\s+one\s+batch/i,
       /embedding/i,
       /dimension.*mismatch/i,
       /vector.*dimension/i,
@@ -102,7 +105,23 @@ const ERROR_PATTERNS: ErrorPattern[] = [
     ],
     isTransient: false,
     suggestion:
-      "Check embedding model configuration. Dimensions must match storage.",
+      "Embedding dimension mismatch: model produced N dims but store/index expects M. Use a matching embedding model or re-embed after schema generation.",
+  },
+  // Graph / typed fleet / shell status — before generic storage (not transient DB outage)
+  {
+    category: "pipeline",
+    patterns: [
+      /knowledge-graph\s+merge/i,
+      /typed\s+fleet\s+mirror/i,
+      /relational\s+entity\/rel\s+fk/i,
+      /fk\s+miss/i,
+      /documents_valid_status/i,
+      /graph\s+error/i,
+      /merge\s+error\(s\)\s+during\s+persist/i,
+    ],
+    isTransient: false,
+    suggestion:
+      "Knowledge graph persist failed (relational FK or document status). Retry after migrate/restart, or reprocess the document.",
   },
   // Storage/Database Errors
   {

@@ -137,6 +137,8 @@ export interface DocumentTableRowProps {
   isActive: boolean;
   /** Dim completed/idle rows while another document is actively ingesting */
   isBackground?: boolean;
+  /** LAW-IS3: when ActiveRuns owns this doc, hide row stage subtitle */
+  isLiveRun?: boolean;
   /** Current search query for highlighting */
   searchQuery: string;
   /** Called when selection checkbox changes */
@@ -180,6 +182,7 @@ export const DocumentTableRow = memo(function DocumentTableRow({
   isSelected,
   isActive,
   isBackground = false,
+  isLiveRun = false,
   searchQuery,
   onSelect,
   onClick,
@@ -274,6 +277,8 @@ export const DocumentTableRow = memo(function DocumentTableRow({
         <div className="flex flex-col gap-1">
           <EnhancedStatusBadge document={doc} />
           {(() => {
+            // LAW-IS3: Active View owns live narrative — table is inventory only.
+            if (isLiveRun) return null;
             const run = buildIngestionRunView(doc);
             if (!run || run.stageStatus === 'complete') return null;
             if (!LIVE_STAGE_MESSAGE_STAGES.has(String(run.stage))) return null;

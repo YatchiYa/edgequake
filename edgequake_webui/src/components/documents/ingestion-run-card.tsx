@@ -1,6 +1,8 @@
 /**
  * SPEC-086: one progress presenter for all formats (ActiveRuns-style stepper).
  * PDF page detail is an optional nested slot under converting — not a second product.
+ *
+ * Cancelled runs: compact acknowledgement (no stepper / progress bar / Failed chip).
  */
 
 "use client";
@@ -8,11 +10,16 @@
 import { ServerStageStepper } from "@/components/documents/server-stage-stepper";
 import { Progress } from "@/components/ui/progress";
 import {
-  stageDisplayName,
+  formatQueueChrome,
+  formatRunHeadline,
+  shouldNestPdfPageMeter,
+  shouldShowOverallMeter,
   type IngestionRunView,
 } from "@/lib/pipeline/ingestion-run-view";
 import { buildStageTimeline } from "@/lib/pipeline/stage-timeline";
 import type { ReactNode } from "react";
+
+export { shouldNestPdfPageMeter, shouldShowOverallMeter };
 
 export interface IngestionRunCardProps {
   run: IngestionRunView;
@@ -22,23 +29,33 @@ export interface IngestionRunCardProps {
   /** Cancel in-flight run (ActiveRuns / upload parity). */
   onCancel?: () => void;
   /**
-   * Dismiss a terminal failed attention card (removes failed admission shell).
-   * SPEC-086: orphan staging "please re-upload" had Cancel disabled and no exit.
+   * Dismiss a terminal card (orphan failed shell delete, or cancelled ack hide).
    */
   onDismiss?: () => void;
+  /** Pause cancelled-ack grace timer (hover/focus). */
+  onGracePause?: () => void;
+  /** Resume cancelled-ack grace timer. */
+  onGraceResume?: () => void;
   className?: string;
   "data-testid"?: string;
 }
 
-/** Failed attention runs get Dismiss (not Cancel). */
+/** Orphan failed attention OR compact cancelled ack get Dismiss. */
+export function canDismissTerminalRun(
+  run: Pick<IngestionRunView, "stage" | "stageStatus">,
+  hasDismissHandler: boolean,
+): boolean {
+  if (!hasDismissHandler) return false;
+  if (run.stage === "cancelled" || run.stageStatus === "cancelled") return true;
+  return run.stageStatus === "failed" || run.stage === "failed";
+}
+
+/** @deprecated Use canDismissTerminalRun */
 export function canDismissFailedRun(
   run: Pick<IngestionRunView, "stage" | "stageStatus">,
   hasDismissHandler: boolean,
 ): boolean {
-  return (
-    hasDismissHandler &&
-    (run.stageStatus === "failed" || run.stage === "failed")
-  );
+  return canDismissTerminalRun(run, hasDismissHandler);
 }
 
 export function IngestionRunCard({
@@ -47,9 +64,13 @@ export function IngestionRunCard({
   compact = false,
   onCancel,
   onDismiss,
+  onGracePause,
+  onGraceResume,
   className,
   "data-testid": testId,
 }: IngestionRunCardProps) {
+  const isCancelled =
+    run.stage === "cancelled" || run.stageStatus === "cancelled";
   const timeline = buildStageTimeline(run);
   const admission = timeline.admissionPhase;
   const isAdmission = Boolean(admission);
@@ -59,18 +80,75 @@ export function IngestionRunCard({
       ? Math.round(timeline.stageProgress01 * 100)
       : undefined;
   const hasStageCounts = Boolean(run.counts && run.counts.total > 0);
+  // LAW-IS2: nest only when list SSOT lacks page/figure counts (no second bar).
   const showPdfDetail =
-    Boolean(nestedDetail) &&
-    run.sourceType === "pdf" &&
-    run.stage === "converting";
+    Boolean(nestedDetail) && shouldNestPdfPageMeter(run);
+  const showOverall = shouldShowOverallMeter(run, isAdmission);
   const canCancel =
     Boolean(onCancel) &&
     !isAdmission &&
+    !isCancelled &&
     run.stage !== "completed" &&
     run.stage !== "failed" &&
-    run.stage !== "cancelled" &&
     run.stage !== "stopping";
-  const canDismiss = canDismissFailedRun(run, Boolean(onDismiss));
+  const canDismiss = canDismissTerminalRun(run, Boolean(onDismiss));
+
+  if (isCancelled) {
+    return (
+      <div
+        className={
+          className ??
+          (compact
+            ? "space-y-1.5"
+            : "space-y-2 rounded-md border border-orange-200/80 bg-orange-50/40 p-2.5 shadow-sm dark:border-orange-900/50 dark:bg-orange-950/20")
+        }
+        data-testid={testId ?? "spec086-ingestion-run-card"}
+        data-document-id={run.documentId}
+        data-stage={run.stage}
+        data-source-type={run.sourceType}
+        data-mode={run.mode ?? "full"}
+        data-admission="cancelled"
+        data-cancelled-ack="true"
+        onMouseEnter={onGracePause}
+        onMouseLeave={onGraceResume}
+        onFocus={onGracePause}
+        onBlur={onGraceResume}
+      >
+        <div className="flex items-center justify-between gap-2 text-sm">
+          <span className="truncate font-medium text-foreground">
+            {run.filename}
+          </span>
+          <div className="flex shrink-0 items-center gap-2">
+            <span
+              className="text-xs font-medium text-orange-700 dark:text-orange-300"
+              data-testid="spec048-run-headline"
+            >
+              Cancelled
+            </span>
+            {canDismiss ? (
+              <button
+                type="button"
+                className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+                onClick={onDismiss}
+                title="Hide this cancelled acknowledgement. The document stays Cancelled in the table."
+                data-testid="spec086-run-dismiss"
+              >
+                Dismiss
+              </button>
+            ) : null}
+          </div>
+        </div>
+        {run.message ? (
+          <p
+            className="text-[11px] text-muted-foreground line-clamp-2"
+            data-testid="spec086-run-message"
+          >
+            {run.message}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -96,9 +174,9 @@ export function IngestionRunCard({
             className="text-xs tabular-nums text-sky-700 dark:text-sky-300"
             data-testid="spec048-run-headline"
           >
-            {run.counts
-              ? `${stageDisplayName(run.stage, run.sourceType)} · ${run.counts.current}/${run.counts.total}`
-              : stageDisplayName(run.stage, run.sourceType)}
+            {isAdmission
+              ? formatQueueChrome(run) || formatRunHeadline(run)
+              : formatRunHeadline(run).replace(` · ${run.filename}`, "")}
           </span>
           {canCancel ? (
             <button
@@ -124,7 +202,8 @@ export function IngestionRunCard({
         </div>
       </div>
 
-      <ServerStageStepper run={run} />
+      {/* IS3: 4-phase strip by default (wire chips on Pipeline dialog). */}
+      <ServerStageStepper run={run} variant="phases" />
 
       {showPdfDetail ? (
         <div data-testid="spec086-pdf-converting-detail" className="pt-0.5">
@@ -173,21 +252,32 @@ export function IngestionRunCard({
             </div>
           )}
 
-          <div className="space-y-0.5" data-testid="spec048-overall-progress">
-            <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
-              <span>Overall (est.)</span>
-              <span
-                className="tabular-nums"
-                data-testid="spec048-run-overall-pct"
-              >
-                {overallPct}%
-              </span>
+          {/* LAW-IS2: overall only when stage has no determinate N/M (one primary meter). */}
+          {showOverall ? (
+            <div className="space-y-0.5" data-testid="spec048-overall-progress">
+              <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+                <span>Overall (est.)</span>
+                <span
+                  className="tabular-nums"
+                  data-testid="spec048-run-overall-pct"
+                >
+                  {overallPct}%
+                </span>
+              </div>
+              <Progress
+                value={overallPct}
+                className="h-1 [&_[data-slot=progress-indicator]]:bg-sky-400/80"
+              />
             </div>
-            <Progress
-              value={overallPct}
-              className="h-1 [&_[data-slot=progress-indicator]]:bg-sky-400/80"
-            />
-          </div>
+          ) : (
+            <div
+              className="sr-only"
+              data-testid="spec048-overall-progress"
+              data-collapsed="true"
+            >
+              Overall (est.) {overallPct}%
+            </div>
+          )}
         </div>
       )}
 
@@ -206,6 +296,16 @@ export function IngestionRunCard({
           data-testid="spec048-run-mode"
         >
           Reprocess mode: {run.mode}
+        </div>
+      ) : null}
+
+      {/* IS3: optional cost chip when spend is non-zero. */}
+      {typeof run.costUsd === "number" && run.costUsd > 0 ? (
+        <div
+          className="text-[11px] tabular-nums text-muted-foreground"
+          data-testid="spec091-run-cost"
+        >
+          Cost so far ${run.costUsd.toFixed(2)}
         </div>
       ) : null}
     </div>

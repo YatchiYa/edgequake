@@ -276,7 +276,10 @@ export const DocumentTableSection = memo(function DocumentTableSection({
                 {virtualItems.map((virtualRow) => {
                   const doc = documents[virtualRow.index];
                   if (!doc) return null;
-                  const isLiveRun = activeRunDocumentIds?.has(doc.id) ?? false;
+                  const bareId = doc.id.replace(/^staging:/, "");
+                  const isLiveRun =
+                    Boolean(activeRunDocumentIds?.has(doc.id)) ||
+                    Boolean(activeRunDocumentIds?.has(bareId));
                   const isBackground =
                     Boolean(activeRunDocumentIds && activeRunDocumentIds.size > 0) &&
                     !isLiveRun;
@@ -288,6 +291,7 @@ export const DocumentTableSection = memo(function DocumentTableSection({
                       isSelected={selectedIds.has(doc.id)}
                       isActive={selectedDocument?.id === doc.id}
                       isBackground={isBackground}
+                      isLiveRun={isLiveRun}
                       searchQuery={searchQuery}
                       onSelect={onSelectOne}
                       onClick={onRowClick}

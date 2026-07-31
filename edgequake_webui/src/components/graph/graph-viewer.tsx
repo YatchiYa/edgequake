@@ -66,10 +66,12 @@ import { LayoutControl } from './layout-control';
 import { LayoutController } from './layout-controller';
 import { NodeContextMenu, useNodeContextMenu } from './node-context-menu';
 import { NodeDetails } from './node-details';
+import { GraphTourTrigger } from './graph-tour-wrapper';
 import { StreamingIndicator, StreamingProgressBar } from './streaming-indicator';
 import { TimeFilter } from './time-filter';
 import { TruncationBanner, TruncationIndicator } from './truncation-banner';
 import { ZoomControls } from './zoom-controls';
+import { isAutomatedBrowser } from '@/lib/runtime/browser-detection';
 
 export function GraphViewer() {
   const { documentFilterId, setDocumentFilter } = useGraphDocumentFilterUrl();
@@ -152,6 +154,24 @@ export function GraphViewer() {
     openContextMenu,
     closeContextMenu,
   } = useNodeContextMenu();
+
+  // Playwright-only hook: open the node context menu at a known viewport point
+  // without depending on Sigma's pixel-precise right-click hit detection.
+  useEffect(() => {
+    if (!isAutomatedBrowser()) return;
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ x?: number; y?: number }>).detail;
+      const node = allNodes[0];
+      if (!node) return;
+      openContextMenu(
+        node,
+        detail?.x ?? Math.floor(window.innerWidth / 2),
+        detail?.y ?? Math.floor(window.innerHeight / 2),
+      );
+    };
+    window.addEventListener('eq:e2e-open-node-menu', handler);
+    return () => window.removeEventListener('eq:e2e-open-node-menu', handler);
+  }, [allNodes, openContextMenu]);
 
   // Initialize graph expansion hook (handles expand/prune logic)
   const { expandedNodes } = useGraphExpansion();
@@ -793,6 +813,7 @@ export function GraphViewer() {
           {/* Graph Controls Overlay - Top Left */}
           <div className="absolute top-4 left-4 flex flex-col gap-2 z-20">
             <GraphControls />
+            <GraphTourTrigger />
           </div>
 
           {/* Minimap Overlay - Below controls on left side */}

@@ -12,6 +12,11 @@
 //! @implements SPEC-032: PostgreSQL Provider Persistence
 //! @implements OODA-204-206: PostgreSQL Rebuild Tests
 
+// Route to the dedicated scratch test database (see common/test_db.rs).
+#[cfg(feature = "postgres")]
+#[path = "common/test_db.rs"]
+mod test_db;
+
 #[cfg(feature = "postgres")]
 mod postgres_rebuild_tests {
     use axum::{
@@ -32,9 +37,11 @@ mod postgres_rebuild_tests {
         std::env::var("DATABASE_URL").is_ok()
     }
 
-    /// Get database URL if available
+    /// Get database URL if available, redirected to the scratch test database.
     fn get_database_url() -> Option<String> {
-        std::env::var("DATABASE_URL").ok()
+        std::env::var("DATABASE_URL")
+            .ok()
+            .map(|base| crate::test_db::isolated_test_url(&base))
     }
 
     /// Test helper: Clean environment for isolated tests

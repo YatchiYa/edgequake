@@ -44,13 +44,43 @@ verify_profile() {
   echo "✓ Extension pins consistent ($profile ↔ $(basename "$dockerfile"))"
 }
 
+verify_docs_pgvector_pin() {
+  EQ_POSTGRES_PROFILE=pg18
+  export EQ_POSTGRES_PROFILE
+  # shellcheck source=/dev/null
+  source "$ROOT/edgequake/docker/extension-pins.sh"
+  local pin="${EQ_PGVECTOR_MIN}"
+  local fail=0
+  local stale="0.8.3"
+  for f in "$ROOT/Makefile" "$ROOT/edgequake/docker/README.md"; do
+    if grep -E "pgvector[^0-9]*${stale}|${stale}[^0-9]*pgvector|\`pgvector\` ${stale}" "$f" >/dev/null 2>&1; then
+      echo "FAIL stale pgvector ${stale} in ${f#"$ROOT"/} (SSOT pin is ${pin})"
+      fail=1
+    fi
+  done
+  if ! grep -q "pgvector ${pin}" "$ROOT/Makefile"; then
+    echo "FAIL Makefile missing pgvector ${pin} help text (SSOT pin)"
+    fail=1
+  fi
+  if ! grep -q "pgvector.*${pin}" "$ROOT/edgequake/docker/README.md"; then
+    echo "FAIL docker/README.md missing pgvector ${pin} (SSOT pin)"
+    fail=1
+  fi
+  [ "$fail" -eq 0 ] || return 1
+  echo "✓ Docs/Makefile pgvector pin matches extension-pins.sh (${pin})"
+}
+
 case "$PROFILE" in
   all)
     verify_profile pg16 && verify_profile pg17 && verify_profile pg18 && verify_profile pg18-vectorscale
+    verify_docs_pgvector_pin
     ;;
   pg16|pg17|pg18|pg18-vectorscale)
     verify_profile "$PROFILE"
     ;;
+  docs)
+    verify_docs_pgvector_pin
+    ;;
   *)
-    echo "Usage: $0 [pg16|pg17|pg18|pg18-vectorscale|all]"; exit 1 ;;
+    echo "Usage: $0 [pg16|pg17|pg18|pg18-vectorscale|all|docs]"; exit 1 ;;
 esac

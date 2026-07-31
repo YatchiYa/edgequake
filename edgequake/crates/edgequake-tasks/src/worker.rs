@@ -49,7 +49,7 @@ use crate::{
     tenant_limiter::{TenantConcurrencyLimiter, TryAcquireOutcome},
     types::{FairnessClass, Task, TaskStatus},
 };
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -104,6 +104,54 @@ impl Drop for FairnessParkGuard {
     }
 }
 
+/// Process-local permit handoff from a fired park waiter to the woken task.
+///
+/// WHY (SPEC-091 R-18 follow-up): tokio's `Semaphore` is strictly fair — a
+/// released permit is handed *directly* to queued `acquire()` waiters and
+/// never becomes visible to `try_acquire()`. Dropping the waiter's permit
+/// before re-wake therefore lets *other queued waiters* relay it at µs pace
+/// while every claim-time `try_acquire` starves and re-parks (livelock).
+/// Transferring the permit with the wake makes the grant deterministic.
+///
+/// Entries expire lazily (TTL): a wake lost to shutdown/cancel returns the
+/// slot to the lane on the next `take`/`insert` sweep.
+#[derive(Clone)]
+struct PermitHandoff {
+    inner: Arc<Mutex<HashMap<String, (crate::tenant_limiter::FairnessPermit, std::time::Instant)>>>,
+    ttl: Duration,
+}
+
+impl Default for PermitHandoff {
+    fn default() -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(HashMap::new())),
+            ttl: Duration::from_secs(30),
+        }
+    }
+}
+
+impl PermitHandoff {
+    fn expire_old(
+        map: &mut HashMap<String, (crate::tenant_limiter::FairnessPermit, std::time::Instant)>,
+        ttl: Duration,
+    ) {
+        let now = std::time::Instant::now();
+        map.retain(|_, (_, at)| now.duration_since(*at) < ttl);
+    }
+
+    fn insert(&self, track_id: &str, permit: crate::tenant_limiter::FairnessPermit) {
+        let mut map = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        Self::expire_old(&mut map, self.ttl);
+        map.insert(track_id.to_string(), (permit, std::time::Instant::now()));
+    }
+
+    fn take(&self, track_id: &str) -> Option<crate::tenant_limiter::FairnessPermit> {
+        let mut map = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        Self::expire_old(&mut map, self.ttl);
+        map.remove(track_id).map(|(permit, _)| permit)
+    }
+}
+
 /// RAII guard that aborts the heartbeat task on drop.
 ///
 /// WHY: If `processor.process()` panics, the stack unwinds and this guard's
@@ -150,6 +198,21 @@ pub trait TaskProcessor: Send + Sync {
         task: &mut Task,
         cancel_token: CancellationToken,
     ) -> TaskResult<serde_json::Value>;
+
+    /// Process with an optional fairness permit (SPEC-091 WP1 / LAW-WP3).
+    ///
+    /// Default holds the permit for the entire `process()` call. Ingest
+    /// processors that materialize after extract should override and release
+    /// the permit before pure DB work so other tenants can claim.
+    async fn process_with_fairness(
+        &self,
+        task: &mut Task,
+        cancel_token: CancellationToken,
+        fairness: Option<crate::tenant_limiter::FairnessPermit>,
+    ) -> TaskResult<serde_json::Value> {
+        let _hold = fairness;
+        self.process(task, cancel_token).await
+    }
 
     /// Called when a task has permanently failed (retries exhausted or circuit
     /// breaker tripped). Override to update document status, clean up resources,
@@ -222,6 +285,20 @@ pub struct WorkerPoolConfig {
     /// still catching truly stuck tasks within a reasonable window.
     /// Override via `TASK_PROCESSING_TIMEOUT_SECS` environment variable.
     pub processing_timeout_secs: u64,
+
+    /// SPEC-091 QW3 (LAW-Q5, LD-13): provider in-flight budget B.
+    ///
+    /// When `> 0`, the ingest lane becomes a **weighted fair-share over B**
+    /// (deficit round-robin) instead of a hard per-tenant cap: a lone tenant
+    /// may use the whole budget (Axiom Q1, no idle-starvation) while N
+    /// contending tenants share ≈ B·wᵢ/Σw. `max_tasks_per_tenant` is then
+    /// ignored for ingest. `0` keeps the legacy hard-cap lanes (cloud
+    /// deployments, tests).
+    pub provider_budget: usize,
+
+    /// SPEC-091 QW3: per-tenant DRR quantum for the fair-share ingest lane
+    /// (equal-share deployments use 1). Ignored when `provider_budget == 0`.
+    pub tenant_lane_weight: u32,
 }
 
 impl Default for WorkerPoolConfig {
@@ -248,6 +325,10 @@ impl Default for WorkerPoolConfig {
             // still preventing infinite hangs. Override via
             // TASK_PROCESSING_TIMEOUT_SECS env var.
             processing_timeout_secs: 7200.max(MIN_PROCESSING_TIMEOUT_SECS),
+            // Legacy hard-cap lanes by default; production boot wires the
+            // provider budget explicitly (main.rs) so tests stay hermetic.
+            provider_budget: 0,
+            tenant_lane_weight: 1,
         }
     }
 }
@@ -283,6 +364,13 @@ pub struct WorkerPool {
     fairness_park_logs: Arc<AtomicU64>,
     /// Dedupes fairness park waiters per `track_id` (process-local).
     fairness_park_set: FairnessParkSet,
+    /// Permit handoff from fired park waiters to woken tasks (tokio
+    /// fair-semaphore FIFO makes drop-then-retry livelock; handoff is exact).
+    permit_handoff: PermitHandoff,
+    /// Classifies each task's effective extract provider at claim time so
+    /// fair-share ingest lanes key on the LOCAL provider name and cloud tasks
+    /// bypass the local budget (SPEC-091 hardening, LAW-Q5 refinement).
+    provider_classifier: crate::provider_class::SharedTaskProviderClassifier,
 }
 
 impl WorkerPool {
@@ -294,15 +382,22 @@ impl WorkerPool {
         processor: SharedTaskProcessor,
     ) -> Self {
         // Create dual-lane limiter when either lane is capacity-limited.
-        let tenant_limiter =
-            if config.max_tasks_per_tenant > 0 || config.max_lifecycle_tasks_per_tenant > 0 {
-                Some(TenantConcurrencyLimiter::new(
-                    config.max_tasks_per_tenant,
-                    config.max_lifecycle_tasks_per_tenant,
-                ))
-            } else {
-                None
-            };
+        // QW3 (LAW-Q5, LD-13): with a provider budget the ingest lane is a
+        // weighted fair-share over B (DRR); otherwise legacy hard caps.
+        let tenant_limiter = if config.provider_budget > 0 {
+            Some(TenantConcurrencyLimiter::new_fair_share(
+                config.provider_budget,
+                config.tenant_lane_weight,
+                config.max_lifecycle_tasks_per_tenant,
+            ))
+        } else if config.max_tasks_per_tenant > 0 || config.max_lifecycle_tasks_per_tenant > 0 {
+            Some(TenantConcurrencyLimiter::new(
+                config.max_tasks_per_tenant,
+                config.max_lifecycle_tasks_per_tenant,
+            ))
+        } else {
+            None
+        };
 
         Self {
             config,
@@ -316,7 +411,23 @@ impl WorkerPool {
             cancellation_registry: CancellationRegistry::new(),
             fairness_park_logs: Arc::new(AtomicU64::new(0)),
             fairness_park_set: FairnessParkSet::default(),
+            permit_handoff: PermitHandoff::default(),
+            provider_classifier: std::sync::Arc::new(
+                crate::provider_class::StaticProviderClassifier::local(
+                    crate::provider_class::LOCAL_LANE_DEFAULT_KEY,
+                ),
+            ),
         }
+    }
+
+    /// Override the effective-provider classifier (API layer wires the
+    /// workspace-aware implementation; default preserves single-lane behavior).
+    pub fn with_provider_classifier(
+        mut self,
+        classifier: crate::provider_class::SharedTaskProviderClassifier,
+    ) -> Self {
+        self.provider_classifier = classifier;
+        self
     }
 
     /// Shared in-flight byte admission budget (X-19).
@@ -377,6 +488,8 @@ impl WorkerPool {
             let cancel_registry = self.cancellation_registry.clone();
             let fairness_park_logs = Arc::clone(&self.fairness_park_logs);
             let fairness_park_set = self.fairness_park_set.clone();
+            let permit_handoff = self.permit_handoff.clone();
+            let provider_classifier = self.provider_classifier.clone();
 
             let handle = runtime.spawn(async move {
                 info!("Worker {} started", worker_id);
@@ -387,9 +500,15 @@ impl WorkerPool {
                 // Skip the immediate first tick so we don't race startup hydrate.
                 poll_interval.tick().await;
 
-                loop {
+                // EC-23 (drain): labelled so the claim loop can stop the
+                // worker entirely when shutdown fires mid-claim.
+                'worker: loop {
                     // SPEC-057 P1: channel is wake-only; Postgres/memory claim is SSOT.
+                    // Biased: when a shutdown signal and a wake are both ready
+                    // (EC-23), the drain always wins — no new claims after the
+                    // broadcast.
                     tokio::select! {
+                        biased;
                         _ = shutdown_rx.recv() => {
                             info!("Worker {} shutting down", worker_id);
                             break;
@@ -445,6 +564,9 @@ impl WorkerPool {
                             }
                         };
 
+                        // SPEC-091 QW2: transition observability (LAW-Q2).
+                        edgequake_observability::metrics::record_task_transition("claim");
+
                         let lease_token = match task.lease_token {
                             Some(token) => token,
                             None => {
@@ -463,6 +585,21 @@ impl WorkerPool {
                                 break;
                             }
                         };
+
+                        // EC-23: shutdown fired while claiming — release the
+                        // lease so the row stays claimable for the next boot,
+                        // then stop this worker (drain preempts new work).
+                        if shutdown_rx.try_recv().is_ok() {
+                            debug!(
+                                worker_id = worker_id,
+                                task_id = %task.track_id,
+                                "Shutdown during claim — releasing lease and stopping (EC-23)"
+                            );
+                            let _ = storage
+                                .release_claim(&task.track_id, &worker_name, lease_token)
+                                .await;
+                            break 'worker;
+                        }
 
                         // FEAT-CANCEL: Drop terminal / cancel-intent after claim.
                         if should_skip_task(&storage, &cancel_registry, &task).await {
@@ -511,9 +648,26 @@ impl WorkerPool {
 
                         // FEAT-TENANT-FAIRNESS: release claim before park (no double-process).
                         let fairness_class = task.task_type.fairness_class();
-                        let tenant_permit = if let Some(ref limiter) = tenant_limiter {
+                        // Claim-time classification (not enqueue-time): a
+                        // workspace provider flip while queued takes effect
+                        // on the next claim attempt.
+                        let provider_class = provider_classifier.classify(&task).await;
+                        let tenant_permit = if let Some(handed) =
+                            permit_handoff.take(&task.track_id)
+                        {
+                            // SPEC-091 R-18: this task was woken by a park waiter
+                            // that WON a lane slot — the permit rides with the wake
+                            // (tokio fair semaphores never surface freed permits to
+                            // try_acquire while waiters are queued).
+                            Some(handed)
+                        } else if let Some(ref limiter) = tenant_limiter {
                             match limiter
-                                .try_acquire(task.tenant_id, task.workspace_id, fairness_class)
+                                .try_acquire(
+                                    task.tenant_id,
+                                    task.workspace_id,
+                                    fairness_class,
+                                    &provider_class,
+                                )
                                 .await
                             {
                                 TryAcquireOutcome::Unlimited => None,
@@ -551,7 +705,7 @@ impl WorkerPool {
                                         continue;
                                     }
                                     if let Err(e) = storage
-                                        .release_claim(
+                                        .mark_fairness_parked(
                                             &task.track_id,
                                             &worker_name,
                                             lease_token,
@@ -571,25 +725,29 @@ impl WorkerPool {
                                             worker_id,
                                             pending,
                                             fairness_class,
+                                            provider_class.clone(),
                                             Arc::clone(&queue),
                                             Arc::clone(&storage),
                                             limiter.clone(),
                                             cancel_registry.clone(),
                                             fairness_park_set.clone(),
+                                            permit_handoff.clone(),
                                             park_shutdown_tx.subscribe(),
                                         );
                                     } else {
-                                        task.status = TaskStatus::Pending;
-                                        task.clear_lease();
+                                        // SPEC-091 QW0: Release event via SSOT.
+                                        task.release_to_pending();
                                         spawn_fairness_park(
                                             worker_id,
                                             task,
                                             fairness_class,
+                                            provider_class.clone(),
                                             Arc::clone(&queue),
                                             Arc::clone(&storage),
                                             limiter.clone(),
                                             cancel_registry.clone(),
                                             fairness_park_set.clone(),
+                                            permit_handoff.clone(),
                                             park_shutdown_tx.subscribe(),
                                         );
                                     }
@@ -639,7 +797,7 @@ impl WorkerPool {
                         break;
                     }
 
-                    let (mut task, lease_token, _tenant_permit, _admission_permit) = match claimed {
+                    let (mut task, lease_token, tenant_permit, _admission_permit) = match claimed {
                         Some(c) => c,
                         None => continue,
                     };
@@ -679,6 +837,8 @@ impl WorkerPool {
                                         task_id = %heartbeat_track_id,
                                         "Lost task lease — aborting processing"
                                     );
+                                    // SPEC-091 QW2: lease-lost transition (LAW-Q2).
+                                    edgequake_observability::metrics::record_task_transition("lease_lost");
                                     heartbeat_cancel.cancel();
                                     break;
                                 }
@@ -705,7 +865,11 @@ impl WorkerPool {
                     let process_result = tokio::time::timeout(
                         timeout_duration,
                         processor
-                            .process(&mut task, cancel_token.clone())
+                            .process_with_fairness(
+                                &mut task,
+                                cancel_token.clone(),
+                                tenant_permit,
+                            )
                             .instrument(tracing::info_span!(
                                 "task_process",
                                 worker_id = worker_id,
@@ -719,6 +883,7 @@ impl WorkerPool {
                     match process_result {
                         Ok(Ok(result)) => {
                             task.mark_success(result);
+                            edgequake_observability::metrics::record_task_transition("complete");
                             info!(
                                 "Worker {} completed task: {} (tenant: {})",
                                 worker_id, task.track_id, task.tenant_id
@@ -726,6 +891,7 @@ impl WorkerPool {
                         }
                         Ok(Err(TaskError::Cancelled(msg))) => {
                             task.mark_cancelled();
+                            edgequake_observability::metrics::record_task_transition("cancel");
                             info!(
                                 worker_id = worker_id,
                                 task_id = %task.track_id,
@@ -741,6 +907,7 @@ impl WorkerPool {
                                     error_msg.clone(),
                                 ),
                             );
+                            edgequake_observability::metrics::record_task_transition("fail");
 
                             if task.circuit_breaker_tripped {
                                 error!(
@@ -789,9 +956,9 @@ impl WorkerPool {
                                 );
 
                                 // Claim SSOT: retries must be Pending again (wake-only channel).
-                                task.status = TaskStatus::Pending;
-                                task.completed_at = None;
-                                task.clear_lease();
+                                // SPEC-091 QW0: state-machine event, not raw mutation.
+                                task.requeue_for_retry();
+                                edgequake_observability::metrics::record_task_transition("retry");
 
                                 let retry_task = task.clone();
                                 let retry_queue = Arc::clone(&queue);
@@ -1018,11 +1185,13 @@ fn spawn_fairness_park(
     worker_id: usize,
     task: Task,
     fairness_class: FairnessClass,
+    provider_class: crate::provider_class::TaskProviderClass,
     queue: Arc<dyn TaskQueue>,
     storage: Arc<dyn TaskStorage>,
     limiter: TenantConcurrencyLimiter,
     cancel_registry: CancellationRegistry,
     park_set: FairnessParkSet,
+    permit_handoff: PermitHandoff,
     mut shutdown_rx: tokio::sync::broadcast::Receiver<()>,
 ) {
     tokio::spawn(async move {
@@ -1036,8 +1205,31 @@ fn spawn_fairness_park(
             track_id: track_id.clone(),
         });
 
+        // SPEC-091 QW3 (LAW-Q7): durable cancel/delete intents preempt parked
+        // work immediately — a parked task must not wait for a fair-share slot
+        // to free before honoring the intent. `register` pre-cancels the token
+        // when an intent was already recorded, so the select fires at once.
+        let park_token = cancel_registry.register(&track_id).await;
+
         let permit = tokio::select! {
-            result = limiter.acquire(tenant_id, workspace_id, fairness_class) => {
+            // Biased: graceful shutdown wins over the cancel branch when both
+            // fire (shutdown broadcasts *before* `cancel_all_active`), so a
+            // draining pool requeues parked work instead of dropping it.
+            biased;
+            _ = shutdown_rx.recv() => {
+                debug!(
+                    worker_id,
+                    task_id = %track_id,
+                    "Fairness park aborted — worker pool shutting down"
+                );
+                // End park before send so reclaim is not skipped as "already parked".
+                drop(park_guard.take());
+                // Clear the durable park marker so claim_next sees the row again.
+                let _ = storage.clear_fairness_park(&track_id).await;
+                let _ = queue.send(task).await;
+                return;
+            }
+            result = limiter.acquire(tenant_id, workspace_id, fairness_class, &provider_class) => {
                 match result {
                     Ok(permit) => permit,
                     Err(_) => {
@@ -1050,23 +1242,25 @@ fn spawn_fairness_park(
                     }
                 }
             }
-            _ = shutdown_rx.recv() => {
+            _ = park_token.cancelled() => {
+                // Cancel/delete intent fired while parked: the task row is
+                // already Cancelled via the cancel entry point (state-machine
+                // event); drop the park so no stale wake resurrects the work.
                 debug!(
                     worker_id,
                     task_id = %track_id,
-                    "Fairness park aborted — worker pool shutting down"
+                    "Fairness park aborted — cancel/delete intent (LAW-Q7 preempt)"
                 );
-                // End park before send so reclaim is not skipped as "already parked".
-                drop(park_guard.take());
-                let _ = queue.send(task).await;
+                edgequake_observability::metrics::record_task_transition("cancel");
+                cancel_registry.deregister(&track_id).await;
                 return;
             }
         };
 
-        // Release immediately — the worker will try_acquire when it dequeues.
-        // Park waiters are FIFO on the semaphore, so churn is O(completions), not O(polls).
-        drop(permit);
-
+        // SPEC-091 R-18: do NOT drop the permit into tokio's fair-semaphore
+        // FIFO — queued waiters would relay it at µs pace while claim-time
+        // try_acquire starves (livelock). Hand the won slot to the woken task
+        // deterministically; the claiming worker takes it from the registry.
         if should_skip_task(&storage, &cancel_registry, &task).await {
             debug!(
                 worker_id,
@@ -1077,8 +1271,20 @@ fn spawn_fairness_park(
             return;
         }
 
+        permit_handoff.insert(&track_id, permit);
+
         // Plan order: remove from park set, then single queue.send.
         drop(park_guard.take());
+
+        // SPEC-091 R-18: clear the durable park marker BEFORE the wake so any
+        // worker that answers queue.send finds the row claimable again.
+        if let Err(e) = storage.clear_fairness_park(&track_id).await {
+            warn!(
+                task_id = %track_id,
+                error = %e,
+                "Failed to clear fairness park marker before re-wake"
+            );
+        }
 
         if let Err(e) = queue.send(task).await {
             error!(
@@ -1150,6 +1356,8 @@ mod tests {
             max_tasks_per_tenant: 0, // disabled for basic test
             max_lifecycle_tasks_per_tenant: 0,
             processing_timeout_secs: 300, // 5 min for tests
+            provider_budget: 0,
+            tenant_lane_weight: 1,
         };
 
         let mut pool = WorkerPool::new(config, queue.clone(), storage.clone(), processor);
@@ -1170,8 +1378,27 @@ mod tests {
             queue.send(task).await.unwrap();
         }
 
-        // Wait for processing
-        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+        // Wait for processing (poll with deadline — recorder warm-up and
+        // machine load make a fixed 200ms sleep flaky).
+        let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(10);
+        loop {
+            let mut all_done = true;
+            for task_id in &task_ids {
+                let task = storage.get_task(task_id).await.unwrap().unwrap();
+                if task.status != TaskStatus::Indexed {
+                    all_done = false;
+                    break;
+                }
+            }
+            if all_done {
+                break;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "tasks did not reach Indexed within 10s"
+            );
+            tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+        }
 
         // Check all tasks completed
         for task_id in task_ids {
@@ -1197,6 +1424,8 @@ mod tests {
             max_tasks_per_tenant: 0,
             max_lifecycle_tasks_per_tenant: 0,
             processing_timeout_secs: 300,
+            provider_budget: 0,
+            tenant_lane_weight: 1,
         };
 
         let mut pool = WorkerPool::new(config, queue, storage, processor);
@@ -1243,6 +1472,8 @@ mod tests {
             max_tasks_per_tenant: 0,
             max_lifecycle_tasks_per_tenant: 0,
             processing_timeout_secs: 300,
+            provider_budget: 0,
+            tenant_lane_weight: 1,
         };
 
         let mut pool = WorkerPool::new(config, queue.clone(), storage.clone(), processor);
@@ -1276,19 +1507,27 @@ mod tests {
         use crate::tenant_limiter::TryAcquireOutcome;
         use crate::types::FairnessClass;
 
+        let local = crate::provider_class::TaskProviderClass::Local(
+            crate::provider_class::LOCAL_LANE_DEFAULT_KEY.to_string(),
+        );
         // Ingest lane=1: only one ingest task per tenant at a time.
         let limiter = crate::tenant_limiter::TenantConcurrencyLimiter::new(1, 2);
         let tenant = test_tenant_id();
         let ws = test_workspace_id();
 
-        let p1 = match limiter.try_acquire(tenant, ws, FairnessClass::Ingest).await {
+        let p1 = match limiter
+            .try_acquire(tenant, ws, FairnessClass::Ingest, &local)
+            .await
+        {
             TryAcquireOutcome::Acquired(p) => p,
             other => panic!("First ingest acquire should succeed, got {other:?}"),
         };
 
         assert!(
             matches!(
-                limiter.try_acquire(tenant, ws, FairnessClass::Ingest).await,
+                limiter
+                    .try_acquire(tenant, ws, FairnessClass::Ingest, &local)
+                    .await,
                 TryAcquireOutcome::AtCapacity
             ),
             "Second ingest acquire should be denied"
@@ -1298,7 +1537,7 @@ mod tests {
         assert!(
             matches!(
                 limiter
-                    .try_acquire(tenant, ws, FairnessClass::Lifecycle)
+                    .try_acquire(tenant, ws, FairnessClass::Lifecycle, &local)
                     .await,
                 TryAcquireOutcome::Acquired(_)
             ),
@@ -1308,14 +1547,16 @@ mod tests {
         let other_tenant = uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000099").unwrap();
         assert!(matches!(
             limiter
-                .try_acquire(other_tenant, ws, FairnessClass::Ingest)
+                .try_acquire(other_tenant, ws, FairnessClass::Ingest, &local)
                 .await,
             TryAcquireOutcome::Acquired(_)
         ));
 
         drop(p1);
         assert!(matches!(
-            limiter.try_acquire(tenant, ws, FairnessClass::Ingest).await,
+            limiter
+                .try_acquire(tenant, ws, FairnessClass::Ingest, &local)
+                .await,
             TryAcquireOutcome::Acquired(_)
         ));
     }
@@ -1432,6 +1673,8 @@ mod tests {
             max_tasks_per_tenant: 0,
             max_lifecycle_tasks_per_tenant: 0,
             processing_timeout_secs: 1, // 1 second timeout for quick test
+            provider_budget: 0,
+            tenant_lane_weight: 1,
         };
 
         let mut pool = WorkerPool::new(config, queue.clone(), storage.clone(), processor);
@@ -1500,6 +1743,8 @@ mod tests {
             max_tasks_per_tenant: 0,
             max_lifecycle_tasks_per_tenant: 0,
             processing_timeout_secs: 300,
+            provider_budget: 0,
+            tenant_lane_weight: 1,
         };
 
         let mut pool = WorkerPool::new(config, queue.clone(), storage.clone(), processor);
@@ -1575,6 +1820,8 @@ mod tests {
             max_tasks_per_tenant: 0,
             max_lifecycle_tasks_per_tenant: 0,
             processing_timeout_secs: 300,
+            provider_budget: 0,
+            tenant_lane_weight: 1,
         };
 
         let mut pool = WorkerPool::new(config, queue.clone(), storage.clone(), processor);
@@ -1639,6 +1886,8 @@ mod tests {
             max_tasks_per_tenant: 0,
             max_lifecycle_tasks_per_tenant: 0,
             processing_timeout_secs: 300,
+            provider_budget: 0,
+            tenant_lane_weight: 1,
         };
 
         let mut pool = WorkerPool::new(config, queue.clone(), storage.clone(), processor);
@@ -1692,6 +1941,8 @@ mod tests {
             max_tasks_per_tenant: 1,
             max_lifecycle_tasks_per_tenant: 1,
             processing_timeout_secs: 300,
+            provider_budget: 0,
+            tenant_lane_weight: 1,
         };
 
         let mut pool = WorkerPool::new(
@@ -1735,7 +1986,37 @@ mod tests {
             queue.approximate_depth()
         );
 
+        // SPEC-091 R-18 livelock regression: with tokio's fair semaphore, a
+        // dropped-then-retried permit relays between queued waiters forever and
+        // NO task ever processes. The permit-handoff must guarantee forward
+        // progress — all 5 tasks drain through the state machine.
         tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+        let mut terminal = 0usize;
+        let mut page = 1u32;
+        loop {
+            let listed = storage
+                .list_tasks(
+                    crate::TaskFilter {
+                        tenant_id: Some(test_tenant_id()),
+                        ..Default::default()
+                    },
+                    crate::Pagination {
+                        page,
+                        page_size: 100,
+                        ..Default::default()
+                    },
+                )
+                .await
+                .unwrap();
+            let count = listed.tasks.len();
+            terminal += listed.tasks.iter().filter(|t| t.is_terminal()).count();
+            if count < 100 {
+                break;
+            }
+            page += 1;
+        }
+        assert_eq!(terminal, 5, "all tasks must reach a terminal status");
+
         pool.shutdown().await;
     }
 
@@ -1794,6 +2075,8 @@ mod tests {
             max_tasks_per_tenant: 2,
             max_lifecycle_tasks_per_tenant: 4,
             processing_timeout_secs: 300,
+            provider_budget: 0,
+            tenant_lane_weight: 1,
         };
         let mut pool = WorkerPool::new(config, queue.clone(), storage.clone(), processor);
         let limiter = pool.tenant_limiter().expect("dual-lane limiter");
@@ -1846,6 +2129,104 @@ mod tests {
             stored.status,
             TaskStatus::Indexed,
             "PDF must complete, got {:?}",
+            stored.status
+        );
+        pool.shutdown().await;
+    }
+
+    /// SPEC-091 QW3 (LAW-Q7): a cancel/delete intent preempts a fairness-parked
+    /// task immediately — it must not wait for a fair-share slot to free, and
+    /// the parked work must never resurrect afterwards.
+    #[tokio::test]
+    async fn contract_spec091_fairness_park_cancel_preempts_promptly() {
+        let queue = Arc::new(ChannelTaskQueue::new(50));
+        let storage = Arc::new(MemoryTaskStorage::new());
+
+        struct SlowProcessor;
+        #[async_trait::async_trait]
+        impl TaskProcessor for SlowProcessor {
+            async fn process(
+                &self,
+                _task: &mut Task,
+                _cancel_token: CancellationToken,
+            ) -> TaskResult<serde_json::Value> {
+                tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                Ok(serde_json::json!({"ok": true}))
+            }
+        }
+
+        // Fair-share ingest lane with a single budget slot (LAW-Q5): t1 holds
+        // it, t2 parks on the DRR lane.
+        let config = WorkerPoolConfig {
+            num_workers: 2,
+            auto_retry: false,
+            initial_retry_delay_ms: 100,
+            max_retry_delay_ms: 5000,
+            backoff_multiplier: 2.0,
+            max_tasks_per_tenant: 1,
+            max_lifecycle_tasks_per_tenant: 1,
+            processing_timeout_secs: 300,
+            provider_budget: 1,
+            tenant_lane_weight: 1,
+        };
+        let mut pool = WorkerPool::new(
+            config,
+            queue.clone(),
+            storage.clone(),
+            Arc::new(SlowProcessor),
+        );
+        let registry = pool.cancellation_registry();
+        let limiter = pool.tenant_limiter().expect("fair-share limiter");
+        pool.start();
+
+        let mk = |i: usize| {
+            Task::new(
+                test_tenant_id(),
+                test_workspace_id(),
+                TaskType::Insert,
+                serde_json::json!({"i": i}),
+            )
+        };
+        let t1 = mk(1);
+        let t2 = mk(2);
+        let track2 = t2.track_id.clone();
+        storage.create_task(&t1).await.unwrap();
+        storage.create_task(&t2).await.unwrap();
+        queue.send(t1).await.unwrap();
+        queue.send(t2).await.unwrap();
+
+        // Wait until t2 is fairness-parked (budget 1 held by t1).
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while limiter.park_waiter_count() < 1 {
+            assert!(std::time::Instant::now() < deadline, "t2 never parked");
+            tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+        }
+
+        // Mirror the cancel entry point (task_cancel::apply_task_row_cancel):
+        // durable cancel intent + state-machine Cancelled on the row.
+        registry.cancel(&track2).await;
+        let mut stored = storage.get_task(&track2).await.unwrap().unwrap();
+        stored.mark_cancelled();
+        storage.update_task(&stored).await.unwrap();
+
+        // The park aborts promptly on the intent (long before t1 frees the
+        // slot at ~500ms of slow processing).
+        let abort_deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while limiter.park_waiter_count() > 0 {
+            assert!(
+                std::time::Instant::now() < abort_deadline,
+                "park did not abort promptly after cancel intent (LAW-Q7)"
+            );
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        }
+
+        // Wait past t1's processing (frees the slot); t2 must stay Cancelled.
+        tokio::time::sleep(tokio::time::Duration::from_millis(900)).await;
+        let stored = storage.get_task(&track2).await.unwrap().unwrap();
+        assert_eq!(
+            stored.status,
+            TaskStatus::Cancelled,
+            "parked cancel must not resurrect, got {:?}",
             stored.status
         );
         pool.shutdown().await;

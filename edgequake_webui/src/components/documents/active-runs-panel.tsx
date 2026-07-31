@@ -4,16 +4,32 @@
  *
  * SPEC-086 dual-run UX: never mix orphan failed shells under "Active runs"
  * beside a live PDF — partition Working/Queued vs Needs attention.
+ *
+ * Cancelled: compact ack with grace auto-dismiss + Dismiss (not Failed/Queued forever).
  */
 
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useReducer } from "react";
 import { IngestionRunCard } from "@/components/documents/ingestion-run-card";
 import { PdfUploadProgress } from "@/components/documents/pdf-upload-progress";
 import { Button } from "@/components/ui/button";
 import { cancelTask } from "@/lib/api/edgequake";
-import type { IngestionRunView } from "@/lib/pipeline/ingestion-run-view";
+import {
+  CANCELLED_RUN_GRACE_MS,
+  cancelledRunKey,
+  cancelledRunRemainingMs,
+  dismissCancelledRun,
+  isCancelledRunVisible,
+  observeCancelledRun,
+  pauseCancelledRunGrace,
+  resumeCancelledRunGrace,
+} from "@/lib/pipeline/cancelled-run-lifecycle";
+import {
+  shouldNestPdfPageMeter,
+  type IngestionRunView,
+} from "@/lib/pipeline/ingestion-run-view";
 
 interface ActiveRunsPanelProps {
   runs: IngestionRunView[];
@@ -30,22 +46,42 @@ export function isOrphanFailedAttention(run: IngestionRunView): boolean {
   );
 }
 
-function isLiveWorkingOrQueued(run: IngestionRunView): boolean {
+function runLifecycleKey(run: IngestionRunView): string {
+  return cancelledRunKey(run.documentId, run.trackId);
+}
+
+/**
+ * Live work + brief cancelled acknowledgement (grace window).
+ * Stopping always stays; cancelled only while lifecycle says visible.
+ */
+export function isLiveWorkingOrQueued(
+  run: IngestionRunView,
+  nowMs: number = Date.now(),
+): boolean {
   if (isOrphanFailedAttention(run)) return false;
-  // LAW-28: keep Stopping… / Cancelled on ActiveRuns until list drops them.
-  if (run.stage === "stopping" || run.stage === "cancelled") return true;
+  if (run.stage === "stopping") return true;
+  if (run.stage === "cancelled" || run.stageStatus === "cancelled") {
+    const key = runLifecycleKey(run);
+    const opts = { cancelledAt: run.updatedAt };
+    observeCancelledRun(key, nowMs, opts);
+    return isCancelledRunVisible(key, nowMs, CANCELLED_RUN_GRACE_MS, opts);
+  }
   return (
     run.stageStatus === "active" ||
     run.stageStatus === "pending" ||
     (Boolean(run.trackId) &&
       run.stage !== "completed" &&
       run.stage !== "failed" &&
-      run.stageStatus !== "failed")
+      run.stageStatus !== "failed" &&
+      run.stageStatus !== "cancelled")
   );
 }
 
 /** Split live work from orphan attention shells (testable SSOT). */
-export function partitionActiveRuns(runs: IngestionRunView[]): {
+export function partitionActiveRuns(
+  runs: IngestionRunView[],
+  nowMs: number = Date.now(),
+): {
   working: IngestionRunView[];
   attention: IngestionRunView[];
 } {
@@ -54,14 +90,32 @@ export function partitionActiveRuns(runs: IngestionRunView[]): {
   for (const run of runs) {
     if (isOrphanFailedAttention(run)) {
       attention.push(run);
-    } else if (isLiveWorkingOrQueued(run)) {
+    } else if (isLiveWorkingOrQueued(run, nowMs)) {
       working.push(run);
     }
   }
   return { working, attention };
 }
 
-function workingSectionTitle(working: IngestionRunView[]): string {
+/** Honest section title — never "Queued run" for cancelled-only. */
+export function workingSectionTitle(working: IngestionRunView[]): string {
+  if (working.length === 0) return "Active run";
+  const allCancelled = working.every(
+    (r) => r.stage === "cancelled" || r.stageStatus === "cancelled",
+  );
+  if (allCancelled) {
+    return working.length > 1 ? "Cancelled" : "Cancelled";
+  }
+  const allStoppingOrCancelled = working.every(
+    (r) =>
+      r.stage === "stopping" ||
+      r.stage === "cancelled" ||
+      r.stageStatus === "cancelled",
+  );
+  const anyStopping = working.some((r) => r.stage === "stopping");
+  if (allStoppingOrCancelled && anyStopping) {
+    return working.length > 1 ? "Stopping…" : "Stopping…";
+  }
   const anyWorking = working.some((r) => r.stageStatus === "active");
   if (anyWorking) {
     return working.length > 1 ? "Active runs" : "Active run";
@@ -72,8 +126,14 @@ function workingSectionTitle(working: IngestionRunView[]): string {
 function renderRunCard(
   run: IngestionRunView,
   onDismissFailed: ((documentId: string) => void) | undefined,
+  onDismissCancelled: ((run: IngestionRunView) => void) | undefined,
   onCancelTrack: ((trackId: string) => void) | undefined,
+  onTick: () => void,
 ) {
+  const isCancelled =
+    run.stage === "cancelled" || run.stageStatus === "cancelled";
+  const key = runLifecycleKey(run);
+
   return (
     <IngestionRunCard
       key={run.documentId}
@@ -83,20 +143,37 @@ function renderRunCard(
         run.trackId &&
         run.stageStatus !== "failed" &&
         run.stage !== "stopping" &&
-        run.stage !== "cancelled" &&
+        !isCancelled &&
         onCancelTrack
           ? () => onCancelTrack(run.trackId!)
           : undefined
       }
       onDismiss={
-        isOrphanFailedAttention(run) && onDismissFailed
-          ? () => onDismissFailed(run.documentId)
+        isCancelled && onDismissCancelled
+          ? () => onDismissCancelled(run)
+          : isOrphanFailedAttention(run) && onDismissFailed
+            ? () => onDismissFailed(run.documentId)
+            : undefined
+      }
+      onGracePause={
+        isCancelled
+          ? () => {
+              pauseCancelledRunGrace(key);
+              onTick();
+            }
+          : undefined
+      }
+      onGraceResume={
+        isCancelled
+          ? () => {
+              resumeCancelledRunGrace(key);
+              onTick();
+            }
           : undefined
       }
       nestedDetail={
-        run.sourceType === "pdf" &&
-        run.stage === "converting" &&
-        run.trackId ? (
+        // LAW-IS2 / F-IS-06: second progress product only when list lacks page counts.
+        shouldNestPdfPageMeter(run) && run.trackId ? (
           <PdfUploadProgress
             trackId={run.trackId}
             filename={run.filename}
@@ -114,20 +191,68 @@ export function ActiveRunsPanel({
   onDismissFailed,
 }: ActiveRunsPanelProps) {
   const queryClient = useQueryClient();
+  const [, tick] = useReducer((n: number) => n + 1, 0);
+
   const onCancelTrack = (trackId: string) => {
+    void import("@/lib/documents/cancel-intent").then(
+      ({ pinCancelIntent, patchDocumentsCancelOptimistic }) => {
+        pinCancelIntent(trackId);
+        patchDocumentsCancelOptimistic(queryClient, trackId);
+      },
+    );
     void cancelTask(trackId)
       .catch(() => {
         /* terminal cancelled may still be on KV */
       })
       .finally(() => {
-        // SPEC-086 ops: surface ui_phase=stopping / cancelled without waiting
-        // for the next slow list poll.
         void queryClient.invalidateQueries({ queryKey: ["documents"] });
         void queryClient.invalidateQueries({ queryKey: ["tasks"] });
         void queryClient.invalidateQueries({ queryKey: ["pipeline-status"] });
       });
   };
-  const { working, attention } = partitionActiveRuns(runs);
+
+  const onDismissCancelled = (run: IngestionRunView) => {
+    dismissCancelledRun(runLifecycleKey(run));
+    tick();
+  };
+
+  const nowMs = Date.now();
+  const { working, attention } = partitionActiveRuns(runs, nowMs);
+
+  // Auto-dismiss cancelled acks when grace expires (pause-aware).
+  useEffect(() => {
+    const cancelled = working.filter(
+      (r) => r.stage === "cancelled" || r.stageStatus === "cancelled",
+    );
+    if (cancelled.length === 0) return;
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const schedule = () => {
+      const now = Date.now();
+      let soonest = Number.POSITIVE_INFINITY;
+      for (const run of cancelled) {
+        const rem = cancelledRunRemainingMs(
+          runLifecycleKey(run),
+          now,
+          CANCELLED_RUN_GRACE_MS,
+        );
+        if (rem > 0 && rem < soonest) soonest = rem;
+        if (rem === 0) {
+          tick();
+          return;
+        }
+      }
+      if (!Number.isFinite(soonest)) return;
+      timer = setTimeout(() => {
+        tick();
+      }, soonest + 25);
+    };
+    schedule();
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [working, runs]);
+
   if (working.length === 0 && attention.length === 0) return null;
 
   const dismissAll = () => {
@@ -156,7 +281,13 @@ export function ActiveRunsPanel({
             </div>
           </div>
           {working.map((run) =>
-            renderRunCard(run, onDismissFailed, onCancelTrack),
+            renderRunCard(
+              run,
+              onDismissFailed,
+              onDismissCancelled,
+              onCancelTrack,
+              tick,
+            ),
           )}
         </section>
       )}
@@ -195,7 +326,13 @@ export function ActiveRunsPanel({
             </div>
           </div>
           {attention.map((run) =>
-            renderRunCard(run, onDismissFailed, onCancelTrack),
+            renderRunCard(
+              run,
+              onDismissFailed,
+              onDismissCancelled,
+              onCancelTrack,
+              tick,
+            ),
           )}
         </section>
       )}

@@ -199,9 +199,84 @@ impl AppState {
         }
 
         // SPEC-006 / SPEC-090: migrations + reconcile on **admin** pool only.
-        // Serving boot is verify-only unless EDGEQUAKE_ALLOW_BOOT_MIGRATE=1.
+        // SPEC-091 LD-15: serving boot is fail-closed verify-only — schema apply
+        // is `edgequake migrate` only; pending/newer schema ⇒ exit-78 refusal.
         let migration_bootstrap =
             super::migration_bootstrap::bootstrap_for_serving(&admin_pool).await?;
+
+        // SPEC-091: automatic migration engine (07-migration-engine.md). Verify
+        // mode registers jobs + reports estimates; EDGEQUAKE_MIGRATION_MODE=
+        // automatic runs the leased, adaptive W1 backfill on the admin pool.
+        {
+            let prefix = pg_config.table_prefix();
+            let kv_table = edgequake_storage::adapters::postgres::qualified_kv_table_name(&prefix);
+            let vectors_table = format!("public.eq_{}_vectors", prefix);
+            edgequake_storage::migration_engine::spawn_for_serving(
+                &admin_pool,
+                kv_table,
+                vectors_table,
+            );
+        }
+
+        // SPEC-091 QW1 (LAW-Q3, LD-11): cluster-wide provider budget. Seed the
+        // ledger from the resolved budget (one number, one resolver), install
+        // it on the local-inference gate, and spawn the stale-slot reaper
+        // (EC-22 backstop). budget=0 ⇒ cloud-only: no DB round trips.
+        {
+            use edgequake_tasks::ProviderBudget as _;
+            let provider_budget = edgequake_tasks::provider_budget_from_env();
+            if provider_budget > 0 {
+                let budget_store = std::sync::Arc::new(
+                    edgequake_tasks::PostgresProviderBudget::new(admin_pool.clone()),
+                );
+                for provider_key in ["ollama", "lmstudio"] {
+                    if let Err(e) = budget_store
+                        .seed_budget(provider_key, provider_budget, "env")
+                        .await
+                    {
+                        tracing::warn!(
+                            provider = provider_key,
+                            error = %e,
+                            "SPEC-091 QW1: provider budget seed failed (gate falls back to process semaphore)"
+                        );
+                    }
+                }
+                let shared: edgequake_tasks::SharedProviderBudget = budget_store.clone();
+                crate::local_inference_gate::install_provider_budget(shared);
+                tracing::info!(
+                    budget = provider_budget,
+                    "SPEC-091 QW1: cluster-wide provider budget installed"
+                );
+                tokio::spawn(async move {
+                    loop {
+                        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                        match budget_store.reap_expired().await {
+                            Ok(n) if n > 0 => {
+                                tracing::warn!(
+                                    reaped = n,
+                                    "SPEC-091 QW1: reaped expired provider slots (EC-22)"
+                                );
+                            }
+                            Ok(_) => {}
+                            Err(e) => {
+                                tracing::warn!(error = %e, "provider slot reaper failed")
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        // SPEC-091 Wave B2: typed quarantine sink — failed compensation cleanups
+        // land in public.compensation_quarantine (drained below) instead of KV.
+        edgequake_storage::set_quarantine_sink(std::sync::Arc::new(
+            edgequake_storage::PgQuarantineSink::new(admin_pool.clone()),
+        ));
+
+        // SPEC-091 Wave B3+B4/B5: one pool serves every relational KV-family
+        // cutover (wsdoc membership, checkpoints, artifacts) via the shared
+        // sidecar registry.
+        crate::services::workspace_document_index::register_membership_pool(admin_pool.clone());
 
         // SPEC-090 F-090-32: HNSW shape manifest drift (log + metric).
         if let Err(e) = edgequake_storage::check_hnsw_index_manifest(&admin_pool).await {
@@ -317,6 +392,43 @@ impl AppState {
         // Initialize storage backends to establish connections
         kv_storage.initialize().await?;
         vector_storage.initialize().await?;
+
+        // SPEC-091 W3/IW2 (fail-fast): when the typed backend is authoritative,
+        // `chunk_embeddings` (108) and fleet tables (130) must exist — refuse
+        // to boot rather than degrade to 42P01 / empty ANN on first read/write.
+        if edgequake_storage::vector_backend_reads_typed(
+            edgequake_storage::vector_backend_from_env(),
+        ) {
+            let required: &[&str] = &[
+                "chunk_embeddings",
+                "entity_embeddings",
+                "relationship_embeddings",
+                "report_embeddings",
+            ];
+            let mut missing = Vec::new();
+            for table in required {
+                let exists: bool = sqlx::query_scalar(
+                    "SELECT EXISTS (SELECT 1 FROM information_schema.tables \
+                     WHERE table_schema = 'public' AND table_name = $1)",
+                )
+                .bind(table)
+                .fetch_one(&admin_pool)
+                .await
+                .unwrap_or(false);
+                if !exists {
+                    missing.push(*table);
+                }
+            }
+            if !missing.is_empty() {
+                return Err(format!(
+                    "EDGEQUAKE_VECTOR_BACKEND=typed_embeddings/chunk_embeddings but \
+                     missing typed vector table(s): {} — run `edgequake migrate` \
+                     (migrations 108 + 130) first.",
+                    missing.join(", ")
+                )
+                .into());
+            }
+        }
         // SPEC-090 F-090-19: fail-closed on graph init unless EDGEQUAKE_ALLOW_NO_GRAPH=1.
         if let Err(e) = graph_storage.initialize().await {
             let allow = std::env::var("EDGEQUAKE_ALLOW_NO_GRAPH")
@@ -343,6 +455,32 @@ impl AppState {
         }
 
         tracing::info!("PostgreSQL storage backends initialized successfully");
+
+        // SPEC-091 IW3 (LD-14): refuse stale rollback flags against dropped stores.
+        // SPEC-091 Doc 23: seed KV relation Absent cache from the same census (LAW-KVH2).
+        {
+            let posture = edgequake_storage::detect_cutover_posture(&admin_pool)
+                .await
+                .map_err(|e| format!("SPEC-091 cutover posture probe failed: {e}"))?;
+            edgequake_storage::validate_cutover_flags(&posture)?;
+            kv_storage.seed_relation_from_dropped(posture.kv_store_dropped);
+            kv_query.seed_relation_from_dropped(posture.kv_store_dropped);
+        }
+
+        // SPEC-091 IW3 (GAP-091-18): compensation-quarantine drain with real applier.
+        crate::services::compensation_drain_applier::spawn_compensation_drain_applier(
+            admin_pool.clone(),
+            Arc::clone(&kv_storage) as Arc<dyn edgequake_storage::traits::KVStorage>,
+            Arc::clone(&vector_storage) as Arc<dyn edgequake_storage::traits::VectorStorage>,
+            Arc::clone(&graph_storage) as Arc<dyn edgequake_storage::traits::GraphStorage>,
+        );
+
+        // SPEC-091 RM0: outbox drain (default on) — mark processed / TTL; compensate dispatch.
+        crate::services::outbox_drain_applier::spawn_outbox_drain_applier(
+            admin_pool.clone(),
+            Arc::clone(&vector_storage) as Arc<dyn edgequake_storage::traits::VectorStorage>,
+            Arc::clone(&graph_storage) as Arc<dyn edgequake_storage::traits::GraphStorage>,
+        );
 
         // Log provider and dimension configuration for debugging
         tracing::info!(

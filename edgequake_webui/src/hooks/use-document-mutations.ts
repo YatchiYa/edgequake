@@ -424,6 +424,13 @@ export function useDocumentMutations(
     mutationFn: async (trackId: string) => {
       await cancelTask(trackId);
     },
+    onMutate: async (trackId: string) => {
+      const { pinCancelIntent, patchDocumentsCancelOptimistic } = await import(
+        "@/lib/documents/cancel-intent"
+      );
+      pinCancelIntent(trackId);
+      patchDocumentsCancelOptimistic(queryClient, trackId);
+    },
     onSuccess: () => {
       toast.success(
         t("documents.cancel.success", "Document processing cancelled"),

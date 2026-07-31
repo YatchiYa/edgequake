@@ -579,6 +579,12 @@ async fn process_pdf_upload_parts(
                     },
                 },
                 duplicate_of: None,
+                queue_position: enqueue.queue.as_ref().map(|q| q.position),
+                eta_seconds: enqueue.queue.as_ref().map(|q| q.eta_seconds),
+                eta_basis: enqueue
+                    .queue
+                    .as_ref()
+                    .map(|q| q.basis.as_str().to_string()),
             });
         }
 
@@ -602,6 +608,9 @@ async fn process_pdf_upload_parts(
                 vision_model: existing.vision_model,
             },
             duplicate_of: Some(existing_pdf_id),
+            queue_position: None,
+            eta_seconds: None,
+            eta_basis: None,
         });
     }
 
@@ -660,6 +669,9 @@ async fn process_pdf_upload_parts(
                             vision_model: existing.vision_model,
                         },
                         duplicate_of: Some(existing_pdf_id),
+                        queue_position: None,
+                        eta_seconds: None,
+                        eta_basis: None,
                     });
                 }
             }
@@ -758,5 +770,8 @@ async fn process_pdf_upload_parts(
             vision_model,
         },
         duplicate_of: None,
+        queue_position: enqueue.queue.as_ref().map(|q| q.position),
+        eta_seconds: enqueue.queue.as_ref().map(|q| q.eta_seconds),
+        eta_basis: enqueue.queue.as_ref().map(|q| q.basis.as_str().to_string()),
     })
 }

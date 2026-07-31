@@ -7,6 +7,7 @@ use super::super::row_count_stats::{self, RowCountStatsConfig};
 use super::super::schema;
 use super::PgVectorStorage;
 use crate::error::{Result, StorageError};
+use crate::vector_backend::vector_backend_reads_typed;
 
 /// SPEC-070: sanitize `maintenance_work_mem` / lock_timeout env values (digits + unit only).
 fn sanitize_pg_setting(raw: &str, fallback: &str) -> String {
@@ -190,7 +191,81 @@ impl PgVectorStorage {
         Ok(estimate.max(0))
     }
     /// Create the vectors table and indexes.
+    /// SPEC-091 IW2 (LD-03): whether runtime DDL for the entire legacy vector
+    /// fleet is retired (migration 131 applied + typed read backend).
+    pub(crate) async fn legacy_vector_ddl_retired(&self) -> bool {
+        if !vector_backend_reads_typed(crate::vector_backend_from_env()) {
+            return false;
+        }
+        let Ok(pool) = self.pool.get().await else {
+            return false;
+        };
+        sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM _sqlx_migrations WHERE version = 131 AND success)",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap_or(false)
+    }
+
+    /// SPEC-091 W4 (LD-03): whether runtime DDL may (re)create this legacy
+    /// `eq_*_vectors` table. Once the chunk fleet is retired (read backend
+    /// authoritative on typed `chunk_embeddings` AND migration 126 applied),
+    /// a chunk-dedicated legacy table must NOT be recreated. Migration 131
+    /// retires runtime DDL for the entire fleet.
+    ///
+    /// Fail-safe: any probe error / missing table ⇒ **allow** creation
+    /// (pre-retirement behavior). Only retire when the table **exists** and
+    /// has zero non-chunk rows (or fleet DDL is already retired via 131).
+    pub(crate) async fn legacy_chunk_ddl_retired(&self) -> bool {
+        if self.legacy_vector_ddl_retired().await {
+            return true;
+        }
+        // Only the typed backend retires chunk runtime DDL.
+        if !vector_backend_reads_typed(crate::vector_backend_from_env()) {
+            return false;
+        }
+        let Ok(pool) = self.pool.get().await else {
+            return false;
+        };
+        // Migration 126 applied? (its version row in sqlx's ledger)
+        let applied_126: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM _sqlx_migrations WHERE version = 126 AND success)",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap_or(false);
+        if !applied_126 {
+            return false;
+        }
+        // Retire DDL only for chunk-dedicated tables that still exist.
+        // Missing table (42P01 / probe fail) ⇒ not retired — allow CREATE on
+        // legacy_tables rollback / pre-write-stop paths (never treat never-
+        // created workspace tables as dropped).
+        let non_chunk: std::result::Result<i64, sqlx::Error> = sqlx::query_scalar(&format!(
+            "SELECT COUNT(*) FROM {} WHERE id NOT LIKE '%-chunk-%'",
+            self.table_name
+        ))
+        .fetch_one(&pool)
+        .await;
+        match non_chunk {
+            Ok(0) => true,
+            Ok(_) => false,
+            Err(_) => false,
+        }
+    }
+
     pub(crate) async fn create_table(&self) -> Result<()> {
+        // SPEC-091 RM1 (RM-AC-04): typed default write-stops legacy CREATE even
+        // before migration 131 is recorded — never recreate eq_*_vectors under
+        // typed authority.
+        if crate::legacy_vector_writes_stopped() || self.legacy_vector_ddl_retired().await {
+            tracing::debug!(
+                table = %self.table_name,
+                "SPEC-091 RM1: typed/legacy-retired — skipping runtime create_table (LD-03)"
+            );
+            return Ok(());
+        }
         let pool = self.pool.get().await?;
 
         sqlx::query("CREATE EXTENSION IF NOT EXISTS vector")
@@ -579,6 +654,10 @@ impl PgVectorStorage {
 
     /// Record workspace as mutual-exclusive with the global HNSW (F-090-25).
     async fn register_hot_ann_workspace(&self, workspace_id: &str) -> Result<()> {
+        // SPEC-091 RM1: never runtime-CREATE hot ANN registry under typed authority.
+        if crate::legacy_vector_writes_stopped() || self.legacy_vector_ddl_retired().await {
+            return Ok(());
+        }
         let pool = self.pool.get().await?;
         let _ = sqlx::query(
             r#"

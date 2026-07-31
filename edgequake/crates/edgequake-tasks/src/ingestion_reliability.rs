@@ -116,6 +116,12 @@ pub fn is_provider_misconfig_message(error_msg: &str) -> bool {
         || lower.contains("incorrect api key")
         || lower.contains("authentication error")
         || (lower.contains("unauthorized") && lower.contains("api key"))
+        // pgvector CheckExpectedDim / Rust typed-embedding write gate (SPEC-091)
+        || (lower.contains("expected")
+            && lower.contains("dimensions")
+            && lower.contains("not"))
+        || lower.contains("embedding dimension mismatch")
+        || lower.contains("mixed dimensions in one batch")
 }
 
 /// True when an error string represents user/system cancel (SPEC-057).
@@ -213,6 +219,10 @@ pub fn classify_ingestion_failure(error_msg: &str) -> IngestionFailureClass {
     if lower.contains("knowledge-graph merge error")
         || lower.contains("merge error(s) during persist")
         || (lower.contains("graph error") && lower.contains("merge"))
+        || lower.contains("typed fleet mirror")
+        || lower.contains("relational entity/rel fk")
+        || lower.contains("fk miss")
+        || lower.contains("documents_valid_status")
     {
         return IngestionFailureClass::GraphMerge;
     }
@@ -332,6 +342,54 @@ mod tests {
             IngestionFailureClass::ProviderMisconfigured
         );
         assert!(is_permanent_ingestion_failure(msg));
+    }
+
+    #[test]
+    fn pgvector_dimension_mismatch_is_permanent_misconfig() {
+        // Exact pgvector CheckExpectedDim wording surfaced via KG persist.
+        let msg = "Knowledge graph persist failed: Storage error: \
+                   expected 1536 dimensions, not 1024";
+        assert_eq!(
+            classify_ingestion_failure(msg),
+            IngestionFailureClass::ProviderMisconfigured
+        );
+        assert!(is_permanent_ingestion_failure(msg));
+        assert_ne!(
+            classify_ingestion_failure(msg),
+            IngestionFailureClass::ProviderUnavailable
+        );
+    }
+
+    #[test]
+    fn typed_embedding_gate_mismatch_is_permanent_misconfig() {
+        let msg = "embedding dimension mismatch: expected 1024, not 768 (row 0)";
+        assert_eq!(
+            classify_ingestion_failure(msg),
+            IngestionFailureClass::ProviderMisconfigured
+        );
+    }
+
+    #[test]
+    fn typed_fleet_mirror_fk_miss_is_graph_merge() {
+        let msg = "Knowledge graph persist failed: Graph error: 1 knowledge-graph merge error(s) \
+                   during persist: Storage error: Database error: SPEC-091: typed fleet mirror \
+                   resolved 0/25 rows (relational entity/rel FK miss or name mismatch)";
+        assert_eq!(
+            classify_ingestion_failure(msg),
+            IngestionFailureClass::GraphMerge
+        );
+        assert!(is_permanent_ingestion_failure(msg));
+    }
+
+    #[test]
+    fn documents_valid_status_violation_is_graph_merge() {
+        let msg = "Storage error: Database error: typed document shell batch write failed for \
+                   StagingMetadata: new row for relation \"documents\" violates check constraint \
+                   \"documents_valid_status\"";
+        assert_eq!(
+            classify_ingestion_failure(msg),
+            IngestionFailureClass::GraphMerge
+        );
     }
 
     #[test]

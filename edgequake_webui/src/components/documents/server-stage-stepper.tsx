@@ -8,6 +8,7 @@
 "use client";
 
 import { AdmissionPhaseRow } from "@/components/documents/admission-phase-row";
+import { PhaseStrip } from "@/components/documents/phase-strip";
 import { cn } from "@/lib/utils";
 import type { IngestionRunView } from "@/lib/pipeline/ingestion-run-view";
 import {
@@ -20,6 +21,11 @@ interface ServerStageStepperProps {
   run: IngestionRunView;
   /** When true, hide skipped converting for non-PDF (still shown muted by default). */
   hideSkipped?: boolean;
+  /**
+   * `phases` (default): SPEC-091 IS3 4-phase strip for ActiveRuns.
+   * `wire`: full UnifiedStage chips (Pipeline / Details).
+   */
+  variant?: "phases" | "wire";
   className?: string;
 }
 
@@ -56,6 +62,7 @@ function dotClasses(status: StageStepStatus): string {
 export function ServerStageStepper({
   run,
   hideSkipped = false,
+  variant = "phases",
   className,
 }: ServerStageStepperProps) {
   const timeline = buildStageTimeline(run);
@@ -75,6 +82,7 @@ export function ServerStageStepper({
       data-stage={run.stage}
       data-admission={admissionPhase ?? "running"}
       data-overall-progress={timeline.overallProgress01.toFixed(3)}
+      data-variant={variant}
     >
       {admissionPhase ? (
         <AdmissionPhaseRow
@@ -84,6 +92,9 @@ export function ServerStageStepper({
         />
       ) : null}
 
+      {variant === "phases" ? (
+        <PhaseStrip run={run} />
+      ) : (
       <div className="flex flex-wrap items-center gap-1.5 text-xs">
         {steps.map((step) => (
           <span
@@ -110,6 +121,7 @@ export function ServerStageStepper({
           </span>
         ))}
       </div>
+      )}
 
       {active && detailLine ? (
         <div

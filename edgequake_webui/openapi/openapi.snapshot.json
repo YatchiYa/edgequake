@@ -326,6 +326,217 @@
         ]
       }
     },
+    "/api/v1/admin/migration-jobs": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "List automatic-migration jobs with progressive completion information.",
+        "description": "Surfaces the same ledger as `edgequake.migration_progress` and the CLI\n(`edgequake migrate status`). Boot never blocks on these jobs.",
+        "operationId": "list_migration_jobs",
+        "responses": {
+          "200": {
+            "description": "Migration job progress",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationJobsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Admin required"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/migration-jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Job detail: ledger row + recent batches + derived rate/ETA (P1).",
+        "description": "GET /api/v1/admin/migration-jobs/{job_id}",
+        "operationId": "get_migration_job",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "description": "Migration job UUID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Migration job detail (ledger row + recent batches + rate/ETA)"
+          },
+          "404": {
+            "description": "Job not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/migration-jobs/{job_id}/cancel": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Cancel a migration job (terminal; committed batches are not rolled back).",
+        "operationId": "cancel_migration_job",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "description": "Migration job UUID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job cancelled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationJobControlResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Job not found"
+          },
+          "409": {
+            "description": "Illegal transition from current state"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/migration-jobs/{job_id}/pause": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Pause a migration job at the next batch boundary.",
+        "operationId": "pause_migration_job",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "description": "Migration job UUID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job paused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationJobControlResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Job not found"
+          },
+          "409": {
+            "description": "Illegal transition from current state"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/migration-jobs/{job_id}/resume": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Resume a paused migration job (continues from the committed cursor).",
+        "operationId": "resume_migration_job",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "description": "Migration job UUID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job resumed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationJobControlResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Job not found"
+          },
+          "409": {
+            "description": "Illegal transition from current state"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/storage/inspect": {
       "get": {
         "tags": [
@@ -2887,8 +3098,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "recover_stuck",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "recover_stuck"
       }
     },
     "/api/v1/documents/reprocess": {
@@ -2945,8 +3156,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "reprocess_failed",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "reprocess_failed"
       }
     },
     "/api/v1/documents/scan": {
@@ -3924,8 +4135,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "reanalyze_multimodal"
+        "x-edgequake-v2-job-type": "reanalyze_multimodal",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/documents/{document_id}/retry-chunks": {
@@ -8503,8 +8714,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "rebuild_embeddings",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "rebuild_embeddings"
       }
     },
     "/api/v1/workspaces/{workspace_id}/rebuild-knowledge-graph": {
@@ -8577,8 +8788,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "rebuild_knowledge_graph",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "rebuild_knowledge_graph"
       }
     },
     "/api/v1/workspaces/{workspace_id}/reprocess-documents": {
@@ -15375,6 +15586,22 @@
             "description": "Number of entities extracted.",
             "minimum": 0
           },
+          "eta_basis": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ETA basis: `measured` or `no_history` (honest uncertainty, R-15)."
+          },
+          "eta_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Estimated seconds until claim (measured drain; clamped when unknown).",
+            "minimum": 0
+          },
           "filename": {
             "type": "string",
             "description": "Original filename."
@@ -15382,6 +15609,15 @@
           "is_duplicate": {
             "type": "boolean",
             "description": "Whether this was a duplicate (already processed)."
+          },
+          "queue_position": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Queue projection (SPEC-091 QW2 / LAW-Q4): 1-based FCFS pending position\nat admission time. Only set for async uploads.",
+            "minimum": 0
           },
           "relationship_count": {
             "type": "integer",
@@ -15417,8 +15653,11 @@
           "content_hash": {},
           "document_id": {},
           "entity_count": {},
+          "eta_basis": {},
+          "eta_seconds": {},
           "filename": {},
           "is_duplicate": {},
+          "queue_position": {},
           "relationship_count": {},
           "size": {},
           "status": {},
@@ -18369,6 +18608,119 @@
           "source_ids_indexes_ready": {}
         }
       },
+      "MigrationJobControlResponse": {
+        "type": "object",
+        "description": "Response for the control verbs (pause/resume/cancel).",
+        "required": [
+          "job_id",
+          "state",
+          "action",
+          "note"
+        ],
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "job_id": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "action": {},
+          "job_id": {},
+          "note": {},
+          "state": {}
+        }
+      },
+      "MigrationJobItem": {
+        "type": "object",
+        "required": [
+          "job_id",
+          "step_id",
+          "state",
+          "processed_count"
+        ],
+        "properties": {
+          "completion_pct": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "estimated_total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "job_id": {
+            "type": "string"
+          },
+          "processed_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "state": {
+            "type": "string"
+          },
+          "step_id": {
+            "type": "string"
+          },
+          "throttle_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "example": {
+          "completion_pct": {},
+          "estimated_total": {},
+          "job_id": {},
+          "processed_count": {},
+          "state": {},
+          "step_id": {},
+          "throttle_reason": {}
+        }
+      },
+      "MigrationJobsResponse": {
+        "type": "object",
+        "description": "Response for GET /admin/migration-jobs (progressive migration information).",
+        "required": [
+          "mode",
+          "jobs",
+          "note"
+        ],
+        "properties": {
+          "jobs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MigrationJobItem"
+            },
+            "description": "Jobs from `edgequake.migration_progress` (empty when table missing or mode=off)."
+          },
+          "mode": {
+            "type": "string",
+            "description": "Current `EDGEQUAKE_MIGRATION_MODE` (`off` | `verify` | `automatic`)."
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "jobs": [],
+          "mode": {},
+          "note": {}
+        }
+      },
       "MixWeightRequest": {
         "type": "object",
         "description": "Per-request Mix mode weight overrides (SPEC-022 P-H6).",
@@ -20504,6 +20856,22 @@
             "description": "Estimated processing time in seconds.",
             "minimum": 0
           },
+          "eta_basis": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ETA basis: `measured` or `no_history` (honest uncertainty, R-15)."
+          },
+          "eta_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Estimated seconds until claim (measured drain; clamped when unknown).",
+            "minimum": 0
+          },
           "ingestion_estimate": {
             "oneOf": [
               {
@@ -20527,6 +20895,15 @@
             "type": "string",
             "description": "Generated PDF ID."
           },
+          "queue_position": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Queue projection (SPEC-091 QW2 / LAW-Q4): 1-based FCFS pending position\nat admission. Only set on a fresh enqueue.",
+            "minimum": 0
+          },
           "status": {
             "type": "string",
             "description": "Processing status."
@@ -20547,10 +20924,13 @@
           "document_id": {},
           "duplicate_of": {},
           "estimated_time_seconds": {},
+          "eta_basis": {},
+          "eta_seconds": {},
           "ingestion_estimate": {},
           "message": {},
           "metadata": {},
           "pdf_id": {},
+          "queue_position": {},
           "status": {},
           "task_id": {},
           "track_id": {}
@@ -23863,9 +24243,24 @@
             "format": "int64",
             "description": "Latest migration version applied (e.g., 15 for 015_add_fulltext_search.sql)."
           },
+          "migration_required": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "SPEC-091 Doc 17 (LAW-B3): true when the schema disagrees with this\nbinary (pending or database-newer) — `edgequake migrate` is required."
+          },
           "migrations_applied": {
             "type": "integer",
             "description": "Number of successful migrations applied.",
+            "minimum": 0
+          },
+          "pending_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "SPEC-091 Doc 17 (LAW-B3): embedded migrations not yet applied. Serves\npost-boot drift detection (e.g. a replica up while the fleet migrated).",
             "minimum": 0
           },
           "source_ids_indexes": {
@@ -23886,7 +24281,9 @@
           "halfvec_conversion_applied": {},
           "last_applied_at": {},
           "latest_version": {},
+          "migration_required": {},
           "migrations_applied": {},
+          "pending_count": {},
           "source_ids_indexes": {}
         }
       },
@@ -25022,6 +25419,22 @@
             ],
             "description": "Simple error message (backward compatibility)."
           },
+          "eta_basis": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ETA basis: `measured` or `no_history` (honest uncertainty, R-15)."
+          },
+          "eta_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Estimated seconds until claim (measured drain; clamped when unknown).",
+            "minimum": 0
+          },
           "max_retries": {
             "type": "integer",
             "format": "int32",
@@ -25032,6 +25445,15 @@
           },
           "progress": {
             "description": "Task progress data."
+          },
+          "queue_position": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Queue projection (SPEC-091 QW2 / LAW-Q4): 1-based FCFS pending position.\nOnly populated for `pending` tasks on single-task reads.",
+            "minimum": 0
           },
           "result": {
             "description": "Task result data."
@@ -25078,9 +25500,12 @@
           "created_at": {},
           "error": {},
           "error_message": {},
+          "eta_basis": {},
+          "eta_seconds": {},
           "max_retries": {},
           "metadata": {},
           "progress": {},
+          "queue_position": {},
           "result": {},
           "retry_count": {},
           "started_at": {},
@@ -26183,6 +26608,31 @@
               "null"
             ],
             "description": "Number of entities extracted (only set for sync processing).",
+            "minimum": 0
+          },
+          "eta_basis": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ETA basis: `measured` or `no_history` (honest uncertainty, R-15)."
+          },
+          "eta_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Estimated seconds until claim (measured drain; clamped when unknown).",
+            "minimum": 0
+          },
+          "queue_position": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Queue projection (SPEC-091 QW2 / LAW-Q4): 1-based position in the FCFS\npending queue at admission time. Only set for async uploads.",
             "minimum": 0
           },
           "relationship_count": {

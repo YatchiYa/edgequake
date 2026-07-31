@@ -206,6 +206,10 @@ export function expectedUnitForStage(
   }
 }
 
+/**
+ * Converting (PDF→Markdown) applies only to PDFs.
+ * markdown / text / image / unknown skip the stage entirely (SPEC-086 + LAW-IS per-type).
+ */
 function shouldSkipConverting(
   sourceType: IngestionRunView["sourceType"],
 ): boolean {
@@ -306,9 +310,33 @@ export function buildStageTimeline(run: IngestionRunView): StageTimeline {
   const steps = applicableSteps(run);
   const current = run.stage;
   const currentRank = rank(current);
-  const isFailed = run.stageStatus === "failed" || current === "failed";
+  const isCancelled =
+    run.stage === "cancelled" || run.stageStatus === "cancelled";
+  const isFailed =
+    !isCancelled &&
+    (run.stageStatus === "failed" || current === "failed");
   const isComplete =
     run.stageStatus === "complete" || current === "completed";
+
+  // Compact terminal cancel: no Failed chip, no green completed priors.
+  if (isCancelled) {
+    const timelineSteps: StageTimelineStep[] = steps.map((step) => ({
+      id: step,
+      label: stageDisplayName(step, run.sourceType),
+      status: "skipped" as const,
+    }));
+    return {
+      steps: timelineSteps,
+      activeStepId: null,
+      admissionQueued: false,
+      admissionCleaning: false,
+      admissionPhase: null,
+      overallProgress01: 0,
+      overallIsEstimate: false,
+      stageProgress01: undefined,
+      stageCountsLabel: undefined,
+    };
+  }
 
   const detail = !isAdmission ? formatDetail(run) : undefined;
 

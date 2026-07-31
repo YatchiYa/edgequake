@@ -95,22 +95,25 @@ async fn issue316_second_workspace_not_starved_by_first_backlog_memory() {
 
 #[tokio::test]
 async fn issue316_tenant_cap_still_holds_via_workspace_lane() {
-    use edgequake_tasks::{FairnessClass, TenantConcurrencyLimiter, TryAcquireOutcome};
+    use edgequake_tasks::{
+        FairnessClass, TaskProviderClass, TenantConcurrencyLimiter, TryAcquireOutcome,
+    };
 
+    let local = TaskProviderClass::Local("local".to_string());
     let limiter = TenantConcurrencyLimiter::new(2, 2);
     let tenant = Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap();
     let ws_a = Uuid::parse_str("00000000-0000-0000-0000-0000000000aa").unwrap();
     let ws_b = Uuid::parse_str("00000000-0000-0000-0000-0000000000bb").unwrap();
 
     let p_a = match limiter
-        .try_acquire(tenant, ws_a, FairnessClass::Ingest)
+        .try_acquire(tenant, ws_a, FairnessClass::Ingest, &local)
         .await
     {
         TryAcquireOutcome::Acquired(p) => p,
         other => panic!("expected Acquired for ws_a, got {other:?}"),
     };
     let p_b = match limiter
-        .try_acquire(tenant, ws_b, FairnessClass::Ingest)
+        .try_acquire(tenant, ws_b, FairnessClass::Ingest, &local)
         .await
     {
         TryAcquireOutcome::Acquired(p) => p,
@@ -123,7 +126,8 @@ async fn issue316_tenant_cap_still_holds_via_workspace_lane() {
             .try_acquire(
                 tenant,
                 Uuid::parse_str("00000000-0000-0000-0000-0000000000cc").unwrap(),
-                FairnessClass::Ingest
+                FairnessClass::Ingest,
+                &local
             )
             .await,
         TryAcquireOutcome::AtCapacity
@@ -132,7 +136,7 @@ async fn issue316_tenant_cap_still_holds_via_workspace_lane() {
     // Same workspace cannot take a second ingest slot (workspace lane = 1).
     assert!(matches!(
         limiter
-            .try_acquire(tenant, ws_a, FairnessClass::Ingest)
+            .try_acquire(tenant, ws_a, FairnessClass::Ingest, &local)
             .await,
         TryAcquireOutcome::AtCapacity
     ));

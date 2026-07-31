@@ -118,9 +118,8 @@ pub async fn recover_orphaned_tasks(
                 if let Some(meta) = meta_by_doc.get(&doc_id) {
                     let doc_status = meta.get("status").and_then(|v| v.as_str()).unwrap_or("");
                     if is_terminal_success_status(doc_status) {
-                        task.status = TaskStatus::Indexed;
-                        task.clear_lease();
-                        task.error_message = Some(format!(
+                        // SPEC-091 QW0: Complete event via the state machine SSOT.
+                        task.close_orphaned_indexed(format!(
                             "Auto-closed after restart: document already terminal ({doc_status}); \
                              task was still Processing (age {age_mins} minutes)."
                         ));
@@ -153,10 +152,8 @@ pub async fn recover_orphaned_tasks(
             }
 
             if auto_resume {
-                task.status = TaskStatus::Pending;
-                task.clear_lease();
-                task.started_at = None;
-                task.error_message = Some(format!(
+                // SPEC-091 QW0: LeaseLost event via the state machine SSOT.
+                task.recover_to_pending(format!(
                     "Auto-recovered after backend restart (was processing for {age_mins} minutes). \
                      Will resume from checkpoint if available."
                 ));
@@ -180,9 +177,9 @@ pub async fn recover_orphaned_tasks(
                     "Interrupted by server restart (was Processing for {age_mins} minutes). \
                      Interrupted — use Reprocess to resume from checkpoint if available."
                 );
-                task.status = TaskStatus::Failed;
-                task.clear_lease();
-                task.error_message = Some(error_msg.clone());
+                // SPEC-091 QW0: Fail event via the state machine SSOT (no retry
+                // bookkeeping — the attempt was interrupted, not a processing error).
+                task.fail_orphaned(error_msg.clone());
                 task.updated_at = now;
 
                 match task_storage.update_task(&task).await {

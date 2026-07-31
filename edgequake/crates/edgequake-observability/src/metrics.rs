@@ -20,6 +20,9 @@ const DOCUMENT_DURATION: &str = "edgequake_document_processing_duration_seconds"
 const STORAGE_ERRORS: &str = "edgequake_storage_errors_total";
 const PIPELINE_ERRORS: &str = "edgequake_pipeline_errors_total";
 const DB_POOL_CONNECTIONS: &str = "edgequake_db_pool_connections";
+const MIGRATION_ROWS_PROCESSED: &str = "edgequake_migration_rows_processed";
+const MIGRATION_ROWS_TOTAL: &str = "edgequake_migration_rows_total";
+const MIGRATION_BATCH_DURATION_MS: &str = "edgequake_migration_batch_duration_ms";
 const TASK_QUEUE_PENDING: &str = "edgequake_task_queue_pending";
 const TASK_QUEUE_PROCESSING: &str = "edgequake_task_queue_processing";
 const TASK_QUEUE_FAILED: &str = "edgequake_task_queue_failed";
@@ -48,6 +51,12 @@ const GRAPH_QUALITY_SPARSE: &str = "edgequake_graph_quality_sparse";
 const INGEST_STAGE_DURATION: &str = "edgequake_ingest_stage_duration_seconds";
 const QUERY_ARM_DURATION: &str = "edgequake_query_arm_duration_seconds";
 const STORAGE_OP_DURATION: &str = "edgequake_storage_op_duration_seconds";
+// SPEC-091 QW1/QW2: state-machine transition + provider budget observability.
+const TASK_TRANSITIONS: &str = "edgequake_task_transitions_total";
+const PROVIDER_SLOT_ACQUIRE: &str = "edgequake_provider_slot_acquire_total";
+const PROVIDER_SLOTS_INFLIGHT: &str = "edgequake_provider_slots_inflight";
+/// SPEC-091 WP0 (LAW-WP3): wall time a provider_slot lease is held (≠ stage wall).
+const PROVIDER_SLOT_HOLD_DURATION: &str = "edgequake_provider_slot_hold_duration_seconds";
 
 /// Pre-register metric metadata so `/metrics` is never an empty body before first request.
 fn describe_http_metrics() {
@@ -95,6 +104,18 @@ fn describe_http_metrics() {
     describe_gauge!(
         DB_POOL_CONNECTIONS,
         "PostgreSQL pool connections (sampled on /metrics scrape)"
+    );
+    describe_gauge!(
+        MIGRATION_ROWS_PROCESSED,
+        "SPEC-091 migration rows processed per job step (sampled on scrape)"
+    );
+    describe_gauge!(
+        MIGRATION_ROWS_TOTAL,
+        "SPEC-091 migration estimated total rows per job step (sampled on scrape)"
+    );
+    describe_gauge!(
+        MIGRATION_BATCH_DURATION_MS,
+        "SPEC-091 migration recent average batch duration in ms per job step"
     );
     describe_gauge!(TASK_QUEUE_PENDING, "Pending tasks in the worker queue");
     describe_gauge!(TASK_QUEUE_PROCESSING, "Tasks currently being processed");
@@ -201,6 +222,23 @@ fn describe_http_metrics() {
         STORAGE_OP_DURATION,
         Unit::Seconds,
         "SPEC-060: storage op wall time (query_filtered, text_search, expand)"
+    );
+    describe_counter!(
+        TASK_TRANSITIONS,
+        "SPEC-091 QW2: task lifecycle transitions by event (claim, complete, fail, retry, lease_lost, cancel)"
+    );
+    describe_counter!(
+        PROVIDER_SLOT_ACQUIRE,
+        "SPEC-091 QW1: provider budget slot acquisitions by provider and outcome"
+    );
+    describe_gauge!(
+        PROVIDER_SLOTS_INFLIGHT,
+        "SPEC-091 QW1: provider slots currently held (LAW-Q3 invariant: ≤ budget)"
+    );
+    describe_histogram!(
+        PROVIDER_SLOT_HOLD_DURATION,
+        Unit::Seconds,
+        "SPEC-091 WP0: provider_slot lease hold duration (infer calls only; ≠ ingest stage wall)"
     );
 }
 
@@ -341,6 +379,30 @@ pub fn record_db_pool_stats_for_role(role: &str, size: u32, idle: u32) {
     gauge!(DB_POOL_CONNECTIONS, "state" => "active", "role" => role).set(active as f64);
 }
 
+/// SPEC-091 P2: migration job progress gauges (sampled on /metrics scrape from
+/// the `edgequake.migration_progress` view; labeled by step + state so Grafana
+/// can split completed vs in-flight jobs).
+pub fn record_migration_progress(
+    step_id: &str,
+    state: &str,
+    processed: i64,
+    estimated_total: Option<i64>,
+    batch_ms_avg: Option<i64>,
+) {
+    init_metrics();
+    let step = step_id.to_string();
+    let st = state.to_string();
+    gauge!(MIGRATION_ROWS_PROCESSED, "step" => step.clone(), "state" => st.clone())
+        .set(processed as f64);
+    if let Some(total) = estimated_total {
+        gauge!(MIGRATION_ROWS_TOTAL, "step" => step.clone(), "state" => st.clone())
+            .set(total as f64);
+    }
+    if let Some(ms) = batch_ms_avg {
+        gauge!(MIGRATION_BATCH_DURATION_MS, "step" => step, "state" => st).set(ms as f64);
+    }
+}
+
 /// Record document/PDF pipeline processing (task processor layer).
 pub fn record_document_processing(task_type: &str, stage: &str, outcome: &str, duration_secs: f64) {
     record_document_processing_with_labels(task_type, stage, outcome, duration_secs, None, false);
@@ -469,6 +531,43 @@ pub fn record_query_arm_duration(arm: &str, duration_secs: f64) {
 pub fn record_storage_op_duration(op: &str, duration_secs: f64) {
     init_metrics();
     histogram!(STORAGE_OP_DURATION, "op" => op.to_string()).record(duration_secs.max(0.0));
+}
+
+/// SPEC-091 QW2 (LAW-Q2 observability): one state-machine transition executed.
+///
+/// `event` ∈ claim | complete | fail | retry | lease_lost | cancel | release.
+pub fn record_task_transition(event: &str) {
+    init_metrics();
+    counter!(TASK_TRANSITIONS, "event" => event.to_string()).increment(1);
+}
+
+/// SPEC-091 QW1 (LAW-Q3 observability): provider budget slot acquisition.
+///
+/// `outcome` ∈ acquired | busy | error | released.
+pub fn record_provider_slot_acquire(provider: &str, outcome: &str) {
+    init_metrics();
+    counter!(
+        PROVIDER_SLOT_ACQUIRE,
+        "provider" => provider.to_string(),
+        "outcome" => outcome.to_string()
+    )
+    .increment(1);
+}
+
+/// SPEC-091 QW1: current held provider slots per provider (invariant gauge).
+pub fn record_provider_slots_inflight(provider: &str, inflight: u64) {
+    init_metrics();
+    gauge!(PROVIDER_SLOTS_INFLIGHT, "provider" => provider.to_string()).set(inflight as f64);
+}
+
+/// SPEC-091 WP0: how long a provider_slot lease was held (drop of [`ProviderSlotGuard`]).
+pub fn record_provider_slot_hold_duration(provider: &str, duration_secs: f64) {
+    init_metrics();
+    histogram!(
+        PROVIDER_SLOT_HOLD_DURATION,
+        "provider" => provider.to_string()
+    )
+    .record(duration_secs.max(0.0));
 }
 
 /// Record chunk strategy degradation (SPEC-046 OPS-P0.1).
@@ -657,6 +756,34 @@ mod tests {
         assert!(
             body.contains(INGESTION_CHUNK_STRATEGY),
             "metrics scrape should list ingestion chunk strategy counter: {body:?}"
+        );
+    }
+
+    #[test]
+    fn spec091_migration_gauges_record() {
+        record_migration_progress(
+            "w1-chunk-text-backfill",
+            "running",
+            6400,
+            Some(10_000),
+            Some(212),
+        );
+        let body = render_prometheus_metrics();
+        assert!(
+            body.contains(MIGRATION_ROWS_PROCESSED),
+            "migration processed gauge missing: {body:?}"
+        );
+        assert!(
+            body.contains(MIGRATION_ROWS_TOTAL),
+            "migration total gauge missing: {body:?}"
+        );
+        assert!(
+            body.contains(MIGRATION_BATCH_DURATION_MS),
+            "migration batch duration gauge missing: {body:?}"
+        );
+        assert!(
+            body.contains("w1-chunk-text-backfill"),
+            "step label missing: {body:?}"
         );
     }
 

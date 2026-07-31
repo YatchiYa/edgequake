@@ -201,6 +201,22 @@ describe("stage-timeline", () => {
     expect(tl.steps.find((s) => s.id === "embedding")?.status).toBe("pending");
   });
 
+  it("cancelled skips all steps — no Failed chip, no green priors", () => {
+    const tl = buildStageTimeline(
+      run({
+        stage: "cancelled",
+        stageStatus: "cancelled",
+        message: "Processing cancelled",
+        progress01: 0,
+      }),
+    );
+    expect(tl.overallProgress01).toBe(0);
+    expect(tl.activeStepId).toBeNull();
+    expect(tl.steps.every((s) => s.status === "skipped")).toBe(true);
+    expect(tl.steps.some((s) => s.status === "failed")).toBe(false);
+    expect(tl.steps.some((s) => s.status === "done")).toBe(false);
+  });
+
   it("completed marks all non-skipped steps done", () => {
     const tl = buildStageTimeline(
       run({

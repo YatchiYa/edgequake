@@ -74,11 +74,11 @@ curl -s http://localhost:8080/health | python3 -m json.tool
 ### What's new in 0.22.0
 
 - **SPEC-090 performance closeout** — role-split `PgPoolBundle` (query/ingest/queue/admin), optional `DATABASE_READ_URL` for the query pool, and `make spec090-perf-smoke` gates.
-- **`edgequake migrate`** — admin-pool migrate + reconcile with rich console output; serving boot is verify-only unless `EDGEQUAKE_ALLOW_BOOT_MIGRATE=1` (`make dev` / `backend-bg` set this by default).
+- **`edgequake migrate`** — admin-pool migrate + reconcile with rich console output; serving boot is verify-only (0.22.0 gated it behind `EDGEQUAKE_ALLOW_BOOT_MIGRATE`; **HEAD removes that flag** — boot never applies schema, see LD-15 below).
 - **Schema cutovers** — M104 monthly `tasks` partitions; M105 PDF bytes SSOT in `pdf_document_blobs` (drops `pdf_documents.pdf_data`).
 - **ANN / embedding** — mutual-exclusive hot-workspace HNSW, index-shape manifest check, embedding identity columns on upsert.
 
-**Upgrade:** run `edgequake migrate` (with `DATABASE_URL`) before starting a new binary when boot migrate is disabled.
+**Upgrade:** run `edgequake migrate dry-run` then `edgequake migrate` (with `DATABASE_URL`) before starting a new binary. **Boot migration gating (SPEC-091 LD-15):** server start never applies schema — a behind/newer database makes boot exit **78** with a dry-run/migrate hint; `make dev` runs the migrate step visibly before the server. See [`specs/091-simplify-data-layer/17-boot-migration-gating.md`](specs/091-simplify-data-layer/17-boot-migration-gating.md).
 
 Also in **0.21.3**: pool-safe `/health` (#336 / SPEC-089). **0.21.2**: dashboard stats N+1 (#334), shared guest (#335). **0.21.1**: SPEC-084 reliability.
 ### Performance testing

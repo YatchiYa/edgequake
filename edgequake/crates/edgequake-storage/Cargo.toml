@@ -34,4 +34,9 @@ edgequake-observability = { path = "../edgequake-observability", optional = true
 
 [dev-dependencies]
 tokio-test = { workspace = true }
+proptest = "1.6"
 uuid = { version = "1.19", features = ["v4"] }
+# WHY: test-only auto-provisioning of the dedicated scratch database runs
+# `sqlx::migrate!` (see tests/support/postgres_test_config.rs). The `migrate`
+# feature is not enabled for the library itself, only for tests.
+sqlx = { workspace = true, features = ["migrate"] }

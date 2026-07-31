@@ -91,30 +91,25 @@ CREATE TABLE IF NOT EXISTS documents (
 );
 
 -- -----------------------------------------------------------------------------
--- Chunks Table - Document text chunks with embeddings
+-- Chunks Table - Document text chunks (text authority; embeddings in chunk_embeddings)
+-- SPEC-091: migrations/ is SSOT for schema; init.sql must stay aligned with post-039 shape.
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS chunks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     tenant_id UUID,
     workspace_id UUID,
-    
-    -- Chunk content
+
     content TEXT NOT NULL,
     chunk_index INTEGER NOT NULL,
     start_offset INTEGER,
     end_offset INTEGER,
     token_count INTEGER,
-    
-    -- Embedding (1536 dims for OpenAI, 3072 for large models)
-    embedding vector(1536),
-    
-    -- Metadata
+
     metadata JSONB DEFAULT '{}',
-    
-    -- Timestamps
+
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    
+
     CONSTRAINT chunks_unique_doc_index UNIQUE (document_id, chunk_index)
 );
 
@@ -331,6 +326,25 @@ CREATE TABLE IF NOT EXISTS workspaces (
     
     CONSTRAINT workspaces_unique_slug UNIQUE(tenant_id, slug)
 );
+
+-- SPEC-091: tenant/workspace FKs (tables must exist before REFERENCES)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'chunks_tenant_id_fkey'
+    ) THEN
+        ALTER TABLE chunks
+            ADD CONSTRAINT chunks_tenant_id_fkey
+            FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'chunks_workspace_id_fkey'
+    ) THEN
+        ALTER TABLE chunks
+            ADD CONSTRAINT chunks_workspace_id_fkey
+            FOREIGN KEY (workspace_id) REFERENCES workspaces(workspace_id) ON DELETE CASCADE;
+    END IF;
+END $$;
 
 -- -----------------------------------------------------------------------------
 -- Memberships Table (User-Tenant-Workspace mapping)
@@ -558,9 +572,6 @@ CREATE INDEX IF NOT EXISTS idx_chunks_document_id
     ON chunks(document_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_tenant_workspace 
     ON chunks(tenant_id, workspace_id) WHERE tenant_id IS NOT NULL;
--- HNSW index for fast approximate nearest neighbor (superior to IVFFlat for most cases)
-CREATE INDEX IF NOT EXISTS idx_chunks_embedding_hnsw 
-    ON chunks USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);
 -- BRIN index for time-range queries
 CREATE INDEX IF NOT EXISTS idx_chunks_created_at_brin 
     ON chunks USING BRIN(created_at) WITH (pages_per_range = 128);
@@ -579,7 +590,7 @@ CREATE INDEX IF NOT EXISTS idx_entities_name_trgm
     ON entities USING GIN (name gin_trgm_ops);
 -- HNSW index for entity embeddings
 CREATE INDEX IF NOT EXISTS idx_entities_embedding_hnsw 
-    ON entities USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);
+    ON entities USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 128);
 
 -- -----------------------------------------------------------------------------
 -- Relationships Indexes
@@ -596,7 +607,7 @@ CREATE INDEX IF NOT EXISTS idx_relationships_is_manual
     ON relationships(is_manual) WHERE is_manual = TRUE;
 -- HNSW index for relationship embeddings
 CREATE INDEX IF NOT EXISTS idx_relationships_embedding_hnsw 
-    ON relationships USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);
+    ON relationships USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 128);
 
 -- -----------------------------------------------------------------------------
 -- Tasks Indexes

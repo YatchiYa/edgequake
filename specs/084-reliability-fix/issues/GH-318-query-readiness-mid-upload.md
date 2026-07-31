@@ -44,8 +44,8 @@ Query has no ingest-awareness contract at all (second violation: readiness SSOT 
 
 ### Product Owner
 
-- Acceptance: During an active bulk upload batch, Query shows a clear “Ingestion in progress” state; primary CTA can still allow “query anyway” (soft gate) but default messaging warns of incomplete corpus.
-- After batch: all selected files either terminal (completed / failed / cancelled) → readiness green.
+- Acceptance (superseded FE soft-gate): Query stays available during ingest — no “Query anyway” banner and Send is not disabled for pending/processing. Users may query a partial corpus intentionally.
+- After batch: track `expected_count` / `is_complete` remains SSOT for “all documents processed” toast honesty.
 - Failed docs must not permanently block Query.
 
 ### Full Stack
@@ -54,8 +54,8 @@ Query has no ingest-awareness contract at all (second violation: readiness SSOT 
 |-------|---------------|
 | Upload client | Declare `expected_count` on track create/update |
 | Track API | `is_complete` iff `registered >= expected` AND no pending/processing |
-| Query UI | Subscribe to active batch / workspace ingest summary; banner + optional disable |
-| Chat/query API | Optional advisory header only; do not hard-500 (product soft-gate) |
+| Query UI | **Superseded:** no ingest soft-gate / banner; submit gated only by non-empty input |
+| Chat/query API | No hard-500 for mid-ingest query |
 
 ### AI Engineer
 
@@ -100,17 +100,17 @@ Query has no ingest-awareness contract at all (second violation: readiness SSOT 
 | Principle | Application |
 |-----------|-------------|
 | S | `BatchTrack` owns expected vs observed completeness |
-| O | SoftGate vs HardGate policy enum for Query |
-| L | Same track contract for upload progress UI and Query banner |
+| O | Track completeness policy stays on upload/track layer (not Query UI) |
+| L | Same track contract for upload progress UI and completion toast |
 | I | `TrackStatus { expected_count, registered_count, is_complete, … }` |
-| D | Query UI depends on track/workspace ingest DTO, not ad-hoc file list |
+| D | Query UI does not poll ingest readiness; documents flow owns track UX |
 | DRY | Reuse/finish `BatchProgressCard` instead of a second progress widget |
 
 ### Implementation steps
 
 1. Extend track create/upload to accept `expected_count` (or set once at batch start).
 2. Fix `is_complete` in `track_status.rs`: require `registered_count >= expected_count` (when expected set) AND no pending/processing.
-3. Query page: if any active incomplete track for workspace (or status_counts.processing/pending > 0 during known batch), show banner; soft-disable submit with override.
+3. ~~Query page soft-gate banner~~ — **superseded**: Query remains enabled during ingest (no banner / no “Query anyway”).
 4. Success toast only when track truly complete (or split “uploaded to server” vs “processed”).
 5. Wire `BatchProgressCard` into documents flow (currently underused).
 
@@ -120,12 +120,12 @@ Query has no ingest-awareness contract at all (second violation: readiness SSOT 
 
 | ID | Case | Mitigation |
 |----|------|------------|
-| EC-1 | User navigates away mid-upload | Track + expected_count persist; Query still warns |
+| EC-1 | User navigates away mid-upload | Track + expected_count persist; completion toast stays honest |
 | EC-2 | Some files fail HTTP upload | expected stays N; failed/cancelled terminal; complete when all terminal |
-| EC-3 | Single-file upload | expected=1; no banner flicker if fast |
-| EC-4 | Two parallel batches | Per-track expected; Query warns if **any** incomplete |
-| EC-5 | Stale track never finished | TTL / cancel; don’t warn forever after timeout policy |
-| EC-6 | User wants to query mid-ingest | Soft override “Query anyway” |
+| EC-3 | Single-file upload | expected=1; no false-complete race |
+| EC-4 | Two parallel batches | Per-track expected; toast per incomplete track |
+| EC-5 | Stale track never finished | TTL / cancel; don’t toast forever after timeout policy |
+| EC-6 | User wants to query mid-ingest | Allowed — Query Send enabled; no soft-gate |
 | EC-7 | Empty workspace | Query empty state; no false “ready with graph” |
 
 ---
@@ -135,8 +135,7 @@ Query has no ingest-awareness contract at all (second violation: readiness SSOT 
 | Test | Assertion |
 |------|-----------|
 | `issue318_track_not_complete_until_expected` | expected=3, only 1 registered completed → `is_complete=false` |
-| `issue318_query_banner_during_batch` | Playwright: during multi-upload, Query shows ingest banner |
-| `issue318_query_ready_after_batch` | After all terminal, banner clears; submit enabled without override |
+| `issue318-query-during-ingest.spec.ts` | Playwright: with pending+processing counts, no soft-gate banner; Send enabled; stream query succeeds |
 
 ---
 

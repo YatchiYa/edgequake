@@ -88,6 +88,12 @@ impl DocumentTaskProcessor {
             self.relational_sink.clone(),
             self.resolve_lineage_sink().await,
             text_embedder,
+            #[cfg(feature = "postgres")]
+            crate::services::resolve_relational_chunk_repo(self.pg_pool.as_ref()),
+            #[cfg(not(feature = "postgres"))]
+            crate::services::resolve_relational_chunk_repo(None),
+            #[cfg(feature = "postgres")]
+            self.pg_pool.clone(),
             &data.doc_id,
             &data.content,
             &data.workspace_id,

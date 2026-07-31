@@ -9,7 +9,7 @@ use crate::{
     types::Task,
 };
 #[cfg(feature = "postgres")]
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 #[cfg(feature = "postgres")]
 use sqlx::{postgres::PgRow, Acquire, PgPool, Row};
 #[cfg(feature = "postgres")]
@@ -669,6 +669,7 @@ impl TaskStorage for PostgresTaskStorage {
                 SELECT track_id, workspace_id, created_at
                 FROM tasks
                 WHERE status = 'pending'
+                  AND fairness_parked_at IS NULL -- SSOT: state_machine::CLAIM_PENDING_GUARD_SQL
                 ORDER BY created_at ASC
                 LIMIT $1
             ),
@@ -712,6 +713,8 @@ impl TaskStorage for PostgresTaskStorage {
         };
 
         // DRY: pending vs stale arms share the same UPDATE/RETURNING shape.
+        // SPEC-091 QW0 (LAW-Q2): guard fragments come from the state machine SSOT
+        // (crate::state_machine); rewriting them as literals breaks the drift test.
         let claim_arm_sql = |candidate_where: &str| {
             format!(
                 r#"
@@ -738,7 +741,7 @@ impl TaskStorage for PostgresTaskStorage {
             )
         };
 
-        let pending_sql = claim_arm_sql("status = 'pending'");
+        let pending_sql = claim_arm_sql(crate::state_machine::CLAIM_PENDING_GUARD_SQL);
         let row = match sqlx::query(&pending_sql)
             .bind(worker_id)
             .bind(lease_token)
@@ -759,9 +762,7 @@ impl TaskStorage for PostgresTaskStorage {
         let row = if row.is_some() {
             row
         } else {
-            let stale_sql = claim_arm_sql(
-                "status = 'processing' AND (lease_expires_at IS NULL OR lease_expires_at < NOW())",
-            );
+            let stale_sql = claim_arm_sql(crate::state_machine::CLAIM_STALE_GUARD_SQL);
             match sqlx::query(&stale_sql)
                 .bind(worker_id)
                 .bind(lease_token)
@@ -827,7 +828,8 @@ impl TaskStorage for PostgresTaskStorage {
         worker_id: &str,
         lease_token: Uuid,
     ) -> TaskResult<bool> {
-        let result = sqlx::query(
+        // SPEC-091 QW0: Release guard from the state machine SSOT.
+        let sql = format!(
             r#"
             UPDATE tasks
             SET status = 'pending',
@@ -839,17 +841,96 @@ impl TaskStorage for PostgresTaskStorage {
             WHERE track_id = $1
               AND lease_owner = $2
               AND lease_token = $3
-              AND status = 'processing'
+              AND {}
+            "#,
+            crate::state_machine::RELEASE_GUARD_SQL
+        );
+        let result = sqlx::query(&sql)
+            .bind(track_id)
+            .bind(worker_id)
+            .bind(lease_token)
+            .execute(&*self.pool)
+            .await
+            .map_err(|e| TaskError::StorageError(format!("Failed to release claim: {}", e)))?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    async fn mark_fairness_parked(
+        &self,
+        track_id: &str,
+        worker_id: &str,
+        lease_token: Uuid,
+    ) -> TaskResult<bool> {
+        // SPEC-091 R-18: release + park marker in ONE round trip. The marker
+        // (migration 111) excludes the row from claim_next via the state
+        // machine's CLAIM_PENDING_GUARD_SQL — idle workers stop spinning.
+        let sql = format!(
+            r#"
+            UPDATE tasks
+            SET status = 'pending',
+                lease_owner = NULL,
+                lease_token = NULL,
+                lease_expires_at = NULL,
+                started_at = NULL,
+                fairness_parked_at = NOW(),
+                updated_at = NOW()
+            WHERE track_id = $1
+              AND lease_owner = $2
+              AND lease_token = $3
+              AND {}
+            "#,
+            crate::state_machine::RELEASE_GUARD_SQL
+        );
+        let result = sqlx::query(&sql)
+            .bind(track_id)
+            .bind(worker_id)
+            .bind(lease_token)
+            .execute(&*self.pool)
+            .await
+            .map_err(|e| {
+                TaskError::StorageError(format!("Failed to mark fairness-parked: {}", e))
+            })?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    async fn clear_fairness_park(&self, track_id: &str) -> TaskResult<()> {
+        sqlx::query(
+            r#"
+            UPDATE tasks
+            SET fairness_parked_at = NULL, updated_at = NOW()
+            WHERE track_id = $1
+              AND status = 'pending'
+              AND fairness_parked_at IS NOT NULL
             "#,
         )
         .bind(track_id)
-        .bind(worker_id)
-        .bind(lease_token)
         .execute(&*self.pool)
         .await
-        .map_err(|e| TaskError::StorageError(format!("Failed to release claim: {}", e)))?;
+        .map_err(|e| TaskError::StorageError(format!("Failed to clear fairness park: {}", e)))?;
+        Ok(())
+    }
 
-        Ok(result.rows_affected() > 0)
+    async fn clear_stale_fairness_parks(&self, max_age: Duration) -> TaskResult<u64> {
+        // Age is computed in SQL for clock hygiene; 0 clears all parks (boot).
+        let max_age_secs = max_age.as_secs_f64();
+        let result = sqlx::query(
+            r#"
+            UPDATE tasks
+            SET fairness_parked_at = NULL, updated_at = NOW()
+            WHERE status = 'pending'
+              AND fairness_parked_at IS NOT NULL
+              AND fairness_parked_at <= NOW() - make_interval(secs => $1)
+            "#,
+        )
+        .bind(max_age_secs)
+        .execute(&*self.pool)
+        .await
+        .map_err(|e| {
+            TaskError::StorageError(format!("Failed to sweep stale fairness parks: {}", e))
+        })?;
+        Ok(result.rows_affected())
     }
 
     async fn get_queue_metrics_filtered(
@@ -945,7 +1026,12 @@ impl TaskStorage for PostgresTaskStorage {
             max_wait_time_seconds,
             throughput_per_minute,
             estimated_queue_time_seconds,
-            rate_limited: false,
+            rate_limited: QueueMetrics::compute_rate_limited(
+                pending_count,
+                active_workers,
+                max_workers,
+                throughput_per_minute,
+            ),
             timestamp: chrono::Utc::now(),
         })
     }
@@ -975,6 +1061,72 @@ impl TaskStorage for PostgresTaskStorage {
             .await;
 
         Ok(result.rows_affected())
+    }
+
+    async fn count_pending_older_than(&self, created_at: DateTime<Utc>) -> TaskResult<u64> {
+        let count = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*) FROM tasks
+            WHERE status = 'pending' AND created_at < $1
+            "#,
+        )
+        .bind(created_at)
+        .fetch_one(&*self.pool)
+        .await
+        .map_err(|e| TaskError::StorageError(format!("Failed to count pending ahead: {e}")))?;
+        Ok(count.max(0) as u64)
+    }
+
+    async fn count_completed_within(&self, window: Duration) -> TaskResult<u64> {
+        let secs = i32::try_from(window.as_secs().max(1))
+            .map_err(|_| TaskError::StorageError("window exceeds i32 seconds".to_string()))?;
+        let count = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*) FROM tasks
+            WHERE completed_at IS NOT NULL
+              AND completed_at >= NOW() - make_interval(secs => $1)
+            "#,
+        )
+        .bind(secs)
+        .fetch_one(&*self.pool)
+        .await
+        .map_err(|e| TaskError::StorageError(format!("Failed to count recent completions: {e}")))?;
+        Ok(count.max(0) as u64)
+    }
+
+    async fn pending_queue_ahead_batch(
+        &self,
+        track_ids: &[String],
+    ) -> TaskResult<Vec<(String, u64)>> {
+        if track_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        // One RT: FCFS rank among all pending, filtered to the page's track_ids.
+        // Tie-break on track_id for stable ordering when created_at collides.
+        let rows = sqlx::query_as::<_, (String, i64)>(
+            r#"
+            WITH pending AS (
+                SELECT track_id, created_at,
+                       (ROW_NUMBER() OVER (ORDER BY created_at ASC, track_id ASC) - 1)::bigint
+                         AS ahead
+                FROM tasks
+                WHERE status = 'pending'
+            )
+            SELECT track_id, ahead
+            FROM pending
+            WHERE track_id = ANY($1)
+            "#,
+        )
+        .bind(track_ids)
+        .fetch_all(&*self.pool)
+        .await
+        .map_err(|e| {
+            TaskError::StorageError(format!("Failed to batch pending queue ranks: {e}"))
+        })?;
+        Ok(rows
+            .into_iter()
+            .map(|(id, ahead)| (id, ahead.max(0) as u64))
+            .collect())
     }
 }
 

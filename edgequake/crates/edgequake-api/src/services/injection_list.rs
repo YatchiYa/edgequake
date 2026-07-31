@@ -40,6 +40,25 @@ pub async fn list_injections_paged(
     let limit = limit.clamp(1, MAX_INJECTION_LIST_LIMIT);
     let offset = offset.min(usize::MAX.saturating_sub(limit));
 
+    // SPEC-091 Wave B6: relational path — SQL-side pagination on documents;
+    // summaries derive from the same metadata JSON shape (SSOT).
+    if crate::services::injection_relational::injections_prefer_relational() {
+        if let Some((rows, total)) = crate::services::injection_relational::typed_injection_list(
+            workspace_id,
+            limit as i64,
+            offset as i64,
+        )
+        .await
+        {
+            return Ok(InjectionListPage {
+                items: rows.iter().map(summary_from_meta).collect(),
+                total: total.max(0) as usize,
+                limit,
+                offset,
+            });
+        }
+    }
+
     let prefix = injection_list_prefix(workspace_id);
     let keys = kv_storage.keys_with_prefix(&prefix).await?;
     let meta_keys: Vec<String> = keys

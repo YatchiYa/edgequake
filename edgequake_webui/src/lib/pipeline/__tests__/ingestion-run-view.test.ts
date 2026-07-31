@@ -1,15 +1,22 @@
 import { describe, expect, it } from "vitest";
 import {
   buildIngestionRunView,
+  formatQueueChrome,
   formatRunHeadline,
+  mapWireStageToPhase,
   normalizeRunStage,
   parseCountsFromMessage,
+  PHASE_STRIP_ORDER,
+  resolveProgressCounts,
+  shouldNestPdfPageMeter,
+  shouldShowOverallMeter,
   selectPrimaryRun,
   buildIngestionRunViews,
   SERVER_STAGE_ORDER,
   stageDisplayName,
   stageStatusFor,
 } from "@/lib/pipeline/ingestion-run-view";
+import { buildStageTimeline } from "@/lib/pipeline/stage-timeline";
 import type { Document } from "@/types";
 
 function doc(partial: Partial<Document> & { id: string }): Document {
@@ -21,6 +28,24 @@ function doc(partial: Partial<Document> & { id: string }): Document {
 }
 
 describe("ingestion-run-view", () => {
+  it("terminal status cancelled beats stale display_status extracting", () => {
+    const view = buildIngestionRunView(
+      doc({
+        id: "d-cancel-lag",
+        file_name: "ticket.pdf",
+        status: "cancelled",
+        current_stage: "cancelled",
+        display_status: "extracting",
+        ui_phase: "running",
+        stage_progress: 0.99,
+        track_id: "insert-cancelled",
+      }),
+    );
+    expect(view?.stage).toBe("cancelled");
+    expect(view?.stageStatus).toBe("cancelled");
+    expect(view?.progress01).toBe(0);
+  });
+
   it("places cleaning before queued in SERVER_STAGE_ORDER", () => {
     expect(SERVER_STAGE_ORDER.indexOf("cleaning")).toBe(0);
     expect(SERVER_STAGE_ORDER.indexOf("queued")).toBe(1);
@@ -53,6 +78,63 @@ describe("ingestion-run-view", () => {
     const c = parseCountsFromMessage("Extracting entities — chunk 42/351");
     expect(c).toEqual({ current: 42, total: 351, unit: "chunks" });
   });
+
+  it("LAW-IS1: resolveProgressCounts prefers structured over message", () => {
+    const c = resolveProgressCounts(
+      { unit: "pages", current: 4, total: 9 },
+      "chunk 1/99",
+    );
+    expect(c).toEqual({ current: 4, total: 9, unit: "pages" });
+  });
+
+  it("LAW-IS1: buildIngestionRunView uses progress_counts without N/M in message", () => {
+    const view = buildIngestionRunView(
+      doc({
+        id: "d-ssot",
+        file_name: "ticket.pdf",
+        status: "processing",
+        current_stage: "converting",
+        stage_message: "Converting PDF to Markdown",
+        source_type: "pdf",
+        track_id: "t-ssot",
+        progress_counts: { unit: "pages", current: 4, total: 9 },
+      }),
+    );
+    expect(view?.counts).toEqual({ current: 4, total: 9, unit: "pages" });
+    expect(shouldNestPdfPageMeter(view!)).toBe(false);
+    expect(shouldShowOverallMeter(view!, false)).toBe(false);
+  });
+
+  it.each([
+    ["markdown", "notes.md", false],
+    ["text", "notes.txt", false],
+    ["image", "shot.png", false],
+    ["pdf", "paper.pdf", true],
+  ] as const)(
+    "source_type=%s keeps converting only for pdf",
+    (sourceType, fileName, keepConverting) => {
+      const view = buildIngestionRunView(
+        doc({
+          id: `d-${sourceType}`,
+          file_name: fileName,
+          status: "processing",
+          current_stage: "chunking",
+          stage_message: "Chunking — 1/3",
+          source_type: sourceType,
+          track_id: `t-${sourceType}`,
+          progress_counts: { unit: "chunks", current: 1, total: 3 },
+        }),
+      );
+      expect(view?.sourceType).toBe(sourceType);
+      const timeline = buildStageTimeline(view!);
+      const converting = timeline.steps.find((s) => s.id === "converting");
+      if (keepConverting) {
+        expect(converting).toBeTruthy();
+      } else {
+        expect(converting).toBeUndefined();
+      }
+    },
+  );
 
   it("parses figure vision analyze counts", () => {
     const c = parseCountsFromMessage(
@@ -162,5 +244,55 @@ describe("ingestion-run-view", () => {
     expect(run.documentId).toBe(bare);
     expect(run.stage).toBe("extracting");
     expect(run.message).not.toMatch(/\{\{/);
+  });
+
+  it("IS2 LAW-IS4: queued run projects position + ETA chrome", () => {
+    const view = buildIngestionRunView(
+      doc({
+        id: "d-q",
+        file_name: "wait.pdf",
+        status: "pending",
+        current_stage: "queued",
+        stage_message: "Waiting for a free worker…",
+        track_id: "t-q",
+        queue_position: 3,
+        eta_seconds: 120,
+        eta_basis: "measured",
+      }),
+    );
+    expect(view?.stage).toBe("queued");
+    expect(view?.queuePosition).toBe(3);
+    expect(formatQueueChrome(view!)).toContain("#3");
+    expect(formatRunHeadline(view!)).toMatch(/Queued.*#3/);
+    expect(formatRunHeadline(view!)).not.toMatch(/Extracting/);
+  });
+
+  it("IS3: human labels for gleaning / merging", () => {
+    expect(stageDisplayName("gleaning")).toBe("Refining entities");
+    expect(stageDisplayName("merging")).toBe("Updating knowledge graph");
+  });
+
+  it("IS3 IS-AC-06: phase strip maps all PROCESSING_STAGES wire ids", () => {
+    const wire = [
+      "cleaning",
+      "queued",
+      "uploading",
+      "converting",
+      "preprocessing",
+      "chunking",
+      "extracting",
+      "gleaning",
+      "merging",
+      "summarizing",
+      "embedding",
+      "storing",
+      "completed",
+    ];
+    for (const stage of wire) {
+      expect(PHASE_STRIP_ORDER).toContain(mapWireStageToPhase(stage));
+    }
+    expect(mapWireStageToPhase("gleaning")).toBe("extract");
+    expect(mapWireStageToPhase("queued")).toBe("admit");
+    expect(mapWireStageToPhase("embedding")).toBe("materialize");
   });
 });

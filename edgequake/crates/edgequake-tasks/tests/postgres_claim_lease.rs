@@ -468,8 +468,11 @@ async fn issue316_two_workspaces_interleaved_progress() {
 /// SPEC-084 / GH-316: tenant ingest cap still binds across workspaces.
 #[tokio::test]
 async fn issue316_tenant_cap_still_holds() {
-    use edgequake_tasks::{FairnessClass, TenantConcurrencyLimiter, TryAcquireOutcome};
+    use edgequake_tasks::{
+        FairnessClass, TaskProviderClass, TenantConcurrencyLimiter, TryAcquireOutcome,
+    };
 
+    let local = TaskProviderClass::Local("local".to_string());
     let limiter = TenantConcurrencyLimiter::new(2, 2);
     let tenant = Uuid::new_v4();
     let ws_a = Uuid::new_v4();
@@ -477,14 +480,14 @@ async fn issue316_tenant_cap_still_holds() {
     let ws_c = Uuid::new_v4();
 
     let _a = match limiter
-        .try_acquire(tenant, ws_a, FairnessClass::Ingest)
+        .try_acquire(tenant, ws_a, FairnessClass::Ingest, &local)
         .await
     {
         TryAcquireOutcome::Acquired(p) => p,
         other => panic!("expected Acquired, got {other:?}"),
     };
     let _b = match limiter
-        .try_acquire(tenant, ws_b, FairnessClass::Ingest)
+        .try_acquire(tenant, ws_b, FairnessClass::Ingest, &local)
         .await
     {
         TryAcquireOutcome::Acquired(p) => p,
@@ -493,7 +496,7 @@ async fn issue316_tenant_cap_still_holds() {
     assert!(
         matches!(
             limiter
-                .try_acquire(tenant, ws_c, FairnessClass::Ingest)
+                .try_acquire(tenant, ws_c, FairnessClass::Ingest, &local)
                 .await,
             TryAcquireOutcome::AtCapacity
         ),

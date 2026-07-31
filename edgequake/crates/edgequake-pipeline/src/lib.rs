@@ -59,6 +59,7 @@ pub mod adaptive_chunking;
 pub mod anthropic_images;
 pub mod chunk_storage;
 pub mod chunker;
+pub mod contextual_chunk;
 pub mod entity_display;
 pub mod error;
 pub mod extractor;
@@ -146,7 +147,8 @@ pub use merger::{
     truncate_keep_doc_diverse, DescriptionMergeBackend, DescriptionMergeDecision,
     DescriptionMergePolicy, EntityLineageLink, KnowledgeGraphMerger, LineageSink, MergeArtifacts,
     MergePhase, MergeProgress, MergeProgressCallback, MergeStats, MergerConfig, NoopEntitySink,
-    NoopLineageSink, RelationLineageLink, RelationalEntitySink, SourceIdsLimitMethod,
+    NoopLineageSink, EntitySinkRow, RelationLineageLink, RelationalEntitySink, RelationshipSinkRow,
+    SourceIdsLimitMethod,
     DEFAULT_FORCE_LLM_SUMMARY_ON_MERGE, DEFAULT_MAX_SOURCE_IDS, DEFAULT_MERGE_MAX_ASYNC,
     DEFAULT_SUMMARY_MAX_TOKENS, GRAPH_FIELD_SEP, LOCAL_MERGE_MAX_ASYNC,
 };
@@ -174,12 +176,16 @@ pub use pipeline::{
     default_max_concurrent_for_provider,
     is_local_extraction_provider,
     is_local_provider_overload_error,
+    // SPEC-091 QW2: admission resolver SSOT (LAW-Q1)
+    queue_target_wait_secs_from_env,
+    resolve_admission_plan,
     resolve_extract_provider_name_for_fairness,
     resolve_extract_provider_name_for_fairness_from,
     resolve_gleaning_for_provider,
     resolve_worker_pool_limits,
     resolve_worker_pool_limits_from,
     retry_delay_ms_for_chunk_error,
+    AdmissionPlan,
     ChunkErrorInfo,
     ChunkProgressCallback,
     ChunkProgressUpdate,
@@ -191,12 +197,15 @@ pub use pipeline::{
     PipelineConfig,
     ProcessingResult,
     ProcessingStats,
+    ProviderKind,
+    ProviderProfile,
     WorkerPoolLimits,
     ALLOW_LOCAL_HIGH_CONCURRENCY_ENV,
     DEFAULT_CHUNK_MAX_RETRIES,
     DEFAULT_CHUNK_TIMEOUT_SECS,
     DEFAULT_INITIAL_RETRY_DELAY_MS,
     DEFAULT_MAX_CONCURRENT_EXTRACTIONS,
+    DEFAULT_QUEUE_TARGET_WAIT_SECS,
     LOCAL_CHUNK_TIMEOUT_SECS,
     LOCAL_DEFAULT_LIFECYCLE_TASKS_PER_TENANT,
     LOCAL_ENABLE_GLEANING_ENV,
@@ -210,6 +219,7 @@ pub use pipeline::{
     MAX_GLEANING_CAP,
     MAX_RETRY_DELAY_MS,
     MIN_CHUNK_TIMEOUT_SECS,
+    QUEUE_TARGET_WAIT_SECS_ENV,
 };
 pub use progress::{
     default_model_pricing, CostBreakdown, CostTracker, IngestionError, IngestionProgress,

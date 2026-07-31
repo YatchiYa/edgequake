@@ -303,7 +303,10 @@ mod tests {
         task.mark_failed_with_details(TaskFailureInfo::timeout("step2", "timeout 2"));
         assert_eq!(task.consecutive_timeout_failures, 2);
 
-        // WHEN: Task succeeds
+        // WHEN: Task is retried, claimed, and succeeds (legal path:
+        // Failed → Pending → Processing → Indexed; Complete refuses Failed).
+        task.requeue_for_retry();
+        task.mark_processing();
         task.mark_success(serde_json::json!({"result": "ok"}));
 
         // THEN: Counter resets to 0

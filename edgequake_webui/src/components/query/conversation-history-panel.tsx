@@ -350,7 +350,7 @@ export function ConversationHistoryPanel({ className }: ConversationHistoryPanel
       </div>
 
       {/* Conversation List */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="p-2 space-y-0.5">
           {filteredConversations.length === 0 ? (
             <div className="py-10 text-center">

@@ -8,6 +8,33 @@ use std::collections::{HashMap, HashSet};
 
 use serde_json::Value;
 
+/// `EDGEQUAKE_CITATION_REQUIRE` — default **on** (SPEC-091 RM2 / LAW-RM7).
+pub const CITATION_REQUIRE_ENV: &str = "EDGEQUAKE_CITATION_REQUIRE";
+
+/// Whether newly extracted edges/nodes must carry non-empty `source_chunk_ids`.
+pub fn citation_require_enabled() -> bool {
+    match std::env::var(CITATION_REQUIRE_ENV)
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "off" | "false" | "0" | "no" => false,
+        _ => true,
+    }
+}
+
+/// Fail-closed citation check (RM-AC-06).
+pub fn require_citation(chunk_ids: &[String]) -> Result<(), String> {
+    if !citation_require_enabled() {
+        return Ok(());
+    }
+    if chunk_ids.iter().any(|id| !id.trim().is_empty()) {
+        return Ok(());
+    }
+    Err("SPEC-091 RM2: source_chunk_ids required (EDGEQUAKE_CITATION_REQUIRE)".into())
+}
+
 /// Mirror chunk lineage into graph node properties for read-path compatibility.
 pub fn insert_chunk_lineage_properties(
     properties: &mut HashMap<String, Value>,
@@ -153,5 +180,16 @@ mod tests {
         let incoming =
             resolve_incoming_document_ids(None, &["doc-x-chunk-1".into(), "doc-y-chunk-0".into()]);
         assert_eq!(incoming, vec!["doc-x".to_string(), "doc-y".to_string()]);
+    }
+
+    #[test]
+    fn contract_spec091_citation_required_rejects_empty() {
+        std::env::remove_var(CITATION_REQUIRE_ENV);
+        assert!(require_citation(&[]).is_err());
+        assert!(require_citation(&["".into()]).is_err());
+        assert!(require_citation(&["doc-a-chunk-0".into()]).is_ok());
+        std::env::set_var(CITATION_REQUIRE_ENV, "off");
+        assert!(require_citation(&[]).is_ok());
+        std::env::remove_var(CITATION_REQUIRE_ENV);
     }
 }

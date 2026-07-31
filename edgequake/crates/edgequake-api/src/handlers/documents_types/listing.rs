@@ -228,6 +228,27 @@ pub struct DocumentSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "running")]
     pub ui_phase: Option<String>,
+
+    /// Structured stage counts (LAW-IS1 / SPEC-091). Prefer over parsing stage_message.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub progress_counts: Option<crate::handlers::ingestion_types::IngestionProgressCounts>,
+
+    /// SPEC-091 IS2 / LAW-IS4: 1-based FCFS queue position for pending admission.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub queue_position: Option<u64>,
+
+    /// Estimated seconds until claim (measured drain; clamped when unknown).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eta_seconds: Option<u64>,
+
+    /// `measured` | `no_history` — honest uncertainty for ETA chrome.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eta_basis: Option<String>,
+
+    /// SPEC-091 IS3 / LD-09: when serving fence is on, whether the doc is queryable.
+    /// Absent when fence is off (UI hides Ready/Indexed badge).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub query_ready: Option<bool>,
 }
 
 // ── SPEC-031: Lightweight document search for the scope picker ───────────────

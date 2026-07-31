@@ -1,13 +1,16 @@
 /**
- * Load markdown images that require API auth headers.
+ * Load markdown images that require API auth + tenant/workspace headers.
  *
- * Browser `<img src>` cannot send `Authorization`. For `/mm-assets/` URLs we
- * fetch with the session bearer token and display a blob URL (DRY with PDF/WS
- * auth patterns).
+ * Browser `<img src>` cannot send `Authorization`, `X-Tenant-ID`, or
+ * `X-Workspace-ID`. mm-asset serving is workspace-scoped (SPEC-091 SSOT): a
+ * headerless `<img src>` defaults to the default workspace on the backend and
+ * 404s the document. For mm-asset URLs we therefore fetch with the full session
+ * headers (`buildHeaders` — tenant/workspace + optional bearer) and display a
+ * blob URL (DRY with PDF/WS auth patterns).
  */
 'use client';
 
-import { getTokens } from '@/lib/api/client';
+import { buildHeaders } from '@/lib/api/client';
 import { useEffect, useState } from 'react';
 
 interface AuthenticatedMarkdownImageProps {
@@ -42,19 +45,15 @@ export function AuthenticatedMarkdownImage({
       return;
     }
 
-    const token = getTokens().accessToken;
-    // Dev (auth off): direct src works. Auth on without token: still try direct.
-    if (!token) {
-      setResolvedSrc(src);
-      return;
-    }
-
     let objectUrl: string | null = null;
     const ac = new AbortController();
 
     (async () => {
-      const headers = new Headers();
-      headers.set('Authorization', `Bearer ${token}`);
+      // Always fetch with the full session headers (tenant/workspace + optional
+      // bearer) — a plain <img src> would 404 under workspace scoping. This holds
+      // in dev (auth off) too, where workspace scoping still applies.
+      const headers = buildHeaders();
+      headers.delete('Content-Type'); // GET with no body
       const res = await fetch(src, { headers, signal: ac.signal });
       if (!res.ok) {
         setResolvedSrc(src);

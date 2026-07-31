@@ -414,6 +414,45 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
             self.graph_storage.upsert_edges_batch(&edge_batch).await?;
         }
 
+        // SPEC-091 IP1: relational relationships spine — one batch (LAW-IP2).
+        let rel_sink_rows: Vec<crate::merger::RelationshipSinkRow> = valid
+            .iter()
+            .map(|(rel, source_key, target_key)| {
+                let rel_type = if rel.relation_type.trim().is_empty() {
+                    "RELATED_TO".to_string()
+                } else {
+                    rel.relation_type.trim().to_string()
+                };
+                crate::merger::RelationshipSinkRow {
+                    source_name: source_key.clone(),
+                    target_name: target_key.clone(),
+                    relation_type: rel_type,
+                    description: rel.description.clone(),
+                    weight: rel.weight,
+                    tenant_id: self.tenant_id.clone(),
+                    workspace_id: self.workspace_id.clone(),
+                }
+            })
+            .collect();
+        if !rel_sink_rows.is_empty() {
+            if let Err(e) = self
+                .relational_sink
+                .upsert_relationships_batch(&rel_sink_rows)
+                .await
+            {
+                tracing::warn!(
+                    count = rel_sink_rows.len(),
+                    error = %e,
+                    "Relational relationship sink batch failed"
+                );
+                if edgequake_storage::vector_backend_reads_typed(
+                    edgequake_storage::vector_backend_from_env(),
+                ) {
+                    return Err(e);
+                }
+            }
+        }
+
         if let Some(ctx) = progress {
             ctx.emit_relationship_graph(
                 total_valid,
@@ -705,6 +744,9 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         // Source tracking for citations (LightRAG parity / 049 multi-chunk union)
         // D-33: document lineage from full incoming set BEFORE capping stored chunks.
         let incoming = rel.all_source_chunk_ids();
+        // SPEC-091 RM2: fail-closed citation contract (LAW-RM7).
+        super::lineage::require_citation(&incoming)
+            .map_err(crate::error::PipelineError::GraphError)?;
         super::lineage::merge_and_insert_document_lineage(
             &mut properties,
             rel.source_document_id.as_deref(),

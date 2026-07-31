@@ -1,5 +1,6 @@
 use super::super::*;
 use super::types::{TextInsertExtracted, TextInsertPersisted};
+use edgequake_tasks::FairnessPermit;
 use tokio_util::sync::CancellationToken;
 
 impl DocumentTaskProcessor {
@@ -8,6 +9,7 @@ impl DocumentTaskProcessor {
         task: &mut Task,
         extracted: TextInsertExtracted,
         cancel_token: CancellationToken,
+        fairness: &mut Option<FairnessPermit>,
     ) -> TaskResult<TextInsertPersisted> {
         let document_id = extracted.prepared.document_id.clone();
         let text_content = extracted.prepared.text_content.clone();
@@ -17,6 +19,17 @@ impl DocumentTaskProcessor {
         let prepared = extracted.prepared;
         let is_pdf_source = prepared.is_pdf_source;
         let track_id = prepared.track_id.clone();
+
+        // SPEC-091 WP1 (LAW-WP3): release fairness before pure DB materialize so
+        // other tenants can claim while this task writes AGE/vectors/fence.
+        if let Some(permit) = fairness.take() {
+            drop(permit);
+            tracing::debug!(
+                document_id = %document_id,
+                track_id = %track_id,
+                "Released fairness permit before materialize"
+            );
+        }
 
         // OODA-17: Update PDF phase progress - chunking complete, start extraction
         if is_pdf_source {
@@ -48,6 +61,7 @@ impl DocumentTaskProcessor {
         // Get workspace-specific vector storage using the registry
         // WHY: Different workspaces may have different embedding dimensions
         // WHY-OODA223: STRICT mode - fail loudly if workspace storage unavailable
+        // (rest of function unchanged below — keep following content)
         // to prevent embeddings from being stored in the wrong (global) table
         let workspace_vector_storage = self
             .get_workspace_vector_storage_strict(&workspace_id_meta)
@@ -240,6 +254,14 @@ impl DocumentTaskProcessor {
                 // SPEC-032 W-08: lineage sink — resolved from shared AppState pg_pool
                 self.resolve_lineage_sink().await,
                 text_embedder,
+                // SPEC-091 W1: relational chunk spine when pool is present
+                #[cfg(feature = "postgres")]
+                crate::services::resolve_relational_chunk_repo(self.pg_pool.as_ref()),
+                #[cfg(not(feature = "postgres"))]
+                crate::services::resolve_relational_chunk_repo(None),
+                // SPEC-091 W3: typed embedding dual-write pool
+                #[cfg(feature = "postgres")]
+                self.pg_pool.clone(),
                 crate::services::PersistIngestionParams::for_document(
                     &document_id,
                     tenant_id.clone(),

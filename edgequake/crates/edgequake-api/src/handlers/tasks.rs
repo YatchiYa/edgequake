@@ -59,7 +59,22 @@ pub async fn get_task(
     Path(track_id): Path<String>,
 ) -> ApiResult<Json<TaskResponse>> {
     let task = get_task_for_context(&state, &track_id, &tenant_ctx).await?;
-    Ok(Json(TaskResponse::from(task)))
+    let pending_created_at =
+        (task.status == edgequake_tasks::TaskStatus::Pending).then_some(task.created_at);
+    let mut response = TaskResponse::from(task);
+
+    // SPEC-091 QW2 (LAW-Q4): live queue projection for pending tasks (best-effort).
+    if let Some(created_at) = pending_created_at {
+        if let Ok(estimate) =
+            edgequake_tasks::estimate_queue(state.tasks.storage.as_ref(), created_at).await
+        {
+            response.queue_position = Some(estimate.position);
+            response.eta_seconds = Some(estimate.eta_seconds);
+            response.eta_basis = Some(estimate.basis.as_str().to_string());
+        }
+    }
+
+    Ok(Json(response))
 }
 
 /// List tasks with filters and pagination
@@ -345,6 +360,9 @@ pub async fn cancel_task(
             "document_updated": true,
             "reason": "Task not found but document status was updated to cancelled"
         })),
+        queue_position: None,
+        eta_seconds: None,
+        eta_basis: None,
     }))
 }
 

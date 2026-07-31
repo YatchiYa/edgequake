@@ -53,18 +53,52 @@ pub async fn recover_orphaned_staging_admissions(
     kv_storage: Arc<dyn KVStorage>,
     task_storage: SharedTaskStorage,
     min_age: Option<Duration>,
+    #[cfg(feature = "postgres")] pg_pool: Option<&sqlx::PgPool>,
 ) -> Result<OrphanStagingRecoveryReport, String> {
     info!("Checking for orphaned staging admission shells…");
     let now = Utc::now();
     let mut report = OrphanStagingRecoveryReport::default();
 
-    let staging_keys: Vec<String> = kv_storage
-        .keys_with_prefix("staging:")
-        .await
-        .map_err(|e| format!("keys_with_prefix staging: {e}"))?
-        .into_iter()
-        .filter(|k| k.ends_with(DOCUMENT_METADATA_SUFFIX) && !k.contains(":hash:"))
-        .collect();
+    // SPEC-091 Wave C: in relational mode enumerate staging shells from
+    // `documents.metadata->>'_shell'` (synthesized legacy keys keep the rest
+    // of the flow — reads/upserts already dispatch typed-first). KV scan is
+    // the fallback while dual-write fills the typed side.
+    #[cfg(feature = "postgres")]
+    let staging_keys: Option<Vec<String>> = match pg_pool {
+        Some(pool)
+            if edgequake_storage::kv_family_cutover::kv_family_mode_from_env(
+                edgequake_storage::kv_family_cutover::KV_FAMILY_METADATA,
+            ) == edgequake_storage::kv_family_cutover::KvFamilyMode::Relational =>
+        {
+            match edgequake_storage::adapters::postgres::document_shell::shell_staging_keys(pool)
+                .await
+            {
+                Ok(keys) => Some(
+                    keys.into_iter()
+                        .filter(|k| k.ends_with(DOCUMENT_METADATA_SUFFIX))
+                        .collect(),
+                ),
+                Err(e) => {
+                    tracing::warn!(error = %e, "typed staging scan failed — falling back to KV");
+                    None
+                }
+            }
+        }
+        _ => None,
+    };
+    #[cfg(not(feature = "postgres"))]
+    let staging_keys: Option<Vec<String>> = None;
+
+    let staging_keys: Vec<String> = match staging_keys {
+        Some(keys) => keys,
+        None => kv_storage
+            .keys_with_prefix("staging:")
+            .await
+            .map_err(|e| format!("keys_with_prefix staging: {e}"))?
+            .into_iter()
+            .filter(|k| k.ends_with(DOCUMENT_METADATA_SUFFIX) && !k.contains(":hash:"))
+            .collect(),
+    };
 
     if staging_keys.is_empty() {
         return Ok(report);
@@ -205,6 +239,14 @@ pub async fn recover_orphaned_staging_admissions(
                 &content_hash,
             )
             .await;
+            // SPEC-091 W2: typed ingestion_dedup staging release.
+            #[cfg(feature = "postgres")]
+            crate::services::ingestion_dedup_store::dual_release_staging(
+                pg_pool,
+                &workspace_id,
+                &content_hash,
+            )
+            .await;
         }
         info!(
             failed = report.failed_count,
@@ -280,9 +322,15 @@ mod tests {
         .await
         .unwrap();
 
-        let report = recover_orphaned_staging_admissions(kv.clone(), tasks, None)
-            .await
-            .unwrap();
+        let report = recover_orphaned_staging_admissions(
+            kv.clone(),
+            tasks,
+            None,
+            #[cfg(feature = "postgres")]
+            None,
+        )
+        .await
+        .unwrap();
         assert_eq!(report.failed_count, 1);
 
         let meta = kv
@@ -332,10 +380,15 @@ mod tests {
         task.status = TaskStatus::Pending;
         tasks.create_task(&task).await.unwrap();
 
-        let report =
-            recover_orphaned_staging_admissions(kv.clone(), tasks as SharedTaskStorage, None)
-                .await
-                .unwrap();
+        let report = recover_orphaned_staging_admissions(
+            kv.clone(),
+            tasks as SharedTaskStorage,
+            None,
+            #[cfg(feature = "postgres")]
+            None,
+        )
+        .await
+        .unwrap();
         assert_eq!(report.failed_count, 0);
         assert_eq!(report.skipped_live_task, 1);
 
@@ -360,9 +413,15 @@ mod tests {
             .await
             .unwrap();
 
-        let report = recover_orphaned_staging_admissions(kv, tasks, Some(Duration::from_secs(600)))
-            .await
-            .unwrap();
+        let report = recover_orphaned_staging_admissions(
+            kv,
+            tasks,
+            Some(Duration::from_secs(600)),
+            #[cfg(feature = "postgres")]
+            None,
+        )
+        .await
+        .unwrap();
         assert_eq!(report.failed_count, 0);
         assert_eq!(report.skipped_young, 1);
     }

@@ -121,8 +121,6 @@ pub use fusion::{
 };
 pub use graph_ppr::{parse_graph_walk_mode, GraphWalkMode, PprConfig};
 pub use grounding::{allows_honest_refusal, grounding_instructions, is_entailment_first};
-#[cfg(feature = "postgres")]
-pub use keywords::PostgresKeywordCache;
 pub use keywords::{
     CachedKeywordExtractor, ExtractedKeywords, InMemoryKeywordCache, KeywordCache,
     KeywordExtractor, Keywords, LLMKeywordExtractor, MockKeywordExtractor, QueryIntent,

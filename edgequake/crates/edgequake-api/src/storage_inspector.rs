@@ -653,7 +653,7 @@ impl StorageInspector {
     async fn check_inv03_indexed_docs_without_chunks(&self, report: &mut InspectorReport) {
         let sql = format!(
             r#"SELECT d.id::text
-               FROM documents d
+               FROM public.documents d
                WHERE d.status = 'indexed'
                  AND NOT EXISTS (
                      SELECT 1 FROM {kv} k
@@ -843,7 +843,7 @@ impl StorageInspector {
         // by ordering on id so each run sees a different slice).
         let sample_sql = r#"
             SELECT id::text, chunk_count, entity_count
-            FROM documents
+            FROM public.documents
             WHERE status IN ('indexed', 'completed', 'partial_failure', 'failed')
               AND COALESCE(chunk_count, 0) > 0
             ORDER BY id
@@ -1273,7 +1273,7 @@ impl StorageInspector {
                     r#"DELETE FROM {vec} WHERE metadata->>'type' = 'chunk'
                        AND NOT EXISTS (SELECT 1 FROM {kv} k WHERE k.key = {vec}.id)
                        AND NOT EXISTS (
-                           SELECT 1 FROM documents d
+                           SELECT 1 FROM public.documents d
                            WHERE d.id::text = COALESCE({vec}.document_id, {vec}.metadata->>'document_id')
                              AND d.status IN ('indexed', 'completed', 'processing')
                        )"#,

@@ -655,6 +655,94 @@ async fn test_delete_pending_document_succeeds() {
     );
 }
 
+/// SPEC-091 hardening regression (delete-while-queued edge case):
+/// an upload admitted as a staging shell stores metadata under the RESOLVED
+/// default-tenant UUID. An anonymous delete (no X-Tenant-ID header) must
+/// still match it (no 404), wipe the shell, and DURABLY cancel the queued
+/// ingest task (row → Cancelled), not just signal the process-local registry.
+#[tokio::test]
+async fn test_delete_staging_shell_anonymous_cancels_queued_task() {
+    let state = AppState::test_state();
+    let server = Server::new(create_test_config(), state.clone());
+    let app = server.build_router();
+
+    let doc_id = "staging-doc-queued-001";
+
+    // Queued ingest task whose row must be durably cancelled by the delete.
+    let workspace_uuid = edgequake_core::default_workspace_uuid();
+    let task = Task::new(
+        edgequake_api::middleware::default_tenant_uuid(),
+        workspace_uuid,
+        TaskType::Insert,
+        serde_json::json!({
+            "text": "staged body",
+            "file_source": "staging-doc-queued-001.txt",
+            "workspace_id": workspace_uuid.to_string(),
+            "metadata": { "document_id": doc_id },
+        }),
+    );
+    let track_id = task.track_id.clone();
+    state
+        .tasks
+        .storage
+        .create_task(&task)
+        .await
+        .expect("seed queued task");
+
+    // Staging admission shell: tenant_id stored as the RESOLVED UUID (this is
+    // what the upload path writes), workspace as the legacy alias.
+    let staging_key = edgequake_storage::kv_keys::staging_doc_metadata(doc_id);
+    let metadata = serde_json::json!({
+        "id": doc_id,
+        "title": "Queued Upload",
+        "status": "processing",
+        "created_at": "2026-07-28T00:00:00Z",
+        "workspace_id": "default",
+        "tenant_id": edgequake_api::middleware::default_tenant_uuid().to_string(),
+        "track_id": track_id,
+        "content_hash": "hash-001",
+    });
+    state
+        .storage
+        .kv_storage
+        .upsert(&[(staging_key.clone(), metadata)])
+        .await
+        .expect("seed staging shell");
+
+    // Anonymous DELETE (no X-Tenant-ID / X-Workspace-ID headers).
+    let (status, body) = delete_document_http(&app, doc_id).await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "anonymous delete of staging shell must not 404: {body}"
+    );
+    assert_eq!(body.get("deleted").and_then(|v| v.as_bool()), Some(true));
+
+    // Durable cancel: the queued task row is Cancelled (survives restarts).
+    let row = state
+        .tasks
+        .storage
+        .get_task(&track_id)
+        .await
+        .expect("get task")
+        .expect("task row must still exist");
+    assert_eq!(
+        row.status,
+        TaskStatus::Cancelled,
+        "queued ingest task must be durably cancelled, got {:?}",
+        row.status
+    );
+
+    // Staging shell metadata is gone.
+    let leftover = state
+        .storage
+        .kv_storage
+        .get_by_id(&staging_key)
+        .await
+        .expect("kv read");
+    assert!(leftover.is_none(), "staging shell must be wiped");
+}
+
 #[tokio::test]
 async fn test_delete_processing_document_succeeds() {
     // First Principle: a user must always be able to delete their document.

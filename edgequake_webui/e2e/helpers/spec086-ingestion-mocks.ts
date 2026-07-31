@@ -20,6 +20,15 @@ export type Spec086ListDoc = {
   error_message?: string;
   created_at?: string;
   updated_at?: string;
+  /** LAW-IS1 structured counts (optional on list rows). */
+  progress_counts?: { unit: string; current: number; total: number };
+  /** SPEC-091 IS2 queue chrome. */
+  queue_position?: number | null;
+  eta_seconds?: number | null;
+  eta_basis?: string | null;
+  /** SPEC-091 IS3 serving fence. */
+  query_ready?: boolean | null;
+  cost_usd?: number | null;
 };
 
 /** Build a documents-list row with sensible defaults (SRP). */

@@ -15,9 +15,36 @@
 //!   (`compensation_quarantine:{document_id}:{uuid}`) so operators can reconcile.
 
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, OnceLock};
 
 use crate::kv_key_schema::kv_keys;
 use crate::traits::{GraphStorage, KVStorage, VectorStorage};
+
+/// SPEC-091 Wave B2: typed quarantine destination (DIP).
+///
+/// WHY a global: compensation is a cross-cutting best-effort DLQ write
+/// reachable from 10+ public call sites; threading a sink through every
+/// signature would churn the entire storage/pipeline API for no behavioural
+/// gain. The sink is installed once at startup (Postgres state wiring) via
+/// [`set_quarantine_sink`]; when absent, `quarantine()` falls back to the
+/// legacy KV record (tests + non-postgres builds).
+#[async_trait::async_trait]
+pub trait QuarantineSink: Send + Sync {
+    async fn insert(
+        &self,
+        document_id: &str,
+        payload: serde_json::Value,
+    ) -> Result<(), crate::error::StorageError>;
+}
+
+static QUARANTINE_SINK: OnceLock<Arc<dyn QuarantineSink>> = OnceLock::new();
+
+/// Install the typed quarantine sink. First call wins; subsequent calls warn.
+pub fn set_quarantine_sink(sink: Arc<dyn QuarantineSink>) {
+    if QUARANTINE_SINK.set(sink).is_err() {
+        tracing::warn!("quarantine sink already installed; ignoring duplicate set");
+    }
+}
 
 /// Process-local quarantine counter (SSOT for store_contention assessor + tests).
 static COMPENSATION_QUARANTINE_TOTAL: AtomicU64 = AtomicU64::new(0);
@@ -100,11 +127,6 @@ async fn quarantine(
         "quarantine: failed compensation cleanup; durable DLQ write attempted"
     );
 
-    let Some(kv) = kv_storage else {
-        return;
-    };
-    let entry_id = uuid::Uuid::new_v4().to_string();
-    let key = kv_keys::compensation_quarantine(doc_id, &entry_id);
     let record = serde_json::json!({
         "kind": kind,
         "id": artifact_id,
@@ -112,6 +134,26 @@ async fn quarantine(
         "cleanup_error": cleanup_error,
         "ts": chrono::Utc::now().to_rfc3339(),
     });
+
+    // SPEC-091 Wave B2: typed table first (public.compensation_quarantine,
+    // migration 107) when the sink is installed; KV is the fallback when the
+    // typed write is unavailable or fails — never silently drop a DLQ record.
+    if let Some(sink) = QUARANTINE_SINK.get() {
+        match sink.insert(doc_id, record.clone()).await {
+            Ok(()) => return,
+            Err(e) => tracing::warn!(
+                document_id = %doc_id,
+                error = %e,
+                "typed compensation quarantine insert failed; falling back to KV"
+            ),
+        }
+    }
+
+    let Some(kv) = kv_storage else {
+        return;
+    };
+    let entry_id = uuid::Uuid::new_v4().to_string();
+    let key = kv_keys::compensation_quarantine(doc_id, &entry_id);
     if let Err(e) = kv.upsert(&[(key.clone(), record)]).await {
         tracing::error!(
             document_id = %doc_id,

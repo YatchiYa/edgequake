@@ -40,6 +40,8 @@ export interface DocumentHeaderProps {
   pipelineAlertMode?: 'working' | 'queued' | 'stuck' | 'mixed';
   /** Active working document count (for Working · N pill) */
   activeDocCount?: number;
+  /** Queued / waiting document count (Working · W · Queued · Q) */
+  waitingDocCount?: number;
   /** @deprecated Use pipelineAlertMode */
   pipelineWaitingOnly: boolean;
   /** Whether pipeline dialog is open */
@@ -65,6 +67,7 @@ export function DocumentHeader({
   showPipelineIndicator,
   pipelineAlertMode,
   activeDocCount,
+  waitingDocCount,
   pipelineWaitingOnly,
   pipelineDialogOpen,
   onPipelineDialogChange,
@@ -75,24 +78,32 @@ export function DocumentHeader({
 }: DocumentHeaderProps) {
   const { t } = useTranslation();
   const alertMode = pipelineAlertMode ?? (pipelineWaitingOnly ? 'queued' : 'working');
+  const working = activeDocCount ?? 0;
+  const queued = waitingDocCount ?? 0;
 
   const pipelineButtonClass =
     alertMode === 'stuck'
       ? 'gap-1 text-rose-600 border-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40'
-      : alertMode === 'queued'
+      : alertMode === 'queued' || (working === 0 && queued > 0)
         ? 'gap-1 text-amber-700 border-amber-300 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/40'
         : 'gap-1 text-sky-700 border-sky-300 hover:bg-sky-50 dark:text-sky-300 dark:border-sky-800 dark:hover:bg-sky-950/40';
 
+  // IS-AC-07 / LAW-IS3: Working count appears once; include Queued when both matter.
   const pipelineButtonLabel =
     alertMode === 'stuck'
       ? t('pipeline.stuckBadge', 'Needs attention')
-      : alertMode === 'queued'
-        ? t('pipeline.queuedBadge', 'Queued')
-        : activeDocCount && activeDocCount > 0
+      : working > 0 && queued > 0
+        ? t('pipeline.workingAndQueued', 'Working · {{working}} · Queued · {{queued}}', {
+            working,
+            queued,
+          })
+        : working > 0
           ? t('pipeline.workingCount', 'Working · {{count}}', {
-              count: activeDocCount,
+              count: working,
             })
-          : t('pipeline.busy', 'Working');
+          : queued > 0
+            ? t('pipeline.queuedCount', 'Queued · {{count}}', { count: queued })
+            : t('pipeline.busy', 'Working');
 
   return (
     <>

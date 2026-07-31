@@ -10,6 +10,8 @@
 
 mod common;
 
+use std::sync::Arc;
+
 use axum::{
     body::Body,
     http::{Request, StatusCode},
@@ -113,6 +115,8 @@ async fn e2e_cancel_indexed_task_conflicts() {
         TaskType::Insert,
         serde_json::json!({}),
     );
+    // SPEC-091 QW0: Complete requires Processing (state machine SSOT).
+    task.mark_processing();
     task.mark_success(serde_json::json!({ "ok": true }));
     let track_id = task.track_id.clone();
     workers.task_storage.create_task(&task).await.unwrap();
@@ -217,6 +221,128 @@ async fn e2e_cancel_task_writes_doc_kv_failure_class_cancelled() {
     assert_eq!(stored["status"], "cancelled");
     assert_eq!(stored["failure_class"], "cancelled");
     assert_eq!(stored["recommended_action"], "none");
+}
+
+/// Worker cancel SSOT: sync_doc_cancelled clears stage_progress + failure_class.
+#[tokio::test]
+async fn e2e_worker_cancel_ssot_clears_stage_progress() {
+    let workers = create_test_app_with_workers().await;
+    let doc_id = "worker-cancel-ssot-doc";
+    let meta_key = kv_keys::doc_metadata(doc_id);
+    edgequake_api::services::upsert_metadata_kv_with_index(
+        workers.kv_storage.as_ref(),
+        &meta_key,
+        json!({
+            "id": doc_id,
+            "status": "embedding",
+            "current_stage": "embedding",
+            "stage_progress": 0.99,
+            "tenant_id": TEST_TENANT_ID,
+            "workspace_id": TEST_WORKSPACE_ID,
+        }),
+    )
+    .await
+    .unwrap();
+
+    let updated = edgequake_api::services::sync_doc_cancelled_by_document_id(
+        Arc::clone(&workers.kv_storage),
+        doc_id,
+        "Task cancelled during 'embedding' stage",
+    )
+    .await
+    .unwrap();
+    assert!(updated);
+
+    let stored = workers
+        .kv_storage
+        .get_by_id(&meta_key)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored["status"], "cancelled");
+    assert_eq!(stored["failure_class"], "cancelled");
+    assert_eq!(stored["stage_progress"], 0.0);
+}
+
+/// Cancel mid-embedding must not leave Active Runs / list as embedding+running.
+#[tokio::test]
+async fn e2e_cancel_embedding_doc_list_shows_cancelled_not_running() {
+    let workers = create_test_app_with_workers().await;
+    let tenant_id = Uuid::parse_str(TEST_TENANT_ID).unwrap();
+    let workspace_id = Uuid::parse_str(TEST_WORKSPACE_ID).unwrap();
+
+    let doc_id = "cancel-embedding-zombie";
+    let task = Task::new(
+        tenant_id,
+        workspace_id,
+        TaskType::Insert,
+        json!({ "document_id": doc_id }),
+    );
+    let track_id = task.track_id.clone();
+    workers.task_storage.create_task(&task).await.unwrap();
+
+    let meta_key = kv_keys::doc_metadata(doc_id);
+    let meta = json!({
+        "id": doc_id,
+        "title": "01-databricks-ticket.pdf",
+        "track_id": track_id,
+        "status": "extracting",
+        "current_stage": "embedding",
+        "stage_progress": 0.99,
+        "stage_message": "Embedding chunks: 0/58 (0%)",
+        "tenant_id": TEST_TENANT_ID,
+        "workspace_id": TEST_WORKSPACE_ID,
+        "created_at": "2026-07-30T12:00:00Z",
+        "updated_at": "2026-07-30T12:00:00Z",
+    });
+    edgequake_api::services::upsert_metadata_kv_with_index(
+        workers.kv_storage.as_ref(),
+        &meta_key,
+        meta,
+    )
+    .await
+    .expect("seed metadata");
+
+    let response = post_cancel(workers.app(), &track_id).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let stored = workers
+        .kv_storage
+        .get_by_id(&meta_key)
+        .await
+        .unwrap()
+        .expect("metadata after cancel");
+    assert_eq!(stored["status"], "cancelled");
+    assert_eq!(stored["current_stage"], "cancelled");
+    assert_eq!(stored["stage_progress"], 0.0);
+
+    let list = workers
+        .app()
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/documents?page=1&page_size=50")
+                .header("X-Tenant-ID", TEST_TENANT_ID)
+                .header("X-Workspace-ID", TEST_WORKSPACE_ID)
+                .header("X-User-ID", TEST_USER_ID)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(list.status(), StatusCode::OK);
+    let body = extract_json(list).await;
+    let doc = body["documents"]
+        .as_array()
+        .expect("documents")
+        .iter()
+        .find(|d| d["id"] == doc_id)
+        .expect("cancelled doc in list");
+    assert_eq!(doc["display_status"], "cancelled");
+    assert_eq!(doc["ui_phase"], "terminal");
+    assert_ne!(doc["display_status"], "embedding");
+    assert_ne!(doc["ui_phase"], "running");
 }
 
 #[test]
@@ -496,6 +622,8 @@ async fn e2e_delete_tasks_do_not_starve_pdf_ingest_lane() {
         max_tasks_per_tenant: 2,
         max_lifecycle_tasks_per_tenant: 4,
         processing_timeout_secs: 300,
+        provider_budget: 0,
+        tenant_lane_weight: 1,
     };
     let mut pool = WorkerPool::new(config, queue.clone(), storage.clone(), processor);
     pool.start();

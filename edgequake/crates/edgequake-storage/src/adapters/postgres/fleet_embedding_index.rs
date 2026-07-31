@@ -1,0 +1,417 @@
+//! SPEC-091 IW2 — typed fleet embeddings Postgres adapter (`FleetEmbeddingIndex`).
+
+use async_trait::async_trait;
+use serde_json::Value;
+use sqlx::{PgPool, Row};
+use uuid::Uuid;
+
+use crate::adapters::postgres::typed_embedding_dims::{
+    validate_ann_dimensions, validate_typed_embedding_batch_dims,
+};
+use crate::embedding_family::{
+    classify_legacy_vector_id, entity_name_from_legacy_id, parse_relationship_legacy_key,
+    EmbeddingFamily,
+};
+use crate::error::StorageError;
+use crate::traits::domain::{
+    EmbeddingCapabilities, FleetEmbeddingIndex, FleetEmbeddingKey, FleetEmbeddingRow, ModelId,
+    ScoredFleet, UpsertReport, VectorQuery, WorkspaceId,
+};
+
+/// Postgres adapter for entity/relationship/report typed embeddings.
+pub struct PgFleetEmbeddingIndex {
+    pool: PgPool,
+    model_name: String,
+}
+
+impl PgFleetEmbeddingIndex {
+    pub fn new(pool: PgPool, model_name: impl Into<String>) -> Self {
+        Self {
+            pool,
+            model_name: model_name.into(),
+        }
+    }
+
+    async fn resolve_model_id(&self, dimensions: i32) -> Result<ModelId, StorageError> {
+        let id: Uuid = sqlx::query_scalar(
+            r#"
+            INSERT INTO embedding_models (name, dimensions)
+            VALUES ($1, $2)
+            ON CONFLICT (name, dimensions) DO UPDATE SET name = EXCLUDED.name
+            RETURNING id
+            "#,
+        )
+        .bind(&self.model_name)
+        .bind(dimensions)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(StorageError::from)?;
+        Ok(ModelId(id))
+    }
+
+    async fn find_model_id(
+        &self,
+        name: &str,
+        dimensions: i32,
+    ) -> Result<Option<ModelId>, StorageError> {
+        let id: Option<Uuid> = sqlx::query_scalar(
+            "SELECT id FROM embedding_models WHERE name = $1 AND dimensions = $2",
+        )
+        .bind(name)
+        .bind(dimensions)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(StorageError::from)?;
+        Ok(id.map(ModelId))
+    }
+
+    fn format_vector(embedding: &[f32]) -> String {
+        let mut s = String::with_capacity(embedding.len() * 8 + 2);
+        s.push('[');
+        for (i, v) in embedding.iter().enumerate() {
+            if i > 0 {
+                s.push(',');
+            }
+            s.push_str(&v.to_string());
+        }
+        s.push(']');
+        s
+    }
+}
+
+#[async_trait]
+impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
+    fn capabilities(&self, _family: EmbeddingFamily) -> EmbeddingCapabilities {
+        EmbeddingCapabilities {
+            metric: "cosine",
+            supports_filters: true,
+            supports_rerank: false,
+        }
+    }
+
+    async fn upsert_batch(
+        &self,
+        family: EmbeddingFamily,
+        _model: ModelId,
+        rows: &[FleetEmbeddingRow],
+    ) -> Result<UpsertReport, StorageError> {
+        if rows.is_empty() {
+            return Ok(UpsertReport::default());
+        }
+        let dimensions = validate_typed_embedding_batch_dims(
+            rows.iter().map(|r| r.dimensions),
+            rows.iter().map(|r| r.embedding.len()),
+        )?;
+        let model_id = self.resolve_model_id(dimensions).await?;
+
+        let workspace_ids: Vec<Uuid> = rows.iter().map(|r| r.workspace_id.0).collect();
+        let dims: Vec<i32> = rows.iter().map(|r| r.dimensions).collect();
+        let vectors: Vec<String> = rows
+            .iter()
+            .map(|r| Self::format_vector(&r.embedding))
+            .collect();
+
+        let upserted = match family {
+            EmbeddingFamily::Entity => {
+                let entity_ids: Vec<Uuid> = rows
+                    .iter()
+                    .map(|r| match r.key {
+                        FleetEmbeddingKey::Entity(id) => id,
+                        _ => Uuid::nil(),
+                    })
+                    .collect();
+                sqlx::query(
+                    r#"
+                    INSERT INTO entity_embeddings (model_id, entity_id, workspace_id, embedding, dimensions)
+                    SELECT $1, e, w, v::halfvec, d
+                    FROM unnest($2::uuid[], $3::uuid[], $4::text[], $5::int[]) AS t(e, w, v, d)
+                    ON CONFLICT (model_id, entity_id) DO NOTHING
+                    "#,
+                )
+                .bind(model_id.0)
+                .bind(&entity_ids)
+                .bind(&workspace_ids)
+                .bind(&vectors)
+                .bind(&dims)
+                .execute(&self.pool)
+                .await
+                .map_err(StorageError::from)?
+                .rows_affected()
+            }
+            EmbeddingFamily::Relationship => {
+                let rel_ids: Vec<Uuid> = rows
+                    .iter()
+                    .map(|r| match r.key {
+                        FleetEmbeddingKey::Relationship(id) => id,
+                        _ => Uuid::nil(),
+                    })
+                    .collect();
+                sqlx::query(
+                    r#"
+                    INSERT INTO relationship_embeddings (model_id, relationship_id, workspace_id, embedding, dimensions)
+                    SELECT $1, r, w, v::halfvec, d
+                    FROM unnest($2::uuid[], $3::uuid[], $4::text[], $5::int[]) AS t(r, w, v, d)
+                    ON CONFLICT (model_id, relationship_id) DO NOTHING
+                    "#,
+                )
+                .bind(model_id.0)
+                .bind(&rel_ids)
+                .bind(&workspace_ids)
+                .bind(&vectors)
+                .bind(&dims)
+                .execute(&self.pool)
+                .await
+                .map_err(StorageError::from)?
+                .rows_affected()
+            }
+            EmbeddingFamily::Report => {
+                let report_ids: Vec<String> = rows
+                    .iter()
+                    .map(|r| match &r.key {
+                        FleetEmbeddingKey::Report(id) => id.clone(),
+                        _ => String::new(),
+                    })
+                    .collect();
+                sqlx::query(
+                    r#"
+                    INSERT INTO report_embeddings (model_id, report_id, workspace_id, embedding, dimensions)
+                    SELECT $1, r, w, v::halfvec, d
+                    FROM unnest($2::text[], $3::uuid[], $4::text[], $5::int[]) AS t(r, w, v, d)
+                    ON CONFLICT (model_id, report_id) DO NOTHING
+                    "#,
+                )
+                .bind(model_id.0)
+                .bind(&report_ids)
+                .bind(&workspace_ids)
+                .bind(&vectors)
+                .bind(&dims)
+                .execute(&self.pool)
+                .await
+                .map_err(StorageError::from)?
+                .rows_affected()
+            }
+        };
+
+        Ok(UpsertReport {
+            upserted: upserted as u64,
+        })
+    }
+
+    async fn search(
+        &self,
+        family: EmbeddingFamily,
+        req: &VectorQuery,
+    ) -> Result<Vec<ScoredFleet>, StorageError> {
+        let dim = validate_ann_dimensions(req.embedding.len() as i32)?;
+        let model_id = match self.find_model_id(&self.model_name, dim).await? {
+            Some(id) => id,
+            None => return Ok(Vec::new()),
+        };
+
+        let vector = Self::format_vector(&req.embedding);
+        let ws_filter = req.workspace_id.is_some();
+        let limit = req.limit as i64;
+        let cast = format!("halfvec({dim})");
+
+        let q = match (family, ws_filter) {
+            (EmbeddingFamily::Entity, true) => format!(
+                "SELECT ('entity:' || e.name) AS legacy_id, \
+                        1.0 - ((fe.embedding::{cast}) <=> $1::{cast}) AS score \
+                 FROM entity_embeddings fe \
+                 JOIN entities e ON e.id = fe.entity_id \
+                 WHERE fe.model_id = $2 AND fe.dimensions = {dim} AND fe.workspace_id = $3 \
+                 ORDER BY (fe.embedding::{cast}) <=> $1::{cast} LIMIT $4"
+            ),
+            (EmbeddingFamily::Entity, false) => format!(
+                "SELECT ('entity:' || e.name) AS legacy_id, \
+                        1.0 - ((fe.embedding::{cast}) <=> $1::{cast}) AS score \
+                 FROM entity_embeddings fe \
+                 JOIN entities e ON e.id = fe.entity_id \
+                 WHERE fe.model_id = $2 AND fe.dimensions = {dim} \
+                 ORDER BY (fe.embedding::{cast}) <=> $1::{cast} LIMIT $3"
+            ),
+            (EmbeddingFamily::Relationship, true) => format!(
+                "SELECT (es.name || '->' || et.name || ':' || r.relation_type) AS legacy_id, \
+                        1.0 - ((fe.embedding::{cast}) <=> $1::{cast}) AS score \
+                 FROM relationship_embeddings fe \
+                 JOIN relationships r ON r.id = fe.relationship_id \
+                 JOIN entities es ON es.id = r.source_id \
+                 JOIN entities et ON et.id = r.target_id \
+                 WHERE fe.model_id = $2 AND fe.dimensions = {dim} AND fe.workspace_id = $3 \
+                 ORDER BY (fe.embedding::{cast}) <=> $1::{cast} LIMIT $4"
+            ),
+            (EmbeddingFamily::Relationship, false) => format!(
+                "SELECT (es.name || '->' || et.name || ':' || r.relation_type) AS legacy_id, \
+                        1.0 - ((fe.embedding::{cast}) <=> $1::{cast}) AS score \
+                 FROM relationship_embeddings fe \
+                 JOIN relationships r ON r.id = fe.relationship_id \
+                 JOIN entities es ON es.id = r.source_id \
+                 JOIN entities et ON et.id = r.target_id \
+                 WHERE fe.model_id = $2 AND fe.dimensions = {dim} \
+                 ORDER BY (fe.embedding::{cast}) <=> $1::{cast} LIMIT $3"
+            ),
+            (EmbeddingFamily::Report, true) => format!(
+                "SELECT fe.report_id AS legacy_id, \
+                        1.0 - ((fe.embedding::{cast}) <=> $1::{cast}) AS score \
+                 FROM report_embeddings fe \
+                 WHERE fe.model_id = $2 AND fe.dimensions = {dim} AND fe.workspace_id = $3 \
+                 ORDER BY (fe.embedding::{cast}) <=> $1::{cast} LIMIT $4"
+            ),
+            (EmbeddingFamily::Report, false) => format!(
+                "SELECT fe.report_id AS legacy_id, \
+                        1.0 - ((fe.embedding::{cast}) <=> $1::{cast}) AS score \
+                 FROM report_embeddings fe \
+                 WHERE fe.model_id = $2 AND fe.dimensions = {dim} \
+                 ORDER BY (fe.embedding::{cast}) <=> $1::{cast} LIMIT $3"
+            ),
+        };
+
+        let mut query = sqlx::query(&q).bind(&vector).bind(model_id.0);
+        if let Some(ws) = req.workspace_id {
+            query = query.bind(ws.0);
+        }
+        query = query.bind(limit);
+
+        let rows = query
+            .fetch_all(&self.pool)
+            .await
+            .map_err(StorageError::from)?;
+        let mut out = Vec::with_capacity(rows.len());
+        for row in rows {
+            let legacy_id: String = row.try_get("legacy_id").map_err(StorageError::from)?;
+            let score: f64 = row.try_get("score").map_err(StorageError::from)?;
+            out.push(ScoredFleet {
+                legacy_id,
+                score: score as f32,
+            });
+        }
+        Ok(out)
+    }
+
+    async fn delete_for_workspace(
+        &self,
+        family: EmbeddingFamily,
+        workspace: WorkspaceId,
+    ) -> Result<u64, StorageError> {
+        let table = family.typed_table();
+        let deleted = sqlx::query(&format!("DELETE FROM {table} WHERE workspace_id = $1"))
+            .bind(workspace.0)
+            .execute(&self.pool)
+            .await
+            .map_err(StorageError::from)?
+            .rows_affected();
+        Ok(deleted)
+    }
+
+    async fn mirror_legacy_batch(
+        &self,
+        rows: &[(String, Vec<f32>, Value)],
+        count_as_entities: bool,
+    ) -> Result<u64, StorageError> {
+        let mut entity_rows: Vec<FleetEmbeddingRow> = Vec::new();
+        let mut rel_rows: Vec<FleetEmbeddingRow> = Vec::new();
+        let mut report_rows: Vec<FleetEmbeddingRow> = Vec::new();
+
+        for (id, embedding, meta) in rows {
+            let Some(ws) = meta
+                .get("workspace_id")
+                .and_then(|v| v.as_str())
+                .and_then(|s| Uuid::parse_str(s).ok())
+            else {
+                continue;
+            };
+            let row_template = |key: FleetEmbeddingKey| FleetEmbeddingRow {
+                workspace_id: WorkspaceId(ws),
+                embedding: embedding.clone(),
+                dimensions: embedding.len() as i32,
+                key,
+            };
+
+            if count_as_entities {
+                let Some(name) = entity_name_from_legacy_id(id) else {
+                    continue;
+                };
+                let Some(eid) = sqlx::query_scalar(
+                    r#"SELECT id FROM entities
+                       WHERE workspace_id = $2
+                         AND (name = $1 OR name = ($2::text || '::' || $1))
+                       ORDER BY CASE WHEN name = $1 THEN 0 ELSE 1 END
+                       LIMIT 1"#,
+                )
+                .bind(name)
+                .bind(ws)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(StorageError::from)?
+                else {
+                    continue;
+                };
+                entity_rows.push(row_template(FleetEmbeddingKey::Entity(eid)));
+                continue;
+            }
+
+            match classify_legacy_vector_id(id) {
+                Some(EmbeddingFamily::Report) => {
+                    report_rows.push(row_template(FleetEmbeddingKey::Report(id.clone())));
+                }
+                Some(EmbeddingFamily::Relationship) => {
+                    let Some((src, tgt, rel_type)) = parse_relationship_legacy_key(id) else {
+                        continue;
+                    };
+                    let Some(rid) = sqlx::query_scalar(
+                        r#"SELECT r.id FROM relationships r
+                           JOIN entities es ON es.id = r.source_id
+                           JOIN entities et ON et.id = r.target_id
+                           WHERE r.workspace_id = $4
+                             AND r.relation_type = $3
+                             AND (es.name = $1 OR es.name = ($4::text || '::' || $1))
+                             AND (et.name = $2 OR et.name = ($4::text || '::' || $2))
+                           ORDER BY CASE WHEN es.name = $1 AND et.name = $2 THEN 0 ELSE 1 END
+                           LIMIT 1"#,
+                    )
+                    .bind(&src)
+                    .bind(&tgt)
+                    .bind(&rel_type)
+                    .bind(ws)
+                    .fetch_optional(&self.pool)
+                    .await
+                    .map_err(StorageError::from)?
+                    else {
+                        continue;
+                    };
+                    rel_rows.push(row_template(FleetEmbeddingKey::Relationship(rid)));
+                }
+                _ => {}
+            }
+        }
+
+        let resolved = (entity_rows.len() + rel_rows.len() + report_rows.len()) as u64;
+        let mut upserted = 0u64;
+        if !entity_rows.is_empty() {
+            upserted += self
+                .upsert_batch(EmbeddingFamily::Entity, ModelId(Uuid::nil()), &entity_rows)
+                .await?
+                .upserted;
+        }
+        if !rel_rows.is_empty() {
+            upserted += self
+                .upsert_batch(
+                    EmbeddingFamily::Relationship,
+                    ModelId(Uuid::nil()),
+                    &rel_rows,
+                )
+                .await?
+                .upserted;
+        }
+        if !report_rows.is_empty() {
+            upserted += self
+                .upsert_batch(EmbeddingFamily::Report, ModelId(Uuid::nil()), &report_rows)
+                .await?
+                .upserted;
+        }
+        // Return *resolved* count (FK hits), not rows_affected — ON CONFLICT DO NOTHING
+        // must not be mistaken for a missing spine.
+        let _ = upserted;
+        Ok(resolved)
+    }
+}

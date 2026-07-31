@@ -10,7 +10,7 @@
 //! - **entity_count / relationship_count**: always AGE graph (see `stats.rs`).
 
 /// Operator-visible merge rule (SPEC-024 Phase 4.6).
-pub const MERGE_STRATEGY: &str = "max(postgresql, kv)";
+pub const MERGE_STRATEGY: &str = "relational_primary_kv_fallback";
 
 /// Snapshot of KV vs relational drift for dashboards (read-only, cheap).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -170,7 +170,7 @@ pub async fn list_relational_document_summaries(
             (metadata->>'input_tokens')::bigint AS input_tokens,
             (metadata->>'output_tokens')::bigint AS output_tokens,
             (metadata->>'total_tokens')::bigint AS total_tokens
-        FROM documents
+        FROM public.documents
         WHERE workspace_id = $1
           AND ($2::uuid IS NULL OR tenant_id IS NULL OR tenant_id = $2)
         ORDER BY created_at DESC
@@ -225,6 +225,11 @@ pub async fn list_relational_document_summaries(
                 pdf_id: None,
                 display_status: None,
                 ui_phase: None,
+                progress_counts: None,
+                queue_position: None,
+                eta_seconds: None,
+                eta_basis: None,
+                query_ready: None,
             }
         })
         .collect())
@@ -280,7 +285,7 @@ pub async fn relational_document_scope(
     let row = sqlx::query(
         r#"
         SELECT workspace_id::text AS workspace_id, status, track_id
-        FROM documents
+        FROM public.documents
         WHERE id = $1
           AND workspace_id = $2
           AND ($3::uuid IS NULL OR tenant_id IS NULL OR tenant_id = $3)
@@ -343,7 +348,7 @@ pub async fn delete_relational_document(
 
     let result = sqlx::query(
         r#"
-        DELETE FROM documents
+        DELETE FROM public.documents
         WHERE id = $1
           AND workspace_id = $2
           AND ($3::uuid IS NULL OR tenant_id IS NULL OR tenant_id = $3)
@@ -395,15 +400,32 @@ pub async fn delete_relational_documents_for_workspace(
         .as_ref()
         .and_then(|t| Uuid::parse_str(t).ok());
 
+    // Wave B3/C + SPEC-091 IW1 (GAP-091-24): shell-written documents may carry
+    // the workspace in metadata JSONB while the FK-guarded `workspace_id`
+    // column stays NULL. Two indexed predicates (UNION) beat an OR that
+    // defeats both the `(workspace_id, created_at)` btree and the expression
+    // index on `metadata->>'workspace_id'` (migration 128).
+    let workspace_id_str = tenant_ctx.workspace_id.clone();
     let result = sqlx::query(
         r#"
-        DELETE FROM documents
-        WHERE workspace_id = $1
-          AND ($2::uuid IS NULL OR tenant_id IS NULL OR tenant_id = $2)
+        WITH doomed AS (
+            SELECT id FROM public.documents
+            WHERE workspace_id = $1
+              AND ($2::uuid IS NULL OR tenant_id IS NULL OR tenant_id = $2)
+            UNION
+            SELECT id FROM public.documents
+            WHERE workspace_id IS NULL
+              AND metadata->>'workspace_id' = $3
+              AND ($2::uuid IS NULL OR tenant_id IS NULL OR tenant_id = $2)
+        )
+        DELETE FROM public.documents d
+        USING doomed
+        WHERE d.id = doomed.id
         "#,
     )
     .bind(workspace_id)
     .bind(tenant_uuid)
+    .bind(workspace_id_str)
     .execute(pool)
     .await
     .map_err(|e| ApiError::Internal(format!("Failed to bulk-delete relational documents: {e}")))?;
@@ -438,17 +460,70 @@ fn kv_summary_is_inflight(doc: &DocumentSummary) -> bool {
     })
 }
 
+/// When relational cancel/fail wins over stale in-flight KV, clear embedding-band
+/// progress so Active Runs cannot show "Embedding 99%" for a terminal document.
+fn project_terminal_failure_presentation(doc: &mut DocumentSummary, rel_status: &str) {
+    let stage = if rel_status.eq_ignore_ascii_case("cancelled") {
+        "cancelled"
+    } else if rel_status.eq_ignore_ascii_case("partial_failure") {
+        "partial_failure"
+    } else {
+        "failed"
+    };
+    doc.current_stage = Some(stage.to_string());
+    doc.stage_progress = Some(0.0);
+    doc.stage_message = Some(match stage {
+        "cancelled" => "Processing cancelled".into(),
+        "partial_failure" => "Processing completed with issues".into(),
+        _ => "Processing failed".into(),
+    });
+}
+
+/// True when relational title should win over KV for the same document id.
+///
+/// Placeholder relational titles (`None`, empty, `"Untitled"`) must not hide a
+/// real KV `title` / `file_name` — admission historically left the schema
+/// DEFAULT while KV already held the upload filename.
+fn should_overlay_relational_title(rel_title: Option<&str>, kv: &DocumentSummary) -> bool {
+    let Some(rel) = rel_title.map(str::trim).filter(|t| !t.is_empty()) else {
+        return false;
+    };
+    let placeholder = rel.eq_ignore_ascii_case("Untitled");
+    if !placeholder {
+        return true;
+    }
+    let kv_has_real = kv
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty() && !t.eq_ignore_ascii_case("Untitled"))
+        .is_some()
+        || kv
+            .file_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|t| !t.is_empty() && !t.eq_ignore_ascii_case("Untitled"))
+            .is_some();
+    !kv_has_real
+}
+
 /// Merge KV-derived documents with relational rows (relational fills gaps).
 ///
-/// Status rule (SPEC-054 reprocess honesty): when KV is in-flight, do **not**
-/// let a stale relational terminal status (`completed`/`indexed`/`failed`)
-/// overwrite it. Reprocess accept updates KV only; relational lags until the
-/// worker mirrors status — unconditional overwrite made the list lie as Completed.
+/// Status rules:
+/// - SPEC-054 reprocess honesty: when KV is in-flight, do **not** let a stale
+///   relational **success** (`completed`/`indexed`/`partial_success`) overwrite
+///   it. Reprocess accept updates KV first; relational lags until the worker
+///   mirrors status.
+/// - Cancel/fail terminals are intentional: relational `cancelled`/`failed`/
+///   `partial_failure` **must** win over stale in-flight KV (zombie Active Runs
+///   after cancel that only touched `documents.status`).
 pub fn merge_document_summaries(
     mut kv_documents: Vec<DocumentSummary>,
     relational_documents: Vec<DocumentSummary>,
 ) -> Vec<DocumentSummary> {
-    use crate::document_metadata::is_terminal_document_status;
+    use crate::document_metadata::{
+        is_terminal_document_status, is_terminal_failure_status, is_terminal_success_status,
+    };
     use std::collections::HashMap;
 
     let mut by_id: HashMap<String, usize> = HashMap::new();
@@ -459,16 +534,32 @@ pub fn merge_document_summaries(
     for rel in relational_documents {
         if let Some(&idx) = by_id.get(&rel.id) {
             // SPEC-045: relational title/counts are durable; KV may hold swapped blobs.
+            // Do not overlay schema-default / empty placeholder titles over a real
+            // KV filename (markdown admission used to leave DEFAULT 'Untitled').
             let kv = &mut kv_documents[idx];
-            if rel.title.is_some() {
+            if should_overlay_relational_title(rel.title.as_deref(), kv) {
                 kv.title = rel.title.clone();
                 kv.file_name = rel.file_name.clone();
             }
             if let Some(rel_status) = rel.status.as_deref() {
+                let kv_was_inflight = kv_summary_is_inflight(kv);
+                // SPEC-054: KV inflight beats stale relational *success* only.
                 let keep_kv_inflight =
-                    kv_summary_is_inflight(kv) && is_terminal_document_status(rel_status);
-                if !keep_kv_inflight {
+                    kv_was_inflight && is_terminal_success_status(rel_status);
+                // Zombie guard: KV terminal (cancelled/failed/completed) must not
+                // be overwritten by a stale relational non-terminal column that
+                // shell upserts historically left at `processing`.
+                let keep_kv_terminal = kv
+                    .status
+                    .as_deref()
+                    .is_some_and(is_terminal_document_status)
+                    && !is_terminal_document_status(rel_status);
+                if !keep_kv_inflight && !keep_kv_terminal {
                     kv.status = rel.status.clone();
+                    // Project presentation so Active Runs cannot keep embedding 99%.
+                    if kv_was_inflight && is_terminal_failure_status(rel_status) {
+                        project_terminal_failure_presentation(kv, rel_status);
+                    }
                 }
             }
             kv.chunk_count = kv.chunk_count.max(rel.chunk_count);
@@ -712,6 +803,11 @@ mod tests {
             pdf_id: None,
             display_status: None,
             ui_phase: None,
+                progress_counts: None,
+                queue_position: None,
+                eta_seconds: None,
+                eta_basis: None,
+                query_ready: None,
         }];
 
         let pg = vec![DocumentSummary {
@@ -741,6 +837,11 @@ mod tests {
             pdf_id: None,
             display_status: None,
             ui_phase: None,
+                progress_counts: None,
+                queue_position: None,
+                eta_seconds: None,
+                eta_basis: None,
+                query_ready: None,
         }];
 
         let merged = merge_document_summaries(kv, pg);
@@ -779,6 +880,11 @@ mod tests {
             pdf_id: None,
             display_status: None,
             ui_phase: None,
+                progress_counts: None,
+                queue_position: None,
+                eta_seconds: None,
+                eta_basis: None,
+                query_ready: None,
         }];
 
         let pg = vec![DocumentSummary {
@@ -808,6 +914,11 @@ mod tests {
             pdf_id: None,
             display_status: None,
             ui_phase: None,
+                progress_counts: None,
+                queue_position: None,
+                eta_seconds: None,
+                eta_basis: None,
+                query_ready: None,
         }];
 
         let merged = merge_document_summaries(kv, pg);
@@ -844,7 +955,46 @@ mod tests {
             pdf_id: None,
             display_status: None,
             ui_phase: None,
+                progress_counts: None,
+                queue_position: None,
+                eta_seconds: None,
+                eta_basis: None,
+                query_ready: None,
         }
+    }
+
+    #[test]
+    fn merge_keeps_kv_filename_over_relational_untitled_placeholder() {
+        let mut kv = summary("doc-1", "pending", Some("queued"));
+        kv.title = Some("notes.md".into());
+        kv.file_name = Some("notes.md".into());
+        let mut pg = summary("doc-1", "processing", None);
+        pg.title = Some("Untitled".into());
+        pg.file_name = Some("Untitled".into());
+        let merged = merge_document_summaries(vec![kv], vec![pg]);
+        assert_eq!(merged[0].title.as_deref(), Some("notes.md"));
+        assert_eq!(merged[0].file_name.as_deref(), Some("notes.md"));
+    }
+
+    #[test]
+    fn merge_overlays_relational_title_when_not_placeholder() {
+        let mut kv = summary("doc-1", "completed", None);
+        kv.title = Some("old.md".into());
+        let mut pg = summary("doc-1", "completed", None);
+        pg.title = Some("renamed.md".into());
+        let merged = merge_document_summaries(vec![kv], vec![pg]);
+        assert_eq!(merged[0].title.as_deref(), Some("renamed.md"));
+    }
+
+    #[test]
+    fn should_overlay_skips_untitled_when_kv_has_file_name_only() {
+        let mut kv = summary("doc-1", "pending", None);
+        kv.title = None;
+        kv.file_name = Some("readme.md".into());
+        assert!(!should_overlay_relational_title(Some("Untitled"), &kv));
+        assert!(should_overlay_relational_title(Some("readme.md"), &kv));
+        assert!(!should_overlay_relational_title(Some(""), &kv));
+        assert!(!should_overlay_relational_title(None, &kv));
     }
 
     #[test]
@@ -874,7 +1024,55 @@ mod tests {
         let kv = vec![summary("doc-1", "completed", Some("completed"))];
         let pg = vec![summary("doc-1", "indexed", None)];
         let merged = merge_document_summaries(kv, pg);
-        // KV terminal → relational still wins (normalize happens upstream on PG load).
+        // Both terminal → relational may refine (indexed vs completed).
         assert_eq!(merged[0].status.as_deref(), Some("indexed"));
+    }
+
+    #[test]
+    fn merge_keeps_kv_cancelled_over_stale_relational_processing() {
+        let kv = vec![summary("doc-1", "cancelled", Some("cancelled"))];
+        let pg = vec![summary("doc-1", "processing", Some("converting"))];
+        let merged = merge_document_summaries(kv, pg);
+        assert_eq!(
+            merged[0].status.as_deref(),
+            Some("cancelled"),
+            "terminal KV must not be resurrected by stale relational processing"
+        );
+    }
+
+    #[test]
+    fn merge_keeps_kv_failed_over_stale_relational_embedding() {
+        let kv = vec![summary("doc-1", "failed", Some("failed"))];
+        let pg = vec![summary("doc-1", "embedding", None)];
+        let merged = merge_document_summaries(kv, pg);
+        assert_eq!(merged[0].status.as_deref(), Some("failed"));
+    }
+
+    #[test]
+    fn merge_prefers_relational_cancelled_over_kv_embedding() {
+        // Incident shape: cancel touched documents.status but left KV at embedding 99%.
+        let mut kv = summary("doc-1", "extracting", Some("embedding"));
+        kv.stage_progress = Some(0.99);
+        kv.stage_message = Some("Embedding chunks: starting (58 total)".into());
+        let pg = vec![summary("doc-1", "cancelled", Some("cancelled"))];
+        let merged = merge_document_summaries(vec![kv], pg);
+        assert_eq!(merged[0].status.as_deref(), Some("cancelled"));
+        assert_eq!(merged[0].current_stage.as_deref(), Some("cancelled"));
+        assert_eq!(merged[0].stage_progress, Some(0.0));
+        assert_eq!(
+            merged[0].stage_message.as_deref(),
+            Some("Processing cancelled")
+        );
+    }
+
+    #[test]
+    fn merge_prefers_relational_failed_over_kv_extracting() {
+        let mut kv = summary("doc-1", "processing", Some("extracting"));
+        kv.stage_progress = Some(0.5);
+        let pg = vec![summary("doc-1", "failed", Some("failed"))];
+        let merged = merge_document_summaries(vec![kv], pg);
+        assert_eq!(merged[0].status.as_deref(), Some("failed"));
+        assert_eq!(merged[0].current_stage.as_deref(), Some("failed"));
+        assert_eq!(merged[0].stage_progress, Some(0.0));
     }
 }

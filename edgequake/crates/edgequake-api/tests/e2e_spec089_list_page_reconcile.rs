@@ -80,9 +80,13 @@ async fn iss089_list_reconcile_prefixes_bounded_to_page() {
     };
     let (tenant_id, workspace_id) = create_tenant_workspace(&app).await;
 
-    let db_url = std::env::var("DATABASE_URL")
-        .or_else(|_| std::fs::read_to_string("/tmp/edgequake-db-url").map(|s| s.trim().to_string()))
-        .expect("DATABASE_URL");
+    let db_url = crate::common::test_db::isolated_test_url(
+        &std::env::var("DATABASE_URL")
+            .or_else(|_| {
+                std::fs::read_to_string("/tmp/edgequake-db-url").map(|s| s.trim().to_string())
+            })
+            .expect("DATABASE_URL"),
+    );
     let pool = sqlx::PgPool::connect(&db_url).await.expect("pool");
 
     // Seed 120 completed zero-entity docs — enough to blow up if reconcile is corpus-wide.
@@ -164,9 +168,13 @@ async fn iss089_health_under_list_pressure() {
     };
     let (tenant_id, workspace_id) = create_tenant_workspace(&app).await;
 
-    let db_url = std::env::var("DATABASE_URL")
-        .or_else(|_| std::fs::read_to_string("/tmp/edgequake-db-url").map(|s| s.trim().to_string()))
-        .expect("DATABASE_URL");
+    let db_url = crate::common::test_db::isolated_test_url(
+        &std::env::var("DATABASE_URL")
+            .or_else(|_| {
+                std::fs::read_to_string("/tmp/edgequake-db-url").map(|s| s.trim().to_string())
+            })
+            .expect("DATABASE_URL"),
+    );
     let pool = sqlx::PgPool::connect(&db_url).await.expect("pool");
     for i in 0..80 {
         sqlx::query(

@@ -213,20 +213,62 @@ fn parse_openapi_registered_handlers(openapi_src: &str) -> std::collections::BTr
     names
 }
 
+/// Recursively collect utoipa handlers from COMPILED modules only.
+///
+/// SSOT is the compiled handler surface: a `.rs` file on disk that no `mod`
+/// declaration reaches is not part of the crate (e.g. in-flight untracked
+/// work) and must not fail the OpenAPI gate. At each directory we read
+/// `mod.rs` for `mod <name>;` declarations; undeclared files/subdirs are
+/// skipped. Directories without `mod.rs` fall back to full scanning.
 fn collect_utoipa_handlers(dir: &Path, out: &mut Vec<(String, String)>) {
+    let declared = declared_modules(dir);
     let Ok(read_dir) = fs::read_dir(dir) else {
         return;
     };
     for entry in read_dir.flatten() {
         let path = entry.path();
+        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
         if path.is_dir() {
-            collect_utoipa_handlers(&path, out);
+            if declared.as_ref().is_none_or(|d| d.contains(stem)) {
+                collect_utoipa_handlers(&path, out);
+            }
         } else if path.extension().is_some_and(|e| e == "rs") {
+            let is_mod_rs = path.file_name().and_then(|s| s.to_str()) == Some("mod.rs");
+            if !is_mod_rs && declared.as_ref().is_some_and(|d| !d.contains(stem)) {
+                continue;
+            }
             if let Ok(src) = fs::read_to_string(&path) {
                 out.extend(parse_utoipa_handlers(&src));
             }
         }
     }
+}
+
+/// Parse `mod <name>;` declarations from a directory's `mod.rs`.
+/// Returns `None` when no `mod.rs` exists (caller scans unfiltered).
+fn declared_modules(dir: &Path) -> Option<std::collections::BTreeSet<String>> {
+    let src = fs::read_to_string(dir.join("mod.rs")).ok()?;
+    let mut names = std::collections::BTreeSet::new();
+    for raw in src.lines() {
+        let line = raw.trim();
+        // Skip comments and non-module items; match `pub mod x;` / `mod x;`.
+        let line = line.split("//").next().unwrap_or("").trim();
+        for token in ["pub mod ", "pub(crate) mod ", "mod "] {
+            if let Some(rest) = line.strip_prefix(token) {
+                let name: String = rest
+                    .trim_end_matches([';', '{'])
+                    .trim()
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                    .collect();
+                if !name.is_empty() {
+                    names.insert(name);
+                }
+                break;
+            }
+        }
+    }
+    Some(names)
 }
 
 /// Extract `(openapi_path, fn_name)` pairs from handler source.

@@ -1,0 +1,30 @@
+{
+  "status": "GREEN",
+  "profile": "realism",
+  "postgres_tag": "0.22.0-pg18",
+  "edgequake_version": "0.22.0",
+  "compose_project": "spec93soak-pg18",
+  "started_at": "2026-07-31T11:04:04Z",
+  "finished_at": "2026-07-31T11:10:23Z",
+  "wall_seconds": 379,
+  "pass_count": 20,
+  "fail_count": 0,
+  "postgres_version": "18.4 (Debian 18.4-1.pgdg12+1)",
+  "pre_migration_max": 105,
+  "post_migration_max": 137,
+  "tenants": 5,
+  "workspaces": 15,
+  "documents_seeded": 600,
+  "dump_sha256": "103997c4490e78d4a392d5a08852817ab8036f22f2e2984596499013b26050e0",
+  "dump_bytes": 677115,
+  "dump_path": "artifacts/spec93-migration-assessment/pg18/pre-upgrade.dump",
+  "acceptance": {
+    "AC-M-01": true,
+    "AC-M-02": true,
+    "AC-M-03": true,
+    "AC-M-04": true,
+    "AC-M-05": true,
+    "AC-M-06": true,
+    "AC-M-07": true
+  }
+}
