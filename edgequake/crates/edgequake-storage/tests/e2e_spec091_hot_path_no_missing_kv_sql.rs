@@ -35,39 +35,33 @@ async fn e2e_spec091_hot_path_no_missing_kv_sql() {
         format!("wsdoc:x:{doc}"),
     ];
 
-    let _ = kv.get_by_id(&ids[0]).await.expect("get");
-    let _ = kv.get_by_ids(&ids).await.expect("get_by_ids");
-    let _ = kv.get_by_ids_ordered(&ids).await.expect("ordered");
-    let _ = kv
-        .filter_keys(ids.iter().cloned().collect::<HashSet<_>>())
+    kv.get_by_id(&ids[0]).await.expect("get");
+    kv.get_by_ids(&ids).await.expect("get_by_ids");
+    kv.get_by_ids_ordered(&ids).await.expect("ordered");
+    kv.filter_keys(ids.iter().cloned().collect::<HashSet<_>>())
         .await
         .expect("filter");
-    let _ = kv.keys_like("%-metadata").await.expect("keys_like");
-    let _ = kv
-        .keys_with_prefix_limited(&format!("{doc}-chunk-"), 10)
+    kv.keys_like("%-metadata").await.expect("keys_like");
+    kv.keys_with_prefix_limited(&format!("{doc}-chunk-"), 10)
         .await
         .expect("prefix");
-    let _ = kv
-        .keys_with_suffix_limited("-metadata", 10)
+    kv.keys_with_suffix_limited("-metadata", 10)
         .await
         .expect("suffix");
-    let _ = kv.count().await.expect("count");
-    let _ = kv.is_empty().await.expect("empty");
-    let _ = kv
-        .count_embedded_chunks_for_docs(&[doc.to_string()])
+    kv.count().await.expect("count");
+    kv.is_empty().await.expect("empty");
+    kv.count_embedded_chunks_for_docs(&[doc.to_string()])
         .await
         .expect("embedded");
-    let _ = kv
-        .upsert(&[(
-            format!("{doc}-metadata"),
-            json!({"title": "t", "status": "pending"}),
-        )])
-        .await
-        .expect("upsert shell");
-    let _ = kv.delete(&ids).await.expect("delete");
-    let _ = kv.clear().await.expect("clear");
-    let _ = kv
-        .transition_if_status(&format!("{doc}-metadata"), "pending", "processing")
+    kv.upsert(&[(
+        format!("{doc}-metadata"),
+        json!({"title": "t", "status": "pending"}),
+    )])
+    .await
+    .expect("upsert shell");
+    kv.delete(&ids).await.expect("delete");
+    kv.clear().await.expect("clear");
+    kv.transition_if_status(&format!("{doc}-metadata"), "pending", "processing")
         .await
         .expect("cas");
 

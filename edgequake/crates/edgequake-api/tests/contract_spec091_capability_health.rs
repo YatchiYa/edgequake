@@ -24,6 +24,8 @@ mod test_db;
 
 fn with_chunk_embeddings_backend() {
     std::env::set_var("EDGEQUAKE_VECTOR_BACKEND", "chunk_embeddings");
+    std::env::set_var("EDGEQUAKE_ALLOW_MOCK_PROVIDER", "1");
+    std::env::set_var("EDGEQUAKE_LLM_PROVIDER", "mock");
 }
 
 fn base_url() -> Option<String> {

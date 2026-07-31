@@ -147,7 +147,7 @@ pub(crate) async fn ensure_document_parent(
 }
 
 /// SPEC-091 Wave B3: admission-time `documents` row carrying workspace
-/// membership (SSOT for wsdoc reads). Unlike [`ensure_document_parent`], a
+/// membership (SSOT for wsdoc reads). Unlike `ensure_document_parent`, a
 /// pre-existing minimal row (NULL tenant/workspace, e.g. created by the chunk
 /// writer) is repaired rather than left memberless — never overwrites an
 /// already-set scope.
@@ -214,7 +214,7 @@ pub async fn ensure_admission_document_row_with_track(
     Ok(())
 }
 
-/// Batch variant of [`ensure_document_parent`] — one round trip per batch via
+/// Batch variant of `ensure_document_parent` — one round trip per batch via
 /// `unnest`.
 async fn ensure_document_parents(pool: &PgPool, chunks: &[Chunk]) -> Result<(), StorageError> {
     let mut seen = std::collections::HashSet::new();

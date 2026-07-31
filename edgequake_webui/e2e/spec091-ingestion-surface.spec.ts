@@ -5,7 +5,10 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import { GOTO_OPTS } from "./helpers/app-ready";
-import { seedSpec038TenantContext } from "./helpers/spec038-admission-mocks";
+import {
+  mockSpec038AdmissionRoutes,
+  seedSpec038TenantContext,
+} from "./helpers/spec038-admission-mocks";
 import {
   makeSpec086ListDoc,
   mockSpec086BusyPipeline,
@@ -22,8 +25,12 @@ function withCounts(
   return { ...doc, progress_counts };
 }
 
-async function gotoDocuments(page: Page) {
+async function gotoDocuments(page: Page, docs: Spec086ListDoc[]) {
+  // Match SPEC-086 order: admission routes → seed → list/pipeline mocks (last wins).
+  await mockSpec038AdmissionRoutes(page);
   await seedSpec038TenantContext(page);
+  await mockSpec086BusyPipeline(page);
+  await mockSpec086DocumentList(page, docs);
   await page.goto("/documents", GOTO_OPTS);
   await expect(page.getByTestId("spec048-active-runs-panel")).toBeVisible({
     timeout: 20_000,
@@ -48,9 +55,7 @@ test.describe("SPEC-091 ingestion surface (progress_counts + single meter)", () 
       }),
       { unit: "pages", current: 4, total: 9 },
     );
-    await mockSpec086BusyPipeline(page);
-    await mockSpec086DocumentList(page, [doc]);
-    await gotoDocuments(page);
+    await gotoDocuments(page, [doc]);
 
     const card = page.getByTestId("spec048-active-run-card").first();
     await expect(card).toBeVisible();
@@ -87,9 +92,7 @@ test.describe("SPEC-091 ingestion surface (progress_counts + single meter)", () 
       }),
       { unit: "chunks", current: 1, total: 3 },
     );
-    await mockSpec086BusyPipeline(page);
-    await mockSpec086DocumentList(page, [doc]);
-    await gotoDocuments(page);
+    await gotoDocuments(page, [doc]);
 
     const card = page.getByTestId("spec048-active-run-card").first();
     await expect(card.getByTestId("spec048-stage-chunking")).toHaveAttribute(
@@ -118,9 +121,7 @@ test.describe("SPEC-091 ingestion surface (progress_counts + single meter)", () 
       }),
       { unit: "chunks", current: 2, total: 20 },
     );
-    await mockSpec086BusyPipeline(page);
-    await mockSpec086DocumentList(page, [doc]);
-    await gotoDocuments(page);
+    await gotoDocuments(page, [doc]);
 
     const card = page.getByTestId("spec048-active-run-card").first();
     await expect(card.getByTestId("spec048-run-headline")).toContainText("2/20");
@@ -146,9 +147,7 @@ test.describe("SPEC-091 ingestion surface (progress_counts + single meter)", () 
       }),
       { unit: "chunks", current: 1, total: 1 },
     );
-    await mockSpec086BusyPipeline(page);
-    await mockSpec086DocumentList(page, [doc]);
-    await gotoDocuments(page);
+    await gotoDocuments(page, [doc]);
 
     const card = page.getByTestId("spec048-active-run-card").first();
     await expect(card.getByTestId("spec048-stage-converting")).toHaveCount(0);
@@ -174,9 +173,7 @@ test.describe("SPEC-091 IS2–IS3 queue / phase / fence", () => {
       eta_seconds: 120,
       eta_basis: "measured",
     });
-    await mockSpec086BusyPipeline(page);
-    await mockSpec086DocumentList(page, [doc]);
-    await gotoDocuments(page);
+    await gotoDocuments(page, [doc]);
 
     const card = page.getByTestId("spec048-active-run-card").first();
     await expect(card.getByTestId("spec048-run-headline")).toContainText("Queued");
@@ -223,9 +220,7 @@ test.describe("SPEC-091 IS2–IS3 queue / phase / fence", () => {
       eta_seconds: 30,
       eta_basis: "measured",
     });
-    await mockSpec086BusyPipeline(page);
-    await mockSpec086DocumentList(page, [working, queued]);
-    await gotoDocuments(page);
+    await gotoDocuments(page, [working, queued]);
 
     await expect(
       page.getByTestId("pipeline-header-button"),
