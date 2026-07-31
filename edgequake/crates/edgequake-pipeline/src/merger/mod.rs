@@ -286,6 +286,7 @@ pub struct RelationshipSinkRow {
 }
 
 #[async_trait]
+#[allow(clippy::too_many_arguments)]
 pub trait RelationalEntitySink: Send + Sync {
     /// Upsert an entity into the relational CQRS read model.
     ///

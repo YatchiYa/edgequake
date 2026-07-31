@@ -280,7 +280,13 @@ pub fn enrich_document_summary_status(
     pdf_status: Option<&str>,
     cancel_intent: bool,
 ) {
-    enrich_document_summary_status_with_task(summary, failure_class, pdf_status, cancel_intent, None);
+    enrich_document_summary_status_with_task(
+        summary,
+        failure_class,
+        pdf_status,
+        cancel_intent,
+        None,
+    );
 }
 
 /// Fill presentation fields with optional task-row status (dual-SSOT lag).

@@ -37,7 +37,6 @@ mod capabilities;
 pub mod chunk_embedding_index;
 pub(crate) mod chunk_repository;
 mod config;
-pub(crate) mod typed_embedding_dims;
 mod connection;
 mod conversation;
 mod diskann_runtime_policy;
@@ -64,6 +63,7 @@ mod scale_gates;
 mod schema;
 pub(crate) mod serving_fence_query;
 mod statement_timeout;
+pub(crate) mod typed_embedding_dims;
 pub mod vector;
 mod workspace_probe_cache;
 mod workspace_table;
@@ -86,9 +86,9 @@ pub use capabilities::{
 };
 pub use chunk_embedding_index::PgChunkEmbeddingIndex;
 pub use chunk_repository::{
-    ensure_admission_document_row, ensure_admission_document_row_with_track, PostgresChunkRepository,
+    ensure_admission_document_row, ensure_admission_document_row_with_track,
+    PostgresChunkRepository,
 };
-pub use kv_relation_state::{KvRelationPresence, KvRelationState};
 pub use config::{
     hnsw_ef_construction_from_env, qualified_kv_table_name, resolve_pool_max_connections,
     PostgresConfig, VectorIndexType,
@@ -116,6 +116,7 @@ pub use hnsw_runtime_policy::{
 };
 pub use id_allocation::{allocate_document_id, is_uuidv7};
 pub use kv::PostgresKVStorage;
+pub use kv_relation_state::{KvRelationPresence, KvRelationState};
 pub use mm_asset_storage_impl::PostgresMmAssetStorage;
 pub use original_storage_impl::PostgresOriginalStorage;
 pub use pdf_storage_impl::PostgresPdfStorage;

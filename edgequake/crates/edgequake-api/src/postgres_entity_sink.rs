@@ -49,9 +49,7 @@ impl PostgresEntitySink {
         if edgequake_storage::vector_backend_reads_typed(
             edgequake_storage::vector_backend_from_env(),
         ) {
-            info!(
-                "typed vector backend: forcing PostgresEntitySink (fleet FK spine, fail-closed)"
-            );
+            info!("typed vector backend: forcing PostgresEntitySink (fleet FK spine, fail-closed)");
             return Arc::new(Self::new_fail_closed(pool));
         }
         Self::create_if_enabled(pool).await

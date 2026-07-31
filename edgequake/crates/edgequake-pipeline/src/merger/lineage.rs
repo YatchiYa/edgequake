@@ -13,15 +13,14 @@ pub const CITATION_REQUIRE_ENV: &str = "EDGEQUAKE_CITATION_REQUIRE";
 
 /// Whether newly extracted edges/nodes must carry non-empty `source_chunk_ids`.
 pub fn citation_require_enabled() -> bool {
-    match std::env::var(CITATION_REQUIRE_ENV)
-        .unwrap_or_default()
-        .trim()
-        .to_ascii_lowercase()
-        .as_str()
-    {
-        "off" | "false" | "0" | "no" => false,
-        _ => true,
-    }
+    !matches!(
+        std::env::var(CITATION_REQUIRE_ENV)
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase()
+            .as_str(),
+        "off" | "false" | "0" | "no"
+    )
 }
 
 /// Fail-closed citation check (RM-AC-06).

@@ -10,10 +10,16 @@ use crate::handlers::documents_types::DocumentSummary;
 
 /// True when the row should show queue chrome (pending admission / fairness wait).
 pub fn needs_queue_estimate(doc: &DocumentSummary) -> bool {
-    let stage = doc.current_stage.as_deref().unwrap_or("").to_ascii_lowercase();
+    let stage = doc
+        .current_stage
+        .as_deref()
+        .unwrap_or("")
+        .to_ascii_lowercase();
     let status = doc.status.as_deref().unwrap_or("").to_ascii_lowercase();
-    matches!(stage.as_str(), "queued" | "pending" | "cleaning" | "uploading")
-        || matches!(status.as_str(), "pending" | "queued")
+    matches!(
+        stage.as_str(),
+        "queued" | "pending" | "cleaning" | "uploading"
+    ) || matches!(status.as_str(), "pending" | "queued")
 }
 
 /// Attach `queue_position` / `eta_seconds` / `eta_basis` for pending tracks on this page.

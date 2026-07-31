@@ -82,7 +82,9 @@ async fn contract_spec091_cqrs_batch_entities_and_rels() {
             source_chunk_ids: vec!["c4".into()],
         },
     ];
-    sink.upsert_entities_batch(&rows).await.expect("entity batch");
+    sink.upsert_entities_batch(&rows)
+        .await
+        .expect("entity batch");
 
     let n: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM entities WHERE workspace_id = $1 AND name = ANY($2)",

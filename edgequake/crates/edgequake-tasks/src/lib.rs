@@ -133,8 +133,9 @@ pub use provider_class::{
 };
 pub use queue::{ChannelTaskQueue, SharedTaskQueue, TaskQueue, UnboundedChannelTaskQueue};
 pub use queue_estimate::{
-    estimate_queue, estimate_queues_batch, QueueEstimate, QueueEtaBasis, DEFAULT_ETA_CLAMP_MAX_SECS,
-    DEFAULT_ETA_WINDOW_SECS, ETA_CLAMP_MAX_SECS_ENV, ETA_WINDOW_SECS_ENV,
+    estimate_queue, estimate_queues_batch, QueueEstimate, QueueEtaBasis,
+    DEFAULT_ETA_CLAMP_MAX_SECS, DEFAULT_ETA_WINDOW_SECS, ETA_CLAMP_MAX_SECS_ENV,
+    ETA_WINDOW_SECS_ENV,
 };
 pub use shutdown::{shutdown_drain_budget, DEFAULT_SHUTDOWN_DRAIN_SECS, SHUTDOWN_DRAIN_SECS_ENV};
 pub use state_machine::{

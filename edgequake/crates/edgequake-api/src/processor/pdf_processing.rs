@@ -940,6 +940,7 @@ impl DocumentTaskProcessor {
             table_method: None,
             filename: Some(filename.clone()),
             page_drawing_assets,
+            pages: None,
             vision: vision_model.clone().map(|model| {
                 let hb = Arc::clone(&vision_heartbeat);
                 let status_hook: edgequake_pdf::VisionStatusHook = {
@@ -966,6 +967,7 @@ impl DocumentTaskProcessor {
                     no_resume: should_cleanup_existing_content,
                     progress_callback: Some(wrapped_progress),
                     status_hook: Some(status_hook),
+                    pages: None,
                 }
             }),
         };

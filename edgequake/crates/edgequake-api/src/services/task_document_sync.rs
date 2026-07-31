@@ -45,10 +45,7 @@ pub fn extract_document_id_from_task(task: &Task) -> Option<String> {
 }
 
 /// Resolve document id: task payload → `documents.track_id` / metadata track_id.
-pub async fn resolve_document_id_for_task(
-    kv: &dyn KVStorage,
-    task: &Task,
-) -> Option<String> {
+pub async fn resolve_document_id_for_task(kv: &dyn KVStorage, task: &Task) -> Option<String> {
     if let Some(id) = extract_document_id_from_task(task) {
         return Some(id);
     }
@@ -88,10 +85,7 @@ async fn document_id_by_track_id(_track_id: &str) -> Option<String> {
     None
 }
 
-async fn find_document_id_in_kv_by_correlation(
-    kv: &dyn KVStorage,
-    task: &Task,
-) -> Option<String> {
+async fn find_document_id_in_kv_by_correlation(kv: &dyn KVStorage, task: &Task) -> Option<String> {
     let pdf_id = task.pdf_id().map(|u| u.to_string());
     let entries = crate::services::document_metadata_scan::load_all_document_metadata_entries(kv)
         .await
@@ -137,13 +131,12 @@ pub async fn touch_relational_document_status_best_effort(document_id: &str, sta
         } else {
             status
         };
-        if let Err(e) = sqlx::query(
-            "UPDATE public.documents SET status = $2, updated_at = NOW() WHERE id = $1",
-        )
-        .bind(doc_uuid)
-        .bind(pg_status)
-        .execute(pool)
-        .await
+        if let Err(e) =
+            sqlx::query("UPDATE public.documents SET status = $2, updated_at = NOW() WHERE id = $1")
+                .bind(doc_uuid)
+                .bind(pg_status)
+                .execute(pool)
+                .await
         {
             tracing::warn!(
                 document_id = %document_id,

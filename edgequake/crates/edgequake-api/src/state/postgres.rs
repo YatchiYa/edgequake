@@ -607,6 +607,7 @@ impl AppState {
             resource_guard,
             graph_materialize,
             pdf_vision,
+            parse_jobs: crate::handlers::parse::ParseJobStore::from_env(),
             read_path_db,
             migration_bootstrap: Some(migration_bootstrap),
             postgres_capabilities: Some(postgres_capabilities),

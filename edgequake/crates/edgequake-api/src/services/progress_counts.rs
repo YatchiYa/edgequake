@@ -24,7 +24,10 @@ pub fn progress_counts_json(counts: &IngestionProgressCounts) -> Value {
 
 /// Insert or overwrite `progress_counts` on a metadata object.
 pub fn insert_progress_counts(meta: &mut Map<String, Value>, counts: &IngestionProgressCounts) {
-    meta.insert(PROGRESS_COUNTS_KEY.to_string(), progress_counts_json(counts));
+    meta.insert(
+        PROGRESS_COUNTS_KEY.to_string(),
+        progress_counts_json(counts),
+    );
 }
 
 /// Remove structured counts (e.g. capacity park with no itemized work).
@@ -60,9 +63,7 @@ pub fn figures_counts(current: u64, total: u64) -> IngestionProgressCounts {
 }
 
 /// Read structured counts from document metadata (prefer over message regex).
-pub fn progress_counts_from_metadata(
-    obj: &Map<String, Value>,
-) -> Option<IngestionProgressCounts> {
+pub fn progress_counts_from_metadata(obj: &Map<String, Value>) -> Option<IngestionProgressCounts> {
     let c = obj.get(PROGRESS_COUNTS_KEY)?;
     progress_counts_from_value(c)
 }
@@ -205,10 +206,7 @@ mod tests {
     #[test]
     fn sync_from_message_writes_and_clears() {
         let mut meta = Map::new();
-        sync_progress_counts_from_message(
-            &mut meta,
-            "Converting PDF to Markdown: page 4/9 (44%)",
-        );
+        sync_progress_counts_from_message(&mut meta, "Converting PDF to Markdown: page 4/9 (44%)");
         let got = progress_counts_from_metadata(&meta).unwrap();
         assert_eq!(got.unit, "pages");
         assert_eq!((got.current, got.total), (4, 9));

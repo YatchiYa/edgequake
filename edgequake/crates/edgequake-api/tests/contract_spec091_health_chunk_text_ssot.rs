@@ -71,9 +71,7 @@ async fn contract_spec091_health_chunk_text_ssot_relational() {
         .await;
 
     std::env::remove_var("EDGEQUAKE_CHUNK_TEXT_AUTHORITY");
-    let state = AppState::new_postgres(&url, "")
-        .await
-        .expect("AppState");
+    let state = AppState::new_postgres(&url, "").await.expect("AppState");
     let response = health_check(State(state)).await.expect("health").0;
     let operational = response
         .operational

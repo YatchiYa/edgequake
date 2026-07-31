@@ -105,7 +105,13 @@ pub async fn enqueue_outbox_best_effort(
         return;
     };
     if let Err(e) = sink
-        .enqueue(aggregate_type, aggregate_id, event_type, payload, workspace_id)
+        .enqueue(
+            aggregate_type,
+            aggregate_id,
+            event_type,
+            payload,
+            workspace_id,
+        )
         .await
     {
         tracing::warn!(

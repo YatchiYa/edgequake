@@ -10,8 +10,8 @@ use edgequake_storage::outbox_drain::{
     OutboxDrainConfig, OutboxEvent,
 };
 use edgequake_storage::{
-    PostgresOutboxSink, OUTBOX_AGGREGATE_DOCUMENT, OUTBOX_EVENT_CHUNK_READY,
-    OUTBOX_EVENT_COMPENSATE, OUTBOX_EVENT_MERGE_DONE, OutboxSink,
+    OutboxSink, PostgresOutboxSink, OUTBOX_AGGREGATE_DOCUMENT, OUTBOX_EVENT_CHUNK_READY,
+    OUTBOX_EVENT_COMPENSATE, OUTBOX_EVENT_MERGE_DONE,
 };
 use sqlx::PgPool;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -130,7 +130,9 @@ async fn contract_spec091_outbox_drain_chaos_abort_resumes() {
     .expect("enqueue");
 
     // Simulate kill mid-claim: bump attempt_count, leave processed_at NULL.
-    let n = chaos_claim_without_ack(&pool, 10).await.expect("chaos claim");
+    let n = chaos_claim_without_ack(&pool, 10)
+        .await
+        .expect("chaos claim");
     assert!(n >= 1, "claimed at least the test row");
 
     let still: i64 = sqlx::query_scalar(
@@ -161,5 +163,8 @@ async fn contract_spec091_outbox_drain_chaos_abort_resumes() {
     .fetch_one(&pool)
     .await
     .expect("count");
-    assert_eq!(left, 0, "RM-AC-02: resume processes without duplicate side effect");
+    assert_eq!(
+        left, 0,
+        "RM-AC-02: resume processes without duplicate side effect"
+    );
 }

@@ -544,8 +544,7 @@ pub fn merge_document_summaries(
             if let Some(rel_status) = rel.status.as_deref() {
                 let kv_was_inflight = kv_summary_is_inflight(kv);
                 // SPEC-054: KV inflight beats stale relational *success* only.
-                let keep_kv_inflight =
-                    kv_was_inflight && is_terminal_success_status(rel_status);
+                let keep_kv_inflight = kv_was_inflight && is_terminal_success_status(rel_status);
                 // Zombie guard: KV terminal (cancelled/failed/completed) must not
                 // be overwritten by a stale relational non-terminal column that
                 // shell upserts historically left at `processing`.
@@ -803,11 +802,11 @@ mod tests {
             pdf_id: None,
             display_status: None,
             ui_phase: None,
-                progress_counts: None,
-                queue_position: None,
-                eta_seconds: None,
-                eta_basis: None,
-                query_ready: None,
+            progress_counts: None,
+            queue_position: None,
+            eta_seconds: None,
+            eta_basis: None,
+            query_ready: None,
         }];
 
         let pg = vec![DocumentSummary {
@@ -837,11 +836,11 @@ mod tests {
             pdf_id: None,
             display_status: None,
             ui_phase: None,
-                progress_counts: None,
-                queue_position: None,
-                eta_seconds: None,
-                eta_basis: None,
-                query_ready: None,
+            progress_counts: None,
+            queue_position: None,
+            eta_seconds: None,
+            eta_basis: None,
+            query_ready: None,
         }];
 
         let merged = merge_document_summaries(kv, pg);
@@ -880,11 +879,11 @@ mod tests {
             pdf_id: None,
             display_status: None,
             ui_phase: None,
-                progress_counts: None,
-                queue_position: None,
-                eta_seconds: None,
-                eta_basis: None,
-                query_ready: None,
+            progress_counts: None,
+            queue_position: None,
+            eta_seconds: None,
+            eta_basis: None,
+            query_ready: None,
         }];
 
         let pg = vec![DocumentSummary {
@@ -914,11 +913,11 @@ mod tests {
             pdf_id: None,
             display_status: None,
             ui_phase: None,
-                progress_counts: None,
-                queue_position: None,
-                eta_seconds: None,
-                eta_basis: None,
-                query_ready: None,
+            progress_counts: None,
+            queue_position: None,
+            eta_seconds: None,
+            eta_basis: None,
+            query_ready: None,
         }];
 
         let merged = merge_document_summaries(kv, pg);
@@ -955,11 +954,11 @@ mod tests {
             pdf_id: None,
             display_status: None,
             ui_phase: None,
-                progress_counts: None,
-                queue_position: None,
-                eta_seconds: None,
-                eta_basis: None,
-                query_ready: None,
+            progress_counts: None,
+            queue_position: None,
+            eta_seconds: None,
+            eta_basis: None,
+            query_ready: None,
         }
     }
 

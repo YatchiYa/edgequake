@@ -226,8 +226,7 @@ pub async fn save_pipeline_checkpoint(
 
     // SPEC-091 WP1 (WP-AC-05): skip KV when relational authority AND typed write lands.
     // Non-UUID / no-pool paths keep KV so unit tests and degraded boots still resume.
-    let relational =
-        crate::services::relational_sidecar_store::checkpoints_prefer_relational();
+    let relational = crate::services::relational_sidecar_store::checkpoints_prefer_relational();
     let wrote_typed = crate::services::relational_sidecar_store::typed_checkpoint_put(
         document_id,
         crate::services::relational_sidecar_store::CHECKPOINT_KIND_CRASH,
@@ -351,8 +350,7 @@ pub async fn save_extraction_snapshot(
     }
 
     // SPEC-091 WP1: relational + successful typed write → KV write-stop.
-    let relational =
-        crate::services::relational_sidecar_store::checkpoints_prefer_relational();
+    let relational = crate::services::relational_sidecar_store::checkpoints_prefer_relational();
     let wrote_typed = crate::services::relational_sidecar_store::typed_checkpoint_put(
         document_id,
         crate::services::relational_sidecar_store::CHECKPOINT_KIND_SNAPSHOT,

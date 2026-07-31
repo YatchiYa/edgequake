@@ -623,15 +623,13 @@ async fn mid_pipeline_orphan_without_task_fail_closed() {
         .await
         .expect("seed zombie metadata");
 
-    assert!(
-        !has_active_task_for_document(
-            state.tasks.storage.as_ref(),
-            doc_id,
-            Some(Uuid::parse_str(TEST_WORKSPACE_ID).unwrap()),
-        )
-        .await
-        .unwrap()
-    );
+    assert!(!has_active_task_for_document(
+        state.tasks.storage.as_ref(),
+        doc_id,
+        Some(Uuid::parse_str(TEST_WORKSPACE_ID).unwrap()),
+    )
+    .await
+    .unwrap());
 
     let report = reconcile_pending_documents_missing_tasks(&state, 10, "zombie_fail_closed")
         .await

@@ -270,13 +270,14 @@ pub async fn get_pdf_progress(
 
     // After restart the in-memory map is empty while the durable task may still
     // be live — rehydrate a skeleton so the UI does not hard-404 (SPEC-054).
-    let progress = super::progress_identity::get_or_rehydrate_pdf_progress(&state, &track_id, &task)
-        .await
-        .ok_or_else(|| {
-            ApiError::NotFound(
-                "Progress not found. Upload may have completed or not yet started.".to_string(),
-            )
-        })?;
+    let progress =
+        super::progress_identity::get_or_rehydrate_pdf_progress(&state, &track_id, &task)
+            .await
+            .ok_or_else(|| {
+                ApiError::NotFound(
+                    "Progress not found. Upload may have completed or not yet started.".to_string(),
+                )
+            })?;
 
     Ok(Json(progress))
 }

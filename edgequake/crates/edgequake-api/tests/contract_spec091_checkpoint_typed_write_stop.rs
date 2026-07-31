@@ -25,17 +25,17 @@ use edgequake_storage::MemoryKVStorage;
 use uuid::Uuid;
 
 fn require_db() -> Option<String> {
-    std::env::var("DATABASE_URL").ok().or_else(|| {
-        std::fs::read_to_string("/tmp/edgequake-db-url")
-            .ok()
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-    })
-    .or_else(|| {
-        Some(
-            "postgresql://edgequake:edgequake_secret@localhost:5432/edgequake".to_string(),
-        )
-    })
+    std::env::var("DATABASE_URL")
+        .ok()
+        .or_else(|| {
+            std::fs::read_to_string("/tmp/edgequake-db-url")
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+        })
+        .or_else(|| {
+            Some("postgresql://edgequake:edgequake_secret@localhost:5432/edgequake".to_string())
+        })
 }
 
 #[tokio::test]
@@ -62,9 +62,7 @@ async fn relational_checkpoint_write_stops_kv() {
     let doc_id = Uuid::new_v4().to_string();
 
     std::env::set_var("EDGEQUAKE_KV_FAMILY_CHECKPOINT", "relational");
-    assert!(
-        edgequake_api::services::relational_sidecar_store::checkpoints_prefer_relational()
-    );
+    assert!(edgequake_api::services::relational_sidecar_store::checkpoints_prefer_relational());
 
     let kv: Arc<dyn KVStorage> = Arc::new(MemoryKVStorage::new("documents"));
     let result = ProcessingResult {
@@ -95,8 +93,7 @@ async fn relational_checkpoint_write_stops_kv() {
         "typed payload shape: {typed}"
     );
 
-    let loaded =
-        load_pipeline_checkpoint(&kv, &doc_id, workspace, "openai", "ollama", text).await;
+    let loaded = load_pipeline_checkpoint(&kv, &doc_id, workspace, "openai", "ollama", text).await;
     assert!(
         loaded.is_some(),
         "resume must load from typed when KV empty"

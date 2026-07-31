@@ -1819,6 +1819,8 @@ dependencies = [
  "edgequake-tasks",
  "futures",
  "num_cpus",
+ "reqwest 0.12.28",
+ "serde",
  "serde_json",
  "sqlx",
  "tokio",

@@ -356,6 +356,10 @@ fn api_v1_routes() -> Router<AppState> {
         .route("/documents", post(handlers::upload_document))
         .route("/documents", get(handlers::list_documents))
         .route("/documents", delete(handlers::delete_all_documents))
+        // SPEC-094: Stateless PDF → Markdown parse (no ingestion)
+        .route("/parse", post(handlers::parse_document))
+        .route("/parse/backends", get(handlers::list_parse_backends))
+        .route("/parse/jobs/{id}", get(handlers::get_parse_job))
         // Track Status (Phase 2) - MUST come before /documents/{document_id}
         .route(
             "/documents/track/{track_id}",

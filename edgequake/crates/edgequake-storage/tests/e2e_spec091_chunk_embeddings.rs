@@ -176,20 +176,13 @@ async fn e2e_spec091_typed_dim_1024_upsert_search() {
     // Mixed-dimension batch rejected before SQL.
     let mixed = vec![
         row(chunk_ids[0], ws, w3::make_embedding(1024, 1)),
-        row(
-            Uuid::new_v4(),
-            ws,
-            w3::make_embedding(1536, 2),
-        ),
+        row(Uuid::new_v4(), ws, w3::make_embedding(1536, 2)),
     ];
     let err = index
         .upsert_batch(ModelId(Uuid::nil()), &mixed)
         .await
         .expect_err("mixed dims must fail closed");
-    assert!(
-        err.to_string().contains("mixed dimensions"),
-        "got: {err}"
-    );
+    assert!(err.to_string().contains("mixed dimensions"), "got: {err}");
 
     w3::cleanup_workspace(&pool, ws).await;
 }

@@ -42,6 +42,11 @@ path = "examples/graph_exploration.rs"
 name = "multi_tenant"
 path = "examples/multi_tenant.rs"
 
+[[example]]
+name = "parse_scorecard"
+path = "examples/parse_scorecard.rs"
+required-features = []
+
 [features]
 default = ["postgres", "vision"]
 otel = ["edgequake-observability/otel", "edgequake-api/otel"]
@@ -70,6 +75,8 @@ chrono = { workspace = true }
 [dev-dependencies]
 criterion = { workspace = true }
 tokio-test = { workspace = true }
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls"] }
+serde = { workspace = true, features = ["derive"] }
 
 [[bench]]
 name = "chunking_bench"

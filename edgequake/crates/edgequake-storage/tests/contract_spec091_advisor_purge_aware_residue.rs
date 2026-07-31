@@ -2,10 +2,10 @@
 
 #![cfg(feature = "postgres")]
 
-#[path = "support/postgres_test_config.rs"]
-mod postgres_test_config;
 #[path = "support/spec091_fixture.rs"]
 mod fixture;
+#[path = "support/postgres_test_config.rs"]
+mod postgres_test_config;
 
 use edgequake_storage::migration_engine::advisor::{self, CutoverPhase};
 use postgres_test_config::require_or_skip_postgres;
@@ -89,7 +89,10 @@ async fn contract_spec091_advisor_purge_aware_residue() {
     let residue = advisor::kv_durable_residue(&pool, &table)
         .await
         .expect("residue");
-    assert_eq!(residue.staging_hash, 0, "typed-backed staging must not residue");
+    assert_eq!(
+        residue.staging_hash, 0,
+        "typed-backed staging must not residue"
+    );
     assert_eq!(residue.wsdoc, 0, "typed-backed wsdoc must not residue");
     assert_eq!(
         advisor::guard_durable_total(&pool, &table)

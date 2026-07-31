@@ -77,8 +77,8 @@ pub fn normalize_documents_column_status(raw: &str) -> String {
         "delete_failed" => "failed".to_string(),
         "partial_success" => "partial_failure".to_string(),
         // Pipeline stage slugs and anything else → generic processing.
-        "uploading" | "converting" | "preprocessing" | "gleaning" | "merging"
-        | "summarizing" | "storing" | "re_embedding" => "processing".to_string(),
+        "uploading" | "converting" | "preprocessing" | "gleaning" | "merging" | "summarizing"
+        | "storing" | "re_embedding" => "processing".to_string(),
         _ => "processing".to_string(),
     }
 }
@@ -548,9 +548,15 @@ mod tests {
             normalize_documents_column_status("partial_success"),
             "partial_failure"
         );
-        assert_eq!(normalize_documents_column_status("converting"), "processing");
+        assert_eq!(
+            normalize_documents_column_status("converting"),
+            "processing"
+        );
         assert_eq!(normalize_documents_column_status("cancelled"), "cancelled");
-        assert_eq!(normalize_documents_column_status("extracting"), "extracting");
+        assert_eq!(
+            normalize_documents_column_status("extracting"),
+            "extracting"
+        );
         assert_eq!(normalize_documents_column_status(""), "processing");
     }
 }

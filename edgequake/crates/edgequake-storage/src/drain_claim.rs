@@ -43,7 +43,10 @@ mod tests {
     fn parse_drain_mode_defaults() {
         assert_eq!(parse_drain_mode("", DrainMode::On), DrainMode::On);
         assert_eq!(parse_drain_mode("off", DrainMode::On), DrainMode::Off);
-        assert_eq!(parse_drain_mode("dry-run", DrainMode::Off), DrainMode::DryRun);
+        assert_eq!(
+            parse_drain_mode("dry-run", DrainMode::Off),
+            DrainMode::DryRun
+        );
         assert_eq!(parse_drain_mode("ON", DrainMode::Off), DrainMode::On);
     }
 

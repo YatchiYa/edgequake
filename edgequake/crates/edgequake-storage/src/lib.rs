@@ -86,8 +86,10 @@ pub mod filter_column_policy;
 pub use filter_column_policy::{
     ann_exact_max_rows, prefer_denorm_filter_columns, DEFAULT_ANN_EXACT_MAX_ROWS,
 };
+pub mod chunk_fts;
 pub mod dataop;
 pub mod dataop_annotations;
+pub mod drain_claim;
 pub mod embedding_family;
 pub mod graph_batch_dedupe;
 pub mod graph_metrics;
@@ -96,13 +98,11 @@ pub mod kv_key_schema;
 pub mod metadata_filter_sql;
 pub mod mm_asset_storage;
 pub mod original_storage;
-pub mod pdf_storage;
-pub mod scorecard;
-pub mod chunk_fts;
-pub mod drain_claim;
 pub mod outbox;
 #[cfg(feature = "postgres")]
 pub mod outbox_drain;
+pub mod pdf_storage;
+pub mod scorecard;
 pub mod serving_fence;
 pub mod storage_op_metrics;
 pub mod traits;
@@ -110,8 +110,8 @@ pub mod vector_backend;
 pub mod vector_id;
 
 pub use vector_backend::{
-    vector_backend_from_env, legacy_vector_writes_stopped, vector_backend_reads_typed, VectorBackend,
-    VECTOR_BACKEND_ENV,
+    legacy_vector_writes_stopped, vector_backend_from_env, vector_backend_reads_typed,
+    VectorBackend, VECTOR_BACKEND_ENV,
 };
 
 pub use dataop::{all_ref_ids, is_valid_ref_id, sql_comment};
@@ -204,22 +204,22 @@ pub use kv_family_cutover::{
     kv_family_mode_from_env, KvFamilyMode, KV_FAMILY_CHUNK, KV_FAMILY_COMPENSATION_QUARANTINE,
     KV_FAMILY_ENV_PREFIX, KV_FAMILY_METADATA, KV_FAMILY_WSDOC,
 };
-pub use scorecard::{
-    AnnMetrics, FullTextMetrics, IngestionMetrics, Scorecard, ScorecardEnvironment,
-    ScorecardRecorder,
-};
+#[cfg(feature = "postgres")]
+pub use outbox::PostgresOutboxSink;
 pub use outbox::{
     enqueue_outbox_best_effort, NoopOutboxSink, OutboxSink, OUTBOX_AGGREGATE_DOCUMENT,
     OUTBOX_EVENT_CHUNK_DECLARED, OUTBOX_EVENT_CHUNK_READY, OUTBOX_EVENT_COMPENSATE,
     OUTBOX_EVENT_MERGE_DONE,
 };
 #[cfg(feature = "postgres")]
-pub use outbox::PostgresOutboxSink;
-#[cfg(feature = "postgres")]
 pub use outbox_drain::{
     chaos_claim_without_ack, drain_once as outbox_drain_once, outbox_drain_claimed_total,
     outbox_drain_processed_total, outbox_lag_seconds, spawn_outbox_drain, OutboxDrainConfig,
     OutboxEvent, OUTBOX_DRAIN_ENV,
+};
+pub use scorecard::{
+    AnnMetrics, FullTextMetrics, IngestionMetrics, Scorecard, ScorecardEnvironment,
+    ScorecardRecorder,
 };
 pub use serving_fence::{
     chunk_visible_in_query, filter_ready_chunk_ids, serving_fence_enabled_from_env,
@@ -250,13 +250,12 @@ pub use adapters::postgres::{
     build_postfilter_diskann_select_sql, check_hnsw_index_manifest,
     diskann_optin_recipe_statements, diskann_query_tuning_statements, diskann_rescore_for_list,
     ensure_admission_document_row, ensure_admission_document_row_with_track,
-    hnsw_ef_construction_from_env,
-    hnsw_partial_by_workspace_enabled, interactive_statement_timeout_ms,
-    parse_hnsw_iterative_scan_mode, partition_allowed, pool_role_max_connections,
-    quantization_allowed, resolve_pool_max_connections, with_session_hygiene,
-    AnnExactReorderPolicy, BinaryQuantizePolicy, FilteredDiskannLabelPolicy, HnswIndexManifest,
-    HnswRuntimePolicy, PgChunkEmbeddingIndex, PgFleetEmbeddingIndex, PgPoolBundle,
-    PgQuarantineSink, PgVectorStorage, PgWorkspaceVectorRegistry, PoolRole,
+    hnsw_ef_construction_from_env, hnsw_partial_by_workspace_enabled,
+    interactive_statement_timeout_ms, parse_hnsw_iterative_scan_mode, partition_allowed,
+    pool_role_max_connections, quantization_allowed, resolve_pool_max_connections,
+    with_session_hygiene, AnnExactReorderPolicy, BinaryQuantizePolicy, FilteredDiskannLabelPolicy,
+    HnswIndexManifest, HnswRuntimePolicy, PgChunkEmbeddingIndex, PgFleetEmbeddingIndex,
+    PgPoolBundle, PgQuarantineSink, PgVectorStorage, PgWorkspaceVectorRegistry, PoolRole,
     PostgresAGEGraphStorage, PostgresChunkRepository, PostgresConfig, PostgresConversationStorage,
     PostgresKVStorage, PostgresMmAssetStorage, PostgresOriginalStorage, PostgresPdfStorage,
     PostgresPool, ScaleGateEvidence, VectorIndexType, VectorStorageMode, WorkspaceLabelMap,

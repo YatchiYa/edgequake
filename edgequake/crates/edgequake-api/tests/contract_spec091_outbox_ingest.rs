@@ -5,8 +5,8 @@
 mod test_db;
 
 use edgequake_storage::{
-    PostgresOutboxSink, OUTBOX_AGGREGATE_DOCUMENT, OUTBOX_EVENT_CHUNK_READY,
-    OUTBOX_EVENT_COMPENSATE, OUTBOX_EVENT_MERGE_DONE, OutboxSink,
+    OutboxSink, PostgresOutboxSink, OUTBOX_AGGREGATE_DOCUMENT, OUTBOX_EVENT_CHUNK_READY,
+    OUTBOX_EVENT_COMPENSATE, OUTBOX_EVENT_MERGE_DONE,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -76,11 +76,13 @@ async fn contract_spec091_outbox_enqueue_milestones() {
          WHERE aggregate_id = $1 AND event_type = ANY($2)",
     )
     .bind(doc)
-    .bind(&[
-        OUTBOX_EVENT_CHUNK_READY.to_string(),
-        OUTBOX_EVENT_MERGE_DONE.to_string(),
-        OUTBOX_EVENT_COMPENSATE.to_string(),
-    ][..])
+    .bind(
+        &[
+            OUTBOX_EVENT_CHUNK_READY.to_string(),
+            OUTBOX_EVENT_MERGE_DONE.to_string(),
+            OUTBOX_EVENT_COMPENSATE.to_string(),
+        ][..],
+    )
     .fetch_one(&pool)
     .await
     .expect("count");

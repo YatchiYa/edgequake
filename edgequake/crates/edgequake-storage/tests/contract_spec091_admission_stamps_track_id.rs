@@ -22,11 +22,12 @@ async fn contract_spec091_admission_stamps_track_id() {
         .await
         .expect("admit");
 
-    let got: Option<String> = sqlx::query_scalar("SELECT track_id FROM public.documents WHERE id = $1")
-        .bind(doc)
-        .fetch_one(&pool)
-        .await
-        .expect("read track_id");
+    let got: Option<String> =
+        sqlx::query_scalar("SELECT track_id FROM public.documents WHERE id = $1")
+            .bind(doc)
+            .fetch_one(&pool)
+            .await
+            .expect("read track_id");
     assert_eq!(got.as_deref(), Some(track.as_str()));
 
     sqlx::query("DELETE FROM public.documents WHERE id = $1")

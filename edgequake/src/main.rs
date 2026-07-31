@@ -618,8 +618,14 @@ async fn run_migrate_dry_run_cli() -> Result<()> {
         println!();
         println!(" RISK: DROP OLD migration(s) are PENDING (destroy-data — no undo SQL).");
         println!("       Apply only after drop-readiness is GREEN via --confirm-drop.");
-        for (v, _) in pending.iter().filter(|(v, _)| migrate_console::is_irreversible_drop(*v)) {
-            println!("       • {v}: {}", migrate_console::irreversible_drop_plain(*v));
+        for (v, _) in pending
+            .iter()
+            .filter(|(v, _)| migrate_console::is_irreversible_drop(*v))
+        {
+            println!(
+                "       • {v}: {}",
+                migrate_console::irreversible_drop_plain(*v)
+            );
         }
     }
 
@@ -733,18 +739,19 @@ async fn run_migrate_cli(args: &[String]) -> Result<()> {
                 "applying SAFE SCHEMA (expandable) migration(s) {expandables:?} \
                  (DROP OLD deferred until --confirm-drop)…"
             );
-            let report = match edgequake_api::state::migration_bootstrap::run_postgres_expandable_migrations(
-                &bundle.admin,
-            )
-            .await
-            {
-                Ok(r) => r,
-                Err(e) => {
-                    migrate_console::print_failure_hint(&e);
-                    migrate_console::print_wave_d_abort_hint(&e);
-                    return Err(e).context("partial migrate (expandables) failed");
-                }
-            };
+            let report =
+                match edgequake_api::state::migration_bootstrap::run_postgres_expandable_migrations(
+                    &bundle.admin,
+                )
+                .await
+                {
+                    Ok(r) => r,
+                    Err(e) => {
+                        migrate_console::print_failure_hint(&e);
+                        migrate_console::print_wave_d_abort_hint(&e);
+                        return Err(e).context("partial migrate (expandables) failed");
+                    }
+                };
             let applied: Vec<(i64, String)> = report
                 .applied_versions
                 .iter()

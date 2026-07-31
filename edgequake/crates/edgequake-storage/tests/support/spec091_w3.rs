@@ -108,7 +108,10 @@ pub async fn create_vectors_table(pool: &PgPool, ns: &str) -> String {
     let table = format!("eq_{ns}_vectors");
     // Dedicated connection + ROLLBACK: prior `sqlx::raw_sql` multi-statement
     // failures can return a pooled conn stuck in 25P02 (aborted TX).
-    let mut conn = pool.acquire().await.expect("acquire for create_vectors_table");
+    let mut conn = pool
+        .acquire()
+        .await
+        .expect("acquire for create_vectors_table");
     let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
     sqlx::query(&format!("DROP TABLE IF EXISTS public.{table} CASCADE"))
         .execute(&mut *conn)

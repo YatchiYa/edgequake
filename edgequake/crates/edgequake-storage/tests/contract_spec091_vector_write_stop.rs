@@ -14,7 +14,7 @@ mod postgres_test_config;
 #[path = "support/spec091_w3.rs"]
 mod w3;
 
-use edgequake_storage::adapters::postgres::{PostgresPool, PgVectorStorage};
+use edgequake_storage::adapters::postgres::{PgVectorStorage, PostgresPool};
 use edgequake_storage::traits::VectorStorage;
 use edgequake_storage::{vector_backend_from_env, VECTOR_BACKEND_ENV};
 use postgres_test_config::{contract_pg_pool, require_or_skip_postgres};

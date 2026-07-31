@@ -186,11 +186,11 @@ mod tests {
             pdf_id: None,
             display_status: None,
             ui_phase: None,
-                progress_counts: None,
-                queue_position: None,
-                eta_seconds: None,
-                eta_basis: None,
-                query_ready: None,
+            progress_counts: None,
+            queue_position: None,
+            eta_seconds: None,
+            eta_basis: None,
+            query_ready: None,
         };
 
         let json = serde_json::to_string(&summary).unwrap();

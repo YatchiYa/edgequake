@@ -15,8 +15,6 @@ pub mod cancel_facade;
 pub mod cancel_retract;
 #[cfg(feature = "postgres")]
 pub mod compensation_drain_applier;
-#[cfg(feature = "postgres")]
-pub mod outbox_drain_applier;
 pub mod content_granularity;
 pub mod content_hasher;
 pub mod context_bundle_mapper;
@@ -74,6 +72,8 @@ pub mod oidc_pending;
 pub mod orphan_index_retract;
 pub mod orphan_staging_recovery;
 pub mod orphan_task_recovery;
+#[cfg(feature = "postgres")]
+pub mod outbox_drain_applier;
 pub mod pdf_admission_registry;
 pub mod pdf_auto_routing;
 pub mod pdf_lineage;

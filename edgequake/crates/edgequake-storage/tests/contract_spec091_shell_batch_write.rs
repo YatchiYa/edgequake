@@ -316,15 +316,9 @@ async fn admission_document_row_writes_title() {
         .expect("before");
     assert_eq!(before, "Untitled");
 
-    edgequake_storage::ensure_admission_document_row(
-        &pool,
-        placeholder,
-        None,
-        None,
-        "repaired.md",
-    )
-    .await
-    .expect("repair");
+    edgequake_storage::ensure_admission_document_row(&pool, placeholder, None, None, "repaired.md")
+        .await
+        .expect("repair");
     let after: String = sqlx::query_scalar("SELECT title FROM documents WHERE id = $1")
         .bind(placeholder)
         .fetch_one(&pool)

@@ -83,25 +83,19 @@ async fn clear_vectors_fail_closed(state: &AppState, workspace_uuid: Uuid) -> Ap
             let ws = edgequake_storage::traits::domain::WorkspaceId(workspace_uuid);
             use edgequake_storage::embedding_family::EmbeddingFamily;
             use edgequake_storage::traits::domain::{EmbeddingIndex, FleetEmbeddingIndex};
-            typed_n += chunk_index
-                .delete_for_workspace(ws)
-                .await
-                .map_err(|e| {
-                    ApiError::Internal(format!("wipe typed chunk_embeddings failed: {e}"))
-                })? as usize;
+            typed_n += chunk_index.delete_for_workspace(ws).await.map_err(|e| {
+                ApiError::Internal(format!("wipe typed chunk_embeddings failed: {e}"))
+            })? as usize;
             for family in [
                 EmbeddingFamily::Entity,
                 EmbeddingFamily::Relationship,
                 EmbeddingFamily::Report,
             ] {
-                typed_n += fleet
-                    .delete_for_workspace(family, ws)
-                    .await
-                    .map_err(|e| {
-                        ApiError::Internal(format!(
-                            "wipe typed fleet embeddings ({family:?}) failed: {e}"
-                        ))
-                    })? as usize;
+                typed_n += fleet.delete_for_workspace(family, ws).await.map_err(|e| {
+                    ApiError::Internal(format!(
+                        "wipe typed fleet embeddings ({family:?}) failed: {e}"
+                    ))
+                })? as usize;
             }
         }
     }
@@ -222,13 +216,11 @@ pub async fn run_workspace_wipe_phases(
                 #[cfg(feature = "postgres")]
                 {
                     // RM-AC-05: O(families) set deletes — chunks cascade via FK from documents.
-                    let chunks_deleted = delete_chunks_for_workspace(
-                        state.pg_pool.as_ref(),
-                        workspace_uuid,
-                    )
-                    .await?;
-                    data.total_chunks_deleted =
-                        data.total_chunks_deleted.saturating_add(chunks_deleted as usize);
+                    let chunks_deleted =
+                        delete_chunks_for_workspace(state.pg_pool.as_ref(), workspace_uuid).await?;
+                    data.total_chunks_deleted = data
+                        .total_chunks_deleted
+                        .saturating_add(chunks_deleted as usize);
 
                     let relational_deleted =
                         crate::document_read_model::delete_relational_documents_for_workspace(

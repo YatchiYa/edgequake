@@ -1801,10 +1801,7 @@ mod tests {
         ];
         assert_eq!(max_expandable_target(&pending), Some(130));
 
-        let behind_drop = vec![
-            (131, "drop".into()),
-            (132, "halfvec".into()),
-        ];
+        let behind_drop = vec![(131, "drop".into()), (132, "halfvec".into())];
         assert_eq!(max_expandable_target(&behind_drop), None);
         assert_eq!(pending_expandable_versions(&behind_drop), vec![132]);
 

@@ -196,12 +196,7 @@ pub(crate) async fn get_or_rehydrate_pdf_progress(
     track_id: &str,
     task: &Task,
 ) -> Option<PdfUploadProgress> {
-    if let Some(existing) = state
-        .tasks
-        .pipeline_state
-        .get_pdf_progress(track_id)
-        .await
-    {
+    if let Some(existing) = state.tasks.pipeline_state.get_pdf_progress(track_id).await {
         return Some(existing);
     }
 
@@ -318,14 +313,12 @@ mod tests {
             .await
             .expect("cached");
         assert_eq!(second.filename, "resume.pdf");
-        assert!(
-            state
-                .tasks
-                .pipeline_state
-                .get_pdf_progress(&track_id)
-                .await
-                .is_some()
-        );
+        assert!(state
+            .tasks
+            .pipeline_state
+            .get_pdf_progress(&track_id)
+            .await
+            .is_some());
     }
 
     #[test]

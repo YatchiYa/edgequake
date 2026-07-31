@@ -8,9 +8,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-use edgequake_storage::outbox_drain::{
-    spawn_outbox_drain, OutboxDrainConfig, OutboxEvent,
-};
+use edgequake_storage::outbox_drain::{spawn_outbox_drain, OutboxDrainConfig, OutboxEvent};
 use edgequake_storage::traits::{GraphStorage, VectorStorage};
 use edgequake_storage::{
     OUTBOX_EVENT_CHUNK_DECLARED, OUTBOX_EVENT_CHUNK_READY, OUTBOX_EVENT_COMPENSATE,

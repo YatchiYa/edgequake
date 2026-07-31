@@ -23,7 +23,8 @@ async fn e2e_spec091_hot_path_no_missing_kv_sql() {
         return;
     };
     let pool = contract_pg_pool(&cfg).await;
-    let kv = PostgresKVStorage::with_pool(PostgresPool::from_existing(pool.clone(), cfg.clone()), cfg);
+    let kv =
+        PostgresKVStorage::with_pool(PostgresPool::from_existing(pool.clone(), cfg.clone()), cfg);
     kv.seed_relation_from_dropped(true);
     kv.reset_kv_raw_sql_attempts();
 
@@ -46,7 +47,10 @@ async fn e2e_spec091_hot_path_no_missing_kv_sql() {
         .keys_with_prefix_limited(&format!("{doc}-chunk-"), 10)
         .await
         .expect("prefix");
-    let _ = kv.keys_with_suffix_limited("-metadata", 10).await.expect("suffix");
+    let _ = kv
+        .keys_with_suffix_limited("-metadata", 10)
+        .await
+        .expect("suffix");
     let _ = kv.count().await.expect("count");
     let _ = kv.is_empty().await.expect("empty");
     let _ = kv
@@ -54,7 +58,10 @@ async fn e2e_spec091_hot_path_no_missing_kv_sql() {
         .await
         .expect("embedded");
     let _ = kv
-        .upsert(&[(format!("{doc}-metadata"), json!({"title": "t", "status": "pending"}))])
+        .upsert(&[(
+            format!("{doc}-metadata"),
+            json!({"title": "t", "status": "pending"}),
+        )])
         .await
         .expect("upsert shell");
     let _ = kv.delete(&ids).await.expect("delete");

@@ -132,10 +132,7 @@ pub fn print_irreversible_pending_soft_exit(remaining: &[(i64, String)]) {
     eprintln!();
     eprintln!(" Still pending (human-gated — will NOT run without --confirm-drop):");
     for (v, desc) in remaining {
-        eprintln!(
-            "  • {v} — {desc}{}",
-            migration_class_tag(*v)
-        );
+        eprintln!("  • {v} — {desc}{}", migration_class_tag(*v));
         eprintln!("      plain English: {}", irreversible_drop_plain(*v));
     }
     eprintln!();
@@ -210,9 +207,7 @@ pub fn print_apply_intent(pending: &[(i64, String)], drop_confirmed: bool) {
         if drop_confirmed {
             println!("  consent: INCLUDED — --confirm-drop / fresh-install gate open");
         } else {
-            println!(
-                "  consent: NOT given — will apply SAFE SCHEMA only, leave DROP OLD pending"
-            );
+            println!("  consent: NOT given — will apply SAFE SCHEMA only, leave DROP OLD pending");
             println!("  tip: edgequake migrate dry-run  →  then --confirm-drop when GREEN");
         }
     }

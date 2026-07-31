@@ -118,10 +118,7 @@ impl DefaultIngestionPersister {
     }
 
     /// SPEC-091 IP2: attach transactional outbox sink.
-    pub fn with_outbox(
-        mut self,
-        outbox: Option<Arc<dyn edgequake_storage::OutboxSink>>,
-    ) -> Self {
+    pub fn with_outbox(mut self, outbox: Option<Arc<dyn edgequake_storage::OutboxSink>>) -> Self {
         self.config = self.config.with_outbox(outbox);
         self
     }
@@ -798,12 +795,10 @@ mod tests {
             extractions: vec![ExtractionResult {
                 entities: vec![ExtractedEntity::new("Sarah Chen", "PERSON", "Engineer")
                     .with_source_chunk_id("doc1-chunk-0")],
-                relationships: vec![ExtractedRelationship::new(
-                    "Sarah Chen",
-                    "EdgeQuake",
-                    "LEADS",
-                )
-                .with_source_chunk_id("doc1-chunk-0")],
+                relationships: vec![
+                    ExtractedRelationship::new("Sarah Chen", "EdgeQuake", "LEADS")
+                        .with_source_chunk_id("doc1-chunk-0"),
+                ],
                 source_chunk_id: "doc1-chunk-0".to_string(),
                 ..Default::default()
             }],
@@ -922,7 +917,8 @@ mod tests {
             async fn search(
                 &self,
                 _req: &VectorQuery,
-            ) -> std::result::Result<Vec<ScoredChunk>, edgequake_storage::StorageError> {
+            ) -> std::result::Result<Vec<ScoredChunk>, edgequake_storage::StorageError>
+            {
                 Ok(vec![])
             }
             async fn delete_for_workspace(

@@ -117,8 +117,5 @@ async fn fairness_lane_frees_when_permit_dropped_before_materialize() {
     drop(second);
 
     finish.notify_one();
-    proc_handle
-        .await
-        .expect("join")
-        .expect("process ok");
+    proc_handle.await.expect("join").expect("process ok");
 }

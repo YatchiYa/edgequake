@@ -117,8 +117,7 @@ fn build_timeline_stages(
     let current_norm = normalize_stage(Some(current), Some(status));
     let admission = current_norm == "queued" || is_queued_status(status);
     let cancelled = status.eq_ignore_ascii_case("cancelled") || current_norm == "cancelled";
-    let failed = !cancelled
-        && (status.eq_ignore_ascii_case("failed") || current_norm == "failed");
+    let failed = !cancelled && (status.eq_ignore_ascii_case("failed") || current_norm == "failed");
     let complete = status.eq_ignore_ascii_case("completed") || current_norm == "completed";
     let cur_rank = stage_rank(&current_norm);
     let completion_percentage = progress_01

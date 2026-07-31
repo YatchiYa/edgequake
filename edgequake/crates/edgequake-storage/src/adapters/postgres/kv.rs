@@ -602,27 +602,26 @@ impl KVStorage for PostgresKVStorage {
             // SPEC-091 Doc 23: short-circuit before begin/SQL when Absent.
             let mut kv_table_dropped = self.kv_relation_is_absent(&pool).await?;
             if !kv_table_dropped {
-            // C-22: all batches commit atomically — mid-batch failure must not
-            // leave a partial KV write set.
-            let mut tx = pool
-                .begin()
-                .await
-                .map_err(|e| StorageError::Database(format!("KV upsert begin failed: {}", e)))?;
-            const BATCH_SIZE: usize = 1000;
+                // C-22: all batches commit atomically — mid-batch failure must not
+                // leave a partial KV write set.
+                let mut tx = pool.begin().await.map_err(|e| {
+                    StorageError::Database(format!("KV upsert begin failed: {}", e))
+                })?;
+                const BATCH_SIZE: usize = 1000;
 
-            // SPEC-091 Wave D (EC-30): the generic KV relation may have been
-            // dropped. A stale `dual`/`kv` rollback flag pointing at the
-            // dropped table must degrade to a typed-only no-op (42P01), never
-            // abort the upsert — reads already tolerate the missing table.
-            for chunk in kv_data.chunks(BATCH_SIZE) {
-                let keys: Vec<String> = chunk.iter().map(|(k, _)| k.clone()).collect();
-                let values: Vec<serde_json::Value> =
-                    chunk.iter().map(|(_, v)| (*v).clone()).collect();
+                // SPEC-091 Wave D (EC-30): the generic KV relation may have been
+                // dropped. A stale `dual`/`kv` rollback flag pointing at the
+                // dropped table must degrade to a typed-only no-op (42P01), never
+                // abort the upsert — reads already tolerate the missing table.
+                for chunk in kv_data.chunks(BATCH_SIZE) {
+                    let keys: Vec<String> = chunk.iter().map(|(k, _)| k.clone()).collect();
+                    let values: Vec<serde_json::Value> =
+                        chunk.iter().map(|(_, v)| (*v).clone()).collect();
 
-                let sql = crate::dataop::sql_comment(
-                    crate::dataop::DATA_PG_KV_UPSERT_079,
-                    &format!(
-                        r#"
+                    let sql = crate::dataop::sql_comment(
+                        crate::dataop::DATA_PG_KV_UPSERT_079,
+                        &format!(
+                            r#"
                     INSERT INTO {} (key, value, updated_at)
                     SELECT k, v, NOW()
                     FROM unnest($1::text[], $2::jsonb[]) AS batch(k, v)
@@ -630,39 +629,39 @@ impl KVStorage for PostgresKVStorage {
                         value = EXCLUDED.value,
                         updated_at = NOW()
                     "#,
-                        self.table_name
-                    ),
-                );
+                            self.table_name
+                        ),
+                    );
 
-                self.relation_state.record_sql_attempt();
-                match sqlx::query(&sql)
-                    .bind(&keys)
-                    .bind(&values)
-                    .execute(&mut *tx)
-                    .await
-                {
-                    Ok(_) => {}
-                    Err(e) if Self::is_undefined_table(&e) => {
-                        self.note_kv_undefined(&e);
-                        kv_table_dropped = true;
-                        break;
-                    }
-                    Err(e) => {
-                        return Err(StorageError::Database(format!("KV upsert failed: {}", e)))
+                    self.relation_state.record_sql_attempt();
+                    match sqlx::query(&sql)
+                        .bind(&keys)
+                        .bind(&values)
+                        .execute(&mut *tx)
+                        .await
+                    {
+                        Ok(_) => {}
+                        Err(e) if Self::is_undefined_table(&e) => {
+                            self.note_kv_undefined(&e);
+                            kv_table_dropped = true;
+                            break;
+                        }
+                        Err(e) => {
+                            return Err(StorageError::Database(format!("KV upsert failed: {}", e)))
+                        }
                     }
                 }
-            }
 
-            if kv_table_dropped {
-                // The tx is aborted (42P01); roll it back and skip the raw KV
-                // write. Typed authority (chunks/documents/llm_cache) below is
-                // unaffected, so processing still completes.
-                let _ = tx.rollback().await;
-            } else {
-                tx.commit().await.map_err(|e| {
-                    StorageError::Database(format!("KV upsert commit failed: {}", e))
-                })?;
-            }
+                if kv_table_dropped {
+                    // The tx is aborted (42P01); roll it back and skip the raw KV
+                    // write. Typed authority (chunks/documents/llm_cache) below is
+                    // unaffected, so processing still completes.
+                    let _ = tx.rollback().await;
+                } else {
+                    tx.commit().await.map_err(|e| {
+                        StorageError::Database(format!("KV upsert commit failed: {}", e))
+                    })?;
+                }
             } // !kv_table_dropped (short-circuit / probe Absent)
 
             if kv_table_dropped {

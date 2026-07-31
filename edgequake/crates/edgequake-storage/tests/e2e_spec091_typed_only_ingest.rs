@@ -13,14 +13,14 @@ mod postgres_test_config;
 #[path = "support/spec091_w3.rs"]
 mod w3;
 
-use edgequake_storage::adapters::postgres::{PostgresPool, PgVectorStorage};
+use edgequake_storage::adapters::postgres::{PgVectorStorage, PostgresPool};
 use edgequake_storage::embedding_family::EmbeddingFamily;
 use edgequake_storage::traits::domain::{
     EmbeddingIndex, EmbeddingRow, FleetEmbeddingIndex, FleetEmbeddingKey, FleetEmbeddingRow,
     ModelId, WorkspaceId,
 };
 use edgequake_storage::traits::{MetadataFilter, VectorStorage};
-use edgequake_storage::{VECTOR_BACKEND_ENV};
+use edgequake_storage::VECTOR_BACKEND_ENV;
 use postgres_test_config::{contract_pg_pool, require_or_skip_postgres};
 use uuid::Uuid;
 
@@ -93,8 +93,7 @@ async fn e2e_spec091_typed_only_ingest_and_query() {
     let chunk_id = w3::seed_chunk(&pool, doc, ws, 0, "typed only chunk").await;
     let emb = w3::make_embedding(DIM, 42);
 
-    let chunk_index =
-        edgequake_storage::PgChunkEmbeddingIndex::new(pool.clone(), "typed-only-e2e");
+    let chunk_index = edgequake_storage::PgChunkEmbeddingIndex::new(pool.clone(), "typed-only-e2e");
     chunk_index
         .upsert_batch(
             ModelId(Uuid::nil()),
@@ -153,12 +152,8 @@ async fn e2e_spec091_typed_only_ingest_and_query() {
         "legacy {legacy_table} must still be absent after typed ingest"
     );
 
-    let mf = MetadataFilter::from_tenant_workspace_type(
-        None,
-        Some(ws.to_string()),
-        "chunk",
-    )
-    .expect("filter");
+    let mf = MetadataFilter::from_tenant_workspace_type(None, Some(ws.to_string()), "chunk")
+        .expect("filter");
     let hits = storage
         .query_filtered(&emb, 5, None, Some(&mf))
         .await
