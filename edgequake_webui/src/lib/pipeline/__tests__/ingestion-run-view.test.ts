@@ -267,6 +267,22 @@ describe("ingestion-run-view", () => {
     expect(formatRunHeadline(view!)).not.toMatch(/Extracting/);
   });
 
+  it("SPEC-120: capacity wait stage_message is not flattened to Queued", () => {
+    const view = buildIngestionRunView(
+      doc({
+        id: "d-cap",
+        file_name: "held.pdf",
+        status: "pending",
+        current_stage: "queued",
+        stage_message: "Waiting for capacity",
+        track_id: "t-cap",
+        queue_position: 1,
+      }),
+    );
+    expect(view?.message).toMatch(/Waiting for capacity/i);
+    expect(view?.message).not.toBe("Queued");
+  });
+
   it("IS3: human labels for gleaning / merging", () => {
     expect(stageDisplayName("gleaning")).toBe("Refining entities");
     expect(stageDisplayName("merging")).toBe("Updating knowledge graph");

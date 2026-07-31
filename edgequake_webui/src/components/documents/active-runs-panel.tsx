@@ -72,8 +72,7 @@ export function isLiveWorkingOrQueued(
     (Boolean(run.trackId) &&
       run.stage !== "completed" &&
       run.stage !== "failed" &&
-      run.stageStatus !== "failed" &&
-      run.stageStatus !== "cancelled")
+      run.stageStatus !== "failed")
   );
 }
 

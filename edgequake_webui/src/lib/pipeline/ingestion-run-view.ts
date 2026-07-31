@@ -463,15 +463,25 @@ export function buildIngestionRunView(
 
   // LAW-IS4: queued runs keep Queued message with position/ETA; never leave
   // Extracting@0% as the sole headline when still in admission.
+  // SPEC-120: preserve capacity / provider-slot copy from the server — do not
+  // flatten it to bare "Queued".
   let displayMessage = message;
   if (stage === "queued" || stage === "cleaning") {
-    const chrome = formatQueueChrome({
-      queuePosition,
-      etaSeconds,
-      etaBasis: etaBasis ?? undefined,
-    });
-    if (chrome && stage === "queued") {
-      displayMessage = chrome;
+    const capacityCopy =
+      /waiting for capacity|capacity \(|fair-share|ollama|provider slot|waiting for (?:a )?processing slot|waiting for reprocess/i.test(
+        message,
+      );
+    if (capacityCopy && message.trim()) {
+      displayMessage = message.trim();
+    } else {
+      const chrome = formatQueueChrome({
+        queuePosition,
+        etaSeconds,
+        etaBasis: etaBasis ?? undefined,
+      });
+      if (chrome && stage === "queued") {
+        displayMessage = chrome;
+      }
     }
   } else {
     const capacity = capacityWaitingMessage({

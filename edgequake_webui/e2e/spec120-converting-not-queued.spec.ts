@@ -518,11 +518,12 @@ test.describe("SPEC-120 converting not queued", () => {
     });
     await page.goto("/documents", GOTO_OPTS);
 
-    // Active-runs feedback zone demotes the amber banner; header shortcut is the
-    // durable capacity-wait signal under demotePipelineBanner.
+    // IS-AC-07: header shows Working/Queued counts (not the old slot phrase).
+    // Capacity copy lives on ActiveRuns admission pills / stage messages.
     const headerBtn = page.getByTestId("pipeline-header-button");
     await expect(headerBtn).toBeVisible({ timeout: 15000 });
-    await expect(headerBtn).toContainText(/Waiting for a processing slot/i);
+    await expect(headerBtn).toContainText(/Working|Queued/i);
+    await expect(headerBtn).not.toContainText(/Workers are idle/i);
     await expect(page.locator("body")).not.toContainText(/Workers are idle/i);
     // Named provider capacity reason must surface; Gleaning must not be the active chip.
     await expect(page.locator("body")).toContainText(

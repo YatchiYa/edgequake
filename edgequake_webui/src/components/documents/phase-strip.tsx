@@ -65,9 +65,9 @@ export function PhaseStrip({ run, className }: PhaseStripProps) {
   const active = mapWireStageToPhase(run.stage);
   const failed = run.stageStatus === "failed" || run.stage === "failed";
   // IS-AC-06: preserve wire stage ids as data attributes / contract hooks.
-  const wireSteps = buildStageTimeline(run).steps.filter(
-    (s) => s.status !== "skipped",
-  );
+  // Include skipped (e.g. merge mode) so e2e can assert data-state=skipped.
+  // Stages omitted from the timeline entirely (non-PDF converting) stay absent.
+  const wireSteps = buildStageTimeline(run).steps;
 
   return (
     <div

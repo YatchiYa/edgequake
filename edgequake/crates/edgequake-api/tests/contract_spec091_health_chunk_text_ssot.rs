@@ -26,6 +26,12 @@ fn base_url() -> Option<String> {
         })
 }
 
+fn allow_mock_provider() {
+    // AppState::new_postgres refuses mock as the default server LLM unless opted in.
+    std::env::set_var("EDGEQUAKE_ALLOW_MOCK_PROVIDER", "1");
+    std::env::set_var("EDGEQUAKE_LLM_PROVIDER", "mock");
+}
+
 fn kv_config_from_url(url: &str) -> PostgresConfig {
     let without = url
         .trim()
@@ -44,19 +50,21 @@ fn kv_config_from_url(url: &str) -> PostgresConfig {
         Some((h, p)) => (h, p.parse().unwrap_or(5432)),
         None => (hostport, 5432u16),
     };
-    let mut cfg = PostgresConfig::default();
-    cfg.host = host.to_string();
-    cfg.port = port;
-    cfg.database = db.to_string();
-    cfg.user = user.to_string();
-    cfg.password = pass.to_string();
-    cfg.namespace = "default".to_string();
-    cfg
+    PostgresConfig {
+        host: host.to_string(),
+        port,
+        database: db.to_string(),
+        user: user.to_string(),
+        password: pass.to_string(),
+        namespace: "default".to_string(),
+        ..Default::default()
+    }
 }
 
 #[tokio::test]
 #[serial]
 async fn contract_spec091_health_chunk_text_ssot_relational() {
+    allow_mock_provider();
     let Some(base) = base_url() else {
         eprintln!("SKIP: no DATABASE_URL");
         return;
@@ -102,6 +110,7 @@ async fn contract_spec091_health_chunk_text_ssot_relational() {
 #[tokio::test]
 #[serial]
 async fn e2e_spec091_health_no_kv_sql_post_drop() {
+    allow_mock_provider();
     let Some(base) = base_url() else {
         eprintln!("SKIP: no DATABASE_URL");
         return;
