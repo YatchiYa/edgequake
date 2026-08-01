@@ -230,6 +230,7 @@ pub async fn list_relational_document_summaries(
                 eta_seconds: None,
                 eta_basis: None,
                 query_ready: None,
+                cancelled_from_stage: None,
             }
         })
         .collect())
@@ -807,6 +808,7 @@ mod tests {
             eta_seconds: None,
             eta_basis: None,
             query_ready: None,
+            cancelled_from_stage: None,
         }];
 
         let pg = vec![DocumentSummary {
@@ -841,6 +843,7 @@ mod tests {
             eta_seconds: None,
             eta_basis: None,
             query_ready: None,
+            cancelled_from_stage: None,
         }];
 
         let merged = merge_document_summaries(kv, pg);
@@ -884,6 +887,7 @@ mod tests {
             eta_seconds: None,
             eta_basis: None,
             query_ready: None,
+            cancelled_from_stage: None,
         }];
 
         let pg = vec![DocumentSummary {
@@ -918,6 +922,7 @@ mod tests {
             eta_seconds: None,
             eta_basis: None,
             query_ready: None,
+            cancelled_from_stage: None,
         }];
 
         let merged = merge_document_summaries(kv, pg);
@@ -959,6 +964,7 @@ mod tests {
             eta_seconds: None,
             eta_basis: None,
             query_ready: None,
+            cancelled_from_stage: None,
         }
     }
 

@@ -125,10 +125,7 @@ mod tests {
             resolve_extraction_language(Some("Chinese"), Some("French")),
             "Chinese"
         );
-        assert_eq!(
-            resolve_extraction_language(None, Some("French")),
-            "French"
-        );
+        assert_eq!(resolve_extraction_language(None, Some("French")), "French");
         assert_eq!(
             resolve_extraction_language(Some(""), Some("French")),
             "French"

@@ -37,6 +37,8 @@ function statusClasses(status: StageStepStatus): string {
       return "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-200";
     case "failed":
       return "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-200";
+    case "cancelled":
+      return "bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-200";
     case "skipped":
       return "text-muted-foreground/50 line-through decoration-muted-foreground/40";
     default:
@@ -52,6 +54,8 @@ function dotClasses(status: StageStepStatus): string {
       return "bg-sky-500 animate-pulse";
     case "failed":
       return "bg-rose-500";
+    case "cancelled":
+      return "bg-orange-500";
     case "skipped":
       return "bg-muted-foreground/25";
     default:
@@ -70,10 +74,18 @@ export function ServerStageStepper({
     ? timeline.steps.filter((s) => s.status !== "skipped")
     : timeline.steps;
   const active = steps.find(
-    (s) => s.status === "active" || s.status === "failed",
+    (s) =>
+      s.status === "active" ||
+      s.status === "failed" ||
+      s.status === "cancelled",
   );
   const detailLine = formatStepDetailLine(active?.detail);
   const admissionPhase = timeline.admissionPhase;
+  const isCancelTerminal =
+    run.stageStatus === "cancelled" ||
+    run.stage === "cancelled" ||
+    run.stageStatus === "stopping" ||
+    run.stage === "stopping";
 
   return (
     <div
@@ -123,7 +135,7 @@ export function ServerStageStepper({
       </div>
       )}
 
-      {active && detailLine ? (
+      {active && detailLine && !isCancelTerminal ? (
         <div
           className={cn(
             "rounded-md border px-2 py-1.5 text-[11px] tabular-nums",

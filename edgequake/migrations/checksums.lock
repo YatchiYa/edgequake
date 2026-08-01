@@ -1,5 +1,5 @@
 # Migration Immutability Lockfile
-# Updated: 2026-07-31
+# Updated: 2026-08-01
 #
 # PURPOSE: Every line records the SHA-384 of a migration file at the time it was
 # declared stable. This file is the source of truth for the migration-guard CI
@@ -149,4 +149,5 @@ a6533a7a88226f59b581ec66e8fa33ff05c60662e86e98f91d51d75eef2e92de078d1a5e860435a4
 1ac1104c0b0e1c7c1bf920406ad2b1afa726434dafce2d8bd2e90ce5e7081a010a4293b007a1cf5fe9b57fe39f4f347f  135_spec091_chunk_context_preamble.sql
 2a57825b270e8293975bdfccf6378e371d1b9d6c9a6dd469be2a9807e0b29e11a48d574dd1c828d1315e88e109f78a99  136_spec091_chunk_content_tsv.sql
 562f3e57218ade9d77b1148a3d1f8e54f8eded00dd8ef98951ead49c1b05c7b4f7e5021b775c93dd1850f556a1599a62  137_spec091_age_citation_indexes.sql
+d6cf54b722cd3fd31d013852f1e12f744fb365ca4f80ddd9428224e7bab5f5218d4e84e653b6d8351fb2c8879545efac  138_tasks_fairness_hold_until.sql
 

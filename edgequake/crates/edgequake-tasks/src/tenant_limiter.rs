@@ -20,7 +20,7 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio::sync::{OwnedSemaphorePermit, RwLock, Semaphore};
 use tracing::debug;
 use uuid::Uuid;
@@ -494,6 +494,8 @@ pub struct TenantConcurrencyLimiter {
     park_waiters_lifecycle: Arc<AtomicU64>,
     park_completions: Arc<AtomicU64>,
     park_aborts: Arc<AtomicU64>,
+    /// Park → worker handoff: permit staged by track_id until claim+try_acquire.
+    handoffs: Arc<Mutex<HashMap<String, FairnessPermit>>>,
 }
 
 impl TenantConcurrencyLimiter {
@@ -523,6 +525,7 @@ impl TenantConcurrencyLimiter {
             park_waiters_lifecycle: Arc::new(AtomicU64::new(0)),
             park_completions: Arc::new(AtomicU64::new(0)),
             park_aborts: Arc::new(AtomicU64::new(0)),
+            handoffs: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -551,6 +554,7 @@ impl TenantConcurrencyLimiter {
             park_waiters_lifecycle: Arc::new(AtomicU64::new(0)),
             park_completions: Arc::new(AtomicU64::new(0)),
             park_aborts: Arc::new(AtomicU64::new(0)),
+            handoffs: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -583,6 +587,26 @@ impl TenantConcurrencyLimiter {
             FairnessClass::Ingest => self.ingest.is_some(),
             FairnessClass::Lifecycle => self.lifecycle.is_some(),
         }
+    }
+
+    /// Stage a fairness permit for the woken `track_id` (park → worker handoff).
+    ///
+    /// The worker takes it via [`Self::take_handoff`] after claim so sibling park
+    /// waiters cannot steal the slot with acquire/drop cascades.
+    pub fn stage_handoff(&self, track_id: &str, permit: FairnessPermit) {
+        let mut map = self.handoffs.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(prev) = map.insert(track_id.to_string(), permit) {
+            // Prior handoff unused — release by drop.
+            drop(prev);
+        }
+    }
+
+    /// Take a staged handoff permit for `track_id`, if any.
+    pub fn take_handoff(&self, track_id: &str) -> Option<FairnessPermit> {
+        self.handoffs
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(track_id)
     }
 
     /// Try to acquire a processing slot for tenant + workspace + fairness class.
@@ -1334,6 +1358,33 @@ mod tests {
         assert!(matches!(
             limiter
                 .try_acquire(tenant_a(), ws_a(), FairnessClass::Ingest, &local_provider())
+                .await,
+            TryAcquireOutcome::Acquired(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn staged_handoff_drop_frees_lane_for_next_acquire() {
+        let limiter = TenantConcurrencyLimiter::new(1, 1);
+        let permit = match limiter
+            .try_acquire(tenant_a(), ws_a(), FairnessClass::Ingest, &local_provider())
+            .await
+        {
+            TryAcquireOutcome::Acquired(p) => p,
+            other => panic!("expected Acquired, got {other:?}"),
+        };
+        limiter.stage_handoff("track-cancel", permit);
+        assert!(matches!(
+            limiter
+                .try_acquire(tenant_a(), ws_b(), FairnessClass::Ingest, &local_provider())
+                .await,
+            TryAcquireOutcome::AtCapacity
+        ));
+        // Cancel/skip path: take staged handoff and drop (free the lane).
+        drop(limiter.take_handoff("track-cancel"));
+        assert!(matches!(
+            limiter
+                .try_acquire(tenant_a(), ws_b(), FairnessClass::Ingest, &local_provider())
                 .await,
             TryAcquireOutcome::Acquired(_)
         ));

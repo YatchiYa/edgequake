@@ -1,12 +1,32 @@
 //! Scoped task access — DRY workspace isolation for v1 tasks and v2 jobs.
 
-use edgequake_tasks::Task;
+use edgequake_tasks::{Task, TaskFilter};
 
 use crate::error::{ApiError, ApiResult};
 use crate::middleware::{
     resolve_tenant_header, resolve_workspace_header, ScopeHeader, TenantContext,
 };
 use crate::state::AppState;
+
+/// Build the tenant/workspace portion of a task filter.
+///
+/// Explicit query values take precedence for admin/debug clients; normal
+/// requests inherit the authenticated header context.
+pub fn task_filter_for_scope(
+    tenant_ctx: &TenantContext,
+    tenant_id: Option<&str>,
+    workspace_id: Option<&str>,
+) -> TaskFilter {
+    TaskFilter {
+        tenant_id: tenant_id
+            .and_then(|value| uuid::Uuid::parse_str(value).ok())
+            .or_else(|| tenant_ctx.tenant_id_uuid()),
+        workspace_id: workspace_id
+            .and_then(|value| uuid::Uuid::parse_str(value).ok())
+            .or_else(|| tenant_ctx.workspace_id_uuid()),
+        ..TaskFilter::default()
+    }
+}
 
 /// Load a task when it belongs to the requester's tenant+workspace (404 if cross-tenant).
 ///
@@ -54,6 +74,27 @@ mod tests {
     use super::*;
     use edgequake_tasks::{Task, TaskType};
     use uuid::Uuid;
+
+    #[test]
+    fn task_filter_scope_uses_context_and_explicit_override() {
+        let context_tenant = Uuid::new_v4();
+        let context_workspace = Uuid::new_v4();
+        let explicit_workspace = Uuid::new_v4();
+        let context = TenantContext {
+            tenant_id: Some(context_tenant.to_string()),
+            workspace_id: Some(context_workspace.to_string()),
+            user_id: None,
+        };
+
+        let inherited = task_filter_for_scope(&context, None, None);
+        assert_eq!(inherited.tenant_id, Some(context_tenant));
+        assert_eq!(inherited.workspace_id, Some(context_workspace));
+
+        let overridden =
+            task_filter_for_scope(&context, None, Some(&explicit_workspace.to_string()));
+        assert_eq!(overridden.tenant_id, Some(context_tenant));
+        assert_eq!(overridden.workspace_id, Some(explicit_workspace));
+    }
 
     #[tokio::test]
     async fn e2e_cancel_foreign_track_id_404() {

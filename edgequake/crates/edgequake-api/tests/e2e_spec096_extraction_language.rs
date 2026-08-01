@@ -49,7 +49,10 @@ async fn spec096_workspace_metadata_roundtrip() {
         .await
         .unwrap();
     assert_eq!(tenant.status(), StatusCode::CREATED);
-    let tenant_id = extract_json(tenant).await["id"].as_str().unwrap().to_string();
+    let tenant_id = extract_json(tenant).await["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     let create = app
         .clone()
@@ -127,7 +130,10 @@ async fn spec096_e2e_ingest_prompt_language() {
         )
         .await
         .unwrap();
-    let tenant_id = extract_json(tenant).await["id"].as_str().unwrap().to_string();
+    let tenant_id = extract_json(tenant).await["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     let create = app
         .clone()

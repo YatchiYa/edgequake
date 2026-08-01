@@ -225,6 +225,7 @@ pub(super) async fn create_pdf_processing_task(
         lease_owner: None,
         lease_token: None,
         lease_expires_at: None,
+        fairness_hold_until: None,
     };
 
     if let Err(e) = state.enqueue_task(task).await {

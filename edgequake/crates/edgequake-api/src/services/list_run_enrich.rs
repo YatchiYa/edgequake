@@ -170,6 +170,7 @@ mod tests {
             eta_seconds: None,
             eta_basis: None,
             query_ready: None,
+            cancelled_from_stage: None,
         }
     }
 

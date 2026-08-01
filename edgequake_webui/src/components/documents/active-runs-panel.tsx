@@ -5,27 +5,31 @@
  * SPEC-086 dual-run UX: never mix orphan failed shells under "Active runs"
  * beside a live PDF — partition Working/Queued vs Needs attention.
  *
- * Cancelled: compact ack with grace auto-dismiss + Dismiss (not Failed/Queued forever).
+ * Cancelled terminals: first-class orange Cancelled (never Failed); 12s TTL +
+ * durable Dismiss via sessionStorage (document row remains under Cancelled).
  */
 
 "use client";
 
+import { useEffect, useReducer, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useReducer } from "react";
 import { IngestionRunCard } from "@/components/documents/ingestion-run-card";
 import { PdfUploadProgress } from "@/components/documents/pdf-upload-progress";
 import { Button } from "@/components/ui/button";
 import { cancelTask } from "@/lib/api/edgequake";
 import {
-  CANCELLED_RUN_GRACE_MS,
-  cancelledRunKey,
-  cancelledRunRemainingMs,
-  dismissCancelledRun,
-  isCancelledRunVisible,
-  observeCancelledRun,
-  pauseCancelledRunGrace,
-  resumeCancelledRunGrace,
-} from "@/lib/pipeline/cancelled-run-lifecycle";
+  cancelledRetentionDeadlines,
+  createCancelledObservationClock,
+  filterWorkingRunsForRetention,
+  isCancelledRun,
+  workingSectionTitleForRuns,
+} from "@/lib/pipeline/active-runs-retention";
+import {
+  loadDismissedCancelledIds,
+  persistDismissedCancelledId,
+  pruneDismissedCancelledIds,
+  rememberCancelledFromStage,
+} from "@/lib/pipeline/cancelled-active-run-dismiss";
 import {
   shouldNestPdfPageMeter,
   type IngestionRunView,
@@ -46,25 +50,20 @@ export function isOrphanFailedAttention(run: IngestionRunView): boolean {
   );
 }
 
-function runLifecycleKey(run: IngestionRunView): string {
-  return cancelledRunKey(run.documentId, run.trackId);
-}
-
 /**
- * Live work + brief cancelled acknowledgement (grace window).
- * Stopping always stays; cancelled only while lifecycle says visible.
+ * Live work + brief cancelled acknowledgement (TTL applied later).
+ * Stopping always stays; cancelled passes partition then retention filter.
  */
-export function isLiveWorkingOrQueued(
-  run: IngestionRunView,
-  nowMs: number = Date.now(),
-): boolean {
+export function isLiveWorkingOrQueued(run: IngestionRunView): boolean {
   if (isOrphanFailedAttention(run)) return false;
-  if (run.stage === "stopping") return true;
-  if (run.stage === "cancelled" || run.stageStatus === "cancelled") {
-    const key = runLifecycleKey(run);
-    const opts = { cancelledAt: run.updatedAt };
-    observeCancelledRun(key, nowMs, opts);
-    return isCancelledRunVisible(key, nowMs, CANCELLED_RUN_GRACE_MS, opts);
+  // LAW-28: keep Stopping… / Cancelled on ActiveRuns (TTL applied later).
+  if (
+    run.stage === "stopping" ||
+    run.stage === "cancelled" ||
+    run.stageStatus === "stopping" ||
+    run.stageStatus === "cancelled"
+  ) {
+    return true;
   }
   return (
     run.stageStatus === "active" ||
@@ -77,10 +76,7 @@ export function isLiveWorkingOrQueued(
 }
 
 /** Split live work from orphan attention shells (testable SSOT). */
-export function partitionActiveRuns(
-  runs: IngestionRunView[],
-  nowMs: number = Date.now(),
-): {
+export function partitionActiveRuns(runs: IngestionRunView[]): {
   working: IngestionRunView[];
   attention: IngestionRunView[];
 } {
@@ -89,7 +85,7 @@ export function partitionActiveRuns(
   for (const run of runs) {
     if (isOrphanFailedAttention(run)) {
       attention.push(run);
-    } else if (isLiveWorkingOrQueued(run, nowMs)) {
+    } else if (isLiveWorkingOrQueued(run)) {
       working.push(run);
     }
   }
@@ -103,17 +99,20 @@ export function workingSectionTitle(working: IngestionRunView[]): string {
     (r) => r.stage === "cancelled" || r.stageStatus === "cancelled",
   );
   if (allCancelled) {
-    return working.length > 1 ? "Cancelled" : "Cancelled";
+    return "Cancelled";
   }
   const allStoppingOrCancelled = working.every(
     (r) =>
       r.stage === "stopping" ||
       r.stage === "cancelled" ||
-      r.stageStatus === "cancelled",
+      r.stageStatus === "cancelled" ||
+      r.stageStatus === "stopping",
   );
-  const anyStopping = working.some((r) => r.stage === "stopping");
+  const anyStopping = working.some(
+    (r) => r.stage === "stopping" || r.stageStatus === "stopping",
+  );
   if (allStoppingOrCancelled && anyStopping) {
-    return working.length > 1 ? "Stopping…" : "Stopping…";
+    return "Stopping…";
   }
   const anyWorking = working.some((r) => r.stageStatus === "active");
   if (anyWorking) {
@@ -125,13 +124,17 @@ export function workingSectionTitle(working: IngestionRunView[]): string {
 function renderRunCard(
   run: IngestionRunView,
   onDismissFailed: ((documentId: string) => void) | undefined,
-  onDismissCancelled: ((run: IngestionRunView) => void) | undefined,
+  onDismissCancelled: ((documentId: string) => void) | undefined,
   onCancelTrack: ((trackId: string) => void) | undefined,
-  onTick: () => void,
 ) {
-  const isCancelled =
-    run.stage === "cancelled" || run.stageStatus === "cancelled";
-  const key = runLifecycleKey(run);
+  const dismissCancelled =
+    isCancelledRun(run) && onDismissCancelled
+      ? () => onDismissCancelled(run.documentId)
+      : undefined;
+  const dismissFailed =
+    isOrphanFailedAttention(run) && onDismissFailed
+      ? () => onDismissFailed(run.documentId)
+      : undefined;
 
   return (
     <IngestionRunCard
@@ -141,35 +144,15 @@ function renderRunCard(
       onCancel={
         run.trackId &&
         run.stageStatus !== "failed" &&
+        run.stageStatus !== "stopping" &&
+        run.stageStatus !== "cancelled" &&
         run.stage !== "stopping" &&
-        !isCancelled &&
+        run.stage !== "cancelled" &&
         onCancelTrack
           ? () => onCancelTrack(run.trackId!)
           : undefined
       }
-      onDismiss={
-        isCancelled && onDismissCancelled
-          ? () => onDismissCancelled(run)
-          : isOrphanFailedAttention(run) && onDismissFailed
-            ? () => onDismissFailed(run.documentId)
-            : undefined
-      }
-      onGracePause={
-        isCancelled
-          ? () => {
-              pauseCancelledRunGrace(key);
-              onTick();
-            }
-          : undefined
-      }
-      onGraceResume={
-        isCancelled
-          ? () => {
-              resumeCancelledRunGrace(key);
-              onTick();
-            }
-          : undefined
-      }
+      onDismiss={dismissCancelled ?? dismissFailed}
       nestedDetail={
         // LAW-IS2 / F-IS-06: second progress product only when list lacks page counts.
         shouldNestPdfPageMeter(run) && run.trackId ? (
@@ -190,7 +173,12 @@ export function ActiveRunsPanel({
   onDismissFailed,
 }: ActiveRunsPanelProps) {
   const queryClient = useQueryClient();
-  const [, tick] = useReducer((n: number) => n + 1, 0);
+  const clockRef = useRef(createCancelledObservationClock());
+  const [dismissedCancelledIds, setDismissedCancelledIds] = useState(() =>
+    loadDismissedCancelledIds(),
+  );
+  // Force re-render when cancelled TTL expires.
+  const [, bumpRetention] = useReducer((n: number) => n + 1, 0);
 
   const onCancelTrack = (trackId: string) => {
     void import("@/lib/documents/cancel-intent").then(
@@ -210,49 +198,73 @@ export function ActiveRunsPanel({
       });
   };
 
-  const onDismissCancelled = (run: IngestionRunView) => {
-    dismissCancelledRun(runLifecycleKey(run));
-    tick();
-  };
-
-  const nowMs = Date.now();
-  const { working, attention } = partitionActiveRuns(runs, nowMs);
-
-  // Auto-dismiss cancelled acks when grace expires (pause-aware).
+  // Cache freeze stage while Stopping / Cancelled so refresh stays honest.
   useEffect(() => {
-    const cancelled = working.filter(
-      (r) => r.stage === "cancelled" || r.stageStatus === "cancelled",
-    );
-    if (cancelled.length === 0) return;
-
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const schedule = () => {
-      const now = Date.now();
-      let soonest = Number.POSITIVE_INFINITY;
-      for (const run of cancelled) {
-        const rem = cancelledRunRemainingMs(
-          runLifecycleKey(run),
-          now,
-          CANCELLED_RUN_GRACE_MS,
-        );
-        if (rem > 0 && rem < soonest) soonest = rem;
-        if (rem === 0) {
-          tick();
-          return;
-        }
+    for (const run of runs) {
+      if (
+        run.cancelledAtStage &&
+        (run.stageStatus === "stopping" ||
+          run.stageStatus === "cancelled" ||
+          run.stage === "stopping" ||
+          run.stage === "cancelled")
+      ) {
+        rememberCancelledFromStage(run.documentId, run.cancelledAtStage);
       }
-      if (!Number.isFinite(soonest)) return;
-      timer = setTimeout(() => {
-        tick();
-      }, soonest + 25);
-    };
-    schedule();
+    }
+  }, [runs]);
+
+  const { working: rawWorking, attention } = partitionActiveRuns(runs);
+  const working = filterWorkingRunsForRetention(rawWorking, {
+    clock: clockRef.current,
+    dismissedCancelledIds,
+  });
+
+  // Delay until each in-window cancelled card expires. Stable primitive deps —
+  // never sync-bump when remaining <= 0 (that + fresh `runs` arrays loops).
+  const cancelledTtlDeadlines = cancelledRetentionDeadlines(rawWorking, {
+    clock: clockRef.current,
+    dismissedCancelledIds,
+  });
+  const cancelledTtlScheduleKey = cancelledTtlDeadlines
+    .map((e) => `${e.id}:${e.deadline}`)
+    .join("|");
+
+  useEffect(() => {
+    if (cancelledTtlDeadlines.length === 0) return;
+    const timers = cancelledTtlDeadlines.map((entry) => {
+      const remaining = Math.max(1, entry.deadline - Date.now());
+      return setTimeout(() => bumpRetention(), remaining);
+    });
     return () => {
-      if (timer) clearTimeout(timer);
+      for (const t of timers) clearTimeout(t);
     };
-  }, [working, runs]);
+    // Schedule key is the stable identity; deadlines array is from this render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- key encodes deadlines
+  }, [cancelledTtlScheduleKey]);
+
+  // Prune durable dismiss when docs leave cancelled (e.g. reprocess).
+  useEffect(() => {
+    const cancelledIds = new Set(
+      runs.filter(isCancelledRun).map((r) => r.documentId),
+    );
+    setDismissedCancelledIds((prev) => {
+      const pruned = pruneDismissedCancelledIds(cancelledIds);
+      if (
+        prev.size === pruned.size &&
+        [...prev].every((id) => pruned.has(id))
+      ) {
+        return prev;
+      }
+      return pruned;
+    });
+  }, [runs]);
 
   if (working.length === 0 && attention.length === 0) return null;
+
+  const onDismissCancelled = (documentId: string) => {
+    const next = persistDismissedCancelledId(documentId);
+    setDismissedCancelledIds(next);
+  };
 
   const dismissAll = () => {
     if (!onDismissFailed) return;
@@ -273,7 +285,7 @@ export function ActiveRunsPanel({
         >
           <div className="flex items-baseline justify-between gap-2">
             <div className="text-sm font-medium tracking-tight">
-              {workingSectionTitle(working)}
+              {workingSectionTitleForRuns(working)}
             </div>
             <div className="text-xs tabular-nums text-muted-foreground">
               {working.length}
@@ -285,7 +297,6 @@ export function ActiveRunsPanel({
               onDismissFailed,
               onDismissCancelled,
               onCancelTrack,
-              tick,
             ),
           )}
         </section>
@@ -325,13 +336,7 @@ export function ActiveRunsPanel({
             </div>
           </div>
           {attention.map((run) =>
-            renderRunCard(
-              run,
-              onDismissFailed,
-              onDismissCancelled,
-              onCancelTrack,
-              tick,
-            ),
+            renderRunCard(run, onDismissFailed, undefined, onCancelTrack),
           )}
         </section>
       )}

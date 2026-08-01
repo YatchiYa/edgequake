@@ -43,7 +43,8 @@ describe("ingestion-run-view", () => {
     );
     expect(view?.stage).toBe("cancelled");
     expect(view?.stageStatus).toBe("cancelled");
-    expect(view?.progress01).toBe(0);
+    // Cancel honesty: do not invent 0% after cancel; freeze leaves progress unset.
+    expect(view?.progress01).toBeUndefined();
   });
 
   it("places cleaning before queued in SERVER_STAGE_ORDER", () => {

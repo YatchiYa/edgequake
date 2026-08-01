@@ -147,6 +147,7 @@ mod tests {
             eta_seconds: None,
             eta_basis: None,
             query_ready: None,
+            cancelled_from_stage: None,
         };
 
         let json = serde_json::to_string(&summary).unwrap();
@@ -189,6 +190,7 @@ mod tests {
                 eta_seconds: None,
                 eta_basis: None,
                 query_ready: None,
+                cancelled_from_stage: None,
             }],
             total: 1,
             page: 1,
@@ -323,6 +325,7 @@ mod tests {
                 eta_seconds: None,
                 eta_basis: None,
                 query_ready: None,
+                cancelled_from_stage: None,
             }],
             total_count: 1,
             status_summary: StatusCounts {

@@ -120,7 +120,9 @@ async fn spec096_api_create_update_get_language() {
                 .uri(format!("/api/v1/workspaces/{workspace_id}"))
                 .header("Content-Type", "application/json")
                 .header("X-Tenant-ID", &tenant_id)
-                .body(Body::from(json!({ "extraction_language": "none" }).to_string()))
+                .body(Body::from(
+                    json!({ "extraction_language": "none" }).to_string(),
+                ))
                 .unwrap(),
         )
         .await
@@ -128,8 +130,7 @@ async fn spec096_api_create_update_get_language() {
     assert_eq!(clear.status(), StatusCode::OK);
     let cleared = extract_json(clear).await;
     assert!(
-        cleared["extraction_language"].is_null()
-            || cleared.get("extraction_language").is_none(),
+        cleared["extraction_language"].is_null() || cleared.get("extraction_language").is_none(),
         "clearing override should omit/null extraction_language, got {cleared}"
     );
 }

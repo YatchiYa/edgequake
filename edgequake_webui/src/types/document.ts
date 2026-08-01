@@ -133,6 +133,12 @@ export interface Document {
   ui_phase?: string;
 
   /**
+   * Last non-terminal pipeline stage when cancel froze the run (INV-10).
+   * Written by backend on cancel; used for honest Active Runs freeze.
+   */
+  cancelled_from_stage?: string;
+
+  /**
    * Reprocess mode when this run was started via soft/hard reprocess (SPEC-048).
    * Wire: full | entities | merge
    */

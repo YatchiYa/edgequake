@@ -5,15 +5,12 @@
 
 /** Track upload progress and errors for files */
 export interface UploadingFile {
+  /** Stable client-only identity; array indexes are unsafe across concurrent batches. */
+  uploadId: string;
   file: File;
   progress: number;
   status:
-    | "pending"
-    | "reading"
-    | "uploading"
-    | "extracting"
-    | "success"
-    | "error";
+    "pending" | "reading" | "uploading" | "extracting" | "success" | "error";
   error?: string;
   phase?: string; // Human-readable phase description
   /** Bytes sent during HTTP transfer (SPEC-038 honest upload progress). */

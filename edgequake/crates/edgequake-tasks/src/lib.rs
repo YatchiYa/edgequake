@@ -76,6 +76,7 @@ pub mod cancellation;
 pub mod config;
 pub mod delivery;
 pub mod error;
+pub mod fairness_hold;
 pub mod ingestion_reliability;
 pub mod lease;
 pub mod memory;
@@ -112,6 +113,9 @@ pub use delivery::{
     TaskDeliveryMode, TaskNotifier, REPLICAS_ENV,
 };
 pub use error::{TaskError, TaskResult};
+pub use fairness_hold::{
+    lifecycle_task_type_sql, ClaimFairnessPolicy, DEFAULT_FAIRNESS_HOLD_TTL, LIFECYCLE_TASK_TYPES,
+};
 pub use ingestion_reliability::{
     classify_from_failure_markers, classify_ingestion_failure, failure_step,
     is_cancel_failure_message, is_permanent_ingestion_failure, is_provider_misconfig_message,

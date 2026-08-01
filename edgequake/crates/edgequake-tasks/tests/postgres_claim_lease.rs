@@ -1,7 +1,10 @@
 //! SPEC-057 P1: Postgres SKIP LOCKED claim / lease e2e.
 //!
 //! Run with:
-//!   DATABASE_URL=... cargo test -p edgequake-tasks --features postgres --test postgres_claim_lease
+//!   DATABASE_URL=... cargo test -p edgequake-tasks --features postgres --test postgres_claim_lease -- --test-threads=1
+//!
+//! Prefer `--test-threads=1` on shared DBs: claim isolation cancels residual
+//! Pending/Processing rows and races when tests run in parallel.
 //!
 //! Skips cleanly when DATABASE_URL / POSTGRES_PASSWORD is unset.
 
@@ -13,7 +16,7 @@ use std::time::Duration;
 
 use chrono::{TimeZone, Utc};
 use edgequake_tasks::postgres::PostgresTaskStorage;
-use edgequake_tasks::{Task, TaskStatus, TaskStorage, TaskType};
+use edgequake_tasks::{ClaimFairnessPolicy, Task, TaskStatus, TaskStorage, TaskType};
 use sqlx::{postgres::PgPoolOptions, PgPool};
 use uuid::Uuid;
 
@@ -40,7 +43,7 @@ async fn create_test_pool() -> Option<PgPool> {
         .ok()
 }
 
-/// Ensure mig 088 lease columns exist (idempotent).
+/// Ensure mig 088 lease columns + mig 107 fairness hold exist (idempotent).
 async fn ensure_lease_columns(pool: &PgPool) -> Result<(), sqlx::Error> {
     sqlx::query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS lease_owner TEXT")
         .execute(pool)
@@ -52,6 +55,9 @@ async fn ensure_lease_columns(pool: &PgPool) -> Result<(), sqlx::Error> {
         .execute(pool)
         .await?;
     sqlx::query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS pdf_id TEXT")
+        .execute(pool)
+        .await?;
+    sqlx::query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS fairness_hold_until TIMESTAMPTZ")
         .execute(pool)
         .await?;
     Ok(())
@@ -502,4 +508,249 @@ async fn issue316_tenant_cap_still_holds() {
         ),
         "tenant ingest cap must still hold with workspace lanes"
     );
+}
+
+/// SPEC-057 INV-06: active fairness_hold_until excludes Pending from claim_next.
+#[tokio::test]
+async fn fairness_hold_excludes_pending_from_claim() {
+    let Some(pool) = create_test_pool().await else {
+        eprintln!("Skipping: no DATABASE_URL");
+        return;
+    };
+    ensure_lease_columns(&pool).await.expect("migrate hold col");
+    let storage = PostgresTaskStorage::new(pool.clone());
+
+    let task = sample_task(TaskStatus::Pending);
+    let track_id = task.track_id.clone();
+    seed_create_oldest(&pool, &storage, &task)
+        .await
+        .expect("seed+create");
+
+    storage
+        .mark_fairness_hold(&track_id, Duration::from_secs(60))
+        .await
+        .expect("mark hold");
+
+    let claimed = storage
+        .claim_next("hold-worker", Duration::from_secs(30))
+        .await
+        .expect("claim");
+    assert!(
+        claimed.as_ref().map(|t| t.track_id.as_str()) != Some(track_id.as_str()),
+        "held Pending must not be claimed"
+    );
+
+    storage
+        .clear_fairness_hold(&track_id)
+        .await
+        .expect("clear hold");
+    let claimed = storage
+        .claim_next("hold-worker", Duration::from_secs(30))
+        .await
+        .expect("claim after clear")
+        .expect("must claim after clear");
+    assert_eq!(claimed.track_id, track_id);
+
+    let token = claimed.lease_token.expect("token");
+    let _ = storage.release_claim(&track_id, "hold-worker", token).await;
+    cleanup(&pool, &task).await;
+}
+
+/// FP-2 / H1: within one workspace, under-cap tenant beats older at-cap Pending.
+#[tokio::test]
+async fn claim_prefers_under_cap_within_same_workspace() {
+    let pool = require_postgres!();
+    let storage = PostgresTaskStorage::new(pool.clone());
+
+    let tenant_a = Uuid::new_v4();
+    let tenant_b = Uuid::new_v4();
+    let ws = Uuid::new_v4();
+
+    let mut holder = Task::new(
+        tenant_a,
+        ws,
+        TaskType::Insert,
+        serde_json::json!({ "document_id": format!("cap-holder-{}", Uuid::new_v4()) }),
+    );
+    holder.status = TaskStatus::Processing;
+    holder.lease_owner = Some("holder".into());
+    holder.lease_token = Some(Uuid::new_v4());
+    holder.lease_expires_at = Some(Utc::now() + chrono::Duration::hours(1));
+    ensure_tenant_workspace(&pool, &holder)
+        .await
+        .expect("seed holder tw");
+    storage.create_task(&holder).await.expect("create holder");
+
+    let mut pending_a = Task::new(
+        tenant_a,
+        ws,
+        TaskType::Insert,
+        serde_json::json!({ "document_id": format!("cap-a-{}", Uuid::new_v4()) }),
+    );
+    pending_a.status = TaskStatus::Pending;
+    ensure_tenant_workspace(&pool, &pending_a)
+        .await
+        .expect("seed a tw");
+    storage.create_task(&pending_a).await.expect("create a");
+    let ts_a = Utc.with_ymd_and_hms(1970, 1, 1, 0, 0, 1).unwrap();
+    sqlx::query("UPDATE tasks SET created_at = $2 WHERE track_id = $1")
+        .bind(&pending_a.track_id)
+        .bind(ts_a)
+        .execute(&pool)
+        .await
+        .expect("pin a");
+
+    let mut pending_b = Task::new(
+        tenant_b,
+        ws,
+        TaskType::Insert,
+        serde_json::json!({ "document_id": format!("cap-b-{}", Uuid::new_v4()) }),
+    );
+    pending_b.status = TaskStatus::Pending;
+    ensure_tenant_workspace(&pool, &pending_b)
+        .await
+        .expect("seed b tw");
+    storage.create_task(&pending_b).await.expect("create b");
+    let ts_b = Utc.with_ymd_and_hms(1970, 1, 1, 0, 0, 2).unwrap();
+    sqlx::query("UPDATE tasks SET created_at = $2 WHERE track_id = $1")
+        .bind(&pending_b.track_id)
+        .bind(ts_b)
+        .execute(&pool)
+        .await
+        .expect("pin b");
+
+    // Shared-DB: cancel *all* other claimable rows so parallel suites cannot steal.
+    sqlx::query(
+        r#"
+        UPDATE tasks
+        SET status = 'cancelled', updated_at = NOW(), completed_at = NOW()
+        WHERE status IN ('pending', 'processing')
+          AND track_id NOT IN ($1, $2, $3)
+        "#,
+    )
+    .bind(&holder.track_id)
+    .bind(&pending_a.track_id)
+    .bind(&pending_b.track_id)
+    .execute(&pool)
+    .await
+    .expect("isolate claimable");
+
+    let policy = ClaimFairnessPolicy::from_lane_caps(1, 1);
+    let claimed = storage
+        .claim_next_with_policy("cap-w", Duration::from_secs(30), policy)
+        .await
+        .expect("claim")
+        .expect("must claim under-cap B");
+    assert_eq!(
+        claimed.track_id, pending_b.track_id,
+        "Postgres within-workspace ORDER BY at_cap must match memory"
+    );
+
+    let token = claimed.lease_token.expect("token");
+    let _ = storage
+        .release_claim(&claimed.track_id, "cap-w", token)
+        .await;
+    for t in [&holder, &pending_a, &pending_b] {
+        cleanup(&pool, t).await;
+    }
+}
+
+/// FP-2: active fairness hold counts toward tenant lane saturation.
+#[tokio::test]
+async fn held_pending_counts_toward_tenant_at_cap() {
+    let pool = require_postgres!();
+    let storage = PostgresTaskStorage::new(pool.clone());
+
+    let tenant_a = Uuid::new_v4();
+    let tenant_b = Uuid::new_v4();
+    let ws_a = Uuid::new_v4();
+    let ws_b = Uuid::new_v4();
+
+    let mut held_a = Task::new(
+        tenant_a,
+        ws_a,
+        TaskType::Insert,
+        serde_json::json!({ "document_id": format!("held-a-{}", Uuid::new_v4()) }),
+    );
+    held_a.status = TaskStatus::Pending;
+    ensure_tenant_workspace(&pool, &held_a)
+        .await
+        .expect("seed held tw");
+    storage.create_task(&held_a).await.expect("create held");
+    storage
+        .mark_fairness_hold(&held_a.track_id, Duration::from_secs(120))
+        .await
+        .expect("hold");
+
+    let mut pending_a = Task::new(
+        tenant_a,
+        ws_a,
+        TaskType::Insert,
+        serde_json::json!({ "document_id": format!("pend-a-{}", Uuid::new_v4()) }),
+    );
+    pending_a.status = TaskStatus::Pending;
+    ensure_tenant_workspace(&pool, &pending_a)
+        .await
+        .expect("seed a");
+    storage.create_task(&pending_a).await.expect("create a");
+    let ts_a = Utc.with_ymd_and_hms(1970, 1, 1, 0, 0, 1).unwrap();
+    sqlx::query("UPDATE tasks SET created_at = $2 WHERE track_id = $1")
+        .bind(&pending_a.track_id)
+        .bind(ts_a)
+        .execute(&pool)
+        .await
+        .expect("pin a");
+
+    let mut pending_b = Task::new(
+        tenant_b,
+        ws_b,
+        TaskType::Insert,
+        serde_json::json!({ "document_id": format!("pend-b-{}", Uuid::new_v4()) }),
+    );
+    pending_b.status = TaskStatus::Pending;
+    ensure_tenant_workspace(&pool, &pending_b)
+        .await
+        .expect("seed b");
+    storage.create_task(&pending_b).await.expect("create b");
+    let ts_b = Utc.with_ymd_and_hms(1970, 1, 1, 0, 0, 2).unwrap();
+    sqlx::query("UPDATE tasks SET created_at = $2 WHERE track_id = $1")
+        .bind(&pending_b.track_id)
+        .bind(ts_b)
+        .execute(&pool)
+        .await
+        .expect("pin b");
+
+    sqlx::query(
+        r#"
+        UPDATE tasks
+        SET status = 'cancelled', updated_at = NOW(), completed_at = NOW()
+        WHERE status IN ('pending', 'processing')
+          AND track_id NOT IN ($1, $2, $3)
+        "#,
+    )
+    .bind(&held_a.track_id)
+    .bind(&pending_a.track_id)
+    .bind(&pending_b.track_id)
+    .execute(&pool)
+    .await
+    .expect("isolate claimable");
+
+    let claimed = storage
+        .claim_next_with_policy(
+            "held-cap-w",
+            Duration::from_secs(30),
+            ClaimFairnessPolicy::from_lane_caps(1, 1),
+        )
+        .await
+        .expect("claim")
+        .expect("prefer B while A is hold-saturated");
+    assert_eq!(claimed.track_id, pending_b.track_id);
+
+    let token = claimed.lease_token.expect("token");
+    let _ = storage
+        .release_claim(&claimed.track_id, "held-cap-w", token)
+        .await;
+    for t in [&held_a, &pending_a, &pending_b] {
+        cleanup(&pool, t).await;
+    }
 }

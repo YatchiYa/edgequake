@@ -30,7 +30,9 @@ Reuse SPEC-083 LAW-1…LAW-8. SPEC-084 adds:
   LAW-10  Filter universe = count universe (status filter before pagination)
   LAW-11  Batch completeness is client+server contract (expected N, not “known so far”)
   LAW-12  Lifecycle at scale is O(batches), never O(docs)×SeqScan
-  LAW-13  Fairness key matches product isolation key (workspace when claimed)
+  LAW-13  Fairness key matches product isolation key (workspace when claimed);
+          under SPEC-057 INV-06, claim prefers under-cap tenants first, then
+          least-loaded workspace FIFO within that preference
   LAW-14  Wire model identity: pass-through when operator already named provider/model
 ```
 

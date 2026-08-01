@@ -410,7 +410,30 @@ pub async fn admit_document_for_processing(
         .await?;
 
     let task_created_at = task.created_at;
+    let relational_shell = crate::services::RelationalDocumentShell {
+        title: input.title.clone(),
+        tenant_id: task.tenant_id,
+        workspace_id: task.workspace_id,
+        track_id: track_id.clone(),
+        source_type: input.source_type.to_string(),
+        file_size_bytes: input.raw_byte_size.min(i64::MAX as usize) as i64,
+        content_hash: Some(input.content_hash.clone()),
+        content_type: input.mime_type.clone(),
+    };
     state.enqueue_task(task).await?;
+    if let Err(error) =
+        crate::services::provision_relational_document_shell(state, &document_id, &relational_shell)
+            .await
+    {
+        // Durable task intent wins. The worker's existing relational persist
+        // path will reconcile the projection even if this immediate shell fails.
+        tracing::warn!(
+            document_id,
+            track_id,
+            error = %error,
+            "Document admitted but relational queue shell could not be projected"
+        );
+    }
 
     // SPEC-091 QW2 (LAW-Q4): project queue position + ETA at admission.
     // Best-effort: projection failure never blocks admission.

@@ -138,6 +138,7 @@ async fn list_documents_inner(
         progress_counts: Option<crate::handlers::ingestion_types::IngestionProgressCounts>,
         pdf_id: Option<String>,
         chunk_count: Option<usize>,
+        cancelled_from_stage: Option<String>,
     }
 
     impl DocMetadata {
@@ -320,6 +321,11 @@ async fn list_documents_inner(
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
 
+            meta.cancelled_from_stage = obj
+                .get("cancelled_from_stage")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+
             meta.chunk_count = obj
                 .get("chunk_count")
                 .and_then(|v| v.as_u64())
@@ -379,6 +385,7 @@ async fn list_documents_inner(
                 eta_seconds: None,
                 eta_basis: None,
                 query_ready: None,
+                cancelled_from_stage: meta.cancelled_from_stage,
             }
         })
         .collect();

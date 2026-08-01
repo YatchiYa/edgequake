@@ -30,6 +30,33 @@ pub fn pdf_status_for_cancel() -> PdfProcessingStatus {
     PdfProcessingStatus::Cancelled
 }
 
+fn is_pipeline_freeze_stage(stage: &str) -> bool {
+    !matches!(
+        stage.to_ascii_lowercase().as_str(),
+        "cancelled" | "stopping" | "failed" | "completed" | ""
+    )
+}
+
+/// Capture the last non-terminal pipeline stage before cancel overwrites it.
+/// Idempotent: keeps an existing `cancelled_from_stage` on re-apply.
+pub fn capture_cancelled_from_stage(metadata: &mut Map<String, Value>) {
+    if metadata
+        .get("cancelled_from_stage")
+        .and_then(|v| v.as_str())
+        .is_some_and(is_pipeline_freeze_stage)
+    {
+        return;
+    }
+    let prior = metadata
+        .get("current_stage")
+        .and_then(|v| v.as_str())
+        .filter(|s| is_pipeline_freeze_stage(s))
+        .map(|s| s.to_string());
+    if let Some(stage) = prior {
+        metadata.insert("cancelled_from_stage".to_string(), json!(stage));
+    }
+}
+
 /// Single writer for terminal document metadata fields (cancel + fail).
 ///
 /// Always clears `stage_progress` so Active Runs cannot show residual embedding 99%.
@@ -44,6 +71,11 @@ pub fn apply_doc_terminal_fields(
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
     edgequake_observability::record_ingestion_failure(failure.as_str(), workspace);
+
+    // INV-10: remember where cancel froze the run before rewriting stage.
+    if kind == DocTerminalKind::Cancelled {
+        capture_cancelled_from_stage(metadata);
+    }
 
     let slug = kind.status_slug();
     metadata.insert("status".to_string(), json!(slug));
@@ -119,6 +151,29 @@ mod tests {
         assert_eq!(
             meta.get("stage_progress").and_then(|v| v.as_f64()),
             Some(0.0)
+        );
+    }
+
+    #[test]
+    fn apply_doc_cancelled_persists_cancelled_from_stage() {
+        let mut meta = Map::new();
+        meta.insert("workspace_id".to_string(), json!("ws-1"));
+        meta.insert("current_stage".to_string(), json!("extracting"));
+        apply_doc_cancelled_fields(&mut meta, "Task cancelled by user");
+        assert_eq!(
+            meta.get("current_stage").and_then(|v| v.as_str()),
+            Some("cancelled")
+        );
+        assert_eq!(
+            meta.get("cancelled_from_stage").and_then(|v| v.as_str()),
+            Some("extracting")
+        );
+
+        // Idempotent re-apply must not wipe the freeze stage.
+        apply_doc_cancelled_fields(&mut meta, "Task cancelled by user");
+        assert_eq!(
+            meta.get("cancelled_from_stage").and_then(|v| v.as_str()),
+            Some("extracting")
         );
     }
 

@@ -132,8 +132,7 @@ impl WorkspacePipelineFactory {
                     edgequake_pipeline::prompts::EntityExtractionSchema::from_workspace_metadata(
                         &ws.metadata,
                     );
-                let ws_lang =
-                    edgequake_pipeline::extraction_language_from_metadata(&ws.metadata);
+                let ws_lang = edgequake_pipeline::extraction_language_from_metadata(&ws.metadata);
                 let extraction_language =
                     edgequake_pipeline::resolve_extraction_language_from_env(ws_lang.as_deref());
                 let language_source = if ws_lang

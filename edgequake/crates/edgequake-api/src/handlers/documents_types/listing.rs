@@ -249,6 +249,12 @@ pub struct DocumentSummary {
     /// Absent when fence is off (UI hides Ready/Indexed badge).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub query_ready: Option<bool>,
+
+    /// Last non-terminal pipeline stage when cancel froze the run (INV-10).
+    /// Present when `status`/`current_stage` is `cancelled`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "extracting")]
+    pub cancelled_from_stage: Option<String>,
 }
 
 // ── SPEC-031: Lightweight document search for the scope picker ───────────────

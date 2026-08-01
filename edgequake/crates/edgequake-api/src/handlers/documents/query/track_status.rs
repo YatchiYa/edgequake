@@ -159,6 +159,10 @@ pub async fn get_track_status(
                     eta_seconds: None,
                     eta_basis: None,
                     query_ready: None,
+                    cancelled_from_stage: obj
+                        .get("cancelled_from_stage")
+                        .and_then(|v| v.as_str())
+                        .map(String::from),
                 });
             }
         }

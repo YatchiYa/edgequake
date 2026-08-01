@@ -105,6 +105,13 @@ pub struct Task {
     /// When the processing lease expires (SPEC-057 P1).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lease_expires_at: Option<DateTime<Utc>>,
+
+    /// Claim-invisible fairness park until this instant (SPEC-057 INV-06).
+    ///
+    /// `None` or past → eligible for `claim_next`. Set by `mark_fairness_hold`;
+    /// cleared on park wake. TTL expiry is crash-safety for stranded holds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fairness_hold_until: Option<DateTime<Utc>>,
 }
 
 impl Task {
@@ -159,6 +166,7 @@ impl Task {
             lease_owner: None,
             lease_token: None,
             lease_expires_at: None,
+            fairness_hold_until: None,
         }
     }
 
@@ -191,6 +199,14 @@ impl Task {
         self.status = next;
         self.updated_at = Utc::now();
         Ok(next)
+    }
+
+    /// True while an active fairness hold blocks claim (SPEC-057 INV-06).
+    pub fn is_fairness_held(&self, now: DateTime<Utc>) -> bool {
+        match self.fairness_hold_until {
+            None => false,
+            Some(until) => until > now,
+        }
     }
 
     /// Mark task as processing (state machine: `Claim`).

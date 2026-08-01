@@ -198,6 +198,7 @@ async fn e2e_cancel_task_writes_doc_kv_failure_class_cancelled() {
         "id": doc_id,
         "track_id": track_id,
         "status": "processing",
+        "current_stage": "extracting",
         "tenant_id": TEST_TENANT_ID,
         "workspace_id": TEST_WORKSPACE_ID,
     });
@@ -221,6 +222,7 @@ async fn e2e_cancel_task_writes_doc_kv_failure_class_cancelled() {
     assert_eq!(stored["status"], "cancelled");
     assert_eq!(stored["failure_class"], "cancelled");
     assert_eq!(stored["recommended_action"], "none");
+    assert_eq!(stored["cancelled_from_stage"], "extracting");
 }
 
 /// Worker cancel SSOT: sync_doc_cancelled clears stage_progress + failure_class.
@@ -670,6 +672,168 @@ async fn e2e_delete_tasks_do_not_starve_pdf_ingest_lane() {
         TaskStatus::Indexed,
         "PDF must complete, got {:?}",
         pdf_row.status
+    );
+
+    pool.shutdown().await;
+}
+
+/// SPEC-057 INV-06 FP-2: under-cap tenant progresses while another tenant is held at cap.
+#[tokio::test]
+async fn e2e_tenant_priority_under_cap_progresses_while_peer_held() {
+    use async_trait::async_trait;
+    use edgequake_tasks::{
+        memory::MemoryTaskStorage,
+        queue::ChannelTaskQueue,
+        worker::{SharedTaskProcessor, TaskProcessor, WorkerPool, WorkerPoolConfig},
+        TaskQueue, TaskResult, TaskStorage,
+    };
+    use std::sync::Arc;
+    use std::time::Duration;
+    use tokio_util::sync::CancellationToken;
+
+    struct NotifyB {
+        b_started: Arc<tokio::sync::Notify>,
+        tenant_b: Uuid,
+    }
+
+    #[async_trait]
+    impl TaskProcessor for NotifyB {
+        async fn process(
+            &self,
+            task: &mut Task,
+            _cancel_token: CancellationToken,
+        ) -> TaskResult<serde_json::Value> {
+            if task.tenant_id == self.tenant_b {
+                self.b_started.notify_waiters();
+            }
+            tokio::time::sleep(Duration::from_millis(150)).await;
+            Ok(json!({ "ok": true }))
+        }
+    }
+
+    let tenant_a = Uuid::parse_str("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").unwrap();
+    let tenant_b = Uuid::parse_str("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb").unwrap();
+    let ws_a = Uuid::parse_str("aaaaaaaa-0000-0000-0000-000000000001").unwrap();
+    let ws_b = Uuid::parse_str("bbbbbbbb-0000-0000-0000-000000000001").unwrap();
+    let b_started = Arc::new(tokio::sync::Notify::new());
+    let processor: SharedTaskProcessor = Arc::new(NotifyB {
+        b_started: Arc::clone(&b_started),
+        tenant_b,
+    });
+
+    let queue = Arc::new(ChannelTaskQueue::new(50));
+    let storage = Arc::new(MemoryTaskStorage::new());
+    let config = WorkerPoolConfig {
+        num_workers: 2,
+        auto_retry: false,
+        initial_retry_delay_ms: 100,
+        max_retry_delay_ms: 5000,
+        backoff_multiplier: 2.0,
+        max_tasks_per_tenant: 1,
+        max_lifecycle_tasks_per_tenant: 1,
+        processing_timeout_secs: 300,
+        provider_budget: 0,
+        tenant_lane_weight: 1,
+    };
+    let mut pool = WorkerPool::new(config, queue.clone(), storage.clone(), processor);
+    pool.start();
+
+    let holder = Task::new(tenant_a, ws_a, TaskType::Insert, json!({ "h": 1 }));
+    storage.create_task(&holder).await.unwrap();
+    queue.send(holder).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(80)).await;
+
+    let pending_a = Task::new(tenant_a, ws_a, TaskType::Insert, json!({ "a": 1 }));
+    storage.create_task(&pending_a).await.unwrap();
+    storage
+        .mark_fairness_hold(&pending_a.track_id, Duration::from_secs(30))
+        .await
+        .unwrap();
+    queue.send(pending_a).await.unwrap();
+
+    let pending_b = Task::new(tenant_b, ws_b, TaskType::Insert, json!({ "b": 1 }));
+    storage.create_task(&pending_b).await.unwrap();
+    queue.send(pending_b).await.unwrap();
+
+    tokio::time::timeout(Duration::from_secs(2), b_started.notified())
+        .await
+        .expect("tenant B must progress while A is saturated/held");
+
+    pool.shutdown().await;
+}
+
+/// Cancelled held task must not be requeued after park wake (hold cleared + skip).
+#[tokio::test]
+async fn e2e_cancel_held_task_not_requeued_after_park_wake() {
+    use async_trait::async_trait;
+    use edgequake_tasks::{
+        memory::MemoryTaskStorage,
+        queue::ChannelTaskQueue,
+        worker::{SharedTaskProcessor, TaskProcessor, WorkerPool, WorkerPoolConfig},
+        TaskQueue, TaskResult, TaskStatus, TaskStorage,
+    };
+    use std::sync::Arc;
+    use std::time::Duration;
+    use tokio_util::sync::CancellationToken;
+
+    struct SlowProcessor;
+    #[async_trait]
+    impl TaskProcessor for SlowProcessor {
+        async fn process(
+            &self,
+            _task: &mut Task,
+            _cancel_token: CancellationToken,
+        ) -> TaskResult<serde_json::Value> {
+            tokio::time::sleep(Duration::from_millis(400)).await;
+            Ok(json!({ "ok": true }))
+        }
+    }
+
+    let tenant = Uuid::parse_str(TEST_TENANT_ID).unwrap();
+    let workspace = Uuid::parse_str(TEST_WORKSPACE_ID).unwrap();
+    let queue = Arc::new(ChannelTaskQueue::new(20));
+    let storage = Arc::new(MemoryTaskStorage::new());
+    let processor: SharedTaskProcessor = Arc::new(SlowProcessor);
+    let config = WorkerPoolConfig {
+        num_workers: 2,
+        auto_retry: false,
+        initial_retry_delay_ms: 100,
+        max_retry_delay_ms: 5000,
+        backoff_multiplier: 2.0,
+        max_tasks_per_tenant: 1,
+        max_lifecycle_tasks_per_tenant: 1,
+        processing_timeout_secs: 300,
+        provider_budget: 0,
+        tenant_lane_weight: 1,
+    };
+    let mut pool = WorkerPool::new(config, queue.clone(), storage.clone(), processor);
+    let registry = pool.cancellation_registry();
+    pool.start();
+
+    let holder = Task::new(tenant, workspace, TaskType::Insert, json!({ "h": 1 }));
+    storage.create_task(&holder).await.unwrap();
+    queue.send(holder).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let parked = Task::new(tenant, workspace, TaskType::Insert, json!({ "p": 1 }));
+    let track_id = parked.track_id.clone();
+    storage.create_task(&parked).await.unwrap();
+    queue.send(parked).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Cancel while fairness-held / parked.
+    registry.mark_cancel_intent(&track_id).await;
+    let mut row = storage.get_task(&track_id).await.unwrap().unwrap();
+    row.mark_cancelled();
+    storage.update_task(&row).await.unwrap();
+    let _ = storage.clear_fairness_hold(&track_id).await;
+
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    let final_row = storage.get_task(&track_id).await.unwrap().unwrap();
+    assert_eq!(
+        final_row.status,
+        TaskStatus::Cancelled,
+        "cancelled held task must stay Cancelled (not re-processed)"
     );
 
     pool.shutdown().await;

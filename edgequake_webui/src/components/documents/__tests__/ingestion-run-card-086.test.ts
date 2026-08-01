@@ -8,16 +8,17 @@ import {
   workingSectionTitle,
 } from "@/components/documents/active-runs-panel";
 import {
+  canDismissCancelledRun,
   canDismissFailedRun,
   canDismissTerminalRun,
   shouldNestPdfPageMeter,
 } from "@/components/documents/ingestion-run-card";
 import {
-  CANCELLED_RUN_GRACE_MS,
-  cancelledRunKey,
-  dismissCancelledRun,
-  resetCancelledRunLifecycleForTests,
-} from "@/lib/pipeline/cancelled-run-lifecycle";
+  CANCELLED_ACTIVE_RUN_TTL_MS,
+  createCancelledObservationClock,
+  filterWorkingRunsForRetention,
+} from "@/lib/pipeline/active-runs-retention";
+import { clearCancelledActiveRunDismissStorage } from "@/lib/pipeline/cancelled-active-run-dismiss";
 import type { IngestionRunView } from "@/lib/pipeline/ingestion-run-view";
 
 describe("IngestionRunCard PDF nest gate (LAW-IS2 / ux086_v_one_presenter)", () => {
@@ -76,6 +77,10 @@ describe("IngestionRunCard dismiss failed (ux086 orphan staging)", () => {
         true,
       ),
     ).toBe(true);
+    expect(canDismissCancelledRun(
+      { stage: "cancelled", stageStatus: "cancelled" },
+      true,
+    )).toBe(true);
   });
 
   it("classifies orphan re-upload failures for ActiveRuns dismiss", () => {
@@ -96,7 +101,7 @@ describe("IngestionRunCard dismiss failed (ux086 orphan staging)", () => {
 
 describe("ActiveRunsPanel partition (dual-run UX)", () => {
   afterEach(() => {
-    resetCancelledRunLifecycleForTests();
+    clearCancelledActiveRunDismissStorage();
   });
 
   const orphan: IngestionRunView = {
@@ -130,7 +135,25 @@ describe("ActiveRunsPanel partition (dual-run UX)", () => {
     expect(attention).toHaveLength(1);
   });
 
-  it("keeps cancelled within grace; drops after grace or dismiss", () => {
+  it("keeps cancelled in Working (not attention)", () => {
+    const cancelled: IngestionRunView = {
+      documentId: "doc-cancel",
+      trackId: "insert-cancel",
+      filename: "stop.md",
+      sourceType: "markdown",
+      stage: "cancelled",
+      stageStatus: "cancelled",
+      message: "Cancelled by user",
+    };
+    const { working, attention } = partitionActiveRuns([cancelled, orphan]);
+    expect(working.map((r) => r.documentId)).toEqual(["doc-cancel"]);
+    expect(attention.map((r) => r.documentId)).toEqual(["doc-orphan"]);
+    expect(canDismissCancelledRun(cancelled, true)).toBe(true);
+  });
+
+  it("keeps cancelled within TTL; drops after TTL or dismiss", () => {
+    const clock = createCancelledObservationClock();
+    const t0 = 1_000_000;
     const cancelled: IngestionRunView = {
       documentId: "doc-cancel",
       trackId: "insert-c",
@@ -139,29 +162,28 @@ describe("ActiveRunsPanel partition (dual-run UX)", () => {
       stage: "cancelled",
       stageStatus: "cancelled",
       message: "Processing cancelled",
-      updatedAt: new Date(1_000_000).toISOString(),
+      updatedAt: new Date(t0).toISOString(),
     };
-    const t0 = 1_000_000;
-    const mid = partitionActiveRuns([cancelled], t0);
-    expect(mid.working).toHaveLength(1);
-    expect(workingSectionTitle(mid.working)).toBe("Cancelled");
-
-    const aged = partitionActiveRuns(
-      [cancelled],
-      t0 + CANCELLED_RUN_GRACE_MS + 1,
+    const mid = filterWorkingRunsForRetention(
+      partitionActiveRuns([cancelled]).working,
+      { clock, dismissedCancelledIds: new Set(), nowMs: t0 },
     );
-    expect(aged.working).toHaveLength(0);
+    expect(mid).toHaveLength(1);
+    expect(workingSectionTitle(mid)).toBe("Cancelled");
 
-    resetCancelledRunLifecycleForTests();
-    partitionActiveRuns([cancelled], t0);
-    dismissCancelledRun(
-      cancelledRunKey(cancelled.documentId, cancelled.trackId),
+    const aged = filterWorkingRunsForRetention(
+      partitionActiveRuns([cancelled]).working,
+      {
+        clock,
+        dismissedCancelledIds: new Set(),
+        nowMs: t0 + CANCELLED_ACTIVE_RUN_TTL_MS + 1,
+      },
     );
-    const dismissed = partitionActiveRuns([cancelled], t0 + 100);
-    expect(dismissed.working).toHaveLength(0);
+    expect(aged).toHaveLength(0);
   });
 
   it("hides hours-old cancelled on first paint (no flash)", () => {
+    const clock = createCancelledObservationClock();
     const hoursAgo = new Date(Date.now() - 11 * 60 * 60 * 1000).toISOString();
     const cancelled: IngestionRunView = {
       documentId: "doc-stale",
@@ -174,7 +196,11 @@ describe("ActiveRunsPanel partition (dual-run UX)", () => {
       updatedAt: hoursAgo,
     };
     const { working } = partitionActiveRuns([cancelled]);
-    expect(working).toHaveLength(0);
+    const visible = filterWorkingRunsForRetention(working, {
+      clock,
+      dismissedCancelledIds: new Set(),
+    });
+    expect(visible).toHaveLength(0);
   });
 
   it("keeps stopping in working; title Stopping…", () => {
@@ -184,7 +210,7 @@ describe("ActiveRunsPanel partition (dual-run UX)", () => {
       filename: "a.pdf",
       sourceType: "pdf",
       stage: "stopping",
-      stageStatus: "active",
+      stageStatus: "stopping",
       message: "Cancellation requested…",
     };
     const { working } = partitionActiveRuns([stopping]);

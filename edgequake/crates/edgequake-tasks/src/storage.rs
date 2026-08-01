@@ -1,6 +1,9 @@
 //! Task storage abstraction and implementations.
 
-use crate::{error::TaskResult, types::Task, types::TaskStatus, types::TaskType};
+use crate::{
+    error::TaskResult, fairness_hold::ClaimFairnessPolicy, types::Task, types::TaskStatus,
+    types::TaskType,
+};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -107,9 +110,31 @@ pub trait TaskStorage: Send + Sync {
     /// Claim the next eligible task with a processing lease (SPEC-057 P1).
     ///
     /// Eligible: `pending`, or `processing` with expired/missing lease.
-    /// Never claims Cancelled / Indexed / Failed. Uses SKIP LOCKED semantics
-    /// on Postgres; memory uses a single write-lock pick.
-    async fn claim_next(&self, worker_id: &str, lease_ttl: Duration) -> TaskResult<Option<Task>>;
+    /// Never claims Cancelled / Indexed / Failed. Skips active fairness holds
+    /// (SPEC-057 INV-06). Uses SKIP LOCKED semantics on Postgres; memory uses
+    /// a single write-lock pick.
+    ///
+    /// Default policy: exclude holds only (no under-cap tenant preference).
+    async fn claim_next(&self, worker_id: &str, lease_ttl: Duration) -> TaskResult<Option<Task>> {
+        self.claim_next_with_policy(worker_id, lease_ttl, ClaimFairnessPolicy::default())
+            .await
+    }
+
+    /// Claim with tenant-priority policy (SPEC-057 INV-06 FP-2).
+    ///
+    /// Prefer tenants under configured lane caps, then workspace-fair FIFO.
+    async fn claim_next_with_policy(
+        &self,
+        worker_id: &str,
+        lease_ttl: Duration,
+        policy: ClaimFairnessPolicy,
+    ) -> TaskResult<Option<Task>>;
+
+    /// Mark task claim-invisible until `now + hold_ttl` (fairness park).
+    async fn mark_fairness_hold(&self, track_id: &str, hold_ttl: Duration) -> TaskResult<()>;
+
+    /// Clear fairness hold so the task is claimable again (park wake).
+    async fn clear_fairness_hold(&self, track_id: &str) -> TaskResult<()>;
 
     /// Extend lease if `worker_id` + `lease_token` still own the task.
     /// Returns `false` when ownership was lost (abort processing).
