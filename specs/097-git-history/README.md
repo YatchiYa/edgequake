@@ -1,7 +1,7 @@
 # SPEC-097 — Git History Hygiene (GH-351)
 
 > **Product pin**: EdgeQuake v0.22.0+  
-> **Status**: Waves 0–4 — strip regenerable bench001 fat from tip + history  
+> **Status**: Complete (Waves 0–4) — tip hygiene + history rewrite shipped; [#351](https://github.com/raphaelmansuy/edgequake/issues/351) closed  
 > **GitHub**: [#351](https://github.com/raphaelmansuy/edgequake/issues/351)  
 > **Inherits**: [SPEC-001 benchmark](../001-benchmark/) · [CONTRIBUTING.md](../../CONTRIBUTING.md)  
 > **Peers**: [git-filter-repo](https://github.com/newren/git-filter-repo) · [GitHub large files](https://docs.github.com/en/repositories/working-with-files/managing-large-files/about-large-files-on-github)
@@ -64,8 +64,8 @@ See [04-e2e-test-matrix.md](04-e2e-test-matrix.md) for full gates. After Wave 2 
 
 ## Lens index
 
-| Lens | Primary question |
-|------|------------------|
-| [Product Owner](lenses/LENS-product-owner.md) | What is done for clone pain / #351? |
-| [DevOps / Git](lenses/LENS-devops-git.md) | Rewrite + force-push + re-clone |
-| [Benchmark tooling](lenses/LENS-benchmark-tooling.md) | archive_run + local-only fat |
+| Lens                                                  | Primary question                    |
+| -------------------------------------------------------| -------------------------------------|
+| [Product Owner](lenses/LENS-product-owner.md)         | What is done for clone pain / #351? |
+| [DevOps / Git](lenses/LENS-devops-git.md)             | Rewrite + force-push + re-clone     |
+| [Benchmark tooling](lenses/LENS-benchmark-tooling.md) | archive_run + local-only fat        |
