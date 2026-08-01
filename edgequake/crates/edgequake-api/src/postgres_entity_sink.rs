@@ -274,11 +274,7 @@ impl RelationalEntitySink for PostgresEntitySink {
         if src.is_empty() || tgt.is_empty() {
             return Ok(());
         }
-        let rel_type = if relation_type.trim().is_empty() {
-            "RELATED_TO".to_string()
-        } else {
-            relation_type.trim().to_ascii_uppercase()
-        };
+        let rel_type = edgequake_storage::normalize_relation_type_str(relation_type);
         let tenant_uuid: Option<uuid::Uuid> = tenant_id.and_then(|t| t.parse().ok());
         let workspace_uuid: Option<uuid::Uuid> = workspace_id.and_then(|w| w.parse().ok());
 
@@ -364,6 +360,56 @@ impl RelationalEntitySink for PostgresEntitySink {
             return Ok(());
         }
 
+        // LAW-098-8: collapse duplicate arbiter keys before ON CONFLICT DO UPDATE
+        // (parity with upsert_entities_batch — Postgres rejects affecting a row twice).
+        let mut by_key: HashMap<
+            (
+                Option<uuid::Uuid>,
+                Option<uuid::Uuid>,
+                String,
+                String,
+                String,
+            ),
+            RelationshipSinkRow,
+        > = HashMap::new();
+        for row in rows {
+            let src = EntityId::bare_name_from_graph_node_id(&row.source_name);
+            let tgt = EntityId::bare_name_from_graph_node_id(&row.target_name);
+            if src.is_empty() || tgt.is_empty() {
+                continue;
+            }
+            let tenant = row.tenant_id.as_deref().and_then(|t| t.parse().ok());
+            let workspace = row.workspace_id.as_deref().and_then(|w| w.parse().ok());
+            let rel_type = edgequake_storage::normalize_relation_type_str(&row.relation_type);
+            let key = (
+                tenant,
+                workspace,
+                src.to_string(),
+                tgt.to_string(),
+                rel_type.clone(),
+            );
+            by_key
+                .entry(key)
+                .and_modify(|existing| {
+                    existing.description = row.description.clone();
+                    existing.weight = row.weight;
+                    existing.relation_type = rel_type.clone();
+                })
+                .or_insert_with(|| RelationshipSinkRow {
+                    source_name: src.to_string(),
+                    target_name: tgt.to_string(),
+                    relation_type: rel_type,
+                    description: row.description.clone(),
+                    weight: row.weight,
+                    tenant_id: row.tenant_id.clone(),
+                    workspace_id: row.workspace_id.clone(),
+                });
+        }
+        if by_key.is_empty() {
+            return Ok(());
+        }
+        let rows: Vec<RelationshipSinkRow> = by_key.into_values().collect();
+
         // All rows in a merge share workspace/tenant; take from first non-empty.
         let workspace_uuid: Option<uuid::Uuid> = rows
             .iter()
@@ -373,7 +419,7 @@ impl RelationalEntitySink for PostgresEntitySink {
             .find_map(|r| r.tenant_id.as_deref().and_then(|t| t.parse().ok()));
 
         let mut bare_names: Vec<String> = Vec::new();
-        for row in rows {
+        for row in &rows {
             let src = EntityId::bare_name_from_graph_node_id(&row.source_name);
             let tgt = EntityId::bare_name_from_graph_node_id(&row.target_name);
             if !src.is_empty() {
@@ -417,7 +463,7 @@ impl RelationalEntitySink for PostgresEntitySink {
         let mut weights: Vec<f32> = Vec::new();
         let mut missing = 0usize;
 
-        for row in rows {
+        for row in &rows {
             let src = EntityId::bare_name_from_graph_node_id(&row.source_name);
             let tgt = EntityId::bare_name_from_graph_node_id(&row.target_name);
             if src.is_empty() || tgt.is_empty() {
@@ -427,11 +473,7 @@ impl RelationalEntitySink for PostgresEntitySink {
                 missing += 1;
                 continue;
             };
-            let rel_type = if row.relation_type.trim().is_empty() {
-                "RELATED_TO".to_string()
-            } else {
-                row.relation_type.trim().to_ascii_uppercase()
-            };
+            let rel_type = edgequake_storage::normalize_relation_type_str(&row.relation_type);
             source_ids.push(*source_id);
             target_ids.push(*target_id);
             tenants.push(

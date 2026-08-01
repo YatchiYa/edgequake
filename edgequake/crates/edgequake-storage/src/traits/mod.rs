@@ -39,8 +39,9 @@ pub mod domain;
 pub use domain::{
     Chunk, ChunkCursor, ChunkId, ChunkRepository, ChunkText, DocumentId, DocumentRepository,
     EmbeddingCapabilities, EmbeddingIndex, EmbeddingRow, FleetEmbeddingIndex, FleetEmbeddingKey,
-    FleetEmbeddingRow, InsertReport, MigrationJobSnapshot, MigrationLedger, ModelId, Page,
-    ScoredChunk, ScoredFleet, TenantId, UnitOfWork, UpsertReport, VectorQuery, WorkspaceId,
+    FleetEmbeddingRow, InsertReport, MigrationJobSnapshot, MigrationLedger, MirrorLegacyReport,
+    ModelId, Page, ScoredChunk, ScoredFleet, TenantId, UnitOfWork, UpsertReport, VectorQuery,
+    WorkspaceId,
 };
 pub use embedder::TextEmbedder;
 pub use graph::{GraphEdge, GraphNode, GraphStorage, KnowledgeGraph};

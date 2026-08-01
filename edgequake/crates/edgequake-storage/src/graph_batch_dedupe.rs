@@ -39,15 +39,25 @@ pub fn dedupe_nodes_by_id(
         .collect()
 }
 
+/// Normalize a relation-type label (empty/whitespace → RELATED_TO, else ASCII upper).
+///
+/// SPEC-098 LAW-098-3: SSOT for sink, vector ids, and fleet FK lookup.
+pub fn normalize_relation_type_str(relation_type: &str) -> String {
+    let trimmed = relation_type.trim();
+    if trimmed.is_empty() {
+        "RELATED_TO".to_string()
+    } else {
+        trimmed.to_ascii_uppercase()
+    }
+}
+
 /// Normalize relation type for multigraph keys (empty → RELATED_TO).
 pub fn normalize_rel_type(props: &HashMap<String, serde_json::Value>) -> String {
     props
         .get("relation_type")
         .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .unwrap_or("RELATED_TO")
-        .to_ascii_uppercase()
+        .map(normalize_relation_type_str)
+        .unwrap_or_else(|| "RELATED_TO".to_string())
 }
 
 /// Collapse `(source, target, properties)` so each `(src, tgt, rel_type)` appears
@@ -134,6 +144,14 @@ mod tests {
         assert_eq!(parse_graph_upsert_chunk("99999"), Some(2000));
         assert_eq!(parse_graph_upsert_chunk(""), None);
         assert_eq!(parse_graph_upsert_chunk("0"), None);
+    }
+
+    #[test]
+    fn spec098_normalize_relation_type_str() {
+        assert_eq!(normalize_relation_type_str(""), "RELATED_TO");
+        assert_eq!(normalize_relation_type_str("  "), "RELATED_TO");
+        assert_eq!(normalize_relation_type_str("Works_With"), "WORKS_WITH");
+        assert_eq!(normalize_relation_type_str("knows"), "KNOWS");
     }
 
     #[test]

@@ -73,7 +73,9 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
             let Some(embedding) = rel.embedding.as_ref() else {
                 continue;
             };
-            let rel_id = format!("{}->{}:{}", source_bare, target_bare, rel.relation_type);
+            // SPEC-098 LAW-098-3: vector id relation_type matches sink uppercase SSOT.
+            let rel_type = edgequake_storage::normalize_relation_type_str(&rel.relation_type);
+            let rel_id = format!("{}->{}:{}", source_bare, target_bare, rel_type);
             let scope = metadata::TenantScope {
                 tenant_id: &self.tenant_id,
                 workspace_id: &self.workspace_id,
@@ -415,14 +417,12 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         }
 
         // SPEC-091 IP1: relational relationships spine — one batch (LAW-IP2).
+        // SPEC-098 LAW-098-2: sink from full `valid` (including saturated) so
+        // relational spine exists before RelVectors fleet mirror.
         let rel_sink_rows: Vec<crate::merger::RelationshipSinkRow> = valid
             .iter()
             .map(|(rel, source_key, target_key)| {
-                let rel_type = if rel.relation_type.trim().is_empty() {
-                    "RELATED_TO".to_string()
-                } else {
-                    rel.relation_type.trim().to_string()
-                };
+                let rel_type = edgequake_storage::normalize_relation_type_str(&rel.relation_type);
                 crate::merger::RelationshipSinkRow {
                     source_name: source_key.clone(),
                     target_name: target_key.clone(),

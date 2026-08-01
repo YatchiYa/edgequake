@@ -482,7 +482,12 @@ impl PostgresAGEGraphStorage {
             ) AS d
             ON CONFLICT (eq_node_id) WHERE eq_node_id IS NOT NULL
             DO UPDATE SET
-                properties = EXCLUDED.properties,
+                properties = (
+                    public.eq_merge_graph_properties(
+                        ag_catalog.agtype_to_json({graph}."Node".properties)::jsonb,
+                        ag_catalog.agtype_to_json(EXCLUDED.properties)::jsonb
+                    )
+                )::text::ag_catalog.agtype,
                 eq_node_id = EXCLUDED.eq_node_id
             "#,
             graph = graph

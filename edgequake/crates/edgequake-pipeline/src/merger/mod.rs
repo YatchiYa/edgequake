@@ -602,20 +602,36 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> KnowledgeGraphMerger<G
                     .mirror_legacy_batch(slice, count_as_entities)
                     .await
                 {
-                    Ok(resolved) => {
+                    Ok(report) => {
                         let typed = edgequake_storage::vector_backend::vector_backend_reads_typed(
                             edgequake_storage::vector_backend_from_env(),
                         );
-                        if typed && !slice.is_empty() && resolved == 0 {
-                            return Err(crate::error::PipelineError::StorageError(
-                                edgequake_storage::error::StorageError::Database(format!(
-                                    "SPEC-091: typed fleet mirror resolved 0/{} rows \
-                                     (relational entity/rel FK miss or name mismatch — \
-                                     bare entities.name must match entity:NAME; ensure \
-                                     PostgresEntitySink wrote the spine before fleet mirror)",
-                                    slice.len()
-                                )),
-                            ));
+                        if typed && !slice.is_empty() {
+                            if !report.invalid_workspace.is_empty() {
+                                return Err(crate::error::PipelineError::StorageError(
+                                    edgequake_storage::error::StorageError::Database(format!(
+                                        "SPEC-098: typed fleet mirror invalid workspace_id on {}/{} rows \
+                                         (sample: {:?})",
+                                        report.invalid_workspace.len(),
+                                        slice.len(),
+                                        report.invalid_workspace
+                                    )),
+                                ));
+                            }
+                            if !report.is_complete() {
+                                return Err(crate::error::PipelineError::StorageError(
+                                    edgequake_storage::error::StorageError::Database(format!(
+                                        "SPEC-091: typed fleet mirror resolved {}/{} rows \
+                                         (relational entity/rel FK miss or name mismatch — \
+                                         bare entities.name must match entity:NAME; ensure \
+                                         PostgresEntitySink wrote the spine before fleet mirror; \
+                                         SPEC-098 misses: {:?})",
+                                        report.resolved,
+                                        report.eligible,
+                                        report.misses
+                                    )),
+                                ));
+                            }
                         }
                     }
                     Err(e) => {
@@ -1203,6 +1219,9 @@ pub struct MergeStats {
     /// SPEC-047 P7d: entity updates skipped (KEEP saturated).
     pub entities_skipped_saturated: usize,
 
+    /// SPEC-098: saturated KEEP still ensured relational spine (AGE skipped).
+    pub entities_spine_ensured_saturated: usize,
+
     /// SPEC-047 P7d: relationship updates skipped (KEEP saturated).
     pub relationships_skipped_saturated: usize,
 
@@ -1457,6 +1476,122 @@ mod tests {
 
         assert_eq!(stats.total_entities(), 8);
         assert_eq!(stats.total_relationships(), 12);
+    }
+
+    /// SPEC-098: saturated KEEP still ensures relational spine (AGE skip preserved).
+    #[tokio::test]
+    async fn spec098_saturated_spine_ensure_stat() {
+        use std::sync::Mutex;
+
+        struct SpySink {
+            calls: Mutex<Vec<String>>,
+        }
+
+        #[async_trait::async_trait]
+        impl RelationalEntitySink for SpySink {
+            async fn upsert_entity(
+                &self,
+                name: &str,
+                _entity_type: &str,
+                _description: &str,
+                _tenant_id: Option<&str>,
+                _workspace_id: Option<&str>,
+                _source_chunk_ids: &[String],
+            ) -> crate::error::Result<()> {
+                self.calls.lock().unwrap().push(format!("upsert:{name}"));
+                Ok(())
+            }
+
+            async fn remove_entity_sources(
+                &self,
+                _name: &str,
+                _workspace_id: Option<&str>,
+                _sources_to_remove: &[String],
+                _remaining: &[String],
+            ) -> crate::error::Result<()> {
+                Ok(())
+            }
+        }
+
+        let spy = Arc::new(SpySink {
+            calls: Mutex::new(Vec::new()),
+        });
+        let graph = Arc::new(edgequake_storage::MemoryGraphStorage::new("spec098"));
+        let vector = Arc::new(edgequake_storage::MemoryVectorStorage::new("spec098", 4));
+        graph.initialize().await.unwrap();
+        vector.initialize().await.unwrap();
+
+        let config = MergerConfig {
+            source_ids_limit_method: SourceIdsLimitMethod::Keep,
+            max_source_ids_per_entity: 2,
+            use_llm_summarization: false,
+            ..Default::default()
+        };
+
+        let merger = KnowledgeGraphMerger::new(config, graph.clone(), vector)
+            .with_relational_sink(spy.clone());
+
+        for i in 0..2 {
+            let entity = ExtractedEntity {
+                name: "Saturated".to_string(),
+                entity_type: "CONCEPT".to_string(),
+                description: format!("seed {i}"),
+                importance: 0.5,
+                source_spans: vec![],
+                source_chunk_ids: vec![format!("seed{i}")],
+                embedding: None,
+                source_document_id: None,
+                source_file_path: None,
+                display_name: None,
+                page_num: None,
+                figure_index: None,
+                asset_id: None,
+                mm_subtype: None,
+            };
+            let mut stats = MergeStats::default();
+            merger
+                .merge_entities_batch(vec![entity], &mut stats)
+                .await
+                .unwrap();
+        }
+
+        spy.calls.lock().unwrap().clear();
+
+        let entity = ExtractedEntity {
+            name: "Saturated".to_string(),
+            entity_type: "CONCEPT".to_string(),
+            description: "should not mutate graph".to_string(),
+            importance: 0.5,
+            source_spans: vec![],
+            source_chunk_ids: vec!["brand-new".to_string()],
+            embedding: None,
+            source_document_id: None,
+            source_file_path: None,
+            display_name: None,
+            page_num: None,
+            figure_index: None,
+            asset_id: None,
+            mm_subtype: None,
+        };
+        let mut stats = MergeStats::default();
+        merger
+            .merge_entities_batch(vec![entity], &mut stats)
+            .await
+            .unwrap();
+
+        assert!(
+            stats.entities_skipped_saturated >= 1,
+            "expected KEEP skip: {stats:?}"
+        );
+        assert!(
+            stats.entities_spine_ensured_saturated >= 1,
+            "SPEC-098: spine ensure on saturated: {stats:?}"
+        );
+        let calls = spy.calls.lock().unwrap().clone();
+        assert!(
+            calls.iter().any(|c| c.contains("SATURATED")),
+            "saturated KEEP must still upsert spine, got {calls:?}"
+        );
     }
 
     #[test]

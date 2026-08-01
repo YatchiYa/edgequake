@@ -76,8 +76,11 @@ impl PostgresAGEGraphStorage {
         );
         let escaped_source = Self::escape_cypher_string(source);
         let escaped_target = Self::escape_cypher_string(target);
+        // LAW-098-7 / D-30: MERGE arbiter includes normalized relation_type.
+        let rel = crate::graph_batch_dedupe::normalize_rel_type(&properties);
+        let escaped_rel = Self::escape_cypher_string(&rel);
 
-        // Build properties with source_id and target_id
+        // Build properties with source_id, target_id, and normalized relation_type.
         let mut props_with_ids = properties.clone();
         props_with_ids.insert(
             "source_id".to_string(),
@@ -87,15 +90,19 @@ impl PostgresAGEGraphStorage {
             "target_id".to_string(),
             serde_json::Value::String(target.to_string()),
         );
+        props_with_ids.insert(
+            "relation_type".to_string(),
+            serde_json::Value::String(rel),
+        );
         // WHY: AGE 1.6.0 does NOT support `ON CREATE SET` (apache/age#2347 is
         // unreleased) — "syntax error at or near ON". `SET r = <variable map>`
         // fails (apache/age#1634). The version-safe pattern is per-key
         // `SET r.key = <literal>` expanded inline — verified against AGE 1.6.0
         // to persist on both freshly-MERGEd and existing edges. source_id /
-        // target_id are the MERGE key and are persisted by the MERGE pattern.
+        // target_id / relation_type are the MERGE key (persisted by MERGE).
         let mut set_clauses: Vec<String> = Vec::with_capacity(props_with_ids.len());
         for (k, v) in &props_with_ids {
-            if k == "source_id" || k == "target_id" {
+            if k == "source_id" || k == "target_id" || k == "relation_type" {
                 continue;
             }
             set_clauses.push(format!("r.{} = {}", k, Self::value_to_cypher(v)));
@@ -108,9 +115,10 @@ impl PostgresAGEGraphStorage {
         let cypher = format!(
             "MERGE (a:Node {{node_id: '{src}'}}) \
              MERGE (b:Node {{node_id: '{tgt}'}}) \
-             MERGE (a)-[r:EDGE {{source_id: '{src}', target_id: '{tgt}'}}]->(b){set_clause}",
+             MERGE (a)-[r:EDGE {{source_id: '{src}', target_id: '{tgt}', relation_type: '{rel}'}}]->(b){set_clause}",
             src = escaped_source,
             tgt = escaped_target,
+            rel = escaped_rel,
             set_clause = set_clause
         );
         self.cypher_execute(&cypher).await
@@ -119,10 +127,11 @@ impl PostgresAGEGraphStorage {
     /// SC1: batched edge upsert using a single `UNWIND ... MERGE` per chunk.
     ///
     /// WHY: same round-trip collapse as `upsert_nodes_batch`. Each row carries
-    /// `source_id`/`target_id` plus the edge properties; MERGE on the endpoint
-    /// nodes then MERGE on the relationship keyed by (source_id, target_id)
-    /// guarantees at-most-one edge per pair (no DELETE/CREATE race), and
-    /// `SET r.key = e.key` (per-key) applies last-write-wins property updates.
+    /// `source_id`/`target_id`/`relation_type` plus other edge properties;
+    /// MERGE on endpoints then MERGE on the relationship keyed by
+    /// `(source_id, target_id, relation_type)` (LAW-098-7 / D-30) guarantees
+    /// at-most-one edge per multigraph key, and `SET r.key = e.key` (per-key)
+    /// applies last-write-wins property updates.
     ///
     /// # SPEC-032 W-05: Adaptive UNWIND chunk size (same logic as node batch)
     pub(super) async fn pg_upsert_edges_batch(
@@ -133,7 +142,7 @@ impl PostgresAGEGraphStorage {
             return Ok(());
         }
 
-        // First Principles: ON CONFLICT / Cypher MERGE keys are (source_id, target_id).
+        // First Principles / D-30 / LAW-098-7: arbiter is (source, target, rel_type).
         // Collapse duplicates here so every write path (native + Cypher) is safe.
         let edges = crate::graph_batch_dedupe::dedupe_edges_by_endpoints(edges);
         let edges = edges.as_slice();
@@ -151,6 +160,7 @@ impl PostgresAGEGraphStorage {
                 .iter()
                 .map(|(source, target, properties)| {
                     let mut map = properties.clone();
+                    let rel = crate::graph_batch_dedupe::normalize_rel_type(&map);
                     map.insert(
                         "source_id".to_string(),
                         serde_json::Value::String(source.clone()),
@@ -158,6 +168,11 @@ impl PostgresAGEGraphStorage {
                     map.insert(
                         "target_id".to_string(),
                         serde_json::Value::String(target.clone()),
+                    );
+                    // D-30: keep MERGE key aligned with native arbiter.
+                    map.insert(
+                        "relation_type".to_string(),
+                        serde_json::Value::String(rel),
                     );
                     Self::properties_to_cypher(&map)
                 })
@@ -168,11 +183,11 @@ impl PostgresAGEGraphStorage {
             // (apache/age#1634). The version-safe pattern is per-key
             // `SET r.key = e.key` referencing the UNWIND row — verified against
             // AGE 1.6.0 to persist on both fresh and existing edges.
-            // source_id/target_id are the MERGE key (persisted by MERGE).
+            // D-30 / SPEC-098: MERGE key includes relation_type (multigraph).
             let mut set_keys: Vec<&str> = Vec::with_capacity(32);
             if let Some((_, _, props)) = chunk.first() {
                 for k in props.keys() {
-                    if k != "source_id" && k != "target_id" {
+                    if k != "source_id" && k != "target_id" && k != "relation_type" {
                         set_keys.push(k.as_str());
                     }
                 }
@@ -190,7 +205,7 @@ impl PostgresAGEGraphStorage {
                 "UNWIND [{}] AS e \
                  MERGE (a:Node {{node_id: e.source_id}}) \
                  MERGE (b:Node {{node_id: e.target_id}}) \
-                 MERGE (a)-[r:EDGE {{source_id: e.source_id, target_id: e.target_id}}]->(b){}",
+                 MERGE (a)-[r:EDGE {{source_id: e.source_id, target_id: e.target_id, relation_type: e.relation_type}}]->(b){}",
                 rows.join(", "),
                 set_clause
             );
@@ -667,11 +682,12 @@ impl PostgresAGEGraphStorage {
             props_json.push(serde_json::to_string(&full).unwrap_or_else(|_| "{}".to_string()));
         }
 
-        // D-30 / SPEC-083: arbiter is (eq_source_id, eq_target_id, eq_rel_type)
+        // D-30 / SPEC-083 / LAW-098-7: arbiter is (eq_source_id, eq_target_id, eq_rel_type)
         // so Alice-KNOWS-Bob and Alice-WORKS_WITH-Bob both persist.
-        // DISTINCT ON is a SQL safety net if a caller bypasses Rust dedupe
+        // DISTINCT ON uses UPPER(TRIM(rel)) matching the sync trigger normalization
         // (Postgres forbids ON CONFLICT DO UPDATE affecting a row twice).
         // ORDER BY … ord DESC → last-write-wins, matching Rust policy.
+        // SPEC-058: DO UPDATE merges properties via eq_merge_graph_properties.
         let sql = format!(
             r#"
             INSERT INTO {graph}."EDGE" (id, start_id, end_id, properties, eq_source_id, eq_target_id, eq_rel_type)
@@ -692,14 +708,20 @@ impl PostgresAGEGraphStorage {
                     d.target_id_val,
                     d.rel_type_val
                 FROM (
-                    SELECT DISTINCT ON (source_id_val, target_id_val, rel_type_val)
+                    SELECT DISTINCT ON (
                         source_id_val,
                         target_id_val,
-                        rel_type_val,
+                        UPPER(COALESCE(NULLIF(TRIM(rel_type_val), ''), 'RELATED_TO'))
+                    )
+                        source_id_val,
+                        target_id_val,
+                        UPPER(COALESCE(NULLIF(TRIM(rel_type_val), ''), 'RELATED_TO')) AS rel_type_val,
                         props_text
                     FROM unnest($1::text[], $2::text[], $3::text[], $4::text[])
                            WITH ORDINALITY AS p(source_id_val, target_id_val, rel_type_val, props_text, ord)
-                    ORDER BY source_id_val, target_id_val, rel_type_val, ord DESC
+                    ORDER BY source_id_val, target_id_val,
+                             UPPER(COALESCE(NULLIF(TRIM(rel_type_val), ''), 'RELATED_TO')),
+                             ord DESC
                 ) AS d
                 JOIN {graph}."Node" sn
                   ON sn.eq_node_id = d.source_id_val
@@ -710,7 +732,12 @@ impl PostgresAGEGraphStorage {
             ON CONFLICT (eq_source_id, eq_target_id, eq_rel_type)
                 WHERE eq_source_id IS NOT NULL AND eq_target_id IS NOT NULL AND eq_rel_type IS NOT NULL
             DO UPDATE SET
-                properties = EXCLUDED.properties,
+                properties = (
+                    public.eq_merge_graph_properties(
+                        ag_catalog.agtype_to_json({graph}."EDGE".properties)::jsonb,
+                        ag_catalog.agtype_to_json(EXCLUDED.properties)::jsonb
+                    )
+                )::text::ag_catalog.agtype,
                 eq_source_id = EXCLUDED.eq_source_id,
                 eq_target_id = EXCLUDED.eq_target_id,
                 eq_rel_type = EXCLUDED.eq_rel_type,
@@ -728,6 +755,17 @@ impl PostgresAGEGraphStorage {
             .execute(&pool)
             .await
             .map_err(|e| {
+                let msg = e.to_string();
+                if msg.contains("affect row a second time") || msg.contains("cardinality") {
+                    tracing::error!(
+                        batch = edges.len(),
+                        error = %e,
+                        sample_src = source_ids.first().map(String::as_str).unwrap_or(""),
+                        sample_tgt = target_ids.first().map(String::as_str).unwrap_or(""),
+                        sample_rel = rel_types.first().map(String::as_str).unwrap_or(""),
+                        "SPEC-098: EDGE ON CONFLICT cardinality_violation — check dual UNIQUE / dedupe"
+                    );
+                }
                 StorageError::Database(format!("Native SQL edge batch upsert failed: {e}"))
             })?;
 

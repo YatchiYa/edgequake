@@ -66,6 +66,8 @@ jobs:
         include:
           - profile: pg16
             image: ghcr.io/raphaelmansuy/edgequake-postgres:latest-pg16
+          - profile: pg17
+            image: ghcr.io/raphaelmansuy/edgequake-postgres:latest-pg17
           - profile: pg18
             image: ghcr.io/raphaelmansuy/edgequake-postgres:latest
 
@@ -130,6 +132,12 @@ jobs:
         env:
           EDGEQUAKE_VECTOR_BACKEND: chunk_embeddings
         run: cargo test -p edgequake-api --features postgres --test contract_spec091_capability_health -- --test-threads=1
+
+      - name: SPEC-098 edge cardinality + fleet report (${{ matrix.profile }})
+        working-directory: edgequake
+        run: |
+          cargo test -p edgequake-storage --features postgres --test contract_spec098_fleet_mirror_report -- --test-threads=1
+          cargo test -p edgequake-storage --features postgres --test e2e_spec098_edge_upsert_cardinality -- --test-threads=1
 
   spec091-data-layer:
     name: SPEC-091 typed data-layer e2e + contracts
@@ -309,6 +317,25 @@ jobs:
         run: cargo test -p edgequake-storage --features postgres --test e2e_spec091_hnsw_policy_converged -- --test-threads=1
 
       # ── SPEC-091 IW2 / IW3 closure gates ──
+
+      - name: SPEC-098 fleet spine harden (mirror report + e2e)
+        working-directory: edgequake
+        run: |
+          cargo test -p edgequake-storage --features postgres --test contract_spec098_fleet_mirror_report -- --test-threads=1
+          cargo test -p edgequake-storage --features postgres --test e2e_spec098_saturated_spine_ensure -- --test-threads=1
+          cargo test -p edgequake-storage --features postgres --test e2e_spec098_relation_type_case -- --test-threads=1
+          cargo test -p edgequake-pipeline --lib spec098 -- --test-threads=1
+
+      - name: SPEC-098 edge upsert + arbiter harden (cardinality / reconcile / perf / sink)
+        working-directory: edgequake
+        run: |
+          cargo test -p edgequake-storage --features postgres --test e2e_spec098_edge_upsert_cardinality -- --test-threads=1
+          cargo test -p edgequake-storage --features postgres --test e2e_spec098_cypher_edge_multigraph -- --test-threads=1
+          cargo test -p edgequake-storage --features postgres --test e2e_spec098_legacy_edge_unique_reconcile -- --test-threads=1
+          cargo test -p edgequake-storage --features postgres --test e2e_spec098_edge_upsert_perf -- --test-threads=1
+          cargo test -p edgequake-api --features postgres --test e2e_spec098_rel_sink_batch_dedupe -- --test-threads=1
+          cargo test -p edgequake-storage --test contract_spec047_p7ef_graph_upsert -- --test-threads=1
+          cargo test -p edgequake-storage --test contract_spec060_native_writes -- --test-threads=1
 
       - name: IW2 fleet recall parity
         working-directory: edgequake

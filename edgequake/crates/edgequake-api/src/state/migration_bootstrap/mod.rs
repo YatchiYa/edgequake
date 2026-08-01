@@ -16,6 +16,20 @@ pub(super) const SQL_038_APPLY: &str =
 pub(super) const SQL_040_APPLY: &str =
     include_str!("../../../../../migrations/support/040/apply.sql");
 
+/// SPEC-098 entity spine ensure — SSOT: `migrations/support/139/apply.sql`
+pub(super) const SQL_139_APPLY: &str =
+    include_str!("../../../../../migrations/support/139/apply.sql");
+
+/// SPEC-098 edge arbiter + relationship spine — SSOT: `migrations/support/140/apply.sql`
+pub(super) const SQL_140_APPLY: &str =
+    include_str!("../../../../../migrations/support/140/apply.sql");
+
+/// sqlx migration version marker for SPEC-098 spine ensure.
+pub const MIGRATION_139_VERSION: i64 = 139;
+
+/// sqlx migration version marker for SPEC-098 edge arbiter reconcile.
+pub const MIGRATION_140_VERSION: i64 = 140;
+
 /// Document stats columns — SSOT: `migrations/041_document_stats_columns.sql`
 pub(super) const SQL_041_APPLY: &str =
     include_str!("../../../../../migrations/041_document_stats_columns.sql");
@@ -1376,6 +1390,22 @@ async fn run_postgres_migrations_inner(
         let pool_clone = pool.clone();
         tokio::spawn(async move {
             reconcile::reconcile_migration_040_background(&pool_clone).await;
+        });
+    }
+
+    // SPEC-098: ensure relational spine for typed fleet FK resolve (AGE → entities).
+    if applied_after.contains(&MIGRATION_139_VERSION) {
+        let pool_clone = pool.clone();
+        tokio::spawn(async move {
+            reconcile::reconcile_migration_139_background(&pool_clone).await;
+        });
+    }
+
+    // SPEC-098 W6: single EDGE arbiter + AGE → relationships spine.
+    if applied_after.contains(&MIGRATION_140_VERSION) {
+        let pool_clone = pool.clone();
+        tokio::spawn(async move {
+            reconcile::reconcile_migration_140_background(&pool_clone).await;
         });
     }
 

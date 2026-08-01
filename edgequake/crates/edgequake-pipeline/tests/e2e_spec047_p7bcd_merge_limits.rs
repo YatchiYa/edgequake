@@ -189,6 +189,10 @@ async fn e2e_p7d_keep_skips_saturated_entity_update() {
         stats.entities_skipped_saturated >= 1,
         "expected saturated skip, got {stats:?}"
     );
+    assert!(
+        stats.entities_spine_ensured_saturated >= 1,
+        "SPEC-098: saturated KEEP must ensure spine, got {stats:?}"
+    );
 
     let after = graph
         .get_nodes_batch(&["SATURATED".into()])

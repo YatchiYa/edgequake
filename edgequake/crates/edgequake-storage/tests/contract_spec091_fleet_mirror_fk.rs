@@ -85,7 +85,8 @@ async fn contract_spec091_fleet_mirror_bare_and_scoped_names() {
         )
         .await
         .expect("bare mirror");
-    assert_eq!(resolved_bare, 1, "bare entities.name must resolve");
+    assert_eq!(resolved_bare.resolved, 1, "bare entities.name must resolve");
+    assert!(resolved_bare.is_complete());
 
     let resolved_scoped = index
         .mirror_legacy_batch(
@@ -99,7 +100,8 @@ async fn contract_spec091_fleet_mirror_bare_and_scoped_names() {
         .await
         .expect("scoped mirror");
     assert_eq!(
-        resolved_scoped, 1,
+        resolved_scoped.resolved, 1,
         "legacy scoped entities.name must still resolve via tolerant lookup"
     );
+    assert!(resolved_scoped.is_complete());
 }

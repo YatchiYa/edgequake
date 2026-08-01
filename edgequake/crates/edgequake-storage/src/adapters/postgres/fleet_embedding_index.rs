@@ -13,9 +13,10 @@ use crate::embedding_family::{
     EmbeddingFamily,
 };
 use crate::error::StorageError;
+use crate::graph_batch_dedupe::normalize_relation_type_str;
 use crate::traits::domain::{
-    EmbeddingCapabilities, FleetEmbeddingIndex, FleetEmbeddingKey, FleetEmbeddingRow, ModelId,
-    ScoredFleet, UpsertReport, VectorQuery, WorkspaceId,
+    EmbeddingCapabilities, FleetEmbeddingIndex, FleetEmbeddingKey, FleetEmbeddingRow,
+    MirrorLegacyReport, ModelId, ScoredFleet, UpsertReport, VectorQuery, WorkspaceId,
 };
 
 /// Postgres adapter for entity/relationship/report typed embeddings.
@@ -307,10 +308,11 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
         &self,
         rows: &[(String, Vec<f32>, Value)],
         count_as_entities: bool,
-    ) -> Result<u64, StorageError> {
+    ) -> Result<MirrorLegacyReport, StorageError> {
         let mut entity_rows: Vec<FleetEmbeddingRow> = Vec::new();
         let mut rel_rows: Vec<FleetEmbeddingRow> = Vec::new();
         let mut report_rows: Vec<FleetEmbeddingRow> = Vec::new();
+        let mut report = MirrorLegacyReport::default();
 
         for (id, embedding, meta) in rows {
             let Some(ws) = meta
@@ -318,6 +320,7 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
                 .and_then(|v| v.as_str())
                 .and_then(|s| Uuid::parse_str(s).ok())
             else {
+                report.push_invalid_workspace(id);
                 continue;
             };
             let row_template = |key: FleetEmbeddingKey| FleetEmbeddingRow {
@@ -331,6 +334,7 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
                 let Some(name) = entity_name_from_legacy_id(id) else {
                     continue;
                 };
+                report.eligible += 1;
                 let Some(eid) = sqlx::query_scalar(
                     r#"SELECT id FROM entities
                        WHERE workspace_id = $2
@@ -344,6 +348,7 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
                 .await
                 .map_err(StorageError::from)?
                 else {
+                    report.push_miss(id);
                     continue;
                 };
                 entity_rows.push(row_template(FleetEmbeddingKey::Entity(eid)));
@@ -352,12 +357,15 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
 
             match classify_legacy_vector_id(id) {
                 Some(EmbeddingFamily::Report) => {
+                    report.eligible += 1;
                     report_rows.push(row_template(FleetEmbeddingKey::Report(id.clone())));
                 }
                 Some(EmbeddingFamily::Relationship) => {
                     let Some((src, tgt, rel_type)) = parse_relationship_legacy_key(id) else {
                         continue;
                     };
+                    report.eligible += 1;
+                    let rel_type = normalize_relation_type_str(&rel_type);
                     let Some(rid) = sqlx::query_scalar(
                         r#"SELECT r.id FROM relationships r
                            JOIN entities es ON es.id = r.source_id
@@ -377,6 +385,7 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
                     .await
                     .map_err(StorageError::from)?
                     else {
+                        report.push_miss(id);
                         continue;
                     };
                     rel_rows.push(row_template(FleetEmbeddingKey::Relationship(rid)));
@@ -385,7 +394,7 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
             }
         }
 
-        let resolved = (entity_rows.len() + rel_rows.len() + report_rows.len()) as u64;
+        report.resolved = (entity_rows.len() + rel_rows.len() + report_rows.len()) as u64;
         let mut upserted = 0u64;
         if !entity_rows.is_empty() {
             upserted += self
@@ -409,9 +418,9 @@ impl FleetEmbeddingIndex for PgFleetEmbeddingIndex {
                 .await?
                 .upserted;
         }
-        // Return *resolved* count (FK hits), not rows_affected — ON CONFLICT DO NOTHING
+        // Resolved = FK hits, not rows_affected — ON CONFLICT DO NOTHING
         // must not be mistaken for a missing spine.
         let _ = upserted;
-        Ok(resolved)
+        Ok(report)
     }
 }

@@ -10,7 +10,7 @@ mod types;
 pub use chunk_repository::ChunkRepository;
 pub use document_repository::DocumentRepository;
 pub use embedding_index::EmbeddingIndex;
-pub use fleet_embedding_index::FleetEmbeddingIndex;
+pub use fleet_embedding_index::{FleetEmbeddingIndex, MirrorLegacyReport};
 pub use migration_ledger::{MigrationJobSnapshot, MigrationLedger};
 pub use types::{
     Chunk, ChunkCursor, ChunkId, ChunkText, DocumentId, EmbeddingCapabilities, EmbeddingRow,

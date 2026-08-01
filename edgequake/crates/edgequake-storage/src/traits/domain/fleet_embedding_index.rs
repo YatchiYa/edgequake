@@ -1,4 +1,5 @@
 //! SPEC-091 IW2 — typed fleet embedding port (entity/relationship/report).
+//! SPEC-098 — mirror report with miss evidence (LAW-098-4).
 
 use async_trait::async_trait;
 
@@ -9,6 +10,42 @@ use super::types::{
     EmbeddingCapabilities, FleetEmbeddingRow, ModelId, ScoredFleet, UpsertReport, VectorQuery,
     WorkspaceId,
 };
+
+/// Result of mirroring a legacy vector batch into typed fleet tables.
+///
+/// `eligible` counts rows that had parseable workspace + legacy id.
+/// `resolved` counts FK hits that were (or would be) upserted.
+/// Typed callers fail closed when `resolved < eligible` (LAW-098-4).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MirrorLegacyReport {
+    pub resolved: u64,
+    pub eligible: u64,
+    /// Sample of legacy ids that were eligible but FK-missed (capped by caller).
+    pub misses: Vec<String>,
+    /// Sample of legacy ids with missing/invalid workspace_id metadata.
+    pub invalid_workspace: Vec<String>,
+}
+
+impl MirrorLegacyReport {
+    pub const SAMPLE_CAP: usize = 5;
+
+    pub fn push_miss(&mut self, id: &str) {
+        if self.misses.len() < Self::SAMPLE_CAP {
+            self.misses.push(id.to_string());
+        }
+    }
+
+    pub fn push_invalid_workspace(&mut self, id: &str) {
+        if self.invalid_workspace.len() < Self::SAMPLE_CAP {
+            self.invalid_workspace.push(id.to_string());
+        }
+    }
+
+    /// True when every eligible row resolved (or there were no eligible rows).
+    pub fn is_complete(&self) -> bool {
+        self.eligible == 0 || self.resolved == self.eligible
+    }
+}
 
 #[async_trait]
 pub trait FleetEmbeddingIndex: Send + Sync {
@@ -39,8 +76,8 @@ pub trait FleetEmbeddingIndex: Send + Sync {
         &self,
         rows: &[(String, Vec<f32>, serde_json::Value)],
         count_as_entities: bool,
-    ) -> Result<u64, StorageError> {
+    ) -> Result<MirrorLegacyReport, StorageError> {
         let _ = (rows, count_as_entities);
-        Ok(0)
+        Ok(MirrorLegacyReport::default())
     }
 }

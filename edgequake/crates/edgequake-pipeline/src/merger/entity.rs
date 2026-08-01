@@ -275,14 +275,27 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
         let ws = self.workspace_id.as_deref().unwrap_or("default");
 
         for (i, outcome) in ordered {
+            let key = &keys[i];
+            // SPEC-098 LAW-098-2: KEEP is AGE-only. Saturated entities skip
+            // graph mutation but must still ensure the relational spine so
+            // typed fleet mirror can resolve entity:NAME → entities.id.
             if outcome.skipped_saturated {
                 stats.entities_skipped_saturated += 1;
+                stats.entities_spine_ensured_saturated += 1;
+                sink_rows.push(crate::merger::EntitySinkRow {
+                    name: key.clone(),
+                    entity_type: entity_types[i].clone(),
+                    description: descriptions[i].clone(),
+                    tenant_id: self.tenant_id.clone(),
+                    workspace_id: self.workspace_id.clone(),
+                    source_chunk_ids: source_chunk_ids[i].clone(),
+                });
                 continue;
             }
             // Entity vector IDs are recorded in upsert_vectors_chunked (SPEC-057 P3).
             let _ = outcome.vector_id;
-            if let Some(key) = outcome.graph_key_created {
-                stats.artifacts.graph_nodes_created.push(key);
+            if let Some(graph_key) = outcome.graph_key_created {
+                stats.artifacts.graph_nodes_created.push(graph_key);
             }
             node_batch.push((outcome.node_id, outcome.properties));
             if outcome.is_new {
@@ -291,7 +304,6 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
                 stats.entities_updated += 1;
             }
 
-            let key = &keys[i];
             // SPEC-091 IP1: collect CQRS rows for one batch upsert (LAW-IP2).
             sink_rows.push(crate::merger::EntitySinkRow {
                 name: key.clone(),
