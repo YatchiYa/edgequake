@@ -52,9 +52,18 @@ git rev-list --objects --all -- 'specs/001-benchmark/e2e/artifacts/history' \
 
 ## Push
 
+Do **not** `git push --force --mirror` if the mirror contains `refs/pull/*` (GitHub rejects those). Push heads + tags only:
+
 ```bash
-git push --force --mirror origin
+git remote add origin git@github.com:raphaelmansuy/edgequake.git
+git push --force origin 'refs/heads/*:refs/heads/*' 'refs/tags/*:refs/tags/*'
 ```
+
+### Default branch rulesets (`non_fast_forward`)
+
+If `edgequake-main` rejects force-push (`GH013` / “Cannot force-push”), temporarily set the active rulesets that include `non_fast_forward` on `~DEFAULT_BRANCH` to `enforcement=disabled`, push `edgequake-main`, then restore `enforcement=active` from the saved JSON (see GH API `repos/.../rulesets`). Do not leave rulesets disabled.
+
+Tip hygiene (`.gitignore`, guard, SPEC-097 docs) lands via PR after the rewrite if it was not already on the default branch tip.
 
 ## Announce (issue / Discussions)
 
