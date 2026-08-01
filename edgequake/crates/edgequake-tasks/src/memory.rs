@@ -978,31 +978,16 @@ mod tests {
         let tenant_b = uuid::Uuid::parse_str("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb").unwrap();
         let ws = uuid::Uuid::parse_str("cccccccc-0000-0000-0000-000000000001").unwrap();
 
-        let mut holder = Task::new(
-            tenant_a,
-            ws,
-            TaskType::Insert,
-            serde_json::json!({"i": 0}),
-        );
+        let mut holder = Task::new(tenant_a, ws, TaskType::Insert, serde_json::json!({"i": 0}));
         holder.mark_processing();
         holder.lease_owner = Some("holder".into());
         holder.lease_token = Some(Uuid::new_v4());
         holder.lease_expires_at = Some(Utc::now() + chrono::Duration::hours(1));
         storage.create_task(&holder).await.unwrap();
 
-        let mut pending_a = Task::new(
-            tenant_a,
-            ws,
-            TaskType::Insert,
-            serde_json::json!({"i": 1}),
-        );
+        let mut pending_a = Task::new(tenant_a, ws, TaskType::Insert, serde_json::json!({"i": 1}));
         pending_a.created_at = Utc::now() - chrono::Duration::seconds(60);
-        let pending_b = Task::new(
-            tenant_b,
-            ws,
-            TaskType::Insert,
-            serde_json::json!({"i": 2}),
-        );
+        let pending_b = Task::new(tenant_b, ws, TaskType::Insert, serde_json::json!({"i": 2}));
         let track_b = pending_b.track_id.clone();
         storage.create_task(&pending_a).await.unwrap();
         storage.create_task(&pending_b).await.unwrap();

@@ -16,9 +16,7 @@ use std::time::Duration;
 
 use chrono::{TimeZone, Utc};
 use edgequake_tasks::postgres::PostgresTaskStorage;
-use edgequake_tasks::{
-    ClaimFairnessPolicy, Task, TaskStatus, TaskStorage, TaskType,
-};
+use edgequake_tasks::{ClaimFairnessPolicy, Task, TaskStatus, TaskStorage, TaskType};
 use sqlx::{postgres::PgPoolOptions, PgPool};
 use uuid::Uuid;
 

@@ -2056,12 +2056,7 @@ mod tests {
                 task: &mut Task,
                 _cancel_token: CancellationToken,
             ) -> TaskResult<serde_json::Value> {
-                if task
-                    .task_data
-                    .get("role")
-                    .and_then(|v| v.as_str())
-                    == Some("holder")
-                {
+                if task.task_data.get("role").and_then(|v| v.as_str()) == Some("holder") {
                     self.holder_started.notify_waiters();
                     self.release.notified().await;
                 }

@@ -90,10 +90,7 @@ mod tests {
     fn lifecycle_sql_ssot_covers_all_lifecycle_variants() {
         let sql = lifecycle_task_type_sql();
         for t in LIFECYCLE_TASK_TYPES {
-            assert!(
-                sql.contains(&format!("'{t}'")),
-                "SQL missing {t}: {sql}"
-            );
+            assert!(sql.contains(&format!("'{t}'")), "SQL missing {t}: {sql}");
             assert_eq!(t.fairness_class(), FairnessClass::Lifecycle);
         }
         // Every TaskType mapped to Lifecycle must appear in the SSOT list.
