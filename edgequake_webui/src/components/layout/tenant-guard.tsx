@@ -412,15 +412,34 @@ export function TenantGuard({ children }: TenantGuardProps) {
 
   // Loading state (including context setup after tenant/workspace creation)
   if (isLoading) {
+    const loadingLabel = isSettingUpContext
+      ? t('tenant.settingUp', 'Setting up your workspace...')
+      : t('tenant.loading', 'Loading workspace...');
+    // SPEC-100: when a workspace is already selected, keep children mounted and
+    // overlay the spinner — avoids full subtree unmount CLS on soft refetch.
+    if (selectedTenantId && selectedWorkspaceId && !isSettingUpContext) {
+      return (
+        <div className="relative h-full min-h-0" data-testid="tenant-guard-overlay">
+          {children}
+          <div
+            className="absolute inset-0 z-20 flex items-center justify-center bg-background/60"
+            role="status"
+            aria-busy="true"
+            aria-label={loadingLabel}
+          >
+            <div className="text-center">
+              <Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">{loadingLabel}</p>
+            </div>
+          </div>
+        </div>
+      );
+    }
     return (
-      <div className="flex items-center justify-center h-full">
+      <div className="flex h-full items-center justify-center">
         <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground mb-3" />
-          <p className="text-sm text-muted-foreground">
-            {isSettingUpContext 
-              ? t('tenant.settingUp', 'Setting up your workspace...')
-              : t('tenant.loading', 'Loading workspace...')}
-          </p>
+          <Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">{loadingLabel}</p>
         </div>
       </div>
     );

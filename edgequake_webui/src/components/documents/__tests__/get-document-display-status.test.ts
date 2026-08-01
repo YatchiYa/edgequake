@@ -2,7 +2,7 @@
  * SPEC-057 P4: getDocumentDisplayStatus prefers API SSOT fields.
  */
 import { describe, expect, it } from "vitest";
-import { getDocumentDisplayStatus } from "../status-badge";
+import { getDocumentDisplayStatus } from "@/lib/documents/status-domain";
 
 describe("getDocumentDisplayStatus (SPEC-057 P4)", () => {
   it("passthrough display_status when present", () => {

@@ -48,7 +48,8 @@ import Link from 'next/link';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { PDFMarkdownSplitView } from './pdf-markdown-split-view';
-import { StatusBadge as UnifiedStatusBadge, getDocumentDisplayStatus } from './status-badge';
+import { StatusBadge as UnifiedStatusBadge } from './status-badge';
+import { getDocumentDisplayStatus } from '@/lib/documents/status-domain';
 
 interface DocumentDetailDialogProps {
   document: Document | null;

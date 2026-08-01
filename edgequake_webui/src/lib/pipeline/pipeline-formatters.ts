@@ -1,7 +1,7 @@
 import {
   isProcessingStatus,
   normalizeStatus,
-} from "@/components/documents/status-badge";
+} from "@/lib/documents/status-domain";
 import type { TaskResponse } from "@/types";
 import { isWaitingStatus } from "./pipeline-document-state";
 

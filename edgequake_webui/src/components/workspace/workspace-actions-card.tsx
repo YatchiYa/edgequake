@@ -56,25 +56,33 @@ export function WorkspaceActionsCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {messageKey && pendingRebuild && (
-          <div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
-            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
-            <div className="flex-1">
-              <p className="font-medium text-amber-800 dark:text-amber-200">
-                {t("workspace.rebuildPending", "Rebuild Required")}
-              </p>
-              <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
-                {t(
-                  messageKey,
-                  getPendingRebuildDefaultMessage(
+        {/* SPEC-100: always reserve rebuild banner strip (never null→tall CLS). */}
+        <div
+          className="min-h-[5.5rem]"
+          data-testid="spec100-workspace-rebuild-slot"
+        >
+          {messageKey && pendingRebuild ? (
+            <div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+              <div className="flex-1">
+                <p className="font-medium text-amber-800 dark:text-amber-200">
+                  {t("workspace.rebuildPending", "Rebuild Required")}
+                </p>
+                <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                  {t(
                     messageKey,
-                    includeVisionPending,
-                  ),
-                )}
-              </p>
+                    getPendingRebuildDefaultMessage(
+                      messageKey,
+                      includeVisionPending,
+                    ),
+                  )}
+                </p>
+              </div>
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="h-[5.5rem]" aria-hidden />
+          )}
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <RebuildEmbeddingsButton

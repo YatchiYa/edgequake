@@ -1,0 +1,49 @@
+/**
+ * SPEC-099 F-099-09 — Scale honesty when fetch is capped.
+ * Primary proof is unit (inventory-view-model); this checks UI affordance wiring.
+ */
+import { expect, test } from "@playwright/test";
+import { GOTO_OPTS } from "./helpers/app-ready";
+import {
+  mockSpec038AdmissionRoutes,
+  seedSpec038TenantContext,
+} from "./helpers/spec038-admission-mocks";
+import {
+  makeSpec086ListDoc,
+  mockSpec086DocumentList,
+  type Spec086ListDoc,
+} from "./helpers/spec086-ingestion-mocks";
+
+test.describe("SPEC-099 scale overflow", () => {
+  test("capped fetch shows overflow affordance or honest count label", async ({
+    page,
+  }) => {
+    // 100 completed docs → VIRTUAL_PAGE_SIZE cap → "100+" or overflow label
+    const docs: Spec086ListDoc[] = Array.from({ length: 100 }, (_, i) =>
+      makeSpec086ListDoc({
+        id: `doc-099-scale-${i}`,
+        file_name: `scale-${i}.pdf`,
+        status: "completed",
+        current_stage: "completed",
+        track_id: null,
+        admission_staging: false,
+      }),
+    );
+    await mockSpec038AdmissionRoutes(page);
+    await seedSpec038TenantContext(page);
+    await mockSpec086DocumentList(page, docs);
+    await page.goto("/documents", GOTO_OPTS);
+
+    await expect(page.getByTestId("spec099-documents-count")).toBeVisible({
+      timeout: 20_000,
+    });
+    const label = (
+      await page.getByTestId("spec099-documents-count").textContent()
+    )?.trim();
+    const overflow = page.getByTestId("spec099-scale-overflow");
+    const hasOverflow = (await overflow.count()) > 0;
+    expect(
+      hasOverflow || Boolean(label && (label.includes("+") || label.includes("of"))),
+    ).toBeTruthy();
+  });
+});

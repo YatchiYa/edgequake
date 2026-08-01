@@ -8,7 +8,7 @@ import {
   getCancelIntent,
   pinCancelIntent,
 } from "../cancel-intent";
-import { getDocumentDisplayStatus } from "@/components/documents/status-badge";
+import { getDocumentDisplayStatus } from "@/lib/documents/status-domain";
 
 describe("cancel-intent optimistic Stopping", () => {
   beforeEach(() => {

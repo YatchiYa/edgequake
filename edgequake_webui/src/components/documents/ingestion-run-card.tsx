@@ -18,7 +18,7 @@ import {
   type IngestionRunView,
 } from "@/lib/pipeline/ingestion-run-view";
 import { buildStageTimeline } from "@/lib/pipeline/stage-timeline";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 export { shouldNestPdfPageMeter, shouldShowOverallMeter };
 
@@ -89,6 +89,8 @@ export function IngestionRunCard({
   className,
   "data-testid": testId,
 }: IngestionRunCardProps) {
+  // SPEC-099: compact cards hide verbose message until expanded
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const timeline = buildStageTimeline(run);
   const admission = timeline.admissionPhase;
   const isAdmission = Boolean(admission);
@@ -130,7 +132,9 @@ export function IngestionRunCard({
       className={
         className ??
         (compact
-          ? "space-y-1.5"
+          ? cancelTerminal
+            ? "space-y-1 rounded-md border border-orange-200/70 bg-orange-50/30 px-2 py-1.5 dark:border-orange-900/50 dark:bg-orange-950/20"
+            : "space-y-1 rounded-md border border-border/60 bg-background/90 px-2 py-1.5"
           : cancelTerminal
             ? "space-y-2 rounded-md border border-orange-200/80 bg-orange-50/40 p-2.5 shadow-sm dark:border-orange-900/50 dark:bg-orange-950/20"
             : "space-y-2 rounded-md border border-border/80 bg-background p-2.5 shadow-sm")
@@ -142,6 +146,7 @@ export function IngestionRunCard({
       data-source-type={run.sourceType}
       data-mode={run.mode ?? "full"}
       data-admission={cancelTerminal ? "cancelled" : (admission ?? "running")}
+      data-compact={compact ? "true" : "false"}
     >
       <div className="flex items-center justify-between gap-2 text-sm">
         <span className="truncate font-medium text-foreground">
@@ -276,13 +281,24 @@ export function IngestionRunCard({
         </div>
       )}
 
-      {run.message ? (
+      {run.message && (!compact || detailsOpen) ? (
         <p
           className="text-[11px] text-muted-foreground line-clamp-2"
           data-testid="spec086-run-message"
         >
           {run.message}
         </p>
+      ) : null}
+
+      {compact && run.message && !detailsOpen ? (
+        <button
+          type="button"
+          className="text-[10px] text-muted-foreground underline-offset-2 hover:underline"
+          onClick={() => setDetailsOpen(true)}
+          data-testid="spec099-run-expand-details"
+        >
+          Details
+        </button>
       ) : null}
 
       {run.mode && run.mode !== "full" ? (

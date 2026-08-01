@@ -1,10 +1,10 @@
 "use client";
 
+import { StatusBadge } from "@/components/documents/status-badge";
 import {
   getDocumentDisplayStatus,
   isTerminalStatus,
-  StatusBadge,
-} from "@/components/documents/status-badge";
+} from "@/lib/documents/status-domain";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -14,17 +14,20 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
 import { usePipelineDocuments } from "@/hooks/use-pipeline-documents";
+import { isInitialLoading } from "@/lib/layout/cls-stability";
 import {
   activeDocumentCount,
   hiddenPreviewCount,
 } from "@/lib/pipeline/pipeline-monitor-counts";
-import { FileText, Loader2 } from "lucide-react";
+import { FileText } from "lucide-react";
 
 export function PipelineProcessingDocumentsCard() {
   const { data, isLoading } = usePipelineDocuments({
     refetchInterval: 2000,
   });
+  const cold = isInitialLoading(isLoading, Boolean(data));
   const documents =
     data?.items.filter(
       (doc) => !isTerminalStatus(getDocumentDisplayStatus(doc)),
@@ -33,7 +36,7 @@ export function PipelineProcessingDocumentsCard() {
   const hiddenActiveCount = hiddenPreviewCount(activeCount, documents.length);
 
   return (
-    <Card>
+    <Card data-testid="spec100-pipeline-active-docs">
       <CardHeader className="pb-2">
         <CardTitle className="text-lg flex items-center gap-2">
           <FileText className="h-5 w-5" />
@@ -48,12 +51,21 @@ export function PipelineProcessingDocumentsCard() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {isLoading ? (
-          <div className="flex flex-col justify-center items-center gap-2 py-4">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">
-              Loading documents...
-            </p>
+        {cold ? (
+          <div className="h-64 space-y-2" data-testid="spec100-pipeline-active-docs-skeleton">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div
+                key={i}
+                className="flex h-14 items-center gap-3 rounded-lg border px-2"
+              >
+                <Skeleton className="h-4 w-4 shrink-0" />
+                <div className="min-w-0 flex-1 space-y-1">
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="h-3 w-20" />
+                </div>
+                <Skeleton className="h-5 w-20 rounded-full" />
+              </div>
+            ))}
           </div>
         ) : documents.length > 0 ? (
           <ScrollArea className="h-64">
@@ -82,9 +94,11 @@ export function PipelineProcessingDocumentsCard() {
             </div>
           </ScrollArea>
         ) : (
-          <p className="text-sm text-muted-foreground text-center py-4">
-            No queued or processing documents
-          </p>
+          <div className="flex h-64 items-center justify-center">
+            <p className="text-sm text-muted-foreground text-center">
+              No queued or processing documents
+            </p>
+          </div>
         )}
       </CardContent>
     </Card>

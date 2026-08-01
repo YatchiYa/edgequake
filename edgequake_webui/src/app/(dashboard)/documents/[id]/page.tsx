@@ -302,7 +302,10 @@ export default function DocumentViewPage() {
     staleTime: reprocessTrackId ? 3 * 1000 : 30 * 1000,
     refetchInterval: reprocessTrackId ? 3 * 1000 : false,
     refetchOnMount: 'always',
+    // SPEC-100: soft refresh keeps prior document (no full-page skeleton flash)
+    placeholderData: (previous) => previous,
   });
+  const coldLoad = isLoading && !document;
 
   // First principles: if a PDF has figure captions but no page assets yet, include
   // extracted page PNGs from the stored PDF and enrich markdown (no VLM re-OCR).
@@ -396,19 +399,30 @@ export default function DocumentViewPage() {
   const isFailed = status === 'failed' || status === 'partial_failure';
   const isCancelled = status === 'cancelled';
 
-  // Loading state
-  if (isLoading) {
+  // Loading state — SPEC-100: match final 2-column shell (CLS)
+  if (coldLoad) {
     return (
-      <div className="flex flex-col h-full">
+      <div
+        className="flex h-full min-h-0 flex-col overflow-clip"
+        data-testid="spec100-document-detail-skeleton"
+      >
         <HeaderSkeleton />
-        <div className="flex-1 flex">
-          <div className="flex-1 p-8">
-            <Skeleton className="h-32 w-full mb-4" />
-            <Skeleton className="h-64 w-full" />
+        <div
+          className="min-h-[5.5rem] shrink-0 border-t bg-card/40 px-3 py-2"
+          data-testid="detail-page-reprocess-progress-slot"
+          aria-hidden
+        >
+          <Skeleton className="h-12 w-full" />
+        </div>
+        <div className="flex min-h-0 flex-1">
+          <div className="flex min-h-0 flex-1 flex-col p-4 md:p-6">
+            <Skeleton className="mb-3 h-8 w-1/2" />
+            <Skeleton className="min-h-0 flex-1 w-full" />
           </div>
-          <div className="w-[35%] border-l p-4">
-            <Skeleton className="h-32 w-full mb-4" />
+          <div className="hidden w-[35%] shrink-0 border-l p-4 md:block">
+            <Skeleton className="mb-4 h-32 w-full" />
             <Skeleton className="h-48 w-full" />
+            <Skeleton className="mt-4 h-24 w-full" />
           </div>
         </div>
       </div>
@@ -534,34 +548,46 @@ export default function DocumentViewPage() {
             </p>
           </div>
         )}
-        {/* SPEC-051 GAP-051-03: Live progress panel after triggering a reprocess from this page.
-            WHY: Without this, the detail page shows no progress feedback during re-extraction.
-            The panel is identical to what the documents list shows for single-doc reprocess. */}
-        {reprocessTrackId && (
-          <div
-            className="px-3 py-2 border-t bg-card/80"
-            data-testid="detail-page-reprocess-progress"
-          >
-            <ProgressPanelRow
-              trackId={resolveReprocessPanelTrackId(
-                reprocessTrackId,
-                document?.track_id,
-              )}
-              documentName={document?.file_name || document?.title || documentId.slice(0, 8)}
-              isPdf={shouldUsePdfReprocessPanel(
-                document?.source_type === 'pdf',
-                reprocessMode,
-              )}
-              onComplete={() => {
-                setReprocessTrackId(null);
-                void refetch();
-              }}
-              onFailed={() => setReprocessTrackId(null)}
-              onCancel={() => setReprocessTrackId(null)}
-              data-testid="detail-page-reprocess-panel"
+        {/* SPEC-051 + SPEC-100: always mount progress slot (never null→tall CLS). */}
+        <div
+          className={
+            reprocessTrackId
+              ? 'min-h-[5.5rem] border-t bg-card/80 px-3 py-2'
+              : 'min-h-[5.5rem] border-t border-transparent px-3 py-2'
+          }
+          data-testid="detail-page-reprocess-progress-slot"
+        >
+          {reprocessTrackId ? (
+            <div data-testid="detail-page-reprocess-progress">
+              <ProgressPanelRow
+                trackId={resolveReprocessPanelTrackId(
+                  reprocessTrackId,
+                  document?.track_id,
+                )}
+                documentName={
+                  document?.file_name || document?.title || documentId.slice(0, 8)
+                }
+                isPdf={shouldUsePdfReprocessPanel(
+                  document?.source_type === 'pdf',
+                  reprocessMode,
+                )}
+                onComplete={() => {
+                  setReprocessTrackId(null);
+                  void refetch();
+                }}
+                onFailed={() => setReprocessTrackId(null)}
+                onCancel={() => setReprocessTrackId(null)}
+                data-testid="detail-page-reprocess-panel"
+              />
+            </div>
+          ) : (
+            <div
+              className="h-12"
+              aria-hidden
+              data-testid="detail-page-reprocess-progress-reserve"
             />
-          </div>
-        )}
+          )}
+        </div>
       </header>
 
       {/* SPEC-051: Reprocess choice dialog for the document detail page. */}
@@ -707,8 +733,18 @@ export default function DocumentViewPage() {
         {/* Mobile/Tablet: Tabbed layout */}
         <div className="flex-1 lg:hidden overflow-hidden">
           <Tabs defaultValue="content" className="h-full flex flex-col">
-            <TabsList className={`grid w-full ${isPdfDocument ? 'grid-cols-3' : 'grid-cols-2'} rounded-none border-b`}>
-              {isPdfDocument && <TabsTrigger value="pdf">PDF</TabsTrigger>}
+            {/* SPEC-100: always 3-col tab slot so async PDF detection does not widen tabs. */}
+            <TabsList
+              className="grid w-full grid-cols-3 rounded-none border-b"
+              data-testid="spec100-document-detail-tabs"
+            >
+              <TabsTrigger
+                value="pdf"
+                disabled={!isPdfDocument}
+                className={!isPdfDocument ? 'invisible pointer-events-none' : undefined}
+              >
+                PDF
+              </TabsTrigger>
               <TabsTrigger value="content">Markdown</TabsTrigger>
               <TabsTrigger value="metadata">Details</TabsTrigger>
             </TabsList>

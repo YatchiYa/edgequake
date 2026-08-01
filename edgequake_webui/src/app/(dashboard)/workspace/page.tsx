@@ -393,17 +393,22 @@ export default function WorkspacePage() {
     );
   }
 
+  // SPEC-100: cold-load only (hook already gates on !data); section-level geometry
   if (isLoadingWorkspace) {
     return (
       <ScrollArea className="h-full">
-        <div className="container mx-auto p-6 space-y-6">
-          <Skeleton className="h-8 w-64" />
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div
+          className="container mx-auto space-y-6 p-6"
+          data-testid="spec100-workspace-skeleton"
+        >
+          <Skeleton className="h-10 w-72" />
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
             {[...Array(4)].map((_, i) => (
               <Skeleton key={i} className="h-32" />
             ))}
           </div>
-          <Skeleton className="h-64" />
+          <Skeleton className="min-h-[16rem] w-full" />
+          <Skeleton className="min-h-[12rem] w-full" />
         </div>
       </ScrollArea>
     );

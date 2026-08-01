@@ -632,9 +632,15 @@ export function GraphViewer() {
               {isMobile ? 'Graph' : 'Knowledge Graph'}
             </h2>
             {effectiveIsLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
-            {!isMobile && (headerNodeCount > 0 || headerEdgeCount > 0 || !isDocumentScoped) && (
-              <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-md">
-                {headerNodeCount.toLocaleString()} nodes · {headerEdgeCount.toLocaleString()} edges
+            {/* SPEC-100: always reserve count chip so load→data does not shove toolbar */}
+            {!isMobile && (
+              <span
+                className="min-w-[9.5rem] text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-md tabular-nums"
+                data-testid="spec100-graph-count-slot"
+              >
+                {headerNodeCount > 0 || headerEdgeCount > 0 || !isDocumentScoped
+                  ? `${headerNodeCount.toLocaleString()} nodes · ${headerEdgeCount.toLocaleString()} edges`
+                  : "— nodes · — edges"}
               </span>
             )}
           </div>

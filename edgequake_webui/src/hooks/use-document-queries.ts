@@ -33,6 +33,8 @@ export interface UseDocumentQueriesReturn {
   data: Awaited<ReturnType<typeof getDocuments>> | undefined;
   /** Loading state */
   isLoading: boolean;
+  /** Background refetch (soft refresh) — list stays painted via placeholderData */
+  isFetching: boolean;
   /** Error state */
   isError: boolean;
   /** Error object */
@@ -125,7 +127,7 @@ export function useDocumentQueries({
   //
   // When WS is connected, slow list poll to 5s — stage patches + 5s safety-net
   // cover Ollama chunk storms without refetching 500 docs every 2s.
-  const { data, isLoading, isError, error, refetch } = useQuery({
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: documentsQueryKey,
     queryFn: async () => {
       const data = await getDocuments({
@@ -147,6 +149,9 @@ export function useDocumentQueries({
         protectPinnedDocumentsInQueryData(merged),
       );
     },
+    // Soft refresh: keep prior list painted so Active runs / table do not
+    // unmount → remount (SPEC-099 CLS). Cold load still has data === undefined.
+    placeholderData: (previous) => previous,
     // Retry policy comes from QueryProvider (TimeoutError / read_path_busy → 1;
     // NetworkError cold-start → up to 4). Do not override with retry:1.
     // Smart polling:
@@ -229,6 +234,7 @@ export function useDocumentQueries({
   return {
     data,
     isLoading,
+    isFetching,
     isError,
     error: error as Error | null,
     refetch,

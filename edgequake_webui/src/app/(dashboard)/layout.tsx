@@ -28,14 +28,20 @@ export default function DashboardLayout({
 
   return (
     <AuthGuard>
-      <div className="flex h-screen overflow-hidden bg-background">
+      {/*
+        SPEC-099: every flex child on the height chain needs min-h-0. Without it,
+        min-height:auto lets the documents virtualizer inflate this column past
+        100dvh → document/body scroll + white spacer band under ~N rows.
+        overflow-clip stops clipped overflow from extending document.scrollHeight.
+      */}
+      <div className="flex h-dvh max-h-dvh min-h-0 overflow-clip bg-background">
         <SkipLink />
         <Sidebar />
         {/* Workspace URL sync - wrapped in Suspense for useSearchParams */}
         <Suspense fallback={null}>
           <WorkspaceUrlSync />
         </Suspense>
-        <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-clip">
           <Header />
           {/* Backend-not-ready banner: fixed overlay, no layout shift (ES-01) */}
           <BackendStatusBanner />
@@ -46,12 +52,14 @@ export default function DashboardLayout({
               fields when the API is unreachable) to this subtree. */}
           <main
             id="main-content"
-            className="flex-1 min-h-0 overflow-hidden"
+            className="flex min-h-0 flex-1 flex-col overflow-clip"
             tabIndex={-1}
           >
             <ApiErrorBoundary>
               <TenantGuard>
-                {children}
+                <div className="flex h-full min-h-0 flex-col overflow-clip">
+                  {children}
+                </div>
               </TenantGuard>
             </ApiErrorBoundary>
           </main>

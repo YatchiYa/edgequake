@@ -73,16 +73,24 @@ export function DynamicBreadcrumb({ customSegments }: DynamicBreadcrumbProps) {
     });
   }
   
-  // Don't show breadcrumbs at depth ≤ 1 (root or single-level pages).
-  // WHY: sidebar active state already communicates location; breadcrumb only
-  // earns its place when the user is at depth ≥ 2 (e.g., /documents/[id]).
+  // SPEC-100: always reserve the breadcrumb band height so navigating to
+  // depth ≥ 2 does not shove main content (CLS). At depth ≤ 1 the band is
+  // an invisible spacer — sidebar still communicates location.
   if (items.length <= 2) {
-    return null;
+    return (
+      <div
+        className="h-9 shrink-0 border-b border-transparent"
+        aria-hidden="true"
+        data-testid="breadcrumb-spacer"
+      />
+    );
   }
 
   return (
-    // Breadcrumb owns its container so the layout never reserves empty space
-    <div className="border-b px-4 py-2 bg-muted/20">
+    <div
+      className="h-9 shrink-0 border-b px-4 bg-muted/20 flex items-center"
+      data-testid="breadcrumb-bar"
+    >
     <Breadcrumb>
       <BreadcrumbList>
         {items.map((item, index) => {

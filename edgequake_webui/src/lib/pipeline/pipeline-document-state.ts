@@ -9,7 +9,7 @@ import {
   getDocumentDisplayStatus,
   isProcessingStatus,
   type DocumentStatus,
-} from '@/components/documents/status-badge';
+} from '@/lib/documents/status-domain';
 import type { Document } from '@/types';
 import type { IngestionAlertMode } from './ingestion-alert-presenter';
 

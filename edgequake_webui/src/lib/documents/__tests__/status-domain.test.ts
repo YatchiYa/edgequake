@@ -62,4 +62,30 @@ describe("document status domain", () => {
       documentStageRank("completed"),
     );
   });
+
+  it("honors cancelRequested dual-SSOT over in-flight stage", () => {
+    expect(
+      getDocumentDisplayStatus(
+        { status: "embedding", current_stage: "embedding" },
+        { cancelRequested: true },
+      ),
+    ).toBe("stopping");
+  });
+
+  it("treats delete_failed / dead_letter as terminal lifecycle statuses", () => {
+    expect(isTerminalStatus("delete_failed")).toBe(true);
+    expect(isTerminalStatus("dead_letter")).toBe(true);
+    expect(isProcessingStatus("cancelling")).toBe(true);
+    expect(
+      getDocumentDisplayStatus({
+        status: "delete_failed",
+        current_stage: "delete_failed",
+      }),
+    ).toBe("delete_failed");
+  });
+
+  it("recognizes held as a known normalized status", () => {
+    expect(normalizeStatus("held")).toBe("held");
+    expect(normalizeStatus("cancelling")).toBe("cancelling");
+  });
 });

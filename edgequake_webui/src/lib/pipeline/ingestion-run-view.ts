@@ -8,7 +8,7 @@ import type { IngestionProgress, IngestionStage } from "@/types/ingestion";
 import {
   getDocumentDisplayStatus,
   isProcessingStatus,
-} from "@/components/documents/status-badge";
+} from "@/lib/documents/status-domain";
 import { bareDocumentId } from "@/lib/documents/reprocess-cache";
 import {
   isOrphanAdmissionShell,

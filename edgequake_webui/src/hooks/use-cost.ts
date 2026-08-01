@@ -49,6 +49,8 @@ export function useWorkspaceCostSummary() {
     queryKey: costKeys.summary(),
     queryFn: getWorkspaceCostSummary,
     staleTime: 5 * 60 * 1000, // 5 minutes
+    // SPEC-100: soft refresh keeps summary cards painted
+    placeholderData: (previous) => previous,
   });
 }
 
@@ -84,6 +86,7 @@ export function useBudgetStatus() {
     queryKey: costKeys.budget(),
     queryFn: getBudgetStatus,
     staleTime: 60 * 1000, // 1 minute
+    placeholderData: (previous) => previous,
   });
 }
 
@@ -109,5 +112,6 @@ export function useCostHistory(params?: CostHistoryParams) {
     queryKey: costKeys.history(params),
     queryFn: () => getCostHistory(params),
     staleTime: 5 * 60 * 1000, // 5 minutes
+    placeholderData: (previous) => previous,
   });
 }

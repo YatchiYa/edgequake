@@ -239,6 +239,22 @@ jobs:
           EQ_BACKEND_URL=http://localhost:8080 \
           pnpm exec playwright test e2e/spec350-bulk-upload-webui.spec.ts --reporter=line
 
+      - name: SPEC-099 Documents UX gates
+        working-directory: edgequake_webui
+        run: |
+          PLAYWRIGHT_BASE_URL=http://localhost:3000 \
+          E2E_LIVE_STACK=1 \
+          EQ_BACKEND_URL=http://localhost:8080 \
+          pnpm exec playwright test e2e/spec099- --reporter=line
+
+      - name: SPEC-100 Dashboard CLS gates
+        working-directory: edgequake_webui
+        run: |
+          PLAYWRIGHT_BASE_URL=http://localhost:3000 \
+          E2E_LIVE_STACK=1 \
+          EQ_BACKEND_URL=http://localhost:8080 \
+          pnpm exec playwright test e2e/spec100- --reporter=line
+
   # Full E2E suite — flaky quarantine (not a required gate).
   e2e-full:
     name: "E2E Full Suite (Target: <5min)"

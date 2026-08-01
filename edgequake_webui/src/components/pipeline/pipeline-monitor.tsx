@@ -61,7 +61,10 @@ export function PipelineMonitor() {
           calc() here was brittle and broke whenever header/breadcrumb heights
           changed. flex flex-col lets the sticky header pin at top-0 of this
           container while overflow-y-auto scrolls the remaining content. */}
-      <div className="flex flex-col h-full">
+      <div
+        className="flex h-full min-h-0 flex-col overflow-clip"
+        data-testid="spec100-pipeline-shell"
+      >
         <div className="flex-shrink-0 sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
           <div className="container mx-auto px-6 py-4 max-w-7xl">
             <div className="flex items-center justify-between">
@@ -85,7 +88,12 @@ export function PipelineMonitor() {
                   </div>
                 </div>
               </div>
-              <Button variant="outline" size="sm" onClick={handleRefresh}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRefresh}
+                data-testid="pipeline-refresh-button"
+              >
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Refresh
               </Button>
@@ -93,8 +101,11 @@ export function PipelineMonitor() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
-          <div className="container mx-auto p-4 sm:p-6 max-w-7xl pb-8">
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div
+            className="container mx-auto p-4 sm:p-6 max-w-7xl pb-8"
+            data-testid="spec100-pipeline-main"
+          >
             <PipelineStagesCard />
 
             <div className="mt-4 sm:mt-6">

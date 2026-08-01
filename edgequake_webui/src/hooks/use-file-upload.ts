@@ -42,7 +42,7 @@ import type { Document } from "@/types";
 import {
   getDocumentDisplayStatus,
   isTerminalStatus,
-} from "@/components/documents/status-badge";
+} from "@/lib/documents/status-domain";
 import { useIngestionStore } from "@/stores/use-ingestion-store";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
@@ -59,6 +59,11 @@ export interface UseFileUploadOptions {
   onUploadStart?: () => void;
   /** Optional per-upload PDF parser backend override. */
   pdfParserBackend?: "vision" | "edgeparse";
+  /**
+   * SPEC-099 LAW-099-6: when true, skip persistent "Uploading N…" loading toast
+   * because the feedback zone owns the upload session narrative.
+   */
+  demoteLoadingToast?: boolean;
 }
 
 export interface UseFileUploadReturn {
@@ -104,7 +109,7 @@ export function useFileUpload(
   options: UseFileUploadOptions = {},
 ): UseFileUploadReturn {
   const { tenantId, workspaceId, onUploadStart } = options;
-  const { pdfParserBackend } = options;
+  const { pdfParserBackend, demoteLoadingToast = true } = options;
 
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
   const [activeBatchCount, setActiveBatchCount] = useState(0);
@@ -193,12 +198,17 @@ export function useFileUpload(
       );
       setUploadingFiles((current) => [...current, ...initialFiles]);
 
-      // Show loading toast
-      const toastId = toast.loading(
-        t("documents.upload.inProgress", { count: acceptedFiles.length }) ||
-          `Uploading ${acceptedFiles.length} file(s)...`,
-        { duration: Infinity },
-      );
+      // SPEC-099 LAW-099-6: toast XOR feedback-zone upload list.
+      // When demoteLoadingToast, skip persistent loading toast; completion
+      // toasts still fire with a stable id.
+      const toastId = `upload-batch-${Date.now()}`;
+      if (!demoteLoadingToast) {
+        toast.loading(
+          t("documents.upload.inProgress", { count: acceptedFiles.length }) ||
+            `Uploading ${acceptedFiles.length} file(s)...`,
+          { id: toastId, duration: Infinity },
+        );
+      }
 
       let successCount = 0;
       let errorCount = 0;

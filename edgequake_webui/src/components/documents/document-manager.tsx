@@ -41,18 +41,18 @@ import {
   patchDocumentsDeletingOptimistic,
 } from '@/lib/documents/deletion-session';
 import {
-  documentIdsWithQueuingSession,
-  filterRunsExcludingQueuingSession,
   resolveReprocessPanelTrackId,
   shouldShowReprocessQueuingPanel,
   unpinReprocessDocuments,
 } from '@/lib/documents/progress-admit';
+import { stageDisplayName } from '@/lib/pipeline/ingestion-run-view';
 import {
-  buildIngestionRunViews,
-  stageDisplayName,
-} from '@/lib/pipeline/ingestion-run-view';
+  FEEDBACK_ZONE_RESERVE_MIN_PX,
+  readLiveWorkHint,
+  shouldReserveFeedbackSlot,
+  writeLiveWorkHint,
+} from '@/lib/documents/documents-layout-stability';
 import {
-  hasQueueCoverage,
   needsReuploadNotReprocess,
   resolvePipelineUiState,
 } from '@/lib/pipeline/pipeline-document-state';
@@ -60,15 +60,15 @@ import {
 import { useBulkSelection } from '@/hooks/use-bulk-selection';
 import { useDeletionSessions } from '@/hooks/use-deletion-progress';
 import { useDocumentDropzone } from '@/hooks/use-document-dropzone';
-import { useDocumentFiltering } from '@/hooks/use-document-filtering';
 import { useDocumentHandlers } from '@/hooks/use-document-handlers';
 import { useDocumentKeyboard } from '@/hooks/use-document-keyboard';
 import { useDocumentMutations } from '@/hooks/use-document-mutations';
 import { useDocumentPreferences } from '@/hooks/use-document-preferences';
-import { useDocumentQueries } from '@/hooks/use-document-queries';
+import { useDocumentsInventory } from '@/hooks/use-documents-inventory';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useDocumentWebSocket } from '@/hooks/use-document-websocket';
 import { useFileUpload } from '@/hooks/use-file-upload';
+import { useLiveWorkControllers } from '@/hooks/use-live-work-controllers';
 import {
   shouldUsePdfReprocessPanel,
   useReprocessTracking,
@@ -88,15 +88,18 @@ import { DeleteConfirmDialog } from './delete-confirm-dialog';
 import { DocumentErrorAlert } from './document-error-alert';
 import { DocumentHeader } from './document-header';
 import { DocumentPreviewRightPanel } from './document-preview-right-panel';
+import { DocumentsActionsProvider } from './documents-actions-context';
 import { DocumentTableSection } from './document-table-section';
 import { DocumentToolbarSection } from './document-toolbar-section';
 import { DuplicateUploadDialog } from './duplicate-upload-dialog';
 import { FeedbackZoneLiveRegion } from './feedback-zone-live-region';
+import { FeedbackZoneSkeleton } from './feedback-zone-skeleton';
 import { LargePdfAdmissionDialog } from './large-pdf-admission-dialog';
 import { ProgressPanelRow } from './progress-panel-row';
 import { ReprocessDialog, type ReprocessChoice } from './reprocess-dialog';
 import { ApiErrorBoundary } from '@/components/shared/api-error-boundary';
 import { Button } from '@/components/ui/button';
+import { DropdownMenuCheckboxItem } from '@/components/ui/dropdown-menu';
 import { UploadProgressList } from './upload-progress-list';
 import { X } from 'lucide-react';
 
@@ -160,6 +163,7 @@ export function DocumentManager() {
     statusFilter, setStatusFilter,
     sortField, setSortField,
     sortDirection, setSortDirection,
+    showCostColumn, setShowCostColumn,
   } = useDocumentPreferences();
 
   const handleColumnSort = useCallback(
@@ -285,18 +289,34 @@ export function DocumentManager() {
     return () => window.clearInterval(id);
   }, [deleteSessions]);
 
-  // OODA-29: Document queries extracted to useDocumentQueries hook
-  // VS-03: page=1 with large pageSize fetches everything at once for virtual scroll
-  // SPEC-084 / GH-319: match API MAX_PAGE_SIZE (budget clamp). Larger values
-  // were silently truncated to 100 while the UI assumed a full fetch.
-  const VIRTUAL_PAGE_SIZE = 100;
-  const { data, isLoading, isError, error, refetch, pipelineStatus, queryClient } = useDocumentQueries({
+  // SPEC-099: inventory controller (queries + filter VM + overflow honesty)
+  const {
+    data,
+    isLoading,
+    isFetching,
+    isError,
+    error,
+    refetch,
+    pipelineStatus,
+    queryClient,
+    documents,
+    totalCount,
+    statusCounts,
+    inventory,
+  } = useDocumentsInventory({
     tenantId: selectedTenantId,
     workspaceId: selectedWorkspaceId,
-    currentPage: 1,
-    pageSize: VIRTUAL_PAGE_SIZE,
+    searchQuery,
     statusFilter,
+    sortField,
+    sortDirection,
   });
+
+  // CLS: remember prior live-work so refresh can reserve the feedback slot early.
+  const [liveWorkHint, setLiveWorkHint] = useState(false);
+  useEffect(() => {
+    setLiveWorkHint(readLiveWorkHint());
+  }, []);
 
   /**
    * SPEC-050: Paint-first delete session + optimistic badge, then mutate.
@@ -330,17 +350,6 @@ export function DocumentManager() {
     t,
   });
 
-  // OODA-19: Filter and sort documents using extracted hook
-  const { documents, totalCount, statusCounts } = useDocumentFiltering({
-    documents: data?.items || [],
-    searchQuery,
-    statusFilter,
-    sortField,
-    sortDirection,
-    pageSize: VIRTUAL_PAGE_SIZE,
-    serverStatusCounts: data?.status_counts,
-  });
-
   // SPEC-048: clear upload chrome when documents reach terminal state
   useEffect(() => {
     pruneTerminalUploads(documents ?? []);
@@ -348,20 +357,56 @@ export function DocumentManager() {
     pruneTerminalReprocessEntries(documents ?? []);
   }, [documents, pruneTerminalUploads, pruneTerminalReprocessEntries]);
 
+  // SPEC-099: single shared pipeline UI resolve (shell → toolbar)
   const pipelineUi = useMemo(
     () => resolvePipelineUiState(documents, pipelineStatus),
     [documents, pipelineStatus],
   );
 
-  const runViewOpts = useMemo(() => {
-    const pending =
-      pipelineStatus?.pending_tasks ?? pipelineStatus?.queued_tasks ?? 0;
-    const processing =
-      pipelineStatus?.processing_tasks ?? pipelineStatus?.running_tasks ?? 0;
-    return {
-      hasQueueCoverage: hasQueueCoverage(pipelineStatus, pending, processing),
-    };
-  }, [pipelineStatus]);
+  const stuckDocIds = useMemo(
+    () => new Set(pipelineUi.stuckDocs.map((d) => d.id)),
+    [pipelineUi.stuckDocs],
+  );
+
+  const {
+    hasLiveWork: feedbackZoneOpen,
+    isLiveRunIds: workingRunDocumentIds,
+    showActiveRuns,
+    showUploadList,
+    activeRunsDisplayed,
+    uploadFilesForList,
+    sessionReprocessEntries,
+  } = useLiveWorkControllers({
+    documents,
+    pipelineStatus,
+    uploadingFiles,
+    reprocessEntries,
+    deleteSessionCount: deleteSessions.length,
+    pipelineUiAlertMode: pipelineUi.alertMode,
+    stuckDocIds,
+  });
+
+  const isInitialLoading = isLoading && !data;
+  const reserveFeedbackSlot = shouldReserveFeedbackSlot({
+    hasLiveWork: feedbackZoneOpen,
+    isInitialLoading,
+    pipelineStatus,
+    liveWorkHint,
+  });
+  const showFeedbackZone = feedbackZoneOpen || reserveFeedbackSlot;
+
+  useEffect(() => {
+    if (feedbackZoneOpen) {
+      writeLiveWorkHint(true);
+      setLiveWorkHint(true);
+      return;
+    }
+    // Clear hint only after a settled idle paint (not mid-fetch).
+    if (!isLoading && !isFetching) {
+      writeLiveWorkHint(false);
+      setLiveWorkHint(false);
+    }
+  }, [feedbackZoneOpen, isLoading, isFetching]);
 
   // Orphan staging shells need re-upload — exclude from Retry Failed count.
   // SPEC-098 LAW-098-11: statusCounts.failed is pipeline-only (no delete_failed).
@@ -370,108 +415,10 @@ export function DocumentManager() {
     return Math.max(0, (statusCounts.failed ?? 0) - orphanReupload);
   }, [documents, statusCounts.failed]);
 
-  // Only mute siblings while a run is actively working (not merely queued)
-  // LAW-IS3: any doc painted in ActiveRuns (active or queued) — table demotes stage line.
-  const workingRunDocumentIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const run of buildIngestionRunViews(documents, runViewOpts).values()) {
-      if (
-        run.stageStatus === 'active' ||
-        run.stageStatus === 'pending' ||
-        run.stage === 'stopping'
-      ) {
-        ids.add(run.documentId);
-      }
-    }
-    return ids;
-  }, [documents, runViewOpts]);
-
-  // All active / pending runs — used for the unified feedback zone.
-  // WHY compute once: buildIngestionRunViews was called separately for
-  // workingRunDocumentIds and activeRunViews; this avoids the duplication.
-  const allRuns = useMemo(
-    () => [...buildIngestionRunViews(documents, runViewOpts).values()],
-    [documents, runViewOpts],
-  );
-
-  // While a session panel is still provisional Queuing (not cleaning), hide the
-  // ActiveRuns card for that documentId. Cleaning keeps ActiveRuns so the
-  // stepper narrates graph cleanup alongside the session AdmissionPhaseRow.
-  const stagesByDocId = useMemo(() => {
-    const map = new Map<string, string | null | undefined>();
-    for (const doc of documents ?? []) {
-      map.set(doc.id, doc.current_stage);
-    }
-    return map;
-  }, [documents]);
-  const queuingSessionDocIds = useMemo(
-    () => documentIdsWithQueuingSession(reprocessEntries, stagesByDocId),
-    [reprocessEntries, stagesByDocId],
-  );
-  const activeRunsForPanel = useMemo(
-    () => filterRunsExcludingQueuingSession(allRuns, queuingSessionDocIds),
-    [allRuns, queuingSessionDocIds],
-  );
-
-  // Unified feedback zone: keep ActiveRuns even when stuck so per-doc cards
-  // remain visible; stuck toolbar banner still owns the recover CTA.
-  const showActiveRuns = activeRunsForPanel.length > 0;
-
-  // Prefer stuck docs in the zone when alertMode is stuck (more relevant).
-  const activeRunsDisplayed = useMemo(() => {
-    if (pipelineUi.alertMode !== 'stuck' || pipelineUi.stuckDocs.length === 0) {
-      return activeRunsForPanel;
-    }
-    const stuckIds = new Set(pipelineUi.stuckDocs.map((d) => d.id));
-    const stuckRuns = activeRunsForPanel.filter((r) => stuckIds.has(r.documentId));
-    return stuckRuns.length > 0 ? stuckRuns : activeRunsForPanel;
-  }, [activeRunsForPanel, pipelineUi.alertMode, pipelineUi.stuckDocs]);
-
-  // Session ProgressPanelRow: always show Queuing; keep PDF-full phase panels;
-  // hand off entities/merge only after ActiveRuns is actually painted for that doc.
-  const sessionReprocessEntries = useMemo(
-    () =>
-      reprocessEntries.filter((entry) => {
-        if (shouldShowReprocessQueuingPanel(entry.trackId)) return true;
-        if (shouldUsePdfReprocessPanel(entry.isPdf, entry.mode)) return true;
-        // Avoid empty gap: keep session row until ActiveRuns shows this documentId.
-        if (!showActiveRuns) return true;
-        return !activeRunsDisplayed.some((r) => r.documentId === entry.documentId);
-      }),
-    [reprocessEntries, showActiveRuns, activeRunsDisplayed],
-  );
-
-  // All active / pending runs (kept for potential future use).
-  // NOTE: not used to auto-seed reprocessEntries — see WHY below.
-  const activeRunViews = useMemo(
-    () => allRuns.filter((r) => r.stageStatus === 'active' || r.stageStatus === 'pending'),
-    [allRuns],
-  );
-
-  // Upload list split: client-only rows show always; tracked rows only when
-  // ActiveRunsPanel is hidden (it handles them visually when active).
-  const clientOnlyUploads = useMemo(
-    () => uploadingFiles.filter((f) => !f.trackId),
-    [uploadingFiles],
-  );
-  const trackedUploads = useMemo(
-    () => uploadingFiles.filter((f) => Boolean(f.trackId)),
-    [uploadingFiles],
-  );
-  const showUploadList =
-    clientOnlyUploads.length > 0 || (trackedUploads.length > 0 && !showActiveRuns);
-  const uploadFilesForList = showActiveRuns ? clientOnlyUploads : uploadingFiles;
-
-  const feedbackZoneOpen =
-    showActiveRuns ||
-    showUploadList ||
-    sessionReprocessEntries.length > 0 ||
-    deleteSessions.length > 0;
-
   // Honest empty state while first ingest is in flight but list is still empty.
   const isBusyUpdating =
     documents.length === 0 &&
-    (feedbackZoneOpen ||
+    (showFeedbackZone ||
       isUploading ||
       (pipelineStatus?.running_tasks ?? 0) > 0 ||
       (pipelineStatus?.queued_tasks ?? 0) > 0);
@@ -655,20 +602,64 @@ export function DocumentManager() {
     queuedCount: pipelineUi.waitingDocCount,
   });
 
+  const documentsActions = useMemo(
+    () => ({
+      onClick: handleDocumentClick,
+      onDoubleClick: handleDocumentDoubleClick,
+      onSelect: handleSelectOne,
+      onReprocess: (doc: Document) => {
+        if (needsReuploadNotReprocess(doc)) return;
+        setReprocessTarget(doc);
+      },
+      onRetry: (doc: Document) => {
+        if (needsReuploadNotReprocess(doc)) return;
+        const name = doc.file_name || doc.title || doc.id.slice(0, 8);
+        reprocessMutation.mutate({
+          id: doc.id,
+          name,
+          isPdf: doc.source_type === 'pdf',
+        });
+      },
+      onDelete: (doc: Document) => setDeleteConfirmTarget(doc),
+      onViewDetails: handleViewDetails,
+      onViewInGraph: handleViewInGraph,
+      onViewPdf: handleViewPdf,
+    }),
+    [
+      handleDocumentClick,
+      handleDocumentDoubleClick,
+      handleSelectOne,
+      handleViewDetails,
+      handleViewInGraph,
+      handleViewPdf,
+      reprocessMutation,
+    ],
+  );
+
   if (isError) {
     return <DocumentErrorAlert error={error} onRetry={refetch} />;
   }
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <DocumentsActionsProvider value={documentsActions}>
+    <div
+      className="flex h-full min-h-0 min-w-0 flex-1 overflow-clip"
+      data-testid="documents-page-shell"
+    >
       {/* Main Content - Flex column for proper scroll zones */}
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        {/* Fixed Header Zone */}
-        <div className="shrink-0 px-4 pt-4 space-y-3 bg-background">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-clip">
+        {/* Fixed Header Zone — title, filters, always-on dropzone stay pinned.
+            max-h keeps inventory usable on short viewports (EC-099-01). */}
+        <div
+          className="min-h-0 shrink-0 max-h-[42dvh] space-y-3 overflow-y-auto overscroll-contain bg-background px-4 pt-4"
+          data-testid="documents-chrome"
+        >
           <DocumentHeader
             totalCount={totalCount}
+            countLabel={inventory.countLabel}
             failedCount={reprocessableFailedCount}
             showPipelineIndicator={pipelineUi.showPipelineIndicator}
+            reservePipelineSlot={showFeedbackZone}
             pipelineAlertMode={pipelineUi.alertMode}
             activeDocCount={pipelineUi.activeDocCount}
             waitingDocCount={pipelineUi.waitingDocCount}
@@ -679,6 +670,15 @@ export function DocumentManager() {
             tenantId={selectedTenantId ?? undefined}
             workspaceId={selectedWorkspaceId ?? undefined}
             documents={documents}
+            columnsMenu={
+              <DropdownMenuCheckboxItem
+                checked={showCostColumn}
+                onCheckedChange={(v) => setShowCostColumn(Boolean(v))}
+                data-testid="spec099-toggle-cost-column"
+              >
+                Show Cost column
+              </DropdownMenuCheckboxItem>
+            }
           />
 
           {/* OODA-30: Toolbar section extracted to DocumentToolbarSection */}
@@ -693,6 +693,7 @@ export function DocumentManager() {
             onSortDirectionChange={setSortDirection}
             statusCounts={statusCounts}
             pipelineStatus={pipelineStatus}
+            pipelineUi={pipelineUi}
             documents={documents}
             onOpenPipelineDetails={() => setPipelineDialogOpen(true)}
             onReprocessStuckDocuments={(stuckDocs) => {
@@ -716,7 +717,8 @@ export function DocumentManager() {
               }
             }}
             isReprocessingStuck={reprocessMutation.isPending}
-            demotePipelineBanner={feedbackZoneOpen}
+            demotePipelineBanner={showFeedbackZone}
+            collapseUploadSlot={showFeedbackZone}
             getRootProps={getRootProps}
             getInputProps={getInputProps}
             isDragActive={isDragActive}
@@ -750,7 +752,7 @@ export function DocumentManager() {
             table           = flex-1  (always gets the remaining ≥65 vh − 150 px)
           On 760 px viewport: table ≥ 760×0.65−150 ≈ 344 px → ~5 rows always visible.
       ─────────────────────────────────────────────────────────────────────── */}
-      {feedbackZoneOpen && (
+      {showFeedbackZone && (
         <ApiErrorBoundary
           fallback={() => (
             <div
@@ -764,13 +766,25 @@ export function DocumentManager() {
         >
         <div
           className="shrink-0 overflow-y-auto border-b bg-background"
-          style={{ maxHeight: '35vh' }}
+          style={{
+            maxHeight: '35vh',
+            // Keep a stable floor whenever the zone is shown so skeleton→live
+            // (and soft refresh) do not change inventory geometry (CLS).
+            minHeight: FEEDBACK_ZONE_RESERVE_MIN_PX,
+          }}
           data-testid="spec051-feedback-zone"
+          data-reserved={reserveFeedbackSlot ? 'true' : 'false'}
           aria-labelledby="spec051-feedback-zone-label"
         >
           <span id="spec051-feedback-zone-label" className="sr-only">
             Document processing progress
           </span>
+          {reserveFeedbackSlot ? (
+            <div className="px-4 py-2">
+              <FeedbackZoneSkeleton />
+            </div>
+          ) : (
+            <>
           <FeedbackZoneLiveRegion announcement={feedbackAnnouncement} />
           <div className="px-4 py-2 space-y-2">
             {/* Server-stage stepper — includes stuck docs (per-doc cards stay visible) */}
@@ -913,6 +927,8 @@ export function DocumentManager() {
               </div>
             )}
           </div>
+            </>
+          )}
         </div>
         </ApiErrorBoundary>
       )}
@@ -921,7 +937,7 @@ export function DocumentManager() {
       <DocumentTableSection
         documents={documents}
         totalCount={totalCount}
-        isLoading={isLoading}
+        isLoading={isInitialLoading}
         isBusyUpdating={isBusyUpdating}
         selectedIds={selectedIds}
         selectedDocument={selectedDocument}
@@ -929,6 +945,8 @@ export function DocumentManager() {
         statusFilter={statusFilter}
         isAllSelected={isAllSelected}
         activeRunDocumentIds={workingRunDocumentIds}
+        showCostColumn={showCostColumn}
+        overflowLabel={inventory.overflowLabel}
         onSelectAll={handleSelectAll}
         onSelectOne={handleSelectOne}
         onRowClick={handleDocumentClick}
@@ -1084,6 +1102,7 @@ export function DocumentManager() {
         isDeleting={deleteMutation.isPending}
       />
     </div>
+    </DocumentsActionsProvider>
   );
 }
 

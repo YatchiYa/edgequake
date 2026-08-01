@@ -99,6 +99,168 @@ export async function mockSpec038AdmissionRoutes(
 ): Promise<void> {
   await page.route("**/api/v1/**", async (route) => {
     if (route.request().method() === "GET") {
+      const url = route.request().url();
+      // Conversations infinite query expects pagination.has_more
+      if (url.includes("/conversations")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            items: [],
+            pagination: {
+              total: 0,
+              page: 1,
+              page_size: 20,
+              total_pages: 0,
+              has_more: false,
+            },
+          }),
+        });
+        return;
+      }
+      // Folders API returns a bare array
+      if (url.includes("/folders")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify([]),
+        });
+        return;
+      }
+      // Single workspace: GET /workspaces/{id}
+      if (/\/workspaces\/[^/?]+(?:\?|$)/.test(url) && !url.includes("/stats")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            id: SPEC038_MOCK_WORKSPACE_ID,
+            tenant_id: SPEC038_MOCK_TENANT_ID,
+            name: "SPEC-038 Workspace",
+            slug: "spec038-workspace",
+            llm_provider: "ollama",
+            llm_model: "gemma3:latest",
+            embedding_provider: "ollama",
+            embedding_model: "embeddinggemma:latest",
+            created_at: "2026-01-01T00:00:00Z",
+            updated_at: "2026-01-01T00:00:00Z",
+          }),
+        });
+        return;
+      }
+      if (url.includes("/stats")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            document_count: 0,
+            entity_count: 0,
+            relationship_count: 0,
+            chunk_count: 0,
+            entity_type_count: 0,
+            stale: false,
+          }),
+        });
+        return;
+      }
+      if (url.includes("/costs/")) {
+        if (url.includes("/budget")) {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              monthly_budget_usd: 100,
+              spent_usd: 0,
+              remaining_usd: 100,
+              alert_threshold: 80,
+              is_over_budget: false,
+            }),
+          });
+          return;
+        }
+        if (url.includes("/history")) {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify([]),
+          });
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            total_cost: 0,
+            total_tokens: 0,
+            document_count: 0,
+            average_cost_per_document: 0,
+            by_operation: [],
+            period_start: "2026-01-01T00:00:00Z",
+            period_end: "2026-01-31T00:00:00Z",
+          }),
+        });
+        return;
+      }
+      if (url.includes("/settings/attribution") || url.includes("/settings/app-attribution")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            effective_context: {
+              app_id: "edgequake",
+              app_name: "EdgeQuake",
+              app_url: "",
+              active: true,
+              sources: [],
+            },
+            providers: [],
+            ingress_headers: [],
+            environment_variables: [],
+          }),
+        });
+        return;
+      }
+      if (url.includes("/settings/llm-defaults")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            effective: {
+              llm_provider: "ollama",
+              llm_model: "gemma3:latest",
+              embedding_provider: "ollama",
+              embedding_model: "embeddinggemma:latest",
+              vision_provider: null,
+              vision_model: null,
+            },
+            sources: {
+              llm_provider: "env",
+              llm_model: "env",
+            },
+            saved: {
+              llm_provider: "ollama",
+              llm_model: "gemma3:latest",
+              embedding_provider: "ollama",
+              embedding_model: "embeddinggemma:latest",
+              vision_provider: null,
+              vision_model: null,
+            },
+            priority_mode: "server",
+            editable: true,
+            requires_restart: false,
+            note: "SPEC-100 mock",
+          }),
+        });
+        return;
+      }
+      if (url.includes("/providers") || url.includes("models/health")) {
+        // fetchProvidersHealth expects a bare ProviderResponse[]
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify([]),
+        });
+        return;
+      }
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -269,5 +431,76 @@ export async function mockSpec038AdmissionRoutes(
       return;
     }
     await route.fallback();
+  });
+
+  // SPEC-100: explicit late-bound routes (Playwright LIFO) for CLS gates
+  await page.route("**/api/v1/models/health**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([]),
+    });
+  });
+
+  await page.route("**/api/v1/settings/provider/status**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        provider: {
+          name: "ollama",
+          type: "llm",
+          status: "connected",
+          model: "gemma3:latest",
+          config: {},
+        },
+        embedding: {
+          name: "ollama",
+          type: "embedding",
+          status: "connected",
+          model: "embeddinggemma:latest",
+          dimension: 768,
+        },
+        storage: {
+          type: "postgres",
+          dimension: 768,
+          dimension_mismatch: false,
+          namespace: "default",
+        },
+        metadata: {
+          checked_at: "2026-01-01T00:00:00Z",
+          uptime_seconds: 1,
+        },
+      }),
+    });
+  });
+
+  await page.route("**/api/v1/config/effective**", async (route) => {
+    const area = {
+      has_mismatch: false,
+      mismatch_description: null,
+      levels: [],
+      effective_provider: "ollama",
+      effective_model: "gemma3:latest",
+    };
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        llm: { ...area },
+        embedding: {
+          ...area,
+          effective_model: "embeddinggemma:latest",
+        },
+        vision: {
+          ...area,
+          effective_provider: "",
+          effective_model: "",
+        },
+        priority_rule: "server_over_env",
+        priority_mode: "server",
+        server_config_available: true,
+      }),
+    });
   });
 }

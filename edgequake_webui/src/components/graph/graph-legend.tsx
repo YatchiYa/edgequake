@@ -19,17 +19,18 @@ export function GraphLegend({ className, collapsed = true }: GraphLegendProps) {
   const nodes = useGraphStore((s) => s.nodes);
   const [isCollapsed, setIsCollapsed] = useState(collapsed);
 
-  if (nodes.length === 0) return null;
-
-  if (isCollapsed) {
+  // SPEC-100: always mount legend control (empty graph keeps toolbar geometry)
+  if (nodes.length === 0 || isCollapsed) {
     return (
       <Button
         variant="outline"
         size="icon"
         className={`bg-background/90 backdrop-blur-sm shadow-md hover:shadow-lg transition-shadow ${className}`}
-        onClick={() => setIsCollapsed(false)}
+        onClick={() => nodes.length > 0 && setIsCollapsed(false)}
+        disabled={nodes.length === 0}
         aria-label={t("graph.legend.showLegend", "Show entity type legend")}
         title={t("graph.legend.showLegend", "Show Legend")}
+        data-testid="spec100-graph-legend-slot"
       >
         <Palette className="h-4 w-4" aria-hidden="true" />
       </Button>

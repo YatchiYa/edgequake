@@ -124,7 +124,8 @@ export function UploadProgressList({
         </div>
       )}
       
-      <ScrollArea className="max-h-64">
+      {/* SPEC-099: tighter nested scroll so zone ≤35vh leaves table rows visible */}
+      <ScrollArea className={embedded ? "max-h-28" : "max-h-64"}>
         <div className="space-y-1">
           {uploadingFiles.map((uploadFile, index) => (
             uploadFile.trackId ? (

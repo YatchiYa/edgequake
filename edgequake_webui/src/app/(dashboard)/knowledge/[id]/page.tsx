@@ -136,12 +136,20 @@ export default function KnowledgeDetailPage() {
     }
   };
 
-  if (isLoading) {
+  // SPEC-100: layout-matched skeleton (header + status + body); cold load only
+  if (isLoading && !data) {
     return (
-      <div className="flex flex-col gap-6 p-6">
-        <Skeleton className="h-8 w-64" />
+      <div
+        className="flex flex-col gap-6 p-6"
+        data-testid="spec100-knowledge-detail-skeleton"
+      >
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-9 w-9" />
+          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-6 w-20 rounded-full" />
+        </div>
         <Skeleton className="h-4 w-48" />
-        <Skeleton className="h-64 w-full" />
+        <Skeleton className="min-h-[16rem] w-full" />
       </div>
     );
   }

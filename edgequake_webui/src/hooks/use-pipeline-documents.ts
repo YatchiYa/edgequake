@@ -59,5 +59,7 @@ export function usePipelineDocuments(
         status,
       }),
     refetchInterval: options.refetchInterval ?? 2000,
+    // SPEC-100: soft refresh keeps prior list (no spinner→h-64 CLS)
+    placeholderData: (previous) => previous,
   });
 }

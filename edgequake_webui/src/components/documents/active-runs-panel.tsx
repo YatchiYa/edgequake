@@ -140,6 +140,7 @@ function renderRunCard(
     <IngestionRunCard
       key={run.documentId}
       run={run}
+      compact
       data-testid="spec048-active-run-card"
       onCancel={
         run.trackId &&
@@ -275,12 +276,13 @@ export function ActiveRunsPanel({
 
   return (
     <div
-      className="space-y-4 rounded-lg border border-sky-200/80 bg-sky-50/40 p-3 dark:border-sky-900 dark:bg-sky-950/20"
+      className="space-y-2 rounded-md border border-sky-200/80 bg-sky-50/40 p-2 dark:border-sky-900 dark:bg-sky-950/20"
       data-testid="spec048-active-runs-panel"
+      data-density="compact"
     >
       {working.length > 0 && (
         <section
-          className="space-y-3"
+          className="space-y-1.5"
           data-testid="spec048-active-runs-working"
         >
           <div className="flex items-baseline justify-between gap-2">
@@ -304,7 +306,7 @@ export function ActiveRunsPanel({
 
       {attention.length > 0 && (
         <section
-          className="space-y-3 rounded-md border border-amber-200/80 bg-amber-50/50 p-2.5 dark:border-amber-900/60 dark:bg-amber-950/30"
+          className="space-y-1.5 rounded-md border border-amber-200/80 bg-amber-50/50 p-2 dark:border-amber-900/60 dark:bg-amber-950/30"
           data-testid="spec086-needs-attention"
         >
           <div className="flex items-center justify-between gap-2">

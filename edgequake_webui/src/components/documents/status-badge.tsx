@@ -1,16 +1,14 @@
 /**
  * @module DocumentStatusBadge
- * @description Status badge component for documents with appropriate icons and colors
- * 
+ * @description Presentation-only status badge (icons, colors, labels).
+ *
+ * Domain helpers (normalize / display / terminal / processing) live exclusively
+ * in `@/lib/documents/status-domain` (SPEC-099 LAW-099-1).
+ *
  * @implements FEAT0004 - Processing status tracking per document
  * @implements UC0007 - User monitors document processing progress
  * @implements OODA-11 - Stage progress tooltip
- * 
- * Processing sub-states provide visibility into:
- * - chunking: Splitting document into chunks
- * - extracting: Running LLM entity extraction
- * - embedding: Generating vector embeddings
- * - indexing: Storing in graph/vector databases
+ * @implements SPEC-099 F-099-01 - badge is presentation map only
  */
 'use client';
 
@@ -21,6 +19,7 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
+import type { DocumentStatus } from '@/lib/documents/status-domain';
 import {
     Brain,
     CheckCircle,
@@ -31,6 +30,7 @@ import {
     FileText,
     GitMerge,
     Loader2,
+    PauseCircle,
     Scissors,
     Search,
     StopCircle,
@@ -40,14 +40,10 @@ import {
 } from 'lucide-react';
 import { memo, useMemo } from 'react';
 
+export type { DocumentStatus };
+
 /**
  * Status configuration with icons, colors, and labels.
- *
- * @implements SPEC-002: Unified Ingestion Pipeline
- *
- * WHY: Consolidated from 12+ color variants to 4 semantic families to comply
- * with WCAG 1.4.1 (color must not be the sole differentiator). Each state
- * still has a unique icon so color is supplemental, not primary.
  *
  * Semantic families:
  *   Amber  → pending/waiting states
@@ -72,7 +68,6 @@ const statusConfig = {
   preprocessing: { icon: Loader2, color: 'bg-blue-500', textColor: 'text-blue-600 dark:text-blue-400', label: 'Processing', animate: true },
   chunking: { icon: Scissors, color: 'bg-blue-500', textColor: 'text-blue-600 dark:text-blue-400', label: 'Chunking', animate: true },
   embedding: { icon: Cpu, color: 'bg-blue-500', textColor: 'text-blue-600 dark:text-blue-400', label: 'Embedding', animate: true },
-  // SPEC-057 P2: honest stage when slim-checkpoint resume re-embeds
   re_embedding: { icon: Cpu, color: 'bg-cyan-500', textColor: 'text-cyan-600 dark:text-cyan-400', label: 'Re-embedding', animate: true },
   storing: { icon: Database, color: 'bg-blue-500', textColor: 'text-blue-600 dark:text-blue-400', label: 'Storing', animate: true },
   processing: { icon: Loader2, color: 'bg-blue-500', textColor: 'text-blue-600 dark:text-blue-400', label: 'Processing', animate: true },
@@ -98,13 +93,24 @@ const statusConfig = {
 
   // === CANCEL IN FLIGHT (SPEC-057 P4) ===
   stopping: { icon: Loader2, color: 'bg-orange-500', textColor: 'text-orange-600 dark:text-orange-400', label: 'Stopping…', animate: true },
-} as const;
+  cancelling: { icon: Loader2, color: 'bg-orange-500', textColor: 'text-orange-600 dark:text-orange-400', label: 'Cancelling…', animate: true },
 
-export type DocumentStatus = keyof typeof statusConfig;
+  // === TASK LIFECYCLE (SPEC-099 EC-099-15) ===
+  held: { icon: PauseCircle, color: 'bg-amber-500', textColor: 'text-amber-600 dark:text-amber-400', label: 'Held', animate: false },
+  dead_letter: { icon: XCircle, color: 'bg-red-500', textColor: 'text-red-600 dark:text-red-400', label: 'Dead letter', animate: false },
+} as const satisfies Record<
+  DocumentStatus,
+  {
+    icon: typeof Clock;
+    color: string;
+    textColor: string;
+    label: string;
+    animate: boolean;
+  }
+>;
 
 /**
  * OODA-11 + SPEC-002: Processing stages in order with descriptions
- * Unified to match backend UnifiedStage enum.
  */
 const PROCESSING_STAGES = [
   { key: 'uploading', label: 'Uploading', description: 'Uploading file to server' },
@@ -120,9 +126,6 @@ const PROCESSING_STAGES = [
   { key: 'storing', label: 'Storing', description: 'Storing in graph & vector databases' },
 ] as const;
 
-/**
- * Get stage progress info for a status
- */
 function getStageProgress(status: DocumentStatus): { current: number; total: number; description: string } | null {
   const stageIndex = PROCESSING_STAGES.findIndex(s => s.key === status);
   if (stageIndex >= 0) {
@@ -136,105 +139,6 @@ function getStageProgress(status: DocumentStatus): { current: number; total: num
     return { current: 1, total: PROCESSING_STAGES.length, description: 'Starting processing...' };
   }
   return null;
-}
-
-/**
- * Check if a status represents an active processing state
- */
-export function isProcessingStatus(status: DocumentStatus): boolean {
-  return [
-    'cleaning',
-    'deleting',
-    'queued',
-    'pending',
-    'processing',
-    'uploading',
-    'converting',
-    'preprocessing',
-    'chunking',
-    'extracting',
-    'gleaning',
-    'merging',
-    'summarizing',
-    'embedding',
-    're_embedding',
-    'storing',
-    'indexing',
-    'stopping',
-  ].includes(status);
-}
-
-/**
- * Check if a status represents a terminal (final) state
- */
-export function isTerminalStatus(status: DocumentStatus): boolean {
-  return [
-    'completed',
-    'indexed',
-    'failed',
-    'partial_failure',
-    'partial_success',
-    'delete_failed',
-    'cancelled',
-  ].includes(status);
-}
-
-/**
- * Map legacy/unknown status to known status
- * WHY: Backward compatibility with older backends
- */
-export function normalizeStatus(status: string | undefined | null): DocumentStatus {
-  if (!status) return 'pending';
-  const normalized = status.toLowerCase();
-  if (normalized in statusConfig) return normalized as DocumentStatus;
-  // Map unknown processing states to generic 'processing'
-  if (normalized.includes('process')) return 'processing';
-  return 'pending';
-}
-
-/**
- * Get the best status to display for a document.
- *
- * @implements SPEC-002: Unified Ingestion Pipeline
- * @implements SPEC-057 P4: prefer API `display_status` / `ui_phase=stopping`
- *
- * Prefer fine-grained `current_stage` while work is in flight.
- * Terminal `status` (completed / failed / …) always wins over a stale
- * `current_stage` so the UI does not keep a "Processing" banner after ingest.
- */
-export function getDocumentDisplayStatus(doc: {
-  current_stage?: string | null;
-  status?: string | null;
-  display_status?: string | null;
-  ui_phase?: string | null;
-}): DocumentStatus {
-  // SPEC-057 P4 + cancel dual-SSOT: stopping → terminal status → terminal
-  // display_status → in-flight display_status → current_stage.
-  if (doc.ui_phase?.toLowerCase() === 'stopping') {
-    return 'stopping';
-  }
-  const legacy = normalizeStatus(doc.status);
-  const display = doc.display_status
-    ? normalizeStatus(doc.display_status)
-    : null;
-  const uiTerminal = doc.ui_phase?.toLowerCase() === 'terminal';
-
-  if (isTerminalStatus(legacy)) {
-    return legacy;
-  }
-  if (uiTerminal && display && isTerminalStatus(display)) {
-    return display;
-  }
-  if (display && isTerminalStatus(display)) {
-    return display;
-  }
-  if (display) {
-    return display;
-  }
-  if (doc.current_stage) {
-    return normalizeStatus(doc.current_stage);
-  }
-  return legacy;
 }
 
 interface StatusBadgeProps {
@@ -259,26 +163,19 @@ export const StatusBadge = memo(function StatusBadge({
   compact = false,
   disableTooltip = false,
 }: StatusBadgeProps) {
-  const config = statusConfig[status] || statusConfig.pending;
+  const config = statusConfig[status] ?? statusConfig.pending;
   const Icon = config.icon;
   
-  // OODA-11: Calculate stage progress for processing states
   const stageProgress = useMemo(() => getStageProgress(status), [status]);
 
   /**
    * MI-06: Differentiated animation strategy.
-   * WHY: The whole badge pulses for ALL in-progress stages — this is the
-   * "micro pulsing" that communicates "this document is alive / working".
-   * On top of that, AI stages get a spinning icon (stronger signal for the
-   * compute-heavy LLM extraction steps). Terminal states have no animation.
-   *
    *   animate:true  → badge pulses (subtle, whole pill)
    *   AI stages     → icon also spins (stronger processing signal)
    *   terminal      → no animation
    */
   const AI_STAGES = new Set(['extracting', 'gleaning', 'merging', 'summarizing']);
   const spinIcon = AI_STAGES.has(status) && config.animate;
-  // All in-progress stages pulse the badge; AI stages additionally spin their icon
   const pulseBadge = config.animate;
 
   const badge = (
@@ -292,12 +189,10 @@ export const StatusBadge = memo(function StatusBadge({
     </Badge>
   );
 
-  // For non-processing states or when tooltip disabled, return simple badge
   if (!stageProgress || disableTooltip) {
     return tooltip ? <span title={tooltip}>{badge}</span> : badge;
   }
 
-  // For processing states, show rich tooltip with stage progress
   return (
     <TooltipProvider delayDuration={300}>
       <Tooltip delayDuration={300}>
@@ -310,7 +205,6 @@ export const StatusBadge = memo(function StatusBadge({
           data-testid="status-badge-tooltip"
         >
           <div className="space-y-2">
-            {/* Stage progress header */}
             <div className="flex items-center justify-between gap-4">
               <span className="font-medium">{config.label}</span>
               <span className="text-xs text-muted-foreground">
@@ -318,21 +212,18 @@ export const StatusBadge = memo(function StatusBadge({
               </span>
             </div>
             
-            {/* Custom stage message from backend (if available) */}
             {stageMessage && (
               <p className="text-xs font-medium text-foreground">
                 {stageMessage}
               </p>
             )}
             
-            {/* Stage description (fallback if no custom message) */}
             {!stageMessage && (
               <p className="text-xs text-muted-foreground">
                 {stageProgress.description}
               </p>
             )}
             
-            {/* Progress percentage bar (if available) */}
             {typeof stageProgressValue === 'number' && (
               <div className="space-y-1">
                 <div className="flex justify-between text-[10px] text-muted-foreground">
@@ -348,7 +239,6 @@ export const StatusBadge = memo(function StatusBadge({
               </div>
             )}
             
-            {/* Visual progress bar showing all stages */}
             <div className="flex gap-1">
               {PROCESSING_STAGES.map((stage, index) => (
                 <div
@@ -363,7 +253,6 @@ export const StatusBadge = memo(function StatusBadge({
               ))}
             </div>
             
-            {/* Stage names */}
             <div className="flex justify-between text-[10px] text-muted-foreground">
               {PROCESSING_STAGES.map((stage, index) => (
                 <span 

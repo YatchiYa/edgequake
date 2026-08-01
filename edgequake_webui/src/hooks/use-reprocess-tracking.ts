@@ -30,7 +30,7 @@
 import {
     getDocumentDisplayStatus,
     isTerminalStatus,
-} from '@/components/documents/status-badge';
+} from '@/lib/documents/status-domain';
 import { isProvisionalReprocessTrackId } from '@/lib/documents/reprocess-cache';
 import type { Document } from '@/types';
 import { useCallback, useRef, useState } from 'react';

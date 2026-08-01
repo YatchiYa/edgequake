@@ -17,7 +17,8 @@ import {
     XCircle,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { StatusBadge, getDocumentDisplayStatus } from './status-badge';
+import { StatusBadge } from './status-badge';
+import { getDocumentDisplayStatus } from '@/lib/documents/status-domain';
 
 interface BatchProgressCardProps {
   trackId: string;
