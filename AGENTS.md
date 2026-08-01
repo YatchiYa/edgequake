@@ -672,6 +672,7 @@ make backend-bg
 | `OPENAI_API_KEY`               | Optional | Enable OpenAI provider          | `sk-proj-...`                                        |
 | `EDGEQUAKE_LLM_PROVIDER`       | Optional | Override LLM provider           | `openai`, `ollama`, `lmstudio`, `mock`               |
 | `EDGEQUAKE_EMBEDDING_PROVIDER` | Optional | Hybrid mode: separate embedding | `ollama` (use with `EDGEQUAKE_LLM_PROVIDER=openai`)  |
+| `EDGEQUAKE_EXTRACTION_LANGUAGE`| Optional | Fleet default KG extraction NL language (SPEC-096); workspace metadata overrides | `English`, `Chinese`, `French`, … |
 | `OLLAMA_HOST`                  | Optional | Ollama server URL               | `http://localhost:11434`                             |
 | `OLLAMA_EMBEDDING_MODEL`       | Optional | Ollama embedding model          | `embeddinggemma:latest`                              |
 | `RUST_LOG`                     | Optional | Logging level                   | `debug`, `info`, `warn`                              |

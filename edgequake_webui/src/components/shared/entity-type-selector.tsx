@@ -24,9 +24,12 @@ import {
     MAX_ENTITY_TYPES,
     type PresetKey,
     deduplicateTypes,
-    detectPreset,
     normalizeEntityType,
 } from '@/constants/entity-presets';
+import {
+    detectCanonicalPreset,
+    getPresetTypes,
+} from '@/constants/entity-type-catalog';
 import {
     Factory,
     FlaskConical,
@@ -64,6 +67,11 @@ export interface EntityTypeSelectorProps {
   strictLimit?: boolean;
   /** Called when strict-limit checkbox changes (omit to hide checkbox). */
   onStrictLimitChange?: (strict: boolean) => void;
+  /**
+   * Workspace extraction language (SPEC-096 LAW-L6).
+   * Preset buttons insert localized tokens for this language.
+   */
+  extractionLanguage?: string | null;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -85,21 +93,26 @@ export function EntityTypeSelector({
   readOnly = false,
   strictLimit = true,
   onStrictLimitChange,
+  extractionLanguage = null,
 }: EntityTypeSelectorProps) {
   const { t } = useTranslation();
   const [customInput, setCustomInput] = useState('');
   const [advancedBulkInput, setAdvancedBulkInput] = useState('');
 
-  const activePreset: PresetKey = useMemo(() => detectPreset(value), [value]);
+  const activePreset: PresetKey = useMemo(
+    () => detectCanonicalPreset(value),
+    [value],
+  );
   const atMax = value.length >= MAX_ENTITY_TYPES;
+  const isCustomList = activePreset === 'custom';
 
   // ── Preset selection ────────────────────────────────────────────────────
   const handlePresetClick = useCallback(
     (key: PresetKey) => {
       if (readOnly || key === 'custom') return;
-      onChange([...ENTITY_PRESETS[key].types]);
+      onChange(getPresetTypes(key, extractionLanguage));
     },
-    [onChange, readOnly]
+    [extractionLanguage, onChange, readOnly]
   );
 
   // ── Remove individual type ───────────────────────────────────────────────
@@ -143,8 +156,8 @@ export function EntityTypeSelector({
 
   const handleResetGeneral = useCallback(() => {
     if (readOnly) return;
-    onChange([...ENTITY_PRESETS.general.types]);
-  }, [onChange, readOnly]);
+    onChange(getPresetTypes('general', extractionLanguage));
+  }, [extractionLanguage, onChange, readOnly]);
 
   const handleSortAZ = useCallback(() => {
     if (readOnly) return;
@@ -262,6 +275,17 @@ export function EntityTypeSelector({
                 </Badge>
               ))}
             </div>
+            {isCustomList && (
+              <p
+                className="text-xs text-muted-foreground"
+                data-testid="entity-types-custom-language-hint"
+              >
+                {t(
+                  'entityTypes.customLanguageHint',
+                  'Custom types stay as-is when Extraction Language changes.',
+                )}
+              </p>
+            )}
           </div>
 
           {onStrictLimitChange && (

@@ -227,10 +227,14 @@ pub use progress::{
     ProgressTracker, StageProgress, StageStatus, PHASE_WEIGHTS,
 };
 pub use prompts::{
-    default_entity_types, detect_format_markers, format_section_context, normalize_entity_name,
-    text_with_section_context, truncate_section_context, EntityExtractionPrompts,
-    ExtractionResultParser, HybridExtractionParser, JsonExtractionParser, SummarizationPrompts,
-    TupleParser, DEFAULT_COMPLETION_DELIMITER, DEFAULT_TUPLE_DELIMITER, SUPPORTED_LANGUAGES,
+    canonicalize_extraction_language, default_entity_types, detect_format_markers,
+    extraction_language_from_metadata, format_section_context, is_extraction_language_clear,
+    json_extraction_prompt, json_gleaning_prompt, json_language_instruction, normalize_entity_name,
+    resolve_extraction_language, resolve_extraction_language_from_env, text_with_section_context,
+    truncate_section_context, EntityExtractionPrompts, ExtractionResultParser,
+    HybridExtractionParser, JsonExtractionParser, SummarizationPrompts, TupleParser,
+    DEFAULT_COMPLETION_DELIMITER, DEFAULT_EXTRACTION_LANGUAGE, DEFAULT_TUPLE_DELIMITER,
+    EXTRACTION_LANGUAGE_ENV, SUPPORTED_LANGUAGES,
 };
 pub use sanitizer::{EmojiMode, SanitizeConfig, SanitizeReport, Sanitizer};
 pub use stage_bridge::{

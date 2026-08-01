@@ -10,7 +10,10 @@ use crate::{
 };
 
 #[cfg(feature = "postgres")]
-use super::helpers::{apply_entity_types_metadata, apply_entity_types_strict_metadata};
+use super::helpers::{
+    apply_entity_types_metadata, apply_entity_types_strict_metadata,
+    apply_extraction_language_metadata,
+};
 #[cfg(feature = "postgres")]
 use super::rows::WorkspaceRow;
 #[cfg(feature = "postgres")]
@@ -153,6 +156,9 @@ impl WorkspaceServiceImpl {
         // Normalize: uppercase, underscored, deduplicated, max 50 types
         apply_entity_types_metadata(&mut workspace.metadata, request.entity_types);
         apply_entity_types_strict_metadata(&mut workspace.metadata, request.entity_types_strict);
+        // SPEC-096: Workspace extraction language (future ingestions only)
+        apply_extraction_language_metadata(&mut workspace.metadata, request.extraction_language)
+            .map_err(Error::validation)?;
 
         sqlx::query(
             r#"
@@ -367,6 +373,8 @@ impl WorkspaceServiceImpl {
         }
         apply_entity_types_metadata(&mut workspace.metadata, request.entity_types);
         apply_entity_types_strict_metadata(&mut workspace.metadata, request.entity_types_strict);
+        apply_extraction_language_metadata(&mut workspace.metadata, request.extraction_language)
+            .map_err(Error::validation)?;
         workspace.updated_at = chrono::Utc::now();
 
         // Store all config in metadata JSONB column (database schema uses metadata, not separate columns)

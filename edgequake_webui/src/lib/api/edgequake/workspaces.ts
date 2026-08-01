@@ -201,6 +201,11 @@ export interface UpdateWorkspaceRequest {
   entity_types?: string[];
   /** Strict entity type enforcement (default true). */
   entity_types_strict?: boolean;
+  /**
+   * Extraction output language (SPEC-096).
+   * Pass `""` or `"none"` to clear the workspace override.
+   */
+  extraction_language?: string | null;
 }
 
 /**

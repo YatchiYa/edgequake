@@ -96,6 +96,12 @@ pub(super) fn workspace_to_response(workspace: &Workspace) -> WorkspaceResponse 
             .get("entity_types_strict")
             .and_then(|v| v.as_bool())
             .unwrap_or(true),
+        // SPEC-096: extraction language override (null = inherit env/default)
+        extraction_language: workspace
+            .metadata
+            .get("extraction_language")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
         created_at: workspace.created_at.to_rfc3339(),
         updated_at: workspace.updated_at.to_rfc3339(),
     }

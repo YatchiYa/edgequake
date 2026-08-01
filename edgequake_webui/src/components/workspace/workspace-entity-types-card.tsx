@@ -27,6 +27,8 @@ export interface WorkspaceEntityTypesCardProps {
   onTypesChange: (types: string[]) => void;
   strictLimit: boolean;
   onStrictLimitChange: (strict: boolean) => void;
+  /** SPEC-096 LAW-L6 — drives localized preset tokens in the editor. */
+  extractionLanguage?: string | null;
 }
 
 export function WorkspaceEntityTypesCard({
@@ -36,6 +38,7 @@ export function WorkspaceEntityTypesCard({
   onTypesChange,
   strictLimit,
   onStrictLimitChange,
+  extractionLanguage = null,
 }: WorkspaceEntityTypesCardProps) {
   const { t } = useTranslation();
 
@@ -60,6 +63,7 @@ export function WorkspaceEntityTypesCard({
             onChange={onTypesChange}
             strictLimit={strictLimit}
             onStrictLimitChange={onStrictLimitChange}
+            extractionLanguage={extractionLanguage}
           />
         ) : workspace.entity_types && workspace.entity_types.length > 0 ? (
           <div className="space-y-3">

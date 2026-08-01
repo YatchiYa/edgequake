@@ -5,6 +5,7 @@
 
 use super::entity_type_policy::{json_entity_types_prompt_section, EntityExtractionSchema};
 use super::extract_caps::ExtractionCaps;
+use super::language::json_language_instruction;
 
 /// Canonical JSON output format section shared by all JSON extractors.
 pub const JSON_OUTPUT_FORMAT_SECTION: &str = r#"## Output Format
@@ -19,10 +20,15 @@ Respond with valid JSON in this exact format:
 }"#;
 
 /// Build the primary JSON entity-extraction user prompt.
-pub fn json_extraction_prompt(text: &str, schema: &EntityExtractionSchema) -> String {
+pub fn json_extraction_prompt(
+    text: &str,
+    schema: &EntityExtractionSchema,
+    language: &str,
+) -> String {
     let types_section = json_entity_types_prompt_section(schema);
     let caps = ExtractionCaps::from_env();
     let limits = caps.prompt_quantity_limits_section();
+    let language_section = json_language_instruction(language);
 
     format!(
         r#"Extract entities and relationships from the following text.
@@ -30,6 +36,8 @@ pub fn json_extraction_prompt(text: &str, schema: &EntityExtractionSchema) -> St
 {types_section}
 
 {limits}
+
+{language_section}
 
 ## Naming Rules
 - Use human-readable semantic names for entities (title case when case-insensitive).
@@ -49,11 +57,13 @@ pub fn json_gleaning_prompt(
     text: &str,
     previous_entities: &[String],
     schema: &EntityExtractionSchema,
+    language: &str,
 ) -> String {
     let prev_entities_str = previous_entities.join(", ");
     let types_section = json_entity_types_prompt_section(schema);
     let caps = ExtractionCaps::from_env();
     let limits = caps.prompt_quantity_limits_section();
+    let language_section = json_language_instruction(language);
 
     format!(
         r#"MANY entities and relationships were missed in the last extraction.
@@ -74,6 +84,8 @@ Focus on:
 
 {limits}
 
+{language_section}
+
 {JSON_OUTPUT_FORMAT_SECTION}
 
 ## Text to Re-Analyze
@@ -91,7 +103,7 @@ mod tests {
     #[test]
     fn json_extraction_prompt_includes_types_and_format() {
         let schema = EntityExtractionSchema::server_default();
-        let prompt = json_extraction_prompt("Alice works at Acme.", &schema);
+        let prompt = json_extraction_prompt("Alice works at Acme.", &schema, "English");
         assert!(prompt.contains("Text to Analyze"));
         assert!(prompt.contains("Alice works at Acme."));
         assert!(prompt.contains("\"entities\""));
@@ -103,7 +115,7 @@ mod tests {
     #[test]
     fn json_extraction_prompt_includes_quantity_caps() {
         let schema = EntityExtractionSchema::server_default();
-        let prompt = json_extraction_prompt("Alice works at Acme.", &schema);
+        let prompt = json_extraction_prompt("Alice works at Acme.", &schema, "English");
         assert!(prompt.contains("Quantity Limits"));
         assert!(prompt.contains("40"));
         assert!(prompt.contains("100"));
@@ -112,7 +124,12 @@ mod tests {
     #[test]
     fn json_gleaning_prompt_lists_previous_entities() {
         let schema = EntityExtractionSchema::server_default();
-        let prompt = json_gleaning_prompt("Some text.", &["ALICE".into(), "ACME".into()], &schema);
+        let prompt = json_gleaning_prompt(
+            "Some text.",
+            &["ALICE".into(), "ACME".into()],
+            &schema,
+            "English",
+        );
         assert!(prompt.contains("ALICE, ACME"));
         assert!(prompt.contains("Text to Re-Analyze"));
         assert!(prompt.contains("\"relationships\""));
@@ -126,8 +143,38 @@ mod tests {
             types: vec!["API_OR_INTERFACE".into(), "OTHER".into()],
             strict: true,
         };
-        let prompt = json_gleaning_prompt("x", &[], &schema);
+        let prompt = json_gleaning_prompt("x", &[], &schema, "English");
         assert!(prompt.contains("API_OR_INTERFACE"));
         assert!(prompt.contains("STRICT") || prompt.contains("ONLY"));
+    }
+
+    #[test]
+    fn spec096_json_prompt_includes_language() {
+        let schema = EntityExtractionSchema::server_default();
+        let prompt = json_extraction_prompt("Alice works at Acme.", &schema, "Chinese");
+        assert!(prompt.contains("Chinese"));
+        assert!(prompt.contains("Output Language"));
+        assert!(prompt.contains("\"entities\""));
+        assert!(prompt.contains("\"name\""));
+        assert!(prompt.contains("JSON object/array keys exactly as specified in English"));
+    }
+
+    #[test]
+    fn spec096_gleaning_prompt_includes_language() {
+        let schema = EntityExtractionSchema::server_default();
+        let prompt = json_gleaning_prompt("text", &["A".into()], &schema, "Chinese");
+        assert!(prompt.contains("Chinese"));
+        assert!(prompt.contains("Output Language"));
+        let instruction = json_language_instruction("Chinese");
+        assert!(prompt.contains(&instruction));
+    }
+
+    #[test]
+    fn spec096_json_prompt_default_english() {
+        let schema = EntityExtractionSchema::server_default();
+        let prompt = json_extraction_prompt("Hello.", &schema, "English");
+        assert!(prompt.contains("English"));
+        assert!(prompt.contains("Output Language"));
+        assert!(prompt.contains("\"entities\""));
     }
 }

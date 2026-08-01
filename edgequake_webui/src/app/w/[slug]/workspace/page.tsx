@@ -18,6 +18,7 @@ import {
   WorkspaceNotFound,
 } from '@/components/workspace/workspace-deeplink-states';
 import { WorkspaceEntityTypesCard } from '@/components/workspace/workspace-entity-types-card';
+import { WorkspaceExtractionLanguageCard } from '@/components/workspace/workspace-extraction-language-card';
 import { WorkspacePageHeader } from '@/components/workspace/workspace-page-header';
 import { ProviderStatusHub } from '@/components/settings/provider-status-hub';
 import { WorkspaceActionsCard } from '@/components/workspace/workspace-actions-card';
@@ -25,6 +26,7 @@ import { WorkspaceModelConfigGrid } from '@/components/workspace/workspace-model
 import { WorkspaceStatusFooter } from '@/components/workspace/workspace-status-footer';
 import { WorkspaceStatsCards } from '@/components/workspace/workspace-stats-cards';
 import { ENTITY_PRESETS } from '@/constants/entity-presets';
+import { extractionLanguageToUpdatePayload } from '@/constants/extraction-languages';
 import { refreshDynamicModels } from '@/hooks/use-providers';
 import { useWorkspaceDetailQueries } from '@/hooks/use-workspace-detail-queries';
 import { useWorkspaceSlugResolver } from '@/hooks/use-workspace-slug-resolver';
@@ -38,13 +40,14 @@ import {
   getWorkspaceEmbeddingSelection,
   getWorkspaceLlmSelection,
 } from '@/lib/workspace/drafts';
+import { applyExtractionLanguageToEntityTypes } from '@/lib/workspace/remap-entity-types-on-language-change';
 import { useTenantStore } from '@/stores/use-tenant-store';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   FolderKanban,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -66,6 +69,32 @@ export default function WorkspacePage() {
     ...ENTITY_PRESETS.general.types,
   ]);
   const [selectedEntityTypesStrict, setSelectedEntityTypesStrict] = useState(true);
+  const [selectedExtractionLanguage, setSelectedExtractionLanguage] = useState<
+    string | null
+  >(null);
+
+  /** SPEC-096 LAW-L6: remap preset types when extraction language changes. */
+  const handleExtractionLanguageChange = useCallback(
+    (next: string | null) => {
+      const { types, remapped } = applyExtractionLanguageToEntityTypes(
+        selectedEntityTypes,
+        selectedExtractionLanguage,
+        next,
+      );
+      setSelectedExtractionLanguage(next);
+      if (remapped) {
+        setSelectedEntityTypes(types);
+        toast.info(
+          t(
+            'workspace.extractionLanguage.typesRemappedToast',
+            'Entity types updated to match extraction language. Applies to future ingestions.',
+          ),
+          { duration: 5000 },
+        );
+      }
+    },
+    [selectedEntityTypes, selectedExtractionLanguage, t],
+  );
 
   const {
     workspace,
@@ -89,8 +118,10 @@ export default function WorkspacePage() {
       embedding_dimension?: number;
       entity_types?: string[];
       entity_types_strict?: boolean;
+      extraction_language?: string;
       _embeddingChanged?: boolean;
       _llmChanged?: boolean;
+      _extractionLanguageChanged?: boolean;
     }) =>
       updateWorkspace(selectedTenantId!, selectedWorkspaceId!, {
         llm_model: data.llm_model,
@@ -100,11 +131,22 @@ export default function WorkspacePage() {
         embedding_dimension: data.embedding_dimension,
         entity_types: data.entity_types,
         entity_types_strict: data.entity_types_strict,
+        extraction_language: data.extraction_language,
       }),
     onSuccess: (_result, variables) => {
       toast.success(t('workspace.updateSuccess', 'Workspace updated successfully'));
       queryClient.invalidateQueries({ queryKey: ['workspace', selectedTenantId, selectedWorkspaceId] });
       setIsEditing(false);
+
+      if (variables._extractionLanguageChanged) {
+        toast.info(
+          t(
+            'workspace.extractionLanguage.changedToast',
+            'Extraction language updated. Reprocess documents to refresh the graph.',
+          ),
+          { duration: 6000 },
+        );
+      }
       
       // Check if model changes require rebuild
       const needsEmbeddingRebuild = variables._embeddingChanged;
@@ -160,11 +202,23 @@ export default function WorkspacePage() {
   });
 
   const handleSave = () => {
+    const previousLanguage = workspace?.extraction_language ?? null;
+    const nextLanguagePayload = extractionLanguageToUpdatePayload(
+      selectedExtractionLanguage,
+    );
+    const languageCleared =
+      nextLanguagePayload === 'none' || nextLanguagePayload === '';
+    const languageChanged =
+      (previousLanguage ?? null) !==
+      (languageCleared ? null : nextLanguagePayload);
+
     const data: Parameters<typeof updateMutation.mutate>[0] = {
       _embeddingChanged: embeddingModelChanged ?? false,
       _llmChanged: llmModelChanged ?? false,
+      _extractionLanguageChanged: languageChanged,
       entity_types: selectedEntityTypes,
       entity_types_strict: selectedEntityTypesStrict,
+      extraction_language: nextLanguagePayload,
       llm_model: selectedLLM?.model ?? '',
       llm_provider: selectedLLM?.provider ?? '',
     };
@@ -187,6 +241,7 @@ export default function WorkspacePage() {
       ws.entity_types?.length ? [...ws.entity_types] : [...ENTITY_PRESETS.general.types]
     );
     setSelectedEntityTypesStrict(ws.entity_types_strict ?? true);
+    setSelectedExtractionLanguage(ws.extraction_language ?? null);
   };
 
   const handleCancel = () => {
@@ -324,6 +379,14 @@ export default function WorkspacePage() {
         embeddingModelChanged={embeddingModelChanged ?? false}
       />
 
+      <WorkspaceExtractionLanguageCard
+        isEditing={isEditing}
+        workspace={workspace}
+        selectedLanguage={selectedExtractionLanguage}
+        onLanguageChange={handleExtractionLanguageChange}
+        disabled={updateMutation.isPending}
+      />
+
       <WorkspaceEntityTypesCard
         isEditing={isEditing}
         workspace={workspace}
@@ -331,6 +394,7 @@ export default function WorkspacePage() {
         onTypesChange={setSelectedEntityTypes}
         strictLimit={selectedEntityTypesStrict}
         onStrictLimitChange={setSelectedEntityTypesStrict}
+        extractionLanguage={selectedExtractionLanguage}
       />
 
       <ProviderStatusHub

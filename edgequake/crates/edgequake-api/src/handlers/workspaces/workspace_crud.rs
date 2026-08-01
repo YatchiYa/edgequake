@@ -116,6 +116,8 @@ pub async fn create_workspace(
         // SPEC-085: Pass entity_types from HTTP request body if provided
         entity_types: request.entity_types.clone(),
         entity_types_strict: request.entity_types_strict,
+        // SPEC-096: Extraction language for future ingestions
+        extraction_language: request.extraction_language.clone(),
     };
 
     // Store workspace via workspace service
@@ -319,13 +321,18 @@ pub async fn update_workspace(
         pdf_parser_backend: request.pdf_parser_backend,
         entity_types: request.entity_types,
         entity_types_strict: request.entity_types_strict,
+        extraction_language: request.extraction_language,
     };
 
     let workspace = state
         .workspace_service
         .update_workspace(workspace_id, update_request)
         .await
-        .map_err(|e| ApiError::NotFound(e.to_string()))?;
+        .map_err(|e| match &e {
+            edgequake_core::Error::Validation(msg) => ApiError::BadRequest(msg.clone()),
+            edgequake_core::Error::NotFound(msg) => ApiError::NotFound(msg.clone()),
+            _ => ApiError::BadRequest(e.to_string()),
+        })?;
 
     let response = workspace_to_response(&workspace);
 

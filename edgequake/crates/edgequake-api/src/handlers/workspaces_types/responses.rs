@@ -114,6 +114,11 @@ pub struct WorkspaceResponse {
     /// When true, unknown types are remapped to OTHER/CONCEPT (default true).
     pub entity_types_strict: bool,
 
+    /// Configured extraction language override (SPEC-096).
+    /// `null` / omitted means inherit `EDGEQUAKE_EXTRACTION_LANGUAGE` or English.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extraction_language: Option<String>,
+
     /// Creation timestamp.
     pub created_at: String,
     /// Last update timestamp.

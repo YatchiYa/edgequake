@@ -38,6 +38,8 @@ where
 {
     llm_provider: std::sync::Arc<L>,
     entity_schema: crate::prompts::EntityExtractionSchema,
+    /// Natural-language output language for entity/relationship string values (SPEC-096).
+    language: String,
 }
 
 impl<L> LLMExtractor<L>
@@ -49,6 +51,7 @@ where
         Self {
             llm_provider,
             entity_schema: crate::prompts::EntityExtractionSchema::server_default(),
+            language: crate::prompts::DEFAULT_EXTRACTION_LANGUAGE.to_string(),
         }
     }
 }
@@ -75,6 +78,17 @@ where
     pub fn with_entity_schema(self, schema: crate::prompts::EntityExtractionSchema) -> Self {
         ConfigurableEntitySchema::with_entity_schema(self, schema)
     }
+
+    /// Set natural-language output language (SPEC-096).
+    pub fn with_language(mut self, language: impl Into<String>) -> Self {
+        self.language = language.into();
+        self
+    }
+
+    /// Current extraction language.
+    pub fn language(&self) -> &str {
+        &self.language
+    }
 }
 
 impl<L> LLMExtractor<L>
@@ -85,7 +99,7 @@ where
     fn build_prompt(&self, chunk: &TextChunk) -> String {
         let text =
             crate::prompts::text_with_section_context(&chunk.content, chunk.section.as_ref());
-        crate::prompts::json_extraction_prompt(&text, &self.entity_schema)
+        crate::prompts::json_extraction_prompt(&text, &self.entity_schema, &self.language)
     }
 
     /// Parse the LLM response via shared [`JsonExtractionParser`] (normalization + recovery).
@@ -193,5 +207,18 @@ mod tests {
         let response = r#"{"entities":[{"name":"The Company","type":"ORG","description":"x"}],"relationships":[]}"#;
         let extraction = extractor.parse_response(response, "c1").unwrap();
         assert_eq!(extraction.entities[0].name, "COMPANY");
+    }
+
+    #[test]
+    fn spec096_llm_extractor_language_builder() {
+        use crate::chunker::TextChunk;
+
+        let provider = Arc::new(edgequake_llm::MockProvider::default());
+        let extractor = LLMExtractor::new(provider).with_language("Japanese");
+        assert_eq!(extractor.language(), "Japanese");
+        let chunk = TextChunk::new("c1", "Tokyo is the capital.", 0, 0, 21);
+        let prompt = extractor.build_prompt(&chunk);
+        assert!(prompt.contains("Japanese"));
+        assert!(prompt.contains("Output Language"));
     }
 }

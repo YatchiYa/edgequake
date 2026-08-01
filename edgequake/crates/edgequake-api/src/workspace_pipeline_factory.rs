@@ -132,6 +132,31 @@ impl WorkspacePipelineFactory {
                     edgequake_pipeline::prompts::EntityExtractionSchema::from_workspace_metadata(
                         &ws.metadata,
                     );
+                let ws_lang =
+                    edgequake_pipeline::extraction_language_from_metadata(&ws.metadata);
+                let extraction_language =
+                    edgequake_pipeline::resolve_extraction_language_from_env(ws_lang.as_deref());
+                let language_source = if ws_lang
+                    .as_deref()
+                    .map(|s| !s.trim().is_empty())
+                    .unwrap_or(false)
+                {
+                    "workspace"
+                } else if std::env::var(edgequake_pipeline::EXTRACTION_LANGUAGE_ENV)
+                    .map(|v| !v.trim().is_empty())
+                    .unwrap_or(false)
+                {
+                    "env"
+                } else {
+                    "default"
+                };
+                info!(
+                    workspace_id = workspace_id,
+                    extraction_language = %extraction_language,
+                    extraction_language_source = language_source,
+                    "Resolved extraction language for ingestion pipeline"
+                );
+                let options = options.with_extraction_language(extraction_language);
                 Ok(Arc::new(build_ingestion_pipeline(
                     llm,
                     embedding,

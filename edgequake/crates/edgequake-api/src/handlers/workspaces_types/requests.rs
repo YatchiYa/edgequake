@@ -184,6 +184,12 @@ pub struct CreateWorkspaceApiRequest {
     /// When true (default), limit extraction to listed types; unknown → OTHER.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub entity_types_strict: Option<bool>,
+
+    /// Natural-language output language for entity/relationship values (SPEC-096).
+    /// Allowlisted names: English, Chinese, Japanese, Korean, Spanish, French,
+    /// German, Portuguese, Italian, Russian. Omit to inherit env/default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extraction_language: Option<String>,
 }
 
 /// Request to update a workspace.
@@ -249,4 +255,9 @@ pub struct UpdateWorkspaceApiRequest {
     /// Strict entity type limit (default true). Set false to allow free-form types.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub entity_types_strict: Option<bool>,
+
+    /// Extraction output language (SPEC-096). Omit = leave unchanged;
+    /// empty string or `"none"` clears the workspace override.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extraction_language: Option<String>,
 }

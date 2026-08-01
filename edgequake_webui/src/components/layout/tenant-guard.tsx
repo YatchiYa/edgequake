@@ -2,6 +2,7 @@
 
 import { ModelSelector } from '@/components/models/model-selector';
 import { EntityTypeSelector } from '@/components/shared/entity-type-selector';
+import { CreateWorkspaceExtractionLanguageField } from '@/components/workspace/create-workspace-extraction-language-field';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -16,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ENTITY_PRESETS } from '@/constants/entity-presets';
 import { createTenant, createWorkspace, getTenants, getWorkspaces } from '@/lib/api/edgequake';
+import { applyExtractionLanguageToEntityTypes } from '@/lib/workspace/remap-entity-types-on-language-change';
 import { useTenantStore } from '@/stores/use-tenant-store';
 import type { Tenant } from '@/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -73,6 +75,22 @@ export function TenantGuard({ children }: TenantGuardProps) {
   const [workspaceVisionLlmModel, setWorkspaceVisionLlmModel] = useState<string>();
   // SPEC-085: Custom entity types for workspace
   const [workspaceEntityTypes, setWorkspaceEntityTypes] = useState<string[]>([...ENTITY_PRESETS.general.types]);
+  const [workspaceExtractionLanguage, setWorkspaceExtractionLanguage] = useState<
+    string | null
+  >(null);
+
+  const handleCreateWorkspaceLanguageChange = useCallback(
+    (next: string | null) => {
+      const { types, remapped } = applyExtractionLanguageToEntityTypes(
+        workspaceEntityTypes,
+        workspaceExtractionLanguage,
+        next,
+      );
+      setWorkspaceExtractionLanguage(next);
+      if (remapped) setWorkspaceEntityTypes(types);
+    },
+    [workspaceEntityTypes, workspaceExtractionLanguage],
+  );
   
   // Track if we're in the middle of context setup (prevents premature children render)
   const [isSettingUpContext, setIsSettingUpContext] = useState(false);
@@ -313,6 +331,10 @@ export function TenantGuard({ children }: TenantGuardProps) {
         ...(visionConfig.provider && { vision_llm_provider: visionConfig.provider }),
         // SPEC-085: Custom entity types
         ...(workspaceEntityTypes.length > 0 && { entity_types: workspaceEntityTypes }),
+        // SPEC-096
+        ...(workspaceExtractionLanguage
+          ? { extraction_language: workspaceExtractionLanguage }
+          : {}),
       };
       
       const newWorkspace = await createWorkspaceMutation.mutateAsync(workspaceData);
@@ -333,6 +355,7 @@ export function TenantGuard({ children }: TenantGuardProps) {
       setWorkspaceEmbeddingModel(undefined);
       setWorkspaceVisionLlmModel(undefined);
       setWorkspaceEntityTypes([...ENTITY_PRESETS.general.types]); // SPEC-085: Reset entity types
+      setWorkspaceExtractionLanguage(null);
       setIsSettingUpContext(false);
     } catch (error) {
       setIsSettingUpContext(false);
@@ -341,6 +364,7 @@ export function TenantGuard({ children }: TenantGuardProps) {
       });
     }
   }, [newWorkspaceName, newWorkspaceSlug, workspaceLlmModel, workspaceEmbeddingModel, workspaceVisionLlmModel, workspaceEntityTypes,
+      workspaceExtractionLanguage,
       selectedTenantId, parseModelValue, createWorkspaceMutation, 
       selectWorkspace, setWorkspaces, workspacesData, queryClient, t]);
 
@@ -633,6 +657,13 @@ export function TenantGuard({ children }: TenantGuardProps) {
                   {t('workspace.visionLlmModelHint', 'For PDF-to-Markdown image extraction (must support vision)')}
                 </p>
               </div>
+              {/* SPEC-096: Extraction language before entity types (LAW-L6) */}
+              <div className="grid gap-2 sm:col-span-2">
+                <CreateWorkspaceExtractionLanguageField
+                  value={workspaceExtractionLanguage}
+                  onChange={handleCreateWorkspaceLanguageChange}
+                />
+              </div>
               {/* SPEC-085: Entity type configuration */}
               <div className="grid gap-2 sm:col-span-2">
                 <Label>{t('entityTypes.title', 'Entity Types')}</Label>
@@ -642,6 +673,7 @@ export function TenantGuard({ children }: TenantGuardProps) {
                 <EntityTypeSelector
                   value={workspaceEntityTypes}
                   onChange={setWorkspaceEntityTypes}
+                  extractionLanguage={workspaceExtractionLanguage}
                 />
               </div>
             </div>

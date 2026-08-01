@@ -61,6 +61,8 @@ pub struct GleaningExtractor {
     entity_schema: EntityExtractionSchema,
     /// Gleaning configuration.
     config: GleaningConfig,
+    /// Natural-language output language (must match base extractor; SPEC-096).
+    language: String,
 }
 
 impl GleaningExtractor {
@@ -74,12 +76,19 @@ impl GleaningExtractor {
             base_extractor,
             entity_schema: EntityExtractionSchema::server_default(),
             config: GleaningConfig::default(),
+            language: crate::prompts::DEFAULT_EXTRACTION_LANGUAGE.to_string(),
         }
     }
 
     /// Set the entity type schema (strict/permissive allow-list).
     pub fn with_entity_schema(mut self, schema: EntityExtractionSchema) -> Self {
         self.entity_schema = schema;
+        self
+    }
+
+    /// Set natural-language output language (SPEC-096).
+    pub fn with_language(mut self, language: impl Into<String>) -> Self {
+        self.language = language.into();
         self
     }
 
@@ -99,7 +108,12 @@ impl GleaningExtractor {
     fn build_gleaning_prompt(&self, chunk: &TextChunk, previous_entities: &[String]) -> String {
         let text =
             crate::prompts::text_with_section_context(&chunk.content, chunk.section.as_ref());
-        crate::prompts::json_gleaning_prompt(&text, previous_entities, &self.entity_schema)
+        crate::prompts::json_gleaning_prompt(
+            &text,
+            previous_entities,
+            &self.entity_schema,
+            &self.language,
+        )
     }
 
     /// Parse gleaning response via shared JSON parser (normalization + BR0006 filters).

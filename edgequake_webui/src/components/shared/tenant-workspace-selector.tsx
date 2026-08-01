@@ -43,6 +43,7 @@ import {
     getTenants,
     getWorkspaces,
 } from '@/lib/api/edgequake';
+import { applyExtractionLanguageToEntityTypes } from '@/lib/workspace/remap-entity-types-on-language-change';
 import { useTenantStore } from '@/stores/use-tenant-store';
 import { useQueryUIStore } from '@/stores/use-query-ui-store';
 import type { CreateWorkspaceRequest, Tenant, Workspace } from '@/types';
@@ -58,6 +59,7 @@ import {
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import { CreateWorkspaceExtractionLanguageField } from '@/components/workspace/create-workspace-extraction-language-field';
 import { EntityTypeSelector } from './entity-type-selector';
 
 interface TenantWorkspaceSelectorProps {
@@ -113,6 +115,23 @@ export function TenantWorkspaceSelector({
   const [tenantDefaultVision, setTenantDefaultVision] = useState<LLMSelection | undefined>(undefined);
   // SPEC-085: Entity types for new workspace (defaults to General preset)
   const [workspaceEntityTypes, setWorkspaceEntityTypes] = useState<string[]>([...ENTITY_PRESETS.general.types]);
+  // SPEC-096: Extraction language (null = server default)
+  const [workspaceExtractionLanguage, setWorkspaceExtractionLanguage] = useState<
+    string | null
+  >(null);
+
+  const handleCreateWorkspaceLanguageChange = useCallback(
+    (next: string | null) => {
+      const { types, remapped } = applyExtractionLanguageToEntityTypes(
+        workspaceEntityTypes,
+        workspaceExtractionLanguage,
+        next,
+      );
+      setWorkspaceExtractionLanguage(next);
+      if (remapped) setWorkspaceEntityTypes(types);
+    },
+    [workspaceEntityTypes, workspaceExtractionLanguage],
+  );
 
   // Initialize from storage on mount
   useEffect(() => {
@@ -685,6 +704,12 @@ export function TenantWorkspaceSelector({
               />
             </div>
 
+            {/* SPEC-096: Extraction language before entity types (LAW-L6) */}
+            <CreateWorkspaceExtractionLanguageField
+              value={workspaceExtractionLanguage}
+              onChange={handleCreateWorkspaceLanguageChange}
+            />
+
             {/* Entity Type Selection - SPEC-085 */}
             <div className="space-y-2">
               <Label>
@@ -696,6 +721,7 @@ export function TenantWorkspaceSelector({
               <EntityTypeSelector
                 value={workspaceEntityTypes}
                 onChange={setWorkspaceEntityTypes}
+                extractionLanguage={workspaceExtractionLanguage}
               />
             </div>
           </div>
@@ -720,6 +746,10 @@ export function TenantWorkspaceSelector({
                   pdf_parser_backend: 'vision',
                   // SPEC-085: Pass configured entity types
                   entity_types: workspaceEntityTypes.length > 0 ? workspaceEntityTypes : undefined,
+                  // SPEC-096
+                  ...(workspaceExtractionLanguage
+                    ? { extraction_language: workspaceExtractionLanguage }
+                    : {}),
                 })
               }
               disabled={

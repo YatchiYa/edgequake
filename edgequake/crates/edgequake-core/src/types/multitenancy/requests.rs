@@ -92,6 +92,12 @@ pub struct CreateWorkspaceRequest {
     /// When true (default), unknown extracted types remap to OTHER/CONCEPT.
     /// When false, LLM may emit additional type labels without forced OTHER catch-all.
     pub entity_types_strict: Option<bool>,
+
+    /// Natural-language output language for entity/relationship string values (SPEC-096).
+    ///
+    /// Allowlisted display names (e.g. `"Chinese"`, `"French"`). Omit to inherit
+    /// `EDGEQUAKE_EXTRACTION_LANGUAGE` / English. Pass `""` or `"none"` to clear.
+    pub extraction_language: Option<String>,
 }
 
 impl CreateWorkspaceRequest {
@@ -296,6 +302,10 @@ pub struct UpdateWorkspaceRequest {
 
     /// Strict entity type enforcement (default true when omitted).
     pub entity_types_strict: Option<bool>,
+
+    /// Extraction output language override (SPEC-096). Omit = leave unchanged;
+    /// `""` / `"none"` clears metadata key.
+    pub extraction_language: Option<String>,
 }
 
 /// Statistics for a workspace.

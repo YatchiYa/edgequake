@@ -119,3 +119,13 @@ export function spec051Screenshot(fileName: string): string {
     fileName,
   );
 }
+
+/** `specs/096-multi-language-extraction/e2e/screenshots/<fileName>` */
+export function spec096Screenshot(fileName: string): string {
+  return path.join(
+    ensureDir(
+      path.join(REPO_ROOT, "specs/096-multi-language-extraction/e2e/screenshots"),
+    ),
+    fileName,
+  );
+}

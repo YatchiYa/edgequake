@@ -160,6 +160,12 @@ export interface Workspace {
    * @implements SPEC-013 entity_extraction strict mode
    */
   entity_types_strict?: boolean;
+  /**
+   * Natural-language output language for entity/relationship string values.
+   * Null/absent means inherit EDGEQUAKE_EXTRACTION_LANGUAGE / English.
+   * @implements SPEC-096 / GH-352
+   */
+  extraction_language?: string | null;
   /** Creation timestamp. */
   created_at: string;
   /** Last update timestamp. */
@@ -230,6 +236,10 @@ export interface CreateWorkspaceRequest {
    * @implements SPEC-085: Custom entity configuration from UI
    */
   entity_types?: string[];
+  /**
+   * Extraction output language (SPEC-096). Omit for server default.
+   */
+  extraction_language?: string | null;
 }
 
 /**

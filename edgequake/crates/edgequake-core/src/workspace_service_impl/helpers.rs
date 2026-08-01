@@ -45,6 +45,39 @@ pub(crate) fn apply_entity_types_strict_metadata(
     }
 }
 
+/// Apply `extraction_language` to workspace metadata (SPEC-096 / GH-352).
+///
+/// - `None` → leave unchanged
+/// - `""` / `"none"` → remove key (inherit env/default)
+/// - allowlisted value → store canonical display name
+/// - unsupported → `Err` (API 400)
+pub(crate) fn apply_extraction_language_metadata(
+    metadata: &mut HashMap<String, serde_json::Value>,
+    language: Option<String>,
+) -> Result<(), String> {
+    let Some(raw) = language else {
+        return Ok(());
+    };
+    if edgequake_pipeline::is_extraction_language_clear(&raw) {
+        metadata.remove("extraction_language");
+        return Ok(());
+    }
+    match edgequake_pipeline::canonicalize_extraction_language(&raw) {
+        Some(canonical) => {
+            metadata.insert(
+                "extraction_language".to_string(),
+                serde_json::json!(canonical),
+            );
+            Ok(())
+        }
+        None => Err(format!(
+            "Unsupported extraction_language '{}'. Allowed values: {}",
+            raw.trim(),
+            edgequake_pipeline::SUPPORTED_LANGUAGES.join(", ")
+        )),
+    }
+}
+
 /// @implements SPEC-085: Custom entity configuration normalization
 pub(crate) fn normalize_entity_types(types: &[String]) -> Vec<String> {
     const MAX_ENTITY_TYPES: usize = 50;

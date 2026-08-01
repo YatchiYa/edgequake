@@ -196,6 +196,25 @@ WebUI `/api-explorer` driven by OpenAPI snapshot with auth token and workspace b
 
 ---
 
+### FEAT-096 — Multi-Language Extraction (SPEC-096 / GH-352)
+
+**Spec**: [specs/096-multi-language-extraction](../specs/096-multi-language-extraction/)  
+**Issue**: [#352](https://github.com/raphaelmansuy/edgequake/issues/352)  
+**Status**: ✅ Implemented (v0.22.0+)
+
+Workspace-scoped `extraction_language` for KG entity/relationship natural-language output:
+
+- Allowlist aligned with LightRAG `SUMMARY_LANGUAGE` / `SUPPORTED_LANGUAGES`
+- Resolve: workspace metadata → `EDGEQUAKE_EXTRACTION_LANGUAGE` → `English`
+- Production JSON extractors inject a shared language instruction (JSON keys stay English)
+- WebUI `WorkspaceExtractionLanguageCard` beside Entity Types; future ingestions / reprocess only
+- Language-aware entity-type presets (LAW-L6): known presets remap to localized UPPERCASE tokens (e.g. French `PERSONNE`); custom lists stay as-is
+- OpenAPI + Playwright e2e screenshots under `specs/096-multi-language-extraction/e2e/screenshots/`
+
+**Ops note**: Multilingual corpora often need a multilingual embedding model for retrieval quality (TrustGraph guidance).
+
+---
+
 ## Release Map (v0.11 → v0.19)
 
 | Version | Date | Highlights |

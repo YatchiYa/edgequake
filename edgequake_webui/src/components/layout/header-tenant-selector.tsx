@@ -1,6 +1,7 @@
 'use client';
 
 import { EntityTypeSelector } from '@/components/shared/entity-type-selector';
+import { CreateWorkspaceExtractionLanguageField } from '@/components/workspace/create-workspace-extraction-language-field';
 import { Button } from '@/components/ui/button';
 import {
     Collapsible,
@@ -48,6 +49,7 @@ import {
     getWorkspaces,
 } from '@/lib/api/edgequake';
 import { cn } from '@/lib/utils';
+import { applyExtractionLanguageToEntityTypes } from '@/lib/workspace/remap-entity-types-on-language-change';
 import { useTenantStore } from '@/stores/use-tenant-store';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -115,9 +117,24 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
   const [tenantDefaultVisionLLM, setTenantDefaultVisionLLM] = useState<LLMSelection | undefined>(undefined);
   // SPEC-085: Custom entity types for new workspace
   const [workspaceEntityTypes, setWorkspaceEntityTypes] = useState<string[]>([...ENTITY_PRESETS.general.types]);
+  const [workspaceExtractionLanguage, setWorkspaceExtractionLanguage] = useState<
+    string | null
+  >(null);
   const [showEntityTypeConfig, setShowEntityTypeConfig] = useState(false);
   const [useServerModelDefaults, setUseServerModelDefaults] = useState(false);
 
+  const handleCreateWorkspaceLanguageChange = useCallback(
+    (next: string | null) => {
+      const { types, remapped } = applyExtractionLanguageToEntityTypes(
+        workspaceEntityTypes,
+        workspaceExtractionLanguage,
+        next,
+      );
+      setWorkspaceExtractionLanguage(next);
+      if (remapped) setWorkspaceEntityTypes(types);
+    },
+    [workspaceEntityTypes, workspaceExtractionLanguage],
+  );
 
   // Generate URL-safe slug from name
   const generateSlug = useCallback((name: string): string => {
@@ -260,6 +277,7 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
       vision_llm_model?: string;
       vision_llm_provider?: string;
       entity_types?: string[];
+      extraction_language?: string;
     }) =>
       selectedTenantId
         ? createWorkspace(selectedTenantId, data)
@@ -276,6 +294,7 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
       setEmbeddingSelection(undefined); // Reset embedding selection
       setWorkspaceVisionLLMSelection(undefined); // Reset vision LLM selection
       setWorkspaceEntityTypes([...ENTITY_PRESETS.general.types]); // SPEC-085: Reset entity types
+      setWorkspaceExtractionLanguage(null);
       setShowEntityTypeConfig(false);
     },
     onError: (error) => {
@@ -672,6 +691,10 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
               onUseServerDefaultsChange={setUseServerModelDefaults}
             />
 
+            <CreateWorkspaceExtractionLanguageField
+              value={workspaceExtractionLanguage}
+              onChange={handleCreateWorkspaceLanguageChange}
+            />
             <div className="rounded-lg border p-3">
               <Collapsible open={showEntityTypeConfig} onOpenChange={setShowEntityTypeConfig}>
                 <CollapsibleTrigger asChild>
@@ -696,6 +719,7 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
                   <EntityTypeSelector
                     value={workspaceEntityTypes}
                     onChange={setWorkspaceEntityTypes}
+                    extractionLanguage={workspaceExtractionLanguage}
                   />
                 </CollapsibleContent>
               </Collapsible>
@@ -722,6 +746,9 @@ export function HeaderTenantSelector({ className }: HeaderTenantSelectorProps) {
                       vision_llm_provider: workspaceVisionLLMSelection?.provider,
                     }),
                 entity_types: workspaceEntityTypes.length > 0 ? workspaceEntityTypes : undefined,
+                ...(workspaceExtractionLanguage
+                  ? { extraction_language: workspaceExtractionLanguage }
+                  : {}),
               })}
               disabled={
                 !newWorkspaceName.trim() ||

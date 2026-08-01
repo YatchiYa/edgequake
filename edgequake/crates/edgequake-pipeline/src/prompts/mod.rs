@@ -30,6 +30,7 @@ mod entity_type_policy;
 mod extract_caps;
 mod json_extract;
 mod json_prompts;
+mod language;
 mod normalizer;
 mod parser;
 mod section_context;
@@ -46,6 +47,11 @@ pub use extract_caps::{
 };
 pub use json_extract::extract_json_from_response;
 pub use json_prompts::{json_extraction_prompt, json_gleaning_prompt, JSON_OUTPUT_FORMAT_SECTION};
+pub use language::{
+    canonicalize_extraction_language, extraction_language_from_metadata,
+    is_extraction_language_clear, json_language_instruction, resolve_extraction_language,
+    resolve_extraction_language_from_env, DEFAULT_EXTRACTION_LANGUAGE, EXTRACTION_LANGUAGE_ENV,
+};
 pub use normalizer::{is_opaque_identifier, normalize_entity_name};
 pub use parser::{
     detect_format_markers, ExtractionResultParser, HybridExtractionParser, JsonExtractionParser,

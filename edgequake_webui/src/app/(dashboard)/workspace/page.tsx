@@ -36,14 +36,17 @@ import { WorkspaceExtendedModelConfig } from '@/components/workspace/workspace-e
 import { WorkspaceModelConfigGrid } from '@/components/workspace/workspace-model-config-grid';
 import { WorkspaceStatusFooter } from '@/components/workspace/workspace-status-footer';
 import { WorkspaceEntityTypesCard } from '@/components/workspace/workspace-entity-types-card';
+import { WorkspaceExtractionLanguageCard } from '@/components/workspace/workspace-extraction-language-card';
 import { WorkspacePageHeader } from '@/components/workspace/workspace-page-header';
 import { ProviderStatusHub } from '@/components/settings/provider-status-hub';
 import { WorkspaceStatsCards } from '@/components/workspace/workspace-stats-cards';
 import { ENTITY_PRESETS } from '@/constants/entity-presets';
+import { extractionLanguageToUpdatePayload } from '@/constants/extraction-languages';
 import { refreshDynamicModels } from '@/hooks/use-providers';
 import { useWorkspaceDetailQueries } from '@/hooks/use-workspace-detail-queries';
 import { useWorkspaceTenantValidator } from '@/hooks/use-workspace-tenant-validator';
 import { deleteWorkspace, updateWorkspace } from '@/lib/api/edgequake';
+import { applyExtractionLanguageToEntityTypes } from '@/lib/workspace/remap-entity-types-on-language-change';
 import {
   getWorkspaceEmbeddingSelection,
   getWorkspaceLlmSelection,
@@ -59,7 +62,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -91,6 +94,33 @@ export default function WorkspacePage() {
     ...ENTITY_PRESETS.general.types,
   ]);
   const [selectedEntityTypesStrict, setSelectedEntityTypesStrict] = useState(true);
+  const [selectedExtractionLanguage, setSelectedExtractionLanguage] = useState<
+    string | null
+  >(null);
+
+  /** SPEC-096 LAW-L6: remap preset types when extraction language changes. */
+  const handleExtractionLanguageChange = useCallback(
+    (next: string | null) => {
+      const { types, remapped } = applyExtractionLanguageToEntityTypes(
+        selectedEntityTypes,
+        selectedExtractionLanguage,
+        next,
+      );
+      setSelectedExtractionLanguage(next);
+      if (remapped) {
+        setSelectedEntityTypes(types);
+        toast.info(
+          t(
+            'workspace.extractionLanguage.typesRemappedToast',
+            'Entity types updated to match extraction language. Applies to future ingestions.',
+          ),
+          { duration: 5000 },
+        );
+      }
+    },
+    [selectedEntityTypes, selectedExtractionLanguage, t],
+  );
+
   // FIX #171: Delete workspace state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -136,9 +166,11 @@ export default function WorkspacePage() {
       pdf_parser_backend?: PdfParserBackendChoice;
       entity_types?: string[];
       entity_types_strict?: boolean;
+      extraction_language?: string;
       _embeddingChanged?: boolean;
       _llmChanged?: boolean;
       _visionChanged?: boolean;
+      _extractionLanguageChanged?: boolean;
     }) =>
       updateWorkspace(selectedTenantId!, selectedWorkspaceId!, {
         llm_model: data.llm_model,
@@ -151,11 +183,22 @@ export default function WorkspacePage() {
         pdf_parser_backend: data.pdf_parser_backend,
         entity_types: data.entity_types,
         entity_types_strict: data.entity_types_strict,
+        extraction_language: data.extraction_language,
       }),
     onSuccess: (_result, variables) => {
       toast.success(t('workspace.updateSuccess', 'Workspace updated successfully'));
       queryClient.invalidateQueries({ queryKey: ['workspace', selectedTenantId, selectedWorkspaceId] });
       setIsEditing(false);
+
+      if (variables._extractionLanguageChanged) {
+        toast.info(
+          t(
+            'workspace.extractionLanguage.changedToast',
+            'Extraction language updated. Reprocess documents to refresh the graph.',
+          ),
+          { duration: 6000 },
+        );
+      }
       
       // Check if model changes require rebuild
       const needsEmbeddingRebuild = variables._embeddingChanged;
@@ -224,12 +267,24 @@ export default function WorkspacePage() {
   });
 
   const handleSave = () => {
+    const previousLanguage = workspace?.extraction_language ?? null;
+    const nextLanguagePayload = extractionLanguageToUpdatePayload(
+      selectedExtractionLanguage,
+    );
+    const languageCleared =
+      nextLanguagePayload === 'none' || nextLanguagePayload === '';
+    const languageChanged =
+      (previousLanguage ?? null) !==
+      (languageCleared ? null : nextLanguagePayload);
+
     const data: Parameters<typeof updateMutation.mutate>[0] = {
       _embeddingChanged: embeddingModelChanged ?? false,
       _llmChanged: llmModelChanged ?? false,
       _visionChanged: visionLLMChanged ?? false,
+      _extractionLanguageChanged: languageChanged,
       entity_types: selectedEntityTypes,
       entity_types_strict: selectedEntityTypesStrict,
+      extraction_language: nextLanguagePayload,
     };
 
     // SPEC-013: empty strings clear workspace override → server/env defaults (same as vision)
@@ -265,6 +320,7 @@ export default function WorkspacePage() {
         : [...ENTITY_PRESETS.general.types]
     );
     setSelectedEntityTypesStrict(workspace?.entity_types_strict ?? true);
+    setSelectedExtractionLanguage(workspace?.extraction_language ?? null);
   };
 
   const handleEditStart = () => {
@@ -277,6 +333,7 @@ export default function WorkspacePage() {
         ? [...workspace.entity_types]
         : [...ENTITY_PRESETS.general.types]
     );
+    setSelectedExtractionLanguage(workspace?.extraction_language ?? null);
     setSelectedEntityTypesStrict(workspace?.entity_types_strict ?? true);
     setIsEditing(true);
   };
@@ -421,6 +478,14 @@ export default function WorkspacePage() {
         visionLLMChanged={visionLLMChanged ?? false}
       />
 
+      <WorkspaceExtractionLanguageCard
+        isEditing={isEditing}
+        workspace={workspace}
+        selectedLanguage={selectedExtractionLanguage}
+        onLanguageChange={handleExtractionLanguageChange}
+        disabled={updateMutation.isPending}
+      />
+
       <WorkspaceEntityTypesCard
         isEditing={isEditing}
         workspace={workspace}
@@ -428,6 +493,7 @@ export default function WorkspacePage() {
         onTypesChange={setSelectedEntityTypes}
         strictLimit={selectedEntityTypesStrict}
         onStrictLimitChange={setSelectedEntityTypesStrict}
+        extractionLanguage={selectedExtractionLanguage}
       />
 
       <ProviderStatusHub
