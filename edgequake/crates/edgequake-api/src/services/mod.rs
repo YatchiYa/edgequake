@@ -22,6 +22,7 @@ pub mod converting_subprogress;
 pub mod cost_aggregation;
 pub mod document_assets;
 pub mod document_body_loader;
+pub mod document_delete_admit;
 pub mod document_deletion;
 pub mod document_graph_cascade;
 pub mod document_graph_lineage;
@@ -141,6 +142,9 @@ pub use converting_subprogress::{
 pub use document_assets::{
     document_mm_assets_root, mm_assets_base_dir, multimodal_asset_base_dir,
     multimodal_images_requested, page_drawing_assets_config, page_drawing_assets_config_for_vision,
+};
+pub use document_delete_admit::{
+    admit_document_deleting, admit_documents_deleting, touch_sql_delete_failed,
 };
 pub use document_deletion::{
     find_active_deletion_track_id, perform_document_deletion, purge_document_list_surfaces,

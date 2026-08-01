@@ -168,7 +168,7 @@ pub use document_metadata_integrity::{
 pub use failed_chunks::{FailedChunkInsert, FailedChunkRecord, InMemoryFailedChunkStore};
 pub use graph_batch_dedupe::{
     dedupe_edges_by_endpoints, dedupe_nodes_by_id, graph_upsert_chunk_size,
-    normalize_rel_type, normalize_relation_type_str,
+    normalize_rel_type, normalize_relation_type_str, sql_eq_rel_type_arbiter_expr,
     parse_graph_upsert_chunk, resolve_graph_upsert_chunk, DEFAULT_GRAPH_UPSERT_CHUNK,
 };
 pub use graph_metrics::{
@@ -229,10 +229,11 @@ pub use serving_fence::{
 pub use traits::{
     kv_key_matches_like, vector_upsert_chunk_size, Chunk, ChunkCursor, ChunkId, ChunkRepository,
     ChunkText, DocumentId, DocumentRepository, EmbeddingIndex, FleetEmbeddingIndex, GraphEdge,
-    GraphNode, GraphReadView, GraphStorage, GraphStorageAnalyticsOps, GraphStorageMutateOps,
-    GraphStorageReadOps, InsertReport, KVStorage, KnowledgeGraph, MetadataFilter,
-    MirrorLegacyReport, ModelId, TextEmbedder, UnitOfWork, VectorSearchResult, VectorStorage,
-    WorkspaceId, WorkspaceVectorConfig, WorkspaceVectorRegistry, DEFAULT_VECTOR_UPSERT_CHUNK,
+    GraphNode, GraphPropertyWriteMode, GraphReadView, GraphStorage, GraphStorageAnalyticsOps,
+    GraphStorageMutateOps, GraphStorageReadOps, InsertReport, KVStorage, KnowledgeGraph,
+    MetadataFilter, MirrorLegacyReport, ModelId, TextEmbedder, UnitOfWork, VectorSearchResult,
+    VectorStorage, WorkspaceId, WorkspaceVectorConfig, WorkspaceVectorRegistry,
+    DEFAULT_VECTOR_UPSERT_CHUNK,
 };
 
 // Re-export adapters

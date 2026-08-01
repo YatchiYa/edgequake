@@ -305,7 +305,11 @@ export const DocumentTableSection = memo(function DocumentTableSection({
                       onDelete={onDelete}
                       isRetrying={isRetrying}
                       isCancelling={isCancelling}
-                      isDeleting={deletingDocumentIds?.has(doc.id) ?? false}
+                      isDeleting={
+                        (deletingDocumentIds?.has(doc.id) ?? false) ||
+                        (doc.status || '').toLowerCase() === 'deleting' ||
+                        (doc.current_stage || '').toLowerCase() === 'deleting'
+                      }
                     />
                   );
                 })}

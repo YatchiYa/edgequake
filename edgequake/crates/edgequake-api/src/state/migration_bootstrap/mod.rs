@@ -24,11 +24,18 @@ pub(super) const SQL_139_APPLY: &str =
 pub(super) const SQL_140_APPLY: &str =
     include_str!("../../../../../migrations/support/140/apply.sql");
 
+/// SPEC-098 document lifecycle status CHECK — SSOT: `migrations/support/141/apply.sql`
+pub(super) const SQL_141_APPLY: &str =
+    include_str!("../../../../../migrations/support/141/apply.sql");
+
 /// sqlx migration version marker for SPEC-098 spine ensure.
 pub const MIGRATION_139_VERSION: i64 = 139;
 
 /// sqlx migration version marker for SPEC-098 edge arbiter reconcile.
 pub const MIGRATION_140_VERSION: i64 = 140;
+
+/// sqlx migration version for SPEC-098 document lifecycle statuses.
+pub const MIGRATION_141_VERSION: i64 = 141;
 
 /// Document stats columns — SSOT: `migrations/041_document_stats_columns.sql`
 pub(super) const SQL_041_APPLY: &str =
@@ -1406,6 +1413,14 @@ async fn run_postgres_migrations_inner(
         let pool_clone = pool.clone();
         tokio::spawn(async move {
             reconcile::reconcile_migration_140_background(&pool_clone).await;
+        });
+    }
+
+    // SPEC-098 W9: documents_valid_status includes deleting / delete_failed.
+    if applied_after.contains(&MIGRATION_141_VERSION) {
+        let pool_clone = pool.clone();
+        tokio::spawn(async move {
+            reconcile::reconcile_migration_141_background(&pool_clone).await;
         });
     }
 

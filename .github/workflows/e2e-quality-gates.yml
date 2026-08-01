@@ -223,6 +223,22 @@ jobs:
           PLAYWRIGHT_BASE_URL=http://localhost:3000 \
           pnpm exec playwright test spec032-tenant-workspace-dialogs.spec.ts --reporter=line
 
+      - name: SPEC-098 selected bulk delete honesty
+        working-directory: edgequake_webui
+        run: |
+          PLAYWRIGHT_BASE_URL=http://localhost:3000 \
+          E2E_LIVE_STACK=1 \
+          EQ_BACKEND_URL=http://localhost:8080 \
+          pnpm exec playwright test e2e/spec098-bulk-delete-honesty.spec.ts --reporter=line
+
+      - name: GH-350 WebUI multi-file upload
+        working-directory: edgequake_webui
+        run: |
+          PLAYWRIGHT_BASE_URL=http://localhost:3000 \
+          E2E_LIVE_STACK=1 \
+          EQ_BACKEND_URL=http://localhost:8080 \
+          pnpm exec playwright test e2e/spec350-bulk-upload-webui.spec.ts --reporter=line
+
   # Full E2E suite — flaky quarantine (not a required gate).
   e2e-full:
     name: "E2E Full Suite (Target: <5min)"

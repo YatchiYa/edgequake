@@ -28,6 +28,7 @@ export const DOCUMENT_STATUSES = [
   "partial_success",
   "failed",
   "partial_failure",
+  "delete_failed",
   "cancelled",
   "stopping",
   "cancelling",
@@ -65,6 +66,7 @@ const TERMINAL_STATUSES = new Set<DocumentStatus>([
   "failed",
   "partial_failure",
   "partial_success",
+  "delete_failed",
   "cancelled",
   "dead_letter",
 ]);
@@ -136,9 +138,12 @@ export function documentStageRank(
     case "partial_success":
     case "failed":
     case "partial_failure":
+    case "delete_failed":
     case "cancelled":
     case "dead_letter":
       return 110;
+    case "deleting":
+      return 105;
     default:
       return 0;
   }

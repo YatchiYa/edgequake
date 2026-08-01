@@ -58,3 +58,40 @@ drops legacy UNIQUEs even when the schema is already “ready”.
 | 040 | (see support/040) | Historical CQRS entity dual-write backfill |
 | 139 | `spec098_spine_ensure_progress` | Ensure bare `entities` for typed fleet FK |
 | 140 | `spec098_edge_arbiter_progress` | Single EDGE arbiter + `relationships` spine |
+| 141 | `spec098_document_lifecycle_status` | `documents_valid_status` includes `deleting` / `delete_failed` |
+
+## Delete dual-SSOT checklist (W9–W11)
+
+During an in-flight single or selected bulk delete:
+
+```sql
+-- Both projections must agree (LAW-098-9)
+SELECT id, status FROM documents WHERE status IN ('deleting', 'delete_failed');
+```
+
+KV metadata for the same ids must also show `"status":"deleting"`. After success,
+the id must be absent from SQL `documents`, KV `*-metadata`, and `GET /documents`.
+
+```bash
+psql "$DATABASE_URL" -f edgequake/migrations/support/141/apply.sql
+```
+
+## Delete failure honesty (W12 / LAW-098-11)
+
+If admit logs `event=spec098_sql_deleting_mirror_failed`, the SQL CHECK still rejects
+`deleting` / `delete_failed` (pre-141). KV admit still succeeds and the delete task
+runs; re-apply support/141 so list dual-write can mirror lifecycle statuses:
+
+```bash
+psql "$DATABASE_URL" -f edgequake/migrations/support/141/apply.sql
+```
+
+Failed cascades leave `status=delete_failed` (not pipeline `failed`). Batch task
+results include `failed: [{document_id, reason}]` for operator RCA.
+
+### Post-proof / shared prune (LAW-098-12)
+
+If deletes fail with `Post-proof failed: N nodes and M edges still reference
+document sources`, deploy the cascade Replace write-mode fix, then **retry Delete**
+on those `delete_failed` rows. Shared-entity prune must persist without
+`eq_merge_graph_properties` re-unioning pruned `source_ids`.

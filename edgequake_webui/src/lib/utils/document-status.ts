@@ -176,6 +176,11 @@ export function resolveDocumentDisplayStatus(
     return 'partial_success';
   }
 
+  // SPEC-098 LAW-098-11: never collapse lifecycle delete_failed → pipeline Failed.
+  if (legacyStatus === "delete_failed" || baseStatus === "delete_failed") {
+    return "delete_failed";
+  }
+
   const terminalError = getEffectiveErrorMessage(doc);
   if (terminalError) {
     if (legacyStatus === "partial_failure" || baseStatus === "partial_failure") {

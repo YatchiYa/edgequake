@@ -442,22 +442,23 @@ pub async fn delete_relational_documents_for_workspace<P>(
     Ok(0)
 }
 
-/// True when KV indicates the document is still moving through the pipeline.
+/// True when KV indicates the document is still moving through the pipeline
+/// or a lifecycle delete (SPEC-098 LAW-098-9).
 ///
 /// Includes `current_stage=queued` (reprocess stage reset) which is not always
 /// mirrored into `status` helpers as a standalone status string.
 fn kv_summary_is_inflight(doc: &DocumentSummary) -> bool {
-    use crate::document_metadata::is_active_processing_status;
+    use crate::document_metadata::is_lifecycle_inflight_status;
 
     if doc
         .status
         .as_deref()
-        .is_some_and(is_active_processing_status)
+        .is_some_and(is_lifecycle_inflight_status)
     {
         return true;
     }
     doc.current_stage.as_deref().is_some_and(|stage| {
-        is_active_processing_status(stage) || stage.eq_ignore_ascii_case("queued")
+        is_lifecycle_inflight_status(stage) || stage.eq_ignore_ascii_case("queued")
     })
 }
 
@@ -468,6 +469,8 @@ fn project_terminal_failure_presentation(doc: &mut DocumentSummary, rel_status: 
         "cancelled"
     } else if rel_status.eq_ignore_ascii_case("partial_failure") {
         "partial_failure"
+    } else if rel_status.eq_ignore_ascii_case("delete_failed") {
+        "delete_failed"
     } else {
         "failed"
     };
@@ -476,6 +479,7 @@ fn project_terminal_failure_presentation(doc: &mut DocumentSummary, rel_status: 
     doc.stage_message = Some(match stage {
         "cancelled" => "Processing cancelled".into(),
         "partial_failure" => "Processing completed with issues".into(),
+        "delete_failed" => "Document delete failed".into(),
         _ => "Processing failed".into(),
     });
 }
@@ -554,7 +558,13 @@ pub fn merge_document_summaries(
                     .as_deref()
                     .is_some_and(is_terminal_document_status)
                     && !is_terminal_document_status(rel_status);
-                if !keep_kv_inflight && !keep_kv_terminal {
+                // SPEC-098 LAW-098-11: KV delete_failed beats shell-collapsed SQL failed.
+                let keep_kv_delete_failed = kv
+                    .status
+                    .as_deref()
+                    .is_some_and(|s| s.eq_ignore_ascii_case("delete_failed"))
+                    && rel_status.eq_ignore_ascii_case("failed");
+                if !keep_kv_inflight && !keep_kv_terminal && !keep_kv_delete_failed {
                     kv.status = rel.status.clone();
                     // Project presentation so Active Runs cannot keep embedding 99%.
                     if kv_was_inflight && is_terminal_failure_status(rel_status) {
@@ -1014,6 +1024,46 @@ mod tests {
             "in-flight KV must win over stale relational completed"
         );
         assert_eq!(merged[0].current_stage.as_deref(), Some("queued"));
+    }
+
+    #[test]
+    fn merge_keeps_kv_deleting_over_stale_relational_completed() {
+        // SPEC-098 F-098-12: mid-delete list honesty.
+        let kv = vec![summary("doc-1", "deleting", Some("deleting"))];
+        let pg = vec![summary("doc-1", "completed", Some("completed"))];
+        let merged = merge_document_summaries(kv, pg);
+        assert_eq!(
+            merged[0].status.as_deref(),
+            Some("deleting"),
+            "KV deleting must beat stale SQL completed"
+        );
+    }
+
+    #[test]
+    fn merge_keeps_kv_deleting_over_relational_indexed() {
+        let kv = vec![summary("doc-1", "deleting", Some("deleting"))];
+        let pg = vec![summary("doc-1", "indexed", None)];
+        let merged = merge_document_summaries(kv, pg);
+        assert_eq!(merged[0].status.as_deref(), Some("deleting"));
+    }
+
+    #[test]
+    fn merge_prefers_relational_delete_failed_over_kv_deleting() {
+        // Intentional fail-closed terminal must surface.
+        let kv = vec![summary("doc-1", "deleting", Some("deleting"))];
+        let pg = vec![summary("doc-1", "delete_failed", Some("delete_failed"))];
+        let merged = merge_document_summaries(kv, pg);
+        assert_eq!(merged[0].status.as_deref(), Some("delete_failed"));
+        assert_eq!(merged[0].current_stage.as_deref(), Some("delete_failed"));
+    }
+
+    #[test]
+    fn merge_keeps_kv_delete_failed_over_shell_collapsed_sql_failed() {
+        // SPEC-098 LAW-098-11: legacy shell collapse must not win.
+        let kv = vec![summary("doc-1", "delete_failed", Some("delete_failed"))];
+        let pg = vec![summary("doc-1", "failed", Some("failed"))];
+        let merged = merge_document_summaries(kv, pg);
+        assert_eq!(merged[0].status.as_deref(), Some("delete_failed"));
     }
 
     #[test]

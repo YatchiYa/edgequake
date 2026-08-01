@@ -17,3 +17,15 @@
 | EC-098-13 | Duplicate relationship sink rows | Sink-side dedupe before UNNEST ON CONFLICT |
 | EC-098-14 | Native writes off (Cypher) | MERGE includes `relation_type` (D-30) |
 | EC-098-15 | Concurrent edge upserts same key | `eq_merge_graph_properties` unions `source_ids` |
+| EC-098-16 | Mid-delete list poll / window focus | Pin + merge keep `deleting` until absence |
+| EC-098-17 | Batch partial `failed_ids` | Failed → `delete_failed`; succeeded absent |
+| EC-098-18 | Batch + wipe concurrency | Existing 409 on wipe-in-flight |
+| EC-098-19 | Non-UUID document id | SQL touch no-op; KV still admitted |
+| EC-098-20 | Staging-only shell sync delete (200) | Sync path unchanged; no false deleting badge |
+| EC-098-21 | Shared-entity cascade fail-closed | `delete_failed` visible in list + feedback |
+| EC-098-22 | Clear All / WorkspaceWipe | Separate progress path; no regression |
+| EC-098-23 | Shell upsert after delete_failed | SQL column stays `delete_failed` (not `failed`) |
+| EC-098-24 | Batch cascade fail with reason | `failed[]` reason surfaced in FE panel |
+| EC-098-25 | SQL CHECK pre-141 after enqueue | 202 still accepted; warn log; KV deleting |
+| EC-098-26 | All sessions failed | Header “Delete failed (N)”; no pulse “Deleting” |
+| EC-098-27 | Retry Failed with mix | Counts only pipeline failed; excludes delete_failed |

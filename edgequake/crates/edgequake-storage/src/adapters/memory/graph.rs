@@ -104,11 +104,7 @@ impl MemoryGraphStorage {
 
     /// Normalize edge key: undirected endpoints + relation type (D-30).
     fn edge_key(source: &str, target: &str, rel_type: &str) -> (String, String, String) {
-        let rel = if rel_type.trim().is_empty() {
-            "RELATED_TO".to_string()
-        } else {
-            rel_type.trim().to_ascii_uppercase()
-        };
+        let rel = crate::graph_batch_dedupe::normalize_relation_type_str(rel_type);
         if source <= target {
             (source.to_string(), target.to_string(), rel)
         } else {
@@ -195,6 +191,19 @@ impl MemoryGraphStorage {
         for key in keys {
             edges.remove(&key);
         }
+        Self::maybe_clear_adjacency_link(adjacency, edges, source, target);
+    }
+
+    /// Remove one multigraph edge by `(source, target, rel_type)` (SPEC-098 D-30).
+    fn remove_edge_triple(
+        edges: &mut HashMap<(String, String, String), HashMap<String, serde_json::Value>>,
+        adjacency: &mut HashMap<String, HashSet<String>>,
+        source: &str,
+        target: &str,
+        rel_type: &str,
+    ) {
+        let key = Self::edge_key(source, target, rel_type);
+        edges.remove(&key);
         Self::maybe_clear_adjacency_link(adjacency, edges, source, target);
     }
 }
@@ -910,14 +919,14 @@ impl GraphStorageMutateOps for MemoryGraphStorage {
         Ok(())
     }
 
-    async fn delete_edges_batch(&self, edges: &[(String, String)]) -> Result<()> {
+    async fn delete_edges_batch(&self, edges: &[(String, String, String)]) -> Result<()> {
         if edges.is_empty() {
             return Ok(());
         }
         let mut edge_store = self.edges.write().map_err(super::lock::map_lock_err)?;
         let mut adjacency = self.adjacency.write().map_err(super::lock::map_lock_err)?;
-        for (source, target) in edges {
-            Self::remove_all_edges_between(&mut edge_store, &mut adjacency, source, target);
+        for (source, target, rel) in edges {
+            Self::remove_edge_triple(&mut edge_store, &mut adjacency, source, target, rel);
         }
         Ok(())
     }
@@ -1400,8 +1409,8 @@ mod tests {
 
         storage
             .delete_edges_batch(&[
-                ("A".to_string(), "B".to_string()),
-                ("B".to_string(), "C".to_string()),
+                ("A".to_string(), "B".to_string(), "RELATED_TO".to_string()),
+                ("B".to_string(), "C".to_string(), "RELATED_TO".to_string()),
             ])
             .await
             .unwrap();

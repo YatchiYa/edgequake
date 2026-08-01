@@ -345,6 +345,12 @@ pub async fn reset_deleting_status(
         }
     }
 
+    // SPEC-098 LAW-098-9: mirror delete_failed to SQL list column.
+    crate::services::touch_sql_delete_failed(document_id).await;
+    if key_prefix != document_id {
+        crate::services::touch_sql_delete_failed(key_prefix).await;
+    }
+
     if let Some(track_id) = deletion_track_id {
         state
             .tasks

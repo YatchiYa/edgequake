@@ -7,7 +7,7 @@
 pub fn is_terminal_failure_status(status: &str) -> bool {
     matches!(
         status.to_lowercase().as_str(),
-        "failed" | "partial_failure" | "cancelled"
+        "failed" | "partial_failure" | "cancelled" | "delete_failed"
     )
 }
 
@@ -29,6 +29,14 @@ pub fn is_active_processing_status(status: &str) -> bool {
             | "summarizing"
             | "storing"
     )
+}
+
+/// Lifecycle in-flight statuses that must beat stale relational success in list merge.
+///
+/// SPEC-098 LAW-098-9: `deleting` is not a pipeline stage but is still in-flight
+/// for the document list (CQRS dual-write honesty).
+pub fn is_lifecycle_inflight_status(status: &str) -> bool {
+    is_active_processing_status(status) || status.eq_ignore_ascii_case("deleting")
 }
 
 /// Successful terminal statuses — progress patches must not overwrite these.

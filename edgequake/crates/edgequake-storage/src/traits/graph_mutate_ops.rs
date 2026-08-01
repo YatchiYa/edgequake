@@ -5,6 +5,21 @@ use std::collections::HashMap;
 
 use crate::error::Result;
 
+/// How conflict updates apply property maps on native AGE upsert.
+///
+/// - [`MergeSources`](Self::MergeSources): ingest-safe — `eq_merge_graph_properties`
+///   unions `source_ids` / `source_chunk_ids` (SPEC-058).
+/// - [`Replace`](Self::Replace): cascade prune — set `properties = EXCLUDED.properties`
+///   so subtractive `source_ids` writes stick (SPEC-098 / LAW-098-12).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GraphPropertyWriteMode {
+    /// Concurrent ingest: union source lineage arrays.
+    #[default]
+    MergeSources,
+    /// Document cascade shared-entity prune: full property replace.
+    Replace,
+}
+
 /// Upsert, delete, and clear graph data.
 ///
 /// # Batch contract (P-G10 / RC-15, LSP)
@@ -24,10 +39,26 @@ pub trait GraphStorageMutateOps: Send + Sync {
     ) -> Result<()>;
 
     /// Batch upsert all nodes in one storage operation (required; no default).
+    ///
+    /// Equivalent to [`upsert_nodes_batch_with_mode`](Self::upsert_nodes_batch_with_mode)
+    /// with [`GraphPropertyWriteMode::MergeSources`].
     async fn upsert_nodes_batch(
         &self,
         nodes: &[(String, HashMap<String, serde_json::Value>)],
     ) -> Result<()>;
+
+    /// Batch upsert with explicit property write mode (SPEC-098 cascade prune).
+    ///
+    /// Default delegates to [`upsert_nodes_batch`](Self::upsert_nodes_batch)
+    /// for both modes (memory already replaces; ingest callers keep MergeSources).
+    async fn upsert_nodes_batch_with_mode(
+        &self,
+        nodes: &[(String, HashMap<String, serde_json::Value>)],
+        mode: GraphPropertyWriteMode,
+    ) -> Result<()> {
+        let _ = mode;
+        self.upsert_nodes_batch(nodes).await
+    }
 
     async fn delete_node(&self, node_id: &str) -> Result<()>;
 
@@ -59,20 +90,43 @@ pub trait GraphStorageMutateOps: Send + Sync {
     ) -> Result<()>;
 
     /// Batch upsert all edges in one storage operation (required; no default).
+    ///
+    /// Equivalent to [`upsert_edges_batch_with_mode`](Self::upsert_edges_batch_with_mode)
+    /// with [`GraphPropertyWriteMode::MergeSources`].
     async fn upsert_edges_batch(
         &self,
         edges: &[(String, String, HashMap<String, serde_json::Value>)],
     ) -> Result<()>;
 
+    /// Batch edge upsert with explicit property write mode (SPEC-098 cascade prune).
+    async fn upsert_edges_batch_with_mode(
+        &self,
+        edges: &[(String, String, HashMap<String, serde_json::Value>)],
+        mode: GraphPropertyWriteMode,
+    ) -> Result<()> {
+        let _ = mode;
+        self.upsert_edges_batch(edges).await
+    }
+
     async fn delete_edge(&self, source: &str, target: &str) -> Result<()>;
 
-    /// Batch-delete edges by `(source, target)` pairs.
+    /// Batch-delete edges by `(source, target, rel_type)` triples (SPEC-098 D-30).
     ///
-    /// Default loops `delete_edge`. Postgres native path is one `ANY` round-trip
-    /// (SPEC-060 style) so document cascade delete stays O(1) storage ops.
-    async fn delete_edges_batch(&self, edges: &[(String, String)]) -> Result<()> {
-        for (source, target) in edges {
-            self.delete_edge(source, target).await?;
+    /// `rel_type` must be normalized (see [`crate::normalize_rel_type`]). Cascade
+    /// exclusive prune deletes one multigraph sister at a time — never all rels
+    /// between endpoints. Default loops `delete_edge` (all rels) only when callers
+    /// still use the legacy pair API via adapters that expand triples.
+    async fn delete_edges_batch(&self, edges: &[(String, String, String)]) -> Result<()> {
+        // Fallback: collapse to endpoint pairs (may over-delete sisters). Adapters
+        // that implement D-30 should override with precise SQL/memory deletes.
+        let mut pairs: Vec<(String, String)> = edges
+            .iter()
+            .map(|(s, t, _)| (s.clone(), t.clone()))
+            .collect();
+        pairs.sort();
+        pairs.dedup();
+        for (source, target) in pairs {
+            self.delete_edge(&source, &target).await?;
         }
         Ok(())
     }

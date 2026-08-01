@@ -128,9 +128,13 @@ pub fn remaining_sources_after_removal(
     properties: &HashMap<String, serde_json::Value>,
     scope: &DocumentSourceScope,
 ) -> Vec<String> {
+    // Provenance SSOT (LAW-098-13): arrays + singulars; never topology source_id.
+    // Dedupe so Replace writes a clean remaining array.
+    let mut seen = HashSet::new();
     collect_source_references(properties)
         .into_iter()
         .filter(|s| !source_belongs_to_document(s, scope))
+        .filter(|s| seen.insert(s.clone()))
         .collect()
 }
 
@@ -170,8 +174,13 @@ pub async fn find_document_edges(
         .map_err(ApiError::from)
 }
 
-fn edge_key(edge: &GraphEdge) -> (String, String) {
-    (edge.source.clone(), edge.target.clone())
+/// Multigraph identity — matches native EDGE arbiter `(src, tgt, rel_type)`.
+fn edge_key(edge: &GraphEdge) -> (String, String, String) {
+    (
+        edge.source.clone(),
+        edge.target.clone(),
+        edgequake_storage::normalize_rel_type(&edge.properties),
+    )
 }
 
 /// Cascade remove document sources from graph entities and relationships.
@@ -247,7 +256,7 @@ where
 
     // Snapshot edges BEFORE DETACH so we can count incident edges and update
     // surviving shared relationships (find after delete would miss DETACH'd rows).
-    let mut edges_to_process: HashMap<(String, String), GraphEdge> = HashMap::new();
+    let mut edges_to_process: HashMap<(String, String, String), GraphEdge> = HashMap::new();
     for edge in find_document_edges(graph, tenant_ctx, scope).await? {
         edges_to_process.insert(edge_key(&edge), edge);
     }
@@ -292,15 +301,19 @@ where
 
     if !nodes_to_update.is_empty() {
         on_progress(processed, items_total);
+        // SPEC-098 LAW-098-12: Replace — eq_merge union would restore pruned source_ids.
         graph
-            .upsert_nodes_batch(&nodes_to_update)
+            .upsert_nodes_batch_with_mode(
+                &nodes_to_update,
+                edgequake_storage::GraphPropertyWriteMode::Replace,
+            )
             .await
             .map_err(ApiError::from)?;
         processed = processed.saturating_add(nodes_to_update.len() as u32);
         on_progress(processed, items_total);
     }
 
-    let mut edges_to_delete: Vec<(String, String)> = Vec::new();
+    let mut edges_to_delete: Vec<(String, String, String)> = Vec::new();
     let mut edges_to_update: Vec<(String, String, HashMap<String, serde_json::Value>)> = Vec::new();
 
     for edge in edges_to_process.into_values() {
@@ -319,7 +332,17 @@ where
         }
         let remaining = remaining_sources_after_removal(&edge.properties, scope);
         if remaining.is_empty() {
-            edges_to_delete.push((edge.source, edge.target));
+            // Pass raw properties.relation_type — Postgres delete applies trigger
+            // UPPER(...) SSOT (LAW-098-13). Do not Rust-normalize here.
+            let rel = edge
+                .properties
+                .get("relation_type")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or("RELATED_TO")
+                .to_string();
+            edges_to_delete.push((edge.source, edge.target, rel));
             stats.relationships_removed += 1;
         } else if remaining.len() < sources.len() {
             let mut updated_props = edge.properties.clone();
@@ -343,8 +366,12 @@ where
 
     if !edges_to_update.is_empty() {
         on_progress(processed, items_total);
+        // SPEC-098 LAW-098-12: Replace — eq_merge union would restore pruned source_ids.
         graph
-            .upsert_edges_batch(&edges_to_update)
+            .upsert_edges_batch_with_mode(
+                &edges_to_update,
+                edgequake_storage::GraphPropertyWriteMode::Replace,
+            )
             .await
             .map_err(ApiError::from)?;
         processed = processed.saturating_add(edges_to_update.len() as u32);
@@ -408,7 +435,7 @@ pub async fn find_relationships_for_document_lineage(
     }
 
     let entity_set: HashSet<&str> = document_entity_ids.iter().map(String::as_str).collect();
-    let mut edges: HashMap<(String, String), GraphEdge> = HashMap::new();
+    let mut edges: HashMap<(String, String, String), GraphEdge> = HashMap::new();
 
     for edge in graph
         .get_edges_for_nodes_batch(document_entity_ids)

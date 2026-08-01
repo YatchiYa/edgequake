@@ -47,14 +47,15 @@ pub use embedder::TextEmbedder;
 pub use graph::{GraphEdge, GraphNode, GraphStorage, KnowledgeGraph};
 pub use graph_analytics_ops::GraphStorageAnalyticsOps;
 pub use graph_isp::{GraphStorageAnalyticsCap, GraphStorageMutator, GraphStorageReader};
-pub use graph_mutate_ops::GraphStorageMutateOps;
+pub use graph_mutate_ops::{GraphPropertyWriteMode, GraphStorageMutateOps};
 pub use graph_read_ops::GraphStorageReadOps;
 pub use graph_read_view::GraphReadView;
 pub use graph_scan_ops::{
     collect_source_references, edge_matches_list_filter, edge_matches_relationship_id,
     edge_matches_scope_dims, edge_matches_tenant_workspace, edge_relationship_id,
-    node_matches_list_filter, node_matches_tenant_workspace, scope_dim_matches_legacy_null,
-    sources_match_prefixes, EdgeListFilter, GraphScanOps, NodeListFilter, PagedGraphResult,
+    is_topology_entity_ref, node_matches_list_filter, node_matches_tenant_workspace,
+    scope_dim_matches_legacy_null, sources_match_prefixes, EdgeListFilter, GraphScanOps,
+    NodeListFilter, PagedGraphResult,
 };
 pub use kv::{kv_key_matches_like, KVStorage};
 pub use vector::{

@@ -59,10 +59,13 @@ fn legacy_content_value(text: String) -> Value {
     json!({ "content": text })
 }
 
-/// Map KV / pipeline status strings onto `documents_valid_status` (migration 032).
+/// Map KV / pipeline status strings onto `documents_valid_status` (migration 141).
 ///
 /// Richer stage vocabulary stays in `metadata->>'status'`; the column must only
 /// hold CHECK-allowlisted values or shell INSERT/UPDATE fails closed.
+///
+/// SPEC-098 LAW-098-11: lifecycle statuses `deleting` / `delete_failed` pass
+/// through unchanged — never collapse to cancelled/failed.
 pub fn normalize_documents_column_status(raw: &str) -> String {
     let s = raw.trim();
     if s.is_empty() {
@@ -71,10 +74,9 @@ pub fn normalize_documents_column_status(raw: &str) -> String {
     let lower = s.to_ascii_lowercase();
     match lower.as_str() {
         "pending" | "processing" | "chunking" | "extracting" | "embedding" | "indexing"
-        | "completed" | "indexed" | "failed" | "partial_failure" | "cancelled" => lower,
+        | "completed" | "indexed" | "failed" | "partial_failure" | "cancelled" | "deleting"
+        | "delete_failed" => lower,
         "queued" => "pending".to_string(),
-        "deleting" => "cancelled".to_string(),
-        "delete_failed" => "failed".to_string(),
         "partial_success" => "partial_failure".to_string(),
         // Pipeline stage slugs and anything else → generic processing.
         "uploading" | "converting" | "preprocessing" | "gleaning" | "merging" | "summarizing"
@@ -542,8 +544,12 @@ mod tests {
     #[test]
     fn normalize_documents_column_status_maps_kv_vocabulary() {
         assert_eq!(normalize_documents_column_status("queued"), "pending");
-        assert_eq!(normalize_documents_column_status("deleting"), "cancelled");
-        assert_eq!(normalize_documents_column_status("delete_failed"), "failed");
+        // SPEC-098 LAW-098-11: lifecycle pass-through.
+        assert_eq!(normalize_documents_column_status("deleting"), "deleting");
+        assert_eq!(
+            normalize_documents_column_status("delete_failed"),
+            "delete_failed"
+        );
         assert_eq!(
             normalize_documents_column_status("partial_success"),
             "partial_failure"

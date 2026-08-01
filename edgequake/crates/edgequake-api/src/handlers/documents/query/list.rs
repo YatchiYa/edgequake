@@ -490,7 +490,8 @@ async fn list_documents_inner(
         processing: documents
             .iter()
             .filter(|d| {
-                matches!(d.status.as_deref(), Some("processing"))
+                // SPEC-098: deleting is lifecycle in-flight — count with processing.
+                matches!(d.status.as_deref(), Some("processing" | "deleting"))
                     || matches!(
                         d.current_stage.as_deref(),
                         Some(
@@ -504,6 +505,7 @@ async fn list_documents_inner(
                                 | "embedding"
                                 | "storing"
                                 | "indexing"
+                                | "deleting"
                         )
                     )
             })
@@ -522,7 +524,11 @@ async fn list_documents_inner(
             .count(),
         failed: documents
             .iter()
-            .filter(|d| d.status.as_deref() == Some("failed"))
+            .filter(|d| {
+                // SPEC-098 LAW-098-11: Retry Failed is pipeline-only.
+                // Lifecycle `delete_failed` must not inflate this bucket.
+                matches!(d.status.as_deref(), Some("failed"))
+            })
             .count(),
         cancelled: documents
             .iter()
@@ -544,6 +550,8 @@ async fn list_documents_inner(
                                 | "partial_failure"
                                 | "failed"
                                 | "cancelled"
+                                | "deleting"
+                                | "delete_failed"
                         )
                     )
             })

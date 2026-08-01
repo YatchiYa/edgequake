@@ -18,6 +18,25 @@ function doc(overrides: Partial<Document> = {}): Document {
 }
 
 describe("mergeMonotonicListDocuments", () => {
+  it("SPEC-098: keeps cached deleting over stale completed poll", () => {
+    const previous = [
+      {
+        id: "d1",
+        status: "deleting",
+        current_stage: "deleting",
+      } as Document,
+    ];
+    const polled = [
+      {
+        id: "d1",
+        status: "completed",
+        current_stage: "completed",
+      } as Document,
+    ];
+    const merged = mergeMonotonicListDocuments(polled, previous);
+    expect(merged[0].status).toBe("deleting");
+  });
+
   it("keeps WS converting ahead of a stale queued poll (same track)", () => {
     const previous = [
       doc({

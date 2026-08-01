@@ -2,6 +2,7 @@
 
 import { useWebSocket } from "@/hooks/use-websocket";
 import { getDocuments, getPipelineStatus } from "@/lib/api/edgequake";
+import { protectDeletingDocumentsInQueryData } from "@/lib/documents/deletion-session";
 import { mergeMonotonicListDocuments } from "@/lib/documents/merge-monotonic-list";
 import { protectPinnedDocumentsInQueryData } from "@/lib/documents/progress-admit";
 import { getAutomationAwareRefetchInterval } from "@/lib/runtime/browser-detection";
@@ -141,7 +142,10 @@ export function useDocumentQueries({
         items: mergeMonotonicListDocuments(data.items, previous?.items),
       };
       // Keep provisional reprocess rows as processing while POST admits (graph cleanup).
-      return protectPinnedDocumentsInQueryData(merged);
+      // SPEC-098: keep deleting pins over stale Completed/Ready polls.
+      return protectDeletingDocumentsInQueryData(
+        protectPinnedDocumentsInQueryData(merged),
+      );
     },
     // Retry policy comes from QueryProvider (TimeoutError / read_path_busy → 1;
     // NetworkError cold-start → up to 4). Do not override with retry:1.

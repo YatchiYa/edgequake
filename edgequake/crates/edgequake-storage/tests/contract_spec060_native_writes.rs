@@ -48,6 +48,30 @@ fn contract_batch_uses_eq_id_on_conflict() {
 }
 
 #[test]
+fn contract_replace_mode_skips_eq_merge() {
+    // SPEC-098 LAW-098-12: cascade prune must SET EXCLUDED.properties, not union.
+    let mutate = include_str!("../src/adapters/postgres/graph/nodes_ops/mutate.rs");
+    assert!(
+        mutate.contains("GraphPropertyWriteMode::Replace")
+            && mutate.contains("properties = EXCLUDED.properties"),
+        "native node Replace mode must set EXCLUDED.properties"
+    );
+    let edges = include_str!("../src/adapters/postgres/graph/edges_ops.rs");
+    assert!(
+        edges.contains("GraphPropertyWriteMode::Replace")
+            && edges.contains("properties = EXCLUDED.properties"),
+        "native edge Replace mode must set EXCLUDED.properties"
+    );
+    let trait_src = include_str!("../src/traits/graph_mutate_ops.rs");
+    assert!(
+        trait_src.contains("enum GraphPropertyWriteMode")
+            && trait_src.contains("upsert_nodes_batch_with_mode")
+            && trait_src.contains("upsert_edges_batch_with_mode"),
+        "trait must expose GraphPropertyWriteMode + with_mode batch APIs"
+    );
+}
+
+#[test]
 fn contract_drops_legacy_expression_uniques_when_eq_arbiters_exist() {
     // Dual UNIQUE indexes break ON CONFLICT (non-arbiter violations under concurrency).
     let life = include_str!("../src/adapters/postgres/graph/helpers/graph_lifecycle.rs");

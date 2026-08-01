@@ -67,4 +67,13 @@ describe("getDocumentDisplayStatus (SPEC-057 P4)", () => {
       }),
     ).toBe("cancelled");
   });
+
+  it("SPEC-098: delete_failed is a terminal lifecycle badge status", () => {
+    expect(
+      getDocumentDisplayStatus({
+        status: "delete_failed",
+        current_stage: "delete_failed",
+      }),
+    ).toBe("delete_failed");
+  });
 });

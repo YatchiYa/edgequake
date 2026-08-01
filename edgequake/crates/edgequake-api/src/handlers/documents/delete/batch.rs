@@ -89,7 +89,7 @@ pub async fn batch_delete_documents(
 
     let planned = ids.len();
     let task_data = BatchDeletionTaskData {
-        document_ids: ids,
+        document_ids: ids.clone(),
         tenant_id: tenant_id_str,
         workspace_id: workspace_id_str,
         batch_track_id: String::new(),
@@ -114,6 +114,16 @@ pub async fn batch_delete_documents(
     }
 
     state.enqueue_task(task).await?;
+
+    // SPEC-098 LAW-098-9: dual-write KV + SQL `deleting` for every planned id
+    // so list merge cannot resurface Completed/Ready mid-batch.
+    let mut admit_pairs: Vec<(String, String)> = Vec::with_capacity(ids.len());
+    for document_id in &ids {
+        let (key_prefix, _meta_key, _has) =
+            super::resolve_kv_key_prefix_for_batch(document_id, &state).await;
+        admit_pairs.push((document_id.clone(), key_prefix));
+    }
+    crate::services::admit_documents_deleting(&state, &admit_pairs).await?;
 
     tracing::info!(
         batch_track_id = %batch_track_id,

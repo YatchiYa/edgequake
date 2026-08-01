@@ -13,6 +13,11 @@
 | **W6** | Migration 140 + single-arbiter reconcile every boot; relationship historical spine; trigger prefer-column |
 | **W7** | Native upsert harden (`DISTINCT ON` + `eq_merge`); Cypher MERGE rel_type; relationship sink batch dedupe |
 | **W8** | Cardinality / reconcile / perf / sink-dedupe e2e; CI wired; operator doc |
+| **W9** | Migration 141 CHECK (`deleting`/`delete_failed`) + `admit_documents_deleting` for single+batch (KV+SQL) |
+| **W10** | List merge treats `deleting` as lifecycle inflight; status counts/filters honest |
+| **W11** | FE delete pin/session SSOT; batch poll absence-proof; e2e + Playwright + CI |
+| **W12** | Shell lifecycle pass-through; batch failed[{id,reason}]; admit SQL soft; FE badge/header/Retry honesty |
+| **W13** | Cascade shared prune uses Replace write-mode (not eq_merge union); post-proof green on AGE |
 
 ## Exit criteria
 
@@ -26,3 +31,11 @@
 - [x] Native DO UPDATE uses `eq_merge_graph_properties`
 - [x] Relationship sink survives duplicate arbiter keys in one batch
 - [x] Migration 140 + support reconcile + checksums.lock
+- [x] Mid single/batch delete: `GET /documents` shows `deleting` (not Completed/Ready)
+- [x] Batch admit sets KV+SQL `deleting` for all planned ids
+- [x] FE feedback + table agree; no “Document removed” while row still listed
+- [x] Migration 141 + delete e2e/Playwright wired in CI
+- [x] Shell upsert preserves `deleting` / `delete_failed` (not cancelled/failed)
+- [x] Batch result carries per-id failure reasons; FE displays them
+- [x] Feedback header / badge / Retry Failed match lifecycle (not pipeline Failed)
+- [x] Shared-entity cascade prune persists on AGE (Replace mode); post-proof passes

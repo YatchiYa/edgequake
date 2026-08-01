@@ -337,6 +337,43 @@ jobs:
           cargo test -p edgequake-storage --test contract_spec047_p7ef_graph_upsert -- --test-threads=1
           cargo test -p edgequake-storage --test contract_spec060_native_writes -- --test-threads=1
 
+      - name: SPEC-098 delete dual-SSOT (admit + SQL CHECK + list merge)
+        working-directory: edgequake
+        run: |
+          cargo test -p edgequake-api --test e2e_spec098_delete_list_merge_deleting -- --test-threads=1
+          cargo test -p edgequake-api --test e2e_spec098_batch_delete_admit_deleting -- --test-threads=1
+          cargo test -p edgequake-api --features postgres --test e2e_spec098_delete_sql_status_constraint -- --test-threads=1
+          cargo test -p edgequake-api --lib document_read_model -- --test-threads=1
+
+      - name: SPEC-098 Symptom D delete failure honesty (W12)
+        working-directory: edgequake
+        run: |
+          cargo test -p edgequake-api --test e2e_spec098_batch_failed_reasons -- --test-threads=1
+          cargo test -p edgequake-api --features postgres --test e2e_spec098_delete_failed_status_persists -- --test-threads=1
+          cargo test -p edgequake-storage --features postgres --lib normalize_documents_column_status_maps_kv_vocabulary -- --test-threads=1
+          cargo test -p edgequake-storage --features postgres --test contract_spec091_shell_batch_write shell_batch_normalizes -- --test-threads=1
+
+      - name: SPEC-098 cascade prune vs eq_merge (LAW-098-12)
+        working-directory: edgequake
+        run: |
+          cargo test -p edgequake-storage --test contract_spec060_native_writes contract_replace_mode_skips_eq_merge -- --test-threads=1
+          cargo test -p edgequake-api --features postgres --test e2e_spec098_cascade_shared_prune_survives_eq_merge -- --test-threads=1
+
+      - name: SPEC-098 edge provenance SSOT (LAW-098-13)
+        working-directory: edgequake
+        run: |
+          cargo test -p edgequake-storage --test graph_scan_ops_tests collect_source_references -- --test-threads=1
+          cargo test -p edgequake-storage --test contract_spec098_edge_delete_arbiter -- --test-threads=1
+          cargo test -p edgequake-api --lib clears_singular_citation_fields_when_empty -- --test-threads=1
+          cargo test -p edgequake-storage --features postgres --test e2e_spec098_accent_rel_delete_arbiter -- --test-threads=1
+          cargo test -p edgequake-api --features postgres --test e2e_spec098_edge_provenance_cascade -- --test-threads=1
+
+      - name: GH-350 agtype batch get (merge persist fingerprint)
+        working-directory: edgequake
+        run: |
+          cargo test -p edgequake-storage --test contract_spec350_agtype_batch_get -- --test-threads=1
+          cargo test -p edgequake-storage --features postgres --test e2e_spec350_agtype_batch_get_nodes -- --test-threads=1
+
       - name: IW2 fleet recall parity
         working-directory: edgequake
         run: cargo test -p edgequake-storage --features postgres --test e2e_spec091_fleet_recall_parity -- --test-threads=1

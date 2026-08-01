@@ -39,16 +39,32 @@ pub fn dedupe_nodes_by_id(
         .collect()
 }
 
-/// Normalize a relation-type label (empty/whitespace → RELATED_TO, else ASCII upper).
+/// Normalize a relation-type label for **Rust-side** keys (memory graph, dedupe,
+/// fleet vector ids). Empty/whitespace → `RELATED_TO`, else Unicode upper.
 ///
-/// SPEC-098 LAW-098-3: SSOT for sink, vector ids, and fleet FK lookup.
+/// # First principles (LAW-098-3 / LAW-098-13)
+///
+/// Postgres AGE arbiter SSOT is column `eq_rel_type`, set by the sync trigger as:
+/// `UPPER(COALESCE(NULLIF(TRIM(eq_rel_type|props.relation_type), ''), 'RELATED_TO'))`.
+///
+/// Native **delete** must not depend on this Rust helper matching Postgres
+/// `UPPER` across locales — `pg_delete_edges_batch` applies the trigger formula
+/// in SQL. This helper remains for in-process keys only; use Unicode upper (not
+/// `to_ascii_uppercase`) so French labels stay coherent in memory/dedupe.
 pub fn normalize_relation_type_str(relation_type: &str) -> String {
     let trimmed = relation_type.trim();
     if trimmed.is_empty() {
         "RELATED_TO".to_string()
     } else {
-        trimmed.to_ascii_uppercase()
+        trimmed.to_uppercase()
     }
+}
+
+/// SQL expression: arbiter rel key from a text expression (trigger-identical).
+///
+/// `expr` is a SQL text expression (e.g. `pairs.rel_type` or a jsonb `->>'…'`).
+pub fn sql_eq_rel_type_arbiter_expr(expr: &str) -> String {
+    format!("UPPER(COALESCE(NULLIF(TRIM({expr}), ''), 'RELATED_TO'))")
 }
 
 /// Normalize relation type for multigraph keys (empty → RELATED_TO).
@@ -152,6 +168,14 @@ mod tests {
         assert_eq!(normalize_relation_type_str("  "), "RELATED_TO");
         assert_eq!(normalize_relation_type_str("Works_With"), "WORKS_WITH");
         assert_eq!(normalize_relation_type_str("knows"), "KNOWS");
+        // Rust-side keys (memory/dedupe) — delete path uses SQL UPPER SSOT.
+        assert_eq!(normalize_relation_type_str("REPRéSENTE"), "REPRÉSENTE");
+        assert_eq!(normalize_relation_type_str("représente"), "REPRÉSENTE");
+        assert_eq!(normalize_relation_type_str("S'APPLIQUE à"), "S'APPLIQUE À");
+        assert_eq!(
+            sql_eq_rel_type_arbiter_expr("x"),
+            "UPPER(COALESCE(NULLIF(TRIM(x), ''), 'RELATED_TO'))"
+        );
     }
 
     #[test]

@@ -267,7 +267,8 @@ async fn shell_batch_normalizes_queued_and_deleting_status() {
         .fetch_one(&pool)
         .await
         .expect("deleting col");
-    assert_eq!(deleting_col, "cancelled");
+    // SPEC-098 LAW-098-11: lifecycle pass-through (mig 141 CHECK).
+    assert_eq!(deleting_col, "deleting");
     let deleting_meta: serde_json::Value =
         sqlx::query_scalar("SELECT metadata FROM documents WHERE id = $1")
             .bind(doc_deleting)
@@ -275,6 +276,30 @@ async fn shell_batch_normalizes_queued_and_deleting_status() {
             .await
             .expect("deleting meta");
     assert_eq!(deleting_meta["status"], json!("deleting"));
+
+    // SPEC-098 LAW-098-11: delete_failed also persists on the column.
+    let doc_df = Uuid::new_v4();
+    dual_write_shell_upserts(
+        &pool,
+        &[(
+            format!("{doc_df}-metadata"),
+            json!({
+                "title": "Delete failed",
+                "status": "delete_failed",
+                "workspace_id": workspace.to_string(),
+                "tenant_id": tenant.to_string(),
+            }),
+        )],
+        true,
+    )
+    .await
+    .expect("delete_failed must not violate documents_valid_status");
+    let df_col: String = sqlx::query_scalar("SELECT status FROM documents WHERE id = $1")
+        .bind(doc_df)
+        .fetch_one(&pool)
+        .await
+        .expect("delete_failed col");
+    assert_eq!(df_col, "delete_failed");
 }
 
 /// Admission-time row must store the upload title, not the schema DEFAULT.

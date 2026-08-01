@@ -11,7 +11,7 @@
  */
 
 import { cn } from '@/lib/utils';
-import { BrushCleaning, Clock, Loader2, Trash2 } from 'lucide-react';
+import { BrushCleaning, Check, Clock, Loader2, Trash2, XCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 /** Admission + delete operation phases sharing one presenter. */
@@ -19,6 +19,8 @@ export type OperationPhaseKind = 'cleaning' | 'queued' | 'deleting';
 
 /** @deprecated Prefer OperationPhaseKind — kept for reprocess call-site clarity. */
 export type AdmissionPhaseKind = OperationPhaseKind;
+
+export type AdmissionSessionStatus = 'active' | 'completed' | 'failed';
 
 export interface AdmissionPhaseRowProps {
   phase: OperationPhaseKind;
@@ -28,6 +30,8 @@ export interface AdmissionPhaseRowProps {
   stageMessage?: string | null;
   /** Optional N/M counts line (delete phases). */
   countsLabel?: string | null;
+  /** SPEC-098: terminal session state for delete feedback (no perpetual spinner). */
+  sessionStatus?: AdmissionSessionStatus;
   /** compact = pill for stepper; row = feedback-zone with filename. */
   variant?: 'row' | 'pill';
   className?: string;
@@ -38,6 +42,7 @@ export function admissionPhaseCopy(
   phase: OperationPhaseKind,
   t: (key: string, fallback: string) => string,
   stageMessage?: string | null,
+  sessionStatus?: AdmissionSessionStatus,
 ): { title: string; detail: string } {
   if (phase === 'cleaning') {
     const detail =
@@ -55,6 +60,18 @@ export function admissionPhaseCopy(
     const detail =
       (stageMessage && stageMessage.trim()) ||
       t('documents.delete.progressDetail', 'Removing document data…');
+    if (sessionStatus === 'completed') {
+      return {
+        title: t('documents.delete.completed', 'Deleted'),
+        detail,
+      };
+    }
+    if (sessionStatus === 'failed') {
+      return {
+        title: t('documents.delete.failed', 'Delete failed'),
+        detail,
+      };
+    }
     return {
       title: t('documents.delete.progress', 'Deleting'),
       detail,
@@ -111,17 +128,25 @@ export function AdmissionPhaseRow({
   documentName,
   stageMessage,
   countsLabel,
+  sessionStatus = 'active',
   variant = 'row',
   className,
   'data-testid': testId,
 }: AdmissionPhaseRowProps) {
   const { t } = useTranslation();
-  const { title, detail } = admissionPhaseCopy(phase, t, stageMessage);
+  const { title, detail } = admissionPhaseCopy(
+    phase,
+    t,
+    stageMessage,
+    sessionStatus,
+  );
   const tone = phaseTone(phase);
   const detailWithCounts =
     countsLabel && countsLabel.trim()
       ? `${detail} · ${countsLabel.trim()}`
       : detail;
+  const terminal =
+    sessionStatus === 'completed' || sessionStatus === 'failed';
 
   if (variant === 'pill') {
     return (
@@ -133,11 +158,15 @@ export function AdmissionPhaseRow({
         )}
         data-testid={testId ?? tone.testId}
         data-admission={phase}
-        data-state="pending"
+        data-state={sessionStatus}
         role="status"
       >
         <span
-          className={cn('h-1.5 w-1.5 rounded-full animate-pulse', tone.dot)}
+          className={cn(
+            'h-1.5 w-1.5 rounded-full',
+            tone.dot,
+            !terminal && 'animate-pulse',
+          )}
         />
         {phase === 'cleaning' ? (
           <BrushCleaning className="h-3 w-3 shrink-0" aria-hidden />
@@ -161,14 +190,24 @@ export function AdmissionPhaseRow({
         (phase === 'deleting' ? 'delete-progress-row' : 'reprocess-admission-row')
       }
       data-admission={phase}
+      data-session-status={sessionStatus}
       role="status"
       aria-live="polite"
       aria-atomic="true"
     >
-      <Loader2
-        className={cn('h-4 w-4 animate-spin shrink-0', tone.spinner)}
-        aria-hidden
-      />
+      {sessionStatus === 'completed' ? (
+        <Check
+          className="h-4 w-4 shrink-0 text-emerald-600"
+          aria-hidden
+        />
+      ) : sessionStatus === 'failed' ? (
+        <XCircle className="h-4 w-4 shrink-0 text-destructive" aria-hidden />
+      ) : (
+        <Loader2
+          className={cn('h-4 w-4 animate-spin shrink-0', tone.spinner)}
+          aria-hidden
+        />
+      )}
       <div className="min-w-0 flex-1">
         {documentName ? (
           <p className="text-sm font-medium truncate">{documentName}</p>

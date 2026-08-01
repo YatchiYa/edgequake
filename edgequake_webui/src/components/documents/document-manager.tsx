@@ -32,9 +32,12 @@ import { toast } from 'sonner';
 import { nextDocumentSortState } from '@/lib/documents/document-sort';
 import {
   beginDeleteSession,
+  bindDeleteSessionTrackId,
   dismissDeleteSession,
   formatDeleteCountsLabel,
+  formatDeleteProgressHeader,
   formatDeleteStageMessage,
+  getActiveDeletingDocumentIds,
   patchDocumentsDeletingOptimistic,
 } from '@/lib/documents/deletion-session';
 import {
@@ -256,12 +259,17 @@ export function DocumentManager() {
       removeReprocessEntryByDocumentId(documentId),
   });
 
-  // SPEC-050: Track which document IDs are currently being deleted so rows can
-  // show "Deleting" visual state immediately on confirm (before query invalidation).
-  const [deletingDocumentIds, setDeletingDocumentIds] = useState<Set<string>>(new Set());
-
   // Feedback-zone delete sessions (WS phase updates).
+  // SPEC-098 LAW-098-10: table dimming derives from sessions (one SSOT).
   const deleteSessions = useDeletionSessions();
+  const deleteProgressHeader = useMemo(
+    () => formatDeleteProgressHeader(deleteSessions),
+    [deleteSessions],
+  );
+  const deletingDocumentIds = useMemo(
+    () => getActiveDeletingDocumentIds(),
+    [deleteSessions],
+  );
 
   // SPEC-069: tick so long graph-phase "Still working…" updates without new WS.
   const [deleteNow, setDeleteNow] = useState(() => Date.now());
@@ -301,16 +309,7 @@ export function DocumentManager() {
       const name = doc?.file_name || doc?.title || id.slice(0, 8);
       beginDeleteSession({ documentId: id, documentName: name });
       patchDocumentsDeletingOptimistic(queryClient, id);
-      setDeletingDocumentIds((prev) => new Set([...prev, id]));
-      deleteMutation.mutate(id, {
-        onSettled: () => {
-          setDeletingDocumentIds((prev) => {
-            const next = new Set(prev);
-            next.delete(id);
-            return next;
-          });
-        },
-      });
+      deleteMutation.mutate(id);
     },
     [data, deleteMutation, queryClient],
   );
@@ -365,6 +364,7 @@ export function DocumentManager() {
   }, [pipelineStatus]);
 
   // Orphan staging shells need re-upload — exclude from Retry Failed count.
+  // SPEC-098 LAW-098-11: statusCounts.failed is pipeline-only (no delete_failed).
   const reprocessableFailedCount = useMemo(() => {
     const orphanReupload = (documents ?? []).filter(needsReuploadNotReprocess).length;
     return Math.max(0, (statusCounts.failed ?? 0) - orphanReupload);
@@ -570,28 +570,29 @@ export function DocumentManager() {
   });
 
   // SPEC-084 / GH-317: one durable batch-delete admit (not N× single deletes).
+  // SPEC-098: paint-first sessions + optimistic deleting before HTTP returns.
   const handleBulkDeleteConfirmed = useCallback(async () => {
     const targets = [...bulkDeleteTargets];
     setBulkDeleteTargets([]);
     setBulkDeleteDialogOpen(false);
     handleClearSelection();
     if (targets.length === 0) return;
+    const ids = targets.map((d) => d.id);
+    for (const doc of targets) {
+      beginDeleteSession({
+        documentId: doc.id,
+        documentName: doc.title || doc.file_name || doc.id,
+      });
+    }
+    patchDocumentsDeletingOptimistic(queryClient, ids);
     try {
       const { batchDeleteDocuments } = await import(
         "@/lib/api/edgequake/documents"
       );
-      const result = await batchDeleteDocuments(targets.map((d) => d.id));
-      for (const doc of targets) {
-        beginDeleteSession({
-          documentId: doc.id,
-          documentName: doc.title || doc.file_name || doc.id,
-          trackId: result.batch_track_id,
-        });
+      const result = await batchDeleteDocuments(ids);
+      for (const id of ids) {
+        bindDeleteSessionTrackId(id, result.batch_track_id);
       }
-      patchDocumentsDeletingOptimistic(
-        queryClient,
-        targets.map((d) => d.id),
-      );
       toast.success(
         t(
           "documents.bulk.deleteQueued",
@@ -602,6 +603,9 @@ export function DocumentManager() {
     } catch (err) {
       const description =
         err instanceof Error ? err.message : t("common.unknownError", "Unknown error");
+      for (const id of ids) {
+        dismissDeleteSession(id);
+      }
       toast.error(
         t("documents.bulk.deleteFailed", "Failed to queue bulk deletion"),
         { description },
@@ -845,11 +849,18 @@ export function DocumentManager() {
             {/* SPEC-050: Per-document delete progress (WS phases) */}
             {deleteSessions.length > 0 && (
               <div data-testid="spec050-delete-progress-panels">
-                <h4 className="text-sm font-semibold flex items-center gap-2 text-muted-foreground mb-1.5">
-                  <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
-                  {t('documents.delete.progressHeader', 'Deleting {{count}} document(s)', {
-                    count: deleteSessions.length,
-                  })}
+                <h4
+                  className="text-sm font-semibold flex items-center gap-2 text-muted-foreground mb-1.5"
+                  data-testid="spec098-delete-progress-header"
+                  data-active-count={deleteProgressHeader.activeCount}
+                  data-failed-count={deleteProgressHeader.failedCount}
+                >
+                  <span
+                    className={`h-2 w-2 rounded-full bg-rose-500${
+                      deleteProgressHeader.pulse ? ' animate-pulse' : ''
+                    }`}
+                  />
+                  {deleteProgressHeader.text}
                 </h4>
                 <div className="space-y-1.5">
                   {deleteSessions.map((entry) => {
@@ -869,6 +880,7 @@ export function DocumentManager() {
                         <AdmissionPhaseRow
                           phase="deleting"
                           documentName={entry.documentName}
+                          sessionStatus={entry.status}
                           stageMessage={
                             entry.status === 'failed'
                               ? entry.error ||

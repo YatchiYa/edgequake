@@ -117,6 +117,18 @@ impl PostgresAGEGraphStorage {
         &self,
         nodes: &[(String, HashMap<String, serde_json::Value>)],
     ) -> Result<()> {
+        self.pg_upsert_nodes_batch_with_mode(
+            nodes,
+            crate::traits::GraphPropertyWriteMode::MergeSources,
+        )
+        .await
+    }
+
+    pub(in crate::adapters::postgres::graph) async fn pg_upsert_nodes_batch_with_mode(
+        &self,
+        nodes: &[(String, HashMap<String, serde_json::Value>)],
+        mode: crate::traits::GraphPropertyWriteMode,
+    ) -> Result<()> {
         let _timer = crate::TimedStorageOp::start_dataop(
             crate::dataop::DATA_AGE_GRAPH_UPSERT_NODES_BATCH_046,
         );
@@ -131,7 +143,7 @@ impl PostgresAGEGraphStorage {
         let nodes = crate::graph_batch_dedupe::dedupe_nodes_by_id(nodes);
         let nodes = nodes.as_slice();
         if super::super::native_graph_writes_enabled() {
-            return self.pg_upsert_nodes_batch_native(nodes).await;
+            return self.pg_upsert_nodes_batch_native(nodes, mode).await;
         }
         // IMP-046-01: Cypher MERGE is debug-only — O(G) GIN path, higher locks.
         tracing::warn!(
@@ -398,6 +410,7 @@ impl PostgresAGEGraphStorage {
     pub(in crate::adapters::postgres::graph) async fn pg_upsert_nodes_batch_native(
         &self,
         nodes: &[(String, HashMap<String, serde_json::Value>)],
+        mode: crate::traits::GraphPropertyWriteMode,
     ) -> Result<()> {
         if nodes.is_empty() {
             return Ok(());
@@ -422,7 +435,7 @@ impl PostgresAGEGraphStorage {
         let chunk_size = Self::adaptive_unwind_chunk_size(nodes);
 
         for chunk in nodes.chunks(chunk_size) {
-            self.pg_upsert_nodes_batch_native_chunk(chunk).await?;
+            self.pg_upsert_nodes_batch_native_chunk(chunk, mode).await?;
         }
 
         let elapsed = start.elapsed();
@@ -447,6 +460,7 @@ impl PostgresAGEGraphStorage {
     async fn pg_upsert_nodes_batch_native_chunk(
         &self,
         nodes: &[(String, HashMap<String, serde_json::Value>)],
+        mode: crate::traits::GraphPropertyWriteMode,
     ) -> Result<()> {
         let pool = self.pool.get().await?;
         let graph = &self.graph_name;
@@ -464,7 +478,20 @@ impl PostgresAGEGraphStorage {
         // Conflict target matches idx_node_prop_node_id_unique (Migration 074/083).
         // DISTINCT ON is a SQL safety net (same policy as edge native upsert).
         // SPEC-062: prefer eq_node_id arbiter when column exists (ensure_eq_id_columns).
-        // Fallback to expression unique if denormalized columns not yet present.
+        // SPEC-098 LAW-098-12: Replace mode must NOT call eq_merge (union undoes prune).
+        let properties_set = match mode {
+            crate::traits::GraphPropertyWriteMode::MergeSources => format!(
+                r#"properties = (
+                    public.eq_merge_graph_properties(
+                        ag_catalog.agtype_to_json({graph}."Node".properties)::jsonb,
+                        ag_catalog.agtype_to_json(EXCLUDED.properties)::jsonb
+                    )
+                )::text::ag_catalog.agtype"#
+            ),
+            crate::traits::GraphPropertyWriteMode::Replace => {
+                "properties = EXCLUDED.properties".to_string()
+            }
+        };
         let sql = format!(
             r#"
             INSERT INTO {graph}."Node" (id, properties, eq_node_id)
@@ -482,15 +509,11 @@ impl PostgresAGEGraphStorage {
             ) AS d
             ON CONFLICT (eq_node_id) WHERE eq_node_id IS NOT NULL
             DO UPDATE SET
-                properties = (
-                    public.eq_merge_graph_properties(
-                        ag_catalog.agtype_to_json({graph}."Node".properties)::jsonb,
-                        ag_catalog.agtype_to_json(EXCLUDED.properties)::jsonb
-                    )
-                )::text::ag_catalog.agtype,
+                {properties_set},
                 eq_node_id = EXCLUDED.eq_node_id
             "#,
-            graph = graph
+            graph = graph,
+            properties_set = properties_set
         );
 
         sqlx::query(&sql)

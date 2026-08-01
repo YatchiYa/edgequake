@@ -61,6 +61,8 @@ const statusConfig = {
   // === PENDING / ADMISSION / DELETE ===
   cleaning: { icon: BrushCleaning, color: 'bg-rose-500', textColor: 'text-rose-600 dark:text-rose-400', label: 'Cleaning', animate: true },
   deleting: { icon: Trash2, color: 'bg-rose-500', textColor: 'text-rose-600 dark:text-rose-400', label: 'Deleting', animate: true },
+  // SPEC-098 LAW-098-11: lifecycle failure ≠ pipeline Failed.
+  delete_failed: { icon: XCircle, color: 'bg-rose-500', textColor: 'text-rose-600 dark:text-rose-400', label: 'Delete failed', animate: false },
   queued: { icon: Clock, color: 'bg-amber-500', textColor: 'text-amber-600 dark:text-amber-400', label: 'Queued', animate: true },
   pending: { icon: Clock, color: 'bg-amber-500', textColor: 'text-amber-600 dark:text-amber-400', label: 'Pending', animate: false },
 
@@ -166,7 +168,15 @@ export function isProcessingStatus(status: DocumentStatus): boolean {
  * Check if a status represents a terminal (final) state
  */
 export function isTerminalStatus(status: DocumentStatus): boolean {
-  return ['completed', 'indexed', 'failed', 'partial_failure', 'partial_success', 'cancelled'].includes(status);
+  return [
+    'completed',
+    'indexed',
+    'failed',
+    'partial_failure',
+    'partial_success',
+    'delete_failed',
+    'cancelled',
+  ].includes(status);
 }
 
 /**

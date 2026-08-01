@@ -470,37 +470,8 @@ pub async fn delete_document(
     // not leave the document stuck in a deleting badge with no worker task.
     state.enqueue_task(task).await?;
 
-    if has_metadata {
-        if let Ok(Some(mut metadata)) = state.storage.kv_storage.get_by_id(&metadata_key).await {
-            if let Some(obj) = metadata.as_object_mut() {
-                obj.insert("status".to_string(), serde_json::json!("deleting"));
-                obj.insert("current_stage".to_string(), serde_json::json!("deleting"));
-                obj.insert(
-                    "stage_message".to_string(),
-                    serde_json::json!("Removing document data…"),
-                );
-                obj.insert("stage_progress".to_string(), serde_json::json!(0.0));
-                for key in [
-                    "entity_count",
-                    "entities_count",
-                    "relationship_count",
-                    "relationships_count",
-                    "total_cost",
-                    "cost_usd",
-                ] {
-                    if obj.contains_key(key) {
-                        obj.insert(key.to_string(), serde_json::json!(0));
-                    }
-                }
-                let _ = crate::services::upsert_metadata_kv_with_index(
-                    state.storage.kv_storage.as_ref(),
-                    &metadata_key,
-                    metadata,
-                )
-                .await;
-            }
-        }
-    }
+    // SPEC-098 LAW-098-9: dual-write KV + SQL `deleting` (list merge honesty).
+    crate::services::admit_document_deleting(&state, &document_id, &actual_key_prefix).await?;
 
     state
         .tasks
