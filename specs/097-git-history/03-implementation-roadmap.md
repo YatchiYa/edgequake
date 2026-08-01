@@ -17,16 +17,16 @@
 
 ## Wave 2 — History rewrite
 
-- [ ] Fresh mirror clone
-- [ ] `git filter-repo --invert-paths` for fat globs + `sdks/swift/.build/**` + `zz_test_docs/**`
-- [ ] Verify history-path blob sum &lt; ~20 MB; pack shrink
-- [ ] Force-push rewritten refs; announce re-clone / PR rebase
+- [x] Fresh mirror clone
+- [x] `git filter-repo --invert-paths` for fat globs + `sdks/swift/.build/**` + `zz_test_docs/**`
+- [x] Verify history-path blob sum &lt; ~20 MB; pack shrink
+- [x] Force-push rewritten refs; announce re-clone / PR rebase
 
 ## Wave 3 — Closeout
 
 - [x] CONTRIBUTING note
-- [ ] Close #351 with metrics
-- [ ] Task log under `logs/`
+- [x] Close #351 with metrics
+- [x] Task log under `logs/`
 
 ## Wave 4 — Gates
 
