@@ -16,6 +16,7 @@
  */
 'use client';
 
+import { DocumentContentEmptyState } from '@/components/document/document-content-empty-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -272,9 +273,7 @@ export function DocumentDetailDialog({
                   {document.content}
                 </pre>
               ) : (
-                <p className="text-muted-foreground text-sm">
-                  {t('documents.details.noContent', 'No content available')}
-                </p>
+                <DocumentContentEmptyState className="text-muted-foreground text-sm" />
               )}
             </ScrollArea>
           </TabsContent>

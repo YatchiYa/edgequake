@@ -345,25 +345,39 @@ export function GraphViewer() {
   // the previous workspace. Without clearing, those stale nodes remain visible
   // until new data arrives. The transition state ensures the loading overlay
   // stays visible for at least 800ms so users see clear visual feedback.
+  //
+  // IMPORTANT: Do not put `setDocumentFilter` in deps — it is recreated on every
+  // searchParams change and would clear the 800ms timer in cleanup without
+  // restarting it, leaving `isWorkspaceTransitioning` stuck true forever.
   const prevWorkspaceKeyRef = useRef<string>("");
+  const clearGraphRef = useRef(clearGraphForStreaming);
+  clearGraphRef.current = clearGraphForStreaming;
+  const setDocumentFilterId = useGraphStore((s) => s.setDocumentFilterId);
+
   useEffect(() => {
     const currentKey = `${selectedTenantId ?? ""}-${selectedWorkspaceId ?? ""}`;
     if (prevWorkspaceKeyRef.current !== "" && prevWorkspaceKeyRef.current !== currentKey) {
-      clearGraphForStreaming();
-      setDocumentFilter(null);
-      // WHY: Show loading overlay immediately with contextual message.
-      // The 800ms minimum guarantees users see feedback even for fast/empty workspaces.
+      clearGraphRef.current();
+      // Clear document scope in store only — avoid router.replace churn mid-transition.
+      setDocumentFilterId(null);
       setIsWorkspaceTransitioning(true);
       setTransitionPhase("Switching workspace...");
       if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current);
       transitionTimerRef.current = setTimeout(() => {
+        transitionTimerRef.current = null;
         setIsWorkspaceTransitioning(false);
         setTransitionPhase("");
       }, 800);
     }
     prevWorkspaceKeyRef.current = currentKey;
-    return () => { if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current); };
-  }, [selectedTenantId, selectedWorkspaceId, clearGraphForStreaming, setDocumentFilter]);
+  }, [selectedTenantId, selectedWorkspaceId, setDocumentFilterId]);
+
+  // Unmount-only cleanup for the transition timer.
+  useEffect(() => {
+    return () => {
+      if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current);
+    };
+  }, []);
 
   // Start streaming when in streaming mode
   useEffect(() => {

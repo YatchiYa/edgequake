@@ -2,7 +2,7 @@
 
 | Spec | Wave | Assert |
 |------|------|--------|
-| `spec100-breadcrumb-slot` | W0 | Spacer or bar always `h-9`; depth≥2 shows bar |
+| `spec100-breadcrumb-slot` | W0 | Depth≤1: no spacer/bar; depth≥2 bar is `h-9`; Documents title gap under 40px |
 | `spec100-pipeline-cls` | W1 | Chunk slot reserved; main Y stable; CLS budget |
 | `spec100-document-detail-cls` | W1 | Progress strip reserved; shell matched |
 | `spec100-dashboard-cls` | W2 | Activity/stats soft refresh no jump |

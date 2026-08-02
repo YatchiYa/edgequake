@@ -9,10 +9,8 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
-use edgequake_api::services::{
-    admit_document_deleting, reset_deleting_status,
-};
 use edgequake_api::services::relational_sidecar_store::register_sidecar_pool;
+use edgequake_api::services::{admit_document_deleting, reset_deleting_status};
 use edgequake_api::{AppState, Server, ServerConfig};
 use serde_json::{json, Value};
 use sqlx::PgPool;

@@ -67,9 +67,6 @@ mod m141;
 
 pub(super) use m038::reconcile_migration_038;
 pub(super) use m040::reconcile_migration_040_background;
-pub(super) use m139::reconcile_migration_139_background;
-pub(super) use m140::reconcile_migration_140_background;
-pub(super) use m141::reconcile_migration_141_background;
 pub(super) use m041::reconcile_migration_041;
 pub(super) use m042::reconcile_migration_042;
 pub(super) use m043::reconcile_migration_043;
@@ -102,3 +99,6 @@ pub(super) use m081::reconcile_migration_081;
 pub(super) use m083::reconcile_migration_083;
 pub(super) use m086::reconcile_migration_086;
 pub(super) use m092::reconcile_migration_092;
+pub(super) use m139::reconcile_migration_139_background;
+pub(super) use m140::reconcile_migration_140_background;
+pub(super) use m141::reconcile_migration_141_background;

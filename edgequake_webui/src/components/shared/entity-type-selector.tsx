@@ -72,6 +72,11 @@ export interface EntityTypeSelectorProps {
    * Preset buttons insert localized tokens for this language.
    */
   extractionLanguage?: string | null;
+  /**
+   * When true, collapse domain preset chips behind a "Change domain" control
+   * (SPEC-101 wizard density).
+   */
+  compactPresets?: boolean;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -94,10 +99,12 @@ export function EntityTypeSelector({
   strictLimit = true,
   onStrictLimitChange,
   extractionLanguage = null,
+  compactPresets = false,
 }: EntityTypeSelectorProps) {
   const { t } = useTranslation();
   const [customInput, setCustomInput] = useState('');
   const [advancedBulkInput, setAdvancedBulkInput] = useState('');
+  const [presetsOpen, setPresetsOpen] = useState(!compactPresets);
 
   const activePreset: PresetKey = useMemo(
     () => detectCanonicalPreset(value),
@@ -179,22 +186,56 @@ export function EntityTypeSelector({
       <Tabs defaultValue="basic" className="space-y-3">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="basic" data-testid="entity-tab-basic">
-            {t('entityTypes.tabBasic', 'Basic')}
+            {t('entityTypes.tabPresets', 'Presets')}
           </TabsTrigger>
           <TabsTrigger value="advanced" data-testid="entity-tab-advanced">
-            {t('entityTypes.tabAdvanced', 'Advanced')}
+            {t('entityTypes.tabBulkEdit', 'Bulk edit')}
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="basic" className="space-y-3 m-0">
-          {/* Preset buttons */}
+          {/* Preset buttons — compact: summary + disclosure */}
           <div className="space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground">
-              {t('entityTypes.presetLabel', 'Domain Preset')}
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {(Object.entries(ENTITY_PRESETS) as [Exclude<PresetKey, 'custom'>, typeof ENTITY_PRESETS[keyof typeof ENTITY_PRESETS]][]).map(
-                ([key, preset]) => {
+            {compactPresets ? (
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground" data-testid="entity-preset-summary">
+                  {activePreset === 'custom'
+                    ? t('entityTypes.presets.custom', 'Custom')
+                    : t(
+                        ENTITY_PRESETS[activePreset as Exclude<PresetKey, 'custom'>]?.labelKey ??
+                          'entityTypes.presets.general',
+                        ENTITY_PRESETS[activePreset as Exclude<PresetKey, 'custom'>]?.labelFallback ??
+                          'General',
+                      )}
+                  {' · '}
+                  {value.length} {t('entityTypes.typesShort', 'types')}
+                </p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => setPresetsOpen((o) => !o)}
+                  data-testid="entity-change-domain"
+                >
+                  {presetsOpen
+                    ? t('common.hide', 'Hide')
+                    : t('onboarding.changeDomain', 'Change domain')}
+                </Button>
+              </div>
+            ) : (
+              <p className="text-xs font-medium text-muted-foreground">
+                {t('entityTypes.presetLabel', 'Domain Preset')}
+              </p>
+            )}
+            {presetsOpen ? (
+              <div className="flex flex-wrap gap-1.5">
+                {(
+                  Object.entries(ENTITY_PRESETS) as [
+                    Exclude<PresetKey, 'custom'>,
+                    (typeof ENTITY_PRESETS)[keyof typeof ENTITY_PRESETS],
+                  ][]
+                ).map(([key, preset]) => {
                   const isActive = activePreset === key;
                   return (
                     <Button
@@ -212,22 +253,22 @@ export function EntityTypeSelector({
                       {t(preset.labelKey, preset.labelFallback)}
                     </Button>
                   );
-                }
-              )}
-              {activePreset === 'custom' && (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="default"
-                  className="h-7 gap-1.5 px-2.5 text-xs"
-                  disabled
-                  data-testid="preset-btn-custom"
-                  aria-pressed
-                >
-                  {t('entityTypes.presets.custom', 'Custom')}
-                </Button>
-              )}
-            </div>
+                })}
+                {activePreset === 'custom' && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="default"
+                    className="h-7 gap-1.5 px-2.5 text-xs"
+                    disabled
+                    data-testid="preset-btn-custom"
+                    aria-pressed
+                  >
+                    {t('entityTypes.presets.custom', 'Custom')}
+                  </Button>
+                )}
+              </div>
+            ) : null}
           </div>
 
           {/* Active type chips */}
@@ -245,7 +286,7 @@ export function EntityTypeSelector({
             </div>
 
             <div
-              className="min-h-10 flex flex-wrap gap-1.5 p-2 rounded-md border bg-background"
+              className="min-h-10 max-h-24 overflow-y-auto flex flex-wrap gap-1.5 p-2 rounded-md border bg-background"
               data-testid="entity-types-chips"
             >
               {value.length === 0 && (

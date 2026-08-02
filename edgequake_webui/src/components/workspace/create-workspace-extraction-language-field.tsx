@@ -1,5 +1,5 @@
 /**
- * Optional extraction language select for create-workspace dialogs (SPEC-096).
+ * Optional extraction language select for create/reconfigure wizards (SPEC-096).
  */
 'use client';
 
@@ -13,6 +13,7 @@ import {
 import {
   EXTRACTION_LANGUAGES,
   EXTRACTION_LANGUAGE_SERVER_DEFAULT,
+  formatServerDefaultExtractionLanguageLabel,
 } from '@/constants/extraction-languages';
 import { useTranslation } from 'react-i18next';
 
@@ -30,6 +31,7 @@ export function CreateWorkspaceExtractionLanguageField({
     value && value !== EXTRACTION_LANGUAGE_SERVER_DEFAULT
       ? value
       : EXTRACTION_LANGUAGE_SERVER_DEFAULT;
+  const serverDefaultLabel = formatServerDefaultExtractionLanguageLabel(t);
 
   return (
     <div className="space-y-2">
@@ -53,15 +55,12 @@ export function CreateWorkspaceExtractionLanguageField({
           data-testid="create-workspace-extraction-language"
         >
           <SelectValue
-            placeholder={t(
-              'workspace.extractionLanguage.serverDefault',
-              'Server default',
-            )}
+            placeholder={serverDefaultLabel}
           />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={EXTRACTION_LANGUAGE_SERVER_DEFAULT}>
-            {t('workspace.extractionLanguage.serverDefault', 'Server default')}
+            {serverDefaultLabel}
           </SelectItem>
           {EXTRACTION_LANGUAGES.map((lang) => (
             <SelectItem key={lang} value={lang}>

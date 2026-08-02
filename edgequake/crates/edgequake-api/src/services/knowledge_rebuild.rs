@@ -218,10 +218,7 @@ mod tests {
     #[test]
     fn prunes_source_document_ids_to_remaining() {
         let mut props = HashMap::new();
-        props.insert(
-            "source_ids".into(),
-            json!(["docA-chunk-0", "docB-chunk-0"]),
-        );
+        props.insert("source_ids".into(), json!(["docA-chunk-0", "docB-chunk-0"]));
         props.insert(
             "source_document_ids".into(),
             json!(["docA", "docB", "docC"]),
@@ -266,10 +263,7 @@ mod tests {
     #[test]
     fn rewrites_singulars_to_remaining_shared_sources() {
         let mut props = HashMap::new();
-        props.insert(
-            "source_ids".into(),
-            json!(["docA-chunk-0", "docB-chunk-1"]),
-        );
+        props.insert("source_ids".into(), json!(["docA-chunk-0", "docB-chunk-1"]));
         props.insert("source_chunk_id".into(), json!("docA-chunk-0"));
         props.insert("source_document_id".into(), json!("docA"));
         apply_rebuild_to_properties(&mut props, &["docB-chunk-1".into()]);

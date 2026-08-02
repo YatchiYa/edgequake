@@ -73,17 +73,13 @@ export function DynamicBreadcrumb({ customSegments }: DynamicBreadcrumbProps) {
     });
   }
   
-  // SPEC-100: always reserve the breadcrumb band height so navigating to
-  // depth ≥ 2 does not shove main content (CLS). At depth ≤ 1 the band is
-  // an invisible spacer — sidebar still communicates location.
+  // Depth ≤ 1 (/, /documents, /query, …): no band — sidebar already marks
+  // location, and an empty h-9 spacer read as a layout hole above the page
+  // title. Depth ≥ 2 (e.g. /documents/:id): paint the breadcrumb bar.
+  // WHY no reserved spacer: list→detail navigation is user-initiated, so the
+  // brief band appearance is expected (web.dev CLS: hadRecentInput).
   if (items.length <= 2) {
-    return (
-      <div
-        className="h-9 shrink-0 border-b border-transparent"
-        aria-hidden="true"
-        data-testid="breadcrumb-spacer"
-      />
-    );
+    return null;
   }
 
   return (

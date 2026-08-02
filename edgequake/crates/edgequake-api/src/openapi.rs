@@ -100,6 +100,8 @@ use crate::handlers;
         handlers::get_cost_summary,
         handlers::get_model_pricing,
         handlers::estimate_cost,
+        handlers::setup_status,
+        handlers::setup_initialize,
         handlers::create_tenant,
         handlers::list_tenants,
         handlers::get_tenant,
@@ -367,6 +369,9 @@ use crate::handlers;
         handlers::BudgetInfo,
         handlers::CostHistoryPoint,
         // Workspaces & Tenants schemas (SDK-aligned)
+        handlers::SetupStatusResponse,
+        handlers::SetupInitializeRequest,
+        handlers::SetupInitializeResponse,
         handlers::CreateTenantRequest,
         handlers::UpdateTenantRequest,
         handlers::TenantResponse,

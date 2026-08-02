@@ -17,6 +17,8 @@ import {
   LLMModelSelector,
   type LLMSelection,
 } from "@/components/workspace/llm-model-selector";
+import { useInheritedModelDefaults } from "@/hooks/use-inherited-model-defaults";
+import { useTenantStore } from "@/stores/use-tenant-store";
 import type { Workspace } from "@/types";
 import { AlertTriangle, Eye, Gauge, Sparkles } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -42,6 +44,12 @@ export function WorkspaceExtendedModelConfig({
   visionLLMChanged,
 }: WorkspaceExtendedModelConfigProps) {
   const { t } = useTranslation();
+  const tenantId = useTenantStore((s) => s.selectedTenantId);
+  const inherited = useInheritedModelDefaults(tenantId);
+  const visionDefaultId =
+    inherited.defaultVisionProvider && inherited.defaultVisionModel
+      ? `${inherited.defaultVisionProvider}/${inherited.defaultVisionModel}`
+      : undefined;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -80,22 +88,36 @@ export function WorkspaceExtendedModelConfig({
             </>
           ) : (
             <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
-              <ProviderIcon providerId={workspace.vision_llm_provider} />
+              <ProviderIcon
+                providerId={
+                  workspace.vision_llm_provider ||
+                  visionDefaultId?.split("/")[0]
+                }
+              />
               <div>
                 <div className="font-medium">
                   {workspace.vision_llm_model ||
-                    t("workspace.serverDefault", "Server Default")}
+                    t("workspace.serverDefaultWithValue", "Server Default ({{value}})", {
+                      value:
+                        visionDefaultId ||
+                        t("workspace.notConfigured", "not configured"),
+                    })}
                 </div>
                 <div className="text-sm text-muted-foreground capitalize">
                   {workspace.vision_llm_provider ||
-                    t("workspace.autoDetect", "Auto-detected")}
+                    (visionDefaultId
+                      ? t("workspace.inheritedDefault", "Inherited default")
+                      : t("workspace.autoDetect", "Auto-detected"))}
                 </div>
               </div>
-              {workspace.vision_llm_provider && workspace.vision_llm_model && (
-                <Badge variant="outline" className="ml-auto">
-                  {`${workspace.vision_llm_provider}/${workspace.vision_llm_model}`}
+              {(workspace.vision_llm_provider && workspace.vision_llm_model) ||
+              visionDefaultId ? (
+                <Badge variant="outline" className="ml-auto font-mono text-xs">
+                  {workspace.vision_llm_provider && workspace.vision_llm_model
+                    ? `${workspace.vision_llm_provider}/${workspace.vision_llm_model}`
+                    : visionDefaultId}
                 </Badge>
-              )}
+              ) : null}
             </div>
           )}
         </CardContent>

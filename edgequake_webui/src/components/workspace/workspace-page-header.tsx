@@ -3,27 +3,20 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Workspace } from "@/types";
-import { FolderKanban, RefreshCw, Save, Settings } from "lucide-react";
+import { FolderKanban, RefreshCw, Settings } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 export interface WorkspacePageHeaderProps {
   workspace: Workspace;
-  isEditing: boolean;
-  isSaving: boolean;
   onRefresh: () => void;
+  /** Opens Reconfigure Workspace wizard (LAW-101-12). */
   onEditStart: () => void;
-  onCancel: () => void;
-  onSave: () => void;
 }
 
 export function WorkspacePageHeader({
   workspace,
-  isEditing,
-  isSaving,
   onRefresh,
   onEditStart,
-  onCancel,
-  onSave,
 }: WorkspacePageHeaderProps) {
   const { t } = useTranslation();
 
@@ -48,27 +41,15 @@ export function WorkspacePageHeader({
           <RefreshCw className="h-4 w-4 mr-2" />
           {t("common.refresh", "Refresh")}
         </Button>
-        {!isEditing ? (
-          <Button variant="default" size="sm" onClick={onEditStart} data-testid="workspace-edit-config">
-            <Settings className="h-4 w-4 mr-2" />
-            {t("workspace.editConfig", "Edit Configuration")}
-          </Button>
-        ) : (
-          <>
-            <Button variant="outline" size="sm" onClick={onCancel}>
-              {t("common.cancel", "Cancel")}
-            </Button>
-            <Button
-              variant="default"
-              size="sm"
-              onClick={onSave}
-              disabled={isSaving}
-            >
-              <Save className="h-4 w-4 mr-2" />
-              {t("common.save", "Save")}
-            </Button>
-          </>
-        )}
+        <Button
+          variant="default"
+          size="sm"
+          onClick={onEditStart}
+          data-testid="workspace-edit-config"
+        >
+          <Settings className="h-4 w-4 mr-2" />
+          {t("workspace.editConfig", "Edit Configuration")}
+        </Button>
       </div>
     </div>
   );

@@ -3,6 +3,7 @@
  * @description Workspace configuration page accessible via /w/[slug]/workspace deeplink.
  *
  * @implements SPEC-032: Workspace configuration via deeplink
+ * @implements SPEC-101 LAW-101-12: Same reconfigure wizard as /workspace (parity)
  * @implements FEAT0802: Workspace detail view with LLM/embedding configuration (deeplink route)
  * @implements UC0305: User views workspace configuration
  *
@@ -13,6 +14,7 @@
 
 import { useParams } from 'next/navigation';
 
+import { ReconfigureWorkspaceWizard } from '@/components/onboarding/reconfigure-workspace-wizard';
 import {
   WorkspaceLoading,
   WorkspaceNotFound,
@@ -22,35 +24,28 @@ import { WorkspaceExtractionLanguageCard } from '@/components/workspace/workspac
 import { WorkspacePageHeader } from '@/components/workspace/workspace-page-header';
 import { ProviderStatusHub } from '@/components/settings/provider-status-hub';
 import { WorkspaceActionsCard } from '@/components/workspace/workspace-actions-card';
+import { WorkspaceExtendedModelConfig } from '@/components/workspace/workspace-extended-model-config';
 import { WorkspaceModelConfigGrid } from '@/components/workspace/workspace-model-config-grid';
 import { WorkspaceStatusFooter } from '@/components/workspace/workspace-status-footer';
 import { WorkspaceStatsCards } from '@/components/workspace/workspace-stats-cards';
 import { ENTITY_PRESETS } from '@/constants/entity-presets';
-import { extractionLanguageToUpdatePayload } from '@/constants/extraction-languages';
 import { refreshDynamicModels } from '@/hooks/use-providers';
 import { useWorkspaceDetailQueries } from '@/hooks/use-workspace-detail-queries';
 import { useWorkspaceSlugResolver } from '@/hooks/use-workspace-slug-resolver';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
-import type { EmbeddingSelection } from '@/components/workspace/embedding-model-selector';
-import type { LLMSelection } from '@/components/workspace/llm-model-selector';
-import { updateWorkspace } from '@/lib/api/edgequake';
-import {
-  getWorkspaceEmbeddingSelection,
-  getWorkspaceLlmSelection,
-} from '@/lib/workspace/drafts';
-import { applyExtractionLanguageToEntityTypes } from '@/lib/workspace/remap-entity-types-on-language-change';
+import type { WorkspaceRebuildHints } from '@/lib/onboarding/workspace-config-diff';
+import { getWorkspacePdfParserBackend } from '@/lib/workspace/drafts';
 import { useTenantStore } from '@/stores/use-tenant-store';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   FolderKanban,
 } from 'lucide-react';
-import { useCallback, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-
 
 export default function WorkspacePage() {
   const { t } = useTranslation();
@@ -61,40 +56,8 @@ export default function WorkspacePage() {
     useWorkspaceSlugResolver(slug);
   const { selectedTenantId, selectedWorkspaceId } = useTenantStore();
 
-  // Edit mode state
-  const [isEditing, setIsEditing] = useState(false);
-  const [selectedLLM, setSelectedLLM] = useState<LLMSelection | undefined>(undefined);
-  const [selectedEmbedding, setSelectedEmbedding] = useState<EmbeddingSelection | undefined>(undefined);
-  const [selectedEntityTypes, setSelectedEntityTypes] = useState<string[]>([
-    ...ENTITY_PRESETS.general.types,
-  ]);
-  const [selectedEntityTypesStrict, setSelectedEntityTypesStrict] = useState(true);
-  const [selectedExtractionLanguage, setSelectedExtractionLanguage] = useState<
-    string | null
-  >(null);
-
-  /** SPEC-096 LAW-L6: remap preset types when extraction language changes. */
-  const handleExtractionLanguageChange = useCallback(
-    (next: string | null) => {
-      const { types, remapped } = applyExtractionLanguageToEntityTypes(
-        selectedEntityTypes,
-        selectedExtractionLanguage,
-        next,
-      );
-      setSelectedExtractionLanguage(next);
-      if (remapped) {
-        setSelectedEntityTypes(types);
-        toast.info(
-          t(
-            'workspace.extractionLanguage.typesRemappedToast',
-            'Entity types updated to match extraction language. Applies to future ingestions.',
-          ),
-          { duration: 5000 },
-        );
-      }
-    },
-    [selectedEntityTypes, selectedExtractionLanguage, t],
-  );
+  const [reconfigureOpen, setReconfigureOpen] = useState(false);
+  const [pendingRebuild, setPendingRebuild] = useState<WorkspaceRebuildHints | null>(null);
 
   const {
     workspace,
@@ -108,180 +71,63 @@ export default function WorkspacePage() {
     enabled: isReady,
   });
 
-  // Update workspace mutation
-  const updateMutation = useMutation({
-    mutationFn: (data: {
-      llm_model?: string;
-      llm_provider?: string;
-      embedding_model?: string;
-      embedding_provider?: string;
-      embedding_dimension?: number;
-      entity_types?: string[];
-      entity_types_strict?: boolean;
-      extraction_language?: string;
-      _embeddingChanged?: boolean;
-      _llmChanged?: boolean;
-      _extractionLanguageChanged?: boolean;
-    }) =>
-      updateWorkspace(selectedTenantId!, selectedWorkspaceId!, {
-        llm_model: data.llm_model,
-        llm_provider: data.llm_provider,
-        embedding_model: data.embedding_model,
-        embedding_provider: data.embedding_provider,
-        embedding_dimension: data.embedding_dimension,
-        entity_types: data.entity_types,
-        entity_types_strict: data.entity_types_strict,
-        extraction_language: data.extraction_language,
-      }),
-    onSuccess: (_result, variables) => {
-      toast.success(t('workspace.updateSuccess', 'Workspace updated successfully'));
-      queryClient.invalidateQueries({ queryKey: ['workspace', selectedTenantId, selectedWorkspaceId] });
-      setIsEditing(false);
+  const documentCount = stats?.document_count ?? workspace?.document_count ?? 0;
 
-      if (variables._extractionLanguageChanged) {
-        toast.info(
-          t(
-            'workspace.extractionLanguage.changedToast',
-            'Extraction language updated. Reprocess documents to refresh the graph.',
+  const handleReconfigureApplied = (result: {
+    pendingRebuild: WorkspaceRebuildHints | null;
+    extractionLanguageChanged: boolean;
+  }) => {
+    toast.success(t('workspace.updateSuccess', 'Workspace updated successfully'));
+    queryClient.invalidateQueries({
+      queryKey: ['workspace', selectedTenantId, selectedWorkspaceId],
+    });
+    if (result.extractionLanguageChanged) {
+      toast.info(
+        t(
+          'workspace.extractionLanguage.changedToast',
+          'Extraction language updated. Reprocess documents to refresh the graph.',
+        ),
+        { duration: 6000 },
+      );
+    }
+    if (result.pendingRebuild) {
+      setPendingRebuild(result.pendingRebuild);
+      const { embeddings, extraction, vision } = result.pendingRebuild;
+      if (embeddings && extraction) {
+        toast.info(t('workspace.rebuildRequired', 'Model changes detected'), {
+          description: t(
+            'workspace.rebuildBothHint',
+            'Both embedding and LLM models changed. Use "Rebuild Embeddings" to reprocess all documents.',
           ),
-          { duration: 6000 },
-        );
-      }
-      
-      // Check if model changes require rebuild
-      const needsEmbeddingRebuild = variables._embeddingChanged;
-      const needsExtractionRebuild = variables._llmChanged;
-      
-      if (needsEmbeddingRebuild || needsExtractionRebuild) {
-        setPendingRebuild({
-          embeddings: needsEmbeddingRebuild ?? false,
-          extraction: needsExtractionRebuild ?? false,
+          duration: 8000,
         });
-        
-        if (needsEmbeddingRebuild && needsExtractionRebuild) {
-          toast.info(
-            t('workspace.rebuildRequired', 'Model changes detected'),
-            {
-              description: t(
-                'workspace.rebuildBothHint',
-                'Both embedding and LLM models changed. Use "Rebuild Embeddings" to reprocess all documents.'
-              ),
-              duration: 8000,
-            }
-          );
-        } else if (needsEmbeddingRebuild) {
-          toast.info(
-            t('workspace.embeddingRebuildRequired', 'Embedding model changed'),
-            {
-              description: t(
-                'workspace.embeddingRebuildHint',
-                'Use "Rebuild Embeddings" to regenerate vector embeddings with the new model.'
-              ),
-              duration: 6000,
-            }
-          );
-        } else if (needsExtractionRebuild) {
-          toast.info(
-            t('workspace.llmRebuildRequired', 'LLM model changed'),
-            {
-              description: t(
-                'workspace.llmRebuildHint',
-                'Use "Rebuild Embeddings" to re-extract entities with the new LLM model.'
-              ),
-              duration: 6000,
-            }
-          );
-        }
+      } else if (embeddings) {
+        toast.info(t('workspace.embeddingRebuildRequired', 'Embedding model changed'), {
+          description: t(
+            'workspace.embeddingRebuildHint',
+            'Use "Rebuild Embeddings" to regenerate vector embeddings with the new model.',
+          ),
+          duration: 6000,
+        });
+      } else if (extraction) {
+        toast.info(t('workspace.llmRebuildRequired', 'LLM model changed'), {
+          description: t(
+            'workspace.llmRebuildHint',
+            'Use "Rebuild Knowledge Graph" to re-extract entities with the new LLM model.',
+          ),
+          duration: 6000,
+        });
+      } else if (vision) {
+        toast.info(t('workspace.visionRebuildRequired', 'Vision LLM model changed'), {
+          description: t(
+            'workspace.visionRebuildHint',
+            'Use "Rebuild Knowledge Graph" to re-extract PDF documents with the new vision model from original files.',
+          ),
+          duration: 6000,
+        });
       }
-    },
-    onError: (error) => {
-      toast.error(t('workspace.updateFailed', 'Failed to update workspace'), {
-        description: error instanceof Error ? error.message : 'Unknown error',
-      });
-    },
-  });
-
-  const handleSave = () => {
-    const previousLanguage = workspace?.extraction_language ?? null;
-    const nextLanguagePayload = extractionLanguageToUpdatePayload(
-      selectedExtractionLanguage,
-    );
-    const languageCleared =
-      nextLanguagePayload === 'none' || nextLanguagePayload === '';
-    const languageChanged =
-      (previousLanguage ?? null) !==
-      (languageCleared ? null : nextLanguagePayload);
-
-    const data: Parameters<typeof updateMutation.mutate>[0] = {
-      _embeddingChanged: embeddingModelChanged ?? false,
-      _llmChanged: llmModelChanged ?? false,
-      _extractionLanguageChanged: languageChanged,
-      entity_types: selectedEntityTypes,
-      entity_types_strict: selectedEntityTypesStrict,
-      extraction_language: nextLanguagePayload,
-      llm_model: selectedLLM?.model ?? '',
-      llm_provider: selectedLLM?.provider ?? '',
-    };
-
-    if (selectedEmbedding) {
-      data.embedding_model = selectedEmbedding.model;
-      data.embedding_provider = selectedEmbedding.provider;
-      data.embedding_dimension = selectedEmbedding.dimension;
-    } else {
-      data.embedding_model = '';
-      data.embedding_provider = '';
-      data.embedding_dimension = 0;
-    }
-
-    updateMutation.mutate(data);
-  };
-
-  const syncEntityTypeDrafts = (ws: NonNullable<typeof workspace>) => {
-    setSelectedEntityTypes(
-      ws.entity_types?.length ? [...ws.entity_types] : [...ENTITY_PRESETS.general.types]
-    );
-    setSelectedEntityTypesStrict(ws.entity_types_strict ?? true);
-    setSelectedExtractionLanguage(ws.extraction_language ?? null);
-  };
-
-  const handleCancel = () => {
-    setIsEditing(false);
-    if (workspace) {
-      setSelectedLLM(getWorkspaceLlmSelection(workspace));
-      setSelectedEmbedding(getWorkspaceEmbeddingSelection(workspace));
-      syncEntityTypeDrafts(workspace);
     }
   };
-
-  const handleEditStart = () => {
-    if (!workspace) return;
-    setSelectedLLM(getWorkspaceLlmSelection(workspace));
-    setSelectedEmbedding(getWorkspaceEmbeddingSelection(workspace));
-    syncEntityTypeDrafts(workspace);
-    setIsEditing(true);
-  };
-
-  // Check if embedding model changed (needs rebuild)
-  const embeddingModelChanged = Boolean(
-    workspace && selectedEmbedding && (
-      workspace.embedding_model !== selectedEmbedding.model ||
-      workspace.embedding_provider !== selectedEmbedding.provider
-    )
-  );
-
-  // Check if LLM model changed (needs extraction rebuild)
-  const llmModelChanged = Boolean(
-    workspace && selectedLLM && (
-      workspace.llm_model !== selectedLLM.model ||
-      workspace.llm_provider !== selectedLLM.provider
-    )
-  );
-
-  // Track if rebuild is needed after save
-  const [pendingRebuild, setPendingRebuild] = useState<{
-    embeddings: boolean;
-    extraction: boolean;
-  } | null>(null);
 
   if (resolvingSlug || !isReady) {
     return <WorkspaceLoading context="workspace configuration" />;
@@ -307,7 +153,10 @@ export default function WorkspacePage() {
               {t('workspace.noWorkspaceSelected', 'No Workspace Selected')}
             </h2>
             <p className="text-sm text-muted-foreground mt-2">
-              {t('workspace.selectWorkspaceHint', 'Please select a workspace from the sidebar.')}
+              {t(
+                'workspace.selectWorkspaceHint',
+                'Please select a workspace from the sidebar.',
+              )}
             </p>
           </CardContent>
         </Card>
@@ -339,7 +188,10 @@ export default function WorkspacePage() {
               {t('workspace.notFound', 'Workspace Not Found')}
             </h2>
             <p className="text-sm text-muted-foreground mt-2">
-              {t('workspace.notFoundHint', 'The selected workspace could not be loaded.')}
+              {t(
+                'workspace.notFoundHint',
+                'The selected workspace could not be loaded.',
+              )}
             </p>
           </CardContent>
         </Card>
@@ -347,16 +199,16 @@ export default function WorkspacePage() {
     );
   }
 
+  const entityTypes = workspace.entity_types?.length
+    ? workspace.entity_types
+    : [...ENTITY_PRESETS.general.types];
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       <WorkspacePageHeader
         workspace={workspace}
-        isEditing={isEditing}
-        isSaving={updateMutation.isPending}
         onRefresh={() => refetchWorkspace()}
-        onEditStart={handleEditStart}
-        onCancel={handleCancel}
-        onSave={handleSave}
+        onEditStart={() => setReconfigureOpen(true)}
       />
 
       <Separator />
@@ -367,34 +219,42 @@ export default function WorkspacePage() {
         isLoadingStats={isLoadingStats}
       />
 
-      
       <WorkspaceModelConfigGrid
         workspace={workspace}
-        isEditing={isEditing}
-        selectedLLM={selectedLLM}
-        selectedEmbedding={selectedEmbedding}
-        onLlmChange={setSelectedLLM}
-        onEmbeddingChange={setSelectedEmbedding}
-        llmModelChanged={llmModelChanged ?? false}
-        embeddingModelChanged={embeddingModelChanged ?? false}
+        isEditing={false}
+        selectedLLM={undefined}
+        selectedEmbedding={undefined}
+        onLlmChange={() => {}}
+        onEmbeddingChange={() => {}}
+        llmModelChanged={false}
+        embeddingModelChanged={false}
+      />
+
+      <WorkspaceExtendedModelConfig
+        workspace={workspace}
+        isEditing={false}
+        selectedVisionLLM={undefined}
+        selectedPdfParserBackend={getWorkspacePdfParserBackend(workspace)}
+        onVisionLlmChange={() => {}}
+        onPdfParserBackendChange={() => {}}
+        visionLLMChanged={false}
       />
 
       <WorkspaceExtractionLanguageCard
-        isEditing={isEditing}
+        isEditing={false}
         workspace={workspace}
-        selectedLanguage={selectedExtractionLanguage}
-        onLanguageChange={handleExtractionLanguageChange}
-        disabled={updateMutation.isPending}
+        selectedLanguage={workspace.extraction_language ?? null}
+        onLanguageChange={() => {}}
       />
 
       <WorkspaceEntityTypesCard
-        isEditing={isEditing}
+        isEditing={false}
         workspace={workspace}
-        selectedTypes={selectedEntityTypes}
-        onTypesChange={setSelectedEntityTypes}
-        strictLimit={selectedEntityTypesStrict}
-        onStrictLimitChange={setSelectedEntityTypesStrict}
-        extractionLanguage={selectedExtractionLanguage}
+        selectedTypes={entityTypes}
+        onTypesChange={() => {}}
+        strictLimit={workspace.entity_types_strict ?? true}
+        onStrictLimitChange={() => {}}
+        extractionLanguage={workspace.extraction_language ?? null}
       />
 
       <ProviderStatusHub
@@ -408,14 +268,26 @@ export default function WorkspacePage() {
       <WorkspaceActionsCard
         workspace={workspace}
         pendingRebuild={pendingRebuild}
+        includeVisionPending
         onRebuildComplete={() => {
-          queryClient.invalidateQueries({ queryKey: ['workspaceStats', selectedWorkspaceId] });
+          queryClient.invalidateQueries({
+            queryKey: ['workspaceStats', selectedWorkspaceId],
+          });
           queryClient.invalidateQueries({ queryKey: ['documents'] });
           setPendingRebuild(null);
         }}
       />
 
       <WorkspaceStatusFooter />
+
+      <ReconfigureWorkspaceWizard
+        open={reconfigureOpen}
+        onOpenChange={setReconfigureOpen}
+        tenantId={selectedTenantId}
+        workspace={workspace}
+        documentCount={documentCount}
+        onApplied={handleReconfigureApplied}
+      />
     </div>
   );
 }

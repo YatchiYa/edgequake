@@ -166,6 +166,14 @@ fn spec028_artifact_retrieval_service_ssot() {
     let loader = read_crate_src("src/services/document_body_loader.rs");
     assert!(loader.contains("pub async fn load_document_body"));
     assert!(loader.contains("PdfStorage"));
+    assert!(
+        loader.contains("DocumentBodySource::Chunks") || loader.contains("Chunks,"),
+        "body loader must support chunk-aggregation heal source"
+    );
+    assert!(
+        loader.contains("shell_looks_truncated"),
+        "body loader must detect summary-truncated shell bodies"
+    );
 }
 
 #[test]

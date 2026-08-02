@@ -495,9 +495,28 @@ impl AppState {
         // Create workspace service for full persistence
         let workspace_service_impl = WorkspaceServiceImpl::new(pool.clone());
 
-        // Ensure default tenant and workspace exist (critical for non-authenticated mode)
-        workspace_service_impl.ensure_defaults().await?;
-        tracing::info!("Default tenant and workspace ensured in PostgreSQL");
+        // SPEC-101: Skip silent Default seed on secure fresh installs (wizard owns creation).
+        // Escape hatches: EDGEQUAKE_PROVISION_DEFAULTS / EDGEQUAKE_BOOTSTRAP_ADMIN_PASSWORD /
+        // auth disabled / dev_mode (LAW-101-7).
+        let auth_enabled = std::env::var("EDGEQUAKE_AUTH_ENABLED")
+            .map(|v| {
+                !matches!(
+                    v.to_ascii_lowercase().as_str(),
+                    "0" | "false" | "no" | "off"
+                )
+            })
+            .unwrap_or(true);
+        let dev_mode = std::env::var("EDGEQUAKE_DEV_MODE")
+            .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+            .unwrap_or(false);
+        if crate::handlers::setup::should_provision_defaults_at_boot(auth_enabled, dev_mode) {
+            workspace_service_impl.ensure_defaults().await?;
+            tracing::info!("Default tenant and workspace ensured in PostgreSQL");
+        } else {
+            tracing::info!(
+                "SPEC-101: skipping silent default tenant/workspace provision (first-run wizard)"
+            );
+        }
 
         let workspace_service: SharedWorkspaceService = Arc::new(workspace_service_impl);
 

@@ -182,10 +182,25 @@ async function mockSpec096Backend(page: Page) {
   );
 
   await page.route("**/api/v1/settings/**", (route) =>
-    fulfillJson(route, 200, {}),
+    fulfillJson(route, 200, {
+      effective: {
+        llm_provider: "ollama",
+        llm_model: "gemma4:latest",
+        embedding_provider: "ollama",
+        embedding_model: "embeddinggemma:latest",
+        vision_provider: "ollama",
+        vision_model: "gemma4:latest",
+      },
+    }),
   );
-  await page.route("**/api/v1/models/**", (route) =>
-    fulfillJson(route, 200, []),
+  await page.route("**/api/v1/models**", (route) =>
+    fulfillJson(route, 200, {
+      default_llm_provider: "ollama",
+      default_llm_model: "gemma4:latest",
+      default_embedding_provider: "ollama",
+      default_embedding_model: "embeddinggemma:latest",
+      providers: [],
+    }),
   );
   await page.route("**/api/v1/providers*", (route) =>
     fulfillJson(route, 200, []),
@@ -267,25 +282,35 @@ test.describe("SPEC-096 Extraction Language", () => {
       "Future-only hint present",
     ]);
 
+    // SPEC-101 Wave 8: Edit Configuration opens reconfigure wizard
     await page.getByTestId("workspace-edit-config").click();
-    const select = page.getByTestId("ws-extraction-language-select");
+    await expect(page.getByTestId("reconfigure-workspace-wizard")).toBeVisible({
+      timeout: 15_000,
+    });
+    // models → document-parsing → extraction
+    await page.getByTestId("wizard-next").click();
+    await page.getByTestId("wizard-next").click();
+    await expect(page.getByTestId("wizard-step-extraction")).toBeVisible();
+    const select = page.getByTestId("create-workspace-extraction-language");
     await expect(select).toBeVisible();
     await select.click();
     await page.getByRole("option", { name: "Chinese" }).click();
     await capture(page, "S02-edit-select-chinese.png", "S02", [
-      "Edit mode select opened",
+      "Reconfigure wizard extraction step",
       "Chinese selected",
     ]);
 
-    await page.getByRole("button", { name: /^save$/i }).click();
-    await expect(page.getByTestId("workspace-edit-config")).toBeVisible({
+    await page.getByTestId("wizard-next").click(); // review
+    await expect(page.getByTestId("wizard-reconfigure-impact")).toBeVisible();
+    await page.getByTestId("wizard-finish").click();
+    await expect(page.getByTestId("reconfigure-workspace-wizard")).toBeHidden({
       timeout: 15_000,
     });
     await expect(page.getByTestId("ws-extraction-language-value")).toContainText(
       "Chinese",
     );
     await capture(page, "S03-saved-reload-chinese.png", "S03", [
-      "After save, view shows Chinese",
+      "After Apply, view shows Chinese",
     ]);
 
     await expect(page.getByTestId("extraction-language-future-only-hint")).toBeVisible();
@@ -310,10 +335,16 @@ test.describe("SPEC-096 Extraction Language", () => {
     });
 
     await page.getByTestId("workspace-edit-config").click();
+    await expect(page.getByTestId("reconfigure-workspace-wizard")).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.getByTestId("wizard-next").click();
+    await page.getByTestId("wizard-next").click();
+    await expect(page.getByTestId("wizard-step-extraction")).toBeVisible();
     await expect(page.getByTestId("entity-types-chips")).toBeVisible();
     await expect(page.getByTestId("entity-type-chip-PERSON")).toBeVisible();
 
-    const select = page.getByTestId("ws-extraction-language-select");
+    const select = page.getByTestId("create-workspace-extraction-language");
     await select.click();
     await page.getByRole("option", { name: "French" }).click();
 
@@ -372,7 +403,7 @@ test.describe("SPEC-096 Extraction Language", () => {
       if (!(await createSelect.isVisible().catch(() => false))) {
         await capture(page, "S05-create-workspace-french.png", "S05", [
           "Create dialog trigger not found in mocked shell — language card on workspace page verified instead",
-          "Create form field is wired in tenant-guard / header-tenant-selector / tenant-workspace-selector",
+          "Create form field is wired in create-workspace-wizard / TenantGuard / HeaderTenantSelector",
         ]);
         test.info().annotations.push({
           type: "note",

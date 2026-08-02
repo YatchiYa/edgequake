@@ -17,6 +17,8 @@ import {
   LLMModelSelector,
   type LLMSelection,
 } from "@/components/workspace/llm-model-selector";
+import { useInheritedModelDefaults } from "@/hooks/use-inherited-model-defaults";
+import { useTenantStore } from "@/stores/use-tenant-store";
 import type { Workspace } from "@/types";
 import { AlertTriangle, Brain, Layers } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -37,31 +39,41 @@ function ModelDisplayRow({
   model,
   fullId,
   dimension,
+  /** When model unset — never-silent resolved default e.g. ollama/gemma4:latest */
+  resolvedDefaultId,
 }: {
   providerId?: string;
   model?: string;
   fullId?: string;
   dimension?: number;
+  resolvedDefaultId?: string;
 }) {
   const { t } = useTranslation();
+  const usingDefault = !model;
+  const title = usingDefault
+    ? t("workspace.serverDefaultWithValue", "Server Default ({{value}})", {
+        value: resolvedDefaultId || t("workspace.notConfigured", "not configured"),
+      })
+    : model;
 
   return (
     <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
-      <ProviderIcon providerId={providerId} />
+      <ProviderIcon providerId={providerId || (usingDefault ? resolvedDefaultId?.split("/")[0] : undefined)} />
       <div>
-        <div className="font-medium">
-          {model || t("workspace.serverDefault", "Server Default")}
-        </div>
+        <div className="font-medium">{title}</div>
         <div className="text-sm text-muted-foreground capitalize">
-          {providerId || t("workspace.autoDetect", "Auto-detected")}
+          {providerId ||
+            (usingDefault
+              ? t("workspace.inheritedDefault", "Inherited default")
+              : t("workspace.autoDetect", "Auto-detected"))}
           {dimension != null && (
             <span className="ml-2">• {dimension} dims</span>
           )}
         </div>
       </div>
-      {fullId && (
-        <Badge variant="outline" className="ml-auto">
-          {fullId}
+      {(fullId || (usingDefault && resolvedDefaultId)) && (
+        <Badge variant="outline" className="ml-auto font-mono text-xs">
+          {fullId || resolvedDefaultId}
         </Badge>
       )}
     </div>
@@ -103,6 +115,16 @@ export function WorkspaceModelConfigGrid({
   embeddingModelChanged,
 }: WorkspaceModelConfigGridProps) {
   const { t } = useTranslation();
+  const tenantId = useTenantStore((s) => s.selectedTenantId);
+  const inherited = useInheritedModelDefaults(tenantId);
+  const llmDefaultId =
+    inherited.defaultLlmProvider && inherited.defaultLlmModel
+      ? `${inherited.defaultLlmProvider}/${inherited.defaultLlmModel}`
+      : undefined;
+  const embeddingDefaultId =
+    inherited.defaultEmbeddingProvider && inherited.defaultEmbeddingModel
+      ? `${inherited.defaultEmbeddingProvider}/${inherited.defaultEmbeddingModel}`
+      : undefined;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -142,6 +164,7 @@ export function WorkspaceModelConfigGrid({
               providerId={workspace.llm_provider}
               model={workspace.llm_model}
               fullId={workspace.llm_full_id}
+              resolvedDefaultId={llmDefaultId}
             />
           )}
         </CardContent>
@@ -183,6 +206,7 @@ export function WorkspaceModelConfigGrid({
               model={workspace.embedding_model}
               fullId={workspace.embedding_full_id}
               dimension={workspace.embedding_dimension}
+              resolvedDefaultId={embeddingDefaultId}
             />
           )}
         </CardContent>

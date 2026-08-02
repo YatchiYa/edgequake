@@ -589,13 +589,19 @@ impl PdfDocumentStorage for PostgresPdfStorage {
     ) -> Result<()> {
         // WHY: INSERT ... ON CONFLICT ensures idempotency (safe to call multiple times).
         // Updates status and content on conflict so reprocessing refreshes the record.
+        // INVARIANT: never shrink `content` — a shorter payload (e.g. legacy 500-char
+        // summary mistaken for body) must not clobber a longer stored body.
         // @implements FIX-ISSUE-74: Ensure document record exists before FK link
         sqlx::query(
             r#"
             INSERT INTO public.documents (id, tenant_id, workspace_id, title, content, status, updated_at)
             VALUES ($1, $2, $3, $4, $5, $6, NOW())
             ON CONFLICT (id) DO UPDATE SET
-                content = EXCLUDED.content,
+                content = CASE
+                    WHEN length(EXCLUDED.content) >= length(documents.content)
+                        THEN EXCLUDED.content
+                    ELSE documents.content
+                END,
                 status  = EXCLUDED.status,
                 title   = EXCLUDED.title,
                 updated_at = NOW()

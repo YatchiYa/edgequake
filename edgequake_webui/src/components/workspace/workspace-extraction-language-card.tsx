@@ -24,6 +24,7 @@ import {
 import {
   EXTRACTION_LANGUAGES,
   EXTRACTION_LANGUAGE_SERVER_DEFAULT,
+  formatServerDefaultExtractionLanguageLabel,
 } from '@/constants/extraction-languages';
 import type { Workspace } from '@/types';
 import { Languages } from 'lucide-react';
@@ -51,6 +52,7 @@ export function WorkspaceExtractionLanguageCard({
     selectedLanguage && selectedLanguage !== EXTRACTION_LANGUAGE_SERVER_DEFAULT
       ? selectedLanguage
       : EXTRACTION_LANGUAGE_SERVER_DEFAULT;
+  const serverDefaultLabel = formatServerDefaultExtractionLanguageLabel(t);
 
   return (
     <Card data-testid="workspace-extraction-language-card">
@@ -92,19 +94,11 @@ export function WorkspaceExtractionLanguageCard({
               className="w-full max-w-sm"
               data-testid="ws-extraction-language-select"
             >
-              <SelectValue
-                placeholder={t(
-                  'workspace.extractionLanguage.serverDefault',
-                  'Server default',
-                )}
-              />
+              <SelectValue placeholder={serverDefaultLabel} />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={EXTRACTION_LANGUAGE_SERVER_DEFAULT}>
-                {t(
-                  'workspace.extractionLanguage.serverDefault',
-                  'Server default',
-                )}
+                {serverDefaultLabel}
               </SelectItem>
               {EXTRACTION_LANGUAGES.map((lang) => (
                 <SelectItem key={lang} value={lang}>
@@ -126,10 +120,7 @@ export function WorkspaceExtractionLanguageCard({
             className="text-sm text-muted-foreground"
             data-testid="ws-extraction-language-value"
           >
-            {t(
-              'workspace.extractionLanguage.serverDefault',
-              'Server default',
-            )}
+            {serverDefaultLabel}
           </p>
         )}
       </CardContent>

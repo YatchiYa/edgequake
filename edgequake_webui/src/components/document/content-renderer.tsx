@@ -23,6 +23,7 @@ import { rewriteMarkdownMmAssetUrls } from '@/lib/api/edgequake/documents';
 import type { Document } from '@/types';
 import { Suspense, useEffect, useMemo, useRef } from 'react';
 import { CodeRenderer } from './code-renderer';
+import { DocumentContentEmptyState } from './document-content-empty-state';
 import { PlainTextRenderer } from './plain-text-renderer';
 
 interface ContentRendererProps {
@@ -88,6 +89,10 @@ function getRendererForDocument(doc: Document, highlightText?: string, startLine
     doc.content || doc.content_summary || '',
     doc.id,
   );
+
+  if (!content.trim()) {
+    return <DocumentContentEmptyState />;
+  }
 
   // ---------------------------------------------------------------------------
   // Markdown documents — use token-level highlighting (not HTML injection).

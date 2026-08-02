@@ -108,10 +108,7 @@ async fn e2e_spec098_batch_failed_reasons() {
     }
     let result = result.expect("batch task must finish");
 
-    let failed_ids = result["failed_ids"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
+    let failed_ids = result["failed_ids"].as_array().cloned().unwrap_or_default();
     assert!(
         failed_ids.iter().any(|v| v.as_str() == Some(doc_id)),
         "failed_ids must include {doc_id}: {result}"
@@ -122,10 +119,7 @@ async fn e2e_spec098_batch_failed_reasons() {
         .iter()
         .find(|f| f.get("document_id").and_then(|v| v.as_str()) == Some(doc_id))
         .expect("per-id failed entry");
-    let reason = entry
-        .get("reason")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let reason = entry.get("reason").and_then(|v| v.as_str()).unwrap_or("");
     assert!(
         !reason.is_empty(),
         "failed[].reason must be non-empty: {entry}"

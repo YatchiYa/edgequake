@@ -129,3 +129,24 @@ export function spec096Screenshot(fileName: string): string {
     fileName,
   );
 }
+
+/**
+ * SPEC-101 evidence QC — writes to `specs/101-…/evidence/<fileName>`
+ * and mirrors under `e2e/screenshots/spec101/<fileName>`.
+ */
+export function spec101Screenshot(fileName: string): string {
+  const evidencePath = path.join(
+    ensureDir(
+      path.join(REPO_ROOT, "specs/101-wizard-mode-tenant-workspace/evidence"),
+    ),
+    fileName,
+  );
+  // Mirror for local Playwright browsing without digging into specs/
+  ensureDir(path.join(SCREENSHOT_ROOT.e2e, "spec101"));
+  return evidencePath;
+}
+
+/** Companion path under e2e/screenshots/spec101/ (optional second write). */
+export function spec101E2eScreenshot(fileName: string): string {
+  return e2eScreenshot("spec101", fileName);
+}

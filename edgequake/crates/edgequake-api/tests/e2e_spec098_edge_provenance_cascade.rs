@@ -114,10 +114,9 @@ async fn create_postgres_test_state(pool: &PgPool) -> AppState {
         Arc::clone(&mock_provider) as Arc<dyn edgequake_llm::traits::EmbeddingProvider>,
         Arc::clone(&mock_provider) as Arc<dyn edgequake_llm::traits::LLMProvider>,
     ));
-    let vector_registry: Arc<dyn edgequake_storage::traits::WorkspaceVectorRegistry> =
-        Arc::new(MemoryWorkspaceVectorRegistry::new(
-            Arc::clone(&vector_storage) as Arc<dyn VectorStorage>,
-        ));
+    let vector_registry: Arc<dyn edgequake_storage::traits::WorkspaceVectorRegistry> = Arc::new(
+        MemoryWorkspaceVectorRegistry::new(Arc::clone(&vector_storage) as Arc<dyn VectorStorage>),
+    );
 
     AppState {
         storage: edgequake_api::state::StorageRuntime {
@@ -353,7 +352,11 @@ async fn e2e_spec098_multigraph_edge_cascade_prunes_both_rels() {
     let before = find_document_edges(&state.storage.graph_storage, Some(&tenant_ctx), &scope)
         .await
         .expect("find before");
-    assert_eq!(before.len(), 2, "both rel types must be discovered: {before:?}");
+    assert_eq!(
+        before.len(),
+        2,
+        "both rel types must be discovered: {before:?}"
+    );
 
     let stats = cascade_remove_document_sources(
         &state.storage.graph_storage,
@@ -408,8 +411,7 @@ async fn e2e_spec098_multigraph_edge_cascade_prunes_both_rels() {
             "must keep doc_b provenance: {ids:?}"
         );
         assert!(
-            !ids
-                .iter()
+            !ids.iter()
                 .any(|s| s == &chunk_a || s.starts_with(&format!("{doc_a}-"))),
             "doc_a must be gone: {ids:?}"
         );

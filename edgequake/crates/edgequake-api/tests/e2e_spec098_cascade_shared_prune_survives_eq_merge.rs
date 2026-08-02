@@ -116,10 +116,9 @@ async fn create_postgres_test_state(pool: &PgPool) -> AppState {
         Arc::clone(&mock_provider) as Arc<dyn edgequake_llm::traits::EmbeddingProvider>,
         Arc::clone(&mock_provider) as Arc<dyn edgequake_llm::traits::LLMProvider>,
     ));
-    let vector_registry: Arc<dyn edgequake_storage::traits::WorkspaceVectorRegistry> =
-        Arc::new(MemoryWorkspaceVectorRegistry::new(
-            Arc::clone(&vector_storage) as Arc<dyn VectorStorage>,
-        ));
+    let vector_registry: Arc<dyn edgequake_storage::traits::WorkspaceVectorRegistry> = Arc::new(
+        MemoryWorkspaceVectorRegistry::new(Arc::clone(&vector_storage) as Arc<dyn VectorStorage>),
+    );
 
     AppState {
         storage: edgequake_api::state::StorageRuntime {
@@ -244,10 +243,7 @@ async fn e2e_spec098_cascade_shared_prune_survives_eq_merge() {
     state
         .storage
         .kv_storage
-        .upsert(&[(
-            format!("{doc_a}-content"),
-            json!({ "content": "body A" }),
-        )])
+        .upsert(&[(format!("{doc_a}-content"), json!({ "content": "body A" }))])
         .await
         .expect("seed content");
 

@@ -473,6 +473,10 @@ pub trait PdfDocumentStorage: Send + Sync {
     ///
     /// Uses INSERT ... ON CONFLICT DO UPDATE to be idempotent.
     ///
+    /// **Content invariant:** on conflict, `content` must not shrink — a shorter
+    /// payload must leave the longer stored body intact (guards against summary
+    /// truncation bugs writing into the detail SSOT column).
+    ///
     /// @implements FIX-ISSUE-74: Ensure document record exists before FK link
     async fn ensure_document_record(
         &self,

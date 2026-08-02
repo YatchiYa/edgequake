@@ -109,6 +109,7 @@ export function bearerHeaders(token: string | null): AuthHeaders {
 
 export type Spec013BootstrapContext = {
   tenantId: string;
+  tenantName: string;
   workspaceId: string;
   workspaceName: string;
   workspaceSlug: string;
@@ -126,8 +127,9 @@ export async function createTenantWorkspaceViaApi(
   options: CreateTenantWorkspaceOptions = {}
 ): Promise<Spec013BootstrapContext> {
   const suffix = Date.now();
+  const tenantName = `${label} tenant ${suffix}`;
   const tenantRes = await request.post(`${SPEC013_BACKEND}/api/v1/tenants`, {
-    data: { name: `${label} tenant ${suffix}` },
+    data: { name: tenantName },
   });
   if (!tenantRes.ok()) {
     throw new Error(
@@ -155,6 +157,7 @@ export async function createTenantWorkspaceViaApi(
   const ws = (await wsRes.json()) as { id: string; slug?: string };
   return {
     tenantId: tenant.id,
+    tenantName,
     workspaceId: ws.id,
     workspaceName,
     workspaceSlug: ws.slug ?? workspaceSlug,

@@ -26,6 +26,9 @@ interface LLMModelSelectorProps {
   className?: string;
   showUsageHint?: boolean;
   filterVision?: boolean;
+  /** SPEC-101: hide provider chip bar on simple density. */
+  showProviderFilters?: boolean;
+  showCapabilityFilters?: boolean;
 }
 
 export function LLMModelSelector({
@@ -35,6 +38,8 @@ export function LLMModelSelector({
   className,
   showUsageHint = true,
   filterVision = false,
+  showProviderFilters = true,
+  showCapabilityFilters,
 }: LLMModelSelectorProps) {
   const { data: llmData, isLoading, error } = useLlmModels();
 
@@ -82,7 +87,10 @@ export function LLMModelSelector({
         }
         disabled={disabled}
         filterVision={filterVision}
-        showCapabilityFilters={!filterVision}
+        showProviderFilters={showProviderFilters}
+        showCapabilityFilters={
+          showCapabilityFilters !== undefined ? showCapabilityFilters : !filterVision
+        }
         serverDefaultLabel={defaultLabel}
         placeholder="Search LLM models…"
       />

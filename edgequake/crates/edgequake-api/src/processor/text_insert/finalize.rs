@@ -102,14 +102,16 @@ impl DocumentTaskProcessor {
                         .and_then(|m| m.get("title"))
                         .and_then(|v| v.as_str())
                         .unwrap_or(&data.file_source);
-                    let content_summary: String = text_content.chars().take(500).collect();
+                    // WHY: Pass the full body — never a 500-char summary.
+                    // `ensure_document_record` writes `documents.content` (detail SSOT).
+                    // Truncating here blanked HTML/text detail views after finalize.
                     if let Err(e) = pdf_storage
                         .ensure_document_record(
                             &doc_uuid,
                             &workspace_uuid,
                             tenant_uuid.as_ref(),
                             title,
-                            &content_summary,
+                            &text_content,
                             pg_status,
                         )
                         .await

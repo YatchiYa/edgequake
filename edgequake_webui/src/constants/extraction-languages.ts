@@ -25,6 +25,36 @@ export function isExtractionLanguage(value: string): value is ExtractionLanguage
   return (EXTRACTION_LANGUAGES as readonly string[]).includes(value);
 }
 
+/**
+ * Fleet / server extraction language (SPEC-096).
+ * Mirrors `EDGEQUAKE_EXTRACTION_LANGUAGE`; falls back to English.
+ */
+export function getServerDefaultExtractionLanguage(): ExtractionLanguage {
+  const raw =
+    process.env.NEXT_PUBLIC_EDGEQUAKE_EXTRACTION_LANGUAGE?.trim() ??
+    process.env.EDGEQUAKE_EXTRACTION_LANGUAGE?.trim() ??
+    '';
+  if (!raw) return 'English';
+  const match = EXTRACTION_LANGUAGES.find(
+    (lang) => lang.toLowerCase() === raw.toLowerCase(),
+  );
+  return match ?? 'English';
+}
+
+/**
+ * Never-silent server default label — e.g. `Server default (English)`.
+ */
+export function formatServerDefaultExtractionLanguageLabel(
+  t: (key: string, defaultValue: string, options?: { value: string }) => string,
+  resolved: string = getServerDefaultExtractionLanguage(),
+): string {
+  return t(
+    'workspace.extractionLanguage.serverDefaultWithValue',
+    `Server default (${resolved})`,
+    { value: resolved },
+  );
+}
+
 /** Map UI select value → API payload (`undefined` omit on create; `""` clear on update). */
 export function extractionLanguageToApiPayload(
   selected: string | null | undefined,

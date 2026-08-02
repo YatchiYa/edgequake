@@ -541,6 +541,8 @@ fn is_public_request(state: &crate::state::AppState, method: &Method, path: &str
             | "/auth/refresh"
             | "/auth/oidc/login"
             | "/auth/oidc/callback"
+            | "/setup/status"
+            | "/setup/initialize"
     ) || (*method == Method::POST
         && normalized_path == "/users"
         && state.auth.config.allow_registration)
