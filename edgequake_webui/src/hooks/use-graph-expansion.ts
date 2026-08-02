@@ -13,6 +13,7 @@
  * @enforces BR0624 - Deduplicate edges on expansion
  */
 
+import { useEntityTypeColors } from "@/hooks/use-entity-type-colors";
 import { getEntityNeighborhood } from "@/lib/api/edgequake";
 import { displayEntityLabel } from "@/lib/graph/label-utils";
 import { useGraphStore } from "@/stores/use-graph-store";
@@ -24,22 +25,6 @@ import { useTranslation } from "react-i18next";
 import { animateNodes } from "sigma/utils";
 import { toast } from "sonner";
 
-// Color palette for entity types (same as graph-renderer)
-const TYPE_COLORS: Record<string, string> = {
-  PERSON: "#3b82f6",
-  ORGANIZATION: "#10b981",
-  LOCATION: "#f59e0b",
-  EVENT: "#ef4444",
-  CONCEPT: "#8b5cf6",
-  DOCUMENT: "#6366f1",
-  DEFAULT: "#64748b",
-};
-
-function getNodeColor(entityType: string | undefined): string {
-  if (!entityType) return TYPE_COLORS.DEFAULT;
-  return TYPE_COLORS[entityType.toUpperCase()] || TYPE_COLORS.DEFAULT;
-}
-
 /**
  * Hook to manage graph node expansion and pruning
  *
@@ -50,6 +35,7 @@ function getNodeColor(entityType: string | undefined): string {
  */
 export function useGraphExpansion() {
   const { t } = useTranslation();
+  const { colorFor } = useEntityTypeColors();
 
   // Get state and actions from the store
   const nodeToExpand = useGraphStore((s) => s.nodeToExpand);
@@ -169,7 +155,7 @@ export function useGraphExpansion() {
                 x,
                 y,
                 size: 10,
-                color: getNodeColor(nodeType),
+                color: colorFor(nodeType),
                 borderColor: "#ffffff",
                 borderSize: 0.15,
                 entityType: nodeType,
@@ -252,6 +238,7 @@ export function useGraphExpansion() {
     },
     [
       t,
+      colorFor,
       sigmaInstance,
       nodes,
       expandedNodes,

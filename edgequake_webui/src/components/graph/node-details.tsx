@@ -37,6 +37,7 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { AuthenticatedMarkdownImage } from '@/components/query/markdown/AuthenticatedMarkdownImage';
+import { useEntityTypeColors } from '@/hooks/use-entity-type-colors';
 import { deleteEntity, getDocumentMmAssetUrl } from '@/lib/api/edgequake';
 import {
     bareGraphId,
@@ -44,7 +45,6 @@ import {
     formatEntityLabel,
     formatEntityType,
     formatMmEntitySubtitle,
-    getEntityTypeColor,
     graphPropString,
     graphSourceDocumentId,
     isMmItemId,
@@ -147,6 +147,7 @@ function PropertyValue({
 }
 
 export function NodeDetails({ node }: NodeDetailsProps) {
+  const { colorFor } = useEntityTypeColors();
   const { focusNode, edges, nodes } = useGraphStore();
   const queryClient = useQueryClient();
   // FIX #174: Read workspace entity types for the edit dialog dropdown
@@ -209,7 +210,7 @@ export function NodeDetails({ node }: NodeDetailsProps) {
     }
   };
 
-  const typeColor = getEntityTypeColor(node.node_type);
+  const typeColor = colorFor(node.node_type);
   const mmSubtitle = formatMmEntitySubtitle(node.node_type, node.properties);
   const identityId = bareGraphId(node.id);
   const showIdentityRow =
@@ -416,7 +417,7 @@ export function NodeDetails({ node }: NodeDetailsProps) {
                       </p>
                     ) : (
                       relatedNodes.map(({ edge, isSource, nodeId, label, type }, index) => {
-                        const relationColor = getEntityTypeColor(type);
+                        const relationColor = colorFor(type);
                         
                         return (
                           <div

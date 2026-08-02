@@ -52,6 +52,7 @@ pub mod sota_bridge;
 pub mod tenant_manager;
 pub mod token_budget;
 pub mod types;
+pub mod entity_type_colors;
 pub mod utils;
 pub mod workspace_model_update;
 pub mod workspace_service;

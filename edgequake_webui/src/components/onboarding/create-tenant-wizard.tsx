@@ -152,6 +152,10 @@ export function CreateTenantWizard({ open, onOpenChange, onCreated }: CreateTena
           description: draft.workspaceDescription.trim() || undefined,
           ...wsModels,
           entity_types: draft.entityTypes.length > 0 ? draft.entityTypes : undefined,
+          entity_type_colors:
+            Object.keys(draft.entityTypeColors).length > 0
+              ? draft.entityTypeColors
+              : undefined,
           extraction_language: draft.extractionLanguage ?? undefined,
         });
       } else {
@@ -161,6 +165,10 @@ export function CreateTenantWizard({ open, onOpenChange, onCreated }: CreateTena
           description: draft.workspaceDescription.trim() || undefined,
           ...wsModels,
           entity_types: draft.entityTypes.length > 0 ? draft.entityTypes : undefined,
+          entity_type_colors:
+            Object.keys(draft.entityTypeColors).length > 0
+              ? draft.entityTypeColors
+              : undefined,
           extraction_language: draft.extractionLanguage ?? undefined,
         });
       }

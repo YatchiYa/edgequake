@@ -1,5 +1,7 @@
 //! Workspace request types (create, update) and statistics.
 
+use std::collections::HashMap;
+
 use edgequake_pdf::PdfParserBackend;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -98,6 +100,10 @@ pub struct CreateWorkspaceRequest {
     /// Allowlisted display names (e.g. `"Chinese"`, `"French"`). Omit to inherit
     /// `EDGEQUAKE_EXTRACTION_LANGUAGE` / English. Pass `""` or `"none"` to clear.
     pub extraction_language: Option<String>,
+
+    /// Custom entity-type → hex color map for graph visualization (SPEC-102).
+    /// Keys normalized UPPERCASE; values `#RGB` / `#RRGGBB`. Empty map clears.
+    pub entity_type_colors: Option<HashMap<String, String>>,
 }
 
 impl CreateWorkspaceRequest {
@@ -306,6 +312,10 @@ pub struct UpdateWorkspaceRequest {
     /// Extraction output language override (SPEC-096). Omit = leave unchanged;
     /// `""` / `"none"` clears metadata key.
     pub extraction_language: Option<String>,
+
+    /// Custom entity-type → hex color map (SPEC-102). Omit = leave unchanged;
+    /// empty map clears metadata key.
+    pub entity_type_colors: Option<HashMap<String, String>>,
 }
 
 /// Statistics for a workspace.

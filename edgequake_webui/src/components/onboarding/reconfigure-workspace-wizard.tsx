@@ -214,6 +214,7 @@ export function ReconfigureWorkspaceWizard({
         extractionLanguage: draft.extractionLanguage,
         entityTypes: draft.entityTypes,
         entityTypesStrict: draft.entityTypesStrict,
+        entityTypeColors: draft.entityTypeColors,
       });
       const updated = await updateWorkspace(tenantId, workspace.id, payload);
       const pendingRebuild = toPendingRebuild(impact.rebuildHints);

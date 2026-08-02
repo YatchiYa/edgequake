@@ -339,6 +339,12 @@ impl WorkspaceService for InMemoryWorkspaceService {
         }
         // SPEC-096: extraction language
         apply_in_memory_extraction_language(&mut workspace.metadata, request.extraction_language)?;
+        // SPEC-102: entity type colors
+        crate::entity_type_colors::apply_entity_type_colors_metadata(
+            &mut workspace.metadata,
+            request.entity_type_colors,
+        )
+        .map_err(Error::validation)?;
 
         let mut workspaces = self.workspaces.write().await;
         workspaces.insert(workspace.workspace_id, workspace.clone());
@@ -474,6 +480,11 @@ impl WorkspaceService for InMemoryWorkspaceService {
             }
         }
         apply_in_memory_extraction_language(&mut workspace.metadata, request.extraction_language)?;
+        crate::entity_type_colors::apply_entity_type_colors_metadata(
+            &mut workspace.metadata,
+            request.entity_type_colors,
+        )
+        .map_err(Error::validation)?;
 
         workspace.updated_at = chrono::Utc::now();
 
@@ -815,6 +826,7 @@ mod tests {
             entity_types: None,
             entity_types_strict: None,
             extraction_language: None,
+            entity_type_colors: None,
         };
 
         let workspace = service
@@ -904,6 +916,7 @@ mod tests {
                 entity_types: None,
                 entity_types_strict: None,
                 extraction_language: None,
+                entity_type_colors: None,
             };
             service
                 .create_workspace(tenant.tenant_id, request)
@@ -928,6 +941,7 @@ mod tests {
             entity_types: None,
             entity_types_strict: None,
             extraction_language: None,
+            entity_type_colors: None,
         };
         let result = service.create_workspace(tenant.tenant_id, request).await;
         assert!(result.is_err());

@@ -118,6 +118,8 @@ pub async fn create_workspace(
         entity_types_strict: request.entity_types_strict,
         // SPEC-096: Extraction language for future ingestions
         extraction_language: request.extraction_language.clone(),
+        // SPEC-102: entity type colors for graph visualization
+        entity_type_colors: request.entity_type_colors.clone(),
     };
 
     // Store workspace via workspace service
@@ -322,6 +324,7 @@ pub async fn update_workspace(
         entity_types: request.entity_types,
         entity_types_strict: request.entity_types_strict,
         extraction_language: request.extraction_language,
+        entity_type_colors: request.entity_type_colors,
     };
 
     let workspace = state

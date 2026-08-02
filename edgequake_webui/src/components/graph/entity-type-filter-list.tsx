@@ -7,7 +7,8 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ENTITY_TYPE_COLORS } from "@/lib/graph/label-utils";
+import { EntityTypeColorSwatch } from "@/components/graph/entity-type-color-swatch";
+import { useEntityTypeColors } from "@/hooks/use-entity-type-colors";
 import { cn } from "@/lib/utils";
 import { useGraphStore } from "@/stores/use-graph-store";
 import { Eye, EyeOff } from "lucide-react";
@@ -23,6 +24,7 @@ export interface EntityTypeStat {
 
 export function useEntityTypeStats(): EntityTypeStat[] {
   const nodes = useGraphStore((s) => s.nodes);
+  const { colorFor } = useEntityTypeColors();
   const { t } = useTranslation();
 
   return useMemo(() => {
@@ -39,14 +41,14 @@ export function useEntityTypeStats(): EntityTypeStat[] {
         return {
           type,
           count,
-          color: ENTITY_TYPE_COLORS[normalized] ?? ENTITY_TYPE_COLORS.DEFAULT,
+          color: colorFor(type),
           label: t(
             `graph.nodeTypes.${normalized.toLowerCase()}`,
             type.charAt(0).toUpperCase() + type.slice(1).toLowerCase(),
           ),
         };
       });
-  }, [nodes, t]);
+  }, [nodes, t, colorFor]);
 }
 
 export interface EntityTypeFilterListProps {
@@ -73,6 +75,7 @@ export function EntityTypeFilterList({
   const setVisibleEntityTypes = useGraphStore((s) => s.setVisibleEntityTypes);
 
   const typeStats = useEntityTypeStats();
+  const { colors, setTypeColor, resetTypeColor } = useEntityTypeColors();
   const normalizedQuery = typeQuery.trim().toLowerCase();
 
   const filteredStats = useMemo(() => {
@@ -186,53 +189,63 @@ export function EntityTypeFilterList({
           ) : (
             filteredStats.map(({ type, count, color, label }) => {
               const isVisible = visibleEntityTypes.has(type);
+              // WHY: row is a div — swatch is its own <button>; nesting buttons
+              // inside buttons is invalid HTML and breaks hydration (SPEC-102).
               return (
-                <button
+                <div
                   key={type}
-                  type="button"
                   role="listitem"
                   className={cn(
-                    "w-full flex items-center gap-2.5 rounded-md text-left transition-colors",
-                    "hover:bg-background/80 active:bg-background",
-                    "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+                    "w-full flex items-center gap-2.5 rounded-md",
+                    "hover:bg-background/80",
                     compact ? "px-2 py-1.5" : "px-2.5 py-2",
                     !isVisible && "opacity-45",
                   )}
-                  onClick={() => toggleEntityType(type)}
-                  aria-pressed={isVisible}
-                  aria-label={`${label}: ${count}. ${isVisible ? t("graph.legend.clickToHide", "Click to hide") : t("graph.legend.clickToShow", "Click to show")}`}
                 >
-                  <div
-                    className="w-3 h-3 rounded-full shrink-0 ring-2 ring-background shadow-sm"
-                    style={{ backgroundColor: color }}
-                    aria-hidden
+                  <EntityTypeColorSwatch
+                    entityType={type}
+                    color={color}
+                    overrides={colors}
+                    onChange={(hex) => void setTypeColor(type, hex)}
+                    onReset={() => void resetTypeColor(type)}
                   />
-                  <span
+                  <button
+                    type="button"
                     className={cn(
-                      "flex-1 truncate font-medium min-w-0",
-                      compact ? "text-[11px]" : "text-xs",
+                      "flex-1 flex items-center gap-2.5 min-w-0 text-left rounded-md",
+                      "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
                     )}
+                    onClick={() => toggleEntityType(type)}
+                    aria-pressed={isVisible}
+                    aria-label={`${label}: ${count}. ${isVisible ? t("graph.legend.clickToHide", "Click to hide") : t("graph.legend.clickToShow", "Click to show")}`}
                   >
-                    {label}
-                  </span>
-                  <Badge
-                    variant={isVisible ? "secondary" : "outline"}
-                    className="h-5 min-w-7 px-1.5 text-[10px] font-semibold tabular-nums shrink-0 justify-center"
-                  >
-                    {count}
-                  </Badge>
-                  {isVisible ? (
-                    <Eye
-                      className="h-3.5 w-3.5 text-primary/70 shrink-0"
-                      aria-hidden
-                    />
-                  ) : (
-                    <EyeOff
-                      className="h-3.5 w-3.5 text-muted-foreground shrink-0"
-                      aria-hidden
-                    />
-                  )}
-                </button>
+                    <span
+                      className={cn(
+                        "flex-1 truncate font-medium min-w-0",
+                        compact ? "text-[11px]" : "text-xs",
+                      )}
+                    >
+                      {label}
+                    </span>
+                    <Badge
+                      variant={isVisible ? "secondary" : "outline"}
+                      className="h-5 min-w-7 px-1.5 text-[10px] font-semibold tabular-nums shrink-0 justify-center"
+                    >
+                      {count}
+                    </Badge>
+                    {isVisible ? (
+                      <Eye
+                        className="h-3.5 w-3.5 text-primary/70 shrink-0"
+                        aria-hidden
+                      />
+                    ) : (
+                      <EyeOff
+                        className="h-3.5 w-3.5 text-muted-foreground shrink-0"
+                        aria-hidden
+                      />
+                    )}
+                  </button>
+                </div>
               );
             })
           )}

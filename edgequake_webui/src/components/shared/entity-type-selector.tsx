@@ -13,6 +13,7 @@
  * @implements SPEC-085: Custom entity configuration from UI
  */
 
+import { EntityTypeColorSwatch } from '@/components/graph/entity-type-color-swatch';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -30,6 +31,10 @@ import {
     detectCanonicalPreset,
     getPresetTypes,
 } from '@/constants/entity-type-catalog';
+import {
+    resolveEntityTypeColor,
+    stripDefaultOverrides,
+} from '@/lib/graph/entity-type-colors';
 import {
     Factory,
     FlaskConical,
@@ -77,6 +82,13 @@ export interface EntityTypeSelectorProps {
    * (SPEC-101 wizard density).
    */
   compactPresets?: boolean;
+  /**
+   * SPEC-102 — optional entity-type color overrides (controlled).
+   * When omitted, chips show default colors without edit.
+   */
+  colors?: Record<string, string>;
+  /** Called when a type color changes / resets (omit = read-only swatches). */
+  onColorsChange?: (colors: Record<string, string>) => void;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -100,11 +112,15 @@ export function EntityTypeSelector({
   onStrictLimitChange,
   extractionLanguage = null,
   compactPresets = false,
+  colors,
+  onColorsChange,
 }: EntityTypeSelectorProps) {
   const { t } = useTranslation();
   const [customInput, setCustomInput] = useState('');
   const [advancedBulkInput, setAdvancedBulkInput] = useState('');
   const [presetsOpen, setPresetsOpen] = useState(!compactPresets);
+  const colorMap = colors ?? {};
+  const colorsEditable = Boolean(onColorsChange) && !readOnly;
 
   const activePreset: PresetKey = useMemo(
     () => detectCanonicalPreset(value),
@@ -298,9 +314,28 @@ export function EntityTypeSelector({
                 <Badge
                   key={type}
                   variant="secondary"
-                  className="gap-1 pr-1 text-xs font-mono"
+                  className="gap-1.5 pr-1 text-xs font-mono"
                   data-testid={`entity-type-chip-${type}`}
                 >
+                  <EntityTypeColorSwatch
+                    entityType={type}
+                    color={resolveEntityTypeColor(type, colorMap)}
+                    overrides={colorMap}
+                    disabled={!colorsEditable}
+                    stopPropagation
+                    onChange={(hex) => {
+                      if (!onColorsChange) return;
+                      onColorsChange(
+                        stripDefaultOverrides({ ...colorMap, [type]: hex }),
+                      );
+                    }}
+                    onReset={() => {
+                      if (!onColorsChange) return;
+                      const next = { ...colorMap };
+                      delete next[type.toUpperCase()];
+                      onColorsChange(stripDefaultOverrides(next));
+                    }}
+                  />
                   {type}
                   {!readOnly && (
                     <button

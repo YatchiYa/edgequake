@@ -102,6 +102,7 @@ describe('model-payload', () => {
       entity_types: ['PERSON'],
       entity_types_strict: true,
       extraction_language: 'none',
+      entity_type_colors: {},
     });
   });
 
@@ -116,6 +117,7 @@ describe('model-payload', () => {
         extractionLanguage: 'Chinese',
         entityTypes: ['PERSON', 'ORGANIZATION'],
         entityTypesStrict: false,
+        entityTypeColors: { PERSON: '#112233' },
       }),
     ).toMatchObject({
       llm_provider: 'ollama',
@@ -128,6 +130,7 @@ describe('model-payload', () => {
       pdf_parser_backend: 'edgeparse',
       entity_types_strict: false,
       extraction_language: 'Chinese',
+      entity_type_colors: { PERSON: '#112233' },
     });
   });
 });

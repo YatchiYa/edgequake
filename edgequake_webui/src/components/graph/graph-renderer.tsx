@@ -18,7 +18,9 @@
 
 import { detectCommunities, getCommunityColor } from '@/lib/graph/clustering';
 import { getGraphEdgeKeyFromEdge } from '@/lib/graph/ids';
-import { formatEntityLabel, getEntityTypeColor } from '@/lib/graph/label-utils';
+import { useEntityTypeColors } from '@/hooks/use-entity-type-colors';
+import { resolveEntityTypeColor } from '@/lib/graph/entity-type-colors';
+import { formatEntityLabel } from '@/lib/graph/label-utils';
 import {
     applyLayoutToGraph,
     calculateLayoutPositions,
@@ -65,10 +67,6 @@ const LABEL_COLORS = {
   dark: '#e2e8f0',  // slate-200
 };
 
-function getNodeColor(entityType: string | undefined): string {
-  return getEntityTypeColor(entityType);
-}
-
 interface GraphRendererProps {
   nodes: GraphNode[];
   edges: GraphEdge[];
@@ -96,6 +94,15 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
   const { graphSettings } = useSettingsStore();
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
+  const { colors: entityTypeColorOverrides } = useEntityTypeColors();
+  const entityTypeColorOverridesRef = useRef(entityTypeColorOverrides);
+  entityTypeColorOverridesRef.current = entityTypeColorOverrides;
+
+  const getNodeColor = useCallback(
+    (entityType: string | undefined) =>
+      resolveEntityTypeColor(entityType, entityTypeColorOverridesRef.current),
+    [],
+  );
   
   // Track previous node/edge counts for incremental updates
   const prevNodesCountRef = useRef(0);
@@ -190,7 +197,7 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
         degree: nodeDegree, // Store degree for later reference
       });
     });
-  }, [isDark]);
+  }, [isDark, getNodeColor]);
   
   // Function to add edges to existing graph (for streaming)
   // WHY: forceLabel mirrors the showEdgeLabels setting so edge type text always
@@ -718,7 +725,24 @@ export function GraphRenderer({ nodes, edges, onNodeClick, onNodeHover, onNodeRi
       };
       setSigmaInstance(null);
     };
-  }, [nodes, edges, colorMode, isDark, setSigmaInstance]);
+  }, [nodes, edges, colorMode, isDark, setSigmaInstance, entityTypeColorOverrides, getNodeColor]);
+
+  // SPEC-102: recolor existing graph when workspace overrides change (entity-type mode)
+  useEffect(() => {
+    const graph = graphRef.current;
+    if (!graph || colorMode !== 'entity-type') return;
+    graph.forEachNode((nodeId) => {
+      const entityType = graph.getNodeAttribute(nodeId, 'entityType') as
+        | string
+        | undefined;
+      graph.setNodeAttribute(
+        nodeId,
+        'color',
+        resolveEntityTypeColor(entityType, entityTypeColorOverrides),
+      );
+    });
+    sigmaRef.current?.refresh();
+  }, [entityTypeColorOverrides, colorMode]);
 
   // Animate layout changes (when layout prop changes after initial render)
   useEffect(() => {

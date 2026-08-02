@@ -206,6 +206,11 @@ export interface UpdateWorkspaceRequest {
    * Pass `""` or `"none"` to clear the workspace override.
    */
   extraction_language?: string | null;
+  /**
+   * Custom entity-type → hex color map (SPEC-102).
+   * Empty object clears overrides.
+   */
+  entity_type_colors?: Record<string, string>;
 }
 
 /**

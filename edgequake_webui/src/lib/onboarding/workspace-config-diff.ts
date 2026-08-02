@@ -12,7 +12,8 @@ export type WorkspaceConfigChangedKey =
   | 'pdfParser'
   | 'extractionLanguage'
   | 'entityTypes'
-  | 'entityTypesStrict';
+  | 'entityTypesStrict'
+  | 'entityTypeColors';
 
 export interface WorkspaceConfigSnapshot {
   useServerDefaults: boolean;
@@ -23,6 +24,7 @@ export interface WorkspaceConfigSnapshot {
   extractionLanguage: string | null;
   entityTypes: string[];
   entityTypesStrict: boolean;
+  entityTypeColors?: Record<string, string>;
 }
 
 export interface WorkspaceRebuildHints {
@@ -50,6 +52,14 @@ function languageKey(lang: string | null): string {
 
 function entityTypesKey(types: string[]): string {
   return [...types].map((t) => t.trim()).filter(Boolean).sort().join('|');
+}
+
+function entityTypeColorsKey(colors?: Record<string, string>): string {
+  if (!colors) return '';
+  return Object.entries(colors)
+    .map(([k, v]) => `${k.toUpperCase()}=${v.toLowerCase()}`)
+    .sort()
+    .join('|');
 }
 
 function modelsDiffer(
@@ -115,6 +125,12 @@ export function diffWorkspaceConfig(
   }
   if (baseline.entityTypesStrict !== draft.entityTypesStrict) {
     changedKeys.push('entityTypesStrict');
+  }
+  if (
+    entityTypeColorsKey(baseline.entityTypeColors) !==
+    entityTypeColorsKey(draft.entityTypeColors)
+  ) {
+    changedKeys.push('entityTypeColors');
   }
 
   const docs = opts.documentCount ?? 0;

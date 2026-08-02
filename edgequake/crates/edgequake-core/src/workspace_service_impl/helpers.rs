@@ -1,4 +1,3 @@
-#[cfg(feature = "postgres")]
 use std::collections::HashMap;
 
 // ============ Helper Functions ============
@@ -44,6 +43,8 @@ pub(crate) fn apply_entity_types_strict_metadata(
         }
     }
 }
+
+// SPEC-102 color helpers live in `crate::entity_type_colors` (shared with in-memory).
 
 /// Apply `extraction_language` to workspace metadata (SPEC-096 / GH-352).
 ///

@@ -4135,8 +4135,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "reanalyze_multimodal"
+        "x-edgequake-v2-job-type": "reanalyze_multimodal",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/documents/{document_id}/retry-chunks": {
@@ -6652,6 +6652,30 @@
         ],
         "summary": "Get enhanced pipeline status with history messages.",
         "operationId": "get_pipeline_status",
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "workspace_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Pipeline status retrieved",
@@ -7251,6 +7275,66 @@
             "workspace_id": []
           }
         ]
+      }
+    },
+    "/api/v1/setup/initialize": {
+      "post": {
+        "tags": [
+          "setup"
+        ],
+        "summary": "POST /api/v1/setup/initialize",
+        "operationId": "setup_initialize",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupInitializeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Initialized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupInitializeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "409": {
+            "description": "Already initialized"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/v1/setup/status": {
+      "get": {
+        "tags": [
+          "setup"
+        ],
+        "summary": "GET /api/v1/setup/status",
+        "operationId": "setup_status",
+        "responses": {
+          "200": {
+            "description": "Setup status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupStatusResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": []
       }
     },
     "/api/v1/shared/{share_id}": {
@@ -8960,8 +9044,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "rebuild_knowledge_graph"
+        "x-edgequake-v2-job-type": "rebuild_knowledge_graph",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/workspaces/{workspace_id}/reprocess-documents": {
@@ -9034,8 +9118,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "reprocess_all",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "reprocess_all"
       }
     },
     "/api/v1/workspaces/{workspace_id}/stats": {
@@ -9526,8 +9610,8 @@
             "description": "WebSocket upgrade failed"
           }
         },
-        "x-edgequake-upgrade": "RFC6455",
-        "x-edgequake-transport": "websocket"
+        "x-edgequake-transport": "websocket",
+        "x-edgequake-upgrade": "RFC6455"
       }
     },
     "/ws/progress/{track_id}": {
@@ -13180,6 +13264,19 @@
             ],
             "description": "Embedding provider (\"openai\", \"ollama\", \"lmstudio\").\nIf not provided, auto-detected from embedding_model."
           },
+          "entity_type_colors": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Custom entity-type → hex color map for graph visualization (SPEC-102).\nKeys UPPERCASE; values `#RGB` / `#RRGGBB`. Empty object clears.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
           "entity_types": {
             "type": [
               "array",
@@ -13196,6 +13293,13 @@
               "null"
             ],
             "description": "When true (default), limit extraction to listed types; unknown → OTHER."
+          },
+          "extraction_language": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Natural-language output language for entity/relationship values (SPEC-096).\nAllowlisted names: English, Chinese, Japanese, Korean, Spanish, French,\nGerman, Portuguese, Italian, Russian. Omit to inherit env/default."
           },
           "llm_model": {
             "type": [
@@ -14293,6 +14397,14 @@
           "chunk_count"
         ],
         "properties": {
+          "cancelled_from_stage": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Last non-terminal pipeline stage when cancel froze the run (INV-10).\nPresent when `status`/`current_stage` is `cancelled`.",
+            "example": "extracting"
+          },
           "chunk_count": {
             "type": "integer",
             "description": "Number of chunks.",
@@ -14529,6 +14641,7 @@
           }
         },
         "example": {
+          "cancelled_from_stage": {},
           "chunk_count": {},
           "content_length": {},
           "content_summary": {},
@@ -25241,6 +25354,183 @@
           "note": {}
         }
       },
+      "SetupInitializeRequest": {
+        "type": "object",
+        "required": [
+          "tenant_name",
+          "workspace_name"
+        ],
+        "properties": {
+          "admin_email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "admin_password": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "admin_username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "default_embedding_model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "default_embedding_provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "default_llm_model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "default_llm_provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "default_vision_llm_model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "default_vision_llm_provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tenant_description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tenant_name": {
+            "type": "string"
+          },
+          "workspace_description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "workspace_name": {
+            "type": "string"
+          },
+          "workspace_slug": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "example": {
+          "admin_email": {},
+          "admin_password": {},
+          "admin_username": {},
+          "default_embedding_model": {},
+          "default_embedding_provider": {},
+          "default_llm_model": {},
+          "default_llm_provider": {},
+          "default_vision_llm_model": {},
+          "default_vision_llm_provider": {},
+          "tenant_description": {},
+          "tenant_name": {},
+          "workspace_description": {},
+          "workspace_name": {},
+          "workspace_slug": {}
+        }
+      },
+      "SetupInitializeResponse": {
+        "type": "object",
+        "required": [
+          "tenant",
+          "workspace",
+          "already_initialized"
+        ],
+        "properties": {
+          "admin_username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "already_initialized": {
+            "type": "boolean"
+          },
+          "tenant": {
+            "$ref": "#/components/schemas/TenantResponse"
+          },
+          "workspace": {
+            "$ref": "#/components/schemas/WorkspaceResponse"
+          }
+        },
+        "example": {
+          "admin_username": {},
+          "already_initialized": {},
+          "tenant": {},
+          "workspace": {}
+        }
+      },
+      "SetupStatusResponse": {
+        "type": "object",
+        "required": [
+          "needs_setup",
+          "has_login_users",
+          "tenant_count",
+          "workspace_count",
+          "auth_enabled",
+          "bootstrap_admin_configured"
+        ],
+        "properties": {
+          "auth_enabled": {
+            "type": "boolean"
+          },
+          "bootstrap_admin_configured": {
+            "type": "boolean"
+          },
+          "has_login_users": {
+            "type": "boolean"
+          },
+          "needs_setup": {
+            "type": "boolean"
+          },
+          "tenant_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "workspace_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "example": {
+          "auth_enabled": {},
+          "bootstrap_admin_configured": {},
+          "has_login_users": {},
+          "needs_setup": {},
+          "tenant_count": {},
+          "workspace_count": {}
+        }
+      },
       "Severity": {
         "type": "string",
         "description": "Severity level of an inspection finding.",
@@ -27213,6 +27503,19 @@
             ],
             "description": "Update embedding provider."
           },
+          "entity_type_colors": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Custom entity-type → hex color map (SPEC-102). Omit = leave unchanged;\nempty object clears the workspace override.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
           "entity_types": {
             "type": [
               "array",
@@ -27229,6 +27532,13 @@
               "null"
             ],
             "description": "Strict entity type limit (default true). Set false to allow free-form types."
+          },
+          "extraction_language": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Extraction output language (SPEC-096). Omit = leave unchanged;\nempty string or `\"none\"` clears the workspace override."
           },
           "is_active": {
             "type": [
@@ -27293,8 +27603,10 @@
           "embedding_dimension": {},
           "embedding_model": {},
           "embedding_provider": {},
+          "entity_type_colors": {},
           "entity_types": [],
           "entity_types_strict": {},
+          "extraction_language": {},
           "is_active": {},
           "llm_model": {},
           "llm_provider": {},
@@ -27731,6 +28043,19 @@
             "type": "string",
             "description": "Embedding provider (openai, ollama, lmstudio)."
           },
+          "entity_type_colors": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Custom entity-type → hex color map for graph visualization (SPEC-102).",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
           "entity_types": {
             "type": [
               "array",
@@ -27744,6 +28069,13 @@
           "entity_types_strict": {
             "type": "boolean",
             "description": "When true, unknown types are remapped to OTHER/CONCEPT (default true)."
+          },
+          "extraction_language": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Configured extraction language override (SPEC-096).\n`null` / omitted means inherit `EDGEQUAKE_EXTRACTION_LANGUAGE` or English."
           },
           "id": {
             "type": "string",

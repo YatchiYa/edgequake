@@ -33,6 +33,7 @@ This file maintains traceability between code features, business requirements, a
 | FEAT-019 | Documents List & Mix-Scale Perf Gates | Completed | [SPEC-054](../specs/054-fix-bugs-17/) / v0.18.0 |
 | FEAT-020 | Claim/Lease Delivery & Convert→Ingest SSOT | Completed | [SPEC-057](../specs/057-pipeline-reliability/000-index.md) / v0.19.0 |
 | FEAT-035 | OpenAPI Explorer (WebUI implementation) | Completed | [SPEC-035](../specs/035-api-explorer/) — code marker |
+| FEAT-102 | Custom Entity Type Colors (workspace graph) | Completed | [SPEC-102](../specs/102-custom-entity-type-colors/) / v0.22.0+ |
 
 ---
 
@@ -212,6 +213,21 @@ Workspace-scoped `extraction_language` for KG entity/relationship natural-langua
 - OpenAPI + Playwright e2e screenshots under `specs/096-multi-language-extraction/e2e/screenshots/`
 
 **Ops note**: Multilingual corpora often need a multilingual embedding model for retrieval quality (TrustGraph guidance).
+
+---
+
+### FEAT-102 — Custom Entity Type Colors (SPEC-102)
+
+**Spec**: [specs/102-custom-entity-type-colors](../specs/102-custom-entity-type-colors/)  
+**Status**: ✅ Completed (v0.22.0+)
+
+Workspace-scoped `entity_type_colors` for knowledge-graph visualization:
+
+- Persist `{ "PERSON": "#3b82f6", ... }` in workspace `metadata` via create/update APIs
+- Single WebUI resolver (`resolveEntityTypeColor`) over expanded defaults
+- EntityTypeSelector + graph legend color pickers; entity-type mode only
+- Hex `#RGB` / `#RRGGBB` validation; max 50 entries
+- Gates: `entity-type-colors.test.ts`, `spec102_entity_type_colors_persist`, `e2e/spec102-entity-type-colors.spec.ts`
 
 ---
 

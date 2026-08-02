@@ -36,6 +36,8 @@ export interface WizardDraft {
   pdfParserBackend: PdfParserBackendDraft;
   /** SPEC-101 Wave 8 — strict entity types (reconfigure). */
   entityTypesStrict: boolean;
+  /** SPEC-102 — entity type → hex color overrides. */
+  entityTypeColors: Record<string, string>;
 }
 
 export const EMPTY_WIZARD_DRAFT: WizardDraft = {
@@ -53,6 +55,7 @@ export const EMPTY_WIZARD_DRAFT: WizardDraft = {
   entityTypes: [],
   pdfParserBackend: 'none',
   entityTypesStrict: true,
+  entityTypeColors: {},
 };
 
 export function stepsForWizard(

@@ -103,6 +103,7 @@ export function buildWorkspaceUpdatePayload(args: {
   extractionLanguage: string | null;
   entityTypes: string[];
   entityTypesStrict: boolean;
+  entityTypeColors?: Record<string, string>;
 }): {
   llm_model: string;
   llm_provider: string;
@@ -115,7 +116,9 @@ export function buildWorkspaceUpdatePayload(args: {
   entity_types: string[];
   entity_types_strict: boolean;
   extraction_language: string;
+  entity_type_colors: Record<string, string>;
 } {
+  const entity_type_colors = args.entityTypeColors ?? {};
   if (args.useServerDefaults) {
     return {
       llm_model: '',
@@ -129,6 +132,7 @@ export function buildWorkspaceUpdatePayload(args: {
       entity_types: args.entityTypes,
       entity_types_strict: args.entityTypesStrict,
       extraction_language: extractionLanguageToUpdatePayload(args.extractionLanguage),
+      entity_type_colors,
     };
   }
 
@@ -145,6 +149,7 @@ export function buildWorkspaceUpdatePayload(args: {
     entity_types: args.entityTypes,
     entity_types_strict: args.entityTypesStrict,
     extraction_language: extractionLanguageToUpdatePayload(args.extractionLanguage),
+    entity_type_colors,
   };
 }
 

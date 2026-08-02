@@ -25,7 +25,8 @@ import {
     DropdownMenuSeparator,
     DropdownMenuShortcut,
 } from '@/components/ui/dropdown-menu';
-import { formatEntityLabel, formatEntityType, getEntityTypeColor } from '@/lib/graph/label-utils';
+import { useEntityTypeColors } from '@/hooks/use-entity-type-colors';
+import { formatEntityLabel, formatEntityType } from '@/lib/graph/label-utils';
 import type { GraphNode } from '@/types';
 import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu';
 import {
@@ -89,11 +90,13 @@ export function NodeContextMenu({
     [onClose],
   );
 
+  const { colorFor } = useEntityTypeColors();
+
   if (!node || !position) return null;
 
   const displayLabel = formatEntityLabel(node.label ?? '', 40);
   const displayType = formatEntityType(node.node_type ?? '');
-  const typeColor = getEntityTypeColor(node.node_type);
+  const typeColor = colorFor(node.node_type);
 
   return (
     <DropdownMenu open={open} onOpenChange={handleOpenChange}>

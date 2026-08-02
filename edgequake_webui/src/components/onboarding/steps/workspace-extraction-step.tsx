@@ -68,6 +68,8 @@ export function WorkspaceExtractionStep({
               ? (strict) => onChange({ entityTypesStrict: strict })
               : undefined
           }
+          colors={draft.entityTypeColors}
+          onColorsChange={(entityTypeColors) => onChange({ entityTypeColors })}
         />
       </section>
     </div>

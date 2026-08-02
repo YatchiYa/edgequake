@@ -154,6 +154,10 @@ export function CreateWorkspaceWizard({
         ...models,
         entity_types: draft.entityTypes.length > 0 ? draft.entityTypes : undefined,
         extraction_language: draft.extractionLanguage ?? undefined,
+        entity_type_colors:
+          Object.keys(draft.entityTypeColors).length > 0
+            ? draft.entityTypeColors
+            : undefined,
       });
       // Success toast + navigation CTA owned by caller (header / tenant-guard).
       onCreated?.(workspace);

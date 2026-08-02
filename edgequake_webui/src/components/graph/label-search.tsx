@@ -17,6 +17,7 @@ import {
     PopoverTrigger,
 } from '@/components/ui/popover';
 import { useDebounce } from '@/hooks/use-debounce';
+import { useEntityTypeColors } from '@/hooks/use-entity-type-colors';
 import { getPopularLabels, searchLabels, type PopularLabel } from '@/lib/api/edgequake';
 import { useQuery } from '@tanstack/react-query';
 import { Search, Sparkles, X } from 'lucide-react';
@@ -48,6 +49,7 @@ export function LabelSearch({
   onClear,
   placeholder = 'Focus on entity...',
 }: LabelSearchProps) {
+  const { colorFor } = useEntityTypeColors();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const debouncedQuery = useDebounce(query, 300);
@@ -77,20 +79,6 @@ export function LabelSearch({
     onClear?.();
     setQuery('');
   }, [onClear]);
-
-  // Get entity type color based on type name
-  const getTypeColor = (entityType: string): string => {
-    const typeColors: Record<string, string> = {
-      PERSON: 'bg-blue-500/20 text-blue-600 dark:text-blue-400',
-      ORGANIZATION: 'bg-green-500/20 text-green-600 dark:text-green-400',
-      LOCATION: 'bg-amber-500/20 text-amber-600 dark:text-amber-400',
-      EVENT: 'bg-purple-500/20 text-purple-600 dark:text-purple-400',
-      CONCEPT: 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400',
-      TECHNOLOGY: 'bg-rose-500/20 text-rose-600 dark:text-rose-400',
-      PRODUCT: 'bg-orange-500/20 text-orange-600 dark:text-orange-400',
-    };
-    return typeColors[entityType] || 'bg-gray-500/20 text-gray-600 dark:text-gray-400';
-  };
 
   const isLoading = isSearching || isLoadingPopular;
   const showSearch = debouncedQuery.length >= 2;
@@ -158,7 +146,12 @@ export function LabelSearch({
                     <Sparkles className="h-3 w-3 text-amber-500" />
                     <Badge
                       variant="secondary"
-                      className={`text-[10px] px-1.5 py-0 ${getTypeColor(label.entity_type)}`}
+                      className="text-[10px] px-1.5 py-0 border"
+                      style={{
+                        borderColor: colorFor(label.entity_type),
+                        color: colorFor(label.entity_type),
+                        backgroundColor: `${colorFor(label.entity_type)}18`,
+                      }}
                     >
                       {label.entity_type}
                     </Badge>

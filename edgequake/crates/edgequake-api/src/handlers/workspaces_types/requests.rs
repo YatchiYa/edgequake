@@ -190,6 +190,11 @@ pub struct CreateWorkspaceApiRequest {
     /// German, Portuguese, Italian, Russian. Omit to inherit env/default.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extraction_language: Option<String>,
+
+    /// Custom entity-type → hex color map for graph visualization (SPEC-102).
+    /// Keys UPPERCASE; values `#RGB` / `#RRGGBB`. Empty object clears.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entity_type_colors: Option<std::collections::HashMap<String, String>>,
 }
 
 /// Request to update a workspace.
@@ -260,4 +265,9 @@ pub struct UpdateWorkspaceApiRequest {
     /// empty string or `"none"` clears the workspace override.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extraction_language: Option<String>,
+
+    /// Custom entity-type → hex color map (SPEC-102). Omit = leave unchanged;
+    /// empty object clears the workspace override.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entity_type_colors: Option<std::collections::HashMap<String, String>>,
 }

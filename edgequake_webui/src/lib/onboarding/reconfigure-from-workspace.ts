@@ -46,6 +46,7 @@ export function prefillReconfigureFromWorkspace(workspace: Workspace): Reconfigu
       ? [...workspace.entity_types]
       : [...ENTITY_PRESETS.general.types],
     entityTypesStrict: workspace.entity_types_strict ?? true,
+    entityTypeColors: { ...(workspace.entity_type_colors ?? {}) },
     pdfParserBackend,
   };
 
@@ -58,6 +59,7 @@ export function prefillReconfigureFromWorkspace(workspace: Workspace): Reconfigu
     extractionLanguage: draft.extractionLanguage,
     entityTypes: [...draft.entityTypes],
     entityTypesStrict: draft.entityTypesStrict,
+    entityTypeColors: { ...draft.entityTypeColors },
   };
 
   return {
@@ -85,5 +87,6 @@ export function snapshotFromWizardState(args: {
     extractionLanguage: args.draft.extractionLanguage,
     entityTypes: [...args.draft.entityTypes],
     entityTypesStrict: args.draft.entityTypesStrict,
+    entityTypeColors: { ...(args.draft.entityTypeColors ?? {}) },
   };
 }

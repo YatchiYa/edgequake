@@ -663,6 +663,7 @@ mod tests {
                 entity_types: None,
                 entity_types_strict: None,
                 extraction_language: None,
+                entity_type_colors: None,
             };
 
             let workspace = service

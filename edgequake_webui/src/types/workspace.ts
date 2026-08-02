@@ -166,6 +166,11 @@ export interface Workspace {
    * @implements SPEC-096 / GH-352
    */
   extraction_language?: string | null;
+  /**
+   * Custom entity-type → hex color map for graph visualization.
+   * @implements SPEC-102 / FEAT-102
+   */
+  entity_type_colors?: Record<string, string>;
   /** Creation timestamp. */
   created_at: string;
   /** Last update timestamp. */
@@ -240,6 +245,10 @@ export interface CreateWorkspaceRequest {
    * Extraction output language (SPEC-096). Omit for server default.
    */
   extraction_language?: string | null;
+  /**
+   * Custom entity-type → hex color map (SPEC-102).
+   */
+  entity_type_colors?: Record<string, string>;
 }
 
 /**

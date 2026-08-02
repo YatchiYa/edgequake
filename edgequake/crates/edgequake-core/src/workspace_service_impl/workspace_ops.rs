@@ -159,6 +159,12 @@ impl WorkspaceServiceImpl {
         // SPEC-096: Workspace extraction language (future ingestions only)
         apply_extraction_language_metadata(&mut workspace.metadata, request.extraction_language)
             .map_err(Error::validation)?;
+        // SPEC-102: entity type color overrides for graph visualization
+        crate::entity_type_colors::apply_entity_type_colors_metadata(
+            &mut workspace.metadata,
+            request.entity_type_colors,
+        )
+        .map_err(Error::validation)?;
 
         sqlx::query(
             r#"
@@ -375,6 +381,11 @@ impl WorkspaceServiceImpl {
         apply_entity_types_strict_metadata(&mut workspace.metadata, request.entity_types_strict);
         apply_extraction_language_metadata(&mut workspace.metadata, request.extraction_language)
             .map_err(Error::validation)?;
+        crate::entity_type_colors::apply_entity_type_colors_metadata(
+            &mut workspace.metadata,
+            request.entity_type_colors,
+        )
+        .map_err(Error::validation)?;
         workspace.updated_at = chrono::Utc::now();
 
         // Store all config in metadata JSONB column (database schema uses metadata, not separate columns)
