@@ -1,15 +1,16 @@
 # Matrix summary — SPEC-93 migration assessment
 
-> Generated: 2026-07-31T11:10:24Z (started 2026-07-31T10:55:36Z)
+> Generated: 2026-08-02T12:38:33Z (started 2026-08-02T12:25:05Z)
 > Source: `ghcr.io/raphaelmansuy/edgequake:0.22.0`
-> Target: HEAD migrations through **137**
+> Target: HEAD migrations through **141**
 > Profile: `realism`
+> Isolation: foreign host ports unchanged (EdgeForce :8787/:55432, GPS, …)
 
 | PG profile | Verdict | Wall (s) | Postgres | Pre max mig | Post max mig | Docs seeded | Dump SHA (12) |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| pg16 | **GREEN** | 232 | `16.14 (Debian 16.14-1.pgdg12+1)` | 105 | 137 | 600 | `d98f2b250deb` |
-| pg17 | **GREEN** | 276 | `17.10 (Debian 17.10-1.pgdg12+1)` | 105 | 137 | 600 | `62df3f13e298` |
-| pg18 | **GREEN** | 380 | `18.4 (Debian 18.4-1.pgdg12+1)` | 105 | 137 | 600 | `103997c4490e` |
+| pg16 | **GREEN** | 85 | `16.14 (Debian 16.14-1.pgdg12+1)` | 105 | 141 | 600 | `99706454b81a` |
+| pg17 | **GREEN** | 397 | `17.10 (Debian 17.10-1.pgdg12+1)` | 105 | 141 | 600 | `581e12c159ad` |
+| pg18 | **GREEN** | 322 | `18.4 (Debian 18.4-1.pgdg12+1)` | 105 | 141 | 600 | `657b8a826429` |
 
 **Overall:** **PASS**
 

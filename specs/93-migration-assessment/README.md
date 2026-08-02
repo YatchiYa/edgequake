@@ -2,7 +2,7 @@
 
 > **Status:** ACTIVE  
 > **Source pin:** [EdgeQuake v0.22.0](https://github.com/raphaelmansuy/edgequake/releases/tag/v0.22.0) (migrations ≤105, KV SSOT)  
-> **Target:** HEAD (migrations 106–137, typed relational SSOT + irreversible drops 125/126/131)  
+> **Target:** HEAD (migrations 106–141, typed relational SSOT + irreversible drops 125/126/131)  
 > **Proof command:** `make spec93-migration-assessment`
 
 ## Purpose

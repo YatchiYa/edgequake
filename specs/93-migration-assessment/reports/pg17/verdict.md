@@ -7,16 +7,16 @@
 | postgres tag | `0.22.0-pg17` |
 | source API | `edgequake:0.22.0` |
 | compose project | `spec93soak-pg17` |
-| started | 2026-07-31T10:59:28Z |
-| finished | 2026-07-31T11:04:03Z |
-| wall seconds | 275 |
+| started | 2026-08-02T12:26:32Z |
+| finished | 2026-08-02T12:33:08Z |
+| wall seconds | 396 |
 | PASS / FAIL | 20 / 0 |
 | Postgres | `17.10 (Debian 17.10-1.pgdg12+1)` |
 | pre migration max | 105 |
-| post migration max | 137 |
+| post migration max | 141 |
 | tenants / workspaces / docs | 5 / 15 / 600 |
-| dump SHA256 | `62df3f13e298…` (669588 bytes) |
-| dump path | `artifacts/spec93-migration-assessment/pg17/pre-upgrade.dump` |
+| dump SHA256 | `581e12c159ad…` (676943 bytes) |
+| dump path | `/Users/raphaelmansuy/Github/03-working/edgequake/artifacts/spec93-migration-assessment/pg17/pre-upgrade.dump` |
 
 ## Acceptance
 

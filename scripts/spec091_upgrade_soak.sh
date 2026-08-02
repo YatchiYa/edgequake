@@ -2,7 +2,7 @@
 # scripts/spec091_upgrade_soak.sh
 #
 # Upgrade soak: multi-tenant corpus from published v0.22.0 (GHCR, migrations ≤105,
-# KV SSOT) to HEAD (migrations 106–137, confirm-drop for irreversible 125/126/131).
+# KV SSOT) to HEAD (migrations 106–141, confirm-drop for irreversible 125/126/131).
 #
 # Profiles (SPEC93_PROFILE):
 #   smoke    — 3 tenants × 2 workspaces × 1 doc  (legacy make spec091-upgrade-soak)
@@ -15,9 +15,9 @@
 #   4) Stop 0.22.0 API; keep Postgres volume
 #   5) HEAD migrate dry-run (preview; assert no schema advance)
 #   6) HEAD migrate (refuse / expandable-first)
-#   7) HEAD migrate --confirm-drop (106–137; tee live progress)
+#   7) HEAD migrate --confirm-drop (106–141; tee live progress)
 #   8) Start HEAD API (relational flags, serving fence ON)
-#   9) Assert isolation / list / wipe / no eq_*_kv / assets / query / ledger ≥137
+#   9) Assert isolation / list / wipe / no eq_*_kv / assets / query / ledger ≥141
 #  10) Write verdict.json + verdict.md
 #
 # Usage:
@@ -201,16 +201,25 @@ build_head_bin() {
 start_head_api() {
   local bin="$1" db_url="$2"
   local host_port
+  # Ephemeral bind on loopback only — never claim EdgeForce (:8787), GPS, or make-dev ports.
   host_port="$(python3 - <<'PY'
 import socket
-s=socket.socket()
-s.bind(("127.0.0.1",0))
-print(s.getsockname()[1])
-s.close()
+# Ports owned by other local apps / EdgeQuake make-dev — refuse if OS hands them to us.
+FORBIDDEN = {3000, 3010, 3100, 5001, 5173, 5432, 5433, 8000, 8080, 8090, 8787, 9000, 9001, 55432}
+for _ in range(64):
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    if port not in FORBIDDEN:
+        print(port)
+        break
+else:
+    raise SystemExit("could not allocate ephemeral HEAD API port outside foreign-app set")
 PY
 )"
   API_PORT="$host_port"
-  log "starting HEAD API on 127.0.0.1:$API_PORT (serving fence ON)"
+  log "starting HEAD API on 127.0.0.1:$API_PORT (serving fence ON; isolated from EdgeForce/GPS)"
   (
     cd "$ROOT/edgequake"
     export DATABASE_URL="$db_url"
@@ -244,24 +253,34 @@ PY
 
 upload_one_doc() {
   local tenant="$1" workspace="$2" n="$3" out_file="$4"
-  local title body code json track doc_id token
+  local title body code json track doc_id token attempt
   token="TOKEN_${tenant:0:8}_${workspace:0:8}_${n}"
   title="soak-doc-${workspace:0:8}-${n}"
-  body="$(curl -sS --max-time 60 -w "\n%{http_code}" -X POST "http://127.0.0.1:${API_PORT}/api/v1/documents" \
-    -H "Content-Type: application/json" \
-    -H "X-Tenant-ID: $tenant" \
-    -H "X-Workspace-ID: $workspace" \
-    -d "{\"title\":\"$title\",\"content\":\"EdgeQuake SPEC-93 soak document $n for workspace $workspace.\\n\\nTenant $tenant holds unique token $token.\\n\\nParagraph two: migration assessment corpus for multi-tenant upgrade validation from v0.22.0.\"}")"
-  code="$(echo "$body" | tail -n1)"
-  json="$(echo "$body" | sed '$d')"
-  if [[ "$code" != "201" && "$code" != "202" ]]; then
+  # Retry transient pool/queue saturation on the published v0.22.0 seed API.
+  for attempt in 1 2 3 4 5; do
+    body="$(curl -sS --max-time 60 -w "\n%{http_code}" -X POST "http://127.0.0.1:${API_PORT}/api/v1/documents" \
+      -H "Content-Type: application/json" \
+      -H "X-Tenant-ID: $tenant" \
+      -H "X-Workspace-ID: $workspace" \
+      -d "{\"title\":\"$title\",\"content\":\"EdgeQuake SPEC-93 soak document $n for workspace $workspace.\\n\\nTenant $tenant holds unique token $token.\\n\\nParagraph two: migration assessment corpus for multi-tenant upgrade validation from v0.22.0.\"}" \
+      2>/dev/null || printf '\n000')"
+    code="$(echo "$body" | tail -n1)"
+    json="$(echo "$body" | sed '$d')"
+    if [[ "$code" == "201" || "$code" == "202" ]]; then
+      track="$(echo "$json" | jq -r '.track_id // .task_id // empty')"
+      doc_id="$(echo "$json" | jq -r '.document_id // .id // empty')"
+      echo "OK ${tenant}|${workspace}|${doc_id}|${track}" >"$out_file"
+      return 0
+    fi
+    # Back off on pool timeout / 5xx / transport blips only.
+    if [[ "$attempt" -lt 5 && ( "$code" == "500" || "$code" == "503" || "$code" == "429" || "$code" == "000" ) ]]; then
+      sleep $((attempt * 2))
+      continue
+    fi
     echo "FAIL $code" >"$out_file"
     echo "$json" >>"$out_file"
     return 1
-  fi
-  track="$(echo "$json" | jq -r '.track_id // .task_id // empty')"
-  doc_id="$(echo "$json" | jq -r '.document_id // .id // empty')"
-  echo "OK ${tenant}|${workspace}|${doc_id}|${track}" >"$out_file"
+  done
 }
 
 seed_corpus() {
@@ -459,7 +478,7 @@ obj = {
     "AC-M-01": "$status" != "RED",
     "AC-M-02": "$PROFILE" == "realism" and int("$docs_seeded" or 0) >= 600,
     "AC-M-03": True,
-    "AC-M-04": int("$post_max" or 0) >= 137 if str("$post_max").strip().isdigit() else False,
+    "AC-M-04": int("$post_max" or 0) >= 141 if str("$post_max").strip().isdigit() else False,
     "AC-M-05": True,
     "AC-M-06": True,
     "AC-M-07": True,
@@ -539,10 +558,10 @@ assert_post_upgrade() {
   else
     fail "AC-M-04: migration 131 not applied"
   fi
-  if [[ "${POST_MIG_MAX:-0}" -ge 137 ]]; then
-    pass "AC-M-04: migration max ≥137 (got $POST_MIG_MAX)"
+  if [[ "${POST_MIG_MAX:-0}" -ge 141 ]]; then
+    pass "AC-M-04: migration max ≥141 (got $POST_MIG_MAX)"
   else
-    fail "AC-M-04: migration max $POST_MIG_MAX < 137"
+    fail "AC-M-04: migration max $POST_MIG_MAX < 141"
   fi
 
   if curl -sf "http://127.0.0.1:${API_PORT}/health" | jq -e '.status=="healthy" or .status=="ok" or .components' >/dev/null 2>&1; then

@@ -6,10 +6,10 @@ Prove that the EdgeQuake **migration system** can upgrade a realistic multi-tena
 
 ## In scope
 
-1. Same-major stay: seed on `edgequake:0.22.0` + `edgequake-postgres:0.22.0-pg{16,17,18}`, then apply HEAD migrations 106–137 via `edgequake migrate --confirm-drop`.
+1. Same-major stay: seed on `edgequake:0.22.0` + `edgequake-postgres:0.22.0-pg{16,17,18}`, then apply HEAD migrations 106–141 via `edgequake migrate --confirm-drop`.
 2. Realistic corpus defaults: **5 tenants × 3 workspaces × 40 documents = 600 documents** (mock LLM/embeddings).
 3. Operator path: dry-run (no ledger advance) → migrate without confirm (refuse / expandable-first) → `--confirm-drop` → HEAD API boot (LD-15 verify-only).
-4. Post-upgrade gates: isolation, wipe sibling integrity, assets non-500, fence-on query non-500, ledger through 137, zero `eq_%_kv`.
+4. Post-upgrade gates: isolation, wipe sibling integrity, assets non-500, fence-on query non-500, ledger through 141, zero `eq_%_kv`.
 5. Published reports under `specs/93-migration-assessment/reports/`.
 
 ## Out of scope

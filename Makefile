@@ -1938,7 +1938,7 @@ QUICKSTART_COMPOSE := $(ROOT_DIR)/docker-compose.quickstart.yml
 	spec93-migration-assessment spec93-migration-assessment-pg16 \
 	spec93-migration-assessment-pg17 spec93-migration-assessment-pg18
 
-# SPEC-091: v0.22.0 GHCR → HEAD smoke soak (tiny corpus; migrations 106–137 + confirm-drop).
+# SPEC-091: v0.22.0 GHCR → HEAD smoke soak (tiny corpus; migrations 106–141 + confirm-drop).
 # Formal realism matrix: make spec93-migration-assessment (see specs/93-migration-assessment/).
 # See docs/operations/spec091-upgrade-from-v0.22.0.md
 spec091-upgrade-soak: ## SPEC-091: smoke upgrade soak from published v0.22.0 (tiny multi-tenant)

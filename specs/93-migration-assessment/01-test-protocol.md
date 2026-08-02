@@ -7,6 +7,13 @@
 - Host tools: `curl`, `jq`, `python3`, `sha256sum` (or `shasum -a 256`).
 - Free disk for three ephemeral Postgres volumes + dumps.
 
+### Isolation (no EdgeForce / other apps)
+
+- Compose projects are only `spec93soak-pg{16,17,18}` with volumes scoped to that project.
+- Host publishes **ephemeral** ports on `127.0.0.1` only (never `:8787`, `:55432`, `:8080`, …).
+- HEAD API binds an ephemeral loopback port; cleanup kills **only** that PID (never `make kill-app` / host-wide `pkill`).
+- Harness snapshots foreign listeners before/after each major and fails the matrix if any PID changes.
+
 ## 2. Images
 
 | Role | Image |

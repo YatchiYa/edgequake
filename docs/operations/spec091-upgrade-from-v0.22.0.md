@@ -4,7 +4,7 @@ title: "SPEC-091 Upgrade from v0.22.0"
 
 # SPEC-091 — Upgrade from published v0.22.0
 
-> **Audience:** operators upgrading a live Postgres from GHCR **v0.22.0** (migrations ≤ **105**, KV SSOT) to a build that includes migrations **106–137** (typed relational SSOT + irreversible KV/vector drops + RM0–RM5 outbox drain / citation / chunk FTS / AGE citation indexes).
+> **Audience:** operators upgrading a live Postgres from GHCR **v0.22.0** (migrations ≤ **105**, KV SSOT) to a build that includes migrations **106–141** (typed relational SSOT + irreversible KV/vector drops + RM0–RM5 outbox drain / citation / chunk FTS / AGE citation indexes + SPEC-098 spine/lifecycle).
 > **Spec:** [`specs/091-simplify-data-layer/`](../../specs/091-simplify-data-layer/) · risks R-21..R-29 in `09-risk-register.md` · RM program in [`22-ingestion-migration-system-assessment.md`](../../specs/091-simplify-data-layer/22-ingestion-migration-system-assessment.md).
 > **Automated proof:** `make spec93-migration-assessment` (PG16/17/18 realism) · `make spec091-upgrade-soak` (smoke) · `make spec091-gates`.
 > **Formal pack:** [`specs/93-migration-assessment/`](../../specs/93-migration-assessment/).

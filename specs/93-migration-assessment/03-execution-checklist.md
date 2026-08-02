@@ -21,7 +21,7 @@ Use this when running the formal matrix.
 ## After
 
 - [x] Spot-check one `migrate-confirm.log` for `applied 125` and `KV store dropped`
-- [x] Spot-check `_sqlx_migrations` max ≥ 137 in one major's soak log
+- [x] Spot-check `_sqlx_migrations` max ≥ 141 in one major's soak log
 - [x] Update RM-AC-13 in SPEC-091 assessment if matrix GREEN
 - [x] Link ops runbook to this pack
 
@@ -35,6 +35,9 @@ Use this when running the formal matrix.
 
 | Field | Value |
 | --- | --- |
-| Finished | 2026-07-31T11:10:24Z |
+| Finished | 2026-08-02T12:38:33Z |
 | Overall | **PASS** |
+| Target migrations | **141** (v0.22.0 max 105 → HEAD) |
+| Isolation | Foreign ports watched (EdgeForce `:8787`/`:55432`, GPS, …); soak used ephemeral `127.0.0.1` only; HEAD API ephemeral; no `make kill-app` / host `pkill` |
 | Evidence | [reports/matrix-summary.md](reports/matrix-summary.md) |
+| Fresh run notes | Smoke GREEN (`make spec091-upgrade-soak`); realism matrix re-run with HEAD binary + GHCR `0.22.0` / `0.22.0-pg{16,17,18}`; all majors 20/0 PASS; confirm-drop applied 125/126/131 |
