@@ -407,13 +407,12 @@ export default function DocumentViewPage() {
         data-testid="spec100-document-detail-skeleton"
       >
         <HeaderSkeleton />
+        {/* Idle progress slot collapsed — matches live page (no dead band before body). */}
         <div
-          className="min-h-[5.5rem] shrink-0 border-t bg-card/40 px-3 py-2"
+          className="h-0 min-h-0 overflow-hidden"
           data-testid="detail-page-reprocess-progress-slot"
           aria-hidden
-        >
-          <Skeleton className="h-12 w-full" />
-        </div>
+        />
         <div className="flex min-h-0 flex-1">
           <div className="flex min-h-0 flex-1 flex-col p-4 md:p-6">
             <Skeleton className="mb-3 h-8 w-1/2" />
@@ -548,14 +547,17 @@ export default function DocumentViewPage() {
             </p>
           </div>
         )}
-        {/* SPEC-051 + SPEC-100: always mount progress slot (never null→tall CLS). */}
+        {/* Progress slot: always mounted. Idle height 0 — an empty h-5.5rem
+            reserve was a dead white band before the document body ("gap before
+            the text"). Expanding on reprocess is user-initiated (hadRecentInput). */}
         <div
           className={
             reprocessTrackId
-              ? 'min-h-[5.5rem] border-t bg-card/80 px-3 py-2'
-              : 'min-h-[5.5rem] border-t border-transparent px-3 py-2'
+              ? 'min-h-[5.5rem] shrink-0 border-t bg-card/80 px-3 py-2'
+              : 'h-0 min-h-0 overflow-hidden border-0 p-0'
           }
           data-testid="detail-page-reprocess-progress-slot"
+          aria-hidden={!reprocessTrackId}
         >
           {reprocessTrackId ? (
             <div data-testid="detail-page-reprocess-progress">
@@ -580,13 +582,7 @@ export default function DocumentViewPage() {
                 data-testid="detail-page-reprocess-panel"
               />
             </div>
-          ) : (
-            <div
-              className="h-12"
-              aria-hidden
-              data-testid="detail-page-reprocess-progress-reserve"
-            />
-          )}
+          ) : null}
         </div>
       </header>
 

@@ -4,7 +4,7 @@
 |------|------|--------|
 | `spec100-breadcrumb-slot` | W0 | Depth≤1: no spacer/bar; depth≥2 bar is `h-9`; Documents title gap under 40px |
 | `spec100-pipeline-cls` | W1 | Chunk slot reserved; main Y stable; CLS budget |
-| `spec100-document-detail-cls` | W1 | Progress strip reserved; shell matched |
+| `spec100-document-detail-cls` | W1 | Progress slot mounted; idle height 0; body gap under 80px |
 | `spec100-dashboard-cls` | W2 | Activity/stats soft refresh no jump |
 | `spec100-workspace-cls` | W2 | No full-page skeleton when cached |
 | `spec100-query-cls` | W2 | Citations slot reserved |

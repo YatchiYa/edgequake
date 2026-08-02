@@ -1,5 +1,6 @@
 /**
  * SPEC-100 — Document detail CLS / layout stability.
+ * Idle progress slot must collapse (no dead band before body text).
  */
 import { expect, test } from "@playwright/test";
 import { GOTO_OPTS } from "./helpers/app-ready";
@@ -27,7 +28,7 @@ function makeDetailDoc(overrides: Record<string, unknown> = {}) {
 }
 
 test.describe("SPEC-100 document detail CLS", () => {
-  test("progress slot reserved; main shell Y stable after delayed load", async ({
+  test("idle progress slot collapsed; body text close to header", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -68,25 +69,34 @@ test.describe("SPEC-100 document detail CLS", () => {
     await page.goto(`/documents/${DOC_ID}`, GOTO_OPTS);
 
     const progressSlot = page.getByTestId("detail-page-reprocess-progress-slot");
-    // Cold skeleton or live page both mount the progress slot
     await expect(
       page
         .getByTestId("spec100-document-detail-skeleton")
         .or(page.getByRole("heading", { name: /CLS Detail Doc/i })),
     ).toBeVisible({ timeout: 20_000 });
 
-    await expect(progressSlot).toBeVisible({ timeout: 20_000 });
-    const yDuring = await progressSlot.boundingBox();
-    expect(yDuring).toBeTruthy();
+    // Slot stays mounted for stable DOM, but idle height must not open a dead band.
+    await expect(progressSlot).toBeAttached({ timeout: 20_000 });
 
     await expect(page.getByRole("heading", { name: /CLS Detail Doc/i })).toBeVisible({
       timeout: 20_000,
     });
 
-    const yAfter = await progressSlot.boundingBox();
-    expect(yAfter).toBeTruthy();
-    // Allow modest header chrome settle; slot should remain near-stable
-    expect(Math.abs((yAfter?.y ?? 0) - (yDuring?.y ?? 0))).toBeLessThanOrEqual(48);
+    const slotBox = await progressSlot.boundingBox();
+    expect(slotBox?.height ?? 0).toBeLessThanOrEqual(4);
+
+    const headerTitle = page.locator("header h1").first();
+    const bodyHeading = page.getByRole("heading", { name: /^Hello$/i }).first();
+    await expect(bodyHeading).toBeVisible({ timeout: 10_000 });
+    const headerBox = await headerTitle.boundingBox();
+    const bodyBox = await bodyHeading.boundingBox();
+    expect(headerBox).toBeTruthy();
+    expect(bodyBox).toBeTruthy();
+    const gap =
+      (bodyBox?.y ?? 0) - ((headerBox?.y ?? 0) + (headerBox?.height ?? 0));
+    // Header → body should be tight (padding only), not an 88px empty reserve.
+    expect(gap).toBeGreaterThanOrEqual(0);
+    expect(gap).toBeLessThan(80);
 
     const cls = await page.evaluate(
       () => (window as unknown as { __eqClsScore?: number }).__eqClsScore ?? 0,

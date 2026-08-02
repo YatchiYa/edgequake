@@ -72,7 +72,7 @@ export function ContentRenderer({ document, highlightText, startLine, endLine }:
   }, [highlightText, startLine, endLine]);
 
   return (
-    <div ref={contentRef} className="pt-12 px-8 pb-16 max-w-4xl mx-auto">
+    <div ref={contentRef} className="px-4 pt-4 pb-16 max-w-4xl">
       <Suspense fallback={<ContentSkeleton />}>
         {renderer}
       </Suspense>
@@ -127,9 +127,10 @@ function getRendererForDocument(doc: Document, highlightText?: string, startLine
       <article className="
         prose prose-lg dark:prose-invert max-w-none
         prose-headings:font-display prose-headings:font-semibold
-        prose-h1:text-4xl prose-h1:mb-6 prose-h1:mt-8
+        prose-h1:text-4xl prose-h1:mb-6 prose-h1:mt-0
         prose-h2:text-3xl prose-h2:mb-4 prose-h2:mt-6
         prose-h3:text-2xl prose-h3:mb-3 prose-h3:mt-5 prose-h3:scroll-mt-4
+        [&>:first-child]:mt-0
         prose-p:text-base prose-p:leading-relaxed prose-p:text-foreground/90
         prose-a:text-primary prose-a:no-underline prose-a:font-medium
         hover:prose-a:underline
