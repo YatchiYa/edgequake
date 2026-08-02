@@ -135,8 +135,8 @@ pub struct QueryEngineConfig {
     /// Mix-mode weights (P-G8 / RC-13). Mix runs the Local, Global, and Naive
     /// arms in parallel, min-max normalizes each arm, then takes the **max**
     /// weighted contribution per chunk (D-35: not a weighted sum). When
-    /// `EDGEQUAKE_MIX_FUSION=rrf` (default), RRF is used instead. A weight of 0
-    /// skips that arm (E25).
+    /// `EDGEQUAKE_MIX_FUSION=rrf` (ablation; product default is round_robin /
+    /// SPEC-086 E2-occ). A weight of 0 skips that arm (E25).
     pub mix_local_weight: f32,
     pub mix_global_weight: f32,
     pub mix_naive_weight: f32,

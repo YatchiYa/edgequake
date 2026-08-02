@@ -23,6 +23,8 @@ from bench001.fair_pins import (
 from bench001.profiles import PROFILE_ID_DEFAULT, resolve_pins
 
 PUBLISH_PROFILE_ID_LRLIKE = "P0_mistral_mix_lrlike_arms_v2"
+# SPEC-086 product/Acc headline profile + LR-like arms suffix.
+PUBLISH_PROFILE_ID_E2OCC_LRLIKE = "ACC_E2OCC_086_v1_lrlike_arms_v2"
 
 
 def test_publish_fairness_defaults(monkeypatch):
@@ -54,16 +56,19 @@ def test_profile_bumps_to_v2_lrlike(monkeypatch):
     monkeypatch.delenv("EDGEQUAKE_MIX_ARM_GATE", raising=False)
     monkeypatch.setenv("BENCH001_PUBLISH_FAIRNESS", "1")
     pins = resolve_pins()
-    assert pins.profile_id == PUBLISH_PROFILE_ID_LRLIKE
-    assert resolve_publish_profile_id(PROFILE_ID_DEFAULT) == PUBLISH_PROFILE_ID_LRLIKE
+    assert pins.profile_id == PUBLISH_PROFILE_ID_E2OCC_LRLIKE
+    assert resolve_publish_profile_id(PROFILE_ID_DEFAULT) == PUBLISH_PROFILE_ID_E2OCC_LRLIKE
+    # Legacy P0 headline still remaps to v2 + lrlike under fairness.
+    assert resolve_publish_profile_id("P0_mistral_mix") == PUBLISH_PROFILE_ID_LRLIKE
 
 
-def test_profile_keeps_v2_when_arm_gate_on(monkeypatch):
+def test_profile_keeps_base_when_arm_gate_on(monkeypatch):
     monkeypatch.delenv("BENCH001_PROFILE_ID", raising=False)
     monkeypatch.setenv("BENCH001_PUBLISH_FAIRNESS", "1")
     monkeypatch.setenv("EDGEQUAKE_MIX_ARM_GATE", "true")
     assert mix_arm_gate_enabled() is True
-    assert resolve_publish_profile_id(PROFILE_ID_DEFAULT) == PUBLISH_PROFILE_ID
+    assert resolve_publish_profile_id(PROFILE_ID_DEFAULT) == PROFILE_ID_DEFAULT
+    assert resolve_publish_profile_id("P0_mistral_mix") == PUBLISH_PROFILE_ID
 
 
 def test_legacy_fairness_off(monkeypatch):

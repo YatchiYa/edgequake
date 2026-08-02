@@ -17,26 +17,13 @@
       "at_utc": "2026-08-02T15:39:28Z",
       "run_elapsed_s": 285.34067191695794,
       "detail": "elapsed=1m00s"
-    },
-    {
-      "phase": "report",
-      "status": "done",
-      "at_utc": "2026-08-02T15:39:28Z",
-      "run_elapsed_s": 285.60780874994816,
-      "detail": "valid=True archive=medical-mid-20260802T153928Z",
-      "counts": {
-        "eq_acc": 0.8102297793897265,
-        "lr_acc": 0.7806880621946932
-      }
     }
   ],
-  "current_phase": "report",
+  "current_phase": "score_parallel",
   "counts": {
     "done": 50,
     "total": 50,
-    "eta_s": 0.0,
-    "eq_acc": 0.8102297793897265,
-    "lr_acc": 0.7806880621946932
+    "eta_s": 0.0
   },
-  "run_elapsed_s": 285.6078160419711
+  "run_elapsed_s": 285.3406795839546
 }

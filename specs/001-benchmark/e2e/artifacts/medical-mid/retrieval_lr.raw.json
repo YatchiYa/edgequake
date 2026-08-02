@@ -1,18 +1,18 @@
 {
   "Fact Retrieval": {
-    "context_relevancy": 0.59,
-    "evidence_recall": 0.9533333333333333
+    "context_relevancy": 0.585,
+    "evidence_recall": 0.96
   },
   "Complex Reasoning": {
-    "context_relevancy": 0.515,
-    "evidence_recall": 0.9266666666666665
+    "context_relevancy": 0.51,
+    "evidence_recall": 0.9133333333333334
   },
   "Contextual Summarize": {
-    "context_relevancy": 0.55,
-    "evidence_recall": 0.9495238095238094
+    "context_relevancy": 0.555,
+    "evidence_recall": 0.9698095238095239
   },
   "Creative Generation": {
-    "context_relevancy": 0.31,
-    "evidence_recall": 0.9679472586237293
+    "context_relevancy": 0.325,
+    "evidence_recall": 0.9717183404830466
   }
 }

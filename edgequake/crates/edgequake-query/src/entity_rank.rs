@@ -10,12 +10,13 @@ use crate::context::RetrievedEntity;
 /// How to order entities before prompt formatting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum EntityRankMode {
-    /// Degree descending (historical EdgeQuake default).
-    #[default]
+    /// Degree descending (historical EdgeQuake; labeled ablation).
     Degree,
     /// Retrieval / VDB score descending; degree as tie-break.
     QueryScore,
     /// Preserve current list order (LightRAG VDB / merge order parity).
+    /// Product / Acc E2-occ default (SPEC-086).
+    #[default]
     Retrieval,
 }
 
@@ -27,8 +28,10 @@ impl EntityRankMode {
             .as_str()
         {
             "query_score" | "score" | "cosine" | "vdb" => Self::QueryScore,
-            "retrieval" | "preserve" | "none" | "as_is" => Self::Retrieval,
-            _ => Self::Degree,
+            "degree" | "hub" | "hubs" => Self::Degree,
+            // Empty / LightRAG aliases → product default (E2-occ).
+            "retrieval" | "preserve" | "none" | "as_is" | "" => Self::Retrieval,
+            _ => Self::Retrieval,
         }
     }
 
@@ -98,8 +101,9 @@ mod tests {
     }
 
     #[test]
-    fn default_mode_is_degree() {
-        assert_eq!(EntityRankMode::default().as_str(), "degree");
+    fn default_mode_is_retrieval() {
+        assert_eq!(EntityRankMode::default().as_str(), "retrieval");
+        assert_eq!(EntityRankMode::Degree.as_str(), "degree");
         assert_eq!(EntityRankMode::QueryScore.as_str(), "query_score");
         assert_eq!(EntityRankMode::Retrieval.as_str(), "retrieval");
     }

@@ -7,8 +7,8 @@
 //! - **Full dual-node (EQ-046-17):** bipartite adjacency with `chunk:{id}` nodes via
 //!   [`adjacency_from_bipartite`] + [`chunk_scores_from_bipartite_ppr`].
 //!
-//! Config: `EDGEQUAKE_GRAPH_WALK=bfs|ppr` (default **`ppr`** after OPS-P3 ACC gate;
-//! set `bfs` to escape).
+//! Config: `EDGEQUAKE_GRAPH_WALK=bfs|ppr` (default **`bfs`** — SPEC-086 E2-occ /
+//! LightRAG identity; set `ppr` for HippoRAG-style ablation).
 
 use std::collections::{HashMap, HashSet};
 
@@ -18,22 +18,22 @@ use edgequake_storage::traits::GraphEdge;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum GraphWalkMode {
     /// Classic BFS hop expansion (`edges_within_depth`).
-    Bfs,
-    /// Personalized PageRank on the fetched subgraph (HippoRAG-style).
-    /// Default after SPEC-046 OPS-P3 ACC gate.
+    /// Product / Acc E2-occ default (LightRAG identity).
     #[default]
+    Bfs,
+    /// Personalized PageRank on the fetched subgraph (HippoRAG-style ablation).
     Ppr,
 }
 
 impl GraphWalkMode {
     /// Parse walk mode from a raw string (pure — non-flaky tests).
     ///
-    /// Empty / unknown → **Ppr** (production default). Explicit `bfs` escapes.
+    /// Empty / unknown → **Bfs** (product default). Explicit `ppr` for ablation.
     pub fn parse(raw: &str) -> Self {
         parse_graph_walk_mode(raw)
     }
 
-    /// Read from `EDGEQUAKE_GRAPH_WALK` (`bfs` | `ppr`). Default: Ppr.
+    /// Read from `EDGEQUAKE_GRAPH_WALK` (`bfs` | `ppr`). Default: Bfs.
     pub fn from_env() -> Self {
         parse_graph_walk_mode(&std::env::var("EDGEQUAKE_GRAPH_WALK").unwrap_or_default())
     }
@@ -42,10 +42,10 @@ impl GraphWalkMode {
 /// Pure parser for `EDGEQUAKE_GRAPH_WALK` (SPEC-046 OPS-P3 — no env mutation in tests).
 pub fn parse_graph_walk_mode(raw: &str) -> GraphWalkMode {
     match raw.trim().to_ascii_lowercase().as_str() {
-        "bfs" | "breadth" | "breadth_first" => GraphWalkMode::Bfs,
-        "ppr" | "pagerank" | "personalized_pagerank" | "" => GraphWalkMode::Ppr,
-        // Unknown values fail closed to Ppr (documented default) rather than silent BFS.
-        _ => GraphWalkMode::Ppr,
+        "ppr" | "pagerank" | "personalized_pagerank" => GraphWalkMode::Ppr,
+        "bfs" | "breadth" | "breadth_first" | "" => GraphWalkMode::Bfs,
+        // Unknown values fail closed to Bfs (documented product default).
+        _ => GraphWalkMode::Bfs,
     }
 }
 
@@ -380,12 +380,12 @@ mod tests {
     }
 
     #[test]
-    fn graph_walk_mode_default_is_ppr() {
-        assert_eq!(GraphWalkMode::default(), GraphWalkMode::Ppr);
-        assert_eq!(parse_graph_walk_mode(""), GraphWalkMode::Ppr);
+    fn graph_walk_mode_default_is_bfs() {
+        assert_eq!(GraphWalkMode::default(), GraphWalkMode::Bfs);
+        assert_eq!(parse_graph_walk_mode(""), GraphWalkMode::Bfs);
         assert_eq!(parse_graph_walk_mode("bfs"), GraphWalkMode::Bfs);
         assert_eq!(parse_graph_walk_mode("PPR"), GraphWalkMode::Ppr);
-        assert_eq!(parse_graph_walk_mode("nope"), GraphWalkMode::Ppr);
+        assert_eq!(parse_graph_walk_mode("nope"), GraphWalkMode::Bfs);
     }
 
     #[test]

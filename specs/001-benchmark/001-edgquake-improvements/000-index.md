@@ -18,6 +18,7 @@
 │  Acc packing fishing STOP (085). Soft Mix / dense / NF / D1–D3 closed.       │
 │                                                                              │
 │  Acc Beat: 086 E2-occ Acc law kept; EXTRACT fishing closed (B1/B2 FAIL).     │
+│  Product default Mix profile = E2-occ (round_robin·bfs·retrieval·occ·L2).  │
 │  Next: 087 packing-law remasure (H1 naive_first under E2-occ; Acc CI kill).│
 │  publish/latest frozen until medical-full Beat (ALLOW_PUBLISH_LATEST).       │
 │  Detail: 087 · 086 · 085 · 083 · 077 · 019                                   │
